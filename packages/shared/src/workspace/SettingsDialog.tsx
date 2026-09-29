@@ -1,6 +1,7 @@
 import type { MapShape, MapSizes } from "@atlantis/core-client";
 import { MAP_LEVELS, mapSizesDraftFor, mapSizesFromDraft, mapSizesProblems, type MapDraft, mapCommitOf, mapFromDraft, mapShapeProblems } from "../mapShape";
 import { MapShapeProblemLines } from "./MapShapeProblemLines";
+import { MapSizesSettings } from "./MapSizesSettings";
 import { useEffect, useRef, useState } from "react";
 import type { AdvisoryCheckCode } from "@atlantis/core-client";
 import { useEscapeToDismiss } from "./dismissLayer";
@@ -903,7 +904,7 @@ function GameSettings({
     );
   }
 
-  function MapSizesSettings({
+  function NestedMapSizesSettings({
     mapSizes,
     busy,
     onChange
@@ -990,6 +991,8 @@ function GameSettings({
       return !changed || changed.width < size.width || changed.height < size.height;
     });
   }
+
+  void NestedMapSizesSettings;
 
   return (
     <div className="flex flex-col gap-2">
