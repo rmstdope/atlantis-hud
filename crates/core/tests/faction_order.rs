@@ -5,7 +5,7 @@
 //! - `rules/faction`: FACTION assigns MARTIAL and MAGIC points; too many mages, apprentices or
 //!   quartermasters for the new points make it fail.
 //! - `rules/tablefactionpoints`: the limits each points value gives, per world.
-//! - `rules/playing_factions`: "The faction has 5 Faction Points" (3 in Trident).
+//! - `rules/playing_factions`: "The faction has 5 Faction Points" (4 in Trident).
 //! - `rules/sequenceofevents`: FACTION runs before TAX, PILLAGE and the month-long orders.
 
 use atlantis_hud_core::movement::rules::{FactionPointsRow, Ruleset};
@@ -37,14 +37,14 @@ fn the_committed_rulesets_carry_their_faction_points() {
     let trident = trident_ruleset()
         .faction_points
         .expect("Trident states its table");
-    assert_eq!(trident.available, 3);
+    assert_eq!(trident.available, 4);
     assert_eq!(
         trident
             .table
             .iter()
             .map(|row| row.points)
             .collect::<Vec<_>>(),
-        vec![1, 2]
+        vec![1, 2, 3]
     );
 
     let arcanum = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON)
@@ -100,15 +100,19 @@ fn unit(id: u32) -> String {
 
 fn review_of(text: &str, script: &str) -> TurnReview {
     let ruleset = ruleset();
+    review_of_with_ruleset(text, script, &ruleset)
+}
+
+fn review_of_with_ruleset(text: &str, script: &str, ruleset: &Ruleset) -> TurnReview {
     let mut parsed = parse_report_full(text);
-    classify_units(&mut parsed, &ruleset);
+    classify_units(&mut parsed, ruleset);
     let template = extract_orders_template(text)
         .map(|template| template.text)
         .unwrap_or_default();
     review_turn(
         &parsed,
         &format!("{template}\n{script}"),
-        Some(&ruleset),
+        Some(ruleset),
         CheckOptions::default(),
     )
 }
@@ -193,5 +197,30 @@ fn a_failing_faction_order_is_warned_on_its_line_and_changes_no_limit() {
             .last_failure
             .map(|failure| failure.limits.len()),
         Some(1)
+    );
+}
+
+#[test]
+fn trident_balanced_two_point_faction_order_is_accepted() {
+    let first = unit(900);
+    let text = report("Martial 1, Magic 1", "0 (7)", "0 (4)", &[&first]);
+
+    let review = review_of_with_ruleset(
+        &text,
+        "unit 900\nFACTION MARTIAL 2 MAGIC 2\n",
+        &trident_ruleset(),
+    );
+
+    assert!(
+        !codes(&review).contains(&"faction-order-will-fail"),
+        "{:?}",
+        review.findings
+    );
+    assert_eq!(
+        review.faction.applied.map(|applied| applied.split),
+        Some(FactionSplit {
+            martial: 2,
+            magic: 2
+        })
     );
 }

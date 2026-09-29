@@ -470,17 +470,18 @@ describe("parseFactionPoints", () => {
     expect(points.evidence).toBe("The faction has 5 Faction Points");
   });
 
-  it("reads Trident's three points and its two rows", () => {
+  it("reads Trident's four points and its three rows", () => {
     const points = parseFactionPoints(TRIDENT_RULES_HTML);
-    expect(points.available).toBe(3);
-    expect(points.table.map((row) => row.points)).toEqual([1, 2]);
+    expect(points.available).toBe(4);
+    expect(points.table.map((row) => row.points)).toEqual([1, 2, 3]);
     expect(points.table[1]).toEqual({
       points: 2,
-      regions: 36,
-      quartermasters: 14,
-      mages: 5,
-      apprentices: 10
+      regions: 27,
+      quartermasters: 11,
+      mages: 4,
+      apprentices: 8
     });
+    expect(points.evidence).toBe("The faction has 4 Faction Points");
   });
 
   it('refuses a cell that is not "n / m"', () => {

@@ -6,7 +6,7 @@
 //!   many apprentices or quartermasters are controlled by the faction".
 //! - `rules/tablefactionpoints`: Martial points give max tax and trade regions / quartermasters,
 //!   Magic points give max mages / apprentices.
-//! - `rules/playing_factions`: "The faction has 5 Faction Points" (3 in Trident).
+//! - `rules/playing_factions`: "The faction has 5 Faction Points" (4 in Trident).
 //!
 //! Facts and pure functions only; the review wires them in and the faction dropdown makes its own
 //! words from them.
@@ -350,12 +350,16 @@ mod tests {
         }
     }
 
-    /// Trident states only rows 1 and 2.
+    /// Trident states rows 1 through 3.
     fn trident() -> FactionPoints {
         FactionPoints {
-            available: 3,
-            table: vec![row(1, 18, 7, 4, 8), row(2, 36, 14, 5, 10)],
-            evidence: "The faction has 3 Faction Points".to_string(),
+            available: 4,
+            table: vec![
+                row(1, 18, 7, 3, 6),
+                row(2, 27, 11, 4, 8),
+                row(3, 36, 14, 5, 10),
+            ],
+            evidence: "The faction has 4 Faction Points".to_string(),
         }
     }
 
