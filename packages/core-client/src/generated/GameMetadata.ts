@@ -30,7 +30,7 @@ activeFactionId?: string | null,
  * the way out as well: a `"map": null` written into an old game's manifest would be a claim
  * nobody made.
  */
-map?: MapShape,
+map?: MapShape, 
 /**
  * The independently configured dimensions for each map level.
  */
