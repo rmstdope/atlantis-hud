@@ -3076,12 +3076,6 @@ export function AppShell({
   );
 
   /**
-   * Records the map the open game is played on, from the per-game settings tab.
-   *
-   * `undefined` clears it, which puts the game back to assuming its ruleset's default - and stating
-   * a value is what turns that assumption into the player's own word.
-   */
-  /**
    * Saves every level's size. The core records the surface as the game's map in the same write,
    * because that is the one movement and the viewport still plan on. Resolves `true` once saved, so
    * the editor keeps the player's draft when it was not.
