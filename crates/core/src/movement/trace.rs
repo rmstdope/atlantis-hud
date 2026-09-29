@@ -556,6 +556,7 @@ mod tests {
             height: 96,
             wrap_x: true,
             wrap_y: false,
+            levels: None,
         }));
         let unit = report
             .units()

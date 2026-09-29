@@ -46,6 +46,8 @@ export type { ItemChange } from "./ItemChange";
 export type { ItemChangeCause } from "./ItemChangeCause";
 export type { ItemChangeParty } from "./ItemChangeParty";
 export type { KnownPassage } from "./KnownPassage";
+export type { LevelSize } from "./LevelSize";
+export type { LevelSizes } from "./LevelSizes";
 export type { LimitingRace } from "./LimitingRace";
 export type { LostBlock } from "./LostBlock";
 export type { ManifestEdit } from "./ManifestEdit";

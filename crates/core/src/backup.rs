@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-use crate::movement::graph::MapGeometry;
+use crate::movement::graph::{LevelSize, LevelSizes, MapGeometry};
 
 use crate::report::model::{CombatSpell, ItemAmount, ReportUnit, Skill};
 use crate::report::sighting::{sighting_from_payload, RegionSighting};
@@ -33,13 +33,35 @@ pub struct MapSizes {
 }
 
 impl MapSizes {
-    /// The surface level as the single map movement and the viewport plan on, if it is configured.
-    pub fn surface(&self) -> Option<MapGeometry> {
-        self.levels.get("surface").map(|size| MapGeometry {
-            width: size.width,
-            height: size.height,
+    /// The shape movement and the viewport plan on: every configured level's own size, with the
+    /// surface's as the headline width and height (zero when no surface is configured, which the
+    /// planners read as unknown). `None` when no level is configured at all.
+    pub fn geometry(&self) -> Option<MapGeometry> {
+        let size = |level: &str| {
+            self.levels.get(level).map(|size| LevelSize {
+                width: size.width,
+                height: size.height,
+            })
+        };
+        let levels = LevelSizes {
+            surface: size("surface"),
+            underworld: size("underworld"),
+            underdeep: size("underdeep"),
+            dungeon: size("dungeon"),
+        };
+        if levels == LevelSizes::default() {
+            return None;
+        }
+        let surface = levels.surface.unwrap_or(LevelSize {
+            width: 0,
+            height: 0,
+        });
+        Some(MapGeometry {
+            width: surface.width,
+            height: surface.height,
             wrap_x: self.wrap_x,
             wrap_y: self.wrap_y,
+            levels: Some(levels),
         })
     }
 }
@@ -182,8 +204,9 @@ pub enum ManifestEdit {
     /// `null`: the absence is what makes the settings dialog say the ruleset's default is only
     /// assumed, and `skip_serializing_if` on the field is what keeps it absent on the way out.
     Map(Option<MapGeometry>),
-    /// All level sizes, with wrapping shared by every configured level. `Some` also records the
-    /// surface as `map` (or clears it when no surface is configured), in the same write.
+    /// All level sizes, with wrapping shared by every configured level. `Some` also records them
+    /// as `map`, the shape movement and the viewport read, in the same write (or clears it when no
+    /// level is configured).
     MapSizes(Option<MapSizes>),
     /// The game's display name. Trimming and validating it is the shell's, not this function's.
     Name(String),
@@ -204,7 +227,7 @@ pub fn apply_manifest_edit(manifest: &mut GameManifest, edit: &ManifestEdit) {
         ManifestEdit::Map(map) => manifest.metadata.map = *map,
         ManifestEdit::MapSizes(map_sizes) => {
             if let Some(sizes) = map_sizes {
-                manifest.metadata.map = sizes.surface();
+                manifest.metadata.map = sizes.geometry();
             }
             manifest.metadata.map_sizes = map_sizes.clone();
         }
@@ -900,6 +923,7 @@ mod tests {
             height: 96,
             wrap_x: true,
             wrap_y: false,
+            levels: None,
         });
         previous.report_sources = vec![ReportSourceRef {
             source_id: "s1".to_string(),
@@ -977,6 +1001,7 @@ mod tests {
             height: 96,
             wrap_x: true,
             wrap_y: false,
+            levels: None,
         };
 
         apply_manifest_edit(&mut edited, &ManifestEdit::Map(Some(map)));
@@ -984,10 +1009,10 @@ mod tests {
         assert_eq!(edited.metadata.map, Some(map));
     }
 
-    /// Movement and the viewport still plan on the single map, which is the surface's, so the two
-    /// are written in one edit rather than two that could fail apart (ah-4hwa).
+    /// Movement and the viewport plan on `map`, so it carries every level's size and is written
+    /// in the same edit rather than two that could fail apart (ah-4hwa, ah-byqe).
     #[test]
-    fn setting_map_sizes_records_the_surface_as_the_map() {
+    fn setting_map_sizes_records_every_level_in_the_map() {
         let mut edited = manifest();
         let sizes = MapSizes {
             levels: BTreeMap::from([
@@ -1019,19 +1044,32 @@ mod tests {
                 width: 40,
                 height: 60,
                 wrap_x: true,
-                wrap_y: false
+                wrap_y: false,
+                levels: Some(LevelSizes {
+                    surface: Some(LevelSize {
+                        width: 40,
+                        height: 60,
+                    }),
+                    underworld: Some(LevelSize {
+                        width: 48,
+                        height: 48,
+                    }),
+                    underdeep: None,
+                    dungeon: None,
+                }),
             })
         );
     }
 
     #[test]
-    fn map_sizes_without_a_surface_leave_no_map() {
+    fn map_sizes_without_a_surface_still_record_the_other_levels() {
         let mut edited = manifest();
         edited.metadata.map = Some(MapGeometry {
             width: 72,
             height: 96,
             wrap_x: true,
             wrap_y: false,
+            levels: None,
         });
         let sizes = MapSizes {
             levels: BTreeMap::from([(
@@ -1047,7 +1085,14 @@ mod tests {
 
         apply_manifest_edit(&mut edited, &ManifestEdit::MapSizes(Some(sizes)));
 
-        assert_eq!(edited.metadata.map, None);
+        let map = edited.metadata.map.expect("a map");
+        assert_eq!((map.width, map.height), (0, 0));
+        assert_eq!(
+            map.at_level(crate::report::level::UNDERWORLD)
+                .map(|m| (m.width, m.height)),
+            Some((48, 48))
+        );
+        assert_eq!(map.at_level(crate::report::level::SURFACE), None);
     }
 
     #[test]
@@ -1058,6 +1103,7 @@ mod tests {
             height: 96,
             wrap_x: true,
             wrap_y: false,
+            levels: None,
         });
 
         apply_manifest_edit(&mut edited, &ManifestEdit::Map(None));

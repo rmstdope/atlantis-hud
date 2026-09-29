@@ -61,7 +61,7 @@ function withDrawableWrapping(map: MapShape): MapShape {
   if (wrapX === map.wrapX && wrapY === map.wrapY) {
     return map;
   }
-  return { width: map.width, height: map.height, wrapX, wrapY };
+  return { ...map, wrapX, wrapY };
 }
 
 /**
@@ -178,6 +178,47 @@ export function mapSizesFromDraft(draft: MapSizesDraft): MapSizes | null {
     }
   }
   return { levels, wrapX: draft.wrapX, wrapY: draft.wrapY };
+}
+
+/**
+ * The shape a world with these level sizes records as its map: every configured level's size,
+ * headed by the surface's (zero when no surface is configured). `undefined` when no level is.
+ *
+ * Mirrors `MapSizes::geometry` in `crates/core/src/backup.rs`, which records the same shape when
+ * the sizes are edited; creating a game builds its manifest here instead (ah-byqe).
+ */
+export function mapShapeOfSizes(sizes: MapSizes): MapShape | undefined {
+  const levels: NonNullable<MapShape["levels"]> = {};
+  for (const level of MAP_LEVELS) {
+    const size = sizes.levels[level];
+    if (size !== undefined) {
+      levels[level] = { width: size.width, height: size.height };
+    }
+  }
+  if (Object.keys(levels).length === 0) {
+    return undefined;
+  }
+  const surface = levels.surface ?? { width: 0, height: 0 };
+  return { width: surface.width, height: surface.height, wrapX: sizes.wrapX, wrapY: sizes.wrapY, levels };
+}
+
+/** The level each map level row sizes, numbered as the core numbers `Coordinate.z`. */
+const LEVEL_OF_Z: Record<number, MapLevel> = { 1: "surface", 2: "underworld", 3: "underdeep", 4: "dungeon" };
+
+/**
+ * The shape of level `z` alone, or `null` when that level has no size of its own - read as
+ * "the game never said", so it wraps nowhere.
+ *
+ * A shape recorded without levels applies to every level, as it always did, and is returned
+ * as-is so a memo keyed on it stays stable. Mirrors `MapGeometry::at_level` in the core.
+ */
+export function mapShapeAtLevel(shape: MapShape | null, z: number): MapShape | null {
+  if (shape === null || shape.levels === undefined) {
+    return shape;
+  }
+  const level = LEVEL_OF_Z[z];
+  const size = level === undefined ? undefined : shape.levels[level];
+  return size === undefined ? null : { width: size.width, height: size.height, wrapX: shape.wrapX, wrapY: shape.wrapY };
 }
 
 export function mapLevelLabel(level: MapLevel): string {

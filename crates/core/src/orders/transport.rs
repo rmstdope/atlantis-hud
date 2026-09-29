@@ -675,6 +675,7 @@ mod tests {
             height: 72,
             wrap_x: false,
             wrap_y: false,
+            levels: None,
         }
     }
 
@@ -829,6 +830,7 @@ mod tests {
             height: 96,
             wrap_x: false,
             wrap_y: false,
+            levels: None,
         });
         assert_eq!(
             arrival(
@@ -988,6 +990,7 @@ mod tests {
             height: 96,
             wrap_x: false,
             wrap_y: false,
+            levels: None,
         }
     }
 

@@ -11,6 +11,8 @@ import {
   mapFromDraft,
   mapShapeJson,
   mapShapeOfGame,
+  mapShapeAtLevel,
+  mapShapeOfSizes,
   mapShapeProblems
 } from "./mapShape";
 
@@ -288,5 +290,54 @@ describe("an existing world's map sizes (ah-4hwa)", () => {
     };
     expect(shrunkLevel(trident, next)).toBeNull();
     expect(shrunkLevel(null, next)).toBeNull();
+  });
+});
+
+describe("each level's own shape (ah-byqe)", () => {
+  const trident = {
+    levels: {
+      surface: { width: 64, height: 64 },
+      underworld: { width: 48, height: 48 },
+      dungeon: { width: 128, height: 32 }
+    },
+    wrapX: true,
+    wrapY: false
+  };
+
+  it("records every configured level, headed by the surface", () => {
+    expect(mapShapeOfSizes(trident)).toEqual({ width: 64, height: 64, wrapX: true, wrapY: false, levels: trident.levels });
+  });
+
+  it("records the other levels even without a surface", () => {
+    const shape = mapShapeOfSizes({ levels: { underworld: { width: 48, height: 48 } }, wrapX: true, wrapY: false });
+    expect(shape).toMatchObject({ width: 0, height: 0, levels: { underworld: { width: 48, height: 48 } } });
+  });
+
+  it("records nothing when no level is configured", () => {
+    expect(mapShapeOfSizes({ levels: {}, wrapX: true, wrapY: false })).toBeUndefined();
+  });
+
+  it("gives each level its own size with the shared wrapping", () => {
+    const shape = mapShapeOfSizes(trident) ?? null;
+    expect(mapShapeAtLevel(shape, 1)).toEqual({ width: 64, height: 64, wrapX: true, wrapY: false });
+    expect(mapShapeAtLevel(shape, 2)).toEqual({ width: 48, height: 48, wrapX: true, wrapY: false });
+    expect(mapShapeAtLevel(shape, 4)).toEqual({ width: 128, height: 32, wrapX: true, wrapY: false });
+  });
+
+  it("gives an unconfigured level no shape", () => {
+    const shape = mapShapeOfSizes(trident) ?? null;
+    expect(mapShapeAtLevel(shape, 3)).toBeNull();
+    expect(mapShapeAtLevel(shape, 0)).toBeNull();
+  });
+
+  it("applies a shape recorded without levels to every level", () => {
+    const legacy = { width: 72, height: 96, wrapX: true, wrapY: false };
+    expect(mapShapeAtLevel(legacy, 2)).toBe(legacy);
+    expect(mapShapeAtLevel(null, 1)).toBeNull();
+  });
+
+  it("keeps the levels when wrapping that cannot be drawn is turned off", () => {
+    const recorded = { width: 71, height: 64, wrapX: true, wrapY: false, levels: { underworld: { width: 48, height: 48 } } };
+    expect(mapShapeOfGame("neworigins", recorded).map).toMatchObject({ wrapX: false, levels: recorded.levels });
   });
 });
