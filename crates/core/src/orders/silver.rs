@@ -3125,24 +3125,21 @@ pub fn food_claim(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> FoodClaim
 /// What step 2 left behind: who it fed, and what the hex's pool still holds.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FactionFoodPass {
-    /// `Some(0)` for a unit the pool feeds, `Some(n)` for a lone short claimant, `None` for one of
-    /// several contending for a pool too small for them all. Absent for a unit that does not draw
-    /// on the pool.
+    /// The upkeep each claimant owes after drawing on the pool in report order. Absent for a unit
+    /// that does not draw on the pool, and `None` only when an uncertain contributor prevents an
+    /// exact answer.
     pub settled: BTreeMap<String, Option<i64>>,
     /// Food the hex still holds once step 2 has run, as a stock for steps 5 and 6 to draw on.
-    /// `None` when step 2 was contended: what it ate cannot be told, so what is left cannot be
-    /// either.
+    /// `None` only when an uncertain contributor prevents an exact answer.
     pub pool_left: Option<Vec<FoodAmount>>,
 }
 
 /// Step 2 of the maintenance payment order, across one hex.
 ///
-/// Returns the upkeep each unit is left with. `Some(0)` for a unit the pool feeds; `None` for one
-/// of *several* contending for a pool too small to feed them all, where which unit eats is
-/// genuinely undeterminable and no number is invented. Two cases that look short are not
-/// ambiguous at all and are answered exactly: an empty pool, where nobody eats, and a lone
-/// claimant, which simply eats every item it can use. A unit that does not draw on the pool is
-/// absent from the result and keeps whatever step 1 left it.
+/// Returns the upkeep each unit is left with. `rules/sequenceofevents` gives report-order
+/// precedence where no other order applies, so each claimant receives its exact settlement in
+/// that order, even from a short pool. `None` is reserved for an uncertain contributor. A unit
+/// that does not draw on the pool is absent from the result and keeps whatever step 1 left it.
 #[must_use]
 pub fn feed_from_faction_food(claims: &[FoodClaim]) -> FactionFoodPass {
     // Every own unit in the hex contributes its spare food, drawing on the pool or not: a
@@ -3221,39 +3218,21 @@ pub fn feed_from_faction_food(claims: &[FoodClaim]) -> FactionFoodPass {
         };
     }
 
-    // Several claimants: dry-run them in document order against one cloned stock. Each takes the
-    // cheapest food first, so the order is what makes the outcome deterministic. If the pool feeds
-    // them all, commit that stock and those settlements.
+    // Several claimants settle in document order against one shared stock. Each takes the cheapest
+    // food first, so report order makes the outcome deterministic even when the pool is short.
     let mut stock = pool;
     let mut settlements: Vec<(String, i64)> = Vec::with_capacity(claimants.len());
-    let mut all_fed = true;
     for claim in &claimants {
         let use_ = consume_food(&mut stock, claim.owed_after_own_food);
         let left = claim.owed_after_own_food - use_.covered;
-        if left > 0 {
-            all_fed = false;
-        }
         settlements.push((claim.unit_id.clone(), left));
     }
-    if all_fed {
-        return FactionFoodPass {
-            settled: settlements
-                .into_iter()
-                .map(|(id, left)| (id, Some(left)))
-                .collect(),
-            pool_left: Some(stock),
-        };
-    }
-
-    // Short, with several contending: the rules waste food, so the total genuinely differs by who
-    // eats and there is no correct number to share out. Every contender is doubted and the
-    // remainder cannot be told.
     FactionFoodPass {
-        settled: claimants
-            .iter()
-            .map(|claim| (claim.unit_id.clone(), None))
+        settled: settlements
+            .into_iter()
+            .map(|(id, left)| (id, Some(left)))
             .collect(),
-        pool_left: None,
+        pool_left: Some(stock),
     }
 }
 
@@ -9967,15 +9946,15 @@ mod faction_food_tests {
     }
 
     #[test]
-    fn a_pool_too_small_doubts_every_unit_that_contends() {
+    fn a_pool_too_small_settles_every_unit_in_claim_order() {
         let claims = [
             claim("quartermaster", 3, 0, false),
             claim("a", 0, 60, true),
             claim("b", 0, 80, true),
         ];
         let fed = feed_from_faction_food(&claims).settled;
-        assert_eq!(fed.get("a"), Some(&None));
-        assert_eq!(fed.get("b"), Some(&None));
+        assert_eq!(fed.get("a"), Some(&Some(0)));
+        assert_eq!(fed.get("b"), Some(&Some(50)));
     }
 
     #[test]
@@ -10056,17 +10035,18 @@ mod faction_food_tests {
         assert_eq!(fed.get("a"), None);
     }
 
-    /// The boundary the empty-pool rule must not swallow: one item is food, and short is short.
+    /// The boundary the empty-pool rule must not swallow: one item goes to the first claimant.
     #[test]
-    fn a_pool_of_one_item_still_doubts_units_it_cannot_all_feed() {
+    fn a_pool_of_one_item_settles_claimants_in_order() {
         let claims = [
             claim("a", 1, 60, true),
             claim("b", 0, 60, true),
             claim("c", 0, 60, true),
         ];
         let fed = feed_from_faction_food(&claims).settled;
-        assert_eq!(fed.get("a"), Some(&None));
-        assert_eq!(fed.get("b"), Some(&None));
+        assert_eq!(fed.get("a"), Some(&Some(30)));
+        assert_eq!(fed.get("b"), Some(&Some(60)));
+        assert_eq!(fed.get("c"), Some(&Some(60)));
     }
 
     /// Contention needs two contenders. A lone claimant simply eats what it can, so its figure is
@@ -10114,13 +10094,13 @@ mod faction_food_tests {
     }
 
     #[test]
-    fn a_contended_pool_cannot_say_what_is_left() {
+    fn a_short_pool_says_what_is_left() {
         let claims = [
             claim("quartermaster", 1, 0, false),
             claim("a", 0, 60, true),
             claim("b", 0, 80, true),
         ];
-        assert_eq!(feed_from_faction_food(&claims).pool_left, None);
+        assert_eq!(pool_count(&feed_from_faction_food(&claims)), Some(0));
     }
 
     /// One item is worth a whole 30 even against a smaller debt, and a lone claimant cannot be
