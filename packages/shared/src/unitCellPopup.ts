@@ -308,8 +308,9 @@ export type ItemLine = { tag: string; line: PopupLine; moved: boolean };
 /**
  * The `items` popup's lines, in the order they are drawn.
  *
- * The tags are the union of what the unit holds now and what the report listed, so an item given
- * away in full still has a line ending at `gone` and one that arrived this month starts at
+ * The tags are the union of what the unit holds now, what the report listed, and this month's
+ * production. An item given away in full still has a line ending at `gone`, including one the
+ * unit produced and transferred in the same turn, while one that arrived this month starts at
  * `none`.
  */
 export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefined): ItemLine[] {
@@ -324,7 +325,7 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
   // Silver is answered for by the SILVER column and its popup alone (`ah-6m7b.5.1`), so it is
   // neither a line of its own nor a `gone` line for what the report listed and the month spent.
   const tags: string[] = [];
-  for (const tag of [...held.keys(), ...(reported?.keys() ?? [])]) {
+  for (const tag of [...held.keys(), ...(reported?.keys() ?? []), ...(unit.produced ?? []).map(({ tag }) => tag)]) {
     if (!isSilver(tag) && !tags.includes(tag)) {
       tags.push(tag);
     }

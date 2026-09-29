@@ -2795,6 +2795,47 @@ describe("the items popup's pairs", () => {
     expect(popup.notes).not.toContain("No items.");
   });
 
+  it("keeps fully transferred production visible with its production and gift", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [],
+          previewChanges: [{ field: "items", original: "" }],
+          produced: [{ amount: 6, tag: "GRAI" }],
+          itemChanges: [
+            {
+              tag: "GRAI",
+              name: "grain",
+              delta: 6,
+              cause: "produced",
+              line: null,
+              unitPrice: null,
+              other: null,
+              isMan: false
+            },
+            {
+              tag: "GRAI",
+              name: "grain",
+              delta: -6,
+              cause: "given-away",
+              line: 3,
+              unitPrice: null,
+              other: { unitId: "1502", name: "Scouts" },
+              isMan: false
+            }
+          ]
+        }),
+        facts()
+      )
+    );
+
+    expect(popup.lines).toEqual([
+      { label: "grain GRAI", value: "gone", change: { direction: "down", from: "none" } }
+    ]);
+    expect(popup.notes).toContain("grain: produced 6, gave 6 to Scouts (1502).");
+  });
+
   it("draws no silver line in the items popup", () => {
     const popup = columnPopup(
       popupForCell(
