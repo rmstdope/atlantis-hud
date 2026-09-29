@@ -9,7 +9,7 @@ use atlantis_hud_core::backup::{
     apply_manifest_edit, encode_game_backup, DecodedGameBackupCollections,
     EncodedGameBackupCollections, GameBackupArmy, GameBackupContent, GameBackupHexNote,
     GameBackupImportedTurn, GameBackupMergedReport, GameBackupOrderDraft, GameBackupRegionSighting,
-    ManifestEdit,
+    ManifestEdit, MapSizes,
 };
 /// The stored row and its key. The core owns both because the backup carries them too.
 pub use atlantis_hud_core::backup::{
@@ -391,6 +391,23 @@ pub fn set_game_map(
     apply_manifest_edit(&mut manifest, &ManifestEdit::Map(map));
     save_game_manifest(&game_file_path, &manifest)?;
 
+    Ok(manifest)
+}
+
+/// Records the dimensions of every configured map level after creation.
+pub fn set_game_map_sizes(
+    games_root: &Path,
+    game_id: &str,
+    map_sizes: Option<MapSizes>,
+) -> Result<GameManifest, PersistenceError> {
+    let game_file_path = game_home(games_root, game_id).join(GAME_MANIFEST_FILE_NAME);
+    if !game_file_path.exists() {
+        return Err(PersistenceError::GameNotFound(game_id.to_string()));
+    }
+    let mut manifest = load_game_manifest(&game_file_path)?;
+    ensure_supported_manifest_version(manifest.manifest_version)?;
+    apply_manifest_edit(&mut manifest, &ManifestEdit::MapSizes(map_sizes));
+    save_game_manifest(&game_file_path, &manifest)?;
     Ok(manifest)
 }
 
@@ -2462,6 +2479,7 @@ mod tests {
                 ruleset_id: "neworigins".to_string(),
                 active_faction_id: None,
                 map: None,
+                map_sizes: None,
             },
             report_sources: vec![
                 ReportSourceRef {
@@ -4831,6 +4849,7 @@ mod region_sighting_tests {
                     ruleset_id: "neworigins".to_string(),
                     active_faction_id: None,
                     map: None,
+                    map_sizes: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -4989,6 +5008,7 @@ mod region_sighting_tests {
                     ruleset_id: "neworigins".to_string(),
                     active_faction_id: None,
                     map: None,
+                    map_sizes: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -5127,6 +5147,7 @@ mod region_sighting_tests {
                     ruleset_id: "neworigins".to_string(),
                     active_faction_id: None,
                     map: None,
+                    map_sizes: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -5181,6 +5202,7 @@ mod region_sighting_tests {
                 ruleset_id: "neworigins".to_string(),
                 active_faction_id: None,
                 map: None,
+                map_sizes: None,
             },
             report_sources: Vec::new(),
             created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -5233,6 +5255,7 @@ mod region_sighting_tests {
                     ruleset_id: "neworigins".to_string(),
                     active_faction_id: None,
                     map: None,
+                    map_sizes: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -5279,6 +5302,7 @@ mod merged_report_tests {
                     ruleset_id: "neworigins".to_string(),
                     active_faction_id: None,
                     map: None,
+                    map_sizes: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),

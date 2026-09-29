@@ -1,11 +1,61 @@
 import { describe, expect, it } from "vitest";
 import {
+  mapSizesDraftFor,
+  mapSizesFromDraft,
+  mapSizesProblems,
   mapDraftFor,
   mapFromDraft,
   mapShapeJson,
   mapShapeOfGame,
   mapShapeProblems
 } from "./mapShape";
+
+describe("the map sizes a game can configure", () => {
+  it("starts New Origins with only its surface size", () => {
+    expect(mapSizesDraftFor("neworigins")).toMatchObject({
+      surface: { width: "72", height: "96" },
+      underworld: { width: "", height: "" },
+      underdeep: { width: "", height: "" },
+      dungeon: { width: "", height: "" },
+      wrapX: true,
+      wrapY: false
+    });
+  });
+
+  it.each(["newage-arcanum", "newage-trident"])(
+    "starts %s with every supported level's default size",
+    (rulesetId) => {
+      expect(mapSizesDraftFor(rulesetId)).toMatchObject({
+        surface: { width: "64", height: "64" },
+        underworld: { width: "48", height: "48" },
+        underdeep: { width: "24", height: "24" },
+        dungeon: { width: "128", height: "32" },
+        wrapX: true,
+        wrapY: false
+      });
+    }
+  );
+
+  it("keeps blank levels out of the saved configuration", () => {
+    const draft = mapSizesDraftFor("neworigins");
+
+    expect(mapSizesFromDraft(draft)).toEqual({
+      levels: { surface: { width: 72, height: 96 } },
+      wrapX: true,
+      wrapY: false
+    });
+  });
+
+  it("refuses a level with only one dimension", () => {
+    const draft = mapSizesDraftFor("neworigins");
+    draft.underworld.width = "48";
+
+    expect(mapSizesProblems(draft)).toEqual([
+      "Underworld needs both a width and a height, or neither."
+    ]);
+    expect(mapSizesFromDraft(draft)).toBeNull();
+  });
+});
 
 describe("the map a game is played on", () => {
   it("takes the player's own answer when the game recorded one", () => {

@@ -85,6 +85,98 @@ export type MapDraft = {
   wrapY: boolean;
 };
 
+export const MAP_LEVELS = ["surface", "underworld", "underdeep", "dungeon"] as const;
+
+export type MapLevel = (typeof MAP_LEVELS)[number];
+
+export type MapLevelDraft = {
+  width: string;
+  height: string;
+};
+
+export type MapSizesDraft = Record<MapLevel, MapLevelDraft> & {
+  wrapX: boolean;
+  wrapY: boolean;
+};
+
+export type MapSizes = {
+  levels: Partial<Record<MapLevel, Pick<MapShape, "width" | "height">>>;
+  wrapX: boolean;
+  wrapY: boolean;
+};
+
+const MAP_LEVEL_LABELS: Record<MapLevel, string> = {
+  surface: "Surface",
+  underworld: "Underworld",
+  underdeep: "Underdeep",
+  dungeon: "Dungeon"
+};
+
+const EMPTY_LEVEL_DRAFT = (): MapLevelDraft => ({ width: "", height: "" });
+
+/** The independent level rows and shared wrapping offered when creating a game. */
+export function mapSizesDraftFor(rulesetId: string): MapSizesDraft {
+  const draft: MapSizesDraft = {
+    surface: EMPTY_LEVEL_DRAFT(),
+    underworld: EMPTY_LEVEL_DRAFT(),
+    underdeep: EMPTY_LEVEL_DRAFT(),
+    dungeon: EMPTY_LEVEL_DRAFT(),
+    wrapX: true,
+    wrapY: false
+  };
+
+  if (rulesetId === "newage-arcanum" || rulesetId === "newage-trident") {
+    draft.surface = { width: "64", height: "64" };
+    draft.underworld = { width: "48", height: "48" };
+    draft.underdeep = { width: "24", height: "24" };
+    draft.dungeon = { width: "128", height: "32" };
+  } else if (rulesetId === "neworigins") {
+    draft.surface = { width: "72", height: "96" };
+  }
+
+  return draft;
+}
+
+/** Every incomplete level, ready for rendering beside its compact input row. */
+export function mapSizesProblems(draft: MapSizesDraft): string[] {
+  return MAP_LEVELS.flatMap((level) => {
+    const { width, height } = draft[level];
+    if ((width.trim() === "") !== (height.trim() === "")) {
+      return [`${MAP_LEVEL_LABELS[level]} needs both a width and a height, or neither.`];
+    }
+    const parsedWidth = positiveWhole(width);
+    const parsedHeight = positiveWhole(height);
+    if (parsedWidth === null || parsedHeight === null) {
+      return [];
+    }
+    return [
+      ...(draft.wrapX && parsedWidth % 2 !== 0
+        ? [`${MAP_LEVEL_LABELS[level]} needs an even width to wrap east to west.`]
+        : []),
+      ...(draft.wrapY && parsedHeight % 2 !== 0
+        ? [`${MAP_LEVEL_LABELS[level]} needs an even height to wrap north to south.`]
+        : [])
+    ];
+  });
+}
+
+/** The configured level sizes, or `null` until every row is complete or fully blank. */
+export function mapSizesFromDraft(draft: MapSizesDraft): MapSizes | null {
+  if (mapSizesProblems(draft).length > 0) {
+    return null;
+  }
+
+  const levels: MapSizes["levels"] = {};
+  for (const level of MAP_LEVELS) {
+    const width = positiveWhole(draft[level].width);
+    const height = positiveWhole(draft[level].height);
+    if (width !== null && height !== null) {
+      levels[level] = { width, height };
+    }
+  }
+  return { levels, wrapX: draft.wrapX, wrapY: draft.wrapY };
+}
+
 /**
  * What the map fields should show for a game about to be played under `rulesetId`.
  *

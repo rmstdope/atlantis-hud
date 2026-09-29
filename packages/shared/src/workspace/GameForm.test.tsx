@@ -1,34 +1,41 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { GameForm, gameSubmission } from "./GameForm";
+import { mapSizesDraftFor } from "../mapShape";
 
 describe("creating a game whose map cannot wrap", () => {
   it("does not create a game whose map cannot wrap", () => {
     // A disabled button is not a guarantee - Enter in a text field submits a form - so the submit
     // path re-asks the same question, and this is that question.
     expect(
-      gameSubmission("Hexes", "neworigins", { width: "71", height: "96", wrapX: true, wrapY: false })
+      gameSubmission("Hexes", "neworigins", { ...mapSizesDraftFor("neworigins"), surface: { width: "71", height: "96" } })
     ).toBeNull();
     expect(
-      gameSubmission("Hexes", "neworigins", { width: "72", height: "95", wrapX: false, wrapY: true })
+      gameSubmission("Hexes", "neworigins", { ...mapSizesDraftFor("neworigins"), surface: { width: "72", height: "95" }, wrapX: false, wrapY: true })
     ).toBeNull();
   });
 
   it("creates the game the player stated when the map is drawable", () => {
     expect(
-      gameSubmission("Hexes", "neworigins", { width: "72", height: "96", wrapX: true, wrapY: false })
+      gameSubmission("Hexes", "neworigins", mapSizesDraftFor("neworigins"))
     ).toEqual({
       name: "Hexes",
       rulesetId: "neworigins",
-      map: { width: 72, height: 96, wrapX: true, wrapY: false }
+      map: { width: 72, height: 96, wrapX: true, wrapY: false },
+      mapSizes: { levels: { surface: { width: 72, height: 96 } }, wrapX: true, wrapY: false }
     });
   });
 
   it("still creates a game whose map fields were cleared", () => {
     // Today's deliberate behaviour: no map is stated, and no parity message is owed about one.
     expect(
-      gameSubmission("Hexes", "neworigins", { width: "", height: "", wrapX: true, wrapY: true })
-    ).toEqual({ name: "Hexes", rulesetId: "neworigins", map: undefined });
+      gameSubmission("Hexes", "neworigins", { ...mapSizesDraftFor("neworigins"), surface: { width: "", height: "" }, wrapX: true, wrapY: true })
+    ).toEqual({
+      name: "Hexes",
+      rulesetId: "neworigins",
+      map: undefined,
+      mapSizes: { levels: {}, wrapX: true, wrapY: true }
+    });
   });
 
   it("offers a working form for the ruleset's own map", () => {

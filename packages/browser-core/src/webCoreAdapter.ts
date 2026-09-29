@@ -747,6 +747,23 @@ export function createWebCoreAdapter(
       return manifest;
     },
 
+    async setGameMapSizes(gameId: string, mapSizesJson: string) {
+      const game = await store.getGame(gameId);
+      if (!game) {
+        throw new Error(`no game with id ${gameId}`);
+      }
+      const edit: ManifestEdit = {
+        kind: "mapSizes",
+        value: mapSizesJson === "" ? null : JSON.parse(mapSizesJson)
+      };
+      const manifest = wasm.edit_game_manifest_state(
+        JSON.stringify(game.manifest),
+        JSON.stringify(edit)
+      );
+      await store.putGame({ ...game, manifest });
+      return manifest;
+    },
+
     async setGameName(gameId: string, gameName: string) {
       const game = await store.getGame(gameId);
       if (!game) {

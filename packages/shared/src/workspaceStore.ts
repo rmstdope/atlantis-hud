@@ -7,7 +7,7 @@
  * nothing could be linked to anything else. One store fixes that.
  */
 
-import type { MapShape, OpenedGame, UnitRef } from "@atlantis/core-client";
+import type { MapShape, MapSizes, OpenedGame, UnitRef } from "@atlantis/core-client";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { allBadges, type BadgeName } from "./workspace/mapThemes/hexView";
@@ -78,6 +78,7 @@ export type WorkspaceGame = {
    * *assuming* its ruleset's default, which is what the per-game settings tab says out loud.
    */
   map?: MapShape;
+  mapSizes?: MapSizes;
 };
 
 /**
@@ -94,13 +95,14 @@ export type WorkspaceGame = {
  * is what makes the ruleset's default read as assumed rather than as this game's own word.
  */
 export function workspaceGameOf(opened: OpenedGame): WorkspaceGame {
-  const { gameId, gameName, rulesetId, map } = opened.manifest.metadata;
+  const { gameId, gameName, rulesetId, map, mapSizes } = opened.manifest.metadata;
   return {
     gameId,
     gameName,
     databasePath: opened.databasePath,
     rulesetId,
-    ...(map === undefined ? {} : { map })
+    ...(map === undefined ? {} : { map }),
+    ...(mapSizes === undefined ? {} : { mapSizes })
   };
 }
 
@@ -243,6 +245,7 @@ export type WorkspaceState = {
    * Like a rename, this keeps the selection: correcting the map is not a game switch.
    */
   updateGameMap: (map: MapShape | undefined) => void;
+  updateGameMapSizes: (mapSizes: MapSizes | undefined) => void;
   /**
    * Selects a hex, and with it a unit inside that hex.
    *
@@ -476,6 +479,19 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             return { game: cleared };
           }
           return { game: { ...state.game, map } };
+        }),
+
+      updateGameMapSizes: (mapSizes) =>
+        set((state) => {
+          if (!state.game) {
+            return state;
+          }
+          if (mapSizes === undefined) {
+            const cleared = { ...state.game };
+            delete cleared.mapSizes;
+            return { game: cleared };
+          }
+          return { game: { ...state.game, mapSizes } };
         }),
 
       // Moving to another hex abandons the unit that was selected in the old one: keeping it would
