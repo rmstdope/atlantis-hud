@@ -5073,6 +5073,18 @@ fn settle_recruits_before_production(
 }
 
 impl Ledger<'_> {
+    /// The stock TRANSPORT sees after this month's production. Unconsumed production is absent
+    /// from the final balance so earlier orders cannot spend it, but TRANSPORT follows both
+    /// PRODUCE phases (`rules/sequenceofevents`).
+    fn transport_holding(&self, unit_id: &str, tag: &str) -> i64 {
+        self.state.balance_at(StatePhase::Transport, unit_id, tag)
+            + self
+                .unconsumed_production
+                .get(&(unit_id.to_string(), tag.to_ascii_uppercase()))
+                .copied()
+                .unwrap_or_default()
+    }
+
     /// The item pictures maintenance reads, including the report-wide shipment phase that the
     /// ITEMS preview settles separately from the ordinary per-hex ledger.
     fn phase_holdings(&self, hex: &Hex<'_>) -> PhaseHoldings {
@@ -5080,9 +5092,10 @@ impl Ledger<'_> {
         for ((unit_id, tag), amount) in &self.transported_goods {
             state.apply(StatePhase::Transport, unit_id, tag, *amount);
         }
-        // Credited at `Maintenance` alone, so no picture of an earlier phase can see it.
+        // Credited at `Wages`, where `unwind_unconsumed_production` took it back out of the
+        // ledger, so TRANSPORT can move it before maintenance reads what remains.
         for ((unit_id, tag), amount) in &self.unconsumed_production {
-            state.apply(StatePhase::Maintenance, unit_id, tag, *amount);
+            state.apply(StatePhase::Wages, unit_id, tag, *amount);
         }
         state.phase_holdings(hex, self.ruleset)
     }
@@ -13630,7 +13643,7 @@ fn shipping_bills(
                         .is_some_and(|entry| {
                             let tag = entry.tag.to_ascii_uppercase();
                             let already_shipped = shipment_allowance_used(&shipped, &tag);
-                            let held = (ledger.state.balance_at(settled_at, sender, &tag)
+                            let held = (ledger.transport_holding(sender, &tag)
                                 + received_earlier
                                     .get(&(sender.to_string(), tag.clone()))
                                     .copied()
@@ -13695,8 +13708,7 @@ fn shipping_bills(
                 .get(&(sender.to_string(), tag.clone()))
                 .copied()
                 .unwrap_or_default();
-            let held =
-                (ledger.state.balance_at(settled_at, sender, &tag) + arrived - already).max(0);
+            let held = (ledger.transport_holding(sender, &tag) + arrived - already).max(0);
             let quantity = super::transfers::quantity_moved(amount, held);
             if quantity <= 0 {
                 continue;
@@ -41611,6 +41623,33 @@ BUILD
             review.findings
         );
         assert!(eaten_off(&report, orders, "1:0,4", "902") > 0);
+    }
+
+    /// `rules/sequenceofevents` runs primary PRODUCE and TRANSPORT before maintenance, so the
+    /// faction-food pool contains only what those two phases leave. `rules/economy_maintenance`
+    /// lets one grain cover at most 50 silver, so the first five-person `CONSUME FACTION` unit
+    /// gets the one remaining grain and the next pays its 50 silver upkeep.
+    #[test]
+    fn faction_food_pool_excludes_grain_produced_then_transported_away() {
+        let farmer = with_skill(
+            with_men(with_silver(starving(unit("900")), 390), 39),
+            "FARM",
+            1,
+        );
+        let eater = |id| with_flag(with_men(starving(unit(id)), 5), "consuming faction's food");
+        let mut source = shipping_from(vec![farmer, eater("901"), eater("903")]);
+        source.products = one_product(39, "grain", "GRAI");
+        let report = report(vec![source, caravanserai_owner("902", 1, 0, 4)]);
+        let orders = "unit 900\nPRODUCE GRAI\nTRANSPORT 902 38 GRAI\n";
+
+        let review = review_turn(&report, orders, Some(&ruleset()), with_map());
+
+        let first = shipment_silver(&review, "901");
+        assert_eq!(first.faction_food_covered, 50, "{first:?}");
+        assert_eq!(first.upkeep, Some(0), "{first:?}");
+        let second = shipment_silver(&review, "903");
+        assert_eq!(second.faction_food_covered, 0, "{second:?}");
+        assert_eq!(second.upkeep, Some(50), "{second:?}");
     }
 
     /// Step 2: grain a faction-food holder ships away feeds none of its neighbours.
