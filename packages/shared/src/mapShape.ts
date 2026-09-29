@@ -245,10 +245,10 @@ export function mapSizesOfGame(recorded: MapSizes | undefined, map: MapShape | n
   };
 }
 
-/** One line naming every level's size and the shared wrapping, for World settings. */
-export function mapSizesSummary(sizes: MapSizes | null): string {
+/** The summary World settings shows: one line per map level, then one for the shared wrapping. */
+export function mapSizesSummary(sizes: MapSizes | null): string[] {
   if (sizes === null || MAP_LEVELS.every((level) => sizes.levels[level] === undefined)) {
-    return "No map levels configured.";
+    return ["No map levels configured."];
   }
   const levels = MAP_LEVELS.map((level) => {
     const size = sizes.levels[level];
@@ -258,13 +258,13 @@ export function mapSizesSummary(sizes: MapSizes | null): string {
   });
   const wrapping =
     sizes.wrapX && sizes.wrapY
-      ? "wraps east to west and north to south"
+      ? "Wraps east to west and north to south"
       : sizes.wrapX
-        ? "wraps east to west"
+        ? "Wraps east to west"
         : sizes.wrapY
-          ? "wraps north to south"
-          : "does not wrap";
-  return [...levels, wrapping].join(" · ");
+          ? "Wraps north to south"
+          : "Does not wrap";
+  return [...levels, wrapping];
 }
 
 /** The editing draft for a configuration; blank rows for the levels it does not have. */

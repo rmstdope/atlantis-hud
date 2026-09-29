@@ -32,9 +32,16 @@ function settings(overrides: Partial<typeof game> = {}) {
 
 describe("World settings' map sizes (ah-4hwa)", () => {
   it("summarises every configured level, not just the surface", () => {
-    expect(settings()).toContain(
-      "Surface 64 × 64 · Underworld 48 × 48 · Underdeep 24 × 24 · Dungeon 128 × 32 · wraps east to west"
-    );
+    const markup = settings();
+    for (const line of ["Surface 64 × 64", "Underworld 48 × 48", "Underdeep 24 × 24", "Dungeon 128 × 32", "Wraps east to west"]) {
+      expect(markup).toContain(`<li>${line}</li>`);
+    }
+  });
+
+  it("gives each level a line of its own at the settings' normal size (ah-ciiq)", () => {
+    const markup = settings();
+    expect(markup.match(/<li>/gu)).toHaveLength(5);
+    expect(markup).not.toMatch(/data-testid="settings-map-sizes-summary"[^>]*text-pane-xs/u);
   });
 
   it("offers no editable map fields outside Edit map sizes", () => {
@@ -49,7 +56,7 @@ describe("World settings' map sizes (ah-4hwa)", () => {
     const markup = renderToStaticMarkup(
       <GameSettings game={legacy} busy={false} error={null} onChangeMapSizes={async () => true} />
     );
-    expect(markup).toContain("Surface 64 × 64 · Underworld not configured");
+    expect(markup).toContain("<li>Surface 64 × 64</li><li>Underworld not configured</li>");
   });
 });
 

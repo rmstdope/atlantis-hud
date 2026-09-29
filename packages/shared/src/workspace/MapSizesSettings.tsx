@@ -86,9 +86,11 @@ export function MapSizesSummary({
     <section className="flex items-center gap-3 rounded border border-edge bg-panel p-2">
       <div className="flex min-w-0 flex-col">
         <span className="text-ink">Map sizes</span>
-        <span data-testid="settings-map-sizes-summary" className="text-pane-xs text-ink-soft">
-          {mapSizesSummary(mapSizes)}
-        </span>
+        <ul data-testid="settings-map-sizes-summary" className="text-ink-soft">
+          {mapSizesSummary(mapSizes).map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
         {assumed ? (
           <span data-testid="settings-map-assumed" className="text-pane-xs text-ink-dim">
             Assumed from the ruleset - nobody has confirmed them for this game.
