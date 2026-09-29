@@ -162,13 +162,18 @@ describe("faction order (ah-7g4f)", () => {
     expect(factionOrderWarning(NO_FACTION_ORDERS)).toBeNull();
     expect(
       factionOrderWarning(
-        failingOf({ points: null, limits: [{ kind: "mages", held: 5, area: "magic", points: 2, allows: 3 }] })
+        failingOf({
+          points: null,
+          minimums: [],
+          limits: [{ kind: "mages", held: 5, area: "magic", points: 2, allows: 3 }]
+        })
       )
     ).toBe("FACTION order will fail — 5 mages, MAGIC 2 allows 3");
     expect(
       factionOrderWarning(
         failingOf({
           points: null,
+          minimums: [],
           limits: [
             { kind: "mages", held: 5, area: "magic", points: 0, allows: 1 },
             { kind: "apprentices", held: 2, area: "magic", points: 0, allows: 1 }
@@ -180,15 +185,23 @@ describe("faction order (ah-7g4f)", () => {
       factionOrderWarning(
         failingOf({
           points: null,
+          minimums: [],
           limits: [{ kind: "quartermasters", held: 1, area: "martial", points: 0, allows: 0 }]
         })
       )
     ).toBe("FACTION order will fail — 1 quartermaster, MARTIAL 0 allows 0");
     expect(
       factionOrderWarning(
-        failingOf({ points: { split: { martial: 4, magic: 3 }, total: 7, available: 5 }, limits: [] })
+        failingOf({
+          points: { split: { martial: 4, magic: 3 }, total: 7, available: 5 },
+          minimums: [],
+          limits: []
+        })
       )
     ).toBe("FACTION order will fail — 7 points, the faction has 5");
+    expect(
+      factionOrderWarning(failingOf({ points: null, minimums: [{ area: "magic", points: 1 }], limits: [] }))
+    ).toBe("FACTION order will fail — MAGIC must have at least 1 point");
   });
 
   it("allowanceRows takes the applied limits", () => {
