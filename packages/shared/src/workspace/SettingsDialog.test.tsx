@@ -11,7 +11,6 @@ import { UNSUPPORTED_UPDATES } from "./appUpdate";
 import { mapCommitOf } from "../mapShape";
 import {
   About,
-  GameMapSettings,
   ColumnSettings,
   GlobalSettings,
   SettingsDialog,
@@ -110,7 +109,7 @@ function tag(html: string, testid: string): string {
           game={null}
           busy={false}
           error={null}
-          onChangeMap={() => {}}
+          onChangeMapSizes={() => {}}
           onDismiss={() => {}}
         />
       );
@@ -517,21 +516,6 @@ describe("a per-game map whose wrapping cannot be drawn", () => {
     expect(mapCommitOf({ width: "", height: "", wrapX: true, wrapY: true })).toEqual({
       store: undefined
     });
-  });
-
-  it("shows the refusal beside the fields, keeping what was typed", () => {
-    const markup = renderToStaticMarkup(
-      <GameMapSettings
-        map={{ width: 71, height: 96, wrapX: true, wrapY: false }}
-        stated
-        busy={false}
-        onChangeMap={() => {}}
-      />
-    );
-
-    expect(markup).toContain('data-testid="settings-map-problem-x"');
-    expect(markup).toContain("A 71-wide map cannot wrap east-west");
-    expect(markup).toContain('value="71"');
   });
 });
 
