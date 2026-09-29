@@ -52,6 +52,7 @@ export type { ManifestEdit } from "./ManifestEdit";
 export type { MapShape } from "./MapShape";
 export type { MarketItem } from "./MarketItem";
 export type { MessageSummary } from "./MessageSummary";
+export type { MinimumAllocation } from "./MinimumAllocation";
 export type { NewStudents } from "./NewStudents";
 export type { NoStudyFee } from "./NoStudyFee";
 export type { OrderDiagnostic } from "./OrderDiagnostic";
