@@ -546,6 +546,35 @@ pub enum MergePlan {
     },
 }
 
+/// Applies a merge plan to the sightings the viewer already holds.
+///
+/// The decision about which merge function to use belongs beside [`MergePlan`], so platform
+/// adapters can persist one shared outcome without dispatching on the plan themselves.
+///
+/// # Errors
+///
+/// Returns the rejection carried by [`MergePlan::Refused`].
+pub fn apply_merge_plan(
+    plan: &MergePlan,
+    existing: &[report::merge::StoredSighting],
+    incoming: &report::ParsedReport,
+    viewer_turn_number: u32,
+) -> Result<report::merge::MergeOutcome, String> {
+    match plan {
+        MergePlan::Refused(rejection) => Err(rejection.clone()),
+        MergePlan::AlliedReport => Ok(report::merge::merge_report_into_sightings(
+            existing,
+            incoming,
+            viewer_turn_number,
+        )),
+        MergePlan::MapExport { file_turn, ages } | MergePlan::AtlaClientMap { file_turn, ages } => {
+            Ok(report::merge::merge_map_export_into_sightings(
+                existing, incoming, *file_turn, ages,
+            ))
+        }
+    }
+}
+
 /// Who the hexes of a merge are filed under, when the file itself does not say.
 ///
 /// An AtlaClient map names no faction — that is normal rather than a fault — so its provenance row
@@ -1439,6 +1468,68 @@ mod tests {
         assert_eq!(
             plan_merge(text, &parse_report(text), 71, "95"),
             MergePlan::Refused("the AtlaClient map has no hexes in it".to_string())
+        );
+    }
+
+    #[test]
+    fn apply_merge_plan_dispatches_each_plan_variant() {
+        let report = report::parse_report_full(MINI_REPORT);
+        let existing = [];
+        let ages = std::collections::BTreeMap::from([
+            ("1:12,34".to_string(), 4),
+            ("1:12,32".to_string(), 6),
+        ]);
+
+        let allied = apply_merge_plan(&MergePlan::AlliedReport, &existing, &report, 71)
+            .expect("an allied report can be merged");
+        assert_eq!(
+            allied
+                .sightings
+                .iter()
+                .map(|sighting| sighting.last_seen_turn)
+                .collect::<Vec<_>>(),
+            vec![71, 71]
+        );
+
+        let map_export = apply_merge_plan(
+            &MergePlan::MapExport {
+                file_turn: 16,
+                ages: ages.clone(),
+            },
+            &existing,
+            &report,
+            71,
+        )
+        .expect("a map export can be merged");
+        assert_eq!(
+            map_export
+                .sightings
+                .iter()
+                .map(|sighting| sighting.last_seen_turn)
+                .collect::<Vec<_>>(),
+            vec![4, 6]
+        );
+
+        let atlaclient_map = apply_merge_plan(
+            &MergePlan::AtlaClientMap {
+                file_turn: 16,
+                ages,
+            },
+            &existing,
+            &report,
+            71,
+        )
+        .expect("an AtlaClient map can be merged");
+        assert_eq!(atlaclient_map, map_export);
+    }
+
+    #[test]
+    fn apply_merge_plan_returns_refusal_reason() {
+        let refusal = MergePlan::Refused("cannot merge this report".to_string());
+
+        assert_eq!(
+            apply_merge_plan(&refusal, &[], &report::parse_report_full(MINI_REPORT), 71,),
+            Err("cannot merge this report".to_string())
         );
     }
 

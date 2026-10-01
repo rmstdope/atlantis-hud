@@ -12,7 +12,7 @@
  */
 
 import type { HttpTransport } from "@atlantis/shared";
-import { desktopPlugins, type DesktopPlugins } from "./desktopPlugins";
+import { desktopPlugins, type DesktopHttpPlugins } from "./desktopPlugins";
 
 /**
  * The transport to hand the New Origins download, over the given plugins.
@@ -21,7 +21,7 @@ import { desktopPlugins, type DesktopPlugins } from "./desktopPlugins";
  * transport rejects rather than pretending to have fetched anything.
  */
 export function desktopPbemTransport(
-  plugins: DesktopPlugins | undefined = desktopPlugins()
+  plugins: DesktopHttpPlugins | undefined = desktopPlugins()
 ): HttpTransport {
   return async (request, signal) => {
     if (!plugins) {
