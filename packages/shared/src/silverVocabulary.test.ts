@@ -557,6 +557,49 @@ describe("the cast-capped note (ah-ofpb.4)", () => {
     );
   });
 });
+describe("the shared-silver coverage judgement", () => {
+  it("does not infer coverage or doubt from missing diagnostics", () => {
+    const covered = SILVER_NOTES.find((note) => note.id === "shared-silver-covers-shortfall")!;
+    const unjudged = SILVER_NOTES.find((note) => note.id === "shared-silver-unjudged")!;
+    const coveredExample = covered.example();
+    const unjudgedExample = unjudged.example();
+    const noCoverage = { ...coveredExample.silver };
+    delete noCoverage.sharedSilverCoverage;
+
+    expect(
+      covered.when({
+        ...coveredExample,
+        silver: aUnitSilver(noCoverage),
+        warned: false,
+        hexShort: false
+      })
+    ).toBe(false);
+    expect(
+      covered.when({
+        ...coveredExample,
+        silver: aUnitSilver({
+          ...coveredExample.silver,
+          sharedSilverCoverage: "covered"
+        }),
+        warned: true,
+        hexShort: true
+      })
+    ).toBe(true);
+    expect(
+      unjudged.when({
+        ...unjudgedExample,
+        silver: aUnitSilver({
+          ...unjudgedExample.silver,
+          poolDoubted: false,
+          sharedSilverCoverage: "unjudged"
+        }),
+        warned: false,
+        hexShort: false
+      })
+    ).toBe(true);
+  });
+});
+
 describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
   it.each(SILVER_NOTES.map((note) => [note.id, note] as const))(
     "%s appears for its own example",

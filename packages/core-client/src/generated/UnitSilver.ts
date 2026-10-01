@@ -3,6 +3,7 @@ import type { BuyAllShown } from "./BuyAllShown";
 import type { FormedSubject } from "./FormedSubject";
 import type { NoStudyFee } from "./NoStudyFee";
 import type { ProductionCap } from "./ProductionCap";
+import type { SharedSilverCoverage } from "./SharedSilverCoverage";
 import type { ShipmentPriced } from "./ShipmentPriced";
 import type { SilverChange } from "./SilverChange";
 import type { SilverDoubt } from "./SilverDoubt";
@@ -399,10 +400,15 @@ shippingDistanceUnknown: boolean,
 shippingTargetUnshown: boolean, 
 /**
  * This unit's hex pools its silver, and one of the units that share has sums the checks
- * cannot follow, so no pooled shortfall is judged here at all (`ah-0jxx`). The absence of a
- * silver finding then says nothing about whether the sharing covers this unit.
+ * cannot follow, so no pooled shortfall is judged here at all (`ah-0jxx`). Kept separate from
+ * [`Self::shared_silver_coverage`], which carries the explicit result for known shortfalls.
  */
 poolDoubted: boolean, 
+/**
+ * What the hex's `SHARE` pool judged about this unit's silver shortfall. Absent when this
+ * unit has no known shortfall in a shared hex.
+ */
+sharedSilverCoverage?: SharedSilverCoverage, 
 /**
  * Every movement of this unit's silver this month, in the order `rules/sequenceofevents` runs
  * the turn, ties broken by document line.
