@@ -145,7 +145,10 @@ export async function loadTurn(
   const factionId = report.header.factionId;
   if (game && factionId && factionId !== game.manifest.metadata.activeFactionId) {
     try {
-      manifest = await client.setActiveFaction(game.manifest.metadata.gameId, factionId);
+      manifest = await client.editGameManifest(game.manifest.metadata.gameId, {
+        kind: "activeFaction",
+        value: factionId
+      });
     } catch (error: unknown) {
       rememberWarning = `which faction this game reopens as could not be remembered: ${detail(error)}`;
     }

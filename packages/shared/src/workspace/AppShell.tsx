@@ -5,6 +5,7 @@ import type {
   CoreClient,
   GameManifest,
   ImportedTurnSummary,
+  ManifestEdit,
   MapExportContent,
   MergedReportRecord,
   OpenedGame,
@@ -3086,10 +3087,8 @@ export function AppShell({
         return false;
       }
       const saved = await runGameAction(async () => {
-        const manifest = await client.setGameMapSizes(
-          game.manifest.metadata.gameId,
-          JSON.stringify(mapSizes)
-        );
+        const edit: ManifestEdit = { kind: "mapSizes", value: mapSizes };
+        const manifest = await client.editGameManifest(game.manifest.metadata.gameId, edit);
         setGame({ ...game, manifest });
         updateGameMapSizesInStore(mapSizes);
         updateGameMapInStore(manifest.metadata.map);

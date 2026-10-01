@@ -12,7 +12,6 @@ import type {
   EngineInfo,
   GameManifest,
   ManifestEdit,
-  MapShape,
   MergedReportRecord,
   AlliedMageKey,
   StudyPlanKey,
@@ -588,7 +587,7 @@ export function createWebCoreAdapter(
 
     async listGames() {
       // The registry stores a manifest as an untyped blob; every other read of it in this file
-      // (openGame, setGameRuleset, setGameName below) trusts the same cast.
+      // The manifest edits below trust the same cast.
       return (await store.listGames()).map((game) => game.manifest as GameManifest);
     },
 
@@ -708,89 +707,12 @@ export function createWebCoreAdapter(
       }
     },
 
-    async setGameRuleset(gameId: string, rulesetId: string) {
+    async editGameManifest(gameId: string, edit: ManifestEdit) {
       const game = await store.getGame(gameId);
       if (!game) {
         throw new Error(`no game with id ${gameId}`);
       }
 
-      // The registry's copy of the manifest is what every later open reads, so the change lands
-      // there. What the change itself is belongs to the core, which the desktop calls too
-      // (`ah-8z4y.3.1`).
-      const edit: ManifestEdit = { kind: "ruleset", value: rulesetId };
-      const manifest = wasm.edit_game_manifest_state(
-        JSON.stringify(game.manifest),
-        JSON.stringify(edit)
-      );
-      await store.putGame({ ...game, manifest });
-      return manifest;
-    },
-
-    async setGameMap(gameId: string, mapJson: string) {
-      const game = await store.getGame(gameId);
-      if (!game) {
-        throw new Error(`no game with id ${gameId}`);
-      }
-
-      // An empty string means "no map" — this adapter's own contract with its caller. That an
-      // absent map stays absent rather than becoming a null is the core's rule, kept by
-      // `skip_serializing_if` on the way out (`ah-8z4y.3.1`).
-      const edit: ManifestEdit = {
-        kind: "map",
-        value: mapJson === "" ? null : (JSON.parse(mapJson) as MapShape)
-      };
-      const manifest = wasm.edit_game_manifest_state(
-        JSON.stringify(game.manifest),
-        JSON.stringify(edit)
-      );
-      await store.putGame({ ...game, manifest });
-      return manifest;
-    },
-
-    async setGameMapSizes(gameId: string, mapSizesJson: string) {
-      const game = await store.getGame(gameId);
-      if (!game) {
-        throw new Error(`no game with id ${gameId}`);
-      }
-      const edit: ManifestEdit = {
-        kind: "mapSizes",
-        value: mapSizesJson === "" ? null : JSON.parse(mapSizesJson)
-      };
-      const manifest = wasm.edit_game_manifest_state(
-        JSON.stringify(game.manifest),
-        JSON.stringify(edit)
-      );
-      await store.putGame({ ...game, manifest });
-      return manifest;
-    },
-
-    async setGameName(gameId: string, gameName: string) {
-      const game = await store.getGame(gameId);
-      if (!game) {
-        throw new Error(`no game with id ${gameId}`);
-      }
-
-      // The registry's copy of the manifest is what every later open reads, so the change lands
-      // there. What the change itself is belongs to the core (`ah-8z4y.3.1`); trimming and
-      // validating the name stays the shell's.
-      const edit: ManifestEdit = { kind: "name", value: gameName };
-      const manifest = wasm.edit_game_manifest_state(
-        JSON.stringify(game.manifest),
-        JSON.stringify(edit)
-      );
-      await store.putGame({ ...game, manifest });
-      return manifest;
-    },
-
-    async setActiveFaction(gameId: string, factionId: string) {
-      const game = await store.getGame(gameId);
-      if (!game) {
-        throw new Error(`no game with id ${gameId}`);
-      }
-
-      // The registry's copy of the manifest is what every later open reads, so the change lands
-      // there. What the change itself is belongs to the core (`ah-8z4y.3.1`).
-      const edit: ManifestEdit = { kind: "activeFaction", value: factionId };
       const manifest = wasm.edit_game_manifest_state(
         JSON.stringify(game.manifest),
         JSON.stringify(edit)

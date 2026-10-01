@@ -192,6 +192,13 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
             metadata.map = edit.value;
           }
           break;
+        case "mapSizes":
+          if (edit.value === null) {
+            delete metadata.mapSizes;
+          } else {
+            metadata.mapSizes = edit.value;
+          }
+          break;
       }
       return { ...manifest, metadata } satisfies GameManifest;
     },
@@ -409,7 +416,10 @@ describe("web core adapter", () => {
     const adapter = createWebCoreAdapter(fakeWasm(), store);
     await adapter.createGame(manifest("g1", "Game One"));
 
-    const updated = (await adapter.setGameRuleset("g1", "magicdeep")) as GameManifest;
+    const updated = await adapter.editGameManifest("g1", {
+      kind: "ruleset",
+      value: "magicdeep"
+    });
 
     expect(updated.metadata.rulesetId).toBe("magicdeep");
     // And it stuck: the registry's copy is what every later open reads.
@@ -420,9 +430,9 @@ describe("web core adapter", () => {
   it("refuses to change the ruleset of a game it does not hold", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    await expect(adapter.setGameRuleset("ghost", "magicdeep")).rejects.toThrow(
-      "no game with id ghost"
-    );
+    await expect(
+      adapter.editGameManifest("ghost", { kind: "ruleset", value: "magicdeep" })
+    ).rejects.toThrow("no game with id ghost");
   });
 
   it("renames a game in the stored manifest", async () => {
@@ -430,7 +440,10 @@ describe("web core adapter", () => {
     const adapter = createWebCoreAdapter(fakeWasm(), store);
     await adapter.createGame(manifest("g1", "Game One"));
 
-    const updated = (await adapter.setGameName("g1", "Binding of the North")) as GameManifest;
+    const updated = await adapter.editGameManifest("g1", {
+      kind: "name",
+      value: "Binding of the North"
+    });
 
     expect(updated.metadata.gameName).toBe("Binding of the North");
     // And it stuck: the registry's copy is what every later open reads.
@@ -443,7 +456,7 @@ describe("web core adapter", () => {
     const adapter = createWebCoreAdapter(fakeWasm(), store);
     await adapter.createGame(manifest("g1", "Game One"));
 
-    await adapter.setActiveFaction("g1", "95");
+    await adapter.editGameManifest("g1", { kind: "activeFaction", value: "95" });
 
     const opened = await adapter.openGame("g1", "2026-08-17T00:00:00Z");
     expect((opened.manifest as GameManifest).metadata.activeFactionId).toBe("95");
@@ -452,15 +465,17 @@ describe("web core adapter", () => {
   it("refuses to record an active faction for a game it does not hold", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    await expect(adapter.setActiveFaction("ghost", "95")).rejects.toThrow("no game with id ghost");
+    await expect(
+      adapter.editGameManifest("ghost", { kind: "activeFaction", value: "95" })
+    ).rejects.toThrow("no game with id ghost");
   });
 
   it("refuses to rename a game it does not hold", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    await expect(adapter.setGameName("ghost", "Binding of the North")).rejects.toThrow(
-      "no game with id ghost"
-    );
+    await expect(
+      adapter.editGameManifest("ghost", { kind: "name", value: "Binding of the North" })
+    ).rejects.toThrow("no game with id ghost");
   });
 
   it("routes logic calls to the core rather than to storage", async () => {
@@ -1415,7 +1430,7 @@ describe("managing games", () => {
   it("keeps the name and ruleset and forgets the faction", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     await adapter.createGame(manifest("alpha", "Alpha"));
-    await adapter.setActiveFaction("alpha", "17");
+    await adapter.editGameManifest("alpha", { kind: "activeFaction", value: "17" });
 
     const reset = (await adapter.resetGame("alpha", "2026-08-17T09:00:00Z")) as {
       manifest: GameManifest;

@@ -40,6 +40,7 @@ import type { OrdersPreviewResponse } from "./generated/OrdersPreviewResponse";
 import type { ValidateOrdersRequest } from "./generated/ValidateOrdersRequest";
 import type { PreviewOrdersRequest } from "./generated/PreviewOrdersRequest";
 import type { TraceMoveOrdersRequest } from "./generated/TraceMoveOrdersRequest";
+import type { ManifestEdit } from "./generated/ManifestEdit";
 
 export type OpenedGame = {
   gameFilePath: string;
@@ -541,18 +542,7 @@ export interface CoreAdapter {
   resetGame(gameId: string, now: string): Promise<OpenedGame>;
   exportGame(gameId: string, exportedAt: string): Promise<string>;
   importGame(backupJson: string, openedAt: string): Promise<OpenedGame>;
-  setGameRuleset(gameId: string, rulesetId: string): Promise<GameManifest>;
-  /**
-   * Records the map a game is played on, or clears it with `""`.
-   *
-   * Clearing puts the game back to *assuming* its ruleset's declared default, which is the state
-   * every game created before the app asked is already in; stating a value is what turns that
-   * assumption into the player's own word.
-   */
-  setGameMap(gameId: string, mapJson: string): Promise<GameManifest>;
-  setGameMapSizes(gameId: string, mapSizesJson: string): Promise<GameManifest>;
-  setGameName(gameId: string, gameName: string): Promise<GameManifest>;
-  setActiveFaction(gameId: string, factionId: string): Promise<GameManifest>;
+  editGameManifest(gameId: string, edit: ManifestEdit): Promise<GameManifest>;
   parseReport(rawReport: string): Promise<ReportParseResult>;
   parseReportFull(rawReport: string): Promise<ParsedReport>;
   parseReportClassified(rawReport: string, rulesetJson: string): Promise<ParsedReport>;

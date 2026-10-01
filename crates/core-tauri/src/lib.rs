@@ -22,20 +22,21 @@ use atlantis_hud_core::{
     ReportParseResult, ReportParseResultWire,
 };
 use atlantis_hud_core_persistence::{
-    create_game, delete_army, delete_game, delete_hex_note, export_game, import_game,
-    insert_imported_turn, list_allied_mages, list_armies, list_games, list_hex_notes,
+    create_game, delete_army, delete_game, delete_hex_note, edit_game_manifest, export_game,
+    import_game, insert_imported_turn, list_allied_mages, list_armies, list_games, list_hex_notes,
     list_imported_turns, list_study_plans, load_imported_turn, load_imported_turn_stamps,
     load_latest_imported_turn, load_merged_reports, load_order_draft, load_region_sightings,
-    open_game, preview_imported_turn, reset_game, save_allied_mages, save_study_plans,
-    set_active_faction, set_game_map, set_game_map_sizes, set_game_name, set_game_ruleset,
-    upsert_army, upsert_hex_note, upsert_imported_turn, upsert_merged_report, upsert_order_draft,
+    open_game, preview_imported_turn, reset_game, save_allied_mages, save_study_plans, upsert_army,
+    upsert_hex_note, upsert_imported_turn, upsert_merged_report, upsert_order_draft,
     upsert_region_sightings, AlliedMage, AlliedMageKey, Army, HexNote, ImportedTurnKey,
     ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame, OrderDraftKey,
     OrderDraftRecord, PersistenceError, StudyPlan, StudyPlanKey,
 };
 /// The manifest types cross to the shell as themselves: `core-tauri` used to carry a field-for-field
 /// `…Dto` copy of each, whose own comments said so (ah-8z4y.2).
-pub use atlantis_hud_core_persistence::{GameManifest, GameMetadata, ReportSourceRef};
+pub use atlantis_hud_core_persistence::{
+    GameManifest, GameMetadata, ManifestEdit, ReportSourceRef,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1202,75 +1203,17 @@ pub fn command_list_games(games_root: &str) -> Result<Vec<GameManifest>, String>
     list_games(Path::new(games_root)).map_err(|error| error.to_string())
 }
 
-/// Changes which ruleset a game is played under, returning the updated manifest.
+/// Applies a typed manifest edit and returns the updated manifest.
 ///
 /// # Errors
 ///
 /// Returns an error when no game exists under this id, or when the change cannot be written.
-pub fn command_set_game_ruleset(
+pub fn command_edit_game_manifest(
     games_root: &str,
     game_id: &str,
-    ruleset_id: &str,
+    edit: ManifestEdit,
 ) -> Result<GameManifest, String> {
-    set_game_ruleset(Path::new(games_root), game_id, ruleset_id).map_err(|error| error.to_string())
-}
-
-/// Records the map a game is played on, returning the updated manifest.
-///
-/// `map_json` is the game's `{"width":..,"height":..,"wrapX":..,"wrapY":..}`, or empty to clear it
-/// - which puts the game back to assuming its ruleset's declared default.
-///
-/// # Errors
-///
-/// Returns an error when no game exists under this id, when the map cannot be read, or when the
-/// change cannot be written.
-pub fn command_set_game_map(
-    games_root: &str,
-    game_id: &str,
-    map_json: &str,
-) -> Result<GameManifest, String> {
-    let map = atlantis_hud_core::movement::graph::geometry_from_json(map_json)?;
-    set_game_map(Path::new(games_root), game_id, map).map_err(|error| error.to_string())
-}
-
-pub fn command_set_game_map_sizes(
-    games_root: &str,
-    game_id: &str,
-    map_sizes_json: &str,
-) -> Result<GameManifest, String> {
-    let map_sizes = if map_sizes_json.trim().is_empty() {
-        None
-    } else {
-        Some(serde_json::from_str(map_sizes_json).map_err(|error| error.to_string())?)
-    };
-    set_game_map_sizes(Path::new(games_root), game_id, map_sizes).map_err(|error| error.to_string())
-}
-
-/// Renames a game, returning the updated manifest.
-///
-/// # Errors
-///
-/// Returns an error when no game exists under this id, or when the change cannot be written.
-pub fn command_set_game_name(
-    games_root: &str,
-    game_id: &str,
-    game_name: &str,
-) -> Result<GameManifest, String> {
-    set_game_name(Path::new(games_root), game_id, game_name).map_err(|error| error.to_string())
-}
-
-/// Records which faction in this game is the player's, returning the updated manifest.
-///
-/// # Errors
-///
-/// Returns an error when no game exists under this id, or when the change cannot be written.
-pub fn command_set_active_faction(
-    games_root: &str,
-    game_id: &str,
-    faction_id: &str,
-) -> Result<GameManifest, String> {
-    set_active_faction(Path::new(games_root), game_id, faction_id)
-        .map_err(|error| error.to_string())
+    edit_game_manifest(Path::new(games_root), game_id, &edit).map_err(|error| error.to_string())
 }
 
 /// Empties a game and keeps it, returning the fresh game.
@@ -1613,8 +1556,12 @@ mod ruleset_command_tests {
         let root = dir.path().to_str().expect("a path");
         command_create_game(root, a_manifest("faction-95", "Borg TNG")).expect("created");
 
-        let updated = command_set_game_ruleset(root, "faction-95", "magicdeep")
-            .expect("the ruleset change should succeed");
+        let updated = command_edit_game_manifest(
+            root,
+            "faction-95",
+            ManifestEdit::Ruleset("magicdeep".to_string()),
+        )
+        .expect("the ruleset change should succeed");
         assert_eq!(updated.metadata.ruleset_id, "magicdeep");
 
         // And it stuck: a fresh listing reads the manifest back off disk.
@@ -1627,8 +1574,12 @@ mod ruleset_command_tests {
         let dir = tempdir().expect("tempdir");
         let root = dir.path().to_str().expect("a path");
 
-        let error = command_set_game_ruleset(root, "no-such-game", "magicdeep")
-            .expect_err("changing a missing game should fail");
+        let error = command_edit_game_manifest(
+            root,
+            "no-such-game",
+            ManifestEdit::Ruleset("magicdeep".to_string()),
+        )
+        .expect_err("changing a missing game should fail");
 
         assert!(error.contains("no-such-game"));
     }
@@ -1648,8 +1599,12 @@ mod rename_command_tests {
         let root = dir.path().to_str().expect("a path");
         command_create_game(root, a_manifest("faction-95", "Borg TNG")).expect("created");
 
-        let updated = command_set_game_name(root, "faction-95", "Binding of the North")
-            .expect("the rename should succeed");
+        let updated = command_edit_game_manifest(
+            root,
+            "faction-95",
+            ManifestEdit::Name("Binding of the North".to_string()),
+        )
+        .expect("the rename should succeed");
         assert_eq!(updated.metadata.game_name, "Binding of the North");
 
         // And it stuck: a fresh listing reads the manifest back off disk.
@@ -1663,8 +1618,12 @@ mod rename_command_tests {
         let root = dir.path().to_str().expect("a path");
         command_create_game(root, a_manifest("faction-95", "Borg TNG")).expect("created");
 
-        let updated = command_set_active_faction(root, "faction-95", "95")
-            .expect("recording the active faction should succeed");
+        let updated = command_edit_game_manifest(
+            root,
+            "faction-95",
+            ManifestEdit::ActiveFaction(Some("95".to_string())),
+        )
+        .expect("recording the active faction should succeed");
         assert_eq!(updated.metadata.active_faction_id, Some("95".to_string()));
 
         // And it stuck: a fresh listing reads the manifest back off disk.
@@ -1677,8 +1636,12 @@ mod rename_command_tests {
         let dir = tempdir().expect("tempdir");
         let root = dir.path().to_str().expect("a path");
 
-        let error = command_set_game_name(root, "no-such-game", "Binding of the North")
-            .expect_err("renaming a missing game should fail");
+        let error = command_edit_game_manifest(
+            root,
+            "no-such-game",
+            ManifestEdit::Name("Binding of the North".to_string()),
+        )
+        .expect_err("renaming a missing game should fail");
 
         assert!(error.contains("no-such-game"));
     }
@@ -1688,7 +1651,12 @@ mod rename_command_tests {
         let dir = tempdir().expect("tempdir");
         let root = dir.path().to_str().expect("a path");
         command_create_game(root, a_manifest("faction-95", "Borg TNG")).expect("created");
-        command_set_active_faction(root, "faction-95", "95").expect("faction recorded");
+        command_edit_game_manifest(
+            root,
+            "faction-95",
+            ManifestEdit::ActiveFaction(Some("95".to_string())),
+        )
+        .expect("faction recorded");
 
         let reset = command_reset_game(root, "faction-95", "2026-08-17T09:00:00Z")
             .expect("the reset should succeed");
