@@ -13549,6 +13549,7 @@ fn check_transport_reach(
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SettledShipment {
     sender: String,
+    sender_label: String,
     target: String,
     tag: String,
     quantity: i64,
@@ -13597,7 +13598,7 @@ impl SettledShipment {
                 amount,
                 SilverChangeCause::WasGiven,
                 None,
-                None,
+                Some(self.sender_label.clone()),
             );
         } else {
             ledger
@@ -13640,6 +13641,7 @@ fn shipping_bills(
 
     for ordered in &hex.units {
         let sender = ordered.unit.unit_id.as_str();
+        let sender_label = format!("{} ({})", ordered.unit.name, sender);
         // What this unit's own earlier shipments already took, by tag: `rules/sequenceofevents`
         // moves each item "only once in each phase", which `apply_transport_phase`'s allowance
         // snapshot enforces on the preview's side.
@@ -13754,6 +13756,7 @@ fn shipping_bills(
                             ledger,
                             settled_at,
                             sender,
+                            &sender_label,
                             &tag,
                             quantity,
                             placed,
@@ -13771,6 +13774,7 @@ fn shipping_bills(
                             ledger,
                             settled_at,
                             sender,
+                            &sender_label,
                             &tag,
                             quantity,
                             placed,
@@ -13808,6 +13812,7 @@ fn shipping_bills(
                             ledger,
                             settled_at,
                             sender,
+                            &sender_label,
                             &tag,
                             quantity,
                             placed,
@@ -13875,6 +13880,7 @@ fn settle_shipment_delivery(
     ledger: &mut Ledger<'_>,
     phase: StatePhase,
     sender: &str,
+    sender_label: &str,
     tag: &str,
     quantity: i64,
     placed: &PlacedIntent,
@@ -13883,6 +13889,7 @@ fn settle_shipment_delivery(
 ) -> SettledShipment {
     let shipment = SettledShipment {
         sender: sender.to_string(),
+        sender_label: sender_label.to_string(),
         target: target.to_string(),
         tag: tag.to_string(),
         quantity,
@@ -42358,7 +42365,7 @@ BUILD
             amount: 200,
             cause: SilverChangeCause::WasGiven,
             line: None,
-            other: None,
+            other: Some("Unit 900 (900)".to_string()),
         }));
         assert!(distributed_sender.changes.contains(&SilverChange {
             amount: -200,
@@ -42369,9 +42376,62 @@ BUILD
     }
 
     #[test]
+    fn a_transported_silver_receipt_keeps_its_source_separate_from_a_giver() {
+        let mut target = with_skill(unit("2100"), "QUAM", 1);
+        target.name = "QM".to_string();
+        target.structure_id = Some("500".to_string());
+        let mut hm = with_silver(unit("2000"), 144);
+        hm.name = "HM".to_string();
+        let mut other = with_silver(unit("2001"), 6597);
+        other.name = "Other".to_string();
+        let mut nearby = region(vec![hm, other, target]);
+        nearby.structures = vec![Structure {
+            structure_id: "500".to_string(),
+            name: "Caravan".to_string(),
+            kind: "Caravanserai".to_string(),
+            ..Default::default()
+        }];
+
+        let review = review_turn(
+            &report(vec![nearby]),
+            "unit 2000\nGIVE 2100 ALL SILV\nunit 2001\nTRANSPORT 2100 ALL SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let receiver = review
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == "2100")
+            .expect("the receiver is forecast");
+
+        assert_eq!(
+            receiver
+                .changes
+                .iter()
+                .filter(|change| change.cause == SilverChangeCause::WasGiven)
+                .collect::<Vec<_>>(),
+            [
+                &SilverChange {
+                    amount: 144,
+                    cause: SilverChangeCause::WasGiven,
+                    line: Some(2),
+                    other: Some("HM (2000)".to_string()),
+                },
+                &SilverChange {
+                    amount: 6597,
+                    cause: SilverChangeCause::WasGiven,
+                    line: None,
+                    other: Some("Other (2001)".to_string()),
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn settled_silver_shipment_names_both_ledger_legs() {
         let shipment = SettledShipment {
             sender: "900".to_string(),
+            sender_label: "Unit 900 (900)".to_string(),
             target: "901".to_string(),
             tag: SILVER.to_string(),
             quantity: 200,

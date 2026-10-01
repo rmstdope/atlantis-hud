@@ -10,13 +10,12 @@
 use atlantis_hud_core::backup::ManifestEdit;
 use atlantis_hud_core::reopen::{latest_turn, TurnRef};
 use atlantis_hud_core::report::import::import_writes;
-use atlantis_hud_core::report::merge::{
-    merge_map_export_into_sightings, merge_report_into_sightings, StoredSighting,
-};
+use atlantis_hud_core::report::merge::StoredSighting;
 use atlantis_hud_core::report::sighting::RegionSighting;
 use atlantis_hud_core::{
-    diff_imported_turn, engine_info, plan_merge, reject_import, reserved_merge_identity,
-    ImportedTurnSnapshot, MergePlan, ReportParseResult, ReportParseResultWire,
+    apply_merge_plan, diff_imported_turn, engine_info, plan_merge, reject_import,
+    reserved_merge_identity, ImportedTurnSnapshot, MergePlan, ReportParseResult,
+    ReportParseResultWire,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -322,8 +321,9 @@ pub fn prepare_report_merge_state(
     // read from the file. Decided here rather than after the merge, because the ordinary path
     // reads the ally from `detected_factions`, which is empty for this file by construction.
     let atlaclient_identity = reserved_merge_identity(&plan);
-    let outcome = match plan {
-        MergePlan::Refused(rejection) => {
+    let outcome = match apply_merge_plan(&plan, &existing, &report, viewer_turn_number) {
+        Ok(outcome) => outcome,
+        Err(rejection) => {
             return to_js(&PreparedMergeDto {
                 turn_number: parse_result.turn_header.as_ref().map(|it| it.turn_number),
                 merged_faction_id: None,
@@ -333,13 +333,7 @@ pub fn prepare_report_merge_state(
                 new_region_count: 0,
                 map_export: false,
                 rejection: Some(rejection),
-            });
-        }
-        MergePlan::AlliedReport => {
-            merge_report_into_sightings(&existing, &report, viewer_turn_number)
-        }
-        MergePlan::MapExport { file_turn, ages } | MergePlan::AtlaClientMap { file_turn, ages } => {
-            merge_map_export_into_sightings(&existing, &report, file_turn, &ages)
+            })
         }
     };
 

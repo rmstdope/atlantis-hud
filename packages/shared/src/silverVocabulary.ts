@@ -1134,25 +1134,32 @@ export function silverCauseLabel(cause: string): string {
 }
 
 /**
- * The causes that moved this unit's silver, one group per cause, each in the position of its first
- * entry - which is the turn's own order, because `UnitSilver.changes` is in it.
+ * The causes that moved this unit's silver, one group per cause, except gifts which are grouped by
+ * giver. Each group stays in the position of its first entry - the turn's own order, because
+ * `UnitSilver.changes` is in it.
  *
  * `took` and `took-unshown` merge into one group, keyed `took`: they are one event to a reader, and
  * which sources the report does not show is said in the clause instead.
  */
 export function silverCauseGroups(changes: readonly SilverChange[]): SilverCauseGroup[] {
   const groups: SilverCauseGroup[] = [];
-  const byCause = new Map<string, SilverCauseGroup>();
+  const byCause = new Map<string, Map<string, SilverCauseGroup>>();
   for (const change of changes) {
     const key = change.cause === "took-unshown" ? "took" : change.cause;
-    const existing = byCause.get(key);
+    const source = key === "was-given" ? (change.other ?? "") : "";
+    let bySource = byCause.get(key);
+    if (!bySource) {
+      bySource = new Map();
+      byCause.set(key, bySource);
+    }
+    const existing = bySource.get(source);
     if (existing) {
       existing.amount += change.amount;
       existing.entries.push(change);
       continue;
     }
     const group: SilverCauseGroup = { cause: key, amount: change.amount, entries: [change] };
-    byCause.set(key, group);
+    bySource.set(source, group);
     groups.push(group);
   }
   // A cause whose entries cancel moved nothing a reader can act on, and `signed(0)` would draw a

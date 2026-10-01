@@ -45,6 +45,9 @@ export type DesktopPlugins = {
   httpRequest(request: HttpRequest, signal: AbortSignal): Promise<HttpReply>;
 };
 
+export type DesktopFileSaverPlugins = Pick<DesktopPlugins, "save" | "writeTextFile">;
+export type DesktopHttpPlugins = Pick<DesktopPlugins, "httpRequest">;
+
 declare global {
   interface Window {
     /** A test's stand-in, installed before the bundle loads (Playwright `addInitScript`). */
