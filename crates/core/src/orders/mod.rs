@@ -49,6 +49,7 @@ mod transfer_agreement;
 mod transfers;
 /// The one transport reach and shipping rate `effects`, `semantics` and `silver` read.
 pub mod transport;
+pub mod unclaimed_silver;
 pub mod vocabulary;
 pub mod walk;
 /// A MOVE that would cross a wall a report proves (`ah-wq2e.4`).
@@ -99,6 +100,7 @@ pub fn validate_turn(
     let mut production = production_overview::ProductionOverview::default();
     let mut students = new_students::NewStudents::default();
     let mut faction = faction_orders::FactionOrders::default();
+    let mut unclaimed_silver = None;
 
     if let Some(report) = report {
         let review = semantics::review_turn(report, source, ruleset, options);
@@ -106,6 +108,7 @@ pub fn validate_turn(
         production = review.production;
         students = review.students;
         faction = review.faction;
+        unclaimed_silver = review.unclaimed_silver;
         diagnostics.extend(review.findings.into_iter().map(into_diagnostic));
 
         // Advice derived from a unit whose line the parser could not read is advice derived from
@@ -148,6 +151,7 @@ pub fn validate_turn(
         production,
         students,
         faction,
+        unclaimed_silver,
     }
 }
 

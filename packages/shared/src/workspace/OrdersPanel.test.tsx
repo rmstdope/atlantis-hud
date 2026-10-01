@@ -27,7 +27,7 @@ const draw = (
       externalRevision={0}
       ownFactionName="your faction"
       onChange={() => {}}
-      validated={{ text: "", diagnostics: [], silver: [], production: NO_PRODUCTION, students: NO_STUDENTS, faction: NO_FACTION_ORDERS }}
+      validated={{ text: "", diagnostics: [], silver: [], production: NO_PRODUCTION, students: NO_STUDENTS, faction: NO_FACTION_ORDERS, unclaimedSilverUse: null }}
       save={{ kind: "clean" }}
       commands={[]}
       orderVocabulary={[]}
@@ -111,7 +111,7 @@ describe("a unit formed this month", () => {
         externalRevision={0}
         ownFactionName="your faction"
         onChange={() => {}}
-        validated={{ text: document, diagnostics: [], silver: [], production: NO_PRODUCTION, students: NO_STUDENTS, faction: NO_FACTION_ORDERS }}
+        validated={{ text: document, diagnostics: [], silver: [], production: NO_PRODUCTION, students: NO_STUDENTS, faction: NO_FACTION_ORDERS, unclaimedSilverUse: null }}
         save={{ kind: "clean" }}
         commands={[]}
         orderVocabulary={[]}

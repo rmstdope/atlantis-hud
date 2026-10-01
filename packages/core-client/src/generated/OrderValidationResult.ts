@@ -3,6 +3,7 @@ import type { FactionOrders } from "./FactionOrders";
 import type { NewStudents } from "./NewStudents";
 import type { OrderDiagnostic } from "./OrderDiagnostic";
 import type { ProductionOverview } from "./ProductionOverview";
+import type { UnclaimedSilverUse } from "./UnclaimedSilverUse";
 import type { UnitSilver } from "./UnitSilver";
 
 /**
@@ -30,4 +31,8 @@ students: NewStudents,
  * What this turn's FACTION orders do, for the faction dropdown. `ah-7g4f`.
  * `#[serde(default)]` so an older payload deserialises to "no FACTION order".
  */
-faction: FactionOrders, };
+faction: FactionOrders, 
+/**
+ * How much of the report's unclaimed fund this turn's orders and maintenance will use.
+ */
+unclaimed_silver?: UnclaimedSilverUse, };

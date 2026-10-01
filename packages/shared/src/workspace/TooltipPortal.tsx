@@ -22,6 +22,7 @@ export function TooltipPortal({
   at,
   anchorKey,
   testId,
+  id,
   column,
   hiddenFromReaders = false,
   children
@@ -30,6 +31,8 @@ export function TooltipPortal({
   /** Re-place when this changes: another unit, or another cell of the same row. */
   anchorKey: string;
   testId: string;
+  /** Optional target for an accessible description/control. */
+  id?: string;
   /** Which column the panel is about, for the smoke suite. Absent on the whole-unit summary. */
   column?: string;
   /**
@@ -60,6 +63,7 @@ export function TooltipPortal({
   return createPortal(
     <div
       ref={setNode}
+      id={id}
       data-testid={testId}
       data-column={column}
       role={hiddenFromReaders ? undefined : "tooltip"}
