@@ -2099,6 +2099,9 @@ struct PendingTransport {
     /// unit number the report does not carry, which `Working::transport_target` settles before
     /// anything moves (`ah-64wm`).
     receiver: Option<usize>,
+    /// The region where a `NEW` alias is valid. Resolved after the full document is read, so a
+    /// shipment can name a unit whose FORM appears later.
+    alias_region: Option<String>,
     /// The unit number as the order wrote it, for the hover.
     to: String,
     /// `true` when `to` appears nowhere in the report at all.
@@ -3125,9 +3128,13 @@ impl Working {
             return;
         }
 
-        let id = match target {
-            Party::Unit(id) => id,
-            Party::New(_) | Party::Foreign { .. } | Party::Discard => return,
+        let (id, alias_region) = match target {
+            Party::Unit(id) => (id, None),
+            Party::New(alias) => (
+                format!("new-{alias}"),
+                Some(self.units[sender].unit.region_id.clone()),
+            ),
+            Party::Foreign { .. } | Party::Discard => return,
         };
         if id == self.units[sender].unit.unit_id {
             return;
@@ -3140,6 +3147,7 @@ impl Working {
         self.transports.push(PendingTransport {
             sender,
             receiver,
+            alias_region,
             to: id,
             to_unshown,
             what,
@@ -3183,7 +3191,29 @@ impl Working {
     /// transport in the month's final phases, after the market, after movement, after production
     /// (`ah-bxgs`).
     fn apply_transports(&mut self, dissolved: &BTreeMap<usize, Option<String>>) {
-        let pending = std::mem::take(&mut self.transports);
+        let mut pending = std::mem::take(&mut self.transports);
+        pending.retain_mut(|shipment| {
+            let Some(region_id) = shipment.alias_region.as_ref() else {
+                return true;
+            };
+            let Some(alias) = shipment.to.strip_prefix("new-") else {
+                return false;
+            };
+            let Some(receiver) = self
+                .by_alias
+                .get(&(region_id.clone(), alias.to_string()))
+                .copied()
+            else {
+                return false;
+            };
+            if self.units[receiver].unit.region_id != *region_id
+                || dissolved.contains_key(&receiver)
+            {
+                return false;
+            }
+            shipment.receiver = Some(receiver);
+            true
+        });
         let mut sent: Vec<Vec<(usize, TransportSent)>> = vec![Vec::new(); self.units.len()];
         let mut received: Vec<Vec<(usize, TransportReceived)>> = vec![Vec::new(); self.units.len()];
         let mut issues: Vec<Vec<(usize, TransportTargetIssue)>> =
@@ -3252,10 +3282,39 @@ impl Working {
     /// orders advisory and the shipping bill read.
     fn judge(&self, pending: &PendingTransport) -> super::transport::Judged {
         let sender = &self.units[pending.sender].unit;
-        self.shipping.judge(
+        let target_facts = pending.receiver.and_then(|receiver| {
+            let target = &self.units[receiver];
+            if !target.formed {
+                return None;
+            }
+            let quartermaster_tag = self
+                .ruleset
+                .find_skill("quartermaster")
+                .map(|skill| skill.tag.to_ascii_uppercase());
+            let quartermaster = quartermaster_tag.as_ref().is_some_and(|tag| {
+                target
+                    .unit
+                    .skills
+                    .iter()
+                    .any(|skill| skill.tag.eq_ignore_ascii_case(tag))
+            });
+            if quartermaster {
+                return None;
+            }
+            let coordinate = self.hex_of_region.get(&target.unit.region_id).copied()?;
+            Some(super::transport::TargetFacts {
+                own: true,
+                quartermaster_disclosed: quartermaster_tag.is_some(),
+                quartermaster: false,
+                caravanserai_owner: false,
+                coordinate,
+            })
+        });
+        self.shipping.judge_with_target_facts(
             &sender.unit_id,
             self.hex_of_region.get(&sender.region_id).copied(),
             &pending.to,
+            target_facts.as_ref(),
         )
     }
 
@@ -9142,6 +9201,33 @@ mod tests {
             assert!(sender.transport_target_issues.is_empty());
             let receiver = row(&response, "1:1,1", "5530").expect("the receiver is shown");
             assert_eq!(held(receiver, "STON"), Some(45), "five arrived at 5530");
+        }
+
+        #[test]
+        fn a_quartermaster_distributes_goods_to_a_formed_unit() {
+            let report = report_across_two_hexes()
+                .replace(
+                    "Hauler (6858), Foo (1), leader [LEAD]",
+                    "Hauler (6858), Foo (1), 2 leaders [LEAD]",
+                )
+                .replace(
+                    "Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 1 (30).",
+                    "Capacity: 0/0/15/0.",
+                );
+            let response = preview_over(
+                &report,
+                "unit 6858\nGIVE NEW 1 1 LEAD\n\
+                 unit 6857\nFORM 1\nEND\nDISTRIBUTE NEW 1 5 STON\n",
+            );
+
+            let sender = row(&response, "1:2,2", "6857").expect("the sender is shown");
+            assert_eq!(held(sender, "STON"), Some(10), "five left 6857");
+            let receiver = row(&response, "1:2,2", "new-1").expect("the formed unit is shown");
+            assert_eq!(
+                held(receiver, "STON"),
+                Some(5),
+                "five arrived at the formed unit"
+            );
         }
 
         // `rules/economy_transport`: "a quartermaster must be the owner of a structure which allows
