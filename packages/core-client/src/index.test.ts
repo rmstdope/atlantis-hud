@@ -107,11 +107,7 @@ function fakeAdapter(overrides: Partial<CoreAdapter> = {}): CoreAdapter {
     resetGame: vi.fn().mockResolvedValue(openedGame),
     exportGame: vi.fn().mockResolvedValue("{}"),
     importGame: vi.fn().mockResolvedValue(openedGame),
-    setGameRuleset: vi.fn().mockResolvedValue(gameManifest),
-    setGameMap: vi.fn().mockResolvedValue(gameManifest),
-    setGameMapSizes: vi.fn().mockResolvedValue(gameManifest),
-    setGameName: vi.fn().mockResolvedValue(gameManifest),
-    setActiveFaction: vi.fn().mockResolvedValue(gameManifest),
+    editGameManifest: vi.fn().mockResolvedValue(gameManifest),
     parseReport: vi.fn().mockResolvedValue(reportParseResult),
     // `parseReportFull`/`parseReportClassified` resolve with a `ParsedReport`, not a
     // `ReportParseResult` - a different shape, caught by Copilot review on PR #331.

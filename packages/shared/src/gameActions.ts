@@ -9,7 +9,14 @@
  * hands back what it changed and lets the caller apply it.
  */
 
-import type { CoreClient, GameManifest, MapShape, MapSizes, OpenedGame } from "@atlantis/core-client";
+import type {
+  CoreClient,
+  GameManifest,
+  ManifestEdit,
+  MapShape,
+  MapSizes,
+  OpenedGame
+} from "@atlantis/core-client";
 import { backupAsCopy, backupGameIdentity } from "./gameBackup";
 import { gameAfterDelete, gameNameOf, newGameId, newGameManifest } from "./gameSession";
 import { rulesetById } from "./rulesets";
@@ -24,8 +31,7 @@ export type GameClient = Pick<
   | "deleteGame"
   | "exportGame"
   | "importGame"
-  | "setGameRuleset"
-  | "setGameName"
+  | "editGameManifest"
   | "resetGame"
 >;
 
@@ -222,7 +228,8 @@ export async function changeRuleset(
   if (!rulesetById(rulesetId)) {
     throw new Error(`unknown ruleset: ${rulesetId}`);
   }
-  const manifest = await client.setGameRuleset(game.manifest.metadata.gameId, rulesetId);
+  const edit: ManifestEdit = { kind: "ruleset", value: rulesetId };
+  const manifest = await client.editGameManifest(game.manifest.metadata.gameId, edit);
   return { manifest, games: await client.listGames() };
 }
 
@@ -236,6 +243,7 @@ export async function renameGame(
   game: OpenedGame,
   gameName: string
 ): Promise<{ manifest: OpenedGame["manifest"]; games: GameManifest[] }> {
-  const manifest = await client.setGameName(game.manifest.metadata.gameId, gameNameOf(gameName));
+  const edit: ManifestEdit = { kind: "name", value: gameNameOf(gameName) };
+  const manifest = await client.editGameManifest(game.manifest.metadata.gameId, edit);
   return { manifest, games: await client.listGames() };
 }

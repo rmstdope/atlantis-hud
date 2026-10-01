@@ -9,13 +9,11 @@ use atlantis_hud_core::backup::{
     apply_manifest_edit, encode_game_backup, DecodedGameBackupCollections,
     EncodedGameBackupCollections, GameBackupArmy, GameBackupContent, GameBackupHexNote,
     GameBackupImportedTurn, GameBackupMergedReport, GameBackupOrderDraft, GameBackupRegionSighting,
-    ManifestEdit, MapSizes,
 };
 /// The stored row and its key. The core owns both because the backup carries them too.
 pub use atlantis_hud_core::backup::{
     AlliedMage, AlliedMageKey, Army, HexNote, StudyGoal, StudyPlan, StudyPlanKey,
 };
-use atlantis_hud_core::movement::graph::MapGeometry;
 // The row and the order it is listed in are the core's, so both platforms answer alike
 // (`ah-8z4y.3.2`). Re-exported here because this is where every caller already reaches for it.
 use atlantis_hud_core::reopen::{latest_turn, TurnRef};
@@ -110,7 +108,7 @@ const MIGRATIONS: [Migration; 13] = [
 
 /// Game metadata, a logical report source and the manifest built from them now live in the core,
 /// which both stores' backups agree on; `core-tauri` still imports all three from this crate.
-pub use atlantis_hud_core::backup::{GameManifest, GameMetadata, ReportSourceRef};
+pub use atlantis_hud_core::backup::{GameManifest, GameMetadata, ManifestEdit, ReportSourceRef};
 
 /// Snapshot returned after game create/open operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -326,60 +324,19 @@ pub fn open_game(
     })
 }
 
-/// Changes which ruleset a game is played under, after creation.
+/// Applies one typed edit to an existing game's manifest.
 ///
-/// The id is stored as an opaque string, exactly as `create_game` accepts one: which rulesets ship
-/// is a concern of the frontends' registry, and this crate refusing ids it has not heard of would
-/// make every new ruleset a lockstep release of both.
-///
-/// # Errors
-///
-/// Returns an error when no game exists under this id, when its manifest cannot be read, or when
-/// the database cannot be opened or migrated.
-pub fn set_game_ruleset(
-    games_root: &Path,
-    game_id: &str,
-    ruleset_id: &str,
-) -> Result<GameManifest, PersistenceError> {
-    let game_file_path = game_home(games_root, game_id).join(GAME_MANIFEST_FILE_NAME);
-    if !game_file_path.exists() {
-        return Err(PersistenceError::GameNotFound(game_id.to_string()));
-    }
-
-    let mut manifest = load_game_manifest(&game_file_path)?;
-    ensure_supported_manifest_version(manifest.manifest_version)?;
-    apply_manifest_edit(
-        &mut manifest,
-        &ManifestEdit::Ruleset(ruleset_id.to_string()),
-    );
-
-    // Database first, manifest second — the order `open_game` writes in, so a failure between the
-    // two leaves the manifest (which the frontends read) still agreeing with itself.
-    let database_path = sidecar_database_path(&game_file_path);
-    let mut connection = open_database(&database_path)?;
-    apply_migrations(&mut connection)?;
-    persist_game_snapshot(&mut connection, &manifest)?;
-    save_game_manifest(&game_file_path, &manifest)?;
-
-    Ok(manifest)
-}
-
-/// Records the map a game is played on, after creation.
-///
-/// `None` clears it, which puts the game back to assuming its ruleset's default - the state every
-/// game created before the app asked is already in.
-///
-/// The manifest is the only place this lives. Unlike the ruleset and the name there is no mirrored
-/// database column to keep in step, because nothing in the database is keyed by the map.
+/// Metadata edits that are mirrored in the game database refresh that snapshot before the
+/// manifest, matching `open_game`. Map edits remain manifest-only.
 ///
 /// # Errors
 ///
-/// Returns an error when no game exists under this id, when its manifest cannot be read, or when
-/// the manifest cannot be written back.
-pub fn set_game_map(
+/// Returns an error when no game exists under this id, when its manifest version is unsupported,
+/// or when the required files cannot be read or written.
+pub fn edit_game_manifest(
     games_root: &Path,
     game_id: &str,
-    map: Option<MapGeometry>,
+    edit: &ManifestEdit,
 ) -> Result<GameManifest, PersistenceError> {
     let game_file_path = game_home(games_root, game_id).join(GAME_MANIFEST_FILE_NAME);
     if !game_file_path.exists() {
@@ -388,96 +345,14 @@ pub fn set_game_map(
 
     let mut manifest = load_game_manifest(&game_file_path)?;
     ensure_supported_manifest_version(manifest.manifest_version)?;
-    apply_manifest_edit(&mut manifest, &ManifestEdit::Map(map));
-    save_game_manifest(&game_file_path, &manifest)?;
+    apply_manifest_edit(&mut manifest, edit);
 
-    Ok(manifest)
-}
-
-/// Records the dimensions of every configured map level after creation.
-pub fn set_game_map_sizes(
-    games_root: &Path,
-    game_id: &str,
-    map_sizes: Option<MapSizes>,
-) -> Result<GameManifest, PersistenceError> {
-    let game_file_path = game_home(games_root, game_id).join(GAME_MANIFEST_FILE_NAME);
-    if !game_file_path.exists() {
-        return Err(PersistenceError::GameNotFound(game_id.to_string()));
+    if !matches!(edit, ManifestEdit::Map(_) | ManifestEdit::MapSizes(_)) {
+        let database_path = sidecar_database_path(&game_file_path);
+        let mut connection = open_database(&database_path)?;
+        apply_migrations(&mut connection)?;
+        persist_game_snapshot(&mut connection, &manifest)?;
     }
-    let mut manifest = load_game_manifest(&game_file_path)?;
-    ensure_supported_manifest_version(manifest.manifest_version)?;
-    apply_manifest_edit(&mut manifest, &ManifestEdit::MapSizes(map_sizes));
-    save_game_manifest(&game_file_path, &manifest)?;
-    Ok(manifest)
-}
-
-/// Renames a game, after creation.
-///
-/// The name is stored as given: trimming and the refusal of an empty name are the shell's
-/// (`gameSession.ts`'s `gameNameOf`), the same rule applied at creation.
-///
-/// # Errors
-///
-/// Returns an error when no game exists under this id, when its manifest cannot be read, or when
-/// the database cannot be opened or migrated.
-pub fn set_game_name(
-    games_root: &Path,
-    game_id: &str,
-    game_name: &str,
-) -> Result<GameManifest, PersistenceError> {
-    let game_file_path = game_home(games_root, game_id).join(GAME_MANIFEST_FILE_NAME);
-    if !game_file_path.exists() {
-        return Err(PersistenceError::GameNotFound(game_id.to_string()));
-    }
-
-    let mut manifest = load_game_manifest(&game_file_path)?;
-    ensure_supported_manifest_version(manifest.manifest_version)?;
-    apply_manifest_edit(&mut manifest, &ManifestEdit::Name(game_name.to_string()));
-
-    // Database first, manifest second — the order `open_game` writes in, so a failure between the
-    // two leaves the manifest (which the frontends read) still agreeing with itself.
-    let database_path = sidecar_database_path(&game_file_path);
-    let mut connection = open_database(&database_path)?;
-    apply_migrations(&mut connection)?;
-    persist_game_snapshot(&mut connection, &manifest)?;
-    save_game_manifest(&game_file_path, &manifest)?;
-
-    Ok(manifest)
-}
-
-/// Records which faction in this game is the player's, after creation.
-///
-/// The id is stored as the report names it, opaque to this crate, exactly as `confirmed_faction_id`
-/// reaches `commit_report_import`. Which faction that is - and when it may change - is the shell's
-/// decision, never this crate's.
-///
-/// # Errors
-///
-/// Returns an error when no game exists under this id, when its manifest cannot be read, or when
-/// the database cannot be opened or migrated.
-pub fn set_active_faction(
-    games_root: &Path,
-    game_id: &str,
-    faction_id: &str,
-) -> Result<GameManifest, PersistenceError> {
-    let game_file_path = game_home(games_root, game_id).join(GAME_MANIFEST_FILE_NAME);
-    if !game_file_path.exists() {
-        return Err(PersistenceError::GameNotFound(game_id.to_string()));
-    }
-
-    let mut manifest = load_game_manifest(&game_file_path)?;
-    ensure_supported_manifest_version(manifest.manifest_version)?;
-    apply_manifest_edit(
-        &mut manifest,
-        &ManifestEdit::ActiveFaction(Some(faction_id.to_string())),
-    );
-
-    // Database first, manifest second — the order `open_game` writes in, so a failure between the
-    // two leaves the manifest (which the frontends read) still agreeing with itself.
-    let database_path = sidecar_database_path(&game_file_path);
-    let mut connection = open_database(&database_path)?;
-    apply_migrations(&mut connection)?;
-    persist_game_snapshot(&mut connection, &manifest)?;
     save_game_manifest(&game_file_path, &manifest)?;
 
     Ok(manifest)
@@ -2364,6 +2239,8 @@ pub fn save_study_plans(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use atlantis_hud_core::backup::MapSizes;
+    use atlantis_hud_core::movement::graph::MapGeometry;
     use atlantis_hud_core::report::model::{CombatSpell, ItemAmount, ReportUnit, Skill};
     use rusqlite::Connection;
     use tempfile::tempdir;
@@ -2610,8 +2487,12 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
 
-        let updated = set_game_ruleset(dir.path(), GAME_ID, "magicdeep")
-            .expect("the ruleset change should succeed");
+        let updated = edit_game_manifest(
+            dir.path(),
+            GAME_ID,
+            &ManifestEdit::Ruleset("magicdeep".to_string()),
+        )
+        .expect("the ruleset change should succeed");
         assert_eq!(updated.metadata.ruleset_id, "magicdeep");
 
         let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("reopen should succeed");
@@ -2639,8 +2520,8 @@ mod tests {
             levels: None,
         };
 
-        let updated =
-            set_game_map(dir.path(), GAME_ID, Some(shape)).expect("the map change should succeed");
+        let updated = edit_game_manifest(dir.path(), GAME_ID, &ManifestEdit::Map(Some(shape)))
+            .expect("the map change should succeed");
         assert_eq!(updated.metadata.map, Some(shape));
 
         let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("reopen should succeed");
@@ -2672,12 +2553,64 @@ mod tests {
             wrap_y: false,
         };
 
-        let updated = set_game_map_sizes(dir.path(), GAME_ID, Some(sizes.clone()))
-            .expect("the map-size change should succeed");
+        let updated = edit_game_manifest(
+            dir.path(),
+            GAME_ID,
+            &ManifestEdit::MapSizes(Some(sizes.clone())),
+        )
+        .expect("the map-size change should succeed");
         assert_eq!(updated.metadata.map_sizes, Some(sizes.clone()));
 
         let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("reopen should succeed");
         assert_eq!(reopened.manifest.metadata.map_sizes, Some(sizes));
+    }
+
+    #[test]
+    fn typed_manifest_edits_are_saved_and_reopened() {
+        let dir = tempdir().expect("tempdir");
+        create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
+        let sizes = MapSizes {
+            levels: std::collections::BTreeMap::from([(
+                "surface".to_string(),
+                atlantis_hud_core::backup::MapSize {
+                    width: 72,
+                    height: 96,
+                },
+            )]),
+            wrap_x: true,
+            wrap_y: false,
+        };
+
+        let edited = edit_game_manifest(
+            dir.path(),
+            GAME_ID,
+            &ManifestEdit::MapSizes(Some(sizes.clone())),
+        )
+        .expect("the manifest edit should succeed");
+        assert_eq!(edited.metadata.map_sizes, Some(sizes.clone()));
+        assert_eq!(edited.metadata.map, sizes.geometry());
+
+        let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("reopen should succeed");
+        assert_eq!(reopened.manifest.metadata.map_sizes, Some(sizes.clone()));
+
+        let cleared = edit_game_manifest(dir.path(), GAME_ID, &ManifestEdit::MapSizes(None))
+            .expect("clearing map sizes should succeed");
+        assert_eq!(cleared.metadata.map_sizes, None);
+        assert_eq!(
+            cleared.metadata.map,
+            sizes.geometry(),
+            "clearing map sizes leaves the recorded map unchanged"
+        );
+    }
+
+    #[test]
+    fn editing_a_missing_game_names_it() {
+        let dir = tempdir().expect("tempdir");
+
+        let error = edit_game_manifest(dir.path(), "no-such-game", &ManifestEdit::MapSizes(None))
+            .expect_err("editing a missing game should fail");
+
+        assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
     }
 
     /// A game created before the app asked has no map at all, and must stay that way until someone
@@ -2696,7 +2629,7 @@ mod tests {
     fn changing_the_map_of_a_missing_game_names_it() {
         let dir = tempdir().expect("tempdir");
 
-        let error = set_game_map(dir.path(), "no-such-game", None)
+        let error = edit_game_manifest(dir.path(), "no-such-game", &ManifestEdit::Map(None))
             .expect_err("changing a missing game should fail");
 
         assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
@@ -2705,7 +2638,7 @@ mod tests {
     #[test]
     fn changing_map_sizes_of_a_missing_game_names_it() {
         let dir = tempdir().expect("tempdir");
-        let error = set_game_map_sizes(dir.path(), "no-such-game", None)
+        let error = edit_game_manifest(dir.path(), "no-such-game", &ManifestEdit::MapSizes(None))
             .expect_err("changing a missing game should fail");
         assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
     }
@@ -2714,8 +2647,12 @@ mod tests {
     fn changing_the_ruleset_of_a_missing_game_names_it() {
         let dir = tempdir().expect("tempdir");
 
-        let error = set_game_ruleset(dir.path(), "no-such-game", "magicdeep")
-            .expect_err("changing a missing game should fail");
+        let error = edit_game_manifest(
+            dir.path(),
+            "no-such-game",
+            &ManifestEdit::Ruleset("magicdeep".to_string()),
+        )
+        .expect_err("changing a missing game should fail");
 
         assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
     }
@@ -2728,8 +2665,12 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
 
-        let updated = set_game_name(dir.path(), GAME_ID, "Binding of the North")
-            .expect("the rename should succeed");
+        let updated = edit_game_manifest(
+            dir.path(),
+            GAME_ID,
+            &ManifestEdit::Name("Binding of the North".to_string()),
+        )
+        .expect("the rename should succeed");
         assert_eq!(updated.metadata.game_name, "Binding of the North");
 
         let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("reopen should succeed");
@@ -2747,8 +2688,12 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
 
-        let updated = set_active_faction(dir.path(), GAME_ID, "95")
-            .expect("recording the active faction should succeed");
+        let updated = edit_game_manifest(
+            dir.path(),
+            GAME_ID,
+            &ManifestEdit::ActiveFaction(Some("95".to_string())),
+        )
+        .expect("recording the active faction should succeed");
         assert_eq!(updated.metadata.active_faction_id, Some("95".to_string()));
 
         let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("reopen should succeed");
@@ -2762,8 +2707,12 @@ mod tests {
     fn setting_the_active_faction_of_a_game_that_does_not_exist_is_an_error() {
         let dir = tempdir().expect("tempdir");
 
-        let error = set_active_faction(dir.path(), "no-such-game", "95")
-            .expect_err("setting the active faction of a missing game should fail");
+        let error = edit_game_manifest(
+            dir.path(),
+            "no-such-game",
+            &ManifestEdit::ActiveFaction(Some("95".to_string())),
+        )
+        .expect_err("setting the active faction of a missing game should fail");
 
         assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
     }
@@ -2772,8 +2721,12 @@ mod tests {
     fn renaming_a_missing_game_names_it() {
         let dir = tempdir().expect("tempdir");
 
-        let error = set_game_name(dir.path(), "no-such-game", "Binding of the North")
-            .expect_err("renaming a missing game should fail");
+        let error = edit_game_manifest(
+            dir.path(),
+            "no-such-game",
+            &ManifestEdit::Name("Binding of the North".to_string()),
+        )
+        .expect_err("renaming a missing game should fail");
 
         assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
     }
@@ -2977,7 +2930,12 @@ mod tests {
     fn a_reset_game_forgets_which_faction_was_yours() {
         let dir = tempdir().expect("tempdir");
         create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
-        set_active_faction(dir.path(), GAME_ID, "17").expect("the faction should be recorded");
+        edit_game_manifest(
+            dir.path(),
+            GAME_ID,
+            &ManifestEdit::ActiveFaction(Some("17".to_string())),
+        )
+        .expect("the faction should be recorded");
 
         let reset = reset_game(dir.path(), GAME_ID, "2026-08-17T09:00:00Z")
             .expect("the reset should succeed");

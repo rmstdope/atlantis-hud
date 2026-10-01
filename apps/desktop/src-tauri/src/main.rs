@@ -3,10 +3,9 @@
     feature = "desktop-runtime"
 ))]
 use atlantis_hud_core_tauri::{
-    command_create_game, command_delete_game, command_export_game, command_import_game,
-    command_list_games, command_open_game, command_reset_game, command_set_active_faction,
-    command_set_game_map, command_set_game_map_sizes, command_set_game_name,
-    command_set_game_ruleset, GameManifest, OpenedGameDto,
+    command_create_game, command_delete_game, command_edit_game_manifest, command_export_game,
+    command_import_game, command_list_games, command_open_game, command_reset_game, GameManifest,
+    ManifestEdit, OpenedGameDto,
 };
 
 #[cfg(all(
@@ -114,64 +113,12 @@ fn import_game(
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
-fn set_game_ruleset(
+fn edit_game_manifest(
     app: tauri::AppHandle,
     game_id: String,
-    ruleset_id: String,
+    edit: ManifestEdit,
 ) -> Result<GameManifest, String> {
-    command_set_game_ruleset(&games_root(&app)?, &game_id, &ruleset_id)
-}
-
-#[cfg(all(
-    any(target_os = "linux", target_os = "macos", target_os = "windows"),
-    feature = "desktop-runtime"
-))]
-#[tauri::command(rename_all = "snake_case")]
-fn set_game_map(
-    app: tauri::AppHandle,
-    game_id: String,
-    map_json: String,
-) -> Result<GameManifest, String> {
-    command_set_game_map(&games_root(&app)?, &game_id, &map_json)
-}
-
-#[cfg(all(
-    any(target_os = "linux", target_os = "macos", target_os = "windows"),
-    feature = "desktop-runtime"
-))]
-#[tauri::command(rename_all = "snake_case")]
-fn set_game_map_sizes(
-    app: tauri::AppHandle,
-    game_id: String,
-    map_sizes_json: String,
-) -> Result<GameManifest, String> {
-    command_set_game_map_sizes(&games_root(&app)?, &game_id, &map_sizes_json)
-}
-
-#[cfg(all(
-    any(target_os = "linux", target_os = "macos", target_os = "windows"),
-    feature = "desktop-runtime"
-))]
-#[tauri::command(rename_all = "snake_case")]
-fn set_game_name(
-    app: tauri::AppHandle,
-    game_id: String,
-    game_name: String,
-) -> Result<GameManifest, String> {
-    command_set_game_name(&games_root(&app)?, &game_id, &game_name)
-}
-
-#[cfg(all(
-    any(target_os = "linux", target_os = "macos", target_os = "windows"),
-    feature = "desktop-runtime"
-))]
-#[tauri::command(rename_all = "snake_case")]
-fn set_active_faction(
-    app: tauri::AppHandle,
-    game_id: String,
-    faction_id: String,
-) -> Result<GameManifest, String> {
-    command_set_active_faction(&games_root(&app)?, &game_id, &faction_id)
+    command_edit_game_manifest(&games_root(&app)?, &game_id, edit)
 }
 
 #[cfg(all(
@@ -199,11 +146,7 @@ fn main() {
             reset_game,
             export_game,
             import_game,
-            set_game_ruleset,
-            set_game_map,
-            set_game_map_sizes,
-            set_game_name,
-            set_active_faction,
+            edit_game_manifest,
             atlantis_hud_core_tauri::command_parse_report,
             atlantis_hud_core_tauri::command_parse_report_full,
             atlantis_hud_core_tauri::command_preview_report_import,

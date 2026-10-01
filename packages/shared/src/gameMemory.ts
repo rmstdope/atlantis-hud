@@ -400,7 +400,7 @@ export async function restoreLatestTurn(
   // and no `updated_at` moves - still holds.
   if (factionId !== rememberedFaction) {
     try {
-      await client.setActiveFaction(gameId, factionId);
+      await client.editGameManifest(gameId, { kind: "activeFaction", value: factionId });
     } catch (error: unknown) {
       warning =
         warning ?? `which faction this game reopens as could not be remembered: ${detail(error)}`;

@@ -52,8 +52,7 @@ function fakeClient(overrides: Partial<GameClient> = {}): GameClient {
     deleteGame: vi.fn().mockResolvedValue(undefined),
     exportGame: vi.fn(),
     importGame: vi.fn(),
-    setGameRuleset: vi.fn(),
-    setGameName: vi.fn(),
+    editGameManifest: vi.fn(),
     resetGame: vi.fn().mockImplementation(async (gameId: string) => opened(gameId)),
     ...overrides
   };
@@ -420,7 +419,7 @@ describe("changing a game's ruleset", () => {
     const result = await changeRuleset(client, game, "neworigins");
 
     expect(result).toBeNull();
-    expect(client.setGameRuleset).not.toHaveBeenCalled();
+    expect(client.editGameManifest).not.toHaveBeenCalled();
   });
 
   it("refuses a ruleset this build does not ship, without touching the client", async () => {
@@ -428,37 +427,43 @@ describe("changing a game's ruleset", () => {
     const game = opened("g1", "neworigins");
 
     await expect(changeRuleset(client, game, "nope")).rejects.toThrow("unknown ruleset: nope");
-    expect(client.setGameRuleset).not.toHaveBeenCalled();
+    expect(client.editGameManifest).not.toHaveBeenCalled();
   });
 
   it("moves the game to a known, different ruleset and refreshes the list", async () => {
     const movedManifest = manifest("g1", NOW, "otherworld");
     const client = fakeClient({
-      setGameRuleset: vi.fn().mockResolvedValue(movedManifest),
+      editGameManifest: vi.fn().mockResolvedValue(movedManifest),
       listGames: vi.fn().mockResolvedValue([movedManifest])
     });
     const game = opened("g1", "neworigins");
 
     const result = await changeRuleset(client, game, "otherworld");
 
-    expect(client.setGameRuleset).toHaveBeenCalledWith("g1", "otherworld");
+    expect(client.editGameManifest).toHaveBeenCalledWith("g1", {
+      kind: "ruleset",
+      value: "otherworld"
+    });
     expect(result?.manifest).toEqual(movedManifest);
     expect(result?.games).toEqual([movedManifest]);
   });
 });
 
 describe("renaming a game", () => {
-  it("calls setGameName with the game's id and the trimmed name, and refreshes the list", async () => {
+  it("submits the trimmed name as an edit and refreshes the list", async () => {
     const renamedManifest = { ...manifest("g1", NOW), metadata: { gameId: "g1", gameName: "Binding of the North", rulesetId: "neworigins" } };
     const client = fakeClient({
-      setGameName: vi.fn().mockResolvedValue(renamedManifest),
+      editGameManifest: vi.fn().mockResolvedValue(renamedManifest),
       listGames: vi.fn().mockResolvedValue([renamedManifest])
     });
     const game = opened("g1");
 
     const result = await renameGame(client, game, "  Binding of the North  ");
 
-    expect(client.setGameName).toHaveBeenCalledWith("g1", "Binding of the North");
+    expect(client.editGameManifest).toHaveBeenCalledWith("g1", {
+      kind: "name",
+      value: "Binding of the North"
+    });
     expect(result.manifest).toEqual(renamedManifest);
     expect(result.games).toEqual([renamedManifest]);
   });
@@ -468,6 +473,6 @@ describe("renaming a game", () => {
     const game = opened("g1");
 
     await expect(renameGame(client, game, "   ")).rejects.toThrow("a game needs a name");
-    expect(client.setGameName).not.toHaveBeenCalled();
+    expect(client.editGameManifest).not.toHaveBeenCalled();
   });
 });

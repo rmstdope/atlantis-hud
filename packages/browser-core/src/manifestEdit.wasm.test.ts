@@ -36,12 +36,12 @@ describe("what one manifest edit does, across the WebAssembly boundary", () => {
     const store = createMemoryWebStore();
     const adapter = createWebCoreAdapter(wasm, store);
     await adapter.createGame(newGame());
-    await adapter.setGameMap(
-      "g1",
-      JSON.stringify({ width: 72, height: 96, wrapX: true, wrapY: false })
-    );
+    await adapter.editGameManifest("g1", {
+      kind: "map",
+      value: { width: 72, height: 96, wrapX: true, wrapY: false }
+    });
 
-    const cleared = await adapter.setGameMap("g1", "");
+    const cleared = await adapter.editGameManifest("g1", { kind: "map", value: null });
 
     expect("map" in cleared.metadata).toBe(false);
     const stored = (await store.getGame("g1"))?.manifest as GameManifest;
@@ -53,10 +53,10 @@ describe("what one manifest edit does, across the WebAssembly boundary", () => {
     const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
     await adapter.createGame(newGame());
 
-    const withMap = await adapter.setGameMap(
-      "g1",
-      JSON.stringify({ width: 72, height: 96, wrapX: true, wrapY: false })
-    );
+    const withMap = await adapter.editGameManifest("g1", {
+      kind: "map",
+      value: { width: 72, height: 96, wrapX: true, wrapY: false }
+    });
 
     expect(withMap.metadata.map).toEqual({ width: 72, height: 96, wrapX: true, wrapY: false });
   });
@@ -66,7 +66,7 @@ describe("what one manifest edit does, across the WebAssembly boundary", () => {
     const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
     await adapter.createGame(newGame());
 
-    const renamed = await adapter.setGameName("g1", "Renamed");
+    const renamed = await adapter.editGameManifest("g1", { kind: "name", value: "Renamed" });
 
     // `activeFactionId` comes back explicitly null, unlike `map`: that field carries no
     // `skip_serializing_if`, so a round trip through the core states the absence rather than
@@ -83,11 +83,38 @@ describe("what one manifest edit does, across the WebAssembly boundary", () => {
     await adapter.createGame(newGame());
 
     await adapter.openGame("g1", "2026-08-05T09:00:00Z");
-    await adapter.setGameRuleset("g1", "standard");
-    const final = await adapter.setActiveFaction("g1", "f1");
+    await adapter.editGameManifest("g1", { kind: "ruleset", value: "standard" });
+    const final = await adapter.editGameManifest("g1", {
+      kind: "activeFaction",
+      value: "f1"
+    });
 
     expect(final.lastOpenedAt).toBe("2026-08-05T09:00:00Z");
     expect(final.metadata.rulesetId).toBe("standard");
     expect(final.metadata.activeFactionId).toBe("f1");
+  });
+
+  it("records level dimensions with the same typed edit", async () => {
+    const wasm = await realCore();
+    const store = createMemoryWebStore();
+    const adapter = createWebCoreAdapter(wasm, store);
+    await adapter.createGame(newGame());
+    const mapSizes = {
+      levels: { surface: { width: 72, height: 96 } },
+      wrapX: true,
+      wrapY: false
+    };
+
+    const edited = await adapter.editGameManifest("g1", { kind: "mapSizes", value: mapSizes });
+
+    expect(edited.metadata.mapSizes).toEqual(mapSizes);
+    expect(edited.metadata.map).toEqual({
+      ...mapSizes.levels.surface,
+      wrapX: true,
+      wrapY: false,
+      levels: mapSizes.levels
+    });
+    const reopened = await adapter.openGame("g1", "2026-08-06T09:00:00Z");
+    expect(reopened.manifest.metadata.mapSizes).toEqual(mapSizes);
   });
 });

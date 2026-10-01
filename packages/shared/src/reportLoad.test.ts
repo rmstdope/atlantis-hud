@@ -77,7 +77,7 @@ function client(overrides: Partial<CoreClient> = {}): CoreClient {
     loadRegionSightings: vi.fn().mockResolvedValue([]),
     loadMergedReports: vi.fn().mockResolvedValue([]),
     loadOrderDraft: vi.fn().mockResolvedValue(null),
-    setActiveFaction: vi.fn().mockImplementation(async () => REWRITTEN_MANIFEST),
+    editGameManifest: vi.fn().mockImplementation(async () => REWRITTEN_MANIFEST),
     parseReportClassified: vi.fn().mockResolvedValue(report()),
     parseReportFull: vi.fn().mockResolvedValue(report()),
     knownMap: vi.fn().mockResolvedValue(KNOWN_MAP),
@@ -230,8 +230,11 @@ describe("loadTurn", () => {
 
     const loaded = await loadTurn(core, OPEN_GAME, report(), "raw text", RULESET, NOW);
 
-    expect(core.setActiveFaction).toHaveBeenCalledTimes(1);
-    expect(core.setActiveFaction).toHaveBeenCalledWith("aug-2026", "95");
+    expect(core.editGameManifest).toHaveBeenCalledTimes(1);
+    expect(core.editGameManifest).toHaveBeenCalledWith("aug-2026", {
+      kind: "activeFaction",
+      value: "95"
+    });
     expect(loaded.manifest).toBe(REWRITTEN_MANIFEST);
     expect(loaded.status.tone).toBe("routine");
   });
@@ -245,7 +248,7 @@ describe("loadTurn", () => {
 
     const loaded = await loadTurn(core, settled, report(), "raw text", RULESET, NOW);
 
-    expect(core.setActiveFaction).not.toHaveBeenCalled();
+    expect(core.editGameManifest).not.toHaveBeenCalled();
     expect(loaded.manifest).toBeNull();
   });
 
@@ -259,13 +262,16 @@ describe("loadTurn", () => {
       warning: null
     });
 
-    expect(core.setActiveFaction).toHaveBeenCalledWith("aug-2026", "95");
+    expect(core.editGameManifest).toHaveBeenCalledWith("aug-2026", {
+      kind: "activeFaction",
+      value: "95"
+    });
     expect(loaded.manifest).toBe(REWRITTEN_MANIFEST);
   });
 
   it("turns a manifest that will not write into a warning, not a failed load", async () => {
     const core = client({
-      setActiveFaction: vi.fn().mockRejectedValue(new Error("the manifest is read-only"))
+      editGameManifest: vi.fn().mockRejectedValue(new Error("the manifest is read-only"))
     });
 
     const loaded = await loadTurn(core, OPEN_GAME, report(), "raw text", RULESET, NOW);
@@ -279,7 +285,7 @@ describe("loadTurn", () => {
   it("lets the draft warning win over the remembering one", async () => {
     const core = client({
       loadOrderDraft: vi.fn().mockRejectedValue(new Error("draft is locked")),
-      setActiveFaction: vi.fn().mockRejectedValue(new Error("the manifest is read-only"))
+      editGameManifest: vi.fn().mockRejectedValue(new Error("the manifest is read-only"))
     });
 
     const loaded = await loadTurn(core, OPEN_GAME, report(), "raw text", RULESET, NOW);
@@ -292,7 +298,7 @@ describe("loadTurn", () => {
 
     const loaded = await loadTurn(core, null, report(), "raw text", RULESET, NOW);
 
-    expect(core.setActiveFaction).not.toHaveBeenCalled();
+    expect(core.editGameManifest).not.toHaveBeenCalled();
     expect(loaded.manifest).toBeNull();
   });
 });
@@ -366,7 +372,7 @@ describe("storeOlderTurn", () => {
 
     await storeOlderTurn(core, OPEN_GAME, report(), "raw text", RULESET, NOW, 71);
 
-    expect(core.setActiveFaction).not.toHaveBeenCalled();
+    expect(core.editGameManifest).not.toHaveBeenCalled();
   });
 });
 

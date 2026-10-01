@@ -210,14 +210,14 @@ describe("commandParameters", () => {
     `;
     const mainRs = `
       #[tauri::command(rename_all = "snake_case")]
-      fn set_game_map(app: tauri::AppHandle, game_id: String, map_json: String) -> Result<(), String> {
+      fn edit_game_manifest(app: tauri::AppHandle, game_id: String, edit: ManifestEdit) -> Result<(), String> {
     `;
 
     expect(commandParameters(mainRs, coreTauriLibRs)).toEqual({
       order_vocabulary: [{ name: "ruleset_json", required: false }],
-      set_game_map: [
+      edit_game_manifest: [
         { name: "game_id", required: true },
-        { name: "map_json", required: true }
+        { name: "edit", required: true }
       ]
     });
   });

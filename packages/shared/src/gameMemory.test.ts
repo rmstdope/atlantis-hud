@@ -28,7 +28,7 @@ function client(overrides: Partial<CoreClient> = {}): CoreClient {
     loadMergedReports: vi.fn().mockResolvedValue([]),
     mergeReport: vi.fn().mockResolvedValue(MERGE_RESULT),
     knownMap: vi.fn().mockResolvedValue(KNOWN_MAP),
-    setActiveFaction: vi.fn().mockResolvedValue(undefined),
+    editGameManifest: vi.fn().mockResolvedValue(undefined),
     ...overrides
   } as unknown as CoreClient;
 }
@@ -546,8 +546,11 @@ describe("reopening the turn the player was last in", () => {
 
     await restoreLatestTurn(core, OPEN_GAME, vi.fn().mockResolvedValue(report("95")), RULESET);
 
-    expect(core.setActiveFaction).toHaveBeenCalledTimes(1);
-    expect(core.setActiveFaction).toHaveBeenCalledWith("aug-2026", "95");
+    expect(core.editGameManifest).toHaveBeenCalledTimes(1);
+    expect(core.editGameManifest).toHaveBeenCalledWith("aug-2026", {
+      kind: "activeFaction",
+      value: "95"
+    });
 
     // Already remembering that faction, there is nothing to settle and nothing is written.
     const settled = restoring();
@@ -564,12 +567,12 @@ describe("reopening the turn the player was last in", () => {
       RULESET
     );
 
-    expect(settled.setActiveFaction).not.toHaveBeenCalled();
+    expect(settled.editGameManifest).not.toHaveBeenCalled();
   });
 
   it("warns rather than fails when the faction cannot be remembered", async () => {
     const core = restoring({
-      setActiveFaction: vi.fn().mockRejectedValue(new Error("the manifest is read-only"))
+      editGameManifest: vi.fn().mockRejectedValue(new Error("the manifest is read-only"))
     });
 
     const restored = await restoreLatestTurn(
