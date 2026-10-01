@@ -11,15 +11,13 @@
 use std::path::Path;
 
 use atlantis_hud_core::report::import::import_writes;
-use atlantis_hud_core::report::merge::{
-    merge_map_export_into_sightings, merge_report_into_sightings, StoredSighting,
-};
+use atlantis_hud_core::report::merge::StoredSighting;
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
-    completions_at_caret, engine_info, order_argument_completions, order_commands,
-    order_vocabulary, parse_report, plan_merge, reject_import, reserved_merge_identity,
-    CaretCompletions, EngineInfo, MergePlan, OrderCompletion, OrderValidationResult,
-    ReportParseResult, ReportParseResultWire,
+    apply_merge_plan, completions_at_caret, engine_info, order_argument_completions,
+    order_commands, order_vocabulary, parse_report, plan_merge, reject_import,
+    reserved_merge_identity, CaretCompletions, EngineInfo, MergePlan, OrderCompletion,
+    OrderValidationResult, ReportParseResult, ReportParseResultWire,
 };
 use atlantis_hud_core_persistence::{
     create_game, delete_army, delete_game, delete_hex_note, edit_game_manifest, export_game,
@@ -889,16 +887,7 @@ pub mod commands {
                 .iter()
                 .map(StoredSighting::from)
                 .collect();
-        let outcome = match &plan {
-            MergePlan::Refused(_) => unreachable!("refused above"),
-            MergePlan::AlliedReport => {
-                merge_report_into_sightings(&existing, &report, viewer_turn_number)
-            }
-            MergePlan::MapExport { file_turn, ages }
-            | MergePlan::AtlaClientMap { file_turn, ages } => {
-                merge_map_export_into_sightings(&existing, &report, *file_turn, ages)
-            }
-        };
+        let outcome = apply_merge_plan(&plan, &existing, &report, viewer_turn_number)?;
 
         upsert_region_sightings(
             Path::new(database_path),
