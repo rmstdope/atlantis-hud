@@ -19,13 +19,21 @@ export function useWebAppUpdate(): AppUpdateControl {
   // Kept so a manual check has something to call `update()` on. The hook hands it over once, when
   // registration succeeds, and never again.
   const registration = useRef<ServiceWorkerRegistration | undefined>(undefined);
+  const reloadRequested = useRef(false);
   const [checked, setChecked] = useState(false);
   const [checking, setChecking] = useState(false);
+
+  const reload = useCallback(() => {
+    if (reloadRequested.current) return;
+    reloadRequested.current = true;
+    window.location.reload();
+  }, []);
 
   const {
     needRefresh: [needRefresh],
     updateServiceWorker
   } = useRegisterSW({
+    onNeedReload: reload,
     onRegisteredSW: (_url, worker) => {
       registration.current = worker;
     }
@@ -52,6 +60,20 @@ export function useWebAppUpdate(): AppUpdateControl {
       });
   }, []);
 
+  const apply = useCallback(() => {
+    const waiting = registration.current?.waiting;
+    if (waiting) {
+      const reloadWhenActivated = () => {
+        if (waiting.state !== "activated") return;
+        waiting.removeEventListener("statechange", reloadWhenActivated);
+        reload();
+      };
+      waiting.addEventListener("statechange", reloadWhenActivated);
+      reloadWhenActivated();
+    }
+    void updateServiceWorker(true);
+  }, [reload, updateServiceWorker]);
+
   const state: AppUpdateState = needRefresh
     ? "available"
     : checking
@@ -63,6 +85,6 @@ export function useWebAppUpdate(): AppUpdateControl {
   return {
     state,
     check,
-    apply: () => void updateServiceWorker(true)
+    apply
   };
 }
