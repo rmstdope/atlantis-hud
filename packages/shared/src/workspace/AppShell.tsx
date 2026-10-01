@@ -605,7 +605,8 @@ export function AppShell({
     silver: [],
     production: NO_PRODUCTION,
     students: NO_STUDENTS,
-    faction: NO_FACTION_ORDERS
+    faction: NO_FACTION_ORDERS,
+    unclaimedSilverUse: null
   });
   const [save, setSave] = useState<SaveState>({ kind: "clean" });
   // The planner takes the report as text, which keeps the call stateless: there is no session to
@@ -3455,7 +3456,8 @@ export function AppShell({
         silver: [],
         production: NO_PRODUCTION,
         students: NO_STUDENTS,
-        faction: NO_FACTION_ORDERS
+        faction: NO_FACTION_ORDERS,
+        unclaimedSilverUse: null
       });
       return undefined;
     }
@@ -3488,7 +3490,8 @@ export function AppShell({
               silver: result.silver ?? [],
               production: result.production ?? NO_PRODUCTION,
               students: result.students ?? NO_STUDENTS,
-              faction: result.faction ?? NO_FACTION_ORDERS
+              faction: result.faction ?? NO_FACTION_ORDERS,
+              unclaimedSilverUse: result.unclaimed_silver ?? null
             });
           }
         })
@@ -5382,6 +5385,7 @@ export function AppShell({
             production={validated.production}
             students={validated.students}
             faction={validated.faction}
+            unclaimedSilverUse={validated.unclaimedSilverUse}
             attitudes={parsed?.header.attitudes ?? null}
             mergedFactionIds={new Set(mergedReports.map((record) => record.mergedFactionId))}
             renderFactionName={(factionId, label) => (

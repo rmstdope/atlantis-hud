@@ -3,6 +3,7 @@ import type {
   OrderValidationResult,
   FactionOrders,
   NewStudents, ProductionOverview,
+  UnclaimedSilverUse,
   UnitSilver
 } from "@atlantis/core-client";
 import { SILVER_TROUBLE_CODES } from "@atlantis/core-client";
@@ -148,6 +149,8 @@ export type ValidatedOrders = {
   students: NewStudents;
   /** What those orders' FACTION lines do. `ah-7g4f`. */
   faction: FactionOrders;
+  /** This turn's expected use of the report's unclaimed fund. `ah-h2ad`. */
+  unclaimedSilverUse: UnclaimedSilverUse | null;
 };
 
 /** No regions and no limits: what the window reads before the first validation lands. */

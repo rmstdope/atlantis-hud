@@ -4,7 +4,8 @@ import type {
   FactionOrders,
   FactionStatus,
   NewStudents,
-  ProductionOverview
+  ProductionOverview,
+  UnclaimedSilverUse
 } from "@atlantis/core-client";
 import {
   allowanceRows,
@@ -15,6 +16,7 @@ import {
 } from "./factionView";
 import { POPOVER_BODY_MAX_H } from "./primitives";
 import { PopoverFrame } from "./popover";
+import { UnclaimedSilverUseDetails } from "./UnclaimedSilverUseDetails";
 
 /** The bar and count colours by allowance state, the same the Production window uses. */
 const BAR_FILL: Record<AllowanceState, string> = { room: "bg-select", full: "bg-brass", over: "bg-danger" };
@@ -33,6 +35,7 @@ export function FactionPanel({
   factionId,
   factionTypes,
   unclaimedSilver,
+  unclaimedSilverUse,
   status,
   attitudes,
   mergedFactionIds,
@@ -47,6 +50,7 @@ export function FactionPanel({
   factionId: string | null;
   factionTypes: string[];
   unclaimedSilver: number | null;
+  unclaimedSilverUse: UnclaimedSilverUse | null;
   status: FactionStatus | null;
   attitudes: DeclaredAttitudes | null;
   mergedFactionIds: ReadonlySet<string>;
@@ -109,10 +113,25 @@ export function FactionPanel({
         ) : null}
 
         {unclaimedSilver !== null ? (
-          <p className="mt-1">
-            <span className="text-ink-soft">Unclaimed silver </span>
-            <span className="text-ink">{unclaimedSilver}</span>
-          </p>
+          <>
+            <p className="mt-1">
+              <span className="text-ink-soft">Unclaimed silver </span>
+              <span className="text-ink">{unclaimedSilver}</span>
+            </p>
+            {unclaimedSilverUse !== null ? (
+              <p>
+                <span className="text-ink-soft">Expected use this turn </span>
+                {unclaimedSilverUse.used > 0 || unclaimedSilverUse.notCounted.length > 0 ? (
+                  <UnclaimedSilverUseDetails usage={unclaimedSilverUse} />
+                ) : (
+                  <span className="text-ink-dim">none</span>
+                )}
+                {unclaimedSilverUse.used > 0 ? (
+                  <span className="text-ink-dim"> · {unclaimedSilverUse.remaining} left</span>
+                ) : null}
+              </p>
+            ) : null}
+          </>
         ) : null}
 
         {rows.length > 0 ? (

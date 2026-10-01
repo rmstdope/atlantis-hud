@@ -73,6 +73,10 @@ use crate::orders::targets::{
     party_unit_id, GiveEndpoint, GiveOutcome, GiveReach, GiveRefusal,
 };
 use crate::orders::transfers::{in_report_order, PendingTransfer};
+use crate::orders::unclaimed_silver::{
+    UnclaimedSilverRejection, UnclaimedSilverRejectionReason, UnclaimedSilverUse,
+    UnclaimedSilverUseEntry, UnclaimedSilverUseGroup,
+};
 use crate::report::composition;
 use crate::report::flags::FlagChange;
 use crate::report::model::{
@@ -609,6 +613,8 @@ pub struct TurnReview {
     pub students: NewStudents,
     /// What this turn's FACTION orders do, for the faction dropdown. `ah-7g4f`.
     pub faction: FactionOrders,
+    /// What this turn is expected to draw from the faction's unclaimed-silver fund.
+    pub unclaimed_silver: Option<UnclaimedSilverUse>,
 }
 
 /// Checks a whole turn's orders against the report they were written for, and forecasts each
@@ -712,6 +718,18 @@ pub fn review_turn(
         })
         .collect();
 
+    let unit_names: BTreeMap<UnitKey, String> = hexes
+        .iter()
+        .flat_map(|hex| {
+            hex.units.iter().map(|unit| {
+                (
+                    unit_key(&hex.region.region_id, &unit.unit.unit_id),
+                    unit.unit.name.clone(),
+                )
+            })
+        })
+        .collect();
+
     // Silver receipts come from the settlement those hexes just ran, so every hex has to exist
     // before any of them can be priced - the same reason the ledgers below are built in two
     // passes. Gathered once for the whole turn rather than per unit: per unit this would be
@@ -732,7 +750,16 @@ pub fn review_turn(
     // the cross-hex disagreement `ah-k43x` fixed (`ah-40c9`).
     let mut hexes = hexes;
     let claim_allowances = claim_allowances_for(&hexes, purse.unclaimed);
-    settle_recruits_before_production(&mut hexes, ruleset, &claim_allowances);
+    let unclaimed_plan = unclaimed_silver_plan(&hexes, &claim_allowances, purse.unclaimed, ruleset);
+    let withdrawal_allowances = unclaimed_plan
+        .as_ref()
+        .map(|plan| &plan.withdrawal_allowances);
+    settle_recruits_before_production(
+        &mut hexes,
+        ruleset,
+        &claim_allowances,
+        withdrawal_allowances,
+    );
 
     let production = production_shares_for(&hexes, ruleset);
 
@@ -745,6 +772,7 @@ pub fn review_turn(
                 &production,
                 &foreign_unit_ids,
                 &claim_allowances,
+                withdrawal_allowances,
             );
             // Recruits are already settled, once, by `settle_recruits_before_production` above -
             // this final ledger is a reader of that state, not another recruitment settlement.
@@ -758,9 +786,11 @@ pub fn review_turn(
         &mut hexes,
         &ReportWideInputs {
             report,
-            ordered: &ordered,
             ruleset,
             shipping: shipping.as_ref(),
+            pre_maintenance_fund_remaining: unclaimed_plan
+                .as_ref()
+                .map(|plan| plan.remaining_before_maintenance),
             month_end: &options.month_end,
         },
         StatePhase::Maintenance,
@@ -882,12 +912,15 @@ pub fn review_turn(
 
     // Not a warning, so no `CheckOptions` switch hides it.
     let worked = production_overview(report, &hexes, ruleset, applied, &silver, &plurals);
+    let unclaimed_silver = unclaimed_plan
+        .map(|plan| unclaimed_silver_use(plan, &month_end.fund, &silver, &unit_names));
     TurnReview {
         findings,
         silver,
         production: worked,
         students: new_students(&hexes, ruleset),
         faction,
+        unclaimed_silver,
     }
 }
 
@@ -938,9 +971,9 @@ const REPORT_WIDE_STEPS: [(StatePhase, ReportWideStep); 7] = [
 /// What the report-wide steps read that no hex holds.
 struct ReportWideInputs<'r> {
     report: &'r ParsedReport,
-    ordered: &'r OrderedUnits,
     ruleset: Option<&'r Ruleset>,
     shipping: Option<&'r super::transport::Shipping>,
+    pre_maintenance_fund_remaining: Option<i64>,
     /// Where each unit ends the month, from the movement trace (`CheckOptions::month_end`), so
     /// maintenance is shared where a walker arrives (`ah-n3qb`).
     month_end: &'r super::transport::MonthEndHexes,
@@ -1051,12 +1084,7 @@ fn draw_on_unclaimed_fund(
         .report
         .header
         .unclaimed_silver
-        .zip(total_drawn_from_fund(
-            inputs.report,
-            inputs.ordered,
-            inputs.ruleset,
-        ))
-        .map(|(held, drawn)| (held - drawn).max(0));
+        .and(inputs.pre_maintenance_fund_remaining);
     let settlement = settle_unclaimed(&claims, available);
     apply_relief(hexes, &settlement);
     settlement
@@ -1841,6 +1869,17 @@ fn orders_a_pillage(ordered: &Ordered<'_>) -> bool {
 /// (`rules/form`), and each is granted its own allowance.
 type ClaimAllowances = Option<BTreeMap<UnitKey, i64>>;
 
+type WithdrawalOrderKey = (UnitKey, usize);
+type WithdrawalAllowances<'a> = Option<&'a BTreeSet<WithdrawalOrderKey>>;
+
+struct UnclaimedSilverPlan {
+    claims: UnclaimedSilverUseGroup,
+    withdrawals: UnclaimedSilverUseGroup,
+    not_counted: Vec<UnclaimedSilverRejection>,
+    withdrawal_allowances: BTreeSet<WithdrawalOrderKey>,
+    remaining_before_maintenance: i64,
+}
+
 fn claim_allowances_for(hexes: &[Hex<'_>], unclaimed: Option<i64>) -> ClaimAllowances {
     let mut remaining = unclaimed?;
     let mut allowances = BTreeMap::new();
@@ -1858,6 +1897,152 @@ fn claim_allowances_for(hexes: &[Hex<'_>], unclaimed: Option<i64>) -> ClaimAllow
         }
     }
     Some(allowances)
+}
+
+fn unclaimed_silver_plan(
+    hexes: &[Hex<'_>],
+    claim_allowances: &ClaimAllowances,
+    unclaimed: Option<i64>,
+    ruleset: Option<&Ruleset>,
+) -> Option<UnclaimedSilverPlan> {
+    let mut remaining = unclaimed?;
+    let claims = claim_allowances.as_ref()?;
+    let mut claim_group = UnclaimedSilverUseGroup::default();
+
+    for hex in hexes {
+        for unit in &hex.units {
+            let amount = claims
+                .get(&unit_key(&hex.region.region_id, &unit.unit.unit_id))
+                .copied()
+                .unwrap_or_default();
+            if amount > 0 {
+                claim_group.amount = claim_group.amount.saturating_add(amount);
+                claim_group.entries.push(UnclaimedSilverUseEntry {
+                    unit_name: unit.unit.name.clone(),
+                    unit_id: unit.unit.unit_id.clone(),
+                    amount,
+                    detail: None,
+                });
+            }
+        }
+    }
+    remaining = remaining.saturating_sub(claim_group.amount).max(0);
+
+    let mut withdrawal_group = UnclaimedSilverUseGroup::default();
+    let mut not_counted = Vec::new();
+    let mut withdrawal_allowances = BTreeSet::new();
+
+    for hex in hexes {
+        for unit in &hex.units {
+            let key = unit_key(&hex.region.region_id, &unit.unit.unit_id);
+            for placed in &unit.intents {
+                let Intent::Withdraw { count, item } = &placed.intent else {
+                    continue;
+                };
+                let order = format!("WITHDRAW {count} {item}");
+                if withdrawal_refused(hex.region) {
+                    not_counted.push(UnclaimedSilverRejection {
+                        unit_name: unit.unit.name.clone(),
+                        unit_id: unit.unit.unit_id.clone(),
+                        order,
+                        amount: None,
+                        reason: UnclaimedSilverRejectionReason::Nexus,
+                    });
+                    continue;
+                }
+                let Some(cost) = withdrawal_cost(item, ruleset) else {
+                    ruleset?;
+                    not_counted.push(UnclaimedSilverRejection {
+                        unit_name: unit.unit.name.clone(),
+                        unit_id: unit.unit.unit_id.clone(),
+                        order,
+                        amount: None,
+                        reason: UnclaimedSilverRejectionReason::NotBasicItem,
+                    });
+                    continue;
+                };
+                let amount = count.saturating_mul(cost).max(0);
+                if amount > remaining {
+                    not_counted.push(UnclaimedSilverRejection {
+                        unit_name: unit.unit.name.clone(),
+                        unit_id: unit.unit.unit_id.clone(),
+                        order,
+                        amount: Some(amount),
+                        reason: UnclaimedSilverRejectionReason::InsufficientFunds,
+                    });
+                    continue;
+                }
+                remaining = remaining.saturating_sub(amount).max(0);
+                withdrawal_group.amount = withdrawal_group.amount.saturating_add(amount);
+                withdrawal_group.entries.push(UnclaimedSilverUseEntry {
+                    unit_name: unit.unit.name.clone(),
+                    unit_id: unit.unit.unit_id.clone(),
+                    amount,
+                    detail: Some(format!("{count} {item}")),
+                });
+                withdrawal_allowances.insert((key.clone(), placed.line));
+            }
+        }
+    }
+
+    Some(UnclaimedSilverPlan {
+        claims: claim_group,
+        withdrawals: withdrawal_group,
+        not_counted,
+        withdrawal_allowances,
+        remaining_before_maintenance: remaining,
+    })
+}
+
+fn unclaimed_silver_use(
+    plan: UnclaimedSilverPlan,
+    settlement: &UpkeepSettlement,
+    silver: &[UnitSilver],
+    unit_names: &BTreeMap<UnitKey, String>,
+) -> UnclaimedSilverUse {
+    let maintenance_amount = if settlement.short > 0 {
+        settlement.available
+    } else {
+        silver
+            .iter()
+            .fold(0i64, |sum, unit| sum.saturating_add(unit.unclaimed_covered))
+    };
+    let maintenance_entries = silver
+        .iter()
+        .filter(|unit| unit.unclaimed_covered > 0)
+        .map(|unit| {
+            let key = unit_key(&unit.region_id, &unit.unit_id);
+            let unit_name = unit_names
+                .get(&key)
+                .map_or_else(|| format!("Unit {}", unit.unit_id), Clone::clone);
+            UnclaimedSilverUseEntry {
+                unit_name,
+                unit_id: unit.unit_id.clone(),
+                amount: unit.unclaimed_covered,
+                detail: None,
+            }
+        })
+        .collect();
+    let maintenance = UnclaimedSilverUseGroup {
+        amount: maintenance_amount,
+        entries: maintenance_entries,
+    };
+    let used = plan
+        .claims
+        .amount
+        .saturating_add(plan.withdrawals.amount)
+        .saturating_add(maintenance.amount);
+    UnclaimedSilverUse {
+        claims: plan.claims,
+        withdrawals: plan.withdrawals,
+        maintenance,
+        used,
+        remaining: plan
+            .remaining_before_maintenance
+            .saturating_sub(maintenance_amount)
+            .max(0),
+        not_counted: plan.not_counted,
+    }
 }
 
 fn claim_purse_for(allowances: &ClaimAllowances, unit: &UnitKey) -> FactionPurse {
@@ -5014,7 +5199,7 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
         .map(|unit| unit.unit_id.clone())
         .collect();
     let mut ledger =
-        ledger_for_with_production(hex, ruleset, &production, &foreign_unit_ids, &None);
+        ledger_for_with_production(hex, ruleset, &production, &foreign_unit_ids, &None, None);
     // A hex read alone ships nothing, so its upkeep can be charged straight away; the entry
     // points charge it in `settle_report_wide`, after TRANSPORT (`ah-7rjo`).
     charge_upkeep(&mut ledger, hex);
@@ -5046,6 +5231,7 @@ fn settle_recruits_before_production(
     hexes: &mut [Hex<'_>],
     ruleset: Option<&Ruleset>,
     claim_allowances: &ClaimAllowances,
+    withdrawal_allowances: WithdrawalAllowances<'_>,
 ) {
     let provisional = production_shares_for(hexes, ruleset);
     for hex in hexes.iter_mut() {
@@ -5062,6 +5248,7 @@ fn settle_recruits_before_production(
             &provisional,
             &foreign_unit_ids,
             claim_allowances,
+            withdrawal_allowances,
         );
         apply_recruits(&mut hex.units, &ledger, ruleset);
         // The settlement that stands: `rules/sequenceofevents` resolves BUY before the month-long
@@ -5108,6 +5295,7 @@ fn ledger_for_with_production<'a>(
     production: &ProductionShares,
     foreign_unit_ids: &BTreeSet<String>,
     claim_allowances: &ClaimAllowances,
+    withdrawal_allowances: WithdrawalAllowances<'_>,
 ) -> Ledger<'a> {
     let mut ledger = Ledger {
         ruleset,
@@ -5267,6 +5455,7 @@ fn ledger_for_with_production<'a>(
                     claim_remaining
                         .get_mut(&ordered.unit.unit_id)
                         .expect("every unit of this hex was given a claim purse above"),
+                    withdrawal_allowances,
                 );
             }
         }
@@ -5584,7 +5773,21 @@ pub(crate) fn item_effects(
     // acquiring separate recruitment settlements (`ah-40c9`).
     let mut hexes = hexes;
     let claim_allowances = claim_allowances_for(&hexes, report.header.unclaimed_silver);
-    settle_recruits_before_production(&mut hexes, ruleset, &claim_allowances);
+    let unclaimed_plan = unclaimed_silver_plan(
+        &hexes,
+        &claim_allowances,
+        report.header.unclaimed_silver,
+        ruleset,
+    );
+    let withdrawal_allowances = unclaimed_plan
+        .as_ref()
+        .map(|plan| &plan.withdrawal_allowances);
+    settle_recruits_before_production(
+        &mut hexes,
+        ruleset,
+        &claim_allowances,
+        withdrawal_allowances,
+    );
 
     // Every hex before any ledger, and one settlement for all of them: a passenger produces where
     // its vessel arrives, so the pool it draws on is in another hex's `Products` line. Settling
@@ -5606,6 +5809,7 @@ pub(crate) fn item_effects(
                 &production,
                 &foreign_unit_ids,
                 &claim_allowances,
+                withdrawal_allowances,
             );
             (hex, ledger)
         })
@@ -5614,9 +5818,11 @@ pub(crate) fn item_effects(
         &mut priced,
         &ReportWideInputs {
             report,
-            ordered: &ordered,
             ruleset,
             shipping: shipping.as_ref(),
+            pre_maintenance_fund_remaining: unclaimed_plan
+                .as_ref()
+                .map(|plan| plan.remaining_before_maintenance),
             month_end: &options.month_end,
         },
         StatePhase::Maintenance,
@@ -6687,6 +6893,7 @@ fn apply(
     standing: HexStanding<'_>,
     foreign_unit_ids: &BTreeSet<String>,
     claim_remaining: &mut Option<i64>,
+    withdrawal_allowances: WithdrawalAllowances<'_>,
 ) {
     let who = &actor.unit.unit_id;
 
@@ -6916,6 +7123,11 @@ fn apply(
         // with `charge`, and nothing is charged here, so nothing may reach `Ledger.charged_at`.
         Intent::Withdraw { count, item } => {
             if withdrawal_refused(hex.region) {
+                return;
+            }
+            if withdrawal_allowances.is_some_and(|allowances| {
+                !allowances.contains(&(unit_key(&hex.region.region_id, who), placed.line))
+            }) {
                 return;
             }
             if let Some(tag) = resolve_item(item, hex, actor, ruleset) {
@@ -31209,6 +31421,7 @@ BUILD
             &production,
             &BTreeSet::new(),
             &allowances,
+            None,
         );
 
         assert_eq!(
@@ -34263,12 +34476,10 @@ BUILD
         );
     }
 
-    /// The other half of `ah-tdsi`'s decline-over-guess rule, and the half a zero-fallback would
-    /// pass: a fund whose withdrawals nothing can price cannot be sized, so it is not spent on
-    /// upkeep at all and the unit it would have rescued is warned as it was before `ah-fjty`.
-    /// Treating the unknown total as zero would leave the whole $8450 in play and silence this.
+    /// A rejected non-basic withdrawal draws nothing from the fund, leaving it available for
+    /// maintenance. `rules/withdraw` says a non-basic item is an error rather than an acquisition.
     #[test]
-    fn an_unpriceable_withdrawal_leaves_the_upkeep_settlement_inactive() {
+    fn a_rejected_withdrawal_does_not_consume_the_upkeep_fund() {
         // Separate hexes, for the reason `a_withdrawal_leaves_less_of_the_fund_for_upkeep` gives.
         let starving_hex = || {
             vec![
@@ -34288,8 +34499,8 @@ BUILD
                 starving_hex(),
                 "unit 5\nWITHDRAW 1 longship\n"
             )),
-            ["withdraw-not-a-basic-item", "not-enough-silver"],
-            "the fund cannot be sized, so it cannot be spent"
+            ["withdraw-not-a-basic-item"],
+            "the rejected order does not consume the fund that can pay upkeep"
         );
 
         // The control: the same fund, a withdrawal the ruleset *can* price, and the unit is
@@ -49545,6 +49756,148 @@ BUILD
         );
 
         assert_eq!(forecast(&review, "2000").income, Some(4935));
+    }
+
+    /// `rules/sequenceofevents` settles every CLAIM before WITHDRAW, then maintenance;
+    /// `rules/claim`, `rules/withdraw`, and `rules/economy_maintenance` decide what each step draws.
+    #[test]
+    fn a_review_forecasts_only_fund_use_that_will_be_applied() {
+        let rules = ruleset();
+        let iron_cost = withdrawal_cost("iron", Some(&rules)).expect("iron is withdrawable");
+        let report = ParsedReport {
+            regions: vec![
+                region_at("1:1,1", 1, 1, vec![starving(unit("2000"))]),
+                region_at("1:2,1", 2, 1, vec![starving(unit("2001"))]),
+                region_at("1:3,1", 3, 1, vec![starving(unit("2002"))]),
+                region_at("1:4,1", 4, 1, vec![starving(unit("2003"))]),
+            ],
+            header: crate::report::header::ReportHeader {
+                unclaimed_silver: Some(300 + iron_cost + 30),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let review = review_turn(
+            &report,
+            "unit 2001\nWITHDRAW 1 iron\nunit 2002\nWITHDRAW 100 iron\nunit 2000\nCLAIM 300\n",
+            Some(&rules),
+            CheckOptions::default(),
+        );
+
+        let use_of_fund = review
+            .unclaimed_silver
+            .as_ref()
+            .expect("the report states the faction's fund");
+        assert_eq!(use_of_fund.claims.amount, 300);
+        assert_eq!(use_of_fund.withdrawals.amount, iron_cost);
+        assert_eq!(use_of_fund.maintenance.amount, 30);
+        assert_eq!(use_of_fund.used, 330 + iron_cost);
+        assert_eq!(use_of_fund.remaining, 0);
+        assert_eq!(use_of_fund.not_counted.len(), 1);
+        assert_eq!(use_of_fund.not_counted[0].amount, Some(100 * iron_cost));
+        assert_eq!(
+            use_of_fund.not_counted[0].reason,
+            crate::orders::unclaimed_silver::UnclaimedSilverRejectionReason::InsufficientFunds
+        );
+        assert!(
+            review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::CLAIMS_EXCEED_UNCLAIMED),
+            "the existing overdraw warning still reports the total the orders ask for"
+        );
+        assert_eq!(forecast(&review, "2001").unclaimed_covered, 10);
+        assert_eq!(forecast(&review, "2002").unclaimed_covered, 10);
+        assert_eq!(forecast(&review, "2003").unclaimed_covered, 10);
+    }
+
+    #[test]
+    fn item_effects_exclude_withdrawals_the_fund_cannot_cover() {
+        let rules = ruleset();
+        let iron_cost = withdrawal_cost("iron", Some(&rules)).expect("iron is withdrawable");
+        let report = ParsedReport {
+            regions: vec![region(vec![unit("2000"), unit("2001")])],
+            header: crate::report::header::ReportHeader {
+                unclaimed_silver: Some(iron_cost),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let effects = item_effects(
+            &report,
+            "unit 2000\nWITHDRAW 1 iron\nunit 2001\nWITHDRAW 1 iron\n",
+            Some(&rules),
+            &CheckOptions::default(),
+        );
+        let withdrawn_by = |unit_id: &str| {
+            effects
+                .get(&unit_key("1:7,53", unit_id))
+                .map(|entry| {
+                    entry
+                        .moved
+                        .iter()
+                        .filter(|movement| movement.tag == "IRON")
+                        .map(|movement| movement.delta)
+                        .sum::<i64>()
+                })
+                .unwrap_or_default()
+        };
+
+        assert_eq!(withdrawn_by("2000"), 1);
+        assert_eq!(withdrawn_by("2001"), 0);
+    }
+
+    #[test]
+    fn a_review_excludes_nexus_and_non_basic_withdrawals() {
+        let rules = ruleset();
+        assert!(withdrawal_cost("mithril sword", Some(&rules)).is_none());
+        let mut nexus = region_at("1:1,1", 1, 1, vec![unit("2000")]);
+        nexus.terrain = "Nexus".to_string();
+        let report = ParsedReport {
+            regions: vec![nexus, region_at("1:2,1", 2, 1, vec![unit("2001")])],
+            header: crate::report::header::ReportHeader {
+                unclaimed_silver: Some(1000),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let review = review_turn(
+            &report,
+            "unit 2000\nWITHDRAW 1 iron\nunit 2001\nWITHDRAW 1 mithril sword\n",
+            Some(&rules),
+            CheckOptions::default(),
+        );
+
+        let use_of_fund = review
+            .unclaimed_silver
+            .as_ref()
+            .expect("the report states the faction's fund");
+        assert_eq!(use_of_fund.withdrawals.amount, 0);
+        assert_eq!(use_of_fund.not_counted.len(), 2);
+        assert_eq!(
+            use_of_fund.not_counted[0].reason,
+            crate::orders::unclaimed_silver::UnclaimedSilverRejectionReason::Nexus
+        );
+        assert_eq!(
+            use_of_fund.not_counted[1].reason,
+            crate::orders::unclaimed_silver::UnclaimedSilverRejectionReason::NotBasicItem
+        );
+    }
+
+    #[test]
+    fn a_review_does_not_forecast_when_the_report_does_not_state_a_fund() {
+        let report = ParsedReport {
+            regions: vec![region(vec![unit("2000")])],
+            ..Default::default()
+        };
+        let review = review_turn(
+            &report,
+            "unit 2000\nWITHDRAW 1 iron\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(review.unclaimed_silver.is_none());
     }
 
     fn forecast_of(units: Vec<ReportUnit>) -> TurnReview {

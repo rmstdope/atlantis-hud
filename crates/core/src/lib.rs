@@ -121,6 +121,10 @@ pub struct OrderValidationResult {
     /// `#[serde(default)]` so an older payload deserialises to "no FACTION order".
     #[serde(default)]
     pub faction: crate::orders::faction_orders::FactionOrders,
+    /// How much of the report's unclaimed fund this turn's orders and maintenance will use.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub unclaimed_silver: Option<crate::orders::unclaimed_silver::UnclaimedSilverUse>,
 }
 
 impl OrderValidationResult {
