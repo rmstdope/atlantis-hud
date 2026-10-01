@@ -1,14 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { HttpRequest } from "@atlantis/shared";
-import type { DesktopPlugins } from "./desktopPlugins";
+import type { DesktopHttpPlugins } from "./desktopPlugins";
 import { desktopPbemTransport } from "./pbemTransport";
 
-function pluginsWith(httpRequest: DesktopPlugins["httpRequest"]): DesktopPlugins {
-  return {
-    save: vi.fn().mockResolvedValue(null),
-    writeTextFile: vi.fn().mockResolvedValue(undefined),
-    httpRequest
-  };
+function pluginsWith(httpRequest: DesktopHttpPlugins["httpRequest"]): DesktopHttpPlugins {
+  return { httpRequest };
 }
 
 describe("desktopPbemTransport", () => {

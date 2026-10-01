@@ -8,7 +8,7 @@
  */
 
 import type { HttpTransport } from "@atlantis/shared";
-import { desktopPlugins, type DesktopPlugins } from "./desktopPlugins";
+import { desktopPlugins, type DesktopHttpPlugins } from "./desktopPlugins";
 
 /**
  * The transport to hand a New Age client, over the given plugins.
@@ -17,7 +17,7 @@ import { desktopPlugins, type DesktopPlugins } from "./desktopPlugins";
  * transport rejects rather than pretending to have sent anything.
  */
 export function desktopNewAgeTransport(
-  plugins: DesktopPlugins | undefined = desktopPlugins()
+  plugins: DesktopHttpPlugins | undefined = desktopPlugins()
 ): HttpTransport {
   return async (request, signal) => {
     if (!plugins) {

@@ -1,13 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { desktopOrdersUploader } from "./uploadOrders";
-import type { DesktopPlugins } from "./desktopPlugins";
+import type { DesktopHttpPlugins } from "./desktopPlugins";
 
-function pluginsWith(httpRequest: DesktopPlugins["httpRequest"]): DesktopPlugins {
-  return {
-    save: vi.fn().mockResolvedValue(null),
-    writeTextFile: vi.fn().mockResolvedValue(undefined),
-    httpRequest
-  };
+function pluginsWith(httpRequest: DesktopHttpPlugins["httpRequest"]): DesktopHttpPlugins {
+  return { httpRequest };
 }
 
 describe("desktopOrdersUploader", () => {
