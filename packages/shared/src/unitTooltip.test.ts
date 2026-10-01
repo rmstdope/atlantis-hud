@@ -962,10 +962,8 @@ describe("the silver section", () => {
   });
 
   it("an_automatic_rescue_does_not_claim_the_player_shared_anything", () => {
-    // The note at the top of `silverNote` is inferred from "the column is negative and nothing
-    // warns", not from any field, so without the `sharedSilverCovered === 0` guard it tells a
-    // player who set no SHARE flag anywhere that their silver was shared (`ah-e66j`). The same
-    // unit, differing only in whether a faction-mate paid its upkeep, must get the other sentence.
+    // The two notes describe different sources: an automatic upkeep payment is not the explicit
+    // judgement that a discretionary shared pool covered an order shortfall (`ah-e66j`).
     const shared = summariseUnit(
       aReportUnit({ unitId: "1" }),
       forecast({ sharedSilverCovered: 60 }),
@@ -976,12 +974,21 @@ describe("the silver section", () => {
       "This unit's upkeep was paid by a faction-mate's silver (60)."
     );
 
-    const flagged = summariseUnit(aReportUnit({ unitId: "1" }), forecast(), false, true);
+    const flagged = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ sharedSilverCoverage: "covered" }),
+      false,
+      true
+    );
     expect(flagged.silver?.note).toBe("Shared silver in this hex covers the shortfall.");
   });
 
   it("says_when_shared_silver_covers_the_shortfall", () => {
-    const summary = summariseUnit(aReportUnit({ unitId: "1" }), forecast(), false);
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ sharedSilverCoverage: "covered" }),
+      false
+    );
     expect(summary.silver?.note).toBe("Shared silver in this hex covers the shortfall.");
   });
 

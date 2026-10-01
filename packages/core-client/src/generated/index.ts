@@ -82,6 +82,7 @@ export type { ReportSourceRef } from "./ReportSourceRef";
 export type { ReportUnit } from "./ReportUnit";
 export type { RosterSkills } from "./RosterSkills";
 export type { SettlementInfo } from "./SettlementInfo";
+export type { SharedSilverCoverage } from "./SharedSilverCoverage";
 export type { ShipmentPriced } from "./ShipmentPriced";
 export type { SilverChange } from "./SilverChange";
 export type { SilverChangeCause } from "./SilverChangeCause";

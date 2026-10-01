@@ -1881,7 +1881,13 @@ describe("the column popups", () => {
         "silver",
         unit({ own: true }),
         facts({
-          silver: aUnitSilver({ held: 0, expense: 10, atMonthEnd: -10, upkeep: 10 }),
+          silver: aUnitSilver({
+            held: 0,
+            expense: 10,
+            atMonthEnd: -10,
+            upkeep: 10,
+            sharedSilverCoverage: "shortfall"
+          }),
           silverWarned: false,
           silverHexShort: true,
           countUpkeep: true
@@ -1894,15 +1900,20 @@ describe("the column popups", () => {
     expect(popup.notes).not.toContain("Shared silver in this hex covers the shortfall.");
   });
 
-  // ah-0jxx: a doubted sharer leaves the hex's pool unjudged, so neither the unit nor the hex is
-  // warned - and that silence is not coverage.
+  // ah-0jxx: the forecast's explicit unjudged result must not be read as coverage.
   it("a short unit beside a doubted sharer is not told shared silver covers it", () => {
     const popup = columnPopup(
       popupForCell(
         "silver",
         unit({ own: true }),
         facts({
-          silver: aUnitSilver({ held: 0, expense: 10, atMonthEnd: -10, poolDoubted: true }),
+          silver: aUnitSilver({
+            held: 0,
+            expense: 10,
+            atMonthEnd: -10,
+            poolDoubted: true,
+            sharedSilverCoverage: "unjudged"
+          }),
           silverWarned: false,
           countUpkeep: true
         })
@@ -1916,20 +1927,32 @@ describe("the column popups", () => {
     "Shared silver in this hex could not be added up, because a sharing unit's month is uncertain, so whether it covers this unit's shortfall cannot be said.";
   const doubtedPoolNotes = (
     atMonthEnd: number | null,
-    more: { silverWarned?: boolean; silverHexShort?: boolean } = {}
-  ) =>
-    columnPopup(
+    more: {
+      silverWarned?: boolean;
+      silverHexShort?: boolean;
+      sharedSilverCoverage?: "shortfall" | "unjudged";
+    } = {}
+  ) => {
+    const { sharedSilverCoverage, ...diagnostics } = more;
+    return columnPopup(
       popupForCell(
         "silver",
         unit({ own: true }),
         facts({
-          silver: aUnitSilver({ held: 0, expense: 10, atMonthEnd, poolDoubted: true }),
+          silver: aUnitSilver({
+            held: 0,
+            expense: 10,
+            atMonthEnd,
+            poolDoubted: true,
+            sharedSilverCoverage: sharedSilverCoverage ?? "unjudged"
+          }),
           silverWarned: false,
           countUpkeep: true,
-          ...more
+          ...diagnostics
         })
       )
     ).notes;
+  };
 
   it("a short unit beside a doubted sharer is told the pool could not be added up, first", () => {
     const notes = doubtedPoolNotes(-10);
@@ -1937,12 +1960,22 @@ describe("the column popups", () => {
     expect(notes).not.toContain("Shared silver in this hex covers the shortfall.");
   });
 
-  it("a warned short unit beside a doubted sharer gets no unjudged-pool note", () => {
-    expect(doubtedPoolNotes(-10, { silverWarned: true })).not.toContain(UNJUDGED);
+  it("a shortfall judgement gets no unjudged-pool note when a warning is also present", () => {
+    expect(
+      doubtedPoolNotes(-10, {
+        silverWarned: true,
+        sharedSilverCoverage: "shortfall"
+      })
+    ).not.toContain(UNJUDGED);
   });
 
   it("a short unit in a hex found short gets no unjudged-pool note", () => {
-    expect(doubtedPoolNotes(-10, { silverHexShort: true })).not.toContain(UNJUDGED);
+    expect(
+      doubtedPoolNotes(-10, {
+        silverHexShort: true,
+        sharedSilverCoverage: "shortfall"
+      })
+    ).not.toContain(UNJUDGED);
   });
 
   it("a unit beside a doubted sharer that is not short gets no unjudged-pool note", () => {

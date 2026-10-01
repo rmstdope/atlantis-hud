@@ -344,6 +344,7 @@ fn claim_case(upkeep: i64, late_income: i64, shared_silver_covered: i64) -> Unit
         shipping_distance_unknown: false,
         shipping_target_unshown: false,
         pool_doubted: false,
+        shared_silver_coverage: None,
         changes: Vec::new(),
     }
 }

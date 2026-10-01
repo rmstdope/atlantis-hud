@@ -2186,6 +2186,7 @@ fn forecast_hex(
     // where the agreed mockup draws it - under `bought`.
     for (index, forecast) in into[start..].iter_mut().enumerate() {
         forecast.pool_doubted = pool_doubted;
+        forecast.shared_silver_coverage = purse_for_orders.coverage[index];
         let borrowed = purse_for_orders.borrows[index];
         forecast.borrowed_for_orders = borrowed;
         // The same guard the `Lent` pass makes, and for the same reason: a doubted unit's list is
@@ -10070,6 +10071,8 @@ struct SharingPurse {
     /// instead - did somebody else's money pay for this - which a sharer's overdraft answers yes
     /// to.
     borrows: Vec<i64>,
+    /// The result of judging each known shortfall against this pool, aligned with `hex.units`.
+    coverage: Vec<Option<super::silver::SharedSilverCoverage>>,
 }
 
 /// The purse this hex's `SHARE` flags open for orders, settled between the units that claim it.
@@ -10086,11 +10089,30 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
         lends_to: vec![0; hex.units.len()],
         lendable: vec![0; hex.units.len()],
         borrows: vec![0; hex.units.len()],
+        coverage: vec![None; hex.units.len()],
     };
 
     let sharing = Sharing::read(hex);
-    if sharing.sharers.is_empty() || !sharing.pool_trusted(ledger) {
+    if sharing.sharers.is_empty() {
         return nothing;
+    }
+
+    let coverage_for = |outcome| {
+        hex.units
+            .iter()
+            .map(|ordered| {
+                (!ledger.doubted.contains(&ordered.unit.unit_id)
+                    && relieved_balance(ledger, &ordered.unit.unit_id, SILVER) < 0)
+                    .then_some(outcome)
+            })
+            .collect()
+    };
+
+    if !sharing.pool_trusted(ledger) {
+        return SharingPurse {
+            coverage: coverage_for(super::silver::SharedSilverCoverage::Unjudged),
+            ..nothing
+        };
     }
 
     let pool = sharing.pool(ledger, SILVER);
@@ -10109,7 +10131,10 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
     }
 
     if claims.iter().sum::<i64>() > pool {
-        return nothing;
+        return SharingPurse {
+            coverage: coverage_for(super::silver::SharedSilverCoverage::Shortfall),
+            ..nothing
+        };
     }
 
     // Every undoubted unit's own overdraft, sharer or not - the borrowing this hex settled. Above
@@ -10130,7 +10155,11 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
         .collect();
 
     if pool <= 0 {
-        return SharingPurse { borrows, ..nothing };
+        return SharingPurse {
+            borrows,
+            coverage: coverage_for(super::silver::SharedSilverCoverage::Covered),
+            ..nothing
+        };
     }
 
     let lendable = hex
@@ -10149,6 +10178,7 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
         lends_to: claims,
         lendable,
         borrows,
+        coverage: coverage_for(super::silver::SharedSilverCoverage::Covered),
     }
 }
 
@@ -31334,10 +31364,10 @@ BUILD
     fn a_unit_beside_a_doubted_sharer_is_told_its_pool_was_not_judged() {
         let hex_region = region(vec![
             with_silver(unit("5"), 0),
-            sharing(with_silver(unit("7"), 500)),
+            sharing(with_silver(unit("7"), 0)),
         ]);
         // Nothing this market sells, so the sharer's own month cannot be added up.
-        let orders = "unit 5\nSTUDY combat\nunit 7\nBUY 1 unobtainium\n";
+        let orders = "unit 5\nSTUDY combat\nunit 7\nBUY 1 unobtainium\nSTUDY combat\n";
         let review = review_turn(
             &report(vec![hex_region]),
             orders,
@@ -31366,7 +31396,16 @@ BUILD
             "the doubted sharer silences every silver shortfall here"
         );
         assert!(studier.pool_doubted, "the studier's pool was not judged");
-        assert!(silver_of("7").pool_doubted, "nor the sharer's own");
+        assert_eq!(
+            studier.shared_silver_coverage,
+            Some(super::super::silver::SharedSilverCoverage::Unjudged)
+        );
+        let doubted_sharer = silver_of("7");
+        assert!(doubted_sharer.pool_doubted, "nor the sharer's own");
+        assert_eq!(
+            doubted_sharer.shared_silver_coverage, None,
+            "a partial balance cannot judge this unit's own shortfall"
+        );
     }
 
     /// The same hex with nothing doubted judges its pool, and says so.
@@ -31383,6 +31422,63 @@ BUILD
             CheckOptions::default(),
         );
         assert!(review.silver.iter().all(|silver| !silver.pool_doubted));
+    }
+
+    #[test]
+    fn shared_silver_coverage_is_carried_as_a_judgement() {
+        use super::super::silver::SharedSilverCoverage;
+
+        let covered = shared_review(
+            vec![
+                with_silver(unit("5"), 0),
+                sharing(with_silver(unit("7"), 500)),
+            ],
+            "unit 5\nSTUDY combat\n",
+        );
+        assert_eq!(
+            forecast_for(&covered, "5").shared_silver_coverage,
+            Some(SharedSilverCoverage::Covered)
+        );
+
+        let unit_short = shared_review(
+            vec![with_silver(unit("5"), 0), with_silver(unit("7"), 500)],
+            "unit 5\nSTUDY combat\n",
+        );
+        assert_eq!(forecast_for(&unit_short, "5").shared_silver_coverage, None);
+        assert!(unit_short.findings.iter().any(|finding| {
+            finding.code == codes::NOT_ENOUGH_SILVER && finding.unit_id.as_deref() == Some("5")
+        }));
+
+        let short = shared_review(
+            vec![
+                sharing(with_men(with_silver(unit("5"), 0), 10)),
+                sharing(with_silver(unit("7"), 30)),
+            ],
+            "unit 5\nSTUDY combat\n",
+        );
+        assert_eq!(
+            forecast_for(&short, "5").shared_silver_coverage,
+            Some(SharedSilverCoverage::Shortfall)
+        );
+        assert!(short.findings.iter().any(|finding| {
+            finding.code == codes::NOT_ENOUGH_SILVER && finding.unit_id.is_none()
+        }));
+
+        let unjudged = shared_review(
+            vec![
+                with_silver(unit("5"), 0),
+                sharing(with_silver(unit("7"), 500)),
+            ],
+            "unit 5\nSTUDY combat\nunit 7\nBUY 1 unobtainium\n",
+        );
+        assert_eq!(
+            forecast_for(&unjudged, "5").shared_silver_coverage,
+            Some(SharedSilverCoverage::Unjudged)
+        );
+        assert!(!unjudged
+            .findings
+            .iter()
+            .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER));
     }
 
     // --- the purse the market opens with (`ah-szye`) --------------------------------------------

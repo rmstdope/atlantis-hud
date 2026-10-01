@@ -561,9 +561,14 @@ pub struct UnitSilver {
     /// `shipping_distance_unknown` is.
     pub shipping_target_unshown: bool,
     /// This unit's hex pools its silver, and one of the units that share has sums the checks
-    /// cannot follow, so no pooled shortfall is judged here at all (`ah-0jxx`). The absence of a
-    /// silver finding then says nothing about whether the sharing covers this unit.
+    /// cannot follow, so no pooled shortfall is judged here at all (`ah-0jxx`). Kept separate from
+    /// [`Self::shared_silver_coverage`], which carries the explicit result for known shortfalls.
     pub pool_doubted: bool,
+    /// What the hex's `SHARE` pool judged about this unit's silver shortfall. Absent when this
+    /// unit has no known shortfall in a shared hex.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub shared_silver_coverage: Option<SharedSilverCoverage>,
     /// Every movement of this unit's silver this month, in the order `rules/sequenceofevents` runs
     /// the turn, ties broken by document line.
     ///
@@ -571,6 +576,16 @@ pub struct UnitSilver {
     /// [`UnitSilver::buy_all`] is: a partial ledger under a figure that is not a number would
     /// invite a consumer to add the entries up and disagree with the column beside it.
     pub changes: Vec<SilverChange>,
+}
+
+/// The outcome of judging a unit's shortfall against its hex's `SHARE` pool.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub enum SharedSilverCoverage {
+    Covered,
+    Shortfall,
+    Unjudged,
 }
 
 /// One `BUY ALL` as [`super::semantics`]'s ledger settled it.
@@ -2088,6 +2103,7 @@ pub fn forecast_unit(
             shipping_distance_unknown: transport_warning && shipping_unmeasured.world_wrap,
             shipping_target_unshown: transport_warning && shipping_unmeasured.target_unshown,
             pool_doubted: false,
+            shared_silver_coverage: None,
             changes: Vec::new(),
         };
     }
@@ -2155,6 +2171,7 @@ pub fn forecast_unit(
             shipping_distance_unknown: transport_warning && shipping_unmeasured.world_wrap,
             shipping_target_unshown: transport_warning && shipping_unmeasured.target_unshown,
             pool_doubted: false,
+            shared_silver_coverage: None,
             changes: Vec::new(),
         };
     }
@@ -2976,6 +2993,7 @@ pub fn forecast_unit(
         shipping_distance_unknown: transport_warning && shipping_unmeasured.world_wrap,
         shipping_target_unshown: transport_warning && shipping_unmeasured.target_unshown,
         pool_doubted: false,
+        shared_silver_coverage: None,
         changes: if doubt.is_some() {
             Vec::new()
         } else {

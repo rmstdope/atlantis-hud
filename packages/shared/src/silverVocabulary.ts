@@ -370,51 +370,45 @@ export type SilverNote = {
  * and enumeration is the whole mechanism that proves every note is reachable (`ah-hvt8`).
  */
 export const SILVER_NOTES: readonly SilverNote[] = [
-  // Counted alone this unit runs out, yet no finding names it - which in this hex means the units
-  // that share have it covered, exactly as the engine's own borrowing rule would.
-  //
-  // Inferred from the figures rather than read from a field, so it fires for any silence the checks
-  // could have broken - not a hex-anchored shortfall (`hexShort`), nor a pool the checks never
-  // judged because a sharer is doubted (`poolDoubted`, `ah-0jxx`) - and
-  // since `ah-e66j` a hex with no `SHARE` flag anywhere pays its neighbours' upkeep too. Guarded on
-  // `sharedSilverCovered` so this sentence keeps meaning what it says: that the player's own
-  // `SHARE` flags did it. The automatic kind has its own sentence further down.
+  // The month-end figure can remain negative even when the core has judged the shared pool to
+  // cover the shortfall. Use that explicit judgement rather than deriving it from missing notes.
   {
     id: "shared-silver-covers-shortfall",
-    when: ({ silver, warned, hexShort }) =>
+    when: ({ silver }) =>
       silver.atMonthEnd !== null &&
       silver.atMonthEnd < 0 &&
-      !warned &&
-      // A hex-anchored shortfall is the checks saying the sharing did *not* cover it (`ah-5znb`).
-      !(hexShort ?? false) &&
-      // A doubted sharer leaves the pool unjudged, so its silence proves nothing (`ah-0jxx`).
-      !silver.poolDoubted &&
+      silver.sharedSilverCoverage === "covered" &&
       silver.sharedSilverCovered === 0,
     say: () => "Shared silver in this hex covers the shortfall.",
     example: () => ({
       unit: aReportUnit(),
-      silver: aUnitSilver({ atMonthEnd: -5, upkeep: 5 }),
+      silver: aUnitSilver({
+        atMonthEnd: -5,
+        upkeep: 5,
+        sharedSilverCoverage: "covered"
+      }),
       warned: false,
       countUpkeep: true
     })
   },
-  // The same short unit when the pool was never judged (`poolDoubted`, `ah-0jxx`): the silence
-  // above proves nothing, so say why no warning appears (`ah-pbxj`). Exclusive with the covered
-  // note on `poolDoubted`, and silent when a warning already speaks for the shortfall.
+  // The same short unit when the pool was never judged (`ah-0jxx`): say directly that its
+  // coverage remains unknown (`ah-pbxj`), without consulting whether a warning was emitted.
   {
     id: "shared-silver-unjudged",
-    when: ({ silver, warned, hexShort }) =>
+    when: ({ silver }) =>
       silver.atMonthEnd !== null &&
       silver.atMonthEnd < 0 &&
-      !warned &&
-      // A hex-anchored shortfall means the checks did judge the pool, and found it short.
-      !(hexShort ?? false) &&
-      silver.poolDoubted,
+      silver.sharedSilverCoverage === "unjudged",
     say: () =>
       "Shared silver in this hex could not be added up, because a sharing unit's month is uncertain, so whether it covers this unit's shortfall cannot be said.",
     example: () => ({
       unit: aReportUnit(),
-      silver: aUnitSilver({ atMonthEnd: -5, upkeep: 5, poolDoubted: true }),
+      silver: aUnitSilver({
+        atMonthEnd: -5,
+        upkeep: 5,
+        poolDoubted: true,
+        sharedSilverCoverage: "unjudged"
+      }),
       warned: false,
       countUpkeep: true
     })
