@@ -1939,7 +1939,7 @@ fn unclaimed_silver_plan(
                 let Intent::Withdraw { count, item } = &placed.intent else {
                     continue;
                 };
-                let order = format!("WITHDRAW {count} {item}");
+                let order = format!("{count} {item}");
                 if withdrawal_refused(hex.region) {
                     not_counted.push(UnclaimedSilverRejection {
                         unit_name: unit.unit.name.clone(),
@@ -49795,6 +49795,7 @@ BUILD
         assert_eq!(use_of_fund.remaining, 0);
         assert_eq!(use_of_fund.not_counted.len(), 1);
         assert_eq!(use_of_fund.not_counted[0].amount, Some(100 * iron_cost));
+        assert_eq!(use_of_fund.not_counted[0].order, "100 iron");
         assert_eq!(
             use_of_fund.not_counted[0].reason,
             crate::orders::unclaimed_silver::UnclaimedSilverRejectionReason::InsufficientFunds
@@ -49878,10 +49879,15 @@ BUILD
             use_of_fund.not_counted[0].reason,
             crate::orders::unclaimed_silver::UnclaimedSilverRejectionReason::Nexus
         );
+        assert_eq!(use_of_fund.not_counted[0].order, "1 iron");
         assert_eq!(
             use_of_fund.not_counted[1].reason,
             crate::orders::unclaimed_silver::UnclaimedSilverRejectionReason::NotBasicItem
         );
+        assert!(use_of_fund
+            .not_counted
+            .iter()
+            .all(|rejection| !rejection.order.starts_with("WITHDRAW ")));
     }
 
     #[test]
