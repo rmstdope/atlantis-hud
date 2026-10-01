@@ -1527,7 +1527,7 @@ describe("the column popups", () => {
     ]);
   });
 
-  it("the silver popup merges every movement with one cause into one line", () => {
+  it("the silver popup attributes each giver's contribution separately", () => {
     const popup = columnPopup(
       popupForCell(
         "silver",
@@ -1535,22 +1535,19 @@ describe("the column popups", () => {
         facts({
           silver: aUnitSilver({
             held: 0,
-            atMonthEnd: 80,
+            atMonthEnd: 6741,
             changes: [
-              { amount: 50, cause: "was-given", line: null, other: "Watch (1604)" },
-              { amount: 30, cause: "was-given", line: null, other: "unit 1901" }
+              { amount: 144, cause: "was-given", line: 2, other: "HM (2000)" },
+              { amount: 6597, cause: "was-given", line: null, other: "Other (2001)" }
             ]
           })
         })
       )
     );
-    expect(popup.lines[1]).toEqual({
-      label: "was given",
-      value: "+80",
-      tone: "up",
-      why: "from Watch (1604) and unit 1901"
-    });
-    expect(popup.lines).toHaveLength(2);
+    expect(popup.lines.slice(1)).toEqual([
+      { label: "was given", value: "+144", tone: "up", why: "from HM (2000)" },
+      { label: "was given", value: "+6597", tone: "up", why: "from Other (2001)" }
+    ]);
   });
 
   // `SilverChangeCause` is generated, so the core may ship a cause this package has not been
@@ -2064,7 +2061,7 @@ describe("the column popups", () => {
             atMonthEnd: 100,
             changes: [
               { amount: 40, cause: "was-given", line: null, other: "Watch (1604)" },
-              { amount: -40, cause: "was-given", line: null, other: "Scouts (1502)" }
+              { amount: -40, cause: "was-given", line: null, other: "Watch (1604)" }
             ]
           })
         })
