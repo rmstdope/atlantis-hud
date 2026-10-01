@@ -14,7 +14,7 @@
  */
 
 import { browserTextFileSaver, type TextFileSaver } from "@atlantis/shared";
-import { desktopPlugins, type DesktopPlugins } from "./desktopPlugins";
+import { desktopPlugins, type DesktopFileSaverPlugins } from "./desktopPlugins";
 
 /**
  * The native dialog's filter for a file name, derived from its extension.
@@ -45,7 +45,9 @@ export function filterFor(fileName: string): { name: string; extensions: string[
  * wrong. `plugins` defaults to `desktopPlugins()` so `App.tsx` can call this with no arguments; a
  * test passes a fake (or `undefined`) directly.
  */
-export function desktopTextFileSaver(plugins: DesktopPlugins | undefined = desktopPlugins()): TextFileSaver {
+export function desktopTextFileSaver(
+  plugins: DesktopFileSaverPlugins | undefined = desktopPlugins()
+): TextFileSaver {
   if (!plugins) {
     return browserTextFileSaver;
   }

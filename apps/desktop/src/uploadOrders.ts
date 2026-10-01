@@ -15,7 +15,7 @@
  */
 
 import type { OrdersUploader } from "@atlantis/shared";
-import { desktopPlugins, type DesktopPlugins } from "./desktopPlugins";
+import { desktopPlugins, type DesktopHttpPlugins } from "./desktopPlugins";
 
 /**
  * The uploader to hand the workspace, over the given plugins.
@@ -25,7 +25,7 @@ import { desktopPlugins, type DesktopPlugins } from "./desktopPlugins";
  * `desktopTextFileSaver` uses for the no-runtime case.
  */
 export function desktopOrdersUploader(
-  plugins: DesktopPlugins | undefined = desktopPlugins()
+  plugins: DesktopHttpPlugins | undefined = desktopPlugins()
 ): OrdersUploader {
   return async (upload, signal) => {
     if (!plugins) {
