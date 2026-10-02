@@ -1,0 +1,411 @@
+/*
+ * Chronicle: an illuminated campaign map inked on parchment.
+ *
+ * Light is the mockup's own parchment and ink. Dark is the same sheet read by candlelight: a
+ * darker, tea-stained parchment with the ink drawn lighter, so the map still reads as paper but
+ * sits quietly in the app's dark chrome instead of glaring out of it.
+ */
+
+:root {
+  /* The sheet, by candlelight. */
+  --ch-paper: #5b4b35;
+  --ch-paper-fibre: #7a6649;
+  --ch-paper-fleck: #3b2f20;
+  --ch-edge: #c9ab78;
+  --ch-ink: #efe1bf;
+  --ch-ink-strong: #fbf0d4;
+  --ch-name: #f6ead0;
+  --ch-halo: #3d3122;
+
+  /* Icon pigments. */
+  --ch-water: #a9c9e0;
+  --ch-tree: #7f9d63;
+  --ch-conifer: #577a4c;
+  --ch-peak: #8a7a60;
+  --ch-void: #1e160d;
+  --ch-pool: #4e7894;
+  --ch-cap: #a585bd;
+  --ch-lava: #ec6a30;
+  --ch-snow: #d6e6ef;
+
+  /* Ageing, and the page nobody has painted in. */
+  --ch-sepia: #8a6634;
+  --ch-pencil: #e8d6ab;
+  --ch-veil: #4a3c2a;
+  --ch-unsurveyed: #66563e;
+  --ch-rim: #f3e6c6;
+
+  /* Built things, banners and heraldry. */
+  --ch-stone: #7a6649;
+  --ch-timber: #9a6a3c;
+  --ch-pennant: #dc5a3e;
+  --ch-own: #3e66b4;
+  --ch-foreign: #b23b33;
+  --ch-gold: #f5d77e;
+  --ch-serpent: #93c47a;
+  --ch-blood: #ec5340;
+  --ch-blood-faded: #b39a72;
+  --ch-gate: #9a78d0;
+
+  /* Roads: dark ink on a strip of clean parchment. */
+  --ch-road-line: #2a1d10;
+  --ch-road-casing: #cdb88c;
+
+  /* Watercolour washes, laid on at three-quarters over the parchment. */
+  --ch-wash-ocean: #3f6482;
+  --ch-wash-plain: #737c48;
+  --ch-wash-forest: #4b6a3e;
+  --ch-wash-mountain: #6f6554;
+  --ch-wash-swamp: #5f6142;
+  --ch-wash-desert: #94784a;
+  --ch-wash-jungle: #456a38;
+  --ch-wash-tundra: #8a9597;
+  --ch-wash-volcano: #6a4a40;
+  --ch-wash-cavern: #5f574c;
+  --ch-wash-underforest: #5f5470;
+  --ch-wash-wasteland: #85593f;
+  --ch-wash-hill: #806a48;
+  --ch-wash-tunnels: #4f4d48;
+  --ch-wash-grotto: #3f6a66;
+  --ch-wash-deepforest: #34502f;
+  --ch-wash-chasm: #654549;
+  --ch-wash-other: #6e6552;
+}
+
+:root[data-theme="light"] {
+  --ch-paper: #e9dcb8;
+  --ch-paper-fibre: #c8b48a;
+  --ch-paper-fleck: #a88d5c;
+  --ch-edge: #7a5d3a;
+  --ch-ink: #3b2a1a;
+  --ch-ink-strong: #2a1d10;
+  --ch-name: #2e2014;
+  --ch-halo: #f0e5c6;
+
+  --ch-water: #3f6380;
+  --ch-tree: #6f8f55;
+  --ch-conifer: #4a6a40;
+  --ch-peak: #d7ccb6;
+  --ch-void: #2a1f14;
+  --ch-pool: #9dbcd2;
+  --ch-cap: #a07ab8;
+  --ch-lava: #c4501e;
+  --ch-snow: #5d7f99;
+
+  --ch-sepia: #b08a50;
+  --ch-pencil: #5a4630;
+  --ch-veil: #efe3c2;
+  --ch-unsurveyed: #efe6cc;
+  --ch-rim: #3b2a1a;
+
+  --ch-stone: #efe3c4;
+  --ch-timber: #8a5c33;
+  --ch-pennant: #a2432f;
+  --ch-own: #2f4f8a;
+  --ch-foreign: #8a2f2f;
+  --ch-gold: #f1d27a;
+  --ch-serpent: #2f5a2f;
+  --ch-blood: #a2241c;
+  --ch-blood-faded: #8a7657;
+  --ch-gate: #5f4c8a;
+
+  --ch-road-line: #3b2a1a;
+  --ch-road-casing: #efe3c4;
+
+  --ch-wash-ocean: #8fb1c9;
+  --ch-wash-plain: #c9d39a;
+  --ch-wash-forest: #8fae72;
+  --ch-wash-mountain: #b9ab95;
+  --ch-wash-swamp: #a3a77a;
+  --ch-wash-desert: #e5c98d;
+  --ch-wash-jungle: #7fa86a;
+  --ch-wash-tundra: #d5dde0;
+  --ch-wash-volcano: #b08f82;
+  --ch-wash-cavern: #aca393;
+  --ch-wash-underforest: #aea3bd;
+  --ch-wash-wasteland: #d1a886;
+  --ch-wash-hill: #cdb383;
+  --ch-wash-tunnels: #a29e94;
+  --ch-wash-grotto: #92bab3;
+  --ch-wash-deepforest: #6f8f62;
+  --ch-wash-chasm: #b29497;
+  --ch-wash-other: #cbc1a8;
+}
+
+/* The watercolour washes. */
+.ch-terrain-ocean {
+  fill: var(--ch-wash-ocean);
+}
+.ch-terrain-plain {
+  fill: var(--ch-wash-plain);
+}
+.ch-terrain-forest {
+  fill: var(--ch-wash-forest);
+}
+.ch-terrain-mountain {
+  fill: var(--ch-wash-mountain);
+}
+.ch-terrain-swamp {
+  fill: var(--ch-wash-swamp);
+}
+.ch-terrain-desert {
+  fill: var(--ch-wash-desert);
+}
+.ch-terrain-jungle {
+  fill: var(--ch-wash-jungle);
+}
+.ch-terrain-tundra {
+  fill: var(--ch-wash-tundra);
+}
+.ch-terrain-volcano {
+  fill: var(--ch-wash-volcano);
+}
+.ch-terrain-cavern {
+  fill: var(--ch-wash-cavern);
+}
+.ch-terrain-underforest {
+  fill: var(--ch-wash-underforest);
+}
+.ch-terrain-wasteland {
+  fill: var(--ch-wash-wasteland);
+}
+.ch-terrain-hill {
+  fill: var(--ch-wash-hill);
+}
+.ch-terrain-tunnels {
+  fill: var(--ch-wash-tunnels);
+}
+.ch-terrain-grotto {
+  fill: var(--ch-wash-grotto);
+}
+.ch-terrain-deepforest {
+  fill: var(--ch-wash-deepforest);
+}
+.ch-terrain-chasm {
+  fill: var(--ch-wash-chasm);
+}
+.ch-terrain-other {
+  fill: var(--ch-wash-other);
+}
+
+/* The parchment itself: a tiled grain, so the sheet is paper and not a flat fill. */
+.ch-paper-fill {
+  fill: var(--ch-paper);
+}
+.ch-fibre {
+  fill: none;
+  stroke: var(--ch-paper-fibre);
+}
+.ch-fleck {
+  fill: var(--ch-paper-fleck);
+}
+
+/* Only a faint sepia line where the sheets meet: no hard grid. */
+.ch-edge {
+  stroke: var(--ch-edge);
+  opacity: 0.35;
+}
+
+/* Age, and the page never painted. */
+.ch-veil {
+  fill: var(--ch-veil);
+}
+.ch-sepia {
+  fill: var(--ch-sepia);
+}
+.ch-hatch {
+  stroke: var(--ch-pencil);
+}
+.ch-unsurveyed {
+  fill: var(--ch-unsurveyed);
+}
+.ch-rim {
+  stroke: var(--ch-rim);
+  opacity: 0.7;
+}
+
+/* Ink lines stay the weight of a pen whatever the zoom, on the icons and the marks alike. */
+.ch-icon-def *,
+.ch-glyph * {
+  vector-effect: non-scaling-stroke;
+}
+
+/* Over a biome photograph the water's own blue vanishes into the picture, so the waves are inked. */
+.ch-icon-on-photo {
+  --ch-water: var(--ch-ink);
+}
+
+/* The terrain icons' pigments. */
+.ch-i-ink {
+  fill: none;
+  stroke: var(--ch-ink);
+}
+.ch-i-water {
+  fill: none;
+  stroke: var(--ch-water);
+}
+.ch-i-snow {
+  fill: none;
+  stroke: var(--ch-snow);
+}
+.ch-i-tree {
+  fill: var(--ch-tree);
+  stroke: var(--ch-ink);
+}
+.ch-i-conifer {
+  fill: var(--ch-conifer);
+  stroke: var(--ch-ink);
+}
+.ch-i-peak {
+  fill: var(--ch-peak);
+  stroke: var(--ch-ink);
+}
+.ch-i-void {
+  fill: var(--ch-void);
+  stroke: var(--ch-ink);
+}
+.ch-i-pool {
+  fill: var(--ch-pool);
+  stroke: var(--ch-water);
+}
+.ch-i-cap {
+  fill: var(--ch-cap);
+  stroke: var(--ch-ink);
+}
+.ch-i-stem {
+  fill: var(--ch-peak);
+  stroke: var(--ch-ink);
+}
+.ch-i-dot {
+  fill: var(--ch-ink);
+  stroke: none;
+}
+.ch-i-lava {
+  fill: none;
+  stroke: var(--ch-lava);
+}
+
+/* The marks: drawn in ink, filled with stone. */
+.ch-glyph {
+  stroke: var(--ch-ink);
+  fill: var(--ch-stone);
+}
+.ch-merlon {
+  fill: var(--ch-ink);
+}
+.ch-door,
+.ch-void {
+  fill: var(--ch-void);
+}
+.ch-roof,
+.ch-hull {
+  fill: var(--ch-timber);
+}
+.ch-stone {
+  fill: var(--ch-stone);
+}
+.ch-pennant {
+  fill: var(--ch-pennant);
+}
+.ch-castle-unknown {
+  fill: none;
+  stroke: var(--ch-pencil);
+}
+.ch-gate-glow {
+  fill: var(--ch-gate);
+}
+.ch-battle {
+  stroke: var(--ch-blood);
+}
+.ch-battle-other {
+  stroke: var(--ch-blood-faded);
+}
+.ch-shield {
+  stroke: var(--ch-ink-strong);
+}
+.ch-fill-own {
+  fill: var(--ch-own);
+}
+.ch-fill-foreign {
+  fill: var(--ch-foreign);
+}
+.ch-serpent {
+  stroke: var(--ch-serpent);
+  fill: none;
+}
+.ch-eye {
+  fill: var(--ch-ink);
+  stroke: none;
+}
+
+/* The numerals on the shields: Cinzel, in gold leaf. Scaled with the shield they are painted on. */
+.ch-numeral {
+  font-family: Cinzel, "Trajan Pro", Georgia, serif;
+  font-weight: 700;
+  fill: var(--ch-gold);
+  stroke: none;
+}
+.ch-numeral-ink {
+  fill: var(--ch-ink);
+}
+
+/*
+ * Labels are drawn at a constant size on screen, so the font divides back out by the map's scale.
+ * Longhand rather than the `font` shorthand, deliberately: a `calc()` inside the shorthand is valid
+ * CSS that some renderers drop, and the label then falls back to a size several times the hex.
+ */
+.ch-label {
+  paint-order: stroke fill;
+  stroke: var(--ch-halo);
+  stroke-width: calc(2.5px / var(--map-scale, 1));
+  stroke-linejoin: round;
+}
+.ch-name {
+  font-family: "IM Fell English", "Iowan Old Style", Georgia, serif;
+  font-style: italic;
+  font-size: calc(12px / var(--map-scale, 1));
+  fill: var(--ch-name);
+}
+.ch-incognita {
+  font-family: "IM Fell English", "Iowan Old Style", Georgia, serif;
+  font-style: italic;
+  font-size: calc(9px / var(--map-scale, 1));
+  fill: var(--ch-ink);
+  opacity: 0.55;
+}
+
+/* The province names are the map's, but on this sheet they are lettered in the chronicle's hand. */
+.map-theme-chronicle .region-name {
+  font-family: "IM Fell English SC", "IM Fell English", Georgia, serif;
+  fill: var(--ch-ink);
+  stroke: var(--ch-halo);
+  opacity: 0.85;
+}
+
+/*
+ * Zoom bands.
+ *
+ * Far keeps the washes, the faint edges, the pencil hatch and the dashed rim - which is what tells
+ * an old page from an unwalked one there - and drops every icon, mark and label, which are specks
+ * at that size. Names and the "terra incognita" note only come in close.
+ *
+ * Scoped to this theme, because every theme's stylesheet is loaded whichever one is selected.
+ */
+.map-theme-chronicle.map-far .ch-icon,
+.map-theme-chronicle.map-far .ch-glyph,
+.map-theme-chronicle.map-far .ch-label,
+.map-theme-chronicle.map-mid .ch-label {
+  display: none;
+}
+
+/* The map marks' colours - the province border, the wall and their shared halo - and the roads. */
+.map-theme-chronicle {
+  --map-border-ink: var(--ch-edge);
+  --map-wall-ink: var(--ch-ink);
+  --map-mark-ground: var(--ch-paper);
+  --map-road-line: var(--ch-road-line);
+  --map-road-casing: var(--ch-road-casing);
+  --map-blocked-ink: #b3342a;
+  --map-blocked-label-ink: #3a0d08;
+  --map-blocked-label-halo: var(--ch-halo);
+}

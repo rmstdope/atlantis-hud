@@ -13,6 +13,7 @@ import { beveledTile } from "./beveledTile/index";
 import { emblemAndDots } from "./emblemAndDots/index";
 import { miniatureWorld } from "./miniatureWorld/index";
 import { tacticalHud } from "./tacticalHud/index";
+import { chronicle } from "./chronicle/index";
 
 /** In the order the settings picker offers them, the atlas first as the one the map opens on. */
 export const MAP_THEMES: readonly MapTheme[] = [
@@ -20,7 +21,8 @@ export const MAP_THEMES: readonly MapTheme[] = [
   tacticalHud,
   miniatureWorld,
   emblemAndDots,
-  beveledTile
+  beveledTile,
+  chronicle
 ];
 
 /** The most map-like of the designs, and what an unrecognised choice falls back to. */
