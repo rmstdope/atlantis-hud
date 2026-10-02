@@ -498,7 +498,8 @@ describe("map theme stylesheets", () => {
       cartographersTable: ["ct-terrain"],
       emblemAndDots: ["ed-terrain"],
       tacticalHud: ["hud-terrain"],
-      miniatureWorld: ["mw-lit", "mw-shade"]
+      miniatureWorld: ["mw-lit", "mw-shade"],
+      eightBitQuest: ["eb-terrain"]
     };
     const missing: string[] = [];
     for (const sheet of await themeSheets()) {
@@ -564,7 +565,8 @@ describe("map theme stylesheets", () => {
       "cartographers-table": ["--ct-ink", "--ct-ink-strong", "--ct-parchment"],
       "emblem-and-dots": ["--ed-ink", "--ed-ink", "--ed-halo"],
       "miniature-world": ["--mw-edge", "--mw-edge", "--mw-tape"],
-      "tactical-hud": ["--hud-ink", "--hud-ink", "--hud-panel"]
+      "tactical-hud": ["--hud-ink", "--hud-ink", "--hud-panel"],
+      "eight-bit-quest": ["--eb-silver", "--eb-white", "--eb-black"]
     };
     const sheets = await themeSheets();
 
