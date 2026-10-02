@@ -4,6 +4,7 @@ import { MapSizesSettings } from "./MapSizesSettings";
 import { useState } from "react";
 import type { AdvisoryCheckCode } from "@atlantis/core-client";
 import { useEscapeToDismiss } from "./dismissLayer";
+import { useDialogDrag } from "./useDialogDrag";
 import { APP_VERSION } from "../appVersion";
 import { RULESETS } from "../rulesets";
 import { snippetBodyProblem, snippetNameProblem } from "../orderSnippets";
@@ -74,6 +75,8 @@ export function SettingsDialog({
   // Escape closes this dialog - unless something newer stands over it, which is the command
   // palette's whole opening move.
   useEscapeToDismiss(onDismiss);
+  // ah-aak5: dragged by its top bar so the map behind it can be watched; the veil lifts once moved.
+  const drag = useDialogDrag();
 
   // ah-sw92: the About tab carries the same mark as the gear while a newer version exists. Opening
   // the tab does not clear it - it stays until the player is running the new version.
@@ -100,9 +103,11 @@ export function SettingsDialog({
         event.preventDefault();
         event.stopPropagation();
       }}
-      className="fixed inset-0 z-30 flex items-center justify-center bg-black/50"
+      className={`fixed inset-0 z-30 flex items-center justify-center${drag.moved ? "" : " bg-black/50"}`}
     >
       <div
+        ref={drag.dialogRef}
+        style={drag.dialogStyle}
         data-testid="settings-panel"
         role="dialog"
         aria-modal="true"
@@ -111,7 +116,10 @@ export function SettingsDialog({
         // inherit through the anchor span this dialog is mounted in.
         className="w-[40rem] max-w-[94vw] rounded border border-brass/60 bg-panel-raised p-3 text-pane whitespace-normal shadow-xl"
       >
-        <div className="flex items-center justify-between border-b border-brass/60 pb-2">
+        <div
+          {...drag.barProps}
+          className="flex cursor-move select-none items-center justify-between border-b border-brass/60 pb-2"
+        >
           <h2 className="m-0 text-brass">Settings</h2>
           <button
             type="button"

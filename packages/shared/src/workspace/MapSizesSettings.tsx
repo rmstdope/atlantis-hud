@@ -10,6 +10,7 @@ import {
   type ShrunkField
 } from "../mapShape";
 import { useEscapeToDismiss } from "./dismissLayer";
+import { useDialogDrag, type DialogDrag } from "./useDialogDrag";
 import { MapSizesFields } from "./MapSizesFields";
 
 const BUTTON =
@@ -125,7 +126,10 @@ function MapSizesEditor({
 }) {
   const [draft, setDraft] = useState(() => mapSizesDraftOf(mapSizes));
   const [confirming, setConfirming] = useState<ShrunkField | null>(null);
-  const panel = useRef<HTMLDivElement>(null);
+  // ah-aak5: dragged by its top bar to uncover the map; the veil lifts once moved. Its box is the
+  // panel `keepEditing` refocuses inside, so the drag's ref is the panel's ref.
+  const drag = useDialogDrag();
+  const panel = drag.dialogRef;
 
   const keepEditing = () => {
     const changed = confirming;
@@ -147,6 +151,7 @@ function MapSizesEditor({
   return (
     <MapSizesEditorPanel
       panelRef={panel}
+      drag={drag}
       draft={draft}
       busy={busy}
       confirming={confirming}
@@ -179,6 +184,7 @@ function MapSizesEditor({
 /** The focused "Edit map sizes" window, and its "Save map sizes?" confirmation. Hook-free. */
 export function MapSizesEditorPanel({
   panelRef,
+  drag,
   draft,
   busy,
   confirming,
@@ -189,6 +195,8 @@ export function MapSizesEditorPanel({
   onCancel
 }: {
   panelRef?: Ref<HTMLDivElement>;
+  /** Moving by the top bar (ah-aak5); absent in a static render, which draws it unmoved. */
+  drag?: Pick<DialogDrag, "moved" | "dialogStyle" | "barProps">;
   draft: MapSizesDraft;
   busy: boolean;
   /** The level a save would make smaller or remove, while the player is asked to confirm. */
@@ -202,16 +210,20 @@ export function MapSizesEditorPanel({
   const invalid = mapSizesFromDraft(draft) === null;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
+    <div className={`fixed inset-0 z-40 flex items-center justify-center${drag?.moved === true ? "" : " bg-black/50"}`}>
       <div
         ref={panelRef}
+        style={drag?.dialogStyle}
         data-testid="settings-map-sizes-editor"
         role="dialog"
         aria-modal="true"
         aria-label="Edit map sizes"
         className="w-[36rem] max-w-[94vw] rounded border border-brass/60 bg-panel-raised p-3 text-pane whitespace-normal shadow-xl"
       >
-        <div className="flex items-center justify-between border-b border-brass/60 pb-2">
+        <div
+          {...drag?.barProps}
+          className="flex cursor-move select-none items-center justify-between border-b border-brass/60 pb-2"
+        >
           <h3 className="m-0 text-brass">Edit map sizes</h3>
           <button
             type="button"

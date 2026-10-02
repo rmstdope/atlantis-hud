@@ -4,6 +4,7 @@ import type { ArmyRecord } from "@atlantis/core-client";
 import { exportReadiness } from "../armyExport";
 import type { DerivedSkills } from "../battleSkills";
 import { useEscapeToDismiss } from "./dismissLayer";
+import { useDialogDrag } from "./useDialogDrag";
 
 /**
  * Which Armies fight, and which side each is on.
@@ -55,6 +56,9 @@ export function ArmyExportDialog({
 
   useEscapeToDismiss(onDismiss);
 
+  // ah-aak5: dragged by its top bar to uncover the map; the veil lifts once moved.
+  const drag = useDialogDrag();
+
   const armyOf = (id: string): ArmyRecord | null =>
     armies.find((army) => army.id === id) ?? null;
   const attackers = armyOf(attackerId);
@@ -104,16 +108,21 @@ export function ArmyExportDialog({
           onDismiss();
         }
       }}
-      className="fixed inset-0 z-30 flex items-center justify-center bg-black/50"
+      className={`fixed inset-0 z-30 flex items-center justify-center${drag.moved ? "" : " bg-black/50"}`}
     >
       <div
+        ref={drag.dialogRef}
+        style={drag.dialogStyle}
         data-testid="army-export-panel"
         role="dialog"
         aria-modal="true"
         aria-label="Export to battle simulator"
         className="flex w-[30rem] flex-col gap-2 rounded border border-edge bg-panel-raised p-3 text-pane whitespace-normal shadow-lg"
       >
-        <div className="flex items-center justify-between">
+        <div
+          {...drag.barProps}
+          className="flex cursor-move select-none items-center justify-between"
+        >
           <h2 className="text-ink">Export to battle simulator</h2>
           <button
             type="button"

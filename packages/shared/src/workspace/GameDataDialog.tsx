@@ -9,6 +9,7 @@ import {
 } from "../gameData";
 import { paletteKeyReduce, PALETTE_PAGE_ROWS } from "../commandPalette";
 import { useEscapeToDismiss } from "./dismissLayer";
+import { useDialogDrag } from "./useDialogDrag";
 import {
   entriesOf,
   goBack,
@@ -39,6 +40,8 @@ export function GameDataDialog({
   onDismiss: () => void;
 }) {
   useEscapeToDismiss(onDismiss);
+  // ah-aak5: dragged by its top bar to uncover the map; the veil lifts once moved.
+  const drag = useDialogDrag();
 
   const [state, setState] = useState(() => openGameDataDialog(index, initialEntryId));
 
@@ -123,9 +126,11 @@ export function GameDataDialog({
           onDismiss();
         }
       }}
-      className="fixed inset-0 z-40 flex items-start justify-center bg-black/50 pt-[10vh]"
+      className={`fixed inset-0 z-40 flex items-start justify-center pt-[10vh]${drag.moved ? "" : " bg-black/50"}`}
     >
       <div
+        ref={drag.dialogRef}
+        style={drag.dialogStyle}
         data-testid="game-data-dialog"
         role="dialog"
         aria-modal="true"
@@ -137,7 +142,10 @@ export function GameDataDialog({
         // the whole window and the margin below is exactly zero.
         className="grid max-h-[80vh] w-[56rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-brass/60 bg-panel-raised text-pane whitespace-normal shadow-xl"
       >
-        <div className="flex items-center gap-2 border-b border-edge px-2 py-1.5">
+        <div
+          {...drag.barProps}
+          className="flex cursor-move select-none items-center gap-2 border-b border-edge px-2 py-1.5"
+        >
           <span className="text-brass">Game data</span>
           <span className="flex-1" />
           {returnsTo === undefined ? null : (
