@@ -1,0 +1,341 @@
+/*
+ * 8-Bit Quest: inspired by 8-bit console adventure games.
+ *
+ * One small palette, the same in both app themes: an 8-bit console drew its world in the colours
+ * its hardware had, and the look does not survive being re-tinted for a light page. The light block
+ * restates every token with the same value, so the parity check still holds and a later light
+ * variant has a place to go.
+ *
+ * Bitmaps in `paint.ts` name these colours by a character; each name is a token here and an
+ * `.eb-px-<name>` class that fills with it.
+ */
+
+:root {
+  --eb-black: #000000;
+  --eb-white: #fcfcfc;
+  --eb-silver: #bcbcbc;
+  --eb-grey: #7c7c7c;
+  --eb-slate: #505050;
+  --eb-blue: #0058f8;
+  --eb-sky: #3cbcfc;
+  --eb-ice: #a4e4fc;
+  --eb-navy: #0000bc;
+  --eb-green: #00a800;
+  --eb-leaf: #58d854;
+  --eb-pine: #005800;
+  --eb-deeppine: #003a10;
+  --eb-jungle: #00a844;
+  --eb-lime: #b8f818;
+  --eb-earth: #503000;
+  --eb-rust: #a85000;
+  --eb-ochre: #ac7c00;
+  --eb-gold: #f8b800;
+  --eb-sand: #fce0a8;
+  --eb-tan: #e4a672;
+  --eb-red: #d82800;
+  --eb-maroon: #881400;
+  --eb-lava: #f83800;
+  --eb-ember: #fca044;
+  --eb-skin: #fcbcb0;
+  --eb-violet: #6844fc;
+  --eb-indigo: #4428bc;
+  --eb-magenta: #d800cc;
+  --eb-pink: #f878f8;
+  --eb-teal: #008888;
+  --eb-cyan: #00e8d8;
+}
+
+:root[data-theme="light"] {
+  --eb-black: #000000;
+  --eb-white: #fcfcfc;
+  --eb-silver: #bcbcbc;
+  --eb-grey: #7c7c7c;
+  --eb-slate: #505050;
+  --eb-blue: #0058f8;
+  --eb-sky: #3cbcfc;
+  --eb-ice: #a4e4fc;
+  --eb-navy: #0000bc;
+  --eb-green: #00a800;
+  --eb-leaf: #58d854;
+  --eb-pine: #005800;
+  --eb-deeppine: #003a10;
+  --eb-jungle: #00a844;
+  --eb-lime: #b8f818;
+  --eb-earth: #503000;
+  --eb-rust: #a85000;
+  --eb-ochre: #ac7c00;
+  --eb-gold: #f8b800;
+  --eb-sand: #fce0a8;
+  --eb-tan: #e4a672;
+  --eb-red: #d82800;
+  --eb-maroon: #881400;
+  --eb-lava: #f83800;
+  --eb-ember: #fca044;
+  --eb-skin: #fcbcb0;
+  --eb-violet: #6844fc;
+  --eb-indigo: #4428bc;
+  --eb-magenta: #d800cc;
+  --eb-pink: #f878f8;
+  --eb-teal: #008888;
+  --eb-cyan: #00e8d8;
+}
+
+/* The palette, one class per colour, for every pixel of every tile and sprite. */
+.eb-px-black {
+  fill: var(--eb-black);
+}
+.eb-px-white {
+  fill: var(--eb-white);
+}
+.eb-px-silver {
+  fill: var(--eb-silver);
+}
+.eb-px-grey {
+  fill: var(--eb-grey);
+}
+.eb-px-slate {
+  fill: var(--eb-slate);
+}
+.eb-px-blue {
+  fill: var(--eb-blue);
+}
+.eb-px-sky {
+  fill: var(--eb-sky);
+}
+.eb-px-ice {
+  fill: var(--eb-ice);
+}
+.eb-px-navy {
+  fill: var(--eb-navy);
+}
+.eb-px-green {
+  fill: var(--eb-green);
+}
+.eb-px-leaf {
+  fill: var(--eb-leaf);
+}
+.eb-px-pine {
+  fill: var(--eb-pine);
+}
+.eb-px-deeppine {
+  fill: var(--eb-deeppine);
+}
+.eb-px-jungle {
+  fill: var(--eb-jungle);
+}
+.eb-px-lime {
+  fill: var(--eb-lime);
+}
+.eb-px-earth {
+  fill: var(--eb-earth);
+}
+.eb-px-rust {
+  fill: var(--eb-rust);
+}
+.eb-px-ochre {
+  fill: var(--eb-ochre);
+}
+.eb-px-gold {
+  fill: var(--eb-gold);
+}
+.eb-px-sand {
+  fill: var(--eb-sand);
+}
+.eb-px-tan {
+  fill: var(--eb-tan);
+}
+.eb-px-red {
+  fill: var(--eb-red);
+}
+.eb-px-maroon {
+  fill: var(--eb-maroon);
+}
+.eb-px-lava {
+  fill: var(--eb-lava);
+}
+.eb-px-ember {
+  fill: var(--eb-ember);
+}
+.eb-px-skin {
+  fill: var(--eb-skin);
+}
+.eb-px-violet {
+  fill: var(--eb-violet);
+}
+.eb-px-indigo {
+  fill: var(--eb-indigo);
+}
+.eb-px-magenta {
+  fill: var(--eb-magenta);
+}
+.eb-px-pink {
+  fill: var(--eb-pink);
+}
+.eb-px-teal {
+  fill: var(--eb-teal);
+}
+.eb-px-cyan {
+  fill: var(--eb-cyan);
+}
+
+/*
+ * Terrain. The pixel tile is the polygon's `fill` attribute (a pattern from `Defs`); each class
+ * names the tile's base colour as `--eb-flat`, which is what the far band paints instead - a
+ * 4-unit block is under a screen pixel there, and a pattern that small only shimmers.
+ */
+.eb-terrain-ocean {
+  --eb-flat: var(--eb-blue);
+}
+.eb-terrain-plain {
+  --eb-flat: var(--eb-leaf);
+}
+.eb-terrain-forest {
+  --eb-flat: var(--eb-pine);
+}
+.eb-terrain-mountain {
+  --eb-flat: var(--eb-grey);
+}
+.eb-terrain-swamp {
+  --eb-flat: var(--eb-earth);
+}
+.eb-terrain-desert {
+  --eb-flat: var(--eb-gold);
+}
+.eb-terrain-jungle {
+  --eb-flat: var(--eb-jungle);
+}
+.eb-terrain-tundra {
+  --eb-flat: var(--eb-ice);
+}
+.eb-terrain-volcano {
+  --eb-flat: var(--eb-maroon);
+}
+.eb-terrain-cavern {
+  --eb-flat: var(--eb-violet);
+}
+.eb-terrain-underforest {
+  --eb-flat: var(--eb-indigo);
+}
+.eb-terrain-wasteland {
+  --eb-flat: var(--eb-rust);
+}
+.eb-terrain-hill {
+  --eb-flat: var(--eb-ochre);
+}
+.eb-terrain-tunnels {
+  --eb-flat: var(--eb-navy);
+}
+.eb-terrain-grotto {
+  --eb-flat: var(--eb-teal);
+}
+.eb-terrain-deepforest {
+  --eb-flat: var(--eb-deeppine);
+}
+.eb-terrain-chasm {
+  --eb-flat: var(--eb-slate);
+}
+.eb-terrain-other {
+  --eb-flat: var(--eb-magenta);
+}
+
+/* Crisp black hex edges, and no smoothing anywhere: every edge snaps to the pixel grid. */
+.eb-layer {
+  shape-rendering: crispEdges;
+}
+.eb-tile {
+  stroke: var(--eb-black);
+  stroke-linejoin: miter;
+}
+
+/* Knowledge: a wash towards black, the stale dither over it, and the unsurveyed rim. */
+.eb-shade {
+  fill: var(--eb-black);
+}
+.eb-dither {
+  opacity: 0.5;
+}
+.eb-rim {
+  stroke: var(--eb-silver);
+  stroke-linecap: square;
+}
+
+.eb-road-casing {
+  stroke: var(--eb-black);
+}
+.eb-road {
+  stroke: var(--eb-tan);
+}
+
+/*
+ * Labels in the pixel font, at a constant size on screen. The black plate under a name is the
+ * text's own square-joined stroke, wide enough to close the gaps between letters: one element per
+ * label rather than a measured rect or a filter.
+ *
+ * Longhand rather than the `font` shorthand, deliberately: a `calc()` inside the shorthand is valid
+ * CSS that some renderers drop, and the label then falls back to a default size several times the
+ * width of the hex.
+ */
+.eb-label {
+  font-family: "Press Start 2P", ui-monospace, "Courier New", monospace;
+  paint-order: stroke fill;
+  stroke: var(--eb-black);
+  stroke-linejoin: miter;
+  stroke-miterlimit: 2;
+}
+.eb-name {
+  font-size: calc(7px / var(--map-scale, 1));
+  stroke-width: calc(5px / var(--map-scale, 1));
+  fill: var(--eb-white);
+}
+.eb-count {
+  font-size: calc(6px / var(--map-scale, 1));
+  stroke-width: calc(3px / var(--map-scale, 1));
+  fill: var(--eb-gold);
+}
+
+/*
+ * Zoom bands.
+ *
+ * Far paints each hex flat in its tile's base colour and drops every sprite and label: a sprite is
+ * a few pixels of noise there. The dither and the dashed rim stay, so stale and unsurveyed ground
+ * still read apart. Mid keeps the sprites and drops the text and the "?", which is a near-zoom
+ * flourish over what the rim already says.
+ *
+ * Scoped to this theme, because every theme's stylesheet is loaded whichever one is selected.
+ */
+.map-theme-eight-bit-quest.map-far .eb-tile {
+  fill: var(--eb-flat);
+}
+/* Far, the dashed rim breaks into specks: drawn solid there, it still outlines unsurveyed ground. */
+.map-theme-eight-bit-quest.map-far .eb-rim {
+  stroke-dasharray: none;
+}
+.map-theme-eight-bit-quest.map-far .eb-sprite,
+.map-theme-eight-bit-quest.map-far .eb-label,
+.map-theme-eight-bit-quest.map-mid .eb-label,
+.map-theme-eight-bit-quest.map-mid [data-mark="question"] {
+  display: none;
+}
+
+/* Region names in the pixel font too, white on a black plate like the town names. */
+.map-theme-eight-bit-quest .region-name {
+  font-family: "Press Start 2P", ui-monospace, "Courier New", monospace;
+  font-size: 5px;
+  letter-spacing: 0.5px;
+  stroke-width: 2.5px;
+  stroke-linejoin: miter;
+}
+
+/* The map's own marks - border, wall, roads, region names - in the theme's colours. */
+.map-theme-eight-bit-quest {
+  --map-border-ink: var(--eb-silver);
+  --map-wall-ink: var(--eb-white);
+  --map-mark-ground: var(--eb-black);
+  --map-road-line: var(--eb-tan);
+  --map-road-casing: var(--eb-black);
+  --map-blocked-ink: var(--eb-red);
+  --map-blocked-label-ink: var(--eb-white);
+  --map-blocked-label-halo: var(--eb-black);
+  --color-map-region-name: var(--eb-white);
+  --color-map-label-halo: var(--eb-black);
+}
