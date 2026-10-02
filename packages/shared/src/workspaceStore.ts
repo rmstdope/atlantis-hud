@@ -58,7 +58,7 @@ export type PanelName = "region" | "unit" | "orders" | "units";
  * What a hex *draws over its terrain* is not here: those are the badges, one toggle per mark, and
  * they replaced the two chips - "units" and "structures" - that used to speak for all nine.
  */
-export type LayerName = "staleness" | "movement";
+export type LayerName = "staleness" | "unvisited" | "movement";
 
 /**
  * The game the workspace is showing.
@@ -334,6 +334,9 @@ const INITIAL_COLLAPSED: Record<PanelName, boolean> = {
 
 const INITIAL_LAYERS: Record<LayerName, boolean> = {
   staleness: true,
+  // Never-visited hexes, dimmed and dash-rimmed (ah-7czr). On, so nobody's map changes on update;
+  // a record saved before it existed has no key and `reconcile` reads that as this default.
+  unvisited: true,
   // On by default since #83: the layer draws a selected unit's own orders, and a default of off
   // hid that entirely behind a chip nobody had reason to press.
   movement: true

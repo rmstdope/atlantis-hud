@@ -228,7 +228,13 @@ describe("what every theme owes the three knowledge states", () => {
   it.each(MAP_THEMES.map((theme) => [theme.label, theme] as const))(
     "%s paints the fade it is handed, unchanged, for named and stale alike",
     (_label, theme) => {
-      const named = render(theme, { ...base, knowledge: "named", fogOpacity: 0.5, hatched: false });
+      const named = render(theme, {
+        ...base,
+        knowledge: "named",
+        unsurveyed: true,
+        fogOpacity: 0.5,
+        hatched: false
+      });
       const stale = render(theme, { ...base, knowledge: "stale", fogOpacity: 0.5, hatched: true });
 
       const [namedOpacity] = opacitiesOf(named, "unsurveyed|unpainted");
@@ -247,6 +253,7 @@ describe("what every theme owes the three knowledge states", () => {
       const named = render(theme, {
         ...base,
         knowledge: "named",
+        unsurveyed: true,
         fogOpacity: namedOpacity,
         hatched: false
       });
@@ -266,6 +273,36 @@ describe("what every theme owes the three knowledge states", () => {
   );
 });
 
+/**
+ * The unvisited switch, off (ah-7czr): a never-visited hex is drawn exactly like a current one in
+ * every theme - no dim, no wash, no dashed rim. The view model says so with `unsurveyed: false`
+ * and no fade; this is what checks no theme still reads `knowledge` for the look.
+ */
+describe("the unvisited switch, off", () => {
+  const render = (theme: MapTheme, view: HexView) =>
+    renderToStaticMarkup(
+      <svg>
+        <theme.TerrainLayer views={[view]} />
+      </svg>
+    );
+  const [base] = buildHexViews(CONGESTED_HEXES, {
+    showStaleness: true,
+    showTextures: false,
+    badges: allBadges(true)
+  });
+  const current = { ...base, knowledge: "current" as const, fogOpacity: 0, hatched: false };
+
+  it.each(MAP_THEMES.map((theme) => [theme.label, theme] as const))(
+    "%s draws a named hex it is told not to mark as unvisited like a current one",
+    (_label, theme) => {
+      const named = render(theme, { ...current, knowledge: "named", unsurveyed: false });
+
+      expect(named).not.toMatch(/data-(?:rim|wash|dim)="(?:unsurveyed|unpainted)"/u);
+      expect(named).toBe(render(theme, { ...current, unsurveyed: false }));
+    }
+  );
+});
+
 /** A hex holding nothing at all, for the footprint table below to add one mark to at a time. */
 function bareView(overrides: Partial<HexView> = {}): HexView {
   return {
@@ -276,6 +313,7 @@ function bareView(overrides: Partial<HexView> = {}): HexView {
     texture: null,
     fogOpacity: 0,
     hatched: false,
+    unsurveyed: false,
     knowledge: "current",
     ageInTurns: 0,
     roads: [],

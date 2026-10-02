@@ -148,6 +148,12 @@ export type HexView = {
   fogOpacity: number;
   /** Whether the hex is also hatched, marking the data as held but possibly out of date. */
   hatched: boolean;
+  /**
+   * Whether to draw this hex as never visited - its dim and its unsurveyed rim. A named hex with
+   * the unvisited switch on; with it off a named hex is drawn exactly like a current one (ah-7czr).
+   * Themes key the *look* on this and never on `knowledge`, which stays what the report knows.
+   */
+  unsurveyed: boolean;
   knowledge: HexKnowledge;
   ageInTurns: number | null;
   roads: RoadDirection[];
@@ -276,6 +282,8 @@ export const DEFAULT_TEXTURE_STYLE: TextureStyle = {
 
 export type HexViewOptions = {
   showStaleness: boolean;
+  /** Dim and rim never-visited hexes; true when absent, so a caller that says nothing gets that. */
+  showUnvisited?: boolean;
   showTextures: boolean;
   /** How textured hexes are drawn; `DEFAULT_TEXTURE_STYLE` when absent. */
   textureStyle?: TextureStyle;
@@ -514,7 +522,8 @@ function anyStructureBadge(badges: Record<BadgeName, boolean>): boolean {
 
 export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
   const badges = options.badges;
-  const paint = hexPaint(hex, options.showStaleness);
+  const showUnvisited = options.showUnvisited ?? true;
+  const paint = hexPaint(hex, options.showStaleness, showUnvisited);
   const structures = anyStructureBadge(badges) ? tallyStructures(hex.region) : noStructures();
   const units = hex.region?.units ?? [];
   // Hiding the monsters has to take them out of the foreign tally as well, not merely stop naming
@@ -539,6 +548,7 @@ export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
       : null,
     fogOpacity: dampFog(paint.fogOpacity, options.fogDamping ?? 1),
     hatched: paint.hatched,
+    unsurveyed: hex.knowledge === "named" && showUnvisited,
     knowledge: hex.knowledge,
     ageInTurns: hex.ageInTurns,
     roads: badges.roads ? structures.roads : [],

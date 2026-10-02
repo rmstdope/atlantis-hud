@@ -322,6 +322,25 @@ describe("painting a hex", () => {
     expect(off.fogOpacity).toBeGreaterThan(0.25);
     expect(off.fogOpacity).toBe(hexPaint(hex({ knowledge: "named" }), true).fogOpacity);
   });
+
+  it("draws a named hex at full colour when the unvisited layer is off (ah-7czr)", () => {
+    // The unvisited switch is the one that governs ground nobody has walked; off means the hex
+    // looks like any other, whatever the staleness switch says.
+    for (const staleness of [true, false]) {
+      expect(hexPaint(hex({ knowledge: "named" }), staleness, false)).toEqual({
+        fogOpacity: 0,
+        hatched: false
+      });
+    }
+    expect(hexPaint(hex({ knowledge: "named" }), false, true).fogOpacity).toBeGreaterThan(0.25);
+  });
+
+  it("leaves a stale hex to the staleness layer alone", () => {
+    const stale = hex({ knowledge: "stale", ageInTurns: 7 });
+
+    expect(hexPaint(stale, true, false)).toEqual(hexPaint(stale, true, true));
+    expect(hexPaint(stale, false, true)).toEqual({ fogOpacity: 0, hatched: false });
+  });
 });
 
 describe("hex geometry", () => {

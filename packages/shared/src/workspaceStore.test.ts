@@ -580,6 +580,31 @@ describe("panels and layers", () => {
     expect(persisted).not.toHaveProperty("game");
   });
 
+  it("draws unvisited hexes by default, and keeps a stored choice either way (ah-7czr)", () => {
+    expect(store().layers.unvisited).toBe(true);
+
+    const merge = useWorkspaceStore.persist.getOptions().merge;
+    const read = (layers: Record<string, unknown>) =>
+      (merge?.({ layers }, store()) as unknown as ReturnType<typeof store>).layers;
+
+    // A record saved before the switch existed has no key for it: it reads as on, so nobody's
+    // map changes on update.
+    expect(read({ staleness: false, movement: true }).unvisited).toBe(true);
+    expect(read({ staleness: false, movement: true }).staleness).toBe(false);
+    expect(read({ unvisited: false }).unvisited).toBe(false);
+  });
+
+  it("toggles unvisited hexes without touching staleness", async () => {
+    store().toggleLayer("unvisited");
+    expect(store().layers.unvisited).toBe(false);
+    expect(store().layers.staleness).toBe(true);
+
+    const options = useWorkspaceStore.persist.getOptions();
+    const raw = await options.storage?.getItem(options.name ?? "atlantis-hud-workspace");
+    const persisted = (raw as { state?: Record<string, unknown> } | null)?.state ?? {};
+    expect(persisted.layers).toMatchObject({ unvisited: false, staleness: true });
+  });
+
   it("toggles a layer back and forth", () => {
     store().toggleLayer("staleness");
     expect(store().layers.staleness).toBe(false);

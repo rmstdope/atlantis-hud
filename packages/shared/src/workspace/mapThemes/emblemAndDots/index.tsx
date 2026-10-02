@@ -81,11 +81,11 @@ function TerrainLayer({ views }: LayerProps) {
               // Ground nobody surveyed breaks the dash further: the dim is now light enough to
               // read the terrain through, so it no longer separates the two states by itself.
               strokeDasharray={
-                view.fogOpacity > 0 ? (view.knowledge === "named" ? "2 4" : "5 4") : undefined
+                view.fogOpacity > 0 ? (view.unsurveyed ? "2 4" : "5 4") : undefined
               }
               data-rim={
                 view.fogOpacity > 0
-                  ? view.knowledge === "named"
+                  ? view.unsurveyed
                     ? "unsurveyed"
                     : "stale"
                   : undefined
@@ -104,7 +104,7 @@ function TerrainLayer({ views }: LayerProps) {
               <polygon
                 points={HEX_POINTS_MOCKUP}
                 className="ed-tint"
-                data-dim={view.knowledge === "named" ? "unsurveyed" : "stale"}
+                data-dim={view.unsurveyed ? "unsurveyed" : "stale"}
                 opacity={view.fogOpacity}
               />
             )}

@@ -89,8 +89,8 @@ function TerrainLayer({ views }: LayerProps) {
                 className={`${terrainClassName("hud", view.terrainKind)} hud-edge`}
                 style={view.texture ? { fill: `url(#${view.texture.patternId})` } : undefined}
                 strokeWidth={1}
-                strokeDasharray={view.knowledge === "named" ? "4 3" : undefined}
-                data-rim={view.knowledge === "named" ? "unsurveyed" : undefined}
+                strokeDasharray={view.unsurveyed ? "4 3" : undefined}
+                data-rim={view.unsurveyed ? "unsurveyed" : undefined}
                 vectorEffect="non-scaling-stroke"
               />
               {view.texture && (
@@ -105,7 +105,7 @@ function TerrainLayer({ views }: LayerProps) {
                 <polygon
                   points={HEX_POINTS_MOCKUP}
                   className="hud-tint"
-                  data-dim={view.knowledge === "named" ? "unsurveyed" : "stale"}
+                  data-dim={view.unsurveyed ? "unsurveyed" : "stale"}
                   // Arrives already damped, whichever state it is: a reading still shows the
                   // terrain it was a reading of, and a neighbour's exits are a reading of a sort,
                   // enough to say what is there.
