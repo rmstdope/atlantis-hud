@@ -149,8 +149,10 @@ does it for you). Without it `.claude/cerebro/` is an empty directory: the agent
 launchers are all in there, so `s` in the fleet view and every `.claude/cerebro/scripts/…` command
 fail with "No such file or directory".
 
-Biome textures (the Standard texture set) are committed under `config/public/biomes/`; their colours
-are `scripts/biomeRamps.ts`. Regenerate them after changing the generator or the ramps with:
+Biome textures are committed under `config/public/biomes/`: the Standard texture set at its top
+level, with its colours in `scripts/biomeRamps.ts`, and the Shapes set in `shapes/`, drawn by
+`scripts/biomeShapes.ts`. Regenerate both after changing the generator, the ramps or the shapes
+with:
 
 ```bash
 pnpm run generate:biomes

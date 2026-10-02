@@ -77,7 +77,7 @@ ink, Miniature World paints a lit/shade gradient pair, Tactical HUD a panel wash
 
 When the **textures toggle** is on and the terrain has a texture, the flat fill is replaced by
 a biome image (`<directory>/<terrain>_512.png`, where the directory is the chosen **texture set**'s
-from `workspace/textureSets.ts` — `/biomes` for Standard) clipped to the hex via an SVG pattern
+from `workspace/textureSets.ts` — `/biomes` for Standard, `/biomes/shapes` for Shapes) clipped to the hex via an SVG pattern
 (`preserveAspectRatio: slice`). Every terrain with a flat colour of its own is textured.
 
 The Standard set's colours (`scripts/biomeRamps.ts`) and every theme's flat terrain colours were
@@ -86,6 +86,17 @@ and jungle above all — differ in hue *and* lightness. Each theme keeps its own
 colourfulness; the agreed base palette decides each biome's hue and its order from dark to light.
 `scripts/flatTerrainPalette.test.ts` and `scripts/biomeRamps.test.ts` hold the clash pairs apart,
 so a later colour change that brings two back together fails there.
+
+The **Shapes** set (ah-d9jb.2) keeps Standard's colours, with mountain's rock made much darker, and
+draws one large shape per biome over them — tree crowns, reeds by open water, fronds, snow-tipped
+peaks, dunes, lava cracks, boulders, mushroom caps, lit passages, glowing pools, fissures — so a
+biome can be told by its structure in greyscale too. Ocean alone has no drawn marks, only broad
+shallows and deeps. The drawing is the agreed mockup's canvas code (`docs/ui/ah-d9jb.2-shapes-set.html`),
+ported to `scripts/biomeShapes.ts` over a small canvas-to-SVG recorder (`scripts/svgPainter.ts`) that
+`sharp` rasterises offline; only the 512 px size the map loads is generated.
+`scripts/shapesTextures.test.ts` reads the committed images at far zoom and holds the clash groups
+apart in colour and in greyscale. Rotation and water drift apply to every set alike, so the shadows
+under crowns and mounds fall a different way in each hex when textures are rotated.
 
 A **barren** hex — a region emptied by annihilation, where nothing lives and which cannot be
 targeted again — gets its own terrain treatment, distinct from ordinary wasteland, so the scar

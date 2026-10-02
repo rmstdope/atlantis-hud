@@ -3719,9 +3719,16 @@ test("terrain is drawn as itself rather than as a picture of itself", async ({ p
   const textureSet = page.getByTestId("settings-texture-set");
   await expect(textureSet).toBeEnabled();
   await expect(textureSet).toHaveValue("standard");
+  // Choosing Shapes (ah-d9jb.2) repaints the map at once from the set's own pictures, and they are
+  // served.
+  const mountainImage = page.locator("pattern[id^='biome-texture-mountain'] image").first();
+  await expect(mountainImage).toHaveAttribute("href", "/biomes/mountain_512.png");
+  await textureSet.selectOption("shapes");
+  await expect(mountainImage).toHaveAttribute("href", "/biomes/shapes/mountain_512.png");
+  expect((await page.request.get("/biomes/shapes/mountain_512.png")).ok()).toBe(true);
   await page.getByTestId("settings-biome-textures").uncheck();
   await expect(textureSet).toBeDisabled();
-  await expect(textureSet).toHaveValue("standard");
+  await expect(textureSet).toHaveValue("shapes");
   await page.keyboard.press("Escape");
 
   const fillOf = (polygon: typeof mountain) =>
@@ -3739,6 +3746,7 @@ test("terrain is drawn as itself rather than as a picture of itself", async ({ p
   // Back on, so later tests inherit the map they expect.
   await page.getByTestId("settings-indicator").click();
   await page.getByTestId("settings-biome-textures").check();
+  await textureSet.selectOption("standard");
   await page.keyboard.press("Escape");
 });
 
