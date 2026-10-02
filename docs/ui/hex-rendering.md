@@ -80,8 +80,8 @@ a biome image (`<directory>/<terrain>_512.png`, where the directory is the chose
 from `workspace/textureSets.ts` — `/biomes` for Standard, `/biomes/shapes` for Shapes) clipped to the hex via an SVG pattern
 (`preserveAspectRatio: slice`). Every terrain with a flat colour of its own is textured.
 
-A set also says how its pictures move (ah-d9jb.3). Standard turns each hex's picture by any whole
-degree and slides its water as a repeating tile. **Painted** (`/biomes/painted`) turns only in
+A set also says how its pictures move (ah-d9jb.3). Standard and Shapes turn each hex's picture by
+any whole degree and slide their water as a repeating tile. **Painted** (`/biomes/painted`) turns only in
 sixths of a turn (`rotationStep: 60`), so the painted light and shadow point six ways. Its pictures
 do not tile (`tiles: false`), so each is drawn as a square as wide as the hex and centred on it,
 turned inside that square (`textureCoverTransform`): no turn uncovers a corner, and a sixth is a
