@@ -394,6 +394,64 @@ describe("the region panel's problems toggle", () => {
   });
 });
 
+describe("the biome symbols toggle (ah-d9jb.4)", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("starts off, so nobody's map changes on update", () => {
+    expect(store().biomeSymbols).toBe(false);
+  });
+
+  it("turns on and off, and the choice is remembered", async () => {
+    store().toggleBiomeSymbols();
+    expect(store().biomeSymbols).toBe(true);
+
+    const options = useWorkspaceStore.persist.getOptions();
+    const raw = await options.storage?.getItem(options.name ?? "atlantis-hud-workspace");
+    const persisted = (raw as { state?: Record<string, unknown> } | null)?.state ?? {};
+    expect(persisted.biomeSymbols).toBe(true);
+
+    store().toggleBiomeSymbols();
+    expect(store().biomeSymbols).toBe(false);
+  });
+
+  it("is left alone by the badge menu's All and None", () => {
+    store().toggleBiomeSymbols();
+    store().setAllBadges(false);
+    expect(store().biomeSymbols).toBe(true);
+
+    store().toggleBiomeSymbols();
+    store().setAllBadges(true);
+    expect(store().biomeSymbols).toBe(false);
+  });
+
+  it("is not a badge, so having it off never counts as a mark hidden", () => {
+    expect(Object.keys(store().badges)).not.toContain("biomeSymbols");
+  });
+
+  it("comes back on from storage when it was left on", () => {
+    const merge = useWorkspaceStore.persist.getOptions().merge;
+    const merged = merge?.(
+      { collapsed: {}, layers: {}, badges: {}, biomeSymbols: true },
+      store()
+    ) as ReturnType<typeof store> | undefined;
+
+    expect(merged?.biomeSymbols).toBe(true);
+  });
+
+  it("reads a record written before it existed, or anything that is not a boolean, as off", () => {
+    const merge = useWorkspaceStore.persist.getOptions().merge;
+
+    for (const stored of [{}, { biomeSymbols: "yes" }, { biomeSymbols: 1 }, { biomeSymbols: null }]) {
+      const merged = merge?.(
+        { collapsed: {}, layers: {}, badges: {}, ...stored },
+        store()
+      ) as ReturnType<typeof store> | undefined;
+
+      expect(merged?.biomeSymbols, JSON.stringify(stored)).toBe(false);
+    }
+  });
+});
+
 describe("panels and layers", () => {
   beforeEach(resetWorkspaceStore);
 

@@ -13,7 +13,8 @@
  * proposal 02); the layer components scale the hex down to `HEX_RADIUS` in one transform.
  */
 
-import type { SettlementTier } from "../hexView";
+import { markSpot, type MarkSpot } from "../biomeSymbols";
+import type { HexView, SettlementTier } from "../hexView";
 
 export const MOCKUP_RADIUS = 46;
 
@@ -111,4 +112,52 @@ export function settlementBox(tier: SettlementTier | null): {
 }
 
 /** How far in from the hex's edge the guard perimeter is drawn, as a fraction of the radius. */
+/** How far above the hex's centre the settlement's box is drawn, for the layer and its footprint. */
+export const SETTLEMENT_Y = -4;
+
 export const GUARD_RING = 38.6 / MOCKUP_RADIUS;
+
+/**
+ * Where this theme draws its marks in a hex, for the biome symbols to keep clear of (ah-d9jb.4).
+ *
+ * Read off the stations `MarkLayer` draws at. The guard is a ring round the rim and claims nothing;
+ * the age readout is drawn by the terrain layer, for a faded stale hex, and is claimed with it.
+ */
+export function markFootprint(view: HexView): MarkSpot[] {
+  const spots: MarkSpot[] = [];
+  const claim = (at: { x: number; y: number }, size: number) =>
+    spots.push(markSpot(at, size, MOCKUP_RADIUS));
+
+  if (view.ships > 0) {
+    claim(STATIONS.ship, 10);
+  }
+  if (view.battle) {
+    claim(STATIONS.battle, 9);
+  }
+  if (view.gate) {
+    claim(STATIONS.gate, 10);
+  }
+  if (view.shafts > 0) {
+    claim(STATIONS.shaft, 10);
+  }
+  if (view.units.monster > 0) {
+    claim(STATIONS.monster, 10);
+  }
+  if (view.lairs > 0) {
+    claim(STATIONS.lair, 10);
+  }
+  if (buildingLabel(view.buildings) !== null) {
+    claim(STATIONS.buildings, 9);
+  }
+  if (view.knowledge === "stale" && view.fogOpacity > 0 && ageLabel(view.ageInTurns) !== null) {
+    claim({ x: 0, y: AGE_Y }, 10);
+  }
+  if (view.settlement) {
+    claim({ x: 0, y: SETTLEMENT_Y }, settlementBox(view.settlement.tier).outer / 2 + 2);
+    claim({ x: 0, y: NAME_Y }, 14);
+  }
+  for (const counter of counterRow(view.units)) {
+    claim({ x: counter.x, y: COUNTER_ROW_Y }, 10);
+  }
+  return spots;
+}

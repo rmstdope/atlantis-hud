@@ -28,7 +28,8 @@ import {
   NAME_Y,
   roofCluster,
   STAND_COUNT_DROP,
-  unitStand
+  unitStand,
+  markFootprint
 } from "./paint";
 import { TERRAIN_KINDS } from "../terrain";
 
@@ -425,5 +426,6 @@ export const miniatureWorld: MapTheme = {
   Defs,
   TerrainLayer,
   RoadLayer: roadLayer(ROAD_STYLE),
-  MarkLayer
+  MarkLayer,
+  markFootprint
 };

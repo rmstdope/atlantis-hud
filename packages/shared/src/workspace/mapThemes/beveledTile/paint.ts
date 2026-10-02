@@ -9,7 +9,8 @@
  * Coordinates are the proposal's own, at radius 46 (`hex-design-proposals.html`, proposal 05).
  */
 
-import type { SettlementTier } from "../hexView";
+import { markSpot, type MarkSpot } from "../biomeSymbols";
+import type { HexView, SettlementTier } from "../hexView";
 
 export const MOCKUP_RADIUS = 46;
 
@@ -139,3 +140,46 @@ export function medallion(tier: SettlementTier | null): { radius: number; pips: 
 
 /** How far apart the pips sit across the medallion's face. */
 export const PIP_PITCH = 5.5;
+
+/** The workshop roofs under the medallion: banded, one to three, as everywhere on the map. */
+export function roofAnchors(buildings: number): Array<{ x: number; y: number }> {
+  const roofs = buildings <= 0 ? 0 : buildings <= 3 ? 1 : buildings <= 6 ? 2 : 3;
+  return Array.from({ length: roofs }, (_, index) => ({ x: (index - 1) * 6, y: BUILDINGS_Y }));
+}
+
+/**
+ * Where this theme draws its marks in a hex, for the biome symbols to keep clear of (ah-d9jb.4).
+ *
+ * The medallion and the settlement's name, the battle chip, the chips racked on the rails, the
+ * workshop roofs and the token row. The guard is a ring round the rim and claims nothing.
+ */
+export function markFootprint(view: HexView): MarkSpot[] {
+  const spots: MarkSpot[] = [];
+  const claim = (at: { x: number; y: number }, size: number) =>
+    spots.push(markSpot(at, size, MOCKUP_RADIUS));
+
+  if (view.settlement) {
+    claim({ x: 0, y: MEDALLION_Y }, medallion(view.settlement.tier).radius + 2);
+    claim({ x: 0, y: NAME_Y }, 14);
+  }
+  if (view.battle) {
+    claim(battleChip(view.settlement !== null), CHIP_RADIUS + 1);
+  }
+  const chips = railChips({
+    gate: view.gate,
+    shafts: view.shafts,
+    lairs: view.lairs,
+    ships: view.ships,
+    monsters: view.units.monster
+  });
+  for (const chip of chips) {
+    claim(chip.at, CHIP_RADIUS + 1);
+  }
+  for (const roof of roofAnchors(view.buildings)) {
+    claim(roof, 5);
+  }
+  for (const token of tokenRow(view.units)) {
+    claim({ x: token.x, y: TOKEN_ROW_Y }, TOKEN_RADIUS + 1);
+  }
+  return spots;
+}

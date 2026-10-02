@@ -211,6 +211,12 @@ export type WorkspaceState = {
   layers: Record<LayerName, boolean>;
   /** Which marks the map draws over its terrain. */
   badges: Record<BadgeName, boolean>;
+  /**
+   * Whether the map sprinkles each hex with its biome's symbols (ah-d9jb.4). Offered in the badge
+   * menu but deliberately not a badge: off for everybody until chosen, untouched by All and None,
+   * and never what lights the Badges chip - which keeps meaning "a mark is hidden".
+   */
+  biomeSymbols: boolean;
   /** Whether the region panel's Problems section is shown. On by default. */
   regionProblemsShown: boolean;
   /**
@@ -307,6 +313,8 @@ export type WorkspaceState = {
   showRegionProblems: () => void;
   /** Shows or hides the whole set at once, which is what a nine-box panel owes the player. */
   setAllBadges: (on: boolean) => void;
+  /** Turns the biome symbols on or off. */
+  toggleBiomeSymbols: () => void;
   /** Arms destination picking for exactly one click. */
   armPlanner: () => void;
   /** Records where a route was planned to, and disarms. */
@@ -409,6 +417,7 @@ type Persisted = Pick<
   | "unitColumnsShown"
   | "layers"
   | "badges"
+  | "biomeSymbols"
   | "regionProblemsShown"
 >;
 
@@ -432,6 +441,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       unitColumnsShown: allColumnsShown(),
       layers: INITIAL_LAYERS,
       badges: allBadges(true),
+      biomeSymbols: false,
       regionProblemsShown: true,
       planner: { armed: false, destinationId: null },
       unitSlotTab: null,
@@ -603,6 +613,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       setAllBadges: (on) => set(() => ({ badges: allBadges(on) })),
 
+      toggleBiomeSymbols: () => set((state) => ({ biomeSymbols: !state.biomeSymbols })),
+
       toggleRegionProblems: () =>
         set((state) => ({ regionProblemsShown: !state.regionProblemsShown })),
       showRegionProblems: () => set({ regionProblemsShown: true }),
@@ -636,6 +648,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         unitColumnsShown: state.unitColumnsShown,
         layers: state.layers,
         badges: state.badges,
+        biomeSymbols: state.biomeSymbols,
         regionProblemsShown: state.regionProblemsShown
       }),
       /**
@@ -669,6 +682,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           unitColumnsShown: reconcile(allColumnsShown(), stored.unitColumnsShown ?? {}),
           layers: reconcile(INITIAL_LAYERS, stored.layers ?? {}),
           badges: badgesFromStorage(stored.badges ?? {}),
+          // Off unless storage holds a real `true`: a record written before the symbols existed
+          // reads as off, which is also the shipped default, so nobody's map changes on update.
+          biomeSymbols: stored.biomeSymbols === true,
           // Not a record, so `reconcile` does not apply: a missing or malformed key must read
           // as shown, or an upgrade silently hides every player's diagnostics.
           regionProblemsShown:
@@ -701,6 +717,7 @@ export function resetWorkspaceStore() {
     unitColumnsShown: allColumnsShown(),
     layers: INITIAL_LAYERS,
     badges: allBadges(true),
+    biomeSymbols: false,
     regionProblemsShown: true,
     unitSlotTab: null,
     mapView: NO_MAP_VIEW

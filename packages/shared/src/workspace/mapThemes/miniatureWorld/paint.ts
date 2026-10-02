@@ -13,7 +13,8 @@
  * Coordinates are the proposal's own, at radius 46 (`hex-design-proposals.html`, proposal 03).
  */
 
-import type { SettlementTier } from "../hexView";
+import { markSpot, type MarkSpot } from "../biomeSymbols";
+import type { HexView, SettlementTier } from "../hexView";
 import type { TerrainPaint } from "../terrain";
 
 export const MOCKUP_RADIUS = 46;
@@ -141,4 +142,53 @@ export function decorationFor(kind: TerrainPaint): "peaks" | "trees" | "waves" |
     default:
       return null;
   }
+}
+
+/**
+ * Where this theme draws its marks in a hex, for the biome symbols to keep clear of (ah-d9jb.4).
+ *
+ * Read off the grounds `MarkLayer` stages each scene on. The painted peaks, trees, waves and dunes
+ * are not marks: they are this theme's way of painting the terrain, and the symbols are drawn over
+ * terrain like every other theme's.
+ */
+export function markFootprint(view: HexView): MarkSpot[] {
+  const spots: MarkSpot[] = [];
+  const claim = (at: { x: number; y: number }, size: number) =>
+    spots.push(markSpot(at, size, MOCKUP_RADIUS));
+
+  if (view.gate) {
+    claim(GROUNDS.gate, 9);
+  }
+  if (view.buildings > 0) {
+    claim(GROUNDS.workshops, 10);
+  }
+  if (view.shafts > 0) {
+    claim(GROUNDS.shaft, 8);
+  }
+  if (view.lairs > 0) {
+    claim(GROUNDS.cave, 9);
+  }
+  if (view.ships > 0) {
+    claim(GROUNDS.harbour, 9);
+  }
+  if (view.units.monster > 0) {
+    claim(GROUNDS.monsters, 8);
+  }
+  if (view.battle) {
+    claim(GROUNDS.battle, 8);
+  }
+  if (view.guard) {
+    claim(GROUNDS.guard, 9);
+  }
+  if (view.settlement) {
+    for (const roof of roofCluster(view.settlement.tier).roofs) {
+      claim(roof, 7 * roof.scale);
+    }
+    claim({ x: 0, y: NAME_Y }, 14);
+  }
+  for (const stand of unitStand(view.units)) {
+    claim({ x: stand.x, y: GROUNDS.people.y }, 7);
+    claim({ x: stand.x, y: GROUNDS.people.y + STAND_COUNT_DROP }, 5);
+  }
+  return spots;
 }

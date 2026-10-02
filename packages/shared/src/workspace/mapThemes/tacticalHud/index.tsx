@@ -25,7 +25,9 @@ import {
   MOCKUP_RADIUS,
   NAME_Y,
   settlementBox,
-  STATIONS
+  SETTLEMENT_Y,
+  STATIONS,
+  markFootprint
 } from "./paint";
 import { terrainClassName } from "../terrain";
 
@@ -182,7 +184,7 @@ function Settlement({ view }: { view: HexView }) {
     >
       <rect
         x={-box.outer / 2}
-        y={-box.outer / 2 - 4}
+        y={-box.outer / 2 + SETTLEMENT_Y}
         width={box.outer}
         height={box.outer}
         fill="none"
@@ -192,7 +194,7 @@ function Settlement({ view }: { view: HexView }) {
       {box.inner !== null && (
         <rect
           x={-box.inner / 2}
-          y={-box.inner / 2 - 4}
+          y={-box.inner / 2 + SETTLEMENT_Y}
           width={box.inner}
           height={box.inner}
           className="hud-settlement-core"
@@ -374,5 +376,6 @@ export const tacticalHud: MapTheme = {
   fogDamping: 0.8,
   TerrainLayer,
   RoadLayer: roadLayer(ROAD_STYLE),
-  MarkLayer
+  MarkLayer,
+  markFootprint
 };

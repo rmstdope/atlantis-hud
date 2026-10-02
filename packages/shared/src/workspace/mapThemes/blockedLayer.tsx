@@ -7,7 +7,7 @@
 
 import { hexPointsAttribute } from "../mapHexView";
 import { HEX_RADIUS } from "../mapViewport";
-import { radii, translateOf } from "./geometry";
+import { BLOCKED_LABEL_DROP, radii, translateOf } from "./geometry";
 import type { LayerProps } from "./mapTheme";
 
 /** The id of the shared hatch pattern MapCanvas puts in its <defs>. */
@@ -56,7 +56,7 @@ export function BlockedLabels({ views }: LayerProps) {
           key={view.key}
           className="map-blocked-label"
           x={view.at.x}
-          y={view.at.y + radii(0.6)}
+          y={view.at.y + radii(BLOCKED_LABEL_DROP)}
           textAnchor="middle"
           data-blocked-label={view.key}
         >

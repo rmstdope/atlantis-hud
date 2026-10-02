@@ -2204,6 +2204,63 @@ test("each badge can be turned off on its own, and the set survives a reload", a
 });
 
 /**
+ * Biome symbols (ah-d9jb.4) sit in the Badges menu under a Terrain heading of their own, but are
+ * not a badge: off for every player until chosen, untouched by All and None, and never what lights
+ * the chip. Once on they are sprinkled over the terrain at close and middle zoom, gone far out, and
+ * the choice survives a reload like the badges do.
+ */
+test("biome symbols can be turned on from the Badges menu, are left alone by None, and survive a reload", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  const map = page.getByTestId("map-canvas");
+  const svg = page.locator("[data-testid='map-canvas'] svg");
+  const symbols = map.locator("[data-biome-symbol]");
+  for (let step = 0; step < 3; step += 1) {
+    await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+  }
+  await expect(svg).not.toHaveClass(/map-far/);
+  await expect(symbols).toHaveCount(0);
+
+  const trigger = page.getByTestId("layer-chips").getByRole("button", { name: "Badges", exact: true });
+  await expect(trigger).toHaveAttribute("data-badges-all", "true");
+  await trigger.click();
+  const menu = page.getByTestId("badge-menu");
+  await expect(menu.getByText("Terrain", { exact: true })).toBeVisible();
+  const box = menu.getByRole("checkbox", { name: "Biome symbols", exact: true });
+  await expect(box).not.toBeChecked();
+
+  await box.check();
+  await expect(symbols.first()).toBeVisible();
+  // Still open, as after every other row, and the chip still says nothing is hidden.
+  await expect(menu).toBeVisible();
+  await expect(trigger).toHaveAttribute("data-badges-all", "true");
+
+  // None hides every mark and leaves the symbols where they were.
+  await menu.getByRole("button", { name: "None", exact: true }).click();
+  await expect(box).toBeChecked();
+  await expect(symbols.first()).toBeVisible();
+  await menu.getByRole("button", { name: "All", exact: true }).click();
+
+  await page.reload();
+  await expect(map.locator('[data-shield="own"]').first()).toBeAttached();
+  await expect(symbols.first()).toBeAttached();
+  await page.getByTestId("layer-chips").getByRole("button", { name: "Badges", exact: true }).click();
+  await expect(
+    page.getByTestId("badge-menu").getByRole("checkbox", { name: "Biome symbols", exact: true })
+  ).toBeChecked();
+  await page.keyboard.press("Escape");
+
+  // Far out, where the unit marks and settlement squares go, the symbols go too.
+  for (let step = 0; step < 12; step += 1) {
+    await page.getByRole("button", { name: "Zoom out", exact: true }).click();
+  }
+  await expect(svg).toHaveClass(/map-far/);
+  await expect(symbols).toHaveCount(0);
+});
+
+/**
  * Region decorations are on by default, like every other badge, so a player who has never opened
  * the Badges menu already sees province names on the map. Turning the badge off is the one
  * documented way to lose them, and the choice is a preference like the rest of the set.

@@ -107,14 +107,11 @@ export function terrainTexturePatternId(
 }
 
 /**
- * A stable, whole-degree texture angle for one hex.
- *
- * Texture variation must survive every redraw: choosing from `Math.random()` in a renderer would
- * make the ground visibly turn while panning or changing a badge. The region id is stable across
- * reports and sessions, so its small hash looks random across the map while producing the same
- * 0–359° angle for the same hex every time.
+ * A small, stable hash of a region id (FNV-1a). Everything a hex varies by - its texture's angle and
+ * brightness, where its biome symbols fall - is drawn from this rather than from `Math.random()`,
+ * so the variation survives every redraw.
  */
-function textureHash(value: string): number {
+export function regionHash(value: string): number {
   let hash = 2166136261;
   for (const character of value) {
     hash ^= character.codePointAt(0) ?? 0;
@@ -123,8 +120,16 @@ function textureHash(value: string): number {
   return hash >>> 0;
 }
 
+/**
+ * A stable, whole-degree texture angle for one hex.
+ *
+ * Texture variation must survive every redraw: choosing from `Math.random()` in a renderer would
+ * make the ground visibly turn while panning or changing a badge. The region id is stable across
+ * reports and sessions, so its small hash looks random across the map while producing the same
+ * 0–359° angle for the same hex every time.
+ */
 export function terrainTextureRotation(regionId: string): number {
-  return textureHash(regionId) % 360;
+  return regionHash(regionId) % 360;
 }
 
 /**
@@ -134,7 +139,7 @@ export function terrainTextureRotation(regionId: string): number {
  * terrain colour or the information drawn over it.
  */
 export function terrainTextureBrightness(regionId: string): number {
-  return 0.92 + (textureHash(`${regionId}:brightness`) % 17) / 100;
+  return 0.92 + (regionHash(`${regionId}:brightness`) % 17) / 100;
 }
 
 /**

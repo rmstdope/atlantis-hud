@@ -16,6 +16,10 @@ import { PopoverFrame } from "./popover";
  * round trips - and closes on Escape and on a press elsewhere, like everything else hanging off a
  * control in this workspace.
  *
+ * Below the badges, under a Terrain heading of its own, sits the one row that is not a badge: the
+ * biome symbols (ah-d9jb.4). It adds to the terrain rather than marking anything on it, so All and
+ * None leave it alone, it starts off, and having it off never lights the chip.
+ *
  * Absolutely positioned on purpose: `readInsets` frames the map from the bounding box of the chip
  * strip's overlay element, so a panel that grew that box would make zoom-to-fit fit the map into a
  * window the size of its own controls.
@@ -23,11 +27,15 @@ import { PopoverFrame } from "./popover";
 export function BadgeMenu({
   badges,
   onToggle,
-  onSetAll
+  onSetAll,
+  biomeSymbols,
+  onToggleBiomeSymbols
 }: {
   badges: Record<BadgeName, boolean>;
   onToggle: (badge: BadgeName) => void;
   onSetAll: (on: boolean) => void;
+  biomeSymbols: boolean;
+  onToggleBiomeSymbols: () => void;
 }) {
   return (
     <PopoverFrame
@@ -72,6 +80,18 @@ export function BadgeMenu({
           {label}
         </label>
       ))}
+      <hr className="mx-0.5 my-1 border-edge" />
+      <div className="px-1 text-ink-dim">Terrain</div>
+      <label className="flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 text-ink hover:bg-panel">
+        <input
+          type="checkbox"
+          data-setting="biome-symbols"
+          checked={biomeSymbols}
+          onChange={onToggleBiomeSymbols}
+          className="h-3 w-3 accent-select"
+        />
+        Biome symbols
+      </label>
     </PopoverFrame>
   );
 }

@@ -27,7 +27,8 @@ import {
   tierPips,
   unitBar,
   type DotShape,
-  type Feature
+  type Feature,
+  markFootprint
 } from "./paint";
 import { terrainClassName } from "../terrain";
 
@@ -315,5 +316,6 @@ export const emblemAndDots: MapTheme = {
   fogDamping: 0.7,
   TerrainLayer,
   RoadLayer: roadLayer(ROAD_STYLE),
-  MarkLayer
+  MarkLayer,
+  markFootprint
 };

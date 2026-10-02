@@ -16,7 +16,6 @@ import { roadLayer, type RoadStyle } from "../roadLayer";
 import type { LayerProps, MapTheme } from "../mapTheme";
 import {
   battleChip,
-  BUILDINGS_Y,
   CHIP_RADIUS,
   GUARD_RADIUS,
   MEDALLION_Y,
@@ -28,7 +27,9 @@ import {
   TILE_RADIUS,
   TOKEN_RADIUS,
   TOKEN_ROW_Y,
-  tokenRow
+  tokenRow,
+  markFootprint,
+  roofAnchors
 } from "./paint";
 import { terrainClassName } from "../terrain";
 
@@ -290,18 +291,15 @@ function MarkLayer({ views }: LayerProps) {
               {/* A short row of roofs under the medallion: scale, banded as everywhere. */}
               {view.buildings > 0 && (
                 <g data-buildings="" className="bt-buildings">
-                  {Array.from(
-                    { length: view.buildings <= 3 ? 1 : view.buildings <= 6 ? 2 : 3 },
-                    (_, index) => (
-                      <path
-                        key={index}
-                        d="M-4,0 h4 v3 h-4 z M-5,0 L-2,-2.6 L1,0"
-                        transform={at({ x: (index - 1) * 6, y: BUILDINGS_Y })}
-                        strokeWidth={1}
-                        vectorEffect="non-scaling-stroke"
-                      />
-                    )
-                  )}
+                  {roofAnchors(view.buildings).map((roof, index) => (
+                    <path
+                      key={index}
+                      d="M-4,0 h4 v3 h-4 z M-5,0 L-2,-2.6 L1,0"
+                      transform={at(roof)}
+                      strokeWidth={1}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  ))}
                 </g>
               )}
 
@@ -351,5 +349,6 @@ export const beveledTile: MapTheme = {
   fogDamping: 0.72,
   TerrainLayer,
   RoadLayer: roadLayer(ROAD_STYLE),
-  MarkLayer
+  MarkLayer,
+  markFootprint
 };

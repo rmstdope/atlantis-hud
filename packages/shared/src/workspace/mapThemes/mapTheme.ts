@@ -14,6 +14,7 @@
  */
 
 import type { ComponentType } from "react";
+import type { MarkSpot } from "./biomeSymbols";
 import type { HexView } from "./hexView";
 
 /** What every theme layer receives: the prepared hexes of one knowledge bucket, and nothing else. */
@@ -43,4 +44,12 @@ export type MapTheme = {
   RoadLayer: ComponentType<LayerProps>;
   /** Settlements, units, structures and labels. */
   MarkLayer: ComponentType<LayerProps>;
+  /**
+   * Where this theme draws its marks in a hex - every mark and label its layers put inside the
+   * hex for this view - as circles in fractions of `HEX_RADIUS`, so the biome symbols can keep
+   * clear of them (ah-d9jb.4). Worked out from the same anchors the layers draw with, so the two
+   * cannot drift. Roads are not declared here: they are the same geometry under every theme, and
+   * `roadSpots` covers them. A ring round the rim claims nothing; no symbol reaches it.
+   */
+  markFootprint: (view: HexView) => MarkSpot[];
 };

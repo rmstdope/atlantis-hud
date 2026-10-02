@@ -1,8 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { SURFACE_LEVEL, type HexMapModel } from "../hexMapModel";
 import type { HexNoteRecord, MapShape, MapWall } from "@atlantis/core-client";
 import { MapCanvas } from "./MapCanvas";
+import { NO_MAP_VIEW } from "./mapViewState";
+import { useWorkspaceStore } from "../workspaceStore";
+import { renderWithStoreState, restoreStoresForTest } from "../testing/storeState";
 import type { RouteOverlay } from "./routeOverlay";
 import { wallTip } from "./routeWall";
 import { CONGESTED_CENTRE, CONGESTED_HEXES } from "./mapThemes/congestedFixture";
@@ -39,7 +42,8 @@ function probe(): MapTheme {
       />
     ),
     RoadLayer: mark("roads"),
-    MarkLayer: mark("marks")
+    MarkLayer: mark("marks"),
+    markFootprint: () => []
   };
 }
 
@@ -470,14 +474,15 @@ describe("what the map hands a theme", () => {
     expect(draw()).toContain("map-theme-probe");
   });
 
-  it("asks nothing of a theme beyond the three layers, defs being optional", () => {
+  it("asks nothing of a theme beyond the three layers and its footprint, defs being optional", () => {
     const bare: MapTheme = {
       id: "bare",
       label: "Bare",
       fogDamping: 1,
       TerrainLayer: () => null,
       RoadLayer: () => null,
-      MarkLayer: () => null
+      MarkLayer: () => null,
+      markFootprint: () => []
     };
 
     expect(() => draw(bare)).not.toThrow();
@@ -1047,5 +1052,72 @@ describe("the mark layer", () => {
       expect(svg.indexOf(LAYER), mark).toBeGreaterThan(-1);
       expect(svg.indexOf(mark), mark).toBeGreaterThan(svg.indexOf(LAYER));
     }
+  });
+});
+
+describe("the biome symbols (ah-d9jb.4)", () => {
+  /** The congested fixture's map, through the probe theme, with the symbols as asked. */
+  function drawSymbols(biomeSymbols: boolean | undefined, step?: number): string {
+    const canvas = (
+      <MapCanvas
+        gameId={null}
+        model={model}
+        theme={probe()}
+        level={1}
+        selectedRegionId={null}
+        selectionEpoch={0}
+        pickEpoch={0}
+        onSelectRegion={() => {}}
+        showStaleness
+        showTextures={false}
+        badges={allBadges(true)}
+        biomeSymbols={biomeSymbols}
+      />
+    );
+    if (step === undefined) {
+      return renderToStaticMarkup(canvas);
+    }
+    // The map reads its zoom from the workspace store, so a far step is set there.
+    return renderWithStoreState(canvas, useWorkspaceStore, {
+      mapView: { ...NO_MAP_VIEW, viewport: { tx: 0, ty: 0, step } }
+    });
+  }
+
+  afterEach(() => {
+    restoreStoresForTest();
+  });
+
+  it("draws none while they are off, which is where every player starts", () => {
+    expect(drawSymbols(false)).not.toContain('data-testid="biome-symbols"');
+    expect(drawSymbols(undefined)).not.toContain('data-testid="biome-symbols"');
+    expect(drawSymbols(false)).not.toContain('id="biome-symbol-');
+  });
+
+  it("draws them, with their shapes in the defs, once turned on", () => {
+    const svg = drawSymbols(true);
+
+    expect(svg).toContain('data-testid="biome-symbols"');
+    expect(svg).toContain('id="biome-symbol-forest"');
+    expect(svg).toContain("data-biome-symbol=");
+  });
+
+  it("draws none far out, where the unit marks and settlement squares go too, though they are on", () => {
+    expect(drawSymbols(true, 0)).toContain('data-testid="biome-symbols"');
+    const far = drawSymbols(true, -6);
+
+    expect(far).toContain("map-far");
+    expect(far).not.toContain('data-testid="biome-symbols"');
+    expect(far).not.toContain('id="biome-symbol-');
+  });
+
+  it("puts them over the terrain and under the roads, so every road and mark lies on top", () => {
+    const svg = drawSymbols(true);
+    const lastTerrain = svg.lastIndexOf('data-layer="terrain"');
+    const symbols = svg.indexOf('data-testid="biome-symbols"');
+    const roads = svg.indexOf('data-layer="roads"');
+
+    expect(lastTerrain).toBeGreaterThan(-1);
+    expect(symbols).toBeGreaterThan(lastTerrain);
+    expect(roads).toBeGreaterThan(symbols);
   });
 });

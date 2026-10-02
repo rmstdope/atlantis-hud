@@ -7,7 +7,15 @@ import { TERRAIN_KINDS } from "../terrain";
 import { CONGESTED_CENTRE, CONGESTED_HEXES, NAMED_ONLY } from "../congestedFixture";
 import { allBadges, buildHexViews, dampFog, type HexView, type HexViewOptions } from "../hexView";
 import { cartographersTable } from "./index";
-import { keepOf, nameLift, shieldRow, workshopAnchors, ANCHORS } from "./paint";
+import {
+  housePositions,
+  keepOf,
+  KEEP_LIFT,
+  nameLift,
+  shieldRow,
+  workshopAnchors,
+  ANCHORS
+} from "./paint";
 
 const ALL_ON: HexViewOptions = {
   showStaleness: true,
@@ -478,5 +486,40 @@ describe("unsurveyed ground, drawn light and rimmed", () => {
     expect(draw(cartographersTable.TerrainLayer, [NAMED_ONLY], { showTextures: true })).toContain(
       "url(#biome-texture-jungle-"
     );
+  });
+});
+
+/** The spots `with` claims that `without` does not: what one mark adds to the footprint. */
+function addedSpots(without: HexView, withIt: HexView) {
+  const before = cartographersTable.markFootprint(without);
+  return cartographersTable.markFootprint(withIt).filter(
+    (spot) => !before.some((other) => other.x === spot.x && other.y === spot.y && other.r === spot.r)
+  );
+}
+
+describe("the room this theme's marks take, for the biome symbols to keep clear of (ah-d9jb.4)", () => {
+  it("claims the room on the spot where it draws a settlement", () => {
+    // Covers every point the layer draws a house or the keep at: the anchors are the layer's own.
+    const covers = (spots: ReturnType<typeof addedSpots>, at: { x: number; y: number }) =>
+      spots.some((spot) => Math.hypot(spot.x - at.x / 46, spot.y - at.y / 46) <= spot.r);
+    const settled = (tier: "village" | "town" | "city") =>
+      addedSpots(
+        viewWith({ battle: null, settlement: null }),
+        viewWith({ battle: null, settlement: { name: "Kharn", tier } })
+      );
+
+    for (const house of housePositions(1)) {
+      expect(covers(settled("village"), house)).toBe(true);
+    }
+    for (const house of housePositions(2)) {
+      expect(covers(settled("town"), house)).toBe(true);
+    }
+    expect(covers(settled("city"), KEEP_LIFT)).toBe(true);
+  });
+
+  it("claims room for the guard, which it draws inside the hex rather than round its rim", () => {
+    const added = addedSpots(viewWith({ guard: null }), viewWith({ guard: "own" }));
+
+    expect(added).toContainEqual(expect.objectContaining({ x: (ANCHORS.guard.x + 5) / 46, y: ANCHORS.guard.y / 46 }));
   });
 });

@@ -5,7 +5,7 @@ import { TERRAIN_KINDS } from "../terrain";
 import { CONGESTED_CENTRE, CONGESTED_HEXES, NAMED_ONLY } from "../congestedFixture";
 import { allBadges, buildHexViews, type HexView, type HexViewOptions } from "../hexView";
 import { tacticalHud } from "./index";
-import { ageLabel, buildingLabel, counterRow, settlementBox, STATIONS } from "./paint";
+import { ageLabel, buildingLabel, counterRow, settlementBox, SETTLEMENT_Y, STATIONS } from "./paint";
 
 const ALL_ON: HexViewOptions = {
   showStaleness: true,
@@ -419,5 +419,28 @@ describe("the battle fought in a hex last turn", () => {
     expect(own).toContain("hud-battle");
     expect(own).not.toContain("hud-battle-other");
     expect(other).toContain("hud-battle-other");
+  });
+});
+
+/** The spots `with` claims that `without` does not: what one mark adds to the footprint. */
+function addedSpots(without: HexView, withIt: HexView) {
+  const before = tacticalHud.markFootprint(without);
+  return tacticalHud.markFootprint(withIt).filter(
+    (spot) => !before.some((other) => other.x === spot.x && other.y === spot.y && other.r === spot.r)
+  );
+}
+
+describe("the room this theme's marks take, for the biome symbols to keep clear of (ah-d9jb.4)", () => {
+  it("claims the room on the spot where it draws a settlement", () => {
+    const added = addedSpots(
+      viewWith({ battle: null, settlement: null }),
+      viewWith({ battle: null, settlement: { name: "Kharn", tier: "village" } })
+    );
+
+    expect(added).toContainEqual(expect.objectContaining({ x: 0, y: SETTLEMENT_Y / 46 }));
+  });
+
+  it("claims nothing for the guard, which is a ring round the rim outside every symbol", () => {
+    expect(addedSpots(viewWith({ guard: null }), viewWith({ guard: "own" }))).toEqual([]);
   });
 });
