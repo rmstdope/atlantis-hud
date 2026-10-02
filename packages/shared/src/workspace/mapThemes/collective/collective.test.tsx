@@ -23,7 +23,9 @@ import {
 const ALL_ON: HexViewOptions = {
   showStaleness: true,
   showTextures: false,
-  badges: allBadges(true)
+  badges: allBadges(true),
+  // The theme's own damping, so the faded states are tested at the strength the map draws them.
+  fogDamping: collective.fogDamping
 };
 
 const KINDS: TerrainPaint[] = [...TERRAIN_KINDS, "other"];
