@@ -85,9 +85,17 @@ export function terrainFillClass(terrain: string, water: WaterTerrains = DEFAULT
   return TERRAIN_CLASSES[terrainKindOf(terrain, water)];
 }
 
-export function terrainTextureUrl(terrain: string, water: WaterTerrains = DEFAULT_WATER): string | null {
+/**
+ * The biome picture for a terrain, from the chosen texture set's `directory` (`textureSets.ts`);
+ * the Standard set's directory when no set is named.
+ */
+export function terrainTextureUrl(
+  terrain: string,
+  water: WaterTerrains = DEFAULT_WATER,
+  directory = "/biomes"
+): string | null {
   const kind = terrainKindOf(terrain, water);
-  return kind === "other" ? null : `/biomes/${kind}_512.png`;
+  return kind === "other" ? null : `${directory}/${kind}_512.png`;
 }
 
 export function terrainTexturePatternId(

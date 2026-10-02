@@ -335,7 +335,7 @@ describe("what the map hands a theme", () => {
   });
 
   it("leaves biome textures unrotated when rotation is off", () => {
-    const svg = draw(probe(), [], allBadges(true), undefined, true, { rotate: false, animateWater: true });
+    const svg = draw(probe(), [], allBadges(true), undefined, true, { rotate: false, animateWater: true, directory: "/biomes" });
     const pattern = svg.match(/<pattern id="biome-texture-mountain-0-\d+"[^>]*>/)?.[0];
 
     expect(pattern).toBeDefined();
@@ -351,7 +351,7 @@ describe("what the map hands a theme", () => {
   });
 
   it("leaves water textures still when their animation is off", () => {
-    const svg = draw(probe(), [], allBadges(true), undefined, true, { rotate: true, animateWater: false });
+    const svg = draw(probe(), [], allBadges(true), undefined, true, { rotate: true, animateWater: false, directory: "/biomes" });
 
     expect(svg).not.toContain("<animateTransform");
   });

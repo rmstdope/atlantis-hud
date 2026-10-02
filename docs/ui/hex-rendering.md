@@ -76,8 +76,16 @@ theme that ships declares its own: Cartographer's Table paints tinted paper and 
 ink, Miniature World paints a lit/shade gradient pair, Tactical HUD a panel wash.
 
 When the **textures toggle** is on and the terrain has a texture, the flat fill is replaced by
-a biome image (`/biomes/<terrain>_512.png`) clipped to the hex via an SVG pattern
-(`preserveAspectRatio: slice`). The same twelve terrains are textured.
+a biome image (`<directory>/<terrain>_512.png`, where the directory is the chosen **texture set**'s
+from `workspace/textureSets.ts` — `/biomes` for Standard) clipped to the hex via an SVG pattern
+(`preserveAspectRatio: slice`). Every terrain with a flat colour of its own is textured.
+
+The Standard set's colours (`scripts/biomeRamps.ts`) and every theme's flat terrain colours were
+re-tuned together in ah-d9jb.1 so that biomes a person must tell apart at far zoom — forest, swamp
+and jungle above all — differ in hue *and* lightness. Each theme keeps its own lightness band and
+colourfulness; the agreed base palette decides each biome's hue and its order from dark to light.
+`scripts/flatTerrainPalette.test.ts` and `scripts/biomeRamps.test.ts` hold the clash pairs apart,
+so a later colour change that brings two back together fails there.
 
 A **barren** hex — a region emptied by annihilation, where nothing lives and which cannot be
 targeted again — gets its own terrain treatment, distinct from ordinary wasteland, so the scar

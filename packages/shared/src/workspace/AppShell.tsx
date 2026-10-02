@@ -255,6 +255,7 @@ import { loadSavedView, saveMapView } from "./mapViewportStorage";
 import { unitForHex } from "./hexUnitMemory";
 import type { MapViewState } from "./mapViewState";
 import { getMapTheme, type TextureStyle } from "./mapThemes";
+import { textureSetDirectory } from "./textureSets";
 import { waterTerrainsOf } from "./mapThemes/terrain";
 import { useShallow } from "zustand/react/shallow";
 import { OrdersPanel } from "./OrdersPanel";
@@ -1028,7 +1029,8 @@ export function AppShell({
     useShallow(
       (state): TextureStyle => ({
         rotate: state.biomeTextureRotation,
-        animateWater: state.animateWaterTextures
+        animateWater: state.animateWaterTextures,
+        directory: textureSetDirectory(state.textureSet)
       })
     )
   );

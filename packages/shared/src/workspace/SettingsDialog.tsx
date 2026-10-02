@@ -12,6 +12,7 @@ import { useWorkspaceStore } from "../workspaceStore";
 import type { ThemeName } from "../settingsStore";
 import { mapThemeOptions } from "./mapThemes";
 import { SettingFlag } from "./SettingFlag";
+import { TEXTURE_SETS } from "./textureSets";
 import { SettingToggle } from "./SettingToggle";
 import {
   COLUMN_LABELS,
@@ -211,6 +212,9 @@ export function GlobalSettings() {
   const setTheme = useSettingsStore((state) => state.setTheme);
   const mapTheme = useSettingsStore((state) => state.mapTheme);
   const setMapTheme = useSettingsStore((state) => state.setMapTheme);
+  const showTextures = useSettingsStore((state) => state.biomeTextures);
+  const textureSet = useSettingsStore((state) => state.textureSet);
+  const setTextureSet = useSettingsStore((state) => state.setTextureSet);
   // Per theme (ah-j1xd): the slider always shows and writes the theme the player is looking at.
   const paneTransparency = useSettingsStore((state) => state.paneTransparency);
   const setPaneTransparency = useSettingsStore((state) => state.setPaneTransparency);
@@ -256,6 +260,37 @@ export function GlobalSettings() {
       <SettingFlag name="biomeTextures" />
 
       <div className="ml-4 space-y-2 border-l-2 border-brass/40 pl-2">
+        {/*
+          Which pictures the textures are (ah-d9jb.1). Inside the group because it only means
+          anything with textures on; disabled with them off like the two toggles below, and it keeps
+          its value meanwhile. The options come from the registry, so a new set needs no work here.
+        */}
+        <label
+          className={`flex flex-wrap items-center justify-between gap-2 text-ink-soft ${
+            showTextures ? "" : "opacity-50"
+          }`}
+        >
+          <span>
+            <span className="block">Texture set</span>
+            <span className="block text-pane-sm text-ink-dim">
+              Which pictures the map uses for each biome.
+            </span>
+          </span>
+          <select
+            data-testid="settings-texture-set"
+            aria-label="Texture set"
+            value={textureSet}
+            disabled={!showTextures}
+            onChange={(event) => setTextureSet(event.target.value)}
+            className="rounded border border-edge bg-panel-raised px-1.5 py-0.5 text-ink"
+          >
+            {TEXTURE_SETS.map((set) => (
+              <option key={set.id} value={set.id}>
+                {set.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <SettingFlag name="biomeTextureRotation" />
         <SettingFlag name="animateWaterTextures" />
       </div>

@@ -17,7 +17,7 @@ keyboard focus rings, the hit and accessibility layer, and the rulers. A theme n
 
 | Shared — `MapCanvas.tsx`                    | Theme                            |
 | ------------------------------------------- | -------------------------------- |
-| fog lattice, the twelve biome patterns      | terrain fill + texture treatment |
+| fog lattice, the biome patterns             | terrain fill + texture treatment |
 | route line, risk tint                       | knowledge / staleness overlays   |
 | selection ring, focus ring                  | road spokes                      |
 | hit + accessibility layer, rulers, pan/zoom | marks and labels                 |
@@ -320,11 +320,14 @@ the next theme, not leftovers. Dead code goes; an unused offer stays, and says s
 
 ## Settings
 
-`mapTheme` (a registry id) and `biomeTextures` live in `settingsStore.ts`, persist through the same
+`mapTheme` (a registry id), `textureSet` (an id from `workspace/textureSets.ts`) and
+`biomeTextures` live in `settingsStore.ts`, persist through the same
 `localStorage` blob as every other preference, and apply to the open map immediately — the shell
 resolves the id with `getMapTheme` on each render, so there is nothing to reload. An id the build
 does not know falls back to `DEFAULT_MAP_THEME_ID`, because storage is hand-editable and a build
-can be downgraded past a theme it once shipped.
+can be downgraded past a theme it once shipped. A texture set the build does not know falls back
+to Standard the same way, at the same two doors. The set reaches the themes as
+`TextureStyle.directory`, so no theme knows a set by name.
 
 That fallback happens at **two** separate doors, and the startup one is easy to miss: `setMapTheme`
 runs the id through `knownMapTheme`, but rehydration merges the stored blob straight into state

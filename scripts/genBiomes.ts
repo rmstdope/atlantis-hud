@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
+import { STANDARD_RAMPS } from "./biomeRamps";
 
 const OUT_DIR = path.resolve("config/public/biomes");
 const SIZES = [512, 256, 128, 64] as const;
@@ -149,87 +150,87 @@ function renderBiome(name: (typeof BIOMES)[number]): Buffer {
   const definitions: Record<(typeof BIOMES)[number], { field: Field; colours: readonly (readonly [number, Rgb])[]; seed: number }> = {
     ocean: {
       field: normalize(mix(fbm(RENDER, 3, 6, 10), sineField(5, fbm(RENDER, 6, 5, 12)), 0.65, 0.35)),
-      colours: [[0, [12, 42, 80]], [0.45, [18, 66, 116]], [0.75, [32, 104, 158]], [1, [150, 200, 220]]],
+      colours: STANDARD_RAMPS.ocean,
       seed: 11
     },
     plain: {
       field: normalize(mix(fbm(RENDER, 4, 6, 20), fbm(RENDER, 6, 4, 21), 0.6, 0.4)),
-      colours: [[0, [86, 120, 46]], [0.5, [110, 152, 60]], [0.8, [140, 176, 78]], [1, [170, 196, 104]]],
+      colours: STANDARD_RAMPS.plain,
       seed: 22
     },
     forest: {
       field: normalize(mix(fbm(RENDER, 6, 6, 30), fbm(RENDER, 9, 5, 31), 0.45, 0.55)),
-      colours: [[0, [70, 58, 40]], [0.4, [74, 84, 44]], [0.7, [92, 110, 56]], [1, [128, 148, 82]]],
+      colours: STANDARD_RAMPS.forest,
       seed: 33
     },
     mountain: {
       field: normalize(mix(fbm(RENDER, 3, 7, 40), fbm(RENDER, 4, 6, 41), 0.5, 0.5)),
-      colours: [[0, [60, 58, 64]], [0.45, [96, 92, 96]], [0.7, [132, 128, 130]], [0.92, [215, 218, 224]], [1, [245, 248, 252]]],
+      colours: STANDARD_RAMPS.mountain,
       seed: 44
     },
     swamp: {
       field: normalize(fbm(RENDER, 5, 6, 50)),
-      colours: [[0, [40, 52, 34]], [0.5, [62, 74, 44]], [0.8, [86, 96, 56]], [1, [110, 116, 70]]],
+      colours: STANDARD_RAMPS.swamp,
       seed: 55
     },
     jungle: {
       field: normalize(mix(fbm(RENDER, 14, 6, 60), fbm(RENDER, 24, 6, 61), 0.5, 0.5)),
-      colours: [[0, [8, 40, 26]], [0.35, [16, 78, 34]], [0.65, [26, 122, 44]], [0.9, [60, 168, 58]], [1, [150, 210, 80]]],
+      colours: STANDARD_RAMPS.jungle,
       seed: 66
     },
     desert: {
       field: normalize(mix(sineField(7, fbm(RENDER, 4, 5, 70)), fbm(RENDER, 4, 5, 70), 0.7, 0.3)),
-      colours: [[0, [196, 162, 96]], [0.5, [216, 184, 118]], [0.8, [232, 204, 142]], [1, [244, 224, 168]]],
+      colours: STANDARD_RAMPS.desert,
       seed: 77
     },
     tundra: {
       field: normalize(mix(fbm(RENDER, 4, 6, 80), fbm(RENDER, 9, 5, 81), 0.6, 0.4)),
-      colours: [[0, [150, 162, 170]], [0.4, [186, 196, 202]], [0.7, [212, 220, 226]], [1, [238, 244, 248]]],
+      colours: STANDARD_RAMPS.tundra,
       seed: 88
     },
     volcano: {
       field: normalize(fbm(RENDER, 5, 7, 90)),
-      colours: [[0, [24, 20, 22]], [0.5, [44, 36, 36]], [0.85, [70, 58, 56]], [1, [96, 82, 78]]],
+      colours: STANDARD_RAMPS.volcano,
       seed: 99
     },
     cavern: {
       field: normalize(mix(fbm(RENDER, 3, 7, 100), fbm(RENDER, 8, 5, 101), 0.65, 0.35)),
-      colours: [[0, [20, 24, 30]], [0.45, [46, 48, 56]], [0.75, [80, 76, 76]], [1, [132, 116, 92]]],
+      colours: STANDARD_RAMPS.cavern,
       seed: 110
     },
     underforest: {
       field: normalize(mix(fbm(RENDER, 8, 6, 120), fbm(RENDER, 16, 5, 121), 0.5, 0.5)),
-      colours: [[0, [22, 42, 34]], [0.4, [38, 76, 48]], [0.75, [70, 112, 58]], [1, [120, 148, 72]]],
+      colours: STANDARD_RAMPS.underforest,
       seed: 130
     },
     wasteland: {
       field: normalize(mix(fbm(RENDER, 4, 7, 140), sineField(6, fbm(RENDER, 7, 5, 141)), 0.7, 0.3)),
-      colours: [[0, [54, 44, 42]], [0.45, [92, 70, 56]], [0.75, [132, 100, 70]], [1, [184, 142, 92]]],
+      colours: STANDARD_RAMPS.wasteland,
       seed: 150
     },
     hill: {
       field: normalize(mix(fbm(RENDER, 3, 7, 160), fbm(RENDER, 5, 5, 161), 0.7, 0.3)),
-      colours: [[0, [46, 42, 38]], [0.45, [85, 75, 62]], [0.75, [135, 117, 88]], [1, [190, 170, 130]]],
+      colours: STANDARD_RAMPS.hill,
       seed: 160
     },
     tunnels: {
       field: normalize(mix(sineField(12, fbm(RENDER, 3, 4, 170)), fbm(RENDER, 5, 6, 171), 0.65, 0.35)),
-      colours: [[0, [26, 29, 35]], [0.45, [55, 56, 65]], [0.75, [88, 84, 90]], [1, [132, 123, 126]]],
+      colours: STANDARD_RAMPS.tunnels,
       seed: 180
     },
     grotto: {
       field: normalize(mix(fbm(RENDER, 4, 6, 180), sineField(3, fbm(RENDER, 8, 4, 181)), 0.6, 0.4)),
-      colours: [[0, [16, 43, 45]], [0.45, [35, 79, 78]], [0.75, [73, 123, 113]], [1, [145, 184, 165]]],
+      colours: STANDARD_RAMPS.grotto,
       seed: 190
     },
     deepforest: {
       field: normalize(mix(fbm(RENDER, 18, 7, 200), fbm(RENDER, 30, 6, 201), 0.55, 0.45)),
-      colours: [[0, [8, 33, 24]], [0.35, [16, 65, 38]], [0.65, [31, 100, 49]], [0.9, [60, 128, 62]], [1, [91, 145, 70]]],
+      colours: STANDARD_RAMPS.deepforest,
       seed: 210
     },
     chasm: {
       field: normalize(mix(sineField(9, fbm(RENDER, 4, 5, 220)), fbm(RENDER, 3, 7, 221), 0.72, 0.28)),
-      colours: [[0, [24, 19, 28]], [0.45, [52, 35, 47]], [0.75, [85, 55, 60]], [1, [143, 100, 88]]],
+      colours: STANDARD_RAMPS.chasm,
       seed: 230
     }
   };

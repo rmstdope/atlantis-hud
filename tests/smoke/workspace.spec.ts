@@ -3714,7 +3714,14 @@ test("terrain is drawn as itself rather than as a picture of itself", async ({ p
   // `url(#biome-texture-...)`, which differs by terrain even under no stylesheet at all and would
   // make this vacuous; turning them off puts the fill back where the theme's rules decide it.
   await page.getByTestId("settings-indicator").click();
+  // The texture set picker (ah-d9jb.1) belongs to the textures: on with them, off without them,
+  // and it keeps its choice meanwhile.
+  const textureSet = page.getByTestId("settings-texture-set");
+  await expect(textureSet).toBeEnabled();
+  await expect(textureSet).toHaveValue("standard");
   await page.getByTestId("settings-biome-textures").uncheck();
+  await expect(textureSet).toBeDisabled();
+  await expect(textureSet).toHaveValue("standard");
   await page.keyboard.press("Escape");
 
   const fillOf = (polygon: typeof mountain) =>
