@@ -3,8 +3,7 @@ import { mapSizesOfGame } from "../mapShape";
 import { MapSizesSettings } from "./MapSizesSettings";
 import { useState } from "react";
 import type { AdvisoryCheckCode } from "@atlantis/core-client";
-import { useEscapeToDismiss } from "./dismissLayer";
-import { useDialogDrag } from "./useDialogDrag";
+import { DialogFrame } from "./DialogFrame";
 import { APP_VERSION } from "../appVersion";
 import { RULESETS } from "../rulesets";
 import { snippetBodyProblem, snippetNameProblem } from "../orderSnippets";
@@ -72,125 +71,87 @@ export function SettingsDialog({
   // which is the wanted default.
   const [tab, setTab] = useState<SettingsTabId>("global");
 
-  // Escape closes this dialog - unless something newer stands over it, which is the command
-  // palette's whole opening move.
-  useEscapeToDismiss(onDismiss);
-  // ah-aak5: dragged by its top bar so the map behind it can be watched; the veil lifts once moved.
-  const drag = useDialogDrag();
-
   // ah-sw92: the About tab carries the same mark as the gear while a newer version exists. Opening
   // the tab does not clear it - it stays until the player is running the new version.
   const aboutMarked = updateMarkFor(appUpdate).marked;
 
   return (
-    <div
-      data-testid="settings-backdrop"
-      // A press that starts on the dim area dismisses; one that starts on the panel does not, even
-      // if the pointer is released outside it. `pointerdown` matches the header popovers' feel.
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onDismiss();
-        }
-      }}
+    <DialogFrame
+      label="Settings"
+      // Escape closes this dialog - unless something newer stands over it, which is the command
+      // palette's whole opening move.
+      onDismiss={onDismiss}
       // The dialog is mounted inside the header, which is the report drop target, so drags that
       // land on the backdrop would bubble into it — turning the whole dimmed screen into a drop
       // zone while a modal claims exclusivity. Swallowed instead: a modal means what it dims.
-      onDragOver={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-      onDrop={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-      className={`fixed inset-0 z-30 flex items-center justify-center${drag.moved ? "" : " bg-black/50"}`}
+      swallowFileDrops
+      layer="z-30"
+      backdropTestId="settings-backdrop"
+      testId="settings-panel"
+      // `whitespace-normal` undoes the header's `whitespace-nowrap`, which would otherwise
+      // inherit through the anchor span this dialog is mounted in.
+      boxClassName="w-[40rem] max-w-[94vw] rounded border border-brass/60 bg-panel-raised p-3 text-pane whitespace-normal shadow-xl"
+      barClassName="items-center justify-between border-b border-brass/60 pb-2"
+      // Focus starts inside the dialog, not on the cog behind the backdrop, so the keyboard is
+      // where `aria-modal` says it is. A full focus trap can follow when the dialog grows controls
+      // that need one.
+      close={{ testId: "settings-close", label: "close settings", look: "framed", autoFocus: true }}
+      bar={<h2 className="m-0 text-brass">Settings</h2>}
     >
       <div
-        ref={drag.dialogRef}
-        style={drag.dialogStyle}
-        data-testid="settings-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Settings"
-        // `whitespace-normal` undoes the header's `whitespace-nowrap`, which would otherwise
-        // inherit through the anchor span this dialog is mounted in.
-        className="w-[40rem] max-w-[94vw] rounded border border-brass/60 bg-panel-raised p-3 text-pane whitespace-normal shadow-xl"
+        role="tablist"
+        aria-label="Settings sections"
+        // One tab stop, not three: only the selected tab is tabbable and the arrows move within
+        // the list, selection following focus, as the ARIA tabs pattern asks.
+        onKeyDown={(event) => {
+          const target = nextTab(tab, event.key);
+          if (target) {
+            event.preventDefault();
+            setTab(target);
+            event.currentTarget
+              .querySelector<HTMLButtonElement>(`[data-testid="settings-tab-${target}"]`)
+              ?.focus();
+          }
+        }}
+        // Wraps rather than overflowing: a sixth tab (ah-20di) is already wider than the panel
+        // at some sizes, and a tab strip scrolled off the side is one nobody can find. The
+        // chosen mockup shows the wrapped strip.
+        className="mt-2 flex flex-wrap gap-1 rounded border border-edge bg-panel p-1"
       >
-        <div
-          {...drag.barProps}
-          className="flex cursor-move select-none items-center justify-between border-b border-brass/60 pb-2"
-        >
-          <h2 className="m-0 text-brass">Settings</h2>
-          <button
-            type="button"
-            data-testid="settings-close"
-            aria-label="close settings"
-            // Focus starts inside the dialog, not on the cog behind the backdrop, so the keyboard
-            // is where `aria-modal` says it is. A full focus trap can follow when the dialog
-            // grows controls that need one.
-            autoFocus
-            onClick={onDismiss}
-            className="rounded border border-edge px-1.5 py-0.5 text-ink-soft hover:border-brass hover:text-brass"
-          >
-            ×
-          </button>
-        </div>
-
-        <div
-          role="tablist"
-          aria-label="Settings sections"
-          // One tab stop, not three: only the selected tab is tabbable and the arrows move within
-          // the list, selection following focus, as the ARIA tabs pattern asks.
-          onKeyDown={(event) => {
-            const target = nextTab(tab, event.key);
-            if (target) {
-              event.preventDefault();
-              setTab(target);
-              event.currentTarget
-                .querySelector<HTMLButtonElement>(`[data-testid="settings-tab-${target}"]`)
-                ?.focus();
-            }
-          }}
-          // Wraps rather than overflowing: a sixth tab (ah-20di) is already wider than the panel
-          // at some sizes, and a tab strip scrolled off the side is one nobody can find. The
-          // chosen mockup shows the wrapped strip.
-          className="mt-2 flex flex-wrap gap-1 rounded border border-edge bg-panel p-1"
-        >
-          {SETTINGS_TABS.map((entry) => (
-            <Tab
-              key={entry.id}
-              id={entry.id}
-              label={entry.label}
-              active={tab}
-              onTab={setTab}
-              marked={entry.id === "about" && aboutMarked}
-            />
-          ))}
-        </div>
-
-        <div className="mt-3 min-h-32 rounded border border-edge bg-panel-raised p-3">
-          {tab === "global" ? <GlobalSettings /> : null}
-          {tab === "game" ? (
-            <GameSettings
-              game={game}
-              busy={busy}
-              error={error}
-              onChangeMapSizes={onChangeMapSizes}
-            />
-          ) : null}
-          {tab === "columns" ? <ColumnSettings /> : null}
-          {tab === "warnings" ? <WarningSettings /> : null}
-          {tab === "snippets" ? <SnippetSettings /> : null}
-          {tab === "about" ? (
-            <About
-              platformLabel={platformLabel}
-              appUpdate={appUpdate}
-              openExternal={openExternal}
-            />
-          ) : null}
-        </div>
+        {SETTINGS_TABS.map((entry) => (
+          <Tab
+            key={entry.id}
+            id={entry.id}
+            label={entry.label}
+            active={tab}
+            onTab={setTab}
+            marked={entry.id === "about" && aboutMarked}
+          />
+        ))}
       </div>
-    </div>
+
+      <div className="mt-3 min-h-32 rounded border border-edge bg-panel-raised p-3">
+        {tab === "global" ? <GlobalSettings /> : null}
+        {tab === "game" ? (
+          <GameSettings
+            game={game}
+            busy={busy}
+            error={error}
+            onChangeMapSizes={onChangeMapSizes}
+          />
+        ) : null}
+        {tab === "columns" ? <ColumnSettings /> : null}
+        {tab === "warnings" ? <WarningSettings /> : null}
+        {tab === "snippets" ? <SnippetSettings /> : null}
+        {tab === "about" ? (
+          <About
+            platformLabel={platformLabel}
+            appUpdate={appUpdate}
+            openExternal={openExternal}
+          />
+        ) : null}
+      </div>
+    </DialogFrame>
   );
 }
 
