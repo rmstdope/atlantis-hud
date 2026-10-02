@@ -2,6 +2,8 @@ import type { MapShape, MapSizes } from "@atlantis/core-client";
 import type { ChangeEvent, ReactNode } from "react";
 import { useRef } from "react";
 import { GameForm } from "./GameForm";
+import { SettingsButton } from "./SettingsButton";
+import type { UpdateMark } from "./appUpdate";
 
 /**
  * What the application is before it has a game.
@@ -19,6 +21,7 @@ export function GameGate({
   onImport,
   settingsOpen,
   onToggleSettings,
+  updateMark,
   settings
 }: {
   busy: boolean;
@@ -34,6 +37,8 @@ export function GameGate({
    */
   settingsOpen: boolean;
   onToggleSettings: () => void;
+  /** The dot a newer version leaves on the gear (ah-sw92); none when omitted. */
+  updateMark?: UpdateMark;
   settings: ReactNode;
 }) {
   const importRef = useRef<HTMLInputElement | null>(null);
@@ -51,20 +56,12 @@ export function GameGate({
         {/* Just the title, as in the workspace header: the build tag lives in the About tab. */}
         <span className="tracking-[0.06em] text-brass">ATLANTIS HUD</span>
         <span className="flex-1" />
-        <span className="relative">
-          <button
-            type="button"
-            data-testid="settings-indicator"
-            aria-haspopup="dialog"
-            aria-expanded={settingsOpen}
-            aria-label="Settings"
-            onClick={onToggleSettings}
-            className="rounded border border-edge bg-panel-raised px-2 py-1 text-ink-soft hover:border-brass hover:text-ink"
-          >
-            <span aria-hidden>⚙</span>
-          </button>
-          {settingsOpen ? settings : null}
-        </span>
+        <SettingsButton
+          settingsOpen={settingsOpen}
+          onToggleSettings={onToggleSettings}
+          mark={updateMark}
+          settings={settings}
+        />
       </header>
 
       <main

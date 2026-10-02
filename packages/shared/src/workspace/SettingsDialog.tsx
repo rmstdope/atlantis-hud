@@ -20,8 +20,8 @@ import {
   type HideableColumn
 } from "../unitTable";
 import type { WorkspaceGame } from "../workspaceStore";
-import type { AppUpdateControl } from "./appUpdate";
-import { updatePresentationFor } from "./appUpdate";
+import type { AppUpdateControl, UpdateButton } from "./appUpdate";
+import { updateMarkFor, updatePresentationFor } from "./appUpdate";
 import type { OpenExternal } from "./openExternal";
 import type { SettingsTabId } from "./settingsTabs";
 import { SETTINGS_TABS, gameSettingsPresentation, nextTab } from "./settingsTabs";
@@ -69,6 +69,10 @@ export function SettingsDialog({
   // Escape closes this dialog - unless something newer stands over it, which is the command
   // palette's whole opening move.
   useEscapeToDismiss(onDismiss);
+
+  // ah-sw92: the About tab carries the same mark as the gear while a newer version exists. Opening
+  // the tab does not clear it - it stays until the player is running the new version.
+  const aboutMarked = updateMarkFor(appUpdate).marked;
 
   return (
     <div
@@ -140,7 +144,14 @@ export function SettingsDialog({
           className="mt-2 flex flex-wrap gap-1 rounded border border-edge bg-panel p-1"
         >
           {SETTINGS_TABS.map((entry) => (
-            <Tab key={entry.id} id={entry.id} label={entry.label} active={tab} onTab={setTab} />
+            <Tab
+              key={entry.id}
+              id={entry.id}
+              label={entry.label}
+              active={tab}
+              onTab={setTab}
+              marked={entry.id === "about" && aboutMarked}
+            />
           ))}
         </div>
 
@@ -174,12 +185,14 @@ function Tab({
   id,
   label,
   active,
-  onTab
+  onTab,
+  marked = false
 }: {
   id: SettingsTabId;
   label: string;
   active: SettingsTabId;
   onTab: (tab: SettingsTabId) => void;
+  marked?: boolean;
 }) {
   const selected = id === active;
 
@@ -191,13 +204,20 @@ function Tab({
       tabIndex={selected ? 0 : -1}
       data-testid={`settings-tab-${id}`}
       onClick={() => onTab(id)}
-      className={`rounded border px-2 py-0.5 ${
+      className={`relative rounded border px-2 py-0.5 ${
         selected
           ? "border-brass bg-brass/10 text-brass"
           : "border-edge bg-panel text-ink-soft hover:bg-panel-raised hover:text-ink"
       }`}
     >
       {label}
+      {marked ? (
+        <span
+          aria-hidden="true"
+          data-testid={`settings-tab-${id}-dot`}
+          className="pointer-events-none absolute -right-[3px] -top-[3px] h-[7px] w-[7px] rounded-full bg-brass ring-2 ring-panel"
+        />
+      ) : null}
     </button>
   );
 }
@@ -1101,7 +1121,7 @@ function SnippetSettings() {
 const ISSUES_URL = "https://github.com/rmstdope/atlantis-hud/issues/new";
 
 /**
- * What this build is, and whether there is a newer one - the old settings panel, now a tab.
+ * Whether there is a newer version, then what this build is - the old settings panel, now a tab.
  *
  * Exported for `SettingsDialog.test.tsx`, which renders this panel in isolation.
  *
@@ -1118,10 +1138,64 @@ export function About({
   appUpdate: AppUpdateControl;
   openExternal: OpenExternal;
 }) {
-  const { message, action } = updatePresentationFor(appUpdate.state);
+  const { notice, buttons, status } = updatePresentationFor(appUpdate, APP_VERSION);
+  const run = (kind: UpdateButton["kind"]) => {
+    if (kind === "apply") appUpdate.apply?.();
+    else if (kind === "download") appUpdate.download?.();
+    else appUpdate.check();
+  };
+
+  const controls = (
+    <>
+      {buttons.length > 0 ? (
+        <div className="flex gap-1.5">
+          {buttons.map((button) => (
+            <button
+              key={button.kind}
+              type="button"
+              data-testid={button.kind === "download" ? "update-download" : "check-for-updates"}
+              disabled={button.disabled}
+              onClick={() => run(button.kind)}
+              className="min-w-0 flex-1 rounded border border-edge bg-panel px-2 py-1 text-brass hover:border-brass disabled:cursor-default disabled:text-ink-soft disabled:opacity-55 disabled:hover:border-edge"
+            >
+              {button.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {status ? (
+        <p
+          data-testid="update-status"
+          className={`mt-1.5 ${status.tone === "error" ? "text-danger" : "text-ink-soft"}`}
+        >
+          {status.text}
+        </p>
+      ) : null}
+    </>
+  );
 
   return (
     <div>
+      {/*
+        ah-sw92: the update section leads the tab in every state, so the buttons never move when a
+        newer version appears - the section itself becomes the amber notice around them.
+      */}
+      <div data-testid="update-section" className="mb-2">
+        {notice ? (
+          <div
+            data-testid="update-notice"
+            className="rounded border border-brass bg-brass/10 px-2 py-1.5 text-ink"
+          >
+            <p className="mb-1.5">
+              <strong className="text-brass">{notice.emphasis}</strong> {notice.rest}
+            </p>
+            {controls}
+          </div>
+        ) : (
+          controls
+        )}
+      </div>
+
       <dl className="flex flex-col gap-1">
         <div className="flex items-baseline justify-between gap-2">
           <dt className="text-ink-soft">Version</dt>
@@ -1162,24 +1236,6 @@ export function About({
           </button>
           .
         </p>
-      </div>
-
-      <div className="mt-2 border-t border-edge pt-2">
-        {action ? (
-          <button
-            type="button"
-            data-testid="check-for-updates"
-            onClick={() => (action.kind === "apply" ? appUpdate.apply?.() : appUpdate.check())}
-            className="w-full rounded border border-edge bg-panel px-2 py-1 text-brass hover:border-brass"
-          >
-            {action.label}
-          </button>
-        ) : null}
-        {message ? (
-          <p data-testid="update-status" className="mt-1.5 text-ink-soft">
-            {message}
-          </p>
-        ) : null}
       </div>
     </div>
   );

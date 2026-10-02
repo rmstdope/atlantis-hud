@@ -8,6 +8,7 @@ import { RULESETS } from "../rulesets";
 import { COLUMN_LABELS, HIDEABLE_COLUMNS, allColumnsShown } from "../unitTable";
 import { useWorkspaceStore } from "../workspaceStore";
 import { UNSUPPORTED_UPDATES } from "./appUpdate";
+import type { AppUpdateControl } from "./appUpdate";
 import { mapCommitOf } from "../mapShape";
 import {
   About,
@@ -555,6 +556,88 @@ describe("About", () => {
     const markup = html();
     expect(markup).toContain('data-testid="about-issues-link"');
     expect(markup).not.toContain("<a ");
+  });
+});
+
+/** ah-sw92: the update section at the top of About, and the mark on the About tab. */
+describe("About's update section", () => {
+  const noop = () => undefined;
+  const render = (appUpdate: AppUpdateControl) =>
+    renderToStaticMarkup(
+      <About platformLabel="Desktop (macOS)" appUpdate={appUpdate} openExternal={noop} />
+    );
+  const newer: AppUpdateControl = {
+    state: "idle",
+    check: noop,
+    download: noop,
+    newerVersion: "0.26.0"
+  };
+
+  it("sits above the Version row in every state", () => {
+    for (const appUpdate of [newer, UNSUPPORTED_UPDATES, { state: "current", check: noop } as const]) {
+      const markup = render(appUpdate);
+      expect(markup.indexOf('data-testid="update-section"')).toBeGreaterThanOrEqual(0);
+      expect(markup.indexOf('data-testid="update-section"')).toBeLessThan(
+        markup.indexOf('data-testid="app-version"')
+      );
+    }
+  });
+
+  it("turns into an amber notice naming both versions, with the two buttons inside it", () => {
+    const markup = render(newer);
+    const notice = tag(markup, "update-notice");
+    expect(notice).toContain("border-brass");
+    const inside = markup.slice(markup.indexOf('data-testid="update-notice"'));
+    expect(inside).toMatch(/<strong[^>]*>Version 0\.26\.0 is available\.<\/strong> You have /);
+    expect(inside.indexOf('data-testid="update-download"')).toBeGreaterThan(0);
+    expect(inside.indexOf('data-testid="check-for-updates"')).toBeGreaterThan(0);
+    expect(markup).toContain(">Download 0.26.0<");
+    expect(markup).toContain(">Check now<");
+    expect(tag(markup, "update-download")).not.toContain('disabled=""');
+  });
+
+  it("greys out the download and shows no notice when nothing is newer", () => {
+    const markup = render({ state: "current", check: noop, download: noop });
+    expect(markup).not.toContain('data-testid="update-notice"');
+    expect(tag(markup, "update-download")).toContain('disabled=""');
+    expect(markup).toContain(">Download update<");
+    expect(markup).toContain("You are on the latest version.");
+  });
+
+  it("gives a failed manual check the error colour", () => {
+    const markup = render({ state: "failed", check: noop, download: noop });
+    expect(tag(markup, "update-status")).toContain("text-danger");
+  });
+
+  it("keeps the web's single button inside the notice while a build waits", () => {
+    const markup = render({ state: "available", check: noop, apply: noop });
+    const inside = markup.slice(markup.indexOf('data-testid="update-notice"'));
+    expect(inside).toMatch(/<strong[^>]*>A new version is ready\.<\/strong> Reload to start using it\./);
+    expect(inside).toContain(">Reload to update<");
+    expect(markup).not.toContain('data-testid="update-download"');
+  });
+
+  it("marks the About tab only while a newer version exists", () => {
+    const dialog = (appUpdate: AppUpdateControl) =>
+      renderToStaticMarkup(
+        <SettingsDialog
+          platformLabel="Desktop"
+          appUpdate={appUpdate}
+          openExternal={noop}
+          game={null}
+          busy={false}
+          error={null}
+          onChangeMapSizes={async () => true}
+          onDismiss={noop}
+        />
+      );
+    const marked = dialog(newer);
+    const aboutTab = marked.slice(marked.indexOf('data-testid="settings-tab-about"'));
+    expect(aboutTab.slice(0, aboutTab.indexOf("</button>"))).toContain(
+      'data-testid="settings-tab-about-dot"'
+    );
+    expect(tag(marked, "settings-tab-about-dot")).toContain('aria-hidden="true"');
+    expect(dialog(UNSUPPORTED_UPDATES)).not.toContain("settings-tab-about-dot");
   });
 });
 
