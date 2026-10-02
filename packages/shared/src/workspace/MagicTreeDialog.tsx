@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { MageStanding, SkillStanding, StandingKind } from "../magicStanding";
 import type { MagicBranch, MagicPrerequisite, MagicSkillNode, MagicTree } from "../magicTree";
 import { useEscapeToDismiss } from "./dismissLayer";
+import { useDialogDrag } from "./useDialogDrag";
 import { STANDING_CHIP, standingWords } from "./standingChip";
 import { MagePicker } from "./MagePicker";
 import { buildMagicGraph, type MagicTreeView } from "./magicGraphLayout";
@@ -74,6 +75,8 @@ export function MagicTreeDialog({
   reportLoaded?: boolean;
 }) {
   useEscapeToDismiss(onDismiss);
+  // ah-aak5: dragged by its top bar to uncover the map; the veil lifts once moved.
+  const drag = useDialogDrag();
 
   const [highlighted, setHighlighted] = useState<string | null>(() => initialTag);
   const graph = useMemo(() => buildMagicGraph(tree), [tree]);
@@ -130,9 +133,11 @@ export function MagicTreeDialog({
           onDismiss();
         }
       }}
-      className="fixed inset-0 z-40 flex items-start justify-center bg-black/50 pt-[10vh]"
+      className={`fixed inset-0 z-40 flex items-start justify-center pt-[10vh]${drag.moved ? "" : " bg-black/50"}`}
     >
       <div
+        ref={drag.dialogRef}
+        style={drag.dialogStyle}
         data-testid="magic-tree-dialog"
         role="dialog"
         aria-modal="true"
@@ -150,7 +155,10 @@ export function MagicTreeDialog({
             : "max-h-[80vh] w-[64rem] max-w-[94vw]"
         }`}
       >
-        <div className="flex flex-wrap items-center gap-2 border-b border-edge px-2 py-1.5">
+        <div
+          {...drag.barProps}
+          className="flex cursor-move select-none flex-wrap items-center gap-2 border-b border-edge px-2 py-1.5"
+        >
           <span className="text-brass">Magic study tree</span>
           <div className="flex overflow-hidden rounded border border-brass/60">
             <ViewButton

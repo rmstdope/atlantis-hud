@@ -1,4 +1,5 @@
 import { useEscapeToDismiss } from "./dismissLayer";
+import { useDialogDrag } from "./useDialogDrag";
 import { nextChangesTab, type ChangesTab, type ChangesTabKey, type OrderRow, type RegionRow, type UnitRow } from "./changesView";
 
 /**
@@ -41,6 +42,8 @@ export function ChangesDialog({
   onDismiss: () => void;
 }) {
   useEscapeToDismiss(onDismiss);
+  // ah-aak5: dragged by its top bar to uncover the map; the veil lifts once moved.
+  const drag = useDialogDrag();
 
   return (
     <div
@@ -50,16 +53,21 @@ export function ChangesDialog({
           onDismiss();
         }
       }}
-      className="fixed inset-0 z-30 flex items-center justify-center bg-black/50"
+      className={`fixed inset-0 z-30 flex items-center justify-center${drag.moved ? "" : " bg-black/50"}`}
     >
       <div
+        ref={drag.dialogRef}
+        style={drag.dialogStyle}
         data-testid="changes-dialog"
         role="dialog"
         aria-modal="true"
         aria-label="Changes"
         className="grid h-[75vh] w-[48rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
       >
-        <div className="flex items-center gap-2 border-b border-edge px-2 py-1.5">
+        <div
+          {...drag.barProps}
+          className="flex cursor-move select-none items-center gap-2 border-b border-edge px-2 py-1.5"
+        >
           <span className="text-ink-soft">{pairLabel}</span>
           <span className="flex-1" />
           <button

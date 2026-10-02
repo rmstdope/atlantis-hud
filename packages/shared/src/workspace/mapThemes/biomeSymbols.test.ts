@@ -10,33 +10,10 @@ import {
   type MarkSpot
 } from "./biomeSymbols";
 import type { HexView } from "./hexView";
+import { aHexView } from "./hexViewFixture";
 
 function view(overrides: Partial<HexView> = {}): HexView {
-  return {
-    key: "12,7,1",
-    at: { x: 100, y: 200 },
-    terrain: "forest",
-    terrainKind: "forest",
-    texture: null,
-    fogOpacity: 0,
-    hatched: false,
-    unsurveyed: false,
-    knowledge: "current",
-    ageInTurns: 0,
-    roads: [],
-    unfinishedRoads: [],
-    settlement: null,
-    units: { own: 0, foreign: 0, monster: 0 },
-    guard: null,
-    ships: 0,
-    buildings: 0,
-    shafts: 0,
-    lairs: 0,
-    battle: null,
-    blocked: null,
-    gate: false,
-    ...overrides
-  };
+  return aHexView(overrides);
 }
 
 /** The placements of a run of hexes, as fractions of the radius, so tests read in the spike's units. */
