@@ -19,18 +19,22 @@ keyboard focus rings, the hit and accessibility layer, and the rulers. A theme n
 | ------------------------------------------- | -------------------------------- |
 | fog lattice, the biome patterns             | terrain fill + texture treatment |
 | route line, risk tint                       | knowledge / staleness overlays   |
-| selection ring, focus ring                  | road spokes                      |
+| selection ring, focus ring                  | road colours                     |
 | hit + accessibility layer, rulers, pan/zoom | marks and labels                 |
+| roads (the milestone network)               |                                  |
 
-Roads are the theme's because every design styles them differently, but they keep their own layer
-*beneath* the route overlay, so a movement path crosses a road the way a traveller would. What is
-not paint — the spoke geometry, the width rule, the badge-off short-circuit — is drawn through
-`roadLayer(style)` (`mapThemes/roadLayer.tsx`): a theme gives it a `RoadStyle` (how far along the
-spoke to reach, and an ordered list of strokes: class, width, dash, linecap, opacity) and gets a
-`RoadLayer` back. It applies the width rule for every theme — fractions of `HEX_RADIUS` through
-`radii(...)`, never `vector-effect` — so a road shrinks with the hex it belongs to; the route above
-it is drawn by the same rule. A theme may still hand-roll its own `RoadLayer`, but the shared one is
-what every shipped theme now uses.
+Roads are drawn by the map for every theme, as one milestone network (`MilestoneRoadLayer`,
+`mapThemes/milestoneRoads.ts`): a line on a casing, a milestone where a road crosses a hex edge
+(filled when the next hex has the matching road back, hollow when it stops), a ringed disc at a
+junction, two roads in a hex joined by a curve, and a road whose structure still `needs` work drawn
+dotted. It keeps its own layer *beneath* the route overlay, so a movement path crosses a road the way
+a traveller would, and its widths follow the width rule - fractions of `HEX_RADIUS` through
+`radii(...)`, never `vector-effect` - so a road shrinks with the hex it belongs to.
+
+A theme only colours it, by declaring `--map-road-line` and `--map-road-casing` on its own
+`.map-theme-<id>` rule, next to the border and wall inks below; without them the chrome's ink and
+ground are used. A theme still exports a `RoadLayer` built with `roadLayer(style)`
+(`mapThemes/roadLayer.tsx`) - the contract has not changed - but the map does not draw it.
 
 ## What a theme receives
 
@@ -209,6 +213,15 @@ theme gives both their colours by declaring three custom properties once, on its
 the wall's bar and ticks) and `--map-mark-ground` (the halo under both). `theme.test.ts` enforces
 that every theme declares all three and restates neither mark. The brass a wall turns under the
 pointer is shared and needs nothing from the theme.
+
+### Fonts
+
+A theme may bring its own typeface. Fonts are bundled, never fetched, because the app runs offline:
+add the `@fontsource/<family>` package to `packages/shared`, and import its latin subset as a
+side-effect import at the top of the theme's `index.tsx` (`import "@fontsource/cinzel/latin-700.css";`),
+so deleting the theme deletes the import. A browser only downloads a face it actually draws with, so
+a theme nobody has selected costs nothing; the web build precaches `woff2` for offline use. Always
+give a fallback stack, and keep using the `font-size` longhand (below).
 
 ### Zoom bands
 

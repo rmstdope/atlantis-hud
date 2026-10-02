@@ -13,6 +13,11 @@ import { beveledTile } from "./beveledTile/index";
 import { emblemAndDots } from "./emblemAndDots/index";
 import { miniatureWorld } from "./miniatureWorld/index";
 import { tacticalHud } from "./tacticalHud/index";
+import { collective } from "./collective/index";
+import { chronicle } from "./chronicle/index";
+import { blueprint } from "./blueprint/index";
+import { stainedGlass } from "./stainedGlass/index";
+import { eightBitQuest } from "./eightBitQuest/index";
 
 /** In the order the settings picker offers them, the atlas first as the one the map opens on. */
 export const MAP_THEMES: readonly MapTheme[] = [
@@ -20,7 +25,12 @@ export const MAP_THEMES: readonly MapTheme[] = [
   tacticalHud,
   miniatureWorld,
   emblemAndDots,
-  beveledTile
+  beveledTile,
+  collective,
+  chronicle,
+  blueprint,
+  stainedGlass,
+  eightBitQuest
 ];
 
 /** The most map-like of the designs, and what an unrecognised choice falls back to. */

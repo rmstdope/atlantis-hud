@@ -1,0 +1,314 @@
+/*
+ * Collective: a cybernetic hive's view of the world - green light on black, everything a wireframe.
+ *
+ * Values are the mockup's own (new-themes.html, the Collective card). The identity of this theme is
+ * its look, so the light app theme keeps the same near-black map: every property still has a light
+ * counterpart, as the contract asks, holding the same value.
+ */
+
+:root {
+  /* The hive's light: the ground everything sits on, its green, and the one hostile red. */
+  --co-void: #020403;
+  --co-fog: #0b2414;
+  --co-green: #39ff6a;
+  --co-bright: #9dffb5;
+  --co-white: #e8ffef;
+  --co-red: #ff3b3b;
+  --co-tone: #17642f;
+  --co-dim: #1d6b36;
+  --co-region: #239a4a;
+
+  /* Each terrain's tint: near-black, leaning towards what the ground is. */
+  --co-terrain-ocean: #031a14;
+  --co-terrain-plain: #0a1f0e;
+  --co-terrain-forest: #062612;
+  --co-terrain-mountain: #141a16;
+  --co-terrain-swamp: #0d1a0a;
+  --co-terrain-desert: #1f1d0c;
+  --co-terrain-jungle: #08240c;
+  --co-terrain-tundra: #111b1b;
+  --co-terrain-volcano: #200c08;
+  --co-terrain-cavern: #0c0f14;
+  --co-terrain-underforest: #0e1410;
+  --co-terrain-wasteland: #1c1308;
+  --co-terrain-hill: #151a0c;
+  --co-terrain-tunnels: #08090c;
+  --co-terrain-grotto: #041a1c;
+  --co-terrain-deepforest: #031a0b;
+  --co-terrain-chasm: #0d0609;
+  --co-terrain-other: #0c0f0d;
+}
+
+:root[data-theme="light"] {
+  /* The hive's light: the ground everything sits on, its green, and the one hostile red. */
+  --co-void: #020403;
+  --co-fog: #0b2414;
+  --co-green: #39ff6a;
+  --co-bright: #9dffb5;
+  --co-white: #e8ffef;
+  --co-red: #ff3b3b;
+  --co-tone: #17642f;
+  --co-dim: #1d6b36;
+  --co-region: #239a4a;
+
+  /* Each terrain's tint: near-black, leaning towards what the ground is. */
+  --co-terrain-ocean: #031a14;
+  --co-terrain-plain: #0a1f0e;
+  --co-terrain-forest: #062612;
+  --co-terrain-mountain: #141a16;
+  --co-terrain-swamp: #0d1a0a;
+  --co-terrain-desert: #1f1d0c;
+  --co-terrain-jungle: #08240c;
+  --co-terrain-tundra: #111b1b;
+  --co-terrain-volcano: #200c08;
+  --co-terrain-cavern: #0c0f14;
+  --co-terrain-underforest: #0e1410;
+  --co-terrain-wasteland: #1c1308;
+  --co-terrain-hill: #151a0c;
+  --co-terrain-tunnels: #08090c;
+  --co-terrain-grotto: #041a1c;
+  --co-terrain-deepforest: #031a0b;
+  --co-terrain-chasm: #0d0609;
+  --co-terrain-other: #0c0f0d;
+}
+
+.co-terrain-ocean {
+  fill: var(--co-terrain-ocean);
+}
+.co-terrain-plain {
+  fill: var(--co-terrain-plain);
+}
+.co-terrain-forest {
+  fill: var(--co-terrain-forest);
+}
+.co-terrain-mountain {
+  fill: var(--co-terrain-mountain);
+}
+.co-terrain-swamp {
+  fill: var(--co-terrain-swamp);
+}
+.co-terrain-desert {
+  fill: var(--co-terrain-desert);
+}
+.co-terrain-jungle {
+  fill: var(--co-terrain-jungle);
+}
+.co-terrain-tundra {
+  fill: var(--co-terrain-tundra);
+}
+.co-terrain-volcano {
+  fill: var(--co-terrain-volcano);
+}
+.co-terrain-cavern {
+  fill: var(--co-terrain-cavern);
+}
+.co-terrain-underforest {
+  fill: var(--co-terrain-underforest);
+}
+.co-terrain-wasteland {
+  fill: var(--co-terrain-wasteland);
+}
+.co-terrain-hill {
+  fill: var(--co-terrain-hill);
+}
+.co-terrain-tunnels {
+  fill: var(--co-terrain-tunnels);
+}
+.co-terrain-grotto {
+  fill: var(--co-terrain-grotto);
+}
+.co-terrain-deepforest {
+  fill: var(--co-terrain-deepforest);
+}
+.co-terrain-chasm {
+  fill: var(--co-terrain-chasm);
+}
+.co-terrain-other {
+  fill: var(--co-terrain-other);
+}
+
+/* The fade: the fill dropping away towards the void. */
+.co-wash {
+  fill: var(--co-void);
+}
+
+/*
+ * The lattice. Its strength is the knowledge state's second voice: full on a lit or stale cell,
+ * stepped back over a biome picture so the picture reads, faint over ground nobody has surveyed.
+ */
+.co-lattice-ink {
+  fill: none;
+  stroke: var(--co-green);
+  stroke-width: 0.75;
+  stroke-linecap: round;
+}
+.co-lattice-full {
+  opacity: 0.4;
+}
+.co-lattice-textured {
+  opacity: 0.24;
+}
+.co-lattice-faint {
+  opacity: 0.2;
+}
+
+/* A stale, hatched cell's lattice flickers - only for a viewer who has not asked for less motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .co-flicker {
+    animation: co-flicker 4.8s steps(1, end) infinite;
+  }
+}
+@keyframes co-flicker {
+  0%,
+  88%,
+  100% {
+    opacity: 0.4;
+  }
+  90% {
+    opacity: 0.15;
+  }
+  93% {
+    opacity: 0.32;
+  }
+  95% {
+    opacity: 0.12;
+  }
+}
+
+/* Biome pictures are toned to the hive's dark green by this veil laid over them. */
+.co-tone-veil {
+  fill: var(--co-tone);
+  opacity: 0.72;
+}
+
+/* The circuit: a thin green edge with a soft glow under it; a stale cell's edge has gone dim. */
+.co-edge {
+  stroke: var(--co-green);
+  stroke-opacity: 0.6;
+}
+.co-edge-stale {
+  stroke-opacity: 0.22;
+}
+.co-edge-glow {
+  stroke: var(--co-green);
+  stroke-opacity: 0.14;
+}
+.co-rim {
+  stroke: var(--co-green);
+  stroke-opacity: 0.5;
+}
+
+/* The contract's own road layer, should the map ever draw it: a dashed green conduit. */
+.co-road-casing {
+  stroke: var(--co-void);
+}
+.co-road {
+  stroke: var(--co-green);
+}
+
+/* Marks. Every one is a wireframe: a crisp line over a wider, fainter copy of itself. */
+.co-wire-glow {
+  stroke-opacity: 0.25;
+}
+.co-cube {
+  stroke: var(--co-bright);
+}
+.co-mark {
+  stroke: var(--co-bright);
+}
+.co-hostile {
+  stroke: var(--co-red);
+}
+.co-battle {
+  stroke: var(--co-white);
+}
+.co-battle-other {
+  stroke: var(--co-dim);
+}
+.co-guard-own {
+  stroke: var(--co-green);
+  stroke-opacity: 0.8;
+}
+.co-guard-foreign {
+  stroke: var(--co-red);
+  stroke-opacity: 0.8;
+}
+
+/*
+ * Type: Share Tech Mono throughout, because every label is a readout. Labels stay screen-constant
+ * (divided by the map's scale). `font-size` longhand, never the `font` shorthand: a calc() inside
+ * the shorthand is valid CSS that some renderers drop.
+ */
+.co-label {
+  font-family: "Share Tech Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  paint-order: stroke fill;
+  stroke: var(--co-void);
+  stroke-width: calc(2px / var(--map-scale, 1));
+  stroke-linejoin: round;
+}
+.co-code {
+  font-size: calc(7px / var(--map-scale, 1));
+  fill: var(--co-green);
+  fill-opacity: 0.55;
+  stroke: none;
+}
+.co-code-unsurveyed {
+  fill-opacity: 0.38;
+}
+.co-readout {
+  font-size: calc(11px / var(--map-scale, 1));
+}
+.co-readout-own {
+  fill: var(--co-bright);
+}
+.co-readout-foreign {
+  fill: var(--co-red);
+}
+.co-name {
+  font-size: calc(9px / var(--map-scale, 1));
+  letter-spacing: calc(1px / var(--map-scale, 1));
+  fill: var(--co-bright);
+}
+
+/*
+ * Zoom bands. The terrain code and settlement names belong to the near band; far keeps the cells,
+ * their edges and rims - the three knowledge states are told apart by edge, wash and dashed rim,
+ * none of which a band drops - plus the guard ring.
+ *
+ * Scoped to this theme, because every theme's stylesheet is loaded whichever one is selected.
+ */
+.map-theme-collective.map-mid .co-code,
+.map-theme-collective.map-mid .co-name,
+.map-theme-collective.map-far .co-label,
+.map-theme-collective.map-far [data-mark]:not([data-mark="guard"]),
+.map-theme-collective.map-far .co-edge-glow {
+  display: none;
+}
+/* At far the lattice is a few pixels of moire; it steps right back and lets the tint speak. */
+.map-theme-collective.map-far .co-lattice {
+  opacity: 0.16;
+}
+
+/*
+ * The map's own marks and ground, recoloured for this theme only: the province border, the wall
+ * and their halo, the milestone roads, the region names, and the unexplored world around the
+ * cells - near-black, with the fog lattice a faint green seam.
+ */
+.map-theme-collective {
+  --map-border-ink: var(--co-dim);
+  --map-wall-ink: var(--co-white);
+  --map-mark-ground: var(--co-void);
+  --map-road-line: var(--co-green);
+  --map-road-casing: var(--co-void);
+  --map-blocked-ink: var(--co-red);
+  --map-blocked-label-ink: var(--co-white);
+  --map-blocked-label-halo: var(--co-void);
+  --color-ground: var(--co-void);
+  --color-terrain-unknown: var(--co-void);
+  --color-fog-edge: var(--co-fog);
+  --color-map-region-name: var(--co-region);
+  --color-map-label-halo: var(--co-void);
+}
+.map-theme-collective .region-name {
+  font-family: "Share Tech Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}

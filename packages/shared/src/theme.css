@@ -10,6 +10,11 @@
 @import "./workspace/mapThemes/miniatureWorld/theme.css";
 @import "./workspace/mapThemes/emblemAndDots/theme.css";
 @import "./workspace/mapThemes/beveledTile/theme.css";
+@import "./workspace/mapThemes/collective/theme.css";
+@import "./workspace/mapThemes/stainedGlass/theme.css";
+@import "./workspace/mapThemes/blueprint/theme.css";
+@import "./workspace/mapThemes/eightBitQuest/theme.css";
+@import "./workspace/mapThemes/chronicle/theme.css";
 
 /*
  * Where the class names live.
@@ -567,33 +572,35 @@ body,
 
 /*
  * The milestone roads, drawn by the map for every theme: a line in the chrome's ink on a casing of
- * its ground, so they invert with the light theme. Milestones and junctions use the same pair.
+ * its ground, so they invert with the light theme. A theme may recolour them by declaring
+ * `--map-road-line` and `--map-road-casing` on its own `.map-theme-<id>` rule, as it does its
+ * border and wall inks; milestones and junctions use the same pair.
  */
 .road-casing {
   fill: none;
-  stroke: var(--color-ground);
+  stroke: var(--map-road-casing, var(--color-ground));
   stroke-linecap: round;
   opacity: 0.8;
 }
 
 .road-line {
   fill: none;
-  stroke: var(--color-ink);
+  stroke: var(--map-road-line, var(--color-ink));
   stroke-linecap: round;
 }
 
 .road-stone {
-  fill: var(--color-ink);
-  stroke: var(--color-ground);
+  fill: var(--map-road-line, var(--color-ink));
+  stroke: var(--map-road-casing, var(--color-ground));
 }
 
 .road-stone-open,
 .road-junction {
-  fill: var(--color-ground);
-  stroke: var(--color-ink);
+  fill: var(--map-road-casing, var(--color-ground));
+  stroke: var(--map-road-line, var(--color-ink));
 }
 
 .road-junction-core {
-  fill: var(--color-ink);
+  fill: var(--map-road-line, var(--color-ink));
 }
 

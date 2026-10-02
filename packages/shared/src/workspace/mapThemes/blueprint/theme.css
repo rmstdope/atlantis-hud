@@ -1,0 +1,311 @@
+/*
+ * Blueprint: an architect's cyanotype.
+ *
+ * Dark is the cyanotype itself - white linework on blueprint blue, the mockup's own values. Light is
+ * its office cousin, the whiteprint (diazo): the same drawing in blue ink on off-white paper. Every
+ * token below has both, so the drawing changes paper, never vocabulary.
+ *
+ * Terrain is a hatch, not a colour; the ground under it only shifts a little per terrain - deeper
+ * under water and below ground, paler over sand and snow - so the kinds still part when the zoom
+ * has merged every hatch into a tone.
+ */
+
+:root {
+  /* The paper, the ink, and the ink's strong stroke. */
+  --bp-ground: #123f73;
+  --bp-line: #e9f3ff;
+  --bp-line-strong: #ffffff;
+  --bp-grid-ink: #9ccaff;
+  --bp-border: #6d9bd3;
+  --bp-label-halo: #123f73;
+
+  /* The two ends of the cyanotype a biome photograph is toned between. */
+  --bp-tone-lo: #0c3060;
+  --bp-tone-hi: #6f9bd2;
+
+  /* Mark-up: foreign notes and the monster's cloud in amber, the battle in red pencil. */
+  --bp-own: #e9f3ff;
+  --bp-foreign: #ffd27a;
+  --bp-monster: #ffd27a;
+  --bp-battle: #ff6b5b;
+  --bp-battle-other: #c8a8b4;
+  --bp-gate: #c7b5ff;
+  --bp-blocked: #ff6b5b;
+  --bp-blocked-label: #fff1ee;
+
+  --bp-ground-ocean: #0e3566;
+  --bp-ground-plain: #15467d;
+  --bp-ground-forest: #123f73;
+  --bp-ground-mountain: #1a4a80;
+  --bp-ground-swamp: #13416f;
+  --bp-ground-desert: #1b5089;
+  --bp-ground-jungle: #114070;
+  --bp-ground-tundra: #1d5590;
+  --bp-ground-volcano: #10345f;
+  --bp-ground-cavern: #0f3360;
+  --bp-ground-underforest: #11365f;
+  --bp-ground-wasteland: #184a7f;
+  --bp-ground-hill: #174780;
+  --bp-ground-tunnels: #0d2f58;
+  --bp-ground-grotto: #0f3a66;
+  --bp-ground-deepforest: #0f3863;
+  --bp-ground-chasm: #0b2b52;
+  --bp-ground-other: #123f73;
+}
+
+:root[data-theme="light"] {
+  --bp-ground: #f4f7fb;
+  --bp-line: #1f4e8c;
+  --bp-line-strong: #143a6e;
+  --bp-grid-ink: #7fa6d6;
+  --bp-border: #5d86bd;
+  --bp-label-halo: #f4f7fb;
+
+  --bp-tone-lo: #b3c9e6;
+  --bp-tone-hi: #f4f7fb;
+
+  --bp-own: #1f4e8c;
+  --bp-foreign: #9a5b00;
+  --bp-monster: #9a5b00;
+  --bp-battle: #c62f22;
+  --bp-battle-other: #8a6f7a;
+  --bp-gate: #5b3fa8;
+  --bp-blocked: #c62f22;
+  --bp-blocked-label: #3a0d08;
+
+  --bp-ground-ocean: #e3ecf7;
+  --bp-ground-plain: #f4f7fb;
+  --bp-ground-forest: #eef3f9;
+  --bp-ground-mountain: #eef2f7;
+  --bp-ground-swamp: #ebf1f6;
+  --bp-ground-desert: #f8f9fb;
+  --bp-ground-jungle: #eaf1f8;
+  --bp-ground-tundra: #f7fafd;
+  --bp-ground-volcano: #e9edf4;
+  --bp-ground-cavern: #e6ebf3;
+  --bp-ground-underforest: #e8eef5;
+  --bp-ground-wasteland: #f1f3f6;
+  --bp-ground-hill: #f0f4f9;
+  --bp-ground-tunnels: #e2e8f1;
+  --bp-ground-grotto: #e4edf5;
+  --bp-ground-deepforest: #e6eef6;
+  --bp-ground-chasm: #dfe6f0;
+  --bp-ground-other: #f4f7fb;
+}
+
+/* The paper under each terrain's hatch. */
+.bp-terrain-ocean {
+  fill: var(--bp-ground-ocean);
+}
+.bp-terrain-plain {
+  fill: var(--bp-ground-plain);
+}
+.bp-terrain-forest {
+  fill: var(--bp-ground-forest);
+}
+.bp-terrain-mountain {
+  fill: var(--bp-ground-mountain);
+}
+.bp-terrain-swamp {
+  fill: var(--bp-ground-swamp);
+}
+.bp-terrain-desert {
+  fill: var(--bp-ground-desert);
+}
+.bp-terrain-jungle {
+  fill: var(--bp-ground-jungle);
+}
+.bp-terrain-tundra {
+  fill: var(--bp-ground-tundra);
+}
+.bp-terrain-volcano {
+  fill: var(--bp-ground-volcano);
+}
+.bp-terrain-cavern {
+  fill: var(--bp-ground-cavern);
+}
+.bp-terrain-underforest {
+  fill: var(--bp-ground-underforest);
+}
+.bp-terrain-wasteland {
+  fill: var(--bp-ground-wasteland);
+}
+.bp-terrain-hill {
+  fill: var(--bp-ground-hill);
+}
+.bp-terrain-tunnels {
+  fill: var(--bp-ground-tunnels);
+}
+.bp-terrain-grotto {
+  fill: var(--bp-ground-grotto);
+}
+.bp-terrain-deepforest {
+  fill: var(--bp-ground-deepforest);
+}
+.bp-terrain-chasm {
+  fill: var(--bp-ground-chasm);
+}
+.bp-terrain-other {
+  fill: var(--bp-ground-other);
+}
+
+/* The hatches and the grid, defined once in the theme's Defs. */
+.bp-hatch-line {
+  stroke: var(--bp-line);
+}
+.bp-hatch-dot {
+  fill: var(--bp-line);
+}
+.bp-grid-line {
+  stroke: var(--bp-grid-ink);
+}
+.bp-grid {
+  opacity: 0.35;
+}
+
+/* The cyanotype toning, read by the filter's two floods. */
+.bp-tone-lo {
+  flood-color: var(--bp-tone-lo);
+}
+.bp-tone-hi {
+  flood-color: var(--bp-tone-hi);
+}
+
+/* The fade is the paper showing back through the drawing. */
+.bp-wash {
+  fill: var(--bp-ground);
+}
+.bp-edge {
+  stroke: var(--bp-line);
+  opacity: 0.75;
+}
+.bp-rim {
+  stroke: var(--bp-line);
+  opacity: 0.9;
+}
+
+.bp-road {
+  stroke: var(--bp-line);
+}
+.bp-road-gap {
+  stroke: var(--bp-ground);
+}
+
+/* Marks: linework in the drawing's ink, cut out of the paper. */
+.bp-mark {
+  stroke: var(--bp-line);
+}
+.bp-plan-floor {
+  fill: var(--bp-ground);
+}
+.bp-plan-court {
+  fill: none;
+  stroke-dasharray: 1.5 1;
+}
+.bp-lair {
+  fill: var(--bp-line);
+  fill-opacity: 0.45;
+}
+.bp-gate {
+  stroke: var(--bp-gate);
+}
+.bp-battle {
+  stroke: var(--bp-battle);
+}
+.bp-battle-other {
+  stroke: var(--bp-battle-other);
+}
+.bp-monster {
+  stroke: var(--bp-monster);
+}
+.bp-cloud {
+  fill: var(--bp-ground);
+  fill-opacity: 0.6;
+}
+.bp-cloud-dot {
+  fill: var(--bp-monster);
+  stroke: none;
+}
+.bp-guard-own {
+  stroke: var(--bp-own);
+}
+.bp-guard-foreign {
+  stroke: var(--bp-foreign);
+}
+.bp-callout-own {
+  stroke: var(--bp-own);
+}
+.bp-callout-foreign {
+  stroke: var(--bp-foreign);
+}
+.bp-callout-own .bp-callout-dot {
+  fill: var(--bp-own);
+  stroke: none;
+}
+.bp-callout-foreign .bp-callout-dot {
+  fill: var(--bp-foreign);
+  stroke: none;
+}
+
+/*
+ * Lettering, hand-drawn. Constant on screen: every size divides by the map's scale. `font-size`
+ * longhand, never the `font` shorthand - a calc() inside the shorthand is valid CSS some renderers
+ * drop, and the label then falls back to a size several times the hex.
+ */
+.bp-label {
+  font-family: "Architects Daughter", "Comic Sans MS", "Segoe Print", cursive;
+  paint-order: stroke fill;
+  stroke: var(--bp-label-halo);
+  stroke-width: calc(2.2px / var(--map-scale, 1));
+  stroke-linejoin: round;
+  fill: var(--bp-line);
+}
+.bp-name {
+  font-size: calc(12px / var(--map-scale, 1));
+}
+.bp-callout-text {
+  font-size: calc(11px / var(--map-scale, 1));
+}
+.bp-callout-text-own {
+  fill: var(--bp-own);
+}
+.bp-callout-text-foreign {
+  fill: var(--bp-foreign);
+}
+.bp-monster-count {
+  font-size: calc(10px / var(--map-scale, 1));
+  fill: var(--bp-monster);
+}
+.bp-note {
+  font-size: calc(10px / var(--map-scale, 1));
+  opacity: 0.85;
+}
+
+/*
+ * Zoom bands, scoped to this theme because every theme's stylesheet is loaded whichever is chosen.
+ *
+ * Far: the hatches and the edges carry the sheet; the grid would only alias, and the marks and the
+ * lettering are too small to read. The guard's perimeter stays - who holds a hex reads at a few
+ * pixels - and so does the unsurveyed rim, which is how the knowledge states part at this band.
+ * Mid: counts on the callouts, but no names or notes.
+ */
+.map-theme-blueprint.map-far .bp-grid,
+.map-theme-blueprint.map-far .bp-mark,
+.map-theme-blueprint.map-far .bp-label,
+.map-theme-blueprint.map-mid .bp-name,
+.map-theme-blueprint.map-mid .bp-note,
+.map-theme-blueprint.map-mid .bp-monster-count {
+  display: none;
+}
+
+/* The map marks' colours and the roads the map draws for every theme. */
+.map-theme-blueprint {
+  --map-border-ink: var(--bp-border);
+  --map-wall-ink: var(--bp-line-strong);
+  --map-mark-ground: var(--bp-ground);
+  --map-road-line: var(--bp-line);
+  --map-road-casing: var(--bp-ground);
+  --map-blocked-ink: var(--bp-blocked);
+  --map-blocked-label-ink: var(--bp-blocked-label);
+  --map-blocked-label-halo: var(--bp-ground);
+}

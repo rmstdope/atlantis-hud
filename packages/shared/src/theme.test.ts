@@ -498,7 +498,12 @@ describe("map theme stylesheets", () => {
       cartographersTable: ["ct-terrain"],
       emblemAndDots: ["ed-terrain"],
       tacticalHud: ["hud-terrain"],
-      miniatureWorld: ["mw-lit", "mw-shade"]
+      miniatureWorld: ["mw-lit", "mw-shade"],
+      collective: ["co-terrain"],
+      stainedGlass: ["sg-terrain"],
+      eightBitQuest: ["eb-terrain"],
+      blueprint: ["bp-terrain"],
+      chronicle: ["ch-terrain"]
     };
     const missing: string[] = [];
     for (const sheet of await themeSheets()) {
@@ -564,7 +569,12 @@ describe("map theme stylesheets", () => {
       "cartographers-table": ["--ct-ink", "--ct-ink-strong", "--ct-parchment"],
       "emblem-and-dots": ["--ed-ink", "--ed-ink", "--ed-halo"],
       "miniature-world": ["--mw-edge", "--mw-edge", "--mw-tape"],
-      "tactical-hud": ["--hud-ink", "--hud-ink", "--hud-panel"]
+      "tactical-hud": ["--hud-ink", "--hud-ink", "--hud-panel"],
+      collective: ["--co-dim", "--co-white", "--co-void"],
+      "stained-glass": ["--sg-gold-dark", "--sg-gold-light", "--sg-lead"],
+      "eight-bit-quest": ["--eb-silver", "--eb-white", "--eb-black"],
+      blueprint: ["--bp-border", "--bp-line-strong", "--bp-ground"],
+      chronicle: ["--ch-edge", "--ch-ink", "--ch-paper"]
     };
     const sheets = await themeSheets();
 
