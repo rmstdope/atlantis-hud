@@ -1,0 +1,290 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Biome texture set</title><style>:root{--bg:#14161b;--panel:#1d2027;--raised:#262a33;--edge:#3a3f4b;--ink:#e6e2d6;--soft:#b9b4a6;--dim:#857f72;--brass:#c9a45c;--note:#2b3340}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,sans-serif;padding:20px}
+h1{font-size:18px;margin:0 0 4px}h2{font-size:15px;margin:22px 0 8px;color:var(--brass)}p.lede{color:var(--soft);margin:0 0 14px;max-width:880px}
+.row{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start}
+.dialog{width:380px;background:var(--panel);border:1px solid var(--edge);border-radius:8px;padding:14px;box-shadow:0 8px 30px #0008}
+.dialog .title{font-weight:600;margin-bottom:10px;display:flex;justify-content:space-between}.dialog .title span{color:var(--dim);font-weight:400}
+.set{display:flex;justify-content:space-between;gap:10px;align-items:center;margin:0 0 12px}.set .t{color:var(--soft)}.set .d{display:block;color:var(--dim);font-size:12px}
+.nest{margin:0 0 12px 16px;padding-left:9px;border-left:2px solid #c9a45c66}
+select{background:var(--raised);color:var(--ink);border:1px solid var(--edge);border-radius:4px;padding:3px 6px;font:inherit}
+select:disabled,.off{opacity:.45}
+input[type=checkbox]{width:16px;height:16px;accent-color:var(--brass)}
+.btns button{background:var(--raised);color:var(--ink);border:1px solid var(--edge);border-radius:4px;padding:2px 9px;font:inherit}.btns button.on{border-color:var(--brass);color:var(--brass)}
+.note{background:var(--note);border-left:3px solid var(--brass);padding:8px 10px;border-radius:4px;color:var(--soft);font-size:13px;max-width:880px;margin:8px 0}
+.focus{outline:2px solid #6aa7ff;outline-offset:2px}
+canvas.map{display:block;border-radius:4px;background:#0b0c0f}
+.cap{font-size:12px;color:var(--dim);margin-top:4px}
+.ann{font-size:12px;color:var(--brass);margin:-6px 0 10px 0}
+</style></head><body><h1>Agreed — Texture set picker, textured and flat colours</h1>
+<p class="lede">The Biome textures switch stays as it is. Beneath it, in the indented group, a <b>Texture set</b> picker holds one entry, <b>Standard</b>, until the procedural and painted sets join it. Standard replaces today's textures. Untick Biome textures and the group dims, and the map uses flat colours; the second part of this page shows those in every map theme. <b>Try it:</b> untick Biome textures.</p>
+<div class="row">
+ <div class="dialog">
+  <div class="title">Settings <span>All games</span></div>
+  <div class="set"><span class="t">App theme</span><span class="btns"><button class="on">Dark</button> <button>Light</button></span></div>
+  <div class="set"><span><span class="t">Map theme</span><span class="d">How the world map draws each hex.</span></span><select><option>Beveled Tile</option></select></div>
+  <div class="set"><span><span class="t">Biome textures</span><span class="d">Uses image tiles for known biomes.</span></span><input id="on" type="checkbox" checked></div>
+  <div class="nest" id="nest">
+   <div class="set"><span><span class="t">Texture set</span><span class="d">Which pictures the map uses for each biome.</span></span>
+    <select id="set"><option value="recol" selected>Standard</option></select></div>
+   <div class="set"><span><span class="t">Rotate biome textures</span><span class="d">Turns each hex's texture by a different angle.</span></span><input type="checkbox" checked></div>
+   <div class="set"><span><span class="t">Animate water textures</span><span class="d">Moves ocean and lake textures along their texture direction.</span></span><input type="checkbox" checked></div>
+  </div>
+  <div class="set"><span><span class="t">Staleness</span><span class="d">Shade hexes by how long ago you last saw them.</span></span><input type="checkbox"></div>
+ </div>
+ <div id="preview" class="row" style="flex:1;min-width:300px"></div>
+</div>
+<div class="note">Tunnels are darker and bluer than in the first round, so they stand clear of cavern.</div><h2>Textures off — every map theme keeps its mood</h2><h3>Option B — each map theme keeps its own mood, re-tuned so every biome is distinct</h3>
+<p class="lede">Each theme keeps roughly its own lightness range and colourfulness (dim Tactical HUD, pale light variants, parchment Cartographer's Table); the new palette decides each biome's hue and where it sits from dark to light. Where a theme's range was too narrow to separate 17 biomes it is widened just enough. Textures are off in every map below. Each pair shows <b>today</b> on the left and <b>the proposal</b> on the right, at far zoom. The number under each is how far apart the two closest biomes in the clash groups are (forest/swamp/jungle, the forests, cavern/tunnels/chasm, hill/wasteland/desert, tundra/mountain) — bigger is easier to tell apart; today most themes have a pair under 2, which is the forest-and-swamp problem players reported.</p>
+<div id="grid"></div>
+<div class="note">Cost: separation is a bit weaker in the dimmest and palest themes than in A, but each theme still looks like itself.</div><script>function random(seed) {
+  let s = seed >>> 0 || 1;
+  return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+}
+const smooth = (v) => v * v * (3 - 2 * v);
+function valueNoise(size, period, seed) {
+  const rng = random(seed);
+  const lat = Array.from({ length: period * period }, () => rng());
+  const out = new Float32Array(size * size);
+  for (let y = 0; y < size; y++) {
+    const cy = (y / size) * period, y0 = Math.floor(cy) % period, y1 = (y0 + 1) % period, fy = smooth(cy - Math.floor(cy));
+    for (let x = 0; x < size; x++) {
+      const cx = (x / size) * period, x0 = Math.floor(cx) % period, x1 = (x0 + 1) % period, fx = smooth(cx - Math.floor(cx));
+      const t = lat[y0 * period + x0] * (1 - fx) + lat[y0 * period + x1] * fx;
+      const b = lat[y1 * period + x0] * (1 - fx) + lat[y1 * period + x1] * fx;
+      out[y * size + x] = t * (1 - fy) + b * fy;
+    }
+  }
+  return out;
+}
+function fbm(size, period, oct, seed) {
+  const out = new Float32Array(size * size);
+  let a = 1, sum = 0, p = period;
+  for (let o = 0; o < oct; o++) {
+    const l = valueNoise(size, p, seed + o * 101);
+    for (let i = 0; i < out.length; i++) out[i] += l[i] * a;
+    sum += a; a *= 0.5; p *= 2;
+  }
+  for (let i = 0; i < out.length; i++) out[i] /= sum;
+  return out;
+}
+function normalize(f) {
+  let mn = Infinity, mx = -Infinity;
+  for (const v of f) { if (v < mn) mn = v; if (v > mx) mx = v; }
+  const s = mx - mn || 1;
+  return f.map((v) => (v - mn) / s);
+}
+const mixF = (a, b, wa, wb) => a.map((v, i) => v * wa + b[i] * wb);
+function sineField(freq, warp, size) {
+  return warp.map((v, i) => { const x = (i % size) / size, y = Math.floor(i / size) / size; return 0.5 + 0.5 * Math.sin((x + y * 0.4) * Math.PI * 2 * freq + v * 8); });
+}
+function ramp(v, stops) {
+  if (v <= stops[0][0]) return stops[0][1];
+  for (let i = 1; i < stops.length; i++) {
+    if (v <= stops[i][0]) {
+      const [p0, c0] = stops[i - 1], [p1, c1] = stops[i], t = (v - p0) / (p1 - p0);
+      return [c0[0] + (c1[0] - c0[0]) * t, c0[1] + (c1[1] - c0[1]) * t, c0[2] + (c1[2] - c0[2]) * t];
+    }
+  }
+  return stops[stops.length - 1][1];
+}
+function fieldCanvas(field, stops, seed) {
+  const c = document.createElement("canvas"); c.width = c.height = TEX;
+  const ctx = c.getContext("2d"), img = ctx.createImageData(TEX, TEX), rng = random(seed);
+  for (let i = 0; i < field.length; i++) {
+    const col = ramp(field[i], stops), g = (rng() - 0.5) * 10;
+    img.data[i * 4] = col[0] + g; img.data[i * 4 + 1] = col[1] + g; img.data[i * 4 + 2] = col[2] + g; img.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+const BIOMES_DIR = "file:///Users/henrikku/repos/atlantis-hud/config/public/biomes/";
+const TEX = 256;
+const KINDS = ["ocean", "plain", "forest", "mountain", "swamp", "desert", "jungle", "tundra", "volcano", "wasteland", "hill",
+  "cavern", "underforest", "tunnels", "grotto", "deepforest", "chasm"];
+const CODE = { O: "ocean", P: "plain", F: "forest", M: "mountain", S: "swamp", D: "desert", J: "jungle", T: "tundra", V: "volcano", W: "wasteland", H: "hill",
+  C: "cavern", U: "underforest", N: "tunnels", G: "grotto", E: "deepforest", X: "chasm" };
+const SURFACE = ["OOOTTTMMMHHO", "OOTTTMMVMHHO", "OPPTMMVVHHWW", "OPPFFFHHWWDD", "PPFFSSSJWDDD", "PFFSSSJJJDDO", "OPFFSJJJPPDO", "OOPPPJJPPPOO"];
+const UNDER = ["NNNCCCCXXN", "NCCCUUCXXN", "NCCUUUEECN", "NGGUUEEECN", "NGGGUEECXN", "NNGCCCCXXN"];
+const GROUPS = [
+  ["forest", "swamp", "jungle"],
+  ["forest", "underforest", "deepforest", "jungle"],
+  ["cavern", "tunnels", "chasm"],
+  ["hill", "wasteland", "desert"],
+  ["tundra", "mountain"],
+  ["grotto", "ocean", "swamp"],
+];
+
+const rgb = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+function hash(s) { let h = 2166136261; for (const ch of s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+function hexPath(ctx, cx, cy, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) { const a = (Math.PI / 3) * i; ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a)); }
+  ctx.closePath();
+}
+function wrapDraw(x, y, r, draw) {
+  for (const dx of [-TEX, 0, TEX]) for (const dy of [-TEX, 0, TEX]) {
+    if (x + dx + r < 0 || x + dx - r > TEX || y + dy + r < 0 || y + dy - r > TEX) continue;
+    draw(x + dx, y + dy);
+  }
+}
+function canvas() { const c = document.createElement("canvas"); c.width = c.height = TEX; return c; }
+
+// ---- B: palette (hue and value apart) + one large shape per biome ----
+const RAMPS = {
+  ocean: [[0, [12, 42, 80]], [0.45, [18, 66, 116]], [0.75, [32, 104, 158]], [1, [120, 180, 210]]],
+  plain: [[0, [120, 150, 70]], [0.5, [146, 176, 86]], [0.8, [170, 194, 104]], [1, [196, 210, 130]]],
+  forest: [[0, [14, 40, 36]], [0.4, [26, 66, 54]], [0.7, [42, 94, 72]], [1, [86, 132, 104]]],
+  mountain: [[0, [70, 70, 78]], [0.45, [104, 102, 108]], [0.75, [140, 138, 142]], [1, [190, 190, 196]]],
+  swamp: [[0, [52, 78, 82]], [0.28, [70, 96, 96]], [0.34, [84, 80, 50]], [0.65, [116, 104, 62]], [1, [152, 138, 90]]],
+  desert: [[0, [200, 160, 92]], [0.5, [222, 186, 116]], [0.8, [236, 206, 142]], [1, [248, 228, 172]]],
+  jungle: [[0, [44, 96, 16]], [0.35, [84, 140, 24]], [0.7, [136, 178, 38]], [1, [196, 214, 84]]],
+  tundra: [[0, [176, 190, 200]], [0.4, [200, 212, 220]], [0.7, [222, 230, 236]], [1, [244, 248, 252]]],
+  volcano: [[0, [18, 14, 16]], [0.5, [38, 30, 30]], [0.85, [60, 48, 46]], [1, [84, 70, 66]]],
+  wasteland: [[0, [96, 50, 36]], [0.45, [134, 74, 50]], [0.75, [162, 98, 66]], [1, [190, 130, 92]]],
+  hill: [[0, [104, 92, 52]], [0.45, [136, 120, 70]], [0.75, [164, 148, 92]], [1, [196, 180, 124]]],
+  cavern: [[0, [26, 24, 34]], [0.45, [50, 46, 62]], [0.75, [76, 70, 90]], [1, [112, 104, 128]]],
+  underforest: [[0, [34, 30, 40]], [0.45, [56, 52, 52]], [0.75, [80, 76, 64]], [1, [110, 104, 80]]],
+  tunnels: [[0, [14, 20, 36]], [0.45, [24, 34, 58]], [0.75, [34, 48, 80]], [1, [52, 68, 104]]],
+  grotto: [[0, [10, 30, 34]], [0.45, [20, 54, 58]], [0.75, [34, 82, 84]], [1, [70, 120, 118]]],
+  deepforest: [[0, [4, 18, 14]], [0.45, [8, 32, 24]], [0.75, [14, 46, 34]], [1, [26, 66, 48]]],
+  chasm: [[0, [40, 18, 30]], [0.45, [66, 32, 46]], [0.75, [92, 48, 60]], [1, [124, 72, 80]]],
+};
+const FIELDS = {
+  ocean: () => normalize(mixF(fbm(TEX, 3, 6, 10), sineField(5, fbm(TEX, 6, 5, 12), TEX), 0.65, 0.35)),
+  plain: () => normalize(mixF(fbm(TEX, 4, 6, 20), fbm(TEX, 6, 4, 21), 0.6, 0.4)),
+  forest: () => normalize(mixF(fbm(TEX, 6, 6, 30), fbm(TEX, 9, 5, 31), 0.45, 0.55)),
+  mountain: () => normalize(mixF(fbm(TEX, 3, 7, 40), fbm(TEX, 4, 6, 41), 0.5, 0.5)),
+  swamp: () => normalize(fbm(TEX, 5, 6, 50)),
+  desert: () => normalize(mixF(sineField(7, fbm(TEX, 4, 5, 70), TEX), fbm(TEX, 4, 5, 70), 0.7, 0.3)),
+  jungle: () => normalize(mixF(fbm(TEX, 14, 6, 60), fbm(TEX, 24, 6, 61), 0.5, 0.5)),
+  tundra: () => normalize(mixF(fbm(TEX, 4, 6, 80), fbm(TEX, 9, 5, 81), 0.6, 0.4)),
+  volcano: () => normalize(fbm(TEX, 5, 7, 90)),
+  wasteland: () => normalize(mixF(fbm(TEX, 4, 7, 140), fbm(TEX, 7, 5, 141), 0.7, 0.3)),
+  hill: () => normalize(mixF(fbm(TEX, 3, 7, 160), fbm(TEX, 5, 5, 161), 0.7, 0.3)),
+  cavern: () => normalize(mixF(fbm(TEX, 3, 7, 100), fbm(TEX, 8, 5, 101), 0.65, 0.35)),
+  underforest: () => normalize(mixF(fbm(TEX, 8, 6, 120), fbm(TEX, 16, 5, 121), 0.5, 0.5)),
+  tunnels: () => normalize(fbm(TEX, 5, 6, 171)),
+  grotto: () => normalize(mixF(fbm(TEX, 4, 6, 180), sineField(3, fbm(TEX, 8, 4, 181), TEX), 0.6, 0.4)),
+  deepforest: () => normalize(mixF(fbm(TEX, 18, 7, 200), fbm(TEX, 30, 6, 201), 0.55, 0.45)),
+  chasm: () => normalize(fbm(TEX, 3, 7, 221)),
+};
+const FLAT = {
+  ocean: "#2a5f8e", plain: "#a6bb6c", forest: "#2c5a48", mountain: "#8c8a92", swamp: "#7a6c46", desert: "#e2c48a",
+  jungle: "#8cb42c", tundra: "#d6e0e8", volcano: "#3a2c2c", wasteland: "#9c5a3e", hill: "#9c8a56",
+  cavern: "#4a4458", underforest: "#6a5a7a", tunnels: "#1c2a48", grotto: "#2c7a7c", deepforest: "#0e2a20", chasm: "#5c2c3e",
+};
+const base = (kind) => fieldCanvas(FIELDS[kind](), RAMPS[kind], 7 + kind.length);
+const THEMES = {"beveledTile": [{"ocean": "#26517a", "plain": "#807748", "forest": "#3a6346", "mountain": "#63636e", "swamp": "#4e5c36", "desert": "#a08954", "jungle": "#2f6a4c", "tundra": "#75868c", "volcano": "#6b3a35", "cavern": "#4f4f5a", "underforest": "#33553f", "wasteland": "#7c6c52", "hill": "#806e5a", "tunnels": "#55535f", "grotto": "#426b6b", "deepforest": "#315741", "chasm": "#513c4d", "other": "#5a606a"}, {"ocean": "#a9c5de", "plain": "#d9d2a0", "forest": "#a3c9ab", "mountain": "#babac2", "swamp": "#b3bd96", "desert": "#e0cd9e", "jungle": "#93c7ac", "tundra": "#bcc9ce", "volcano": "#b98f8b", "cavern": "#b6b6c2", "underforest": "#a8c3b2", "wasteland": "#c7b298", "hill": "#d7c4a6", "tunnels": "#c0bdc7", "grotto": "#acd0cc", "deepforest": "#afd0b8", "chasm": "#c6b3c2", "other": "#b7bec7"}], "cartographersTable": [{"ocean": "#7fa0b8", "plain": "#b3a565", "forest": "#6e8a5c", "mountain": "#8d8a83", "swamp": "#7d8a5e", "desert": "#c2ab74", "jungle": "#5f8a63", "tundra": "#a9b3ae", "volcano": "#9c7a6a", "cavern": "#8f8a86", "underforest": "#6b8a72", "wasteland": "#b0a288", "hill": "#927d63", "tunnels": "#696775", "grotto": "#5f8987", "deepforest": "#4f7659", "chasm": "#765867", "other": "#9a9a90"}, {"ocean": "#a8c4d8", "plain": "#d8cb92", "forest": "#9dba8c", "mountain": "#bcb9b2", "swamp": "#adb88b", "desert": "#e6d5a8", "jungle": "#93bd94", "tundra": "#d0d8d4", "volcano": "#c9a89a", "cavern": "#c0bab4", "underforest": "#9fbfa6", "wasteland": "#d8cbb2", "hill": "#d6c0a1", "tunnels": "#b4b1bf", "grotto": "#a0c9c5", "deepforest": "#a4c4aa", "chasm": "#c7aeba", "other": "#c4c4ba"}], "emblemAndDots": [{"ocean": "#1f4260", "plain": "#6e6738", "forest": "#31543a", "mountain": "#54545e", "swamp": "#46532f", "desert": "#7d6a3e", "jungle": "#2c5f45", "tundra": "#5b6b71", "volcano": "#5a2f2c", "cavern": "#43434e", "underforest": "#2b4c39", "wasteland": "#6a5c46", "hill": "#6b5a4a", "tunnels": "#4c4b57", "grotto": "#355f60", "deepforest": "#29523b", "chasm": "#4b3847", "other": "#4b515a"}, {"ocean": "#a9c5de", "plain": "#d9d2a0", "forest": "#a3c9ab", "mountain": "#babac2", "swamp": "#b3bd96", "desert": "#e0cd9e", "jungle": "#93c7ac", "tundra": "#bcc9ce", "volcano": "#b98f8b", "cavern": "#b6b6c2", "underforest": "#a8c3b2", "wasteland": "#c7b298", "hill": "#d4c2aa", "tunnels": "#c0beca", "grotto": "#a6ceca", "deepforest": "#a5c9ae", "chasm": "#c4b4c2", "other": "#b7bec7"}], "tacticalHud": [{"ocean": "#1c3247", "plain": "#4a4630", "forest": "#28402c", "mountain": "#3c3c44", "swamp": "#2f3a26", "desert": "#4e422a", "jungle": "#1f3d2d", "tundra": "#39444a", "volcano": "#43221f", "cavern": "#33333c", "underforest": "#23372b", "wasteland": "#453d31", "hill": "#4d453d", "tunnels": "#3d3c46", "grotto": "#2f5050", "deepforest": "#203d30", "chasm": "#382d3a", "other": "#3a4048"}, {"ocean": "#b6ccdd", "plain": "#ded6b0", "forest": "#b6cdb6", "mountain": "#c6c6cc", "swamp": "#c2c9a8", "desert": "#e5d6b0", "jungle": "#a9cdb4", "tundra": "#c8d2d8", "volcano": "#d9b3ab", "cavern": "#c8c8d0", "underforest": "#b4ccb8", "wasteland": "#d8ccb6", "hill": "#d7cbbc", "tunnels": "#c4c2ca", "grotto": "#b5d0ce", "deepforest": "#b2cabd", "chasm": "#c9becb", "other": "#c4cad2"}], "miniatureWorld": [{"ocean": "#2b5a86", "plain": "#8f8449", "forest": "#3d7048", "mountain": "#73737e", "swamp": "#4e5a37", "desert": "#c2a86a", "jungle": "#357a55", "tundra": "#8a9aa0", "volcano": "#6b3430", "cavern": "#4c4c58", "underforest": "#37604a", "wasteland": "#8a7a60", "hill": "#a18f72", "tunnels": "#686775", "grotto": "#548b88", "deepforest": "#4c835b", "chasm": "#735466", "other": "#6b6b73"}, {"ocean": "#7fb6dd", "plain": "#ccc188", "forest": "#87b892", "mountain": "#b6b6c0", "swamp": "#a0ab7f", "desert": "#e6d3a2", "jungle": "#7fbd97", "tundra": "#c6d2d6", "volcano": "#bf8a83", "cavern": "#adadb8", "underforest": "#84b39a", "wasteland": "#c9b99b", "hill": "#dfcda9", "tunnels": "#d0cfda", "grotto": "#9bc9c5", "deepforest": "#9cc8a8", "chasm": "#c5adc2", "other": "#b2b2ba"}]};
+// today's ramps from scripts/genBiomes.ts are approximated by loading the real PNGs
+const TODAY_DIR = "file:///Users/henrikku/repos/atlantis-hud/config/public/biomes/";
+const loadImg = (src) => new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = src; });
+const SETS = {};
+async function loadSets() {
+  if (SETS.today) return SETS;
+  const today = {}; await Promise.all(KINDS.map(async (k) => { today[k] = await loadImg(TODAY_DIR + k + "_256.png"); }));
+  const recol = {}; for (const k of KINDS) recol[k] = base(k);
+  SETS.today = { tex: today }; SETS.recol = { tex: recol }; return SETS;
+}
+function paintHex(ctx, x, y, r, kind, id, source, opts = {}) {
+  ctx.save(); hexPath(ctx, x, y, r); ctx.clip();
+  if (source.flat) { ctx.fillStyle = source.flat[kind]; ctx.fillRect(x - r, y - r, 2 * r, 2 * r); }
+  else {
+    const tex = source.tex[kind];
+    ctx.translate(x, y); ctx.rotate(((hash(id) % 360) * Math.PI) / 180);
+    ctx.filter = `brightness(${0.92 + (hash(id + ":b") % 17) / 100})`;
+    if (tex) ctx.drawImage(tex, -r * 1.16, -r * 1.16, 2.32 * r, 2.32 * r); else { ctx.fillStyle = "#888"; ctx.fillRect(-r * 1.2, -r * 1.2, 2.4 * r, 2.4 * r); }
+    ctx.filter = "none"; ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+  if (opts.gauze) { ctx.globalAlpha = 0.2; ctx.fillStyle = "#efe3c2"; ctx.fillRect(x - r, y - r, 2 * r, 2 * r); ctx.globalAlpha = 1; }
+  ctx.restore();
+  hexPath(ctx, x, y, r); ctx.strokeStyle = opts.edge || "rgba(20,16,12,0.7)"; ctx.lineWidth = r > 20 ? 1.2 : 0.7; ctx.stroke();
+  if (opts.labels && r >= 22) {
+    ctx.font = "600 10px system-ui"; ctx.fillStyle = "#fff"; ctx.strokeStyle = "rgba(0,0,0,.8)"; ctx.lineWidth = 3; ctx.textAlign = "center";
+    ctx.strokeText(kind, x, y + 4); ctx.fillText(kind, x, y + 4);
+  }
+}
+function drawLayout(cv, layout, r, source, opts) {
+  const ctx = cv.getContext("2d"), w = r * 1.5, h = r * Math.sqrt(3);
+  cv.width = Math.ceil(w * (layout[0].length - 1) + 2 * r + 4); cv.height = Math.ceil(h * layout.length + h / 2 + 4);
+  layout.forEach((row, ry) => [...row].forEach((ch, cx) => {
+    paintHex(ctx, r + 2 + cx * w, h / 2 + 2 + ry * h + (cx % 2 ? h / 2 : 0), r, CODE[ch], `${cx},${ry}`, source, opts);
+  }));
+  return cv;
+}
+// ---- OKLab, for the per-theme remap and the difference numbers ----
+const hex2rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+const delin = (c) => Math.round(255 * Math.min(1, Math.max(0, c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055)));
+function toLab(h) {
+  const [r, g, b] = hex2rgb(h).map(lin);
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b), m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b), s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
+}
+function fromLab([L, a, b]) {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3, m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3, s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  const rgb = [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s].map(delin);
+  return "#" + rgb.map((v) => v.toString(16).padStart(2, "0")).join("");
+}
+const dE = (h1, h2) => { const a = toLab(h1), b = toLab(h2); return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) * 100; };
+// Each theme keeps its own lightness band and colourfulness; the new palette supplies hue and order.
+function inCharacter(themeColours, minSpan = 0.42) {
+  const tl = KINDS.map((k) => toLab(themeColours[k])), fl = KINDS.map((k) => toLab(FLAT[k]));
+  let tmin = Math.min(...tl.map((x) => x[0])), tmax = Math.max(...tl.map((x) => x[0]));
+  const mid = (tmin + tmax) / 2; if (tmax - tmin < minSpan) { tmin = mid - minSpan / 2; tmax = mid + minSpan / 2; }
+  if (tmax > 0.95) { tmin -= tmax - 0.95; tmax = 0.95; } if (tmin < 0.12) { tmax += 0.12 - tmin; tmin = 0.12; }
+  const fmin = Math.min(...fl.map((x) => x[0])), fmax = Math.max(...fl.map((x) => x[0]));
+  const chroma = (arr) => arr.reduce((s, x) => s + Math.hypot(x[1], x[2]), 0) / arr.length;
+  const cs = Math.max(0.55, Math.min(1, (chroma(tl) / chroma(fl)) * 1.6));
+  const out = {};
+  KINDS.forEach((k, i) => { const [L, a, b] = fl[i]; out[k] = fromLab([tmin + ((L - fmin) / (fmax - fmin)) * (tmax - tmin), a * cs, b * cs]); });
+  return out;
+}
+const THEME_LABELS = { beveledTile: "Beveled Tile", cartographersTable: "Cartographer's Table", emblemAndDots: "Emblem & Dots", tacticalHud: "Tactical HUD", miniatureWorld: "Miniature World" };
+const CLASHES = [["forest", "swamp", "jungle"], ["forest", "underforest", "deepforest", "jungle"], ["cavern", "tunnels", "chasm"], ["hill", "wasteland", "desert"], ["tundra", "mountain"]];
+function worstPair(pal) {
+  let worst = [null, 1e9];
+  for (const g of CLASHES) for (let i = 0; i < g.length; i++) for (let j = i + 1; j < g.length; j++) { const d = dE(pal[g[i]], pal[g[j]]); if (d < worst[1]) worst = [g[i] + " / " + g[j], d]; }
+  return worst;
+}
+</script><script>// The preview beside the dialog: the same surface patch at far and close zoom, redrawn on every change.
+const SURF = SURFACE, UND = UNDER;
+async function preview(mode) {
+  const sets = await loadSets();
+  const src = mode === "off" ? { flat: FLAT } : sets[mode];
+  const box = document.getElementById("preview"); box.innerHTML = "";
+  const add = (layout, r, cap, labels) => { const d = document.createElement("div"); const c = drawLayout(document.createElement("canvas"), layout, r, src, { labels }); c.className = "map"; d.append(c); const p = document.createElement("div"); p.className = "cap"; p.textContent = cap; d.append(p); box.append(d); };
+  add(SURF, 11, "Surface, far zoom", false); add(UND, 11, "Underground, far zoom", false);
+  add(["FFSSJJ", "FFSSJJ", "UUEECC", "NNXXHH"], 30, "Close zoom, labelled", true);
+}
+
+const on = document.getElementById("on"), sel = document.getElementById("set"), nest = document.getElementById("nest");
+function sync() { nest.classList.toggle("off", !on.checked); nest.querySelectorAll("select,input").forEach((e) => (e.disabled = !on.checked)); preview(on.checked ? sel.value : "off"); }
+on.onchange = sel.onchange = sync;
+
+sync();
+
+const pick = (theme) => inCharacter(theme);
+const grid = document.getElementById("grid");
+for (const [id, label] of Object.entries(THEME_LABELS)) {
+  [0, 1].forEach((vi) => {
+    const theme = THEMES[id][vi], next = pick(theme), light = vi === 1;
+    const sec = document.createElement("div"); sec.style.cssText = "margin:0 0 16px;padding:10px;border-radius:6px;background:" + (light ? "#ece6d6" : "#0e1014") + ";color:" + (light ? "#2a2620" : "#e6e2d6");
+    sec.innerHTML = "<div style='font-weight:600;margin-bottom:6px'>" + label + " · " + (light ? "light" : "dark") + "</div>";
+    const row = document.createElement("div"); row.className = "row";
+    for (const [cap, pal] of [["Today", theme], ["Proposal", next]]) {
+      const d = document.createElement("div");
+      const opts = { gauze: id === "cartographersTable", edge: light ? "rgba(60,50,40,.55)" : "rgba(0,0,0,.6)" };
+      const c1 = drawLayout(document.createElement("canvas"), SURFACE, 10, { flat: pal }, opts); c1.className = "map";
+      const c2 = drawLayout(document.createElement("canvas"), UNDER, 10, { flat: pal }, opts); c2.className = "map";
+      const w = worstPair(pal);
+      const box = document.createElement("div"); box.className = "row"; box.style.gap = "6px"; box.append(c1, c2);
+      const sw = document.createElement("div"); sw.style.cssText = "display:flex;flex-wrap:wrap;gap:2px;max-width:420px;margin-top:4px";
+      for (const k of KINDS) sw.innerHTML += "<span title='" + k + "' style='font-size:10px;padding:1px 4px;border-radius:3px;background:" + pal[k] + ";color:" + (toLab(pal[k])[0] > 0.6 ? "#000" : "#fff") + "'>" + k + "</span>";
+      d.innerHTML = "<div style='font-size:12px;margin-bottom:3px'><b>" + cap + "</b> — closest pair: " + w[0] + " (" + w[1].toFixed(1) + ")</div>";
+      d.append(box, sw); row.append(d);
+    }
+    sec.append(row); grid.append(sec);
+  });
+}
+</script></body></html>
