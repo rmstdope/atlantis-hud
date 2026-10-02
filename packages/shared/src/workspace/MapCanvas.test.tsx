@@ -39,7 +39,8 @@ function probe(): MapTheme {
       />
     ),
     RoadLayer: mark("roads"),
-    MarkLayer: mark("marks")
+    MarkLayer: mark("marks"),
+    markFootprint: () => []
   };
 }
 
@@ -470,14 +471,15 @@ describe("what the map hands a theme", () => {
     expect(draw()).toContain("map-theme-probe");
   });
 
-  it("asks nothing of a theme beyond the three layers, defs being optional", () => {
+  it("asks nothing of a theme beyond the three layers and its footprint, defs being optional", () => {
     const bare: MapTheme = {
       id: "bare",
       label: "Bare",
       fogDamping: 1,
       TerrainLayer: () => null,
       RoadLayer: () => null,
-      MarkLayer: () => null
+      MarkLayer: () => null,
+      markFootprint: () => []
     };
 
     expect(() => draw(bare)).not.toThrow();

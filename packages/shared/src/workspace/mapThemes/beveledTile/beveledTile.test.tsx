@@ -430,3 +430,26 @@ describe("the battle fought in a hex last turn", () => {
     expect(other).toContain('class="bt-chip-battle-other"');
   });
 });
+
+/** The spots `with` claims that `without` does not: what one mark adds to the footprint. */
+function addedSpots(without: HexView, withIt: HexView) {
+  const before = beveledTile.markFootprint(without);
+  return beveledTile.markFootprint(withIt).filter(
+    (spot) => !before.some((other) => other.x === spot.x && other.y === spot.y && other.r === spot.r)
+  );
+}
+
+describe("the room this theme's marks take, for the biome symbols to keep clear of (ah-d9jb.4)", () => {
+  it("claims the room on the spot where it draws a settlement", () => {
+    const added = addedSpots(
+      viewWith({ battle: null, settlement: null }),
+      viewWith({ battle: null, settlement: { name: "Kharn", tier: "village" } })
+    );
+
+    expect(added).toContainEqual(expect.objectContaining({ x: 0, y: -4 / 46 }));
+  });
+
+  it("claims nothing for the guard, which is a ring round the rim outside every symbol", () => {
+    expect(addedSpots(viewWith({ guard: null }), viewWith({ guard: "own" }))).toEqual([]);
+  });
+});

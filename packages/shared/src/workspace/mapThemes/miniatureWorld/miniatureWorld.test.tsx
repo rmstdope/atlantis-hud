@@ -467,3 +467,28 @@ describe("unsurveyed board, primed rather than blank", () => {
     expect(svg).toContain('data-wash="unpainted"');
   });
 });
+
+/** The spots `with` claims that `without` does not: what one mark adds to the footprint. */
+function addedSpots(without: HexView, withIt: HexView) {
+  const before = miniatureWorld.markFootprint(without);
+  return miniatureWorld.markFootprint(withIt).filter(
+    (spot) => !before.some((other) => other.x === spot.x && other.y === spot.y && other.r === spot.r)
+  );
+}
+
+describe("the room this theme's marks take, for the biome symbols to keep clear of (ah-d9jb.4)", () => {
+  it("claims the room on the spot where it draws a settlement", () => {
+    const added = addedSpots(
+      viewWith({ battle: null, settlement: null }),
+      viewWith({ battle: null, settlement: { name: "Kharn", tier: "village" } })
+    );
+
+    expect(added).toContainEqual(expect.objectContaining({ x: 0, y: -6 / 46 }));
+  });
+
+  it("claims room for the guard, which it draws inside the hex rather than round its rim", () => {
+    const added = addedSpots(viewWith({ guard: null }), viewWith({ guard: "own" }));
+
+    expect(added).toContainEqual(expect.objectContaining({ x: GROUNDS.guard.x / 46, y: GROUNDS.guard.y / 46 }));
+  });
+});

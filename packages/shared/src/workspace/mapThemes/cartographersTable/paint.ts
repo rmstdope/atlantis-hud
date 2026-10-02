@@ -11,7 +11,8 @@
  * be read straight off the mockup and compared with it.
  */
 
-import type { SettlementTier } from "../hexView";
+import { markSpot, type MarkSpot } from "../biomeSymbols";
+import type { HexView, SettlementTier } from "../hexView";
 
 /** The radius the proposal was drawn at. Everything below is in its coordinates. */
 export const MOCKUP_RADIUS = 46;
@@ -118,4 +119,53 @@ export function workshopAnchors(buildings: number): Array<{ x: number; y: number
     x: ANCHORS.workshops.x + index * WORKSHOP_STEP.x,
     y: ANCHORS.workshops.y + index * WORKSHOP_STEP.y
   }));
+}
+
+/**
+ * Where this theme draws its marks in a hex, for the biome symbols to keep clear of (ah-d9jb.4).
+ *
+ * Read off the same anchors `MarkLayer` draws at, each with the size of what is drawn there. The
+ * settlement's name is drawn at a constant size on screen rather than scaled with the hex, so its
+ * room is a fair middle of how wide a name runs at the zooms the symbols are shown at.
+ */
+export function markFootprint(view: HexView): MarkSpot[] {
+  const spots: MarkSpot[] = [];
+  const claim = (at: { x: number; y: number }, size: number) =>
+    spots.push(markSpot(at, size, MOCKUP_RADIUS));
+
+  if (view.gate) {
+    claim(ANCHORS.gate, 9);
+  }
+  if (view.battle) {
+    claim(ANCHORS.battle, 8);
+  }
+  if (view.guard) {
+    // The banner flies east of its pole, so its room is centred halfway along the flag.
+    claim({ x: ANCHORS.guard.x + 5, y: ANCHORS.guard.y }, 11);
+  }
+  if (view.units.monster > 0) {
+    claim(ANCHORS.monsters, 7);
+  }
+  if (view.shafts > 0) {
+    claim(ANCHORS.shaft, 9);
+  }
+  if (view.lairs > 0) {
+    claim(ANCHORS.lair, 8);
+  }
+  if (view.ships > 0) {
+    claim(ANCHORS.harbour, 10);
+  }
+  for (const workshop of workshopAnchors(view.buildings)) {
+    claim(workshop, 7);
+  }
+  if (view.settlement) {
+    const keep = keepOf(view.settlement.tier).kind === "keep";
+    claim({ x: 0, y: keep ? -8 : -4 }, keep ? 17 : 11);
+    claim({ x: 0, y: nameLift(view.settlement.tier) }, 14);
+  }
+  for (const shield of shieldRow(view.units)) {
+    claim({ x: shield.x, y: ANCHORS.shields.y }, 7);
+    claim({ x: shield.x, y: ANCHORS.shields.y + SHIELD_COUNT_DROP }, 6);
+  }
+  return spots;
 }

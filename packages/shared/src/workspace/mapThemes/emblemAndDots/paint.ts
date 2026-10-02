@@ -9,6 +9,7 @@
  * Coordinates are the proposal's own, at radius 46 (`hex-design-proposals.html`, proposal 04).
  */
 
+import { markSpot, type MarkSpot } from "../biomeSymbols";
 import type { HexView, SettlementTier } from "../hexView";
 
 export const MOCKUP_RADIUS = 46;
@@ -181,4 +182,36 @@ export function tierPips(tier: SettlementTier | null): number {
     return 2;
   }
   return tier === "village" ? 1 : 0;
+}
+
+/**
+ * Where this theme draws its marks in a hex, for the biome symbols to keep clear of (ah-d9jb.4).
+ *
+ * The medallion with its tier pips, the settlement's name over it, the unit bar with its total
+ * beside it, and the row of dots. The guard is a ring round the rim and claims nothing.
+ */
+export function markFootprint(view: HexView): MarkSpot[] {
+  const spots: MarkSpot[] = [];
+  const claim = (at: { x: number; y: number }, size: number) =>
+    spots.push(markSpot(at, size, MOCKUP_RADIUS));
+
+  const emblem = emblemFor(view);
+  if (emblem !== null) {
+    // The pips hang just under the medallion, so its room reaches a little below the disc.
+    claim(MEDALLION, MEDALLION.r + 3);
+  }
+  if (emblem === "settlement") {
+    claim({ x: 0, y: NAME_Y }, 14);
+  }
+  if (unitBar(view.units) !== null) {
+    const middle = BAR.y + BAR.height / 2;
+    for (const x of [BAR.x + 5, BAR.x + BAR.width / 2, BAR.x + BAR.width - 5]) {
+      claim({ x, y: middle }, 7);
+    }
+    claim({ x: BAR.x + BAR.width + 6, y: BAR.y + BAR.height - 2 }, 6);
+  }
+  for (const dot of dotRow(view)) {
+    claim({ x: dot.x, y: DOT_ROW_Y + dot.row * DOT_ROW_STEP }, 5);
+  }
+  return spots;
 }

@@ -24,7 +24,8 @@ import {
   nameLift,
   shieldRow,
   SHIELD_COUNT_DROP,
-  workshopAnchors
+  workshopAnchors,
+  markFootprint
 } from "./paint";
 import { terrainClassName } from "../terrain";
 
@@ -427,5 +428,6 @@ export const cartographersTable: MapTheme = {
   Defs,
   TerrainLayer,
   RoadLayer: roadLayer(ROAD_STYLE),
-  MarkLayer
+  MarkLayer,
+  markFootprint
 };

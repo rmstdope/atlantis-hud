@@ -38,7 +38,8 @@ const dummy: MapTheme = {
     </g>
   ),
   RoadLayer: () => <g data-dummy="roads" />,
-  MarkLayer: () => <g data-dummy="marks" />
+  MarkLayer: () => <g data-dummy="marks" />,
+  markFootprint: () => []
 };
 
 describe("the map theme registry", () => {
@@ -263,4 +264,87 @@ describe("what every theme owes the three knowledge states", () => {
       expect(ancient).not.toContain('data-rim="unsurveyed"');
     }
   );
+});
+
+/** A hex holding nothing at all, for the footprint table below to add one mark to at a time. */
+function bareView(overrides: Partial<HexView> = {}): HexView {
+  return {
+    key: "4,4,1",
+    at: { x: 0, y: 0 },
+    terrain: "plain",
+    terrainKind: "plain",
+    texture: null,
+    fogOpacity: 0,
+    hatched: false,
+    knowledge: "current",
+    ageInTurns: 0,
+    roads: [],
+    settlement: null,
+    units: { own: 0, foreign: 0, monster: 0 },
+    guard: null,
+    ships: 0,
+    buildings: 0,
+    shafts: 0,
+    lairs: 0,
+    battle: null,
+    blocked: null,
+    gate: false,
+    ...overrides
+  };
+}
+
+/**
+ * One hex per mark a theme can draw, each holding that mark and nothing else.
+ *
+ * The guard is not here: three themes draw it as a ring round the rim, outside every symbol spot,
+ * so it claims no room there. The two that draw it as a figure inside the hex pin that in their
+ * own tests.
+ */
+const ONE_MARK: Array<[string, Partial<HexView>]> = [
+  ["a village", { settlement: { name: "Kharn", tier: "village" } }],
+  ["a city", { settlement: { name: "Kharn", tier: "city" } }],
+  ["a settlement of unknown size", { settlement: { name: "Kharn", tier: null } }],
+  ["own units", { units: { own: 2, foreign: 0, monster: 0 } }],
+  ["foreign units", { units: { own: 0, foreign: 3, monster: 0 } }],
+  ["monsters", { units: { own: 0, foreign: 1, monster: 1 } }],
+  ["a battle", { battle: "own" }],
+  ["ships", { ships: 2 }],
+  ["buildings", { buildings: 4 }],
+  ["a shaft", { shafts: 1 }],
+  ["a lair", { lairs: 1 }],
+  ["a gate", { gate: true }]
+];
+
+describe("where every theme says its marks are, for the biome symbols to keep clear of (ah-d9jb.4)", () => {
+  it("claims no room in a hex with nothing in it", () => {
+    for (const theme of MAP_THEMES) {
+      expect(theme.markFootprint(bareView()), theme.id).toEqual([]);
+    }
+  });
+
+  it("claims room for every mark it can draw, so no symbol is drawn over one", () => {
+    for (const theme of MAP_THEMES) {
+      for (const [what, overrides] of ONE_MARK) {
+        expect(theme.markFootprint(bareView(overrides)).length, `${theme.id}: ${what}`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("keeps every claim inside the hex, in fractions of its radius", () => {
+    for (const theme of MAP_THEMES) {
+      for (const [what, overrides] of ONE_MARK) {
+        for (const spot of theme.markFootprint(bareView(overrides))) {
+          expect(Math.hypot(spot.x, spot.y), `${theme.id}: ${what}`).toBeLessThanOrEqual(1.1);
+          expect(spot.r, `${theme.id}: ${what}`).toBeGreaterThan(0);
+          expect(spot.r, `${theme.id}: ${what}`).toBeLessThan(1);
+        }
+      }
+    }
+  });
+
+  it("leaves roads to the map, which draws them the same way under every theme", () => {
+    for (const theme of MAP_THEMES) {
+      expect(theme.markFootprint(bareView({ roads: ["n", "se"] })), theme.id).toEqual([]);
+    }
+  });
 });

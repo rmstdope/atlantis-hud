@@ -18,6 +18,15 @@ import { ROAD_VECTORS, type HexView, type RoadDirection } from "./hexView";
 /** Room a mark takes in a hex: a circle, centred on the hex, in fractions of `HEX_RADIUS`. */
 export type MarkSpot = { x: number; y: number; r: number };
 
+/**
+ * A mark's room, from a theme's own drawing coordinates: a point and a size in units of a hex drawn
+ * at `radius`. Every theme draws at its mockup's radius, so this is how it states its footprint
+ * in the numbers it already draws with.
+ */
+export function markSpot(at: { x: number; y: number }, size: number, radius: number): MarkSpot {
+  return { x: at.x / radius, y: at.y / radius, r: size / radius };
+}
+
 /** The spike's five spots: upper-left, upper-right, centre, lower-left, lower-right. */
 export const SYMBOL_SPOTS: ReadonlyArray<readonly [number, number]> = [
   [-0.42, -0.22],

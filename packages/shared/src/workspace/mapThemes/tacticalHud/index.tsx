@@ -25,7 +25,8 @@ import {
   MOCKUP_RADIUS,
   NAME_Y,
   settlementBox,
-  STATIONS
+  STATIONS,
+  markFootprint
 } from "./paint";
 import { terrainClassName } from "../terrain";
 
@@ -374,5 +375,6 @@ export const tacticalHud: MapTheme = {
   fogDamping: 0.8,
   TerrainLayer,
   RoadLayer: roadLayer(ROAD_STYLE),
-  MarkLayer
+  MarkLayer,
+  markFootprint
 };
