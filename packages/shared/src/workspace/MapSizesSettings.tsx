@@ -1,5 +1,5 @@
 import type { MapSizes } from "@atlantis/core-client";
-import { type Ref, useRef, useState } from "react";
+import { type Ref, type RefObject, useRef, useState } from "react";
 import {
   mapLevelLabel,
   mapSizesDraftOf,
@@ -9,8 +9,7 @@ import {
   type MapSizesDraft,
   type ShrunkField
 } from "../mapShape";
-import { useEscapeToDismiss } from "./dismissLayer";
-import { useDialogDrag, type DialogDrag } from "./useDialogDrag";
+import { DialogFrame } from "./DialogFrame";
 import { MapSizesFields } from "./MapSizesFields";
 
 const BUTTON =
@@ -112,7 +111,7 @@ export function MapSizesSummary({
   );
 }
 
-/** The editing window's state, Escape and focus; the drawing is `MapSizesEditorPanel`'s. */
+/** The editing window's state, what Escape means, and focus; the drawing is `MapSizesEditorPanel`'s. */
 function MapSizesEditor({
   mapSizes,
   busy,
@@ -126,10 +125,8 @@ function MapSizesEditor({
 }) {
   const [draft, setDraft] = useState(() => mapSizesDraftOf(mapSizes));
   const [confirming, setConfirming] = useState<ShrunkField | null>(null);
-  // ah-aak5: dragged by its top bar to uncover the map; the veil lifts once moved. Its box is the
-  // panel `keepEditing` refocuses inside, so the drag's ref is the panel's ref.
-  const drag = useDialogDrag();
-  const panel = drag.dialogRef;
+  // The dialog frame's box, which `keepEditing` refocuses inside.
+  const panel = useRef<HTMLDivElement | null>(null);
 
   const keepEditing = () => {
     const changed = confirming;
@@ -146,12 +143,10 @@ function MapSizesEditor({
     );
   };
 
-  useEscapeToDismiss(() => (confirming === null ? onCancel() : keepEditing()));
-
   return (
     <MapSizesEditorPanel
-      panelRef={panel}
-      drag={drag}
+      frameRef={panel}
+      onEscape={() => (confirming === null ? onCancel() : keepEditing())}
       draft={draft}
       busy={busy}
       confirming={confirming}
@@ -181,10 +176,10 @@ function MapSizesEditor({
   );
 }
 
-/** The focused "Edit map sizes" window, and its "Save map sizes?" confirmation. Hook-free. */
+/** The focused "Edit map sizes" window, and its "Save map sizes?" confirmation, in the dialog frame. */
 export function MapSizesEditorPanel({
-  panelRef,
-  drag,
+  frameRef,
+  onEscape,
   draft,
   busy,
   confirming,
@@ -194,9 +189,10 @@ export function MapSizesEditorPanel({
   onKeepEditing,
   onCancel
 }: {
-  panelRef?: Ref<HTMLDivElement>;
-  /** Moving by the top bar (ah-aak5); absent in a static render, which draws it unmoved. */
-  drag?: Pick<DialogDrag, "moved" | "dialogStyle" | "barProps">;
+  /** The box, for refocusing a field inside it. */
+  frameRef?: RefObject<HTMLDivElement | null>;
+  /** Escape steps back out of the confirmation first; closing is the default. */
+  onEscape?: () => void;
   draft: MapSizesDraft;
   busy: boolean;
   /** The level a save would make smaller or remove, while the player is asked to confirm. */
@@ -210,87 +206,74 @@ export function MapSizesEditorPanel({
   const invalid = mapSizesFromDraft(draft) === null;
 
   return (
-    <div className={`fixed inset-0 z-40 flex items-center justify-center${drag?.moved === true ? "" : " bg-black/50"}`}>
-      <div
-        ref={panelRef}
-        style={drag?.dialogStyle}
-        data-testid="settings-map-sizes-editor"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Edit map sizes"
-        className="w-[36rem] max-w-[94vw] rounded border border-brass/60 bg-panel-raised p-3 text-pane whitespace-normal shadow-xl"
-      >
+    <DialogFrame
+      label="Edit map sizes"
+      onDismiss={onCancel}
+      onEscape={onEscape}
+      dismissOnBackdrop={false}
+      layer="z-40"
+      testId="settings-map-sizes-editor"
+      boxClassName="w-[36rem] max-w-[94vw] rounded border border-brass/60 bg-panel-raised p-3 text-pane whitespace-normal shadow-xl"
+      barClassName="items-center justify-between border-b border-brass/60 pb-2"
+      close={{ testId: "settings-map-sizes-close", label: "close map sizes", look: "framed" }}
+      frameRef={frameRef}
+      bar={<h3 className="m-0 text-brass">Edit map sizes</h3>}
+    >
+      <p className="my-2 text-ink-soft">
+        Change a level’s size, add a level, or clear both fields to remove a level.
+      </p>
+      <MapSizesFields
+        draft={draft}
+        disabled={busy || confirming !== null}
+        testidPrefix="settings-map-sizes"
+        autoFocusFirst
+        onChange={onDraft}
+      />
+      {confirming !== null ? (
         <div
-          {...drag?.barProps}
-          className="flex cursor-move select-none items-center justify-between border-b border-brass/60 pb-2"
+          data-testid="settings-map-sizes-confirm"
+          role="alertdialog"
+          aria-modal="true"
+          aria-label="Save map sizes?"
+          className="mt-3 rounded border border-danger/40 bg-danger/10 p-2"
         >
-          <h3 className="m-0 text-brass">Edit map sizes</h3>
-          <button
-            type="button"
-            data-testid="settings-map-sizes-close"
-            aria-label="close map sizes"
-            onClick={onCancel}
-            className="rounded border border-edge px-1.5 py-0.5 text-ink-soft hover:border-brass hover:text-brass"
-          >
-            ×
-          </button>
-        </div>
-        <p className="my-2 text-ink-soft">
-          Change a level’s size, add a level, or clear both fields to remove a level.
-        </p>
-        <MapSizesFields
-          draft={draft}
-          disabled={busy || confirming !== null}
-          testidPrefix="settings-map-sizes"
-          autoFocusFirst
-          onChange={onDraft}
-        />
-        {confirming !== null ? (
-          <div
-            data-testid="settings-map-sizes-confirm"
-            role="alertdialog"
-            aria-modal="true"
-            aria-label="Save map sizes?"
-            className="mt-3 rounded border border-danger/40 bg-danger/10 p-2"
-          >
-            <h4 className="m-0 text-ink">Save map sizes?</h4>
-            <p className="my-1 text-ink-soft">
-              Making {mapLevelLabel(confirming.level)} smaller may remove parts of this level that are
-              outside its new size.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={onKeepEditing} className={BUTTON}>
-                Keep editing
-              </button>
-              <button
-                type="button"
-                data-testid="settings-map-sizes-confirm-save"
-                autoFocus
-                disabled={busy}
-                onClick={onConfirm}
-                className={PRIMARY}
-              >
-                Save map sizes
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="mt-3 flex justify-end gap-2">
-            <button type="button" data-testid="settings-map-sizes-cancel" onClick={onCancel} className={BUTTON}>
-              Cancel
+          <h4 className="m-0 text-ink">Save map sizes?</h4>
+          <p className="my-1 text-ink-soft">
+            Making {mapLevelLabel(confirming.level)} smaller may remove parts of this level that are
+            outside its new size.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={onKeepEditing} className={BUTTON}>
+              Keep editing
             </button>
             <button
               type="button"
-              data-testid="settings-map-sizes-save"
-              disabled={busy || invalid}
-              onClick={onSave}
+              data-testid="settings-map-sizes-confirm-save"
+              autoFocus
+              disabled={busy}
+              onClick={onConfirm}
               className={PRIMARY}
             >
               Save map sizes
             </button>
           </div>
-        )}
-      </div>
-    </div>
+        </div>
+      ) : (
+        <div className="mt-3 flex justify-end gap-2">
+          <button type="button" data-testid="settings-map-sizes-cancel" onClick={onCancel} className={BUTTON}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            data-testid="settings-map-sizes-save"
+            disabled={busy || invalid}
+            onClick={onSave}
+            className={PRIMARY}
+          >
+            Save map sizes
+          </button>
+        </div>
+      )}
+    </DialogFrame>
   );
 }
