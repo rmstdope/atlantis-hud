@@ -7,7 +7,12 @@ import { useEscapeToDismiss } from "./dismissLayer";
 import { APP_VERSION } from "../appVersion";
 import { RULESETS } from "../rulesets";
 import { snippetBodyProblem, snippetNameProblem } from "../orderSnippets";
-import { useSettingsStore } from "../settingsStore";
+import { BOOLEAN_SETTINGS, useSettingsStore } from "../settingsStore";
+import {
+  MOVEMENT_ANIMATION_SPEED_MAX,
+  MOVEMENT_ANIMATION_SPEED_MIN,
+  MOVEMENT_ANIMATION_SPEED_STEP
+} from "./routeCometPath";
 import { useWorkspaceStore } from "../workspaceStore";
 import type { ThemeName } from "../settingsStore";
 import { mapThemeOptions } from "./mapThemes";
@@ -239,6 +244,10 @@ export function GlobalSettings() {
   const paneTransparency = useSettingsStore((state) => state.paneTransparency);
   const setPaneTransparency = useSettingsStore((state) => state.setPaneTransparency);
   const interfaceSize = useSettingsStore((state) => state.interfaceSize);
+  const animateMovement = useSettingsStore((state) => state.animateMovement);
+  const movementAnimationSpeed = useSettingsStore((state) => state.movementAnimationSpeed);
+  const setMovementAnimationSpeed = useSettingsStore((state) => state.setMovementAnimationSpeed);
+  const setFlag = useSettingsStore((state) => state.setFlag);
   const setInterfaceSize = useSettingsStore((state) => state.setInterfaceSize);
   const layers = useWorkspaceStore((state) => state.layers);
   const toggleLayer = useWorkspaceStore((state) => state.toggleLayer);
@@ -348,6 +357,42 @@ export function GlobalSettings() {
         checked={layers.movement}
         onChange={() => toggleLayer("movement")}
       />
+
+      {/*
+        The spark along the route, and how fast it runs. Under Movement because it animates that
+        line and means nothing without it; disabled by hand since Movement is the workspace store's
+        layer, not one of BOOLEAN_SETTINGS that `requires` could name.
+      */}
+      <div className="ml-4 space-y-2 border-l-2 border-brass/40 pl-2">
+        <SettingToggle
+          title={BOOLEAN_SETTINGS.animateMovement.title}
+          description={BOOLEAN_SETTINGS.animateMovement.description}
+          testId={BOOLEAN_SETTINGS.animateMovement.testId}
+          checked={animateMovement}
+          onChange={(value) => setFlag("animateMovement", value)}
+          disabled={!layers.movement}
+        />
+        <label
+          className={`flex flex-col gap-1 ${layers.movement && animateMovement ? "" : "opacity-50"}`}
+        >
+          <span className="flex items-baseline justify-between gap-2">
+            <span className="text-ink-soft">Animation speed</span>
+            <span className="text-ink">{movementAnimationSpeed} hexes/s</span>
+          </span>
+          <input
+            type="range"
+            data-testid="settings-movement-animation-speed"
+            aria-label="movement animation speed"
+            min={MOVEMENT_ANIMATION_SPEED_MIN}
+            max={MOVEMENT_ANIMATION_SPEED_MAX}
+            step={MOVEMENT_ANIMATION_SPEED_STEP}
+            value={movementAnimationSpeed}
+            disabled={!layers.movement || !animateMovement}
+            onChange={(event) => setMovementAnimationSpeed(Number(event.target.value))}
+            className="accent-brass"
+          />
+        </label>
+      </div>
 
       {/*
         The same switch the overlay itself carries. Here as well because the overlay is the one

@@ -13,6 +13,7 @@ describe("the boolean settings table", () => {
       biomeTextures: true,
       biomeTextureRotation: true,
       animateWaterTextures: true,
+      animateMovement: true,
       showShortcutsAtStartup: true,
       movementPlanner: false,
       orderOcd: false,

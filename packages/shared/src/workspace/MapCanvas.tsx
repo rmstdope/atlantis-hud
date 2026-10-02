@@ -51,6 +51,7 @@ import {
 import { useOverlayInsets } from "./useOverlayInsets";
 import { useWorkspaceStore } from "../workspaceStore";
 import type { RouteOverlay } from "./routeOverlay";
+import { RouteComet } from "./RouteComet";
 import { passageExitTitle, passageTitle, ringAccessibleName, ringHover } from "./passageMarks";
 import { viewportForArrow, type TradeArrow } from "./tradeArrow";
 import { peekStep, type KeepClear, type PeekMode } from "./dossierPeek";
@@ -411,6 +412,8 @@ type MapCanvasProps = {
    * means the unit's speed is unknown and the whole line is dotted.
    */
   route?: RouteOverlay | null;
+  /** Hexes per second a spark runs along the route at, or null for a still line. */
+  routeAnimationSpeed?: number | null;
   /**
    * The trade route currently hovered in the Trade popover, drawn as a straight arrow between its
    * two hexes. While one is set and either end is off screen the map frames both, and putting it
@@ -496,6 +499,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     badges,
     biomeSymbols = false,
     route = null,
+    routeAnimationSpeed = null,
     arrow = null,
     routeRisk = [],
     onMarquee,
@@ -1636,6 +1640,20 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                   />
                 );
               })}
+              {routeAnimationSpeed !== null && (
+                <>
+                  <RouteComet
+                    solid={routeLine.solid}
+                    dotted={routeLine.dotted}
+                    hexesPerSecond={routeAnimationSpeed}
+                  />
+                  <RouteComet
+                    solid={routeBeyondLine.solid}
+                    dotted={routeBeyondLine.dotted}
+                    hexesPerSecond={routeAnimationSpeed}
+                  />
+                </>
+              )}
               {nearTip && <RouteWallBar bar={nearTip.bar} testId="route-wall-bar" />}
               {beyondTip && <RouteWallBar bar={beyondTip.bar} testId="route-wall-beyond-bar" />}
             </g>

@@ -42,6 +42,17 @@ export const BOOLEAN_SETTINGS = {
     requires: "biomeTextures"
   },
   /**
+   * Whether a spark runs along the drawn movement line. The line itself is the workspace's
+   * Movement layer, which lives in another store, so the dialog disables this one by hand while
+   * that layer is off rather than through `requires`.
+   */
+  animateMovement: {
+    default: true,
+    title: "Animate movement",
+    description: "A spark runs along the route from the unit to where it is going.",
+    testId: "settings-animate-movement"
+  },
+  /**
    * Whether the keyboard shortcuts overlay shows itself when the application starts.
    *
    * On by default, and the only piece of the interface that appears uninvited. It earns that: the
