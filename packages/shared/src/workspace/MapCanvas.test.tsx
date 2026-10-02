@@ -755,6 +755,56 @@ describe("the highlighted hex's brass ring", () => {
   });
 });
 
+describe("a theme's own selection mark and map-wide effect", () => {
+  function drawWith(theme: MapTheme, animateTheme: boolean): string {
+    return renderToStaticMarkup(
+      <MapCanvas
+        gameId={null}
+        model={model}
+        theme={theme}
+        level={1}
+        selectedRegionId="1:7,53"
+        selectionEpoch={1}
+        pickEpoch={0}
+        onSelectRegion={() => {}}
+        showStaleness
+        showTextures={false}
+        badges={allBadges(true)}
+        animateTheme={animateTheme}
+      />
+    );
+  }
+  const marked: MapTheme = {
+    ...probe(),
+    SelectionMark: () => <g data-probe="selection" />,
+    Overlay: () => <rect data-probe="overlay" />
+  };
+
+  it("marks the selection with the theme's own mark in place of the map's ring", () => {
+    const svg = drawWith(marked, true);
+    const ring = svg.slice(svg.indexOf('data-testid="map-selection-ring"'));
+
+    expect(ring).toContain('data-probe="selection"');
+    // Still inside the pulse group, so a fresh selection replays the lock-on with the theme's mark.
+    expect(ring.indexOf("map-selection-pulse")).toBeLessThan(ring.indexOf('data-probe="selection"'));
+    expect(svg).not.toContain("stroke-selection-ring");
+  });
+
+  it("keeps the map's own ring for a theme that brings no mark", () => {
+    expect(drawWith(probe(), true)).toContain("stroke-selection-ring");
+  });
+
+  it("draws the theme's overlay, and says the map may animate, only while it may", () => {
+    const moving = drawWith(marked, true);
+    const still = drawWith(marked, false);
+
+    expect(moving).toContain('data-probe="overlay"');
+    expect(moving).toMatch(/class="[^"]*\bmap-animate\b/);
+    expect(still).not.toContain('data-probe="overlay"');
+    expect(still).not.toContain("map-animate");
+  });
+});
+
 describe("the map's view controls", () => {
   it("are no longer drawn in the map's own corner", () => {
     // ah-ljil moved the zoom buttons up into the overlay strip beside the Badges chip, where the

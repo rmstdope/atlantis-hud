@@ -1037,6 +1037,7 @@ export function AppShell({
   const rotateTextures = useSettingsStore((state) => state.biomeTextureRotation);
   const animateWater = useSettingsStore((state) => state.animateWaterTextures);
   const animateMovement = useSettingsStore((state) => state.animateMovement);
+  const animateMapTheme = useSettingsStore((state) => state.animateMapTheme);
   const movementAnimationSpeed = useSettingsStore((state) => state.movementAnimationSpeed);
   // Memoised, so the style keeps its identity across renders and the map's views are not rebuilt
   // every time AppShell renders.
@@ -5694,6 +5695,7 @@ export function AppShell({
             trace: orderTrace?.path ?? null
           })}
           routeAnimationSpeed={animateMovement ? movementAnimationSpeed : null}
+          animateTheme={animateMapTheme}
           routeRisk={layers.movement && route?.plan ? (route.risk?.hexes ?? []) : []}
           arrow={tradeArrow}
           highlightedRegionId={factionRing}

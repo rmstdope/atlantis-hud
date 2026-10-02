@@ -34,6 +34,18 @@ export const BOOLEAN_SETTINGS = {
     testId: "settings-biome-texture-rotation",
     requires: "biomeTextures"
   },
+  /**
+   * Whether the map theme may move: a theme's animated selection mark, its map-wide effect (a scan
+   * line, a glint) and its little animations. The map stamps `map-animate` on its root while this is
+   * on and each theme gates its animations on that class in its own CSS, so no theme reads the
+   * store. A system asking for less motion gets still themes whatever this says.
+   */
+  animateMapTheme: {
+    default: true,
+    title: "Animate map theme",
+    description: "Lets the map theme move: animated selection, sweeping light, bobbing figures.",
+    testId: "settings-animate-map-theme"
+  },
   animateWaterTextures: {
     default: true,
     title: "Animate water textures",

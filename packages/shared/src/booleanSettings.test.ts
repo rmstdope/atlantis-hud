@@ -12,6 +12,7 @@ describe("the boolean settings table", () => {
     expect(booleanSettingDefaults()).toEqual({
       biomeTextures: true,
       biomeTextureRotation: true,
+      animateMapTheme: true,
       animateWaterTextures: true,
       animateMovement: true,
       showShortcutsAtStartup: true,

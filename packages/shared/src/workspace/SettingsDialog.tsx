@@ -255,6 +255,8 @@ export function GlobalSettings() {
         </select>
       </label>
 
+      <SettingFlag name="animateMapTheme" />
+
       <SettingFlag name="biomeTextures" />
 
       <div className="ml-4 space-y-2 border-l-2 border-brass/40 pl-2">
