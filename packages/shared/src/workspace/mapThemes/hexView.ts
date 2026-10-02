@@ -157,6 +157,11 @@ export type HexView = {
   knowledge: HexKnowledge;
   ageInTurns: number | null;
   roads: RoadDirection[];
+  /**
+   * Which of `roads` are still being built: the report gives the structure a `needs N` clause,
+   * meaning more BUILD is due before it is complete (`rules/build`). Always a subset of `roads`.
+   */
+  unfinishedRoads: RoadDirection[];
   /** `tier` is null when the town's name is known but its size is not. */
   settlement: { name: string; tier: SettlementTier | null } | null;
   /**
@@ -366,6 +371,7 @@ function classify(structure: StructureInfo): StructureKind {
 
 type StructureTally = {
   roads: RoadDirection[];
+  unfinishedRoads: RoadDirection[];
   ships: number;
   shafts: number;
   gates: number;
@@ -380,7 +386,7 @@ type StructureTally = {
  * future theme would otherwise reorder the roads of every hex on the level at once.
  */
 function noStructures(): StructureTally {
-  return { roads: [], ships: 0, shafts: 0, gates: 0, lairs: 0, buildings: 0 };
+  return { roads: [], unfinishedRoads: [], ships: 0, shafts: 0, gates: 0, lairs: 0, buildings: 0 };
 }
 
 /**
@@ -410,6 +416,9 @@ function tallyStructures(region: ReportRegion | null): StructureTally {
         const direction = roadDirection(structure.kind);
         if (direction) {
           tally.roads.push(direction);
+          if (structure.needs !== null && structure.needs > 0) {
+            tally.unfinishedRoads.push(direction);
+          }
         }
         break;
       }
@@ -552,6 +561,7 @@ export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
     knowledge: hex.knowledge,
     ageInTurns: hex.ageInTurns,
     roads: badges.roads ? structures.roads : [],
+    unfinishedRoads: badges.roads ? structures.unfinishedRoads : [],
     settlement: badges.settlements ? settlementOf(hex) : null,
     units: {
       own: badges.ownUnits ? hex.ownUnitCount : 0,

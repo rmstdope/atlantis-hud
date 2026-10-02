@@ -456,15 +456,14 @@ describe("what the map hands a theme", () => {
     expect(order).toEqual(["empty", "stale", "current"]);
   });
 
-  it("draws roads before marks, and both over every hex on the level", () => {
+  it("draws roads before marks, and marks over every hex on the level", () => {
+    // Roads are the map's own milestone network now (experiment), so the theme's road layer and
+    // its count are no longer on the page; the order, and the marks' coverage, still hold.
     const svg = draw();
-    const layers = [...svg.matchAll(/data-layer="(roads|marks)" data-count="(\d+)"/g)];
+    const layers = [...svg.matchAll(/data-layer="(roads|marks)"/g)];
 
     expect(layers.map((match) => match[1])).toEqual(["roads", "marks"]);
-    expect(layers.map((match) => Number(match[2]))).toEqual([
-      CONGESTED_HEXES.length,
-      CONGESTED_HEXES.length
-    ]);
+    expect(Number(/data-layer="marks" data-count="(\d+)"/.exec(svg)?.[1])).toBe(CONGESTED_HEXES.length);
   });
 
   it("keeps roads beneath the route overlay, the way a traveller crosses one", () => {
@@ -654,7 +653,7 @@ describe("the notes layer", () => {
     expect(pins).toHaveLength(1);
     expect(svg).toContain('aria-label="notes on hex 1:7,53"');
     // A single note draws no count badge - just the glyph.
-    expect(svg).not.toContain("<circle");
+    expect(svg.slice(svg.indexOf('data-testid="map-notes"'))).not.toContain("<circle");
   });
 
   it("shows a count badge when a hex holds several map-visible notes", () => {

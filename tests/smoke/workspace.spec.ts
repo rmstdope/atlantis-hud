@@ -4667,7 +4667,7 @@ test("a road and the route over it keep their proportion to the hex at every zoo
   const measure = () =>
     page.evaluate(() => {
       const svg = document.querySelector('[data-testid="map-canvas"] svg')!;
-      const road = document.querySelector(".ct-road")!;
+      const road = document.querySelector(".road-casing")!;
       const route = document.querySelector('[data-testid="route-line-solid"]')!;
       // The width alone cannot tell the two behaviours apart: `non-scaling-stroke` is a paint
       // effect, so the computed stroke-width reads the same 4 user units either way while the

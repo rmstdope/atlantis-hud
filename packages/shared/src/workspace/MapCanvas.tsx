@@ -53,6 +53,7 @@ import { useWorkspaceStore } from "../workspaceStore";
 import type { RouteOverlay } from "./routeOverlay";
 import { RouteComet } from "./RouteComet";
 import { TradeRouteOverlay } from "./TradeRouteOverlay";
+import { MilestoneRoadLayer } from "./mapThemes/MilestoneRoadLayer";
 import { curvedHalves } from "./routeCurve";
 
 /** A route's two halves as one curve through the hex centres; see `routeCurve.ts`. */
@@ -1611,7 +1612,11 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
           )}
 
           {/* Beneath the route overlay, so a movement path crosses a road the way a traveller would. */}
-          <theme.RoadLayer views={allViews} />
+          {/*
+            Roads as a milestone network (experiment): map-owned like the biome symbols, so every
+            theme draws the same ones; the themes' own road layers are left in place, unused.
+          */}
+          <MilestoneRoadLayer views={allViews} />
 
           {/*
             Province outlines and names, above the roads and beneath everything a player can

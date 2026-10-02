@@ -565,3 +565,35 @@ body,
   font: 600 11px system-ui, sans-serif;
 }
 
+/*
+ * The milestone roads, drawn by the map for every theme: a line in the chrome's ink on a casing of
+ * its ground, so they invert with the light theme. Milestones and junctions use the same pair.
+ */
+.road-casing {
+  fill: none;
+  stroke: var(--color-ground);
+  stroke-linecap: round;
+  opacity: 0.8;
+}
+
+.road-line {
+  fill: none;
+  stroke: var(--color-ink);
+  stroke-linecap: round;
+}
+
+.road-stone {
+  fill: var(--color-ink);
+  stroke: var(--color-ground);
+}
+
+.road-stone-open,
+.road-junction {
+  fill: var(--color-ground);
+  stroke: var(--color-ink);
+}
+
+.road-junction-core {
+  fill: var(--color-ink);
+}
+
