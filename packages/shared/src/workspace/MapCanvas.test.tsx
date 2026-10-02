@@ -1051,3 +1051,50 @@ describe("the mark layer", () => {
     }
   });
 });
+
+describe("the biome symbols (ah-d9jb.4)", () => {
+  /** The congested fixture's map, through the probe theme, with the symbols as asked. */
+  function drawSymbols(biomeSymbols: boolean | undefined): string {
+    return renderToStaticMarkup(
+      <MapCanvas
+        gameId={null}
+        model={model}
+        theme={probe()}
+        level={1}
+        selectedRegionId={null}
+        selectionEpoch={0}
+        pickEpoch={0}
+        onSelectRegion={() => {}}
+        showStaleness
+        showTextures={false}
+        badges={allBadges(true)}
+        biomeSymbols={biomeSymbols}
+      />
+    );
+  }
+
+  it("draws none while they are off, which is where every player starts", () => {
+    expect(drawSymbols(false)).not.toContain('data-testid="biome-symbols"');
+    expect(drawSymbols(undefined)).not.toContain('data-testid="biome-symbols"');
+    expect(drawSymbols(false)).not.toContain('id="biome-symbol-');
+  });
+
+  it("draws them, with their shapes in the defs, once turned on", () => {
+    const svg = drawSymbols(true);
+
+    expect(svg).toContain('data-testid="biome-symbols"');
+    expect(svg).toContain('id="biome-symbol-forest"');
+    expect(svg).toContain("data-biome-symbol=");
+  });
+
+  it("puts them over the terrain and under the roads, so every road and mark lies on top", () => {
+    const svg = drawSymbols(true);
+    const lastTerrain = svg.lastIndexOf('data-layer="terrain"');
+    const symbols = svg.indexOf('data-testid="biome-symbols"');
+    const roads = svg.indexOf('data-layer="roads"');
+
+    expect(lastTerrain).toBeGreaterThan(-1);
+    expect(symbols).toBeGreaterThan(lastTerrain);
+    expect(roads).toBeGreaterThan(symbols);
+  });
+});

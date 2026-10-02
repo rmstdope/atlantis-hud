@@ -12,7 +12,9 @@
  */
 
 import { regionHash } from "../mapHexView";
+import { PIN_OFFSET } from "../mapNotes";
 import { HEX_RADIUS, type ZoomBand } from "../mapViewport";
+import { BLOCKED_LABEL_DROP } from "./geometry";
 import { ROAD_VECTORS, type HexView, type RoadDirection } from "./hexView";
 
 /** Room a mark takes in a hex: a circle, centred on the hex, in fractions of `HEX_RADIUS`. */
@@ -57,6 +59,26 @@ export function roadSpots(roads: readonly RoadDirection[]): MarkSpot[] {
 
 function round(value: number): number {
   return Number(value.toFixed(4)) + 0;
+}
+
+/** The room the note pin and the blocked label take: each about a symbol's width. */
+const PIN_ROOM = 0.3;
+const BLOCKED_LABEL_ROOM = 0.3;
+
+/**
+ * The room taken by the marks the map draws itself, the same under every theme: the roads out of
+ * the hex, the label where guards stopped a move into it, and the pin of a note shown on the map
+ * (`pinned` - whether this hex has one, with the Notes badge on).
+ */
+export function mapMarkSpots(view: HexView, pinned: boolean): MarkSpot[] {
+  const spots = roadSpots(view.roads);
+  if (view.blocked !== null) {
+    spots.push({ x: 0, y: BLOCKED_LABEL_DROP, r: BLOCKED_LABEL_ROOM });
+  }
+  if (pinned) {
+    spots.push({ x: PIN_OFFSET.x, y: PIN_OFFSET.y, r: PIN_ROOM });
+  }
+  return spots;
 }
 
 /** A small xorshift generator: the same seed gives the same run, which is the point. */

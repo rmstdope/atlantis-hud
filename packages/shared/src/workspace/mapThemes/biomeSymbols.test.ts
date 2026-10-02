@@ -4,6 +4,7 @@ import {
   biomeSymbolOpacity,
   biomeSymbolPlacements,
   drawsBiomeSymbols,
+  mapMarkSpots,
   roadSpots,
   SYMBOL_SPOTS,
   type MarkSpot
@@ -137,5 +138,29 @@ describe("when the symbols are drawn at all", () => {
 
   it("draws none while they are off", () => {
     expect(drawsBiomeSymbols("near", false)).toBe(false);
+  });
+});
+
+describe("the marks the map draws itself, under every theme", () => {
+  it("claims nothing in a hex with no road, no blocked move and no pinned note", () => {
+    expect(mapMarkSpots(view(), false)).toEqual([]);
+  });
+
+  it("claims the roads out of the hex", () => {
+    expect(mapMarkSpots(view({ roads: ["s"] }), false)).toEqual(roadSpots(["s"]));
+  });
+
+  it("claims the note pin's corner when the hex has a note pinned on the map", () => {
+    const spots = mapMarkSpots(view(), true);
+
+    expect(spots).toHaveLength(1);
+    expect(spots[0].x).toBeGreaterThan(0.4);
+    expect(spots[0].y).toBeLessThan(-0.4);
+  });
+
+  it("claims the blocked label under the centre when guards stopped a move here", () => {
+    const spots = mapMarkSpots(view({ blocked: "7235" }), false);
+
+    expect(spots).toEqual([expect.objectContaining({ x: 0, y: 0.6 })]);
   });
 });

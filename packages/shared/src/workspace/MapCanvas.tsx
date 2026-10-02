@@ -74,6 +74,8 @@ import {
 import type { BattleInvolvement } from "./battles";
 import type { BlockedHex } from "./blockedHexes";
 import { BlockedHatchPattern, BlockedLabels, BlockedRings } from "./mapThemes/blockedLayer";
+import { BiomeSymbolDefs, BiomeSymbolLayer } from "./mapThemes/BiomeSymbolLayer";
+import { drawsBiomeSymbols } from "./mapThemes/biomeSymbols";
 import type { MapTheme } from "./mapThemes/mapTheme";
 import { DEFAULT_WATER, type WaterTerrains } from "./mapThemes/terrain";
 import {
@@ -398,6 +400,8 @@ type MapCanvasProps = {
   water?: WaterTerrains;
   /** Which marks the themes may draw over the terrain, one flag per kind. */
   badges: Record<BadgeName, boolean>;
+  /** Whether each hex is sprinkled with its biome's symbols (ah-d9jb.4). Off when absent. */
+  biomeSymbols?: boolean;
   /**
    * The movement line to draw, whatever its source - the planner's preview or a written order.
    * Solid through the hexes the coming month covers, dotted for the rest; a null `solidSteps`
@@ -486,6 +490,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     textureStyle = DEFAULT_TEXTURE_STYLE,
     water = DEFAULT_WATER,
     badges,
+    biomeSymbols = false,
     route = null,
     arrow = null,
     routeRisk = [],
@@ -1142,6 +1147,14 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     [notes, level, badges.notes]
   );
 
+  // The hexes whose note pin is on the map, so the biome symbols keep clear of it. Only read while
+  // the symbols are drawn, which is never far out - where the pins are not drawn either.
+  const showsBiomeSymbols = drawsBiomeSymbols(band, biomeSymbols);
+  const pinnedHexes = useMemo(
+    () => new Set(notePinsOnLevel.map((pin) => pin.regionId)),
+    [notePinsOnLevel]
+  );
+
   // The open stack closes itself whenever what it was showing stops being true, rather than the
   // caller having to remember to clear it.
   useEffect(() => {
@@ -1335,6 +1348,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       >
         <defs>
           <BlockedHatchPattern />
+          {showsBiomeSymbols && <BiomeSymbolDefs />}
           <pattern
             ref={fogRef}
             id="fog-lattice"
@@ -1487,6 +1501,18 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
           <theme.TerrainLayer views={buckets.named} />
           <theme.TerrainLayer views={buckets.stale} />
           <theme.TerrainLayer views={buckets.current} />
+
+          {/*
+            The biome symbols (ah-d9jb.4): over the terrain, under every road, outline, route,
+            mark and label. Map-owned like the note pins, so every theme draws the same ones.
+          */}
+          {showsBiomeSymbols && (
+            <BiomeSymbolLayer
+              views={allViews}
+              footprint={theme.markFootprint}
+              pinned={pinnedHexes}
+            />
+          )}
 
           {/* Beneath the route overlay, so a movement path crosses a road the way a traveller would. */}
           <theme.RoadLayer views={allViews} />

@@ -1021,6 +1021,7 @@ export function AppShell({
   const setLevel = useWorkspaceStore((state) => state.setLevel);
   const layers = useWorkspaceStore((state) => state.layers);
   const badges = useWorkspaceStore((state) => state.badges);
+  const biomeSymbols = useWorkspaceStore((state) => state.biomeSymbols);
   const showTextures = useSettingsStore((state) => state.biomeTextures);
   // Shallow, so the style keeps its identity across renders and the map's views are not rebuilt
   // every time AppShell renders.
@@ -5629,6 +5630,7 @@ export function AppShell({
           textureStyle={textureStyle}
           water={water}
           badges={badges}
+          biomeSymbols={biomeSymbols}
           route={chooseRouteOverlay({
             movementLayerOn: layers.movement,
             plannerArmed: planner.armed,

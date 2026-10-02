@@ -22,3 +22,6 @@ export function translateOf(view: HexView): string {
 export function radii(fraction: number): number {
   return HEX_RADIUS * fraction;
 }
+
+/** How far below a blocked hex's centre its label is printed, as a fraction of the radius. */
+export const BLOCKED_LABEL_DROP = 0.6;
