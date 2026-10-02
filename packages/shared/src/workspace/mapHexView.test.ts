@@ -97,6 +97,13 @@ describe("terrain texture", () => {
     expect(terrainTexturePatternId("lake")).toBeNull();
   });
 
+  it("serves a texture from the chosen set's directory", () => {
+    expect(terrainTextureUrl("swamp", undefined, "/biomes/painted")).toBe(
+      "/biomes/painted/swamp_512.png"
+    );
+    expect(terrainTexturePatternId("swamp")).toBe("biome-texture-swamp");
+  });
+
   it("reads texture names case-insensitively", () => {
     expect(terrainTextureUrl("Mountain")).toBe("/biomes/mountain_512.png");
   });

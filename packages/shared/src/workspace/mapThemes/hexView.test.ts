@@ -7,6 +7,7 @@ import {
   allBadges,
   BADGES,
   buildHexViews,
+  DEFAULT_TEXTURE_STYLE,
   dampFog,
   MONSTER_FACTION_ID,
   ROAD_VECTORS,
@@ -91,8 +92,16 @@ describe("what a hex shows, prepared for whichever theme draws it", () => {
     expect(viewOf(hex({ knowledge: "current" }), { showTextures: false }).texture).toBeNull();
   });
 
+  it("paints with the chosen texture set's pictures", () => {
+    const texture = viewOf(hex({ knowledge: "current" }), {
+      textureStyle: { ...DEFAULT_TEXTURE_STYLE, directory: "/biomes/painted" }
+    }).texture;
+
+    expect(texture?.url).toBe("/biomes/painted/mountain_512.png");
+  });
+
   it("leaves texture orientation alone when rotation is off", () => {
-    const texture = viewOf(hex({ knowledge: "current" }), { textureStyle: { rotate: false, animateWater: true } }).texture;
+    const texture = viewOf(hex({ knowledge: "current" }), { textureStyle: { rotate: false, animateWater: true, directory: "/biomes" } }).texture;
 
     expect(texture?.rotation).toBe(0);
   });
@@ -115,7 +124,7 @@ describe("what a hex shows, prepared for whichever theme draws it", () => {
 
   it("leaves water textures still when animation is off", () => {
     const texture = viewOf(hex({ knowledge: "current", terrain: "ocean" }), {
-      textureStyle: { rotate: true, animateWater: false }
+      textureStyle: { rotate: true, animateWater: false, directory: "/biomes" }
     }).texture;
 
     expect(texture?.moves).toBe(false);

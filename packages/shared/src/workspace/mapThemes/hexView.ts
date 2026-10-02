@@ -244,10 +244,16 @@ export type TextureStyle = {
   rotate: boolean;
   /** Scroll ocean and lake textures along their axis. */
   animateWater: boolean;
+  /** Where the chosen texture set's pictures are served from (`textureSets.ts`). */
+  directory: string;
 };
 
 /** What a caller that says nothing gets: the varied, moving map. */
-export const DEFAULT_TEXTURE_STYLE: TextureStyle = { rotate: true, animateWater: true };
+export const DEFAULT_TEXTURE_STYLE: TextureStyle = {
+  rotate: true,
+  animateWater: true,
+  directory: "/biomes"
+};
 
 export type HexViewOptions = {
   showStaleness: boolean;
@@ -419,7 +425,7 @@ function textureOf(
   if (kind === "other") {
     return null;
   }
-  const url = terrainTextureUrl(kind);
+  const url = terrainTextureUrl(kind, undefined, style.directory);
   const basePatternId = terrainTexturePatternId(kind);
   const rotation = style.rotate ? terrainTextureRotation(regionId) : 0;
   const brightness = terrainTextureBrightness(regionId);
