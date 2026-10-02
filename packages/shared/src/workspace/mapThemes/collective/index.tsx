@@ -334,10 +334,13 @@ function MarkLayer({ views }: LayerProps) {
               {/* A monster: a hollow red triangle, the one mark that is not a readout. */}
               {view.units.monster > 0 && (
                 <g data-mark="monster" transform={at(STATIONS.monster)}>
-                  <Wire
-                    d={`M0,${-MONSTER_SIZE} L${MONSTER_SIZE},${MONSTER_SIZE * 0.75} L${-MONSTER_SIZE},${MONSTER_SIZE * 0.75} Z`}
-                    className="co-hostile"
-                  />
+                  {/* Its own group, so the pulse's CSS never touches the placement above. */}
+                  <g className="co-pulse">
+                    <Wire
+                      d={`M0,${-MONSTER_SIZE} L${MONSTER_SIZE},${MONSTER_SIZE * 0.75} L${-MONSTER_SIZE},${MONSTER_SIZE * 0.75} Z`}
+                      className="co-hostile"
+                    />
+                  </g>
                 </g>
               )}
 
@@ -392,6 +395,12 @@ function Defs() {
   const kinds: TerrainPaint[] = [...TERRAIN_KINDS, "other"];
   return (
     <>
+      {/* The scan line's band: clear, a faint green at its middle, clear again. */}
+      <linearGradient id="co-scanline" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" className="co-scan-stop" stopOpacity={0} />
+        <stop offset="0.5" className="co-scan-stop" stopOpacity={0.13} />
+        <stop offset="1" className="co-scan-stop" stopOpacity={0} />
+      </linearGradient>
       {kinds.map((kind) => {
         const lattice = LATTICES[kind];
         return (
@@ -410,6 +419,39 @@ function Defs() {
   );
 }
 
+/** How far out the selection brackets sit, and how long each arm is, as fractions of the radius. */
+const BRACKET_REACH = 0.85 * HEX_RADIUS;
+const BRACKET_ARM = 0.3 * HEX_RADIUS;
+const BRACKETS = [
+  [-1, -1],
+  [1, -1],
+  [1, 1],
+  [-1, 1]
+].map(
+  ([dx, dy]) =>
+    `M${dx * BRACKET_REACH},${dy * (BRACKET_REACH - BRACKET_ARM)} L${dx * BRACKET_REACH},${dy * BRACKET_REACH} L${dx * (BRACKET_REACH - BRACKET_ARM)},${dy * BRACKET_REACH}`
+).join(" ");
+
+/**
+ * The selected cell: four target brackets, bright on a void casing so they hold on any lattice,
+ * turning slowly while the map may animate. Replaces the map's white ring.
+ */
+function SelectionMark() {
+  return (
+    <g data-selection="brackets">
+      <g className="co-spin">
+        <path d={BRACKETS} className="co-select-casing" fill="none" strokeWidth={6} vectorEffect="non-scaling-stroke" />
+        <path d={BRACKETS} className="co-select" fill="none" strokeWidth={2.5} vectorEffect="non-scaling-stroke" />
+      </g>
+    </g>
+  );
+}
+
+/** A faint band of green light sweeping down the screen, the hive's scan. */
+function Overlay() {
+  return <rect className="co-scan" x="0" y="0" width="100%" height="14%" fill="url(#co-scanline)" />;
+}
+
 export const collective: MapTheme = {
   id: "collective",
   label: "Collective",
@@ -418,5 +460,7 @@ export const collective: MapTheme = {
   TerrainLayer,
   RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer,
-  markFootprint
+  markFootprint,
+  SelectionMark,
+  Overlay
 };

@@ -420,3 +420,23 @@ describe("the stylesheet", () => {
     }
   });
 });
+
+describe("the selected hex, and the map-wide effect", () => {
+  it("marks the selection with the theme's own halo, in place of the map's ring", () => {
+    const Mark = stainedGlass.SelectionMark!;
+    const svg = renderToStaticMarkup(
+      <svg>
+        <Mark />
+      </svg>
+    );
+    expect(svg).toContain('data-selection="halo"');
+    expect(svg).toContain("sg-halo");
+    // A casing under the mark, so it holds on light glass or lattice and on dark alike.
+    expect(svg).toContain("sg-halo-casing");
+  });
+
+  it("brings one map-wide effect for the map to draw while it may animate", () => {
+    const Overlay = stainedGlass.Overlay!;
+    expect(renderToStaticMarkup(<svg><Overlay /></svg>)).toMatch(/<rect[^>]*class="sg-glint"/);
+  });
+});

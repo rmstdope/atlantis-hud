@@ -52,4 +52,15 @@ export type MapTheme = {
    * `roadSpots` covers them. A ring round the rim claims nothing; no symbol reaches it.
    */
   markFootprint: (view: HexView) => MarkSpot[];
+  /**
+   * What marks the selected hex, drawn about the hex's centre in world units, in place of the map's
+   * own selection ring. Optional: without one the map draws its white ring. A theme that supplies
+   * one owns making the selection unmistakable on every terrain it paints, at every zoom.
+   */
+  SelectionMark?: ComponentType;
+  /**
+   * One effect over the whole visible map - a scan line, a glint - drawn in screen space above the
+   * world and never taking a pointer. Optional, and only drawn while the map may animate.
+   */
+  Overlay?: ComponentType;
 };

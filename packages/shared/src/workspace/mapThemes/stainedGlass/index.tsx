@@ -8,8 +8,9 @@
  *
  * A pane costs six elements: three shards, one lead path for the cuts, and one polygon that is
  * both the highlight and the came. Every gradient lives once in `Defs`, never per hex, because a
- * level can hold thousands of panes. The mockup's sliding band of light was left out for the same
- * reason - it buys nothing a player needs and would repaint the whole window as it moved.
+ * level can hold thousands of panes. The mockup's sliding band of light is the theme's
+ * `Overlay`: one element over the whole window rather than anything per pane, and drawn only while
+ * the "Animate map theme" setting is on and the viewer has not asked for less motion.
  */
 
 import "@fontsource/cinzel/latin-600.css";
@@ -318,12 +319,40 @@ function MarkLayer({ views }: LayerProps) {
  */
 function Defs() {
   return (
-    <radialGradient id={HIGHLIGHT_ID} cx="35%" cy="30%" r="70%">
-      <stop offset="0" className="sg-light-hot" />
-      <stop offset="0.6" className="sg-light-soft" />
-      <stop offset="1" className="sg-light-shadow" />
-    </radialGradient>
+    <>
+      <radialGradient id={HIGHLIGHT_ID} cx="35%" cy="30%" r="70%">
+        <stop offset="0" className="sg-light-hot" />
+        <stop offset="0.6" className="sg-light-soft" />
+        <stop offset="1" className="sg-light-shadow" />
+      </radialGradient>
+      {/* The glint's band: clear, a soft white at its middle, clear again. */}
+      <linearGradient id={GLINT_ID} x1="0" y1="0" x2="1" y2="0.3">
+        <stop offset="0" className="sg-glint-stop" stopOpacity={0} />
+        <stop offset="0.5" className="sg-glint-stop" stopOpacity={0.13} />
+        <stop offset="1" className="sg-glint-stop" stopOpacity={0} />
+      </linearGradient>
+    </>
   );
+}
+
+const GLINT_ID = "sg-glint";
+
+/**
+ * The selected pane: a gold halo inside a lead casing, so it holds on gold glass and on dark glass
+ * alike, breathing while the map may animate. Replaces the map's white ring.
+ */
+function SelectionMark() {
+  return (
+    <g data-selection="halo">
+      <circle r={radii(0.86)} className="sg-halo-casing" fill="none" strokeWidth={7} vectorEffect="non-scaling-stroke" />
+      <circle r={radii(0.86)} className="sg-halo sg-breathe" fill="none" strokeWidth={3.5} vectorEffect="non-scaling-stroke" />
+    </g>
+  );
+}
+
+/** A band of light sliding slowly across the whole window. */
+function Overlay() {
+  return <rect className="sg-glint" x="0" y="0" width="45%" height="100%" fill={`url(#${GLINT_ID})`} />;
 }
 
 export const stainedGlass: MapTheme = {
@@ -334,5 +363,7 @@ export const stainedGlass: MapTheme = {
   TerrainLayer,
   RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer,
-  markFootprint
+  markFootprint,
+  SelectionMark,
+  Overlay
 };

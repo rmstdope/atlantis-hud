@@ -481,6 +481,8 @@ type MapCanvasProps = {
   route?: RouteOverlay | null;
   /** Hexes per second a spark runs along the route at, or null for a still line. */
   routeAnimationSpeed?: number | null;
+  /** Whether the map theme may animate; stamps `map-animate` on the map's root and draws its overlay. */
+  animateTheme?: boolean;
   /**
    * The trade route currently hovered in the Trade popover, drawn as a straight arrow between its
    * two hexes. While one is set and either end is off screen the map frames both, and putting it
@@ -567,6 +569,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     biomeSymbols = false,
     route = null,
     routeAnimationSpeed = null,
+    animateTheme = false,
     arrow = null,
     routeRisk = [],
     onMarquee,
@@ -1423,7 +1426,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     >
       <svg
         ref={rootRef}
-        className={`h-full w-full touch-none map-${band} map-theme-${theme.id}`}
+        className={`h-full w-full touch-none map-${band} map-theme-${theme.id}${animateTheme ? " map-animate" : ""}`}
         onPointerDown={onPointerDown}
         onContextMenu={onContextMenu}
       >
@@ -1752,6 +1755,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                 key={selectionEpoch}
                 className={selectionEpoch > 0 ? "map-selection-pulse" : undefined}
               >
+                {theme.SelectionMark ? (
+                  <theme.SelectionMark />
+                ) : (
+                  <>
                 <polygon
                   points={HEX_POINTS}
                   fill="none"
@@ -1768,6 +1775,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                   strokeLinejoin="round"
                   vectorEffect="non-scaling-stroke"
                 />
+                  </>
+                )}
               </g>
             </g>
           )}
@@ -2139,6 +2148,16 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
             />
           ))}
         </g>
+
+        {/*
+          The theme's one map-wide effect (a scan line, a glint), in screen space over the world and
+          under the rulers. Only while the map may animate, and never in the way of a pointer.
+        */}
+        {animateTheme && theme.Overlay && (
+          <g pointerEvents="none" aria-hidden="true" data-testid="map-theme-overlay">
+            <theme.Overlay />
+          </g>
+        )}
 
         {/* Rulers, pinned to the viewport so they never scroll away. */}
         <g ref={rulerXRef} pointerEvents="none" aria-hidden="true" data-testid="map-ruler-x">

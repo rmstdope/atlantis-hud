@@ -437,3 +437,23 @@ describe("the room this theme's marks take, for the biome symbols (ah-d9jb.4)", 
     expect(withIt).toEqual(without);
   });
 });
+
+describe("the selected hex, and the map-wide effect", () => {
+  it("marks the selection with the theme's own brackets, in place of the map's ring", () => {
+    const Mark = collective.SelectionMark!;
+    const svg = renderToStaticMarkup(
+      <svg>
+        <Mark />
+      </svg>
+    );
+    expect(svg).toContain('data-selection="brackets"');
+    expect(svg).toContain("co-select");
+    // A casing under the mark, so it holds on a bright lattice and on a dark one alike.
+    expect(svg).toContain("co-select-casing");
+  });
+
+  it("brings one map-wide effect for the map to draw while it may animate", () => {
+    const Overlay = collective.Overlay!;
+    expect(renderToStaticMarkup(<svg><Overlay /></svg>)).toMatch(/<rect[^>]*class="co-scan"/);
+  });
+});
