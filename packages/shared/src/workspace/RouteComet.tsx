@@ -7,8 +7,6 @@ const TRAIL = 10;
 const TRAIL_SPACING = radii(0.12);
 /** How far past the end the trail takes to fade. */
 const FADE_OUT = radii(1.5);
-/** The spark's own colour, the same pale gold on either theme: it is a light, not ink. */
-const SPARK = "#fff3cf";
 /** How much the comet dims once it is past this month's part of the journey. */
 const LATER_DIM = 0.55;
 
@@ -90,7 +88,7 @@ export function RouteComet({
             trailRefs.current[index] = circle;
           }}
           r={radii(0.2 - index * 0.014)}
-          fill={SPARK}
+          className="fill-spark"
           opacity={0}
         />
       ))}

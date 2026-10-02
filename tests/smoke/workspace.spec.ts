@@ -1330,8 +1330,8 @@ test("hovering a trade route draws it, frames it, and puts the map back", async 
   await panel.getByTestId("trade-route-0").hover();
   const arrow = page.getByTestId("trade-arrow");
   await expect(arrow).toHaveCount(1);
-  // A circuit: chocolate out, perfume back, so the line carries a head at both ends.
-  await expect(arrow.locator("line")).toHaveAttribute("marker-start", "url(#trade-arrowhead-start)");
+  // A circuit: chocolate out, perfume back, so coins travel a second lane for the way back.
+  await expect(arrow.locator("line.trade-track")).toHaveCount(2);
   await expect(world).not.toHaveAttribute("transform", before ?? "");
 
   // Looking away undoes the whole gesture - the arrow and the view together.

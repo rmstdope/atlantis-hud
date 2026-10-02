@@ -24,7 +24,7 @@ function route(from: Coordinate, to: Coordinate, circuit = false): TradeRoute {
 
 describe("arrowFor", () => {
   it("draws a single head for a one-way route", () => {
-    expect(arrowFor(route(hex(1, 2), hex(3, 4)))).toEqual({
+    expect(arrowFor(route(hex(1, 2), hex(3, 4)))).toMatchObject({
       from: hex(1, 2),
       to: hex(3, 4),
       twoWay: false
@@ -33,6 +33,18 @@ describe("arrowFor", () => {
 
   it("draws a head at both ends of a circuit", () => {
     expect(arrowFor(route(hex(1, 2), hex(3, 4), true))?.twoWay).toBe(true);
+  });
+
+  it("tags each town with what is bought and sold there", () => {
+    const good = (name: string, buyPrice: number, sellPrice: number) =>
+      ({ tag: name.toUpperCase(), name, buyPrice, sellPrice, quantity: 1, margin: sellPrice - buyPrice }) as TradeRoute["outbound"][number];
+    const arrow = arrowFor({
+      ...route(hex(1, 2), hex(3, 4)),
+      outbound: [good("wine", 28, 51), good("iron", 50, 70)],
+      inbound: [good("furs", 30, 46)]
+    })!;
+    expect(arrow.fromTag).toBe("buy wine $28, iron $50 · sell furs $46");
+    expect(arrow.toTag).toBe("sell wine $51, iron $70 · buy furs $30");
   });
 
   it("draws nothing when nothing is hovered", () => {

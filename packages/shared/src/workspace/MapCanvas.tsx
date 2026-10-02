@@ -52,6 +52,7 @@ import { useOverlayInsets } from "./useOverlayInsets";
 import { useWorkspaceStore } from "../workspaceStore";
 import type { RouteOverlay } from "./routeOverlay";
 import { RouteComet } from "./RouteComet";
+import { TradeRouteOverlay } from "./TradeRouteOverlay";
 import { curvedHalves } from "./routeCurve";
 
 /** A route's two halves as one curve through the hex centres; see `routeCurve.ts`. */
@@ -173,8 +174,6 @@ const ROUTE_CORE_LATER = radii(0.13);
 const ROUTE_THREAD = radii(0.08);
 /** The later months' dashes. */
 const ROUTE_DASH = `${radii(0.3)} ${radii(0.28)}`;
-/** The thread's colour: the comet's own pale gold, a light rather than ink, on either theme. */
-const ROUTE_THREAD_COLOUR = "#fff3cf";
 const ROUTE_GLOW_FILTER = "route-glow";
 
 /** The blur every route glow is drawn through, defined once beside the lines that use it. */
@@ -260,7 +259,7 @@ function RouteLine({
       <polyline
         points={points}
         fill="none"
-        stroke={ROUTE_THREAD_COLOUR}
+        className="stroke-spark"
         strokeWidth={ROUTE_THREAD}
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -1548,33 +1547,6 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
           */}
           {theme.Defs ? <theme.Defs /> : null}
 
-          {/*
-            The heads of a hovered trade route's arrow. Two definitions rather than one reused with
-            `orient="auto-start-reverse"`, which older WebKit - the desktop shell's renderer -
-            ignores, drawing a start head pointing the wrong way.
-          */}
-          <marker
-            id="trade-arrowhead"
-            viewBox="0 0 10 10"
-            refX="9"
-            refY="5"
-            markerWidth="5"
-            markerHeight="5"
-            orient="auto"
-          >
-            <path d="M 0 0 L 10 5 L 0 10 z" className="fill-brass" />
-          </marker>
-          <marker
-            id="trade-arrowhead-start"
-            viewBox="0 0 10 10"
-            refX="1"
-            refY="5"
-            markerWidth="5"
-            markerHeight="5"
-            orient="auto"
-          >
-            <path d="M 10 0 L 0 5 L 10 10 z" className="fill-brass" />
-          </marker>
         </defs>
 
         {/*
@@ -1737,26 +1709,11 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
           <BlockedLabels views={allViews} />
 
           {/*
-            A hovered trade route, as a straight line between its two hexes - the shape of the
-            journey, not its path: what the reader wants from a hover is how far apart these are and
-            in which direction. `pointerEvents="none"` because at the zoom this feature is for the
-            line spans most of the map, and without it no hex underneath could be clicked.
+            A hovered trade route (the Trade popover): coins travelling a dotted silver track
+            between the two towns, rings round both and a price tag at each - the shape of the
+            journey, not its path. See `TradeRouteOverlay`.
           */}
-          {arrow ? (
-            <g data-testid="trade-arrow" pointerEvents="none">
-              <line
-                x1={worldOf(arrow.from).x}
-                y1={worldOf(arrow.from).y}
-                x2={worldOf(arrow.to).x}
-                y2={worldOf(arrow.to).y}
-                className="stroke-brass"
-                strokeWidth={2.5}
-                vectorEffect="non-scaling-stroke"
-                markerEnd="url(#trade-arrowhead)"
-                markerStart={arrow.twoWay ? "url(#trade-arrowhead-start)" : undefined}
-              />
-            </g>
-          ) : null}
+          {arrow ? <TradeRouteOverlay arrow={arrow} scale={scaleOf(view.step)} /> : null}
 
           {/*
             The export rectangle, while it is being dragged. Hidden and moved by hand rather than

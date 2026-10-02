@@ -17,7 +17,7 @@ import {
   terrainTextureRotation,
   textureCoverTransform
 } from "./mapHexView";
-import { COLUMN_PITCH, ROW_PITCH, worldOf } from "./mapViewport";
+import { COLUMN_PITCH, ROW_PITCH } from "./mapViewport";
 import type { LayerProps, MapTheme } from "./mapThemes/mapTheme";
 import type { WaterTerrains } from "./mapThemes/terrain";
 
@@ -577,7 +577,7 @@ describe("what the map hands a theme", () => {
     // polygons, so no polyline shares a class with it.
     const lines = [...svg.matchAll(/<polyline[^>]*>/g)]
       .map((match) => match[0])
-      .filter((tag) => /stroke-brass-bright|#fff3cf/.test(tag));
+      .filter((tag) => /stroke-brass-bright|stroke-spark/.test(tag));
     const risk = /<polygon[^>]*fill-opacity="0\.28"[^>]*>/.exec(svg)?.[0] ?? "";
     const widthOf = (tag: string) => Number(/stroke-width="([\d.]+)"/.exec(tag)?.[1]);
 
@@ -698,35 +698,30 @@ function drawWithArrow(twoWay: boolean): string {
       showStaleness
       showTextures={false}
       badges={allBadges(true)}
-      arrow={{ from: { x: 7, y: 53, z: 1 }, to: { x: 9, y: 51, z: 1 }, twoWay }}
+      arrow={{
+        from: { x: 7, y: 53, z: 1 },
+        to: { x: 9, y: 51, z: 1 },
+        twoWay,
+        fromTag: "buy wine $28",
+        toTag: "sell wine $51"
+      }}
     />
   );
 }
 
 describe("MapCanvas trade arrow", () => {
-  it("draws a line between the two hexes of a hovered route", () => {
+  it("runs a track between the two towns of a hovered route, tagging each", () => {
     const svg = drawWithArrow(false);
-    const from = worldOf({ x: 7, y: 53, z: 1 });
-    const to = worldOf({ x: 9, y: 51, z: 1 });
 
     expect(svg).toContain('data-testid="trade-arrow"');
-    expect(svg).toContain(`x1="${from.x}"`);
-    expect(svg).toContain(`y1="${from.y}"`);
-    expect(svg).toContain(`x2="${to.x}"`);
-    expect(svg).toContain(`y2="${to.y}"`);
+    expect([...svg.matchAll(/class="trade-track"/g)]).toHaveLength(1);
+    expect(svg).toContain('data-testid="trade-tag-from"');
+    expect(svg).toContain(">buy wine $28</text>");
+    expect(svg).toContain(">sell wine $51</text>");
   });
 
-  it("heads only the far end of a one-way route", () => {
-    const svg = drawWithArrow(false);
-
-    expect(svg).toContain('marker-end="url(#trade-arrowhead)"');
-    expect(svg).not.toContain("marker-start=");
-  });
-
-  it("heads both ends of a circuit", () => {
-    const svg = drawWithArrow(true);
-
-    expect(svg).toContain('marker-start="url(#trade-arrowhead-start)"');
+  it("gives a circuit a second lane for the way back", () => {
+    expect([...drawWithArrow(true).matchAll(/class="trade-track"/g)]).toHaveLength(2);
   });
 
   it("draws no arrow when no route is hovered", () => {
