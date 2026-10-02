@@ -350,7 +350,7 @@ describe("how loudly unpainted board is stated", () => {
     const washOf = (fogOpacity: number) => {
       const svg = renderToStaticMarkup(
         <svg>
-          <miniatureWorld.TerrainLayer views={[viewWith({ knowledge: "named", fogOpacity })]} />
+          <miniatureWorld.TerrainLayer views={[viewWith({ knowledge: "named", unsurveyed: true, fogOpacity })]} />
         </svg>
       );
       return Number(/data-wash="unpainted"[^>]*opacity="([\d.]+)"/.exec(svg)?.[1]);

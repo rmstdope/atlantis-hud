@@ -170,11 +170,16 @@ export function staleFadeAmount(ageInTurns: number | null): number {
   return Math.min(FADE_LIMIT, FADE_AT_ONCE + (ageInTurns ?? 0) * FADE_PER_TURN);
 }
 
-export function hexPaint(hex: HexNode, showStaleness: boolean): HexPaint {
+/**
+ * How one hex is shaded. Each switch governs exactly one look (ah-7czr): `showStaleness` fades
+ * and hatches old sightings by age, `showUnvisited` dims ground known only from a neighbour's
+ * exits. Neither touches the other's hexes.
+ */
+export function hexPaint(hex: HexNode, showStaleness: boolean, showUnvisited = true): HexPaint {
   if (hex.knowledge === "named") {
-    // Staleness is about age, and a named hex has none: it was never visited at all, so the layer
-    // toggle has nothing to say about it.
-    return { fogOpacity: NAMED_FOG_OPACITY, hatched: false };
+    // Staleness is about age, and a named hex has none: it was never visited at all, so only the
+    // unvisited switch has anything to say about it. Off, it is drawn like any other hex.
+    return { fogOpacity: showUnvisited ? NAMED_FOG_OPACITY : 0, hatched: false };
   }
   if (hex.knowledge === "current" || !showStaleness) {
     return { fogOpacity: 0, hatched: false };

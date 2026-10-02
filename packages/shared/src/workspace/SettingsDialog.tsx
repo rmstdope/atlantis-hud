@@ -309,6 +309,18 @@ export function GlobalSettings() {
         onChange={() => toggleLayer("staleness")}
       />
 
+      {/*
+        Never-visited hexes have no age, so Staleness leaves them alone; this is the switch that
+        governs them (ah-7czr). Off, they are drawn like any other hex.
+      */}
+      <SettingToggle
+        title="Unvisited hexes"
+        description="Dim and outline hexes you have never visited, known only from a neighbouring hex's exits."
+        testId="settings-layer-unvisited"
+        checked={layers.unvisited}
+        onChange={() => toggleLayer("unvisited")}
+      />
+
       <SettingToggle
         title="Movement"
         description="Draw the routes units are ordered to travel."

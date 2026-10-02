@@ -3,12 +3,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { SURFACE_LEVEL, type HexMapModel } from "../hexMapModel";
 import type { HexNoteRecord, MapShape, MapWall } from "@atlantis/core-client";
 import { MapCanvas } from "./MapCanvas";
+import { getMapTheme } from "./mapThemes";
 import { NO_MAP_VIEW } from "./mapViewState";
 import { useWorkspaceStore } from "../workspaceStore";
 import { renderWithStoreState, restoreStoresForTest } from "../testing/storeState";
 import type { RouteOverlay } from "./routeOverlay";
 import { wallTip } from "./routeWall";
-import { CONGESTED_CENTRE, CONGESTED_HEXES } from "./mapThemes/congestedFixture";
+import { CONGESTED_CENTRE, CONGESTED_HEXES, NAMED_ONLY } from "./mapThemes/congestedFixture";
 import { DEFAULT_TEXTURE_STYLE, allBadges, type TextureStyle } from "./mapThemes/hexView";
 import {
   terrainTextureBrightness,
@@ -130,6 +131,43 @@ function drawWithWalls(level = 1, badges = allBadges(true)): string {
     />
   );
 }
+
+/** The congested fixture's terrain as a real theme draws it, with the unvisited switch as given. */
+function drawUnvisited(showUnvisited: boolean | undefined): string {
+  return renderToStaticMarkup(
+    <MapCanvas
+      gameId={null}
+      model={{ ...model, hexes: [...CONGESTED_HEXES, NAMED_ONLY] }}
+      theme={getMapTheme("tactical-hud")}
+      level={1}
+      selectedRegionId={null}
+      selectionEpoch={0}
+      pickEpoch={0}
+      onSelectRegion={() => {}}
+      showStaleness
+      showUnvisited={showUnvisited}
+      showTextures={false}
+      badges={allBadges(true)}
+      notes={[]}
+    />
+  );
+}
+
+describe("the unvisited switch (ah-7czr)", () => {
+  it("rims never-visited ground while it is on, and when nobody says", () => {
+    expect(drawUnvisited(true)).toContain('data-rim="unsurveyed"');
+    expect(drawUnvisited(undefined)).toContain('data-rim="unsurveyed"');
+  });
+
+  it("draws never-visited ground like any other hex when it is off", () => {
+    const off = drawUnvisited(false);
+
+    expect(off).not.toContain('data-rim="unsurveyed"');
+    expect(off).not.toContain('data-dim="unsurveyed"');
+    // Old sightings are the staleness switch's, and stay faded.
+    expect(off).toContain('data-dim="stale"');
+  });
+});
 
 describe("walls", () => {
   it("draws a wall above the hit layer, so it can be pointed at", () => {

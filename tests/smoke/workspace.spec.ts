@@ -2055,6 +2055,11 @@ test("the layer toggles live in settings, not over the map", async ({ page }) =>
   await expect(staleness).toBeChecked();
   await staleness.uncheck();
   await expect(staleness).not.toBeChecked();
+  // ah-7czr: never-visited hexes have their own switch, independent of Staleness.
+  const unvisited = page.getByTestId("settings-layer-unvisited");
+  await expect(unvisited).toBeChecked();
+  await unvisited.uncheck();
+  await expect(unvisited).not.toBeChecked();
   await expect(page.getByTestId("settings-layer-movement")).toBeChecked();
   await page.keyboard.press("Escape");
 
@@ -2065,6 +2070,7 @@ test("the layer toggles live in settings, not over the map", async ({ page }) =>
   await expect(page.getByTestId("map-canvas")).toBeVisible();
   await page.getByTestId("settings-indicator").click();
   await expect(page.getByTestId("settings-layer-staleness")).not.toBeChecked();
+  await expect(page.getByTestId("settings-layer-unvisited")).not.toBeChecked();
   await page.keyboard.press("Escape");
 });
 

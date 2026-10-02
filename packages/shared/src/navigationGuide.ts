@@ -137,8 +137,8 @@ export const NAVIGATION_MOVES: readonly NavigationMove[] = [
   {
     id: "mapLayers",
     group: MAP,
-    description: "Show or hide staleness and movement",
-    mouse: "The boxes above the map",
+    description: "Show or hide staleness, unvisited hexes and movement",
+    mouse: "Settings › Global",
     keys: null
   },
   {

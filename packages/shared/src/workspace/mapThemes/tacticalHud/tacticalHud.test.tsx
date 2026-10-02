@@ -367,8 +367,8 @@ describe("how loudly unsurveyed ground is stated", () => {
 
     expect(tacticalHud.fogDamping).toBe(0.8);
     // Proportional, so a heavier fade still dims harder - the damping is a scale, not a cap.
-    expect(dimOf({ knowledge: "named", fogOpacity: 0.4 })).toBeLessThan(
-      dimOf({ knowledge: "named", fogOpacity: 0.75 })
+    expect(dimOf({ knowledge: "named", unsurveyed: true, fogOpacity: 0.4 })).toBeLessThan(
+      dimOf({ knowledge: "named", unsurveyed: true, fogOpacity: 0.75 })
     );
   });
 });

@@ -390,6 +390,26 @@ describe("the badge toggles, applied once so no theme can forget one", () => {
     expect(view.fogOpacity).toBe(withStaleness.fogOpacity);
     expect(view.hatched).toBe(false);
   });
+
+  it("marks a named hex as unsurveyed while the unvisited switch is on, absent meaning on", () => {
+    expect(viewOf(hex({ knowledge: "named" })).unsurveyed).toBe(true);
+    expect(viewOf(hex({ knowledge: "named" }), { showUnvisited: true }).unsurveyed).toBe(true);
+    expect(viewOf(hex({ knowledge: "stale", ageInTurns: 3 })).unsurveyed).toBe(false);
+    expect(viewOf(hex({ knowledge: "current" })).unsurveyed).toBe(false);
+  });
+
+  it("draws a named hex like a current one when the unvisited switch is off (ah-7czr)", () => {
+    const view = viewOf(hex({ knowledge: "named", settlementName: "Eda" }), {
+      showUnvisited: false
+    });
+
+    expect(view.unsurveyed).toBe(false);
+    expect(view.fogOpacity).toBe(0);
+    expect(view.hatched).toBe(false);
+    // The look changes, not what the report knows: still named, still no tier.
+    expect(view.knowledge).toBe("named");
+    expect(view.settlement).toEqual({ name: "Eda", tier: null });
+  });
 });
 
 describe("roads", () => {

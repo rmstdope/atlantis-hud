@@ -89,7 +89,7 @@ function TerrainLayer({ views }: LayerProps) {
               />
             )}
             {view.fogOpacity > 0 &&
-              (view.knowledge === "named" ? (
+              (view.unsurveyed ? (
                 /*
                   Ground nobody has walked. Not an aged page - a part of the sheet the survey never
                   reached - so it fades towards the unsurveyed grey rather than yellowing, and it

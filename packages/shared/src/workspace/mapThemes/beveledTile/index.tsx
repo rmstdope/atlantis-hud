@@ -131,7 +131,7 @@ function TerrainLayer({ views }: LayerProps) {
                   <polygon
                     points={TILE_POINTS}
                     className="bt-tint"
-                    data-dim={view.knowledge === "named" ? "unsurveyed" : "stale"}
+                    data-dim={view.unsurveyed ? "unsurveyed" : "stale"}
                     opacity={view.fogOpacity}
                   />
                   {/*
@@ -144,10 +144,10 @@ function TerrainLayer({ views }: LayerProps) {
                   <polygon
                     points={TILE_POINTS}
                     className="bt-sunk-rim"
-                    data-rim={view.knowledge === "named" ? "unsurveyed" : "sunk"}
+                    data-rim={view.unsurveyed ? "unsurveyed" : "sunk"}
                     fill="none"
                     strokeWidth={1.4}
-                    strokeDasharray={view.knowledge === "named" ? "2 3" : "4 3"}
+                    strokeDasharray={view.unsurveyed ? "2 3" : "4 3"}
                     vectorEffect="non-scaling-stroke"
                   />
                 </>

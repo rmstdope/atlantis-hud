@@ -470,6 +470,21 @@ describe("the map layer settings", () => {
     expect(tag(html, "settings-layer-movement")).toContain('type="checkbox"');
   });
 
+  it("offers Unvisited hexes directly beneath Staleness, on by default (ah-7czr)", () => {
+    const html = renderToStaticMarkup(<GlobalSettings />);
+
+    expect(html).toContain("Unvisited hexes");
+    expect(html).toContain(
+      "Dim and outline hexes you have never visited, known only from a neighbouring hex&#x27;s exits."
+    );
+    expect(tag(html, "settings-layer-unvisited")).toContain('type="checkbox"');
+    expect(tag(html, "settings-layer-unvisited")).toContain("checked");
+    const order = ["settings-layer-staleness", "settings-layer-unvisited", "settings-layer-movement"];
+    const at = order.map((id) => html.indexOf(`data-testid="${id}"`));
+    expect(at.every((index) => index >= 0)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+  });
+
   it("shows each layer's current state", () => {
     const html = renderToStaticMarkup(<GlobalSettings />);
 

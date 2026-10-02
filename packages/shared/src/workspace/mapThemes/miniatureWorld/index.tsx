@@ -136,7 +136,7 @@ function TerrainLayer({ views }: LayerProps) {
       {views.map((view) => {
         // Primed but not finished, because nobody has been there to see it. Not a faded memory -
         // an unfinished part of the board.
-        const unpainted = view.knowledge === "named";
+        const unpainted = view.unsurveyed;
         // The scenery is what a modeller adds having seen the place; the ground colour is not.
         const decoration = unpainted || view.texture ? null : decorationFor(view.terrainKind);
         return (
