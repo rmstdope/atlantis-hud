@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { MageStanding, SkillStanding, StandingKind } from "../magicStanding";
 import type { MagicBranch, MagicPrerequisite, MagicSkillNode, MagicTree } from "../magicTree";
-import { useEscapeToDismiss } from "./dismissLayer";
-import { useDialogDrag } from "./useDialogDrag";
+import { DialogFrame } from "./DialogFrame";
 import { STANDING_CHIP, standingWords } from "./standingChip";
 import { MagePicker } from "./MagePicker";
 import { buildMagicGraph, type MagicTreeView } from "./magicGraphLayout";
@@ -74,10 +73,6 @@ export function MagicTreeDialog({
    */
   reportLoaded?: boolean;
 }) {
-  useEscapeToDismiss(onDismiss);
-  // ah-aak5: dragged by its top bar to uncover the map; the veil lifts once moved.
-  const drag = useDialogDrag();
-
   const [highlighted, setHighlighted] = useState<string | null>(() => initialTag);
   const graph = useMemo(() => buildMagicGraph(tree), [tree]);
   const graphHandle = useRef<MagicGraphHandle | null>(null);
@@ -126,39 +121,33 @@ export function MagicTreeDialog({
   }, [highlighted, view]);
 
   return (
-    <div
-      data-testid="magic-tree-backdrop"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onDismiss();
-        }
-      }}
-      className={`fixed inset-0 z-40 flex items-start justify-center pt-[10vh]${drag.moved ? "" : " bg-black/50"}`}
-    >
-      <div
-        ref={drag.dialogRef}
-        style={drag.dialogStyle}
-        data-testid="magic-tree-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Magic study tree"
-        // 10vh below, matching the `pt-[10vh]` above (ah-vwdi). The two must be changed together:
-        // top offset + max height must leave a real margin, or the dialog runs to the screen edge.
-        // theme.css caps every modal at 90vh, but as a `:where()` default at zero specificity
-        // (ah-y4zb) - so this 80vh simply wins, with no `!` needed.
-        className={`grid grid-rows-[auto_auto_1fr] rounded border border-brass/60 bg-panel-raised text-pane whitespace-normal shadow-xl ${
-          // The graph is 1366 world units wide and cannot reflow, so its box opens out - and takes
-          // a real height rather than a maximum, because `fitGraph` fits into the height it is
-          // given and a box that sized to its content would fit the graph into its own answer.
-          showingGraph
-            ? "h-[80vh] w-[94vw]"
-            : "max-h-[80vh] w-[64rem] max-w-[94vw]"
-        }`}
-      >
-        <div
-          {...drag.barProps}
-          className="flex cursor-move select-none flex-wrap items-center gap-2 border-b border-edge px-2 py-1.5"
-        >
+    <DialogFrame
+      label="Magic study tree"
+      onDismiss={onDismiss}
+      layer="z-40"
+      placement="top"
+      backdropTestId="magic-tree-backdrop"
+      testId="magic-tree-dialog"
+      // 10vh below, matching the frame's `top` placement (ah-vwdi). The two must be changed together:
+      // top offset + max height must leave a real margin, or the dialog runs to the screen edge.
+      // theme.css caps every modal at 90vh, but as a `:where()` default at zero specificity
+      // (ah-y4zb) - so this 80vh simply wins, with no `!` needed.
+      boxClassName={`grid grid-rows-[auto_auto_1fr] rounded border border-brass/60 bg-panel-raised text-pane whitespace-normal shadow-xl ${
+        // The graph is 1366 world units wide and cannot reflow, so its box opens out - and takes
+        // a real height rather than a maximum, because `fitGraph` fits into the height it is
+        // given and a box that sized to its content would fit the graph into its own answer.
+        showingGraph
+          ? "h-[80vh] w-[94vw]"
+          : "max-h-[80vh] w-[64rem] max-w-[94vw]"
+      }`}
+      barClassName="flex-wrap items-center gap-2 border-b border-edge px-2 py-1.5"
+      // Focus starts inside the dialog rather than behind it, as `ShortcutHelp` and the dictionary
+      // both do. Without it `aria-modal="true"` is a claim the dialog does not keep: opening on F3
+      // from the document body would leave focus in the background, and a keyboard user would tab
+      // through the whole workspace to reach the tree's own controls.
+      close={{ testId: "magic-tree-close", label: "Close magic study tree", look: "compact", autoFocus: true }}
+      bar={
+        <>
           <span className="text-brass">Magic study tree</span>
           <div className="flex overflow-hidden rounded border border-brass/60">
             <ViewButton
@@ -230,110 +219,94 @@ export function MagicTreeDialog({
             {tree.skillCount} skills{showingGraph ? ` · ${graph.tiers.length} tiers` : ""}
           </span>
           <span className="flex-1" />
-          <button
-            type="button"
-            data-testid="magic-tree-close"
-            // Focus starts inside the dialog rather than behind it, as `ShortcutHelp` and the
-            // dictionary both do. Without it `aria-modal="true"` is a claim the dialog does not
-            // keep: opening on F3 from the document body would leave focus in the background, and
-            // a keyboard user would tab through the whole workspace to reach the tree's own
-            // controls.
-            autoFocus
-            onClick={onDismiss}
-            aria-label="Close magic study tree"
-            title="Close magic study tree"
-            className="rounded border border-edge px-1.5 text-ink-dim hover:border-brass hover:text-brass"
-          >
-            ×
-          </button>
-        </div>
-
-        {/*
-          One grid row, however many banners are in it: the box is `grid-rows-[auto_auto_1fr]`, and
-          a banner rendered as a sibling would take the `1fr` meant for the tree itself.
-        */}
-        <div>
-          {picked !== null ? null : reportLoaded ? (
-            // The two kinds of nothing are different facts, and saying neither would make them
-            // look like the same one. The tree itself is still drawn, untinted: it is the
-            // reference page whether or not a report is loaded.
-            <p
-              data-testid="magic-tree-no-mages"
-              className="m-0 border-b border-edge bg-panel px-3 py-1.5 text-ink-dim"
-            >
-              None of your units has studied magic. A unit becomes a mage by studying force,
-              pattern or spirit.
-            </p>
-          ) : (
-            <p
-              data-testid="magic-tree-no-report"
-              className="m-0 border-b border-edge bg-panel px-3 py-1.5 text-ink-dim"
-            >
-              No turn report is loaded. The tree shows every magic skill and what it stands on.
-              Load a report and it will also show what your own mages know.
-            </p>
-          )}
-
-          {picked === null || picked.missing.length === 0 ? null : (
-            // About the picked mage only, and about what he holds: the ruleset we scraped is
-            // missing two magic skills reports do name, and a player holding one must not
-            // conclude the tree is simply wrong.
-            <p
-              data-testid="magic-tree-missing"
-              className="m-0 border-b border-warn/60 bg-warn/10 px-3 py-1.5 text-warn"
-            >
-              {missingLine(picked)}
-            </p>
-          )}
-
-          {/*
-            Stated once, under the header, rather than once per card: ten cards fit on one screen,
-            and the same sentence ten times reads as decoration. `rules/magic_skills`: magic skills
-            "cannot be learnt to a higher level than the skills they depend upon".
-          */}
+        </>
+      }
+    >
+      {/*
+        One grid row, however many banners are in it: the box is `grid-rows-[auto_auto_1fr]`, and
+        a banner rendered as a sibling would take the `1fr` meant for the tree itself.
+      */}
+      <div>
+        {picked !== null ? null : reportLoaded ? (
+          // The two kinds of nothing are different facts, and saying neither would make them
+          // look like the same one. The tree itself is still drawn, untinted: it is the
+          // reference page whether or not a report is loaded.
           <p
-            data-testid="magic-tree-cap"
-            className="m-0 border-b border-brass/60 bg-panel px-3 py-1.5 text-ink-dim"
+            data-testid="magic-tree-no-mages"
+            className="m-0 border-b border-edge bg-panel px-3 py-1.5 text-ink-dim"
           >
-            A magic skill can never rise above the skills it stands on — the levels below are
-            floors to begin, and ceilings thereafter.
+            None of your units has studied magic. A unit becomes a mage by studying force,
+            pattern or spirit.
           </p>
-        </div>
+        ) : (
+          <p
+            data-testid="magic-tree-no-report"
+            className="m-0 border-b border-edge bg-panel px-3 py-1.5 text-ink-dim"
+          >
+            No turn report is loaded. The tree shows every magic skill and what it stands on.
+            Load a report and it will also show what your own mages know.
+          </p>
+        )}
+
+        {picked === null || picked.missing.length === 0 ? null : (
+          // About the picked mage only, and about what he holds: the ruleset we scraped is
+          // missing two magic skills reports do name, and a player holding one must not
+          // conclude the tree is simply wrong.
+          <p
+            data-testid="magic-tree-missing"
+            className="m-0 border-b border-warn/60 bg-warn/10 px-3 py-1.5 text-warn"
+          >
+            {missingLine(picked)}
+          </p>
+        )}
 
         {/*
-          Cards flow in one vertical column at every width.
+          Stated once, under the header, rather than once per card: ten cards fit on one screen,
+          and the same sentence ten times reads as decoration. `rules/magic_skills`: magic skills
+          "cannot be learnt to a higher level than the skills they depend upon".
         */}
-        {showingGraph ? (
-          // Panning is the transform, so the body must not scroll: a scrollable body fights the
-          // drag, and the arrow keys would scroll it instead of panning the graph.
-          <div className="min-h-0 overflow-hidden p-0">
-            <MagicGraphView
-              graph={graph}
-              lit={highlighted}
-              standing={picked?.byTag ?? null}
-              onLight={setHighlighted}
-              onOpenGameData={onOpenGameData}
-              viewport={graphViewport}
-              onViewport={onGraphViewport}
-              handleRef={graphHandle}
-            />
-          </div>
-        ) : (
-          <div ref={cards} className="min-h-0 overflow-y-auto p-3">
-            {tree.branches.map((branch) => (
-              <Card
-                key={branch.key}
-                branch={branch}
-                highlighted={highlighted}
-                standing={picked?.byTag ?? null}
-                onOpenGameData={onOpenGameData}
-                onFollow={setHighlighted}
-              />
-            ))}
-          </div>
-        )}
+        <p
+          data-testid="magic-tree-cap"
+          className="m-0 border-b border-brass/60 bg-panel px-3 py-1.5 text-ink-dim"
+        >
+          A magic skill can never rise above the skills it stands on — the levels below are
+          floors to begin, and ceilings thereafter.
+        </p>
       </div>
-    </div>
+
+      {/*
+        Cards flow in one vertical column at every width.
+      */}
+      {showingGraph ? (
+        // Panning is the transform, so the body must not scroll: a scrollable body fights the
+        // drag, and the arrow keys would scroll it instead of panning the graph.
+        <div className="min-h-0 overflow-hidden p-0">
+          <MagicGraphView
+            graph={graph}
+            lit={highlighted}
+            standing={picked?.byTag ?? null}
+            onLight={setHighlighted}
+            onOpenGameData={onOpenGameData}
+            viewport={graphViewport}
+            onViewport={onGraphViewport}
+            handleRef={graphHandle}
+          />
+        </div>
+      ) : (
+        <div ref={cards} className="min-h-0 overflow-y-auto p-3">
+          {tree.branches.map((branch) => (
+            <Card
+              key={branch.key}
+              branch={branch}
+              highlighted={highlighted}
+              standing={picked?.byTag ?? null}
+              onOpenGameData={onOpenGameData}
+              onFollow={setHighlighted}
+            />
+          ))}
+        </div>
+      )}
+    </DialogFrame>
   );
 }
 

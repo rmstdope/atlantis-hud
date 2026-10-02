@@ -1,12 +1,11 @@
-import { useEscapeToDismiss } from "./dismissLayer";
-import { useDialogDrag } from "./useDialogDrag";
+import { DialogFrame } from "./DialogFrame";
 import { activatesRow, type CountLine, type ProductionRow, type ProductionView, type Tone } from "./productionView";
 
 /**
  * The Production window (ah-nneu): every hex this turn's orders tax, pillage or produce in, against
  * the faction's region limit, with the hexes that leave work undone first.
  *
- * Built as `BattlesDialog` is - there is no shared dialog primitive - and renders only what
+ * Framed by `DialogFrame`, as every dialog with a top bar is, and renders only what
  * `productionView` decided. The design is `docs/ui/ah-nneu-production.html`, variant A.
  */
 export function ProductionDialog({
@@ -18,91 +17,66 @@ export function ProductionDialog({
   onSelectHex: (regionId: string) => void;
   onDismiss: () => void;
 }) {
-  useEscapeToDismiss(onDismiss);
-  // ah-aak5: dragged by its top bar to uncover the map; the veil lifts once moved.
-  const drag = useDialogDrag();
-
   return (
-    <div
-      data-testid="production-backdrop"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onDismiss();
-        }
-      }}
-      className={`fixed inset-0 z-30 flex items-center justify-center${drag.moved ? "" : " bg-black/50"}`}
-    >
-      <div
-        ref={drag.dialogRef}
-        style={drag.dialogStyle}
-        data-testid="production-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Production"
-        className="grid max-h-[85vh] w-[56rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
-      >
-        <div
-          {...drag.barProps}
-          className="flex cursor-move select-none items-center gap-2 border-b border-edge px-2 py-1.5"
-        >
+    <DialogFrame
+      label="Production"
+      onDismiss={onDismiss}
+      layer="z-30"
+      backdropTestId="production-backdrop"
+      testId="production-dialog"
+      boxClassName="grid max-h-[85vh] w-[56rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
+      barClassName="items-center gap-2 border-b border-edge px-2 py-1.5"
+      close={{ testId: "production-close", label: "close production", look: "plain", autoFocus: true }}
+      bar={
+        <>
           <span className="text-ink-soft">{view.title}</span>
           <span className="flex-1" />
-          <button
-            type="button"
-            data-testid="production-close"
-            aria-label="close production"
-            autoFocus
-            onClick={onDismiss}
-            className="rounded px-1.5 text-ink-dim hover:text-ink"
-          >
-            ✕
-          </button>
-        </div>
-
-        <div
-          data-testid="production-counts"
-          className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-1 px-2.5 pt-2 sm:grid-cols-[auto_minmax(6rem,14rem)_auto_1fr]"
-        >
-          {view.counts.map((line) => (
-            <Count key={line.label} line={line} />
-          ))}
-        </div>
-
-        <div data-testid="production-body" className="min-h-0 overflow-auto p-2.5">
-          {view.empty ? (
-            <p data-testid="production-empty" className="px-1 py-3 italic text-ink-dim">
-              This turn's orders tax, pillage and produce nowhere.
-            </p>
-          ) : (
-            <table className="w-full min-w-[40rem] border-collapse">
-              <thead>
-                <tr className="border-b border-edge text-left">
-                  <th className="px-1.5 py-1 font-normal text-brass">Hex</th>
-                  <th className="px-1.5 py-1 font-normal text-brass">Orders</th>
-                  <th className="px-1.5 py-1 font-normal text-brass">Tax</th>
-                  <th className="px-1.5 py-1 font-normal text-brass">Resources</th>
-                </tr>
-              </thead>
-              <tbody>
-                {view.gapRows.map((row) => (
-                  <Row key={row.regionId} row={row} onSelectHex={onSelectHex} />
-                ))}
-                {view.divider !== null ? (
-                  <tr data-testid="production-divider">
-                    <td colSpan={4} className="px-1.5 pb-1 pt-3 text-ink-dim">
-                      {view.divider}
-                    </td>
-                  </tr>
-                ) : null}
-                {view.fullRows.map((row) => (
-                  <Row key={row.regionId} row={row} onSelectHex={onSelectHex} />
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        </>
+      }
+    >
+      <div
+        data-testid="production-counts"
+        className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-1 px-2.5 pt-2 sm:grid-cols-[auto_minmax(6rem,14rem)_auto_1fr]"
+      >
+        {view.counts.map((line) => (
+          <Count key={line.label} line={line} />
+        ))}
       </div>
-    </div>
+
+      <div data-testid="production-body" className="min-h-0 overflow-auto p-2.5">
+        {view.empty ? (
+          <p data-testid="production-empty" className="px-1 py-3 italic text-ink-dim">
+            This turn's orders tax, pillage and produce nowhere.
+          </p>
+        ) : (
+          <table className="w-full min-w-[40rem] border-collapse">
+            <thead>
+              <tr className="border-b border-edge text-left">
+                <th className="px-1.5 py-1 font-normal text-brass">Hex</th>
+                <th className="px-1.5 py-1 font-normal text-brass">Orders</th>
+                <th className="px-1.5 py-1 font-normal text-brass">Tax</th>
+                <th className="px-1.5 py-1 font-normal text-brass">Resources</th>
+              </tr>
+            </thead>
+            <tbody>
+              {view.gapRows.map((row) => (
+                <Row key={row.regionId} row={row} onSelectHex={onSelectHex} />
+              ))}
+              {view.divider !== null ? (
+                <tr data-testid="production-divider">
+                  <td colSpan={4} className="px-1.5 pb-1 pt-3 text-ink-dim">
+                    {view.divider}
+                  </td>
+                </tr>
+              ) : null}
+              {view.fullRows.map((row) => (
+                <Row key={row.regionId} row={row} onSelectHex={onSelectHex} />
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </DialogFrame>
   );
 }
 

@@ -3,8 +3,7 @@ import type { ArmyRecord } from "@atlantis/core-client";
 
 import { exportReadiness } from "../armyExport";
 import type { DerivedSkills } from "../battleSkills";
-import { useEscapeToDismiss } from "./dismissLayer";
-import { useDialogDrag } from "./useDialogDrag";
+import { DialogFrame } from "./DialogFrame";
 
 /**
  * Which Armies fight, and which side each is on.
@@ -54,11 +53,6 @@ export function ArmyExportDialog({
   const [attackerId, setAttackerId] = useState<string>(initialAttackerId);
   const [defenderId, setDefenderId] = useState<string>("");
 
-  useEscapeToDismiss(onDismiss);
-
-  // ah-aak5: dragged by its top bar to uncover the map; the veil lifts once moved.
-  const drag = useDialogDrag();
-
   const armyOf = (id: string): ArmyRecord | null =>
     armies.find((army) => army.id === id) ?? null;
   const attackers = armyOf(attackerId);
@@ -101,110 +95,85 @@ export function ArmyExportDialog({
   );
 
   return (
-    <div
-      data-testid="army-export-backdrop"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onDismiss();
-        }
-      }}
-      className={`fixed inset-0 z-30 flex items-center justify-center${drag.moved ? "" : " bg-black/50"}`}
+    <DialogFrame
+      label="Export to battle simulator"
+      onDismiss={onDismiss}
+      layer="z-30"
+      backdropTestId="army-export-backdrop"
+      testId="army-export-panel"
+      boxClassName="flex w-[30rem] flex-col gap-2 rounded border border-edge bg-panel-raised p-3 text-pane whitespace-normal shadow-lg"
+      barClassName="items-center justify-between"
+      close={{ testId: "army-export-close", label: "close export", look: "framed", autoFocus: true }}
+      bar={<h2 className="text-ink">Export to battle simulator</h2>}
     >
-      <div
-        ref={drag.dialogRef}
-        style={drag.dialogStyle}
-        data-testid="army-export-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Export to battle simulator"
-        className="flex w-[30rem] flex-col gap-2 rounded border border-edge bg-panel-raised p-3 text-pane whitespace-normal shadow-lg"
-      >
-        <div
-          {...drag.barProps}
-          className="flex cursor-move select-none items-center justify-between"
-        >
-          <h2 className="text-ink">Export to battle simulator</h2>
+      <div className="flex flex-col gap-1.5 border-t border-edge pt-2">
+        {picker("attackers", "Attackers", attackerId, setAttackerId)}
+        <div className="flex justify-end">
           <button
             type="button"
-            data-testid="army-export-close"
-            aria-label="close export"
-            autoFocus
-            onClick={onDismiss}
-            className="rounded border border-edge px-1.5 py-0.5 text-ink-soft hover:border-brass hover:text-brass"
+            data-testid="army-export-swap"
+            disabled={attackers === null && defenders === null}
+            onClick={() => {
+              setAttackerId(defenderId);
+              setDefenderId(attackerId);
+            }}
+            className="rounded border border-edge px-2 py-0.5 text-ink-soft hover:border-brass hover:text-brass disabled:border-edge disabled:text-ink-dim"
           >
-            ×
+            ⇅ Swap sides
           </button>
         </div>
-
-        <div className="flex flex-col gap-1.5 border-t border-edge pt-2">
-          {picker("attackers", "Attackers", attackerId, setAttackerId)}
-          <div className="flex justify-end">
-            <button
-              type="button"
-              data-testid="army-export-swap"
-              disabled={attackers === null && defenders === null}
-              onClick={() => {
-                setAttackerId(defenderId);
-                setDefenderId(attackerId);
-              }}
-              className="rounded border border-edge px-2 py-0.5 text-ink-soft hover:border-brass hover:text-brass disabled:border-edge disabled:text-ink-dim"
-            >
-              ⇅ Swap sides
-            </button>
-          </div>
-          {picker("defenders", "Defenders", defenderId, setDefenderId)}
-        </div>
-
-        <p data-testid="army-export-summary" className="border-t border-edge pt-2 text-ink">
-          {readiness.refusal ?? readiness.countText}
-        </p>
-        {readiness.notices.map((notice) => (
-          <div key={notice.kind} className="flex gap-2" data-testid="army-export-notice">
-            {/*
-              The marker carries no meaning a reader needs - the colour is the whole of what it
-              says, and the text says it in words as well. Two columns so a wrapped second line
-              hangs under the first rather than under the marker.
-            */}
-            <span
-              aria-hidden="true"
-              className={
-                // Grey for the transient waiting line as well as the empty side (L1): neither is a
-                // caveat about the file, and the waiting one is a state about to end.
-                notice.kind === "empty-side" || notice.kind === "scanning"
-                  ? "text-ink-dim"
-                  : "text-warn"
-              }
-            >
-              ●
-            </span>
-            <span className="text-ink-dim">{notice.text}</span>
-          </div>
-        ))}
-        {error ? (
-          <p data-testid="army-export-error" className="text-danger">
-            {error}
-          </p>
-        ) : null}
-
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onDismiss}
-            className="rounded border border-edge px-2 py-0.5 text-ink-soft hover:border-brass hover:text-brass"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            data-testid="army-export-confirm"
-            disabled={busy || readiness.refusal !== null || readiness.waiting}
-            onClick={() => onExport(attackers, defenders)}
-            className="rounded border border-brass px-2 py-0.5 text-brass hover:bg-brass/10 disabled:border-edge disabled:text-ink-dim"
-          >
-            {busy ? "Exporting…" : "Export…"}
-          </button>
-        </div>
+        {picker("defenders", "Defenders", defenderId, setDefenderId)}
       </div>
-    </div>
+
+      <p data-testid="army-export-summary" className="border-t border-edge pt-2 text-ink">
+        {readiness.refusal ?? readiness.countText}
+      </p>
+      {readiness.notices.map((notice) => (
+        <div key={notice.kind} className="flex gap-2" data-testid="army-export-notice">
+          {/*
+            The marker carries no meaning a reader needs - the colour is the whole of what it
+            says, and the text says it in words as well. Two columns so a wrapped second line
+            hangs under the first rather than under the marker.
+          */}
+          <span
+            aria-hidden="true"
+            className={
+              // Grey for the transient waiting line as well as the empty side (L1): neither is a
+              // caveat about the file, and the waiting one is a state about to end.
+              notice.kind === "empty-side" || notice.kind === "scanning"
+                ? "text-ink-dim"
+                : "text-warn"
+            }
+          >
+            ●
+          </span>
+          <span className="text-ink-dim">{notice.text}</span>
+        </div>
+      ))}
+      {error ? (
+        <p data-testid="army-export-error" className="text-danger">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="rounded border border-edge px-2 py-0.5 text-ink-soft hover:border-brass hover:text-brass"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          data-testid="army-export-confirm"
+          disabled={busy || readiness.refusal !== null || readiness.waiting}
+          onClick={() => onExport(attackers, defenders)}
+          className="rounded border border-brass px-2 py-0.5 text-brass hover:bg-brass/10 disabled:border-edge disabled:text-ink-dim"
+        >
+          {busy ? "Exporting…" : "Export…"}
+        </button>
+      </div>
+    </DialogFrame>
   );
 }

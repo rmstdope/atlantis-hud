@@ -43,15 +43,19 @@ export type DialogDrag = {
 };
 
 /**
- * A dialog dragged by its top bar (ah-aak5). Spread `barProps` on the top bar, `dialogRef` and
- * `dialogStyle` on the `role="dialog"` box, and drop the backdrop's veil while `moved`.
+ * A dialog dragged by its top bar (ah-aak5). `DialogFrame` is its one caller (ah-yaat): it spreads
+ * `barProps` on the top bar, `dialogRef` and `dialogStyle` on the `role="dialog"` box, and drops the
+ * backdrop's veil while `moved`.
  *
  * The position is this mounted dialog's alone: the dialogs unmount when they close, so a reopen is
  * always centred, and nothing is stored anywhere. Where it may go is `clampDialogPosition`'s rule;
  * this hook only measures the browser for it.
  */
-export function useDialogDrag(): DialogDrag {
-  const dialogRef = useRef<HTMLDivElement | null>(null);
+export function useDialogDrag(ref?: RefObject<HTMLDivElement | null>): DialogDrag {
+  const ownRef = useRef<HTMLDivElement | null>(null);
+  // The caller's own ref when it has to reach inside the box itself (Edit map sizes refocuses a
+  // field there); ours otherwise.
+  const dialogRef = ref ?? ownRef;
   const press = useRef<Press | null>(null);
   const [position, setPosition] = useState<DialogPosition | null>(null);
   const barBottom = useRef(0);
@@ -80,7 +84,7 @@ export function useDialogDrag(): DialogDrag {
       barBottom: barBottom.current,
       travelled: false
     };
-  }, []);
+  }, [dialogRef]);
 
   const onPointerMove = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     const current = press.current;
@@ -143,7 +147,7 @@ export function useDialogDrag(): DialogDrag {
       window.removeEventListener("resize", reclamp);
       observer?.disconnect();
     };
-  }, [moved]);
+  }, [moved, dialogRef]);
 
   return {
     moved,

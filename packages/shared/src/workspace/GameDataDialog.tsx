@@ -8,8 +8,7 @@ import {
   skillEntryId
 } from "../gameData";
 import { paletteKeyReduce, PALETTE_PAGE_ROWS } from "../commandPalette";
-import { useEscapeToDismiss } from "./dismissLayer";
-import { useDialogDrag } from "./useDialogDrag";
+import { DialogFrame } from "./DialogFrame";
 import {
   entriesOf,
   goBack,
@@ -39,10 +38,6 @@ export function GameDataDialog({
   initialEntryId: string | null;
   onDismiss: () => void;
 }) {
-  useEscapeToDismiss(onDismiss);
-  // ah-aak5: dragged by its top bar to uncover the map; the veil lifts once moved.
-  const drag = useDialogDrag();
-
   const [state, setState] = useState(() => openGameDataDialog(index, initialEntryId));
 
   // Focus returns where it was summoned from, for the reason `ShortcutHelp` documents: this opens
@@ -119,33 +114,23 @@ export function GameDataDialog({
   };
 
   return (
-    <div
-      data-testid="game-data-backdrop"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onDismiss();
-        }
-      }}
-      className={`fixed inset-0 z-40 flex items-start justify-center pt-[10vh]${drag.moved ? "" : " bg-black/50"}`}
-    >
-      <div
-        ref={drag.dialogRef}
-        style={drag.dialogStyle}
-        data-testid="game-data-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Game data"
-        // 10vh below, matching the `pt-[10vh]` above (ah-vwdi). The two must be changed together:
-        // top offset + max height must leave a real margin, or the dialog runs to the screen edge.
-        // theme.css caps every modal at 90vh, but as a `:where()` default at zero specificity
-        // (ah-y4zb) - so this 80vh simply wins, with no `!` needed. Left uncapped, 10vh + 90vh is
-        // the whole window and the margin below is exactly zero.
-        className="grid max-h-[80vh] w-[56rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-brass/60 bg-panel-raised text-pane whitespace-normal shadow-xl"
-      >
-        <div
-          {...drag.barProps}
-          className="flex cursor-move select-none items-center gap-2 border-b border-edge px-2 py-1.5"
-        >
+    <DialogFrame
+      label="Game data"
+      onDismiss={onDismiss}
+      layer="z-40"
+      placement="top"
+      backdropTestId="game-data-backdrop"
+      testId="game-data-dialog"
+      // 10vh below, matching the frame's `top` placement (ah-vwdi). The two must be changed together:
+      // top offset + max height must leave a real margin, or the dialog runs to the screen edge.
+      // theme.css caps every modal at 90vh, but as a `:where()` default at zero specificity
+      // (ah-y4zb) - so this 80vh simply wins, with no `!` needed. Left uncapped, 10vh + 90vh is
+      // the whole window and the margin below is exactly zero.
+      boxClassName="grid max-h-[80vh] w-[56rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-brass/60 bg-panel-raised text-pane whitespace-normal shadow-xl"
+      barClassName="items-center gap-2 border-b border-edge px-2 py-1.5"
+      close={{ testId: "game-data-close", label: "Close game data", look: "compact" }}
+      bar={
+        <>
           <span className="text-brass">Game data</span>
           <span className="flex-1" />
           {returnsTo === undefined ? null : (
@@ -158,111 +143,101 @@ export function GameDataDialog({
               ← Back to {returnsToName}
             </button>
           )}
+        </>
+      }
+    >
+      <div role="tablist" aria-label="Game data" className="flex gap-1 border-b border-edge bg-panel px-2 py-1">
+        {GAME_DATA_CATEGORIES.map((category) => (
           <button
+            key={category}
             type="button"
-            data-testid="game-data-close"
-            onClick={onDismiss}
-            aria-label="Close game data"
-            title="Close game data"
-            className="rounded border border-edge px-1.5 text-ink-dim hover:border-brass hover:text-brass"
+            role="tab"
+            data-testid={`game-data-tab-${category}`}
+            aria-selected={category === state.category}
+            onClick={() => setState((current) => selectGameDataTab(index, current, category))}
+            className={
+              category === state.category
+                ? "rounded border border-brass bg-brass/10 px-2 py-0.5 text-brass"
+                : "rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink-dim hover:bg-panel hover:text-ink"
+            }
           >
-            ×
+            {GAME_DATA_CATEGORY_LABELS[category]} {entriesOf(index, category).length}
           </button>
-        </div>
+        ))}
+      </div>
 
-        <div role="tablist" aria-label="Game data" className="flex gap-1 border-b border-edge bg-panel px-2 py-1">
-          {GAME_DATA_CATEGORIES.map((category) => (
-            <button
-              key={category}
-              type="button"
-              role="tab"
-              data-testid={`game-data-tab-${category}`}
-              aria-selected={category === state.category}
-              onClick={() => setState((current) => selectGameDataTab(index, current, category))}
-              className={
-                category === state.category
-                  ? "rounded border border-brass bg-brass/10 px-2 py-0.5 text-brass"
-                  : "rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink-dim hover:bg-panel hover:text-ink"
+      <div className="grid min-h-0 grid-cols-[15rem_1fr]">
+        <div className="grid min-h-0 grid-rows-[auto_1fr] border-r border-edge bg-panel">
+          <input
+            type="search"
+            autoFocus
+            data-testid="game-data-filter"
+            aria-label={`Filter ${GAME_DATA_CATEGORY_LABELS[state.category].toLowerCase()}`}
+            placeholder={`Filter ${GAME_DATA_CATEGORY_LABELS[state.category].toLowerCase()}…`}
+            value={state.filter}
+            onChange={(event) =>
+              setState((current) => ({ ...current, filter: event.target.value }))
+            }
+            onKeyDown={(event) => {
+              // Left and Right change tab, as agreed - but only with nothing typed, because
+              // focus opens here and a filter you cannot move the caret inside is worse than
+              // one more Tab press to reach the strip.
+              if (
+                (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+                state.filter === ""
+              ) {
+                event.preventDefault();
+                stepTab(event.key === "ArrowLeft" ? -1 : 1);
+                return;
               }
-            >
-              {GAME_DATA_CATEGORY_LABELS[category]} {entriesOf(index, category).length}
-            </button>
-          ))}
+              if (moveWithin(event.key)) {
+                event.preventDefault();
+              }
+            }}
+            className="w-full border-b border-brass/60 bg-panel-raised px-2 py-1 text-ink outline-none placeholder:text-ink-dim"
+          />
+          <ul
+            ref={list}
+            data-testid="game-data-list"
+            role="listbox"
+            aria-label={GAME_DATA_CATEGORY_LABELS[state.category]}
+            className="min-h-0 overflow-y-auto"
+          >
+            {shown.map((entry) => (
+              <li key={entry.id}>
+                <button
+                  type="button"
+                  role="option"
+                  data-testid={`game-data-entry-${entry.id}`}
+                  aria-selected={entry.id === state.selectedId}
+                  onClick={() =>
+                    setState((current) =>
+                      selectGameDataEntry(index, current, entry.id, { push: false })
+                    )
+                  }
+                  className={
+                    entry.id === state.selectedId
+                      ? "w-full border-l-2 border-select bg-select/15 px-2 py-0.5 text-left text-ink"
+                      : "w-full border-l-2 border-transparent px-2 py-0.5 text-left text-ink-soft hover:bg-select/15 hover:text-ink"
+                  }
+                >
+                  {entry.tag === null ? entry.name : `${entry.name} ${entry.tag}`}
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
-
-        <div className="grid min-h-0 grid-cols-[15rem_1fr]">
-          <div className="grid min-h-0 grid-rows-[auto_1fr] border-r border-edge bg-panel">
-            <input
-              type="search"
-              autoFocus
-              data-testid="game-data-filter"
-              aria-label={`Filter ${GAME_DATA_CATEGORY_LABELS[state.category].toLowerCase()}`}
-              placeholder={`Filter ${GAME_DATA_CATEGORY_LABELS[state.category].toLowerCase()}…`}
-              value={state.filter}
-              onChange={(event) =>
-                setState((current) => ({ ...current, filter: event.target.value }))
-              }
-              onKeyDown={(event) => {
-                // Left and Right change tab, as agreed - but only with nothing typed, because
-                // focus opens here and a filter you cannot move the caret inside is worse than
-                // one more Tab press to reach the strip.
-                if (
-                  (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
-                  state.filter === ""
-                ) {
-                  event.preventDefault();
-                  stepTab(event.key === "ArrowLeft" ? -1 : 1);
-                  return;
-                }
-                if (moveWithin(event.key)) {
-                  event.preventDefault();
-                }
-              }}
-              className="w-full border-b border-brass/60 bg-panel-raised px-2 py-1 text-ink outline-none placeholder:text-ink-dim"
-            />
-            <ul
-              ref={list}
-              data-testid="game-data-list"
-              role="listbox"
-              aria-label={GAME_DATA_CATEGORY_LABELS[state.category]}
-              className="min-h-0 overflow-y-auto"
-            >
-              {shown.map((entry) => (
-                <li key={entry.id}>
-                  <button
-                    type="button"
-                    role="option"
-                    data-testid={`game-data-entry-${entry.id}`}
-                    aria-selected={entry.id === state.selectedId}
-                    onClick={() =>
-                      setState((current) =>
-                        selectGameDataEntry(index, current, entry.id, { push: false })
-                      )
-                    }
-                    className={
-                      entry.id === state.selectedId
-                        ? "w-full border-l-2 border-select bg-select/15 px-2 py-0.5 text-left text-ink"
-                        : "w-full border-l-2 border-transparent px-2 py-0.5 text-left text-ink-soft hover:bg-select/15 hover:text-ink"
-                    }
-                  >
-                    {entry.tag === null ? entry.name : `${entry.name} ${entry.tag}`}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div data-testid="game-data-detail" className="min-h-0 overflow-y-auto p-3">
-            {detail === null ? (
-              <div className="rounded border border-edge bg-panel-raised p-3">
-                <p className="m-0 text-ink-dim">Nothing to show.</p>
-              </div>
-            ) : (
-              <Detail detail={detail} index={index} onFollow={follow} />
-            )}
-          </div>
+        <div data-testid="game-data-detail" className="min-h-0 overflow-y-auto p-3">
+          {detail === null ? (
+            <div className="rounded border border-edge bg-panel-raised p-3">
+              <p className="m-0 text-ink-dim">Nothing to show.</p>
+            </div>
+          ) : (
+            <Detail detail={detail} index={index} onFollow={follow} />
+          )}
         </div>
       </div>
-    </div>
+    </DialogFrame>
   );
 }
 
