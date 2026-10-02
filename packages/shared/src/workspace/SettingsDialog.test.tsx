@@ -204,7 +204,9 @@ describe("the texture set picker (ah-d9jb.1)", () => {
     expect(picker).toContain('aria-label="Texture set"');
     expect(picker).not.toContain("disabled");
     const options = html.match(/data-testid="settings-texture-set"[^>]*>(.*?)<\/select>/)?.[1] ?? "";
-    expect(options).toBe('<option value="standard" selected="">Standard</option>');
+    expect(options).toBe(
+      '<option value="standard" selected="">Standard</option><option value="shapes">Shapes</option>'
+    );
 
     const at = (needle: string) => html.indexOf(needle);
     expect(at('data-testid="settings-biome-textures"')).toBeLessThan(at('data-testid="settings-texture-set"'));
@@ -219,6 +221,18 @@ describe("the texture set picker (ah-d9jb.1)", () => {
 
     expect(tag(html, "settings-texture-set")).toContain("disabled");
     expect(html).toContain('<option value="standard" selected="">Standard</option>');
+  });
+
+  it("shows Shapes chosen when stored, and keeps it with textures off (ah-d9jb.2)", () => {
+    for (const biomeTextures of [true, false]) {
+      const html = renderWithStoreState(<GlobalSettings />, useSettingsStore, {
+        biomeTextures,
+        textureSet: "shapes"
+      });
+
+      expect(html).toContain('<option value="shapes" selected="">Shapes</option>');
+      expect(html).not.toContain('<option value="standard" selected="">');
+    }
   });
 });
 

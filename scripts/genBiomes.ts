@@ -2,8 +2,12 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { STANDARD_RAMPS } from "./biomeRamps";
+import { type Field, type Ramp, fbm, mix, normalize, renderField, sineField } from "./biomeNoise";
+import { SHAPES_FIELDS, SHAPES_RAMPS, drawShapes, groundSeed, shapePixelPass } from "./biomeShapes";
 
 const OUT_DIR = path.resolve("config/public/biomes");
+/** The Shapes set (ah-d9jb.2), served from `/biomes/shapes`. Only 512 px: the one size the map loads. */
+const SHAPES_DIR = path.join(OUT_DIR, "shapes");
 const SIZES = [512, 256, 128, 64] as const;
 const RENDER = 512;
 const BIOMES = [
@@ -26,130 +30,10 @@ const BIOMES = [
   "chasm"
 ] as const;
 
-type Rgb = readonly [number, number, number];
-type Field = Float32Array;
-
-function random(seed: number) {
-  let state = seed >>> 0;
-  return () => {
-    state ^= state << 13;
-    state ^= state >>> 17;
-    state ^= state << 5;
-    return (state >>> 0) / 0x1_0000_0000;
-  };
-}
-
-function smoothstep(value: number) {
-  return value * value * (3 - 2 * value);
-}
-
-function periodicValueNoise(size: number, period: number, seed: number): Field {
-  const rng = random(seed);
-  const lattice = Array.from({ length: period * period }, () => rng());
-  const output = new Float32Array(size * size);
-  for (let y = 0; y < size; y += 1) {
-    const coordinateY = (y / size) * period;
-    const y0 = Math.floor(coordinateY) % period;
-    const y1 = (y0 + 1) % period;
-    const fy = smoothstep(coordinateY - Math.floor(coordinateY));
-    for (let x = 0; x < size; x += 1) {
-      const coordinateX = (x / size) * period;
-      const x0 = Math.floor(coordinateX) % period;
-      const x1 = (x0 + 1) % period;
-      const fx = smoothstep(coordinateX - Math.floor(coordinateX));
-      const top = lattice[y0 * period + x0] * (1 - fx) + lattice[y0 * period + x1] * fx;
-      const bottom =
-        lattice[y1 * period + x0] * (1 - fx) + lattice[y1 * period + x1] * fx;
-      output[y * size + x] = top * (1 - fy) + bottom * fy;
-    }
-  }
-  return output;
-}
-
-function fbm(size: number, period: number, octaves: number, seed: number): Field {
-  const output = new Float32Array(size * size);
-  let amplitude = 1;
-  let amplitudeSum = 0;
-  let currentPeriod = period;
-  for (let octave = 0; octave < octaves; octave += 1) {
-    const layer = periodicValueNoise(size, currentPeriod, seed + octave * 101);
-    for (let index = 0; index < output.length; index += 1) {
-      output[index] += layer[index] * amplitude;
-    }
-    amplitudeSum += amplitude;
-    amplitude *= 0.5;
-    currentPeriod *= 2;
-  }
-  for (let index = 0; index < output.length; index += 1) {
-    output[index] /= amplitudeSum;
-  }
-  return output;
-}
-
-function normalize(field: Field): Field {
-  let minimum = Infinity;
-  let maximum = -Infinity;
-  for (const value of field) {
-    minimum = Math.min(minimum, value);
-    maximum = Math.max(maximum, value);
-  }
-  const scale = maximum - minimum || 1;
-  return Float32Array.from(field, (value) => (value - minimum) / scale);
-}
-
-function blend(first: Rgb, second: Rgb, amount: number): Rgb {
-  return [
-    first[0] * (1 - amount) + second[0] * amount,
-    first[1] * (1 - amount) + second[1] * amount,
-    first[2] * (1 - amount) + second[2] * amount
-  ];
-}
-
-function ramp(value: number, stops: readonly (readonly [number, Rgb])[]): Rgb {
-  if (value <= stops[0][0]) {
-    return stops[0][1];
-  }
-  for (let index = 1; index < stops.length; index += 1) {
-    const [position, colour] = stops[index];
-    if (value <= position) {
-      const [previousPosition, previousColour] = stops[index - 1];
-      return blend(previousColour, colour, (value - previousPosition) / (position - previousPosition));
-    }
-  }
-  return stops[stops.length - 1][1];
-}
-
-function renderField(field: Field, colours: readonly (readonly [number, Rgb])[], seed: number) {
-  const height = RENDER;
-  const width = RENDER;
-  const pixels = Buffer.alloc(width * height * 3);
-  const noise = random(seed);
-  for (let index = 0; index < field.length; index += 1) {
-    const colour = ramp(field[index], colours);
-    const grain = (noise() - 0.5) * 10;
-    pixels[index * 3] = Math.max(0, Math.min(255, Math.round(colour[0] + grain)));
-    pixels[index * 3 + 1] = Math.max(0, Math.min(255, Math.round(colour[1] + grain)));
-    pixels[index * 3 + 2] = Math.max(0, Math.min(255, Math.round(colour[2] + grain)));
-  }
-  return pixels;
-}
-
-function mix(first: Field, second: Field, firstWeight: number, secondWeight: number): Field {
-  return Float32Array.from(first, (value, index) => value * firstWeight + second[index] * secondWeight);
-}
-
-function sineField(frequency: number, warp: Field): Field {
-  return Float32Array.from(warp, (value, index) => {
-    const x = (index % RENDER) / RENDER;
-    const y = Math.floor(index / RENDER) / RENDER;
-    return 0.5 + 0.5 * Math.sin((x + y * 0.4) * Math.PI * 2 * frequency + value * 8);
-  });
-}
-
 function renderBiome(name: (typeof BIOMES)[number]): Buffer {
-  const definitions: Record<(typeof BIOMES)[number], { field: Field; colours: readonly (readonly [number, Rgb])[]; seed: number }> = {
+  const definitions: Record<(typeof BIOMES)[number], { field: Field; colours: Ramp; seed: number }> = {
     ocean: {
-      field: normalize(mix(fbm(RENDER, 3, 6, 10), sineField(5, fbm(RENDER, 6, 5, 12)), 0.65, 0.35)),
+      field: normalize(mix(fbm(RENDER, 3, 6, 10), sineField(5, fbm(RENDER, 6, 5, 12), RENDER), 0.65, 0.35)),
       colours: STANDARD_RAMPS.ocean,
       seed: 11
     },
@@ -179,7 +63,7 @@ function renderBiome(name: (typeof BIOMES)[number]): Buffer {
       seed: 66
     },
     desert: {
-      field: normalize(mix(sineField(7, fbm(RENDER, 4, 5, 70)), fbm(RENDER, 4, 5, 70), 0.7, 0.3)),
+      field: normalize(mix(sineField(7, fbm(RENDER, 4, 5, 70), RENDER), fbm(RENDER, 4, 5, 70), 0.7, 0.3)),
       colours: STANDARD_RAMPS.desert,
       seed: 77
     },
@@ -204,7 +88,7 @@ function renderBiome(name: (typeof BIOMES)[number]): Buffer {
       seed: 130
     },
     wasteland: {
-      field: normalize(mix(fbm(RENDER, 4, 7, 140), sineField(6, fbm(RENDER, 7, 5, 141)), 0.7, 0.3)),
+      field: normalize(mix(fbm(RENDER, 4, 7, 140), sineField(6, fbm(RENDER, 7, 5, 141), RENDER), 0.7, 0.3)),
       colours: STANDARD_RAMPS.wasteland,
       seed: 150
     },
@@ -214,12 +98,12 @@ function renderBiome(name: (typeof BIOMES)[number]): Buffer {
       seed: 160
     },
     tunnels: {
-      field: normalize(mix(sineField(12, fbm(RENDER, 3, 4, 170)), fbm(RENDER, 5, 6, 171), 0.65, 0.35)),
+      field: normalize(mix(sineField(12, fbm(RENDER, 3, 4, 170), RENDER), fbm(RENDER, 5, 6, 171), 0.65, 0.35)),
       colours: STANDARD_RAMPS.tunnels,
       seed: 180
     },
     grotto: {
-      field: normalize(mix(fbm(RENDER, 4, 6, 180), sineField(3, fbm(RENDER, 8, 4, 181)), 0.6, 0.4)),
+      field: normalize(mix(fbm(RENDER, 4, 6, 180), sineField(3, fbm(RENDER, 8, 4, 181), RENDER), 0.6, 0.4)),
       colours: STANDARD_RAMPS.grotto,
       seed: 190
     },
@@ -229,16 +113,16 @@ function renderBiome(name: (typeof BIOMES)[number]): Buffer {
       seed: 210
     },
     chasm: {
-      field: normalize(mix(sineField(9, fbm(RENDER, 4, 5, 220)), fbm(RENDER, 3, 7, 221), 0.72, 0.28)),
+      field: normalize(mix(sineField(9, fbm(RENDER, 4, 5, 220), RENDER), fbm(RENDER, 3, 7, 221), 0.72, 0.28)),
       colours: STANDARD_RAMPS.chasm,
       seed: 230
     }
   };
   const definition = definitions[name];
-  return renderField(definition.field, definition.colours, definition.seed);
+  return renderField(definition.field, definition.colours, definition.seed, RENDER);
 }
 
-async function writeComparisonSheet(masters: Map<string, Buffer>) {
+async function writeComparisonSheet(masters: Map<string, Buffer>, directory: string) {
   const cell = 220;
   const pad = 14;
   const labelHeight = 28;
@@ -279,7 +163,7 @@ async function writeComparisonSheet(masters: Map<string, Buffer>) {
   })
     .composite(composites)
     .png()
-    .toFile(path.join(OUT_DIR, "all_biomes.png"));
+    .toFile(path.join(directory, "all_biomes.png"));
 }
 
 async function main() {
@@ -296,8 +180,39 @@ async function main() {
     }
     console.log(`${biome.padEnd(11)} -> ${SIZES.join(", ")}`);
   }
-  await writeComparisonSheet(masters);
+  await writeComparisonSheet(masters, OUT_DIR);
   console.log(`Wrote ${BIOMES.length * SIZES.length} textures + all_biomes.png to ${OUT_DIR}`);
+  await writeShapesSet();
+}
+
+/** One Shapes tile: Standard's colours on the mockup's ground, the pixel pass, then the drawn shapes. */
+async function renderShapes(name: (typeof BIOMES)[number]): Promise<Buffer> {
+  const ground = renderField(SHAPES_FIELDS[name](RENDER), SHAPES_RAMPS[name], groundSeed(name), RENDER);
+  shapePixelPass(name, ground, RENDER);
+  const painter = drawShapes(name);
+  if (painter.isEmpty()) {
+    return ground;
+  }
+  return sharp(ground, { raw: { width: RENDER, height: RENDER, channels: 3 } })
+    .composite([{ input: Buffer.from(painter.toSvg(RENDER)) }])
+    .removeAlpha()
+    .raw()
+    .toBuffer();
+}
+
+async function writeShapesSet() {
+  await mkdir(SHAPES_DIR, { recursive: true });
+  const masters = new Map<string, Buffer>();
+  for (const biome of BIOMES) {
+    const master = await renderShapes(biome);
+    masters.set(biome, master);
+    await sharp(master, { raw: { width: RENDER, height: RENDER, channels: 3 } })
+      .png()
+      .toFile(path.join(SHAPES_DIR, `${biome}_${RENDER}.png`));
+    console.log(`shapes ${biome.padEnd(11)} -> ${RENDER}`);
+  }
+  await writeComparisonSheet(masters, SHAPES_DIR);
+  console.log(`Wrote ${BIOMES.length} textures + all_biomes.png to ${SHAPES_DIR}`);
 }
 
 main().catch((error: unknown) => {

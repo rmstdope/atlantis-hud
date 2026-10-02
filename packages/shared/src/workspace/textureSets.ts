@@ -19,7 +19,9 @@ export type TextureSet = {
 /** In the order the settings picker offers them. */
 export const TEXTURE_SETS: readonly TextureSet[] = [
   // Served from where the biome images have always been, so nothing cached has to move.
-  { id: "standard", label: "Standard", directory: "/biomes" }
+  { id: "standard", label: "Standard", directory: "/biomes" },
+  // Standard's colours with one large drawn shape per biome (ah-d9jb.2), generated beside it.
+  { id: "shapes", label: "Shapes", directory: "/biomes/shapes" }
 ];
 
 /** What the map opens on, and what an unrecognised choice falls back to. */

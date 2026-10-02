@@ -112,4 +112,19 @@ test("the workspace still opens with the network cut", async ({ page, context })
     return response.ok;
   });
   expect(rulesetOk).toBe(true);
+
+  // A texture set is chosen in Settings and drawn at once, offline too, so its pictures are
+  // precached (ah-d9jb.2) - but not the generator's contact sheets, which nothing loads and which
+  // would add megabytes to every install.
+  const served = (url: string) =>
+    page.evaluate(async (path) => {
+      try {
+        return (await fetch(path)).ok;
+      } catch {
+        return false;
+      }
+    }, url);
+  expect(await served("/biomes/shapes/mountain_512.png")).toBe(true);
+  expect(await served("/biomes/all_biomes.png")).toBe(false);
+  expect(await served("/biomes/shapes/all_biomes.png")).toBe(false);
 });
