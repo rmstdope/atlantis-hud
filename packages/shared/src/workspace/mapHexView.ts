@@ -121,15 +121,31 @@ export function regionHash(value: string): number {
 }
 
 /**
- * A stable, whole-degree texture angle for one hex.
- *
- * Texture variation must survive every redraw: choosing from `Math.random()` in a renderer would
- * make the ground visibly turn while panning or changing a badge. The region id is stable across
- * reports and sessions, so its small hash looks random across the map while producing the same
- * 0–359° angle for the same hex every time.
+ * A hex's stable texture angle, in whole multiples of `step` degrees. A step of 1 is any whole
+ * degree, as Standard has always turned; the Painted set asks for 60, so its painted shadows only
+ * ever point six ways (ah-d9jb.3).
  */
-export function terrainTextureRotation(regionId: string): number {
-  return regionHash(regionId) % 360;
+export function terrainTextureRotation(regionId: string, step = 1): number {
+  return (regionHash(regionId) % Math.floor(360 / step)) * step;
+}
+
+/** A flat-topped hex is this much as tall as it is wide, and so is its bounding box. */
+const HEX_HEIGHT_PER_WIDTH = Math.sqrt(3) / 2;
+
+/**
+ * How a picture that does not tile sits in its hex's pattern, as an SVG transform list from the
+ * picture's unit square to the hex's bounding box (ah-d9jb.3).
+ *
+ * The picture is a square as wide as the hex, centred on it: that square holds the hex's
+ * circumcircle, so no turn ever uncovers a corner - turning the bounding box itself did, and the
+ * next tile showed through. The turn is made in square units and only then squashed into the
+ * bounding box, so a sixth of a turn is a true sixth on screen rather than one sheared by the
+ * hex's proportions.
+ */
+export function textureCoverTransform(rotation: number): string {
+  const squash = Number((1 / HEX_HEIGHT_PER_WIDTH).toFixed(6));
+  const turn = rotation === 0 ? "" : ` rotate(${rotation})`;
+  return `translate(0.5 0.5) scale(1 ${squash})${turn} translate(-0.5 -0.5)`;
 }
 
 /**

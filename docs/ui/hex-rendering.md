@@ -80,6 +80,16 @@ a biome image (`<directory>/<terrain>_512.png`, where the directory is the chose
 from `workspace/textureSets.ts` — `/biomes` for Standard, `/biomes/shapes` for Shapes) clipped to the hex via an SVG pattern
 (`preserveAspectRatio: slice`). Every terrain with a flat colour of its own is textured.
 
+A set also says how its pictures move (ah-d9jb.3). Standard and Shapes turn each hex's picture by
+any whole degree and slide their water as a repeating tile. **Painted** (`/biomes/painted`) turns only in
+sixths of a turn (`rotationStep: 60`), so the painted light and shadow point six ways. Its pictures
+do not tile (`tiles: false`), so each is drawn as a square as wide as the hex and centred on it,
+turned inside that square (`textureCoverTransform`): no turn uncovers a corner, and a sixth is a
+true sixth on screen. Its water wraps by mirroring: the pattern holds the picture, its reflection
+and the picture again, and slides two widths in 36 s, Standard's speed. Choosing a set keeps the map on
+the set it was showing until all of the new set's pictures have answered
+(`workspace/textureSetPreload.ts`); a picture that fails leaves its biome in its flat colour.
+
 The Standard set's colours (`scripts/biomeRamps.ts`) and every theme's flat terrain colours were
 re-tuned together in ah-d9jb.1 so that biomes a person must tell apart at far zoom — forest, swamp
 and jungle above all — differ in hue *and* lightness. Each theme keeps its own lightness band and

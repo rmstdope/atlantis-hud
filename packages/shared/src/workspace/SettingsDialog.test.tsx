@@ -204,8 +204,9 @@ describe("the texture set picker (ah-d9jb.1)", () => {
     expect(picker).toContain('aria-label="Texture set"');
     expect(picker).not.toContain("disabled");
     const options = html.match(/data-testid="settings-texture-set"[^>]*>(.*?)<\/select>/)?.[1] ?? "";
+    // Painted (ah-d9jb.3) is always last.
     expect(options).toBe(
-      '<option value="standard" selected="">Standard</option><option value="shapes">Shapes</option>'
+      '<option value="standard" selected="">Standard</option><option value="shapes">Shapes</option><option value="painted">Painted</option>'
     );
 
     const at = (needle: string) => html.indexOf(needle);
