@@ -394,6 +394,8 @@ type MapCanvasProps = {
   pickEpoch: number;
   onSelectRegion: (regionId: string) => void;
   showStaleness: boolean;
+  /** Dim and rim never-visited hexes (ah-7czr); on when absent. */
+  showUnvisited?: boolean;
   showTextures: boolean;
   /** How textured hexes are drawn; the default rotates and animates. */
   textureStyle?: TextureStyle;
@@ -487,6 +489,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     pickEpoch,
     onSelectRegion,
     showStaleness,
+    showUnvisited = true,
     showTextures,
     textureStyle = DEFAULT_TEXTURE_STYLE,
     water = DEFAULT_WATER,
@@ -556,6 +559,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
   const viewOptions = useMemo(
     () => ({
       showStaleness,
+      showUnvisited,
       showTextures,
       textureStyle,
       water,
@@ -566,6 +570,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     }),
     [
       showStaleness,
+      showUnvisited,
       showTextures,
       textureStyle,
       water,

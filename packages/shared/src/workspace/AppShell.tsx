@@ -5634,6 +5634,7 @@ export function AppShell({
           pickEpoch={pickEpoch}
           onSelectRegion={selectHex}
           showStaleness={layers.staleness}
+          showUnvisited={layers.unvisited}
           showTextures={showTextures}
           textureStyle={textureStyle}
           water={water}

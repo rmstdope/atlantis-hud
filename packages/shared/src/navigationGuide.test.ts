@@ -55,6 +55,15 @@ describe("NAVIGATION_MOVES", () => {
   });
 });
 
+describe("the map layers line (ah-7czr)", () => {
+  it("names all three switches and where they now live", () => {
+    expect(moveOf("mapLayers")).toMatchObject({
+      description: "Show or hide staleness, unvisited hexes and movement",
+      mouse: "Settings › Global"
+    });
+  });
+});
+
 describe("navigationGroups", () => {
   it("keeps every move, in the order the table gives them", () => {
     const flattened = navigationGroups().flatMap((section) => section.moves);
