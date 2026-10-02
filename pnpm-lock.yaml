@@ -198,6 +198,24 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.8
         version: 6.43.8
+      '@fontsource/architects-daughter':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/cinzel':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/im-fell-english':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/im-fell-english-sc':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/press-start-2p':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/share-tech-mono':
+        specifier: ^5.3.0
+        version: 5.3.0
       react:
         specifier: ^19.1.1
         version: 19.2.8
@@ -947,6 +965,24 @@ packages:
   '@eslint/plugin-kit@0.4.1':
     resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+
+  '@fontsource/architects-daughter@5.3.0':
+    resolution: {integrity: sha512-uezOgAlbhmf9nDW69VYq31lXNA+0uRFWXBGCSFWLXVcrNESFHpNjvu11kJss1PMsfH/YKz1hnnYB+JSNI/t+ew==}
+
+  '@fontsource/cinzel@5.3.0':
+    resolution: {integrity: sha512-KEOYTsrRppW0uRIPWBDPrQgunCS6f8u4nzZxYRBfo9SCknKojLYjK7B0ZoVmJhyVLefz271ZQRF9EOpHZlfhRw==}
+
+  '@fontsource/im-fell-english-sc@5.3.0':
+    resolution: {integrity: sha512-jKnCJ22tgVwxWVs1YQ/GCWmP60ulVq49IJZ7c0wgv0MXHe8T8LPbl0sOteYLOkCURW5+ZKwFiLNU2h/l9fHgrg==}
+
+  '@fontsource/im-fell-english@5.3.0':
+    resolution: {integrity: sha512-FcgdWfY9WeUM2gQkfmwhn4Ed9LVtlll8LSSZvHfbsUrnHK5tHHnGg6BgwAfHogp52adU3eE89J/3B52qV3b+Vw==}
+
+  '@fontsource/press-start-2p@5.3.0':
+    resolution: {integrity: sha512-gxWFxdeDglPhEYSwEeooomcaFK8kSQYLQwVxfnOJeYRj2sPEHXjpVtFgEaYfqzOjuAJGrIcJOipu2KY5YkbyuQ==}
+
+  '@fontsource/share-tech-mono@5.3.0':
+    resolution: {integrity: sha512-hVEzVCzEid/fBfhggMyvkfDzn9ODrMihxC0EiOeQK3BuQNvdjmith2ERnoDNUkbW8zhufbKNuCgaSoT8LUNpuQ==}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -2580,6 +2616,7 @@ packages:
   eslint@9.39.5:
     resolution: {integrity: sha512-DgZS62aPLXKlnxILS/AYCoRvHaZeXceIzlXPkkGGzJWSow1aEk0lbTlxUSlyjC8jcaKxAdOnTDz+o1JFSBsyjw==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -5374,6 +5411,18 @@ snapshots:
     dependencies:
       '@eslint/core': 0.17.0
       levn: 0.4.1
+
+  '@fontsource/architects-daughter@5.3.0': {}
+
+  '@fontsource/cinzel@5.3.0': {}
+
+  '@fontsource/im-fell-english-sc@5.3.0': {}
+
+  '@fontsource/im-fell-english@5.3.0': {}
+
+  '@fontsource/press-start-2p@5.3.0': {}
+
+  '@fontsource/share-tech-mono@5.3.0': {}
 
   '@humanfs/core@0.19.2':
     dependencies:

@@ -71,7 +71,7 @@ export default defineConfig({
         // is WebAssembly and refuses to start without it, and the ruleset is what keeps unit
         // man-counts exact rather than estimated. Without them the installed app opens offline and
         // is useless, which is worse than not opening at all.
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,wasm,json}"],
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,wasm,json,woff2}"],
         // The biome generator's contact sheets (`all_biomes.png`, one per texture set) are for
         // whoever regenerates the textures; nothing in the app loads them, and each would add more
         // than a megabyte to every install.
