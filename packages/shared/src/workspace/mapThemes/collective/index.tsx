@@ -42,8 +42,6 @@ import {
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 
-/** The filter that tones a biome picture to the hive's dark monochrome green. */
-const TONE_FILTER_ID = "co-tone";
 
 /** How far inside the cell the guard ring is drawn. */
 const GUARD_RING = 0.84;
@@ -101,9 +99,14 @@ function TerrainLayer({ views }: LayerProps) {
                 points={CELL_POINTS}
                 className={`${terrainClassName("co", view.terrainKind)} co-cell`}
                 style={textured && view.texture ? { fill: `url(#${view.texture.patternId})` } : undefined}
-                filter={textured ? `url(#${TONE_FILTER_ID})` : undefined}
                 data-texture={textured ? "toned" : undefined}
               />
+              {/*
+                The picture toned to the hive's dark green by a veil laid over it, not a filter: a
+                filter per hex is one offscreen pass per hex on every frame of a pan, and on a large
+                map that was the slowest thing this theme drew.
+              */}
+              {textured && <polygon points={CELL_POINTS} className="co-tone-veil" />}
               {/*
                 The fade, painted as it arrives - already damped by `fogDamping`, for both faded
                 states alike. On a stale cell this is the fill dropping away; on unsurveyed ground
@@ -380,7 +383,7 @@ function MarkLayer({ views }: LayerProps) {
 }
 
 /**
- * The lattices, one pattern per terrain, and the filter that tones a biome picture green.
+ * The lattices, one pattern per terrain.
  *
  * Patterns are in user space, so inside a hex's scaled group they are drawn in the mockup's units
  * and anchored on the hex's own centre - every cell's lattice sits the same way in its cell.
@@ -403,16 +406,6 @@ function Defs() {
           </pattern>
         );
       })}
-      {/*
-        The picture's luminance multiplied into the hive's green: grey first, then a flood in the
-        theme's tone (a CSS colour, so it follows the stylesheet), clipped back to the shape.
-      */}
-      <filter id={TONE_FILTER_ID} colorInterpolationFilters="sRGB" x="0" y="0" width="1" height="1">
-        <feColorMatrix type="saturate" values="0" result="grey" />
-        <feFlood className="co-tone-flood" result="tone" />
-        <feBlend in="grey" in2="tone" mode="multiply" result="toned" />
-        <feComposite in="toned" in2="SourceAlpha" operator="in" />
-      </filter>
     </>
   );
 }

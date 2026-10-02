@@ -175,9 +175,10 @@
   }
 }
 
-/* Biome pictures are multiplied into this green by the theme's tone filter. */
-.co-tone-flood {
-  flood-color: var(--co-tone);
+/* Biome pictures are toned to the hive's dark green by this veil laid over them. */
+.co-tone-veil {
+  fill: var(--co-tone);
+  opacity: 0.72;
 }
 
 /* The circuit: a thin green edge with a soft glow under it; a stale cell's edge has gone dim. */

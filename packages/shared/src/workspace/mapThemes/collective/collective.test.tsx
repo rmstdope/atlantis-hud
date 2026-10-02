@@ -100,7 +100,7 @@ describe("the hive's own conventions", () => {
     }
   });
 
-  it("declares one lattice pattern per terrain, and the texture tone filter", () => {
+  it("declares one lattice pattern per terrain, and no filter at all", () => {
     const Defs = collective.Defs!;
     const svg = renderToStaticMarkup(
       <svg>
@@ -113,8 +113,8 @@ describe("the hive's own conventions", () => {
     for (const kind of KINDS) {
       expect(svg).toContain(`id="${latticePatternId(kind)}"`);
     }
-    expect(svg).toContain('id="co-tone"');
-    expect(svg).toContain("co-tone-flood");
+    // Pictures are toned by a veil, not a filter: a filter per hex was the slowest thing to pan.
+    expect(svg).not.toContain("<filter");
   });
 });
 
@@ -216,7 +216,8 @@ describe("with the biome textures on", () => {
     const cell = tagWith(svg, 'data-texture="toned"');
 
     expect(cell).toContain("url(#biome-texture-plain-");
-    expect(cell).toContain('filter="url(#co-tone)"');
+    expect(cell).not.toContain("filter=");
+    expect(svg).toContain('class="co-tone-veil"');
     expect(tagWith(svg, 'data-lattice="plain"')).toContain("co-lattice-textured");
   });
 

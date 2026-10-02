@@ -53,7 +53,6 @@ import {
   BOAT,
   unitRow,
   type Bitmap,
-  type PixelRect,
 } from "./paint";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
@@ -84,36 +83,38 @@ function at(point: { x: number; y: number }): string {
 }
 
 /**
- * Rects are worked out once per bitmap and pixel size, and shared: a map of a few thousand hexes
- * draws the same dozen sprites over and over.
+ * A sprite as one path per colour, worked out once per bitmap and pixel size and shared: a map of a
+ * few thousand hexes draws the same dozen sprites over and over, and one `<rect>` per run of pixels
+ * put twenty thousand elements on a large map - more than twice any other theme, and the slowest
+ * to pan. Same pixels, a handful of paths.
  */
-const rectCache = new Map<Bitmap, Map<number, PixelRect[]>>();
-function rectsOf(bitmap: Bitmap, px: number): PixelRect[] {
-  let bySize = rectCache.get(bitmap);
+type ColourPath = { colour: string; d: string };
+const pathCache = new Map<Bitmap, Map<number, ColourPath[]>>();
+function pathsOf(bitmap: Bitmap, px: number): ColourPath[] {
+  let bySize = pathCache.get(bitmap);
   if (!bySize) {
     bySize = new Map();
-    rectCache.set(bitmap, bySize);
+    pathCache.set(bitmap, bySize);
   }
-  let rects = bySize.get(px);
-  if (!rects) {
-    rects = bitmapRects(bitmap, px);
-    bySize.set(px, rects);
+  let paths = bySize.get(px);
+  if (!paths) {
+    const byColour = new Map<string, string[]>();
+    for (const rect of bitmapRects(bitmap, px)) {
+      const runs = byColour.get(rect.colour) ?? [];
+      runs.push(`M${rect.x} ${rect.y}h${rect.width}v${rect.height}h${-rect.width}z`);
+      byColour.set(rect.colour, runs);
+    }
+    paths = [...byColour].map(([colour, runs]) => ({ colour, d: runs.join("") }));
+    bySize.set(px, paths);
   }
-  return rects;
+  return paths;
 }
 
 function Pixels({ bitmap, px }: { bitmap: Bitmap; px: number }) {
   return (
     <>
-      {rectsOf(bitmap, px).map((rect, index) => (
-        <rect
-          key={index}
-          x={rect.x}
-          y={rect.y}
-          width={rect.width}
-          height={rect.height}
-          className={`eb-px-${rect.colour}`}
-        />
+      {pathsOf(bitmap, px).map((path) => (
+        <path key={path.colour} d={path.d} className={`eb-px-${path.colour}`} />
       ))}
     </>
   );
