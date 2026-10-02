@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useId, useMemo, useRef } from "react";
 import { radii } from "./mapThemes/geometry";
 import { cometHead, cometPath, pointAlong } from "./routeCometPath";
 
@@ -34,6 +34,8 @@ export function RouteComet({
   const haloRef = useRef<SVGCircleElement>(null);
   const trailRefs = useRef<(SVGCircleElement | null)[]>([]);
   const reduced = useMemo(prefersReducedMotion, []);
+  // One per comet: a route through a passage draws two, and an id must be unique in the document.
+  const haloId = `route-comet-halo-${useId().replace(/:/g, "")}`;
 
   useEffect(() => {
     if (reduced || path.length <= 0) {
@@ -75,12 +77,12 @@ export function RouteComet({
   return (
     <g pointerEvents="none" data-testid="route-comet">
       <defs>
-        <radialGradient id="route-comet-halo">
+        <radialGradient id={haloId}>
           <stop offset="0%" className="[stop-color:var(--color-brass-bright)]" stopOpacity={0.9} />
           <stop offset="100%" className="[stop-color:var(--color-brass-bright)]" stopOpacity={0} />
         </radialGradient>
       </defs>
-      <circle ref={haloRef} r={radii(0.5)} fill="url(#route-comet-halo)" opacity={0} />
+      <circle ref={haloRef} r={radii(0.5)} fill={`url(#${haloId})`} opacity={0} />
       {Array.from({ length: TRAIL }, (_, index) => (
         <circle
           key={index}

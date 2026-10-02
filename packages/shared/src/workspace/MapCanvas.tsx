@@ -55,9 +55,6 @@ import { RouteComet } from "./RouteComet";
 import { TradeRouteOverlay } from "./TradeRouteOverlay";
 import { MilestoneRoadLayer } from "./mapThemes/MilestoneRoadLayer";
 import { curvedHalves } from "./routeCurve";
-
-/** A route's two halves as one curve through the hex centres; see `routeCurve.ts`. */
-const curvedLine = (line: { solid: string; dotted: string }) => curvedHalves(line.solid, line.dotted);
 import { passageExitTitle, passageTitle, ringAccessibleName, ringHover } from "./passageMarks";
 import { viewportForArrow, type TradeArrow } from "./tradeArrow";
 import { peekStep, type KeepClear, type PeekMode } from "./dossierPeek";
@@ -99,6 +96,9 @@ import {
 import { useEscapeToDismiss } from "./dismissLayer";
 import { wallMarks, type WallMark } from "./wallMarks";
 import { mapShapeAtLevel } from "../mapShape";
+
+/** A route's two halves as one curve through the hex centres; see `routeCurve.ts`. */
+const curvedLine = (line: { solid: string; dotted: string }) => curvedHalves(line.solid, line.dotted);
 
 const HEX_POINTS = hexPointsAttribute(HEX_RADIUS);
 const FOG_TILE = fogPatternTile(HEX_RADIUS);

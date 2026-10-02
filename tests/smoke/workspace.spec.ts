@@ -2869,13 +2869,19 @@ test("a written move order is drawn solid for next turn and dotted beyond", asyn
  * same two steps 10575 already carries needs no protection, because the two routes are the one
  * route - so passing `2` there is the honest step count rather than a guard.
  */
+/** Straight pieces per hex step of a curved route line; `SAMPLES` in routeCurve.ts. */
+const ROUTE_CURVE_SAMPLES = 12;
+
 async function settledRoute(page: Page, steps: number): Promise<string | null> {
   const line = page.getByTestId("route-line-solid");
   await expect(line).toHaveCount(1);
   const vertex = String.raw`[\d.]+,[\d.]+`;
+  // The line curves through the hex centres (routeCurve.ts): a single step stays straight, and a
+  // longer route is sampled into ROUTE_CURVE_SAMPLES pieces per step.
+  const vertices = steps < 2 ? steps + 1 : steps * ROUTE_CURVE_SAMPLES + 1;
   await expect(line).toHaveAttribute(
     "points",
-    new RegExp(`^${Array.from({ length: steps + 1 }, () => vertex).join(" ")}$`)
+    new RegExp(`^${Array.from({ length: vertices }, () => vertex).join(" ")}$`)
   );
   return line.getAttribute("points");
 }
