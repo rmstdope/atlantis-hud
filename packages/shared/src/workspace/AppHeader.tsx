@@ -11,6 +11,8 @@ import {
 } from "../turnReport";
 import { ExportMenu } from "./ExportMenu";
 import { ChipPopover } from "./popover";
+import { SettingsButton } from "./SettingsButton";
+import type { UpdateMark } from "./appUpdate";
 import type { StatusLine, StatusTone } from "./shellStatus";
 
 /** The status line's dot colour by tone; `routine` has no dot (see the render site). */
@@ -192,6 +194,8 @@ type AppHeaderProps = {
   /** Whether the settings panel is showing. Same split as the picker: header owns the button. */
   settingsOpen: boolean;
   onToggleSettings: () => void;
+  /** The dot a newer version leaves on the gear (ah-sw92); none when omitted. */
+  updateMark?: UpdateMark;
   settings: ReactNode;
 };
 
@@ -249,6 +253,7 @@ export function AppHeader({
   fetchControl,
   settingsOpen,
   onToggleSettings,
+  updateMark,
   settings
 }: AppHeaderProps) {
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -696,21 +701,12 @@ export function AppHeader({
         </button>
       ) : null}
 
-      {/* Relative for the same reason the game indicator is: the panel hangs off this button. */}
-      <span className="relative">
-        <button
-          type="button"
-          data-testid="settings-indicator"
-          aria-haspopup="dialog"
-          aria-expanded={settingsOpen}
-          aria-label="Settings"
-          onClick={onToggleSettings}
-          className="rounded border border-edge bg-panel-raised px-2 py-1 text-ink-soft hover:border-brass hover:text-ink"
-        >
-          <span aria-hidden>⚙</span>
-        </button>
-        {settingsOpen ? settings : null}
-      </span>
+      <SettingsButton
+        settingsOpen={settingsOpen}
+        onToggleSettings={onToggleSettings}
+        mark={updateMark}
+        settings={settings}
+      />
       </div>
     </header>
   );

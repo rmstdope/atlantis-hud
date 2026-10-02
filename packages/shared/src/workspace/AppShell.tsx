@@ -175,7 +175,7 @@ import { comparisonContextFor, listComparableTurns, pickComparisonTurn } from ".
 import { GameGate } from "./GameGate";
 import { SettingsDialog } from "./SettingsDialog";
 import type { AppUpdateControl } from "./appUpdate";
-import { UNSUPPORTED_UPDATES } from "./appUpdate";
+import { UNSUPPORTED_UPDATES, updateMarkFor } from "./appUpdate";
 import type { OpenExternal } from "./openExternal";
 import { OPEN_EXTERNAL_IN_NEW_TAB } from "./openExternal";
 import { ForeignReportPrompt } from "./ForeignReportPrompt";
@@ -5145,6 +5145,8 @@ export function AppShell({
 
   // The same dialog on both screens below, because settings are not part of the workspace: they
   // are part of the application, and the application exists before any game does.
+  // ah-sw92: the dot a newer version leaves on the gear, and on the About tab inside the dialog.
+  const updateMark = updateMarkFor(appUpdate);
   const settingsPanel = (
     <SettingsDialog
       platformLabel={platformLabel}
@@ -5290,6 +5292,7 @@ export function AppShell({
           onImport={(file) => void importGameBackup(file)}
           settingsOpen={settingsOpen}
           onToggleSettings={() => setSettingsOpen((open) => !open)}
+          updateMark={updateMark}
           settings={settingsPanel}
         />
         {keyboardPanels}
@@ -5512,6 +5515,7 @@ export function AppShell({
         canExportMageSheet={parsed !== null && gameData !== null}
         settingsOpen={settingsOpen}
         onToggleSettings={() => setSettingsOpen((open) => !open)}
+        updateMark={updateMark}
         settings={settingsPanel}
       />
 
