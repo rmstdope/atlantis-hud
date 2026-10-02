@@ -3,8 +3,11 @@ import path from "node:path";
 import sharp from "sharp";
 import { STANDARD_RAMPS } from "./biomeRamps";
 import { type Field, type Ramp, fbm, mix, normalize, renderField, sineField } from "./biomeNoise";
+import { SHAPES_FIELDS, SHAPES_RAMPS, drawShapes, groundSeed, shapePixelPass } from "./biomeShapes";
 
 const OUT_DIR = path.resolve("config/public/biomes");
+/** The Shapes set (ah-d9jb.2), served from `/biomes/shapes`. Only 512 px: the one size the map loads. */
+const SHAPES_DIR = path.join(OUT_DIR, "shapes");
 const SIZES = [512, 256, 128, 64] as const;
 const RENDER = 512;
 const BIOMES = [
@@ -119,7 +122,7 @@ function renderBiome(name: (typeof BIOMES)[number]): Buffer {
   return renderField(definition.field, definition.colours, definition.seed, RENDER);
 }
 
-async function writeComparisonSheet(masters: Map<string, Buffer>) {
+async function writeComparisonSheet(masters: Map<string, Buffer>, directory: string) {
   const cell = 220;
   const pad = 14;
   const labelHeight = 28;
@@ -160,7 +163,7 @@ async function writeComparisonSheet(masters: Map<string, Buffer>) {
   })
     .composite(composites)
     .png()
-    .toFile(path.join(OUT_DIR, "all_biomes.png"));
+    .toFile(path.join(directory, "all_biomes.png"));
 }
 
 async function main() {
@@ -177,8 +180,39 @@ async function main() {
     }
     console.log(`${biome.padEnd(11)} -> ${SIZES.join(", ")}`);
   }
-  await writeComparisonSheet(masters);
+  await writeComparisonSheet(masters, OUT_DIR);
   console.log(`Wrote ${BIOMES.length * SIZES.length} textures + all_biomes.png to ${OUT_DIR}`);
+  await writeShapesSet();
+}
+
+/** One Shapes tile: Standard's colours on the mockup's ground, the pixel pass, then the drawn shapes. */
+async function renderShapes(name: (typeof BIOMES)[number]): Promise<Buffer> {
+  const ground = renderField(SHAPES_FIELDS[name](RENDER), SHAPES_RAMPS[name], groundSeed(name), RENDER);
+  shapePixelPass(name, ground, RENDER);
+  const painter = drawShapes(name);
+  if (painter.isEmpty()) {
+    return ground;
+  }
+  return sharp(ground, { raw: { width: RENDER, height: RENDER, channels: 3 } })
+    .composite([{ input: Buffer.from(painter.toSvg(RENDER)) }])
+    .removeAlpha()
+    .raw()
+    .toBuffer();
+}
+
+async function writeShapesSet() {
+  await mkdir(SHAPES_DIR, { recursive: true });
+  const masters = new Map<string, Buffer>();
+  for (const biome of BIOMES) {
+    const master = await renderShapes(biome);
+    masters.set(biome, master);
+    await sharp(master, { raw: { width: RENDER, height: RENDER, channels: 3 } })
+      .png()
+      .toFile(path.join(SHAPES_DIR, `${biome}_${RENDER}.png`));
+    console.log(`shapes ${biome.padEnd(11)} -> ${RENDER}`);
+  }
+  await writeComparisonSheet(masters, SHAPES_DIR);
+  console.log(`Wrote ${BIOMES.length} textures + all_biomes.png to ${SHAPES_DIR}`);
 }
 
 main().catch((error: unknown) => {
