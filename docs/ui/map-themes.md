@@ -336,7 +336,8 @@ resolves the id with `getMapTheme` on each render, so there is nothing to reload
 does not know falls back to `DEFAULT_MAP_THEME_ID`, because storage is hand-editable and a build
 can be downgraded past a theme it once shipped. A texture set the build does not know falls back
 to Standard the same way, at the same two doors. The set reaches the themes as
-`TextureStyle.directory`, so no theme knows a set by name.
+`TextureStyle` (its directory, rotation step, water wrap and any pictures that failed to load), so
+no theme knows a set by name.
 
 That fallback happens at **two** separate doors, and the startup one is easy to miss: `setMapTheme`
 runs the id through `knownMapTheme`, but rehydration merges the stored blob straight into state

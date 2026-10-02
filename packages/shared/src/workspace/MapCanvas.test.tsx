@@ -10,7 +10,11 @@ import type { RouteOverlay } from "./routeOverlay";
 import { wallTip } from "./routeWall";
 import { CONGESTED_CENTRE, CONGESTED_HEXES } from "./mapThemes/congestedFixture";
 import { DEFAULT_TEXTURE_STYLE, allBadges, type TextureStyle } from "./mapThemes/hexView";
-import { terrainTextureBrightness, terrainTextureRotation } from "./mapHexView";
+import {
+  terrainTextureBrightness,
+  terrainTextureRotation,
+  textureCoverTransform
+} from "./mapHexView";
 import { COLUMN_PITCH, ROW_PITCH, worldOf } from "./mapViewport";
 import type { LayerProps, MapTheme } from "./mapThemes/mapTheme";
 import type { WaterTerrains } from "./mapThemes/terrain";
@@ -339,7 +343,7 @@ describe("what the map hands a theme", () => {
   });
 
   it("leaves biome textures unrotated when rotation is off", () => {
-    const svg = draw(probe(), [], allBadges(true), undefined, true, { rotate: false, animateWater: true, directory: "/biomes" });
+    const svg = draw(probe(), [], allBadges(true), undefined, true, { ...DEFAULT_TEXTURE_STYLE, rotate: false });
     const pattern = svg.match(/<pattern id="biome-texture-mountain-0-\d+"[^>]*>/)?.[0];
 
     expect(pattern).toBeDefined();
@@ -354,8 +358,43 @@ describe("what the map hands a theme", () => {
     );
   });
 
+  it("slides mirrored water over two widths, its middle copy reflected", () => {
+    const svg = draw(probe(), [], allBadges(true), undefined, true, {
+      ...DEFAULT_TEXTURE_STYLE,
+      tiles: false
+    });
+    const pattern = svg.match(/<pattern id="biome-texture-ocean-[^"]+-c-m"[^>]*>.*?<\/pattern>/)?.[0];
+
+    expect(pattern).toBeDefined();
+    const images = [...(pattern ?? "").matchAll(/<image[^>]*>/g)].map((match) => match[0]);
+    expect(images).toHaveLength(3);
+    expect(images[0]).toContain('x="-2"');
+    expect(images[1]).toContain('transform="scale(-1 1)"');
+    expect(images[1]).toContain('x="0"');
+    expect(images[2]).toContain('x="0"');
+    expect(images[2]).not.toContain("transform");
+    // Standard's speed: one width per 18 s, so the two-width loop takes 36 s.
+    expect(pattern).toContain(
+      '<animateTransform attributeName="transform" type="translate" from="0 0" to="2 0" dur="36s" repeatCount="indefinite">'
+    );
+  });
+
+  it("turns a picture that does not tile inside a frame that covers the hex", () => {
+    const svg = draw(probe(), [], allBadges(true), undefined, true, {
+      ...DEFAULT_TEXTURE_STYLE,
+      rotationStep: 60,
+      tiles: false
+    });
+    const rotation = terrainTextureRotation("1:7,51", 60);
+    const pattern = svg.match(/<pattern id="biome-texture-mountain-[^"]+-c"[^>]*>.*?<\/pattern>/)?.[0];
+
+    expect(pattern).toBeDefined();
+    expect(pattern).not.toContain("patternTransform");
+    expect(pattern).toContain(`<g transform="${textureCoverTransform(rotation)}"><image`);
+  });
+
   it("leaves water textures still when their animation is off", () => {
-    const svg = draw(probe(), [], allBadges(true), undefined, true, { rotate: true, animateWater: false, directory: "/biomes" });
+    const svg = draw(probe(), [], allBadges(true), undefined, true, { ...DEFAULT_TEXTURE_STYLE, animateWater: false });
 
     expect(svg).not.toContain("<animateTransform");
   });

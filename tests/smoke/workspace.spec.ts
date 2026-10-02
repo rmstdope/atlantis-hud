@@ -3807,6 +3807,42 @@ test("terrain is drawn as itself rather than as a picture of itself", async ({ p
   await page.keyboard.press("Escape");
 });
 
+test("the Painted set replaces Standard once its pictures load, and a lost picture stays flat", async ({
+  page
+}) => {
+  // One painted picture never arrives (ah-d9jb.3): that biome keeps its flat colour, the rest paint.
+  await page.route("**/biomes/painted/mountain_512.png", (route) => route.abort());
+  await loadReport(page);
+
+  const mountain = page.locator("polygon.ct-terrain-mountain").first();
+  const ocean = page.locator("polygon.ct-terrain-ocean").first();
+  const fillOf = (polygon: typeof mountain) =>
+    polygon.evaluate((node) => getComputedStyle(node).fill);
+  const pictureOf = (polygon: typeof ocean) =>
+    polygon.evaluate((node) => {
+      const id = /url\("?#([^")]+)"?\)/.exec(getComputedStyle(node).fill)?.[1];
+      return id ? document.getElementById(id)?.querySelector("image")?.getAttribute("href") : null;
+    });
+  await expect.poll(() => pictureOf(ocean)).toBe("/biomes/ocean_512.png");
+
+  await page.getByTestId("settings-indicator").click();
+  const textureSet = page.getByTestId("settings-texture-set");
+  await textureSet.selectOption({ label: "Painted" });
+  // The picker shows the choice at once, whatever the map is still doing.
+  await expect(textureSet).toHaveValue("painted");
+  await page.keyboard.press("Escape");
+
+  await expect.poll(() => pictureOf(ocean)).toBe("/biomes/painted/ocean_512.png");
+  expect(await fillOf(mountain)).not.toContain("url(");
+
+  // A saved choice paints straight away on the next start, and the picker still shows it.
+  await page.reload();
+  await expect.poll(() => pictureOf(ocean)).toBe("/biomes/painted/ocean_512.png");
+  await page.getByTestId("settings-indicator").click();
+  await expect(page.getByTestId("settings-texture-set")).toHaveValue("painted");
+  await page.keyboard.press("Escape");
+});
+
 test("coordinate rulers stay pinned to the edges of the view", async ({ page }) => {
   await loadReport(page);
 

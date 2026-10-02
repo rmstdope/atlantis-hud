@@ -14,6 +14,7 @@ import {
   terrainTextureBrightness,
   terrainTexturePatternId,
   terrainTextureRotation,
+  textureCoverTransform,
   terrainTextureUrl,
   terrainFillClass,
   type Point
@@ -130,6 +131,93 @@ describe("terrain texture", () => {
     expect(neighbour).toBeGreaterThanOrEqual(0);
     expect(neighbour).toBeLessThan(360);
     expect(neighbour).not.toBe(first);
+  });
+
+  it("keeps any-angle rotation for a step of one", () => {
+    expect(terrainTextureRotation("1:7,53", 1)).toBe(terrainTextureRotation("1:7,53"));
+  });
+
+  it("turns by whole sixths when the set says so, stable per hex", () => {
+    const regions = Array.from({ length: 60 }, (_, index) => `1:${index},${index * 3}`);
+    const angles = regions.map((regionId) => terrainTextureRotation(regionId, 60));
+
+    expect(new Set(angles)).toEqual(new Set([0, 60, 120, 180, 240, 300]));
+    expect(terrainTextureRotation("1:7,53", 60)).toBe(terrainTextureRotation("1:7,53", 60));
+  });
+
+  describe("a picture that does not tile, turned over its hex", () => {
+    type Matrix = [number, number, number, number, number, number];
+    const multiply = (m: Matrix, n: Matrix): Matrix => [
+      m[0] * n[0] + m[2] * n[1],
+      m[1] * n[0] + m[3] * n[1],
+      m[0] * n[2] + m[2] * n[3],
+      m[1] * n[2] + m[3] * n[3],
+      m[0] * n[4] + m[2] * n[5] + m[4],
+      m[1] * n[4] + m[3] * n[5] + m[5]
+    ];
+    // The SVG transform list as one matrix: picture coordinates in, bounding-box coordinates out.
+    const parse = (list: string): Matrix =>
+      [...list.matchAll(/(\w+)\(([^)]*)\)/g)].reduce<Matrix>(
+        (matrix, [, name, args]) => {
+          const [a, b = a] = args.trim().split(/[\s,]+/).map(Number);
+          const radians = (a * Math.PI) / 180;
+          const step: Matrix =
+            name === "translate"
+              ? [1, 0, 0, 1, a, name === "translate" ? b : 0]
+              : name === "scale"
+                ? [a, 0, 0, b, 0, 0]
+                : [Math.cos(radians), Math.sin(radians), -Math.sin(radians), Math.cos(radians), 0, 0];
+          return multiply(matrix, step);
+        },
+        [1, 0, 0, 1, 0, 0]
+      );
+    const invert = ([a, b, c, d, e, f]: Matrix) => (u: number, v: number) => {
+      const det = a * d - b * c;
+      const x = u - e;
+      const y = v - f;
+      return [(d * x - c * y) / det, (a * y - b * x) / det];
+    };
+    // A flat-topped hex's corners, in its bounding box.
+    const corners = [
+      [0, 0.5],
+      [0.25, 0],
+      [0.75, 0],
+      [1, 0.5],
+      [0.75, 1],
+      [0.25, 1]
+    ];
+
+    it("keeps every corner of the hex on the picture at every sixth of a turn", () => {
+      for (const rotation of [0, 60, 120, 180, 240, 300]) {
+        const toPicture = invert(parse(textureCoverTransform(rotation)));
+        for (const [u, v] of corners) {
+          const [x, y] = toPicture(u, v);
+          expect(x, `${rotation}deg (${u},${v})`).toBeGreaterThanOrEqual(-1e-9);
+          expect(x, `${rotation}deg (${u},${v})`).toBeLessThanOrEqual(1 + 1e-9);
+          expect(y, `${rotation}deg (${u},${v})`).toBeGreaterThanOrEqual(-1e-9);
+          expect(y, `${rotation}deg (${u},${v})`).toBeLessThanOrEqual(1 + 1e-9);
+        }
+      }
+    });
+
+    it("turns the picture by a true angle on screen, not one sheared by the hex's proportions", () => {
+      // On screen a bounding-box unit across is the hex's width, and one down is sqrt(3)/2 of it.
+      const [a, b, c, d] = parse(textureCoverTransform(60));
+      const screen = [a, (b * Math.sqrt(3)) / 2, c, (d * Math.sqrt(3)) / 2];
+      expect(screen[0]).toBeCloseTo(Math.cos(Math.PI / 3), 3);
+      expect(screen[1]).toBeCloseTo(Math.sin(Math.PI / 3), 3);
+      expect(screen[2]).toBeCloseTo(-Math.sin(Math.PI / 3), 3);
+      expect(screen[3]).toBeCloseTo(Math.cos(Math.PI / 3), 3);
+    });
+
+    it("stretches the picture once over the hex, centred, when it is upright", () => {
+      const toPicture = invert(parse(textureCoverTransform(0)));
+      const [x, y] = toPicture(0.5, 0.5);
+      expect(x).toBeCloseTo(0.5, 6);
+      expect(y).toBeCloseTo(0.5, 6);
+      expect(toPicture(0, 0.5)[0]).toBeCloseTo(0, 6);
+      expect(toPicture(1, 0.5)[0]).toBeCloseTo(1, 6);
+    });
   });
 
   it("keeps texture brightness within a subtle stable range", () => {

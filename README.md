@@ -151,8 +151,9 @@ fail with "No such file or directory".
 
 Biome textures are committed under `config/public/biomes/`: the Standard texture set at its top
 level, with its colours in `scripts/biomeRamps.ts`, and the Shapes set in `shapes/`, drawn by
-`scripts/biomeShapes.ts`. Regenerate both after changing the generator, the ramps or the shapes
-with:
+`scripts/biomeShapes.ts`. The Painted set's pictures are in `painted/`; the build does not generate
+them, and `docs/biomes/painted/PROVENANCE.md` records how each was made and its licence. Regenerate
+Standard and Shapes after changing the generator, the ramps or the shapes with:
 
 ```bash
 pnpm run generate:biomes

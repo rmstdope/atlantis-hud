@@ -26,7 +26,7 @@ import {
   terrainTextureRotation,
   terrainTextureUrl
 } from "../mapHexView";
-import { terrainKindOf, type TerrainPaint, type WaterTerrains } from "./terrain";
+import { terrainKindOf, type TerrainKind, type TerrainPaint, type WaterTerrains } from "./terrain";
 
 /**
  * The monster faction, whose units are wandering hazards rather than somebody's army.
@@ -130,6 +130,16 @@ export type HexView = {
     rotation: number;
     brightness: number;
     moves: boolean;
+    /**
+     * Moving water whose picture does not tile: drawn beside its own reflection so the edges meet
+     * (the Painted set, ah-d9jb.3). Only ever true when `moves` is.
+     */
+    mirrored: boolean;
+    /**
+     * A picture that does not tile: draw it inside `textureCoverTransform(rotation)` rather than
+     * turning the pattern, so it covers the hex at every angle (ah-d9jb.3).
+     */
+    covers: boolean;
   } | null;
   /**
    * How far this hex has faded, already scaled by the theme's `fogDamping`: paint it as it
@@ -246,13 +256,22 @@ export type TextureStyle = {
   animateWater: boolean;
   /** Where the chosen texture set's pictures are served from (`textureSets.ts`). */
   directory: string;
+  /** The set's `rotationStep`: turn only in whole multiples of this many degrees. */
+  rotationStep: number;
+  /** The set's `tiles`: false draws each picture covering its hex, and mirrors moving water. */
+  tiles: boolean;
+  /** Biomes whose picture failed to load: drawn in their flat colour, without a word (ah-d9jb.3). */
+  missing: readonly TerrainKind[];
 };
 
 /** What a caller that says nothing gets: the varied, moving map. */
 export const DEFAULT_TEXTURE_STYLE: TextureStyle = {
   rotate: true,
   animateWater: true,
-  directory: "/biomes"
+  directory: "/biomes",
+  rotationStep: 1,
+  tiles: true,
+  missing: []
 };
 
 export type HexViewOptions = {
@@ -421,22 +440,30 @@ function textureOf(
   rotation: number;
   brightness: number;
   moves: boolean;
+  mirrored: boolean;
+  covers: boolean;
 } | null {
-  if (kind === "other") {
+  if (kind === "other" || style.missing.includes(kind)) {
     return null;
   }
   const url = terrainTextureUrl(kind, undefined, style.directory);
   const basePatternId = terrainTexturePatternId(kind);
-  const rotation = style.rotate ? terrainTextureRotation(regionId) : 0;
+  const rotation = style.rotate ? terrainTextureRotation(regionId, style.rotationStep) : 0;
   const brightness = terrainTextureBrightness(regionId);
   const tone = Math.round(brightness * 100);
+  const moves = style.animateWater && kind === "ocean";
+  const covers = !style.tiles;
+  const mirrored = moves && covers;
   return url && basePatternId
     ? {
         url,
-        patternId: `${basePatternId}-${rotation}-${tone}`,
+        // A covering picture, and mirrored water, draw differently, so never share a pattern.
+        patternId: `${basePatternId}-${rotation}-${tone}${covers ? "-c" : ""}${mirrored ? "-m" : ""}`,
         rotation,
         brightness,
-        moves: style.animateWater && kind === "ocean"
+        moves,
+        mirrored,
+        covers
       }
     : null;
 }

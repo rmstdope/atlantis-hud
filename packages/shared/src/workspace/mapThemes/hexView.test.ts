@@ -87,7 +87,9 @@ describe("what a hex shows, prepared for whichever theme draws it", () => {
       )}`,
       rotation: terrainTextureRotation("1:7,53"),
       brightness: terrainTextureBrightness("1:7,53"),
-      moves: false
+      moves: false,
+      mirrored: false,
+      covers: false
     });
     expect(viewOf(hex({ knowledge: "current" }), { showTextures: false }).texture).toBeNull();
   });
@@ -100,8 +102,63 @@ describe("what a hex shows, prepared for whichever theme draws it", () => {
     expect(texture?.url).toBe("/biomes/painted/mountain_512.png");
   });
 
+  it("turns a set's pictures only by its own step", () => {
+    const texture = viewOf(hex({ knowledge: "current" }), {
+      textureStyle: { ...DEFAULT_TEXTURE_STYLE, rotationStep: 60 }
+    }).texture;
+
+    expect(texture?.rotation).toBe(terrainTextureRotation("1:7,53", 60));
+    expect(texture?.patternId).toContain(`-${terrainTextureRotation("1:7,53", 60)}-`);
+  });
+
+  it("leaves a biome flat when its picture did not load", () => {
+    const style = { ...DEFAULT_TEXTURE_STYLE, missing: ["mountain"] as const };
+
+    expect(viewOf(hex({ knowledge: "current" }), { textureStyle: style }).texture).toBeNull();
+    expect(
+      viewOf(hex({ knowledge: "current", terrain: "ocean" }), { textureStyle: style }).texture
+    ).not.toBeNull();
+  });
+
+  it("marks a set whose pictures do not tile as covering its hex", () => {
+    const style = { ...DEFAULT_TEXTURE_STYLE, tiles: false };
+
+    expect(viewOf(hex({ knowledge: "current" }), { textureStyle: style }).texture?.covers).toBe(true);
+    expect(viewOf(hex({ knowledge: "current" })).texture?.covers).toBe(false);
+  });
+
+  it("marks a mirroring set's moving water as mirrored, and only that", () => {
+    const mirroring = { ...DEFAULT_TEXTURE_STYLE, tiles: false };
+    const ocean = hex({ knowledge: "current", terrain: "ocean" });
+
+    expect(viewOf(ocean, { textureStyle: mirroring }).texture).toMatchObject({
+      moves: true,
+      mirrored: true
+    });
+    expect(viewOf(ocean).texture?.mirrored).toBe(false);
+    expect(
+      viewOf(ocean, { textureStyle: { ...mirroring, animateWater: false } }).texture?.mirrored
+    ).toBe(false);
+    expect(viewOf(hex({ knowledge: "current" }), { textureStyle: mirroring }).texture?.mirrored).toBe(
+      false
+    );
+  });
+
+  it("gives covering pictures and mirrored water patterns of their own", () => {
+    const style = { ...DEFAULT_TEXTURE_STYLE, tiles: false };
+    const ocean = hex({ knowledge: "current", terrain: "ocean" });
+    const mountain = hex({ knowledge: "current" });
+
+    expect(viewOf(ocean, { textureStyle: style }).texture?.patternId).toBe(
+      `${viewOf(ocean).texture?.patternId}-c-m`
+    );
+    expect(viewOf(mountain, { textureStyle: style }).texture?.patternId).toBe(
+      `${viewOf(mountain).texture?.patternId}-c`
+    );
+  });
+
   it("leaves texture orientation alone when rotation is off", () => {
-    const texture = viewOf(hex({ knowledge: "current" }), { textureStyle: { rotate: false, animateWater: true, directory: "/biomes" } }).texture;
+    const texture = viewOf(hex({ knowledge: "current" }), { textureStyle: { ...DEFAULT_TEXTURE_STYLE, rotate: false } }).texture;
 
     expect(texture?.rotation).toBe(0);
   });
@@ -124,7 +181,7 @@ describe("what a hex shows, prepared for whichever theme draws it", () => {
 
   it("leaves water textures still when animation is off", () => {
     const texture = viewOf(hex({ knowledge: "current", terrain: "ocean" }), {
-      textureStyle: { rotate: true, animateWater: false, directory: "/biomes" }
+      textureStyle: { ...DEFAULT_TEXTURE_STYLE, animateWater: false }
     }).texture;
 
     expect(texture?.moves).toBe(false);

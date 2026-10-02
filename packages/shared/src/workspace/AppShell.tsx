@@ -255,9 +255,9 @@ import { loadSavedView, saveMapView } from "./mapViewportStorage";
 import { unitForHex } from "./hexUnitMemory";
 import type { MapViewState } from "./mapViewState";
 import { getMapTheme, type TextureStyle } from "./mapThemes";
-import { textureSetDirectory } from "./textureSets";
+import { textureSetOf } from "./textureSets";
+import { useShownTextureSet } from "./textureSetPreload";
 import { waterTerrainsOf } from "./mapThemes/terrain";
-import { useShallow } from "zustand/react/shallow";
 import { OrdersPanel } from "./OrdersPanel";
 import type { OrdersEditorHandle } from "./OrdersEditor";
 import { CommandPalette } from "./CommandPalette";
@@ -1024,17 +1024,23 @@ export function AppShell({
   const badges = useWorkspaceStore((state) => state.badges);
   const biomeSymbols = useWorkspaceStore((state) => state.biomeSymbols);
   const showTextures = useSettingsStore((state) => state.biomeTextures);
-  // Shallow, so the style keeps its identity across renders and the map's views are not rebuilt
+  // The set the map shows lags the chosen one until all its pictures have loaded (ah-d9jb.3).
+  const shownTextureSet = useShownTextureSet(useSettingsStore((state) => state.textureSet));
+  const rotateTextures = useSettingsStore((state) => state.biomeTextureRotation);
+  const animateWater = useSettingsStore((state) => state.animateWaterTextures);
+  // Memoised, so the style keeps its identity across renders and the map's views are not rebuilt
   // every time AppShell renders.
-  const textureStyle = useSettingsStore(
-    useShallow(
-      (state): TextureStyle => ({
-        rotate: state.biomeTextureRotation,
-        animateWater: state.animateWaterTextures,
-        directory: textureSetDirectory(state.textureSet)
-      })
-    )
-  );
+  const textureStyle = useMemo((): TextureStyle => {
+    const set = textureSetOf(shownTextureSet.id);
+    return {
+      rotate: rotateTextures,
+      animateWater,
+      directory: set.directory,
+      rotationStep: set.rotationStep,
+      tiles: set.tiles,
+      missing: shownTextureSet.missing
+    };
+  }, [shownTextureSet, rotateTextures, animateWater]);
   const mapThemeId = useSettingsStore((state) => state.mapTheme);
   const advisoryChecks = useSettingsStore((state) => state.advisoryChecks);
   const movementPlanner = useSettingsStore((state) => state.movementPlanner);

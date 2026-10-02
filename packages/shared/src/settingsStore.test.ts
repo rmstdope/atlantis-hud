@@ -934,8 +934,13 @@ describe("the texture set", () => {
   });
 
   it("refuses a set this build does not have, keeping Standard", () => {
-    store().setTextureSet("painted");
+    store().setTextureSet("no-such-set");
     expect(store().textureSet).toBe("standard");
+  });
+
+  it("keeps Painted once chosen (ah-d9jb.3)", () => {
+    store().setTextureSet("painted");
+    expect(store().textureSet).toBe("painted");
   });
 
   it("writes the choice to storage, which is what survives a restart", async () => {

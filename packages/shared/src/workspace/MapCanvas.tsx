@@ -60,7 +60,8 @@ import { guardSelection } from "./selectionGuard";
 import {
   fogPatternTile,
   hexPointsAttribute,
-  routeSegments
+  routeSegments,
+  textureCoverTransform
 } from "./mapHexView";
 import { wallTip } from "./routeWall";
 import { radii } from "./mapThemes/geometry";
@@ -1376,12 +1377,55 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                   width="1"
                   height="1"
                   patternTransform={
-                    texture.rotation === 0
+                    texture.covers || texture.rotation === 0
                       ? undefined
                       : `rotate(${texture.rotation} 0.5 0.5)`
                   }
                 >
-                  {texture.moves ? (
+                  {texture.covers ? (
+                    // A picture that does not tile (Painted, ah-d9jb.3) is turned inside a square
+                    // that covers the whole hex, never by turning the pattern tile itself.
+                    <g transform={textureCoverTransform(texture.rotation)}>
+                      {texture.mirrored ? (
+                        // A picture that does not tile (Painted, ah-d9jb.3) wraps into its own
+                        // reflection: upright, mirrored, upright, so every seam meets itself. The loop
+                        // is two widths long, so the slide runs twice as long to keep Standard's speed.
+                        <g>
+                          {[-2, -1, 0].map((x) => (
+                            <image
+                              key={x}
+                              href={texture.url}
+                              x={x === -1 ? 0 : x}
+                              y="0"
+                              width="1"
+                              height="1"
+                              transform={x === -1 ? "scale(-1 1)" : undefined}
+                              preserveAspectRatio="xMidYMid slice"
+                              style={{ filter: `brightness(${texture.brightness})` }}
+                            />
+                          ))}
+                          <animateTransform
+                            attributeName="transform"
+                            type="translate"
+                            from="0 0"
+                            to="2 0"
+                            dur="36s"
+                            repeatCount="indefinite"
+                          />
+                        </g>
+                      ) : (
+                        <image
+                          href={texture.url}
+                          x="0"
+                          y="0"
+                          width="1"
+                          height="1"
+                          preserveAspectRatio="none"
+                          style={{ filter: `brightness(${texture.brightness})` }}
+                        />
+                      )}
+                    </g>
+                  ) : texture.moves ? (
                     <g>
                       {[-1, 0, 1].map((x) => (
                         <image
