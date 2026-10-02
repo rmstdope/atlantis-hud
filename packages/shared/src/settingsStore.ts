@@ -13,6 +13,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { ADVISORY_CHECK_CODES, type AdvisoryCheckCode } from "@atlantis/core-client";
 import { normalizeSnippets, type OrderSnippet } from "./orderSnippets";
 import { DEFAULT_MAP_THEME_ID, isMapThemeId } from "./workspace/mapThemes";
+import { DEFAULT_TEXTURE_SET_ID, knownTextureSet } from "./workspace/textureSets";
 import {
   booleanSettingDefaults,
   pickBooleanSettings,
@@ -95,6 +96,11 @@ export type SettingsState = BooleanSettings & {
    */
   mapTheme: string;
   /**
+   * Which pictures the map paints each biome with, by `TEXTURE_SETS` id (ah-d9jb.1). Global for
+   * the same reason as the map theme; a plain string because the sets are the registry's business.
+   */
+  textureSet: string;
+  /**
    * How see-through the panes floating over the map are, in percent.
    *
    * 0 is opaque and 95 is the most transparent the slider offers - never 100, because a pane that
@@ -122,6 +128,7 @@ export type SettingsState = BooleanSettings & {
   /** Applies instantly: the settings dialog has no OK button to wait for. */
   setTheme: (theme: ThemeName) => void;
   setMapTheme: (id: string) => void;
+  setTextureSet: (id: string) => void;
   setPaneTransparency: (percent: number) => void;
   setInterfaceSize: (percent: number) => void;
   setAdvisoryCheck: (code: AdvisoryCheckCode, enabled: boolean) => void;
@@ -134,7 +141,7 @@ export type SettingsState = BooleanSettings & {
 
 type Persisted = Pick<
   SettingsState,
-  "theme" | "mapTheme" | "paneTransparency" | "interfaceSize" | "advisoryChecks" | "snippets"
+  "theme" | "mapTheme" | "textureSet" | "paneTransparency" | "interfaceSize" | "advisoryChecks" | "snippets"
 > &
   BooleanSettings;
 
@@ -286,6 +293,7 @@ const STORAGE = createJSONStorage<Persisted>(() => {
 const DEFAULTS: Persisted = {
   theme: "dark",
   mapTheme: DEFAULT_MAP_THEME_ID,
+  textureSet: DEFAULT_TEXTURE_SET_ID,
   ...booleanSettingDefaults(),
   paneTransparency: { ...DEFAULT_PANE_TRANSPARENCY },
   interfaceSize: DEFAULT_INTERFACE_SIZE,
@@ -309,6 +317,10 @@ export const useSettingsStore = create<SettingsState>()(
 
       setMapTheme: (id) => {
         set({ mapTheme: knownMapTheme(id) });
+      },
+
+      setTextureSet: (id) => {
+        set({ textureSet: knownTextureSet(id) });
       },
 
       setPaneTransparency: (percent) => {
@@ -357,6 +369,7 @@ export const useSettingsStore = create<SettingsState>()(
       partialize: (state) => ({
         theme: state.theme,
         mapTheme: state.mapTheme,
+        textureSet: state.textureSet,
         ...pickBooleanSettings(state),
         paneTransparency: state.paneTransparency,
         interfaceSize: state.interfaceSize,
@@ -388,6 +401,11 @@ export function applyPersistedSettings() {
   // with nothing to draw with.
   useSettingsStore.setState({
     mapTheme: knownMapTheme(useSettingsStore.getState().mapTheme)
+  });
+  // And for the texture set: a set this build does not have (removed, or hand-edited) falls
+  // back to Standard silently, and an older blob without the key lands there too.
+  useSettingsStore.setState({
+    textureSet: knownTextureSet(useSettingsStore.getState().textureSet)
   });
   // Same reconciliation for the snippets: rehydration bypasses the setters, storage is
   // hand-editable, and an older blob has no snippets key at all.

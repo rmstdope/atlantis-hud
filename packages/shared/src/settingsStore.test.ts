@@ -11,6 +11,7 @@ import {
 import type { AdvisoryChecks, ThemeName } from "./settingsStore";
 import { DEFAULT_MAP_THEME_ID, MAP_THEMES } from "./workspace/mapThemes";
 import { BOOLEAN_SETTING_KEYS } from "./booleanSettings";
+import { DEFAULT_TEXTURE_SET_ID } from "./workspace/textureSets";
 
 const store = () => useSettingsStore.getState();
 
@@ -900,5 +901,75 @@ describe("disabledAdvisoryCodes", () => {
     expect(off).toContain("hex-unguarded");
     expect(off).toContain("transport-out-of-reach");
     expect(off).toHaveLength(2);
+  });
+});
+
+/**
+ * Which pictures the map paints each biome with (ah-d9jb.1). Global, like the map theme: it says
+ * how this player likes to read a map.
+ */
+describe("the texture set", () => {
+  beforeEach(() => {
+    removeDocumentStub();
+    resetSettingsStore();
+  });
+  afterEach(removeDocumentStub);
+
+  async function rehydrateWith(edit: (state: Record<string, unknown>) => void) {
+    const storage = useSettingsStore.persist.getOptions().storage;
+    store().setTextureSet(DEFAULT_TEXTURE_SET_ID);
+    const persisted = await storage?.getItem("atlantis-hud-settings");
+    if (!storage || !persisted) {
+      throw new Error("settings storage was not available");
+    }
+    const blob = JSON.parse(JSON.stringify(persisted)) as typeof persisted;
+    edit(blob.state as unknown as Record<string, unknown>);
+    await storage.setItem("atlantis-hud-settings", blob);
+    await useSettingsStore.persist.rehydrate();
+  }
+
+  it("opens on Standard", () => {
+    expect(store().textureSet).toBe(DEFAULT_TEXTURE_SET_ID);
+    expect(DEFAULT_TEXTURE_SET_ID).toBe("standard");
+  });
+
+  it("refuses a set this build does not have, keeping Standard", () => {
+    store().setTextureSet("painted");
+    expect(store().textureSet).toBe("standard");
+  });
+
+  it("writes the choice to storage, which is what survives a restart", async () => {
+    store().setTextureSet("standard");
+    const persisted = await useSettingsStore.persist
+      .getOptions()
+      .storage?.getItem("atlantis-hud-settings");
+    expect((persisted?.state as unknown as Record<string, unknown>).textureSet).toBe("standard");
+  });
+
+  it("falls back to Standard when the stored set no longer exists", async () => {
+    await rehydrateWith((state) => {
+      state.textureSet = "removed-set";
+    });
+    expect(store().textureSet).toBe("removed-set");
+
+    applyPersistedSettings();
+
+    expect(store().textureSet).toBe("standard");
+  });
+
+  /**
+   * The update path every existing player takes: their blob predates the key. They land on
+   * Standard, and one who had textures off keeps them off - `biomeTextures` is not touched.
+   */
+  it("lands an older blob on Standard and keeps textures off for a player who had them off", async () => {
+    await rehydrateWith((state) => {
+      delete state.textureSet;
+      state.biomeTextures = false;
+    });
+
+    applyPersistedSettings();
+
+    expect(store().textureSet).toBe("standard");
+    expect(store().biomeTextures).toBe(false);
   });
 });
