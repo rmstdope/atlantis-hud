@@ -189,6 +189,39 @@ describe("the biome texture rotation setting", () => {
   });
 });
 
+describe("the texture set picker (ah-d9jb.1)", () => {
+  afterEach(() => {
+    restoreStoresForTest();
+    resetSettingsStore();
+  });
+
+  it("opens the group under Biome textures, above Rotate and Animate, with Standard chosen", () => {
+    const html = renderWithStoreState(<GlobalSettings />, useSettingsStore, { biomeTextures: true });
+
+    expect(html).toContain("Texture set");
+    expect(html).toContain("Which pictures the map uses for each biome.");
+    const picker = tag(html, "settings-texture-set");
+    expect(picker).toContain('aria-label="Texture set"');
+    expect(picker).not.toContain("disabled");
+    const options = html.match(/data-testid="settings-texture-set"[^>]*>(.*?)<\/select>/)?.[1] ?? "";
+    expect(options).toBe('<option value="standard" selected="">Standard</option>');
+
+    const at = (needle: string) => html.indexOf(needle);
+    expect(at('data-testid="settings-biome-textures"')).toBeLessThan(at('data-testid="settings-texture-set"'));
+    expect(at("ml-4 space-y-2 border-l-2")).toBeLessThan(at('data-testid="settings-texture-set"'));
+    expect(at('data-testid="settings-texture-set"')).toBeLessThan(
+      at('data-testid="settings-biome-texture-rotation"')
+    );
+  });
+
+  it("dims and disables with textures off, keeping its value for when they come back", () => {
+    const html = renderWithStoreState(<GlobalSettings />, useSettingsStore, { biomeTextures: false });
+
+    expect(tag(html, "settings-texture-set")).toContain("disabled");
+    expect(html).toContain('<option value="standard" selected="">Standard</option>');
+  });
+});
+
 describe("the Interface size setting", () => {
   afterEach(() => {
     restoreStoresForTest();
