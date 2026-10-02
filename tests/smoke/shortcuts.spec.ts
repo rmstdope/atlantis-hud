@@ -852,3 +852,23 @@ test("Escape and a click outside close every key dialog, which all dim alike", a
     await expect(dialog, `a click outside closes ${each.name}`).toHaveCount(0);
   }
 });
+
+test("a key dialog opened from the palette replaces the one already open", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F2");
+  await expect(page.getByTestId("game-data-dialog")).toBeVisible();
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("magic study tree");
+  await expect(page.getByTestId("palette-item").first()).toContainText("Magic study tree");
+  await page.keyboard.press("Enter");
+
+  await expect(page.getByTestId("magic-tree-dialog")).toBeVisible();
+  await expect(page.getByTestId("game-data-dialog")).toHaveCount(0);
+  await expect(page.locator('[aria-modal="true"]')).toHaveCount(1);
+
+  // And its own key, the dialog the player can see, is the one that closes it.
+  await page.keyboard.press("F3");
+  await expect(page.getByTestId("magic-tree-dialog")).toHaveCount(0);
+});

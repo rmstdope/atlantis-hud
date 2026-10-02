@@ -1543,6 +1543,23 @@ export function AppShell({
           ? "studyPlanner"
           : null;
 
+  // Opens one key dialog and closes the other three, for the doors that are not its key - the
+  // palette, and a cross-reference picked in it - so the family never stacks whichever way in.
+  const showOnlyKeyDialog = useCallback(
+    (
+      shown:
+        | { id: "help" | "studyPlanner" }
+        | { id: "gameData"; entryId: string | null }
+        | { id: "magicTree"; tag: string | null }
+    ) => {
+      setHelpOpen(shown.id === "help");
+      setGameDataOpen(shown.id === "gameData" ? { entryId: shown.entryId } : null);
+      setMagicTreeOpen(shown.id === "magicTree" ? { tag: shown.tag } : null);
+      setStudyPlannerOpen(shown.id === "studyPlanner");
+    },
+    []
+  );
+
   const dispatchShortcut = useCallback(
     (id: ReturnType<typeof matchShortcut> & string) => {
       // A key dialog's chord toggles its own dialog and does nothing over another of the family.
@@ -1711,7 +1728,7 @@ export function AppShell({
           // hunting "shortcuts" finds the same entry as somebody hunting "getting around".
           label: "Getting around (shortcuts and mouse)",
           binding: helpSpec ? (mac ? helpSpec.mac : helpSpec.other) : undefined,
-          run: () => setHelpOpen(true)
+          run: () => showOnlyKeyDialog({ id: "help" })
         },
         // Only once the ruleset has loaded: the palette already offers no game data at all in
         // that state, and a door onto seven empty tabs is worse than no door.
@@ -1723,7 +1740,7 @@ export function AppShell({
                 // of the ~270 dictionary entries it sits among.
                 label: "Browse game data",
                 binding: gameDataSpec ? (mac ? gameDataSpec.mac : gameDataSpec.other) : undefined,
-                run: () => setGameDataOpen({ entryId: null })
+                run: () => showOnlyKeyDialog({ id: "gameData", entryId: null })
               }
             ]
           : []),
@@ -1735,7 +1752,7 @@ export function AppShell({
                 id: "magic-study-tree",
                 label: "Magic study tree",
                 binding: magicTreeSpec ? (mac ? magicTreeSpec.mac : magicTreeSpec.other) : undefined,
-                run: () => setMagicTreeOpen({ tag: null })
+                run: () => showOnlyKeyDialog({ id: "magicTree", tag: null })
               }
             ]
           : []),
@@ -1750,7 +1767,7 @@ export function AppShell({
                     ? studyPlannerSpec.mac
                     : studyPlannerSpec.other
                   : undefined,
-                run: () => setStudyPlannerOpen(true)
+                run: () => showOnlyKeyDialog({ id: "studyPlanner" })
               }
             ]
           : []),
@@ -1793,7 +1810,7 @@ export function AppShell({
       orderCommands,
       insertOrder: (command) => ordersEditor.current?.insertOrder(command),
       gameData: gameData?.entries ?? [],
-      openGameData: (entryId) => setGameDataOpen({ entryId })
+      openGameData: (entryId) => showOnlyKeyDialog({ id: "gameData", entryId })
     });
   }, [
     offersProduction,
@@ -1810,7 +1827,8 @@ export function AppShell({
     game,
     selectedRegionId,
     magicTree,
-    openExport
+    openExport,
+    showOnlyKeyDialog
   ]);
 
   /**
