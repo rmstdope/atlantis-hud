@@ -57,7 +57,6 @@ export function ArmyExportDialog({
   useEscapeToDismiss(onDismiss);
 
   // ah-aak5: dragged by its top bar to uncover the map; the veil lifts once moved.
-
   const drag = useDialogDrag();
 
   const armyOf = (id: string): ArmyRecord | null =>

@@ -44,7 +44,6 @@ export function MapExportDialog({
   useEscapeToDismiss(onDismiss);
 
   // ah-aak5: dragged by its top bar to uncover the map; the veil lifts once moved.
-
   const drag = useDialogDrag();
 
   // Everything known on the level, when no area was picked. A level holding nothing visited leaves

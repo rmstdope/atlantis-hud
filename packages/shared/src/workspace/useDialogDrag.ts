@@ -118,6 +118,12 @@ export function useDialogDrag(): DialogDrag {
       return;
     }
     const reclamp = () => {
+      // Measured afresh: a bar that wraps (Magic tree's) grows taller as the window narrows, and
+      // the whole of it must stay reachable at the bottom edge.
+      const bar = dialog.querySelector("[data-dialog-bar]");
+      if (bar !== null) {
+        barBottom.current = bar.getBoundingClientRect().bottom - dialog.getBoundingClientRect().top;
+      }
       setPosition((current) => {
         if (current === null) {
           return current;
