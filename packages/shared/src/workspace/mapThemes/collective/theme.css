@@ -152,10 +152,31 @@
   opacity: 0.2;
 }
 
-/* A stale, hatched cell's lattice flickers - only for a viewer who has not asked for less motion. */
+/*
+ * What moves, and only while the map may animate (`map-animate`, the "Animate map theme" setting)
+ * and the viewer has not asked for less motion: a stale cell's lattice flickers, a monster pulses,
+ * the selection brackets turn and a scan line sweeps the screen.
+ */
 @media (prefers-reduced-motion: no-preference) {
-  .co-flicker {
+  .map-theme-collective.map-animate .co-flicker {
     animation: co-flicker 4.8s steps(1, end) infinite;
+  }
+  .map-theme-collective.map-animate .co-pulse {
+    animation: co-pulse 2.4s ease-in-out infinite;
+  }
+  .map-theme-collective.map-animate .co-spin {
+    animation: co-spin 6s linear infinite;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  .map-theme-collective.map-animate .co-scan {
+    animation: co-scan 6s linear infinite;
+    transform-box: fill-box;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .map-theme-collective .co-scan {
+    display: none;
   }
 }
 @keyframes co-flicker {
@@ -173,6 +194,42 @@
   95% {
     opacity: 0.12;
   }
+}
+@keyframes co-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes co-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes co-scan {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(720%);
+  }
+}
+
+/* The selection brackets and the scan line's light. */
+.co-select {
+  stroke: var(--co-white);
+  stroke-linecap: round;
+}
+.co-select-casing {
+  stroke: var(--co-void);
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+.co-scan-stop {
+  stop-color: var(--co-green);
 }
 
 /* Biome pictures are toned to the hive's dark green by this veil laid over them. */

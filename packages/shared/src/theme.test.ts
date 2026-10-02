@@ -491,6 +491,29 @@ describe("map theme stylesheets", () => {
       }));
   };
 
+  it("animates a theme only while the map may, and never for a viewer asking for less motion", async () => {
+    // The "Animate map theme" setting stamps `map-animate` on the map; a viewer asking for less
+    // motion gets still themes whatever it says. Every animation in a theme's sheet must answer to
+    // both, or one of the two promises is broken for that theme.
+    const { MAP_THEMES } = await import("./workspace/mapThemes");
+    const folderNameOf = (id: string) => id.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
+    const sheets = await themeSheets();
+    for (const theme of MAP_THEMES) {
+      const sheet = sheets.find((candidate) => candidate.theme === folderNameOf(theme.id));
+      const source = sheet?.source ?? "";
+      const animated = [...source.matchAll(/([^{}]+)\{[^{}]*\banimation:/g)].map((match) => match[1].trim());
+      for (const selector of animated) {
+        expect(selector, `${theme.id}: ${selector}`).toMatch(new RegExp(`^\\.map-theme-${theme.id}\\.map-animate\\b`));
+      }
+      const gated = [...source.matchAll(/@media \(prefers-reduced-motion: no-preference\)\s*\{([\s\S]*?)\n\}/g)]
+        .map((match) => match[1])
+        .join("\n");
+      expect(gated.match(/\banimation:/g)?.length ?? 0, `${theme.id}: an animation outside the motion check`).toBe(
+        animated.length
+      );
+    }
+  });
+
   it("declares every terrain kind, and the fallback, in every theme's stylesheet", async () => {
     const { TERRAIN_KINDS } = await import("./workspace/mapThemes/terrain");
     const prefixes: Record<string, readonly string[]> = {

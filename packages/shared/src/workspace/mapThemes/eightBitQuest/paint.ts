@@ -402,6 +402,22 @@ export const QUESTION: Bitmap = [
   "..L..",
 ];
 
+/** The pointing hand over the selected hex, as the old games pointed at what you had picked. */
+export const HAND: Bitmap = [
+  "KK......",
+  "KWK.....",
+  "KWWKK...",
+  "KWWWWKK.",
+  "KWWWWWWK",
+  "KWWWWWK.",
+  ".KWWWK..",
+  "..KKK...",
+];
+
+/** Where the hand hovers: above the hex's centre, pointing down-left at it. */
+export const HAND_AT = { x: 6, y: -22 };
+export const HAND_PX = 2;
+
 /** Pixel sizes, in mockup units: settlements are the chunkiest sprite, units and icons smaller. */
 export const SETTLEMENT_PX = 2;
 export const SPRITE_PX = 1.5;

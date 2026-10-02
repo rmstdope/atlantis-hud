@@ -339,3 +339,55 @@
   --color-map-region-name: var(--eb-white);
   --color-map-label-halo: var(--eb-black);
 }
+
+/*
+ * What moves, and only while the map may animate (`map-animate`, the "Animate map theme" setting)
+ * and the viewer has not asked for less motion: the figures hop on the spot, and the selection
+ * outline and its pointing hand blink - in whole steps, as the old hardware did.
+ */
+.eb-select {
+  stroke: var(--eb-white);
+  stroke-linejoin: miter;
+}
+.eb-select-casing {
+  stroke: var(--eb-black);
+  stroke-linejoin: miter;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .map-theme-eight-bit-quest.map-animate .eb-bob {
+    animation: eb-bob 1s steps(1, end) infinite;
+  }
+  .map-theme-eight-bit-quest.map-animate .eb-blink {
+    animation: eb-blink 1s steps(1, end) infinite;
+  }
+  .map-theme-eight-bit-quest.map-animate .eb-blink-soft {
+    animation: eb-blink-soft 1s steps(1, end) infinite;
+  }
+}
+@keyframes eb-blink-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+@keyframes eb-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+@keyframes eb-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}

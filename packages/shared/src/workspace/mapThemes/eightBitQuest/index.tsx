@@ -51,6 +51,9 @@ import {
   TILES,
   tileId,
   BOAT,
+  HAND,
+  HAND_AT,
+  HAND_PX,
   unitRow,
   type Bitmap,
 } from "./paint";
@@ -127,16 +130,25 @@ function Sprite({
   bitmap,
   px = SPRITE_PX,
   extra,
+  bob = false,
 }: {
   mark: string;
   at: { x: number; y: number };
   bitmap: Bitmap;
   px?: number;
   extra?: Record<string, string>;
+  /** Hops on the spot while the map may animate; its own group, so the hop never moves the placement. */
+  bob?: boolean;
 }) {
   return (
     <g className="eb-sprite" data-mark={mark} transform={at(anchor)} {...extra}>
-      <Pixels bitmap={bitmap} px={px} />
+      {bob ? (
+        <g className="eb-bob">
+          <Pixels bitmap={bitmap} px={px} />
+        </g>
+      ) : (
+        <Pixels bitmap={bitmap} px={px} />
+      )}
     </g>
   );
 }
@@ -323,6 +335,7 @@ function Marks({ view }: { view: HexView }) {
             at={unit.at}
             bitmap={unit.bitmap}
             extra={{ "data-units": unit.group }}
+            bob
           />
         ))}
       </g>
@@ -363,6 +376,28 @@ function MarkLayer({ views }: LayerProps) {
   );
 }
 
+/**
+ * The selected hex: a white outline on a black casing, blinking while the map may animate, and the
+ * pointing hand above it. Replaces the map's white ring; drawn in the mockup's coordinates and scaled
+ * once, like a hex.
+ */
+function SelectionMark() {
+  return (
+    <g data-selection="cursor" className="eb-layer">
+      {/* Dims rather than vanishing, so the selection is never gone; the hand is what blinks. */}
+      <g className="eb-blink-soft">
+        <polygon points={HEX_POINTS} className="eb-select-casing" fill="none" strokeWidth={6} vectorEffect="non-scaling-stroke" />
+        <polygon points={HEX_POINTS} className="eb-select" fill="none" strokeWidth={3} vectorEffect="non-scaling-stroke" />
+      </g>
+      <g transform={`scale(${SCALE})`}>
+        <g className="eb-blink" transform={at(HAND_AT)}>
+          <Pixels bitmap={HAND} px={HAND_PX} />
+        </g>
+      </g>
+    </g>
+  );
+}
+
 export const eightBitQuest: MapTheme = {
   id: "eight-bit-quest",
   label: "8-Bit Quest",
@@ -372,4 +407,5 @@ export const eightBitQuest: MapTheme = {
   RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer,
   markFootprint,
+  SelectionMark,
 };

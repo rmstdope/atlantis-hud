@@ -141,6 +141,8 @@ type MapTheme = {
   RoadLayer: ComponentType<LayerProps>;  // usually `roadLayer(style)`
   MarkLayer: ComponentType<LayerProps>;
   markFootprint: (view: HexView) => MarkSpot[];  // where MarkLayer draws, for the biome symbols
+  SelectionMark?: ComponentType;    // optional: replaces the map's selection ring
+  Overlay?: ComponentType;          // optional: one map-wide effect, drawn only while animating
 };
 
 type LayerProps = { views: HexView[] };
@@ -222,6 +224,27 @@ side-effect import at the top of the theme's `index.tsx` (`import "@fontsource/c
 so deleting the theme deletes the import. A browser only downloads a face it actually draws with, so
 a theme nobody has selected costs nothing; the web build precaches `woff2` for offline use. Always
 give a fallback stack, and keep using the `font-size` longhand (below).
+
+### Selection and animation
+
+A theme may bring its own **selection mark** (`SelectionMark`), drawn about the selected hex's
+centre in world units **in place of** the map's white ring, and inside the same group that replays
+the lock-on pulse on a fresh selection. Supplying one makes the theme responsible for the selection
+being unmistakable on every terrain it paints and at every zoom: give the mark a casing in the
+theme's darkest ink, and never let an animation take it away entirely (8-Bit Quest's outline dims
+to 40% while only its pointing hand blinks fully). The keyboard focus ring and the dossier's brass
+highlight stay the map's.
+
+A theme may also bring one **map-wide effect** (`Overlay`): drawn in screen space above the world
+and below the rulers, never taking a pointer, and only while the map may animate. Collective's scan
+line and Stained Glass's sliding glint are the two there are.
+
+Animation answers to two switches, and `theme.test.ts` holds every theme to both: the player's
+**Animate map theme** setting, which the map stamps on its root as `map-animate`, and the viewer's
+**reduced-motion** preference. So every `animation:` in a theme's sheet is written
+`.map-theme-<id>.map-animate .<class>` inside `@media (prefers-reduced-motion: no-preference)`, and a
+theme never reads the setting itself. Animate an inner group, never the element carrying the SVG
+`transform` that places a mark: a CSS `transform` replaces the attribute rather than adding to it.
 
 ### Zoom bands
 

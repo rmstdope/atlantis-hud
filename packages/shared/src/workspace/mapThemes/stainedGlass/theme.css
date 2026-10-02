@@ -354,3 +354,49 @@
   --map-blocked-label-ink: var(--sg-blocked-label);
   --map-blocked-label-halo: var(--sg-lead);
 }
+
+/*
+ * What moves, and only while the map may animate (`map-animate`, the "Animate map theme" setting)
+ * and the viewer has not asked for less motion: the selection halo breathes and a band of light
+ * slides across the window.
+ */
+.sg-halo {
+  stroke: var(--sg-gold);
+}
+.sg-halo-casing {
+  stroke: var(--sg-lead);
+}
+.sg-glint-stop {
+  stop-color: var(--sg-light);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .map-theme-stained-glass.map-animate .sg-breathe {
+    animation: sg-breathe 2.4s ease-in-out infinite;
+  }
+  .map-theme-stained-glass.map-animate .sg-glint {
+    animation: sg-glint 7s ease-in-out infinite;
+    transform-box: fill-box;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .map-theme-stained-glass .sg-glint {
+    display: none;
+  }
+}
+@keyframes sg-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes sg-glint {
+  from {
+    transform: translateX(-120%) skewX(-15deg);
+  }
+  to {
+    transform: translateX(260%) skewX(-15deg);
+  }
+}

@@ -39,6 +39,7 @@ import {
   MOCKUP_RADIUS,
   PALETTE,
   QUESTION,
+  HAND,
   settlementSprite,
   SHAFT,
   showsQuestion,
@@ -138,6 +139,7 @@ const SPRITES: Record<string, Bitmap> = {
   LAIR,
   GATE,
   QUESTION,
+  HAND,
 };
 
 const KINDS: TerrainPaint[] = [...TERRAIN_KINDS, "other"];
@@ -632,8 +634,27 @@ describe("the zoom bands", () => {
     expect(CSS).toMatch(/\.map-far \.eb-tile\s*\{\s*fill:\s*var\(--eb-flat\);/);
   });
 
-  it("animates nothing, so there is nothing to stop under reduced motion", () => {
-    expect(CSS).not.toMatch(/animation|@keyframes/);
+  it("animates only while the map may, and never for a viewer asking for less motion", () => {
+    const animated = [...CSS.matchAll(/([^{}]+)\{[^{}]*\banimation:/g)].map((match) => match[1].trim());
+    expect(animated.length).toBeGreaterThan(0);
+    for (const selector of animated) {
+      expect(selector).toMatch(/^\.map-theme-eight-bit-quest\.map-animate /);
+    }
+    const gated = /@media \(prefers-reduced-motion: no-preference\)\s*\{([\s\S]*?)\n\}/.exec(CSS)?.[1] ?? "";
+    expect(gated.match(/animation:/g)?.length).toBe(animated.length);
+  });
+
+  it("marks the selection with a pointing hand over an outline that dims but never vanishes", () => {
+    const Mark = eightBitQuest.SelectionMark!;
+    const svg = renderToStaticMarkup(
+      <svg>
+        <Mark />
+      </svg>
+    );
+    expect(svg).toContain('data-selection="cursor"');
+    expect(svg).toContain('class="eb-blink-soft"');
+    expect(svg).toContain('class="eb-select"');
+    expect(/eb-blink-soft[^{]*\{[^}]*\}[\s\S]*?@keyframes eb-blink-soft\s*\{[\s\S]*?opacity: 0\.4/.test(CSS)).toBe(true);
   });
 
   it("colours the map's own roads tan on black", () => {
