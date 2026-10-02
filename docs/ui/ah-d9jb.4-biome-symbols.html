@@ -1,0 +1,219 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Biome symbols on the map (agreed)</title>
+<style>
+:root{--bg:#15171b;--panel:#1f2329;--edge:#3a404a;--ink:#e8e6e1;--dim:#9aa0a8;--sel:#d9a441}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif;padding:16px}
+h1{font-size:19px;margin:0 0 4px} p.ex{max-width:880px;color:#cfd2d6;margin:4px 0 14px}
+.wrap{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.mapbox{position:relative;border:1px solid var(--edge);border-radius:8px;overflow:auto;max-width:100%;background:#0d0f12}
+.strip{position:absolute;top:8px;left:8px;display:flex;gap:6px;align-items:center;background:rgba(31,35,41,.95);border:1px solid var(--edge);border-radius:6px;padding:4px 8px}
+.chip{border:1px solid var(--edge);border-radius:4px;padding:1px 8px;color:var(--dim);background:none;font:inherit;font-size:13px;cursor:pointer}
+.chip.lit{border-color:var(--sel);background:rgba(217,164,65,.15);color:var(--ink)}
+.zb{width:26px;height:26px;border:1px solid var(--edge);border-radius:4px;background:var(--panel);color:var(--dim)}
+.menu{position:absolute;top:40px;left:8px;width:180px;background:var(--panel);border:1px solid var(--edge);border-radius:6px;padding:4px;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+.menu .hd{display:flex;justify-content:space-between;color:var(--dim);padding:0 4px 4px}
+.menu .hd button{border:1px solid var(--edge);border-radius:4px;background:none;color:#c8c8c8;font:inherit;font-size:12px;padding:0 6px;cursor:pointer}
+.menu label{display:flex;gap:6px;align-items:center;padding:1px 4px;border-radius:4px;cursor:pointer}
+.menu label:hover{background:#2a2f37}
+.menu hr{border:0;border-top:1px solid var(--edge);margin:4px 2px}
+.menu .sec{color:var(--dim);padding:2px 4px 0;font-size:12px}
+.menu input{accent-color:var(--sel)}
+.new{outline:1px dashed var(--sel);outline-offset:-1px}
+canvas{display:block}
+#near{margin-left:200px;margin-top:40px}
+.mapbox{min-height:600px}
+.zooms{display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;align-items:flex-start}
+.zooms figure{margin:0} figcaption{color:var(--dim);font-size:12px;margin-top:4px}
+.tex{margin:10px 0;display:flex;gap:6px;align-items:center;color:var(--dim);flex-wrap:wrap}
+.tex button{border:1px solid var(--edge);background:var(--panel);color:var(--ink);border-radius:4px;padding:2px 10px;font:inherit;cursor:pointer}
+.tex button.on{border-color:var(--sel)}
+.note{color:var(--dim);font-size:12px;max-width:880px}
+</style></head><body>
+<h1>Biome symbols on the map (agreed)</h1>
+<p class="ex">The agreed design. <b>Biome symbols</b> sits under its own <b>Terrain</b> heading at the bottom of the Badges menu and is <b>off</b> until a player turns it on; it is shown on here so the map can be seen with it. Symbols are scattered over each hex in plain ink and leave out any spot that would fall on a settlement, unit counter, monster, building or road. They show at close and middle zoom and are hidden when zoomed far out. All and None in the menu do not touch it, and having it off does not light the Badges button.</p>
+<div class="tex">Try it over: <button data-tex="today">Today's textures</button><button data-tex="flat">Textures off (flat colour)</button> <span>· the badge menu is open on the map and works</span></div>
+<div class="mapbox"><canvas id="near"></canvas>
+  <div class="strip"><button class="chip" id="chip">Badges ▾</button><button class="zb">+</button><button class="zb">−</button><button class="zb">⤢</button></div>
+  <div class="menu" id="menu"></div>
+</div>
+<div class="zooms">
+  <figure><canvas id="mid"></canvas><figcaption>Middle zoom (a hex about 40 px across)</figcaption></figure>
+  <figure><canvas id="far"></canvas><figcaption>Far zoom (a hex about 20 px across)</figcaption></figure>
+  <figure><canvas id="under"></canvas><figcaption>Underground, close zoom</figcaption></figure>
+</div>
+<p class="note">Glyph shapes are the ones from the earlier exploration. Marks drawn here (settlement squares, blue and red unit counters, a red monster diamond, a building, brown roads) stand in for the real ones and sit where the map puts them.</p>
+<script>
+window.V = { arrange: "aside", zoom: "mid", menu: "section", halo: false };
+const LIST = [["settlements","Settlements"],["own","Own units"],["foreign","Foreign units"],["monsters","Monsters"],["guard","Guard"],["blocked","Blocked"],["battles","Battles"],["ships","Ships"],["buildings","Buildings"],["shafts","Shafts"],["lairs","Lairs"],["gate","Gates"],["roads","Roads"],["regions","Regions"],["notes","Notes"]];
+const ALL = {}; LIST.forEach(([k]) => ALL[k] = true);
+
+window.renderMenu = () => {
+  Object.keys(ALL).forEach(k => { if (k in S.badges) ALL[k] = S.badges[k]; });
+  const row = (k, l, on, extra = "") => `<label class="${extra}"><input type="checkbox" data-k="${k}" ${on ? "checked" : ""}> ${l}</label>`;
+  let h = '<div class="hd"><span>Badges</span><span><button data-all="1">All</button> <button data-all="0">None</button></span></div>';
+  h += LIST.map(([k, l]) => row(k, l, ALL[k])).join("");
+  if (V.menu === "section") h += '<hr><div class="sec">Terrain</div>' + row("glyphs", "Biome symbols", S.glyphs, "new");
+  else h += row("glyphs", "Biome symbols", S.glyphs, "new");
+  const m = document.getElementById("menu"); m.innerHTML = h;
+  const lit = Object.values(ALL).some(v => !v) || (V.menu !== "section" && !S.glyphs);
+  document.getElementById("chip").classList.toggle("lit", lit);
+  m.querySelectorAll("input").forEach(i => i.onchange = () => { const k = i.dataset.k; if (k === "glyphs") S.glyphs = i.checked; else { ALL[k] = i.checked; if (k in S.badges) S.badges[k] = i.checked; } render(); });
+  m.querySelectorAll("[data-all]").forEach(b => b.onclick = () => { const on = b.dataset.all === "1"; Object.keys(ALL).forEach(k => ALL[k] = on); Object.keys(S.badges).forEach(k => S.badges[k] = on); if (V.menu !== "section") S.glyphs = on; render(); });
+};
+</script>
+<script>
+// Shared painter for the ah-d9jb.4 drawings. A page sets window.V before loading this.
+const BIOMES = "../../config/public/biomes/";
+const CODE = { O: "ocean", P: "plain", F: "forest", M: "mountain", S: "swamp", D: "desert", J: "jungle", T: "tundra", V: "volcano", W: "wasteland", H: "hill",
+  C: "cavern", U: "underforest", N: "tunnels", G: "grotto", E: "deepforest", X: "chasm" };
+const SURFACE = ["OOTTTMMVMHH", "OPPTMMVVHHW", "OPPFFFHHWWD", "PPFFSSSJWDD", "PFFSSSJJJDD", "OPFFSJJJPPO"];
+const UNDER = ["NCCCUUCXXN", "NCCUUUEECN", "NGGUUEEECN", "NGGGUEECXN"];
+const FLAT = {
+  ocean: "#2a5f8e", plain: "#a6bb6c", forest: "#2c5a48", mountain: "#8c8a92", swamp: "#7a6c46", desert: "#e2c48a",
+  jungle: "#8cb42c", tundra: "#d6e0e8", volcano: "#3a2c2c", wasteland: "#9c5a3e", hill: "#9c8a56",
+  cavern: "#4a4458", underforest: "#6a5a7a", tunnels: "#2e3644", grotto: "#2c7a7c", deepforest: "#0e2a20", chasm: "#5c2c3e",
+};
+// What sits in some hexes, so the glyphs have to share the space. Keyed "col,row".
+const MARKS = {
+  "4,3": { settlement: "Kharn", own: 3, foreign: 1, roads: [1, 4] },
+  "3,2": { roads: [1] , own: 1 },
+  "5,3": { roads: [4, 0], monster: true },
+  "6,4": { roads: [3], ship: false, foreign: 2 },
+  "7,3": { settlement: "Ostel", roads: [3], own: 0 },
+  "2,4": { monster: true, own: 2 },
+  "8,1": { building: true },
+  "6,1": { roads: [] , foreign: 4, monster: true },
+};
+
+function random(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
+function hash(s) { let h = 2166136261; for (const ch of s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+function hexPath(ctx, cx, cy, r) { ctx.beginPath(); for (let i = 0; i < 6; i++) { const a = (Math.PI / 3) * i; ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a)); } ctx.closePath(); }
+
+const INK = "rgba(34,26,18,0.9)", PAPER = "rgba(248,240,220,0.95)";
+const HALO = "rgba(250,244,228,0.85)";
+function glyph(ctx, kind, x, y, s) {
+  if (window.V.halo) glyphPass(ctx, kind, x, y, s, HALO, HALO, 3.4, true);
+  glyphPass(ctx, kind, x, y, s, INK, PAPER, 1.3, false);
+}
+function glyphPass(ctx, kind, x, y, s, INK, PAPER, LW, halo) {
+  const acc = (c) => (halo ? PAPER : c);
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.lineWidth = LW; ctx.strokeStyle = INK; ctx.fillStyle = PAPER; ctx.lineCap = "round"; ctx.lineJoin = "round";
+  const path = (pts, fill = true) => { ctx.beginPath(); pts.forEach(([a, b], i) => (i ? ctx.lineTo(a, b) : ctx.moveTo(a, b))); if (fill) { ctx.closePath(); ctx.fill(); } ctx.stroke(); };
+  const circle = (a, b, r, fill = true) => { ctx.beginPath(); ctx.arc(a, b, r, 0, 7); if (fill) ctx.fill(); ctx.stroke(); };
+  switch (kind) {
+    case "ocean": for (const dy of [-3, 3]) { ctx.beginPath(); ctx.moveTo(-8, dy); ctx.quadraticCurveTo(-4, dy - 4, 0, dy); ctx.quadraticCurveTo(4, dy + 4, 8, dy); ctx.stroke(); } break;
+    case "plain": for (const dx of [-4, 0, 4]) path([[dx - 2, -3], [dx, 3], [dx + 2, -3]], false); break;
+    case "forest": ctx.beginPath(); ctx.moveTo(0, 8); ctx.lineTo(0, 2); ctx.stroke(); circle(0, -2, 5.5); break;
+    case "mountain": path([[-9, 6], [-1, -8], [7, 6]]); path([[-4, -3], [-1, -8], [2, -3], [0, -4.5], [-2, -3]]); break;
+    case "swamp": for (const dx of [-3, 0, 3]) path([[dx, 3], [dx + dx * 0.3, -6]], false); ctx.beginPath(); ctx.moveTo(-8, 5); ctx.lineTo(-3, 5); ctx.moveTo(3, 5); ctx.lineTo(8, 5); ctx.stroke(); break;
+    case "desert": for (const [dx, dy] of [[-3, -2], [3, 3]]) { ctx.beginPath(); ctx.arc(dx, dy + 4, 6, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke(); } break;
+    case "jungle": ctx.beginPath(); ctx.moveTo(0, 8); ctx.quadraticCurveTo(1, 0, 0, -5); ctx.stroke(); for (const a of [-2.8, -2.2, -0.9, -0.3]) { ctx.beginPath(); ctx.moveTo(0, -5); ctx.quadraticCurveTo(Math.cos(a) * 5, -7 + Math.sin(a) * 5, Math.cos(a) * 9, -1 + Math.sin(a) * 6); ctx.stroke(); } break;
+    case "tundra": for (let k = 0; k < 3; k++) { const a = (k * Math.PI) / 3; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 6, Math.sin(a) * 6); ctx.lineTo(-Math.cos(a) * 6, -Math.sin(a) * 6); ctx.stroke(); } break;
+    case "volcano": path([[-9, 7], [-3, -4], [3, -4], [9, 7]]); ctx.fillStyle = acc("rgb(230,90,20)"); path([[-3, -4], [3, -4], [1, 0], [-1, -1]]); ctx.beginPath(); ctx.moveTo(0, -6); ctx.quadraticCurveTo(-3, -9, 0, -12); ctx.stroke(); break;
+    case "wasteland": path([[0, 8], [0, -6]], false); path([[0, -1], [-5, -6]], false); path([[0, 2], [4, -4]], false); path([[-3, -4], [-5, -3]], false); break;
+    case "hill": for (const dx of [-4, 4]) { ctx.beginPath(); ctx.arc(dx, 5, 5.5, Math.PI, 0); ctx.fill(); ctx.stroke(); } break;
+    case "cavern": path([[-7, 7], [-4, -4], [-1, 7]]); path([[1, 7], [4, -1], [7, 7]]); break;
+    case "underforest": ctx.beginPath(); ctx.moveTo(-1.5, 8); ctx.lineTo(-1, 0); ctx.lineTo(1, 0); ctx.lineTo(1.5, 8); ctx.fill(); ctx.stroke(); ctx.fillStyle = acc("rgb(190,150,210)"); ctx.beginPath(); ctx.arc(0, 0, 7, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.stroke(); break;
+    case "tunnels": ctx.beginPath(); ctx.moveTo(-7, 7); ctx.lineTo(-7, 0); ctx.arc(0, 0, 7, Math.PI, 0); ctx.lineTo(7, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = acc(INK); ctx.beginPath(); ctx.moveTo(-3.5, 7); ctx.lineTo(-3.5, 1); ctx.arc(0, 1, 3.5, Math.PI, 0); ctx.lineTo(3.5, 7); ctx.fill(); break;
+    case "grotto": ctx.fillStyle = acc("rgb(200,250,255)"); path([[-4, 7], [-3, -6], [0, 7]]); path([[0, 7], [3, -3], [5, 7]]); break;
+    case "deepforest": path([[0, -9], [-6, 2], [-2, 2], [-7, 7], [7, 7], [2, 2], [6, 2]]); ctx.fillStyle = acc("rgb(120,255,230)"); circle(4, -3, 1.6); break;
+    case "chasm": path([[-8, -6], [-2, -1], [-5, 2], [2, 6], [-1, 1], [3, -2], [-2, -6]]); break;
+  }
+  ctx.restore();
+}
+
+// Where a mark occupies the hex, in fractions of r: used by "step aside".
+function occupied(m) {
+  const spots = [];
+  if (!m) return spots;
+  if (m.settlement) spots.push([0, 0, 0.32], [0, 0.62, 0.3]);
+  if (m.own || m.foreign) spots.push([0, 0.36, 0.3]);
+  if (m.monster) spots.push([0.62, 0, 0.22]);
+  if (m.building) spots.push([0.5, 0.36, 0.22]);
+  for (const d of m.roads || []) { const a = Math.PI / 6 + (Math.PI / 3) * d; for (const t of [0.15, 0.45, 0.75]) spots.push([Math.cos(a) * t, Math.sin(a) * t, 0.18]); }
+  return spots;
+}
+const SPRINKLE = [[-0.42, -0.22], [0.36, -0.3], [0, 0.12], [-0.3, 0.45], [0.38, 0.38]];
+function drawGlyphs(ctx, kind, cx, cy, r, seed, marks, band) {
+  const V = window.V;
+  if (band === "far") {
+    if (V.zoom !== "all") return;
+    glyph(ctx, kind, cx, cy, (r / 34) * 2.2); return;
+  }
+  if (band === "mid" && V.zoom === "near") return;
+  const s = r / 34;
+  if (V.arrange === "single") { glyph(ctx, kind, cx - 0.5 * r, cy - 0.42 * r, s * 1.1); return; }
+  const rng = random(seed), occ = V.arrange === "aside" ? occupied(marks) : [];
+  for (const [ox, oy] of SPRINKLE) {
+    const jx = ox + (rng() - 0.5) * 0.12, jy = oy + (rng() - 0.5) * 0.12;
+    if (rng() < 0.25) continue;
+    if (occ.some(([x, y, rad]) => Math.hypot(x - jx, y - jy) < rad + 0.2)) continue;
+    glyph(ctx, kind, cx + jx * r, cy + jy * r, s);
+  }
+}
+
+function drawMarks(ctx, m, x, y, r, band) {
+  if (!m) return;
+  if (S.badges.roads) for (const d of m.roads || []) {
+    const a = Math.PI / 6 + (Math.PI / 3) * d, l = r * Math.sqrt(3) / 2;
+    ctx.strokeStyle = "rgba(92,58,24,0.95)"; ctx.lineWidth = Math.max(1.2, r * 0.09); ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.stroke();
+  }
+  if (band === "far") return;
+  const u = r / 34;
+  if (m.settlement && S.badges.settlements) {
+    ctx.fillStyle = "#f4ead2"; ctx.strokeStyle = "#1c140c"; ctx.lineWidth = 2 * u;
+    ctx.fillRect(x - 8 * u, y - 8 * u, 16 * u, 16 * u); ctx.strokeRect(x - 8 * u, y - 8 * u, 16 * u, 16 * u);
+    ctx.fillStyle = "#1c140c"; ctx.fillRect(x - 3.5 * u, y - 3.5 * u, 7 * u, 7 * u);
+    if (band === "near") { ctx.font = "600 11px system-ui"; ctx.textAlign = "center"; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.75)"; ctx.strokeText(m.settlement, x, y + r * 0.78); ctx.fillStyle = "#fff"; ctx.fillText(m.settlement, x, y + r * 0.78); }
+  }
+  const counters = [];
+  if (m.own && S.badges.own) counters.push(["#2f7de1", m.own]);
+  if (m.foreign && S.badges.foreign) counters.push(["#d0453a", m.foreign]);
+  counters.forEach(([c, n], i) => {
+    const cx = x + (i - (counters.length - 1) / 2) * 15 * u, cy = y + r * 0.4;
+    ctx.fillStyle = c; ctx.strokeStyle = "#111"; ctx.lineWidth = 1.2 * u; ctx.beginPath(); ctx.arc(cx, cy, 6 * u, 0, 7); ctx.fill(); ctx.stroke();
+    if (band === "near") { ctx.fillStyle = "#fff"; ctx.font = `700 ${Math.round(9 * u)}px system-ui`; ctx.textAlign = "center"; ctx.fillText(n, cx, cy + 3.2 * u); }
+  });
+  if (m.monster && S.badges.monsters) { const mx = x + r * 0.62; ctx.fillStyle = "#a01818"; ctx.strokeStyle = "#111"; ctx.lineWidth = 1.2 * u; ctx.beginPath(); ctx.moveTo(mx, y - 6 * u); ctx.lineTo(mx + 6 * u, y); ctx.lineTo(mx, y + 6 * u); ctx.lineTo(mx - 6 * u, y); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  if (m.building && S.badges.buildings) { const bx = x + r * 0.5, by = y + r * 0.36; ctx.fillStyle = "#e8d8a8"; ctx.strokeStyle = "#111"; ctx.lineWidth = 1.2 * u; ctx.beginPath(); ctx.moveTo(bx - 6 * u, by + 5 * u); ctx.lineTo(bx - 6 * u, by - 1 * u); ctx.lineTo(bx, by - 7 * u); ctx.lineTo(bx + 6 * u, by - 1 * u); ctx.lineTo(bx + 6 * u, by + 5 * u); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+}
+
+const IMG = {};
+function paintHex(ctx, x, y, r, kind, id, band) {
+  const m = MARKS[id];
+  ctx.save(); hexPath(ctx, x, y, r); ctx.clip();
+  const tex = S.tex === "today" && IMG[kind];
+  if (!tex) { ctx.fillStyle = FLAT[kind]; ctx.fillRect(x - r, y - r, 2 * r, 2 * r); }
+  else {
+    ctx.translate(x, y); ctx.rotate(((hash(id) % 360) * Math.PI) / 180);
+    ctx.drawImage(tex, -r * 1.16, -r * 1.16, 2.32 * r, 2.32 * r); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+  if (S.glyphs) drawGlyphs(ctx, kind, x, y, r, hash(id), m, band);
+  ctx.restore();
+  hexPath(ctx, x, y, r); ctx.strokeStyle = "rgba(42,33,24,0.8)"; ctx.lineWidth = r > 20 ? 1.2 : 0.7; ctx.stroke();
+  drawMarks(ctx, m, x, y, r, band);
+}
+function drawLayout(cv, layout, r, band) {
+  const ctx = cv.getContext("2d"), w = r * 1.5, h = r * Math.sqrt(3);
+  cv.width = Math.ceil(w * (layout[0].length - 1) + 2 * r + 4); cv.height = Math.ceil(h * layout.length + h / 2 + 4);
+  layout.forEach((row, ry) => [...row].forEach((ch, cx) => paintHex(ctx, r + 2 + cx * w, h / 2 + 2 + ry * h + (cx % 2 ? h / 2 : 0), r, CODE[ch], `${cx},${ry}`, band)));
+}
+
+const S = { tex: "today", glyphs: true, badges: { settlements: true, own: true, foreign: true, monsters: true, buildings: true, roads: true } };
+function render() {
+  drawLayout(document.getElementById("near"), SURFACE, 34, "near");
+  drawLayout(document.getElementById("mid"), SURFACE, 20, "mid");
+  drawLayout(document.getElementById("far"), SURFACE, 10, "far");
+  const u = document.getElementById("under"); if (u) drawLayout(u, UNDER, 34, "near");
+  document.querySelectorAll("[data-tex]").forEach((b) => b.classList.toggle("on", b.dataset.tex === S.tex));
+  if (window.renderMenu) window.renderMenu();
+}
+(async () => {
+  for (const k of Object.values(CODE)) IMG[k] = await new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = `${BIOMES}${k}_256.png`; });
+  document.querySelectorAll("[data-tex]").forEach((b) => b.addEventListener("click", () => { S.tex = b.dataset.tex; render(); }));
+  render();
+})();
+
+</script>
+</body></html>
