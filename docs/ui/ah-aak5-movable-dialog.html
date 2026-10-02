@@ -1,0 +1,71 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Movable dialogs</title>
+<style>
+:root{--panel:#222933;--raised:#2a323d;--brass:#e0b25a;--edge:#46525f;--ink:#d4dce6;--soft:#a8b4c2;--dim:#99a4b2}
+html,body{margin:0;height:100%;background:#141a21;color:var(--ink);font:14px system-ui,sans-serif;overflow:hidden}
+.note{position:fixed;left:0;right:0;bottom:0;z-index:50;background:#000c;color:#fff;padding:8px 14px;font-size:13px}
+.note b{color:var(--brass)}
+header{height:34px;background:var(--panel);border-bottom:1px solid var(--edge);display:flex;align-items:center;padding:0 10px;gap:12px;color:var(--brass)}
+#map{position:absolute;top:35px;left:0;right:0;bottom:0;overflow:hidden}
+.hex{position:absolute;width:52px;height:46px;clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)}
+.hex span{position:absolute;left:0;right:0;top:15px;text-align:center;font-size:12px;color:#000a}
+#back{position:fixed;inset:0;z-index:30;transition:background .15s}
+#dlg{position:fixed;z-index:31;width:560px;max-width:94vw;background:var(--raised);border:1px solid #e0b25a99;border-radius:4px;padding:12px;box-shadow:0 10px 30px #000a}
+.bar{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e0b25a99;padding-bottom:8px;user-select:none}
+.bar h2{margin:0;font-size:16px;color:var(--brass);font-weight:600}
+.bar .grip{color:var(--dim);letter-spacing:-2px;margin-right:8px;font-size:13px}
+.x{background:none;border:1px solid var(--edge);color:var(--soft);border-radius:4px;padding:1px 7px;cursor:pointer}
+.tabs{margin-top:8px;display:flex;gap:4px;background:var(--panel);border:1px solid var(--edge);border-radius:4px;padding:4px}
+.tabs span{padding:2px 8px;border:1px solid var(--edge);border-radius:4px;color:var(--soft)}.tabs span.on{border-color:var(--brass);color:var(--brass)}
+.body{margin-top:12px;border:1px solid var(--edge);border-radius:4px;padding:12px;display:flex;flex-direction:column;gap:12px;color:var(--soft)}
+.row{display:flex;justify-content:space-between;align-items:center}
+select{background:var(--raised);color:var(--ink);border:1px solid var(--edge);border-radius:4px}
+</style></head><body>
+<header>Atlantis HUD &nbsp;·&nbsp; turn 14 <span style="margin-left:auto">⚙</span></header>
+<div id="map"></div>
+<div id="back"></div>
+<div id="dlg" role="dialog" aria-label="Settings">
+ <div class="bar" id="bar"><h2>Settings</h2><button class="x" id="x">×</button></div>
+ <div class="tabs"><span class="on">Global</span><span>Map</span><span>Game</span></div>
+ <div class="body">
+  <div class="row"><span>App theme</span><span>Dark · Light</span></div>
+  <div class="row"><span>Map theme<br><small style="color:var(--dim)">How the world map draws each hex.</small></span>
+   <select id="theme"><option value="flat">Flat colours</option><option value="tex">Painted textures</option><option value="mono">Muted</option></select></div>
+  <div class="row"><span>Show glyphs</span><input type="checkbox" id="gly" checked></div>
+  <div class="row"><span>Pane transparency</span><input type="range"></div>
+ </div>
+</div>
+<div class="note"><b>ah-aak5 — chosen.</b> Opens centred and dimmed. Drag the top bar (move pointer on hover): the veil lifts and stays lifted until closed. Part of the top bar always stays in the window, also when the window shrinks. Clicking the map closes it; reopening centres it. &nbsp; <a href="#" id="reopen" style="color:var(--brass)">close &amp; reopen</a></div>
+<script>
+const CFG={dim:'clear',bound:'bar',resize:'keep'};
+const map=document.getElementById('map'),back=document.getElementById('back'),dlg=document.getElementById('dlg'),bar=document.getElementById('bar');
+const pal={flat:['#4f8a3c','#2f6db3','#c9b16a','#6b6b6b','#3c7a5a','#8fae5a'],tex:['#3e7a2c','#245a9a','#d8b860','#5a5048','#2d6a48','#9cbb52'],mono:['#6f7f68','#5f7088','#a59f88','#6b6b6b','#62726a','#8a9278']};
+const names=['plain','ocean','desert','mount','forest','swamp'];
+function draw(){map.innerHTML='';const t=document.getElementById('theme').value,g=document.getElementById('gly').checked;
+ for(let r=0;r<22;r++)for(let c=0;c<40;c++){const i=(r*7+c*13+(r*c)%5)%6;const h=document.createElement('div');h.className='hex';
+ h.style.left=(c*40)+'px';h.style.top=(r*46+(c%2?23:0))+'px';h.style.background=pal[t][i];
+ if(t==='tex')h.style.backgroundImage='repeating-linear-gradient(45deg,#ffffff18 0 3px,transparent 3px 8px)';
+ if(g&&(r*c)%9===1)h.innerHTML='<span>▲</span>';map.appendChild(h)}}
+document.getElementById('theme').onchange=draw;document.getElementById('gly').onchange=draw;draw();
+let moved=false;
+function dim(){back.style.background=(CFG.dim==='keep'||(CFG.dim==='clear'&&!moved))?'#00000080':(CFG.dim==='none'?'transparent':'transparent')}
+function centre(){moved=false;dlg.style.left=((innerWidth-dlg.offsetWidth)/2)+'px';dlg.style.top=((innerHeight-dlg.offsetHeight)/2)+'px';dim()}
+centre();
+bar.style.cursor='move';
+let sx,sy,ox,oy,drag=false;
+bar.addEventListener('pointerdown',e=>{if(e.target.id==='x')return;drag=true;sx=e.clientX;sy=e.clientY;ox=dlg.offsetLeft;oy=dlg.offsetTop;bar.setPointerCapture(e.pointerId)});
+bar.addEventListener('pointermove',e=>{if(!drag)return;let x=ox+e.clientX-sx,y=oy+e.clientY-sy;const w=dlg.offsetWidth,h=dlg.offsetHeight,bh=bar.offsetHeight+12;
+ if(CFG.bound==='whole'){x=Math.max(0,Math.min(innerWidth-w,x));y=Math.max(0,Math.min(innerHeight-h,y))}
+ else{x=Math.max(-w+80,Math.min(innerWidth-80,x));y=Math.max(0,Math.min(innerHeight-bh,y))}
+ dlg.style.left=x+'px';dlg.style.top=y+'px';if(!moved){moved=true;dim()}});
+bar.addEventListener('pointerup',()=>drag=false);
+back.addEventListener('pointerdown',()=>{dlg.style.display='none';back.style.display='none'});
+function reopen(){dlg.style.display='';back.style.display='';centre()}
+document.getElementById('x').onclick=()=>{dlg.style.display='none';back.style.display='none'};
+addEventListener('resize',()=>{if(!moved){centre();return}
+ if(CFG.resize==='centre'){centre();return}
+ const w=dlg.offsetWidth,bh=bar.offsetHeight+12;let x=dlg.offsetLeft,y=dlg.offsetTop;
+ x=Math.max(-w+80,Math.min(innerWidth-80,x));y=Math.max(0,Math.min(innerHeight-bh,y));dlg.style.left=x+'px';dlg.style.top=y+'px'});
+if(CFG.dbl)bar.addEventListener('dblclick',centre);
+if(CFG.tip)bar.title='Drag to move';
+document.getElementById('reopen').onclick=e=>{e.preventDefault();reopen()};
+</script></body></html>
