@@ -10,8 +10,7 @@ import {
   type PlannerMage
 } from "../studyPlanner";
 import type { OrderProcessing } from "../orderProcessing";
-import { useEscapeToDismiss } from "./dismissLayer";
-import { useDialogDrag } from "./useDialogDrag";
+import { DialogFrame } from "./DialogFrame";
 import { STANDING_CHIP, standingLimit } from "./standingChip";
 import type { StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
 import type { MagicTree } from "../magicTree";
@@ -138,10 +137,6 @@ export function StudyPlannerDialog({
   rule: TeachingRule;
   onDismiss: () => void;
 }) {
-  useEscapeToDismiss(onDismiss);
-  // ah-aak5: dragged by its top bar to uncover the map; the veil lifts once moved.
-  const drag = useDialogDrag();
-
   // Remembered no longer than the dialog, exactly as the picked mage is and for the reason
   // ah-lyg6.2.2 gave: a pane that opens differently depending on what you did last time is the
   // less predictable of the two.
@@ -292,36 +287,26 @@ export function StudyPlannerDialog({
   };
 
   return (
-    <div
-      data-testid="study-planner-backdrop"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onDismiss();
-        }
-      }}
-      className={`fixed inset-0 z-40 flex items-start justify-center pt-[10vh]${drag.moved ? "" : " bg-black/50"}`}
-    >
-      <div
-        ref={drag.dialogRef}
-        style={drag.dialogStyle}
-        data-testid="study-planner-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Study planner"
-        // 10vh below, matching the `pt-[10vh]` above: the two must be changed together. theme.css
-        // caps every modal at 90vh as a `:where()` default at zero specificity, so this 80vh
-        // simply wins with no `!` needed.
-        //
-        // 74rem rather than the 56 this was (navigator, 2026-09-07): the Schedule's mage pane takes
-        // 20rem beside six turn columns, and All mages spends the same width on standing its three
-        // lists side by side. One width for all three views, so the dialog does not resize under
-        // the pointer as the tabs are walked.
-        className="grid max-h-[80vh] w-[74rem] max-w-[94vw] grid-rows-[auto_auto_auto_1fr] rounded border border-brass/60 bg-panel-raised text-pane whitespace-normal shadow-xl"
-      >
-        <div
-          {...drag.barProps}
-          className="flex cursor-move select-none items-center gap-2 border-b border-edge px-2 py-1.5"
-        >
+    <DialogFrame
+      label="Study planner"
+      onDismiss={onDismiss}
+      layer="z-40"
+      placement="top"
+      backdropTestId="study-planner-backdrop"
+      testId="study-planner-dialog"
+      // 10vh below, matching the frame's `top` placement: the two must be changed together.
+      // theme.css caps every modal at 90vh as a `:where()` default at zero specificity, so this
+      // 80vh simply wins with no `!` needed.
+      //
+      // 74rem rather than the 56 this was (navigator, 2026-09-07): the Schedule's mage pane takes
+      // 20rem beside six turn columns, and All mages spends the same width on standing its three
+      // lists side by side. One width for all three views, so the dialog does not resize under
+      // the pointer as the tabs are walked.
+      boxClassName="grid max-h-[80vh] w-[74rem] max-w-[94vw] grid-rows-[auto_auto_auto_1fr] rounded border border-brass/60 bg-panel-raised text-pane whitespace-normal shadow-xl"
+      barClassName="items-center gap-2 border-b border-edge px-2 py-1.5"
+      close={{ testId: "study-planner-close", label: "Close study planner", look: "compact" }}
+      bar={
+        <>
           <span className="text-brass">Study planner</span>
           <span role="tablist" aria-label="Study planner view" className="flex gap-1">
             <ViewTab view="all" label="Overview" open={view} onOpen={setView} />
@@ -339,173 +324,163 @@ export function StudyPlannerDialog({
               Save all…
             </button>
           ) : null}
-          <button
-            type="button"
-            data-testid="study-planner-close"
-            aria-label="Close study planner"
-            title="Close study planner"
-            onClick={onDismiss}
-            className="rounded border border-edge px-1.5 text-ink-dim hover:border-brass hover:text-brass"
-          >
-            ×
-          </button>
-        </div>
-
-        {/*
-          An empty div rather than null: the box is `grid-rows-[auto_auto_1fr]`, so dropping this
-          child would leave the body in the second, `auto` track instead of the `1fr` one, and the
-          two columns would stop filling the box and stop scrolling inside it.
-        */}
-        {subLine === null && notice === null ? (
-          <div />
-        ) : (
-        <div className="border-b border-edge bg-panel px-2 py-1 text-ink-dim">
-          {subLine === null ? null : (
-            <span data-testid="study-planner-summary">{subLine}</span>
-          )}
-          {notice === null ? null : (
-            <span
-              data-testid="study-planner-allied-notice"
-              className={subLine === null ? "text-warn" : "ml-2 text-warn"}
-            >
-              {notice}
-            </span>
-          )}
-        </div>
+        </>
+      }
+    >
+      {/*
+        An empty div rather than null: the box is `grid-rows-[auto_auto_1fr]`, so dropping this
+        child would leave the body in the second, `auto` track instead of the `1fr` one, and the
+        two columns would stop filling the box and stop scrolling inside it.
+      */}
+      {subLine === null && notice === null ? (
+        <div />
+      ) : (
+      <div className="border-b border-edge bg-panel px-2 py-1 text-ink-dim">
+        {subLine === null ? null : (
+          <span data-testid="study-planner-summary">{subLine}</span>
         )}
-        <label className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-edge bg-panel px-2 py-1 text-ink">
-        <span className="inline-flex items-center gap-1.5">
-          <input
-            type="checkbox"
-            data-testid="study-planner-assume-sheltered"
-            checked={turns.length > 0 && assumeSheltered}
-            disabled={turns.length === 0}
-            onChange={(event) => onAssumeShelteredChange(event.target.checked)}
-          />
-          Assume every mage is sheltered
-        </span>
-        <span className="w-full text-ink-dim sm:w-auto">
-          {turns.length === 0
-            ? "Load a report to change the forecast."
-            : assumeSheltered
-              ? "Forecast only — your report has not changed."
-              : ""}
-        </span>
-        </label>
-
-        {view === "orders" ? (
-          <StudyPlannerOrders
-            orders={orders}
-            emptyCopy={
-              turns.length === 0
-                ? {
-                    headline: "Load a report and next turn's orders appear here.",
-                    detail: ""
-                  }
-                : {
-                    headline: `No mage has a plan for turn ${turns[0]}.`,
-                    detail:
-                      "Give a mage a study or a teach on the Schedule and his orders appear here."
-                  }
-            }
-            error={ordersError}
-            forecastNotice={
-              turns.length > 0 && assumeSheltered
-                ? "These orders use the all-sheltered forecast. Check your placements before writing them."
-                : null
-            }
-            onSaveText={onSaveText}
-            writePlan={writePlan}
-            asking={asking}
-            notice={
-              writeNotice === null
-                ? null
-                : writeNotice.kind === "undone"
-                  ? { text: "Put your orders back as they were.", undoable: false }
-                  : {
-                      text: writeNotice.text,
-                      // U1: the Undo stands only while the document is byte for byte what the
-                      // write left it. A keystroke, an import or a restore ends it.
-                      undoable: ordersDocument === writeNotice.after
-                    }
-            }
-            onAskWrite={() => setAsking(true)}
-            onCancelWrite={() => setAsking(false)}
-            onConfirmWrite={() => {
-              if (writePlan === null) {
-                return;
-              }
-              const before = ordersDocument;
-              onWriteOrdersDocument(writePlan.next);
-              setWriteNotice({
-                kind: "wrote",
-                text: writePlan.resultText,
-                before,
-                after: writePlan.next
-              });
-              setAsking(false);
-            }}
-            onUndoWrite={() => {
-              if (writeNotice === null || writeNotice.kind !== "wrote") {
-                return;
-              }
-              onWriteOrdersDocument(writeNotice.before);
-              setWriteNotice({ kind: "undone" });
-            }}
-          />
-        ) : view === "schedule" ? (
-          <StudySchedule
-            rows={rows}
-            groups={groups}
-            turns={turns}
-            tree={tree}
-            mode={cellMode}
-            onEvent={(event) => setCellMode((mode) => reduceCell(mode, event))}
-            onCommit={(rowKey, edit) => {
-              const [factionId, unitId] = rowKey.split("/");
-              onSavePlan(factionId, unitId, edit);
-            }}
-            saveError={saveError}
-            notices={notices}
-            forecastNotice={
-              assumeSheltered
-                ? "Forecasting every mage as sheltered. Check your placements before writing orders."
-                : null
-            }
-            label={label}
-            onScheduleChange={onScheduleChange}
-            rule={rule}
-          />
-        ) : picked === null ? (
-          <div data-testid="study-planner-empty" className="min-h-0 overflow-y-auto p-3">
-            <div className="rounded border border-edge bg-panel-raised p-3">
-              <p className="m-0 text-ink">{emptyCopy.headline}</p>
-              <p className="text-ink-dim">{emptyCopy.detail}</p>
-            </div>
-          </div>
-        ) : (
-          <div className="grid min-h-0 grid-cols-[17rem_1fr]">
-            <StudyPlannerList
-              listRef={list}
-              groups={groups}
-              picked={picked}
-              onPick={setPickedKey}
-              onMove={move}
-            />
-            <StudyPlannerDetail
-              mage={picked}
-              turn={turns[0] ?? null}
-              label={label}
-              names={names}
-              tree={tree}
-              plan={planFor(plans, picked.factionId, picked.unitId)}
-              saveError={saveError}
-              onSaveNote={(comment) => onSaveNote(picked.factionId, picked.unitId, comment)}
-            />
-          </div>
+        {notice === null ? null : (
+          <span
+            data-testid="study-planner-allied-notice"
+            className={subLine === null ? "text-warn" : "ml-2 text-warn"}
+          >
+            {notice}
+          </span>
         )}
       </div>
-    </div>
+      )}
+      <label className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-edge bg-panel px-2 py-1 text-ink">
+      <span className="inline-flex items-center gap-1.5">
+        <input
+          type="checkbox"
+          data-testid="study-planner-assume-sheltered"
+          checked={turns.length > 0 && assumeSheltered}
+          disabled={turns.length === 0}
+          onChange={(event) => onAssumeShelteredChange(event.target.checked)}
+        />
+        Assume every mage is sheltered
+      </span>
+      <span className="w-full text-ink-dim sm:w-auto">
+        {turns.length === 0
+          ? "Load a report to change the forecast."
+          : assumeSheltered
+            ? "Forecast only — your report has not changed."
+            : ""}
+      </span>
+      </label>
+
+      {view === "orders" ? (
+        <StudyPlannerOrders
+          orders={orders}
+          emptyCopy={
+            turns.length === 0
+              ? {
+                  headline: "Load a report and next turn's orders appear here.",
+                  detail: ""
+                }
+              : {
+                  headline: `No mage has a plan for turn ${turns[0]}.`,
+                  detail:
+                    "Give a mage a study or a teach on the Schedule and his orders appear here."
+                }
+          }
+          error={ordersError}
+          forecastNotice={
+            turns.length > 0 && assumeSheltered
+              ? "These orders use the all-sheltered forecast. Check your placements before writing them."
+              : null
+          }
+          onSaveText={onSaveText}
+          writePlan={writePlan}
+          asking={asking}
+          notice={
+            writeNotice === null
+              ? null
+              : writeNotice.kind === "undone"
+                ? { text: "Put your orders back as they were.", undoable: false }
+                : {
+                    text: writeNotice.text,
+                    // U1: the Undo stands only while the document is byte for byte what the
+                    // write left it. A keystroke, an import or a restore ends it.
+                    undoable: ordersDocument === writeNotice.after
+                  }
+          }
+          onAskWrite={() => setAsking(true)}
+          onCancelWrite={() => setAsking(false)}
+          onConfirmWrite={() => {
+            if (writePlan === null) {
+              return;
+            }
+            const before = ordersDocument;
+            onWriteOrdersDocument(writePlan.next);
+            setWriteNotice({
+              kind: "wrote",
+              text: writePlan.resultText,
+              before,
+              after: writePlan.next
+            });
+            setAsking(false);
+          }}
+          onUndoWrite={() => {
+            if (writeNotice === null || writeNotice.kind !== "wrote") {
+              return;
+            }
+            onWriteOrdersDocument(writeNotice.before);
+            setWriteNotice({ kind: "undone" });
+          }}
+        />
+      ) : view === "schedule" ? (
+        <StudySchedule
+          rows={rows}
+          groups={groups}
+          turns={turns}
+          tree={tree}
+          mode={cellMode}
+          onEvent={(event) => setCellMode((mode) => reduceCell(mode, event))}
+          onCommit={(rowKey, edit) => {
+            const [factionId, unitId] = rowKey.split("/");
+            onSavePlan(factionId, unitId, edit);
+          }}
+          saveError={saveError}
+          notices={notices}
+          forecastNotice={
+            assumeSheltered
+              ? "Forecasting every mage as sheltered. Check your placements before writing orders."
+              : null
+          }
+          label={label}
+          onScheduleChange={onScheduleChange}
+          rule={rule}
+        />
+      ) : picked === null ? (
+        <div data-testid="study-planner-empty" className="min-h-0 overflow-y-auto p-3">
+          <div className="rounded border border-edge bg-panel-raised p-3">
+            <p className="m-0 text-ink">{emptyCopy.headline}</p>
+            <p className="text-ink-dim">{emptyCopy.detail}</p>
+          </div>
+        </div>
+      ) : (
+        <div className="grid min-h-0 grid-cols-[17rem_1fr]">
+          <StudyPlannerList
+            listRef={list}
+            groups={groups}
+            picked={picked}
+            onPick={setPickedKey}
+            onMove={move}
+          />
+          <StudyPlannerDetail
+            mage={picked}
+            turn={turns[0] ?? null}
+            label={label}
+            names={names}
+            tree={tree}
+            plan={planFor(plans, picked.factionId, picked.unitId)}
+            saveError={saveError}
+            onSaveNote={(comment) => onSaveNote(picked.factionId, picked.unitId, comment)}
+          />
+        </div>
+      )}
+    </DialogFrame>
   );
 }
 
