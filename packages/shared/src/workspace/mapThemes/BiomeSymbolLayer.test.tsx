@@ -18,6 +18,7 @@ function view(overrides: Partial<HexView> = {}): HexView {
     texture: null,
     fogOpacity: 0,
     hatched: false,
+    unsurveyed: false,
     knowledge: "current",
     ageInTurns: 0,
     roads: [],
