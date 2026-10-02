@@ -13720,22 +13720,14 @@ fn check_transport_reach(
             if !matches!(what, Selector::Item(_)) {
                 continue;
             }
-            let target_facts =
-                ruleset.and_then(|rules| formed_transport_target_facts(hex, &id, rules));
-            if id.starts_with("new-") && target_facts.is_none() {
-                continue;
-            }
             // Judged once, by the same function the forecast and the shipping bill read
             // (`transport::Shipping::judge`). Every answer but `Eligible` is one of `ah-64wm`'s four
             // refusals, which the unit preview explains and this check says nothing about; only a
             // settled refusal is a problem, since an unmeasured distance may well be in reach
             // (`ah-7ale.5`). The finding still anchors on the hex the report lists the sender in.
-            let judged = shipping.judge_with_target_facts(
-                sender,
-                Some(hex.region.coordinate),
-                &id,
-                target_facts.as_ref(),
-            );
+            let Some(judged) = judge_shipment(shipping, hex, sender, &id) else {
+                continue;
+            };
             if judged.acceptance != super::transport::Acceptance::Eligible {
                 continue;
             }
@@ -13777,33 +13769,30 @@ struct SettledShipment {
     quantity: i64,
 }
 
-/// Facts the shared shipment judge needs for a formed ordinary unit in this hex.
-fn formed_transport_target_facts(
+/// The one judgement of a shipment line from this hex, or `None` for a `NEW` alias no `FORM` in
+/// this hex creates, which ships nothing. A formed target is judged on the skills the forecast
+/// gives it, by the same `transport::Shipping::judge_formed` the effects walk calls (`ah-s79p`).
+fn judge_shipment(
+    shipping: &super::transport::Shipping,
     hex: &Hex<'_>,
+    sender: &str,
     target_id: &str,
-    rules: &Ruleset,
-) -> Option<super::transport::TargetFacts> {
-    let target = hex
-        .find(target_id)
-        .filter(|target| target.formed.is_some())?;
-    let quartermaster_tag = rules
-        .find_skill("quartermaster")
-        .map(|skill| skill.tag.to_ascii_uppercase());
-    let skills = target.skills();
-    let quartermaster = quartermaster_tag.as_ref().is_some_and(|tag| {
-        skills.is_some_and(|skills| {
-            skills
-                .iter()
-                .any(|skill| skill.tag.eq_ignore_ascii_case(tag))
-        })
-    });
-    Some(super::transport::TargetFacts {
-        own: true,
-        quartermaster_disclosed: quartermaster_tag.is_some() && skills.is_some(),
-        quartermaster,
-        caravanserai_owner: false,
-        coordinate: hex.region.coordinate,
-    })
+) -> Option<super::transport::Judged> {
+    let sender_reported = Some(hex.region.coordinate);
+    let formed = hex.find(target_id).filter(|target| target.formed.is_some());
+    match formed {
+        Some(target) => Some(shipping.judge_formed(
+            sender,
+            sender_reported,
+            target_id,
+            super::transport::FormedTarget {
+                skills: target.skills(),
+                coordinate: hex.region.coordinate,
+            },
+        )),
+        None if target_id.starts_with("new-") => None,
+        None => Some(shipping.judge(sender, sender_reported, target_id)),
+    }
 }
 
 impl SettledShipment {
@@ -13907,20 +13896,13 @@ fn shipping_bills(
             let Some(id) = super::transport::shipment_target(sender, to, what) else {
                 continue;
             };
-            let target_facts = formed_transport_target_facts(hex, &id, rules);
-            if id.starts_with("new-") && target_facts.is_none() {
-                continue;
-            }
             // This pass's own: an unfinished hull has no catalogue weight, so no honest price.
             let Selector::Item(text) = what else {
                 continue;
             };
-            let judged = shipping.judge_with_target_facts(
-                sender,
-                Some(hex.region.coordinate),
-                &id,
-                target_facts.as_ref(),
-            );
+            let Some(judged) = judge_shipment(shipping, hex, sender, &id) else {
+                continue;
+            };
             // `target_facts` has an entry for every unit in every region of the report, so an
             // absent entry is exactly "the report does not show this unit at all" - narrower than
             // `Acceptance::EligibilityUnknown`, whose other cause is a foreign unit the report does

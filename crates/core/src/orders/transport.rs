@@ -236,9 +236,9 @@ pub(crate) fn priced(
 /// `QUAR` is quarrying (`ah-d0ku`).
 pub(crate) struct Quartermasters {
     by_id: std::collections::BTreeMap<String, u32>,
-    /// Whether the catalogue names a quartermaster skill at all. False makes every absence unknown
-    /// rather than a fact (`ah-64wm`).
-    skill_known: bool,
+    /// The catalogue's tag for the quartermaster skill. `None` when the catalogue names no such
+    /// skill, which makes every absence unknown rather than a fact (`ah-64wm`).
+    tag: Option<String>,
 }
 
 impl Quartermasters {
@@ -257,24 +257,33 @@ impl Quartermasters {
             // fault rather than a report one (`ah-d0ku`).
             return Self {
                 by_id: std::collections::BTreeMap::new(),
-                skill_known: false,
+                tag: None,
             };
         };
-        let by_id = report
+        let mut quartermasters = Self {
+            by_id: std::collections::BTreeMap::new(),
+            tag: Some(tag),
+        };
+        quartermasters.by_id = report
             .units()
             .filter_map(|unit| {
-                let level = unit
-                    .skills
-                    .iter()
-                    .find(|skill| skill.tag.eq_ignore_ascii_case(&tag))?
-                    .level;
+                let level = quartermasters.held_by(&unit.skills)?.level;
                 Some((unit.unit_id.clone(), level))
             })
             .collect();
-        Self {
-            by_id,
-            skill_known: true,
-        }
+        quartermasters
+    }
+
+    /// The quartermaster skill among `skills`, if it is there: the one place the catalogue's tag
+    /// is matched against a unit's skills (`ah-s79p`).
+    fn held_by<'s>(
+        &self,
+        skills: &'s [crate::report::model::Skill],
+    ) -> Option<&'s crate::report::model::Skill> {
+        let tag = self.tag.as_deref()?;
+        skills
+            .iter()
+            .find(|skill| skill.tag.eq_ignore_ascii_case(tag))
     }
 
     pub(crate) fn contains(&self, unit_id: &str) -> bool {
@@ -287,7 +296,7 @@ impl Quartermasters {
     }
 
     pub(crate) fn skill_known(&self) -> bool {
-        self.skill_known
+        self.tag.is_some()
     }
 }
 
@@ -564,25 +573,52 @@ impl Shipping {
 
     /// The one judgement of one shipment line: whether the target accepts, which phase and reach
     /// it runs under, where both ends stand once `rules/sequenceofevents` has moved every unit, and
-    /// whether the map lets it arrive.
-    #[cfg(test)]
+    /// whether the map lets it arrive. The target is one the report may show; a unit this month's
+    /// own FORM creates is `judge_formed`'s.
     pub(crate) fn judge(
         &self,
         sender: &str,
         sender_reported: Option<crate::report::model::Coordinate>,
         target: &str,
     ) -> Judged {
-        self.judge_with_target_facts(sender, sender_reported, target, None)
+        self.judge_on(sender, sender_reported, target, self.targets.get(target))
     }
 
-    pub(crate) fn judge_with_target_facts(
+    /// `judge`, for a target this month's own FORM creates, which the report cannot describe: its
+    /// facts come from what the calling engine knows of it, read by `formed_target_facts`, so the
+    /// effects walk and the forecast cannot judge one formed unit differently (`ah-s79p`).
+    pub(crate) fn judge_formed(
         &self,
         sender: &str,
         sender_reported: Option<crate::report::model::Coordinate>,
         target: &str,
-        target_facts: Option<&TargetFacts>,
+        formed: FormedTarget<'_>,
     ) -> Judged {
-        let facts = target_facts.or_else(|| self.targets.get(target));
+        let facts = self.formed_target_facts(formed);
+        self.judge_on(sender, sender_reported, target, Some(&facts))
+    }
+
+    /// What a formed unit is as a target: ours, owning nothing yet, and a quartermaster exactly when
+    /// its skills - as far as the engine can know them - hold the catalogue's quartermaster skill.
+    fn formed_target_facts(&self, formed: FormedTarget<'_>) -> TargetFacts {
+        TargetFacts {
+            own: true,
+            quartermaster_disclosed: self.quartermasters.skill_known() && formed.skills.is_some(),
+            quartermaster: formed
+                .skills
+                .is_some_and(|skills| self.quartermasters.held_by(skills).is_some()),
+            caravanserai_owner: false,
+            coordinate: formed.coordinate,
+        }
+    }
+
+    fn judge_on(
+        &self,
+        sender: &str,
+        sender_reported: Option<crate::report::model::Coordinate>,
+        target: &str,
+        facts: Option<&TargetFacts>,
+    ) -> Judged {
         let sender_qm = self.quartermasters.contains(sender);
         let sender_can_distribute = sender_qm
             && self
@@ -630,6 +666,17 @@ impl Shipping {
             weight,
         )
     }
+}
+
+/// A shipment target this month's own FORM creates (`ah-s79p`): what `Shipping::judge_formed`
+/// needs to know of it, from whichever engine is walking the month.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct FormedTarget<'a> {
+    /// The formed unit's skills, or `None` when the engine cannot know them (men arrived by a route
+    /// it does not follow), which leaves its quartermaster status undisclosed.
+    pub skills: Option<&'a [crate::report::model::Skill]>,
+    /// The hex it is formed in.
+    pub coordinate: crate::report::model::Coordinate,
 }
 
 /// What `Shipping::judge` settled about one line. Owned and `Copy`, so the preview can hold it
@@ -1179,7 +1226,7 @@ mod tests {
                     .iter()
                     .map(|(id, level)| ((*id).to_string(), *level))
                     .collect(),
-                skill_known: true,
+                tag: Some("QUAM".to_string()),
             },
             targets: targets
                 .into_iter()
@@ -1197,6 +1244,47 @@ mod tests {
     fn at(mut facts: TargetFacts, coordinate: crate::report::model::Coordinate) -> TargetFacts {
         facts.coordinate = coordinate;
         facts
+    }
+
+    /// `ah-s79p`: a unit this month's FORM creates is judged on what the engine knows of it, by the
+    /// one builder both engines call. `rules/economy_transport`: a quartermaster owning a
+    /// Caravanserai may send to any unit within two hexes, and a quartermaster *target* must own a
+    /// Caravanserai - which a unit formed this month does not.
+    #[test]
+    fn a_formed_target_is_judged_on_its_own_skills() {
+        // 900 is a quartermaster owning a Caravanserai, as the report shows it.
+        let shipping = shipping(
+            &[("900", 1)],
+            vec![("900", at(facts(true, true, true, true), hex(0, 0)))],
+            &[],
+        );
+        let quartermaster = [crate::report::model::Skill {
+            name: "quartermaster".to_string(),
+            tag: "QUAM".to_string(),
+            level: 1,
+            points: 30,
+        }];
+        let judged = |skills: Option<&[crate::report::model::Skill]>| {
+            shipping.judge_formed(
+                "900",
+                Some(hex(0, 0)),
+                "new-1",
+                FormedTarget {
+                    skills,
+                    coordinate: hex(0, 0),
+                },
+            )
+        };
+
+        let plain = judged(Some(&[]));
+        assert_eq!(plain.acceptance, Acceptance::Eligible);
+        assert!(plain.target_shown, "the formed unit is described");
+        assert_eq!(plain.phase, ShipmentPhase::FromQuartermaster);
+        assert_eq!(
+            judged(Some(&quartermaster)).acceptance,
+            Acceptance::NotCaravanseraiOwner
+        );
+        assert_eq!(judged(None).acceptance, Acceptance::EligibilityUnknown);
     }
 
     /// `rules/sequenceofevents` moves every unit before any TRANSPORT, so both ends are measured
