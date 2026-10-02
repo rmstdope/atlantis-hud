@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { BiomeSymbolDefs, BiomeSymbolLayer } from "./BiomeSymbolLayer";
 import { biomeSymbolPlacements, SYMBOL_SPOTS, type MarkSpot } from "./biomeSymbols";
 import type { HexView } from "./hexView";
+import { aHexView } from "./hexViewFixture";
 import { TERRAIN_KINDS } from "./terrain";
 
 /**
@@ -10,31 +11,7 @@ import { TERRAIN_KINDS } from "./terrain";
  * what is checked here is that the layer draws what that rule says, with the shapes it should.
  */
 function view(overrides: Partial<HexView> = {}): HexView {
-  return {
-    key: "12,7,1",
-    at: { x: 100, y: 200 },
-    terrain: "forest",
-    terrainKind: "forest",
-    texture: null,
-    fogOpacity: 0,
-    hatched: false,
-    unsurveyed: false,
-    knowledge: "current",
-    ageInTurns: 0,
-    roads: [],
-    unfinishedRoads: [],
-    settlement: null,
-    units: { own: 0, foreign: 0, monster: 0 },
-    guard: null,
-    ships: 0,
-    buildings: 0,
-    shafts: 0,
-    lairs: 0,
-    battle: null,
-    blocked: null,
-    gate: false,
-    ...overrides
-  };
+  return aHexView(overrides);
 }
 
 const NOTHING: (view: HexView) => MarkSpot[] = () => [];
