@@ -112,6 +112,9 @@ export function settlementBox(tier: SettlementTier | null): {
 }
 
 /** How far in from the hex's edge the guard perimeter is drawn, as a fraction of the radius. */
+/** How far above the hex's centre the settlement's box is drawn, for the layer and its footprint. */
+export const SETTLEMENT_Y = -4;
+
 export const GUARD_RING = 38.6 / MOCKUP_RADIUS;
 
 /**
@@ -150,7 +153,7 @@ export function markFootprint(view: HexView): MarkSpot[] {
     claim({ x: 0, y: AGE_Y }, 10);
   }
   if (view.settlement) {
-    claim({ x: 0, y: -4 }, settlementBox(view.settlement.tier).outer / 2 + 2);
+    claim({ x: 0, y: SETTLEMENT_Y }, settlementBox(view.settlement.tier).outer / 2 + 2);
     claim({ x: 0, y: NAME_Y }, 14);
   }
   for (const counter of counterRow(view.units)) {

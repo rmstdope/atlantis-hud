@@ -1,8 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { SURFACE_LEVEL, type HexMapModel } from "../hexMapModel";
 import type { HexNoteRecord, MapShape, MapWall } from "@atlantis/core-client";
 import { MapCanvas } from "./MapCanvas";
+import { NO_MAP_VIEW } from "./mapViewState";
+import { useWorkspaceStore } from "../workspaceStore";
+import { renderWithStoreState, restoreStoresForTest } from "../testing/storeState";
 import type { RouteOverlay } from "./routeOverlay";
 import { wallTip } from "./routeWall";
 import { CONGESTED_CENTRE, CONGESTED_HEXES } from "./mapThemes/congestedFixture";
@@ -1054,8 +1057,8 @@ describe("the mark layer", () => {
 
 describe("the biome symbols (ah-d9jb.4)", () => {
   /** The congested fixture's map, through the probe theme, with the symbols as asked. */
-  function drawSymbols(biomeSymbols: boolean | undefined): string {
-    return renderToStaticMarkup(
+  function drawSymbols(biomeSymbols: boolean | undefined, step?: number): string {
+    const canvas = (
       <MapCanvas
         gameId={null}
         model={model}
@@ -1071,7 +1074,18 @@ describe("the biome symbols (ah-d9jb.4)", () => {
         biomeSymbols={biomeSymbols}
       />
     );
+    if (step === undefined) {
+      return renderToStaticMarkup(canvas);
+    }
+    // The map reads its zoom from the workspace store, so a far step is set there.
+    return renderWithStoreState(canvas, useWorkspaceStore, {
+      mapView: { ...NO_MAP_VIEW, viewport: { tx: 0, ty: 0, step } }
+    });
   }
+
+  afterEach(() => {
+    restoreStoresForTest();
+  });
 
   it("draws none while they are off, which is where every player starts", () => {
     expect(drawSymbols(false)).not.toContain('data-testid="biome-symbols"');
@@ -1085,6 +1099,15 @@ describe("the biome symbols (ah-d9jb.4)", () => {
     expect(svg).toContain('data-testid="biome-symbols"');
     expect(svg).toContain('id="biome-symbol-forest"');
     expect(svg).toContain("data-biome-symbol=");
+  });
+
+  it("draws none far out, where the unit marks and settlement squares go too, though they are on", () => {
+    expect(drawSymbols(true, 0)).toContain('data-testid="biome-symbols"');
+    const far = drawSymbols(true, -6);
+
+    expect(far).toContain("map-far");
+    expect(far).not.toContain('data-testid="biome-symbols"');
+    expect(far).not.toContain('id="biome-symbol-');
   });
 
   it("puts them over the terrain and under the roads, so every road and mark lies on top", () => {

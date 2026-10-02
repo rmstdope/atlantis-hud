@@ -19,6 +19,7 @@ import type { LayerProps, MapTheme } from "../mapTheme";
 import {
   ANCHORS,
   housePositions,
+  KEEP_LIFT,
   keepOf,
   MOCKUP_RADIUS,
   nameLift,
@@ -201,7 +202,7 @@ function Settlement({ view }: { view: HexView }) {
     >
       {glyph.kind === "keep" ? (
         // A three-towered keep: the walls, a tower either side, and a taller one behind.
-        <g transform="translate(0,-2)">
+        <g transform={at(KEEP_LIFT)}>
           <rect x={-13} y={-8} width={26} height={10} />
           <rect x={-16} y={-14} width={7} height={16} />
           <rect x={9} y={-14} width={7} height={16} />

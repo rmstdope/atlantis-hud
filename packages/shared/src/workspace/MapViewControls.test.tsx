@@ -42,11 +42,6 @@ describe("the strip of view controls over the map", () => {
     expect(draw()).toContain('data-badges-all="true"');
   });
 
-  it("is not lit by the biome symbols being off, which is how every player starts (ah-d9jb.4)", () => {
-    // The store's default has the symbols off and every badge on: the chip must read "everything".
-    expect(draw()).toContain('data-badges-all="true"');
-  });
-
 
 
 

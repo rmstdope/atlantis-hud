@@ -7,7 +7,15 @@ import { TERRAIN_KINDS } from "../terrain";
 import { CONGESTED_CENTRE, CONGESTED_HEXES, NAMED_ONLY } from "../congestedFixture";
 import { allBadges, buildHexViews, dampFog, type HexView, type HexViewOptions } from "../hexView";
 import { cartographersTable } from "./index";
-import { keepOf, nameLift, shieldRow, workshopAnchors, ANCHORS } from "./paint";
+import {
+  housePositions,
+  keepOf,
+  KEEP_LIFT,
+  nameLift,
+  shieldRow,
+  workshopAnchors,
+  ANCHORS
+} from "./paint";
 
 const ALL_ON: HexViewOptions = {
   showStaleness: true,
@@ -491,12 +499,22 @@ function addedSpots(without: HexView, withIt: HexView) {
 
 describe("the room this theme's marks take, for the biome symbols to keep clear of (ah-d9jb.4)", () => {
   it("claims the room on the spot where it draws a settlement", () => {
-    const added = addedSpots(
-      viewWith({ battle: null, settlement: null }),
-      viewWith({ battle: null, settlement: { name: "Kharn", tier: "village" } })
-    );
+    // Covers every point the layer draws a house or the keep at: the anchors are the layer's own.
+    const covers = (spots: ReturnType<typeof addedSpots>, at: { x: number; y: number }) =>
+      spots.some((spot) => Math.hypot(spot.x - at.x / 46, spot.y - at.y / 46) <= spot.r);
+    const settled = (tier: "village" | "town" | "city") =>
+      addedSpots(
+        viewWith({ battle: null, settlement: null }),
+        viewWith({ battle: null, settlement: { name: "Kharn", tier } })
+      );
 
-    expect(added).toContainEqual(expect.objectContaining({ x: 0, y: -4 / 46 }));
+    for (const house of housePositions(1)) {
+      expect(covers(settled("village"), house)).toBe(true);
+    }
+    for (const house of housePositions(2)) {
+      expect(covers(settled("town"), house)).toBe(true);
+    }
+    expect(covers(settled("city"), KEEP_LIFT)).toBe(true);
   });
 
   it("claims room for the guard, which it draws inside the hex rather than round its rim", () => {

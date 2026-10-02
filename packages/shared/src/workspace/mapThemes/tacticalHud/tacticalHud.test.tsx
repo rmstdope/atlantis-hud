@@ -5,7 +5,7 @@ import { TERRAIN_KINDS } from "../terrain";
 import { CONGESTED_CENTRE, CONGESTED_HEXES, NAMED_ONLY } from "../congestedFixture";
 import { allBadges, buildHexViews, type HexView, type HexViewOptions } from "../hexView";
 import { tacticalHud } from "./index";
-import { ageLabel, buildingLabel, counterRow, settlementBox, STATIONS } from "./paint";
+import { ageLabel, buildingLabel, counterRow, settlementBox, SETTLEMENT_Y, STATIONS } from "./paint";
 
 const ALL_ON: HexViewOptions = {
   showStaleness: true,
@@ -437,7 +437,7 @@ describe("the room this theme's marks take, for the biome symbols to keep clear 
       viewWith({ battle: null, settlement: { name: "Kharn", tier: "village" } })
     );
 
-    expect(added).toContainEqual(expect.objectContaining({ x: 0, y: -4 / 46 }));
+    expect(added).toContainEqual(expect.objectContaining({ x: 0, y: SETTLEMENT_Y / 46 }));
   });
 
   it("claims nothing for the guard, which is a ring round the rim outside every symbol", () => {

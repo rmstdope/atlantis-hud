@@ -62,6 +62,16 @@ export function keepOf(tier: SettlementTier | null): SettlementGlyph {
   return { kind: "houses", houses: tier === "town" ? 2 : 1 };
 }
 
+/**
+ * How far a city's keep is lifted above the hex's centre, and the room its walls and towers take.
+ * The layer draws the keep at `KEEP_LIFT`; the towers rise about seventeen units over it.
+ */
+export const KEEP_LIFT = { x: 0, y: -2 };
+const KEEP_ROOM = { centreAbove: 6.5, size: 17 };
+
+/** The room one house takes, roof included, around the point `housePositions` gives it. */
+const HOUSE_ROOM = { centreAbove: 2, size: 8 };
+
 /** Where a settlement's houses stand, so two of them sit either side of centre rather than overlap. */
 export function housePositions(houses: number): Array<{ x: number; y: number }> {
   if (houses <= 1) {
@@ -159,8 +169,14 @@ export function markFootprint(view: HexView): MarkSpot[] {
     claim(workshop, 7);
   }
   if (view.settlement) {
-    const keep = keepOf(view.settlement.tier).kind === "keep";
-    claim({ x: 0, y: keep ? -8 : -4 }, keep ? 17 : 11);
+    const glyph = keepOf(view.settlement.tier);
+    if (glyph.kind === "keep") {
+      claim({ x: KEEP_LIFT.x, y: KEEP_LIFT.y - KEEP_ROOM.centreAbove }, KEEP_ROOM.size);
+    } else {
+      for (const house of housePositions(glyph.houses)) {
+        claim({ x: house.x, y: house.y - HOUSE_ROOM.centreAbove }, HOUSE_ROOM.size);
+      }
+    }
     claim({ x: 0, y: nameLift(view.settlement.tier) }, 14);
   }
   for (const shield of shieldRow(view.units)) {

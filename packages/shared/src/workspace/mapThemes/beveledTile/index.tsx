@@ -16,7 +16,6 @@ import { roadLayer, type RoadStyle } from "../roadLayer";
 import type { LayerProps, MapTheme } from "../mapTheme";
 import {
   battleChip,
-
   CHIP_RADIUS,
   GUARD_RADIUS,
   MEDALLION_Y,
