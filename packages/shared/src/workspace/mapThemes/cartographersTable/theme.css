@@ -45,23 +45,23 @@
   --ct-foreign: #5ec8f0;
   --ct-monster: #f07070;
 
-  --ct-terrain-ocean: #7fa0b8;
-  --ct-terrain-plain: #b3a565;
-  --ct-terrain-forest: #6e8a5c;
-  --ct-terrain-mountain: #8d8a83;
-  --ct-terrain-swamp: #7d8a5e;
-  --ct-terrain-desert: #c2ab74;
-  --ct-terrain-jungle: #5f8a63;
-  --ct-terrain-tundra: #a9b3ae;
-  --ct-terrain-volcano: #9c7a6a;
-  --ct-terrain-cavern: #8f8a86;
-  --ct-terrain-underforest: #6b8a72;
-  --ct-terrain-wasteland: #b0a288;
-  --ct-terrain-hill: #927d63;
-  --ct-terrain-tunnels: #696775;
-  --ct-terrain-grotto: #5f8987;
-  --ct-terrain-deepforest: #4f7659;
-  --ct-terrain-chasm: #765867;
+  --ct-terrain-ocean: #4378a8;
+  --ct-terrain-plain: #a1b667;
+  --ct-terrain-forest: #487663;
+  --ct-terrain-mountain: #94929a;
+  --ct-terrain-swamp: #8c7e58;
+  --ct-terrain-desert: #d5b77d;
+  --ct-terrain-jungle: #8cb42c;
+  --ct-terrain-tundra: #c1cbd3;
+  --ct-terrain-volcano: #605151;
+  --ct-terrain-cavern: #686277;
+  --ct-terrain-underforest: #807091;
+  --ct-terrain-wasteland: #b06c4f;
+  --ct-terrain-hill: #a4925e;
+  --ct-terrain-tunnels: #415172;
+  --ct-terrain-grotto: #418d8f;
+  --ct-terrain-deepforest: #375348;
+  --ct-terrain-chasm: #804d5f;
   --ct-terrain-other: #9a9a90;
 }
 
@@ -88,23 +88,23 @@
   --ct-foreign: #2d7fa8;
   --ct-monster: #c25050;
 
-  --ct-terrain-ocean: #a8c4d8;
-  --ct-terrain-plain: #d8cb92;
-  --ct-terrain-forest: #9dba8c;
-  --ct-terrain-mountain: #bcb9b2;
-  --ct-terrain-swamp: #adb88b;
-  --ct-terrain-desert: #e6d5a8;
-  --ct-terrain-jungle: #93bd94;
-  --ct-terrain-tundra: #d0d8d4;
-  --ct-terrain-volcano: #c9a89a;
-  --ct-terrain-cavern: #c0bab4;
-  --ct-terrain-underforest: #9fbfa6;
-  --ct-terrain-wasteland: #d8cbb2;
-  --ct-terrain-hill: #d6c0a1;
-  --ct-terrain-tunnels: #b4b1bf;
-  --ct-terrain-grotto: #a0c9c5;
-  --ct-terrain-deepforest: #a4c4aa;
-  --ct-terrain-chasm: #c7aeba;
+  --ct-terrain-ocean: #649acd;
+  --ct-terrain-plain: #c5db8b;
+  --ct-terrain-forest: #699884;
+  --ct-terrain-mountain: #b7b5bd;
+  --ct-terrain-swamp: #afa079;
+  --ct-terrain-desert: #fadca1;
+  --ct-terrain-jungle: #afd957;
+  --ct-terrain-tundra: #e6f0f8;
+  --ct-terrain-volcano: #817170;
+  --ct-terrain-cavern: #898399;
+  --ct-terrain-underforest: #a291b4;
+  --ct-terrain-wasteland: #d58e71;
+  --ct-terrain-hill: #c8b580;
+  --ct-terrain-tunnels: #607194;
+  --ct-terrain-grotto: #65b0b2;
+  --ct-terrain-deepforest: #567367;
+  --ct-terrain-chasm: #a46d80;
   --ct-terrain-other: #c4c4ba;
 }
 

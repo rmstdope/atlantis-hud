@@ -11,23 +11,23 @@
  */
 
 :root {
-  --bt-terrain-ocean: #26517a;
-  --bt-terrain-plain: #807748;
-  --bt-terrain-forest: #3a6346;
-  --bt-terrain-mountain: #63636e;
-  --bt-terrain-swamp: #4e5c36;
-  --bt-terrain-desert: #a08954;
-  --bt-terrain-jungle: #2f6a4c;
-  --bt-terrain-tundra: #75868c;
-  --bt-terrain-volcano: #6b3a35;
-  --bt-terrain-cavern: #4f4f5a;
-  --bt-terrain-underforest: #33553f;
-  --bt-terrain-wasteland: #7c6c52;
-  --bt-terrain-hill: #806e5a;
-  --bt-terrain-tunnels: #55535f;
-  --bt-terrain-grotto: #426b6b;
-  --bt-terrain-deepforest: #315741;
-  --bt-terrain-chasm: #513c4d;
+  --bt-terrain-ocean: #215684;
+  --bt-terrain-plain: #7f9244;
+  --bt-terrain-forest: #275644;
+  --bt-terrain-mountain: #727078;
+  --bt-terrain-swamp: #6b5d37;
+  --bt-terrain-desert: #b0935b;
+  --bt-terrain-jungle: #6a9000;
+  --bt-terrain-tundra: #9da7ae;
+  --bt-terrain-volcano: #413232;
+  --bt-terrain-cavern: #484256;
+  --bt-terrain-underforest: #5f4f6f;
+  --bt-terrain-wasteland: #8b4b2f;
+  --bt-terrain-hill: #81703c;
+  --bt-terrain-tunnels: #243251;
+  --bt-terrain-grotto: #186b6d;
+  --bt-terrain-deepforest: #19352a;
+  --bt-terrain-chasm: #5e2e40;
   --bt-terrain-other: #5a606a;
 
   --bt-chip-battle: #c05252;
@@ -64,23 +64,23 @@
 }
 
 :root[data-theme="light"] {
-  --bt-terrain-ocean: #a9c5de;
-  --bt-terrain-plain: #d9d2a0;
-  --bt-terrain-forest: #a3c9ab;
-  --bt-terrain-mountain: #babac2;
-  --bt-terrain-swamp: #b3bd96;
-  --bt-terrain-desert: #e0cd9e;
-  --bt-terrain-jungle: #93c7ac;
-  --bt-terrain-tundra: #bcc9ce;
-  --bt-terrain-volcano: #b98f8b;
-  --bt-terrain-cavern: #b6b6c2;
-  --bt-terrain-underforest: #a8c3b2;
-  --bt-terrain-wasteland: #c7b298;
-  --bt-terrain-hill: #d7c4a6;
-  --bt-terrain-tunnels: #c0bdc7;
-  --bt-terrain-grotto: #acd0cc;
-  --bt-terrain-deepforest: #afd0b8;
-  --bt-terrain-chasm: #c6b3c2;
+  --bt-terrain-ocean: #649acd;
+  --bt-terrain-plain: #c5db8b;
+  --bt-terrain-forest: #699884;
+  --bt-terrain-mountain: #b7b5bd;
+  --bt-terrain-swamp: #afa079;
+  --bt-terrain-desert: #fadca1;
+  --bt-terrain-jungle: #afd957;
+  --bt-terrain-tundra: #e6f0f8;
+  --bt-terrain-volcano: #817170;
+  --bt-terrain-cavern: #898399;
+  --bt-terrain-underforest: #a291b4;
+  --bt-terrain-wasteland: #d58e71;
+  --bt-terrain-hill: #c8b580;
+  --bt-terrain-tunnels: #607194;
+  --bt-terrain-grotto: #65b0b2;
+  --bt-terrain-deepforest: #567367;
+  --bt-terrain-chasm: #a46d80;
   --bt-terrain-other: #b7bec7;
 
   --bt-chip-battle: #a83e3e;

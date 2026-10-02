@@ -29,23 +29,23 @@
   --hud-foreign: #5ec8f0;
   --hud-monster-unit: #f07070;
 
-  --hud-terrain-ocean: #1c3247;
-  --hud-terrain-plain: #4a4630;
-  --hud-terrain-forest: #28402c;
-  --hud-terrain-mountain: #3c3c44;
-  --hud-terrain-swamp: #2f3a26;
-  --hud-terrain-desert: #4e422a;
-  --hud-terrain-jungle: #1f3d2d;
-  --hud-terrain-tundra: #39444a;
-  --hud-terrain-volcano: #43221f;
-  --hud-terrain-cavern: #33333c;
-  --hud-terrain-underforest: #23372b;
-  --hud-terrain-wasteland: #453d31;
-  --hud-terrain-hill: #4d453d;
-  --hud-terrain-tunnels: #3d3c46;
-  --hud-terrain-grotto: #2f5050;
-  --hud-terrain-deepforest: #203d30;
-  --hud-terrain-chasm: #382d3a;
+  --hud-terrain-ocean: #012a4b;
+  --hud-terrain-plain: #536127;
+  --hud-terrain-forest: #05291d;
+  --hud-terrain-mountain: #454449;
+  --hud-terrain-swamp: #3c3216;
+  --hud-terrain-desert: #7a653b;
+  --hud-terrain-jungle: #425d00;
+  --hud-terrain-tundra: #6f767b;
+  --hud-terrain-volcano: #170d0d;
+  --hud-terrain-cavern: #1f1b29;
+  --hud-terrain-underforest: #32273d;
+  --hud-terrain-wasteland: #52240f;
+  --hud-terrain-hill: #50431d;
+  --hud-terrain-tunnels: #040c21;
+  --hud-terrain-grotto: #003c3d;
+  --hud-terrain-deepforest: #000d07;
+  --hud-terrain-chasm: #2c0a18;
   --hud-terrain-other: #3a4048;
 }
 
@@ -68,23 +68,23 @@
   --hud-foreign: #1f6f96;
   --hud-monster-unit: #b04a4a;
 
-  --hud-terrain-ocean: #b6ccdd;
-  --hud-terrain-plain: #ded6b0;
-  --hud-terrain-forest: #b6cdb6;
-  --hud-terrain-mountain: #c6c6cc;
-  --hud-terrain-swamp: #c2c9a8;
-  --hud-terrain-desert: #e5d6b0;
-  --hud-terrain-jungle: #a9cdb4;
-  --hud-terrain-tundra: #c8d2d8;
-  --hud-terrain-volcano: #d9b3ab;
-  --hud-terrain-cavern: #c8c8d0;
-  --hud-terrain-underforest: #b4ccb8;
-  --hud-terrain-wasteland: #d8ccb6;
-  --hud-terrain-hill: #d7cbbc;
-  --hud-terrain-tunnels: #c4c2ca;
-  --hud-terrain-grotto: #b5d0ce;
-  --hud-terrain-deepforest: #b2cabd;
-  --hud-terrain-chasm: #c9becb;
+  --hud-terrain-ocean: #7199c1;
+  --hud-terrain-plain: #c7d99b;
+  --hud-terrain-forest: #729686;
+  --hud-terrain-mountain: #b7b5bc;
+  --hud-terrain-swamp: #aca182;
+  --hud-terrain-desert: #f4ddb0;
+  --hud-terrain-jungle: #b4d577;
+  --hud-terrain-tundra: #e8f0f6;
+  --hud-terrain-volcano: #7e7271;
+  --hud-terrain-cavern: #898495;
+  --hud-terrain-underforest: #a093ae;
+  --hud-terrain-wasteland: #cb937c;
+  --hud-terrain-hill: #c4b68d;
+  --hud-terrain-tunnels: #64718c;
+  --hud-terrain-grotto: #75adae;
+  --hud-terrain-deepforest: #5b7268;
+  --hud-terrain-chasm: #9c7280;
   --hud-terrain-other: #c4cad2;
 }
 

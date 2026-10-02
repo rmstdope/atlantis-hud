@@ -8,23 +8,23 @@
  */
 
 :root {
-  --ed-terrain-ocean: #1f4260;
-  --ed-terrain-plain: #6e6738;
-  --ed-terrain-forest: #31543a;
-  --ed-terrain-mountain: #54545e;
-  --ed-terrain-swamp: #46532f;
-  --ed-terrain-desert: #7d6a3e;
-  --ed-terrain-jungle: #2c5f45;
-  --ed-terrain-tundra: #5b6b71;
-  --ed-terrain-volcano: #5a2f2c;
-  --ed-terrain-cavern: #43434e;
-  --ed-terrain-underforest: #2b4c39;
-  --ed-terrain-wasteland: #6a5c46;
-  --ed-terrain-hill: #6b5a4a;
-  --ed-terrain-tunnels: #4c4b57;
-  --ed-terrain-grotto: #355f60;
-  --ed-terrain-deepforest: #29523b;
-  --ed-terrain-chasm: #4b3847;
+  --ed-terrain-ocean: #094470;
+  --ed-terrain-plain: #6c7e30;
+  --ed-terrain-forest: #144333;
+  --ed-terrain-mountain: #5f5d65;
+  --ed-terrain-swamp: #584b25;
+  --ed-terrain-desert: #9b7f47;
+  --ed-terrain-jungle: #587b00;
+  --ed-terrain-tundra: #89929a;
+  --ed-terrain-volcano: #302222;
+  --ed-terrain-cavern: #373144;
+  --ed-terrain-underforest: #4d3d5c;
+  --ed-terrain-wasteland: #76381c;
+  --ed-terrain-hill: #6e5d29;
+  --ed-terrain-tunnels: #14223f;
+  --ed-terrain-grotto: #00585a;
+  --ed-terrain-deepforest: #08241a;
+  --ed-terrain-chasm: #4b1d2f;
   --ed-terrain-other: #4b515a;
 
   --ed-edge: #141a22;
@@ -58,23 +58,23 @@
 }
 
 :root[data-theme="light"] {
-  --ed-terrain-ocean: #a9c5de;
-  --ed-terrain-plain: #d9d2a0;
-  --ed-terrain-forest: #a3c9ab;
-  --ed-terrain-mountain: #babac2;
-  --ed-terrain-swamp: #b3bd96;
-  --ed-terrain-desert: #e0cd9e;
-  --ed-terrain-jungle: #93c7ac;
-  --ed-terrain-tundra: #bcc9ce;
-  --ed-terrain-volcano: #b98f8b;
-  --ed-terrain-cavern: #b6b6c2;
-  --ed-terrain-underforest: #a8c3b2;
-  --ed-terrain-wasteland: #c7b298;
-  --ed-terrain-hill: #d4c2aa;
-  --ed-terrain-tunnels: #c0beca;
-  --ed-terrain-grotto: #a6ceca;
-  --ed-terrain-deepforest: #a5c9ae;
-  --ed-terrain-chasm: #c4b4c2;
+  --ed-terrain-ocean: #649acd;
+  --ed-terrain-plain: #c5db8b;
+  --ed-terrain-forest: #699884;
+  --ed-terrain-mountain: #b7b5bd;
+  --ed-terrain-swamp: #afa079;
+  --ed-terrain-desert: #fadca1;
+  --ed-terrain-jungle: #afd957;
+  --ed-terrain-tundra: #e6f0f8;
+  --ed-terrain-volcano: #817170;
+  --ed-terrain-cavern: #898399;
+  --ed-terrain-underforest: #a291b4;
+  --ed-terrain-wasteland: #d58e71;
+  --ed-terrain-hill: #c8b580;
+  --ed-terrain-tunnels: #607194;
+  --ed-terrain-grotto: #65b0b2;
+  --ed-terrain-deepforest: #567367;
+  --ed-terrain-chasm: #a46d80;
   --ed-terrain-other: #b7bec7;
 
   --ed-edge: #8b8578;
