@@ -1180,7 +1180,7 @@ export function About({
         ah-sw92: the update section leads the tab in every state, so the buttons never move when a
         newer version appears - the section itself becomes the amber notice around them.
       */}
-      <div data-testid="update-section" className="mb-2 border-b border-edge pb-2">
+      <div data-testid="update-section" className="mb-2">
         {notice ? (
           <div
             data-testid="update-notice"

@@ -9,8 +9,8 @@ import { clearGames, createGame, loadReport, selectHex } from "./gameSetup";
  * centered modal with several tabs, the theme choice restyles the app and survives a reload, and the
  * dialog goes away the way a modal should — close button, Escape, or a press on the backdrop. The
  * update control itself cannot be asserted in common, because it is the one thing that legitimately
- * differs - the web build has a service worker to ask and the desktop build has a releases page to
- * open, and under Playwright the desktop bundle runs in a plain browser with neither. That
+ * differs - the web build has a service worker to ask and the desktop build asks GitHub through
+ * Tauri's http plugin, and under Playwright the desktop bundle runs in a plain browser with neither. That
  * difference is covered where it belongs: the web path in `tests/pwa`, the desktop path by hand.
  *
  * A ruleset *change* is not exercised here either: only one ruleset ships, so there is nothing to

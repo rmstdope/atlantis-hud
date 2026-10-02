@@ -13,6 +13,8 @@ describe("SettingsButton", () => {
     const markup = draw();
     expect(markup).toContain('data-testid="settings-indicator"');
     expect(markup).toContain('aria-label="Settings"');
+    // The tooltip appears only while a version is out.
+    expect(markup).not.toContain("title=");
     expect(markup).not.toContain("settings-update-dot");
   });
 

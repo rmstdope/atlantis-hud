@@ -130,15 +130,23 @@ export function desktopUpdateState(state: DesktopUpdate): AppUpdateState {
 async function fetchLatestRelease(): Promise<FoundRelease | null | "failed"> {
   const plugins = desktopPlugins();
   if (!plugins) return "failed";
-  const reply = await plugins.httpRequest(
-    {
-      method: "GET",
-      url: LATEST_RELEASE_URL,
-      headers: { Accept: "application/vnd.github+json", "User-Agent": "atlantis-hud" }
-    },
-    AbortSignal.timeout(CHECK_TIMEOUT_MS)
-  );
-  return readLatestRelease(reply, APP_VERSION);
+  // A controller and a timer rather than `AbortSignal.timeout`, which WebKit gained only in Safari
+  // 16 - and the shell supports macOS 10.15, whose webview is older than that.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
+  try {
+    const reply = await plugins.httpRequest(
+      {
+        method: "GET",
+        url: LATEST_RELEASE_URL,
+        headers: { Accept: "application/vnd.github+json", "User-Agent": "atlantis-hud" }
+      },
+      controller.signal
+    );
+    return readLatestRelease(reply, APP_VERSION);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function useDesktopAppUpdate(): AppUpdateControl {
