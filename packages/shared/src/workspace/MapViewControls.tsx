@@ -37,6 +37,8 @@ export function MapViewControls({
   const badges = useWorkspaceStore((state) => state.badges);
   const toggleBadge = useWorkspaceStore((state) => state.toggleBadge);
   const setAllBadges = useWorkspaceStore((state) => state.setAllBadges);
+  const biomeSymbols = useWorkspaceStore((state) => state.biomeSymbols);
+  const toggleBiomeSymbols = useWorkspaceStore((state) => state.toggleBiomeSymbols);
   const [badgesOpen, setBadgesOpen] = useState(false);
   const showingEverything = Object.values(badges).every(Boolean);
 
@@ -48,14 +50,24 @@ export function MapViewControls({
       <ChipPopover
         open={badgesOpen}
         onDismiss={() => setBadgesOpen(false)}
-        panel={<BadgeMenu badges={badges} onToggle={toggleBadge} onSetAll={setAllBadges} />}
+        panel={
+          <BadgeMenu
+            badges={badges}
+            onToggle={toggleBadge}
+            onSetAll={setAllBadges}
+            biomeSymbols={biomeSymbols}
+            onToggleBiomeSymbols={toggleBiomeSymbols}
+          />
+        }
       >
         <button
           type="button"
           aria-haspopup="dialog"
           aria-expanded={badgesOpen}
           // Lit while any badge is off, so a hex missing a mark is never a mystery: the strip says
-          // the map is showing less than everything without the panel having to be open.
+          // the map is showing less than everything without the panel having to be open. The
+          // biome symbols are not a badge and do not count (ah-d9jb.4): they start off for
+          // everybody, and a chip lit on their account would be lit for every player.
           data-badges-all={showingEverything}
           onClick={() => setBadgesOpen((open) => !open)}
           className={`flex items-center gap-1 rounded border px-2 py-0.5 text-pane ${
