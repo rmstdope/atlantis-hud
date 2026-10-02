@@ -17,6 +17,7 @@ import { collective } from "./collective/index";
 import { stainedGlass } from "./stainedGlass/index";
 import { blueprint } from "./blueprint/index";
 import { eightBitQuest } from "./eightBitQuest/index";
+import { chronicle } from "./chronicle/index";
 
 /** In the order the settings picker offers them, the atlas first as the one the map opens on. */
 export const MAP_THEMES: readonly MapTheme[] = [
@@ -28,7 +29,8 @@ export const MAP_THEMES: readonly MapTheme[] = [
   collective,
   stainedGlass,
   blueprint,
-  eightBitQuest
+  eightBitQuest,
+  chronicle
 ];
 
 /** The most map-like of the designs, and what an unrecognised choice falls back to. */

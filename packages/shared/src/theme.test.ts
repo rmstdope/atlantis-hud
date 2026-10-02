@@ -502,7 +502,8 @@ describe("map theme stylesheets", () => {
       collective: ["co-terrain"],
       stainedGlass: ["sg-terrain"],
       eightBitQuest: ["eb-terrain"],
-      blueprint: ["bp-terrain"]
+      blueprint: ["bp-terrain"],
+      chronicle: ["ch-terrain"]
     };
     const missing: string[] = [];
     for (const sheet of await themeSheets()) {
@@ -572,7 +573,8 @@ describe("map theme stylesheets", () => {
       collective: ["--co-dim", "--co-white", "--co-void"],
       "stained-glass": ["--sg-gold-dark", "--sg-gold-light", "--sg-lead"],
       "eight-bit-quest": ["--eb-silver", "--eb-white", "--eb-black"],
-      blueprint: ["--bp-border", "--bp-line-strong", "--bp-ground"]
+      blueprint: ["--bp-border", "--bp-line-strong", "--bp-ground"],
+      chronicle: ["--ch-edge", "--ch-ink", "--ch-paper"]
     };
     const sheets = await themeSheets();
 
