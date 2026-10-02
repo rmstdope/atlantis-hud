@@ -345,8 +345,9 @@
  * and the viewer has not asked for less motion: the figures hop on the spot, and the selection
  * outline and its pointing hand blink - in whole steps, as the old hardware did.
  */
+/* Gold, not white: white is the colour of the unvisited rim, and the two must never be confused. */
 .eb-select {
-  stroke: var(--eb-white);
+  stroke: var(--eb-gold);
   stroke-linejoin: miter;
 }
 .eb-select-casing {
