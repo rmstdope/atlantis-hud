@@ -136,13 +136,22 @@ type MapTheme = {
   TerrainLayer: ComponentType<LayerProps>;
   RoadLayer: ComponentType<LayerProps>;  // usually `roadLayer(style)`
   MarkLayer: ComponentType<LayerProps>;
+  markFootprint: (view: HexView) => MarkSpot[];  // where MarkLayer draws, for the biome symbols
 };
 
 type LayerProps = { views: HexView[] };
+type MarkSpot = { x: number; y: number; r: number };  // fractions of HEX_RADIUS from the centre
 ```
 
 `TerrainLayer` is rendered three times, once per knowledge bucket, weakest knowledge first.
 `RoadLayer` and `MarkLayer` are rendered once each over every hex on the level.
+
+`markFootprint` says where the theme draws its marks and labels inside a hex, as circles, so the
+map's biome symbols (ah-d9jb.4) can keep clear of them. Write it in `paint.ts` from the same anchors
+`MarkLayer` draws at (`markSpot(at, size, MOCKUP_RADIUS)` turns a mockup point and size into a
+`MarkSpot`), so the two cannot drift apart. Leave out the roads, which the map claims itself under
+every theme, and any ring round the rim, which lies outside every symbol spot. The table test in
+`mapThemes/index.test.tsx` holds every registered theme to claiming room for each mark it can draw.
 
 Two rules a theme may not break: **never import another theme**, and **never import the settings
 store**. Everything a theme is allowed to know arrives in its `HexView`s, and the settings store
@@ -156,7 +165,7 @@ Four steps, and none of them touch `MapCanvas.tsx` or any other theme.
 1. **Create the directory** `packages/shared/src/workspace/mapThemes/<yourTheme>/` holding:
    - `index.tsx` — the `MapTheme` object and its layer components, including a `ROAD_STYLE` (fed to
      `roadLayer(style)` for `RoadLayer`) and a `fogDamping` factor
-   - `paint.ts` — every layout and priority decision, as pure functions
+   - `paint.ts` — every layout and priority decision, as pure functions, `markFootprint` among them
    - `theme.css` — the theme's own colours and its zoom-band policy
    - `<yourTheme>.test.tsx` — pure tests over `paint.ts`, plus a render test
 2. **Register it** — one entry in `MAP_THEMES` in `mapThemes/index.ts`.
