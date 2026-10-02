@@ -448,7 +448,7 @@ describe("the selected hex, and the map-wide effect", () => {
     );
     expect(svg).toContain('data-selection="brackets"');
     expect(svg).toContain("co-select");
-    // A casing under the mark, so it holds on light glass or lattice and on dark alike.
+    // A casing under the mark, so it holds on a bright lattice and on a dark one alike.
     expect(svg).toContain("co-select-casing");
   });
 

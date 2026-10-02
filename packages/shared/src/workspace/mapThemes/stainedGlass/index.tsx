@@ -8,8 +8,9 @@
  *
  * A pane costs six elements: three shards, one lead path for the cuts, and one polygon that is
  * both the highlight and the came. Every gradient lives once in `Defs`, never per hex, because a
- * level can hold thousands of panes. The mockup's sliding band of light was left out for the same
- * reason - it buys nothing a player needs and would repaint the whole window as it moved.
+ * level can hold thousands of panes. The mockup's sliding band of light is the theme's
+ * `Overlay`: one element over the whole window rather than anything per pane, and drawn only while
+ * the "Animate map theme" setting is on and the viewer has not asked for less motion.
  */
 
 import "@fontsource/cinzel/latin-600.css";

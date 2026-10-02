@@ -377,7 +377,7 @@ function MarkLayer({ views }: LayerProps) {
 }
 
 /**
- * The selected hex: a white outline on a black casing, blinking while the map may animate, and the
+ * The selected hex: a gold outline on a black casing, dimming while the map may animate, and the
  * pointing hand above it. Replaces the map's white ring; drawn in the mockup's coordinates and scaled
  * once, like a hex.
  */
