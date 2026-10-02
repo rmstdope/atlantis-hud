@@ -13720,12 +13720,22 @@ fn check_transport_reach(
             if !matches!(what, Selector::Item(_)) {
                 continue;
             }
+            let target_facts =
+                ruleset.and_then(|rules| formed_transport_target_facts(hex, &id, rules));
+            if id.starts_with("new-") && target_facts.is_none() {
+                continue;
+            }
             // Judged once, by the same function the forecast and the shipping bill read
             // (`transport::Shipping::judge`). Every answer but `Eligible` is one of `ah-64wm`'s four
             // refusals, which the unit preview explains and this check says nothing about; only a
             // settled refusal is a problem, since an unmeasured distance may well be in reach
             // (`ah-7ale.5`). The finding still anchors on the hex the report lists the sender in.
-            let judged = shipping.judge(sender, Some(hex.region.coordinate), id);
+            let judged = shipping.judge_with_target_facts(
+                sender,
+                Some(hex.region.coordinate),
+                &id,
+                target_facts.as_ref(),
+            );
             if judged.acceptance != super::transport::Acceptance::Eligible {
                 continue;
             }
@@ -13745,7 +13755,7 @@ fn check_transport_reach(
                 // `ALL` is a question about stock, which this check does not ask.
                 _ => None,
             };
-            let message = transport_reach_sentence(id, refused, goods.as_ref());
+            let message = transport_reach_sentence(&id, refused, goods.as_ref());
             findings.push(ordered.finding(
                 hex,
                 codes::TRANSPORT_OUT_OF_REACH,
@@ -13765,6 +13775,35 @@ struct SettledShipment {
     target: String,
     tag: String,
     quantity: i64,
+}
+
+/// Facts the shared shipment judge needs for a formed ordinary unit in this hex.
+fn formed_transport_target_facts(
+    hex: &Hex<'_>,
+    target_id: &str,
+    rules: &Ruleset,
+) -> Option<super::transport::TargetFacts> {
+    let target = hex
+        .find(target_id)
+        .filter(|target| target.formed.is_some())?;
+    let quartermaster_tag = rules
+        .find_skill("quartermaster")
+        .map(|skill| skill.tag.to_ascii_uppercase());
+    let skills = target.skills();
+    let quartermaster = quartermaster_tag.as_ref().is_some_and(|tag| {
+        skills.is_some_and(|skills| {
+            skills
+                .iter()
+                .any(|skill| skill.tag.eq_ignore_ascii_case(tag))
+        })
+    });
+    Some(super::transport::TargetFacts {
+        own: true,
+        quartermaster_disclosed: quartermaster_tag.is_some() && skills.is_some(),
+        quartermaster,
+        caravanserai_owner: false,
+        coordinate: hex.region.coordinate,
+    })
 }
 
 impl SettledShipment {
@@ -13868,11 +13907,20 @@ fn shipping_bills(
             let Some(id) = super::transport::shipment_target(sender, to, what) else {
                 continue;
             };
+            let target_facts = formed_transport_target_facts(hex, &id, rules);
+            if id.starts_with("new-") && target_facts.is_none() {
+                continue;
+            }
             // This pass's own: an unfinished hull has no catalogue weight, so no honest price.
             let Selector::Item(text) = what else {
                 continue;
             };
-            let judged = shipping.judge(sender, Some(hex.region.coordinate), id);
+            let judged = shipping.judge_with_target_facts(
+                sender,
+                Some(hex.region.coordinate),
+                &id,
+                target_facts.as_ref(),
+            );
             // `target_facts` has an entry for every unit in every region of the report, so an
             // absent entry is exactly "the report does not show this unit at all" - narrower than
             // `Acceptance::EligibilityUnknown`, whose other cause is a foreign unit the report does
@@ -13972,7 +14020,7 @@ fn shipping_bills(
                             &tag,
                             quantity,
                             placed,
-                            id,
+                            &id,
                             &mut shipped,
                         ));
                     }
@@ -13990,7 +14038,7 @@ fn shipping_bills(
                             &tag,
                             quantity,
                             placed,
-                            id,
+                            &id,
                             &mut shipped,
                         ));
                     }
@@ -14028,7 +14076,7 @@ fn shipping_bills(
                             &tag,
                             quantity,
                             placed,
-                            id,
+                            &id,
                             &mut shipped,
                         ));
                         priced_here.push(ShipmentPriced {
@@ -42700,6 +42748,62 @@ BUILD
             .iter()
             .find(|forecast| forecast.unit_id == "901")
             .expect("the receiver is forecast");
+
+        assert_eq!(
+            distributed_sender.at_month_end,
+            baseline_sender.at_month_end.map(|silver| silver - 200)
+        );
+        assert_eq!(
+            distributed_receiver.at_month_end,
+            baseline_receiver.at_month_end.map(|silver| silver + 200)
+        );
+    }
+
+    #[test]
+    fn a_quartermaster_distributes_silver_to_a_formed_unit() {
+        let mut sender = with_men(with_silver(with_skill(unit("900"), "QUAM", 1), 500), 2);
+        sender.structure_id = Some("500".to_string());
+        let mut nearby = region(vec![sender]);
+        nearby.structures = vec![Structure {
+            structure_id: "500".to_string(),
+            name: "Caravan".to_string(),
+            kind: "Caravanserai".to_string(),
+            ..Default::default()
+        }];
+        let base_orders = "unit 900\nFORM 1\nEND\nGIVE NEW 1 1 HUMN\n";
+
+        let baseline = review_turn(
+            &report(vec![nearby.clone()]),
+            base_orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let distributed = review_turn(
+            &report(vec![nearby]),
+            &format!("{base_orders}DISTRIBUTE NEW 1 200 SILV\n"),
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let baseline_sender = baseline
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == "900")
+            .expect("the sender is forecast");
+        let baseline_receiver = baseline
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == "new-1")
+            .expect("the formed receiver is forecast");
+        let distributed_sender = distributed
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == "900")
+            .expect("the sender is forecast");
+        let distributed_receiver = distributed
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == "new-1")
+            .expect("the formed receiver is forecast");
 
         assert_eq!(
             distributed_sender.at_month_end,

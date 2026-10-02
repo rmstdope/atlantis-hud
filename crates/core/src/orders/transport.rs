@@ -403,8 +403,10 @@ pub(crate) fn acceptance(sender_can_distribute: bool, facts: Option<&TargetFacts
         // The sender's own quartermaster status is what makes an ordinary target eligible. The
         // report can settle that immediately for our unit; a foreign target's attitude stays
         // unknown because `rules/com_attitudes` only reports our attitudes toward others.
-        return if facts.own {
+        return if facts.own && facts.quartermaster_disclosed {
             Acceptance::Eligible
+        } else if facts.own {
+            Acceptance::EligibilityUnknown
         } else {
             Acceptance::AcceptanceUnknown
         };
@@ -563,20 +565,31 @@ impl Shipping {
     /// The one judgement of one shipment line: whether the target accepts, which phase and reach
     /// it runs under, where both ends stand once `rules/sequenceofevents` has moved every unit, and
     /// whether the map lets it arrive.
+    #[cfg(test)]
     pub(crate) fn judge(
         &self,
         sender: &str,
         sender_reported: Option<crate::report::model::Coordinate>,
         target: &str,
     ) -> Judged {
-        let facts = self.targets.get(target);
+        self.judge_with_target_facts(sender, sender_reported, target, None)
+    }
+
+    pub(crate) fn judge_with_target_facts(
+        &self,
+        sender: &str,
+        sender_reported: Option<crate::report::model::Coordinate>,
+        target: &str,
+        target_facts: Option<&TargetFacts>,
+    ) -> Judged {
+        let facts = target_facts.or_else(|| self.targets.get(target));
         let sender_qm = self.quartermasters.contains(sender);
         let sender_can_distribute = sender_qm
             && self
                 .targets
                 .get(sender)
                 .is_some_and(|facts| facts.caravanserai_owner);
-        let target_qm = self.quartermasters.contains(target);
+        let target_qm = facts.is_some_and(|facts| facts.quartermaster);
         let reach = reach_for(sender_qm, target_qm, self.quartermasters.level(sender));
         let measured = match (reach, sender_reported, facts) {
             (Some(reach), Some(reported), Some(facts)) => {
@@ -646,21 +659,22 @@ pub(crate) struct Measured {
     pub arrival: Arrival,
 }
 
-/// The target unit number of a line any surface measures, or `None` for a line none of them
-/// does: a target that is not an existing unit (`NEW`, another faction's `NEW`, unit `0`), a target
-/// that is the sender itself, or a `Class` / `WholeUnit` selector. A surface that measures fewer
-/// selectors than this filters them itself.
-pub(crate) fn shipment_target<'a>(
+/// The target id of a line any surface measures, or `None` for a line none of them does: another
+/// faction's `NEW`, unit `0`, a target that is the sender itself, or a `Class` / `WholeUnit`
+/// selector. `NEW` aliases resolve to the same synthetic ids used for formed units. A surface that
+/// measures fewer selectors than this filters them itself.
+pub(crate) fn shipment_target(
     sender: &str,
-    to: &'a super::forms::Party,
+    to: &super::forms::Party,
     what: &super::forms::Selector,
-) -> Option<&'a str> {
+) -> Option<String> {
     use super::forms::{Party, Selector};
     if matches!(what, Selector::Class(_) | Selector::WholeUnit) {
         return None;
     }
     match to {
-        Party::Unit(id) if id != sender => Some(id.as_str()),
+        Party::Unit(id) if id != sender => Some(id.clone()),
+        Party::New(alias) if format!("new-{alias}") != sender => Some(format!("new-{alias}")),
         _ => None,
     }
 }
@@ -1277,11 +1291,32 @@ mod tests {
         let to = Party::Unit("901".to_string());
         assert_eq!(
             shipment_target("900", &to, &Selector::Item("STON".to_string())),
-            Some("901")
+            Some("901".to_string())
         );
         assert_eq!(
             shipment_target("900", &to, &Selector::UnfinishedShip("Cog".to_string())),
-            Some("901")
+            Some("901".to_string())
+        );
+    }
+
+    #[test]
+    fn shipment_target_resolves_a_formed_unit_alias() {
+        use super::super::forms::{Party, Selector};
+        assert_eq!(
+            shipment_target(
+                "900",
+                &Party::New("1".to_string()),
+                &Selector::Item("SILV".to_string())
+            ),
+            Some("new-1".to_string())
+        );
+        assert_eq!(
+            shipment_target(
+                "new-1",
+                &Party::New("1".to_string()),
+                &Selector::Item("SILV".to_string())
+            ),
+            None
         );
     }
 
@@ -1290,7 +1325,6 @@ mod tests {
         use super::super::forms::{Party, Selector};
         let item = Selector::Item("STON".to_string());
         for to in [
-            Party::New("1".to_string()),
             Party::Foreign {
                 faction: "3".to_string(),
                 alias: "1".to_string(),
