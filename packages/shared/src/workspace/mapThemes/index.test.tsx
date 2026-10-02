@@ -4,6 +4,7 @@ import { CONGESTED_HEXES } from "./congestedFixture";
 import { FADE_LIMIT, NAMED_FOG_OPACITY } from "../mapHexView";
 import { HEX_RADIUS } from "../mapViewport";
 import { allBadges, buildHexViews, dampFog, type HexView } from "./hexView";
+import { aHexView } from "./hexViewFixture";
 import type { LayerProps, MapTheme } from "./mapTheme";
 import {
   DEFAULT_MAP_THEME_ID,
@@ -305,31 +306,7 @@ describe("the unvisited switch, off", () => {
 
 /** A hex holding nothing at all, for the footprint table below to add one mark to at a time. */
 function bareView(overrides: Partial<HexView> = {}): HexView {
-  return {
-    key: "4,4,1",
-    at: { x: 0, y: 0 },
-    terrain: "plain",
-    terrainKind: "plain",
-    texture: null,
-    fogOpacity: 0,
-    hatched: false,
-    unsurveyed: false,
-    knowledge: "current",
-    ageInTurns: 0,
-    roads: [],
-    unfinishedRoads: [],
-    settlement: null,
-    units: { own: 0, foreign: 0, monster: 0 },
-    guard: null,
-    ships: 0,
-    buildings: 0,
-    shafts: 0,
-    lairs: 0,
-    battle: null,
-    blocked: null,
-    gate: false,
-    ...overrides
-  };
+  return aHexView({ key: "4,4,1", at: { x: 0, y: 0 }, terrain: "plain", terrainKind: "plain", ...overrides });
 }
 
 /**
