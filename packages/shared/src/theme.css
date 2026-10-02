@@ -57,6 +57,11 @@
 
   --color-brass: #e0b25a;
   --color-brass-bright: #eebe63;
+  /* Trade routes are silver, so they never read as a unit's brass movement line. */
+  --color-trade: #dfe6ee;
+  /* The comet and the movement line's thread: a light, not ink, so the same pale gold on either theme. */
+  --color-spark: #fff3cf;
+  --color-trade-dim: #9fb0c2;
   --color-select: #5aa9de;
 
   /*
@@ -212,6 +217,9 @@
      panel, the darkest light surface; before ah-j1xd all five sat between 3.61 and 4.29. */
   --color-brass: #8a6317;
   --color-brass-bright: #7d5a15;
+  --color-trade: #4a5868;
+  --color-spark: #fff3cf;
+  --color-trade-dim: #7a8796;
   --color-select: #1f5f8f;
 
   /* Inverted pairing (navigator's choice): on light parchment a white ring washes out, so light
@@ -537,3 +545,55 @@ body,
   color: var(--color-ink);
   font-family: var(--font-mono);
 }
+
+/*
+ * A hovered trade route (the Trade popover): a dotted silver track with coins travelling along it,
+ * rings pulsing round both towns, and a price tag at each. Positioned in the world but sized on
+ * screen, like `.map-label`, because the map zooms out to frame both towns.
+ */
+.trade-track {
+  fill: none;
+  stroke: var(--color-trade-dim);
+  stroke-width: calc(2px / var(--map-scale, 1));
+  stroke-dasharray: calc(1px / var(--map-scale, 1)) calc(6px / var(--map-scale, 1));
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+
+.trade-tag-text {
+  fill: var(--color-ink);
+  font: 600 11px system-ui, sans-serif;
+}
+
+/*
+ * The milestone roads, drawn by the map for every theme: a line in the chrome's ink on a casing of
+ * its ground, so they invert with the light theme. Milestones and junctions use the same pair.
+ */
+.road-casing {
+  fill: none;
+  stroke: var(--color-ground);
+  stroke-linecap: round;
+  opacity: 0.8;
+}
+
+.road-line {
+  fill: none;
+  stroke: var(--color-ink);
+  stroke-linecap: round;
+}
+
+.road-stone {
+  fill: var(--color-ink);
+  stroke: var(--color-ground);
+}
+
+.road-stone-open,
+.road-junction {
+  fill: var(--color-ground);
+  stroke: var(--color-ink);
+}
+
+.road-junction-core {
+  fill: var(--color-ink);
+}
+

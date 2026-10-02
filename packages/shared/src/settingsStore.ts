@@ -15,6 +15,10 @@ import { normalizeSnippets, type OrderSnippet } from "./orderSnippets";
 import { DEFAULT_MAP_THEME_ID, isMapThemeId } from "./workspace/mapThemes";
 import { DEFAULT_TEXTURE_SET_ID, knownTextureSet } from "./workspace/textureSets";
 import {
+  clampMovementAnimationSpeed,
+  DEFAULT_MOVEMENT_ANIMATION_SPEED
+} from "./workspace/routeCometPath";
+import {
   booleanSettingDefaults,
   pickBooleanSettings,
   reconcileBooleanSettings,
@@ -112,6 +116,8 @@ export type SettingsState = BooleanSettings & {
    * scale and never moves with it.
    */
   interfaceSize: number;
+  /** How fast the movement line's spark runs, in hexes per second. */
+  movementAnimationSpeed: number;
   /**
    * Whether each advisory order-check code is allowed to run at all - the Warnings settings tab.
    *
@@ -131,6 +137,7 @@ export type SettingsState = BooleanSettings & {
   setTextureSet: (id: string) => void;
   setPaneTransparency: (percent: number) => void;
   setInterfaceSize: (percent: number) => void;
+  setMovementAnimationSpeed: (hexesPerSecond: number) => void;
   setAdvisoryCheck: (code: AdvisoryCheckCode, enabled: boolean) => void;
   /** Turns one of `BOOLEAN_SETTINGS` on or off. */
   setFlag: (key: BooleanSettingKey, value: boolean) => void;
@@ -141,7 +148,14 @@ export type SettingsState = BooleanSettings & {
 
 type Persisted = Pick<
   SettingsState,
-  "theme" | "mapTheme" | "textureSet" | "paneTransparency" | "interfaceSize" | "advisoryChecks" | "snippets"
+  | "theme"
+  | "mapTheme"
+  | "textureSet"
+  | "paneTransparency"
+  | "interfaceSize"
+  | "movementAnimationSpeed"
+  | "advisoryChecks"
+  | "snippets"
 > &
   BooleanSettings;
 
@@ -297,6 +311,7 @@ const DEFAULTS: Persisted = {
   ...booleanSettingDefaults(),
   paneTransparency: { ...DEFAULT_PANE_TRANSPARENCY },
   interfaceSize: DEFAULT_INTERFACE_SIZE,
+  movementAnimationSpeed: DEFAULT_MOVEMENT_ANIMATION_SPEED,
   advisoryChecks: DEFAULT_ADVISORY_CHECKS,
   snippets: []
 };
@@ -337,6 +352,10 @@ export const useSettingsStore = create<SettingsState>()(
         set({ interfaceSize: clamped });
       },
 
+      setMovementAnimationSpeed: (hexesPerSecond) => {
+        set({ movementAnimationSpeed: clampMovementAnimationSpeed(hexesPerSecond) });
+      },
+
       setAdvisoryCheck: (code, enabled) => {
         set((state) => ({ advisoryChecks: { ...state.advisoryChecks, [code]: enabled } }));
       },
@@ -373,6 +392,7 @@ export const useSettingsStore = create<SettingsState>()(
         ...pickBooleanSettings(state),
         paneTransparency: state.paneTransparency,
         interfaceSize: state.interfaceSize,
+        movementAnimationSpeed: state.movementAnimationSpeed,
         advisoryChecks: state.advisoryChecks,
         snippets: state.snippets
       })
@@ -397,6 +417,12 @@ export function applyPersistedSettings() {
   const interfaceSize = clampInterfaceSize(useSettingsStore.getState().interfaceSize);
   useSettingsStore.setState({ interfaceSize });
   applyInterfaceSize(interfaceSize);
+  // And for the spark's speed: anything off the slider's stops, or missing from an older blob.
+  useSettingsStore.setState({
+    movementAnimationSpeed: clampMovementAnimationSpeed(
+      useSettingsStore.getState().movementAnimationSpeed
+    )
+  });
   // Same door again: a blob naming a theme this build never had would otherwise leave the map
   // with nothing to draw with.
   useSettingsStore.setState({

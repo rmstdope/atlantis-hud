@@ -51,6 +51,10 @@ import {
 import { useOverlayInsets } from "./useOverlayInsets";
 import { useWorkspaceStore } from "../workspaceStore";
 import type { RouteOverlay } from "./routeOverlay";
+import { RouteComet } from "./RouteComet";
+import { TradeRouteOverlay } from "./TradeRouteOverlay";
+import { MilestoneRoadLayer } from "./mapThemes/MilestoneRoadLayer";
+import { curvedHalves } from "./routeCurve";
 import { passageExitTitle, passageTitle, ringAccessibleName, ringHover } from "./passageMarks";
 import { viewportForArrow, type TradeArrow } from "./tradeArrow";
 import { peekStep, type KeepClear, type PeekMode } from "./dossierPeek";
@@ -92,6 +96,9 @@ import {
 import { useEscapeToDismiss } from "./dismissLayer";
 import { wallMarks, type WallMark } from "./wallMarks";
 import { mapShapeAtLevel } from "../mapShape";
+
+/** A route's two halves as one curve through the hex centres; see `routeCurve.ts`. */
+const curvedLine = (line: { solid: string; dotted: string }) => curvedHalves(line.solid, line.dotted);
 
 const HEX_POINTS = hexPointsAttribute(HEX_RADIUS);
 const FOG_TILE = fogPatternTile(HEX_RADIUS);
@@ -148,7 +155,6 @@ const RISK_CLASSES: Record<string, string> = {
  */
 const GHOSTABLE_HIT: CSSProperties = { pointerEvents: "var(--map-hit, all)" as CSSProperties["pointerEvents"] };
 
-const ROUTE_CASING = radii(0.278);
 const ROUTE_LINE = radii(0.167);
 const RISK_OUTLINE = radii(0.111);
 
@@ -159,8 +165,32 @@ const ROUTE_WALL_CASING = radii(0.233);
 /** The disc the passage mark is drawn on, and the ring round it. */
 const PASSAGE_RADIUS = radii(0.36);
 
+/** The route's glow: how wide, how strong, and how soft its edge is. */
+const ROUTE_GLOW = radii(0.75);
+const ROUTE_GLOW_LATER = radii(0.45);
+const ROUTE_GLOW_BLUR = radii(0.11);
+/** The bright core and the pale thread inside it. */
+const ROUTE_CORE = radii(0.22);
+const ROUTE_CORE_LATER = radii(0.13);
+const ROUTE_THREAD = radii(0.08);
+/** The later months' dashes. */
+const ROUTE_DASH = `${radii(0.3)} ${radii(0.28)}`;
+const ROUTE_GLOW_FILTER = "route-glow";
+
+/** The blur every route glow is drawn through, defined once beside the lines that use it. */
+function RouteGlowFilter() {
+  return (
+    <defs>
+      <filter id={ROUTE_GLOW_FILTER} x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation={ROUTE_GLOW_BLUR} />
+      </filter>
+    </defs>
+  );
+}
+
 /**
- * One polyline of a route, over a casing that keeps it readable on any terrain.
+ * One polyline of a route, drawn as light rather than ink: a wide soft glow, a bright core and a
+ * pale thread through it. The later months are the same glow at half strength, in dashes.
  *
  * Four of these are drawn - the solid and dotted halves of the journey before a passage and of the
  * journey after one - so the construction lives here once rather than four times over.
@@ -177,25 +207,63 @@ function RouteLine({
   if (!points) {
     return null;
   }
-  const dash = dotted ? "6 6" : undefined;
+  if (dotted) {
+    return (
+      <>
+        <polyline
+          points={points}
+          fill="none"
+          className="stroke-brass-bright"
+          strokeWidth={ROUTE_GLOW_LATER}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray={ROUTE_DASH}
+          opacity={0.2}
+          filter={`url(#${ROUTE_GLOW_FILTER})`}
+        />
+        <polyline
+          points={points}
+          fill="none"
+          className="stroke-brass-bright"
+          strokeWidth={ROUTE_CORE_LATER}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray={ROUTE_DASH}
+          opacity={0.6}
+          data-testid={testId}
+        />
+      </>
+    );
+  }
   return (
     <>
       <polyline
         points={points}
         fill="none"
-        className="stroke-ground"
-        strokeWidth={ROUTE_CASING}
+        className="stroke-brass-bright"
+        strokeWidth={ROUTE_GLOW}
+        strokeLinecap="round"
         strokeLinejoin="round"
-        strokeDasharray={dash}
+        opacity={0.35}
+        filter={`url(#${ROUTE_GLOW_FILTER})`}
       />
       <polyline
         points={points}
         fill="none"
-        className="stroke-brass"
-        strokeWidth={ROUTE_LINE}
+        className="stroke-brass-bright"
+        strokeWidth={ROUTE_CORE}
+        strokeLinecap="round"
         strokeLinejoin="round"
-        strokeDasharray={dash}
+        opacity={0.9}
         data-testid={testId}
+      />
+      <polyline
+        points={points}
+        fill="none"
+        className="stroke-spark"
+        strokeWidth={ROUTE_THREAD}
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </>
   );
@@ -411,6 +479,8 @@ type MapCanvasProps = {
    * means the unit's speed is unknown and the whole line is dotted.
    */
   route?: RouteOverlay | null;
+  /** Hexes per second a spark runs along the route at, or null for a still line. */
+  routeAnimationSpeed?: number | null;
   /**
    * The trade route currently hovered in the Trade popover, drawn as a straight arrow between its
    * two hexes. While one is set and either end is off screen the map frames both, and putting it
@@ -496,6 +566,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     badges,
     biomeSymbols = false,
     route = null,
+    routeAnimationSpeed = null,
     arrow = null,
     routeRisk = [],
     onMarquee,
@@ -1235,11 +1306,13 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
   const routeLine = useMemo(
     () =>
       route
-        ? routeSegments(
-            [route.origin, ...route.hexes],
-            route.solidSteps,
-            level,
-            nearTip?.tail ?? null
+        ? curvedLine(
+            routeSegments(
+              [route.origin, ...route.hexes],
+              route.solidSteps,
+              level,
+              nearTip?.tail ?? null
+            )
           )
         : { solid: "", dotted: "" },
     [route, level, nearTip]
@@ -1247,11 +1320,13 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
   const routeBeyondLine = useMemo(
     () =>
       route?.beyond
-        ? routeSegments(
-            [route.beyond.origin, ...route.beyond.hexes],
-            route.beyond.solidSteps,
-            level,
-            beyondTip?.tail ?? null
+        ? curvedLine(
+            routeSegments(
+              [route.beyond.origin, ...route.beyond.hexes],
+              route.beyond.solidSteps,
+              level,
+              beyondTip?.tail ?? null
+            )
           )
         : { solid: "", dotted: "" },
     [route, level, beyondTip]
@@ -1473,33 +1548,6 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
           */}
           {theme.Defs ? <theme.Defs /> : null}
 
-          {/*
-            The heads of a hovered trade route's arrow. Two definitions rather than one reused with
-            `orient="auto-start-reverse"`, which older WebKit - the desktop shell's renderer -
-            ignores, drawing a start head pointing the wrong way.
-          */}
-          <marker
-            id="trade-arrowhead"
-            viewBox="0 0 10 10"
-            refX="9"
-            refY="5"
-            markerWidth="5"
-            markerHeight="5"
-            orient="auto"
-          >
-            <path d="M 0 0 L 10 5 L 0 10 z" className="fill-brass" />
-          </marker>
-          <marker
-            id="trade-arrowhead-start"
-            viewBox="0 0 10 10"
-            refX="1"
-            refY="5"
-            markerWidth="5"
-            markerHeight="5"
-            orient="auto"
-          >
-            <path d="M 10 0 L 0 5 L 10 10 z" className="fill-brass" />
-          </marker>
         </defs>
 
         {/*
@@ -1564,7 +1612,11 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
           )}
 
           {/* Beneath the route overlay, so a movement path crosses a road the way a traveller would. */}
-          <theme.RoadLayer views={allViews} />
+          {/*
+            Roads as a milestone network (experiment): map-owned like the biome symbols, so every
+            theme draws the same ones; the themes' own road layers are left in place, unused.
+          */}
+          <MilestoneRoadLayer views={allViews} />
 
           {/*
             Province outlines and names, above the roads and beneath everything a player can
@@ -1618,6 +1670,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                 joined to the near one by a line: the two ends can be a hex apart on one level, and
                 a line between them would cross country the unit never enters (`ah-3u7c.2.2`).
               */}
+              <RouteGlowFilter />
               <RouteLine points={routeLine.solid} testId="route-line-solid" />
               <RouteLine points={routeLine.dotted} testId="route-line-dotted" dotted />
               <RouteLine points={routeBeyondLine.solid} testId="route-line-beyond-solid" />
@@ -1636,6 +1689,20 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                   />
                 );
               })}
+              {routeAnimationSpeed !== null && (
+                <>
+                  <RouteComet
+                    solid={routeLine.solid}
+                    dotted={routeLine.dotted}
+                    hexesPerSecond={routeAnimationSpeed}
+                  />
+                  <RouteComet
+                    solid={routeBeyondLine.solid}
+                    dotted={routeBeyondLine.dotted}
+                    hexesPerSecond={routeAnimationSpeed}
+                  />
+                </>
+              )}
               {nearTip && <RouteWallBar bar={nearTip.bar} testId="route-wall-bar" />}
               {beyondTip && <RouteWallBar bar={beyondTip.bar} testId="route-wall-beyond-bar" />}
             </g>
@@ -1647,26 +1714,11 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
           <BlockedLabels views={allViews} />
 
           {/*
-            A hovered trade route, as a straight line between its two hexes - the shape of the
-            journey, not its path: what the reader wants from a hover is how far apart these are and
-            in which direction. `pointerEvents="none"` because at the zoom this feature is for the
-            line spans most of the map, and without it no hex underneath could be clicked.
+            A hovered trade route (the Trade popover): coins travelling a dotted silver track
+            between the two towns, rings round both and a price tag at each - the shape of the
+            journey, not its path. See `TradeRouteOverlay`.
           */}
-          {arrow ? (
-            <g data-testid="trade-arrow" pointerEvents="none">
-              <line
-                x1={worldOf(arrow.from).x}
-                y1={worldOf(arrow.from).y}
-                x2={worldOf(arrow.to).x}
-                y2={worldOf(arrow.to).y}
-                className="stroke-brass"
-                strokeWidth={2.5}
-                vectorEffect="non-scaling-stroke"
-                markerEnd="url(#trade-arrowhead)"
-                markerStart={arrow.twoWay ? "url(#trade-arrowhead-start)" : undefined}
-              />
-            </g>
-          ) : null}
+          {arrow ? <TradeRouteOverlay arrow={arrow} scale={scaleOf(view.step)} /> : null}
 
           {/*
             The export rectangle, while it is being dragged. Hidden and moved by hand rather than

@@ -22,6 +22,7 @@ function view(overrides: Partial<HexView> = {}): HexView {
     knowledge: "current",
     ageInTurns: 0,
     roads: [],
+    unfinishedRoads: [],
     settlement: null,
     units: { own: 0, foreign: 0, monster: 0 },
     guard: null,

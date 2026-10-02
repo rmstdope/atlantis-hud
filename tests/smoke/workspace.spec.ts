@@ -1330,8 +1330,8 @@ test("hovering a trade route draws it, frames it, and puts the map back", async 
   await panel.getByTestId("trade-route-0").hover();
   const arrow = page.getByTestId("trade-arrow");
   await expect(arrow).toHaveCount(1);
-  // A circuit: chocolate out, perfume back, so the line carries a head at both ends.
-  await expect(arrow.locator("line")).toHaveAttribute("marker-start", "url(#trade-arrowhead-start)");
+  // A circuit: chocolate out, perfume back, so coins travel a second lane for the way back.
+  await expect(arrow.locator("line.trade-track")).toHaveCount(2);
   await expect(world).not.toHaveAttribute("transform", before ?? "");
 
   // Looking away undoes the whole gesture - the arrow and the view together.
@@ -2869,13 +2869,19 @@ test("a written move order is drawn solid for next turn and dotted beyond", asyn
  * same two steps 10575 already carries needs no protection, because the two routes are the one
  * route - so passing `2` there is the honest step count rather than a guard.
  */
+/** Straight pieces per hex step of a curved route line; `SAMPLES` in routeCurve.ts. */
+const ROUTE_CURVE_SAMPLES = 12;
+
 async function settledRoute(page: Page, steps: number): Promise<string | null> {
   const line = page.getByTestId("route-line-solid");
   await expect(line).toHaveCount(1);
   const vertex = String.raw`[\d.]+,[\d.]+`;
+  // The line curves through the hex centres (routeCurve.ts): a single step stays straight, and a
+  // longer route is sampled into ROUTE_CURVE_SAMPLES pieces per step.
+  const vertices = steps < 2 ? steps + 1 : steps * ROUTE_CURVE_SAMPLES + 1;
   await expect(line).toHaveAttribute(
     "points",
-    new RegExp(`^${Array.from({ length: steps + 1 }, () => vertex).join(" ")}$`)
+    new RegExp(`^${Array.from({ length: vertices }, () => vertex).join(" ")}$`)
   );
   return line.getAttribute("points");
 }
@@ -4667,7 +4673,7 @@ test("a road and the route over it keep their proportion to the hex at every zoo
   const measure = () =>
     page.evaluate(() => {
       const svg = document.querySelector('[data-testid="map-canvas"] svg')!;
-      const road = document.querySelector(".ct-road")!;
+      const road = document.querySelector(".road-casing")!;
       const route = document.querySelector('[data-testid="route-line-solid"]')!;
       // The width alone cannot tell the two behaviours apart: `non-scaling-stroke` is a paint
       // effect, so the computed stroke-width reads the same 4 user units either way while the

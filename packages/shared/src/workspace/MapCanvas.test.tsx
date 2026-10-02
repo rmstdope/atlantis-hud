@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { radii } from "./mapThemes/geometry";
 import { afterEach, describe, expect, it } from "vitest";
 import { SURFACE_LEVEL, type HexMapModel } from "../hexMapModel";
 import type { HexNoteRecord, MapShape, MapWall } from "@atlantis/core-client";
@@ -16,7 +17,7 @@ import {
   terrainTextureRotation,
   textureCoverTransform
 } from "./mapHexView";
-import { COLUMN_PITCH, ROW_PITCH, worldOf } from "./mapViewport";
+import { COLUMN_PITCH, ROW_PITCH } from "./mapViewport";
 import type { LayerProps, MapTheme } from "./mapThemes/mapTheme";
 import type { WaterTerrains } from "./mapThemes/terrain";
 
@@ -455,15 +456,14 @@ describe("what the map hands a theme", () => {
     expect(order).toEqual(["empty", "stale", "current"]);
   });
 
-  it("draws roads before marks, and both over every hex on the level", () => {
+  it("draws roads before marks, and marks over every hex on the level", () => {
+    // Roads are the map's own milestone network now (experiment), so the theme's road layer and
+    // its count are no longer on the page; the order, and the marks' coverage, still hold.
     const svg = draw();
-    const layers = [...svg.matchAll(/data-layer="(roads|marks)" data-count="(\d+)"/g)];
+    const layers = [...svg.matchAll(/data-layer="(roads|marks)"/g)];
 
     expect(layers.map((match) => match[1])).toEqual(["roads", "marks"]);
-    expect(layers.map((match) => Number(match[2]))).toEqual([
-      CONGESTED_HEXES.length,
-      CONGESTED_HEXES.length
-    ]);
+    expect(Number(/data-layer="marks" data-count="(\d+)"/.exec(svg)?.[1])).toBe(CONGESTED_HEXES.length);
   });
 
   it("keeps roads beneath the route overlay, the way a traveller crosses one", () => {
@@ -576,16 +576,16 @@ describe("what the map hands a theme", () => {
     // polygons, so no polyline shares a class with it.
     const lines = [...svg.matchAll(/<polyline[^>]*>/g)]
       .map((match) => match[0])
-      .filter((tag) => /stroke-ground|stroke-brass/.test(tag));
+      .filter((tag) => /stroke-brass-bright|stroke-spark/.test(tag));
     const risk = /<polygon[^>]*fill-opacity="0\.28"[^>]*>/.exec(svg)?.[0] ?? "";
     const widthOf = (tag: string) => Number(/stroke-width="([\d.]+)"/.exec(tag)?.[1]);
 
-    expect(lines).toHaveLength(2); // a casing and the line over it, the route being wholly solid
+    // The glow, the bright core and the pale thread through it, the route being wholly solid.
+    expect(lines).toHaveLength(3);
     for (const tag of [...lines, risk]) {
       expect(tag).not.toContain("vector-effect");
     }
-    expect(widthOf(lines.find((tag) => tag.includes("stroke-ground"))!)).toBeCloseTo(5, 1);
-    expect(widthOf(lines.find((tag) => tag.includes("stroke-brass"))!)).toBeCloseTo(3, 1);
+    expect(lines.map(widthOf)).toEqual([radii(0.75), radii(0.22), radii(0.08)]);
     expect(widthOf(risk)).toBeCloseTo(2, 1);
   });
 
@@ -653,7 +653,7 @@ describe("the notes layer", () => {
     expect(pins).toHaveLength(1);
     expect(svg).toContain('aria-label="notes on hex 1:7,53"');
     // A single note draws no count badge - just the glyph.
-    expect(svg).not.toContain("<circle");
+    expect(svg.slice(svg.indexOf('data-testid="map-notes"'))).not.toContain("<circle");
   });
 
   it("shows a count badge when a hex holds several map-visible notes", () => {
@@ -697,35 +697,30 @@ function drawWithArrow(twoWay: boolean): string {
       showStaleness
       showTextures={false}
       badges={allBadges(true)}
-      arrow={{ from: { x: 7, y: 53, z: 1 }, to: { x: 9, y: 51, z: 1 }, twoWay }}
+      arrow={{
+        from: { x: 7, y: 53, z: 1 },
+        to: { x: 9, y: 51, z: 1 },
+        twoWay,
+        fromTag: "buy wine $28",
+        toTag: "sell wine $51"
+      }}
     />
   );
 }
 
 describe("MapCanvas trade arrow", () => {
-  it("draws a line between the two hexes of a hovered route", () => {
+  it("runs a track between the two towns of a hovered route, tagging each", () => {
     const svg = drawWithArrow(false);
-    const from = worldOf({ x: 7, y: 53, z: 1 });
-    const to = worldOf({ x: 9, y: 51, z: 1 });
 
     expect(svg).toContain('data-testid="trade-arrow"');
-    expect(svg).toContain(`x1="${from.x}"`);
-    expect(svg).toContain(`y1="${from.y}"`);
-    expect(svg).toContain(`x2="${to.x}"`);
-    expect(svg).toContain(`y2="${to.y}"`);
+    expect([...svg.matchAll(/class="trade-track"/g)]).toHaveLength(1);
+    expect(svg).toContain('data-testid="trade-tag-from"');
+    expect(svg).toContain(">buy wine $28</text>");
+    expect(svg).toContain(">sell wine $51</text>");
   });
 
-  it("heads only the far end of a one-way route", () => {
-    const svg = drawWithArrow(false);
-
-    expect(svg).toContain('marker-end="url(#trade-arrowhead)"');
-    expect(svg).not.toContain("marker-start=");
-  });
-
-  it("heads both ends of a circuit", () => {
-    const svg = drawWithArrow(true);
-
-    expect(svg).toContain('marker-start="url(#trade-arrowhead-start)"');
+  it("gives a circuit a second lane for the way back", () => {
+    expect([...drawWithArrow(true).matchAll(/class="trade-track"/g)]).toHaveLength(2);
   });
 
   it("draws no arrow when no route is hovered", () => {
