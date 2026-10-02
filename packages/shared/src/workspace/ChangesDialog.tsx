@@ -1,5 +1,4 @@
-import { useEscapeToDismiss } from "./dismissLayer";
-import { useDialogDrag } from "./useDialogDrag";
+import { DialogFrame } from "./DialogFrame";
 import { nextChangesTab, type ChangesTab, type ChangesTabKey, type OrderRow, type RegionRow, type UnitRow } from "./changesView";
 
 /**
@@ -41,103 +40,78 @@ export function ChangesDialog({
   onSelectRegion: (regionId: string) => void;
   onDismiss: () => void;
 }) {
-  useEscapeToDismiss(onDismiss);
-  // ah-aak5: dragged by its top bar to uncover the map; the veil lifts once moved.
-  const drag = useDialogDrag();
-
   return (
-    <div
-      data-testid="changes-backdrop"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onDismiss();
-        }
-      }}
-      className={`fixed inset-0 z-30 flex items-center justify-center${drag.moved ? "" : " bg-black/50"}`}
-    >
-      <div
-        ref={drag.dialogRef}
-        style={drag.dialogStyle}
-        data-testid="changes-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Changes"
-        className="grid h-[75vh] w-[48rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
-      >
-        <div
-          {...drag.barProps}
-          className="flex cursor-move select-none items-center gap-2 border-b border-edge px-2 py-1.5"
-        >
+    <DialogFrame
+      label="Changes"
+      onDismiss={onDismiss}
+      layer="z-30"
+      backdropTestId="changes-backdrop"
+      testId="changes-dialog"
+      boxClassName="grid h-[75vh] w-[48rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
+      barClassName="items-center gap-2 border-b border-edge px-2 py-1.5"
+      close={{ testId: "changes-close", label: "close changes", look: "plain", autoFocus: true }}
+      bar={
+        <>
           <span className="text-ink-soft">{pairLabel}</span>
           <span className="flex-1" />
-          <button
-            type="button"
-            data-testid="changes-close"
-            aria-label="close changes"
-            autoFocus
-            onClick={onDismiss}
-            className="rounded px-1.5 text-ink-dim hover:text-ink"
-          >
-            ✕
-          </button>
-        </div>
-
-        <div
-          role="tablist"
-          aria-label="Changes tabs"
-          // One tab stop, not three: only the selected tab is tabbable and the arrows move
-          // within the list, selection following focus - the ARIA tabs pattern, the same one
-          // `SettingsDialog`'s tablist implements.
-          onKeyDown={(event) => {
-            const target = nextChangesTab(
-              tab,
-              event.key,
-              tabs.map((tabDescriptor) => tabDescriptor.key)
-            );
-            if (target) {
-              event.preventDefault();
-              onTab(target);
-              event.currentTarget
-                .querySelector<HTMLButtonElement>(`[data-testid="changes-tab-${target}"]`)
-                ?.focus();
-            }
-          }}
-          className="flex gap-1 border-b border-edge px-2 py-1.5"
-        >
-          {tabs.map((tabDescriptor) => {
-            const selected = tab === tabDescriptor.key;
-            return (
-              <button
-                key={tabDescriptor.key}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                tabIndex={selected ? 0 : -1}
-                data-testid={`changes-tab-${tabDescriptor.key}`}
-                onClick={() => onTab(tabDescriptor.key)}
-                className={`rounded border px-2 py-0.5 ${
-                  selected
-                    ? "border-brass bg-panel text-brass"
-                    : "border-edge bg-panel-raised text-ink-soft hover:border-brass"
-                }`}
-              >
-                {tabDescriptor.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="min-h-0 overflow-y-auto p-2">
-          {tab === "units" ? (
-            <UnitsTab rows={unitRows} emptyText={unitsEmptyText} onSelectUnit={onSelectUnit} />
-          ) : null}
-          {tab === "regions" ? (
-            <RegionsTab rows={regionRows} emptyText={regionsEmptyText} onSelectRegion={onSelectRegion} />
-          ) : null}
-          {tab === "orders" ? <OrdersTab rows={orderRows} emptyText={ordersEmptyText} /> : null}
-        </div>
+        </>
+      }
+    >
+      <div
+        role="tablist"
+        aria-label="Changes tabs"
+        // One tab stop, not three: only the selected tab is tabbable and the arrows move
+        // within the list, selection following focus - the ARIA tabs pattern, the same one
+        // `SettingsDialog`'s tablist implements.
+        onKeyDown={(event) => {
+          const target = nextChangesTab(
+            tab,
+            event.key,
+            tabs.map((tabDescriptor) => tabDescriptor.key)
+          );
+          if (target) {
+            event.preventDefault();
+            onTab(target);
+            event.currentTarget
+              .querySelector<HTMLButtonElement>(`[data-testid="changes-tab-${target}"]`)
+              ?.focus();
+          }
+        }}
+        className="flex gap-1 border-b border-edge px-2 py-1.5"
+      >
+        {tabs.map((tabDescriptor) => {
+          const selected = tab === tabDescriptor.key;
+          return (
+            <button
+              key={tabDescriptor.key}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              tabIndex={selected ? 0 : -1}
+              data-testid={`changes-tab-${tabDescriptor.key}`}
+              onClick={() => onTab(tabDescriptor.key)}
+              className={`rounded border px-2 py-0.5 ${
+                selected
+                  ? "border-brass bg-panel text-brass"
+                  : "border-edge bg-panel-raised text-ink-soft hover:border-brass"
+              }`}
+            >
+              {tabDescriptor.label}
+            </button>
+          );
+        })}
       </div>
-    </div>
+
+      <div className="min-h-0 overflow-y-auto p-2">
+        {tab === "units" ? (
+          <UnitsTab rows={unitRows} emptyText={unitsEmptyText} onSelectUnit={onSelectUnit} />
+        ) : null}
+        {tab === "regions" ? (
+          <RegionsTab rows={regionRows} emptyText={regionsEmptyText} onSelectRegion={onSelectRegion} />
+        ) : null}
+        {tab === "orders" ? <OrdersTab rows={orderRows} emptyText={ordersEmptyText} /> : null}
+      </div>
+    </DialogFrame>
   );
 }
 

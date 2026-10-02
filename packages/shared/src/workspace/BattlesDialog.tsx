@@ -1,7 +1,6 @@
 import type { Battle, BattleUnit } from "@atlantis/core-client";
 import { regionIdOf } from "../hexMapModel";
-import { useEscapeToDismiss } from "./dismissLayer";
-import { useDialogDrag } from "./useDialogDrag";
+import { DialogFrame } from "./DialogFrame";
 import { allegianceOf, assassinationView, rosterCounts, roundLabel, summarise } from "./battles";
 
 /**
@@ -35,85 +34,60 @@ export function BattlesDialog({
   onShowOnMap: (regionId: string) => void;
   onDismiss: () => void;
 }) {
-  useEscapeToDismiss(onDismiss);
-  // ah-aak5: dragged by its top bar to uncover the map; the veil lifts once moved.
-  const drag = useDialogDrag();
-
   const selected = battles[selectedIndex] ?? null;
 
   return (
-    <div
-      data-testid="battles-backdrop"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onDismiss();
-        }
-      }}
-      className={`fixed inset-0 z-30 flex items-center justify-center${drag.moved ? "" : " bg-black/50"}`}
-    >
-      <div
-        ref={drag.dialogRef}
-        style={drag.dialogStyle}
-        data-testid="battles-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Battles"
-        className="grid h-[85vh] w-[64rem] max-w-[94vw] grid-rows-[auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
-      >
-        <div
-          {...drag.barProps}
-          className="flex cursor-move select-none items-center gap-2 border-b border-edge px-2 py-1.5"
-        >
+    <DialogFrame
+      label="Battles"
+      onDismiss={onDismiss}
+      layer="z-30"
+      backdropTestId="battles-backdrop"
+      testId="battles-dialog"
+      boxClassName="grid h-[85vh] w-[64rem] max-w-[94vw] grid-rows-[auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
+      barClassName="items-center gap-2 border-b border-edge px-2 py-1.5"
+      close={{ testId: "battles-close", label: "close battles", look: "plain", autoFocus: true }}
+      bar={
+        <>
           <span className="text-ink-soft">
             Battles · {battles.length} this turn
           </span>
           <span className="flex-1" />
-          <button
-            type="button"
-            data-testid="battles-close"
-            aria-label="close battles"
-            autoFocus
-            onClick={onDismiss}
-            className="rounded px-1.5 text-ink-dim hover:text-ink"
+        </>
+      }
+    >
+      {battles.length === 0 ? (
+        <p className="p-6 text-center text-ink-dim">This turn had no battles.</p>
+      ) : (
+        <div className="grid min-h-0 grid-cols-[19rem_1fr]">
+          <ul
+            data-testid="battles-list"
+            role="listbox"
+            aria-label="Battles"
+            className="min-h-0 overflow-y-auto border-r border-edge"
           >
-            ✕
-          </button>
-        </div>
-
-        {battles.length === 0 ? (
-          <p className="p-6 text-center text-ink-dim">This turn had no battles.</p>
-        ) : (
-          <div className="grid min-h-0 grid-cols-[19rem_1fr]">
-            <ul
-              data-testid="battles-list"
-              role="listbox"
-              aria-label="Battles"
-              className="min-h-0 overflow-y-auto border-r border-edge"
-            >
-              {battles.map((battle, index) => (
-                <BattleRow
-                  key={index}
-                  battle={battle}
-                  index={index}
-                  selected={index === selectedIndex}
-                  hexLabel={hexLabel}
-                  onSelect={onSelect}
-                />
-              ))}
-            </ul>
-            {selected ? (
-              <BattleDetail
-                key={selectedIndex}
-                battle={selected}
+            {battles.map((battle, index) => (
+              <BattleRow
+                key={index}
+                battle={battle}
+                index={index}
+                selected={index === selectedIndex}
                 hexLabel={hexLabel}
-                viewerFactionId={viewerFactionId}
-                onShowOnMap={onShowOnMap}
+                onSelect={onSelect}
               />
-            ) : null}
-          </div>
-        )}
-      </div>
-    </div>
+            ))}
+          </ul>
+          {selected ? (
+            <BattleDetail
+              key={selectedIndex}
+              battle={selected}
+              hexLabel={hexLabel}
+              viewerFactionId={viewerFactionId}
+              onShowOnMap={onShowOnMap}
+            />
+          ) : null}
+        </div>
+      )}
+    </DialogFrame>
   );
 }
 
