@@ -586,7 +586,7 @@ describe("what the map hands a theme", () => {
     for (const tag of [...lines, risk]) {
       expect(tag).not.toContain("vector-effect");
     }
-    expect(lines.map(widthOf)).toEqual([radii(0.5), radii(0.14), radii(0.05)]);
+    expect(lines.map(widthOf)).toEqual([radii(0.75), radii(0.22), radii(0.08)]);
     expect(widthOf(risk)).toBeCloseTo(2, 1);
   });
 

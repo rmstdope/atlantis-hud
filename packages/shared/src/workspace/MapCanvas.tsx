@@ -164,15 +164,15 @@ const ROUTE_WALL_CASING = radii(0.233);
 const PASSAGE_RADIUS = radii(0.36);
 
 /** The route's glow: how wide, how strong, and how soft its edge is. */
-const ROUTE_GLOW = radii(0.5);
-const ROUTE_GLOW_LATER = radii(0.3);
-const ROUTE_GLOW_BLUR = radii(0.08);
+const ROUTE_GLOW = radii(0.75);
+const ROUTE_GLOW_LATER = radii(0.45);
+const ROUTE_GLOW_BLUR = radii(0.11);
 /** The bright core and the pale thread inside it. */
-const ROUTE_CORE = radii(0.14);
-const ROUTE_CORE_LATER = radii(0.08);
-const ROUTE_THREAD = radii(0.05);
+const ROUTE_CORE = radii(0.22);
+const ROUTE_CORE_LATER = radii(0.13);
+const ROUTE_THREAD = radii(0.08);
 /** The later months' dashes. */
-const ROUTE_DASH = `${radii(0.22)} ${radii(0.2)}`;
+const ROUTE_DASH = `${radii(0.3)} ${radii(0.28)}`;
 /** The thread's colour: the comet's own pale gold, a light rather than ink, on either theme. */
 const ROUTE_THREAD_COLOUR = "#fff3cf";
 const ROUTE_GLOW_FILTER = "route-glow";
