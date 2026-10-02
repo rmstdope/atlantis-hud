@@ -15,6 +15,7 @@ import { miniatureWorld } from "./miniatureWorld/index";
 import { tacticalHud } from "./tacticalHud/index";
 import { collective } from "./collective/index";
 import { stainedGlass } from "./stainedGlass/index";
+import { blueprint } from "./blueprint/index";
 
 /** In the order the settings picker offers them, the atlas first as the one the map opens on. */
 export const MAP_THEMES: readonly MapTheme[] = [
@@ -24,7 +25,8 @@ export const MAP_THEMES: readonly MapTheme[] = [
   emblemAndDots,
   beveledTile,
   collective,
-  stainedGlass
+  stainedGlass,
+  blueprint
 ];
 
 /** The most map-like of the designs, and what an unrecognised choice falls back to. */

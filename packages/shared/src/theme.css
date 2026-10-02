@@ -12,6 +12,7 @@
 @import "./workspace/mapThemes/beveledTile/theme.css";
 @import "./workspace/mapThemes/collective/theme.css";
 @import "./workspace/mapThemes/stainedGlass/theme.css";
+@import "./workspace/mapThemes/blueprint/theme.css";
 
 /*
  * Where the class names live.
