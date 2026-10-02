@@ -84,7 +84,7 @@ export function useDialogDrag(ref?: RefObject<HTMLDivElement | null>): DialogDra
       barBottom: barBottom.current,
       travelled: false
     };
-  }, []);
+  }, [dialogRef]);
 
   const onPointerMove = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     const current = press.current;
@@ -147,7 +147,7 @@ export function useDialogDrag(ref?: RefObject<HTMLDivElement | null>): DialogDra
       window.removeEventListener("resize", reclamp);
       observer?.disconnect();
     };
-  }, [moved]);
+  }, [moved, dialogRef]);
 
   return {
     moved,
