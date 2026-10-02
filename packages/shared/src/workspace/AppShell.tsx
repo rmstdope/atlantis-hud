@@ -278,7 +278,15 @@ import { structurePaletteLabel, structuresForUnitDock } from "../structureLabel"
 import type { Resume, StopKey } from "../diagnosticNav";
 import { resumeWalk, stepDiagnostic, stopKeys } from "../diagnosticNav";
 import { hasOpenDismissLayers } from "../dismissStack";
-import { firesInContext, isMacPlatform, matchShortcut, SHORTCUTS } from "../shortcuts";
+import {
+  firesInContext,
+  isKeyDialog,
+  isMacPlatform,
+  keyDialogAction,
+  matchShortcut,
+  SHORTCUTS,
+  type KeyDialogId
+} from "../shortcuts";
 import type { CaretLookup } from "../orderCompletion";
 import { nextOwnUnit } from "../unitCycle";
 import {
@@ -1523,34 +1531,55 @@ export function AppShell({
     [problemTargets, problemKeys, selectedUnitId, goToUnit]
   );
 
+  // Which of the key-opened dialogs is on screen (ah-gucy): at most one, since their keys only
+  // ever open one when none is - see `keyDialogAction`.
+  const openKeyDialog: KeyDialogId | null = helpOpen
+    ? "help"
+    : gameDataOpen !== null && gameData !== null
+      ? "gameData"
+      : magicTreeOpen !== null && magicTree !== null
+        ? "magicTree"
+        : studyPlannerOpen && magicTree !== null
+          ? "studyPlanner"
+          : null;
+
   const dispatchShortcut = useCallback(
     (id: ReturnType<typeof matchShortcut> & string) => {
+      // A key dialog's chord toggles its own dialog and does nothing over another of the family.
+      // Closing never re-opens, which would silently throw away a cross-reference the player had
+      // followed. Opening is gated on the ruleset, matching the palette, which offers no door onto
+      // empty tabs; the tree and the planner are both that ruleset read another way.
+      if (isKeyDialog(id)) {
+        const action = keyDialogAction(id, openKeyDialog);
+        if (action === "ignore") {
+          return;
+        }
+        const show = action === "open";
+        switch (id) {
+          case "help":
+            setHelpOpen(show);
+            break;
+          case "gameData":
+            if (!show || gameData !== null) {
+              setGameDataOpen(show ? { entryId: null } : null);
+            }
+            break;
+          case "magicTree":
+            if (!show || magicTree !== null) {
+              setMagicTreeOpen(show ? { tag: null } : null);
+            }
+            break;
+          case "studyPlanner":
+            if (!show || magicTree !== null) {
+              setStudyPlannerOpen(show);
+            }
+            break;
+        }
+        return;
+      }
       switch (id) {
         case "palette":
           setPaletteOpen((open) => !open);
-          break;
-        case "help":
-          setHelpOpen((open) => !open);
-          break;
-        // A toggle: open cold when closed, and when open simply close - never re-open, which
-        // would silently throw away a cross-reference the player had followed. Nothing at all
-        // without a ruleset, matching the palette, which offers no door onto empty tabs.
-        case "gameData":
-          if (gameData !== null) {
-            setGameDataOpen((open) => (open === null ? { entryId: null } : null));
-          }
-          break;
-        // The same toggle-and-gate shape, for the same reasons.
-        case "magicTree":
-          if (magicTree !== null) {
-            setMagicTreeOpen((open) => (open === null ? { tag: null } : null));
-          }
-          break;
-        // Gated on the tree for the same reason: with no ruleset there are no standings to draw.
-        case "studyPlanner":
-          if (magicTree !== null) {
-            setStudyPlannerOpen((open) => !open);
-          }
           break;
         case "nextUnit":
         case "prevUnit": {
@@ -1572,7 +1601,7 @@ export function AppShell({
           break;
       }
     },
-    [orderedOwnUnitIds, unit, goToUnit, walkProblems, gameData, magicTree]
+    [orderedOwnUnitIds, unit, goToUnit, walkProblems, gameData, magicTree, openKeyDialog]
   );
 
   // The global keyboard layer: one bubble-phase listener, so every widget's own keys - the
@@ -1595,15 +1624,9 @@ export function AppShell({
         return;
       }
       // Behind an open dialog or palette the cycling chords stand down: walking the selection
-      // under an overlay mutates what nobody can see. The palette and help stay reachable -
-      // pressing their chord again is how they toggle closed.
-      if (
-        id !== "palette" &&
-        id !== "help" &&
-        id !== "gameData" &&
-        id !== "studyPlanner" &&
-        hasOpenDismissLayers()
-      ) {
+      // under an overlay mutates what nobody can see. The palette and the key dialogs stay
+      // reachable - pressing their chord again is how they toggle closed.
+      if (id !== "palette" && !isKeyDialog(id) && hasOpenDismissLayers()) {
         return;
       }
       event.preventDefault();

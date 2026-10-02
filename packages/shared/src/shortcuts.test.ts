@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { SHORTCUTS, firesInContext, matchShortcut, type ShortcutId } from "./shortcuts";
+import {
+  SHORTCUTS,
+  firesInContext,
+  isKeyDialog,
+  keyDialogAction,
+  matchShortcut,
+  type KeyDialogId,
+  type ShortcutId
+} from "./shortcuts";
 
 type KeyEvent = Parameters<typeof matchShortcut>[0];
 
@@ -132,6 +140,35 @@ describe("firesInContext", () => {
       // The snippet-body textarea, the unit filter, the palette's own input: an arrow chord
       // there belongs to that input, not to the map-wide walker.
       expect(firesInContext(id, { isTextInput: true, isOrdersEditor: false })).toBe(false);
+    }
+  });
+});
+
+describe("keyDialogAction", () => {
+  const dialogs: KeyDialogId[] = ["help", "gameData", "magicTree", "studyPlanner"];
+
+  it("counts exactly the four dialogs a key opens as one family", () => {
+    const family = SHORTCUTS.map((entry) => entry.id).filter(isKeyDialog);
+    expect(family).toEqual(dialogs);
+  });
+
+  it("opens a dialog when none of the family is open", () => {
+    for (const id of dialogs) {
+      expect(keyDialogAction(id, null)).toBe("open");
+    }
+  });
+
+  it("closes a dialog when its own key is pressed again", () => {
+    for (const id of dialogs) {
+      expect(keyDialogAction(id, id)).toBe("close");
+    }
+  });
+
+  it("does nothing for another dialog's key while one is open, so they never stack", () => {
+    for (const open of dialogs) {
+      for (const id of dialogs.filter((other) => other !== open)) {
+        expect(keyDialogAction(id, open)).toBe("ignore");
+      }
     }
   });
 });
