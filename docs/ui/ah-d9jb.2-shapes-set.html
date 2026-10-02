@@ -1,0 +1,573 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Shapes texture set</title><style>
+:root{--bg:#14161b;--panel:#1d2027;--raised:#262a33;--edge:#3a3f4b;--ink:#e6e2d6;--soft:#b9b4a6;--dim:#857f72;--brass:#c9a45c;--note:#2b3340;--card:#f3ead2;--cap:#6b665c}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 4px}h2{font-size:15px;margin:24px 0 8px;color:var(--brass)}p.lede{color:var(--soft);margin:0 0 14px;max-width:880px}
+.bar{display:flex;gap:16px;flex-wrap:wrap;margin:0 0 14px;color:var(--soft)}label{cursor:pointer}
+.row{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
+.dialog{width:380px;max-width:100%;background:var(--panel);border:1px solid var(--edge);border-radius:8px;padding:14px;box-shadow:0 8px 30px #0008}
+.dialog .title{font-weight:600;margin-bottom:10px;display:flex;justify-content:space-between}.dialog .title span{color:var(--dim);font-weight:400}
+.set{display:flex;justify-content:space-between;gap:10px;align-items:center;margin:0 0 12px;flex-wrap:wrap}.set .t{color:var(--soft)}.set .d{display:block;color:var(--dim);font-size:12px}
+.nest{margin:0 0 12px 16px;padding-left:9px;border-left:2px solid #c9a45c66}.nest.off{opacity:.45}
+select{background:var(--raised);color:var(--ink);border:1px solid var(--edge);border-radius:4px;padding:3px 6px;font:inherit}
+input[type=checkbox]{width:16px;height:16px;accent-color:var(--brass)}
+.btns button{background:var(--raised);color:var(--ink);border:1px solid var(--edge);border-radius:4px;padding:2px 9px;font:inherit}.btns button.on{border-color:var(--brass);color:var(--brass)}
+figure{margin:0;background:var(--card);border-radius:6px;padding:8px;max-width:100%;overflow:auto}figcaption{font-size:12px;color:var(--cap);margin-top:4px}canvas{display:block}
+.tile canvas{display:inline-block;vertical-align:middle;margin-right:6px}
+.grp{margin:0 0 12px}.gname{color:var(--soft);margin:0 0 4px}
+.note{background:var(--note);border-left:3px solid var(--brass);padding:8px 10px;border-radius:4px;color:var(--soft);font-size:13px;max-width:880px;margin:8px 0}
+.vision-grey .map{filter:grayscale(1)}.vision-deut .map{filter:url(#deut)}.vision-prot .map{filter:url(#prot)}
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><filter id="deut"><feColorMatrix type="matrix" values="0.367 0.861 -0.228 0 0  0.280 0.673 0.047 0 0  -0.012 0.043 0.969 0 0  0 0 0 1 0"/></filter><filter id="prot"><feColorMatrix type="matrix" values="0.152 1.053 -0.205 0 0  0.115 0.786 0.099 0 0  -0.004 -0.048 1.052 0 0  0 0 0 1 0"/></filter></svg>
+<h1>Agreed — the Shapes texture set</h1>
+<p class="lede">A second entry, <b>Shapes</b>, joins <b>Standard</b> in the Texture set picker. It uses Standard's colours and adds one large shape per biome. Changes from the first exploration: <b>mountain</b> has darker rock with small snow tips, so it stands clear of tundra, and <b>ocean</b> has no wave marks, only broad deep and shallow patches. Hexes are turned like today while "Rotate biome textures" is on. <b>Try it:</b> switch between Standard and Shapes, untick Biome textures or Rotate, and try greyscale.</p>
+<div class="bar"><span><label><input type="radio" name="vision" value="" checked> normal</label> <label><input type="radio" name="vision" value="vision-grey"> greyscale</label> <label><input type="radio" name="vision" value="vision-deut"> deuteranopia</label> <label><input type="radio" name="vision" value="vision-prot"> protanopia</label></span>
+<label><input type="checkbox" id="gauze"> Cartographer's Table parchment</label><label><input type="checkbox" id="labels"> name the hexes</label></div>
+<div class="row">
+ <div class="dialog">
+  <div class="title">Settings <span>All games</span></div>
+  <div class="set"><span class="t">App theme</span><span class="btns"><button class="on">Dark</button> <button>Light</button></span></div>
+  <div class="set"><span><span class="t">Map theme</span><span class="d">How the world map draws each hex.</span></span><select><option>Beveled Tile</option></select></div>
+  <div class="set"><span><span class="t">Biome textures</span><span class="d">Uses image tiles for known biomes.</span></span><input id="on" type="checkbox" checked></div>
+  <div class="nest" id="nest">
+   <div class="set"><span><span class="t">Texture set</span><span class="d">Which pictures the map uses for each biome.</span></span>
+    <select id="set"><option value="standard">Standard</option><option value="shapes" selected>Shapes</option></select></div>
+   <div class="set"><span><span class="t">Rotate biome textures</span><span class="d">Turns each hex's texture by a different angle.</span></span><input id="rot" type="checkbox" checked></div>
+   <div class="set"><span><span class="t">Animate water textures</span><span class="d">Moves ocean and lake textures along their texture direction.</span></span><input type="checkbox" checked></div>
+  </div>
+  <div class="set"><span><span class="t">Staleness</span><span class="d">Shade hexes by how long ago you last saw them.</span></span><input type="checkbox"></div>
+ </div>
+ <div id="preview" class="row" style="flex:1;min-width:280px"></div>
+</div>
+<h2>Underground</h2><div id="under" class="row"></div>
+<h2>Groups most likely to be confused</h2><p class="lede">Each biome in 2×2 blocks so that each borders the next, at far and close zoom.</p><div id="groups"></div>
+<h2>Every biome, close and far</h2><div id="tiles" class="row"></div>
+<div class="note">With Biome textures off the map uses the flat colours agreed for Standard; the set chosen makes no difference there.</div>
+<script>
+function random(seed) {
+  let s = seed >>> 0 || 1;
+  return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+}
+const smooth = (v) => v * v * (3 - 2 * v);
+function valueNoise(size, period, seed) {
+  const rng = random(seed);
+  const lat = Array.from({ length: period * period }, () => rng());
+  const out = new Float32Array(size * size);
+  for (let y = 0; y < size; y++) {
+    const cy = (y / size) * period, y0 = Math.floor(cy) % period, y1 = (y0 + 1) % period, fy = smooth(cy - Math.floor(cy));
+    for (let x = 0; x < size; x++) {
+      const cx = (x / size) * period, x0 = Math.floor(cx) % period, x1 = (x0 + 1) % period, fx = smooth(cx - Math.floor(cx));
+      const t = lat[y0 * period + x0] * (1 - fx) + lat[y0 * period + x1] * fx;
+      const b = lat[y1 * period + x0] * (1 - fx) + lat[y1 * period + x1] * fx;
+      out[y * size + x] = t * (1 - fy) + b * fy;
+    }
+  }
+  return out;
+}
+function fbm(size, period, oct, seed) {
+  const out = new Float32Array(size * size);
+  let a = 1, sum = 0, p = period;
+  for (let o = 0; o < oct; o++) {
+    const l = valueNoise(size, p, seed + o * 101);
+    for (let i = 0; i < out.length; i++) out[i] += l[i] * a;
+    sum += a; a *= 0.5; p *= 2;
+  }
+  for (let i = 0; i < out.length; i++) out[i] /= sum;
+  return out;
+}
+function normalize(f) {
+  let mn = Infinity, mx = -Infinity;
+  for (const v of f) { if (v < mn) mn = v; if (v > mx) mx = v; }
+  const s = mx - mn || 1;
+  return f.map((v) => (v - mn) / s);
+}
+const mixF = (a, b, wa, wb) => a.map((v, i) => v * wa + b[i] * wb);
+function sineField(freq, warp, size) {
+  return warp.map((v, i) => { const x = (i % size) / size, y = Math.floor(i / size) / size; return 0.5 + 0.5 * Math.sin((x + y * 0.4) * Math.PI * 2 * freq + v * 8); });
+}
+function ramp(v, stops) {
+  if (v <= stops[0][0]) return stops[0][1];
+  for (let i = 1; i < stops.length; i++) {
+    if (v <= stops[i][0]) {
+      const [p0, c0] = stops[i - 1], [p1, c1] = stops[i], t = (v - p0) / (p1 - p0);
+      return [c0[0] + (c1[0] - c0[0]) * t, c0[1] + (c1[1] - c0[1]) * t, c0[2] + (c1[2] - c0[2]) * t];
+    }
+  }
+  return stops[stops.length - 1][1];
+}
+function fieldCanvas(field, stops, seed) {
+  const c = document.createElement("canvas"); c.width = c.height = TEX;
+  const ctx = c.getContext("2d"), img = ctx.createImageData(TEX, TEX), rng = random(seed);
+  for (let i = 0; i < field.length; i++) {
+    const col = ramp(field[i], stops), g = (rng() - 0.5) * 10;
+    img.data[i * 4] = col[0] + g; img.data[i * 4 + 1] = col[1] + g; img.data[i * 4 + 2] = col[2] + g; img.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+
+
+const BIOMES_DIR = "file:///Users/henrikku/repos/atlantis-hud/config/public/biomes/";
+const TEX = 256;
+const KINDS = ["ocean", "plain", "forest", "mountain", "swamp", "desert", "jungle", "tundra", "volcano", "wasteland", "hill",
+  "cavern", "underforest", "tunnels", "grotto", "deepforest", "chasm"];
+const CODE = { O: "ocean", P: "plain", F: "forest", M: "mountain", S: "swamp", D: "desert", J: "jungle", T: "tundra", V: "volcano", W: "wasteland", H: "hill",
+  C: "cavern", U: "underforest", N: "tunnels", G: "grotto", E: "deepforest", X: "chasm" };
+const SURFACE = ["OOOTTTMMMHHO", "OOTTTMMVMHHO", "OPPTMMVVHHWW", "OPPFFFHHWWDD", "PPFFSSSJWDDD", "PFFSSSJJJDDO", "OPFFSJJJPPDO", "OOPPPJJPPPOO"];
+const UNDER = ["NNNCCCCXXN", "NCCCUUCXXN", "NCCUUUEECN", "NGGUUEEECN", "NGGGUEECXN", "NNGCCCCXXN"];
+const GROUPS = [
+  ["forest", "swamp", "jungle"],
+  ["forest", "underforest", "deepforest", "jungle"],
+  ["cavern", "tunnels", "chasm"],
+  ["hill", "wasteland", "desert"],
+  ["tundra", "mountain"],
+  ["grotto", "ocean", "swamp"],
+];
+
+const rgb = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+function hash(s) { let h = 2166136261; for (const ch of s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+function hexPath(ctx, cx, cy, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) { const a = (Math.PI / 3) * i; ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a)); }
+  ctx.closePath();
+}
+function wrapDraw(x, y, r, draw) {
+  for (const dx of [-TEX, 0, TEX]) for (const dy of [-TEX, 0, TEX]) {
+    if (x + dx + r < 0 || x + dx - r > TEX || y + dy + r < 0 || y + dy - r > TEX) continue;
+    draw(x + dx, y + dy);
+  }
+}
+function canvas() { const c = document.createElement("canvas"); c.width = c.height = TEX; return c; }
+
+// ---- B: palette (hue and value apart) + one large shape per biome ----
+const RAMPS = {
+  ocean: [[0, [12, 42, 80]], [0.45, [18, 66, 116]], [0.75, [32, 104, 158]], [1, [120, 180, 210]]],
+  plain: [[0, [120, 150, 70]], [0.5, [146, 176, 86]], [0.8, [170, 194, 104]], [1, [196, 210, 130]]],
+  forest: [[0, [14, 40, 36]], [0.4, [26, 66, 54]], [0.7, [42, 94, 72]], [1, [86, 132, 104]]],
+  mountain: [[0, [70, 70, 78]], [0.45, [104, 102, 108]], [0.75, [140, 138, 142]], [1, [190, 190, 196]]],
+  swamp: [[0, [52, 78, 82]], [0.28, [70, 96, 96]], [0.34, [84, 80, 50]], [0.65, [116, 104, 62]], [1, [152, 138, 90]]],
+  desert: [[0, [200, 160, 92]], [0.5, [222, 186, 116]], [0.8, [236, 206, 142]], [1, [248, 228, 172]]],
+  jungle: [[0, [44, 96, 16]], [0.35, [84, 140, 24]], [0.7, [136, 178, 38]], [1, [196, 214, 84]]],
+  tundra: [[0, [176, 190, 200]], [0.4, [200, 212, 220]], [0.7, [222, 230, 236]], [1, [244, 248, 252]]],
+  volcano: [[0, [18, 14, 16]], [0.5, [38, 30, 30]], [0.85, [60, 48, 46]], [1, [84, 70, 66]]],
+  wasteland: [[0, [96, 50, 36]], [0.45, [134, 74, 50]], [0.75, [162, 98, 66]], [1, [190, 130, 92]]],
+  hill: [[0, [104, 92, 52]], [0.45, [136, 120, 70]], [0.75, [164, 148, 92]], [1, [196, 180, 124]]],
+  cavern: [[0, [26, 24, 34]], [0.45, [50, 46, 62]], [0.75, [76, 70, 90]], [1, [112, 104, 128]]],
+  underforest: [[0, [34, 30, 40]], [0.45, [56, 52, 52]], [0.75, [80, 76, 64]], [1, [110, 104, 80]]],
+  tunnels: [[0, [14, 20, 36]], [0.4, [24, 34, 58]], [0.75, [34, 48, 80]], [1, [52, 68, 104]]],
+  grotto: [[0, [10, 30, 34]], [0.45, [20, 54, 58]], [0.75, [34, 82, 84]], [1, [70, 120, 118]]],
+  deepforest: [[0, [4, 18, 14]], [0.45, [8, 32, 24]], [0.75, [14, 46, 34]], [1, [26, 66, 48]]],
+  chasm: [[0, [40, 18, 30]], [0.45, [66, 32, 46]], [0.75, [92, 48, 60]], [1, [124, 72, 80]]],
+};
+const FIELDS = {
+  ocean: () => normalize(mixF(fbm(TEX, 3, 6, 10), sineField(5, fbm(TEX, 6, 5, 12), TEX), 0.65, 0.35)),
+  plain: () => normalize(mixF(fbm(TEX, 4, 6, 20), fbm(TEX, 6, 4, 21), 0.6, 0.4)),
+  forest: () => normalize(mixF(fbm(TEX, 6, 6, 30), fbm(TEX, 9, 5, 31), 0.45, 0.55)),
+  mountain: () => normalize(mixF(fbm(TEX, 3, 7, 40), fbm(TEX, 4, 6, 41), 0.5, 0.5)),
+  swamp: () => normalize(fbm(TEX, 5, 6, 50)),
+  desert: () => normalize(mixF(sineField(7, fbm(TEX, 4, 5, 70), TEX), fbm(TEX, 4, 5, 70), 0.7, 0.3)),
+  jungle: () => normalize(mixF(fbm(TEX, 14, 6, 60), fbm(TEX, 24, 6, 61), 0.5, 0.5)),
+  tundra: () => normalize(mixF(fbm(TEX, 4, 6, 80), fbm(TEX, 9, 5, 81), 0.6, 0.4)),
+  volcano: () => normalize(fbm(TEX, 5, 7, 90)),
+  wasteland: () => normalize(mixF(fbm(TEX, 4, 7, 140), fbm(TEX, 7, 5, 141), 0.7, 0.3)),
+  hill: () => normalize(mixF(fbm(TEX, 3, 7, 160), fbm(TEX, 5, 5, 161), 0.7, 0.3)),
+  cavern: () => normalize(mixF(fbm(TEX, 3, 7, 100), fbm(TEX, 8, 5, 101), 0.65, 0.35)),
+  underforest: () => normalize(mixF(fbm(TEX, 8, 6, 120), fbm(TEX, 16, 5, 121), 0.5, 0.5)),
+  tunnels: () => normalize(fbm(TEX, 5, 6, 171)),
+  grotto: () => normalize(mixF(fbm(TEX, 4, 6, 180), sineField(3, fbm(TEX, 8, 4, 181), TEX), 0.6, 0.4)),
+  deepforest: () => normalize(mixF(fbm(TEX, 18, 7, 200), fbm(TEX, 30, 6, 201), 0.55, 0.45)),
+  chasm: () => normalize(fbm(TEX, 3, 7, 221)),
+};
+const FLAT = {
+  ocean: "#2a5f8e", plain: "#a6bb6c", forest: "#2c5a48", mountain: "#8c8a92", swamp: "#7a6c46", desert: "#e2c48a",
+  jungle: "#8cb42c", tundra: "#d6e0e8", volcano: "#3a2c2c", wasteland: "#9c5a3e", hill: "#9c8a56",
+  cavern: "#4a4458", underforest: "#6a5a7a", tunnels: "#2e3644", grotto: "#2c7a7c", deepforest: "#0e2a20", chasm: "#5c2c3e",
+};
+const base = (kind) => fieldCanvas(FIELDS[kind](), RAMPS[kind], 7 + kind.length);
+
+function jaggedLine(ctx, rng, x, y, ang, len, step, wobble) {
+  ctx.moveTo(x, y);
+  for (let d = 0; d < len; d += step) { ang += (rng() - 0.5) * wobble; x += Math.cos(ang) * step; y += Math.sin(ang) * step; ctx.lineTo(x, y); }
+  return [x, y, ang];
+}
+
+const SHAPES = {
+  ocean(ctx, rng) {
+    ctx.strokeStyle = "rgba(210,236,248,0.7)"; ctx.lineCap = "round";
+    for (let i = 0; i < 46; i++) {
+      const x = rng() * TEX, y = rng() * TEX, w = 10 + rng() * 12;
+      wrapDraw(x, y, w, (px, py) => { ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(px, py + w * 0.6, w, Math.PI * 1.25, Math.PI * 1.75); ctx.stroke(); });
+    }
+  },
+  plain(ctx, rng) {
+    ctx.lineCap = "round"; ctx.lineWidth = 1.2;
+    for (let i = 0; i < 110; i++) {
+      const x = rng() * TEX, y = rng() * TEX, h = 4 + rng() * 4;
+      wrapDraw(x, y, 8, (px, py) => {
+        ctx.strokeStyle = "rgba(80,104,40,0.8)";
+        for (const dx of [-2, 0, 2]) { ctx.beginPath(); ctx.moveTo(px + dx, py); ctx.lineTo(px + dx * 1.8, py - h); ctx.stroke(); }
+      });
+    }
+  },
+  forest(ctx, rng) {
+    ctx.fillStyle = "rgb(12,32,28)"; ctx.fillRect(0, 0, TEX, TEX);
+    for (let i = 0; i < 90; i++) {
+      const x = rng() * TEX, y = rng() * TEX, r = 10 + rng() * 9, t = rng();
+      wrapDraw(x, y, r + 5, (px, py) => {
+        ctx.fillStyle = "rgba(0,10,8,0.55)"; ctx.beginPath(); ctx.arc(px + 3, py + 4, r, 0, 7); ctx.fill();
+        const g = ctx.createRadialGradient(px - r * 0.35, py - r * 0.35, r * 0.1, px, py, r);
+        g.addColorStop(0, rgb([70 + t * 30, 128 + t * 20, 100])); g.addColorStop(0.6, rgb([30, 78 + t * 18, 60])); g.addColorStop(1, rgb([16, 46, 38]));
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.fill();
+      });
+    }
+  },
+  mountain(ctx, rng) {
+    for (let i = 0; i < 16; i++) {
+      const x = rng() * TEX, y = rng() * TEX, w = 30 + rng() * 22, h = w * (0.8 + rng() * 0.3), skew = (rng() - 0.5) * w * 0.4;
+      wrapDraw(x, y, w + 4, (px, py) => {
+        const top = [px + skew, py - h / 2], l = [px - w / 2, py + h / 2], rr = [px + w / 2, py + h / 2], mid = [px + skew * 0.3, py + h / 2];
+        ctx.fillStyle = "rgb(150,148,154)"; ctx.beginPath(); ctx.moveTo(...top); ctx.lineTo(...l); ctx.lineTo(...mid); ctx.fill();
+        ctx.fillStyle = "rgb(70,68,78)"; ctx.beginPath(); ctx.moveTo(...top); ctx.lineTo(...mid); ctx.lineTo(...rr); ctx.fill();
+        const t = 0.32, lerp = (a, b) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+        ctx.fillStyle = "rgb(244,246,250)"; ctx.beginPath(); ctx.moveTo(...top); ctx.lineTo(...lerp(top, l)); ctx.lineTo(...lerp(top, mid)); ctx.lineTo(...lerp(top, rr)); ctx.fill();
+      });
+    }
+  },
+  swamp(ctx, rng, b) {
+    const n = normalize(fbm(TEX, 4, 5, 501));
+    const img = ctx.getImageData(0, 0, TEX, TEX);
+    for (let i = 0; i < n.length; i++) if (n[i] < 0.42) {
+      const d = (0.42 - n[i]) / 0.42, shore = n[i] > 0.38;
+      const col = shore ? [60, 66, 44] : [64 + d * 20, 104 + d * 26, 112 + d * 34];
+      img.data[i * 4] = col[0]; img.data[i * 4 + 1] = col[1]; img.data[i * 4 + 2] = col[2];
+    }
+    ctx.putImageData(img, 0, 0); ctx.lineCap = "round";
+    for (let i = 0; i < 90; i++) {
+      const x = rng() * TEX, y = rng() * TEX, idx = (y | 0) * TEX + (x | 0);
+      if (n[idx] < 0.4 || n[idx] > 0.65) continue;
+      const hs = [0, 1, 2, 3, 4].map(() => 9 + rng() * 7);
+      wrapDraw(x, y, 16, (px, py) => {
+        for (let k = 0; k < 5; k++) {
+          const ox = (k - 2) * 2.4, h = hs[k];
+          ctx.strokeStyle = k % 2 ? "rgb(56,58,26)" : "rgb(160,150,76)"; ctx.lineWidth = 1.6;
+          ctx.beginPath(); ctx.moveTo(px + ox, py); ctx.quadraticCurveTo(px + ox + (k - 2) * 1.5, py - h * 0.6, px + ox + (k - 2) * 2.4, py - h); ctx.stroke();
+        }
+      });
+    }
+  },
+  desert(ctx, rng) {
+    ctx.lineCap = "round";
+    for (let i = 0; i < 22; i++) {
+      const x = rng() * TEX, y = rng() * TEX, w = 26 + rng() * 22;
+      wrapDraw(x, y, w + 6, (px, py) => {
+        ctx.fillStyle = "rgba(150,104,52,0.45)"; ctx.beginPath(); ctx.ellipse(px, py + 5, w, w * 0.32, 0, 0, Math.PI); ctx.fill();
+        ctx.strokeStyle = "rgba(255,244,210,0.85)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(px, py, w, w * 0.3, 0, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
+      });
+    }
+  },
+  jungle(ctx, rng) {
+    ctx.fillStyle = "rgb(40,92,14)"; ctx.fillRect(0, 0, TEX, TEX);
+    const leaf = (px, py, ang, len, w, col) => {
+      ctx.save(); ctx.translate(px, py); ctx.rotate(ang);
+      ctx.fillStyle = "rgba(10,40,0,0.45)"; ctx.beginPath(); ctx.ellipse(len / 2 + 2, 3, len / 2, w, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(len / 2, 0, len / 2, w, 0, 0, 7); ctx.fill();
+      ctx.strokeStyle = "rgba(230,240,120,0.75)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(1, 0); ctx.lineTo(len - 2, 0); ctx.stroke();
+      ctx.restore();
+    };
+    for (let i = 0; i < 70; i++) {
+      const x = rng() * TEX, y = rng() * TEX, len = 16 + rng() * 14, spokes = 5 + ((rng() * 4) | 0), rot = rng() * 6.3, w = 4 + rng() * 2;
+      const col = rgb([[70, 140, 20], [110, 170, 30], [150, 196, 50], [190, 214, 80]][(rng() * 4) | 0]);
+      wrapDraw(x, y, len + 6, (px, py) => { for (let s = 0; s < spokes; s++) leaf(px, py, rot + (s * 6.283) / spokes, len, w, col); });
+    }
+  },
+  tundra(ctx, rng) {
+    for (let i = 0; i < 26; i++) {
+      const x = rng() * TEX, y = rng() * TEX, r = 6 + rng() * 10;
+      wrapDraw(x, y, r, (px, py) => { ctx.fillStyle = "rgba(120,140,110,0.45)"; ctx.beginPath(); ctx.ellipse(px, py, r, r * 0.6, rng() * 3, 0, 7); ctx.fill(); });
+    }
+    ctx.strokeStyle = "rgba(110,150,190,0.8)"; ctx.lineWidth = 1.2;
+    for (let i = 0; i < 18; i++) { const x = rng() * TEX, y = rng() * TEX; wrapDraw(x, y, 30, (px, py) => { ctx.beginPath(); jaggedLine(ctx, random(i + 7), px, py, rng() * 6.3, 26, 4, 1.4); ctx.stroke(); }); }
+    for (let i = 0; i < 40; i++) {
+      const x = rng() * TEX, y = rng() * TEX, r = 1.5 + rng() * 2.5;
+      wrapDraw(x, y, r + 2, (px, py) => { ctx.fillStyle = "rgb(96,100,108)"; ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.fill(); });
+    }
+  },
+  volcano(ctx, rng) {
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    for (let i = 0; i < 16; i++) {
+      const x = rng() * TEX, y = rng() * TEX, a = rng() * 6.3, s = i * 31 + 5;
+      wrapDraw(x, y, 50, (px, py) => {
+        for (const [w, c, blur] of [[5, "rgba(255,80,10,0.5)", 8], [2.2, "rgb(255,150,40)", 0], [0.8, "rgb(255,236,140)", 0]]) {
+          ctx.shadowColor = "rgba(255,90,0,0.9)"; ctx.shadowBlur = blur; ctx.strokeStyle = c; ctx.lineWidth = w;
+          ctx.beginPath(); jaggedLine(ctx, random(s), px, py, a, 44, 5, 1.2); ctx.stroke();
+        }
+        ctx.shadowBlur = 0;
+      });
+    }
+    for (let i = 0; i < 4; i++) {
+      const x = rng() * TEX, y = rng() * TEX, r = 9 + rng() * 6;
+      wrapDraw(x, y, r + 4, (px, py) => {
+        ctx.fillStyle = "rgb(10,8,8)"; ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.fill();
+        ctx.fillStyle = "rgb(230,90,20)"; ctx.beginPath(); ctx.arc(px, py, r * 0.45, 0, 7); ctx.fill();
+      });
+    }
+  },
+  wasteland(ctx, rng) {
+    ctx.strokeStyle = "rgba(48,22,14,0.85)"; ctx.lineWidth = 1.6; ctx.lineJoin = "round";
+    const pts = Array.from({ length: 40 }, () => [rng() * TEX, rng() * TEX]);
+    for (const [x, y] of pts) {
+      const near = pts.map(([u, v]) => [u, v, Math.hypot(u - x, v - y)]).filter((p) => p[2] > 0).sort((a, b) => a[2] - b[2]).slice(0, 3);
+      for (const [u, v, d] of near) if (d < 60) wrapDraw(x, y, 60, (px, py) => { ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + (u - x) * 0.5 + (rng() - 0.5) * 6, py + (v - y) * 0.5 + (rng() - 0.5) * 6); ctx.lineTo(px + u - x, py + v - y); ctx.stroke(); });
+    }
+    for (let i = 0; i < 24; i++) {
+      const x = rng() * TEX, y = rng() * TEX, r = 2 + rng() * 3;
+      wrapDraw(x, y, r + 2, (px, py) => { ctx.fillStyle = "rgb(70,54,46)"; ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.fill(); ctx.fillStyle = "rgba(220,180,140,0.6)"; ctx.beginPath(); ctx.arc(px - r * 0.3, py - r * 0.3, r * 0.4, 0, 7); ctx.fill(); });
+    }
+  },
+  hill(ctx, rng) {
+    for (let i = 0; i < 26; i++) {
+      const x = rng() * TEX, y = rng() * TEX, r = 18 + rng() * 14;
+      wrapDraw(x, y, r + 6, (px, py) => {
+        ctx.fillStyle = "rgba(60,48,24,0.4)"; ctx.beginPath(); ctx.ellipse(px + 5, py + 5, r, r * 0.75, 0, 0, 7); ctx.fill();
+        const g = ctx.createRadialGradient(px - r * 0.4, py - r * 0.4, r * 0.1, px, py, r);
+        g.addColorStop(0, "rgb(214,200,140)"); g.addColorStop(0.55, "rgb(160,142,84)"); g.addColorStop(1, "rgb(110,96,54)");
+        ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(px, py, r, r * 0.75, 0, 0, 7); ctx.fill();
+      });
+    }
+  },
+  cavern(ctx, rng) {
+    for (let i = 0; i < 34; i++) {
+      const x = rng() * TEX, y = rng() * TEX, r = 6 + rng() * 10;
+      wrapDraw(x, y, r + 4, (px, py) => {
+        ctx.fillStyle = "rgba(8,6,14,0.6)"; ctx.beginPath(); ctx.ellipse(px + 3, py + 3, r, r * 0.8, 0, 0, 7); ctx.fill();
+        const g = ctx.createRadialGradient(px - r * 0.4, py - r * 0.4, 1, px, py, r);
+        g.addColorStop(0, "rgb(170,150,200)"); g.addColorStop(0.5, "rgb(88,80,108)"); g.addColorStop(1, "rgb(40,36,52)");
+        ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(px, py, r, r * 0.8, 0, 0, 7); ctx.fill();
+      });
+    }
+  },
+  underforest(ctx, rng) {
+    ctx.fillStyle = "rgb(30,26,36)"; ctx.fillRect(0, 0, TEX, TEX);
+    for (let i = 0; i < 60; i++) {
+      const x = rng() * TEX, y = rng() * TEX, r = 9 + rng() * 9, t = rng();
+      wrapDraw(x, y, r + 5, (px, py) => {
+        ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.beginPath(); ctx.arc(px + 3, py + 4, r, 0, 7); ctx.fill();
+        const g = ctx.createRadialGradient(px - r * 0.3, py - r * 0.3, 1, px, py, r);
+        g.addColorStop(0, rgb([180 + t * 30, 150, 200])); g.addColorStop(0.7, rgb([110 + t * 30, 80, 130])); g.addColorStop(1, rgb([60, 40, 70]));
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.fill();
+        ctx.fillStyle = "rgba(240,230,200,0.8)";
+        for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.arc(px + Math.cos(k * 2.1 + t * 6) * r * 0.5, py + Math.sin(k * 2.1 + t * 6) * r * 0.5, r * 0.12, 0, 7); ctx.fill(); }
+      });
+    }
+  },
+  tunnels(ctx, rng) {
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    for (let i = 0; i < 7; i++) {
+      const x = rng() * TEX, y = rng() * TEX, a = rng() * 6.3, s = i * 17 + 3;
+      wrapDraw(x, y, 120, (px, py) => {
+        for (const [w, c] of [[14, "rgb(10,12,16)"], [9, "rgb(120,130,150)"], [4, "rgb(170,180,196)"]]) {
+          ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath(); jaggedLine(ctx, random(s), px, py, a, 110, 8, 0.7); ctx.stroke();
+        }
+      });
+    }
+  },
+  grotto(ctx, rng) {
+    for (let i = 0; i < 10; i++) {
+      const x = rng() * TEX, y = rng() * TEX, r = 14 + rng() * 14;
+      wrapDraw(x, y, r + 4, (px, py) => {
+        const g = ctx.createRadialGradient(px, py, 1, px, py, r);
+        g.addColorStop(0, "rgb(150,250,236)"); g.addColorStop(0.6, "rgb(40,170,170)"); g.addColorStop(1, "rgba(20,80,84,0)");
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.fill();
+      });
+    }
+    for (let i = 0; i < 26; i++) {
+      const x = rng() * TEX, y = rng() * TEX, h = 6 + rng() * 6, a = (rng() - 0.5) * 0.8;
+      wrapDraw(x, y, h + 2, (px, py) => {
+        ctx.save(); ctx.translate(px, py); ctx.rotate(a);
+        ctx.fillStyle = "rgb(220,250,255)"; ctx.beginPath(); ctx.moveTo(0, -h); ctx.lineTo(2.5, 0); ctx.lineTo(-2.5, 0); ctx.fill();
+        ctx.fillStyle = "rgb(110,190,210)"; ctx.beginPath(); ctx.moveTo(0, -h); ctx.lineTo(2.5, 0); ctx.lineTo(0, 0); ctx.fill();
+        ctx.restore();
+      });
+    }
+  },
+  deepforest(ctx, rng) {
+    ctx.fillStyle = "rgb(2,10,8)"; ctx.fillRect(0, 0, TEX, TEX);
+    for (let i = 0; i < 140; i++) {
+      const x = rng() * TEX, y = rng() * TEX, r = 6 + rng() * 6, t = rng();
+      wrapDraw(x, y, r + 3, (px, py) => {
+        const g = ctx.createRadialGradient(px - r * 0.3, py - r * 0.3, 1, px, py, r);
+        g.addColorStop(0, rgb([26, 70 + t * 20, 50])); g.addColorStop(1, rgb([6, 24, 18]));
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.fill();
+      });
+    }
+    for (let i = 0; i < 70; i++) {
+      const x = rng() * TEX, y = rng() * TEX;
+      wrapDraw(x, y, 4, (px, py) => { ctx.shadowColor = "rgb(80,255,230)"; ctx.shadowBlur = 5; ctx.fillStyle = "rgb(160,255,240)"; ctx.beginPath(); ctx.arc(px, py, 1.3, 0, 7); ctx.fill(); ctx.shadowBlur = 0; });
+    }
+  },
+  chasm(ctx, rng) {
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    for (let i = 0; i < 5; i++) {
+      const x = rng() * TEX, y = rng() * TEX, a = rng() * 6.3, s = i * 23 + 9;
+      wrapDraw(x, y, 130, (px, py) => {
+        for (const [w, c] of [[16, "rgb(150,90,96)"], [12, "rgb(20,6,12)"], [5, "rgb(0,0,0)"]]) {
+          ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath(); jaggedLine(ctx, random(s), px, py, a, 120, 9, 1.0); ctx.stroke();
+        }
+      });
+    }
+  },
+};
+function texB(kind) {
+  const b = base(kind), c = canvas(), ctx = c.getContext("2d");
+  ctx.drawImage(b, 0, 0);
+  SHAPES[kind](ctx, random(hash(kind) || 1), b);
+  return c;
+}
+
+// ---- C: vector glyphs, ink on the terrain, close zoom only ----
+
+function paintHex(ctx, x, y, r, kind, id, source, opts) {
+  ctx.save(); hexPath(ctx, x, y, r); ctx.clip();
+  if (source.flat) { ctx.fillStyle = source.flat[kind]; ctx.fillRect(x - r, y - r, 2 * r, 2 * r); }
+  else {
+    const tex = source.tex[kind];
+    ctx.translate(x, y); if (source.rotate !== false) ctx.rotate(((hash(id) % 360) * Math.PI) / 180);
+    ctx.filter = `brightness(${0.92 + (hash(id + ":b") % 17) / 100})`;
+    if (tex) ctx.drawImage(tex, -r * 1.16, -r * 1.16, 2.32 * r, 2.32 * r); else { ctx.fillStyle = "#c33"; ctx.fillRect(-r * 1.2, -r * 1.2, 2.4 * r, 2.4 * r); }
+    ctx.filter = "none"; ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+  if (opts.gauze) { ctx.globalAlpha = 0.2; ctx.fillStyle = "#efe3c2"; ctx.fillRect(x - r, y - r, 2 * r, 2 * r); ctx.globalAlpha = 1; }
+  if (source.glyphs) drawGlyphs(ctx, kind, x, y, r, hash(id));
+  ctx.restore();
+  hexPath(ctx, x, y, r); ctx.strokeStyle = "rgba(42,33,24,0.8)"; ctx.lineWidth = r > 20 ? 1.4 : 0.8; ctx.stroke();
+  if (opts.labels && r > 20) {
+    ctx.font = "bold 11px system-ui"; ctx.fillStyle = "#fff"; ctx.strokeStyle = "#000"; ctx.lineWidth = 3; ctx.textAlign = "center";
+    ctx.strokeText(kind, x, y + 4); ctx.fillText(kind, x, y + 4);
+  }
+}
+function drawLayout(cv, layout, r, source, opts) {
+  const ctx = cv.getContext("2d"), w = r * 1.5, h = r * Math.sqrt(3);
+  cv.width = Math.ceil(w * (layout[0].length - 1) + 2 * r + 4); cv.height = Math.ceil(h * layout.length + h / 2 + 4);
+  layout.forEach((row, ry) => [...row].forEach((ch, cx) => {
+    paintHex(ctx, r + 2 + cx * w, h / 2 + 2 + ry * h + (cx % 2 ? h / 2 : 0), r, CODE[ch], `${cx},${ry}`, source, opts);
+  }));
+}
+// A group as 2x2 blocks per biome, so each borders the next.
+const groupLayout = (kinds) => {
+  const inv = Object.fromEntries(Object.entries(CODE).map(([k, v]) => [v, k]));
+  const row = kinds.map((k) => inv[k].repeat(2)).join("");
+  return [row, row];
+};
+
+const SOURCES = {};
+const OPTIONS = [
+  ["today", "Today (committed PNGs)"],
+  ["b", "B · structured procedural"],
+  ["bflat", "B · textures off (new flat colours)"],
+  ["e", "E1 · AI text-to-image"],
+  ["cb", "C glyphs over B"],
+  ["ce", "C glyphs over E1"],
+];
+
+// ---- round 1 variants ----
+const DARK_MOUNTAIN = [[0, [44, 44, 52]], [0.45, [70, 68, 78]], [0.75, [98, 96, 106]], [1, [136, 134, 144]]];
+function peaks(ctx, rng, lit, shade, snowT) {
+  for (let i = 0; i < 16; i++) {
+    const x = rng() * TEX, y = rng() * TEX, w = 30 + rng() * 22, h = w * (0.8 + rng() * 0.3), skew = (rng() - 0.5) * w * 0.4;
+    wrapDraw(x, y, w + 4, (px, py) => {
+      const top = [px + skew, py - h / 2], l = [px - w / 2, py + h / 2], rr = [px + w / 2, py + h / 2], mid = [px + skew * 0.3, py + h / 2];
+      ctx.fillStyle = lit; ctx.beginPath(); ctx.moveTo(...top); ctx.lineTo(...l); ctx.lineTo(...mid); ctx.fill();
+      ctx.fillStyle = shade; ctx.beginPath(); ctx.moveTo(...top); ctx.lineTo(...mid); ctx.lineTo(...rr); ctx.fill();
+      const t = snowT, lerp = (a, b) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+      ctx.fillStyle = "rgb(244,246,250)"; ctx.beginPath(); ctx.moveTo(...top); ctx.lineTo(...lerp(top, l)); ctx.lineTo(...lerp(top, mid)); ctx.lineTo(...lerp(top, rr)); ctx.fill();
+    });
+  }
+}
+function ridges(ctx, rng) {
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  for (let i = 0; i < 9; i++) {
+    const x = rng() * TEX, y = rng() * TEX, a = rng() * 6.3, s = i * 29 + 11;
+    wrapDraw(x, y, 90, (px, py) => {
+      for (const [w, c, dx, dy] of [[16, "rgba(20,20,28,0.75)", 4, 5], [9, "rgb(116,114,124)", 0, 0], [3, "rgb(246,248,252)", -1, -1]]) {
+        ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath(); jaggedLine(ctx, random(s), px + dx, py + dy, a, 80, 7, 1.1); ctx.stroke();
+      }
+    });
+  }
+}
+function tex(kind, ramp, shape) {
+  const b = fieldCanvas(FIELDS[kind](), ramp || RAMPS[kind], 7 + kind.length), c = canvas(), ctx = c.getContext("2d");
+  ctx.drawImage(b, 0, 0); if (shape) shape(ctx, random(hash(kind) || 1)); return c;
+}
+function swells(ctx, rng) {
+  ctx.lineCap = "round";
+  for (let row = 0; row < 9; row++) {
+    const y0 = (row + rng() * 0.6) * (TEX / 9);
+    let x = rng() * 30;
+    while (x < TEX + 40) {
+      const len = 40 + rng() * 50, ph = rng() * 6;
+      ctx.strokeStyle = "rgba(190,224,242,0.55)"; ctx.lineWidth = 2.2; ctx.beginPath();
+      for (let d = 0; d <= len; d += 3) { const px = (x + d) % TEX, py = y0 + Math.sin(ph + d / 14) * 4; if (d === 0 || (x + d) % TEX < 3) ctx.moveTo(px, py); else ctx.lineTo(px, py); }
+      ctx.stroke(); x += len + 18 + rng() * 30;
+    }
+  }
+}
+function ripples(ctx, rng) {
+  // broad lighter shallows and darker deeps: large shapes only, no strokes
+  const n = normalize(fbm(TEX, 3, 4, 909)), img = ctx.getImageData(0, 0, TEX, TEX);
+  for (let i = 0; i < n.length; i++) { const k = n[i] > 0.62 ? 26 : n[i] < 0.3 ? -14 : 0; img.data[i * 4] += k * 0.6; img.data[i * 4 + 1] += k; img.data[i * 4 + 2] += k; }
+  ctx.putImageData(img, 0, 0);
+}
+const VARIANTS = {
+  "mountain-a": { q: "Mountain", name: "A — as in the earlier drawing", note: "The mountain from the earlier exploration, unchanged: pale rock, large snow caps. This is the one that fades into tundra at far zoom.", show: "mountain",
+    over: { mountain: () => texB("mountain") } },
+  "mountain-b": { q: "Mountain", name: "B — darker rock, snow only on the tips", note: "Same peaks, but the rock is a good deal darker and the snow caps smaller, so a mountain reads as dark grey with white points. Cost: mountains look heavier and less snowy than tundra's neighbours suggest.", show: "mountain",
+    over: { mountain: () => tex("mountain", DARK_MOUNTAIN, (c, r) => peaks(c, r, "rgb(112,110,120)", "rgb(40,38,48)", 0.22)) } },
+  "mountain-c": { q: "Mountain", name: "C — long ridges with snow on the crests", note: "Instead of separate peaks, long dark ridges run across the hex with a thin line of snow along each crest, on the same darker rock as B. The ridge lines survive far zoom as dark streaks. Cost: less obviously 'a mountain' at close zoom than peaks are.", show: "mountain",
+    over: { mountain: () => tex("mountain", DARK_MOUNTAIN, ridges) } },
+  "ocean-a": { q: "Ocean", name: "A — as in the earlier drawing", note: "Short pale arcs scattered over the water: the marks that read a little like birds.", show: "ocean", over: { ocean: () => texB("ocean") } },
+  "ocean-b": { q: "Ocean", name: "B — long swell lines", note: "Long, gently wavy lines in rows, like a swell on a sea chart. Nothing short and curved, so nothing reads as a bird. Cost: rows of lines show their direction, which turns from hex to hex when textures are rotated.", show: "ocean", over: { ocean: () => tex("ocean", null, swells) } },
+  "ocean-c": { q: "Ocean", name: "C — no marks, deep and shallow patches only", note: "No strokes at all: the water is told apart by its colour and by broad lighter shallows and darker deeps. Cost: ocean becomes the one biome with no drawn shape, so in greyscale it leans on lightness alone.", show: "ocean", over: { ocean: () => tex("ocean", null, ripples) } },
+  "rotate-a": { q: "Rotation", name: "A — turned like today", note: "Each hex is turned by its own angle, as 'Rotate biome textures' does today. The repeats are hidden, but the shadows under tree crowns, hills and boulders point in a different direction in every hex.", show: "rotate", rotate: true },
+  "rotate-b": { q: "Rotation", name: "B — never turned; the light always comes from the top left", note: "This set is drawn upright in every hex, so every shadow falls the same way and the map looks lit from one side. 'Rotate biome textures' has no effect while this set is chosen and is dimmed, with a line saying why. Cost: a repeat between two neighbouring hexes of the same biome can be spotted at close zoom.", show: "rotate", rotate: false },
+  "rotate-c": { q: "Rotation", name: "C — turned, but drawn without shadows", note: "Hexes are still turned like today, but the shapes are drawn flat, with no cast shadows, so nothing betrays the turning. Cost: crowns, hills and boulders lose their depth and read flatter, a little like stickers.", show: "rotate", rotate: true, flat: true },
+};
+
+const SHAPES_SET = {}, STANDARD = {};
+for (const k of KINDS) { STANDARD[k] = base(k); SHAPES_SET[k] = texB(k); }
+SHAPES_SET.mountain = VARIANTS["mountain-b"].over.mountain();
+SHAPES_SET.ocean = VARIANTS["ocean-c"].over.ocean();
+const FLAT_STD = { ...FLAT, tunnels: "#1c2a48" };
+const $ = (id) => document.getElementById(id);
+function source() {
+  if (!$("on").checked) return { flat: FLAT_STD };
+  return { tex: $("set").value === "shapes" ? SHAPES_SET : STANDARD, rotate: $("rot").checked };
+}
+function opts() { return { gauze: $("gauze").checked, labels: $("labels").checked }; }
+function fig(host, layout, r, cap, src) {
+  const f = document.createElement("figure"), cv = document.createElement("canvas"); cv.className = "map";
+  drawLayout(cv, layout, r, src || source(), opts()); const c = document.createElement("figcaption"); c.textContent = cap; f.append(cv, c); host.append(f);
+}
+const inv = Object.fromEntries(Object.entries(CODE).map(([k, v]) => [v, k]));
+function render() {
+  $("nest").classList.toggle("off", !$("on").checked);
+  for (const el of $("nest").querySelectorAll("select,input")) el.disabled = !$("on").checked;
+  const p = $("preview"); p.innerHTML = "";
+  fig(p, SURFACE, 12, "far zoom"); fig(p, SURFACE, 30, "close zoom");
+  const u = $("under"); u.innerHTML = ""; fig(u, UNDER, 12, "far zoom"); fig(u, UNDER, 30, "close zoom");
+  const g = $("groups"); g.innerHTML = "";
+  for (const grp of GROUPS) {
+    const row = grp.map((k) => inv[k].repeat(2)).join(""), tr = document.createElement("div"); tr.className = "grp";
+    const h = document.createElement("div"); h.className = "gname"; h.textContent = grp.join(" · "); tr.append(h);
+    const d = document.createElement("div"); d.className = "row"; fig(d, [row, row], 10, "far"); fig(d, [row, row], 22, "close"); tr.append(d); g.append(tr);
+  }
+  const t = $("tiles"); t.innerHTML = "";
+  for (const k of KINDS) {
+    const f = document.createElement("figure"); f.className = "tile";
+    for (const r of [40, 12]) { const cv = document.createElement("canvas"); cv.className = "map"; cv.width = 2 * r + 4; cv.height = Math.ceil(r * Math.sqrt(3)) + 4; paintHex(cv.getContext("2d"), r + 2, cv.height / 2, r, k, "t" + k, source(), { ...opts(), labels: false }); f.append(cv); }
+    const c = document.createElement("figcaption"); c.textContent = k; f.append(c); t.append(f);
+  }
+}
+render();
+document.querySelectorAll("input,select").forEach((el) => el.addEventListener("input", () => { if (el.name === "vision") document.body.className = el.value; else render(); }));
+
+</script></body></html>
