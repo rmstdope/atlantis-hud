@@ -7,15 +7,21 @@ import {
 } from "./textureSets";
 
 describe("texture sets", () => {
-  it("offers one set, Standard, and opens on it", () => {
+  it("offers Standard, then Shapes (ah-d9jb.2), and opens on Standard", () => {
     expect(TEXTURE_SETS.map(({ id, label }) => ({ id, label }))).toEqual([
-      { id: "standard", label: "Standard" }
+      { id: "standard", label: "Standard" },
+      { id: "shapes", label: "Shapes" }
     ]);
     expect(DEFAULT_TEXTURE_SET_ID).toBe("standard");
   });
 
   it("keeps the Standard textures where they have always been served", () => {
     expect(textureSetDirectory("standard")).toBe("/biomes");
+  });
+
+  it("serves Shapes from a directory of its own beside Standard's", () => {
+    expect(knownTextureSet("shapes")).toBe("shapes");
+    expect(textureSetDirectory("shapes")).toBe("/biomes/shapes");
   });
 
   it("falls back to Standard, silently, for a set this build does not have", () => {
