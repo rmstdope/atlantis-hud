@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { MapExportContent } from "@atlantis/core-client";
 import { DEFAULT_EXPORT_CONTENT, exportAreaSummary, exportSummary } from "../mapExport";
 import { useEscapeToDismiss } from "./dismissLayer";
+import { useDialogDrag } from "./useDialogDrag";
 import { boundsOfKnown, hexesInRect, type MapRect } from "./mapMarquee";
 import type { HexNode } from "../hexMapModel";
 
@@ -42,6 +43,10 @@ export function MapExportDialog({
 
   useEscapeToDismiss(onDismiss);
 
+  // ah-aak5: dragged by its top bar to uncover the map; the veil lifts once moved.
+
+  const drag = useDialogDrag();
+
   // Everything known on the level, when no area was picked. A level holding nothing visited leaves
   // a rectangle covering one hex at the origin, which the count below correctly calls empty.
   const bounds = selection ?? boundsOfKnown(hexes, level) ?? EMPTY;
@@ -72,16 +77,21 @@ export function MapExportDialog({
           onDismiss();
         }
       }}
-      className="fixed inset-0 z-30 flex items-center justify-center bg-black/50"
+      className={`fixed inset-0 z-30 flex items-center justify-center${drag.moved ? "" : " bg-black/50"}`}
     >
       <div
+        ref={drag.dialogRef}
+        style={drag.dialogStyle}
         data-testid="map-export-panel"
         role="dialog"
         aria-modal="true"
         aria-label="Export map"
         className="flex w-[26rem] flex-col gap-2 rounded border border-edge bg-panel-raised p-3 text-pane whitespace-normal shadow-lg"
       >
-        <div className="flex items-center justify-between">
+        <div
+          {...drag.barProps}
+          className="flex cursor-move select-none items-center justify-between"
+        >
           <h2 className="text-ink">Export map</h2>
           <button
             type="button"

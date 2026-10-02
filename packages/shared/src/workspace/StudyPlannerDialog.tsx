@@ -11,6 +11,7 @@ import {
 } from "../studyPlanner";
 import type { OrderProcessing } from "../orderProcessing";
 import { useEscapeToDismiss } from "./dismissLayer";
+import { useDialogDrag } from "./useDialogDrag";
 import { STANDING_CHIP, standingLimit } from "./standingChip";
 import type { StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
 import type { MagicTree } from "../magicTree";
@@ -138,6 +139,8 @@ export function StudyPlannerDialog({
   onDismiss: () => void;
 }) {
   useEscapeToDismiss(onDismiss);
+  // ah-aak5: dragged by its top bar to uncover the map; the veil lifts once moved.
+  const drag = useDialogDrag();
 
   // Remembered no longer than the dialog, exactly as the picked mage is and for the reason
   // ah-lyg6.2.2 gave: a pane that opens differently depending on what you did last time is the
@@ -296,9 +299,11 @@ export function StudyPlannerDialog({
           onDismiss();
         }
       }}
-      className="fixed inset-0 z-40 flex items-start justify-center bg-black/50 pt-[10vh]"
+      className={`fixed inset-0 z-40 flex items-start justify-center pt-[10vh]${drag.moved ? "" : " bg-black/50"}`}
     >
       <div
+        ref={drag.dialogRef}
+        style={drag.dialogStyle}
         data-testid="study-planner-dialog"
         role="dialog"
         aria-modal="true"
@@ -313,7 +318,10 @@ export function StudyPlannerDialog({
         // the pointer as the tabs are walked.
         className="grid max-h-[80vh] w-[74rem] max-w-[94vw] grid-rows-[auto_auto_auto_1fr] rounded border border-brass/60 bg-panel-raised text-pane whitespace-normal shadow-xl"
       >
-        <div className="flex items-center gap-2 border-b border-edge px-2 py-1.5">
+        <div
+          {...drag.barProps}
+          className="flex cursor-move select-none items-center gap-2 border-b border-edge px-2 py-1.5"
+        >
           <span className="text-brass">Study planner</span>
           <span role="tablist" aria-label="Study planner view" className="flex gap-1">
             <ViewTab view="all" label="Overview" open={view} onOpen={setView} />

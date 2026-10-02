@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { navigationGroups } from "../navigationGuide";
 import { useSettingsStore } from "../settingsStore";
 import { useEscapeToDismiss } from "./dismissLayer";
+import { useDialogDrag } from "./useDialogDrag";
 
 /**
  * How to get around: every move worth knowing, with the mouse in one column and the keyboard in
@@ -17,6 +18,8 @@ import { useEscapeToDismiss } from "./dismissLayer";
  */
 export function ShortcutHelp({ isMac, onDismiss }: { isMac: boolean; onDismiss: () => void }) {
   useEscapeToDismiss(onDismiss);
+  // ah-aak5: dragged by its top bar to uncover the map; the veil lifts once moved.
+  const drag = useDialogDrag();
 
   const showAtStartup = useSettingsStore((state) => state.showShortcutsAtStartup);
   const setFlag = useSettingsStore((state) => state.setFlag);
@@ -65,9 +68,11 @@ export function ShortcutHelp({ isMac, onDismiss }: { isMac: boolean; onDismiss: 
         event.preventDefault();
         event.stopPropagation();
       }}
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/50"
+      className={`fixed inset-0 z-40 flex items-center justify-center${drag.moved ? "" : " bg-black/50"}`}
     >
       <div
+        ref={drag.dialogRef}
+        style={drag.dialogStyle}
         role="dialog"
         aria-modal="true"
         aria-label="Getting around"
@@ -81,7 +86,10 @@ export function ShortcutHelp({ isMac, onDismiss }: { isMac: boolean; onDismiss: 
           new player meets: the two ways out that existed are the two a new player has no reason to
           guess at.
         */}
-        <div className="flex flex-none items-center justify-between">
+        <div
+          {...drag.barProps}
+          className="flex cursor-move select-none flex-none items-center justify-between"
+        >
           <h2 className="text-ink">Getting around</h2>
           <button
             type="button"

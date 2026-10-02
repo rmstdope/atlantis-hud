@@ -713,3 +713,23 @@ describe("the global tab's coverage of the boolean settings", () => {
     }
   });
 });
+
+describe("moving the Settings dialog (ah-aak5)", () => {
+  it("opens unmoved: centred under the veil, with a top bar that drags", () => {
+    const html = renderToStaticMarkup(
+      <SettingsDialog
+        platformLabel="Web"
+        appUpdate={UNSUPPORTED_UPDATES}
+        openExternal={() => undefined}
+        game={null}
+        busy={false}
+        error={null}
+        onChangeMapSizes={async () => true}
+        onDismiss={() => {}}
+      />
+    );
+    expect(tag(html, "settings-backdrop")).toContain("bg-black/50");
+    expect(tag(html, "settings-panel")).not.toContain("position:fixed");
+    expect(html).toMatch(/<div[^>]*data-dialog-bar=""[^>]*class="[^"]*cursor-move[^"]*"/);
+  });
+});
