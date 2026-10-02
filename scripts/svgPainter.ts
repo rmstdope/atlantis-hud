@@ -4,8 +4,9 @@
  *
  * The agreed pictures were drawn on a browser canvas in `docs/ui/ah-d9jb.2-shapes-set.html`; this
  * lets that drawing code be ported almost line for line, with no native canvas package to install.
- * Points are transformed by the current matrix as they are recorded, and arcs are sampled into
- * short line segments, so every shape comes out as a plain `<path>`.
+ * Points, gradients and line widths are transformed by the current matrix as they are recorded,
+ * and arcs are sampled into short line segments, so every shape comes out as a plain `<path>`.
+ * Only the calls the shapes make are here; a line width under a non-uniform scale is approximated.
  */
 
 type Matrix = readonly [number, number, number, number, number, number];
@@ -249,7 +250,14 @@ export class SvgPainter {
   }
 
   createRadialGradient(x0: number, y0: number, _r0: number, x1: number, y1: number, r1: number): RadialGradient {
-    const gradient = new RadialGradient(`g${this.gradients.length}`, [x0, y0], [x1, y1], r1);
+    // Placed by the transform current at creation; canvas uses the one current at fill time, which
+    // is the same for every gradient the shapes make (created and filled under one transform).
+    const gradient = new RadialGradient(
+      `g${this.gradients.length}`,
+      apply(this.state.matrix, x0, y0),
+      apply(this.state.matrix, x1, y1),
+      r1 * this.scale()
+    );
     this.gradients.push(gradient);
     return gradient;
   }
@@ -293,6 +301,12 @@ export class SvgPainter {
     return `b${number(blur).replace(".", "_")}`;
   }
 
+  /** How much the current transform enlarges a length (rotation and translation leave it be). */
+  private scale(): number {
+    const [a, b, c, d] = this.state.matrix;
+    return Math.sqrt(Math.abs(a * d - b * c));
+  }
+
   private untransformedLast(): Point {
     const last = this.subpaths.at(-1)?.points.at(-1) ?? [0, 0];
     const [a, b, c, d, e, f] = this.state.matrix;
@@ -334,7 +348,7 @@ export class SvgPainter {
       return `<path d="${d}" fill="${colour}"${opacityText}${extra}/>`;
     }
     return (
-      `<path d="${d}" fill="none" stroke="${colour}"${opacityText} stroke-width="${number(this.state.lineWidth)}" ` +
+      `<path d="${d}" fill="none" stroke="${colour}"${opacityText} stroke-width="${number(this.state.lineWidth * this.scale())}" ` +
       `stroke-linecap="${this.state.lineCap}" stroke-linejoin="${this.state.lineJoin}"${extra}/>`
     );
   }

@@ -79,6 +79,16 @@ export function wrapDraw(x: number, y: number, r: number, draw: (x: number, y: n
   }
 }
 
+/**
+ * The value the first copy of a wrapped shape drew, for every copy. The mockup drew a fresh random
+ * value per copy, which never showed there (each hex was one untiled image) but cuts the shape at
+ * the seam once the map tiles the picture. Each copy still draws its value, and throws it away, so
+ * the random sequence - and so every other shape - stays the agreed one.
+ */
+function sameForEveryCopy<T>(first: T | undefined, drawn: T): T {
+  return first === undefined ? drawn : first;
+}
+
 const rgb = (c: readonly number[], a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 const FULL = 7;
 
@@ -304,10 +314,12 @@ const SHAPES: Record<Biome, (ctx: Painter, rng: Rng) => void> = {
       const x = rng() * TILE;
       const y = rng() * TILE;
       const r = 6 + rng() * 10;
+      let rotation: number | undefined;
       wrapDraw(x, y, r, (px, py) => {
         ctx.fillStyle = "rgba(120,140,110,0.45)";
         ctx.beginPath();
-        ctx.ellipse(px, py, r, r * 0.6, rng() * 3, 0, FULL);
+        rotation = sameForEveryCopy(rotation, rng() * 3);
+        ctx.ellipse(px, py, r, r * 0.6, rotation, 0, FULL);
         ctx.fill();
       });
     }
@@ -316,9 +328,11 @@ const SHAPES: Record<Biome, (ctx: Painter, rng: Rng) => void> = {
     for (let i = 0; i < 18; i += 1) {
       const x = rng() * TILE;
       const y = rng() * TILE;
+      let angle: number | undefined;
       wrapDraw(x, y, 30, (px, py) => {
         ctx.beginPath();
-        jaggedLine(ctx, random(i + 7), px, py, rng() * 6.3, 26, 4, 1.4);
+        angle = sameForEveryCopy(angle, rng() * 6.3);
+        jaggedLine(ctx, random(i + 7), px, py, angle, 26, 4, 1.4);
         ctx.stroke();
       });
     }
@@ -340,7 +354,8 @@ const SHAPES: Record<Biome, (ctx: Painter, rng: Rng) => void> = {
       const y = rng() * TILE;
       const angle = rng() * 6.3;
       const seed = i * 31 + 5;
-      wrapDraw(x, y, 50, (px, py) => {
+      // A crack reaches 45 units, its glow about 12 more (blur 8); the mockup's 50 cut the glow.
+      wrapDraw(x, y, 60, (px, py) => {
         for (const [width, colour, blur] of [
           [5, "rgba(255,80,10,0.5)", 8],
           [2.2, "rgb(255,150,40)", 0],
@@ -382,10 +397,13 @@ const SHAPES: Record<Biome, (ctx: Painter, rng: Rng) => void> = {
         .slice(0, 3);
       for (const [u, v, d] of near) {
         if (d < 60) {
+          let jitter: Pt | undefined;
           wrapDraw(x, y, 60, (px, py) => {
             ctx.beginPath();
             ctx.moveTo(px, py);
-            ctx.lineTo(px + (u - x) * 0.5 + (rng() - 0.5) * 6, py + (v - y) * 0.5 + (rng() - 0.5) * 6);
+            const drawn: Pt = [(rng() - 0.5) * 6, (rng() - 0.5) * 6];
+            jitter = sameForEveryCopy(jitter, drawn);
+            ctx.lineTo(px + (u - x) * 0.5 + jitter[0], py + (v - y) * 0.5 + jitter[1]);
             ctx.lineTo(px + u - x, py + v - y);
             ctx.stroke();
           });

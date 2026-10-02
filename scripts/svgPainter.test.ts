@@ -106,6 +106,17 @@ describe("SvgPainter (the canvas subset the Shapes set is drawn with)", () => {
     expect(body(painter)).toContain(`fill="url(#${id})"`);
   });
 
+  it("places a gradient made under a transform where the transform puts it (ah-d9jb.2 review)", () => {
+    const painter = new SvgPainter(256);
+    painter.translate(100, 50);
+    painter.rotate(Math.PI / 2);
+    const gradient = painter.createRadialGradient(0, -2, 1, 0, 0, 6);
+    gradient.addColorStop(0, "rgb(1,1,1)");
+    painter.fillStyle = gradient;
+    painter.fillRect(-6, -6, 12, 12);
+    expect(painter.toSvg(256)).toMatch(/cx="100" cy="50" r="6" fx="102" fy="50"/);
+  });
+
   it("draws a glow as a blurred copy in the shadow colour beneath the shape", () => {
     const painter = new SvgPainter(256);
     painter.shadowColor = "rgba(255,90,0,0.9)";

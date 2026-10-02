@@ -72,6 +72,10 @@ export default defineConfig({
         // man-counts exact rather than estimated. Without them the installed app opens offline and
         // is useless, which is worse than not opening at all.
         globPatterns: ["**/*.{js,css,html,ico,png,svg,wasm,json}"],
+        // The biome generator's contact sheets (`all_biomes.png`, one per texture set) are for
+        // whoever regenerates the textures; nothing in the app loads them, and each would add more
+        // than a megabyte to every install.
+        globIgnores: ["**/all_biomes.png"],
         // Headroom rather than a fix. The chunk carrying the map renderer and the orders editor is
         // around 290 KiB against Workbox's 2 MiB default - it was roughly 750 KiB until #58 took
         // the map off PixiJS - and nothing today is close, but the
