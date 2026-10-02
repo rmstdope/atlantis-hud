@@ -143,9 +143,9 @@ describe("the dialog frame", () => {
   });
 
   it("swallows a dropped file only when asked to", () => {
-    expect(
-      findByTestId(<DialogFrameView {...base()} />, "example-backdrop").props.onDrop
-    ).toBeUndefined();
+    const plain = findByTestId(<DialogFrameView {...base()} />, "example-backdrop");
+    expect(plain.props.onDragOver).toBeUndefined();
+    expect(plain.props.onDrop).toBeUndefined();
     const backdrop = findByTestId(
       <DialogFrameView {...base({ swallowFileDrops: true })} />,
       "example-backdrop"

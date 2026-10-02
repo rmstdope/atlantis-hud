@@ -62,6 +62,10 @@ const swallow = (event: DragEvent) => {
  * The frame drawn, hook-free so a test can render and walk it: the veil (lifted once moved), the
  * box, the top bar that moves it, and the close button. `drag` is absent in a static render, which
  * draws it unmoved.
+ *
+ * A test that has to call something on the bar or the close button walks this view, not a dialog:
+ * `DialogFrame` uses hooks, so `findByTestId` cannot enter it, and falls back only to its
+ * `children` - never to `bar`, and never to the close button drawn here.
  */
 export function DialogFrameView({
   label,
