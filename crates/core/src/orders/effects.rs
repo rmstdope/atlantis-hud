@@ -3214,6 +3214,9 @@ impl Working {
             shipment.receiver = Some(receiver);
             true
         });
+        for (sequence, shipment) in pending.iter_mut().enumerate() {
+            shipment.sequence = sequence;
+        }
         let mut sent: Vec<Vec<(usize, TransportSent)>> = vec![Vec::new(); self.units.len()];
         let mut received: Vec<Vec<(usize, TransportReceived)>> = vec![Vec::new(); self.units.len()];
         let mut issues: Vec<Vec<(usize, TransportTargetIssue)>> =
@@ -9227,6 +9230,25 @@ mod tests {
                 held(receiver, "STON"),
                 Some(5),
                 "five arrived at the formed unit"
+            );
+        }
+
+        #[test]
+        fn an_unformed_alias_does_not_shift_a_following_transport() {
+            let response =
+                two_hex_preview("unit 5530\nDISTRIBUTE NEW 5 10 STON\nTRANSPORT 6857 5 STON\n");
+
+            let sender = sender_row(&response);
+            assert_eq!(
+                sender.transport_sent,
+                vec![TransportSent {
+                    amount: 5,
+                    tag: "STON".to_string(),
+                    to: "6857".to_string(),
+                    to_unshown: false,
+                    refused: false,
+                    order_index: 0,
+                }]
             );
         }
 
