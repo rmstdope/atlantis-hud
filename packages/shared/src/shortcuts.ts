@@ -178,6 +178,28 @@ export function firesInContext(
   return !target.isTextInput || target.isOrdersEditor;
 }
 
+/** The dialogs a key opens (ah-gucy): one family, of which at most one is ever open. */
+export type KeyDialogId = "help" | "gameData" | "magicTree" | "studyPlanner";
+
+export function isKeyDialog(id: ShortcutId): id is KeyDialogId {
+  return id === "help" || id === "gameData" || id === "magicTree" || id === "studyPlanner";
+}
+
+/**
+ * What a key dialog's chord does, given which of the family is open now: open it when none is,
+ * close it when it is the one open, and nothing at all when another is - two of them stacked
+ * would dim the background twice and leave the player unsure which key closes what.
+ */
+export function keyDialogAction(
+  id: KeyDialogId,
+  open: KeyDialogId | null
+): "open" | "close" | "ignore" {
+  if (open === null) {
+    return "open";
+  }
+  return open === id ? "close" : "ignore";
+}
+
 /**
  * Whether this is a mac keyboard, which decides what Mod means and which spelling the help
  * shows. Guarded: the store of truth is the browser, and tests run under Node.

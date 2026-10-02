@@ -790,3 +790,85 @@ test("the game data dialog stops short of the bottom edge", async ({ page }) => 
       .toBeGreaterThanOrEqual(Math.round(size.height * 0.05));
   }
 });
+
+/**
+ * ah-gucy: the four dialogs a key opens - F2 Game data, F3 Magic tree, F4 Study planner and the
+ * Help overlay - behave as one family. Only one is ever open, so the background is only ever
+ * dimmed once; its own key, Escape or a click outside closes it; and another dialog's key does
+ * nothing while it is open.
+ */
+const KEY_DIALOGS = [
+  { name: "Game data", key: "F2", dialog: '[data-testid="game-data-dialog"]' },
+  { name: "Magic tree", key: "F3", dialog: '[data-testid="magic-tree-dialog"]' },
+  { name: "Study planner", key: "F4", dialog: '[data-testid="study-planner-dialog"]' },
+  { name: "Help", key: "ControlOrMeta+/", dialog: '[data-testid="shortcut-help"] [role="dialog"]' }
+] as const;
+
+test("a key dialog stands alone: other dialogs' keys open nothing, its own key closes it", async ({
+  page
+}) => {
+  await loadReport(page);
+  const modals = page.locator('[aria-modal="true"]');
+
+  for (const open of KEY_DIALOGS) {
+    await page.keyboard.press(open.key);
+    await expect(page.locator(open.dialog), `${open.name} opens`).toBeVisible();
+
+    for (const other of KEY_DIALOGS.filter((candidate) => candidate !== open)) {
+      await page.keyboard.press(other.key);
+      await expect(page.locator(other.dialog), `${other.key} over ${open.name}`).toHaveCount(0);
+      await expect(page.locator(open.dialog), `${open.name} under ${other.key}`).toBeVisible();
+      await expect(modals, `only ${open.name} dims the background`).toHaveCount(1);
+    }
+
+    await page.keyboard.press(open.key);
+    await expect(page.locator(open.dialog), `${open.key} closes ${open.name}`).toHaveCount(0);
+  }
+});
+
+test("Escape and a click outside close every key dialog, which all dim alike", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F2");
+  const backdrop = page.getByTestId("game-data-backdrop");
+  const dim = await backdrop.evaluate((node) => getComputedStyle(node).backgroundColor);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(KEY_DIALOGS[0].dialog)).toHaveCount(0);
+
+  for (const each of KEY_DIALOGS) {
+    await page.keyboard.press(each.key);
+    const dialog = page.locator(each.dialog);
+    await expect(dialog, `${each.name} opens`).toBeVisible();
+    const shade = await dialog.evaluate(
+      (node) => getComputedStyle(node.parentElement as Element).backgroundColor
+    );
+    expect(shade, `${each.name} dims as Game data does`).toBe(dim);
+    await page.keyboard.press("Escape");
+    await expect(dialog, `Escape closes ${each.name}`).toHaveCount(0);
+
+    await page.keyboard.press(each.key);
+    await expect(dialog).toBeVisible();
+    await page.mouse.click(4, 4);
+    await expect(dialog, `a click outside closes ${each.name}`).toHaveCount(0);
+  }
+});
+
+test("a key dialog opened from the palette replaces the one already open", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F2");
+  await expect(page.getByTestId("game-data-dialog")).toBeVisible();
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("magic study tree");
+  await expect(page.getByTestId("palette-item").first()).toContainText("Magic study tree");
+  await page.keyboard.press("Enter");
+
+  await expect(page.getByTestId("magic-tree-dialog")).toBeVisible();
+  await expect(page.getByTestId("game-data-dialog")).toHaveCount(0);
+  await expect(page.locator('[aria-modal="true"]')).toHaveCount(1);
+
+  // And its own key, the dialog the player can see, is the one that closes it.
+  await page.keyboard.press("F3");
+  await expect(page.getByTestId("magic-tree-dialog")).toHaveCount(0);
+});

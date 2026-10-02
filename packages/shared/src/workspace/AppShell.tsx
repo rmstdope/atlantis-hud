@@ -278,7 +278,15 @@ import { structurePaletteLabel, structuresForUnitDock } from "../structureLabel"
 import type { Resume, StopKey } from "../diagnosticNav";
 import { resumeWalk, stepDiagnostic, stopKeys } from "../diagnosticNav";
 import { hasOpenDismissLayers } from "../dismissStack";
-import { firesInContext, isMacPlatform, matchShortcut, SHORTCUTS } from "../shortcuts";
+import {
+  firesInContext,
+  isKeyDialog,
+  isMacPlatform,
+  keyDialogAction,
+  matchShortcut,
+  SHORTCUTS,
+  type KeyDialogId
+} from "../shortcuts";
 import type { CaretLookup } from "../orderCompletion";
 import { nextOwnUnit } from "../unitCycle";
 import {
@@ -1525,34 +1533,72 @@ export function AppShell({
     [problemTargets, problemKeys, selectedUnitId, goToUnit]
   );
 
+  // Which of the key-opened dialogs is on screen (ah-gucy): at most one, since their keys only
+  // ever open one when none is - see `keyDialogAction`.
+  const openKeyDialog: KeyDialogId | null = helpOpen
+    ? "help"
+    : gameDataOpen !== null && gameData !== null
+      ? "gameData"
+      : magicTreeOpen !== null && magicTree !== null
+        ? "magicTree"
+        : studyPlannerOpen && magicTree !== null
+          ? "studyPlanner"
+          : null;
+
+  // Opens one key dialog and closes the other three, for the doors that are not its key - the
+  // palette, and a cross-reference picked in it - so the family never stacks whichever way in.
+  const showOnlyKeyDialog = useCallback(
+    (
+      shown:
+        | { id: "help" | "studyPlanner" }
+        | { id: "gameData"; entryId: string | null }
+        | { id: "magicTree"; tag: string | null }
+    ) => {
+      setHelpOpen(shown.id === "help");
+      setGameDataOpen(shown.id === "gameData" ? { entryId: shown.entryId } : null);
+      setMagicTreeOpen(shown.id === "magicTree" ? { tag: shown.tag } : null);
+      setStudyPlannerOpen(shown.id === "studyPlanner");
+    },
+    []
+  );
+
   const dispatchShortcut = useCallback(
     (id: ReturnType<typeof matchShortcut> & string) => {
+      // A key dialog's chord toggles its own dialog and does nothing over another of the family.
+      // Closing never re-opens, which would silently throw away a cross-reference the player had
+      // followed. Opening is gated on the ruleset, matching the palette, which offers no door onto
+      // empty tabs; the tree and the planner are both that ruleset read another way.
+      if (isKeyDialog(id)) {
+        const action = keyDialogAction(id, openKeyDialog);
+        if (action === "ignore") {
+          return;
+        }
+        const show = action === "open";
+        switch (id) {
+          case "help":
+            setHelpOpen(show);
+            break;
+          case "gameData":
+            if (!show || gameData !== null) {
+              setGameDataOpen(show ? { entryId: null } : null);
+            }
+            break;
+          case "magicTree":
+            if (!show || magicTree !== null) {
+              setMagicTreeOpen(show ? { tag: null } : null);
+            }
+            break;
+          case "studyPlanner":
+            if (!show || magicTree !== null) {
+              setStudyPlannerOpen(show);
+            }
+            break;
+        }
+        return;
+      }
       switch (id) {
         case "palette":
           setPaletteOpen((open) => !open);
-          break;
-        case "help":
-          setHelpOpen((open) => !open);
-          break;
-        // A toggle: open cold when closed, and when open simply close - never re-open, which
-        // would silently throw away a cross-reference the player had followed. Nothing at all
-        // without a ruleset, matching the palette, which offers no door onto empty tabs.
-        case "gameData":
-          if (gameData !== null) {
-            setGameDataOpen((open) => (open === null ? { entryId: null } : null));
-          }
-          break;
-        // The same toggle-and-gate shape, for the same reasons.
-        case "magicTree":
-          if (magicTree !== null) {
-            setMagicTreeOpen((open) => (open === null ? { tag: null } : null));
-          }
-          break;
-        // Gated on the tree for the same reason: with no ruleset there are no standings to draw.
-        case "studyPlanner":
-          if (magicTree !== null) {
-            setStudyPlannerOpen((open) => !open);
-          }
           break;
         case "nextUnit":
         case "prevUnit": {
@@ -1574,7 +1620,7 @@ export function AppShell({
           break;
       }
     },
-    [orderedOwnUnitIds, unit, goToUnit, walkProblems, gameData, magicTree]
+    [orderedOwnUnitIds, unit, goToUnit, walkProblems, gameData, magicTree, openKeyDialog]
   );
 
   // The global keyboard layer: one bubble-phase listener, so every widget's own keys - the
@@ -1597,15 +1643,9 @@ export function AppShell({
         return;
       }
       // Behind an open dialog or palette the cycling chords stand down: walking the selection
-      // under an overlay mutates what nobody can see. The palette and help stay reachable -
-      // pressing their chord again is how they toggle closed.
-      if (
-        id !== "palette" &&
-        id !== "help" &&
-        id !== "gameData" &&
-        id !== "studyPlanner" &&
-        hasOpenDismissLayers()
-      ) {
+      // under an overlay mutates what nobody can see. The palette and the key dialogs stay
+      // reachable - pressing their chord again is how they toggle closed.
+      if (id !== "palette" && !isKeyDialog(id) && hasOpenDismissLayers()) {
         return;
       }
       event.preventDefault();
@@ -1690,7 +1730,7 @@ export function AppShell({
           // hunting "shortcuts" finds the same entry as somebody hunting "getting around".
           label: "Getting around (shortcuts and mouse)",
           binding: helpSpec ? (mac ? helpSpec.mac : helpSpec.other) : undefined,
-          run: () => setHelpOpen(true)
+          run: () => showOnlyKeyDialog({ id: "help" })
         },
         // Only once the ruleset has loaded: the palette already offers no game data at all in
         // that state, and a door onto seven empty tabs is worse than no door.
@@ -1702,7 +1742,7 @@ export function AppShell({
                 // of the ~270 dictionary entries it sits among.
                 label: "Browse game data",
                 binding: gameDataSpec ? (mac ? gameDataSpec.mac : gameDataSpec.other) : undefined,
-                run: () => setGameDataOpen({ entryId: null })
+                run: () => showOnlyKeyDialog({ id: "gameData", entryId: null })
               }
             ]
           : []),
@@ -1714,7 +1754,7 @@ export function AppShell({
                 id: "magic-study-tree",
                 label: "Magic study tree",
                 binding: magicTreeSpec ? (mac ? magicTreeSpec.mac : magicTreeSpec.other) : undefined,
-                run: () => setMagicTreeOpen({ tag: null })
+                run: () => showOnlyKeyDialog({ id: "magicTree", tag: null })
               }
             ]
           : []),
@@ -1729,7 +1769,7 @@ export function AppShell({
                     ? studyPlannerSpec.mac
                     : studyPlannerSpec.other
                   : undefined,
-                run: () => setStudyPlannerOpen(true)
+                run: () => showOnlyKeyDialog({ id: "studyPlanner" })
               }
             ]
           : []),
@@ -1772,7 +1812,7 @@ export function AppShell({
       orderCommands,
       insertOrder: (command) => ordersEditor.current?.insertOrder(command),
       gameData: gameData?.entries ?? [],
-      openGameData: (entryId) => setGameDataOpen({ entryId })
+      openGameData: (entryId) => showOnlyKeyDialog({ id: "gameData", entryId })
     });
   }, [
     offersProduction,
@@ -1789,7 +1829,8 @@ export function AppShell({
     game,
     selectedRegionId,
     magicTree,
-    openExport
+    openExport,
+    showOnlyKeyDialog
   ]);
 
   /**
