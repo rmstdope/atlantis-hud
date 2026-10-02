@@ -1,0 +1,356 @@
+/*
+ * Stained Glass: a cathedral window.
+ *
+ * Jewel-toned glass in dark lead, gold leaf for everything built, gems for everyone standing in a
+ * hex. The look is the theme's identity, so light mode is the same window: every property below
+ * is restated under data-theme="light" with the same value, which is what the parity check asks
+ * for and what keeps the window a window whichever chrome is around it.
+ *
+ * Surface terrains are bright jewels - sapphire sea, emerald forest, peridot plain, amber desert,
+ * amethyst mountain, jade jungle, olive swamp, topaz hill. The underground ones (cavern,
+ * underforest, tunnels, grotto, deepforest, chasm) are the same jewels deeper and smokier, as
+ * glass looks with less light behind it.
+ */
+
+:root {
+  --sg-lead: #141414;
+  --sg-pewter: #6b7378;
+  --sg-gold: #d4af37;
+  --sg-gold-light: #f3d77a;
+  --sg-gold-dark: #8a6d1c;
+  --sg-light: #ffffff;
+  --sg-shadow: #000000;
+  --sg-frost: #e8eef2;
+  --sg-frost-grey: #8e969b;
+  --sg-clear: #4a5256;
+  --sg-clear-veil: #0b0d0e;
+  --sg-ruby: #c0392b;
+  --sg-gem-own: #f1c40f;
+  --sg-gem-foreign: #e74c3c;
+  --sg-gem-monster: #2c2c2c;
+  --sg-ink-on-gem: #0d0d0d;
+  --sg-ink-on-onyx: #f3d77a;
+  --sg-battle-other: #7d6a6a;
+  --sg-battle-other-rim: #a8996a;
+  --sg-blocked: #e0604f;
+  --sg-blocked-label: #ffe2d6;
+
+  --sg-glass-ocean: #1d4f9c;
+  --sg-glass-plain: #7fb342;
+  --sg-glass-forest: #2f8f4e;
+  --sg-glass-mountain: #7d3c98;
+  --sg-glass-swamp: #6b7a2e;
+  --sg-glass-desert: #d9a21b;
+  --sg-glass-jungle: #1f9e7a;
+  --sg-glass-tundra: #8fc3d9;
+  --sg-glass-volcano: #b8321f;
+  --sg-glass-cavern: #4b3a6e;
+  --sg-glass-underforest: #2e5a48;
+  --sg-glass-wasteland: #a4562c;
+  --sg-glass-hill: #c47a1b;
+  --sg-glass-tunnels: #3a4864;
+  --sg-glass-grotto: #1c6a70;
+  --sg-glass-deepforest: #1f4a33;
+  --sg-glass-chasm: #5c2342;
+  --sg-glass-other: #8a8f94;
+}
+
+:root[data-theme="light"] {
+  --sg-lead: #141414;
+  --sg-pewter: #6b7378;
+  --sg-gold: #d4af37;
+  --sg-gold-light: #f3d77a;
+  --sg-gold-dark: #8a6d1c;
+  --sg-light: #ffffff;
+  --sg-shadow: #000000;
+  --sg-frost: #e8eef2;
+  --sg-frost-grey: #8e969b;
+  --sg-clear: #4a5256;
+  --sg-clear-veil: #0b0d0e;
+  --sg-ruby: #c0392b;
+  --sg-gem-own: #f1c40f;
+  --sg-gem-foreign: #e74c3c;
+  --sg-gem-monster: #2c2c2c;
+  --sg-ink-on-gem: #0d0d0d;
+  --sg-ink-on-onyx: #f3d77a;
+  --sg-battle-other: #7d6a6a;
+  --sg-battle-other-rim: #a8996a;
+  --sg-blocked: #e0604f;
+  --sg-blocked-label: #ffe2d6;
+
+  --sg-glass-ocean: #1d4f9c;
+  --sg-glass-plain: #7fb342;
+  --sg-glass-forest: #2f8f4e;
+  --sg-glass-mountain: #7d3c98;
+  --sg-glass-swamp: #6b7a2e;
+  --sg-glass-desert: #d9a21b;
+  --sg-glass-jungle: #1f9e7a;
+  --sg-glass-tundra: #8fc3d9;
+  --sg-glass-volcano: #b8321f;
+  --sg-glass-cavern: #4b3a6e;
+  --sg-glass-underforest: #2e5a48;
+  --sg-glass-wasteland: #a4562c;
+  --sg-glass-hill: #c47a1b;
+  --sg-glass-tunnels: #3a4864;
+  --sg-glass-grotto: #1c6a70;
+  --sg-glass-deepforest: #1f4a33;
+  --sg-glass-chasm: #5c2342;
+  --sg-glass-other: #8a8f94;
+}
+
+/* The pane's glass by terrain: each class only names the colour; the shards decide the tone. */
+.sg-terrain-ocean {
+  --sg-pane: var(--sg-glass-ocean);
+}
+.sg-terrain-plain {
+  --sg-pane: var(--sg-glass-plain);
+}
+.sg-terrain-forest {
+  --sg-pane: var(--sg-glass-forest);
+}
+.sg-terrain-mountain {
+  --sg-pane: var(--sg-glass-mountain);
+}
+.sg-terrain-swamp {
+  --sg-pane: var(--sg-glass-swamp);
+}
+.sg-terrain-desert {
+  --sg-pane: var(--sg-glass-desert);
+}
+.sg-terrain-jungle {
+  --sg-pane: var(--sg-glass-jungle);
+}
+.sg-terrain-tundra {
+  --sg-pane: var(--sg-glass-tundra);
+}
+.sg-terrain-volcano {
+  --sg-pane: var(--sg-glass-volcano);
+}
+.sg-terrain-cavern {
+  --sg-pane: var(--sg-glass-cavern);
+}
+.sg-terrain-underforest {
+  --sg-pane: var(--sg-glass-underforest);
+}
+.sg-terrain-wasteland {
+  --sg-pane: var(--sg-glass-wasteland);
+}
+.sg-terrain-hill {
+  --sg-pane: var(--sg-glass-hill);
+}
+.sg-terrain-tunnels {
+  --sg-pane: var(--sg-glass-tunnels);
+}
+.sg-terrain-grotto {
+  --sg-pane: var(--sg-glass-grotto);
+}
+.sg-terrain-deepforest {
+  --sg-pane: var(--sg-glass-deepforest);
+}
+.sg-terrain-chasm {
+  --sg-pane: var(--sg-glass-chasm);
+}
+.sg-terrain-other {
+  --sg-pane: var(--sg-glass-other);
+}
+
+/*
+ * Three shards, three tones of the same glass: the darkest let least light through. Mixed towards
+ * the lead rather than made translucent, so the pane looks the same over whatever the map has
+ * underneath it, in either chrome.
+ */
+.sg-shard-0 {
+  --sg-shard: color-mix(in srgb, var(--sg-pane) 76%, var(--sg-lead));
+}
+.sg-shard-1 {
+  --sg-shard: color-mix(in srgb, var(--sg-pane) 87%, var(--sg-lead));
+}
+.sg-shard-2 {
+  --sg-shard: var(--sg-pane);
+}
+.sg-shard {
+  fill: var(--sg-shard);
+}
+
+/* With textures: the glass thins so the biome reads through every shard. */
+.sg-textured .sg-shard-0 {
+  fill-opacity: 0.42;
+}
+.sg-textured .sg-shard-1 {
+  fill-opacity: 0.5;
+}
+.sg-textured .sg-shard-2 {
+  fill-opacity: 0.58;
+}
+
+/* Stale: frosted glass, the colour drained towards grey before the milky veil goes over it. */
+.sg-frosted .sg-shard {
+  fill: color-mix(in srgb, var(--sg-shard) 70%, var(--sg-frost-grey));
+}
+.sg-veil-frost {
+  fill: var(--sg-frost);
+}
+
+/*
+ * Never visited: clear glass with only a breath of the terrain's colour in it - and clear glass
+ * with no light behind it reads dark, so its veil is smoke, the opposite of the stale frost.
+ */
+.sg-clear .sg-shard {
+  fill: color-mix(in srgb, var(--sg-shard) 38%, var(--sg-clear));
+}
+.sg-veil-clear {
+  fill: var(--sg-clear-veil);
+}
+
+/* The lead. */
+.sg-cut {
+  stroke: var(--sg-lead);
+  stroke-linecap: round;
+}
+.sg-came {
+  stroke: var(--sg-lead);
+}
+/* A thin pewter rim rather than a came: lighter, so it still reads against the dark ground. */
+.sg-rim {
+  stroke: var(--sg-pewter);
+}
+
+/* The light behind the window. */
+.sg-light-hot {
+  stop-color: var(--sg-light);
+  stop-opacity: 0.4;
+}
+.sg-light-soft {
+  stop-color: var(--sg-light);
+  stop-opacity: 0.05;
+}
+.sg-light-shadow {
+  stop-color: var(--sg-shadow);
+  stop-opacity: 0.25;
+}
+
+/* Roads: a gold came on dark lead. */
+.sg-road-casing {
+  stroke: var(--sg-lead);
+}
+.sg-road {
+  stroke: var(--sg-gold);
+}
+
+/* Gold leaf, outlined in lead. */
+.sg-leaf {
+  fill: var(--sg-gold);
+  stroke: var(--sg-lead);
+}
+.sg-leaf .sg-leaf-line {
+  stroke: var(--sg-gold-dark);
+}
+.sg-leaf .sg-hollow {
+  fill: var(--sg-lead);
+}
+.sg-leaf .sg-hollow-line {
+  stroke: var(--sg-lead);
+}
+
+.sg-roundel {
+  fill: var(--sg-gold);
+  stroke: var(--sg-lead);
+}
+.sg-petals {
+  fill: var(--sg-gold-light);
+  stroke: var(--sg-gold-dark);
+}
+.sg-boss {
+  fill: var(--sg-ruby);
+}
+
+.sg-guard-own {
+  stroke: var(--sg-gold);
+}
+.sg-guard-foreign {
+  stroke: var(--sg-gem-foreign);
+}
+
+.sg-battle {
+  fill: var(--sg-ruby);
+  stroke: var(--sg-gold);
+}
+.sg-battle-other {
+  fill: var(--sg-battle-other);
+  stroke: var(--sg-battle-other-rim);
+}
+
+.sg-gem ellipse:first-child {
+  stroke: var(--sg-lead);
+}
+.sg-gem-own ellipse:first-child {
+  fill: var(--sg-gem-own);
+}
+.sg-gem-foreign ellipse:first-child {
+  fill: var(--sg-gem-foreign);
+}
+.sg-gem-monster ellipse:first-child {
+  fill: var(--sg-gem-monster);
+}
+.sg-gem-glint {
+  fill: var(--sg-light);
+  opacity: 0.55;
+}
+
+/*
+ * Engraved capitals, at a constant size on screen. Longhand only: a calc() inside the `font`
+ * shorthand is valid CSS that some renderers drop, and the label then falls back to a default
+ * size several times the hex.
+ */
+.sg-label {
+  font-family: "Cinzel", "Trajan Pro", Georgia, "Times New Roman", serif;
+  font-weight: 700;
+}
+.sg-name {
+  font-size: calc(9px / var(--map-scale, 1));
+  letter-spacing: calc(1px / var(--map-scale, 1));
+  fill: var(--sg-gold-light);
+  paint-order: stroke fill;
+  stroke: var(--sg-lead);
+  stroke-width: calc(3px / var(--map-scale, 1));
+  stroke-linejoin: round;
+}
+.sg-count {
+  font-size: calc(7.5px / var(--map-scale, 1));
+}
+.sg-count-own,
+.sg-count-foreign {
+  fill: var(--sg-ink-on-gem);
+}
+.sg-count-monster {
+  fill: var(--sg-ink-on-onyx);
+}
+
+/*
+ * Zoom bands.
+ *
+ * Mid drops the engraving; far drops the cuts (a pixel or less by then), every small glyph and
+ * the gems, and keeps the panes, their cames, the rosettes and the guard ring - the knowledge
+ * states live in the glass and the came themselves, so they survive here with nothing to read.
+ *
+ * Scoped to this theme, because every theme's stylesheet is loaded whichever one is selected.
+ */
+.map-theme-stained-glass.map-far .sg-cut,
+.map-theme-stained-glass.map-far .sg-minor,
+.map-theme-stained-glass.map-far .sg-label,
+.map-theme-stained-glass.map-mid .sg-label {
+  display: none;
+}
+
+/* The map's own marks in this window's colours: gold borders and walls over a lead halo, and
+   the milestone roads as a gold came on lead. */
+.map-theme-stained-glass {
+  --map-border-ink: var(--sg-gold-dark);
+  --map-wall-ink: var(--sg-gold-light);
+  --map-mark-ground: var(--sg-lead);
+  --map-road-line: var(--sg-gold);
+  --map-road-casing: var(--sg-lead);
+  --map-blocked-ink: var(--sg-blocked);
+  --map-blocked-label-ink: var(--sg-blocked-label);
+  --map-blocked-label-halo: var(--sg-lead);
+}

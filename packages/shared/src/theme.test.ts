@@ -499,7 +499,8 @@ describe("map theme stylesheets", () => {
       emblemAndDots: ["ed-terrain"],
       tacticalHud: ["hud-terrain"],
       miniatureWorld: ["mw-lit", "mw-shade"],
-      collective: ["co-terrain"]
+      collective: ["co-terrain"],
+      stainedGlass: ["sg-terrain"]
     };
     const missing: string[] = [];
     for (const sheet of await themeSheets()) {
@@ -566,7 +567,8 @@ describe("map theme stylesheets", () => {
       "emblem-and-dots": ["--ed-ink", "--ed-ink", "--ed-halo"],
       "miniature-world": ["--mw-edge", "--mw-edge", "--mw-tape"],
       "tactical-hud": ["--hud-ink", "--hud-ink", "--hud-panel"],
-      collective: ["--co-dim", "--co-white", "--co-void"]
+      collective: ["--co-dim", "--co-white", "--co-void"],
+      "stained-glass": ["--sg-gold-dark", "--sg-gold-light", "--sg-lead"]
     };
     const sheets = await themeSheets();
 
