@@ -52,6 +52,10 @@ import { useOverlayInsets } from "./useOverlayInsets";
 import { useWorkspaceStore } from "../workspaceStore";
 import type { RouteOverlay } from "./routeOverlay";
 import { RouteComet } from "./RouteComet";
+import { curvedHalves } from "./routeCurve";
+
+/** A route's two halves as one curve through the hex centres; see `routeCurve.ts`. */
+const curvedLine = (line: { solid: string; dotted: string }) => curvedHalves(line.solid, line.dotted);
 import { passageExitTitle, passageTitle, ringAccessibleName, ringHover } from "./passageMarks";
 import { viewportForArrow, type TradeArrow } from "./tradeArrow";
 import { peekStep, type KeepClear, type PeekMode } from "./dossierPeek";
@@ -149,7 +153,6 @@ const RISK_CLASSES: Record<string, string> = {
  */
 const GHOSTABLE_HIT: CSSProperties = { pointerEvents: "var(--map-hit, all)" as CSSProperties["pointerEvents"] };
 
-const ROUTE_CASING = radii(0.278);
 const ROUTE_LINE = radii(0.167);
 const RISK_OUTLINE = radii(0.111);
 
@@ -160,8 +163,34 @@ const ROUTE_WALL_CASING = radii(0.233);
 /** The disc the passage mark is drawn on, and the ring round it. */
 const PASSAGE_RADIUS = radii(0.36);
 
+/** The route's glow: how wide, how strong, and how soft its edge is. */
+const ROUTE_GLOW = radii(0.5);
+const ROUTE_GLOW_LATER = radii(0.3);
+const ROUTE_GLOW_BLUR = radii(0.08);
+/** The bright core and the pale thread inside it. */
+const ROUTE_CORE = radii(0.14);
+const ROUTE_CORE_LATER = radii(0.08);
+const ROUTE_THREAD = radii(0.05);
+/** The later months' dashes. */
+const ROUTE_DASH = `${radii(0.22)} ${radii(0.2)}`;
+/** The thread's colour: the comet's own pale gold, a light rather than ink, on either theme. */
+const ROUTE_THREAD_COLOUR = "#fff3cf";
+const ROUTE_GLOW_FILTER = "route-glow";
+
+/** The blur every route glow is drawn through, defined once beside the lines that use it. */
+function RouteGlowFilter() {
+  return (
+    <defs>
+      <filter id={ROUTE_GLOW_FILTER} x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation={ROUTE_GLOW_BLUR} />
+      </filter>
+    </defs>
+  );
+}
+
 /**
- * One polyline of a route, over a casing that keeps it readable on any terrain.
+ * One polyline of a route, drawn as light rather than ink: a wide soft glow, a bright core and a
+ * pale thread through it. The later months are the same glow at half strength, in dashes.
  *
  * Four of these are drawn - the solid and dotted halves of the journey before a passage and of the
  * journey after one - so the construction lives here once rather than four times over.
@@ -178,25 +207,63 @@ function RouteLine({
   if (!points) {
     return null;
   }
-  const dash = dotted ? "6 6" : undefined;
+  if (dotted) {
+    return (
+      <>
+        <polyline
+          points={points}
+          fill="none"
+          className="stroke-brass-bright"
+          strokeWidth={ROUTE_GLOW_LATER}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray={ROUTE_DASH}
+          opacity={0.2}
+          filter={`url(#${ROUTE_GLOW_FILTER})`}
+        />
+        <polyline
+          points={points}
+          fill="none"
+          className="stroke-brass-bright"
+          strokeWidth={ROUTE_CORE_LATER}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray={ROUTE_DASH}
+          opacity={0.6}
+          data-testid={testId}
+        />
+      </>
+    );
+  }
   return (
     <>
       <polyline
         points={points}
         fill="none"
-        className="stroke-ground"
-        strokeWidth={ROUTE_CASING}
+        className="stroke-brass-bright"
+        strokeWidth={ROUTE_GLOW}
+        strokeLinecap="round"
         strokeLinejoin="round"
-        strokeDasharray={dash}
+        opacity={0.35}
+        filter={`url(#${ROUTE_GLOW_FILTER})`}
       />
       <polyline
         points={points}
         fill="none"
-        className="stroke-brass"
-        strokeWidth={ROUTE_LINE}
+        className="stroke-brass-bright"
+        strokeWidth={ROUTE_CORE}
+        strokeLinecap="round"
         strokeLinejoin="round"
-        strokeDasharray={dash}
+        opacity={0.9}
         data-testid={testId}
+      />
+      <polyline
+        points={points}
+        fill="none"
+        stroke={ROUTE_THREAD_COLOUR}
+        strokeWidth={ROUTE_THREAD}
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </>
   );
@@ -1239,11 +1306,13 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
   const routeLine = useMemo(
     () =>
       route
-        ? routeSegments(
-            [route.origin, ...route.hexes],
-            route.solidSteps,
-            level,
-            nearTip?.tail ?? null
+        ? curvedLine(
+            routeSegments(
+              [route.origin, ...route.hexes],
+              route.solidSteps,
+              level,
+              nearTip?.tail ?? null
+            )
           )
         : { solid: "", dotted: "" },
     [route, level, nearTip]
@@ -1251,11 +1320,13 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
   const routeBeyondLine = useMemo(
     () =>
       route?.beyond
-        ? routeSegments(
-            [route.beyond.origin, ...route.beyond.hexes],
-            route.beyond.solidSteps,
-            level,
-            beyondTip?.tail ?? null
+        ? curvedLine(
+            routeSegments(
+              [route.beyond.origin, ...route.beyond.hexes],
+              route.beyond.solidSteps,
+              level,
+              beyondTip?.tail ?? null
+            )
           )
         : { solid: "", dotted: "" },
     [route, level, beyondTip]
@@ -1622,6 +1693,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                 joined to the near one by a line: the two ends can be a hex apart on one level, and
                 a line between them would cross country the unit never enters (`ah-3u7c.2.2`).
               */}
+              <RouteGlowFilter />
               <RouteLine points={routeLine.solid} testId="route-line-solid" />
               <RouteLine points={routeLine.dotted} testId="route-line-dotted" dotted />
               <RouteLine points={routeBeyondLine.solid} testId="route-line-beyond-solid" />

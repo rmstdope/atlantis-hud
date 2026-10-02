@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { radii } from "./mapThemes/geometry";
 import { afterEach, describe, expect, it } from "vitest";
 import { SURFACE_LEVEL, type HexMapModel } from "../hexMapModel";
 import type { HexNoteRecord, MapShape, MapWall } from "@atlantis/core-client";
@@ -576,16 +577,16 @@ describe("what the map hands a theme", () => {
     // polygons, so no polyline shares a class with it.
     const lines = [...svg.matchAll(/<polyline[^>]*>/g)]
       .map((match) => match[0])
-      .filter((tag) => /stroke-ground|stroke-brass/.test(tag));
+      .filter((tag) => /stroke-brass-bright|#fff3cf/.test(tag));
     const risk = /<polygon[^>]*fill-opacity="0\.28"[^>]*>/.exec(svg)?.[0] ?? "";
     const widthOf = (tag: string) => Number(/stroke-width="([\d.]+)"/.exec(tag)?.[1]);
 
-    expect(lines).toHaveLength(2); // a casing and the line over it, the route being wholly solid
+    // The glow, the bright core and the pale thread through it, the route being wholly solid.
+    expect(lines).toHaveLength(3);
     for (const tag of [...lines, risk]) {
       expect(tag).not.toContain("vector-effect");
     }
-    expect(widthOf(lines.find((tag) => tag.includes("stroke-ground"))!)).toBeCloseTo(5, 1);
-    expect(widthOf(lines.find((tag) => tag.includes("stroke-brass"))!)).toBeCloseTo(3, 1);
+    expect(lines.map(widthOf)).toEqual([radii(0.5), radii(0.14), radii(0.05)]);
     expect(widthOf(risk)).toBeCloseTo(2, 1);
   });
 
