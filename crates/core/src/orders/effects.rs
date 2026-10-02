@@ -3285,40 +3285,28 @@ impl Working {
     /// orders advisory and the shipping bill read.
     fn judge(&self, pending: &PendingTransport) -> super::transport::Judged {
         let sender = &self.units[pending.sender].unit;
-        let target_facts = pending.receiver.and_then(|receiver| {
-            let target = &self.units[receiver];
-            if !target.formed {
-                return None;
-            }
-            let quartermaster_tag = self
-                .ruleset
-                .find_skill("quartermaster")
-                .map(|skill| skill.tag.to_ascii_uppercase());
-            let quartermaster = quartermaster_tag.as_ref().is_some_and(|tag| {
-                target
-                    .unit
-                    .skills
-                    .iter()
-                    .any(|skill| skill.tag.eq_ignore_ascii_case(tag))
+        let sender_hex = self.hex_of_region.get(&sender.region_id).copied();
+        // A unit this month's FORM creates is judged on what this walk knows of it; the report
+        // cannot describe it (`ah-s79p`).
+        let formed = pending
+            .receiver
+            .map(|receiver| &self.units[receiver])
+            .filter(|target| target.formed)
+            .and_then(|target| {
+                Some(super::transport::FormedTarget {
+                    skills: Some(&target.unit.skills),
+                    coordinate: self.hex_of_region.get(&target.unit.region_id).copied()?,
+                })
             });
-            if quartermaster {
-                return None;
+        match formed {
+            Some(formed) => {
+                self.shipping
+                    .judge_formed(&sender.unit_id, sender_hex, &pending.to, formed)
             }
-            let coordinate = self.hex_of_region.get(&target.unit.region_id).copied()?;
-            Some(super::transport::TargetFacts {
-                own: true,
-                quartermaster_disclosed: quartermaster_tag.is_some(),
-                quartermaster: false,
-                caravanserai_owner: false,
-                coordinate,
-            })
-        });
-        self.shipping.judge_with_target_facts(
-            &sender.unit_id,
-            self.hex_of_region.get(&sender.region_id).copied(),
-            &pending.to,
-            target_facts.as_ref(),
-        )
+            None => self
+                .shipping
+                .judge(&sender.unit_id, sender_hex, &pending.to),
+        }
     }
 
     /// What the map says about whether this shipment arrives, and whether the player asked
@@ -9230,6 +9218,80 @@ mod tests {
                 held(receiver, "STON"),
                 Some(5),
                 "five arrived at the formed unit"
+            );
+        }
+
+        /// `ah-s79p`: one report, one order set, through both engines. Whether a formed unit may
+        /// receive a quartermaster's DISTRIBUTE is decided once, by
+        /// `transport::Shipping::judge_formed`; if that one place changes, the effects walk and the
+        /// silver forecast both stop delivering here. `rules/economy_transport`: a quartermaster
+        /// owning a Caravanserai may send items to any unit within two hexes.
+        #[test]
+        fn a_quartermaster_distributes_to_a_formed_unit_in_both_engines() {
+            let report = report_across_two_hexes()
+                .replace(
+                    "Hauler (6858), Foo (1), leader [LEAD]",
+                    "Hauler (6858), Foo (1), 2 leaders [LEAD]",
+                )
+                .replace(
+                    "Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 1 (30).",
+                    "Capacity: 0/0/15/0.",
+                );
+            let formed = "unit 6858\nGIVE NEW 1 1 LEAD\nunit 6857\nFORM 1\nEND\n";
+            let distributed = format!("{formed}DISTRIBUTE NEW 1 200 SILV\n");
+
+            // The effects walk: the silver arrives at the formed unit.
+            let response = preview_over(&report, &distributed);
+            let receiver = row(&response, "1:2,2", "new-1").expect("the formed unit is shown");
+            assert_eq!(
+                held(receiver, "SILV"),
+                Some(200),
+                "the effects walk delivers the silver to the formed unit"
+            );
+
+            // The silver forecast: the formed unit's month end grows by what was sent.
+            let parsed = crate::report::parse_report_full(&report);
+            let ruleset = Ruleset::from_json(RULESET).expect("the ruleset loads");
+            let month_end = |orders: &str| {
+                crate::orders::semantics::review_turn(
+                    &parsed,
+                    orders,
+                    Some(&ruleset),
+                    crate::orders::semantics::CheckOptions::default(),
+                )
+                .silver
+                .into_iter()
+                .find(|forecast| forecast.unit_id == "new-1")
+                .expect("the formed unit is forecast")
+                .at_month_end
+            };
+            assert_eq!(
+                month_end(&distributed),
+                month_end(formed).map(|silver| silver + 200),
+                "the silver forecast credits the formed unit"
+            );
+        }
+
+        /// `ah-s79p`: a formed unit given a quartermaster's man holds the skill, so it is judged as
+        /// a quartermaster target - which `rules/economy_transport` requires to own a
+        /// Caravanserai, and a unit formed this month owns none.
+        #[test]
+        fn a_formed_quartermaster_target_is_refused_as_owning_no_caravanserai() {
+            let report = report_across_two_hexes().replace(
+                "Hauler (6858), Foo (1), leader [LEAD]",
+                "Hauler (6858), Foo (1), 2 leaders [LEAD]",
+            );
+            let response = preview_over(
+                &report,
+                "unit 6858\nGIVE NEW 1 1 LEAD\n\
+                 unit 6857\nFORM 1\nEND\nDISTRIBUTE NEW 1 5 STON\n",
+            );
+
+            let sender = row(&response, "1:2,2", "6857").expect("the sender is shown");
+            assert_eq!(held(sender, "STON"), Some(15), "the stone stayed put");
+            assert_eq!(
+                only_issue(sender).reason,
+                TransportTargetReason::NotCaravanseraiOwner
             );
         }
 
