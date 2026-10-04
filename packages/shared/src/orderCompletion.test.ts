@@ -2,7 +2,13 @@ import { CompletionContext, type CompletionResult } from "@codemirror/autocomple
 import { EditorState } from "@codemirror/state";
 import type { CaretCompletions, CaretPosition, OrderCompletion } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
-import { orderArgumentCompletions, orderCommandCompletions, type CaretLookup } from "./orderCompletion";
+import {
+  arrangeArguments,
+  completionOptionClass,
+  orderArgumentCompletions,
+  orderCommandCompletions,
+  type CaretLookup
+} from "./orderCompletion";
 
 /**
  * A stand-in for the core's own answer: the word being typed and where it starts, worked out the
@@ -133,7 +139,7 @@ describe("orderArgumentCompletions", () => {
     const lookUp = caret("argument", NAMEABLES);
     expect(await completeArgument(lookUp, "NAME ")).toBeNull();
     const asked = await completeArgument(lookUp, "NAME ", "NAME ".length, true);
-    expect(labels(asked)).toEqual(["UNIT", "FACTION", "OBJECT", "CITY"]);
+    expect(labels(asked)).toEqual(["CITY", "FACTION", "OBJECT", "UNIT"]);
   });
 
   it("stays quiet when nothing the core offered matches what was typed", async () => {
@@ -265,10 +271,10 @@ describe("orderArgumentCompletions", () => {
     expect(await completeArgument(lookUp, text)).toBeNull();
   });
 
-  it("offers the core's own order, unfiltered and unscored by CodeMirror", async () => {
-    const lookUp = caret("argument", ["N", "NE", "SE"].map(kw));
-    const result = await completeArgument(lookUp, "MOVE ", "MOVE ".length, true);
-    expect(labels(result)).toEqual(["N", "NE", "SE"]);
+  it("shows exactly the arranged order, unfiltered and unscored by CodeMirror", async () => {
+    const lookUp = caret("argument", ["N", "NE", "SE", "S", "SW"].map(kw));
+    const result = await completeArgument(lookUp, "MOVE S");
+    expect(labels(result)).toEqual(["S", "SE", "SW"]);
     expect(result?.filter).toBe(false);
     expect(result?.validFor).toBeUndefined();
   });
@@ -297,13 +303,121 @@ describe("orderArgumentCompletions", () => {
     expect(result?.options[0]?.detail).toBeUndefined();
   });
 
-  it("the order the core gave is the order shown", async () => {
+  it("marks the first name after the order's own words for the divider, and nothing else", async () => {
     const lookUp = caret("argument", [
       { value: "ADVANCED", name: "", label: "", detail: "" },
       { value: "AXE", name: "axe", label: "", detail: "axe" },
-      { value: "ARMOR", name: "", label: "", detail: "" }
+      { value: "ARMOR", name: "", label: "", detail: "" },
+      { value: "ARMR", name: "armor", label: "", detail: "armor" }
     ]);
     const result = await completeArgument(lookUp, "GIVE 4573 ALL A", "GIVE 4573 ALL A".length, true);
-    expect(labels(result)).toEqual(["ADVANCED", "AXE", "ARMOR"]);
+    expect(labels(result)).toEqual(["ADVANCED", "ARMOR", "ARMR", "AXE"]);
+    expect(result?.options.map(completionOptionClass)).toEqual(["", "", "cm-completion-divided", ""]);
+  });
+});
+
+/** An item or skill entry: a tag shown on the left, its name beside it. */
+function named(value: string, name: string): OrderCompletion {
+  return { value, name, label: "", detail: name };
+}
+
+function arranged(word: string, entries: readonly OrderCompletion[]): string[] {
+  return arrangeArguments(word, entries).map(({ entry }) => entry.label || entry.value);
+}
+
+describe("arrangeArguments", () => {
+  const DIRECTIONS = ["N", "NE", "SE", "S", "SW", "NW", "IN", "OUT"].map(kw);
+
+  it("puts a typed whole word first, so Enter picks it", () => {
+    expect(arranged("S", DIRECTIONS)).toEqual(["S", "SE", "SW"]);
+  });
+
+  it("ignores case when deciding what was typed exactly", () => {
+    expect(arranged("s", DIRECTIONS)).toEqual(["S", "SE", "SW"]);
+  });
+
+  it("lists everything A to Z with nothing typed, losing compass order", () => {
+    expect(arranged("", DIRECTIONS)).toEqual(["IN", "N", "NE", "NW", "OUT", "S", "SE", "SW"]);
+  });
+
+  // data/WELF: "wood elf [WELF]"; data/WOOD: "wood".
+  it("puts an item typed by its tag ahead of the names it begins", () => {
+    const entries = [named("WELF", "wood elf"), named("WOOD", "wood"), named("IRWD", "ironwood")];
+    expect(arranged("WOOD", entries)).toEqual(["WOOD", "WELF"]);
+  });
+
+  it("counts an item typed by its whole name as exact", () => {
+    const entries = [named("WELF", "wood elf"), named("WOOD", "wood")];
+    expect(arranged("wood", entries)).toEqual(["WOOD", "WELF"]);
+  });
+
+  it("sorts by the label on the left, case ignored, a word before the longer words it begins", () => {
+    const entries = [named("SWOR", "sword"), named("SILV", "silver"), named("SHIE", "shield")];
+    expect(arranged("s", entries)).toEqual(["SHIE", "SILV", "SWOR"]);
+    const buildings: OrderCompletion[] = ["Tower", "Timber Yard", "temple"].map((name) => ({
+      value: name.includes(" ") ? `"${name}"` : name,
+      name,
+      label: name,
+      detail: "building"
+    }));
+    expect(arranged("t", buildings)).toEqual(["temple", "Timber Yard", "Tower"]);
+  });
+
+  it("keeps the core's order between entries whose labels differ only in case", () => {
+    const first = kw("Axe");
+    const second = kw("AXE");
+    expect(arrangeArguments("", [first, second]).map(({ entry }) => entry)).toEqual([first, second]);
+    expect(arrangeArguments("", [second, first]).map(({ entry }) => entry)).toEqual([second, first]);
+  });
+
+  it("matches and sorts a quoted building by its unquoted name", () => {
+    const yard: OrderCompletion = { value: '"Timber Yard"', name: "Timber Yard", label: "Timber Yard", detail: "building" };
+    const tower: OrderCompletion = { value: "Tower", name: "Tower", label: "Tower", detail: "building" };
+    expect(arranged('"timber yard', [tower, yard])).toEqual(["Timber Yard"]);
+    expect(arranged("", [tower, yard])).toEqual(["Timber Yard", "Tower"]);
+  });
+});
+
+describe("arrangeArguments, the order's own words and names", () => {
+  const CLASSES = ["WEAPONS", "ARMOR", "ADVANCED"].map(kw);
+  const ITEMS = [named("WOOD", "wood"), named("AXE", "axe"), named("WELF", "wood elf")];
+
+  function rows(word: string, entries: readonly OrderCompletion[]): string[] {
+    return arrangeArguments(word, entries).map(
+      ({ entry, dividerAbove }) => `${dividerAbove ? "| " : ""}${entry.label || entry.value}`
+    );
+  }
+
+  it("keeps the order's own words above names, each A to Z, with a line between", () => {
+    expect(rows("", [...ITEMS, ...CLASSES])).toEqual(["ADVANCED", "ARMOR", "WEAPONS", "| AXE", "WELF", "WOOD"]);
+  });
+
+  it("lifts an exact name above the order's own words", () => {
+    const entries = [...ITEMS, kw("WOODWORK"), kw("WOOL")];
+    expect(rows("WOOD", entries)).toEqual(["WOOD", "WOODWORK", "| WELF"]);
+  });
+
+  it("lifts an exact word too, keeping the line above the first name", () => {
+    expect(rows("a", [...ITEMS, kw("A"), kw("ARMOR")])).toEqual(["A", "ARMOR", "| AXE"]);
+    expect(rows("a", [...ITEMS, kw("A")])).toEqual(["A", "| AXE"]);
+  });
+
+  it("draws no line when only one group matches", () => {
+    expect(rows("W", ITEMS)).toEqual(["WELF", "WOOD"]);
+    expect(rows("WE", [...ITEMS, ...CLASSES])).toEqual(["WEAPONS", "| WELF"]);
+    expect(rows("A", CLASSES)).toEqual(["ADVANCED", "ARMOR"]);
+  });
+
+  it("draws no line when the exact name is the only name", () => {
+    expect(rows("WOOD", [named("WOOD", "wood"), kw("WOODS")])).toEqual(["WOOD", "WOODS"]);
+  });
+
+  it("puts a word before a name when both are typed exactly", () => {
+    expect(rows("axe", [named("AXE", "axe"), kw("AXE")]).map((row) => row.replace("| ", ""))).toEqual(["AXE", "AXE"]);
+    expect(arrangeArguments("axe", [named("AXE", "axe"), kw("AXE")])[0]?.entry.name).toBe("");
+  });
+
+  it("offers nothing when nothing matches", () => {
+    expect(rows("Q", [...ITEMS, ...CLASSES])).toEqual([]);
   });
 });
