@@ -363,6 +363,13 @@ describe("arrangeArguments", () => {
     expect(arranged("t", buildings)).toEqual(["temple", "Timber Yard", "Tower"]);
   });
 
+  it("keeps the core's order between entries whose labels differ only in case", () => {
+    const first = kw("Axe");
+    const second = kw("AXE");
+    expect(arrangeArguments("", [first, second]).map(({ entry }) => entry)).toEqual([first, second]);
+    expect(arrangeArguments("", [second, first]).map(({ entry }) => entry)).toEqual([second, first]);
+  });
+
   it("matches and sorts a quoted building by its unquoted name", () => {
     const yard: OrderCompletion = { value: '"Timber Yard"', name: "Timber Yard", label: "Timber Yard", detail: "building" };
     const tower: OrderCompletion = { value: "Tower", name: "Tower", label: "Tower", detail: "building" };
