@@ -13,6 +13,7 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { buildWasm, wasmModuleIsCurrent } from "./ensure-wasm.mjs";
@@ -83,10 +84,37 @@ describe("buildWasm, called while another build of the same root is running", ()
     expect(buildsRun()).toBe(1);
   });
 
+  it("waits while a live process holds the lock, and builds once it is released", async () => {
+    // This test's own process is certainly alive, so it stands in for another build in flight.
+    write("target/.wasm-build.lock", `${process.pid}\n`);
+    const build = buildWasm(root);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(buildsRun()).toBe(0);
+    rmSync(join(root, "target", ".wasm-build.lock"));
+    await expect(build).resolves.toBeUndefined();
+    expect(buildsRun()).toBe(1);
+  });
+
+  it("rebuilds a current core when forced, as build:wasm always has", async () => {
+    await buildWasm(root);
+    await buildWasm(root, { force: true });
+    expect(buildsRun()).toBe(2);
+  });
+
   it("is not held up by a lock left behind by a process that no longer exists", async () => {
     // A pid far above any real one: the process that held this lock is gone.
     write("target/.wasm-build.lock", "2147483646\n");
     await expect(buildWasm(root)).resolves.toBeUndefined();
     expect(wasmModuleIsCurrent(root)).toBe(true);
+  });
+});
+
+describe("every wasm-pack build of the core", () => {
+  it("goes through ensure-wasm, so it takes the build lock", () => {
+    const repo = dirname(dirname(fileURLToPath(import.meta.url)));
+    const manifest = JSON.parse(readFileSync(join(repo, "packages", "browser-core", "package.json"), "utf8"));
+    const buildWasmScript: string = manifest.scripts["build:wasm"];
+    expect(buildWasmScript).not.toContain("wasm-pack");
+    expect(buildWasmScript).toContain("scripts/ensure-wasm.mjs --force");
   });
 });

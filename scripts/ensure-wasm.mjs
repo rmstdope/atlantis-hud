@@ -20,7 +20,7 @@
  */
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -102,9 +102,40 @@ function processIsAlive(pid) {
   }
 }
 
+function readOwner(file) {
+  try {
+    return Number.parseInt(readFileSync(file, "utf8"), 10);
+  } catch {
+    return null; // no lock there any more
+  }
+}
+
+/**
+ * Takes over a lock whose owner is dead. Renaming is atomic, so of two processes doing this at
+ * once only one moves the file; the other finds nothing to move. The one that moves it checks
+ * what it moved: if a live process had taken the lock in the meantime, it is put back.
+ */
+function takeOverStaleLock(file, deadOwner) {
+  const aside = `${file}.${process.pid}.stale`;
+  try {
+    renameSync(file, aside);
+  } catch {
+    return;
+  }
+  if (readOwner(aside) !== deadOwner) {
+    try {
+      linkSync(aside, file);
+    } catch {
+      // somebody else has taken the lock since; theirs stands
+    }
+  }
+  rmSync(aside, { force: true });
+}
+
 async function acquireBuildLock(root) {
   const file = lockFile(root);
   mkdirSync(dirname(file), { recursive: true });
+  let announced = false;
   for (;;) {
     try {
       writeFileSync(file, `${process.pid}\n`, { flag: "wx" });
@@ -112,18 +143,23 @@ async function acquireBuildLock(root) {
     } catch (error) {
       if (error?.code !== "EEXIST") throw error;
     }
-    let owner = NaN;
-    try {
-      owner = Number.parseInt(readFileSync(file, "utf8"), 10);
-    } catch {
-      continue; // released between our attempt and the read: try again at once
-    }
+    const owner = readOwner(file);
+    if (owner === null) continue; // released between our attempt and the read
     if (!Number.isInteger(owner) || !processIsAlive(owner)) {
-      rmSync(file, { force: true });
+      takeOverStaleLock(file, owner);
       continue;
+    }
+    if (!announced) {
+      console.log(`waiting for another WebAssembly build to finish (pid ${owner}, lock ${file})`);
+      announced = true;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
+}
+
+function releaseBuildLock(root) {
+  const file = lockFile(root);
+  if (readOwner(file) === process.pid) rmSync(file, { force: true });
 }
 
 function runWasmPack(root) {
@@ -151,26 +187,28 @@ function runWasmPack(root) {
 /**
  * Runs wasm-pack asynchronously, so a dev server's event loop is not frozen for the build. Waits
  * for any other build of the same root first, and builds nothing when that build has left the core
- * current.
+ * current - unless `force`, which `build:wasm` passes because it has always rebuilt regardless.
  */
-export async function buildWasm(root) {
+export async function buildWasm(root, { force = false } = {}) {
   await acquireBuildLock(root);
   try {
-    if (wasmModuleIsCurrent(root)) return;
+    if (!force && wasmModuleIsCurrent(root)) return;
     await runWasmPack(root);
   } finally {
-    rmSync(lockFile(root), { force: true });
+    releaseBuildLock(root);
   }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const root = fileURLToPath(new URL("..", import.meta.url));
-  if (wasmModuleIsCurrent(root)) {
+  // --force rebuilds even a current core: `build:wasm`, the production builds' way in.
+  const force = process.argv.includes("--force");
+  if (!force && wasmModuleIsCurrent(root)) {
     console.log("wasm module is current, skipping the build");
     process.exit(0);
   }
   try {
-    await buildWasm(root);
+    await buildWasm(root, { force });
   } catch (error) {
     if (error instanceof WasmBuildError) process.exit(error.exitCode);
     // wasm-pack could not be started at all (not installed, say): exit 1 as spawnSync used to.
