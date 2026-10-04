@@ -318,6 +318,17 @@ describe("the Orders tab", () => {
     expect(markup).toContain("Forecast only — your report has not changed.");
   });
 
+  it("the_planner_opens_on_its_planner_view", () => {
+    // ah-x9vc: the Planner is where the work is done, so it is what opens - every time, since the
+    // dialog is mounted afresh on each opening and the view is remembered no longer than that.
+    const markup = dialog([]);
+
+    expect(markup).toContain('data-testid="study-planner-view-schedule" aria-selected="true"');
+    expect(markup).toContain('data-testid="study-planner-view-all" aria-selected="false"');
+    expect(markup).toContain('data-testid="study-schedule"');
+    expect(markup).not.toContain('data-testid="study-planner-list"');
+  });
+
   it("the_view_tabs_look_pressable_and_the_open_one_is_marked", () => {
     // They were plain text on the top bar: nothing said they could be pressed, and nothing said
     // which view was showing. The app's other dialog tabs are bordered chips, brass when open.
@@ -325,16 +336,16 @@ describe("the Orders tab", () => {
     const tab = (view: string) =>
       markup.slice(markup.indexOf(`data-testid="study-planner-view-${view}"`)).slice(0, 300);
 
-    expect(tab("all")).toContain('aria-selected="true"');
-    expect(tab("all")).toContain("border-brass");
-    expect(tab("all")).toContain("bg-brass/10");
-    expect(tab("all")).toContain("text-brass");
+    expect(tab("schedule")).toContain('aria-selected="true"');
+    expect(tab("schedule")).toContain("border-brass");
+    expect(tab("schedule")).toContain("bg-brass/10");
+    expect(tab("schedule")).toContain("text-brass");
 
-    expect(tab("schedule")).toContain('aria-selected="false"');
-    expect(tab("schedule")).toContain("border-edge");
-    expect(tab("schedule")).not.toContain("text-brass");
+    expect(tab("all")).toContain('aria-selected="false"');
+    expect(tab("all")).toContain("border-edge");
+    expect(tab("all")).not.toContain("text-brass");
     // And a hover state, which is the other half of "this can be pressed".
-    expect(tab("schedule")).toContain("hover:");
+    expect(tab("all")).toContain("hover:");
   });
 
   it("uses concise names for the views and an accessible close icon", () => {

@@ -32,12 +32,13 @@ test("F4 opens the planner, arrows walk it, and Escape closes it", async ({ page
   await page.keyboard.press("F4");
   const dialog = page.getByTestId("study-planner-dialog");
   await expect(dialog).toBeVisible();
+  await page.getByTestId("study-planner-view-all").click();
   await expect(page.getByTestId(`study-planner-mage-95/${MAGE}`)).toBeVisible();
   await expect(page.getByTestId("study-planner-group-95")).toContainText(
     "Borg TNG (95) — your faction, turn 71"
   );
 
-  // `aria-modal="true"` is only honest if focus is actually inside.
+  // Overview is walked with the arrows, so its list takes focus as it is shown.
   await expect(page.getByTestId("study-planner-list")).toBeFocused();
 
   // The detail follows the selection.
@@ -57,10 +58,58 @@ test("F4 opens the planner, arrows walk it, and Escape closes it", async ({ page
   await expect(dialog).toHaveCount(0);
 });
 
+test("the planner opens on Planner every time, even after closing on Overview", async ({ page }) => {
+  // ah-x9vc: the Planner is where the work is done. The dialog is mounted afresh on each opening,
+  // so the view it was closed on is not what it reopens on.
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  const planner = page.getByTestId("study-planner-view-schedule");
+  await expect(planner).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("study-schedule")).toBeVisible();
+  // `aria-modal="true"` is only honest if focus is actually inside: the open tab takes it.
+  await expect(planner).toBeFocused();
+
+  await page.getByTestId("study-planner-view-all").click();
+  await expect(page.getByTestId("study-planner-list")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("study-planner-dialog")).toHaveCount(0);
+
+  await page.keyboard.press("F4");
+  await expect(planner).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("study-planner-view-all")).toHaveAttribute("aria-selected", "false");
+  await expect(page.getByTestId("study-schedule")).toBeVisible();
+  // Closed on Overview, so Overview's chip held the ref at unmount: the fresh mount still focuses
+  // the tab that is open now.
+  await expect(planner).toBeFocused();
+});
+
+test("Overview scrolls its picked mage into view each time it is shown", async ({ page }) => {
+  // The list is mounted only while Overview shows, so arriving on it - not just a change of mage -
+  // is what has to bring the picked row into sight (ah-x9vc review, finding 1).
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-all").click();
+  const list = page.getByTestId("study-planner-list");
+  await expect(list).toBeFocused();
+  await page.keyboard.press("End");
+  const picked = list.locator('[data-testid^="study-planner-mage-"][aria-selected="true"]');
+  await expect(picked).toBeInViewport();
+  // The list must overflow, or the assertion below proves nothing.
+  expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+
+  await page.getByTestId("study-planner-view-schedule").click();
+  await page.getByTestId("study-planner-view-all").click();
+  await expect(picked).toBeInViewport();
+});
+
 test("All mages shows the points behind each level, two lists abreast", async ({ page }) => {
   await loadReport(page);
 
   await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-all").click();
   const detail = page.getByTestId("study-planner-detail");
   // A level alone hid the whole month a mage may be from the next one - and the words beside the
   // chip say what stops the skill, not where it stands, the chip having just said that.
@@ -297,6 +346,7 @@ test("a note written in All mages shows as a pencil and in the mage pane", async
   await loadReport(page);
 
   await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-all").click();
   await expect(page.getByTestId("study-planner-plan-line")).toBeVisible();
   const note = page.getByTestId("study-planner-note").locator("textarea");
   await note.fill("heading for Gate Lore");
@@ -351,6 +401,7 @@ test("a note is kept without pressing anything", async ({ page }) => {
   await loadReport(page);
 
   await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-all").click();
   await expect(page.getByTestId("study-planner-plan-line")).toBeVisible();
   const note = page.getByTestId("study-planner-note").locator("textarea");
 
@@ -377,6 +428,7 @@ test("a note is kept without pressing anything", async ({ page }) => {
   await page.clock.resume();
 
   await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-all").click();
   await page.getByTestId(`study-planner-mage-95/${MAGE}`).click();
   await expect(page.getByTestId("study-planner-note").locator("textarea")).toHaveValue(
     "heading for Gate Lore, then Portals"
@@ -657,6 +709,7 @@ test("the planner leaves apprentices out and says how many", async ({ page }) =>
 
   await page.keyboard.press("F4");
   await expect(page.getByTestId("study-planner-dialog")).toBeVisible();
+  await page.getByTestId("study-planner-view-all").click();
 
   await expect(page.getByTestId(`study-planner-mage-95/${MAGE}`)).toBeVisible();
   await expect(page.getByTestId(`study-planner-mage-95/${APPRENTICE}`)).toHaveCount(0);
