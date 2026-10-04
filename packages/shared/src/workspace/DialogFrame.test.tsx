@@ -158,6 +158,14 @@ describe("the dialog frame", () => {
     }
   });
 
+  it("hands the box's own key and pointer presses to the dialog inside it", () => {
+    const onKeyDown = vi.fn();
+    const onPointerDown = vi.fn();
+    const box = findByTestId(<DialogFrameView {...base({ onKeyDown, onPointerDown })} />, "example-dialog");
+    expect(box.props.onKeyDown).toBe(onKeyDown);
+    expect(box.props.onPointerDown).toBe(onPointerDown);
+  });
+
   it("carries no test ids it was not given", () => {
     const markup = draw(
       <DialogFrameView {...base({ backdropTestId: undefined, testId: undefined })} />

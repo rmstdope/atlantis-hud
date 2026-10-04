@@ -1,4 +1,4 @@
-import type { DragEvent, ReactNode, RefObject } from "react";
+import type { DragEvent, KeyboardEventHandler, PointerEventHandler, ReactNode, RefObject } from "react";
 import { useEscapeToDismiss } from "./dismissLayer";
 import { useDialogDrag, type DialogDrag } from "./useDialogDrag";
 
@@ -50,6 +50,13 @@ export type DialogFrameProps = {
   close: { testId: string; label: string; look: DialogCloseLook; autoFocus?: boolean };
   /** The box, for a dialog that has to reach inside itself (Edit map sizes refocuses a field). */
   frameRef?: RefObject<HTMLDivElement | null>;
+  /**
+   * Keys pressed anywhere in the box - its own bar and close button included - for a dialog whose
+   * keys work wherever focus sits inside it (the magic study tree's walk, ah-0unf).
+   */
+  onKeyDown?: KeyboardEventHandler<HTMLDivElement>;
+  /** Pointer presses anywhere in the box, for a dialog that tells the mouse from the keyboard. */
+  onPointerDown?: PointerEventHandler<HTMLDivElement>;
   children: ReactNode;
 };
 
@@ -81,6 +88,8 @@ export function DialogFrameView({
   bar,
   close,
   frameRef,
+  onKeyDown,
+  onPointerDown,
   drag,
   children
 }: DialogFrameProps & { drag?: Pick<DialogDrag, "moved" | "dialogStyle" | "barProps"> }) {
@@ -113,6 +122,8 @@ export function DialogFrameView({
         aria-modal="true"
         aria-label={label}
         className={boxClassName}
+        onKeyDown={onKeyDown}
+        onPointerDown={onPointerDown}
       >
         <div {...drag?.barProps} className={`flex cursor-move select-none ${barClassName}`}>
           {bar}
