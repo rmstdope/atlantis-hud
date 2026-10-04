@@ -178,17 +178,17 @@ fn a_lake_is_open_to_a_swimmer_whatever_its_depth() {
     assert!(route.steps[0].over_water);
 }
 
-/// New Origins carries no swimming paragraph at all, so its swimmers are refused as before.
+/// A New Origins leader has no swimming capacity (`data/LEAD`: weight 10, walking capacity 5), so
+/// it is still told it needs a ship, though New Origins now swims (ah-on09).
 #[test]
-fn new_origins_still_refuses_every_swimmer() {
+fn a_new_origins_unit_that_cannot_swim_still_needs_a_ship() {
     let report = swimmer_corridor(
         &["plain", "ocean", "plain"],
         "leader [LEAD]",
         10,
         "0/0/15/15",
     );
-    let problem = plan_in(&report, &ruleset(), "900", at(3, 3))
-        .expect_err("New Origins has no swimming rule");
+    let problem = plan_in(&report, &ruleset(), "900", at(3, 3)).expect_err("a leader cannot swim");
 
     assert!(
         matches!(problem, RouteProblem::OceanNeedsShip { .. }),
@@ -333,6 +333,73 @@ fn water_of_unknown_depth_is_refused_rather_than_guessed() {
         RouteProblem::WaterDepthUnknown {
             coordinate: at(4, 4),
             terrain: "ocean".to_string(),
+        }
+    );
+}
+
+// ------------------------------------------------------------ New Origins (ah-on09)
+//
+// New Origins `rules/movement_normal` has no coastal-water paragraph, only "there are items that
+// can enable your units to fly or walk on water", and its catalogue gives `data/TURT` (weight 50,
+// swimming capacity 20) and `data/LIZA` (weight 10, swimming capacity 5) a swimming capacity. So
+// a New Origins swimmer may enter any water, deep or not, and nothing about depth is ever asked.
+
+/// A giant turtle carries a leader across the sea, deep hex included: an ordinary route.
+#[test]
+fn a_new_origins_swimmer_crosses_deep_water() {
+    let report = sea_and_shore("leader [LEAD], giant turtle [TURT]", 60, "0/70/85/70");
+    let route = plan_in(&report, &ruleset(), "900", at(3, 3)).expect("New Origins swims anywhere");
+
+    assert_eq!(
+        route.mode,
+        MovementMode::Ride,
+        "swimming is not a speed: it rides its turtle"
+    );
+    assert_eq!(route.steps.len(), 2);
+    assert!(route.steps.iter().all(|step| step.over_water));
+}
+
+/// A lizardman swims under its own power with no sea creatures at all, and deep water does not
+/// care in New Origins.
+#[test]
+fn a_new_origins_lizardman_swims_deep_water_without_sea_creatures() {
+    let report = sea_and_shore("lizardman [LIZA]", 10, "0/0/15/15");
+    let route = plan_in(&report, &ruleset(), "900", at(3, 3)).expect("no depth rule here");
+
+    assert_eq!(route.steps.len(), 2);
+}
+
+/// `(4,4)` names only two of its six neighbours, which in Trident leaves its depth unknowable. In
+/// New Origins depth is irrelevant, so the unexplored surroundings never block the swim.
+#[test]
+fn a_new_origins_swimmer_is_not_refused_for_unexplored_surroundings() {
+    let report = sea_and_shore("lizardman [LIZA]", 10, "0/0/15/15");
+    let route = plan_in(&report, &ruleset(), "900", at(4, 4)).expect("depth is irrelevant here");
+
+    assert_eq!(route.to, at(4, 4));
+}
+
+/// A leader, a giant turtle and five wood weigh 10 + 50 + 25 = 85 (`data/WOOD`: weight 5), and
+/// the turtle's swimming bears 70. The overload refusal applies in New Origins as in Trident, here
+/// in its destination half for the hex the player clicked.
+#[test]
+fn a_new_origins_swimmer_carrying_too_much_is_told_the_numbers() {
+    let report = sea_and_shore(
+        "leader [LEAD], giant turtle [TURT], 5 wood [WOOD]",
+        85,
+        "0/70/85/70",
+    );
+    let problem =
+        plan_in(&report, &ruleset(), "900", at(3, 3)).expect_err("it cannot swim at that weight");
+
+    assert_eq!(
+        problem,
+        RouteProblem::SwimLoadTooHeavy {
+            coordinate: at(3, 3),
+            terrain: "ocean".to_string(),
+            capacity: 70,
+            load: 85,
+            destination: true,
         }
     );
 }

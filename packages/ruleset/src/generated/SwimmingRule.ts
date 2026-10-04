@@ -7,8 +7,10 @@
  * regions and lakes. Deep ocean regions cannot be entered by swimming units, with one
  * exception: a unit carried by sea creatures able to bear its whole weight rides out into deep
  * water safely. Ships are not affected by this restriction." New Origins' movement section
- * carries no such paragraph, so its ruleset has no swimming rule at all - which is not the
- * same as a world whose swimmers can carry nothing.
+ * carries no such paragraph, only "there are items that can enable your units to fly or walk on
+ * water", and its catalogue gives `data/TURT` and `data/LIZA` a swimming capacity. Its rule is
+ * therefore open: nothing listed as `unrestricted` because nothing is restricted, and
+ * `deep_needs_sea_creatures` false (ah-on09).
  */
 export type SwimmingRule = { 
 /**

@@ -32,26 +32,32 @@ fn new_origins_splits_production_around_build() {
     assert!(!ruleset().builds_before_production());
 }
 
-/// New Origins' `rules/movement_normal` carries no swimming paragraph at all, so its ruleset has
-/// no swimming rule - and asking is not an error. That is not the same as a world whose swimmers
-/// can carry nothing: nothing in New Origins swims.
+/// New Origins' `rules/movement_normal` carries no coastal-water paragraph, only "there are items
+/// that can enable your units to fly or walk on water", and its catalogue gives `data/TURT` and
+/// `data/LIZA` a swimming capacity. So it swims, anywhere: no water is singled out and deep water
+/// needs no sea creatures (ah-on09).
 #[test]
-fn knows_new_origins_has_no_swimming() {
-    assert!(ruleset().swimming().is_none());
+fn knows_new_origins_swimmers_may_enter_any_water() {
+    let rule = ruleset().swimming().cloned().expect("New Origins swims");
+    assert!(rule.unrestricted.is_empty());
+    assert!(!rule.deep_needs_sea_creatures);
 }
 
 /// The swimming sentence's terrain names are captured with bare-word matches, so a reworded page
 /// can put any word there. A swimmer restricted to coastal ocean cannot also be unrestricted in
 /// the ocean, and a blank name would match no hex and silently model nothing.
+/// New Origins' swimming rule exactly as the committed ruleset spells it.
+const NEW_ORIGINS_SWIMMING: &str =
+    "\"swimming\": {\n      \"unrestricted\": [],\n      \"deepNeedsSeaCreatures\": false\n    }";
+
 #[test]
 fn refuses_a_swimming_rule_that_contradicts_the_water_rule() {
     // Each value reaches a different arm: "ocean" contradicts the coastal restriction, and ""
     // would match no hex at all.
     for unrestricted in ["\"ocean\"", "\"\""] {
-        // New Origins has no swimming rule at all, so the committed ruleset carries
-        // `"swimming": null`; the contradiction has to be spliced in over it.
+        // The contradiction is spliced in over New Origins' own open rule.
         let with_swimming = RULESET.replacen(
-            "\"swimming\": null",
+            NEW_ORIGINS_SWIMMING,
             &format!(
                 "\"swimming\": {{ \"unrestricted\": [{unrestricted}], \
                  \"deepNeedsSeaCreatures\": true }}"
@@ -70,7 +76,7 @@ fn refuses_a_swimming_rule_that_contradicts_the_water_rule() {
     // And the lake the real rule names is accepted, so the arms above refuse a mis-capture
     // rather than every swimming rule.
     let lake = RULESET.replacen(
-        "\"swimming\": null",
+        NEW_ORIGINS_SWIMMING,
         "\"swimming\": { \"unrestricted\": [\"lake\"], \"deepNeedsSeaCreatures\": true }",
         1,
     );

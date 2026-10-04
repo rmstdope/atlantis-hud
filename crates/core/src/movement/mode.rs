@@ -48,7 +48,9 @@ pub enum Swim {
     /// It could swim, but not carrying this much. The numbers are the refusal's whole point.
     Overloaded { capacity: i64, load: i64 },
     /// Its own swimming bears the load. `borne` is what its sea creatures can bear - zero when it
-    /// has none - and is short of `load`, so deep water is closed to it.
+    /// has none - and is short of `load`, so deep water is closed to it where the world's rule
+    /// closes it. Under an open rule (New Origins, ah-on09) nothing is closed and this passes
+    /// every water hex like [`Swim::Anywhere`].
     Coastal { borne: i64, load: i64 },
     /// Sea creatures bear its whole weight: every water hex, deep included.
     Anywhere,
@@ -956,7 +958,8 @@ mod tests {
         );
     }
 
-    /// A leader swims nowhere, and New Origins swims nowhere at all.
+    /// A leader swims nowhere. A lizardman swims under its own power, in Trident and - since its
+    /// catalogue gives `data/LIZA` a swimming capacity of 5 - in New Origins too (ah-on09).
     #[test]
     fn a_unit_with_no_swimming_capacity_cannot_swim() {
         let leader = ReportUnit {
@@ -989,8 +992,8 @@ mod tests {
         );
         assert_eq!(
             swim_ability(&lizardman, &ruleset()),
-            Swim::Cannot,
-            "New Origins has no swimming rule at all"
+            Swim::Coastal { borne: 0, load: 10 },
+            "New Origins swims; its open rule lets this through any water"
         );
     }
 

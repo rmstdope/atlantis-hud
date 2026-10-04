@@ -217,12 +217,12 @@ export function parseMovementRules(html: string): MovementRules {
     /(\w+?)s count as water for this purpose, and a region bordering one counts as its shore/i
   );
 
-  // New Age lets units swim; New Origins has no such paragraph. `newage trident
-  // rules/movement_normal`: "Swimming units are restricted to coastal ocean regions and lakes.
-  // Deep ocean regions cannot be entered by swimming units, with one exception: a unit carried by
-  // sea creatures able to bear its whole weight rides out into deep water safely." A miss means
-  // this world has no swimming at all, which is not the same as a world whose swimmers can carry
-  // nothing - hence a bare match rather than requireMatch.
+  // New Age restricts swimmers to the coast. `newage trident rules/movement_normal`: "Swimming
+  // units are restricted to coastal ocean regions and lakes. Deep ocean regions cannot be entered
+  // by swimming units, with one exception: a unit carried by sea creatures able to bear its whole
+  // weight rides out into deep water safely." New Origins has no such paragraph, so a miss is not
+  // an error - hence a bare match rather than requireMatch - and `buildRuleset` then decides from
+  // the catalogue whether the world swims at all (`openSwimmingRule`).
   const swimming = text.match(
     new RegExp(
       "Swimming units are restricted to coastal (\\w+) regions and (\\w+?)s\\. " +
