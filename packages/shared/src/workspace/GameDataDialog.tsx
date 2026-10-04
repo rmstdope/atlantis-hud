@@ -42,8 +42,9 @@ import {
 } from "./gameDataDialogState";
 
 /**
- * The game data dictionary: every skill, man, mount, ship, monster, item and structure the rules
- * pages were scraped for, in seven lists with the chosen one read out beside them.
+ * The game data dictionary: every skill, man, mount, ship, monster, item, structure and terrain
+ * the rules pages were scraped for, in eight lists - and All, every list at once (ah-yu3j.2) - with
+ * the chosen one read out beside them.
  *
  * `docs/ui/ah-5jkt-dictionary.html` is the design, chosen with the navigator: a type selector
  * rather than one long list, because nine ships and four mounts are answerable by looking while
