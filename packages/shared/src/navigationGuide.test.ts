@@ -64,6 +64,28 @@ describe("the map layers line (ah-7czr)", () => {
   });
 });
 
+describe("the magic study tree's keyboard walk", () => {
+  it("is one line under Panels and windows, between resizing a pane and settings", () => {
+    expect(moveOf("magicTreeWalk")).toEqual({
+      id: "magicTreeWalk",
+      group: "Panels and windows",
+      description: "Walk the magic study tree's skills, and open one in the dictionary",
+      mouse: null,
+      keys: {
+        mac: "The arrows, Page Up/Down, Home, End and Enter",
+        other: "The arrows, Page Up/Down, Home, End and Enter"
+      }
+    });
+    const panels = navigationGroups().find((section) => section.group === "Panels and windows");
+    expect(panels?.moves.map((move) => move.id)).toEqual([
+      "panelFold",
+      "railResize",
+      "magicTreeWalk",
+      "settings"
+    ]);
+  });
+});
+
 describe("navigationGroups", () => {
   it("keeps every move, in the order the table gives them", () => {
     const flattened = navigationGroups().flatMap((section) => section.moves);
