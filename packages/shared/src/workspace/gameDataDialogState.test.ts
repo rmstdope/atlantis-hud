@@ -217,6 +217,15 @@ describe("the Terrains tab (ah-yu3j.1)", () => {
     expect(goBack(withTerrains, onTerrain).tab).toBe("equipment");
   });
 
+  it("is part of All, each terrain once, in its A-Z place", () => {
+    const all = entriesOf(withTerrains, "all").map((entry) => entry.id);
+    expect(all).toContain("terrain:desert");
+    expect(all).toContain("terrain:mountain");
+    expect(all.indexOf("equipment:MITH")).toBeLessThan(all.indexOf("terrain:mountain"));
+    expect(all.indexOf("terrain:desert")).toBeLessThan(all.indexOf("skill:MINI"));
+    expect(all.filter((id) => id === "terrain:mountain")).toHaveLength(1);
+  });
+
   it("lands on the Terrains tab even for a terrain the index does not hold", () => {
     expect(openGameDataDialog(withTerrains, "terrain:nexus").tab).toBe("terrain");
   });
