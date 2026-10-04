@@ -43,13 +43,13 @@ fn knows_new_origins_swimmers_may_enter_any_water() {
     assert!(!rule.deep_needs_sea_creatures);
 }
 
-/// The swimming sentence's terrain names are captured with bare-word matches, so a reworded page
-/// can put any word there. A swimmer restricted to coastal ocean cannot also be unrestricted in
-/// the ocean, and a blank name would match no hex and silently model nothing.
 /// New Origins' swimming rule exactly as the committed ruleset spells it.
 const NEW_ORIGINS_SWIMMING: &str =
     "\"swimming\": {\n      \"unrestricted\": [],\n      \"deepNeedsSeaCreatures\": false\n    }";
 
+/// The swimming sentence's terrain names are captured with bare-word matches, so a reworded page
+/// can put any word there. A swimmer restricted to coastal ocean cannot also be unrestricted in
+/// the ocean, and a blank name would match no hex and silently model nothing.
 #[test]
 fn refuses_a_swimming_rule_that_contradicts_the_water_rule() {
     // Each value reaches a different arm: "ocean" contradicts the coastal restriction, and ""

@@ -302,6 +302,36 @@ describe("buildRuleset and swimming", () => {
   });
 });
 
+describe("buildRuleset and swimming, off the committed fixtures", () => {
+  const build = (rulesHtml: string, dataHtml: string) =>
+    buildRuleset({
+      rulesHtml,
+      dataHtml,
+      rulesUrl: "https://atlantis-pbem.com/rules",
+      dataUrl: "https://atlantis-pbem.com/data",
+      orderLanguage: "new-origins",
+      fetchedAt: "2026-08-08T00:00:00.000Z"
+    });
+
+  it("names the swimming items as provenance when the rules page does not say why", () => {
+    const ruleset = build(RULES_HTML.replace("Note that depending", "Depending"), DATA_HTML);
+
+    expect(ruleset.movement.swimming).toEqual({ unrestricted: [], deepNeedsSeaCreatures: false });
+    expect(ruleset.movement.provenance.swimming).toMatch(
+      /^No coastal-water paragraph; the catalogue gives .*\bTURT\b.* a swimming capacity\.$/
+    );
+  });
+
+  it("keeps no swimming rule for a catalogue in which nothing can carry in the water", () => {
+    const dry = DATA_HTML.replace(/swimming(\s+)capacity(\s+)\d+/g, "swimming$1capacity$20");
+    const ruleset = build(RULES_HTML, dry);
+
+    expect(ruleset.items.TURT.capacity.swim).toBe(0);
+    expect(ruleset.movement.swimming).toBeNull();
+    expect(ruleset.movement.provenance.swimming).toBe("");
+  });
+});
+
 describe("openSwimmingRule", () => {
   const item = (swim: number) => ({ capacity: { walk: 0, ride: 0, fly: 0, swim } });
 

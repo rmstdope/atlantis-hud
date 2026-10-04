@@ -2535,7 +2535,7 @@ test("a swimmer crosses the coastal water the walker was refused", async ({ page
  * says "there are items that can enable your units to fly or walk on water", with no coastal
  * restriction. So the Swim tile shows the reported figure and the planner swims the sea.
  */
-test("a New Origins unit with a giant turtle swims across the sea", async ({ page }) => {
+test("a New Origins unit with giant turtles swims across the sea", async ({ page }) => {
   const turtleReport = REPORT.replace(
     "  faction, holding, sharing, sailing battle spoils, leader [LEAD].\n  Weight: 10. Capacity: 0/0/15/0.",
     "  faction, holding, sharing, sailing battle spoils, leader [LEAD], giant turtle [TURT].\n  Weight: 60. Capacity: 0/70/85/70."

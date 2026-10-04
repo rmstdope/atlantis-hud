@@ -403,3 +403,22 @@ fn a_new_origins_swimmer_carrying_too_much_is_told_the_numbers() {
         }
     );
 }
+
+/// A unit that cannot swim, standing at sea - aboard a fleet - cannot walk out of the water any
+/// more than into it, and the refusal names the hex it stands in rather than one along the way.
+/// A leader has no swimming capacity (`data/LEAD`), so New Origins' open rule changes nothing.
+#[test]
+fn a_new_origins_unit_that_cannot_swim_cannot_walk_out_of_the_sea() {
+    let report = swimmer_corridor(&["ocean", "plain"], "leader [LEAD]", 10, "0/0/15/0");
+    let problem =
+        plan_in(&report, &ruleset(), "900", at(2, 2)).expect_err("a leader cannot swim ashore");
+
+    assert_eq!(
+        problem,
+        RouteProblem::OceanNeedsShip {
+            coordinate: at(1, 1),
+            terrain: "ocean".to_string(),
+        },
+        "the refusal is about the hex it is standing in"
+    );
+}

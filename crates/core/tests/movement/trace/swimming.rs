@@ -90,3 +90,28 @@ fn a_new_origins_turtle_unit_swimming_into_deep_water_is_not_marked_refused() {
     assert_eq!(path.steps.len(), 2);
     assert_eq!(path.blocked_from, None, "New Origins swims anywhere");
 }
+
+/// The open rule's deep-water half in the tracer: a lizardman has no sea creatures, which Trident
+/// refuses deep water for (`a_typed_move_into_deep_water_is_still_marked_refused`). New Origins
+/// has no coastal-water paragraph, so the same order is not in doubt there (ah-on09).
+#[test]
+fn a_new_origins_lizardman_swimming_into_deep_water_is_not_marked_refused() {
+    let report = trident_sea_and_shore("lizardman [LIZA]", 10, "0/0/15/15");
+    let path = trace_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::RULESET_JSON,
+        &report,
+        "[]",
+        "900",
+        &document("900", "MOVE SE SE"),
+    )
+    .expect("the committed New Origins ruleset loads")
+    .path
+    .expect("a traced path");
+
+    assert_eq!(path.steps.len(), 2);
+    assert_eq!(
+        path.blocked_from, None,
+        "depth does not matter in New Origins"
+    );
+}
