@@ -2529,6 +2529,39 @@ test("a swimmer crosses the coastal water the walker was refused", async ({ page
   await expect(page.getByTestId("planner-problem")).toHaveCount(0);
 });
 
+/**
+ * The same click in New Origins, for a unit carrying a giant turtle (GitHub #1382, ah-on09). New
+ * Origins' `data/TURT` gives the turtle a swimming capacity of 20 and its `rules/movement_normal`
+ * says "there are items that can enable your units to fly or walk on water", with no coastal
+ * restriction. So the Swim tile shows the reported figure and the planner swims the sea.
+ */
+test("a New Origins unit with a giant turtle swims across the sea", async ({ page }) => {
+  const turtleReport = REPORT.replace(
+    "  faction, holding, sharing, sailing battle spoils, leader [LEAD].\n  Weight: 10. Capacity: 0/0/15/0.",
+    "  faction, holding, sharing, sailing battle spoils, leader [LEAD], giant turtle [TURT].\n  Weight: 60. Capacity: 0/70/85/70."
+  ).replace(
+    ";  sharing, sailing battle spoils, leader [LEAD]. Weight: 10. Capacity:\n;  0/0/15/0.",
+    ";  sharing, sailing battle spoils, leader [LEAD], giant turtle [TURT]. Weight: 60. Capacity:\n;  0/70/85/70."
+  );
+  expect(turtleReport).not.toBe(REPORT);
+
+  await loadReport(page, "Turtle smoke", turtleReport);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await expect(page.getByText("Swim", { exact: true })).toBeVisible();
+  await expect(page.getByText("Swim", { exact: true }).locator("xpath=following-sibling::div")).toHaveText("70");
+
+  await enableMovementPlanner(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await page.getByTestId("planner-arm").click();
+  await selectHex(page, "1:8,52");
+
+  await expect(page.getByTestId("planner-route")).toBeVisible();
+  await expect(page.getByTestId("planner-route")).toContainText("ocean (8,52) · 1 · swimming");
+  await expect(page.getByTestId("planner-problem")).toHaveCount(0);
+});
+
 test("a planned route can be written into the unit's orders", async ({ page }) => {
   await loadReport(page);
   await enableMovementPlanner(page);
