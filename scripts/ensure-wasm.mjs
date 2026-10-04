@@ -102,27 +102,36 @@ function processIsAlive(pid) {
   }
 }
 
-function readOwner(file) {
+/** The lock's text, or null when there is no lock. Compared as text, so an empty one compares too. */
+function readLock(file) {
   try {
-    return Number.parseInt(readFileSync(file, "utf8"), 10);
+    return readFileSync(file, "utf8");
   } catch {
-    return null; // no lock there any more
+    return null;
   }
 }
 
+function lockIsStale(text) {
+  const owner = Number.parseInt(text, 10);
+  return !Number.isInteger(owner) || !processIsAlive(owner);
+}
+
 /**
- * Takes over a lock whose owner is dead. Renaming is atomic, so of two processes doing this at
+ * Takes over a stale lock - a dead owner's, or an empty one left by a build killed between
+ * creating the file and writing its pid. Renaming is atomic, so of two processes doing this at
  * once only one moves the file; the other finds nothing to move. The one that moves it checks
- * what it moved: if a live process had taken the lock in the meantime, it is put back.
+ * what it moved, and links it back if a live process had taken the lock in the meantime. That put-
+ * back is not atomic: a third build taking the lock in the microseconds between the two calls would
+ * run alongside the owner. It needs a stale lock and three builds starting at once, so it is left.
  */
-function takeOverStaleLock(file, deadOwner) {
+function takeOverStaleLock(file, staleText) {
   const aside = `${file}.${process.pid}.stale`;
   try {
     renameSync(file, aside);
   } catch {
     return;
   }
-  if (readOwner(aside) !== deadOwner) {
+  if (readLock(aside) !== staleText) {
     try {
       linkSync(aside, file);
     } catch {
@@ -143,14 +152,14 @@ async function acquireBuildLock(root) {
     } catch (error) {
       if (error?.code !== "EEXIST") throw error;
     }
-    const owner = readOwner(file);
-    if (owner === null) continue; // released between our attempt and the read
-    if (!Number.isInteger(owner) || !processIsAlive(owner)) {
-      takeOverStaleLock(file, owner);
+    const text = readLock(file);
+    if (text === null) continue; // released between our attempt and the read
+    if (lockIsStale(text)) {
+      takeOverStaleLock(file, text);
       continue;
     }
     if (!announced) {
-      console.log(`waiting for another WebAssembly build to finish (pid ${owner}, lock ${file})`);
+      console.log(`waiting for another WebAssembly build to finish (pid ${Number.parseInt(text, 10)}, lock ${file})`);
       announced = true;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -159,7 +168,7 @@ async function acquireBuildLock(root) {
 
 function releaseBuildLock(root) {
   const file = lockFile(root);
-  if (readOwner(file) === process.pid) rmSync(file, { force: true });
+  if (readLock(file) === `${process.pid}\n`) rmSync(file, { force: true });
 }
 
 function runWasmPack(root) {

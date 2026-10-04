@@ -101,6 +101,13 @@ describe("buildWasm, called while another build of the same root is running", ()
     expect(buildsRun()).toBe(2);
   });
 
+  it("takes over an empty lock, which a build killed between creating and writing it leaves", async () => {
+    write("target/.wasm-build.lock", "");
+    await expect(buildWasm(root)).resolves.toBeUndefined();
+    expect(buildsRun()).toBe(1);
+    expect(existsSync(join(root, "target", ".wasm-build.lock"))).toBe(false);
+  }, 3000);
+
   it("is not held up by a lock left behind by a process that no longer exists", async () => {
     // A pid far above any real one: the process that held this lock is gone.
     write("target/.wasm-build.lock", "2147483646\n");
