@@ -25,7 +25,8 @@ export type PaletteEntryKind =
   | "ship"
   | "monster"
   | "equipment"
-  | "building";
+  | "building"
+  | "terrain";
 
 export type PaletteEntry = {
   id: string;

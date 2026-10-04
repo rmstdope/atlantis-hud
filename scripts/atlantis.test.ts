@@ -288,6 +288,7 @@ describe("run — verify", () => {
     expect(printed).toContain("itemClasses:");
     expect(printed).toContain("ungiveableItems:");
     expect(printed).toContain("terrainResources:");
+    expect(printed).toContain("terrainResourceChances:");
   });
 
   it("fails naming the world whose ruleset disagrees", async () => {

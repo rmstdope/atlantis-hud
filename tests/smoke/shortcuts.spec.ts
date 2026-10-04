@@ -180,6 +180,34 @@ test("the palette opens the game data dictionary on the thing it named", async (
 });
 
 /**
+ * ah-yu3j.1: the Terrains tab, last in the strip, gives a terrain's page from the shipped ruleset,
+ * and a resource on it leads to the item, whose page leads back.
+ */
+test("the Terrains tab shows a terrain's page, and its resources link both ways", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("mining MINI");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("game-data-dialog")).toBeVisible();
+
+  await page.getByTestId("game-data-tab-terrain").click();
+  await page.getByTestId("game-data-entry-terrain:mountain").click();
+  const detail = page.getByTestId("game-data-detail");
+  await expect(detail).toContainText("2 walking or riding · 1 flying");
+  await expect(detail).toContainText("Seen for sale in your reports");
+  await expect(detail).toContainText("in 35% of regions");
+  await expect(page.getByTestId("game-data-link-monster:GRIZ")).toBeVisible();
+
+  await page.getByTestId("game-data-link-equipment:IRON").click();
+  await expect(page.getByTestId("game-data-tab-equipment")).toHaveAttribute("aria-selected", "true");
+  await expect(detail).toContainText("Found in");
+  await page.getByTestId("game-data-link-terrain:volcano").click();
+  await expect(page.getByTestId("game-data-tab-terrain")).toHaveAttribute("aria-selected", "true");
+  await expect(detail).toContainText("No monster in the game data roams here.");
+});
+
+/**
  * ah-rpnb: a building entry names the skill that builds it, and that name is a way to reach it -
  * the same cross-reference rule ah-5jkt.1 set for a skill's produced items.
  */

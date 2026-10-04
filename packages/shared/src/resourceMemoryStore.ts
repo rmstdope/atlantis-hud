@@ -8,12 +8,22 @@
  *
  * Not persisted, for the reason `armiesStore.ts` gives about itself: a persisted cache would show
  * one game's answer in another game's workspace after a reload.
+ *
+ * It also holds the races every stored turn saw offered for sale (`recruits`, ah-yu3j.1), for the
+ * game data dialog's terrain pages. A second thing earlier turns showed, folded in the same walk so
+ * that no turn is parsed twice; it is invalidated exactly when the resource verdicts are.
  */
 
 import { create } from "zustand";
 import type { CoreClient, OpenedGame, ParsedReport } from "@atlantis/core-client";
 
 import type { GameDataIndex } from "./gameData";
+import {
+  mergedRecruitSightings,
+  NO_RECRUIT_SIGHTINGS,
+  withRecruitTurn,
+  type RecruitSightings
+} from "./recruitSightings";
 import {
   mergedMemory,
   NO_RESOURCE_MEMORY,
@@ -28,6 +38,8 @@ export type ResourceMemoryState = {
   gameId: string | null;
   status: ResourceMemoryStatus;
   memory: ResourceMemory;
+  /** Every race seen for sale, by region, in any turn of the game (ah-yu3j.1). */
+  recruits: RecruitSightings;
   /**
    * How many stored turns the last scan could not read. Kept because it costs nothing; shown
    * nowhere, there being no surface for it that the navigator has agreed to.
@@ -58,6 +70,7 @@ export const useResourceMemoryStore = create<ResourceMemoryState>()((set, get) =
   gameId: null,
   status: "idle",
   memory: NO_RESOURCE_MEMORY,
+  recruits: NO_RECRUIT_SIGHTINGS,
   unreadTurns: 0,
   scanRun: 0,
 
@@ -68,11 +81,12 @@ export const useResourceMemoryStore = create<ResourceMemoryState>()((set, get) =
       gameId,
       status: "scanning",
       memory: NO_RESOURCE_MEMORY,
+      recruits: NO_RECRUIT_SIGHTINGS,
       unreadTurns: 0,
       scanRun: run
     });
 
-    const { memory, unreadTurns } = await scanStoredTurns(client, game, index);
+    const { memory, recruits, unreadTurns } = await scanStoredTurns(client, game, index);
 
     // A game switch, or a second scan started because the ruleset changed, leaves a late result for
     // a state that has moved on.
@@ -84,6 +98,7 @@ export const useResourceMemoryStore = create<ResourceMemoryState>()((set, get) =
     set((state) => ({
       status: "ready",
       memory: mergedMemory(memory, state.memory),
+      recruits: mergedRecruitSightings(recruits, state.recruits),
       unreadTurns
     }));
   },
@@ -92,7 +107,10 @@ export const useResourceMemoryStore = create<ResourceMemoryState>()((set, get) =
     if (get().gameId !== gameId) {
       return;
     }
-    set((state) => ({ memory: withTurn(state.memory, report, turn, index) }));
+    set((state) => ({
+      memory: withTurn(state.memory, report, turn, index),
+      recruits: withRecruitTurn(state.recruits, report, index)
+    }));
   },
 
   clear: () => {
@@ -116,12 +134,12 @@ export async function scanStoredTurns(
   client: Pick<CoreClient, "listImportedTurns" | "loadImportedTurn" | "parseReportFull">,
   game: OpenedGame,
   index: GameDataIndex | null
-): Promise<{ memory: ResourceMemory; unreadTurns: number }> {
+): Promise<{ memory: ResourceMemory; recruits: RecruitSightings; unreadTurns: number }> {
   // Nothing can be judged without the catalogue, and `AppShell` scans while the ruleset is still
   // fetching - so without this the whole walk runs, parsing every stored turn over IPC, to hand
   // back nothing and be re-run the moment the ruleset lands.
   if (index === null) {
-    return { memory: NO_RESOURCE_MEMORY, unreadTurns: 0 };
+    return { memory: NO_RESOURCE_MEMORY, recruits: NO_RECRUIT_SIGHTINGS, unreadTurns: 0 };
   }
 
   const gameId = game.manifest.metadata.gameId;
@@ -131,10 +149,11 @@ export async function scanStoredTurns(
     summaries = await client.listImportedTurns(game.databasePath, gameId);
   } catch (error) {
     console.warn("could not list this game's stored turns for resource verdicts", error);
-    return { memory: NO_RESOURCE_MEMORY, unreadTurns: 0 };
+    return { memory: NO_RESOURCE_MEMORY, recruits: NO_RECRUIT_SIGHTINGS, unreadTurns: 0 };
   }
 
   let memory: ResourceMemory = NO_RESOURCE_MEMORY;
+  let recruits: RecruitSightings = NO_RECRUIT_SIGHTINGS;
   let unreadTurns = 0;
   for (const { key } of summaries) {
     try {
@@ -148,20 +167,23 @@ export async function scanStoredTurns(
         unreadTurns += 1;
         continue;
       }
-      memory = withTurn(memory, await client.parseReportFull(record.rawReport), key.turnNumber, index);
+      const report = await client.parseReportFull(record.rawReport);
+      memory = withTurn(memory, report, key.turnNumber, index);
+      recruits = withRecruitTurn(recruits, report, index);
     } catch (error) {
       console.warn(`could not read turn ${key.turnNumber}'s resource verdicts`, error);
       unreadTurns += 1;
     }
   }
 
-  return { memory, unreadTurns };
+  return { memory, recruits, unreadTurns };
 }
 
 const DEFAULT_STATE = {
   gameId: null,
   status: "idle" as const,
   memory: NO_RESOURCE_MEMORY,
+  recruits: NO_RECRUIT_SIGHTINGS,
   unreadTurns: 0,
   scanRun: 0
 };

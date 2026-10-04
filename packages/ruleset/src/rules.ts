@@ -574,8 +574,11 @@ export function parseWeatherGap(html: string): Gap {
   return WEATHER_GAP;
 }
 
-/** What each terrain may hold, keyed by the terrain word, holding resource names in page order. */
-export type RegionResources = Record<string, string[]>;
+/** One resource a terrain may hold, and the percentage of such regions that hold it. */
+export type RegionResource = { name: string; chance: number };
+
+/** What each terrain may hold, keyed by the terrain word, holding resources in page order. */
+export type RegionResources = Record<string, RegionResource[]>;
 
 /** `floater hide (40%)` - a resource and the chance the terrain holds it. */
 const RESOURCE_SHARE = /^(.+?)\s*\((\d+)%\)$/;
@@ -585,9 +588,9 @@ const RESOURCE_SHARE = /^(.+?)\s*\((\d+)%\)$/;
  * `wood (100%), floater hide (40%), herb (100%), mushroom (30%).`
  *
  * Names, not tags: the rules page has no tags in it. `buildRuleset` resolves them against the
- * catalogue the data page gives, which is the only place both are in hand. The percentages are read
- * and discarded - nothing needs them, and a number nothing reads is a number nobody keeps honest -
- * but a cell that does not state one stops the run rather than being read as a shorter list.
+ * catalogue the data page gives, which is the only place both are in hand. The percentages are kept:
+ * the game data dialog says how often a terrain holds each resource (ah-yu3j.1), and a cell that
+ * does not state one stops the run rather than being read as a shorter list.
  */
 export function parseRegionResources(html: string): RegionResources {
   // A null prototype, not `{}`, for the reason `parseMovementRules`' `premiums` gives above: a
@@ -610,7 +613,7 @@ export function parseRegionResources(html: string): RegionResources {
       );
     }
 
-    const named: string[] = [];
+    const named: RegionResource[] = [];
     for (const part of row[1].replace(/\.\s*$/, "").split(",")) {
       const stated = part.trim();
       if (stated.length === 0) {
@@ -623,8 +626,9 @@ export function parseRegionResources(html: string): RegionResources {
         );
       }
       const name = share[1].trim().toLowerCase();
-      if (!named.includes(name)) {
-        named.push(name);
+      // A name stated twice in one row keeps its first percentage, as it keeps its first place.
+      if (!named.some((resource) => resource.name === name)) {
+        named.push({ name, chance: Number.parseInt(share[2], 10) });
       }
     }
     resources[terrain] = named;

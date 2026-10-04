@@ -204,6 +204,22 @@ stone [STON], weight 50, costs 75 silver to withdraw. This item is a trade resou
 });
 
 describe("buildRuleset and the terrain table", () => {
+  it("carries how often each terrain holds each resource, by tag", () => {
+    const ruleset = buildRuleset({
+      rulesHtml: RULES_HTML,
+      dataHtml: DATA_HTML,
+      rulesUrl: "https://example.test/rules",
+      dataUrl: "https://example.test/data",
+      orderLanguage: "new-origins",
+      fetchedAt: "2026-01-01T00:00:00Z"
+    });
+
+    expect(ruleset.terrainResourceChances.ocean).toEqual({ FISH: 100, TURT: 30 });
+    expect(Object.keys(ruleset.terrainResourceChances)).toEqual(
+      Object.keys(ruleset.terrainResources)
+    );
+  });
+
   it("carries a terrain named after a prototype member all the way through", () => {
     const rulesHtml = RULES_HTML.replace("                  ocean\n", "                  __proto__\n");
 

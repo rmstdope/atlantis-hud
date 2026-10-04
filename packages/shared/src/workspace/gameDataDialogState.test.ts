@@ -115,8 +115,10 @@ describe("the All tab (ah-yu3j.2)", () => {
   it("is first in the tab order, and Left and Right wrap round it", () => {
     expect(stepGameDataTab("all", 1)).toBe("skill");
     expect(stepGameDataTab("skill", -1)).toBe("all");
-    expect(stepGameDataTab("all", -1)).toBe("building");
-    expect(stepGameDataTab("building", 1)).toBe("all");
+    // Terrains is last since ah-yu3j.1, so it sits between Buildings and the wrap back to All.
+    expect(stepGameDataTab("all", -1)).toBe("terrain");
+    expect(stepGameDataTab("building", 1)).toBe("terrain");
+    expect(stepGameDataTab("terrain", 1)).toBe("all");
   });
 
   it("can be chosen like any other tab", () => {
@@ -190,5 +192,41 @@ describe("typing into the filter (ah-yu3j.2 review)", () => {
     expect(gameDataMove(-1, 5, "a")).toBeNull();
     expect(gameDataMove(-1, 0, "ArrowDown")).toBeNull();
     expect(gameDataMove(2, 5, "ArrowDown")).toBe(3);
+  });
+});
+
+describe("the Terrains tab (ah-yu3j.1)", () => {
+  const withTerrains = parseGameData(
+    JSON.stringify({ ...JSON.parse(RULESET), terrainResources: { mountain: ["MITH"], desert: [] } })
+  );
+  if (withTerrains === null) {
+    throw new Error("expected the fixture to parse");
+  }
+
+  it("opens on its first terrain", () => {
+    const state = selectGameDataTab(withTerrains, openGameDataDialog(withTerrains, null), "terrain");
+    expect(state.tab).toBe("terrain");
+    expect(state.selectedId).toBe("terrain:desert");
+  });
+
+  it("follows an item's Found in link to the terrain's tab, and comes back", () => {
+    const onItem = openGameDataDialog(withTerrains, "equipment:MITH");
+    const onTerrain = selectGameDataEntry(withTerrains, onItem, "terrain:mountain", { push: true });
+    expect(onTerrain.tab).toBe("terrain");
+    expect(onTerrain.back).toEqual(["equipment:MITH"]);
+    expect(goBack(withTerrains, onTerrain).tab).toBe("equipment");
+  });
+
+  it("is part of All, each terrain once, in its A-Z place", () => {
+    const all = entriesOf(withTerrains, "all").map((entry) => entry.id);
+    expect(all).toContain("terrain:desert");
+    expect(all).toContain("terrain:mountain");
+    expect(all.indexOf("equipment:MITH")).toBeLessThan(all.indexOf("terrain:mountain"));
+    expect(all.indexOf("terrain:desert")).toBeLessThan(all.indexOf("skill:MINI"));
+    expect(all.filter((id) => id === "terrain:mountain")).toHaveLength(1);
+  });
+
+  it("lands on the Terrains tab even for a terrain the index does not hold", () => {
+    expect(openGameDataDialog(withTerrains, "terrain:nexus").tab).toBe("terrain");
   });
 });

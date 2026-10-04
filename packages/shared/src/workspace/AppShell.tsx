@@ -890,6 +890,8 @@ export function AppShell({
   const derivedStatus = useBattleSkillsStore((state) => state.status);
   const unreadTurns = useBattleSkillsStore((state) => state.unreadTurns);
   const resourceMemory = useResourceMemoryStore((state) => state.memory);
+  /** Every race the stored turns saw for sale, for the game data dialog's terrain pages. */
+  const recruitSightings = useResourceMemoryStore((state) => state.recruits);
   /** Which header popover is open - one at a time, by construction. Dialogs keep their own flags. */
   const [openPopover, setOpenPopover] = useState<HeaderPopoverId | null>(null);
   /** Which faction's Forget is armed in the mage-sheets popover, or null (ah-lyg6.1.3). */
@@ -5218,6 +5220,7 @@ export function AppShell({
         <GameDataDialog
           index={gameData}
           initialEntryId={gameDataOpen.entryId}
+          recruits={recruitSightings}
           onDismiss={() => setGameDataOpen(null)}
         />
       ) : null}

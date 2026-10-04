@@ -9559,6 +9559,117 @@
       "MITH"
     ]
   },
+  "terrainResourceChances": {
+    "ocean": {
+      "FISH": 100,
+      "TURT": 25
+    },
+    "plain": {
+      "HORS": 100,
+      "WING": 25,
+      "HERB": 30
+    },
+    "forest": {
+      "WOOD": 100,
+      "FUR": 100,
+      "IRWD": 25,
+      "YEW": 25
+    },
+    "mountain": {
+      "IRON": 100,
+      "STON": 100,
+      "MITH": 30,
+      "ROOT": 30,
+      "ADMT": 15
+    },
+    "hill": {
+      "IRON": 100,
+      "STON": 100,
+      "MITH": 20,
+      "ROOT": 20,
+      "ADMT": 10
+    },
+    "swamp": {
+      "WOOD": 100,
+      "FLOA": 30,
+      "HERB": 100,
+      "MUSH": 30
+    },
+    "jungle": {
+      "WOOD": 100,
+      "HERB": 35,
+      "MUSH": 30,
+      "IRWD": 30,
+      "FUR": 60
+    },
+    "desert": {
+      "IRON": 100,
+      "STON": 100,
+      "ROOT": 20,
+      "CAME": 80,
+      "MITH": 5
+    },
+    "tundra": {
+      "FUR": 100,
+      "HERB": 100,
+      "MUSH": 30,
+      "IRON": 20,
+      "ROOT": 20,
+      "WOOD": 5
+    },
+    "cavern": {
+      "IRON": 100,
+      "STON": 100,
+      "MITH": 25,
+      "ROOT": 25,
+      "ADMT": 10
+    },
+    "underforest": {
+      "WOOD": 80,
+      "STON": 100,
+      "IRON": 80,
+      "MUSH": 25,
+      "IRWD": 20
+    },
+    "tunnels": {
+      "IRON": 100,
+      "STON": 100,
+      "MITH": 20,
+      "ROOT": 25,
+      "MUSH": 10,
+      "ADMT": 5
+    },
+    "grotto": {
+      "MUSH": 25,
+      "ROOT": 25,
+      "ADMT": 25
+    },
+    "deepforest": {
+      "WOOD": 100,
+      "STON": 100,
+      "IRON": 100,
+      "MUSH": 100
+    },
+    "chasm": {
+      "STON": 100,
+      "MITH": 25,
+      "MUSH": 10,
+      "ROOT": 25,
+      "ADMT": 10
+    },
+    "volcano": {
+      "STON": 100,
+      "MITH": 50,
+      "ROOT": 50,
+      "ADMT": 50,
+      "IRON": 100
+    },
+    "lake": {
+      "FISH": 100,
+      "ADMT": 15,
+      "MITH": 15
+    }
+  },
   "maintenance": {
     "perCharacter": 10,
     "perLeader": 90,

@@ -14,7 +14,9 @@ function of(...rows: Array<[PaletteEntry["kind"], string]>): PaletteEntry[] {
   return rows.map(([kind, label], at) => ({ id: `${kind}-${at}`, kind, label, run: noop }));
 }
 
-function entries(): PaletteEntry[] {
+function entries(
+  gameData?: Parameters<typeof buildPaletteEntries>[0]["gameData"]
+): PaletteEntry[] {
   return buildPaletteEntries({
     ownUnits: [
       { unitId: "18642", name: "Seven of Eight", run: noop },
@@ -37,7 +39,7 @@ function entries(): PaletteEntry[] {
     ],
     orderCommands: ["MOVE", "STUDY"],
     insertOrder: noop,
-    gameData: [
+    gameData: gameData ?? [
       { id: "skill:MINI", category: "skill", name: "mining", tag: "MINI" },
       { id: "ship:LONG", category: "ship", name: "Longship", tag: "LONG" },
       { id: "building:MINE", category: "building", name: "Mine", tag: null }
@@ -65,6 +67,13 @@ describe("buildPaletteEntries", () => {
       "ship",
       "building"
     ]);
+  });
+
+  it("offers a terrain from the game data under its own kind, named without a tag (ah-yu3j.1)", () => {
+    const [terrain] = entries([
+      { id: "terrain:mountain", category: "terrain", name: "mountain", tag: null }
+    ]).filter((entry) => entry.id.startsWith("data-"));
+    expect(terrain).toMatchObject({ kind: "terrain", label: "mountain" });
   });
 
   it("offers a structure in the world", () => {

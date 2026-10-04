@@ -9,7 +9,7 @@
  * types, and names its own `Ruleset` the same as the unrelated one in `./rulesets`.
  */
 
-/** The seven lists the dictionary shows, in tab order. */
+/** The eight lists the dictionary shows, in tab order. */
 export type GameDataCategory =
   | "skill"
   | "man"
@@ -17,7 +17,8 @@ export type GameDataCategory =
   | "ship"
   | "monster"
   | "equipment"
-  | "building";
+  | "building"
+  | "terrain";
 
 /** Tab order, and the order categories are built in. */
 export const GAME_DATA_CATEGORIES: readonly GameDataCategory[] = [
@@ -27,7 +28,9 @@ export const GAME_DATA_CATEGORIES: readonly GameDataCategory[] = [
   "ship",
   "monster",
   "equipment",
-  "building"
+  "building",
+  // Last, as agreed (ah-yu3j.1): the far right of the strip.
+  "terrain"
 ];
 
 /** What each tab is called. */
@@ -38,7 +41,8 @@ export const GAME_DATA_CATEGORY_LABELS: Readonly<Record<GameDataCategory, string
   ship: "Ships",
   monster: "Monsters",
   equipment: "Equipment",
-  building: "Buildings"
+  building: "Buildings",
+  terrain: "Terrains"
 };
 
 /**
@@ -52,17 +56,21 @@ export const GAME_DATA_KIND_WORDS: Readonly<Record<GameDataCategory, string>> = 
   ship: "Ship",
   monster: "Monster",
   equipment: "Equipment",
-  building: "Building"
+  building: "Building",
+  terrain: "Terrain"
 };
 
 /** One thing in the dictionary, whatever kind it is. */
 export type GameDataEntry = {
-  /** Unique across every category: `skill:MINI`, `equipment:MITH`, `building:FORT`. */
+  /**
+   * Unique across every category: `skill:MINI`, `equipment:MITH`, `building:FORT`,
+   * `terrain:mountain`.
+   */
   id: string;
   category: GameDataCategory;
   /** The display name, e.g. `mining`, `Longship`, `Tower`. */
   name: string;
-  /** The four-letter tag, or null for a building, which has none. */
+  /** The four-letter tag, or null for a building or a terrain, which have none. */
   tag: string | null;
 };
 
@@ -74,6 +82,24 @@ export type RevealingSkill = { skillTag: string; skillName: string; level: numbe
 
 /** What a skill's page says at one of its levels. */
 export type GameDataLevel = { level: number; description: string };
+
+/** A thing named on another entry's page, followed by clicking it. */
+export type GameDataReference = { id: string; name: string };
+
+/**
+ * A resource and a terrain that may hold it, either way round, with the percentage of such
+ * regions that do (`rules/region_resources`). `chance` is null for a ruleset generated before the
+ * percentages were kept, which cannot say how often.
+ */
+export type TerrainResourceLink = { id: string; name: string; chance: number | null };
+
+/**
+ * What entering a terrain costs. `water` is the ocean rule's own terrain and any the world adds,
+ * which need a ship unless flying (rules/movement_normal); otherwise a cost per mode of travel.
+ */
+export type TerrainMovement =
+  | { kind: "water" }
+  | { kind: "cost"; walk: number; ride: number; fly: number };
 
 /** What the detail pane renders. One variant per shape the scrape actually has. */
 export type GameDataDetail =
@@ -107,6 +133,10 @@ export type GameDataDetail =
       description: string | null;
       /** Derived: the skills that produce this item, and at what level. */
       producedBy: readonly GameDataLink[];
+      /** Derived: the terrains whose resource table holds it, most often first. */
+      foundIn: readonly TerrainResourceLink[];
+      /** The terrains its description says it prefers to roam; empty for anything else. */
+      roams: readonly GameDataReference[];
     }
   | {
       kind: "building";
@@ -123,6 +153,21 @@ export type GameDataDetail =
        */
       buildSkill: string | null;
       buildLevel: number | null;
+    }
+  | {
+      kind: "terrain";
+      entry: GameDataEntry;
+      /** Null when the ruleset carries no movement block. */
+      movement: TerrainMovement | null;
+      /** What a step along a connected road costs; null for water, or with no movement block. */
+      road: number | null;
+      /**
+       * The resource table's row, in its own order. Null when the table does not cover the
+       * terrain - the data is silent there, which is not the same as saying nothing is found.
+       */
+      foundHere: readonly TerrainResourceLink[] | null;
+      /** Every monster whose description says it prefers to roam here, by name. */
+      roamingMonsters: readonly GameDataReference[];
     }
   | { kind: "absent"; entry: GameDataEntry };
 
@@ -177,6 +222,16 @@ type RawItem = {
   capacityCondition?: string;
   description?: string;
 };
+type RawMovement = {
+  terrainCosts?: { normal?: number; premiums?: Record<string, number>; premiumFor?: string[] };
+  road?: { divisor?: number; minimumCost?: number };
+  ocean?: {
+    requiresShipUnlessFlying?: boolean;
+    flyingMustEndOnLand?: boolean;
+    terrain?: string;
+    alsoWater?: string[];
+  };
+};
 type RawBuilding = {
   description?: string;
   produces?: string;
@@ -205,6 +260,29 @@ function titleCase(key: string): string {
 
 function byName(a: GameDataEntry, b: GameDataEntry): number {
   return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+}
+
+/** The dictionary id of a terrain, from the word a region report prints: `terrain:mountain`. */
+export function terrainEntryId(terrain: string): string {
+  return `terrain:${terrain.trim().toLowerCase()}`;
+}
+
+/**
+ * The terrains a monster's description says it prefers to roam, lower-cased, in its own order.
+ *
+ * data/grizzly bear: "Monster prefers to roam the mountain terrain."; New Origins also prints
+ * "Monster prefers to roam the tunnels, grotto, chasm terrains." Read here rather than scraped into
+ * the ruleset: the description already travels for this dialog, and nothing else wants the list.
+ */
+export function roamingTerrainsOf(description: string | null | undefined): string[] {
+  const match = (description ?? "").match(/Monster prefers to roam the ([a-z ,]+?) terrains?\./i);
+  if (match === null) {
+    return [];
+  }
+  return match[1]
+    .split(",")
+    .map((terrain) => terrain.trim().toLowerCase())
+    .filter((terrain) => terrain.length > 0);
 }
 
 /** The dictionary id of a skill, from the tag a report or the ruleset uses. */
@@ -342,6 +420,47 @@ export function parseGameData(rulesetText: string): GameDataIndex | null {
     }
   }
 
+  /** How often, terrain then tag. Missing for a ruleset generated before ah-yu3j.1. */
+  const terrainChances = new Map<string, ReadonlyMap<string, number>>();
+  if (isRecord(parsed.terrainResourceChances)) {
+    for (const [terrain, chances] of Object.entries(parsed.terrainResourceChances)) {
+      if (!isRecord(chances)) {
+        continue;
+      }
+      const byTag = new Map<string, number>();
+      for (const [tag, chance] of Object.entries(chances)) {
+        if (typeof chance === "number") {
+          byTag.set(tag.toUpperCase(), chance);
+        }
+      }
+      terrainChances.set(String(terrain).toLowerCase().trim(), byTag);
+    }
+  }
+
+  /** Every monster's roaming terrains, by its item tag. */
+  const roamingByTag = new Map<string, string[]>();
+  for (const [key, item] of Object.entries(rawItems)) {
+    const terrains = roamingTerrainsOf(item.description);
+    if (terrains.length > 0) {
+      roamingByTag.set((item.tag ?? key).toUpperCase(), terrains);
+    }
+  }
+
+  const terrainNames = new Set<string>(terrainResources.keys());
+  for (const terrains of roamingByTag.values()) {
+    for (const terrain of terrains) {
+      terrainNames.add(terrain);
+    }
+  }
+  const terrainEntries: GameDataEntry[] = [...terrainNames].map((terrain) => ({
+    id: terrainEntryId(terrain),
+    category: "terrain",
+    name: terrain,
+    tag: null
+  }));
+
+  const movement = (isRecord(parsed.movement) ? parsed.movement : null) as RawMovement | null;
+
   const itemsByCategory = new Map<GameDataCategory, GameDataEntry[]>();
   for (const [key, item] of Object.entries(rawItems)) {
     const category = (ITEM_KINDS.includes(item.kind) ? item.kind : "equipment") as GameDataCategory;
@@ -364,7 +483,9 @@ export function parseGameData(rulesetText: string): GameDataIndex | null {
         ? skillEntries
         : category === "building"
           ? buildingEntries
-          : (itemsByCategory.get(category) ?? []);
+          : category === "terrain"
+            ? terrainEntries
+            : (itemsByCategory.get(category) ?? []);
     for (const entry of [...list].sort(byName)) {
       add(entry);
     }
@@ -397,6 +518,79 @@ export function parseGameData(rulesetText: string): GameDataIndex | null {
     }
   }
 
+  /** The forward direction again: which terrains hold each item, built once. */
+  const foundIn = new Map<string, TerrainResourceLink[]>();
+  for (const [terrain, tags] of terrainResources) {
+    for (const tag of tags) {
+      const itemId = findItemId(tag);
+      if (itemId === null) {
+        continue;
+      }
+      const list = foundIn.get(itemId) ?? [];
+      list.push({
+        id: terrainEntryId(terrain),
+        name: terrain,
+        chance: terrainChances.get(terrain)?.get(tag) ?? null
+      });
+      foundIn.set(itemId, list);
+    }
+  }
+  for (const list of foundIn.values()) {
+    list.sort((a, b) => (b.chance ?? -1) - (a.chance ?? -1) || a.name.localeCompare(b.name));
+  }
+
+  /** Every monster that roams each terrain, by name. */
+  const roamersOf = (terrain: string): GameDataReference[] =>
+    [...roamingByTag]
+      .filter(([, terrains]) => terrains.includes(terrain))
+      .flatMap(([tag]) => {
+        const itemId = findItemId(tag);
+        const entry = itemId === null ? undefined : byId.get(itemId);
+        return entry === undefined ? [] : [{ id: entry.id, name: entry.name }];
+      })
+      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+
+  /**
+   * Water is the ocean rule's terrain and any the world adds, as `Ruleset::is_water` has it in the
+   * core; it reads as water here only while the rule actually needs a ship.
+   */
+  const movementOf = (terrain: string): TerrainMovement | null => {
+    const costs = movement?.terrainCosts;
+    if (movement === null || costs === undefined || typeof costs.normal !== "number") {
+      return null;
+    }
+    const ocean = movement.ocean;
+    const water = [ocean?.terrain ?? "", ...(ocean?.alsoWater ?? [])].some(
+      (candidate) => candidate.trim().toLowerCase() === terrain
+    );
+    if (water && ocean?.requiresShipUnlessFlying === true && ocean.flyingMustEndOnLand === true) {
+      return { kind: "water" };
+    }
+    // `Ruleset::terrain_cost`: the premium applies only to the modes the page names.
+    const premium = Object.entries(costs.premiums ?? {}).find(
+      ([listed]) => listed.toLowerCase() === terrain
+    )?.[1];
+    const normal = costs.normal;
+    const cost = (mode: string) =>
+      premium !== undefined && (costs.premiumFor ?? []).includes(mode) ? premium : normal;
+    return { kind: "cost", walk: cost("walk"), ride: cost("ride"), fly: cost("fly") };
+  };
+
+  /** `Ruleset::road_cost`: the walking cost divided, rounded down, never below the minimum. */
+  const roadOf = (moving: TerrainMovement | null): number | null => {
+    const road = movement?.road;
+    if (
+      moving === null ||
+      moving.kind === "water" ||
+      road === undefined ||
+      typeof road.divisor !== "number" ||
+      road.divisor <= 0
+    ) {
+      return null;
+    }
+    return Math.max(Math.floor(moving.walk / road.divisor), road.minimumCost ?? 0);
+  };
+
   const linkToSkill = (reference: RawProduction): GameDataLink => {
     const id = skillEntryId(reference.tag);
     return { id, name: byId.get(id)?.name ?? reference.tag, level: reference.level };
@@ -415,7 +609,7 @@ export function parseGameData(rulesetText: string): GameDataIndex | null {
           id,
           category: category as GameDataCategory,
           name: category === "building" ? titleCase(tag ?? "") : (tag ?? ""),
-          tag: category === "building" ? null : (tag ?? null)
+          tag: category === "building" || category === "terrain" ? null : (tag ?? null)
         }
       };
     }
@@ -441,6 +635,29 @@ export function parseGameData(rulesetText: string): GameDataIndex | null {
           };
         }),
         requires: (skill.requires ?? []).map(linkToSkill)
+      };
+    }
+    if (entry.category === "terrain") {
+      const terrain = entry.name;
+      const moving = movementOf(terrain);
+      const row = terrainResources.get(terrain);
+      return {
+        kind: "terrain",
+        entry,
+        movement: moving,
+        road: roadOf(moving),
+        foundHere:
+          row === undefined
+            ? null
+            : row.map((tag) => {
+                const itemId = findItemId(tag);
+                return {
+                  id: itemId ?? `equipment:${tag}`,
+                  name: itemId === null ? tag : (byId.get(itemId)?.name ?? tag),
+                  chance: terrainChances.get(terrain)?.get(tag) ?? null
+                };
+              }),
+        roamingMonsters: roamersOf(terrain)
       };
     }
     if (entry.category === "building") {
@@ -477,7 +694,12 @@ export function parseGameData(rulesetText: string): GameDataIndex | null {
       sailingSkill: item.sailingSkill ?? null,
       capacityCondition: item.capacityCondition ?? null,
       description: item.description ?? null,
-      producedBy: producedBy.get(entry.id) ?? []
+      producedBy: producedBy.get(entry.id) ?? [],
+      foundIn: foundIn.get(entry.id) ?? [],
+      roams: (roamingByTag.get(entry.tag as string) ?? []).map((terrain) => ({
+        id: terrainEntryId(terrain),
+        name: terrain
+      }))
     };
   };
 

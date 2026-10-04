@@ -1,6 +1,8 @@
+import { aParsedReport, aReportRegion } from "@atlantis/core-client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { parseGameData, type GameDataIndex } from "../gameData";
+import { NO_RECRUIT_SIGHTINGS, withRecruitTurn } from "../recruitSightings";
 import { GameDataDialog, GameDataList } from "./GameDataDialog";
 import { entriesOf } from "./gameDataDialogState";
 
@@ -191,5 +193,144 @@ describe("the All tab (ah-yu3j.2)", () => {
       <GameDataList tab="all" entries={entriesOf(index, "all", "")} filter="" selectedId={null} onPick={() => {}} />
     );
     expect(html).not.toContain("Nothing matches");
+  });
+});
+
+/* --- terrains (ah-yu3j.1) --- */
+
+const NO_CAPACITY = { walk: 0, ride: 0, fly: 0, swim: 0 };
+const NO_MOBILITY = { walk: false, ride: false, fly: false, swim: false };
+const thing = (tag: string, name: string, kind: string, description?: string) => ({
+  tag, name, kind, weight: 1, moves: 0, capacity: NO_CAPACITY, selfMobile: NO_MOBILITY, description
+});
+
+const terrainIndex = parseGameData(
+  JSON.stringify({
+    skills: {},
+    items: {
+      IRON: thing("IRON", "iron", "equipment"),
+      MITH: thing("MITH", "mithril", "equipment"),
+      FISH: thing("FISH", "fish", "equipment"),
+      SWOR: thing("SWOR", "sword", "equipment"),
+      HDWA: thing("HDWA", "hill dwarves", "man"),
+      ORC: thing("ORC", "orcs", "man"),
+      GRIZ: thing("GRIZ", "grizzly bear", "monster", "Monster prefers to roam the mountain terrain."),
+      WORM: thing("WORM", "giant worm", "monster", "Monster prefers to roam the cavern, tunnels terrains.")
+    },
+    terrainResources: { mountain: ["IRON", "MITH"], ocean: ["FISH"] },
+    terrainResourceChances: { mountain: { IRON: 100, MITH: 35 }, ocean: { FISH: 100 } },
+    movement: {
+      terrainCosts: { normal: 1, premiums: { mountain: 2 }, premiumFor: ["ride", "walk"] },
+      road: { divisor: 2, minimumCost: 1 },
+      ocean: { requiresShipUnlessFlying: true, flyingMustEndOnLand: true, terrain: "ocean", alsoWater: [] }
+    }
+  })
+) as GameDataIndex;
+
+const sale = (tag: string, name: string) => ({ amount: 5, name, tag, price: 40 });
+const recruits = withRecruitTurn(
+  NO_RECRUIT_SIGHTINGS,
+  aParsedReport({
+    regions: [0, 2, 4, 6].map((x) =>
+      aReportRegion({
+        coordinate: { x, y: 0, z: 1 },
+        terrain: "mountain",
+        forSale: x === 0 ? [sale("HDWA", "hill dwarves"), sale("ORC", "orcs")] : [sale("HDWA", "hill dwarves")]
+      })
+    )
+  }),
+  terrainIndex
+);
+
+function terrainMarkup(initialEntryId: string | null, sightings = recruits): string {
+  return renderToStaticMarkup(
+    <GameDataDialog
+      index={terrainIndex}
+      initialEntryId={initialEntryId}
+      recruits={sightings}
+      onDismiss={() => {}}
+    />
+  );
+}
+
+describe("GameDataDialog's terrains (ah-yu3j.1)", () => {
+  it("puts a Terrains tab with its count last in a strip that wraps", () => {
+    const html = terrainMarkup(null);
+    expect(html).toMatch(/game-data-tab-building"[^>]*>Buildings 0<\/button><button[^>]*game-data-tab-terrain"[^>]*>Terrains 4<\/button><\/div>/);
+    expect(html).toMatch(/role="tablist"[^>]*class="[^"]*flex-wrap/);
+  });
+
+  it("lists the terrains in lower case with no tag, and scopes the filter to them", () => {
+    const html = terrainMarkup("terrain:mountain");
+    expect(html).toContain('placeholder="Filter terrains…"');
+    expect(html).toContain('aria-label="Filter terrains"');
+    for (const name of ["cavern", "mountain", "ocean", "tunnels"]) {
+      expect(html).toContain(`data-testid="game-data-entry-terrain:${name}"`);
+    }
+    expect(html).toMatch(/game-data-entry-terrain:mountain"[^>]*>mountain<\/button>/);
+  });
+
+  it("shows a mountain's page with all six parts", () => {
+    const html = terrainMarkup("terrain:mountain");
+    expect(html).toMatch(/<span class="flex-1">mountain<\/span><\/h2>/);
+    expect(html).toContain(">Movement cost</span><span class=\"text-ink\">2 walking or riding · 1 flying</span>");
+    expect(html).toContain(">Along a road</span><span class=\"text-ink\">1</span>");
+    expect(html).toContain(">Found here</h3>");
+    expect(html).toMatch(/game-data-link-equipment:IRON"[^>]*>iron<\/button><span class="text-ink-dim">always<\/span>/);
+    expect(html).toMatch(/game-data-link-equipment:MITH"[^>]*>mithril<\/button><span class="text-ink-dim">in 35% of regions<\/span>/);
+    expect(html).toContain(">Seen for sale in your reports</h3>");
+    expect(html).toMatch(/game-data-link-man:HDWA"[^>]*>hill dwarves<\/button><span class="text-ink-dim">4 mountain regions<\/span>/);
+    expect(html).toMatch(/game-data-link-man:ORC"[^>]*>orcs<\/button><span class="text-ink-dim">1 mountain region<\/span>/);
+    expect(html).toContain(">Monsters that roam here</h3>");
+    expect(html).toMatch(/game-data-link-monster:GRIZ"[^>]*>grizzly bear<\/button>/);
+  });
+
+  it("shows the ocean's rule in words, no road, and both empty lines", () => {
+    const html = terrainMarkup("terrain:ocean");
+    expect(html).toContain("needs a ship — a flier may cross but must end its move on land");
+    expect(html).not.toContain("Along a road");
+    expect(html).toMatch(/game-data-link-equipment:FISH"[^>]*>fish<\/button>/);
+    expect(html).toContain("No ocean region in your reports has had recruits for sale.");
+    expect(html).toContain("No monster in the game data roams here.");
+  });
+
+  it("says the data is silent about what a terrain outside the resource table holds", () => {
+    const html = terrainMarkup("terrain:cavern");
+    expect(html).toContain(">Movement cost</span><span class=\"text-ink\">1</span>");
+    expect(html).toContain("The game data does not say what is found here.");
+    expect(html).toMatch(/game-data-link-monster:WORM"[^>]*>giant worm<\/button>/);
+  });
+
+  it("says no region sold recruits when no report has been loaded", () => {
+    const html = terrainMarkup("terrain:mountain", NO_RECRUIT_SIGHTINGS);
+    expect(html).toContain("No mountain region in your reports has had recruits for sale.");
+  });
+
+  it("lists where an item is found on its own page", () => {
+    const html = terrainMarkup("equipment:MITH");
+    expect(html).toContain(">Found in</h3>");
+    expect(html).toMatch(/game-data-link-terrain:mountain"[^>]*>mountain<\/button><span class="text-ink-dim">in 35% of regions<\/span>/);
+  });
+
+  it("leaves an item found nowhere unchanged", () => {
+    expect(terrainMarkup("equipment:SWOR")).not.toContain("Found in");
+  });
+
+  it("links a monster to the terrains it roams", () => {
+    const html = terrainMarkup("monster:WORM");
+    expect(html).toContain(">Roams</span>");
+    expect(html).toMatch(/game-data-link-terrain:cavern"[^>]*>cavern<\/button><\/span><span>, <button[^>]*game-data-link-terrain:tunnels"[^>]*>tunnels<\/button>/);
+    expect(terrainMarkup("equipment:SWOR")).not.toContain(">Roams<");
+  });
+
+  it("marks a terrain's row on All with the kind word Terrain", () => {
+    expect(terrainMarkup(null)).toMatch(/data-testid="game-data-entry-terrain:mountain"[^>]*>(?:(?!<\/li>).)*?>Terrain<\/span>/);
+  });
+
+  it("shows an empty Terrains tab as every empty tab is shown", () => {
+    const html = renderToStaticMarkup(
+      <GameDataDialog index={index} initialEntryId={null} onDismiss={() => {}} />
+    );
+    expect(html).toContain(">Terrains 0</button>");
   });
 });

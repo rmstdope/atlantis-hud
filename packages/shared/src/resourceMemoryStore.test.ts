@@ -3,6 +3,7 @@ import { aParsedReport, aReportRegion, aReportUnit } from "@atlantis/core-client
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GameDataEntry, GameDataIndex } from "./gameData";
+import { NO_RECRUIT_SIGHTINGS, racesSeenIn } from "./recruitSightings";
 import { NO_RESOURCE_MEMORY, rememberedFor } from "./resourceMemory";
 import {
   resetResourceMemoryStore,
@@ -132,6 +133,7 @@ describe("scanStoredTurns (ah-tgtp)", () => {
 
     await expect(scanStoredTurns(core, game(), anIndex())).resolves.toEqual({
       memory: NO_RESOURCE_MEMORY,
+      recruits: NO_RECRUIT_SIGHTINGS,
       unreadTurns: 0
     });
   });
@@ -184,5 +186,47 @@ describe("useResourceMemoryStore (ah-tgtp)", () => {
     useResourceMemoryStore.getState().foldIn("other-game", PRESENT, 25, anIndex());
 
     expect(useResourceMemoryStore.getState().memory.size).toBe(0);
+  });
+});
+
+describe("recruit sightings in the same scan (ah-yu3j.1)", () => {
+  const recruitIndex = (): GameDataIndex => ({
+    ...anIndex(),
+    byId: new Map([
+      ["man:ORC", { id: "man:ORC", category: "man", name: "orcs", tag: "ORC" }]
+    ] as [string, GameDataEntry][])
+  });
+  const orcsForSale = aParsedReport({
+    regions: [
+      aReportRegion({
+        terrain: "swamp",
+        forSale: [{ amount: 5, name: "orcs", tag: "ORC", price: 40 }]
+      })
+    ]
+  });
+
+  it("reads the races for sale from every stored turn, parsing each turn once", async () => {
+    const parseReportFull = vi.fn().mockResolvedValue(orcsForSale);
+    const reader = client({
+      listImportedTurns: vi.fn().mockResolvedValue([summary("3", 1), summary("3", 2)]),
+      parseReportFull
+    });
+
+    const { recruits } = await scanStoredTurns(reader, game(), recruitIndex());
+
+    expect(parseReportFull).toHaveBeenCalledTimes(2);
+    expect(racesSeenIn(recruits, "swamp", recruitIndex())).toEqual([
+      { id: "man:ORC", name: "orcs", regions: 1 }
+    ]);
+  });
+
+  it("folds the turn on screen in, and clears with the rest", () => {
+    useResourceMemoryStore.setState({ gameId: "aug-2026" });
+    useResourceMemoryStore.getState().foldIn("aug-2026", orcsForSale, 7, recruitIndex());
+
+    expect(racesSeenIn(useResourceMemoryStore.getState().recruits, "swamp", recruitIndex())).toHaveLength(1);
+
+    useResourceMemoryStore.getState().clear();
+    expect(useResourceMemoryStore.getState().recruits).toBe(NO_RECRUIT_SIGHTINGS);
   });
 });
