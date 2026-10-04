@@ -8784,6 +8784,62 @@
       "IRON"
     ]
   },
+  "terrainResourceChances": {
+    "ocean": {
+      "FISH": 100,
+      "TURT": 30
+    },
+    "plain": {
+      "HORS": 100,
+      "WING": 20
+    },
+    "forest": {
+      "WOOD": 100,
+      "FUR": 100,
+      "IRWD": 20,
+      "YEW": 25
+    },
+    "mountain": {
+      "IRON": 100,
+      "STON": 100,
+      "MITH": 35,
+      "ROOT": 35,
+      "ADMT": 15
+    },
+    "swamp": {
+      "WOOD": 100,
+      "FLOA": 40,
+      "HERB": 100,
+      "MUSH": 30
+    },
+    "jungle": {
+      "WOOD": 100,
+      "HERB": 100,
+      "MUSH": 35,
+      "IRWD": 35,
+      "FUR": 80
+    },
+    "desert": {
+      "IRON": 100,
+      "STON": 100,
+      "ROOT": 30,
+      "CAME": 80,
+      "MITH": 20
+    },
+    "tundra": {
+      "FUR": 100,
+      "HERB": 100,
+      "MUSH": 35,
+      "IRON": 30
+    },
+    "volcano": {
+      "STON": 100,
+      "MITH": 50,
+      "ROOT": 50,
+      "ADMT": 50,
+      "IRON": 100
+    }
+  },
   "maintenance": {
     "perCharacter": 10,
     "perLeader": 50,

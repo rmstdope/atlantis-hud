@@ -971,6 +971,14 @@ pub struct Ruleset {
     /// table does not list (the Nexus) is absent for the same reason.
     #[serde(default)]
     pub terrain_resources: BTreeMap<String, Vec<String>>,
+    /// How often each terrain holds each resource, in percent: the terrain word, then the item
+    /// tag, from the same `rules/region_resources` table (`mountain  ... mithril (35%)`).
+    ///
+    /// Carried for the game data dialog (ah-yu3j.1); nothing in the core reads it. Empty for a
+    /// ruleset generated before it was scraped, which reads as "this catalogue cannot say how
+    /// often" - never as "never".
+    #[serde(default)]
+    pub terrain_resource_chances: BTreeMap<String, BTreeMap<String, u32>>,
     /// What a head of this world owes in monthly maintenance.
     ///
     /// Absent for a ruleset generated before the fee sentence was scraped, which reads as "this

@@ -541,7 +541,10 @@ describe("parseRegionResources", () => {
     const resources = parseRegionResources(odd);
 
     expect(Object.keys(resources)).toContain("__proto__");
-    expect(resources["__proto__"]).toEqual(["fish", "giant turtle"]);
+    expect(resources["__proto__"]).toEqual([
+      { name: "fish", chance: 100 },
+      { name: "giant turtle", chance: 30 }
+    ]);
   });
 
   it("refuses a table stating one terrain twice", () => {
@@ -567,8 +570,33 @@ describe("parseRegionResources", () => {
       "tundra",
       "volcano"
     ]);
-    expect(resources.swamp).toEqual(["wood", "floater hide", "herb", "mushroom"]);
-    expect(resources.mountain).toEqual(["iron", "stone", "mithril", "rootstone", "admantium"]);
+    expect(resources.swamp.map((resource) => resource.name)).toEqual([
+      "wood",
+      "floater hide",
+      "herb",
+      "mushroom"
+    ]);
+    expect(resources.mountain.map((resource) => resource.name)).toEqual([
+      "iron",
+      "stone",
+      "mithril",
+      "rootstone",
+      "admantium"
+    ]);
+  });
+
+  // ah-yu3j.1: the game data dialog says how often a terrain holds each resource, so the
+  // percentages rules/region_resources prints are kept rather than read and discarded.
+  it("keeps how often each terrain holds each resource", () => {
+    const resources = parseRegionResources(RULES_HTML);
+
+    expect(resources.mountain).toEqual([
+      { name: "iron", chance: 100 },
+      { name: "stone", chance: 100 },
+      { name: "mithril", chance: 35 },
+      { name: "rootstone", chance: 35 },
+      { name: "admantium", chance: 15 }
+    ]);
   });
 
   it("refuses a resource cell it cannot read", () => {

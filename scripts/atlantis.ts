@@ -386,7 +386,8 @@ function verifyWorld(world: ScrapedWorld, io: Io): boolean {
     "skills",
     "buildings",
     "itemClasses",
-    "terrainResources"
+    "terrainResources",
+    "terrainResourceChances"
   ] as const) {
     const { agree, total } = compareCollection(
       collection,

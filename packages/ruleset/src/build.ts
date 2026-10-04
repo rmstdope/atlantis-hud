@@ -87,11 +87,18 @@ function applyFoodMaintenance(items: ItemReference, maintenance: FoodMaintenance
  * committed worlds print resolves that way, so a name that does not is a page or a catalogue that
  * has moved, and a terrain silently short of a resource is exactly the wrong answer for a feature
  * about telling absence from ignorance.
+ *
+ * Returns the tags in page order, and beside them how often each terrain holds each tag
+ * (ah-yu3j.1). Two maps rather than one of richer entries, because `terrainResources` is read by
+ * the core and by the region checks as a plain list, and nothing there wants the percentage.
  */
 function resolveRegionResources(
   resources: RegionResources,
   items: ItemReference
-): Record<string, string[]> {
+): {
+  terrainResources: Record<string, string[]>;
+  terrainResourceChances: Record<string, Record<string, number>>;
+} {
   // A name two tags share cannot be resolved, and picking the first would put a wrong tag in a
   // terrain's list - the silent-wrong-answer this bead exists to avoid. No collision exists in the
   // three committed catalogues, so the ambiguity is recorded and only refused if a terrain asks
@@ -110,9 +117,14 @@ function resolveRegionResources(
   // A null prototype for the same reason `parseRegionResources` uses one: a terrain named
   // `__proto__` must survive resolution as an own key rather than vanish into the prototype.
   const resolved: Record<string, string[]> = Object.create(null) as Record<string, string[]>;
-  for (const [terrain, names] of Object.entries(resources)) {
+  const chances: Record<string, Record<string, number>> = Object.create(null) as Record<
+    string,
+    Record<string, number>
+  >;
+  for (const [terrain, stated] of Object.entries(resources)) {
     const tags: string[] = [];
-    for (const name of names) {
+    const chanceByTag: Record<string, number> = Object.create(null) as Record<string, number>;
+    for (const { name, chance } of stated) {
       if (ambiguous.has(name)) {
         throw new RulesetScrapeError(
           `terrain ${terrain} lists resource "${name}", which the item catalogue names twice`
@@ -126,11 +138,13 @@ function resolveRegionResources(
       }
       if (!tags.includes(tag)) {
         tags.push(tag);
+        chanceByTag[tag] = chance;
       }
     }
     resolved[terrain] = tags;
+    chances[terrain] = chanceByTag;
   }
-  return resolved;
+  return { terrainResources: resolved, terrainResourceChances: chances };
 }
 
 export function buildRuleset(input: BuildInput): Ruleset {
@@ -211,7 +225,7 @@ export function buildRuleset(input: BuildInput): Ruleset {
     buildings,
     itemClasses: itemClassesOf(items),
     ungiveableItems: ungiveableItemsOf(items),
-    terrainResources: resolveRegionResources(regionResources, items),
+    ...resolveRegionResources(regionResources, items),
     maintenance: { perCharacter: fee.perCharacter, perLeader: fee.perLeader, evidence: fee.evidence },
     factionPoints
   };
