@@ -669,19 +669,56 @@ test("following a cross-reference scrolls to it, and clicking a visible row does
 
 /**
  * ah-u44o: the game data had no door of its own - both routes to it started from a thing you
- * already had to name. F2 and a palette action open it cold, on Skills with the first entry
- * showing, which is what `openGameDataDialog(index, null)` has always done for a caller that
- * never existed.
+ * already had to name. F2 and a palette action open it cold. Since ah-yu3j.2 a cold open lands on
+ * the All tab, far left, with its first entry A-Z showing and the filter empty and focused.
  */
-test("F2 opens the game data cold, on Skills with its first entry showing", async ({ page }) => {
+test("F2 opens the game data cold, on All with its first entry showing", async ({ page }) => {
   await loadReport(page);
 
   await page.keyboard.press("F2");
 
   await expect(page.getByTestId("game-data-dialog")).toBeVisible();
-  await expect(page.getByTestId("game-data-tab-skill")).toHaveAttribute("aria-selected", "true");
-  // Not an empty pane: the first skill is showing, which is what a cold open lands on.
+  await expect(page.getByTestId("game-data-tab-all")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab").first()).toHaveAttribute("data-testid", "game-data-tab-all");
+  await expect(page.getByTestId("game-data-filter")).toBeFocused();
+  await expect(page.getByTestId("game-data-filter")).toHaveAttribute(
+    "placeholder",
+    "Filter everything…"
+  );
+  // Not an empty pane: the first row is selected and read out.
+  const first = page.locator('[data-testid^="game-data-entry-"]').first();
+  await expect(first).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("game-data-detail")).not.toContainText("Nothing to show.");
+});
+
+/**
+ * ah-yu3j.2: following a link while on All keeps All lit - the list selects the linked entry, and
+ * a filter that would hide it is cleared. Back works as on every tab, and stays on All too.
+ */
+test("following a link on All stays on All, and Back returns there", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F2");
+  await expect(page.getByTestId("game-data-tab-all")).toHaveAttribute("aria-selected", "true");
+  await page.getByTestId("game-data-filter").fill("mining");
+  await page.getByTestId("game-data-entry-skill:MINI").click();
   await expect(page.getByTestId("game-data-detail")).toContainText("Study cost");
+
+  await page.getByTestId("game-data-link-equipment:MITH").click();
+  await expect(page.getByTestId("game-data-tab-all")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("game-data-entry-equipment:MITH")).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
+  await expect(page.getByTestId("game-data-filter")).toHaveValue("");
+  await expect(page.getByTestId("game-data-back")).toContainText("Back to mining");
+
+  await page.getByTestId("game-data-back").click();
+  await expect(page.getByTestId("game-data-tab-all")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("game-data-entry-skill:MINI")).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
 });
 
 test("the palette's Browse game data opens the same dialog, in the same cold state", async ({
@@ -697,8 +734,11 @@ test("the palette's Browse game data opens the same dialog, in the same cold sta
   await page.keyboard.press("Enter");
 
   await expect(page.getByTestId("game-data-dialog")).toBeVisible();
-  await expect(page.getByTestId("game-data-tab-skill")).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByTestId("game-data-detail")).toContainText("Study cost");
+  await expect(page.getByTestId("game-data-tab-all")).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator('[data-testid^="game-data-entry-"]').first()).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
 });
 
 test("F2 closes an open dialog, and opens it cold again afterwards", async ({ page }) => {
@@ -708,7 +748,7 @@ test("F2 closes an open dialog, and opens it cold again afterwards", async ({ pa
   const dialog = page.getByTestId("game-data-dialog");
   await expect(dialog).toBeVisible();
 
-  // Move away from Skills, so the second open has something to be cold about.
+  // Move away from All, so the second open has something to be cold about.
   await page.getByTestId("game-data-tab-building").click();
   await expect(page.getByTestId("game-data-tab-building")).toHaveAttribute(
     "aria-selected",
@@ -720,7 +760,7 @@ test("F2 closes an open dialog, and opens it cold again afterwards", async ({ pa
 
   await page.keyboard.press("F2");
   await expect(dialog).toBeVisible();
-  await expect(page.getByTestId("game-data-tab-skill")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("game-data-tab-all")).toHaveAttribute("aria-selected", "true");
 });
 
 test("F2 fires from the orders editor and from the unit filter", async ({ page }) => {

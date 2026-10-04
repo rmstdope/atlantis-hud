@@ -41,6 +41,20 @@ export const GAME_DATA_CATEGORY_LABELS: Readonly<Record<GameDataCategory, string
   building: "Buildings"
 };
 
+/**
+ * What one entry of each category is, as a word: the kind marker on a row of the All tab
+ * (ah-yu3j.2), which is what tells crossbow the skill from crossbow the weapon there.
+ */
+export const GAME_DATA_KIND_WORDS: Readonly<Record<GameDataCategory, string>> = {
+  skill: "Skill",
+  man: "Man",
+  mount: "Mount",
+  ship: "Ship",
+  monster: "Monster",
+  equipment: "Equipment",
+  building: "Building"
+};
+
 /** One thing in the dictionary, whatever kind it is. */
 export type GameDataEntry = {
   /** Unique across every category: `skill:MINI`, `equipment:MITH`, `building:FORT`. */
