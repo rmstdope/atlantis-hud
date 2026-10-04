@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FocusEvent,
+  type KeyboardEvent,
+  type ReactNode
+} from "react";
 import type { MageStanding, SkillStanding, StandingKind } from "../magicStanding";
 import type { MagicBranch, MagicPrerequisite, MagicSkillNode, MagicTree } from "../magicTree";
 import { DialogFrame } from "./DialogFrame";
@@ -7,6 +15,7 @@ import { MagePicker } from "./MagePicker";
 import { buildMagicGraph, type MagicTreeView } from "./magicGraphLayout";
 import { MagicGraphView, type MagicGraphHandle } from "./MagicGraphView";
 import type { Viewport } from "./mapViewport";
+import { nextMagicTreeMark } from "../magicTreeKeys";
 
 /**
  * The magic study tree: all seventy magic skills grouped into branch cards, so what a skill needs
@@ -109,16 +118,65 @@ export function MagicTreeDialog({
   // screen already. The cards are a vertically scrolling layout: with a mage picked every row
   // carries a chip, the body grows beyond the viewport, and "happens to be on
   // screen" stops being true (ah-67h8).
+  //
+  // A move made with the keyboard scrolls only as far as it must (ah-0unf): re-centring on every
+  // press would make the list jump under a player walking it a row at a time. Everything else - a
+  // chip followed, the tree opened on a skill, a view switch - still centres.
   const cards = useRef<HTMLDivElement | null>(null);
+  const scrollBlock = useRef<ScrollLogicalPosition>("center");
   useEffect(() => {
+    const block = scrollBlock.current;
+    scrollBlock.current = "center";
     if (highlighted === null) {
       return;
     }
     const row = cards.current?.querySelector(
       `[data-testid="magic-tree-skill-${CSS.escape(highlighted)}"]`
     );
-    row?.scrollIntoView({ block: "center", inline: "center" });
+    row?.scrollIntoView({ block, inline: "center" });
   }, [highlighted, view]);
+
+  // The keyboard walk of the Branches view (ah-0unf, `docs/ui/ah-0unf-keyboard.html`). The mark is
+  // `highlighted` itself, never a second one, and focus follows it onto the skill's name: so Enter
+  // is the name button's own click, and Tab carries on from the marked row. Listened for on the
+  // whole box, because the arrows must work from the close button and the view toggle too.
+  //
+  // `keyed` only decides the ring: any key in the box turns it on, any pointer press turns it off,
+  // so a player who never touches the keyboard never sees it.
+  const [keyed, setKeyed] = useState(false);
+  const markFromKeys = (tag: string) => {
+    if (tag !== highlighted) {
+      scrollBlock.current = "nearest";
+      setHighlighted(tag);
+    }
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    setKeyed(true);
+    if (showingGraph || event.altKey || event.ctrlKey || event.metaKey) {
+      return;
+    }
+    // The mage picker keeps its own keys: the arrows there are about the mage, not the mark.
+    if (event.target instanceof Element && event.target.closest('[aria-haspopup="menu"], [role="menu"]') !== null) {
+      return;
+    }
+    const next = nextMagicTreeMark(tree, highlighted, event.key);
+    if (next === null) {
+      return;
+    }
+    // Handled even when the mark cannot move, so the key never scrolls the list instead.
+    event.preventDefault();
+    markFromKeys(next);
+    cards.current
+      ?.querySelector<HTMLButtonElement>(`[data-testid="magic-tree-name-${CSS.escape(next)}"]`)
+      ?.focus({ preventScroll: true });
+  };
+  // Tab landing on a skill's name marks it, so the keyboard and the mark always agree. Only a
+  // keyboard focus counts: a click on a name opens the dictionary and has no business marking.
+  const onNameFocus = (tag: string, event: FocusEvent<HTMLButtonElement>) => {
+    if (event.currentTarget.matches(":focus-visible")) {
+      markFromKeys(tag);
+    }
+  };
 
   return (
     <DialogFrame
@@ -128,6 +186,8 @@ export function MagicTreeDialog({
       placement="top"
       backdropTestId="magic-tree-backdrop"
       testId="magic-tree-dialog"
+      onKeyDown={onKeyDown}
+      onPointerDown={() => setKeyed(false)}
       // 10vh below, matching the frame's `top` placement (ah-vwdi). The two must be changed together:
       // top offset + max height must leave a real margin, or the dialog runs to the screen edge.
       // theme.css caps every modal at 90vh, but as a `:where()` default at zero specificity
@@ -299,9 +359,11 @@ export function MagicTreeDialog({
               key={branch.key}
               branch={branch}
               highlighted={highlighted}
+              keyed={keyed}
               standing={picked?.byTag ?? null}
               onOpenGameData={onOpenGameData}
               onFollow={setHighlighted}
+              onNameFocus={onNameFocus}
             />
           ))}
         </div>
@@ -364,16 +426,21 @@ function ZoomButton({
 function Card({
   branch,
   highlighted,
+  keyed,
   standing,
   onOpenGameData,
-  onFollow
+  onFollow,
+  onNameFocus
 }: {
   branch: MagicBranch;
   highlighted: string | null;
+  /** Whether the keyboard is in use, which rings the current skill as well as filling it. */
+  keyed: boolean;
   /** Where the picked mage stands in each skill, or null for the untinted reference page. */
   standing: ReadonlyMap<string, SkillStanding> | null;
   onOpenGameData: (entryId: string) => void;
   onFollow: (tag: string) => void;
+  onNameFocus: (tag: string, event: FocusEvent<HTMLButtonElement>) => void;
 }) {
   // Indentation is relative to the card's own shallowest skill, so a branch whose root sits at
   // depth 1 does not open one step in from the left edge of its own box.
@@ -396,9 +463,11 @@ function Card({
           skill={skill}
           floor={floor}
           highlighted={highlighted === skill.tag}
+          keyed={keyed}
           standing={standing?.get(skill.tag) ?? null}
           onOpenGameData={onOpenGameData}
           onFollow={onFollow}
+          onNameFocus={onNameFocus}
         />
       ))}
     </section>
@@ -409,17 +478,21 @@ function Skill({
   skill,
   floor,
   highlighted,
+  keyed,
   standing,
   onOpenGameData,
-  onFollow
+  onFollow,
+  onNameFocus
 }: {
   skill: MagicSkillNode;
   floor: number;
   highlighted: boolean;
+  keyed: boolean;
   /** Where the picked mage stands in this one skill, or null when nothing is tinted. */
   standing: SkillStanding | null;
   onOpenGameData: (entryId: string) => void;
   onFollow: (tag: string) => void;
+  onNameFocus: (tag: string, event: FocusEvent<HTMLButtonElement>) => void;
 }) {
   const style = standing === null ? null : ROW_STYLE[standing.kind];
   return (
@@ -430,9 +503,10 @@ function Skill({
       // gap between the left edge and the text, and it is added here rather than as a `pl-`
       // utility because an inline `paddingLeft` would win over one anyway.
       style={{ paddingLeft: `calc(${(skill.depth - floor) * 0.75}rem + 5px)` }}
-      className={`flex items-baseline gap-1.5 rounded py-0.5 hover:bg-panel ${
-        highlighted ? "bg-select/15 " : ""
-      }${
+      className={`flex items-baseline gap-1.5 rounded py-0.5 hover:bg-panel ${skillRowMark(
+        highlighted,
+        keyed
+      )}${
         style === null
           ? `border-l-4 border-transparent ${highlighted ? "text-ink" : "text-ink-soft"}`
           : `${style.edge} ${style.row}`
@@ -440,7 +514,9 @@ function Skill({
     >
       <button
         type="button"
+        data-testid={`magic-tree-name-${skill.tag}`}
         onClick={() => onOpenGameData(skill.id)}
+        onFocus={(event) => onNameFocus(skill.tag, event)}
         // `min-w-0` so the name is the flex item that gives: it is the only part of the row that
         // loses nothing by taking a second line, and every chip beside it is `nowrap`.
         className="min-w-0 bg-transparent p-0 text-left text-select underline-offset-2 hover:underline"
@@ -488,6 +564,18 @@ function Skill({
       ))}
     </div>
   );
+}
+
+/**
+ * How the current skill's row is marked: the soft blue fill it has always had, plus a ring while
+ * the keyboard is in use (ah-0unf). Inset, so a row wrapped onto two lines is ringed whole and the
+ * scrolling body clips none of it. A whole literal, for Tailwind's scanner.
+ */
+export function skillRowMark(highlighted: boolean, keyed: boolean): string {
+  if (!highlighted) {
+    return "";
+  }
+  return keyed ? "bg-select/15 ring-2 ring-inset ring-select " : "bg-select/15 ";
 }
 
 /**
