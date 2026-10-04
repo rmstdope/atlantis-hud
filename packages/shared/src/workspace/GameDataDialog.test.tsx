@@ -323,6 +323,10 @@ describe("GameDataDialog's terrains (ah-yu3j.1)", () => {
     expect(terrainMarkup("equipment:SWOR")).not.toContain(">Roams<");
   });
 
+  it("marks a terrain's row on All with the kind word Terrain", () => {
+    expect(terrainMarkup(null)).toMatch(/data-testid="game-data-entry-terrain:mountain"[^>]*>(?:(?!<\/li>).)*?>Terrain<\/span>/);
+  });
+
   it("shows an empty Terrains tab as every empty tab is shown", () => {
     const html = renderToStaticMarkup(
       <GameDataDialog index={index} initialEntryId={null} onDismiss={() => {}} />
