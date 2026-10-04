@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { paletteKeyReduce, PALETTE_PAGE_ROWS } from "../commandPalette";
 import {
   knownChip,
@@ -137,10 +137,10 @@ export function StudyPlannerDialog({
   rule: TeachingRule;
   onDismiss: () => void;
 }) {
-  // Remembered no longer than the dialog, exactly as the picked mage is and for the reason
-  // ah-lyg6.2.2 gave: a pane that opens differently depending on what you did last time is the
-  // less predictable of the two.
-  const [view, setView] = useState<"all" | "schedule" | "orders">("all");
+  // Opens on the Planner, where the work is done (ah-x9vc), and is remembered no longer than the
+  // dialog, exactly as the picked mage is and for the reason ah-lyg6.2.2 gave: a pane that opens
+  // differently depending on what you did last time is the less predictable of the two.
+  const [view, setView] = useState<"all" | "schedule" | "orders">("schedule");
   const [cellMode, setCellMode] = useState<CellMode>({ kind: "idle" });
   const turns = useMemo(() => scheduleTurns(viewedTurn), [viewedTurn]);
   // Memoized beside `turns` and `flat`: without it every keystroke in the popover - each skill
@@ -242,12 +242,21 @@ export function StudyPlannerDialog({
   // jog the list - the same shape, and the same reason, as `GameDataDialog`'s.
   const list = useRef<HTMLUListElement | null>(null);
 
-  // Focus opens inside the pane, because `aria-modal="true"` is only honest if it is - and the
-  // arrow keys are the way the list is walked, so the list itself is what takes it. An effect
-  // rather than `autoFocus`, which React applies to form controls and not to a `ul`.
+  // Focus opens inside the pane, because `aria-modal="true"` is only honest if it is. The pane
+  // opens on the Planner, so the open tab takes it: a grid cell would do, but the mage pane follows
+  // a focused cell, and opening would then show something it was not asked to (ah-x9vc).
+  const openTab = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
-    list.current?.focus();
+    openTab.current?.focus();
   }, []);
+
+  // Overview is walked with the arrow keys, so its list takes focus whenever it is shown. An
+  // effect rather than `autoFocus`, which React applies to form controls and not to a `ul`.
+  useEffect(() => {
+    if (view === "all") {
+      list.current?.focus();
+    }
+  }, [view]);
 
   useEffect(() => {
     if (picked === null) {
@@ -309,9 +318,9 @@ export function StudyPlannerDialog({
         <>
           <span className="text-brass">Study planner</span>
           <span role="tablist" aria-label="Study planner view" className="flex gap-1">
-            <ViewTab view="all" label="Overview" open={view} onOpen={setView} />
-            <ViewTab view="schedule" label="Planner" open={view} onOpen={setView} />
-            <ViewTab view="orders" label="Orders" open={view} onOpen={setView} />
+            <ViewTab tabRef={openTab} view="all" label="Overview" open={view} onOpen={setView} />
+            <ViewTab tabRef={openTab} view="schedule" label="Planner" open={view} onOpen={setView} />
+            <ViewTab tabRef={openTab} view="orders" label="Orders" open={view} onOpen={setView} />
           </span>
           <span className="flex-1" />
           {view === "orders" && orders.sections.length > 0 ? (
@@ -500,11 +509,14 @@ export function StudyPlannerDialog({
  * actually reaches all three views from a keyboard here.
  */
 function ViewTab({
+  tabRef,
   view,
   label,
   open,
   onOpen
 }: {
+  /** Handed to the open tab only, so the dialog can put focus on whichever view is showing. */
+  tabRef: RefObject<HTMLButtonElement | null>;
   view: "all" | "schedule" | "orders";
   label: string;
   /** Which view is showing. */
@@ -516,6 +528,7 @@ function ViewTab({
     <button
       type="button"
       role="tab"
+      ref={selected ? tabRef : undefined}
       data-testid={`study-planner-view-${view}`}
       aria-selected={selected}
       onClick={() => onOpen(view)}
