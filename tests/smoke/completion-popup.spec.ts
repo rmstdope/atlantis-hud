@@ -176,3 +176,28 @@ test("the order's own words and names are kept apart by one thin line", async ({
   await expect(popup.locator("li.cm-completion-divided")).toHaveCount(1);
   await expect(popup.locator("completion-section")).toHaveCount(0);
 });
+
+/**
+ * Enter on a word that ends the order (ah-07tn): WORK takes nothing after it (rules/work), so
+ * accepting it with Enter writes it with no space and opens the next line, and one undo hands back
+ * what was typed. Which words end an order, and the click, are pinned by the core's and
+ * `orderFinish`'s own tests; this walk pins that the editor's Enter reaches them.
+ */
+test("Enter on a last word finishes the order, and one undo takes it back", async ({ page }) => {
+  await openEditor(page);
+  await expect(page.locator('[data-commands-ready="true"]')).toBeVisible();
+  await fillOrders(page, "");
+  await ordersInput(page).click();
+  await page.keyboard.type("WO");
+
+  const popup = page.locator(".cm-tooltip-autocomplete");
+  await expect(popup.locator("li[aria-selected]")).toContainText("WORK");
+  // acceptCompletion's 75ms interactionDelay, as above.
+  await page.waitForTimeout(150);
+
+  await page.keyboard.press("Enter");
+  await expect.poll(() => ordersText(page)).toBe("WORK\n");
+
+  await ordersInput(page).press("ControlOrMeta+z");
+  await expect.poll(() => ordersText(page)).toBe("WO");
+});

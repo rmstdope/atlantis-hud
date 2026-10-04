@@ -1,5 +1,7 @@
-import { CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
-import { EditorState } from "@codemirror/state";
+import { CompletionContext, type Completion, type CompletionResult } from "@codemirror/autocomplete";
+import { insertNewlineAndIndent } from "@codemirror/commands";
+import { EditorState, type TransactionSpec } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
 import type { CaretCompletions, CaretPosition, OrderCompletion } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -9,13 +11,18 @@ import {
   orderCommandCompletions,
   type CaretLookup
 } from "./orderCompletion";
+import { withEnter } from "./orderFinish";
 
 /**
  * A stand-in for the core's own answer: the word being typed and where it starts, worked out the
  * way `word_at_caret` works them out (a prefix ending in whitespace or a closing quote is typing
  * no word), with the position the test is about.
  */
-function caret(position: CaretPosition, options: readonly OrderCompletion[] = []): CaretLookup {
+function caret(
+  position: CaretPosition,
+  options: readonly OrderCompletion[] = [],
+  endingCommands: readonly string[] = []
+): CaretLookup {
   return async (linePrefix) => {
     const typing = !/[\s"]$/.test(linePrefix);
     // `@` is the repeat prefix and never part of a word, exactly as the core's lexer has it.
@@ -25,7 +32,7 @@ function caret(position: CaretPosition, options: readonly OrderCompletion[] = []
       wordStart: linePrefix.length - word.length,
       word,
       options: [...options],
-      endingCommands: []
+      endingCommands: [...endingCommands]
     } satisfies CaretCompletions;
   };
 }
@@ -329,6 +336,79 @@ function named(value: string, name: string): OrderCompletion {
 function arranged(word: string, entries: readonly OrderCompletion[]): string[] {
   return arrangeArguments(word, entries).map(({ entry }) => entry.label || entry.value);
 }
+
+/**
+ * The document after `option` is accepted over `result.from`..end of `text` - by a click, or by
+ * Enter when `enter` is set - as CodeMirror would apply it.
+ */
+function accepted(text: string, result: CompletionResult | null, label: string, enter = false): string {
+  const option = result?.options.find((candidate) => candidate.label === label);
+  expect(option).toBeDefined();
+  const view = {
+    state: EditorState.create({ doc: text, selection: { anchor: text.length } }),
+    dispatch(spec: TransactionSpec) {
+      view.state = view.state.update(spec).state;
+    }
+  };
+  const apply = option!.apply;
+  const run = () => {
+    if (typeof apply === "function") {
+      apply(view as unknown as EditorView, option as Completion, result!.from, text.length);
+    } else {
+      view.dispatch({ changes: { from: result!.from, to: text.length, insert: apply ?? option!.label } });
+    }
+  };
+  if (enter) {
+    withEnter(insertNewlineAndIndent, run);
+  } else {
+    run();
+  }
+  return view.state.doc.toString();
+}
+
+/** Runs the command source over `text` with the caret at its end. */
+async function completeCommand(text: string, lookUp: CaretLookup): Promise<CompletionResult | null> {
+  const state = EditorState.create({ doc: text, selection: { anchor: text.length } });
+  const context = new CompletionContext(state, text.length, false);
+  return (await orderCommandCompletions(COMMANDS, lookUp)(context)) as CompletionResult | null;
+}
+
+describe("an accepted word that ends the order (ah-07tn)", () => {
+  const WORK_ENDS = caret("command", [], ["WORK", "TAX"]);
+
+  it("ends the line on a command the core says takes nothing, when Enter accepts it", async () => {
+    const result = await completeCommand("wo", WORK_ENDS);
+    expect(accepted("wo", result, "WORK", true)).toBe("WORK\n");
+    expect(accepted("wo", result, "WORK")).toBe("WORK ");
+  });
+
+  it("keeps the space on a command that may take more words", async () => {
+    const result = await completeCommand("mo", WORK_ENDS);
+    expect(accepted("mo", result, "MOVE", true)).toBe("MOVE ");
+  });
+
+  it("ends the line on an argument the core marks as ending the order", async () => {
+    const lookUp = caret("argument", [{ ...kw("WOOD"), endsOrder: true }, kw("WEAP")]);
+    const text = "GIVE 1 10 WO";
+    const result = await completeArgument(lookUp, text);
+    expect(accepted(text, result, "WOOD", true)).toBe("GIVE 1 10 WOOD\n");
+    expect(accepted(text, result, "WOOD")).toBe("GIVE 1 10 WOOD ");
+  });
+
+  it("keeps the space on an argument after which more may follow", async () => {
+    const lookUp = caret("argument", [kw("WOOD")]);
+    const text = "GIVE 1 ALL WO";
+    const result = await completeArgument(lookUp, text);
+    expect(accepted(text, result, "WOOD", true)).toBe("GIVE 1 ALL WOOD ");
+  });
+
+  it("keeps the separator in front of an ending argument", async () => {
+    const lookUp = caret("argument", [{ ...kw("COMPLETE"), endsOrder: true }]);
+    const text = 'BUILD "Big Boat"';
+    const result = await completeArgument(lookUp, text, text.length, true);
+    expect(accepted(text, result, "COMPLETE", true)).toBe('BUILD "Big Boat" COMPLETE\n');
+  });
+});
 
 describe("arrangeArguments", () => {
   const DIRECTIONS = ["N", "NE", "SE", "S", "SW", "NW", "IN", "OUT"].map(kw);
