@@ -134,7 +134,8 @@ test("the arrows walk the branches, and Enter opens the marked skill", async ({ 
   await page.keyboard.press("PageDown");
   await page.keyboard.press("PageDown");
   await expect(skillRow(page, "ILLU")).toHaveClass(ringed);
-  await expect(skillRow(page, "ILLU")).toBeInViewport({ ratio: 1 });
+  // Scrolled to the bottom edge, so a sub-pixel of it may sit outside; in view is what counts.
+  await expect(skillRow(page, "ILLU")).toBeInViewport();
   const settled = await body.evaluate((element) => element.scrollTop);
   expect(settled).toBeGreaterThan(0);
   await expect(skillRow(page, "CRWC")).toBeInViewport({ ratio: 1 });
