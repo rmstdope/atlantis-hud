@@ -1,6 +1,7 @@
 import type { Completion, CompletionSource } from "@codemirror/autocomplete";
 import type { CaretCompletions, OrderCompletion } from "@atlantis/core-client";
 import { suggestOrderCommands } from "./orderEditor";
+import { finishingApply } from "./orderFinish";
 
 /**
  * How the caret's position and candidates reach the core: one order line up to the caret.
@@ -44,9 +45,15 @@ export function orderCommandCompletions(
       return null;
     }
 
+    // A command the core says takes nothing (`WORK`) ends the order when Enter accepts it (ah-07tn).
+    const ending = new Set(caret.endingCommands);
     return {
       from: line.from + caret.wordStart,
-      options: options.map((command) => ({ label: command, type: "keyword", apply: `${command} ` })),
+      options: options.map((command) => ({
+        label: command,
+        type: "keyword",
+        apply: ending.has(command) ? finishingApply(command, `${command} `) : `${command} `
+      })),
       // Keep filtering on further keystrokes instead of asking again from scratch.
       validFor: /^[A-Za-z]*$/
     };
@@ -212,7 +219,10 @@ export function orderArgumentCompletions(lookUp: CaretLookup): CompletionSource 
           label: entry.label || entry.value,
           detail: entry.detail || undefined,
           type: "keyword",
-          apply: `${lead}${entry.value} `
+          // The last word the order can take ends it when Enter accepts it (ah-07tn).
+          apply: entry.endsOrder
+            ? finishingApply(`${lead}${entry.value}`, `${lead}${entry.value} `)
+            : `${lead}${entry.value} `
         };
         if (dividerAbove) {
           dividedOptions.add(option);

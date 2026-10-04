@@ -622,6 +622,23 @@ pub fn order_commands(ruleset: Option<&Ruleset>) -> Vec<&'static str> {
         .collect()
 }
 
+/// The orders that take nothing after their own name: every form is empty or [`Arg::Nothing`]
+/// (`WORK`, `TAX`). Accepting one of these with Enter ends the order line (ah-07tn). `None` lists
+/// the New Origins orders.
+#[must_use]
+pub fn commands_ending_order(ruleset: Option<&Ruleset>) -> Vec<&'static str> {
+    selected_orders(ruleset)
+        .into_iter()
+        .filter(|order| {
+            order
+                .forms
+                .iter()
+                .all(|form| form.iter().all(|arg| *arg == Arg::Nothing))
+        })
+        .map(|order| order.name)
+        .collect()
+}
+
 /// The order this keyword names, if the ruleset has one. `None` looks it up among the New Origins orders.
 #[must_use]
 pub fn find_order(command: &str, ruleset: Option<&Ruleset>) -> Option<&'static Order> {
@@ -642,7 +659,7 @@ pub fn find_order(command: &str, ruleset: Option<&Ruleset>) -> Option<&'static O
 pub(super) fn arguments_at_caret(
     line_prefix: &str,
     ruleset: Option<&Ruleset>,
-) -> Option<(&'static Order, Vec<&'static Arg>)> {
+) -> Option<(&'static Order, Vec<Offered>)> {
     match caret_at(line_prefix, ruleset).shape {
         CaretShape::InOrder(order, offered) => Some((order, offered)),
         _ => None,
@@ -657,7 +674,17 @@ pub(super) enum CaretShape {
     /// The first word of the line, behind any indentation and an optional `@`.
     Command,
     /// After the command, with every argument that may stand at the caret across its forms.
-    InOrder(&'static Order, Vec<&'static Arg>),
+    InOrder(&'static Order, Vec<Offered>),
+}
+
+/// One argument that may stand at the caret, and whether the order is over once it is written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Offered {
+    pub arg: &'static Arg,
+    /// True when no form offering this argument takes anything after it - ANDed across forms, so
+    /// `GIVE 1 ALL` offers an item that does *not* end the order, since `EXCEPT` may follow it in
+    /// one form (rules/give) although the other form ends there (ah-07tn).
+    pub ends: bool,
 }
 
 /// Where the caret is, and the word being typed there if one is.
@@ -734,11 +761,12 @@ fn shape_of(tokens: &[Token], ruleset: Option<&Ruleset>) -> CaretShape {
         return CaretShape::Nowhere;
     };
 
-    let mut offered: Vec<&'static Arg> = Vec::new();
+    let mut offered: Vec<Offered> = Vec::new();
     for form in order.forms {
-        if let Some(argument) = next_argument(form, arguments) {
-            if !offered.contains(&argument) {
-                offered.push(argument);
+        if let Some((arg, ends)) = next_argument(form, arguments) {
+            match offered.iter_mut().find(|offer| offer.arg == arg) {
+                Some(offer) => offer.ends &= ends,
+                None => offered.push(Offered { arg, ends }),
             }
         }
     }
@@ -748,13 +776,18 @@ fn shape_of(tokens: &[Token], ruleset: Option<&Ruleset>) -> CaretShape {
 
 /// Whether a word opened with `"` is one being typed rather than a quote that swallows the
 /// position: only where BUILD names what it builds, the one place a quoted name is offered.
-fn quote_opens_a_structure_name(order: &Order, offered: &[&'static Arg]) -> bool {
-    order.name == "BUILD" && offered.contains(&&Arg::Name)
+fn quote_opens_a_structure_name(order: &Order, offered: &[Offered]) -> bool {
+    order.name == "BUILD" && offered.iter().any(|offer| *offer.arg == Arg::Name)
 }
 
-/// The argument that may stand where the caret is, for one form; `None` when the typed words do not
-/// match this form, or when the form is already finished.
-fn next_argument(form: &'static [Arg], arguments: &[Token]) -> Option<&'static Arg> {
+/// The argument that may stand where the caret is, for one form, and whether the form takes nothing
+/// after it; `None` when the typed words do not match this form, or when the form is already
+/// finished.
+///
+/// "Nothing after it" means the rest of the form is empty or only [`Arg::Nothing`]. An argument
+/// inside [`Arg::Rest`] or [`Arg::Repeat`] never ends the form - another of it may follow - and
+/// neither does one followed by [`Arg::Tail`], which takes anything.
+fn next_argument(form: &'static [Arg], arguments: &[Token]) -> Option<(&'static Arg, bool)> {
     // `match_arg` collects unrecognised item names for the checker's warnings; nothing here wants
     // them, and with no ruleset it never fills this.
     let mut unknown = Vec::new();
@@ -775,14 +808,15 @@ fn next_argument(form: &'static [Arg], arguments: &[Token]) -> Option<&'static A
                 );
                 loop {
                     if at == arguments.len() {
-                        return Some(*inner);
+                        return Some((*inner, false));
                     }
                     at = match_arg(inner, arguments, at, None, &mut unknown).ok()?;
                 }
             }
             _ => {
                 if at == arguments.len() {
-                    return Some(argument);
+                    let ends = form[index + 1..].iter().all(|rest| *rest == Arg::Nothing);
+                    return Some((argument, ends));
                 }
                 at = match_arg(argument, arguments, at, None, &mut unknown).ok()?;
             }

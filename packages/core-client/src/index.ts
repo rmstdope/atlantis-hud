@@ -448,6 +448,9 @@ export type OrderCompletion = {
   label: string;
   /** What the entry shows beside its value. Empty for a keyword, which is its own explanation. */
   detail: string;
+  /** Whether the order takes no further word once this one is written, so accepting it with Enter
+   * ends the line instead of leaving a space (ah-07tn). The core's grammar decides. */
+  endsOrder: boolean;
 };
 
 /** Which position the caret is in. Mirrors the core's `CaretPosition`. */
@@ -468,6 +471,9 @@ export type CaretCompletions = {
   word: string;
   /** What may stand here. Empty unless `position` is `"argument"`. */
   options: OrderCompletion[];
+  /** At the command position, the commands that take nothing after them (`WORK`, `TAX`), so the
+   * shell's own command list can end the line on one of them (ah-07tn). Empty elsewhere. */
+  endingCommands: string[];
 };
 
 export type ImportedTurnPreview = {

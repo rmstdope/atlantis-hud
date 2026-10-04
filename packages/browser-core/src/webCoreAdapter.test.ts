@@ -105,7 +105,8 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       position: "nowhere" as const,
       wordStart: 0,
       word: "",
-      options: []
+      options: [],
+      endingCommands: []
     }),
     export_map_state: (rawReport: string, rememberedJson: string, requestJson: string) =>
       `; Map export from Atlantis HUD\n; ${rawReport} ${rememberedJson} ${requestJson}\n`,
@@ -531,7 +532,8 @@ describe("web core adapter", () => {
       value,
       name: "",
       label: "",
-      detail: ""
+      detail: "",
+      endsOrder: false
     }));
     const adapter = createWebCoreAdapter(
       fakeWasm({

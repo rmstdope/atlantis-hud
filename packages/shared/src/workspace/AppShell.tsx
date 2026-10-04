@@ -2669,7 +2669,8 @@ export function AppShell({
           position: "nowhere",
           wordStart: linePrefix.length,
           word: "",
-          options: []
+          options: [],
+          endingCommands: []
         });
       }
       const hit = lastCaret.current;
@@ -2688,7 +2689,8 @@ export function AppShell({
           position: "nowhere",
           wordStart: linePrefix.length,
           word: "",
-          options: []
+          options: [],
+          endingCommands: []
         }));
       lastCaret.current = { linePrefix, rulesetText, rawReport: report, unitId, answer };
       return answer;

@@ -1,8 +1,8 @@
 import type { OrderDiagnostic } from "@atlantis/core-client";
 import { autocompletion } from "@codemirror/autocomplete";
-import { defaultKeymap, history, historyKeymap, redo } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, insertNewlineAndIndent, redo } from "@codemirror/commands";
 import { lintGutter, setDiagnostics } from "@codemirror/lint";
-import { Annotation, EditorState, Transaction } from "@codemirror/state";
+import { Annotation, EditorState, Prec, Transaction, type StateCommand } from "@codemirror/state";
 import { EditorView, keymap, tooltips } from "@codemirror/view";
 import {
   forwardRef,
@@ -23,6 +23,7 @@ import {
   orderCommandCompletions,
   type CaretLookup
 } from "../orderCompletion";
+import { acceptCompletionWithEnter } from "../orderFinish";
 import { toEditorDiagnostics } from "../orderLint";
 import { useWorkspaceStore } from "../workspaceStore";
 import { snippetCompletionSource, type OrderSnippet } from "../orderSnippets";
@@ -168,6 +169,83 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
       return;
     }
 
+    // Order OCD, as a line ends: the new line opens at the depth the block puts it at. A
+    // `StateCommand` rather than a view command so Enter on a suggestion that ends the order
+    // (ah-07tn) can open its line through exactly this, composed into the same transaction.
+    const orderEnter: StateCommand = ({ state, dispatch }) => {
+      if (!latest.current.orderOcd) {
+        return false;
+      }
+      const { from, to } = state.selection.main;
+      // The depth the *next* line will sit at. `lineDepths` reports an opener at the
+      // depth outside its own block, so asking it about a hypothetical empty line
+      // appended after the caret turns "the caret is on a FORM line" into "the next line
+      // is one level deeper". Computed from the text before the caret only, which is what
+      // makes the answer right while the block below is still being written.
+      const depth =
+        latest.current.orders.lineDepths(`${state.doc.sliceString(0, from)}\n`).at(-1) ?? 0;
+      const insert = `\n${" ".repeat(depth)}`;
+      // A keymap binding dispatches its own transaction, so the editor's `inputHandler` -
+      // which shouts the word a space or newline has just finished - never sees this
+      // newline. Shouting here keeps the setting's promise for the word Enter ends, and
+      // in the same transaction, so one Ctrl+Z still hands the line back as it was typed.
+      const line = state.doc.lineAt(from);
+      const finished = latest.current.orders.keywordJustFinished(
+        line.text,
+        from - line.from,
+        latest.current.vocabulary
+      );
+      // The depth *this* line sits at, from the same walk one character earlier: without
+      // the appended newline the last entry is the caret's own line, computed from the
+      // text as it now reads. Typing `end` inside a FORM turns the line into a closer,
+      // whose depth is the one outside the block - so the line the player is leaving is
+      // usually moved *left*, and the general rule covers any other line whose depth
+      // changed as it was typed (ah-rj96).
+      const ownDepth = latest.current.orders.lineDepths(
+        state.doc.sliceString(0, from)
+      ).at(-1) ?? 0;
+      const indent = line.text.length - line.text.trimStart().length;
+      const wanted = " ".repeat(ownDepth);
+      // A blank line is left truly empty, as the whole-block tidy leaves it, and an
+      // already-correct line produces no change at all: an empty change still makes a
+      // history entry, and one Ctrl+Z would then hand back nothing visible.
+      const reindent =
+        line.text.trim() !== "" && line.text.slice(0, indent) !== wanted
+          ? { from: line.from, to: line.from + indent, insert: wanted }
+          : null;
+      dispatch(
+        state.update({
+          changes: [
+            // First: CodeMirror wants ascending, non-overlapping changes, and the leading
+            // whitespace sits ahead of the word the case fix covers.
+            ...(reindent ? [reindent] : []),
+            ...(finished
+              ? [
+                  {
+                    from: line.from + finished.from,
+                    to: line.from + finished.to,
+                    insert: finished.upper
+                  }
+                ]
+              : []),
+            { from, to, insert }
+          ],
+          // `from` is a position in the *old* document and a dedent deletes characters
+          // before it, so the anchor carries the indent's delta: a transaction's selection
+          // is read against the new document, and the arithmetic alone would leave the
+          // caret one column adrift per level removed.
+          selection: { anchor: from + (reindent ? wanted.length - indent : 0) + insert.length },
+          scrollIntoView: true,
+          // Ordinary typing, so history groups a run of it as usual - and one Ctrl+Z takes
+          // back the newline and its indent together, in the one transaction.
+          userEvent: "input"
+        })
+      );
+      return true;
+    };
+    // Exactly what a plain Enter does here: the Order-OCD line break, else CodeMirror's own.
+    const enter: StateCommand = (target) => orderEnter(target) || insertNewlineAndIndent(target);
+
     const created = new EditorView({
       parent,
       state: EditorState.create({
@@ -212,82 +290,10 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
           // history - which replays DOM records from before CodeMirror rewrote the surface -
           // can never answer it.
           keymap.of([
-            // Order OCD, as a line ends: the new line opens at the depth the block puts it at.
-            // Ahead of `editingKeymap` so it beats `insertNewlineAndIndent`; the completion popup's
-            // own Enter binding sits at a higher precedence still, so accepting a completion is
-            // unaffected.
-            {
-              key: "Enter",
-              run: (editor: EditorView) => {
-                if (!latest.current.orderOcd) {
-                  return false;
-                }
-                const { from, to } = editor.state.selection.main;
-                // The depth the *next* line will sit at. `lineDepths` reports an opener at the
-                // depth outside its own block, so asking it about a hypothetical empty line
-                // appended after the caret turns "the caret is on a FORM line" into "the next line
-                // is one level deeper". Computed from the text before the caret only, which is what
-                // makes the answer right while the block below is still being written.
-                const depth =
-                  latest.current.orders.lineDepths(`${editor.state.doc.sliceString(0, from)}\n`).at(-1) ?? 0;
-                const insert = `\n${" ".repeat(depth)}`;
-                // A keymap binding dispatches its own transaction, so the `inputHandler` above -
-                // which shouts the word a space or newline has just finished - never sees this
-                // newline. Shouting here keeps the setting's promise for the word Enter ends, and
-                // in the same transaction, so one Ctrl+Z still hands the line back as it was typed.
-                const line = editor.state.doc.lineAt(from);
-                const finished = latest.current.orders.keywordJustFinished(
-                  line.text,
-                  from - line.from,
-                  latest.current.vocabulary
-                );
-                // The depth *this* line sits at, from the same walk one character earlier: without
-                // the appended newline the last entry is the caret's own line, computed from the
-                // text as it now reads. Typing `end` inside a FORM turns the line into a closer,
-                // whose depth is the one outside the block - so the line the player is leaving is
-                // usually moved *left*, and the general rule covers any other line whose depth
-                // changed as it was typed (ah-rj96).
-                const ownDepth = latest.current.orders.lineDepths(
-                  editor.state.doc.sliceString(0, from)
-                ).at(-1) ?? 0;
-                const indent = line.text.length - line.text.trimStart().length;
-                const wanted = " ".repeat(ownDepth);
-                // A blank line is left truly empty, as the whole-block tidy leaves it, and an
-                // already-correct line produces no change at all: an empty change still makes a
-                // history entry, and one Ctrl+Z would then hand back nothing visible.
-                const reindent =
-                  line.text.trim() !== "" && line.text.slice(0, indent) !== wanted
-                    ? { from: line.from, to: line.from + indent, insert: wanted }
-                    : null;
-                editor.dispatch({
-                  changes: [
-                    // First: CodeMirror wants ascending, non-overlapping changes, and the leading
-                    // whitespace sits ahead of the word the case fix covers.
-                    ...(reindent ? [reindent] : []),
-                    ...(finished
-                      ? [
-                          {
-                            from: line.from + finished.from,
-                            to: line.from + finished.to,
-                            insert: finished.upper
-                          }
-                        ]
-                      : []),
-                    { from, to, insert }
-                  ],
-                  // `from` is a position in the *old* document and a dedent deletes characters
-                  // before it, so the anchor carries the indent's delta: a transaction's selection
-                  // is read against the new document, and the arithmetic alone would leave the
-                  // caret one column adrift per level removed.
-                  selection: { anchor: from + (reindent ? wanted.length - indent : 0) + insert.length },
-                  scrollIntoView: true,
-                  // Ordinary typing, so history groups a run of it as usual - and one Ctrl+Z takes
-                  // back the newline and its indent together, in the one transaction.
-                  userEvent: "input"
-                });
-                return true;
-              }
-            },
+            // Order OCD, as a line ends (`orderEnter`, above). Ahead of `editingKeymap` so it beats
+            // `insertNewlineAndIndent`; the completion popup's own Enter binding sits at a higher
+            // precedence still, so accepting a completion is unaffected.
+            { key: "Enter", run: orderEnter },
             ...editingKeymap,
             ...historyKeymap,
             { key: "Mod-Shift-z", run: redo, preventDefault: true }
@@ -301,6 +307,11 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
           // R1, 2026-08-17). `position: "fixed"` because the host is no longer an ancestor that
           // scrolls with the editor.
           tooltips({ parent: document.body, position: "fixed" }),
+          // Enter on a suggestion that ends the order writes it with no space and opens the next
+          // line as `enter` would (ah-07tn). Ahead of `autocompletion()`, whose own Enter binding
+          // shares this precedence, so it is asked first; it is CodeMirror's own accept underneath,
+          // so whenever that declines, Enter goes on down the chain as before.
+          Prec.highest(keymap.of([{ key: "Enter", run: acceptCompletionWithEnter(enter) }])),
           autocompletion({
             override: [
               (context) =>
