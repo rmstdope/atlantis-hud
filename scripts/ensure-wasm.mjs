@@ -20,8 +20,8 @@
  */
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 function wasmDir(root) {
@@ -80,11 +80,55 @@ export class WasmBuildError extends Error {
 }
 
 /**
- * Runs wasm-pack asynchronously, so a dev server's event loop is not frozen for the build. The
- * fingerprint is taken before the build starts: sources edited mid-build make the next check
- * rebuild again rather than stamping a core that does not match them.
+ * One build of a root's core at a time, across processes (ah-x65u). wasm-pack 0.15 reads a
+ * `package.json` it finds in its out-dir as a map of strings, so a build that overlaps another
+ * into the same directory fails on the other's `"files": [` - "invalid type: sequence, expected a
+ * string at line 5 column 11". The typecheck, the smoke suite and both dev servers all build here.
+ *
+ * The lock is a file under the gitignored `target/` holding its owner's pid. A lock whose owner is
+ * gone (a build killed mid-way) is taken over rather than waited on for ever.
  */
-export function buildWasm(root) {
+function lockFile(root) {
+  return join(root, "target", ".wasm-build.lock");
+}
+
+function processIsAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM: it exists but belongs to somebody else, which still makes it alive.
+    return error?.code === "EPERM";
+  }
+}
+
+async function acquireBuildLock(root) {
+  const file = lockFile(root);
+  mkdirSync(dirname(file), { recursive: true });
+  for (;;) {
+    try {
+      writeFileSync(file, `${process.pid}\n`, { flag: "wx" });
+      return;
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+    }
+    let owner = NaN;
+    try {
+      owner = Number.parseInt(readFileSync(file, "utf8"), 10);
+    } catch {
+      continue; // released between our attempt and the read: try again at once
+    }
+    if (!Number.isInteger(owner) || !processIsAlive(owner)) {
+      rmSync(file, { force: true });
+      continue;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+
+function runWasmPack(root) {
+  // The fingerprint is taken before the build starts: sources edited mid-build make the next
+  // check rebuild again rather than stamping a core that does not match them.
   const fingerprint = wasmSourceFingerprint(root);
   return new Promise((resolve, reject) => {
     const child = spawn(
@@ -102,6 +146,21 @@ export function buildWasm(root) {
       resolve();
     });
   });
+}
+
+/**
+ * Runs wasm-pack asynchronously, so a dev server's event loop is not frozen for the build. Waits
+ * for any other build of the same root first, and builds nothing when that build has left the core
+ * current.
+ */
+export async function buildWasm(root) {
+  await acquireBuildLock(root);
+  try {
+    if (wasmModuleIsCurrent(root)) return;
+    await runWasmPack(root);
+  } finally {
+    rmSync(lockFile(root), { force: true });
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
