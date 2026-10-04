@@ -6,9 +6,27 @@ import {
   type GameDataEntry,
   type GameDataIndex,
   type GameDataLink,
-  skillEntryId
+  type GameDataReference,
+  skillEntryId,
+  type TerrainResourceLink
 } from "../gameData";
+import { NO_RECRUIT_SIGHTINGS, racesSeenIn, type RecruitSightings } from "../recruitSightings";
 import { DialogFrame } from "./DialogFrame";
+import {
+  ALONG_A_ROAD_LABEL,
+  FOUND_HERE_HEADING,
+  FOUND_HERE_NOT_SAID,
+  FOUND_IN_HEADING,
+  frequencyText,
+  MOVEMENT_COST_LABEL,
+  movementCostText,
+  NO_MONSTER_ROAMS_HERE,
+  ROAMING_MONSTERS_HEADING,
+  ROAMS_LABEL,
+  SEEN_FOR_SALE_HEADING,
+  seenForSaleCountText,
+  seenForSaleEmptyText
+} from "./gameDataTerrainText";
 import {
   entriesOf,
   filterGameData,
@@ -37,11 +55,17 @@ import {
 export function GameDataDialog({
   index,
   initialEntryId,
+  recruits = NO_RECRUIT_SIGHTINGS,
   onDismiss
 }: {
   index: GameDataIndex;
   /** Where to land. null is a cold open: the All tab, on its first entry (ah-yu3j.2). */
   initialEntryId: string | null;
+  /**
+   * Every race the loaded turns saw for sale, by region, for a terrain page's "Seen for sale in
+   * your reports" (ah-yu3j.1) - the one part of this dialog read from reports, not game data.
+   */
+  recruits?: RecruitSightings;
   onDismiss: () => void;
 }) {
   const [state, setState] = useState(() => openGameDataDialog(index, initialEntryId));
@@ -150,7 +174,8 @@ export function GameDataDialog({
         </>
       }
     >
-      <div role="tablist" aria-label="Game data" className="flex gap-1 border-b border-edge bg-panel px-2 py-1">
+      {/* Wraps in a narrow window, each tab whole (ah-yu3j.1): nine no longer fit in one line. */}
+      <div role="tablist" aria-label="Game data" className="flex flex-wrap gap-1 border-b border-edge bg-panel px-2 py-1">
         {GAME_DATA_TABS.map((tab) => (
           <button
             key={tab}
@@ -221,7 +246,7 @@ export function GameDataDialog({
               <p className="m-0 text-ink-dim">Nothing to show.</p>
             </div>
           ) : (
-            <Detail detail={detail} index={index} onFollow={follow} />
+            <Detail detail={detail} index={index} recruits={recruits} onFollow={follow} />
           )}
         </div>
       </div>
@@ -355,6 +380,68 @@ function Links({
   );
 }
 
+const SECTION_HEADING =
+  "mb-1 border-b border-brass/60 pb-1 text-pane-xs uppercase tracking-[0.08em] text-brass";
+
+/** A clickable name, the same look and test id as every other cross-reference here. */
+function FollowLink({
+  reference,
+  onFollow
+}: {
+  reference: GameDataReference;
+  onFollow: (id: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={`game-data-link-${reference.id}`}
+      onClick={() => onFollow(reference.id)}
+      className="text-left text-accent hover:underline"
+    >
+      {reference.name}
+    </button>
+  );
+}
+
+/**
+ * A titled list of names, each followed by a dim note - `Links`' shape with free text where it
+ * says `at level N`. `empty` is the line shown when there are none.
+ */
+function NotedLinks({
+  title,
+  rows,
+  empty,
+  onFollow
+}: {
+  title: string;
+  rows: readonly { reference: GameDataReference; note: string | null }[];
+  empty: string;
+  onFollow: (id: string) => void;
+}) {
+  return (
+    <section className="mt-3">
+      <h3 className={SECTION_HEADING}>{title}</h3>
+      {rows.length === 0 ? (
+        <p className="text-ink-dim">{empty}</p>
+      ) : (
+        <ul>
+          {rows.map(({ reference, note }) => (
+            <li key={reference.id} className="flex justify-between gap-2">
+              <FollowLink reference={reference} onFollow={onFollow} />
+              {note === null ? null : <span className="text-ink-dim">{note}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** A resource or terrain with how often, for `NotedLinks`. */
+function byFrequency(links: readonly TerrainResourceLink[]) {
+  return links.map((link) => ({ reference: link, note: frequencyText(link.chance) }));
+}
+
 /**
  * The skill that builds this, as a dictionary entry rather than a tag.
  *
@@ -378,10 +465,12 @@ function buildSkillEntry(
 function Detail({
   detail,
   index,
+  recruits,
   onFollow
 }: {
   detail: GameDataDetail;
   index: GameDataIndex;
+  recruits: RecruitSightings;
   onFollow: (id: string) => void;
 }) {
   const heading = (
@@ -432,6 +521,52 @@ function Detail({
             ))}
           </section>
         )}
+      </div>
+    );
+  }
+
+  if (detail.kind === "terrain") {
+    // `docs/ui/ah-yu3j.1-terrains.html`: heading, two fields, three sections, top to bottom.
+    const terrain = detail.entry.name;
+    return (
+      <div>
+        {heading}
+        {detail.movement === null ? null : (
+          <div className="mt-3 grid gap-0.5">
+            <Field label={MOVEMENT_COST_LABEL}>{movementCostText(detail.movement)}</Field>
+            {detail.road === null ? null : <Field label={ALONG_A_ROAD_LABEL}>{detail.road}</Field>}
+          </div>
+        )}
+        {detail.foundHere === null ? (
+          <section className="mt-3">
+            <h3 className={SECTION_HEADING}>{FOUND_HERE_HEADING}</h3>
+            <p className="text-ink-dim">{FOUND_HERE_NOT_SAID}</p>
+          </section>
+        ) : (
+          // An empty row is a table that says nothing is found; the not-said line is only for a
+          // terrain the table does not cover, so this reuses it rather than inventing a third line.
+          <NotedLinks
+            title={FOUND_HERE_HEADING}
+            rows={byFrequency(detail.foundHere)}
+            empty={FOUND_HERE_NOT_SAID}
+            onFollow={onFollow}
+          />
+        )}
+        <NotedLinks
+          title={SEEN_FOR_SALE_HEADING}
+          rows={racesSeenIn(recruits, terrain, index).map((race) => ({
+            reference: race,
+            note: seenForSaleCountText(race.regions, terrain)
+          }))}
+          empty={seenForSaleEmptyText(terrain)}
+          onFollow={onFollow}
+        />
+        <NotedLinks
+          title={ROAMING_MONSTERS_HEADING}
+          rows={detail.roamingMonsters.map((monster) => ({ reference: monster, note: null }))}
+          empty={NO_MONSTER_ROAMS_HERE}
+          onFollow={onFollow}
+        />
       </div>
     );
   }
@@ -498,6 +633,17 @@ function Detail({
         {detail.sailingSkill === null ? null : (
           <Field label="Sailing skill needed">{detail.sailingSkill}</Field>
         )}
+        {/* Left out for anything whose description names no terrain (ah-yu3j.1). */}
+        {detail.roams.length === 0 ? null : (
+          <Field label={ROAMS_LABEL}>
+            {detail.roams.map((terrain, at) => (
+              <span key={terrain.id}>
+                {at === 0 ? null : ", "}
+                <FollowLink reference={terrain} onFollow={onFollow} />
+              </span>
+            ))}
+          </Field>
+        )}
       </div>
       {detail.combat === null ? null : (
         <section className="mt-3">
@@ -511,6 +657,15 @@ function Detail({
         </section>
       )}
       <Links title="Produced by" links={detail.producedBy} empty="nothing" onFollow={onFollow} />
+      {/* Most items are found in no terrain, and their pages stay as they were (ah-yu3j.1). */}
+      {detail.foundIn.length === 0 ? null : (
+        <NotedLinks
+          title={FOUND_IN_HEADING}
+          rows={byFrequency(detail.foundIn)}
+          empty=""
+          onFollow={onFollow}
+        />
+      )}
     </div>
   );
 }

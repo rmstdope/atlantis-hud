@@ -56,7 +56,8 @@ export const GAME_DATA_KIND_WORDS: Readonly<Record<GameDataCategory, string>> = 
   ship: "Ship",
   monster: "Monster",
   equipment: "Equipment",
-  building: "Building"
+  building: "Building",
+  terrain: "Terrain"
 };
 
 /** One thing in the dictionary, whatever kind it is. */
