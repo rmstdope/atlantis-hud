@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildRuleset } from "./build";
+import { newAgeDataPage, parseNewAgeDatabase } from "./newage";
+import { openSwimmingRule } from "./rules";
 
 const fixture = (name: string) =>
   readFileSync(fileURLToPath(new URL(`../../../tests/fixtures/ruleset/${name}`, import.meta.url)), "utf8");
@@ -252,5 +254,65 @@ describe("buildRuleset and the terrain table", () => {
         fetchedAt: "2026-01-01T00:00:00Z"
       })
     ).toThrowError(/plain[\s\S]*unobtanium|unobtanium[\s\S]*plain/);
+  });
+});
+
+/**
+ * Swimming in a world without a coastal-water paragraph. New Origins `rules/movement_normal`:
+ * "Note that depending on game settings certain races might be able to swim or fly and there are
+ * items that can enable your units to fly or walk on water." - and no paragraph restricting
+ * swimmers to coastal water. Its catalogue gives `data/TURT` a swimming capacity of 20 and
+ * `data/LIZA` one of 5, so the world swims, and swims anywhere (ah-on09).
+ */
+describe("buildRuleset and swimming", () => {
+  const newOrigins = () =>
+    buildRuleset({
+      rulesHtml: RULES_HTML,
+      dataHtml: DATA_HTML,
+      rulesUrl: "https://atlantis-pbem.com/rules",
+      dataUrl: "https://atlantis-pbem.com/data",
+      orderLanguage: "new-origins",
+      fetchedAt: "2026-08-08T00:00:00.000Z"
+    });
+
+  it("gives New Origins an open swimming rule because its catalogue gives giant turtles a swimming capacity", () => {
+    const ruleset = newOrigins();
+
+    expect(ruleset.items.TURT.capacity.swim).toBe(20);
+    expect(ruleset.movement.swimming).toEqual({ unrestricted: [], deepNeedsSeaCreatures: false });
+    expect(ruleset.movement.provenance.swimming).toContain(
+      "there are items that can enable your units to fly or walk on water"
+    );
+  });
+
+  it("keeps Trident's coastal-water rule rather than opening it", () => {
+    const trident = buildRuleset({
+      rulesHtml: fixture("newage-trident-rules.html"),
+      dataHtml: newAgeDataPage(parseNewAgeDatabase(fixture("newage-trident-database.json"))),
+      rulesUrl: "https://atlantis-newage.com/api/worlds/trident/game/rules",
+      dataUrl: "https://atlantis-newage.com/api/worlds/trident/game/database",
+      orderLanguage: "new-age-trident",
+      fetchedAt: "2026-08-08T00:00:00.000Z"
+    });
+
+    expect(trident.movement.swimming).toEqual({ unrestricted: ["lake"], deepNeedsSeaCreatures: true });
+    expect(trident.movement.provenance.swimming).toContain(
+      "Swimming units are restricted to coastal ocean regions and lakes"
+    );
+  });
+});
+
+describe("openSwimmingRule", () => {
+  const item = (swim: number) => ({ capacity: { walk: 0, ride: 0, fly: 0, swim } });
+
+  it("opens every water to swimmers when anything in the catalogue can carry in the water", () => {
+    expect(openSwimmingRule({ TURT: item(20), SWOR: item(0) })).toEqual({
+      unrestricted: [],
+      deepNeedsSeaCreatures: false
+    });
+  });
+
+  it("leaves a world with nothing that swims without a swimming rule", () => {
+    expect(openSwimmingRule({ HORS: item(0), SWOR: item(0) })).toBeNull();
   });
 });

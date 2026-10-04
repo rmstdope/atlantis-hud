@@ -42,14 +42,17 @@
       "sideRestricted": true,
       "terrain": "ocean"
     },
-    "swimming": null,
+    "swimming": {
+      "unrestricted": [],
+      "deepNeedsSeaCreatures": false
+    },
     "provenance": {
       "movementPoints": "Walking units have two movement points, riding units have four, and flying units have four",
       "terrainCosts": "Moving from one region to another normally takes one movement point, except that the following terrain types take two movement points for riding or walking units to enter: Forest, Mountain, Swamp, Jungle, and Tundra.",
       "road": "If a road in the given direction is connected, units move along that road at half cost to a minimum of 1 movement point",
       "ocean": "Units may not move through ocean regions without using the SAIL order unless they are capable of flight, and even then, flying units must end their movement on land or else drown",
       "sailing": "For a fleet to enter any region only costs one movement point. A coastal region is defined as a non-ocean region with at least one adjacent ocean region. Ships may not sail through single hex land masses and must leave via the same side they entered or a side adjacent to that one",
-      "swimming": ""
+      "swimming": "Note that depending on game settings certain races might be able to swim or fly and there are items that can enable your units to fly or walk on water."
     }
   },
   "risk": {
