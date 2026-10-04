@@ -1,0 +1,60 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Giant turtles swim in every world &mdash; the agreed shape</title><style>  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 20px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:102ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, footer code { color:var(--brass-bright); font-size:12.5px; }
+  h4.q { margin:34px 0 6px; font-size:16px; }
+  h4.q em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.5px; margin-right:8px; }
+  h4.q + p { color:var(--ink-soft); font-size:13px; margin-bottom:12px; max-width:102ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:11px; }
+  .hexlab { font:10.5px/1.35 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:9px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"\00b7 "; color:var(--ink-dim); }
+  .side { display:grid; grid-template-columns:repeat(auto-fit,minmax(400px,1fr)); gap:10px; }
+  .settled { background:var(--raised); border-left:3px solid var(--ok); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:112ch; }
+  .settled b { color:var(--ink); font-weight:normal; }
+  .aside { background:var(--raised); border-left:3px solid var(--select); padding:10px 14px; border-radius:0 6px 6px 0; font-size:13px; color:var(--ink-soft); margin-top:14px; max-width:112ch; }
+  .aside b { color:var(--ink); font-weight:normal; }
+  .pane { width:352px; background:var(--panel); border:1px solid var(--edge); border-radius:6px;
+          font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; }
+  .pane .bar { display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--edge); padding:5px 9px; }
+  .pane .bar .t { font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-right:auto; }
+  .btn { border:1px solid var(--edge); background:var(--ground); color:var(--ink); border-radius:4px; padding:1px 7px; font-size:11px; }
+  .body { padding:9px 10px; }
+  .refuse { color:var(--danger); } .warnp { color:var(--warn); }
+  dl.f { display:grid; grid-template-columns:auto 1fr; gap:1px 12px; margin:0; }
+  dl.f dt { color:var(--ink-dim); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; }
+  dl.f dd { margin:0; color:var(--ink); }
+  .sec { margin-top:9px; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); border-bottom:1px solid var(--edge-soft); padding-bottom:2px; }
+  ol.steps { list-style:none; margin:5px 0 0; padding:0; color:var(--ink-soft); }
+  ol.steps li { display:flex; gap:10px; padding:1px 0; }
+  ol.steps li .k { color:var(--ink-dim); width:34px; flex:none; }
+  ol.steps li.wet { color:var(--select); }
+  .apply { border-top:1px solid var(--edge); padding:7px 10px; display:flex; gap:9px; align-items:center; }
+  .apply code { color:var(--brass-bright); font-size:11px; }
+  .prob { width:352px; background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:8px 10px;
+          font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; }
+  .prob .ttl { font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .prob .who { color:var(--ink); } .prob .who .mk { color:var(--warn); font-size:9px; margin-right:5px; }
+  .prob .what { color:var(--ink-soft); padding-left:14px; }
+  .prob .none { color:var(--ink-dim); font-style:italic; }
+  footer { margin-top:44px; color:var(--ink-dim); font-size:12.5px; max-width:112ch; line-height:1.7; }
+</style></head><body>
+<body><header><h1>Giant turtles swim in every world &mdash; <span>the agreed shape</span></h1><p>Swimming, agreed for Trident in <code>docs/ui/ah-g9sf.7-swimmers.html</code>, now applies in every world whose data gives anything a swimming capacity. In New Origins every unit shows a Swim tile and a <span class='mono'>swim</span> popup line; a swimmer crosses any sea, coastal or deep, because New Origins' rules carry no coastal-water limit; and swimming that comes from items such as giant turtles reads exactly like swimming by nature. Every sentence, mark and refusal agreed for Trident is reused word for word; Trident and Arcanum keep their coastal rule.</p></header><main><h4 class="q"><em>1</em> every unit, as in Trident</h4><p>New Origins becomes a game with swimming. Every unit has four tiles; one that cannot swim reads 0, exactly as it already does in Trident.</p><div class="card"><div class="side"><div class="stage"><div class="hexlab">A unit with three giant turtles &mdash; New Origins</div><div class="pane"><div class="bar"><span class="t">Turtle Riders (812)</span></div><div class="body"><div class="sec">Movement</div>
+<p style="margin:4px 0 2px"><b>Walking</b></p><p style="color:#8a97a8;margin-bottom:6px">Fastest available movement</p>
+<dl class="f"><dt>Fly</dt><dd>0</dd><dt>Ride</dt><dd>60</dd><dt>Walk</dt><dd><b>75</b></dd><dt>Swim</dt><dd>60</dd></dl><p style="margin-top:7px;color:#a3b0c0">The load is 40. Walk and Swim can carry it.</p></div></div><div class="pane" style="margin-top:10px"><div class="bar"><span class="t">Hovering Turtle Riders (812) on the map</span></div><div class="body"><dl class="f"><dt>move</dt><dd>Walking</dd><dt>weight</dt><dd>40</dd><dt>walk</dt><dd>75</dd><dt>swim</dt><dd>60</dd></dl></div></div><ul class="notes"><li>Four tiles, Swim last &mdash; the same panel a Trident player sees.</li><li>Walk stays emphasised; Swim never competes for it.</li></ul></div><div class="stage"><div class="hexlab">A unit with no turtles &mdash; New Origins</div><div class="pane"><div class="bar"><span class="t">Roadwardens (813)</span></div><div class="body"><div class="sec">Movement</div>
+<p style="margin:4px 0 2px"><b>Walking</b></p><p style="color:#8a97a8;margin-bottom:6px">Fastest available movement</p>
+<dl class="f"><dt>Fly</dt><dd>0</dd><dt>Ride</dt><dd>0</dd><dt>Walk</dt><dd><b>30</b></dd><dt>Swim</dt><dd>0</dd></dl><p style="margin-top:7px;color:#a3b0c0">The load is 20. Walk can carry it.</p></div></div><div class="pane" style="margin-top:10px"><div class="bar"><span class="t">Hovering Roadwardens (813) on the map</span></div><div class="body"><dl class="f"><dt>move</dt><dd>Walking</dd><dt>weight</dt><dd>20</dd><dt>walk</dt><dd>30</dd><dt>swim</dt><dd>0</dd></dl></div></div><ul class="notes"><li>Swim 0, and a <span class='mono'>swim 0</span> popup line, on every New Origins unit that cannot swim.</li><li>Cost: every New Origins panel and popup grows by one line, for every player.</li></ul></div></div></div><h4 class="q"><em>2</em> New Origins' own rule: any sea</h4><p>A New Origins swimmer may cross deep sea as freely as coastal sea. None of Trident's deep-water refusals ever appear in New Origins.</p><div class="card"><div class="side"><div class="stage"><div class="hexlab">Turtle Riders (812) sent across deep sea &mdash; New Origins</div><div class="pane"><div class="bar"><span class="t">Movement</span><button class="btn">Plan move</button><button class="btn">Clear</button></div><div class="body">
+<dl class="f"><dt>To</dt><dd>(4,3)</dd><dt>Travel</dt><dd>walk</dd><dt>Cost</dt><dd>3 movement points</dd><dt>Arrives</dt><dd>next month</dd></dl>
+<div class="sec">Route &middot; 3</div><ol class="steps"><li class="wet"><span class="k">1. SE</span><span>ocean (2,2) &middot; 1 &middot; swimming</span></li><li class="wet"><span class="k">2. SE</span><span>ocean (3,3) &middot; 1 &middot; swimming</span></li><li class=""><span class="k">3. E</span><span>plain (4,3) &middot; 1</span></li></ol></div><div class="apply"><button class="btn">Apply to orders</button><code>MOVE SE SE E</code></div></div><ul class="notes"><li>(3,3) is deep sea; the step is an ordinary <span class='mono'>&middot; swimming</span> step.</li><li>Overload and &ldquo;needs a ship&rdquo; refusals still apply exactly as agreed for Trident.</li><li>Trident and Arcanum keep their coastal rule unchanged.</li></ul></div><div class="stage"><div class="hexlab">What never appears in New Origins</div><div class="pane"><div class="bar"><span class="t">Movement</span><button class="btn">Plan move</button><button class="btn">Clear</button></div><div class="body"><p class="refuse"><s>The deep sea at (3,3) is in the way, and this unit can swim only in coastal water.</s></p><p class="refuse"><s>There is no telling whether the sea at (3,3) is deep, and this unit can swim only in coastal water.</s></p></div></div><ul class="notes"><li>Unexplored neighbours no longer block a New Origins swim either, since depth no longer matters there.</li><li>Cost: if the game itself turns out stricter than its rules page, the planner will offer a route the game refuses.</li></ul></div></div></div><h4 class="q"><em>3</em> no difference</h4><p>The Swim tile shows the number the report gives, whatever it comes from &mdash; as Walk and Ride already do for horses and people.</p><div class="card"><div class="side"><div class="stage"><div class="hexlab">Turtle Riders (812) &mdash; swims because of its turtles</div><div class="pane"><div class="bar"><span class="t">Turtle Riders (812)</span></div><div class="body"><div class="sec">Movement</div>
+<p style="margin:4px 0 2px"><b>Walking</b></p><p style="color:#8a97a8;margin-bottom:6px">Fastest available movement</p>
+<dl class="f"><dt>Fly</dt><dd>0</dd><dt>Ride</dt><dd>60</dd><dt>Walk</dt><dd><b>75</b></dd><dt>Swim</dt><dd>60</dd></dl><p style="margin-top:7px;color:#a3b0c0">The load is 40. Walk and Swim can carry it.</p></div></div><ul class="notes"><li>Nothing says where the 60 comes from; the unit's items list already shows 3 giant turtles.</li></ul></div><div class="stage"><div class="hexlab">Scale Guard (1401) &mdash; lizardmen, swim by nature</div><div class="pane"><div class="bar"><span class="t">Scale Guard (1401)</span></div><div class="body"><div class="sec">Movement</div>
+<p style="margin:4px 0 2px"><b>Walking</b></p><p style="color:#8a97a8;margin-bottom:6px">Fastest available movement</p>
+<dl class="f"><dt>Fly</dt><dd>0</dd><dt>Ride</dt><dd>0</dd><dt>Walk</dt><dd><b>60</b></dd><dt>Swim</dt><dd>60</dd></dl><p style="margin-top:7px;color:#a3b0c0">The load is 40. Walk and Swim can carry it.</p></div></div><ul class="notes"><li>Identical in form.</li><li>Cost: none on screen; a player wanting to know why must look at the items.</li></ul></div></div></div></main><footer>Rules looked up: New Origins <code>data/TURT</code> &mdash; giant turtle, weight 50, walking 20, riding 20, swimming 20. New Origins <code>rules/movement_normal</code> &mdash; &ldquo;depending on game settings certain races might be able to swim or fly and there are items that can enable your units to fly or walk on water&rdquo;, and nothing about coastal or deep water. Trident and Arcanum carry the coastal-water paragraph; New Origins does not.</footer></body></html>
