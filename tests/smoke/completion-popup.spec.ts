@@ -139,3 +139,40 @@ test("a quote-opened BUILD name is closed by the one it picks", async ({ page })
   await expect.poll(() => ordersText(page)).toContain('BUILD "Timber Yard" ');
   expect(await ordersText(page)).not.toContain('""');
 });
+
+/**
+ * The popup's order (ah-a8le): a typed whole word is the first, pre-selected row, so Enter takes
+ * it, and the order's own words sit above names with a thin line between. The order itself is
+ * pinned by `arrangeArguments`' unit tests; these walks pin that CodeMirror shows it as given.
+ */
+test("a typed whole direction is offered first, so Enter takes it", async ({ page }) => {
+  await openEditor(page);
+  await expect(page.locator('[data-commands-ready="true"]')).toBeVisible();
+  await fillOrders(page, "");
+  await ordersInput(page).click();
+  await page.keyboard.type("MOVE S");
+
+  const popup = page.locator(".cm-tooltip-autocomplete");
+  await expect(popup.locator("li[aria-selected]")).toHaveText("S");
+  await expect(popup.locator("li").nth(1)).toHaveText("SE");
+  // acceptCompletion's 75ms interactionDelay, as above.
+  await page.waitForTimeout(150);
+
+  await page.keyboard.press("Enter");
+  await expect.poll(() => ordersText(page)).toContain("MOVE S ");
+  expect(await ordersText(page)).not.toContain("MOVE SE");
+});
+
+test("the order's own words and names are kept apart by one thin line", async ({ page }) => {
+  await openEditor(page);
+  await expect(page.locator('[data-commands-ready="true"]')).toBeVisible();
+  await fillOrders(page, "");
+  await ordersInput(page).click();
+  await page.keyboard.type("GIVE 1 ALL ");
+  await page.keyboard.press("Control+Space");
+
+  const popup = page.locator(".cm-tooltip-autocomplete");
+  await expect(popup).toBeVisible();
+  await expect(popup.locator("li.cm-completion-divided")).toHaveCount(1);
+  await expect(popup.locator("completion-section")).toHaveCount(0);
+});

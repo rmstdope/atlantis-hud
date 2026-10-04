@@ -17,7 +17,12 @@ import { buildVocabulary } from "../orderCase";
 import type { OrderProcessing } from "../orderProcessing";
 import { trailingNewlineChange } from "../orderIndent";
 import { shownUnitText } from "../orderEditor";
-import { orderArgumentCompletions, orderCommandCompletions, type CaretLookup } from "../orderCompletion";
+import {
+  completionOptionClass,
+  orderArgumentCompletions,
+  orderCommandCompletions,
+  type CaretLookup
+} from "../orderCompletion";
 import { toEditorDiagnostics } from "../orderLint";
 import { useWorkspaceStore } from "../workspaceStore";
 import { snippetCompletionSource, type OrderSnippet } from "../orderSnippets";
@@ -309,7 +314,9 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
                   latest.current.caretCompletions
                 )(context),
               (context) => orderArgumentCompletions(latest.current.caretCompletions)(context)
-            ]
+            ],
+            // The thin line between the order's own words and names (ah-a8le).
+            optionClass: completionOptionClass
           }),
           // Order OCD, as text lands: a paste is shouted and re-indented in the transaction that
           // inserts it, so the setting stays true of everything on screen and one Ctrl+Z still
@@ -411,6 +418,13 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
               // Above every pane (z-10 and z-20 in this workspace) and below the unit tooltip
               // (z-50). No modal is open while the editor has focus, so it never has to fight one.
               zIndex: "30"
+            },
+            // The mockup's divider (docs/ui/ah-a8le-completion-order.html): a plain line above the
+            // first name after the order's own words, with no heading.
+            ".cm-tooltip.cm-tooltip-autocomplete > ul > li.cm-completion-divided": {
+              borderTop: "1px solid var(--color-edge)",
+              marginTop: "2px",
+              paddingTop: "3px"
             },
             ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
               backgroundColor: "var(--color-select)",
