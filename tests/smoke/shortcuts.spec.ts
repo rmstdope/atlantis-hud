@@ -701,7 +701,11 @@ test("following a link on All stays on All, and Back returns there", async ({ pa
   await page.keyboard.press("F2");
   await expect(page.getByTestId("game-data-tab-all")).toHaveAttribute("aria-selected", "true");
   await page.getByTestId("game-data-filter").fill("mining");
-  await page.getByTestId("game-data-entry-skill:MINI").click();
+  // Typing lights the first match once the entry being read is filtered away (ah-yu3j.2 review).
+  await expect(page.getByTestId("game-data-entry-skill:MINI")).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
   await expect(page.getByTestId("game-data-detail")).toContainText("Study cost");
 
   await page.getByTestId("game-data-link-equipment:MITH").click();
