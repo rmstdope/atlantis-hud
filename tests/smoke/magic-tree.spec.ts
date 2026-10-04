@@ -129,6 +129,25 @@ test("the arrows walk the branches, and Enter opens the marked skill", async ({ 
   await page.keyboard.press("PageUp");
   await expect(skillRow(page, "FORC")).toHaveClass(ringed);
 
+  // Mid-list, a move onto a row already in view scrolls nothing: the list follows the mark only as
+  // far as it must, where re-centring would shift it on every press.
+  await page.keyboard.press("PageDown");
+  await page.keyboard.press("PageDown");
+  await expect(skillRow(page, "ILLU")).toHaveClass(ringed);
+  await expect(skillRow(page, "ILLU")).toBeInViewport({ ratio: 1 });
+  const settled = await body.evaluate((element) => element.scrollTop);
+  expect(settled).toBeGreaterThan(0);
+  await expect(skillRow(page, "CRWC")).toBeInViewport({ ratio: 1 });
+  await page.keyboard.press("ArrowUp");
+  await expect(skillRow(page, "CRWC")).toHaveClass(ringed);
+  expect(await body.evaluate((element) => element.scrollTop)).toBe(settled);
+
+  // A key held with Alt, Ctrl or Meta is not the tree's.
+  await page.keyboard.press("Alt+ArrowDown");
+  await expect(skillRow(page, "CRWC")).toHaveClass(ringed);
+  await expect(skillRow(page, "ILLU")).not.toHaveClass(marked);
+  await page.keyboard.press("Home");
+
   await page.keyboard.press("End");
   await expect(skillRow(page, "MANI")).toHaveClass(ringed);
   await expect(skillRow(page, "MANI")).toBeInViewport();
@@ -144,6 +163,9 @@ test("the arrows walk the branches, and Enter opens the marked skill", async ({ 
 
   // The mark is the tree's one current skill: Whole graph is lit on it, and Branches keeps it.
   await page.getByTestId("magic-tree-view-graph").click();
+  await expect(page.getByTestId("magic-tree-lit")).toContainText("artifact lore");
+  // In the Whole graph the arrows are the graph's; they do not move the mark.
+  await page.keyboard.press("ArrowDown");
   await expect(page.getByTestId("magic-tree-lit")).toContainText("artifact lore");
   await page.getByTestId("magic-tree-view-branches").click();
   await expect(skillRow(page, "ARTI")).toHaveClass(marked);
