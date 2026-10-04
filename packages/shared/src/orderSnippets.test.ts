@@ -126,7 +126,8 @@ function caret(position: CaretPosition): CaretLookup {
       position,
       wordStart: linePrefix.length - word.length,
       word,
-      options: []
+      options: [],
+      endingCommands: []
     } satisfies CaretCompletions;
   };
 }

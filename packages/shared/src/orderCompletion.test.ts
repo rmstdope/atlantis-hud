@@ -24,14 +24,15 @@ function caret(position: CaretPosition, options: readonly OrderCompletion[] = []
       position,
       wordStart: linePrefix.length - word.length,
       word,
-      options: [...options]
+      options: [...options],
+      endingCommands: []
     } satisfies CaretCompletions;
   };
 }
 
 /** A bare keyword entry, as the core answers a closed-vocabulary position. */
 function kw(value: string): OrderCompletion {
-  return { value, name: "", label: "", detail: "" };
+  return { value, name: "", label: "", detail: "", endsOrder: false };
 }
 
 const COMMANDS = ["MOVE", "STUDY", "TAX", "TEACH", "WORK", "END"] as const;
@@ -207,7 +208,8 @@ describe("orderArgumentCompletions", () => {
       position: "argument",
       wordStart: text.length,
       word: "",
-      options: [kw("COMPLETE")]
+      options: [kw("COMPLETE")],
+      endingCommands: []
     });
     const result = await completeArgument(lookUp, text, text.length, true);
     expect(result?.options.map((option) => option.apply)).toEqual([" COMPLETE "]);
@@ -217,13 +219,15 @@ describe("orderArgumentCompletions", () => {
     value: '"Timber Yard"',
     name: "Timber Yard",
     label: "Timber Yard",
-    detail: "building"
+    detail: "building",
+    endsOrder: false
   };
   const CARAVANSERAI: OrderCompletion = {
     value: "Caravanserai",
     name: "Caravanserai",
     label: "Caravanserai",
-    detail: "building"
+    detail: "building",
+    endsOrder: false
   };
 
   /** A hand-written answer: the file's `caret()` treats `"` as a boundary, which the core does not. */
@@ -232,7 +236,8 @@ describe("orderArgumentCompletions", () => {
       position: "argument",
       wordStart: linePrefix.length - word.length,
       word,
-      options: [entry]
+      options: [entry],
+      endingCommands: []
     });
   }
 
@@ -281,8 +286,8 @@ describe("orderArgumentCompletions", () => {
 
   it("matches an item by its name as well as its tag", async () => {
     const lookUp = caret("argument", [
-      { value: "XBOW", name: "crossbow", label: "", detail: "crossbow" },
-      { value: "SWOR", name: "sword", label: "", detail: "sword" }
+      { value: "XBOW", name: "crossbow", label: "", detail: "crossbow", endsOrder: false },
+      { value: "SWOR", name: "sword", label: "", detail: "sword", endsOrder: false }
     ]);
     const result = await completeArgument(lookUp, "BUY 2 cross");
     expect(labels(result)).toEqual(["XBOW"]);
@@ -291,7 +296,7 @@ describe("orderArgumentCompletions", () => {
 
   it("carries the core's detail onto the option, dimmed beside the label", async () => {
     const lookUp = caret("argument", [
-      { value: "PERF", name: "perfume", label: "", detail: "perfume · $204, 63 left" }
+      { value: "PERF", name: "perfume", label: "", detail: "perfume · $204, 63 left", endsOrder: false }
     ]);
     const result = await completeArgument(lookUp, "BUY 5 PER");
     expect(result?.options[0]?.detail).toBe("perfume · $204, 63 left");
@@ -305,10 +310,10 @@ describe("orderArgumentCompletions", () => {
 
   it("marks the first name after the order's own words for the divider, and nothing else", async () => {
     const lookUp = caret("argument", [
-      { value: "ADVANCED", name: "", label: "", detail: "" },
-      { value: "AXE", name: "axe", label: "", detail: "axe" },
-      { value: "ARMOR", name: "", label: "", detail: "" },
-      { value: "ARMR", name: "armor", label: "", detail: "armor" }
+      { value: "ADVANCED", name: "", label: "", detail: "", endsOrder: false },
+      { value: "AXE", name: "axe", label: "", detail: "axe", endsOrder: false },
+      { value: "ARMOR", name: "", label: "", detail: "", endsOrder: false },
+      { value: "ARMR", name: "armor", label: "", detail: "armor", endsOrder: false }
     ]);
     const result = await completeArgument(lookUp, "GIVE 4573 ALL A", "GIVE 4573 ALL A".length, true);
     expect(labels(result)).toEqual(["ADVANCED", "ARMOR", "ARMR", "AXE"]);
@@ -318,7 +323,7 @@ describe("orderArgumentCompletions", () => {
 
 /** An item or skill entry: a tag shown on the left, its name beside it. */
 function named(value: string, name: string): OrderCompletion {
-  return { value, name, label: "", detail: name };
+  return { value, name, label: "", detail: name, endsOrder: false };
 }
 
 function arranged(word: string, entries: readonly OrderCompletion[]): string[] {
@@ -358,7 +363,8 @@ describe("arrangeArguments", () => {
       value: name.includes(" ") ? `"${name}"` : name,
       name,
       label: name,
-      detail: "building"
+      detail: "building",
+      endsOrder: false
     }));
     expect(arranged("t", buildings)).toEqual(["temple", "Timber Yard", "Tower"]);
   });
@@ -371,8 +377,8 @@ describe("arrangeArguments", () => {
   });
 
   it("matches and sorts a quoted building by its unquoted name", () => {
-    const yard: OrderCompletion = { value: '"Timber Yard"', name: "Timber Yard", label: "Timber Yard", detail: "building" };
-    const tower: OrderCompletion = { value: "Tower", name: "Tower", label: "Tower", detail: "building" };
+    const yard: OrderCompletion = { value: '"Timber Yard"', name: "Timber Yard", label: "Timber Yard", detail: "building", endsOrder: false };
+    const tower: OrderCompletion = { value: "Tower", name: "Tower", label: "Tower", detail: "building", endsOrder: false };
     expect(arranged('"timber yard', [tower, yard])).toEqual(["Timber Yard"]);
     expect(arranged("", [tower, yard])).toEqual(["Timber Yard", "Tower"]);
   });

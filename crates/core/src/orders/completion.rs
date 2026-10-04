@@ -13,7 +13,7 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use super::grammar::{self, arguments_at_caret, caret_at, Arg, CaretShape, Order};
+use super::grammar::{self, arguments_at_caret, caret_at, Arg, CaretShape, Offered, Order};
 use super::lexer::utf16_column;
 use super::study;
 use crate::movement::rules::{ItemKind, Ruleset, SkillEntry};
@@ -36,6 +36,11 @@ pub struct OrderCompletion {
     pub label: String,
     /// What the entry shows beside its value. Empty for a keyword, which is its own explanation.
     pub detail: String,
+    /// Whether the order can take no further word once this one is written, so accepting it with
+    /// Enter ends the line rather than leaving a space for the next word (ah-07tn). Decided by the
+    /// grammar table - every form offering this entry must end with it - plus the one exception
+    /// the navigator chose: a STUDY skill ends the order although rules/study allows a `[level]`.
+    pub ends_order: bool,
 }
 
 impl OrderCompletion {
@@ -48,6 +53,7 @@ impl OrderCompletion {
                 Some(canonical) => format!("same as {canonical}"),
                 None => String::new(),
             },
+            ends_order: false,
         }
     }
 }
@@ -85,6 +91,9 @@ pub struct CaretCompletions {
     pub word: String,
     /// What may stand here. Empty unless `position` is `Argument`.
     pub options: Vec<OrderCompletion>,
+    /// At the `Command` position, the commands that take nothing after them (`WORK`, `TAX`), so
+    /// the shell's own command list can end the line on one of them (ah-07tn). Empty elsewhere.
+    pub ending_commands: Vec<String>,
 }
 
 /// The caret's whole story for one order line up to the caret. See [`CaretCompletions`].
@@ -104,9 +113,16 @@ pub fn completions_at_caret(
         None => (utf16_column(line_prefix, line_prefix.len()), String::new()),
     };
 
+    let mut ending_commands = Vec::new();
     let (position, options) = match caret.shape {
         CaretShape::Nowhere => (CaretPosition::Nowhere, Vec::new()),
-        CaretShape::Command => (CaretPosition::Command, Vec::new()),
+        CaretShape::Command => {
+            ending_commands = grammar::commands_ending_order(ruleset)
+                .into_iter()
+                .map(str::to_string)
+                .collect();
+            (CaretPosition::Command, Vec::new())
+        }
         // The line is lexed once for the whole answer: `caret_at` already found the order and the
         // arguments that may stand here, so what is left is turning them into entries.
         CaretShape::InOrder(order, args) => (
@@ -120,6 +136,7 @@ pub fn completions_at_caret(
         word_start,
         word,
         options,
+        ending_commands,
     }
 }
 
@@ -147,7 +164,7 @@ pub fn order_argument_completions(
 /// already done rather than starting the line again (ah-vfq).
 fn completions_for(
     order: &'static Order,
-    args: Vec<&'static Arg>,
+    args: Vec<Offered>,
     ruleset: Option<&Ruleset>,
     report: Option<&ParsedReport>,
     unit_id: Option<&str>,
@@ -161,23 +178,33 @@ fn completions_for(
     let mut items: Vec<OrderCompletion> = Vec::new();
     let mut skills: Vec<OrderCompletion> = Vec::new();
 
-    for arg in args {
+    for Offered { arg, ends } in args {
         match arg {
             Arg::Kw(_) | Arg::OneOf(_) | Arg::OneOfAliased(_) | Arg::ItemClass | Arg::MoveStep => {
                 for entry in grammar::keyword_entries(arg) {
                     if entry.word == "UNFINISHED" {
                         continue;
                     }
-                    if !keywords.iter().any(|existing| existing.value == entry.word) {
-                        keywords.push(OrderCompletion::keyword_entry(&entry));
+                    // A word two positions offer ends the order only if both of them end it.
+                    match keywords
+                        .iter_mut()
+                        .find(|existing| existing.value == entry.word)
+                    {
+                        Some(existing) => existing.ends_order &= ends,
+                        None => keywords.push(OrderCompletion {
+                            ends_order: ends,
+                            ..OrderCompletion::keyword_entry(&entry)
+                        }),
                     }
                 }
             }
             Arg::Name if order.name == "BUILD" && structures.is_empty() => {
                 structures = ruleset.map(structure_completions).unwrap_or_default();
+                mark_ending(&mut structures, ends);
             }
             Arg::Item if items.is_empty() => {
                 items = item_completions(order, ruleset, report, unit_id);
+                mark_ending(&mut items, ends);
             }
             Arg::Skill if skills.is_empty() => {
                 skills = ruleset
@@ -189,6 +216,10 @@ fn completions_for(
                         )
                     })
                     .unwrap_or_default();
+                // The one exception to "only where nothing can follow" (ah-07tn): rules/study
+                // allows an optional `[level]` after the skill, but most STUDY orders carry none,
+                // so the navigator chose to let one Enter finish them. STUDY only.
+                mark_ending(&mut skills, ends || order.name == "STUDY");
             }
             _ => {}
         }
@@ -200,6 +231,13 @@ fn completions_for(
         .chain(items)
         .chain(skills)
         .collect()
+}
+
+/// Marks every entry of one family as ending the order, or not, as its position decides.
+fn mark_ending(entries: &mut [OrderCompletion], ends: bool) {
+    for entry in entries {
+        entry.ends_order = ends;
+    }
 }
 
 /// What an `Arg::Item` position offers, by the order it belongs to.
@@ -256,6 +294,7 @@ fn market_completions(items: &[MarketItem], side: MarketSide) -> Vec<OrderComple
     sorted
         .into_iter()
         .map(|item| OrderCompletion {
+            ends_order: false,
             value: item.tag.clone(),
             name: item.name.clone(),
             label: String::new(),
@@ -283,6 +322,7 @@ fn holdings_completions(unit: &ReportUnit) -> Vec<OrderCompletion> {
     sorted
         .into_iter()
         .map(|item| OrderCompletion {
+            ends_order: false,
             value: item.tag.clone(),
             name: item.name.clone(),
             label: String::new(),
@@ -311,6 +351,7 @@ fn produce_completions(
             .and_then(|ruleset| ruleset.items.get(&product.tag))
             .map_or_else(|| product.name.clone(), |entry| entry.name.clone());
         entries.push(OrderCompletion {
+            ends_order: false,
             value: product.tag.clone(),
             name: name.clone(),
             label: String::new(),
@@ -347,6 +388,7 @@ fn produce_completions(
                 continue;
             }
             entries.push(OrderCompletion {
+                ends_order: false,
                 value: tag,
                 name: item_name.clone(),
                 label: String::new(),
@@ -369,6 +411,7 @@ const SHIP_OPENING: &str = "This is a ship";
 fn structure_completions(ruleset: &Ruleset) -> Vec<OrderCompletion> {
     fn entry(name: &str, detail: &str) -> OrderCompletion {
         OrderCompletion {
+            ends_order: false,
             value: if name.contains(char::is_whitespace) {
                 format!("\"{name}\"")
             } else {
@@ -409,6 +452,7 @@ fn catalogue_completions(ruleset: &Ruleset) -> Vec<OrderCompletion> {
         .items
         .values()
         .map(|item| OrderCompletion {
+            ends_order: false,
             value: item.tag.clone(),
             name: item.name.clone(),
             label: String::new(),
@@ -464,6 +508,7 @@ fn skill_completions(
         })
         .filter(|skill| meets_requirements(unit, skill))
         .map(|skill| OrderCompletion {
+            ends_order: false,
             value: skill.tag.clone(),
             name: skill.name.clone(),
             label: String::new(),
@@ -545,6 +590,7 @@ mod tests {
 
     fn kw(value: &str) -> OrderCompletion {
         OrderCompletion {
+            ends_order: false,
             value: value.to_string(),
             name: String::new(),
             label: String::new(),
@@ -552,8 +598,17 @@ mod tests {
         }
     }
 
+    /// A keyword after which the order takes nothing more (ah-07tn).
+    fn last(value: &str) -> OrderCompletion {
+        OrderCompletion {
+            ends_order: true,
+            ..kw(value)
+        }
+    }
+
     fn alias(value: &str, canonical: &str) -> OrderCompletion {
         OrderCompletion {
+            ends_order: false,
             value: value.to_string(),
             name: String::new(),
             label: String::new(),
@@ -567,6 +622,7 @@ mod tests {
 
     fn built(label: &str, detail: &str) -> OrderCompletion {
         OrderCompletion {
+            ends_order: false,
             value: if label.contains(char::is_whitespace) {
                 format!("\"{label}\"")
             } else {
@@ -588,7 +644,7 @@ mod tests {
     fn build_offers_the_keywords_then_every_buildable_structure_and_ship() {
         let offered = order_argument_completions("BUILD ", Some(&ruleset()), None, None);
 
-        assert_eq!(offered[..2], [kw("HELP"), kw("COMPLETE")]);
+        assert_eq!(offered[..2], [kw("HELP"), last("COMPLETE")]);
         assert_eq!(offered.len(), 44, "2 keywords, 36 structures, 6 ships");
         let names = labels(&offered[2..]);
         let mut sorted = names.clone();
@@ -596,6 +652,7 @@ mod tests {
         assert_eq!(names, sorted);
         assert!(offered.contains(&built("Caravanserai", "building")));
         assert!(offered.contains(&OrderCompletion {
+            ends_order: false,
             value: "\"Timber Yard\"".to_string(),
             name: "Timber Yard".to_string(),
             label: "Timber Yard".to_string(),
@@ -652,7 +709,7 @@ mod tests {
         for prefix in ["BUILD Caravanserai ", "BUILD \"Timber Yard\" "] {
             assert_eq!(
                 order_argument_completions(prefix, Some(&ruleset()), None, None),
-                vec![kw("COMPLETE")],
+                vec![last("COMPLETE")],
                 "{prefix}"
             );
         }
@@ -660,7 +717,7 @@ mod tests {
 
     #[test]
     fn build_without_a_ruleset_offers_only_its_keywords() {
-        assert_eq!(no_ruleset("BUILD "), vec![kw("HELP"), kw("COMPLETE")]);
+        assert_eq!(no_ruleset("BUILD "), vec![kw("HELP"), last("COMPLETE")]);
     }
 
     // --- moved from grammar.rs: the grammar answers did not change when the type did -----------
@@ -712,7 +769,7 @@ mod tests {
         );
         assert_eq!(
             order_argument_completions("EXPLORE ", Some(&trident), None, None),
-            vec![kw("RMAP"), kw("TMAP")]
+            vec![last("RMAP"), last("TMAP")]
         );
     }
 
@@ -726,15 +783,15 @@ mod tests {
 
         assert_eq!(
             order_argument_completions("BUILD Farm ", Some(&trident), None, None),
-            vec![kw("COMPLETE"), kw("STONE"), kw("WOOD")]
+            vec![last("COMPLETE"), kw("STONE"), kw("WOOD")]
         );
         assert_eq!(
             order_argument_completions("BUILD Farm WOOD ", Some(&trident), None, None),
-            vec![kw("COMPLETE")]
+            vec![last("COMPLETE")]
         );
         assert_eq!(
             order_argument_completions("BUILD Farm ", Some(&origins), None, None),
-            vec![kw("COMPLETE")]
+            vec![last("COMPLETE")]
         );
         // The names differ by world (ah-1tyi); the keywords at the name position do not.
         let keywords = |ruleset: &Ruleset| -> Vec<OrderCompletion> {
@@ -763,7 +820,7 @@ mod tests {
     #[test]
     fn a_unit_reference_is_stepped_over_however_long_it_is() {
         for prefix in ["GIVE 17 ", "GIVE NEW 2 ", "GIVE FACTION 15 NEW 2 "] {
-            assert_eq!(no_ruleset(prefix), vec![kw("UNIT"), kw("ALL")]);
+            assert_eq!(no_ruleset(prefix), vec![last("UNIT"), kw("ALL")]);
         }
     }
 
@@ -782,7 +839,7 @@ mod tests {
     fn a_second_keyword_position_is_reached_through_the_first() {
         assert_eq!(
             no_ruleset("OPTION TEMPLATE "),
-            vec![kw("OFF"), kw("SHORT"), kw("LONG"), kw("MAP")]
+            vec![last("OFF"), last("SHORT"), last("LONG"), last("MAP")]
         );
         assert_eq!(no_ruleset("TAKE "), vec![kw("FROM")]);
     }
@@ -802,7 +859,7 @@ mod tests {
 
     #[test]
     fn a_closed_quote_is_not_still_being_typed() {
-        assert_eq!(no_ruleset("BUILD \"Big Boat\""), vec![kw("COMPLETE")]);
+        assert_eq!(no_ruleset("BUILD \"Big Boat\""), vec![last("COMPLETE")]);
     }
 
     #[test]
@@ -1738,7 +1795,7 @@ mod tests {
         let offered =
             order_argument_completions("GIVE 7 ", Some(&ruleset), Some(&report), Some("18642"));
 
-        assert_eq!(offered, vec![kw("UNIT"), kw("ALL")]);
+        assert_eq!(offered, vec![last("UNIT"), kw("ALL")]);
     }
 
     // --- where the caret is, decided once (ah-vfq) -------------------------------------------
@@ -1856,5 +1913,93 @@ mod tests {
         // the order rather than nowhere.
         let origins_caret = completions_at_caret("GIVE 42 1 SILV;a ti", Some(&origins), None, None);
         assert_eq!(origins_caret.position, CaretPosition::Argument);
+    }
+
+    // --- which accepted word ends the order (ah-07tn) ----------------------------------------
+
+    /// Whether the entry `value` offered at `prefix` is marked as ending the order.
+    fn ends(prefix: &str, value: &str) -> bool {
+        let ruleset = ruleset();
+        completions_at_caret(prefix, Some(&ruleset), None, None)
+            .options
+            .into_iter()
+            .find(|entry| entry.value == value)
+            .unwrap_or_else(|| panic!("{value} is offered at {prefix:?}"))
+            .ends_order
+    }
+
+    #[test]
+    fn ends_order_commands_that_take_nothing_are_named_at_the_command_position() {
+        // rules/work: WORK takes nothing; rules/tax likewise.
+        let ruleset = ruleset();
+        let caret = completions_at_caret("WO", Some(&ruleset), None, None);
+        assert_eq!(caret.position, CaretPosition::Command);
+        assert!(caret.ending_commands.contains(&"WORK".to_string()));
+        assert!(caret.ending_commands.contains(&"TAX".to_string()));
+        // SAIL may be followed by a route, MOVE by directions, BUILD by what it builds.
+        for open in ["SAIL", "MOVE", "BUILD", "STUDY", "GIVE"] {
+            assert!(
+                !caret.ending_commands.contains(&open.to_string()),
+                "{open} may take more words"
+            );
+        }
+    }
+
+    #[test]
+    fn ends_order_commands_are_named_only_at_the_command_position() {
+        let ruleset = ruleset();
+        let caret = completions_at_caret("GIVE 1 10 WO", Some(&ruleset), None, None);
+        assert_eq!(caret.ending_commands, Vec::<String>::new());
+    }
+
+    #[test]
+    fn ends_order_after_the_item_of_a_quantity_give() {
+        // rules/give: GIVE [unit] [quantity] [item] - nothing follows the item.
+        assert!(ends("GIVE 123 10 WOO", "WOOD"));
+    }
+
+    #[test]
+    fn ends_order_not_after_the_item_of_an_all_give() {
+        // rules/give: GIVE [unit] ALL [item] EXCEPT [quantity] - EXCEPT may follow.
+        assert!(!ends("GIVE 123 ALL WOO", "WOOD"));
+    }
+
+    #[test]
+    fn ends_order_after_an_item_class() {
+        // rules/give: GIVE [unit] ALL [item class] - only the item form takes EXCEPT.
+        assert!(ends("GIVE 123 ALL NOR", "NORMAL"));
+    }
+
+    #[test]
+    fn ends_order_not_after_a_move_step() {
+        // rules/move: MOVE [dir] ... - more directions may follow.
+        assert!(!ends("MOVE N", "N"));
+    }
+
+    #[test]
+    fn ends_order_after_the_skill_of_a_study() {
+        // rules/study allows an optional [level], but the navigator chose to finish STUDY after the
+        // skill (ah-07tn's acceptance): STUDY is the one exception.
+        assert!(ends("STUDY COM", "COMB"));
+    }
+
+    #[test]
+    fn ends_order_not_after_a_keyword_more_may_follow() {
+        // GIVE [unit] ALL ... - ALL is never the last word.
+        assert!(!ends("GIVE 123 A", "ALL"));
+        // rules/build: BUILD [object type] COMPLETE - a structure name may be followed by COMPLETE.
+        assert!(!ends("BUILD Tim", "\"Timber Yard\""));
+    }
+
+    #[test]
+    fn ends_order_after_build_complete() {
+        // rules/build: BUILD COMPLETE takes nothing after it.
+        assert!(ends("BUILD COMP", "COMPLETE"));
+    }
+
+    #[test]
+    fn ends_order_not_after_a_name_keyword_followed_by_free_text() {
+        // rules/name: NAME UNIT [new name] - the name follows.
+        assert!(!ends("NAME UN", "UNIT"));
     }
 }

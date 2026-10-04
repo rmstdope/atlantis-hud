@@ -32,7 +32,7 @@ const draw = (
       commands={[]}
       orderVocabulary={[]}
       snippets={[]}
-      caretCompletions={async () => ({ position: "command", wordStart: 0, word: "", options: [] })}
+      caretCompletions={async () => ({ position: "command", wordStart: 0, word: "", options: [], endingCommands: [] })}
       onWalkProblems={onWalkProblems}
       walkPosition={walkPosition ?? null}
     />
@@ -120,7 +120,8 @@ describe("a unit formed this month", () => {
           position: "command",
           wordStart: 0,
           word: "",
-          options: []
+          options: [],
+          endingCommands: []
         })}
       />
     );
