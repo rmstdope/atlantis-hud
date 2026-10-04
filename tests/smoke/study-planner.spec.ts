@@ -79,6 +79,30 @@ test("the planner opens on Planner every time, even after closing on Overview", 
   await expect(planner).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("study-planner-view-all")).toHaveAttribute("aria-selected", "false");
   await expect(page.getByTestId("study-schedule")).toBeVisible();
+  // Closed on Overview, so Overview's chip held the ref at unmount: the fresh mount still focuses
+  // the tab that is open now.
+  await expect(planner).toBeFocused();
+});
+
+test("Overview scrolls its picked mage into view each time it is shown", async ({ page }) => {
+  // The list is mounted only while Overview shows, so arriving on it - not just a change of mage -
+  // is what has to bring the picked row into sight (ah-x9vc review, finding 1).
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-all").click();
+  const list = page.getByTestId("study-planner-list");
+  await expect(list).toBeFocused();
+  await page.keyboard.press("End");
+  const picked = list.locator('[data-testid^="study-planner-mage-"][aria-selected="true"]');
+  await expect(picked).toBeInViewport();
+  // The list must overflow, or the assertion below proves nothing.
+  expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+
+  await page.getByTestId("study-planner-view-schedule").click();
+  await page.getByTestId("study-planner-view-all").click();
+  await expect(picked).toBeInViewport();
 });
 
 test("All mages shows the points behind each level, two lists abreast", async ({ page }) => {

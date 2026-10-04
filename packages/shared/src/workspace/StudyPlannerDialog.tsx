@@ -266,7 +266,9 @@ export function StudyPlannerDialog({
       `[data-testid="study-planner-mage-${CSS.escape(picked.key)}"]`
     );
     row?.scrollIntoView({ block: "nearest" });
-  }, [picked]);
+    // `view` too: the list is mounted only while Overview shows, so arriving on it is as much a
+    // reason to bring the picked row into sight as picking another mage (ah-x9vc).
+  }, [picked, view]);
 
   const notice = plannerAlliedNotice(
     alliedStatus,
