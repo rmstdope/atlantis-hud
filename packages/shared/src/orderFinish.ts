@@ -49,10 +49,10 @@ export function finishingApply(
 ): (view: EditorView, completion: Completion, from: number, to: number) => void {
   return (view, completion, from, to) => {
     const enter = pendingEnter;
-    // Several carets are CodeMirror's own business (`insertCompletionText` writes at each); the
-    // agreed experience describes one caret, so only one caret finishes the order.
+    // Several carets, or a selection, are CodeMirror's own business (`insertCompletionText` writes
+    // at each); the agreed experience describes one bare caret, so only that finishes the order.
     const spec =
-      enter && view.state.selection.ranges.length === 1
+      enter && view.state.selection.ranges.length === 1 && view.state.selection.main.empty
         ? finishOrder(view.state, text, from, to, enter)
         : insertCompletionText(view.state, spaced, from, to);
     view.dispatch({ ...spec, annotations: pickedCompletion.of(completion) });

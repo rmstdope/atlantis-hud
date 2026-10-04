@@ -115,6 +115,16 @@ describe("finishingApply", () => {
     expect(view.picked).toEqual(pickedCompletion.of(completion));
   });
 
+  it("leaves a selection to CodeMirror's own accept, space and all", () => {
+    const view = fakeView(
+      EditorState.create({ doc: "WO", selection: EditorSelection.single(2, 1), extensions: [history()] })
+    );
+    withEnter(insertNewlineAndIndent, () =>
+      finishingApply("WORK", "WORK ")(view as unknown as EditorView, completion, 0, 2)
+    );
+    expect(view.state.doc.toString()).toBe("WORK ");
+  });
+
   it("forgets the Enter once the accept is over", () => {
     withEnter(insertNewlineAndIndent, () => true);
     const view = fakeView(stateAt("WO|"));

@@ -200,4 +200,11 @@ test("Enter on a last word finishes the order, and one undo takes it back", asyn
 
   await ordersInput(page).press("ControlOrMeta+z");
   await expect.poll(() => ordersText(page)).toBe("WO");
+
+  // Redo puts the finished order back with its caret, which sits on the new line: what is typed
+  // next lands there.
+  await ordersInput(page).press("ControlOrMeta+Shift+Z");
+  await expect.poll(() => ordersText(page)).toBe("WORK\n");
+  await page.keyboard.type("TAX");
+  await expect.poll(() => ordersText(page)).toBe("WORK\nTAX");
 });
