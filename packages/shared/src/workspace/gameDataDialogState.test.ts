@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { parseGameData } from "../gameData";
 import {
   entriesOf,
+  filterGameData,
+  gameDataMove,
   goBack,
   openGameDataDialog,
   selectGameDataEntry,
@@ -155,5 +157,38 @@ describe("the All tab (ah-yu3j.2)", () => {
 
   it("does not change a named open, which still lands on the entry's own tab", () => {
     expect(openGameDataDialog(index, "skill:MINI").tab).toBe("skill");
+  });
+});
+
+describe("typing into the filter (ah-yu3j.2 review)", () => {
+  it("on All, lights the first match when the entry being read is filtered away", () => {
+    const opened = openGameDataDialog(index, null);
+    const typed = filterGameData(index, opened, "mi");
+    expect(typed.filter).toBe("mi");
+    expect(typed.selectedId).toBe("skill:MINI");
+  });
+
+  it("on All, keeps the entry being read while it still matches", () => {
+    const reading = selectGameDataEntry(index, openGameDataDialog(index, null), "equipment:MITH", { push: false });
+    expect(filterGameData(index, reading, "mi").selectedId).toBe("equipment:MITH");
+  });
+
+  it("on All, keeps reading the old entry when nothing matches", () => {
+    const opened = openGameDataDialog(index, null);
+    expect(filterGameData(index, opened, "zzz").selectedId).toBe("equipment:XBOW");
+  });
+
+  it("leaves the category tabs' selection alone, as today", () => {
+    const opened = openGameDataDialog(index, "ship:LONG");
+    expect(filterGameData(index, opened, "zzz").selectedId).toBe("ship:LONG");
+  });
+
+  it("moves from a selection the list no longer shows to its first row, not its second", () => {
+    expect(gameDataMove(-1, 5, "ArrowDown")).toBe(0);
+    expect(gameDataMove(-1, 5, "PageDown")).toBe(0);
+    expect(gameDataMove(-1, 5, "End")).toBe(4);
+    expect(gameDataMove(-1, 5, "a")).toBeNull();
+    expect(gameDataMove(-1, 0, "ArrowDown")).toBeNull();
+    expect(gameDataMove(2, 5, "ArrowDown")).toBe(3);
   });
 });

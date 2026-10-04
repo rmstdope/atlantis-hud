@@ -739,6 +739,7 @@ test("the palette's Browse game data opens the same dialog, in the same cold sta
     "aria-selected",
     "true"
   );
+  await expect(page.getByTestId("game-data-detail")).not.toContainText("Nothing to show.");
 });
 
 test("F2 closes an open dialog, and opens it cold again afterwards", async ({ page }) => {

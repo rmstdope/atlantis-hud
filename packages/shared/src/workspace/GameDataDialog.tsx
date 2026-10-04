@@ -8,11 +8,12 @@ import {
   type GameDataLink,
   skillEntryId
 } from "../gameData";
-import { paletteKeyReduce, PALETTE_PAGE_ROWS } from "../commandPalette";
 import { DialogFrame } from "./DialogFrame";
 import {
   entriesOf,
+  filterGameData,
   GAME_DATA_TABS,
+  gameDataMove,
   type GameDataTab,
   goBack,
   openGameDataDialog,
@@ -78,10 +79,7 @@ export function GameDataDialog({
 
   const moveWithin = (key: string) => {
     const at = shown.findIndex((entry) => entry.id === state.selectedId);
-    const next = paletteKeyReduce(
-      { index: at === -1 ? 0 : at, count: shown.length, pageSize: PALETTE_PAGE_ROWS },
-      key
-    );
+    const next = gameDataMove(at, shown.length, key);
     if (next === null) {
       return false;
     }
@@ -184,7 +182,7 @@ export function GameDataDialog({
             placeholder={state.tab === "all" ? filterLabel : `${filterLabel}…`}
             value={state.filter}
             onChange={(event) =>
-              setState((current) => ({ ...current, filter: event.target.value }))
+              setState((current) => filterGameData(index, current, event.target.value))
             }
             onKeyDown={(event) => {
               // Left and Right change tab, as agreed - but only with nothing typed, because
@@ -263,7 +261,15 @@ export function GameDataList({
       className="min-h-0 overflow-y-auto"
     >
       {tab === "all" && entries.length === 0 && typed !== "" ? (
-        <li data-testid="game-data-no-match" className="px-2 py-1 italic text-ink-dim">
+        // An option a screen reader can land on, rather than an empty listbox: this line's whole
+        // job is to be read.
+        <li
+          role="option"
+          aria-disabled="true"
+          aria-selected="false"
+          data-testid="game-data-no-match"
+          className="px-2 py-1 italic text-ink-dim"
+        >
           {`Nothing matches “${typed}”.`}
         </li>
       ) : null}

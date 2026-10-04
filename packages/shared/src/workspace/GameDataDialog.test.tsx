@@ -176,6 +176,7 @@ describe("the All tab (ah-yu3j.2)", () => {
     );
     expect(html).toContain("Nothing matches “zzz”.");
     expect(html).toContain("italic");
+    expect(html).toMatch(/<li role="option" aria-disabled="true"[^>]*>Nothing matches/);
   });
 
   it("leaves the other tabs' empty list as it was", () => {

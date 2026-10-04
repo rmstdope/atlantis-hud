@@ -7,6 +7,7 @@
  * decidable part of the interface.
  */
 
+import { PALETTE_PAGE_ROWS, paletteKeyReduce } from "../commandPalette";
 import {
   GAME_DATA_CATEGORIES,
   GAME_DATA_CATEGORY_LABELS,
@@ -176,4 +177,40 @@ export function selectGameDataTab(
     selectedId: entriesOf(index, tab)[0]?.id ?? null,
     back: state.back
   };
+}
+
+/**
+ * Type into the filter. On All the lit row follows the first match whenever the entry being read
+ * is filtered out of the list, as the agreed mockup shows; with nothing matching, the old entry
+ * stays on the right. The category tabs keep their selection as they always have.
+ */
+export function filterGameData(
+  index: GameDataIndex,
+  state: GameDataDialogState,
+  filter: string
+): GameDataDialogState {
+  if (state.tab !== "all") {
+    return { ...state, filter };
+  }
+  const shown = entriesOf(index, "all", filter);
+  const stillShown = shown.some((entry) => entry.id === state.selectedId);
+  const first = shown[0];
+  return {
+    ...state,
+    filter,
+    selectedId: stillShown || first === undefined ? state.selectedId : first.id
+  };
+}
+
+/**
+ * The row a list key moves to, or null for a key that is not a move. `at` is -1 when the entry
+ * being read is not in the list; then any step lands on the first row rather than the second,
+ * which treating -1 as row 0 used to do. Home and End still mean the ends.
+ */
+export function gameDataMove(at: number, count: number, key: string): number | null {
+  const next = paletteKeyReduce(
+    { index: at === -1 ? 0 : at, count, pageSize: PALETTE_PAGE_ROWS },
+    key
+  );
+  return next === null || at !== -1 || key === "End" ? next : 0;
 }
