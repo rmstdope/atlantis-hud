@@ -5,7 +5,7 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "build:wasm": "wasm-pack build ../../crates/core-wasm --target web --out-dir ../../packages/browser-core/src/wasm --out-name atlantis_core",
+    "build:wasm": "node ../../scripts/ensure-wasm.mjs --force",
     "lint": "eslint src --max-warnings=0",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",

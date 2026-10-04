@@ -143,11 +143,11 @@ jobs:
         with:
           tool: wasm-pack
 
-      # Through the ensure script rather than `build:wasm`, because the script writes the
-      # fingerprint stamp beside the module. The stamp travels in the cache - not the artifact,
-      # which drops hidden files, and whose consumers never build - and it is what lets the checks
-      # job's `pretypecheck` hook see a restored module as current instead of rebuilding it. The
-      # script needs no pnpm workspace, so this job installs none.
+      # Through the ensure script directly rather than `build:wasm`, which needs the pnpm workspace
+      # this job never installs. The script writes the fingerprint stamp beside the module. The
+      # stamp travels in the cache - not the artifact, which drops hidden files, and whose consumers
+      # never build - and it is what lets the checks job's `pretypecheck` hook see a restored module
+      # as current instead of rebuilding it.
       - name: Build WebAssembly core
         if: steps.wasm-module.outputs.cache-hit != 'true'
         run: node scripts/ensure-wasm.mjs
