@@ -56,23 +56,19 @@ fn a_walker_is_refused_the_sea() {
     ));
 }
 
-/// A unit aboard a fleet stands in an ocean hex. It cannot walk out of one any more than into one,
-/// and saying so beats planning a march that begins by drowning.
+/// A unit standing in the sea got there by swimming, and swims ashore the same way. The report
+/// says so itself: "Drones (14451): Swims from ocean (19,39) in Atlantis Ocean to ocean (20,40)".
+/// Its own line, "50 lizardmen [LIZA], 7500 silver [SILV]. Weight: 500. Capacity: 0/0/750/750.",
+/// gives it a swimming capacity of 750 against a weight of 500 (ah-on09).
 #[test]
-fn a_unit_standing_at_sea_cannot_walk_ashore() {
+fn a_swimmer_standing_at_sea_swims_ashore() {
     let report = turn_71();
 
     // "* Drones (14451)" is in the ocean at (20,40); "  South : desert (20,42)".
-    let problem = plan(&report, "14451", at(20, 42)).expect_err("it would have to swim");
+    let route = plan(&report, "14451", at(20, 42)).expect("it swims ashore");
 
-    assert!(
-        matches!(
-            problem,
-            RouteProblem::OceanNeedsShip { coordinate, ref terrain }
-                if coordinate == at(20, 40) && terrain == "ocean"
-        ),
-        "the refusal is about the hex it is standing in, not one along the way"
-    );
+    assert_eq!(route.steps.len(), 1);
+    assert_eq!(route.order, "MOVE S");
 }
 
 /// A hex nobody has described can still be walked to: the player picks one on the map because a

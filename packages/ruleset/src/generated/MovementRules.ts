@@ -9,7 +9,8 @@ import type { TerrainCosts } from "./TerrainCosts";
 
 export type MovementRules = { movementPoints: MovementPoints, terrainCosts: TerrainCosts, road: RoadRule, ocean: OceanRule, sailing: SailingRule, 
 /**
- * The swimming rule, or `None` in a world that has none.
+ * The swimming rule, or `None` in a world whose rules page has no swimming paragraph and
+ * whose catalogue gives nothing a swimming capacity.
  *
  * `#[serde(default)]` because this struct carries `deny_unknown_fields` and a reader may
  * still hold a ruleset written before this field existed - a cached one in a player's

@@ -7,6 +7,7 @@ import {
   parseMaintenanceFee,
   parseMovementRules,
   parseRegionResources,
+  parseSwimmingItemsNote,
   parseWeatherGap,
   RulesetScrapeError
 } from "./rules";
@@ -163,8 +164,8 @@ describe("parseMovementRules", () => {
    * regions and lakes. Deep ocean regions cannot be entered by swimming units, with one
    * exception: a unit carried by sea creatures able to bear its whole weight rides out into deep
    * water safely. Ships are not affected by this restriction." New Origins' movement section
-   * carries no such paragraph, so that world has no swimming at all - which is not the same as a
-   * world whose swimmers can carry nothing, hence `null` rather than an empty rule.
+   * carries no such paragraph, so the rules page alone gives it no rule - `null` here. Whether it
+   * swims at all is then the catalogue's to say (`openSwimmingRule`, ah-on09).
    */
   it("reads New Age's swimming rule", () => {
     const trident = parseMovementRules(TRIDENT_RULES_HTML);
@@ -603,5 +604,23 @@ describe("anchoredTableRows", () => {
     const html = '<html><body><a name="lonely"></a><p>prose only</p></body></html>';
 
     expect(anchoredTableRows(html, "lonely")).toEqual([]);
+  });
+});
+
+/**
+ * New Origins `rules/movement_normal`: "Note that depending on game settings certain races might
+ * be able to swim or fly and there are items that can enable your units to fly or walk on water."
+ * The provenance of the open swimming rule `buildRuleset` gives that world (ah-on09).
+ */
+describe("parseSwimmingItemsNote", () => {
+  it("reads New Origins' sentence about items that let units walk on water", () => {
+    expect(parseSwimmingItemsNote(RULES_HTML)).toBe(
+      "Note that depending on game settings certain races might be able to swim or fly and " +
+        "there are items that can enable your units to fly or walk on water."
+    );
+  });
+
+  it("answers null for a page that does not say it", () => {
+    expect(parseSwimmingItemsNote(RULES_HTML.replace("Note that depending", "Depending"))).toBeNull();
   });
 });

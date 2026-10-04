@@ -133,8 +133,10 @@ pub struct OceanRule {
 /// regions and lakes. Deep ocean regions cannot be entered by swimming units, with one
 /// exception: a unit carried by sea creatures able to bear its whole weight rides out into deep
 /// water safely. Ships are not affected by this restriction." New Origins' movement section
-/// carries no such paragraph, so its ruleset has no swimming rule at all - which is not the
-/// same as a world whose swimmers can carry nothing.
+/// carries no such paragraph, only "there are items that can enable your units to fly or walk on
+/// water", and its catalogue gives `data/TURT` and `data/LIZA` a swimming capacity. Its rule is
+/// therefore open: nothing listed as `unrestricted` because nothing is restricted, and
+/// `deep_needs_sea_creatures` false (ah-on09).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
     test,
@@ -214,7 +216,8 @@ pub struct MovementRules {
     pub road: RoadRule,
     pub ocean: OceanRule,
     pub sailing: SailingRule,
-    /// The swimming rule, or `None` in a world that has none.
+    /// The swimming rule, or `None` in a world whose rules page has no swimming paragraph and
+    /// whose catalogue gives nothing a swimming capacity.
     ///
     /// `#[serde(default)]` because this struct carries `deny_unknown_fields` and a reader may
     /// still hold a ruleset written before this field existed - a cached one in a player's

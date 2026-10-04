@@ -21,6 +21,7 @@ export type { TerrainCosts } from "./generated/TerrainCosts";
 import type { MovementMode } from "./generated/MovementMode";
 import type { Gap } from "./generated/Gap";
 import type { MovementRules } from "./generated/MovementRules";
+import type { SwimmingRule } from "./generated/SwimmingRule";
 import type { FactionPoints } from "./generated/FactionPoints";
 import type { FactionPointsRow } from "./generated/FactionPointsRow";
 import { anchoredTableRows, htmlToText } from "./html";
@@ -216,12 +217,12 @@ export function parseMovementRules(html: string): MovementRules {
     /(\w+?)s count as water for this purpose, and a region bordering one counts as its shore/i
   );
 
-  // New Age lets units swim; New Origins has no such paragraph. `newage trident
-  // rules/movement_normal`: "Swimming units are restricted to coastal ocean regions and lakes.
-  // Deep ocean regions cannot be entered by swimming units, with one exception: a unit carried by
-  // sea creatures able to bear its whole weight rides out into deep water safely." A miss means
-  // this world has no swimming at all, which is not the same as a world whose swimmers can carry
-  // nothing - hence a bare match rather than requireMatch.
+  // New Age restricts swimmers to the coast. `newage trident rules/movement_normal`: "Swimming
+  // units are restricted to coastal ocean regions and lakes. Deep ocean regions cannot be entered
+  // by swimming units, with one exception: a unit carried by sea creatures able to bear its whole
+  // weight rides out into deep water safely." New Origins has no such paragraph, so a miss is not
+  // an error - hence a bare match rather than requireMatch - and `buildRuleset` then decides from
+  // the catalogue whether the world swims at all (`openSwimmingRule`).
   const swimming = text.match(
     new RegExp(
       "Swimming units are restricted to coastal (\\w+) regions and (\\w+?)s\\. " +
@@ -362,6 +363,37 @@ export function parseMovementRules(html: string): MovementRules {
       swimming: swimming ? sentence(swimming) : ""
     }
   };
+}
+
+/**
+ * The swimming rule of a world whose rules page has no coastal-water paragraph, or `null` where
+ * nothing in its catalogue can carry anything in the water.
+ *
+ * New Origins `rules/movement_normal`: "Note that depending on game settings certain races might
+ * be able to swim or fly and there are items that can enable your units to fly or walk on water."
+ * It names no limit on where a swimmer may go, and its catalogue gives `data/TURT` a swimming
+ * capacity of 20 and `data/LIZA` one of 5. So such a world swims, and swims anywhere: no water is
+ * singled out as unrestricted because none is restricted, and deep water needs no sea creatures.
+ * A world with the coastal-water paragraph never reaches this; its scraped rule stands.
+ */
+export function openSwimmingRule(
+  items: Record<string, { capacity: { swim: number } }>
+): SwimmingRule | null {
+  return Object.values(items).some((item) => item.capacity.swim > 0)
+    ? { unrestricted: [], deepNeedsSeaCreatures: false }
+    : null;
+}
+
+/**
+ * The rules page's own words for why an open swimming rule exists, or `null` where the page does
+ * not say it. A bare match: the catalogue is what decides whether a world swims, and this is only
+ * the provenance a reader checks it against.
+ */
+export function parseSwimmingItemsNote(html: string): string | null {
+  const note = htmlToText(html).match(
+    /Note that depending on game settings certain races might be able to swim[^.]*\./i
+  );
+  return note ? sentence(note) : null;
 }
 
 /** What one unit of food is worth against maintenance, and which foods the page names. */

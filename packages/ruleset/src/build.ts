@@ -25,8 +25,10 @@ import {
   parseFactionPoints,
   parseFoodMaintenance,
   parseMaintenanceFee,
+  openSwimmingRule,
   parseMovementRules,
   parseRegionResources,
+  parseSwimmingItemsNote,
   parseWeatherGap,
   RulesetScrapeError
 } from "./rules";
@@ -160,6 +162,18 @@ export function buildRuleset(input: BuildInput): Ruleset {
   }
 
   applyFoodMaintenance(items, maintenance);
+
+  // A world without the coastal-water paragraph still swims when its catalogue says something
+  // can carry in the water - New Origins' giant turtles and lizardmen (ah-on09). The scraped
+  // paragraph, where there is one, always wins.
+  const openSwimming = movement.swimming === null ? openSwimmingRule(items) : null;
+  if (openSwimming !== null) {
+    const swimmers = Object.keys(items).filter((tag) => items[tag].capacity.swim > 0);
+    movement.swimming = openSwimming;
+    movement.provenance.swimming =
+      parseSwimmingItemsNote(input.rulesHtml) ??
+      `No coastal-water paragraph; the catalogue gives ${swimmers.join(", ")} a swimming capacity.`;
+  }
 
   // After the race check, so a page that is unreadable in both ways is refused for the more
   // fundamental reason first.

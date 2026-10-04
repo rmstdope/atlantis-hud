@@ -263,11 +263,11 @@ fn an_unknown_tag_is_equipment_and_is_reported() {
 
 /// A report prints a fourth capacity number in every world, swimming or not:
 /// `neworigins-3.0.0-g3-f42-t42.rep` prints `* Unit (11960) ... hill dwarf [HDWA], giant turtle
-/// [TURT]. Weight: 60. Capacity: 0/70/85/70.` for a New Origins unit, in a world whose
-/// `rules/movement_normal` carries no swimming paragraph at all. So the number alone can never
-/// decide whether to show anything; only the ruleset can.
+/// [TURT]. Weight: 60. Capacity: 0/70/85/70.` for a New Origins unit. New Origins swims - its
+/// catalogue gives `data/TURT` a swimming capacity of 20 (ah-on09) - so that figure is kept; a
+/// world with no swimming rule at all still states none, whatever the report printed.
 #[test]
-fn a_world_without_swimming_states_no_swim_capacity() {
+fn only_a_world_without_swimming_states_no_swim_capacity() {
     use atlantis_hud_core::report::model::SwimCapacity;
 
     let mut report = parse_report_full(TURN_42);
@@ -281,11 +281,33 @@ fn a_world_without_swimming_states_no_swim_capacity() {
     );
     assert_eq!(
         unit.movement.expect("a stated capacity classifies").swim,
-        SwimCapacity::Absent,
-        "New Origins has no swimming rule, so its fourth number means nothing"
+        SwimCapacity::Stated { capacity: 70 },
+        "New Origins swims, so the giant turtle's figure is the unit's"
     );
 
-    // And the other half: a world that does swim keeps the figure the report printed.
+    // A world with no swimming rule: the same report, the fourth number means nothing.
+    let dry = Ruleset::from_json(&atlantis_hud_fixtures::RULESET_JSON.replacen(
+        "\"swimming\": {\n      \"unrestricted\": [],\n      \"deepNeedsSeaCreatures\": false\n    }",
+        "\"swimming\": null",
+        1,
+    ))
+    .expect("the spliced ruleset loads");
+    assert!(
+        dry.swimming().is_none(),
+        "the splice should have removed swimming"
+    );
+    let mut report = parse_report_full(TURN_42);
+    classify_units(&mut report, &dry);
+    assert_eq!(
+        unit_of(&report, "11960")
+            .movement
+            .expect("a stated capacity classifies")
+            .swim,
+        SwimCapacity::Absent,
+        "a world with no swimming rule states no swim capacity"
+    );
+
+    // And Trident keeps the figure the report printed, as before.
     let trident = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
         .expect("the committed Trident ruleset loads");
     let mut swimming = parse_report_full(
