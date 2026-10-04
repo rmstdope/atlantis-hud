@@ -1,0 +1,102 @@
+<!DOCTYPE html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Terrains in game data</title><style>:root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; --select:#4a9fd8; --accent:#7cc0ef; }
+* { box-sizing:border-box; margin:0; }
+body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,serif; padding:28px 16px 64px; }
+header, main { max-width:1160px; margin:0 auto; }
+h1 { font-size:24px; } h1 span { color:var(--brass); }
+header p { color:var(--ink-soft); max-width:96ch; margin-top:8px; font-size:14px; }
+h2.sec { margin-top:30px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:8px; }
+.banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:12px 14px; border-radius:6px; margin-top:14px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:18px; margin-top:14px; align-items:start; }
+.card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:10px; }
+.card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.6px; margin-right:8px; }
+.rec { color:var(--ok); font-size:12px; }
+.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; }
+.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+.dlg { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; background:var(--raised); border:1px solid rgba(217,164,65,.6); border-radius:5px; overflow:hidden; }
+.bar { display:flex; padding:4px 8px; border-bottom:1px solid var(--edge); color:var(--brass); } .bar .x { margin-left:auto; color:var(--ink-dim); }
+.tabs { display:flex; gap:3px; border-bottom:1px solid var(--edge); padding:4px 6px; flex-wrap:wrap; background:var(--panel); }
+.tabs span { padding:1px 6px; border:1px solid var(--edge); border-radius:3px; color:var(--ink-dim); font-size:11px; background:var(--raised); }
+.tabs span.on { border-color:var(--brass); background:rgba(217,164,65,.1); color:var(--brass); }
+.body { display:grid; grid-template-columns:140px 1fr; min-height:220px; }
+.list { border-right:1px solid var(--edge); background:var(--panel); }
+.filt { padding:3px 6px; border-bottom:1px solid rgba(217,164,65,.6); color:var(--ink-dim); font-size:11px; background:var(--raised); }
+.row { padding:1px 6px; color:var(--ink-soft); border-left:2px solid transparent; }
+.row.on { background:rgba(74,159,216,.15); color:var(--ink); border-left-color:var(--select); }
+.det { padding:8px; color:var(--ink); }
+.hd { border:1px solid rgba(217,164,65,.6); background:rgba(217,164,65,.1); color:var(--brass); padding:2px 8px; border-radius:3px; font-size:13px; }
+.f { display:flex; gap:8px; border:1px solid var(--edge); background:var(--panel); border-radius:3px; padding:2px 8px; margin-top:2px; }
+.f .l { width:110px; flex-shrink:0; font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--brass); padding-top:2px; }
+.s { margin-top:10px; } .s h4 { font-weight:normal; font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--brass); border-bottom:1px solid rgba(217,164,65,.6); padding-bottom:2px; margin-bottom:3px; }
+.li { display:flex; justify-content:space-between; gap:8px; } a, .a { color:var(--accent); text-decoration:none; } .dim { color:var(--ink-dim); }
+.p { margin-top:6px; color:var(--ink-dim); font-style:italic; }
+table.cmp { border-collapse:collapse; width:100%; font-size:11.5px; } table.cmp th, table.cmp td { text-align:left; padding:3px 6px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } table.cmp th { color:var(--brass); font-weight:normal; font-size:10px; text-transform:uppercase; letter-spacing:.08em; } table.cmp tr.on td { background:rgba(74,159,216,.15); }
+.narrow { max-width:340px; } .narrow .body { grid-template-columns:1fr; } .narrow .list { border-right:none; border-bottom:1px solid var(--edge); max-height:80px; overflow:hidden; }
+.cap { font-size:12px; color:var(--ink-dim); margin-top:4px; }
+</style></head><body>
+<header><h1>Terrains &mdash; <span>agreed (ah-yu3j.1)</span></h1>
+<p>What you chose: a page per terrain, resources with how often, races seen for sale in your reports, monsters that roam there. <b>Every word on this page is the word that ships.</b> Agreed choices: Q5 every terrain named, Q6 lower case, Q7 every loaded turn, Q8 both ways. The non-recommended cards are kept for the record of what was rejected.</p></header><main>
+<h2 class="sec" id="full">The full page</h2>
+<div class="cards"><div class="card"><div class="dlg"><div class="bar">Game data<span class="x">✕</span></div><div class="tabs"><span>Skills 64</span><span>Men 15</span><span>Mounts 6</span><span>Ships 9</span><span>Monsters 71</span><span>Equipment 112</span><span>Buildings 58</span><span class="on">Terrains 12</span></div><div class="body"><div class="list"><div class="filt">Filter terrains…</div>
+<div class="row">cavern desert forest jungle mountain ocean plain swamp tundra tunnels underforest volcano</div>
+</div><div class="det"><div class="hd">mountain</div>
+<div class="f"><span class="l">Movement cost</span><span>2 walking or riding · 1 flying</span></div>
+<div class="f"><span class="l">Along a road</span><span>1</span></div>
+<div class="s"><h4>Found here</h4>
+<div class="li"><a>iron</a><span class="dim">always</span></div><div class="li"><a>stone</a><span class="dim">always</span></div>
+<div class="li"><a>mithril</a><span class="dim">in 35% of regions</span></div><div class="li"><a>rootstone</a><span class="dim">in 35% of regions</span></div><div class="li"><a>admantium</a><span class="dim">in 15% of regions</span></div></div>
+<div class="s"><h4>Seen for sale in your reports</h4><div class="li"><a>hill dwarves</a><span class="dim">4 mountain regions</span></div><div class="li"><a>leaders</a><span class="dim">4 mountain regions</span></div><div class="li"><a>orcs</a><span class="dim">1 mountain region</span></div></div>
+<div class="s"><h4>Monsters that roam here</h4><div><a>grizzly bear</a></div><div><a>roc</a></div><div><a>ogre</a></div></div></div></div></div></div>
+<div class="card"><h3><em>OCEAN</em> every section at its edge</h3><div class="dlg"><div class="bar">Game data<span class="x">✕</span></div><div class="tabs"><span>Skills 64</span><span>Men 15</span><span>Mounts 6</span><span>Ships 9</span><span>Monsters 71</span><span>Equipment 112</span><span>Buildings 58</span><span class="on">Terrains 12</span></div><div class="body"><div class="list"><div class="filt">Filter terrains…</div>
+<div class="row">cavern desert forest jungle mountain ocean plain swamp tundra tunnels underforest volcano</div>
+</div><div class="det"><div class="hd">ocean</div>
+<div class="f"><span class="l">Movement cost</span><span>needs a ship — a flier may cross but must end its move on land</span></div>
+<div class="s"><h4>Found here</h4><div class="li"><a>fish</a><span class="dim">always</span></div><div class="li"><a>giant turtle</a><span class="dim">in 30% of regions</span></div></div>
+<div class="s"><h4>Seen for sale in your reports</h4><p class="dim">No ocean region in your reports has had recruits for sale.</p></div>
+<div class="s"><h4>Monsters that roam here</h4><p class="dim">No monster in the game data roams here.</p></div></div></div></div></div>
+<div class="card"><h3><em>NO REPORT LOADED YET</em> races section only</h3><div class="dlg"><div class="det"><div class="s"><h4>Seen for sale in your reports</h4><p class="dim">No mountain region in your reports has had recruits for sale.</p></div></div></div><p class="cap">Same line as a terrain your reports have no sellers in.</p></div></div>
+
+<h2 class="sec" id="which">Q5 &nbsp;Which terrains are listed</h2>
+<div class="cards">
+<div class="card"><h3><em>EVERY TERRAIN THE DATA NAMES</em> <span class="rec">recommended</span></h3><div class="dlg"><div class="bar">Game data<span class="x">✕</span></div><div class="tabs"><span>Skills 64</span><span>Men 15</span><span>Mounts 6</span><span>Ships 9</span><span>Monsters 71</span><span>Equipment 112</span><span>Buildings 58</span><span class="on">Terrains 12</span></div><div class="body"><div class="list"><div class="filt">Filter terrains…</div>
+<div class="row">cavern desert forest jungle mountain ocean plain swamp tundra tunnels underforest volcano</div>
+</div><div class="det"><div class="hd">cavern</div>
+<div class="f"><span class="l">Movement cost</span><span>1</span></div>
+<div class="s"><h4>Found here</h4><p class="dim">The game data does not say what is found here.</p></div>
+<div class="s"><h4>Seen for sale in your reports</h4><p class="dim">No cavern region in your reports has had recruits for sale.</p></div>
+<div class="s"><h4>Monsters that roam here</h4><div><a>…</a></div></div></div></div></div>
+<ul class="notes"><li>The monster entries also name the underground terrains &mdash; cavern, tunnels, underforest. They get a page too: movement cost, and the monsters found there.</li><li class="con">Their &ldquo;Found here&rdquo; is always the not-said line.</li></ul></div>
+<div class="card"><h3><em>ONLY THE RESOURCE TABLE&rsquo;S NINE</em></h3><div class="dlg"><div class="bar">Game data<span class="x">✕</span></div><div class="tabs"><span>Skills 64</span><span>Men 15</span><span>Mounts 6</span><span>Ships 9</span><span>Monsters 71</span><span>Equipment 112</span><span>Buildings 58</span><span class="on">Terrains 9</span></div><div class="body"><div class="list"><div class="filt">Filter terrains…</div>
+<div class="row">desert forest jungle mountain ocean plain swamp tundra volcano</div>
+</div><div class="det"><div class=hd>mountain</div><p class=dim style='margin-top:6px'>…</p></div></div></div>
+<ul class="notes"><li>Every page is complete.</li><li class="con">A player who meets a cavern finds nothing about it.</li></ul></div></div>
+
+<h2 class="sec" id="case">Q6 &nbsp;How terrain names are written</h2>
+<div class="cards">
+<div class="card"><h3><em>lower case, as the game writes them</em> <span class="rec">recommended</span></h3><div class="dlg"><div class="bar">Game data<span class="x">✕</span></div><div class="tabs"><span>Skills 64</span><span>Men 15</span><span>Mounts 6</span><span>Ships 9</span><span>Monsters 71</span><span>Equipment 112</span><span>Buildings 58</span><span class="on">Terrains 9</span></div><div class="body"><div class="list"><div class="filt">Filter terrains…</div>
+<div class="row">desert forest jungle mountain ocean plain swamp tundra volcano</div>
+</div><div class="det"><div class=hd>mountain</div></div></div></div><ul class="notes"><li>Matches the report (&ldquo;mountain (12,4) in &hellip;&rdquo;) and every other tab here (&ldquo;mining&rdquo;, &ldquo;iron&rdquo;).</li></ul></div>
+<div class="card"><h3><em>Capitalised</em></h3><div class="dlg"><div class="bar">Game data<span class="x">✕</span></div><div class="tabs"><span>Skills 64</span><span>Men 15</span><span>Mounts 6</span><span>Ships 9</span><span>Monsters 71</span><span>Equipment 112</span><span>Buildings 58</span><span class="on">Terrains 9</span></div><div class="body"><div class="list"><div class="filt">Filter terrains…</div>
+<div class="row">Desert Forest Jungle Mountain Ocean Plain Swamp Tundra Volcano</div>
+</div><div class="det"><div class=hd>Mountain</div></div></div></div><ul class="notes"><li>Reads as a proper name.</li><li class="con">The only capitalised list in the dialog.</li></ul></div></div>
+
+<h2 class="sec" id="turns">Q7 &nbsp;&ldquo;Seen for sale&rdquo; &mdash; which reports count</h2>
+<div class="cards">
+<div class="card"><h3><em>EVERY TURN YOU HAVE LOADED</em> <span class="rec">recommended</span></h3><div class="dlg"><div class="det"><div class="s"><h4>Seen for sale in your reports</h4><div class="li"><a>hill dwarves</a><span class="dim">4 mountain regions</span></div><div class="li"><a>orcs</a><span class="dim">1 mountain region</span></div></div></div></div><ul class="notes"><li>A region you passed through three turns ago still counts &mdash; a region&rsquo;s race rarely changes.</li><li>Each region counted once, however many turns saw it.</li></ul></div>
+<div class="card"><h3><em>THE TURN YOU ARE LOOKING AT</em></h3><div class="dlg"><div class="det"><div class="s"><h4>Seen for sale in this turn&rsquo;s report</h4><div class="li"><a>hill dwarves</a><span class="dim">1 mountain region</span></div></div></div></div><ul class="notes"><li>Always current.</li><li class="con">Only what your units can see right now &mdash; usually very little.</li></ul></div></div>
+
+<h2 class="sec" id="back">Q8 &nbsp;Links back from items and monsters</h2>
+<div class="banner">Today a skill&rsquo;s page lists what it produces, and the item&rsquo;s page lists the skill back. Terrains could work the same way: the item and monster pages you already have would each gain one line.</div>
+<div class="cards">
+<div class="card"><h3><em>BOTH WAYS</em> <span class="rec">recommended</span></h3><div class="dlg"><div class="det"><div class="hd" style="display:flex">iron<span style="margin-left:auto;font-size:10px">IRON</span></div><p style="margin-top:6px">…the item&rsquo;s page as today…</p><div class="s"><h4>Produced by</h4><div class="li"><a>mining</a><span class="dim">at level 1</span></div></div><div class="s"><h4>Found in</h4><div class="li"><a>mountain</a><span class="dim">always</span></div><div class="li"><a>desert</a><span class="dim">always</span></div><div class="li"><a>volcano</a><span class="dim">always</span></div><div class="li"><a>tundra</a><span class="dim">in 30% of regions</span></div></div></div></div><div class="dlg" style="margin-top:6px"><div class="det"><div class="hd" style="display:flex">grizzly bear<span style="margin-left:auto;font-size:10px">GRIZ</span></div><p style="margin-top:6px">This is a monster. … The monster can spawn in the wilderness of mountains. Monster prefers to roam the mountain terrain. …</p><div class="f"><span class="l">Roams</span><span><a>mountain</a></span></div></div></div><ul class="notes"><li>&ldquo;Where do I find mithril?&rdquo; is answered from mithril&rsquo;s own page.</li><li class="con">Changes two pages that exist today.</li></ul></div>
+<div class="card"><h3><em>TERRAIN PAGES ONLY</em></h3><div class="dlg"><div class="det"><div class="hd" style="display:flex">iron<span style="margin-left:auto;font-size:10px">IRON</span></div><p style="margin-top:6px">…the item&rsquo;s page as today…</p><div class="s"><h4>Produced by</h4><div class="li"><a>mining</a><span class="dim">at level 1</span></div></div></div></div><ul class="notes"><li>Nothing that exists today changes.</li><li class="con">To find mithril you open terrains one by one.</li></ul></div></div>
+<h2 class="sec">Empty and narrow</h2><div class="cards"><div class="card"><h3><em>EMPTY</em> a world whose data has no terrains</h3><div class="dlg"><div class="bar">Game data<span class="x">✕</span></div><div class="tabs"><span>Skills 64</span><span>Men 15</span><span>Mounts 6</span><span>Ships 9</span><span>Monsters 71</span><span>Equipment 112</span><span>Buildings 58</span><span class="on">Terrains 0</span></div><div class="body"><div class="list"><div class="filt">Filter terrains…</div></div><div class="det"><p class="dim">Nothing to show.</p></div></div></div><p class="cap">Same as any other empty tab today.</p></div>
+<div class="card"><h3><em>NARROW WINDOW</em></h3><div class="dlg narrow"><div class="bar">Game data<span class="x">✕</span></div><div class="tabs"><span>Skills 64</span><span>Men 15</span><span>Mounts 6</span><span>Ships 9</span><span>Monsters 71</span><span>Equipment 112</span><span>Buildings 58</span><span class="on">Terrains 9</span></div><div class="body"><div class="list"><div class="filt">Filter terrains…</div><div class="row">desert</div><div class="row">forest</div><div class="row">jungle</div><div class="row on">mountain</div><div class="row">ocean</div><div class="row">plain</div><div class="row">swamp</div><div class="row">tundra</div><div class="row">volcano</div></div><div class="det"><div class="hd">mountain</div>
+<div class="f"><span class="l">Movement cost</span><span>2 walking or riding · 1 flying</span></div>
+<div class="f"><span class="l">Along a road</span><span>1</span></div>
+<div class="s"><h4>Found here</h4>
+<div class="li"><a>iron</a><span class="dim">always</span></div>
+<div class="li"><a>stone</a><span class="dim">always</span></div>
+<div class="li"><a>mithril</a><span class="dim">in 35% of regions</span></div>
+<div class="li"><a>rootstone</a><span class="dim">in 35% of regions</span></div>
+<div class="li"><a>admantium</a><span class="dim">in 15% of regions</span></div></div></div></div></div><p class="cap">The tab strip wraps; Terrains drops to the second line as a unit.</p></div>
+</div></main></body></html>
