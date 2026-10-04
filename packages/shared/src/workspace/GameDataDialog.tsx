@@ -1,20 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  GAME_DATA_CATEGORIES,
   GAME_DATA_CATEGORY_LABELS,
+  GAME_DATA_KIND_WORDS,
   type GameDataDetail,
+  type GameDataEntry,
   type GameDataIndex,
   type GameDataLink,
   skillEntryId
 } from "../gameData";
-import { paletteKeyReduce, PALETTE_PAGE_ROWS } from "../commandPalette";
 import { DialogFrame } from "./DialogFrame";
 import {
   entriesOf,
+  filterGameData,
+  GAME_DATA_TABS,
+  gameDataMove,
+  type GameDataTab,
   goBack,
   openGameDataDialog,
   selectGameDataEntry,
-  selectGameDataTab
+  selectGameDataTab,
+  stepGameDataTab,
+  tabLabel
 } from "./gameDataDialogState";
 
 /**
@@ -34,7 +40,7 @@ export function GameDataDialog({
   onDismiss
 }: {
   index: GameDataIndex;
-  /** Where to land. null opens on the first tab's first entry. */
+  /** Where to land. null is a cold open: the All tab, on its first entry (ah-yu3j.2). */
   initialEntryId: string | null;
   onDismiss: () => void;
 }) {
@@ -60,8 +66,8 @@ export function GameDataDialog({
   }, []);
 
   const shown = useMemo(
-    () => entriesOf(index, state.category, state.filter),
-    [index, state.category, state.filter]
+    () => entriesOf(index, state.tab, state.filter),
+    [index, state.tab, state.filter]
   );
   const detail = state.selectedId === null ? null : index.detailOf(state.selectedId);
   const returnsTo = state.back[state.back.length - 1];
@@ -73,10 +79,7 @@ export function GameDataDialog({
 
   const moveWithin = (key: string) => {
     const at = shown.findIndex((entry) => entry.id === state.selectedId);
-    const next = paletteKeyReduce(
-      { index: at === -1 ? 0 : at, count: shown.length, pageSize: PALETTE_PAGE_ROWS },
-      key
-    );
+    const next = gameDataMove(at, shown.length, key);
     if (next === null) {
       return false;
     }
@@ -105,13 +108,14 @@ export function GameDataDialog({
   }, [state.selectedId]);
 
   const stepTab = (by: number) => {
-    const at = GAME_DATA_CATEGORIES.indexOf(state.category);
-    const next =
-      GAME_DATA_CATEGORIES[
-        (at + by + GAME_DATA_CATEGORIES.length) % GAME_DATA_CATEGORIES.length
-      ];
+    const next = stepGameDataTab(state.tab, by);
     setState((current) => selectGameDataTab(index, current, next));
   };
+
+  const filterLabel =
+    state.tab === "all"
+      ? "Filter everything…"
+      : `Filter ${GAME_DATA_CATEGORY_LABELS[state.tab].toLowerCase()}`;
 
   return (
     <DialogFrame
@@ -147,21 +151,21 @@ export function GameDataDialog({
       }
     >
       <div role="tablist" aria-label="Game data" className="flex gap-1 border-b border-edge bg-panel px-2 py-1">
-        {GAME_DATA_CATEGORIES.map((category) => (
+        {GAME_DATA_TABS.map((tab) => (
           <button
-            key={category}
+            key={tab}
             type="button"
             role="tab"
-            data-testid={`game-data-tab-${category}`}
-            aria-selected={category === state.category}
-            onClick={() => setState((current) => selectGameDataTab(index, current, category))}
+            data-testid={`game-data-tab-${tab}`}
+            aria-selected={tab === state.tab}
+            onClick={() => setState((current) => selectGameDataTab(index, current, tab))}
             className={
-              category === state.category
+              tab === state.tab
                 ? "rounded border border-brass bg-brass/10 px-2 py-0.5 text-brass"
                 : "rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink-dim hover:bg-panel hover:text-ink"
             }
           >
-            {GAME_DATA_CATEGORY_LABELS[category]} {entriesOf(index, category).length}
+            {`${tabLabel(tab)} ${tab === "all" ? index.entries.length : entriesOf(index, tab).length}`}
           </button>
         ))}
       </div>
@@ -172,11 +176,13 @@ export function GameDataDialog({
             type="search"
             autoFocus
             data-testid="game-data-filter"
-            aria-label={`Filter ${GAME_DATA_CATEGORY_LABELS[state.category].toLowerCase()}`}
-            placeholder={`Filter ${GAME_DATA_CATEGORY_LABELS[state.category].toLowerCase()}…`}
+            // On All both read "Filter everything…", ellipsis included: the accessible name is
+            // agreed verbatim in ah-yu3j.2's acceptance. The category tabs keep theirs.
+            aria-label={filterLabel}
+            placeholder={state.tab === "all" ? filterLabel : `${filterLabel}…`}
             value={state.filter}
             onChange={(event) =>
-              setState((current) => ({ ...current, filter: event.target.value }))
+              setState((current) => filterGameData(index, current, event.target.value))
             }
             onKeyDown={(event) => {
               // Left and Right change tab, as agreed - but only with nothing typed, because
@@ -196,36 +202,18 @@ export function GameDataDialog({
             }}
             className="w-full border-b border-brass/60 bg-panel-raised px-2 py-1 text-ink outline-none placeholder:text-ink-dim"
           />
-          <ul
-            ref={list}
-            data-testid="game-data-list"
-            role="listbox"
-            aria-label={GAME_DATA_CATEGORY_LABELS[state.category]}
-            className="min-h-0 overflow-y-auto"
-          >
-            {shown.map((entry) => (
-              <li key={entry.id}>
-                <button
-                  type="button"
-                  role="option"
-                  data-testid={`game-data-entry-${entry.id}`}
-                  aria-selected={entry.id === state.selectedId}
-                  onClick={() =>
-                    setState((current) =>
-                      selectGameDataEntry(index, current, entry.id, { push: false })
-                    )
-                  }
-                  className={
-                    entry.id === state.selectedId
-                      ? "w-full border-l-2 border-select bg-select/15 px-2 py-0.5 text-left text-ink"
-                      : "w-full border-l-2 border-transparent px-2 py-0.5 text-left text-ink-soft hover:bg-select/15 hover:text-ink"
-                  }
-                >
-                  {entry.tag === null ? entry.name : `${entry.name} ${entry.tag}`}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <GameDataList
+            tab={state.tab}
+            entries={shown}
+            filter={state.filter}
+            selectedId={state.selectedId}
+            listRef={list}
+            onPick={(entryId) =>
+              setState((current) =>
+                selectGameDataEntry(index, current, entryId, { push: false })
+              )
+            }
+          />
         </div>
         <div data-testid="game-data-detail" className="min-h-0 overflow-y-auto p-3">
           {detail === null ? (
@@ -238,6 +226,86 @@ export function GameDataDialog({
         </div>
       </div>
     </DialogFrame>
+  );
+}
+
+/**
+ * The list beside the filter. Its own component so its markup - the kind word, the no-match line -
+ * can be pinned by a static render, since this package has no jsdom to type into a filter with.
+ *
+ * On All a row carries its kind word at the right of its first line, and a long name wraps rather
+ * than being cut short, both agreed for ah-yu3j.2. The category tabs' rows are as they were.
+ */
+export function GameDataList({
+  tab,
+  entries,
+  filter,
+  selectedId,
+  listRef,
+  onPick
+}: {
+  tab: GameDataTab;
+  entries: readonly GameDataEntry[];
+  filter: string;
+  selectedId: string | null;
+  listRef?: React.Ref<HTMLUListElement>;
+  onPick: (entryId: string) => void;
+}) {
+  const typed = filter.trim();
+  return (
+    <ul
+      ref={listRef}
+      data-testid="game-data-list"
+      role="listbox"
+      aria-label={tabLabel(tab)}
+      className="min-h-0 overflow-y-auto"
+    >
+      {tab === "all" && entries.length === 0 && typed !== "" ? (
+        // An option a screen reader can land on, rather than an empty listbox: this line's whole
+        // job is to be read.
+        <li
+          role="option"
+          aria-disabled="true"
+          aria-selected="false"
+          data-testid="game-data-no-match"
+          className="px-2 py-1 italic text-ink-dim"
+        >
+          {`Nothing matches “${typed}”.`}
+        </li>
+      ) : null}
+      {entries.map((entry) => {
+        const name = entry.tag === null ? entry.name : `${entry.name} ${entry.tag}`;
+        const selected = entry.id === selectedId;
+        return (
+          <li key={entry.id}>
+            <button
+              type="button"
+              role="option"
+              data-testid={`game-data-entry-${entry.id}`}
+              aria-selected={selected}
+              onClick={() => onPick(entry.id)}
+              className={
+                (selected
+                  ? "w-full border-l-2 border-select bg-select/15 px-2 py-0.5 text-left text-ink"
+                  : "w-full border-l-2 border-transparent px-2 py-0.5 text-left text-ink-soft hover:bg-select/15 hover:text-ink") +
+                (tab === "all" ? " flex items-baseline gap-1.5" : "")
+              }
+            >
+              {tab === "all" ? (
+                <>
+                  <span className="min-w-0 break-words">{name}</span>
+                  <span className="ml-auto shrink-0 text-pane-xs uppercase tracking-[0.08em] text-ink-dim">
+                    {GAME_DATA_KIND_WORDS[entry.category]}
+                  </span>
+                </>
+              ) : (
+                name
+              )}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

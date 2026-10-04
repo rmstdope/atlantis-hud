@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { parseGameData, type GameDataIndex } from "../gameData";
-import { GameDataDialog } from "./GameDataDialog";
+import { GameDataDialog, GameDataList } from "./GameDataDialog";
+import { entriesOf } from "./gameDataDialogState";
 
 const RULESET = JSON.stringify({
   skills: {
@@ -119,7 +120,7 @@ describe("GameDataDialog", () => {
   });
 
   it("names every tab with its count and offers a filter scoped to the tab", () => {
-    const html = markup(null);
+    const html = markup("skill:MINI");
     expect(html).toContain("Skills");
     expect(html).toContain("Buildings");
     expect(html).toContain("Filter skills…");
@@ -139,5 +140,56 @@ describe("GameDataDialog", () => {
     // (ah-vwdi, verification failure) - the cap itself is pinned by theme.test.ts.
     expect(html).toContain("max-h-[80vh]");
     expect(html).not.toContain("max-h-[80vh]!");
+  });
+});
+
+describe("the All tab (ah-yu3j.2)", () => {
+  it("opens cold on All, far left, counting every entry of every other tab", () => {
+    const html = markup(null);
+    expect(html).toMatch(/role="tablist"[^>]*><button[^>]*data-testid="game-data-tab-all"[^>]*aria-selected="true"[^>]*>All 10</);
+    expect(html).toContain('placeholder="Filter everything…"');
+    expect(html).toContain('aria-label="Filter everything…"');
+  });
+
+  it("shows the first entry A-Z selected and read out", () => {
+    const html = markup(null);
+    expect(html).toMatch(/data-testid="game-data-entry-building:FORT"[^>]*aria-selected="true"/);
+    expect(html).toContain("A fort.");
+  });
+
+  it("marks each row on All with its kind word", () => {
+    const html = markup(null);
+    expect(html).toMatch(/data-testid="game-data-entry-ship:LONG"[^>]*>.*?Longship LONG.*?>Ship</);
+    expect(html).toMatch(/data-testid="game-data-entry-skill:MINI"[^>]*>.*?mining MINI.*?>Skill</);
+    expect(html).toMatch(/data-testid="game-data-entry-building:TOWER"[^>]*>.*?Tower.*?>Building</);
+  });
+
+  it("keeps a category tab's rows as they were, with no kind word", () => {
+    const html = markup("ship:LONG");
+    expect(html).toContain(">Longship LONG</button>");
+    expect(html).not.toContain(">Ship</span>");
+  });
+
+  it("says nothing matches, quoting what was typed, when the filter empties All", () => {
+    const html = renderToStaticMarkup(
+      <GameDataList tab="all" entries={[]} filter=" zzz " selectedId={null} onPick={() => {}} />
+    );
+    expect(html).toContain("Nothing matches “zzz”.");
+    expect(html).toContain("italic");
+    expect(html).toMatch(/<li role="option" aria-disabled="true"[^>]*>Nothing matches/);
+  });
+
+  it("leaves the other tabs' empty list as it was", () => {
+    const html = renderToStaticMarkup(
+      <GameDataList tab="skill" entries={[]} filter="zzz" selectedId={null} onPick={() => {}} />
+    );
+    expect(html).not.toContain("Nothing matches");
+  });
+
+  it("says nothing about matching when All is simply empty", () => {
+    const html = renderToStaticMarkup(
+      <GameDataList tab="all" entries={entriesOf(index, "all", "")} filter="" selectedId={null} onPick={() => {}} />
+    );
+    expect(html).not.toContain("Nothing matches");
   });
 });
