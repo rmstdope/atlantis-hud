@@ -526,6 +526,55 @@ test("Escape closes the cell popover and leaves the pane open", async ({ page })
   await expect(page.getByTestId("study-planner-dialog")).toHaveCount(0);
 });
 
+test("clicking the open cell again closes its dropdown and changes nothing", async ({ page }) => {
+  // Tall enough for the whole dropdown to hang below its cell. At the pinned 720 it fits on
+  // neither side, `placeUnderAnchor`'s clamp lays it over the cell it came from, and that cell
+  // cannot be clicked at all - a click outside or Escape is what closes it then.
+  await page.setViewportSize({ width: 1280, height: 1400 });
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  const popover = page.getByTestId("study-schedule-popover");
+  await cell.click();
+  await expect(popover).toBeVisible();
+  await expect(cell).toHaveAttribute("aria-expanded", "true");
+
+  await cell.click();
+  await expect(popover).toHaveCount(0);
+  await expect(cell).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("study-planner-dialog")).toBeVisible();
+  await expect(cell).toContainText("—");
+
+  // A third click opens it again: the toggle is a toggle, not a one-way close.
+  await cell.click();
+  await expect(popover).toBeVisible();
+});
+
+test("a click outside the dropdown closes it and changes nothing", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  const popover = page.getByTestId("study-schedule-popover");
+  await cell.click();
+  await expect(popover).toBeVisible();
+
+  // The mage's name cell: inside the planner, outside the dropdown, and not a turn.
+  await page.getByTestId(`study-schedule-name-${MAGE}`).click();
+  await expect(popover).toHaveCount(0);
+  await expect(page.getByTestId("study-planner-dialog")).toBeVisible();
+  await expect(cell).toContainText("—");
+
+  // Inside the dropdown, a press is the dropdown's own and closes nothing.
+  await cell.click();
+  await expect(popover).toBeVisible();
+  await popover.click({ position: { x: 4, y: 4 } });
+  await expect(popover).toBeVisible();
+});
+
 /**
  * Teaching, and the warnings strip (ah-lyg6.3).
  *

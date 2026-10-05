@@ -19,7 +19,7 @@ import { noticeSummary, type PlannerNotice } from "../studyTeaching";
 import type { TeachingRule } from "../teachingPermission";
 import type { PlannerGroup } from "../studyPlanner";
 import type { CellEvent, CellMode, CellPick } from "./studyCellState";
-import { keyToAction } from "./studyCellState";
+import { keyToAction, pressDismisses } from "./studyCellState";
 
 /**
  * The Schedule view (`ah-lyg6.2.3`): every mage a row, the next six turns the columns.
@@ -286,6 +286,20 @@ export function StudySchedule({
  */
 function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
   useEscapeToDismiss(() => props.onEvent({ kind: "cancelled" }));
+  // A press anywhere outside the card closes it with nothing chosen (ah-9wzn); which presses
+  // count is `pressDismisses`. On `pointerdown` and in the capture phase, so it is seen before
+  // anything under the pointer can stop it, and the press still goes on to whatever it landed on.
+  const onEvent = useRef(props.onEvent);
+  onEvent.current = props.onEvent;
+  useEffect(() => {
+    const onPress = (event: PointerEvent) => {
+      if (pressDismisses(event.target instanceof Element ? event.target : null)) {
+        onEvent.current({ kind: "dismissed" });
+      }
+    };
+    document.addEventListener("pointerdown", onPress, true);
+    return () => document.removeEventListener("pointerdown", onPress, true);
+  }, []);
   const box = useRef<HTMLDivElement | null>(null);
   const cell = `${props.rowIndex}:${props.mode.turnIndex}`;
   const step = props.mode.kind;
@@ -295,8 +309,8 @@ function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
   // step: on the step so that coming back from the teach step - whose buttons have just
   // unmounted - lands on a row again rather than on `<body>`, and on the cell because clicking a
   // second cell while a dropdown is open moves this one rather than remounting it (`reduce`
-  // answers `cell-opened` with `choosing` whatever it was in, and there is no outside-click
-  // dismissal - `dismissLayer.ts` listens for Escape alone). Without the cell in the list, that
+  // answers `cell-opened` for another cell with `choosing` whatever it was in, and a grid cell is
+  // the one press `pressDismisses` leaves alone). Without the cell in the list, that
   // click would leave focus on the *previous* grid cell, which the cleanup below has just taken.
   // React runs every cleanup before every effect, so this focus always wins over that one.
   useEffect(() => {
@@ -330,7 +344,7 @@ function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
   );
   return (
     <FloatingAtCell cell={cell}>
-      <div ref={box} tabIndex={-1}>
+      <div ref={box} tabIndex={-1} data-cell-popover="">
         <CellPopover {...props} />
       </div>
     </FloatingAtCell>
