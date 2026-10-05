@@ -18,9 +18,9 @@ import {
   type RulesetChangeState
 } from "./rulesetChange";
 
-const BUTTON =
+export const BUTTON =
   "rounded border border-edge bg-panel px-2 py-1 text-ink hover:border-brass disabled:opacity-50 disabled:hover:border-edge";
-const PRIMARY =
+export const PRIMARY =
   "rounded border border-brass bg-brass/10 px-2 py-1 text-brass hover:bg-brass/20 disabled:opacity-50 disabled:hover:bg-brass/10";
 const WARN = "rounded border border-warn px-2 py-1 text-warn hover:bg-warn/10";
 
