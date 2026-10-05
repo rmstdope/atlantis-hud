@@ -1,4 +1,5 @@
 import type { MapSizes } from "@atlantis/core-client";
+import { ISSUES_URL } from "../projectLinks";
 import { mapSizesOfGame } from "../mapShape";
 import { MapSizesSettings } from "./MapSizesSettings";
 import { RulesetChanger } from "./RulesetChanger";
@@ -1133,17 +1134,6 @@ function SnippetSettings() {
     </div>
   );
 }
-
-/**
- * Where a player reports a bug or asks for a feature.
- *
- * `/issues/new` rather than `/issues`: the call to action is "describe it", so the form is the
- * right target rather than a list to hunt through. The desktop capability scopes
- * `opener:allow-open-url` to `https://github.com/rmstdope/atlantis-hud/*`, so this address is
- * already inside the allowance and no capability change is needed - one that drifts outside it
- * would be refused at runtime rather than opened.
- */
-const ISSUES_URL = "https://github.com/rmstdope/atlantis-hud/issues/new";
 
 /**
  * Whether there is a newer version, then what this build is - the old settings panel, now a tab.
