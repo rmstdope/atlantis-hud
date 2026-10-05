@@ -7,11 +7,12 @@
  * `--database`, and it is only a guard, so it needs a test rather than a comment.
  */
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Ruleset } from "./build";
+import { regenerateArguments, WORLDS } from "./worlds";
 
 const ARCANUM = {
   rules: "tests/fixtures/ruleset/newage-arcanum-rules.html",
@@ -79,6 +80,79 @@ describe("the scraper CLI", () => {
     expect(written.source.dataUrl).toBe(ARCANUM.database);
     expect(written.items.MEAL.maintenanceValue).toBe(30);
     expect(written.movement.terrainCosts.premiums.volcano).toBe(4);
+  });
+
+  it("carries source forward from --keep-source rather than the arguments and the clock", async () => {
+    const directory = scratchDirectory();
+    const kept = join(directory, "kept.json");
+    const out = join(directory, "out.json");
+    const source = {
+      rulesUrl: "https://example.invalid/rules",
+      dataUrl: "https://example.invalid/database",
+      fetchedAt: "2001-02-03T04:05:06.789Z"
+    };
+    writeFileSync(kept, JSON.stringify({ source }), "utf8");
+
+    expect(
+      await run([
+        "--rules",
+        ARCANUM.rules,
+        "--database",
+        ARCANUM.database,
+        "--order-language",
+        ARCANUM.orderLanguage,
+        "--out",
+        out,
+        "--keep-source",
+        kept
+      ])
+    ).toBeNull();
+
+    const written = JSON.parse(readFileSync(out, "utf8")) as Ruleset;
+    expect(written.source).toMatchObject(source);
+  });
+
+  it("refuses a --keep-source file with no source block, writing nothing", async () => {
+    const directory = scratchDirectory();
+    const kept = join(directory, "kept.json");
+    const out = join(directory, "out.json");
+    writeFileSync(kept, JSON.stringify({ items: {} }), "utf8");
+
+    const error = await run([
+      "--rules",
+      ARCANUM.rules,
+      "--database",
+      ARCANUM.database,
+      "--order-language",
+      ARCANUM.orderLanguage,
+      "--out",
+      out,
+      "--keep-source",
+      kept
+    ]);
+
+    expect(error?.message).toMatch(/--keep-source .* has no source block/);
+    expect(existsSync(out)).toBe(false);
+  });
+
+  /**
+   * The acceptance of ah-g4r6: the remedy `committed.test.ts` prints, run with only `--out`
+   * redirected, writes exactly the committed file - `source` included. Redirected because writing
+   * over the committed file would race `committed.test.ts` reading it.
+   */
+  it.each([...WORLDS])("regenerateArguments($id) rebuilds the committed file exactly", async (world) => {
+    const out = join(scratchDirectory(), "regenerated.json");
+    const args = regenerateArguments(world);
+    const outIndex = args.indexOf("--out");
+    expect(args[outIndex + 1]).toBe(world.rulesetPath);
+    args[outIndex + 1] = out;
+
+    expect(await run(args)).toBeNull();
+
+    const committed = JSON.parse(
+      readFileSync(new URL(`../../../${world.rulesetPath}`, import.meta.url), "utf8")
+    ) as Ruleset;
+    expect(JSON.parse(readFileSync(out, "utf8"))).toEqual(committed);
   });
 
   it("refuses --database without --out rather than overwriting the standard ruleset", async () => {

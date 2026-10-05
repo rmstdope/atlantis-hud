@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildRuleset, type Ruleset } from "./build";
-import { catalogueDataPage, WORLDS, worldById } from "./worlds";
+import { catalogueDataPage, regenerateArguments, WORLDS, worldById } from "./worlds";
 
 const read = (relative: string) =>
   readFileSync(fileURLToPath(new URL(`../../../${relative}`, import.meta.url)), "utf8");
@@ -31,12 +31,9 @@ describe("the committed rulesets", () => {
         fetchedAt: committed.source.fetchedAt
       });
 
+      // Runnable as-is from the repository root; `cli.test.ts` proves it rebuilds this file.
       const regenerate =
-        "pnpm --filter @atlantis/ruleset scrape -- " +
-        `--rules ${world.rulesFixture} ` +
-        `${world.catalogueSource === "database" ? "--database" : "--data"} ${world.catalogueFixture} ` +
-        `--order-language ${world.orderLanguage} ` +
-        `--out ${world.rulesetPath}`;
+        `pnpm --filter @atlantis/ruleset scrape -- ${regenerateArguments(world).join(" ")}`;
 
       // toEqual, not toStrictEqual: an optional the scraper leaves `undefined` is a key the file
       // does not have, and key order is not part of the contract.
