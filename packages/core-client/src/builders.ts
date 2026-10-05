@@ -71,8 +71,14 @@ export function aReportUnit(overrides: Partial<ReportUnit> = {}): ReportUnit {
  * `ah-nmts`, and the parser's own tests live beside `split_kind`.
  */
 export function aStructure(kind: string, overrides: Partial<StructureInfo> = {}): StructureInfo {
-  const [base, ...clauses] = kind.split(",");
-  const qualifiers = clauses.map((clause) => clause.trim()).filter((clause) => clause !== "");
+  const [first, ...clauses] = kind.split(",");
+  // A single-type fleet (`8 Corsairs`) has no `Fleet,` before it; the parser reads its first clause
+  // as the manifest and calls it a Fleet (ah-661c).
+  const singleTypeFleet = /^\d+\s*\S/u.test(first.trim());
+  const base = singleTypeFleet ? "Fleet" : first;
+  const qualifiers = [...(singleTypeFleet ? [first] : []), ...clauses]
+    .map((clause) => clause.trim())
+    .filter((clause) => clause !== "");
   const vessels = qualifiers.flatMap<VesselEntry>((clause) => {
     const counted = /^(\d+)\s+(.+)$/u.exec(clause);
     if (counted) {
@@ -82,7 +88,7 @@ export function aStructure(kind: string, overrides: Partial<StructureInfo> = {})
   });
   return {
     structureId: `${kind}-1`,
-    name: base.trim(),
+    name: first.trim(),
     kind,
     baseKind: base.trim(),
     qualifiers,

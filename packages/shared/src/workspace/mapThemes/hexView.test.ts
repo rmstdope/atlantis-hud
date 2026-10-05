@@ -536,6 +536,15 @@ describe("structures, split by what they mean rather than counted together", () 
     expect(withStructures(["Fleet, 4 Galleons, 1 Balloon"]).ships).toBe(5);
   });
 
+  it("draws a fleet of one kind of ship as a hull of its vessels (ah-661c)", () => {
+    // tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep: "+ ADF Implacable [868] : 8 Corsairs."
+    // A single-type fleet has no "Fleet," before it; the parser gives it base kind Fleet and the
+    // vessels, so this reader needs no spelling of its own.
+    const view = withStructures(["8 Corsairs"]);
+    expect(view.ships).toBe(8);
+    expect(view.buildings).toBe(0);
+  });
+
   it("counts a lone hull as one vessel, and never counts a hull as none", () => {
     // A kind with no inventory is a fleet of exactly one, and a tail nothing can be read out of
     // must still leave the ship on the badge - under-counting beats losing it.
