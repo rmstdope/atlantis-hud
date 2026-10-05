@@ -1,8 +1,11 @@
-import type { GameManifest, OpenedGame } from "@atlantis/core-client";
+import type { GameManifest, ImportedTurnSummary, OpenedGame, ParsedReport } from "@atlantis/core-client";
+import { aParsedReport, aReportRegion, aReportUnit } from "@atlantis/core-client";
+import { readRuleset, readTridentRuleset } from "@atlantis/fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GameClient } from "./gameActions";
 import {
   changeRuleset,
+  checkRulesetChange,
   createGame,
   deleteGame,
   importGameBackup,
@@ -446,6 +449,84 @@ describe("changing a game's ruleset", () => {
     });
     expect(result?.manifest).toEqual(movedManifest);
     expect(result?.games).toEqual([movedManifest]);
+  });
+});
+
+describe("checking a ruleset change against the game's turns", () => {
+  /** A turn whose unit studies annihilation [ANNI], which New Origins defines and Trident does not. */
+  const annihilating = aParsedReport({
+    regions: [
+      aReportRegion({
+        terrain: "plain",
+        units: [aReportUnit({ skills: [{ name: "annihilation", tag: "ANNI", level: 1, points: 30 }] })]
+      })
+    ]
+  });
+  const plain = aParsedReport({ regions: [aReportRegion({ terrain: "plain" })] });
+
+  function summary(turnNumber: number): ImportedTurnSummary {
+    return {
+      key: { gameId: "g1", factionId: "42", turnNumber },
+      season: null,
+      importedAt: NOW,
+      updatedAt: NOW
+    };
+  }
+
+  /** Each stored turn's raw text is its turn number; parsing looks the report up by it. */
+  function turnsClient(reports: Record<number, ParsedReport | null>) {
+    return {
+      listImportedTurns: vi.fn().mockResolvedValue(Object.keys(reports).map((turn) => summary(Number(turn)))),
+      loadImportedTurn: vi
+        .fn()
+        .mockImplementation(async (_path: string, _game: string, _faction: string, turn: number) =>
+          reports[turn] === null
+            ? null
+            : { key: summary(turn).key, rawReport: String(turn), parseResult: null }
+        ),
+      parseReportFull: vi.fn().mockImplementation(async (raw: string) => reports[Number(raw)])
+    };
+  }
+
+  const readRulesetText = async (rulesetId: string) =>
+    rulesetId === "newage-trident" ? readTridentRuleset() : readRuleset();
+  const SHIPPED = ["neworigins", "newage-trident"];
+
+  it("reads every imported turn and checks it against the target", async () => {
+    const client = turnsClient({ 1: plain, 2: annihilating, 3: annihilating });
+
+    const gaps = await checkRulesetChange(client, opened("g1"), "newage-trident", readRulesetText, SHIPPED);
+
+    expect(client.loadImportedTurn).toHaveBeenCalledTimes(3);
+    expect(gaps).toEqual({
+      totalTurns: 3,
+      affectedTurns: [2, 3],
+      groups: [{ kind: "skill", names: ["annihilation"] }],
+      count: 1
+    });
+  });
+
+  it("fails when a turn cannot be read, rather than letting the change through unchecked", async () => {
+    const client = turnsClient({ 1: plain, 2: null });
+
+    await expect(
+      checkRulesetChange(client, opened("g1"), "newage-trident", readRulesetText, SHIPPED)
+    ).rejects.toThrow("turn 2 could not be read");
+  });
+
+  it("fails when the chosen ruleset cannot be read", async () => {
+    const client = turnsClient({ 1: plain });
+
+    await expect(
+      checkRulesetChange(client, opened("g1"), "newage-trident", async () => "not json", SHIPPED)
+    ).rejects.toThrow("the newage-trident ruleset could not be read");
+  });
+
+  it("has nothing missing for a game with no turns", async () => {
+    const gaps = await checkRulesetChange(turnsClient({}), opened("g1"), "newage-trident", readRulesetText, SHIPPED);
+
+    expect(gaps.count).toBe(0);
+    expect(gaps.totalTurns).toBe(0);
   });
 });
 
