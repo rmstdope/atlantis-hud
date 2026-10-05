@@ -81,7 +81,16 @@ async function load(location: string): Promise<string> {
 async function keptSource(
   location: string
 ): Promise<{ rulesUrl: string; dataUrl: string; fetchedAt: string }> {
-  const source = (JSON.parse(await load(location)) as { source?: Record<string, unknown> }).source;
+  const text = await load(location);
+  let parsed: { source?: Record<string, unknown> } | null;
+  try {
+    parsed = JSON.parse(text) as { source?: Record<string, unknown> } | null;
+  } catch (error) {
+    throw new Error(
+      `--keep-source ${location} is not JSON: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  const source = parsed?.source;
   const { rulesUrl, dataUrl, fetchedAt } = source ?? {};
   if (typeof rulesUrl !== "string" || typeof dataUrl !== "string" || typeof fetchedAt !== "string") {
     throw new Error(`--keep-source ${location} has no source block to carry forward`);

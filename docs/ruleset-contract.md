@@ -54,10 +54,17 @@ standard ruleset every shell fetches at startup:
 
 ```
 pnpm --filter @atlantis/ruleset scrape -- \
-  --rules    tests/fixtures/ruleset/newage-arcanum-rules.html \
-  --database tests/fixtures/ruleset/newage-arcanum-database.json \
-  --out      config/public/ruleset-newage-arcanum.json
+  --rules          tests/fixtures/ruleset/newage-arcanum-rules.html \
+  --database       tests/fixtures/ruleset/newage-arcanum-database.json \
+  --order-language new-age-arcanum \
+  --out            config/public/ruleset-newage-arcanum.json \
+  --keep-source    config/public/ruleset-newage-arcanum.json
 ```
+
+`--keep-source` copies the named ruleset's `source` block (both URLs and `fetchedAt`). Without it,
+the arguments and the clock fill `source` in, so regenerating from fixtures would write a new fetch
+date and, given absolute paths, paths that only exist on your machine. Leave it off for a real
+refresh from the network.
 
 Three worlds are committed, and `packages/ruleset/src/worlds.ts` is the table naming them:
 
@@ -69,6 +76,9 @@ Three worlds are committed, and `packages/ruleset/src/worlds.ts` is the table na
 
 Each committed file is built from its own fixtures, and
 `packages/ruleset/src/committed.test.ts` fails if one is not - regenerate rather than edit. The
+command its failure prints (spelled once, by `regenerateArguments` in `worlds.ts`) runs as-is from
+the repository root and passes `--keep-source`, so the diff it leaves shows only the scraped content
+that changed. The
 script is run deliberately, never as part of a build, and never in CI - the rulesets are committed
 so that a fresh clone and CI need no network.
 

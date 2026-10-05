@@ -135,6 +135,32 @@ describe("the scraper CLI", () => {
     expect(existsSync(out)).toBe(false);
   });
 
+  it.each([
+    ["a source block missing fetchedAt", JSON.stringify({ source: { rulesUrl: "r", dataUrl: "d" } })],
+    ["a file that is not JSON", "<html>not a ruleset</html>"]
+  ])("refuses a --keep-source file with %s, naming the flag", async (_case, contents) => {
+    const directory = scratchDirectory();
+    const kept = join(directory, "kept.json");
+    const out = join(directory, "out.json");
+    writeFileSync(kept, contents, "utf8");
+
+    const error = await run([
+      "--rules",
+      ARCANUM.rules,
+      "--database",
+      ARCANUM.database,
+      "--order-language",
+      ARCANUM.orderLanguage,
+      "--out",
+      out,
+      "--keep-source",
+      kept
+    ]);
+
+    expect(error?.message).toContain(`--keep-source ${kept}`);
+    expect(existsSync(out)).toBe(false);
+  });
+
   /**
    * The acceptance of ah-g4r6: the remedy `committed.test.ts` prints, run with only `--out`
    * redirected, writes exactly the committed file - `source` included. Redirected because writing
