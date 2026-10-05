@@ -191,15 +191,32 @@ pub fn parse_structure(body: &str) -> Option<Structure> {
 /// (`closed to player units`). Anything that is not recognisably a vessel stays a qualifier only,
 /// so a clause this rule has never seen is never miscounted as a ship.
 ///
+/// The one exception is a first clause that is itself a counted vessel (`8 Corsairs`): that is a
+/// fleet of one kind of ship, printed without its `Fleet,`, and is returned with the base kind
+/// `Fleet` and the clause as its vessel, exactly as `Fleet, 8 Corsairs` is (ah-661c).
+///
 /// Pass a kind that has already had its `, needs N` clause removed: a build cost would otherwise
 /// become a vessel called `needs 560`.
 #[must_use]
 fn split_kind(kind_text: &str) -> (String, Vec<String>, Vec<VesselEntry>) {
     let mut clauses = kind_text.split(',');
-    let base_kind = clauses.next().unwrap_or_default().trim().to_string();
+    let first = clauses.next().unwrap_or_default().trim();
 
     let mut qualifiers = Vec::new();
     let mut vessels = Vec::new();
+    // A fleet of one kind of ship has no `Fleet,` before it - `ADF Implacable [868] : 8 Corsairs.`
+    // (g7 f95 t71) - so its first clause is already the manifest. It is the same fleet as
+    // `Fleet, 8 Corsairs` (rules/economy_ships: "Fleets may contain one or more ships"), and is
+    // returned as one so that no reader has to know the spelling (ah-661c). Only a counted clause
+    // qualifies: a bare `Corsair` or `Galley` is the hull kind itself.
+    let base_kind = match counted_vessel(first) {
+        Some(vessel) => {
+            vessels.push(vessel);
+            qualifiers.push(first.to_string());
+            FLEET.to_string()
+        }
+        None => first.to_string(),
+    };
     for clause in clauses {
         let clause = clause.trim();
         if clause.is_empty() {
@@ -212,6 +229,14 @@ fn split_kind(kind_text: &str) -> (String, Vec<String>, Vec<VesselEntry>) {
     }
 
     (base_kind, qualifiers, vessels)
+}
+
+/// The base kind Atlantis writes for a stack of vessels, and the one a single-type fleet is given.
+const FLEET: &str = "Fleet";
+
+/// A clause that is a vessel with a count (`8 Corsairs`), or `None`.
+fn counted_vessel(clause: &str) -> Option<VesselEntry> {
+    parse_vessel(clause).filter(|vessel| vessel.count.is_some())
 }
 
 /// Reads one manifest clause as a vessel, or `None` where it is prose rather than a vessel.
@@ -247,9 +272,10 @@ fn parse_vessel(clause: &str) -> Option<VesselEntry> {
 /// this one has never heard of survives (`sighting_from_payload` says the same thing). So the
 /// back-fill works on the JSON too, and both shells run it at the one place each holds the payload.
 ///
-/// Only a structure whose `baseKind` is missing or empty is filled. A real `baseKind` is never
-/// empty - a kindless line still yields the whole string - so an already-split structure is left
-/// exactly as it is, rather than being split a second time from a `kind` that is no longer a
+/// Only a structure whose `baseKind` is missing or empty is filled, or one whose `baseKind` still
+/// carries a count - the single-type fleet as builds before ah-661c split it. A real `baseKind` is
+/// never empty - a kindless line still yields the whole string - so an already-split structure is
+/// left exactly as it is, rather than being split a second time from a `kind` that is no longer a
 /// sentence.
 pub fn backfill_structure_kinds(region: &mut serde_json::Value) {
     let Some(structures) = region
@@ -263,10 +289,12 @@ pub fn backfill_structure_kinds(region: &mut serde_json::Value) {
         let Some(object) = structure.as_object_mut() else {
             continue;
         };
+        // A base kind with a count in it is the single-type fleet as a build before ah-661c split
+        // it, and is split again; `kind` is still the report's sentence, so that is safe.
         let already_split = object
             .get("baseKind")
             .and_then(serde_json::Value::as_str)
-            .is_some_and(|base| !base.is_empty());
+            .is_some_and(|base| !base.is_empty() && counted_vessel(base).is_none());
         if already_split {
             continue;
         }
@@ -765,6 +793,82 @@ mod tests {
         backfill_structure_kinds(&mut region);
 
         assert_eq!(region, before);
+    }
+
+    /// The single-type fleet as a real report prints it (ah-661c): a fleet of one kind of ship has
+    /// no `Fleet,` before it, so its kind clause is the manifest itself. Read from the fixture, not
+    /// from a builder, because a builder is what let ah-gicw merge without ever meeting this line.
+    #[test]
+    fn a_single_type_fleet_is_read_from_the_fixture_line() {
+        let line = atlantis_hud_fixtures::G7_F95_T71
+            .text
+            .lines()
+            .find(|line| line.starts_with("+ ADF Implacable [868]"))
+            .expect("the fixture carries the fleet");
+        assert_eq!(line, "+ ADF Implacable [868] : 8 Corsairs.");
+
+        let structure = parse_structure(line).expect("structure");
+
+        assert_eq!(structure.kind, "8 Corsairs");
+        assert_eq!(structure.base_kind, "Fleet");
+        assert_eq!(structure.qualifiers, vec!["8 Corsairs".to_string()]);
+        assert_eq!(
+            structure.vessels,
+            vec![VesselEntry {
+                count: Some(8),
+                name: "Corsairs".to_string()
+            }]
+        );
+    }
+
+    /// No structure in any committed report keeps a count in its base kind: whatever a fleet's
+    /// spelling, every reader gets its ships from `vessels` (ah-661c).
+    #[test]
+    fn no_fixture_structure_has_a_counted_base_kind() {
+        for report in atlantis_hud_fixtures::ALL {
+            for line in unwrap_lines(report.text) {
+                if !line.text.starts_with("+ ") {
+                    continue;
+                }
+                let Some(structure) = parse_structure(&line.text) else {
+                    continue;
+                };
+                assert!(
+                    !structure
+                        .base_kind
+                        .starts_with(|c: char| c.is_ascii_digit()),
+                    "{}: {:?} has base kind {:?}",
+                    report.file,
+                    line.text,
+                    structure.base_kind
+                );
+            }
+        }
+    }
+
+    /// A hex remembered by a build before ah-661c carries the old split, `baseKind: "8 Corsairs"`
+    /// with no vessels, and is split again from its kind.
+    #[test]
+    fn a_stored_single_type_fleet_is_re_split() {
+        let mut region = serde_json::json!({
+            "structures": [{
+                "structureId": "868",
+                "kind": "8 Corsairs",
+                "baseKind": "8 Corsairs",
+                "qualifiers": [],
+                "vessels": []
+            }]
+        });
+
+        backfill_structure_kinds(&mut region);
+
+        let structure = &region["structures"][0];
+        assert_eq!(structure["baseKind"], "Fleet");
+        assert_eq!(structure["qualifiers"], serde_json::json!(["8 Corsairs"]));
+        assert_eq!(
+            structure["vessels"],
+            serde_json::json!([{ "count": 8, "name": "Corsairs" }])
+        );
     }
 
     #[test]
