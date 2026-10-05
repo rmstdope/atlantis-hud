@@ -18,6 +18,11 @@
  * Any argument may be a local file instead of a URL, which is how the committed fixtures are
  * re-read without touching the network.
  *
+ * `--keep-source <ruleset>` takes the `source` block's URLs and fetch date from an existing ruleset
+ * instead of from the arguments and the clock. Regenerating a committed ruleset from its fixtures
+ * after a scraper change passes the file itself, so the diff shows only the scraped content that
+ * changed; `committed.test.ts` prints that command for each world.
+ *
  * Nothing is written unless every required value was read. A half-written ruleset would be worse
  * than none: routes would be costed against numbers this game does not use, and presented as fact.
  */
@@ -72,6 +77,27 @@ async function load(location: string): Promise<string> {
   return readFile(isAbsolute(location) ? location : new URL(location, REPOSITORY_ROOT), "utf8");
 }
 
+/** The `source` values to write, read from the ruleset `--keep-source` names. */
+async function keptSource(
+  location: string
+): Promise<{ rulesUrl: string; dataUrl: string; fetchedAt: string }> {
+  const text = await load(location);
+  let parsed: { source?: Record<string, unknown> } | null;
+  try {
+    parsed = JSON.parse(text) as { source?: Record<string, unknown> } | null;
+  } catch (error) {
+    throw new Error(
+      `--keep-source ${location} is not JSON: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  const source = parsed?.source;
+  const { rulesUrl, dataUrl, fetchedAt } = source ?? {};
+  if (typeof rulesUrl !== "string" || typeof dataUrl !== "string" || typeof fetchedAt !== "string") {
+    throw new Error(`--keep-source ${location} has no source block to carry forward`);
+  }
+  return { rulesUrl, dataUrl, fetchedAt };
+}
+
 /** The whole of the command, exported so `cli.test.ts` can drive it with a stubbed `argv`. */
 export async function main(): Promise<void> {
   const rulesUrl = readArgument("rules");
@@ -79,13 +105,15 @@ export async function main(): Promise<void> {
   const databaseUrl = readArgument("database");
   const orderLanguage = readArgument("order-language");
   const output = readArgument("out");
+  const keepSource = readArgument("keep-source");
 
   if (!rulesUrl || !orderLanguage || (!dataUrl && !databaseUrl)) {
     throw new Error(
       "usage: scrape --rules <url|path> --order-language <value> " +
-        "(--data <url|path> | --database <url|path>) [--out <path>]\n" +
+        "(--data <url|path> | --database <url|path>) [--out <path>] [--keep-source <path>]\n" +
         "Point --rules at the rules page of the game you are playing, and either --data at its " +
         "data page\nor --database at its JSON database. --database needs --out. " +
+        "--keep-source copies the source block of an existing ruleset rather than stamping a new one. " +
         "Supported order languages: new-origins, new-age-arcanum, new-age-trident."
     );
   }
@@ -120,16 +148,19 @@ export async function main(): Promise<void> {
     throw new Error("--data or --database is required");
   }
 
+  // Read before anything is built, so a bad --keep-source writes nothing.
+  const source = keepSource
+    ? await keptSource(keepSource)
+    : { rulesUrl, dataUrl: catalogueUrl, fetchedAt: new Date().toISOString() };
+
   const [rulesHtml, catalogueText] = await Promise.all([load(rulesUrl), load(catalogueUrl)]);
   const dataHtml = catalogueDataPage(databaseUrl ? "database" : "data-page", catalogueText);
 
   const ruleset = buildRuleset({
     rulesHtml,
     dataHtml,
-    rulesUrl,
-    dataUrl: catalogueUrl,
-    orderLanguage: orderLanguage as OrderLanguage,
-    fetchedAt: new Date().toISOString()
+    ...source,
+    orderLanguage: orderLanguage as OrderLanguage
   });
 
   // pathToFileURL rather than hand-building `file://${cwd()}`: a working directory containing a

@@ -78,3 +78,24 @@ export function catalogueDataPage(source: CatalogueSource, catalogue: string): s
 export function worldById(id: string): ScrapedWorld | null {
   return WORLDS.find((world) => world.id === id) ?? null;
 }
+
+/**
+ * The scrape arguments that regenerate a world's committed ruleset from its committed fixtures,
+ * carrying the committed file's own `source` forward (`--keep-source`) so the diff shows only the
+ * scraped content that changed. One function, so the remedy `committed.test.ts` prints and the
+ * case in `cli.test.ts` that runs it cannot drift apart.
+ */
+export function regenerateArguments(world: ScrapedWorld): string[] {
+  return [
+    "--rules",
+    world.rulesFixture,
+    world.catalogueSource === "database" ? "--database" : "--data",
+    world.catalogueFixture,
+    "--order-language",
+    world.orderLanguage,
+    "--out",
+    world.rulesetPath,
+    "--keep-source",
+    world.rulesetPath
+  ];
+}
