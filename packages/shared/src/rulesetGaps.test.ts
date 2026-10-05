@@ -143,6 +143,17 @@ describe("rulesetGaps", () => {
     expect(gaps.count).toBe(1);
   });
 
+  it("checks a single-type fleet printed with its count as the ship it names (ah-fdmb)", () => {
+    // tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep: "+ ADF Implacable [868] : 8 Corsairs."
+    // - a fleet of one kind of ship has no "Fleet," before it, so its kind carries the count.
+    const report = aParsedReport({ regions: [aReportRegion({ structures: [aStructure("8 Corsairs")] })] });
+
+    expect(rulesetGaps([{ turnNumber: 71, report }], NEW_ORIGINS, SHIPPED).count).toBe(0);
+    expect(reportNames(report, SHIPPED).filter((name) => name.kind === "structure")).toEqual([
+      { kind: "structure", key: expect.any(String), name: "Corsair" }
+    ]);
+  });
+
   it("names a terrain the target has no entry for", () => {
     const report = aParsedReport({ regions: [aReportRegion({ terrain: "nexus" })] });
 
