@@ -290,7 +290,7 @@ export async function checkRulesetChange(
     }
     turns.push({ turnNumber: key.turnNumber, report: await client.parseReportFull(record.rawReport) });
   }
-  return rulesetGaps(turns, target, known);
+  return rulesetGaps(turns, target, known, targetId);
 }
 
 /**

@@ -132,8 +132,44 @@ export function reportNames(report: ParsedReport, known: readonly GameDataIndex[
   return names;
 }
 
-/** Whether `target` has an entry for the name. */
-function defines(target: GameDataIndex, name: ReportName): boolean {
+/**
+ * Names a world's own pages show to be real but the scrape cannot read into its ruleset, by ruleset
+ * id (ah-n30q). Without these every turn-0 report would warn about the Nexus it starts in. `key` is
+ * the form `reportNames` produces; `source` is the lookup (`pnpm run atlantis`) each rests on.
+ *
+ * Read only by the gap check: the Dictionary and every other view still show the scraped data alone.
+ */
+export const UNSCRAPED_NAMES: Readonly<
+  Record<string, readonly { kind: GapKind; key: string; source: string }[]>
+> = {
+  neworigins: [
+    { kind: "terrain", key: terrainEntryId("nexus"), source: "rules/world_nexus" },
+    { kind: "terrain", key: terrainEntryId("barren"), source: "rules/annihilate: converted into barren land" },
+    {
+      kind: "skill",
+      key: "BRTL",
+      // No committed page names it; this New Origins report has a unit that knows and may study it.
+      source: "tests/fixtures/reports/neworigins-3.0.0-g3-f42-t82.rep: blasphemous ritual [BRTL] 1"
+    }
+  ],
+  "newage-arcanum": [
+    { kind: "terrain", key: terrainEntryId("nexus"), source: "newage arcanum rules/world_nexus" },
+    { kind: "terrain", key: terrainEntryId("barren"), source: "newage arcanum rules/create_village" },
+    { kind: "terrain", key: terrainEntryId("dungeon"), source: "newage arcanum data/Dungeon Entrance" }
+  ],
+  "newage-trident": [
+    { kind: "terrain", key: terrainEntryId("nexus"), source: "newage trident rules/world_nexus" },
+    { kind: "terrain", key: terrainEntryId("barren"), source: "newage trident rules/create_village" },
+    { kind: "terrain", key: terrainEntryId("dungeon"), source: "newage trident data/farsight: A dungeon has no fixed position" }
+  ]
+};
+
+/** Whether `target`, the ruleset `targetId`, has an entry for the name. */
+function defines(target: GameDataIndex, name: ReportName, targetId: string | undefined): boolean {
+  const unscraped = targetId === undefined ? undefined : UNSCRAPED_NAMES[targetId];
+  if (unscraped?.some((extra) => extra.kind === name.kind && extra.key === name.key)) {
+    return true;
+  }
   switch (name.kind) {
     case "item":
     case "race":
@@ -147,11 +183,15 @@ function defines(target: GameDataIndex, name: ReportName): boolean {
   }
 }
 
-/** What `turns` name that `target` does not define, ready to word. */
+/**
+ * What `turns` name that `target` does not define, ready to word. `targetId` is the target's
+ * ruleset id, which adds its `UNSCRAPED_NAMES`; without it only the scraped data counts.
+ */
 export function rulesetGaps(
   turns: readonly { turnNumber: number; report: ParsedReport }[],
   target: GameDataIndex,
-  known: readonly GameDataIndex[]
+  known: readonly GameDataIndex[],
+  targetId?: string
 ): RulesetGaps {
   const allTurns = new Set<number>();
   const affected = new Set<number>();
@@ -160,7 +200,7 @@ export function rulesetGaps(
   for (const { turnNumber, report } of turns) {
     allTurns.add(turnNumber);
     for (const name of reportNames(report, known)) {
-      if (defines(target, name)) {
+      if (defines(target, name, targetId)) {
         continue;
       }
       affected.add(turnNumber);

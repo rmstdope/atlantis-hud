@@ -49,12 +49,12 @@ export function checkOpenedReports(
     return null;
   }
   const known = [target, ...[...indexes].filter(([id]) => id !== rulesetId).map(([, index]) => index)];
-  const affected = reports.filter((opened) => rulesetGaps([asTurn(opened)], target, known).count > 0);
+  const affected = reports.filter((opened) => rulesetGaps([asTurn(opened)], target, known, rulesetId).count > 0);
   return {
     rulesetId,
     total: reports.length,
     affected,
-    gaps: rulesetGaps(affected.map(asTurn), target, known)
+    gaps: rulesetGaps(affected.map(asTurn), target, known, rulesetId)
   };
 }
 

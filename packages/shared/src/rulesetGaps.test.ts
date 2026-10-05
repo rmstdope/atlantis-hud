@@ -162,6 +162,54 @@ describe("rulesetGaps", () => {
     ]);
   });
 
+  describe("names the game's own pages define but no scrape can read (ah-n30q)", () => {
+    const named = (terrain: string, skills: { name: string; tag: string }[] = []) =>
+      aParsedReport({
+        regions: [
+          aReportRegion({
+            terrain,
+            units: skills.length === 0 ? [] : [aReportUnit({ skills: skills.map((skill) => ({ ...skill, level: 1, points: 60 })) })]
+          })
+        ]
+      });
+    const gapsIn = (report: ParsedReport, target: GameDataIndex, id: string) =>
+      rulesetGaps([{ turnNumber: 1, report }], target, SHIPPED, id).groups;
+    const BRTL = { name: "blasphemous ritual", tag: "BRTL" };
+
+    it("defines the Nexus under every shipped ruleset (rules/world_nexus in each)", () => {
+      expect(gapsIn(named("nexus"), NEW_ORIGINS, "neworigins")).toEqual([]);
+      expect(gapsIn(named("nexus"), ARCANUM, "newage-arcanum")).toEqual([]);
+      expect(gapsIn(named("nexus"), TRIDENT, "newage-trident")).toEqual([]);
+    });
+
+    it("defines barren terrain under every shipped ruleset (rules/annihilate, rules/create_village)", () => {
+      expect(gapsIn(named("barren"), NEW_ORIGINS, "neworigins")).toEqual([]);
+      expect(gapsIn(named("barren"), ARCANUM, "newage-arcanum")).toEqual([]);
+      expect(gapsIn(named("barren"), TRIDENT, "newage-trident")).toEqual([]);
+    });
+
+    it("defines dungeons under both New Age worlds and nowhere else", () => {
+      expect(gapsIn(named("dungeon"), ARCANUM, "newage-arcanum")).toEqual([]);
+      expect(gapsIn(named("dungeon"), TRIDENT, "newage-trident")).toEqual([]);
+      expect(gapsIn(named("dungeon"), NEW_ORIGINS, "neworigins")).toEqual([
+        { kind: "terrain", names: ["dungeon"] }
+      ]);
+    });
+
+    it("defines blasphemous ritual under New Origins only", () => {
+      expect(gapsIn(named("plain", [BRTL]), NEW_ORIGINS, "neworigins")).toEqual([]);
+      expect(gapsIn(named("plain", [BRTL]), ARCANUM, "newage-arcanum")).toEqual([
+        { kind: "skill", names: ["blasphemous ritual"] }
+      ]);
+    });
+
+    it("defines nothing extra when the target's ruleset id is not given", () => {
+      expect(rulesetGaps([{ turnNumber: 1, report: named("nexus") }], NEW_ORIGINS, SHIPPED).groups).toEqual([
+        { kind: "terrain", names: ["nexus"] }
+      ]);
+    });
+  });
+
   it("has nothing missing for a game with no turns", () => {
     expect(rulesetGaps([], TRIDENT, SHIPPED)).toEqual({
       totalTurns: 0,

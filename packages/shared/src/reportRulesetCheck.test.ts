@@ -93,6 +93,12 @@ describe("checkOpenedReports", () => {
     expect(check.gaps.count).toBe(0);
   });
 
+  it("does not warn about the Nexus a turn-0 report starts in (ah-n30q)", () => {
+    const nexus = aParsedReport({ regions: [aReportRegion({ terrain: "nexus" })] });
+
+    expect(checked([opened("turn-0.rep", nexus)], "neworigins").affected).toEqual([]);
+  });
+
   it("is no check at all when the ruleset is not to hand", () => {
     expect(checkOpenedReports([opened("a.rep", plain(1))], "somewhere-else", INDEXES)).toBeNull();
   });
