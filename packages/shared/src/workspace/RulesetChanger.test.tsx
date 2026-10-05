@@ -92,6 +92,17 @@ describe("the ruleset list in Settings' per-game tab (ah-gicw)", () => {
     expect(view(state)).toContain("Couldn’t change the ruleset: disk full. The game is still on New Origins.");
   });
 
+  it("names an unshipped ruleset in the red line as the list does (review of PR #1401)", () => {
+    const state: RulesetChangeState = {
+      ...openRulesetChange("magicdeep"),
+      line: { kind: "failed", reason: "disk full" }
+    };
+
+    const markup = view(state, "magicdeep");
+    expect(markup).toContain(">magicdeep (not shipped)</option>");
+    expect(markup).toContain("The game is still on magicdeep (not shipped).");
+  });
+
   it("replaces the old read-only line in the per-game tab", () => {
     const markup = renderToStaticMarkup(
       <GameSettings

@@ -7,7 +7,6 @@ import {
   type BoldSplit,
   type RulesetGaps
 } from "../rulesetGaps";
-import { RULESETS } from "../rulesets";
 import { DialogFrame } from "./DialogFrame";
 import { rulesetOptions } from "./settingsTabs";
 import {
@@ -25,9 +24,9 @@ const PRIMARY =
   "rounded border border-brass bg-brass/10 px-2 py-1 text-brass hover:bg-brass/20 disabled:opacity-50 disabled:hover:bg-brass/10";
 const WARN = "rounded border border-warn px-2 py-1 text-warn hover:bg-warn/10";
 
-/** A ruleset's name as the player knows it, or its id for one this build does not ship. */
+/** A ruleset's name as the list shows it, `<id> (not shipped)` for one this build does not ship. */
 export function rulesetLabelOf(rulesetId: string): string {
-  return RULESETS.find((ruleset) => ruleset.id === rulesetId)?.label ?? rulesetId;
+  return rulesetOptions(rulesetId).find((option) => option.id === rulesetId)?.label ?? rulesetId;
 }
 
 function Bold({ words }: { words: BoldSplit }) {

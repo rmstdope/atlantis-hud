@@ -60,7 +60,8 @@ describe("reportNames", () => {
     expect(byKind("race")).toEqual(["gnoll"]);
     expect(byKind("skill")).toEqual(["annihilation", "combat"]);
     // The fleet is checked by its vessels, never by the word "Fleet".
-    expect(byKind("structure")).toEqual(["Fort", "Longships", "Ritual Altar"]);
+    // A vessel is named as its ruleset names the ship, so one ship is one name however it is spelt.
+    expect(byKind("structure")).toEqual(["Fort", "Longship", "Ritual Altar"]);
     expect(byKind("terrain")).toEqual(["plain"]);
   });
 
@@ -118,6 +119,28 @@ describe("rulesetGaps", () => {
 
     expect(gaps.totalTurns).toBe(3);
     expect(gaps.affectedTurns).toEqual([2, 4]);
+  });
+
+  it("lists a ship once however a fleet spells it, by its ruleset name (review of PR #1401)", () => {
+    // Trident without its Balloon: every shipped ruleset has one, so the gap has to be made.
+    const trident = JSON.parse(readTridentRuleset()) as { items: Record<string, { kind?: string; name?: string }> };
+    const balloonTag = Object.keys(trident.items).find((tag) => trident.items[tag].name === "Balloon");
+    expect(balloonTag).toBeDefined();
+    delete trident.items[balloonTag as string];
+    const noBalloon = index(JSON.stringify(trident));
+    const report = aParsedReport({
+      regions: [
+        aReportRegion({
+          terrain: "plain",
+          structures: [aStructure("Fleet, 4 Galleons, 1 Balloon"), aStructure("Fleet, 2 Balloons")]
+        })
+      ]
+    });
+
+    const gaps = rulesetGaps([{ turnNumber: 1, report }], noBalloon, SHIPPED);
+
+    expect(gaps.groups).toEqual([{ kind: "structure", names: ["Balloon"] }]);
+    expect(gaps.count).toBe(1);
   });
 
   it("names a terrain the target has no entry for", () => {

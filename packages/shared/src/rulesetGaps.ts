@@ -60,6 +60,21 @@ function knownItem(known: readonly GameDataIndex[], tag: string): { name: string
 }
 
 /**
+ * A structure kind as the shipped rulesets name it, so `Balloons` and `Balloon` are one name. A
+ * kind none of them has keeps the report's spelling.
+ */
+function knownStructure(known: readonly GameDataIndex[], kind: string): { key: string; name: string } {
+  for (const index of known) {
+    const id = structureEntryId(index, kind);
+    const entry = index.byId.get(id);
+    if (entry) {
+      return { key: id, name: entry.name };
+    }
+  }
+  return { key: kind.toUpperCase(), name: kind };
+}
+
+/**
  * Every name a report contains, in no particular order and with repeats.
  *
  * `known` is every ruleset this build ships. It settles whether a tag is a race or an item, which
@@ -91,7 +106,7 @@ export function reportNames(report: ParsedReport, known: readonly GameDataIndex[
         ...structure.vessels.map((vessel) => vessel.name)
       ];
       for (const kind of kinds) {
-        names.push({ kind: "structure", key: kind.trim().toUpperCase(), name: kind.trim() });
+        names.push({ kind: "structure", ...knownStructure(known, kind.trim()) });
       }
     }
     for (const unit of region.units) {
