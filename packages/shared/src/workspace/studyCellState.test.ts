@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { keyToAction, reduce, type CellMode } from "./studyCellState";
+import { keyToAction, pressDismisses, reduce, type CellMode } from "./studyCellState";
 
 const idle: CellMode = { kind: "idle" };
 const choosing: CellMode = { kind: "choosing", rowKey: "21/2431", turnIndex: 2 };
@@ -49,6 +49,53 @@ describe("reduce", () => {
     expect(reduce(idle, { kind: "teach-toggled", unitId: "2517" })).toEqual(idle);
     expect(reduce(idle, { kind: "cancelled" })).toEqual(idle);
     expect(reduce(idle, { kind: "closed" })).toEqual(idle);
+  });
+
+  it("opening the open cell again closes it, with nothing chosen", () => {
+    expect(reduce(choosing, { kind: "cell-opened", rowKey: "21/2431", turnIndex: 2 })).toEqual(idle);
+    const teaching = reduce(choosing, { kind: "teach-opened", students: ["2517"], live: false });
+    expect(reduce(teaching, { kind: "cell-opened", rowKey: "21/2431", turnIndex: 2 })).toEqual(idle);
+  });
+
+  it("opening another cell moves the dropdown there", () => {
+    expect(reduce(choosing, { kind: "cell-opened", rowKey: "21/2431", turnIndex: 3 })).toEqual({
+      ...choosing,
+      turnIndex: 3
+    });
+    expect(reduce(choosing, { kind: "cell-opened", rowKey: "21/2517", turnIndex: 2 })).toEqual({
+      ...choosing,
+      rowKey: "21/2517"
+    });
+  });
+
+  it("dismissed closes from any step, the teach step included", () => {
+    const teaching = reduce(choosing, { kind: "teach-opened", students: ["2517"], live: false });
+    expect(reduce(choosing, { kind: "dismissed" })).toEqual(idle);
+    expect(reduce(teaching, { kind: "dismissed" })).toEqual(idle);
+    expect(reduce(idle, { kind: "dismissed" })).toEqual(idle);
+  });
+});
+
+describe("pressDismisses", () => {
+  /** A pressed element that sits inside whatever `within` names, and nothing else. */
+  const at = (...within: string[]) => ({
+    closest: (selector: string) => (within.includes(selector) ? {} : null)
+  });
+
+  it("dismisses a press anywhere off the dropdown and off the grid cells", () => {
+    expect(pressDismisses(at())).toBe(true);
+  });
+
+  it("leaves a press inside the dropdown to the dropdown", () => {
+    expect(pressDismisses(at("[data-cell-popover]"))).toBe(false);
+  });
+
+  it("leaves a press on a grid cell to the cell's own click", () => {
+    expect(pressDismisses(at("[data-cell]"))).toBe(false);
+  });
+
+  it("ignores a press with no element behind it", () => {
+    expect(pressDismisses(null)).toBe(false);
   });
 });
 

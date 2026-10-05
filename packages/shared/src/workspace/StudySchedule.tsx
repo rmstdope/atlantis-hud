@@ -19,7 +19,7 @@ import { noticeSummary, type PlannerNotice } from "../studyTeaching";
 import type { TeachingRule } from "../teachingPermission";
 import type { PlannerGroup } from "../studyPlanner";
 import type { CellEvent, CellMode, CellPick } from "./studyCellState";
-import { keyToAction } from "./studyCellState";
+import { keyToAction, pressDismisses } from "./studyCellState";
 
 /**
  * The Schedule view (`ah-lyg6.2.3`): every mage a row, the next six turns the columns.
@@ -286,6 +286,32 @@ export function StudySchedule({
  */
 function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
   useEscapeToDismiss(() => props.onEvent({ kind: "cancelled" }));
+  // A press anywhere outside the card closes it with nothing chosen (ah-9wzn); which presses
+  // count is `pressDismisses`. On `pointerdown` and in the capture phase, so it is seen before
+  // anything under the pointer can stop it, and the press still goes on to whatever it landed on.
+  //
+  // Not `usePopoverDismiss` from `popover.tsx`: that one wants a wrapper holding both the trigger
+  // and the panel, and this card is portalled to the body while every grid cell is a trigger.
+  // Not gated on the dismiss stack the way Escape is, because nothing can open above this card -
+  // the one dialog the Schedule raises (`ScheduleConfirmLayer`) opens from a header press, which
+  // closes the card first. A surface that ever does stack above it has to gate this.
+  const onEvent = useRef(props.onEvent);
+  onEvent.current = props.onEvent;
+  // Set by a pointer dismissal so the focus-return cleanup below stands down: the press owns focus
+  // then, as `popover.tsx` decided for its own outside presses (navigator, 2026-08-23). Restoring
+  // would fire the cell's `onFocus` and move the mage pane back to the turn just dismissed, from
+  // under the pointer, before the browser's own mousedown took focus away again.
+  const pointerDismissed = useRef(false);
+  useEffect(() => {
+    const onPress = (event: PointerEvent) => {
+      if (pressDismisses(event.target instanceof Element ? event.target : null)) {
+        pointerDismissed.current = true;
+        onEvent.current({ kind: "dismissed" });
+      }
+    };
+    document.addEventListener("pointerdown", onPress, true);
+    return () => document.removeEventListener("pointerdown", onPress, true);
+  }, []);
   const box = useRef<HTMLDivElement | null>(null);
   const cell = `${props.rowIndex}:${props.mode.turnIndex}`;
   const step = props.mode.kind;
@@ -295,8 +321,8 @@ function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
   // step: on the step so that coming back from the teach step - whose buttons have just
   // unmounted - lands on a row again rather than on `<body>`, and on the cell because clicking a
   // second cell while a dropdown is open moves this one rather than remounting it (`reduce`
-  // answers `cell-opened` with `choosing` whatever it was in, and there is no outside-click
-  // dismissal - `dismissLayer.ts` listens for Escape alone). Without the cell in the list, that
+  // answers `cell-opened` for another cell with `choosing` whatever it was in, and a grid cell is
+  // the one press `pressDismisses` leaves alone). Without the cell in the list, that
   // click would leave focus on the *previous* grid cell, which the cleanup below has just taken.
   // React runs every cleanup before every effect, so this focus always wins over that one.
   useEffect(() => {
@@ -324,13 +350,15 @@ function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
   // focus out of a dropdown that is still open.
   useEffect(
     () => () => {
-      document.querySelector<HTMLElement>(`[data-cell="${cell}"]`)?.focus();
+      if (!pointerDismissed.current) {
+        document.querySelector<HTMLElement>(`[data-cell="${cell}"]`)?.focus();
+      }
     },
     [cell]
   );
   return (
     <FloatingAtCell cell={cell}>
-      <div ref={box} tabIndex={-1}>
+      <div ref={box} tabIndex={-1} data-cell-popover="">
         <CellPopover {...props} />
       </div>
     </FloatingAtCell>

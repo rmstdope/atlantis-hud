@@ -35,13 +35,24 @@ export type CellEvent =
   /** Escape or Cancel: `teaching` goes back to `choosing`, `choosing` goes idle. */
   | { kind: "cancelled" }
   /** A choice was committed; the dropdown closes. */
-  | { kind: "closed" };
+  | { kind: "closed" }
+  /**
+   * A press outside the dropdown (ah-9wzn): the whole dropdown closes, the teach step included,
+   * and nothing is written - unlike `cancelled`, which only steps back out of the teach step.
+   */
+  | { kind: "dismissed" };
 
 /** The dropdown's state machine. */
 export function reduce(mode: CellMode, event: CellEvent): CellMode {
   switch (event.kind) {
     case "cell-opened":
-      return { kind: "choosing", rowKey: event.rowKey, turnIndex: event.turnIndex };
+      // The open cell clicked again closes its dropdown with nothing chosen (ah-9wzn); any other
+      // cell moves it there.
+      return mode.kind !== "idle" &&
+        mode.rowKey === event.rowKey &&
+        mode.turnIndex === event.turnIndex
+        ? { kind: "idle" }
+        : { kind: "choosing", rowKey: event.rowKey, turnIndex: event.turnIndex };
     case "teach-opened":
       return mode.kind === "choosing"
         ? { ...mode, kind: "teaching", students: [...event.students], live: event.live }
@@ -68,8 +79,24 @@ export function reduce(mode: CellMode, event: CellEvent): CellMode {
         ? { kind: "choosing", rowKey: mode.rowKey, turnIndex: mode.turnIndex }
         : { kind: "idle" };
     case "closed":
+    case "dismissed":
       return { kind: "idle" };
   }
+}
+
+/**
+ * Whether a press on `target` closes the open dropdown (ah-9wzn): it does anywhere but inside the
+ * dropdown card (`data-cell-popover`) and on a grid cell (`data-cell`). A grid cell is left to its
+ * own click, which already answers - the open cell toggles shut, another cell moves the dropdown -
+ * and dismissing on its press would have that same-cell click open the dropdown straight back.
+ *
+ * Takes anything with `closest` so it can be pinned without a DOM (ah-nass).
+ */
+export function pressDismisses(target: { closest(selector: string): unknown } | null): boolean {
+  if (target === null) {
+    return false;
+  }
+  return target.closest("[data-cell-popover]") === null && target.closest("[data-cell]") === null;
 }
 
 /** `"set" | "cancel" | null`, as `regionNotesState.keyToAction` answers it. Used by the teach step. */
