@@ -6,8 +6,10 @@ import {
   aReportHeaderInfo,
   aReportRegion,
   aReportUnit,
+  aStructure,
   aUnitSilver
 } from "./builders";
+import { PARSED_STRUCTURE_KINDS } from "./structureKinds.generated";
 
 describe("the report builders", () => {
   it("a region's id follows its coordinate", () => {
@@ -49,5 +51,23 @@ describe("the report builders", () => {
     expect(aBattle().assassination).toBe(false);
     expect(aBattle().attacker).toEqual({ name: "AA Tomb's Guards", id: "7280" });
     expect(aBattleUnit().faction).not.toBeNull();
+  });
+
+  it("aStructure takes its split from the parser's table", () => {
+    const fleet = aStructure("8 Corsairs");
+    expect(PARSED_STRUCTURE_KINDS["8 Corsairs"]).toBeDefined();
+    expect({ baseKind: fleet.baseKind, qualifiers: fleet.qualifiers, vessels: fleet.vessels }).toEqual(
+      PARSED_STRUCTURE_KINDS["8 Corsairs"]
+    );
+    expect(fleet.kind).toBe("8 Corsairs");
+  });
+
+  it("aStructure refuses a kind the parser's table has not seen", () => {
+    expect(() => aStructure("Not A Kind Any Test Uses")).toThrow(/FIXTURE_STRUCTURE_KINDS/u);
+  });
+
+  it("aStructure hands out copies, so a test cannot change the table", () => {
+    aStructure("8 Corsairs").vessels.push({ count: 1, name: "Stowaway" });
+    expect(aStructure("8 Corsairs").vessels).toEqual(PARSED_STRUCTURE_KINDS["8 Corsairs"].vessels);
   });
 });

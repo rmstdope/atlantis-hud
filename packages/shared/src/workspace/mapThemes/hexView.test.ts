@@ -561,7 +561,9 @@ describe("structures, split by what they mean rather than counted together", () 
     // direction is read from the raw kind, unchanged by ah-o0d3.
     expect(withStructures(["Road N"]).roads).toEqual(["n"]);
     expect(withStructures(["Stockade"]).buildings).toBe(1);
-    expect(withStructures(["Stockade, needs 20"]).buildings).toBe(1);
+    // `+ Keep [5] : Stockade, needs 20.` reaches this reader as the parser leaves it.
+    const halfBuilt = aStructure("Stockade", { needs: 20 });
+    expect(viewOf(hex({ knowledge: "current", region: region({ structures: [halfBuilt] }) })).buildings).toBe(1);
   });
 
   it("still knows a fleet whose tail is the only thing naming a ship", () => {

@@ -23,7 +23,7 @@ import type { ReportHeaderInfo } from "./generated/ReportHeaderInfo";
 import type { ReportRegion } from "./generated/ReportRegion";
 import type { ReportUnit } from "./generated/ReportUnit";
 import type { StructureInfo } from "./generated/StructureInfo";
-import type { VesselEntry } from "./generated/VesselEntry";
+import { PARSED_STRUCTURE_KINDS } from "./structureKinds.generated";
 import type { UnitSilver } from "./generated/UnitSilver";
 import type { ProductionOverview } from "./generated/ProductionOverview";
 import type { WorkedRegion } from "./generated/WorkedRegion";
@@ -65,34 +65,28 @@ export function aReportUnit(overrides: Partial<ReportUnit> = {}): ReportUnit {
 /**
  * A structure as the report writes it, with the split fields the parser derives from its kind.
  *
- * A FIXTURE builder: it mirrors `split_kind` (`crates/core/src/report/region.rs`) so a test can
- * name a structure the way a report does — `aStructure("Galley, 40 Galleons")` — instead of
- * spelling out four fields. No production reader splits a kind; that is the whole point of
- * `ah-nmts`, and the parser's own tests live beside `split_kind`.
+ * A FIXTURE builder: a test names a structure the way a report does — `aStructure("Galley, 40
+ * Galleons")` — and the split fields come from `PARSED_STRUCTURE_KINDS`, which the Rust core
+ * generates by running each kind through `parse_structure`. Nothing here splits a kind, so a change
+ * to `split_kind` reaches these tests by regenerating the table, never by a matching edit here
+ * (ah-xi0q). A kind the table has not seen is refused rather than guessed at.
  */
 export function aStructure(kind: string, overrides: Partial<StructureInfo> = {}): StructureInfo {
-  const [first, ...clauses] = kind.split(",");
-  // A single-type fleet (`8 Corsairs`) has no `Fleet,` before it; the parser reads its first clause
-  // as the manifest and calls it a Fleet (ah-661c).
-  const singleTypeFleet = /^\d+\s*\S/u.test(first.trim());
-  const base = singleTypeFleet ? "Fleet" : first;
-  const qualifiers = [...(singleTypeFleet ? [first] : []), ...clauses]
-    .map((clause) => clause.trim())
-    .filter((clause) => clause !== "");
-  const vessels = qualifiers.flatMap<VesselEntry>((clause) => {
-    const counted = /^(\d+)\s*(.+)$/u.exec(clause);
-    if (counted) {
-      return [{ count: Number(counted[1]), name: counted[2] }];
-    }
-    return /^\p{Lu}/u.test(clause) ? [{ count: null, name: clause }] : [];
-  });
+  const parsed = Object.hasOwn(PARSED_STRUCTURE_KINDS, kind) ? PARSED_STRUCTURE_KINDS[kind] : undefined;
+  if (parsed === undefined) {
+    throw new Error(
+      `aStructure has no parsed split for ${JSON.stringify(kind)}: add it to FIXTURE_STRUCTURE_KINDS in ` +
+        "crates/core/tests/generated_ts.rs and regenerate with " +
+        "ATLANTIS_UPDATE_GENERATED=1 cargo test -p atlantis-hud-core --test generated_ts"
+    );
+  }
   return {
     structureId: `${kind}-1`,
-    name: first.trim(),
+    name: kind.split(",")[0].trim(),
     kind,
-    baseKind: base.trim(),
-    qualifiers,
-    vessels,
+    baseKind: parsed.baseKind,
+    qualifiers: [...parsed.qualifiers],
+    vessels: parsed.vessels.map((vessel) => ({ ...vessel })),
     description: null,
     needs: null,
     ...overrides
