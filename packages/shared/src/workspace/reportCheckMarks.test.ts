@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkedKeys, markChecked, type MarkStorage } from "./reportCheckMarks";
+import { checkedKeys, markChecked, unmarkChecked, type MarkStorage } from "./reportCheckMarks";
 
 function memoryStorage(): MarkStorage & { items: Map<string, string> } {
   const items = new Map<string, string>();
@@ -18,6 +18,15 @@ describe("the checked-report marks", () => {
     markChecked(storage, "game-1", ["95:72", "95:71"]);
 
     expect([...checkedKeys(storage, "game-1")].sort()).toEqual(["95:71", "95:72"]);
+  });
+
+  it("takes the mark off a report whose check never ran, leaving the others", () => {
+    const storage = memoryStorage();
+
+    markChecked(storage, "game-1", ["95:71", "95:72"]);
+    unmarkChecked(storage, "game-1", ["95:72"]);
+
+    expect([...checkedKeys(storage, "game-1")]).toEqual(["95:71"]);
   });
 
   it("keeps each game's marks apart", () => {

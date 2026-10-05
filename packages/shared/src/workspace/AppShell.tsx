@@ -349,7 +349,7 @@ import {
   type OpenedReport,
   type ReportCheck
 } from "../reportRulesetCheck";
-import { checkedKeys, markChecked, optionalMarkStorage } from "./reportCheckMarks";
+import { checkedKeys, markChecked, optionalMarkStorage, unmarkChecked } from "./reportCheckMarks";
 import { ReportCheckDialog } from "./ReportCheckDialog";
 import { rulesetLabelOf } from "./RulesetChanger";
 import {
@@ -1042,11 +1042,20 @@ export function AppShell({
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
   // The ruleset check a report gets the first time it is opened (ah-fdmb): the check, the reports
   // it covers (checked again after a change), and the batch's Import summary, which waits for it.
-  const [reportCheck, setReportCheck] = useState<{
+  // `opening` counts the dialogs opened, keying a fresh one so its state starts from its own check.
+  const [reportCheck, setReportCheckState] = useState<{
     check: ReportCheck;
     reports: OpenedReport[];
     then: ImportSummary | null;
+    opening: number;
   } | null>(null);
+  // The open check as of now, not as of the last render: reports arriving one after another (a
+  // history fetch loads them through the single path in turn) are added to it before any render.
+  const reportCheckNow = useRef<typeof reportCheck>(null);
+  const setReportCheck = useCallback((next: typeof reportCheck) => {
+    reportCheckNow.current = next;
+    setReportCheckState(next);
+  }, []);
   // Every shipped ruleset, parsed, read once per session the first time a report is checked.
   const shippedIndexes = useRef<Promise<Map<string, GameDataIndex>> | null>(null);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(
@@ -1969,21 +1978,45 @@ export function AppShell({
         seen.add(key);
         return true;
       });
-      markChecked(storage, gameId, fresh.map((opened) => openedReportKey(opened.report)));
-      if (fresh.length > 0) {
-        try {
-          const check = checkOpenedReports(fresh, game.manifest.metadata.rulesetId, await readShippedIndexes());
-          if (check !== null && check.affected.length > 0) {
-            setReportCheck({ check, reports: fresh, then });
-            return;
-          }
-        } catch {
-          // Not checked, as above: the import itself stands.
-        }
+      const freshKeys = fresh.map((opened) => openedReportKey(opened.report));
+      // Marked before anything is awaited, so two imports racing each other cannot both warn.
+      markChecked(storage, gameId, freshKeys);
+      if (fresh.length === 0) {
+        showThen();
+        return;
+      }
+      let indexes: Map<string, GameDataIndex>;
+      try {
+        indexes = await readShippedIndexes();
+      } catch {
+        // Not checked, so not its first opening yet: the mark comes off, and the import stands.
+        unmarkChecked(storage, gameId, freshKeys);
+        showThen();
+        return;
+      }
+      // Several reports opened while a check is up are one import, as a batch is: they join it, and
+      // a change checks all of them again.
+      const open = reportCheckNow.current;
+      const together = [...(open?.reports ?? []), ...fresh];
+      const check = checkOpenedReports(together, game.manifest.metadata.rulesetId, indexes);
+      if (check === null) {
+        // A game on a ruleset this build does not ship: nothing to check against.
+        unmarkChecked(storage, gameId, freshKeys);
+        showThen();
+        return;
+      }
+      if (check.affected.length > 0) {
+        setReportCheck({
+          check,
+          reports: together,
+          then: open?.then ?? then,
+          opening: (open?.opening ?? 0) + 1
+        });
+        return;
       }
       showThen();
     },
-    [game, readShippedIndexes]
+    [game, readShippedIndexes, setReportCheck]
   );
 
   /**
@@ -5806,6 +5839,7 @@ export function AppShell({
       */}
       {reportCheck ? (
         <ReportCheckDialog
+          key={reportCheck.opening}
           check={reportCheck.check}
           onChangeRuleset={async (rulesetId) => {
             await changeRuleset(rulesetId);

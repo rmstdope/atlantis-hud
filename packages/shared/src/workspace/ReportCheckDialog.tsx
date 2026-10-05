@@ -249,7 +249,8 @@ export function ReportCheckDialog({
     }
     const timer = setTimeout(() => dispatch({ type: "copyExpired" }), COPIED_FOR_MS);
     return () => clearTimeout(timer);
-  }, [state.copied]);
+    // `copies` too: a second copy while `Copied` shows restarts its two seconds.
+  }, [state.copied, state.copies]);
 
   return (
     <ReportCheckDialogView

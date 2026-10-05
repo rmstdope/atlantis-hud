@@ -105,4 +105,10 @@ describe("the report check dialog's states", () => {
     expect(copied.copied).toBe(true);
     expect(run(copied, { type: "copyExpired" }).copied).toBe(false);
   });
+
+  it("counts every copy, so a second one restarts the two seconds", () => {
+    const once = run(opened, { type: "toReport" }, { type: "copied" });
+    const twice = run(once, { type: "copied" });
+    expect(twice.copies).toBe(once.copies + 1);
+  });
 });

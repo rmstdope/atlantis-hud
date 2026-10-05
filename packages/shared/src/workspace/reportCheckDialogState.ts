@@ -21,6 +21,8 @@ export type ReportCheckState = {
   failure: string | null;
   /** `Copy the list` reads `Copied`. */
   copied: boolean;
+  /** Every copy so far: what restarts the two seconds `Copied` shows for, however soon it comes. */
+  copies: number;
 };
 
 export type ReportCheckAction =
@@ -43,7 +45,8 @@ export function openReportCheck(check: ReportCheck): ReportCheckState {
     working: false,
     stillMissing: null,
     failure: null,
-    copied: false
+    copied: false,
+    copies: 0
   };
 }
 
@@ -71,7 +74,7 @@ export function reportCheckReducer(state: ReportCheckState, action: ReportCheckA
     case "back":
       return { ...state, step: "check", copied: false };
     case "copied":
-      return { ...state, copied: true };
+      return { ...state, copied: true, copies: state.copies + 1 };
     case "copyExpired":
       return { ...state, copied: false };
   }

@@ -43,3 +43,17 @@ export function markChecked(storage: MarkStorage | null, gameId: string, keys: r
     // A mark that cannot be written costs at most a second check of the same report.
   }
 }
+
+/**
+ * Takes the mark off `keys` of `gameId`: reports marked before their check, whose check then could
+ * not run (the rulesets could not be read), so their first real opening is still to come.
+ */
+export function unmarkChecked(storage: MarkStorage | null, gameId: string, keys: readonly string[]): void {
+  try {
+    const all = checkedKeys(storage, gameId);
+    keys.forEach((key) => all.delete(key));
+    storage?.setItem(marksKey(gameId), JSON.stringify([...all]));
+  } catch {
+    // As above: at worst the report is not checked again.
+  }
+}

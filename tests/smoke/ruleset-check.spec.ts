@@ -12,6 +12,8 @@ import { clearGames, importReport, loadReport } from "./gameSetup";
 
 const TURN_71 = readReport("g7f95t71");
 const TURN_72 = readReport("g7f95t72");
+/** Another faction's turn 71, which Trident defines every name of: it opens no check of its own. */
+const ALLY_71 = readReport("g8f73t71");
 
 async function createGameOn(page: Page, name: string, rulesetId: string) {
   await clearGames(page);
@@ -169,6 +171,54 @@ test("a batch import gives one check for every affected report, before the Impor
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId("import-summary")).toBeVisible();
 });
+
+test("reports opened one after another while the check is up join it, as one import would", async ({ page }) => {
+  await createGameOn(page, "Trident game", "newage-trident");
+  await importReport(page, "turn-71.rep", TURN_71);
+  await expect(page.getByTestId("report-check")).toBeVisible();
+
+  // What a New Age history fetch does: one report after another, each through the single path.
+  await importReport(page, "turn-72.rep", TURN_72);
+  await expect(page.getByTestId("report-check-intro")).toContainText(
+    /^2 of the 2 reports you imported name \d+ things the New Age: Trident ruleset doesn’t define\./u
+  );
+  await expect(page.getByTestId("report-check-names")).toContainText("turn-71.rep, turn-72.rep");
+
+  // And a change checks both of them again, not only the last.
+  await page.getByTestId("report-check-ruleset").selectOption("neworigins");
+  await page.getByTestId("report-check-change").click();
+  await expect(page.getByTestId("report-check-still-missing")).toHaveText(
+    /^Changed to New Origins — \d+ of the \d+ names are now defined\.$/u
+  );
+  // Only turn 72 still names something New Origins lacks (barren), so it reads as one report.
+  await expect(page.getByTestId("report-check-intro")).toContainText(/^The report turn-72\.rep names /u);
+});
+
+test("an older turn, kept for history rather than shown, is checked too", async ({ page }) => {
+  await createGameOn(page, "Trident game", "newage-trident");
+  await importReport(page, "turn-72.rep", TURN_72);
+  await page.getByTestId("report-check-close").click();
+  await expect(page.getByTestId("report-check")).toHaveCount(0);
+
+  await importReport(page, "turn-71.rep", TURN_71);
+  await expect(page.getByTestId("report-check-intro")).toContainText(/^The report turn-71\.rep names /u);
+});
+
+for (const answer of ["foreign-report-switch", "foreign-report-merge"] as const) {
+  test(`another faction's report is checked once the foreign-report question is answered (${answer})`, async ({ page }) => {
+    await createGameOn(page, "Trident game", "newage-trident");
+    await importReport(page, "ally-71.rep", ALLY_71);
+    await expect(page.getByTestId("import-status")).toContainText("region");
+    await expect(page.getByTestId("report-check")).toHaveCount(0);
+
+    await importReport(page, "turn-71.rep", TURN_71);
+    await expect(page.getByTestId("foreign-report-prompt")).toBeVisible();
+    await expect(page.getByTestId("report-check")).toHaveCount(0);
+    await page.getByTestId(answer).click();
+
+    await expect(page.getByTestId("report-check-intro")).toContainText(/^The report turn-71\.rep names /u);
+  });
+}
 
 test("a report its ruleset fully defines opens no check", async ({ page }) => {
   await loadReport(page);
