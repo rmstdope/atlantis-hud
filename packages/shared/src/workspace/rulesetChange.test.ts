@@ -29,6 +29,7 @@ describe("the ruleset change control", () => {
     expect(state.chosen).toBe("neworigins");
     expect(rulesetChangeControls(state, "neworigins", false)).toEqual({
       listDisabled: false,
+      listInert: false,
       buttonDisabled: true,
       buttonText: "Change ruleset"
     });
@@ -51,14 +52,17 @@ describe("the ruleset change control", () => {
 
     expect(rulesetChangeControls(working, "neworigins", false)).toEqual({
       listDisabled: true,
+      listInert: true,
       buttonDisabled: true,
       buttonText: "Changing…"
     });
   });
 
-  it("keeps the list and button disabled while the shell is still reading the reports again", () => {
-    expect(rulesetChangeControls(openRulesetChange("neworigins"), "neworigins", true)).toMatchObject({
-      listDisabled: true,
+  it("keeps the list inert, still focusable, and the button disabled while the shell reads the reports again", () => {
+    const chosenOther = run(openRulesetChange("neworigins"), { type: "choose", rulesetId: "newage-trident" });
+    expect(rulesetChangeControls(chosenOther, "neworigins", true)).toEqual({
+      listDisabled: false,
+      listInert: true,
       buttonDisabled: true,
       buttonText: "Change ruleset"
     });

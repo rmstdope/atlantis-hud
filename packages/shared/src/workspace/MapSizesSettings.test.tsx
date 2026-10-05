@@ -4,6 +4,9 @@ import { mapSizesDraftOf } from "../mapShape";
 import { GameSettings } from "./SettingsDialog";
 import { MapSizesEditorPanel } from "./MapSizesSettings";
 
+/** A ruleset check that finds nothing missing; these tests are not about the ruleset control. */
+const NO_GAPS_CHECK = async () => ({ totalTurns: 0, affectedTurns: [], groups: [], count: 0 });
+
 const trident = {
   levels: {
     surface: { width: 64, height: 64 },
@@ -26,7 +29,9 @@ const game = {
 
 function settings(overrides: Partial<typeof game> = {}) {
   return renderToStaticMarkup(
-    <GameSettings game={{ ...game, ...overrides }} busy={false} error={null} onChangeMapSizes={async () => true} />
+    <GameSettings game={{ ...game, ...overrides }} busy={false} error={null} onChangeMapSizes={async () => true}
+          onCheckRuleset={NO_GAPS_CHECK}
+          onChangeRuleset={async () => undefined} />
   );
 }
 
@@ -54,7 +59,9 @@ describe("World settings' map sizes (ah-4hwa)", () => {
     const legacy: Omit<typeof game, "mapSizes"> = { ...game };
     delete (legacy as Partial<typeof game>).mapSizes;
     const markup = renderToStaticMarkup(
-      <GameSettings game={legacy} busy={false} error={null} onChangeMapSizes={async () => true} />
+      <GameSettings game={legacy} busy={false} error={null} onChangeMapSizes={async () => true}
+          onCheckRuleset={NO_GAPS_CHECK}
+          onChangeRuleset={async () => undefined} />
     );
     expect(markup).toContain("<li>Surface 64 × 64</li><li>Underworld not configured</li>");
   });

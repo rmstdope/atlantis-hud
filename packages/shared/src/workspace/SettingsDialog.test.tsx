@@ -19,6 +19,9 @@ import {
   WarningSettings
 } from "./SettingsDialog";
 
+/** A ruleset check that finds nothing missing; these tests are not about the ruleset control. */
+const NO_GAPS_CHECK = async () => ({ totalTurns: 0, affectedTurns: [], groups: [], count: 0 });
+
 /**
  * `ah-v9p2`. The titles and descriptions are user-facing copy and stay here, but a code that has no
  * entry at all is a gap nothing used to notice: the dialog simply did not offer a toggle for it.
@@ -111,6 +114,8 @@ function tag(html: string, testid: string): string {
           busy={false}
           error={null}
           onChangeMapSizes={async () => true}
+          onCheckRuleset={NO_GAPS_CHECK}
+          onChangeRuleset={async () => undefined}
           onDismiss={() => {}}
         />
       );
@@ -628,6 +633,8 @@ describe("About's update section", () => {
           busy={false}
           error={null}
           onChangeMapSizes={async () => true}
+          onCheckRuleset={NO_GAPS_CHECK}
+          onChangeRuleset={async () => undefined}
           onDismiss={noop}
         />
       );
@@ -725,6 +732,8 @@ describe("moving the Settings dialog (ah-aak5)", () => {
         busy={false}
         error={null}
         onChangeMapSizes={async () => true}
+          onCheckRuleset={NO_GAPS_CHECK}
+          onChangeRuleset={async () => undefined}
         onDismiss={() => {}}
       />
     );

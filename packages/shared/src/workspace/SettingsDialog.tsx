@@ -1,6 +1,8 @@
 import type { MapSizes } from "@atlantis/core-client";
 import { mapSizesOfGame } from "../mapShape";
 import { MapSizesSettings } from "./MapSizesSettings";
+import { RulesetChanger } from "./RulesetChanger";
+import type { RulesetGaps } from "../rulesetGaps";
 import { useState } from "react";
 import type { AdvisoryCheckCode } from "@atlantis/core-client";
 import { DialogFrame } from "./DialogFrame";
@@ -56,6 +58,8 @@ export function SettingsDialog({
   busy,
   error,
   onChangeMapSizes,
+  onCheckRuleset,
+  onChangeRuleset,
   onDismiss
 }: {
   platformLabel: string;
@@ -65,6 +69,8 @@ export function SettingsDialog({
   busy: boolean;
   error: string | null;
   onChangeMapSizes: (mapSizes: MapSizes) => Promise<boolean>;
+  onCheckRuleset: (rulesetId: string) => Promise<RulesetGaps>;
+  onChangeRuleset: (rulesetId: string) => Promise<void>;
   onDismiss: () => void;
 }) {
   // Local rather than lifted: the dialog unmounts when closed, so every open lands on Global,
@@ -138,6 +144,8 @@ export function SettingsDialog({
             busy={busy}
             error={error}
             onChangeMapSizes={onChangeMapSizes}
+            onCheckRuleset={onCheckRuleset}
+            onChangeRuleset={onChangeRuleset}
           />
         ) : null}
         {tab === "columns" ? <ColumnSettings /> : null}
@@ -959,17 +967,23 @@ function ThemeChoice({
   );
 }
 
-/** Settings that hold for the open game only: its ruleset, until more arrive. */
+/** Settings that hold for the open game only: its ruleset and its map sizes. */
 export function GameSettings({
   game,
   busy,
   error,
-  onChangeMapSizes
+  onChangeMapSizes,
+  onCheckRuleset,
+  onChangeRuleset
 }: {
   game: WorkspaceGame | null;
   busy: boolean;
   error: string | null;
   onChangeMapSizes: (mapSizes: MapSizes) => Promise<boolean>;
+  /** What the game's turns name that a ruleset does not define (ah-gicw). */
+  onCheckRuleset: (rulesetId: string) => Promise<RulesetGaps>;
+  /** Moves the game to a ruleset; rejects with the reason when it could not. */
+  onChangeRuleset: (rulesetId: string) => Promise<void>;
 }) {
   const presentation = gameSettingsPresentation(game);
 
@@ -984,19 +998,14 @@ export function GameSettings({
   return (
     <div className="flex flex-col gap-2">
       <p className="text-ink-soft">{presentation.gameName}</p>
-      <div className="flex flex-col gap-1">
-        <span className="text-ink-soft">Ruleset</span>
-        <span
-          data-testid="settings-game-ruleset"
-          aria-label="ruleset"
-          className="rounded border border-edge bg-panel px-2 py-1 text-ink"
-        >
-          {presentation.rulesetLabel}
-        </span>
-        <span className="text-sm text-ink-soft">
-          The ruleset is chosen when this game is created.
-        </span>
-      </div>
+      {/* Keyed on the game, so another game's list opens on its own ruleset (ah-gicw). */}
+      <RulesetChanger
+        key={game?.gameId}
+        currentId={presentation.rulesetId}
+        busy={busy}
+        onCheck={onCheckRuleset}
+        onChange={onChangeRuleset}
+      />
       <MapSizesSettings
         mapSizes={mapSizesOfGame(game?.mapSizes, presentation.map)}
         assumed={game?.mapSizes === undefined && !presentation.mapStated && presentation.map !== null}

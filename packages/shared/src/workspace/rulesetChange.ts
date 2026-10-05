@@ -77,17 +77,22 @@ export function rulesetChangeReducer(
 /**
  * What the list and the button allow. `busy` is the shell's own flag, which stays up while the
  * game's reports are read again under the new ruleset.
+ *
+ * The list is `disabled` only during the control's own steps. While merely `busy` it is `inert`:
+ * dimmed and ignoring changes, but still focusable. A disabled select drops focus, and the shell's
+ * re-read starts just after Change anyway has put focus back on the list.
  */
 export function rulesetChangeControls(
   state: RulesetChangeState,
   currentId: string,
   busy: boolean
-): { listDisabled: boolean; buttonDisabled: boolean; buttonText: string } {
+): { listDisabled: boolean; listInert: boolean; buttonDisabled: boolean; buttonText: string } {
   const working = state.step === "checking" || state.step === "applying";
-  const listDisabled = state.step !== "editing" || busy;
+  const listDisabled = state.step !== "editing";
   return {
     listDisabled,
-    buttonDisabled: listDisabled || state.chosen === currentId,
+    listInert: listDisabled || busy,
+    buttonDisabled: listDisabled || busy || state.chosen === currentId,
     buttonText: working ? "Changing…" : "Change ruleset"
   };
 }
