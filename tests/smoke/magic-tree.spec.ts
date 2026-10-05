@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { loadReport, selectHex, selectUnit } from "./gameSetup";
 
 /**
@@ -89,4 +89,135 @@ test("the palette offers the tree by name", async ({ page }) => {
 
   await expect(page.getByTestId("magic-tree-dialog")).toBeVisible();
   await expect(page.getByTestId("magic-tree-skill-MANI")).toBeAttached();
+});
+
+/**
+ * Walking the Branches view with the keyboard (ah-0unf, `docs/ui/ah-0unf-keyboard.html`). The rule
+ * for where each key goes is `magicTreeKeys.test.ts`; what only a browser shows - focus following
+ * the mark, the list scrolling no further than it must, Enter being the name's own click - is here.
+ */
+const skillRow = (page: Page, tag: string) => page.getByTestId(`magic-tree-skill-${tag}`);
+const marked = /bg-select\/15/;
+const ringed = /ring-select/;
+
+test("the arrows walk the branches, and Enter opens the marked skill", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F3");
+  await expect(page.getByTestId("magic-tree-close")).toBeFocused();
+  const anyMarked = page.locator('[data-testid^="magic-tree-skill-"][class*="bg-select/15"]');
+  await expect(anyMarked).toHaveCount(0);
+  const body = page.getByTestId("magic-tree-branch-FOUND").locator("..");
+
+  // From the close button, with no Tab first: the first Down marks the top skill.
+  await page.keyboard.press("ArrowDown");
+  await expect(skillRow(page, "FORC")).toHaveClass(marked);
+  await expect(skillRow(page, "FORC")).toHaveClass(ringed);
+  await expect(page.getByTestId("magic-tree-name-FORC")).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(skillRow(page, "PATT")).toHaveClass(ringed);
+  await expect(anyMarked).toHaveCount(1);
+  // Rows already on screen: the list does not re-centre on them.
+  expect(await body.evaluate((element) => element.scrollTop)).toBe(0);
+
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowUp");
+  await expect(skillRow(page, "FORC")).toHaveClass(ringed);
+
+  await page.keyboard.press("PageDown");
+  await expect(skillRow(page, "ARTI")).toHaveClass(ringed);
+  await page.keyboard.press("PageUp");
+  await expect(skillRow(page, "FORC")).toHaveClass(ringed);
+
+  // Mid-list, a move onto a row already in view scrolls nothing: the list follows the mark only as
+  // far as it must, where re-centring would shift it on every press.
+  await page.keyboard.press("PageDown");
+  await page.keyboard.press("PageDown");
+  await expect(skillRow(page, "ILLU")).toHaveClass(ringed);
+  // Scrolled to the bottom edge, so a sub-pixel of it may sit outside; in view is what counts.
+  await expect(skillRow(page, "ILLU")).toBeInViewport();
+  const settled = await body.evaluate((element) => element.scrollTop);
+  expect(settled).toBeGreaterThan(0);
+  await expect(skillRow(page, "CRWC")).toBeInViewport({ ratio: 1 });
+  await page.keyboard.press("ArrowUp");
+  await expect(skillRow(page, "CRWC")).toHaveClass(ringed);
+  expect(await body.evaluate((element) => element.scrollTop)).toBe(settled);
+
+  // A key held with Alt, Ctrl or Meta is not the tree's.
+  await page.keyboard.press("Alt+ArrowDown");
+  await expect(skillRow(page, "CRWC")).toHaveClass(ringed);
+  await expect(skillRow(page, "ILLU")).not.toHaveClass(marked);
+  await page.keyboard.press("Home");
+
+  await page.keyboard.press("End");
+  await expect(skillRow(page, "MANI")).toHaveClass(ringed);
+  await expect(skillRow(page, "MANI")).toBeInViewport();
+  await page.keyboard.press("ArrowDown");
+  await expect(skillRow(page, "MANI")).toHaveClass(ringed);
+  await expect(page.getByTestId("magic-tree-name-MANI")).toBeFocused();
+
+  await page.keyboard.press("Home");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await expect(skillRow(page, "ARTI")).toHaveClass(ringed);
+
+  // The mark is the tree's one current skill: Whole graph is lit on it, and Branches keeps it.
+  await page.getByTestId("magic-tree-view-graph").click();
+  await expect(page.getByTestId("magic-tree-lit")).toContainText("artifact lore");
+  // In the Whole graph the arrows are the graph's; they do not move the mark.
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByTestId("magic-tree-lit")).toContainText("artifact lore");
+  await page.getByTestId("magic-tree-view-branches").click();
+  await expect(skillRow(page, "ARTI")).toHaveClass(marked);
+
+  // Enter is a click on the name: the tree makes way for the dictionary.
+  await page.getByTestId("magic-tree-view-branches").press("ArrowDown");
+  await expect(page.getByTestId("magic-tree-name-CGAT")).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("game-data-dialog")).toBeVisible();
+  await expect(page.getByTestId("magic-tree-dialog")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  // Closing forgets the mark.
+  await page.keyboard.press("F3");
+  await expect(page.getByTestId("magic-tree-dialog")).toBeVisible();
+  await expect(anyMarked).toHaveCount(0);
+});
+
+test("Tab, a chip and the arrows all move the one mark", async ({ page }) => {
+  await loadReport(page);
+  await page.keyboard.press("F3");
+
+  // A chip followed with the mouse: the soft fill, and no ring.
+  await page.getByTestId("magic-tree-chip-CRRI-INVI").click();
+  await expect(skillRow(page, "INVI")).toHaveClass(marked);
+  await expect(skillRow(page, "INVI")).not.toHaveClass(ringed);
+
+  // The arrows carry on from the skill the chip led to.
+  await page.keyboard.press("ArrowDown");
+  await expect(skillRow(page, "PHEN")).toHaveClass(ringed);
+
+  // In the mage picker the arrows are not the tree's.
+  await page.getByTestId("magic-tree-mage-picker").focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(skillRow(page, "PHEN")).toHaveClass(marked);
+  await expect(skillRow(page, "TRUE")).not.toHaveClass(marked);
+
+  // Tab from an arrowed row goes to its chips, then marks the next skill.
+  await page.getByTestId("magic-tree-close").focus();
+  await page.keyboard.press("Home");
+  await page.keyboard.press("PageDown");
+  for (let step = 0; step < 5; step += 1) {
+    await page.keyboard.press("ArrowDown");
+  }
+  await expect(page.getByTestId("magic-tree-name-CRCO")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByTestId("magic-tree-chip-CRCO-EART")).toBeFocused();
+  await expect(skillRow(page, "CRCO")).toHaveClass(marked);
+  await page.keyboard.press("Tab");
+  await expect(page.getByTestId("magic-tree-name-CFSW")).toBeFocused();
+  await expect(skillRow(page, "CFSW")).toHaveClass(ringed);
+  await page.keyboard.press("ArrowDown");
+  await expect(skillRow(page, "CRGC")).toHaveClass(ringed);
 });

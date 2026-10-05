@@ -6,7 +6,7 @@ import { parseGameData, type GameDataIndex } from "../gameData";
 import { buildMagicTree } from "../magicTree";
 import { standingOf, type MageStanding } from "../magicStanding";
 import type { MagicTreeView } from "./magicGraphLayout";
-import { MagicTreeDialog } from "./MagicTreeDialog";
+import { MagicTreeDialog, skillRowMark } from "./MagicTreeDialog";
 
 const index = parseGameData(readRuleset()) as GameDataIndex;
 const tree = buildMagicTree(index);
@@ -160,6 +160,26 @@ describe("landing on a skill", () => {
 
   it("picks out nothing when it was opened at the top", () => {
     expect(markup()).not.toMatch(/data-testid="magic-tree-skill-[A-Z]+"[^>]*class="[^"]*bg-select\/15/);
+  });
+});
+
+describe("the keyboard's mark", () => {
+  it("is the current skill's soft fill, ringed only while the keyboard is in use", () => {
+    expect(skillRowMark(false, false)).toBe("");
+    expect(skillRowMark(false, true)).toBe("");
+    expect(skillRowMark(true, false)).toBe("bg-select/15 ");
+    // Inset, so a row wrapped onto two lines is ringed whole and the scrolling body clips nothing.
+    expect(skillRowMark(true, true)).toBe("bg-select/15 ring-2 ring-inset ring-select ");
+  });
+
+  it("draws no ring when the tree opens on a skill, before any key", () => {
+    expect(markup("INVI")).not.toContain("ring-select");
+  });
+
+  it("names every skill's name button, so the keys can put focus on it", () => {
+    const html = markup();
+    expect(occurrences(html, 'data-testid="magic-tree-name-')).toBe(70);
+    expect(html).toMatch(/<button[^>]*data-testid="magic-tree-name-INVI"[^>]*>invisibility<\/button>/);
   });
 });
 
