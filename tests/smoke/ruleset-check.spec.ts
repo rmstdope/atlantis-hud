@@ -14,6 +14,8 @@ const TURN_71 = readReport("g7f95t71");
 const TURN_72 = readReport("g7f95t72");
 /** Another faction's turn 71, which Trident defines every name of: it opens no check of its own. */
 const ALLY_71 = readReport("g8f73t71");
+const TURN_55 = readReport("g7f95t55");
+const TURN_74 = readReport("g7f95t74");
 
 async function createGameOn(page: Page, name: string, rulesetId: string) {
   await clearGames(page);
@@ -192,6 +194,40 @@ test("reports opened one after another while the check is up join it, as one imp
   );
   // Only turn 72 still names something New Origins lacks (barren), so it reads as one report.
   await expect(page.getByTestId("report-check-intro")).toContainText(/^The report turn-72\.rep names /u);
+});
+
+test("a report joining the check leaves the player where they were in it", async ({ page }) => {
+  await createGameOn(page, "Trident game", "newage-trident");
+  await importReport(page, "turn-71.rep", TURN_71);
+  await page.getByTestId("report-check-right").click();
+  await expect(page.getByTestId("report-check-title")).toHaveText("⚠ Report a missing name");
+
+  await importReport(page, "turn-72.rep", TURN_72);
+  await expect(page.getByTestId("report-check-names")).toContainText("turn-71.rep, turn-72.rep");
+  await expect(page.getByTestId("report-check-title")).toHaveText("⚠ Report a missing name");
+});
+
+test("two batches meeting under one check each keep their Import summary", async ({ page }) => {
+  await createGameOn(page, "Trident game", "newage-trident");
+  const batch = (...files: [string, string][]) =>
+    page.setInputFiles(
+      'input[type="file"]',
+      files.map(([name, text]) => ({ name, mimeType: "text/plain", buffer: Buffer.from(text, "utf8") }))
+    );
+
+  await batch(["turn-71.rep", TURN_71], ["turn-72.rep", TURN_72]);
+  await expect(page.getByTestId("report-check")).toBeVisible();
+  await batch(["turn-55.rep", TURN_55], ["turn-74.rep", TURN_74]);
+  await expect(page.getByTestId("report-check-intro")).toContainText(/^4 of the 4 reports you imported/u);
+
+  await page.getByTestId("report-check-close").click();
+  const summary = page.getByTestId("import-summary");
+  await expect(summary).toBeVisible();
+  await page.getByTestId("import-summary-close").click();
+  // The second batch's account follows the first.
+  await expect(summary).toBeVisible();
+  await page.getByTestId("import-summary-close").click();
+  await expect(summary).toHaveCount(0);
 });
 
 test("an older turn, kept for history rather than shown, is checked too", async ({ page }) => {

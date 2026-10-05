@@ -1042,16 +1042,24 @@ export function AppShell({
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
   // The ruleset check a report gets the first time it is opened (ah-fdmb): the check, the reports
   // it covers (checked again after a change), and the batch's Import summary, which waits for it.
-  // `opening` counts the dialogs opened, keying a fresh one so its state starts from its own check.
+  // `opening` counts the dialogs opened, keying a fresh one so its state starts from its own check;
+  // reports that join an open one keep its key. `then` holds every batch's Import summary waiting
+  // on it, shown in turn once it closes.
   const [reportCheck, setReportCheckState] = useState<{
     check: ReportCheck;
     reports: OpenedReport[];
-    then: ImportSummary | null;
+    then: ImportSummary[];
     opening: number;
   } | null>(null);
+  // Import summaries still to show after the one on screen.
+  const queuedSummaries = useRef<ImportSummary[]>([]);
   // The open check as of now, not as of the last render: reports arriving one after another (a
   // history fetch loads them through the single path in turn) are added to it before any render.
   const reportCheckNow = useRef<typeof reportCheck>(null);
+  const reportCheckOpenings = useRef(0);
+  // The open game's ruleset as of now, kept current by the render and by the change itself.
+  const gameRulesetNow = useRef<string | null>(null);
+  gameRulesetNow.current = game?.manifest.metadata.rulesetId ?? null;
   const setReportCheck = useCallback((next: typeof reportCheck) => {
     reportCheckNow.current = next;
     setReportCheckState(next);
@@ -1998,7 +2006,10 @@ export function AppShell({
       // a change checks all of them again.
       const open = reportCheckNow.current;
       const together = [...(open?.reports ?? []), ...fresh];
-      const check = checkOpenedReports(together, game.manifest.metadata.rulesetId, indexes);
+      // The game's ruleset now, not when this callback was built: a history fetch holds on to the
+      // `loadReport` of the render where Fetch was pressed, and the dialog may have changed it since.
+      const rulesetId = gameRulesetNow.current ?? game.manifest.metadata.rulesetId;
+      const check = checkOpenedReports(together, rulesetId, indexes);
       if (check === null) {
         // A game on a ruleset this build does not ship: nothing to check against.
         unmarkChecked(storage, gameId, freshKeys);
@@ -2009,8 +2020,8 @@ export function AppShell({
         setReportCheck({
           check,
           reports: together,
-          then: open?.then ?? then,
-          opening: (open?.opening ?? 0) + 1
+          then: [...(open?.then ?? []), ...(then ? [then] : [])],
+          opening: open?.opening ?? (reportCheckOpenings.current += 1)
         });
         return;
       }
@@ -3346,6 +3357,8 @@ export function AppShell({
         return;
       }
       setGame({ ...game, manifest: result.manifest });
+      // Before the render that would: a report landing in between is checked against this one.
+      gameRulesetNow.current = result.manifest.metadata.rulesetId;
       updateGameRulesetInStore(result.manifest.metadata.rulesetId);
       setGames(result.games);
     },
@@ -5843,7 +5856,9 @@ export function AppShell({
           check={reportCheck.check}
           onChangeRuleset={async (rulesetId) => {
             await changeRuleset(rulesetId);
-            const next = checkOpenedReports(reportCheck.reports, rulesetId, await readShippedIndexes());
+            // Every report the dialog holds by now, those that joined during the change included.
+            const reports = reportCheckNow.current?.reports ?? reportCheck.reports;
+            const next = checkOpenedReports(reports, rulesetId, await readShippedIndexes());
             if (next === null) {
               throw new Error(`the ${rulesetLabelOf(rulesetId)} ruleset could not be read`);
             }
@@ -5861,10 +5876,11 @@ export function AppShell({
             }
           }}
           onClose={() => {
-            const then = reportCheck.then;
+            const [first, ...rest] = reportCheck.then;
             setReportCheck(null);
-            if (then) {
-              setImportSummary(then);
+            queuedSummaries.current = rest;
+            if (first) {
+              setImportSummary(first);
             }
           }}
         />
@@ -5873,7 +5889,12 @@ export function AppShell({
       {importSummary ? (
         <ImportSummaryDialog
           summary={importSummary}
-          onDismiss={() => setImportSummary(null)}
+          onDismiss={() => {
+            // The next batch's summary, when two met under one ruleset check.
+            const [next, ...rest] = queuedSummaries.current;
+            queuedSummaries.current = rest;
+            setImportSummary(next ?? null);
+          }}
         />
       ) : null}
 

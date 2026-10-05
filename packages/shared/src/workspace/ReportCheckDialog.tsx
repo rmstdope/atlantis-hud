@@ -204,7 +204,7 @@ export function ReportCheckDialogView({
  * The dialog with its state, the Copied timer and its focus.
  *
  * `onChangeRuleset` moves the game to a ruleset and answers the same reports checked again under
- * it; it rejects with the reason a change failed.
+ * it; it rejects with the reason a change failed. A changed `check` is reports joining the dialog.
  */
 export function ReportCheckDialog({
   check,
@@ -223,6 +223,16 @@ export function ReportCheckDialog({
   onClose: () => void;
 }) {
   const [state, dispatch] = useReducer(reportCheckReducer, check, openReportCheck);
+
+  // A new `check` while the dialog is up is reports joining it (a history fetch lands turn after
+  // turn): taken in place, so the step, the choice and a change in flight all stay as they were.
+  const shown = useRef(check);
+  useEffect(() => {
+    if (shown.current !== check) {
+      shown.current = check;
+      dispatch({ type: "joined", check });
+    }
+  }, [check]);
 
   // Focus goes back where it was before the dialog opened.
   const before = useRef<Element | null>(typeof document === "undefined" ? null : document.activeElement);

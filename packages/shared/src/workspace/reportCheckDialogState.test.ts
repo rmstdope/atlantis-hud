@@ -111,4 +111,30 @@ describe("the report check dialog's states", () => {
     const twice = run(once, { type: "copied" });
     expect(twice.copies).toBe(once.copies + 1);
   });
+
+  const JOINED: ReportCheck = {
+    ...ON_ORIGINS,
+    total: 2,
+    affected: [report("turn-4.rep"), report("turn-5.rep")],
+    gaps: { ...ON_ORIGINS.gaps, count: 4, groups: [...ON_ORIGINS.gaps.groups, { kind: "terrain", names: ["nexus"] }] }
+  };
+
+  it("takes in reports that join it without losing the step, the choice or a change in flight", () => {
+    const busy = run(opened, { type: "toReport" }, { type: "choose", rulesetId: "newage-arcanum" }, { type: "changeStarted" });
+    const joined = run(busy, { type: "joined", check: JOINED });
+
+    expect(joined).toMatchObject({ step: "report", chosen: "newage-arcanum", working: true, check: JOINED });
+    expect(joined.files).toEqual(["turn-4.rep", "turn-5.rep"]);
+  });
+
+  it("goes back to screen 1 when reports join a confirmed change with names still missing", () => {
+    const confirmed = run(
+      opened,
+      { type: "choose", rulesetId: "newage-trident" },
+      { type: "changed", check: ON_TRIDENT_CLEAN }
+    );
+    const joined = run(confirmed, { type: "joined", check: { ...JOINED, rulesetId: "newage-trident" } });
+
+    expect(joined).toMatchObject({ step: "check", currentId: "newage-trident", stillMissing: null });
+  });
 });

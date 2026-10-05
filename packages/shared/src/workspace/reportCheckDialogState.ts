@@ -29,6 +29,8 @@ export type ReportCheckAction =
   | { type: "choose"; rulesetId: string }
   | { type: "changeStarted" }
   | { type: "changed"; check: ReportCheck }
+  /** Reports opened while the dialog is up joined it: the same reports and more, checked together. */
+  | { type: "joined"; check: ReportCheck }
   | { type: "changeFailed"; reason: string }
   | { type: "toReport" }
   | { type: "back" }
@@ -66,6 +68,18 @@ export function reportCheckReducer(state: ReportCheckState, action: ReportCheckA
             step: "check",
             stillMissing: { defined: nowDefined(state.check.gaps, action.check.gaps), of: state.check.gaps.count }
           };
+    }
+    case "joined": {
+      const files = [
+        ...new Set([...state.files, ...action.check.affected.map((opened) => opened.fileName)])
+      ];
+      const reopened = state.step === "confirmed" && action.check.gaps.count > 0;
+      return {
+        ...state,
+        check: action.check,
+        files,
+        ...(reopened ? { step: "check" as const, stillMissing: null } : {})
+      };
     }
     case "changeFailed":
       return { ...state, working: false, failure: action.reason };
