@@ -70,6 +70,11 @@ export function reportCheckReducer(state: ReportCheckState, action: ReportCheckA
           };
     }
     case "joined": {
+      // Made under a ruleset the game has since left (a change finished first): it describes
+      // nothing on screen, and the change's own check already covers every report held.
+      if (!state.working && action.check.rulesetId !== state.currentId) {
+        return state;
+      }
       const files = [
         ...new Set([...state.files, ...action.check.affected.map((opened) => opened.fileName)])
       ];

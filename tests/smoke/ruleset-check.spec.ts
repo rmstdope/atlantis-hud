@@ -222,9 +222,34 @@ test("two batches meeting under one check each keep their Import summary", async
 
   await page.getByTestId("report-check-close").click();
   const summary = page.getByTestId("import-summary");
-  await expect(summary).toBeVisible();
+  await expect(summary).toContainText("turn-71.rep");
+  await expect(summary).not.toContainText("turn-55.rep");
   await page.getByTestId("import-summary-close").click();
   // The second batch's account follows the first.
+  await expect(summary).toContainText("turn-55.rep");
+  await expect(summary).not.toContainText("turn-71.rep");
+  await page.getByTestId("import-summary-close").click();
+  await expect(summary).toHaveCount(0);
+});
+
+test("a batch with nothing new to check waits behind an open check for its Import summary", async ({ page }) => {
+  await createGameOn(page, "Trident game", "newage-trident");
+  const both = [
+    { name: "turn-71.rep", mimeType: "text/plain", buffer: Buffer.from(TURN_71, "utf8") },
+    { name: "turn-72.rep", mimeType: "text/plain", buffer: Buffer.from(TURN_72, "utf8") }
+  ];
+  await page.setInputFiles('input[type="file"]', both);
+  await expect(page.getByTestId("report-check")).toBeVisible();
+
+  // The same two again: both already checked, so nothing joins - but its summary must not be lost.
+  await page.setInputFiles('input[type="file"]', both);
+  await expect(page.getByTestId("import-status")).not.toContainText("Importing");
+  await expect(page.getByTestId("import-summary")).toHaveCount(0);
+
+  await page.getByTestId("report-check-close").click();
+  const summary = page.getByTestId("import-summary");
+  await expect(summary).toBeVisible();
+  await page.getByTestId("import-summary-close").click();
   await expect(summary).toBeVisible();
   await page.getByTestId("import-summary-close").click();
   await expect(summary).toHaveCount(0);

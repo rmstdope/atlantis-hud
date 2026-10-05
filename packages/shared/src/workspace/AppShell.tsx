@@ -1967,7 +1967,14 @@ export function AppShell({
   const checkOpened = useCallback(
     async (reports: readonly OpenedReport[], then: ImportSummary | null) => {
       const showThen = () => {
-        if (then) {
+        if (!then) {
+          return;
+        }
+        // While a check is up, a batch's summary waits behind it rather than landing under it.
+        const open = reportCheckNow.current;
+        if (open) {
+          setReportCheck({ ...open, then: [...open.then, then] });
+        } else {
           setImportSummary(then);
         }
       };
@@ -5876,7 +5883,8 @@ export function AppShell({
             }
           }}
           onClose={() => {
-            const [first, ...rest] = reportCheck.then;
+            // From the ref: a summary queued since the last render is in it already.
+            const [first, ...rest] = reportCheckNow.current?.then ?? reportCheck.then;
             setReportCheck(null);
             queuedSummaries.current = rest;
             if (first) {

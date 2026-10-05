@@ -137,4 +137,14 @@ describe("the report check dialog's states", () => {
 
     expect(joined).toMatchObject({ step: "check", currentId: "newage-trident", stillMissing: null });
   });
+
+  it("ignores a check made under a ruleset the game has already left", () => {
+    const confirmed = run(
+      opened,
+      { type: "choose", rulesetId: "newage-trident" },
+      { type: "changed", check: ON_TRIDENT_CLEAN }
+    );
+
+    expect(run(confirmed, { type: "joined", check: JOINED })).toBe(confirmed);
+  });
 });
