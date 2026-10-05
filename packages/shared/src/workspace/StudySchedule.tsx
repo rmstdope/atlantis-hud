@@ -289,11 +289,23 @@ function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
   // A press anywhere outside the card closes it with nothing chosen (ah-9wzn); which presses
   // count is `pressDismisses`. On `pointerdown` and in the capture phase, so it is seen before
   // anything under the pointer can stop it, and the press still goes on to whatever it landed on.
+  //
+  // Not `usePopoverDismiss` from `popover.tsx`: that one wants a wrapper holding both the trigger
+  // and the panel, and this card is portalled to the body while every grid cell is a trigger.
+  // Not gated on the dismiss stack the way Escape is, because nothing can open above this card -
+  // the one dialog the Schedule raises (`ScheduleConfirmLayer`) opens from a header press, which
+  // closes the card first. A surface that ever does stack above it has to gate this.
   const onEvent = useRef(props.onEvent);
   onEvent.current = props.onEvent;
+  // Set by a pointer dismissal so the focus-return cleanup below stands down: the press owns focus
+  // then, as `popover.tsx` decided for its own outside presses (navigator, 2026-08-23). Restoring
+  // would fire the cell's `onFocus` and move the mage pane back to the turn just dismissed, from
+  // under the pointer, before the browser's own mousedown took focus away again.
+  const pointerDismissed = useRef(false);
   useEffect(() => {
     const onPress = (event: PointerEvent) => {
       if (pressDismisses(event.target instanceof Element ? event.target : null)) {
+        pointerDismissed.current = true;
         onEvent.current({ kind: "dismissed" });
       }
     };
@@ -338,7 +350,9 @@ function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
   // focus out of a dropdown that is still open.
   useEffect(
     () => () => {
-      document.querySelector<HTMLElement>(`[data-cell="${cell}"]`)?.focus();
+      if (!pointerDismissed.current) {
+        document.querySelector<HTMLElement>(`[data-cell="${cell}"]`)?.focus();
+      }
     },
     [cell]
   );

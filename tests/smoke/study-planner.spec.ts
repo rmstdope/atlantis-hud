@@ -567,6 +567,13 @@ test("a click outside the dropdown closes it and changes nothing", async ({ page
   await expect(popover).toHaveCount(0);
   await expect(page.getByTestId("study-planner-dialog")).toBeVisible();
   await expect(cell).toContainText("—");
+  // Focus is not thrown back onto the turn just dismissed: a pointer dismissal leaves focus to the
+  // press, as `popover.tsx` does by the navigator's decision. The browser's own mousedown would
+  // take that focus away again, but not before the cell's `onFocus` had moved the mage pane back
+  // to turn 72 from under the pointer - so it is the pane that shows it.
+  const pane = page.getByTestId("study-schedule-mage-pane");
+  await expect(pane.getByText("Now", { exact: true })).toBeVisible();
+  await expect(pane.getByText("Turn 72", { exact: true })).toHaveCount(0);
 
   // Inside the dropdown, a press is the dropdown's own and closes nothing.
   await cell.click();
