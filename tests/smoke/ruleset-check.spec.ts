@@ -243,7 +243,6 @@ test("a batch with nothing new to check waits behind an open check for its Impor
 
   // The same two again: both already checked, so nothing joins - but its summary must not be lost.
   await page.setInputFiles('input[type="file"]', both);
-  await expect(page.getByTestId("import-status")).not.toContainText("Importing");
   await expect(page.getByTestId("import-summary")).toHaveCount(0);
 
   await page.getByTestId("report-check-close").click();

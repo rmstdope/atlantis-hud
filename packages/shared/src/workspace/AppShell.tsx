@@ -1053,6 +1053,9 @@ export function AppShell({
   } | null>(null);
   // Import summaries still to show after the one on screen.
   const queuedSummaries = useRef<ImportSummary[]>([]);
+  // The summary on screen as of the last render, so a second batch's queues behind it.
+  const importSummaryNow = useRef(importSummary);
+  importSummaryNow.current = importSummary;
   // The open check as of now, not as of the last render: reports arriving one after another (a
   // history fetch loads them through the single path in turn) are added to it before any render.
   const reportCheckNow = useRef<typeof reportCheck>(null);
@@ -1974,6 +1977,8 @@ export function AppShell({
         const open = reportCheckNow.current;
         if (open) {
           setReportCheck({ ...open, then: [...open.then, then] });
+        } else if (importSummaryNow.current) {
+          queuedSummaries.current = [...queuedSummaries.current, then];
         } else {
           setImportSummary(then);
         }
@@ -5886,7 +5891,7 @@ export function AppShell({
             // From the ref: a summary queued since the last render is in it already.
             const [first, ...rest] = reportCheckNow.current?.then ?? reportCheck.then;
             setReportCheck(null);
-            queuedSummaries.current = rest;
+            queuedSummaries.current = [...queuedSummaries.current, ...rest];
             if (first) {
               setImportSummary(first);
             }
