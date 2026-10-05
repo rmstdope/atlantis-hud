@@ -834,7 +834,9 @@ mod tests {
                     continue;
                 };
                 assert!(
-                    !structure.base_kind.starts_with(|c: char| c.is_ascii_digit()),
+                    !structure
+                        .base_kind
+                        .starts_with(|c: char| c.is_ascii_digit()),
                     "{}: {:?} has base kind {:?}",
                     report.file,
                     line.text,
