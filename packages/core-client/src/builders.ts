@@ -80,7 +80,7 @@ export function aStructure(kind: string, overrides: Partial<StructureInfo> = {})
     .map((clause) => clause.trim())
     .filter((clause) => clause !== "");
   const vessels = qualifiers.flatMap<VesselEntry>((clause) => {
-    const counted = /^(\d+)\s+(.+)$/u.exec(clause);
+    const counted = /^(\d+)\s*(.+)$/u.exec(clause);
     if (counted) {
       return [{ count: Number(counted[1]), name: counted[2] }];
     }
