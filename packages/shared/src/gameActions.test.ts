@@ -506,6 +506,14 @@ describe("checking a ruleset change against the game's turns", () => {
     });
   });
 
+  it("knows the Nexus a turn-0 report starts in, under the target's own name (ah-n30q)", async () => {
+    const nexus = aParsedReport({ regions: [aReportRegion({ terrain: "nexus" })] });
+
+    const gaps = await checkRulesetChange(turnsClient({ 0: nexus }), opened("g1"), "newage-trident", readRulesetText, SHIPPED);
+
+    expect(gaps.count).toBe(0);
+  });
+
   it("fails when a turn cannot be read, rather than letting the change through unchecked", async () => {
     const client = turnsClient({ 1: plain, 2: null });
 

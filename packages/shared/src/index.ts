@@ -47,6 +47,7 @@ export * from "./workspace/AppShell";
 export * from "./workspace/FactionDossierPanel";
 export * from "./workspace/ForeignReportPrompt";
 export * from "./gameData";
+export { checkOpenedReports } from "./reportRulesetCheck";
 export * from "./magicStanding";
 export * from "./studyPlanner";
 export * from "./studyProgress";
