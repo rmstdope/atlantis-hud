@@ -216,8 +216,8 @@ export function ReportCheckDialog({
 }: {
   check: ReportCheck;
   onChangeRuleset: (rulesetId: string) => Promise<ReportCheck>;
-  /** Copies the issue body for the check as it stands. */
-  onCopy: (check: ReportCheck, rulesetId: string) => Promise<void>;
+  /** Copies the issue body for the check as it stands; `false` when the clipboard refused it. */
+  onCopy: (check: ReportCheck, rulesetId: string) => Promise<boolean>;
   onGitHub: (check: ReportCheck, rulesetId: string) => void;
   onDiscord: (rulesetId: string) => void;
   onClose: () => void;
@@ -264,7 +264,14 @@ export function ReportCheckDialog({
       }}
       onToReport={() => dispatch({ type: "toReport" })}
       onBack={() => dispatch({ type: "back" })}
-      onCopy={() => void onCopy(state.check, state.currentId).then(() => dispatch({ type: "copied" }))}
+      onCopy={() =>
+        // `Copied` only once the clipboard took it; a refused copy leaves the label as it was.
+        void onCopy(state.check, state.currentId).then((done) => {
+          if (done) {
+            dispatch({ type: "copied" });
+          }
+        })
+      }
       onGitHub={() => onGitHub(state.check, state.currentId)}
       onDiscord={() => onDiscord(state.currentId)}
       onClose={onClose}

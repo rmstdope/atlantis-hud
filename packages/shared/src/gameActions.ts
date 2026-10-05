@@ -237,6 +237,28 @@ export async function changeRuleset(
 }
 
 /**
+ * Every ruleset in `ids`, parsed, by id (each read once). Rejects naming the first that cannot be
+ * read, since a check against a ruleset half-known would say less than it seems to.
+ */
+export async function readShippedRulesets(
+  readRuleset: (rulesetId: string) => Promise<string>,
+  ids: readonly string[]
+): Promise<Map<string, GameDataIndex>> {
+  const indexes = new Map<string, GameDataIndex>();
+  for (const rulesetId of ids) {
+    if (indexes.has(rulesetId)) {
+      continue;
+    }
+    const index = parseGameData(await readRuleset(rulesetId));
+    if (index === null) {
+      throw new Error(`the ${rulesetId} ruleset could not be read`);
+    }
+    indexes.set(rulesetId, index);
+  }
+  return indexes;
+}
+
+/**
  * What every imported turn of `game` names that `targetId`'s ruleset does not define (ah-gicw),
  * checked before the ruleset is changed.
  *
@@ -254,20 +276,9 @@ export async function checkRulesetChange(
   readRuleset: (rulesetId: string) => Promise<string>,
   shippedIds: readonly string[]
 ): Promise<RulesetGaps> {
-  const indexOf = async (rulesetId: string): Promise<GameDataIndex> => {
-    const index = parseGameData(await readRuleset(rulesetId));
-    if (index === null) {
-      throw new Error(`the ${rulesetId} ruleset could not be read`);
-    }
-    return index;
-  };
-  const target = await indexOf(targetId);
-  const known = [target];
-  for (const rulesetId of shippedIds) {
-    if (rulesetId !== targetId) {
-      known.push(await indexOf(rulesetId));
-    }
-  }
+  const indexes = await readShippedRulesets(readRuleset, [targetId, ...shippedIds]);
+  const target = indexes.get(targetId) as GameDataIndex;
+  const known = [target, ...[...indexes].filter(([id]) => id !== targetId).map(([, index]) => index)];
 
   const gameId = game.manifest.metadata.gameId;
   const summaries = await client.listImportedTurns(game.databasePath, gameId);

@@ -335,6 +335,23 @@ import { FloatingFactionDossier, MeasuredFactionDossier } from "./FactionDossier
 import type { KeepClear, PeekMode } from "./dossierPeek";
 import type { Point } from "../unitTooltip";
 import { describeError, runReported } from "./shellAction";
+import { APP_VERSION } from "../appVersion";
+import { copyText } from "../copyText";
+import { readShippedRulesets } from "../gameActions";
+import type { GameDataIndex } from "../gameData";
+import {
+  checkOpenedReports,
+  discordFor,
+  issueBody,
+  issueTitle,
+  issueUrl,
+  openedReportKey,
+  type OpenedReport,
+  type ReportCheck
+} from "../reportRulesetCheck";
+import { checkedKeys, markChecked, optionalMarkStorage } from "./reportCheckMarks";
+import { ReportCheckDialog } from "./ReportCheckDialog";
+import { rulesetLabelOf } from "./RulesetChanger";
 import {
   failedStatus,
   formedBlockRepairStatus,
@@ -458,6 +475,16 @@ function sessionStorageOrNull(): Storage | null {
   } catch {
     return null;
   }
+}
+
+
+/** A shipped ruleset's file, as text; rejects naming the ruleset when it cannot be fetched. */
+async function fetchRulesetText(rulesetId: string): Promise<string> {
+  const response = await fetch(rulesetUrlFor(rulesetId));
+  if (!response.ok) {
+    throw new Error(`the ${rulesetById(rulesetId)?.label ?? rulesetId} ruleset could not be fetched`);
+  }
+  return response.text();
 }
 
 export function AppShell({
@@ -1013,6 +1040,15 @@ export function AppShell({
   // What a batch of reports did, waiting to be read, and how far it has got while it is running.
   // Both null for a single report: that one still answers for itself through the status line.
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
+  // The ruleset check a report gets the first time it is opened (ah-fdmb): the check, the reports
+  // it covers (checked again after a change), and the batch's Import summary, which waits for it.
+  const [reportCheck, setReportCheck] = useState<{
+    check: ReportCheck;
+    reports: OpenedReport[];
+    then: ImportSummary | null;
+  } | null>(null);
+  // Every shipped ruleset, parsed, read once per session the first time a report is checked.
+  const shippedIndexes = useRef<Promise<Map<string, GameDataIndex>> | null>(null);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(
     null
   );
@@ -1890,6 +1926,66 @@ export function AppShell({
     [clearPlan, selectRegion, closePopover, writeOrdersDocument]
   );
 
+  /** Every shipped ruleset, parsed; read once, and again only after a failed read. */
+  const readShippedIndexes = useCallback(() => {
+    shippedIndexes.current ??= readShippedRulesets(
+      fetchRulesetText,
+      RULESETS.map((ruleset) => ruleset.id)
+    ).catch((error: unknown) => {
+      shippedIndexes.current = null;
+      throw error;
+    });
+    return shippedIndexes.current;
+  }, []);
+
+  /**
+   * Checks reports just opened against the game's ruleset (ah-fdmb), and opens the check dialog
+   * when any of them names something it does not define. `then` is a batch's Import summary, shown
+   * once the check has nothing to say or its dialog closes.
+   *
+   * Only a report's first opening is checked: each is marked as checked here, whatever the player
+   * then does, and a marked report is passed over. The check never fails an import - a ruleset that
+   * cannot be fetched, or a game on one this build does not ship, is simply not checked.
+   */
+  const checkOpened = useCallback(
+    async (reports: readonly OpenedReport[], then: ImportSummary | null) => {
+      const showThen = () => {
+        if (then) {
+          setImportSummary(then);
+        }
+      };
+      if (!game) {
+        showThen();
+        return;
+      }
+      const gameId = game.manifest.metadata.gameId;
+      const storage = optionalMarkStorage();
+      const seen = checkedKeys(storage, gameId);
+      const fresh = reports.filter((opened) => {
+        const key = openedReportKey(opened.report);
+        if (seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      });
+      markChecked(storage, gameId, fresh.map((opened) => openedReportKey(opened.report)));
+      if (fresh.length > 0) {
+        try {
+          const check = checkOpenedReports(fresh, game.manifest.metadata.rulesetId, await readShippedIndexes());
+          if (check !== null && check.affected.length > 0) {
+            setReportCheck({ check, reports: fresh, then });
+            return;
+          }
+        } catch {
+          // Not checked, as above: the import itself stands.
+        }
+      }
+      showThen();
+    },
+    [game, readShippedIndexes]
+  );
+
   /**
    * Puts a parsed report on screen and files it in the game.
    *
@@ -2162,6 +2258,7 @@ export function AppShell({
 
           if (route.kind === "storeOnly") {
             await storeReportOnly(report, text, route.currentTurn);
+            void checkOpened([{ fileName, report }], null);
             return "stored";
           }
 
@@ -2172,6 +2269,7 @@ export function AppShell({
             // whatever the last render saw. An apply that failed leaves `parsed` alone, so the
             // ref must be left alone too.
             viewerRef.current = report;
+            void checkOpened([{ fileName, report }], null);
           }
           return "loaded";
         },
@@ -2198,7 +2296,8 @@ export function AppShell({
       takeInMageSheet,
       flush,
       game,
-      parseReport
+      parseReport,
+      checkOpened
     ]
   );
 
@@ -2273,8 +2372,12 @@ export function AppShell({
       () => applyReport(pending.report, pending.text, pending.fileName),
       (message) => setStatus(failedStatus(message)),
       { busy: setBusy }
-    );
-  }, [pendingLoad, applyReport]);
+    ).then((applied) => {
+      if (applied) {
+        void checkOpened([{ fileName: pending.fileName, report: pending.report }], null);
+      }
+    });
+  }, [pendingLoad, applyReport, checkOpened]);
 
   /**
    * Folds the pending report into the map and leaves everything else exactly as it is.
@@ -2308,11 +2411,12 @@ export function AppShell({
         setStatus(
           outcome.warning !== null ? warningStatus(outcome.warning) : noticeStatus(describeMerge(outcome.result))
         );
+        void checkOpened([{ fileName: pending.fileName, report: pending.report }], null);
       },
       (message) => setStatus(failedStatus(message)),
       { busy: setBusy, prefix: `could not merge ${pending.fileName}` }
     );
-  }, [pendingLoad, client, game, rulesetText, rawReport]);
+  }, [pendingLoad, client, game, rulesetText, rawReport, checkOpened]);
 
   /**
    * Adds the pending map export's hexes to the player's map, and changes nothing else.
@@ -2453,7 +2557,14 @@ export function AppShell({
             setMergedReports(grownMemory.merged);
           }
 
-          setImportSummary(batchSummary(walk, walk.finish?.source.report ?? parsed));
+          // The ruleset check comes first, and the summary follows when it closes (ah-fdmb).
+          const opened = walk.landed.flatMap((step): OpenedReport[] => {
+            const source = batch.candidates[step.index]?.source;
+            return (step.kind === "import" || step.kind === "merge") && source?.kind === "report"
+              ? [{ fileName: step.fileName, report: source.report }]
+              : [];
+          });
+          void checkOpened(opened, batchSummary(walk, walk.finish?.source.report ?? parsed));
         },
         (message) => setStatus(failedStatus(message)),
         {
@@ -2465,7 +2576,7 @@ export function AppShell({
           }
         }
       ),
-    [client, rulesetText, parsed, game, applyReport, rawReport]
+    [client, rulesetText, parsed, game, applyReport, rawReport, checkOpened]
   );
 
   /**
@@ -3171,18 +3282,11 @@ export function AppShell({
       if (!game) {
         throw new Error("no game is open");
       }
-      const readRuleset = async (id: string) => {
-        const response = await fetch(rulesetUrlFor(id));
-        if (!response.ok) {
-          throw new Error(`the ${rulesetById(id)?.label ?? id} ruleset could not be fetched`);
-        }
-        return response.text();
-      };
       return checkRulesetChangeAction(
         client,
         game,
         rulesetId,
-        readRuleset,
+        fetchRulesetText,
         RULESETS.map((ruleset) => ruleset.id)
       );
     },
@@ -5696,6 +5800,42 @@ export function AppShell({
         the player finds out - hence a modal rather than the status line the header keeps for the
         single report it was sized for.
       */}
+      {/*
+        A report that names things the game's ruleset does not define, on its first opening
+        (ah-fdmb). Before the Import summary, which waits for it to close.
+      */}
+      {reportCheck ? (
+        <ReportCheckDialog
+          check={reportCheck.check}
+          onChangeRuleset={async (rulesetId) => {
+            await changeRuleset(rulesetId);
+            const next = checkOpenedReports(reportCheck.reports, rulesetId, await readShippedIndexes());
+            if (next === null) {
+              throw new Error(`the ${rulesetLabelOf(rulesetId)} ruleset could not be read`);
+            }
+            return next;
+          }}
+          onCopy={(check, rulesetId) => copyText(issueBody(check, rulesetLabelOf(rulesetId), APP_VERSION))}
+          onGitHub={(check, rulesetId) => {
+            const label = rulesetLabelOf(rulesetId);
+            openExternal(issueUrl(issueTitle(label), issueBody(check, label, APP_VERSION)));
+          }}
+          onDiscord={(rulesetId) => {
+            const discord = discordFor(rulesetId);
+            if (discord !== null) {
+              openExternal(discord.url);
+            }
+          }}
+          onClose={() => {
+            const then = reportCheck.then;
+            setReportCheck(null);
+            if (then) {
+              setImportSummary(then);
+            }
+          }}
+        />
+      ) : null}
+
       {importSummary ? (
         <ImportSummaryDialog
           summary={importSummary}
