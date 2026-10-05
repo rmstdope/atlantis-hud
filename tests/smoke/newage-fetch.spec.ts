@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
 
-import { clearGames, createGame } from "./gameSetup";
+import { clearGames, closeRulesetCheck, createGame } from "./gameSetup";
 
 /**
  * Fetching from a New Age world (ah-coij).
@@ -201,6 +201,7 @@ test("fetches this turn's report with the password typed into the dialog", async
   await fetchWith(page);
 
   await expect(page.getByTestId("import-status")).toContainText("11 regions");
+  await closeRulesetCheck(page);
   await expect(page.getByTestId("newage-fetch-panel")).toHaveCount(0);
 
   const calls = await httpCalls(page);
@@ -260,6 +261,7 @@ test("fetches every missing turn in one press and says what happened", async ({ 
   await expect(page.getByTestId("import-status")).toContainText(
     "2 turns stored for history; still showing turn 72."
   );
+  await closeRulesetCheck(page);
 
   const historyCalls = (await httpCalls(page))
     .map((call) => call[2])
@@ -297,6 +299,7 @@ test("stops a run when the dialog is cancelled and keeps what landed", async ({ 
   await expect(page.getByTestId("import-status")).toHaveText(
     "turn 70 stored for history; still showing turn 72."
   );
+  await closeRulesetCheck(page);
 
   // And the turn that landed is reachable, which is the whole promise of stopping rather than
   // discarding. Opening the picker re-lists the turns itself, so these rows assert that promise
@@ -333,6 +336,7 @@ test("keeps this turn and says why when the list of earlier turns could not be f
   await expect(page.getByTestId("import-status")).toHaveText(
     "turn 71 loaded, but Arcanum's list of earlier turns could not be fetched: the world refused the request (500)."
   );
+  await closeRulesetCheck(page);
   await expect(page.getByTestId("turn-chip")).toContainText("71");
 });
 
@@ -349,6 +353,7 @@ test("owns the fault when the list of earlier turns cannot be understood", async
   await expect(page.getByTestId("import-status")).toHaveText(
     "turn 71 loaded. Atlantis HUD did not understand Arcanum's list of earlier turns, so none were fetched — trying again will not help."
   );
+  await closeRulesetCheck(page);
   const historyCalls = (await httpCalls(page))
     .map((call) => call[2])
     .filter((url) => url.includes("/files/history/70/"));
@@ -373,6 +378,7 @@ test("says calmly when every earlier turn is already loaded", async ({ page }) =
   await expect(page.getByTestId("import-status")).toHaveText(
     "2 turns stored for history; still showing turn 72."
   );
+  await closeRulesetCheck(page);
 
   await fetchWith(page, { scope: "history" });
 

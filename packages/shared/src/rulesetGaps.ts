@@ -75,6 +75,16 @@ function knownStructure(known: readonly GameDataIndex[], kind: string): { key: s
 }
 
 /**
+ * A structure kind without a leading count. A fleet of one kind of ship prints with no "Fleet,"
+ * before it - `ADF Implacable [868] : 8 Corsairs.` (tests/fixtures/reports, g7 f95 t71) - so its
+ * kind is `8 Corsairs`, which names the ship `Corsairs` as surely as a vessel entry does.
+ */
+function uncounted(kind: string): string {
+  const trimmed = kind.trim();
+  return /^\d+\s+(.+)$/u.exec(trimmed)?.[1] ?? trimmed;
+}
+
+/**
  * Every name a report contains, in no particular order and with repeats.
  *
  * `known` is every ruleset this build ships. It settles whether a tag is a race or an item, which
@@ -106,7 +116,7 @@ export function reportNames(report: ParsedReport, known: readonly GameDataIndex[
         ...structure.vessels.map((vessel) => vessel.name)
       ];
       for (const kind of kinds) {
-        names.push({ kind: "structure", ...knownStructure(known, kind.trim()) });
+        names.push({ kind: "structure", ...knownStructure(known, uncounted(kind)) });
       }
     }
     for (const unit of region.units) {

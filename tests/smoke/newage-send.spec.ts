@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
 
-import { clearGames, createGame } from "./gameSetup";
+import { clearGames, closeRulesetCheck, createGame } from "./gameSetup";
 
 /**
  * Sending orders to a New Age world (ah-lbd9.4).
@@ -132,6 +132,7 @@ async function withTurnLoaded(page: import("@playwright/test").Page) {
   await page.getByTestId("newage-password").fill("right");
   await page.getByTestId("newage-fetch-confirm").click();
   await expect(page.getByTestId("import-status")).toContainText("11 regions");
+  await closeRulesetCheck(page);
 }
 
 test("sends orders and reports that the world saved them with errors", async ({ page }) => {

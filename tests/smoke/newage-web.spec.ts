@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
 
-import { clearGames, createGame } from "./gameSetup";
+import { clearGames, closeRulesetCheck, createGame } from "./gameSetup";
 
 /**
  * Fetch and Send for a New Age world in the web version (ah-oma5).
@@ -94,6 +94,7 @@ async function withTurnLoaded(page: Page) {
   await page.getByTestId("newage-password").fill("right");
   await page.getByTestId("newage-fetch-confirm").click();
   await expect(page.getByTestId("import-status")).toContainText("11 regions");
+  await closeRulesetCheck(page);
 }
 
 test("a New Age game on the web fetches this turn's report through the browser", async ({ page }) => {
