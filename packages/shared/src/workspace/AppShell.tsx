@@ -37,7 +37,8 @@ import {
 } from "../ordersDocument";
 import { isOrdersFile, routeFileImport, routeOrdersImport } from "../ordersImport";
 import { ordersFileFaction } from "../ordersImport";
-import { rulesetById } from "../rulesets";
+import { RULESETS, rulesetById } from "../rulesets";
+import type { RulesetGaps } from "../rulesetGaps";
 import { orderProcessingFor, type OrderProcessing } from "../orderProcessing";
 import { rowKeyOf, unitRowKey } from "../unitTable";
 import { previewAtCursor, unitAtCursor } from "./unitCursor";
@@ -126,6 +127,8 @@ import {
 import { StorageHeldNotice } from "./StorageHeldNotice";
 import { StorageStoppedNotice } from "./StorageStoppedNotice";
 import {
+  changeRuleset as changeRulesetAction,
+  checkRulesetChange as checkRulesetChangeAction,
   createGame as createGameAction,
   deleteGame as deleteGameAction,
   resetGame as resetGameAction,
@@ -1093,6 +1096,7 @@ export function AppShell({
 
   const closeGameInStore = useWorkspaceStore((state) => state.closeGame);
   const updateGameNameInStore = useWorkspaceStore((state) => state.updateGameName);
+  const updateGameRulesetInStore = useWorkspaceStore((state) => state.updateGameRuleset);
   const updateGameMapInStore = useWorkspaceStore((state) => state.updateGameMap);
   const updateGameMapSizesInStore = useWorkspaceStore((state) => state.updateGameMapSizes);
 
@@ -3159,6 +3163,59 @@ export function AppShell({
   );
 
   /**
+   * What every imported turn of the open game names that `rulesetId` does not define (ah-gicw),
+   * asked by Settings' ruleset control before it changes anything.
+   */
+  const checkRulesetChange = useCallback(
+    async (rulesetId: string): Promise<RulesetGaps> => {
+      if (!game) {
+        throw new Error("no game is open");
+      }
+      const readRuleset = async (id: string) => {
+        const response = await fetch(rulesetUrlFor(id));
+        if (!response.ok) {
+          throw new Error(`the ${rulesetById(id)?.label ?? id} ruleset could not be fetched`);
+        }
+        return response.text();
+      };
+      return checkRulesetChangeAction(
+        client,
+        game,
+        rulesetId,
+        readRuleset,
+        RULESETS.map((ruleset) => ruleset.id)
+      );
+    },
+    [client, game]
+  );
+
+  /**
+   * Moves the open game to `rulesetId` (ah-gicw). Rejects with the reason when it could not, which
+   * Settings' ruleset control shows itself rather than in `gameError`.
+   *
+   * The reports are read again by the effects keyed on the manifest's ruleset id - the ruleset
+   * fetch, then the turn restore - so nothing here re-parses. The map sizes are left alone: a
+   * ruleset edit sets only the id (`apply_manifest_edit`, crates/core/src/backup.rs).
+   */
+  const changeRuleset = useCallback(
+    async (rulesetId: string): Promise<void> => {
+      if (!game) {
+        throw new Error("no game is open");
+      }
+      // The edit writes the manifest to the same storage a pending draft write may be headed for.
+      await flush();
+      const result = await changeRulesetAction(client, game, rulesetId);
+      if (result === null) {
+        return;
+      }
+      setGame({ ...game, manifest: result.manifest });
+      updateGameRulesetInStore(result.manifest.metadata.rulesetId);
+      setGames(result.games);
+    },
+    [client, game, flush, updateGameRulesetInStore]
+  );
+
+  /**
    * Renames the open game. Resolves `true` when the name was saved, `false` when the core refused
    * (the reason is in `gameError`) - the field's own save button reads this to decide whether to
    * close.
@@ -5204,6 +5261,8 @@ export function AppShell({
       busy={busy}
       error={gameError}
       onChangeMapSizes={changeMapSizes}
+      onCheckRuleset={checkRulesetChange}
+      onChangeRuleset={changeRuleset}
       onDismiss={() => setSettingsOpen(false)}
     />
   );

@@ -13,8 +13,8 @@ import { clearGames, createGame, loadReport, selectHex } from "./gameSetup";
  * Tauri's http plugin, and under Playwright the desktop bundle runs in a plain browser with neither. That
  * difference is covered where it belongs: the web path in `tests/pwa`, the desktop path by hand.
  *
- * A ruleset *change* is not exercised here either: only one ruleset ships, so there is nothing to
- * change to. The write path is covered by Rust and adapter unit tests.
+ * A ruleset change (ah-gicw) is walked here: the check against the game's turns, the warning, and
+ * the change surviving a reload. Which names a ruleset lacks is pinned by `rulesetGaps.test.ts`.
  */
 
 test("settings are reachable before any game exists", async ({ page }) => {
@@ -222,7 +222,7 @@ test("the pane transparency slider repaints the panes and survives a reload", as
   expect(await paneAlpha(page)).toBeCloseTo(0.8, 2);
 });
 
-test("the per-game tab shows the open game's ruleset", async ({ page }) => {
+test("the per-game tab lists every ruleset, on the open game's, with Change ruleset dimmed", async ({ page }) => {
   await clearGames(page);
   await createGame(page, "Settings game");
 
@@ -230,9 +230,104 @@ test("the per-game tab shows the open game's ruleset", async ({ page }) => {
   await page.getByTestId("settings-tab-game").click();
 
   const ruleset = page.getByTestId("settings-game-ruleset");
-  await expect(ruleset).toBeVisible();
-  await expect(ruleset).toHaveText("New Origins");
-  await expect(page.getByText("The ruleset is chosen when this game is created.")).toBeVisible();
+  await expect(ruleset).toHaveValue("neworigins");
+  await expect(ruleset.locator("option")).toHaveText(["New Origins", "New Age: Arcanum", "New Age: Trident"]);
+  await expect(page.getByTestId("settings-game-ruleset-change")).toBeDisabled();
+  await expect(page.getByText("The game’s reports are read again under the new ruleset.")).toBeVisible();
+  await expect(page.getByText("The ruleset is chosen when this game is created.")).toHaveCount(0);
+
+  await ruleset.selectOption("newage-trident");
+  await expect(page.getByTestId("settings-game-ruleset-change")).toBeEnabled();
+  await ruleset.selectOption("neworigins");
+  await expect(page.getByTestId("settings-game-ruleset-change")).toBeDisabled();
+});
+
+/** Settings → per-game tab, with the ruleset list ready to use. */
+async function openGameSettings(page: Page) {
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-game").click();
+  await expect(page.getByTestId("settings-game-ruleset")).toBeEnabled();
+}
+
+test("a game with no reports changes ruleset at once, keeps its map sizes, and stays changed after a reload", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Ruleset game");
+  await openGameSettings(page);
+  const summary = page.getByTestId("settings-map-sizes-summary").getByRole("listitem");
+  const sizes = await summary.allTextContents();
+
+  await page.getByTestId("settings-game-ruleset").selectOption("newage-arcanum");
+  await page.getByTestId("settings-game-ruleset-change").click();
+
+  await expect(page.getByTestId("settings-game-ruleset-changed")).toHaveText("✓ Changed to New Age: Arcanum.");
+  await expect(page.getByTestId("ruleset-change-warning")).toHaveCount(0);
+  await expect(page.getByTestId("settings-game-ruleset-change")).toBeDisabled();
+  await expect(summary).toHaveText(sizes);
+
+  await page.reload();
+  await openGameSettings(page);
+  await expect(page.getByTestId("settings-game-ruleset")).toHaveValue("newage-arcanum");
+  await expect(page.getByTestId("settings-game-ruleset-changed")).toHaveCount(0);
+  await expect(summary).toHaveText(sizes);
+});
+
+test("a change that leaves names undefined warns first, and Cancel or Escape keeps the ruleset", async ({ page }) => {
+  await loadReport(page, "Warned game");
+  await openGameSettings(page);
+  const list = page.getByTestId("settings-game-ruleset");
+
+  await list.selectOption("newage-trident");
+  await page.getByTestId("settings-game-ruleset-change").click();
+
+  const warning = page.getByTestId("ruleset-change-warning");
+  await expect(warning).toContainText("⚠ Change to New Age: Trident?");
+  await expect(warning).toContainText("of this game’s 1 turns name");
+  await expect(warning).toContainText("Not defined in New Age: Trident");
+  await expect(page.getByTestId("ruleset-change-warning-names")).toContainText("Turn 71");
+  await expect(page.getByTestId("ruleset-change-warning-cancel")).toBeFocused();
+
+  // Escape is Cancel, and closes only the warning.
+  await page.keyboard.press("Escape");
+  await expect(warning).toHaveCount(0);
+  await expect(page.getByTestId("settings-panel")).toBeVisible();
+  await expect(list).toHaveValue("neworigins");
+  await expect(list).toBeFocused();
+
+  await list.selectOption("newage-trident");
+  await page.getByTestId("settings-game-ruleset-change").click();
+  await page.getByTestId("ruleset-change-warning-cancel").click();
+  await expect(warning).toHaveCount(0);
+  await expect(list).toHaveValue("neworigins");
+
+  await page.reload();
+  await openGameSettings(page);
+  await expect(page.getByTestId("settings-game-ruleset")).toHaveValue("neworigins");
+});
+
+test("Change anyway changes the ruleset and says how many names are not defined in it", async ({ page }) => {
+  await loadReport(page, "Changed anyway");
+  await openGameSettings(page);
+  const list = page.getByTestId("settings-game-ruleset");
+
+  await list.selectOption("newage-trident");
+  await page.getByTestId("settings-game-ruleset-change").click();
+  await page.getByTestId("ruleset-change-warning-confirm").click();
+
+  await expect(page.getByTestId("ruleset-change-warning")).toHaveCount(0);
+  await expect(page.getByTestId("settings-game-ruleset-changed-anyway")).toContainText(
+    /^⚠ Changed to New Age: Trident — \d+ names in this game’s reports are not defined in it\.$/u
+  );
+  await expect(list).toHaveValue("newage-trident");
+  await expect(list).toBeFocused();
+
+  // The line goes when Settings closes.
+  await page.getByTestId("settings-close").click();
+  await openGameSettings(page);
+  await expect(page.getByTestId("settings-game-ruleset-changed-anyway")).toHaveCount(0);
+
+  await page.reload();
+  await openGameSettings(page);
+  await expect(page.getByTestId("settings-game-ruleset")).toHaveValue("newage-trident");
 });
 
 /** The turn-71 fixture; Inholm at (7,53) holds 92 units, so every cap the slider offers bites. */

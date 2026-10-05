@@ -15,9 +15,12 @@ import type {
   ManifestEdit,
   MapShape,
   MapSizes,
-  OpenedGame
+  OpenedGame,
+  ParsedReport
 } from "@atlantis/core-client";
 import { backupAsCopy, backupGameIdentity } from "./gameBackup";
+import { parseGameData, type GameDataIndex } from "./gameData";
+import { rulesetGaps, type RulesetGaps } from "./rulesetGaps";
 import { gameAfterDelete, gameNameOf, newGameId, newGameManifest } from "./gameSession";
 import { rulesetById } from "./rulesets";
 import { forgetMapView } from "./workspace/mapViewportStorage";
@@ -231,6 +234,52 @@ export async function changeRuleset(
   const edit: ManifestEdit = { kind: "ruleset", value: rulesetId };
   const manifest = await client.editGameManifest(game.manifest.metadata.gameId, edit);
   return { manifest, games: await client.listGames() };
+}
+
+/**
+ * What every imported turn of `game` names that `targetId`'s ruleset does not define (ah-gicw),
+ * checked before the ruleset is changed.
+ *
+ * `readRuleset` fetches a ruleset's text by id; `shippedIds` is every ruleset this build ships,
+ * which `rulesetGaps` uses to tell a race from an item and to give a tag its singular name.
+ *
+ * Serial, as `scanStoredTurns` walks them. Unlike that walk this one throws on a turn it cannot read:
+ * a check that skipped a turn would say "nothing missing" about names it never saw, and the change
+ * would go through unwarned. Names need no classification, so `parseReportFull` is enough.
+ */
+export async function checkRulesetChange(
+  client: Pick<CoreClient, "listImportedTurns" | "loadImportedTurn" | "parseReportFull">,
+  game: OpenedGame,
+  targetId: string,
+  readRuleset: (rulesetId: string) => Promise<string>,
+  shippedIds: readonly string[]
+): Promise<RulesetGaps> {
+  const indexOf = async (rulesetId: string): Promise<GameDataIndex> => {
+    const index = parseGameData(await readRuleset(rulesetId));
+    if (index === null) {
+      throw new Error(`the ${rulesetId} ruleset could not be read`);
+    }
+    return index;
+  };
+  const target = await indexOf(targetId);
+  const known = [target];
+  for (const rulesetId of shippedIds) {
+    if (rulesetId !== targetId) {
+      known.push(await indexOf(rulesetId));
+    }
+  }
+
+  const gameId = game.manifest.metadata.gameId;
+  const summaries = await client.listImportedTurns(game.databasePath, gameId);
+  const turns: { turnNumber: number; report: ParsedReport }[] = [];
+  for (const { key } of summaries) {
+    const record = await client.loadImportedTurn(game.databasePath, gameId, key.factionId, key.turnNumber);
+    if (record === null) {
+      throw new Error(`turn ${key.turnNumber} could not be read`);
+    }
+    turns.push({ turnNumber: key.turnNumber, report: await client.parseReportFull(record.rawReport) });
+  }
+  return rulesetGaps(turns, target, known);
 }
 
 /**
