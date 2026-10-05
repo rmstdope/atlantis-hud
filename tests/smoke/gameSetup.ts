@@ -104,6 +104,18 @@ export async function importReport(page: Page, name: string, report: string) {
   });
 }
 
+/**
+ * Closes the ruleset check (ah-fdmb) that a fixture with a real gap in the scraped ruleset data
+ * raises the first time it is opened - the Nexus turns (no ruleset defines `nexus`), turn 82's
+ * `blasphemous ritual`, a New Origins report in a Trident game - for walks about something else.
+ * `ruleset-check.spec.ts` is where the check itself is walked.
+ */
+export async function closeRulesetCheck(page: Page) {
+  await expect(page.getByTestId("report-check")).toBeVisible();
+  await page.getByTestId("report-check-close").click();
+  await expect(page.getByTestId("report-check")).toHaveCount(0);
+}
+
 /** The turn every walk that just needs "a game with a map in it" loads. */
 const TURN_71 = readReport("g7f95t71");
 

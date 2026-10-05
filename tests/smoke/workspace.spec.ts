@@ -19,7 +19,8 @@ import {
   visibleStrip,
   waitForSettledHeader,
   waitForStableBox,
-  waitForStableHeight
+  waitForStableHeight,
+  closeRulesetCheck
 } from "./gameSetup";
 // The real constant, not a copy of it: this test exists to catch the rendered height and the
 // windowing arithmetic drifting apart, which a hard-coded 22 here would hide.
@@ -737,6 +738,7 @@ test("clicking a changed hex on another level follows it there", async ({ page }
     buffer: Buffer.from(readReport("g5f21t0"), "utf8")
   });
   await expect(page.getByTestId("import-status")).toContainText("region");
+  await closeRulesetCheck(page);
   await page.setInputFiles('input[type="file"]', {
     name: "turn-23.rep",
     mimeType: "text/plain",
@@ -1280,6 +1282,7 @@ test("the trade chip lists routes and flies the map to one", async ({ page }) =>
 
   await choose(page, "f42-t82.rep", F42_T82);
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*82\b/);
+  await closeRulesetCheck(page);
 
   const chip = page.getByTestId("trade-chip");
   await expect(chip).toContainText("Trade 6");
@@ -1319,6 +1322,7 @@ test("hovering a trade route draws it, frames it, and puts the map back", async 
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*42\b/);
   await choose(page, "f42-t82.rep", F42_T82);
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*82\b/);
+  await closeRulesetCheck(page);
 
   await page.getByTestId("trade-chip").click();
   const panel = page.getByTestId("trade-panel");
@@ -2517,6 +2521,7 @@ test("a swimmer crosses the coastal water the walker was refused", async ({ page
   await page.getByTestId("game-ruleset").selectOption("newage-trident");
   await createGame(page, "Swimmer smoke");
   await importReport(page, "trident-turn.rep", swimmerReport);
+  await closeRulesetCheck(page);
   await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
@@ -5825,6 +5830,7 @@ test("a route through a passage stops at the structure and says why", async ({ p
   await expect(page.getByTestId("app-header")).toBeVisible();
   await importReport(page, "turn-0.rep", readReport("g4f17t0"));
   await expect(page.getByTestId("import-status")).toContainText("region");
+  await closeRulesetCheck(page);
 
   await selectHex(page, "0:0,0");
   await selectUnit(page, "666");

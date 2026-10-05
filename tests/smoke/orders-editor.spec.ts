@@ -11,7 +11,8 @@ import {
   ordersText,
   saveNow,
   selectHex,
-  selectUnit
+  selectUnit,
+  closeRulesetCheck
 } from "./gameSetup";
 import { readReport } from "@atlantis/fixtures";
 
@@ -72,6 +73,7 @@ async function openTridentBuilder(page: Page) {
   await createGame(page, "Trident placement smoke");
   await importReport(page, "trident-turn.rep", TRIDENT_REPORT);
   await expect(page.getByTestId("import-status")).toContainText("11 regions");
+  await closeRulesetCheck(page);
   await selectHex(page, "1:10,50");
   await selectUnit(page, "13432");
   await expect(page.getByTestId("orders-input")).toBeVisible();
