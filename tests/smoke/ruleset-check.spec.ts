@@ -186,14 +186,15 @@ test("reports opened one after another while the check is up join it, as one imp
   );
   await expect(page.getByTestId("report-check-names")).toContainText("turn-71.rep, turn-72.rep");
 
-  // And a change checks both of them again, not only the last.
-  await page.getByTestId("report-check-ruleset").selectOption("neworigins");
+  // And a change checks both of them again, not only the last. Arcanum, because both still name
+  // something it lacks (the gnoll race), so a check of the last alone would read as one report;
+  // under New Origins both now read cleanly (ah-n30q) and could not tell the two apart.
+  await page.getByTestId("report-check-ruleset").selectOption("newage-arcanum");
   await page.getByTestId("report-check-change").click();
   await expect(page.getByTestId("report-check-still-missing")).toHaveText(
-    /^Changed to New Origins — \d+ of the \d+ names are now defined\.$/u
+    /^Changed to New Age: Arcanum — \d+ of the \d+ names are now defined\.$/u
   );
-  // Only turn 72 still names something New Origins lacks (barren), so it reads as one report.
-  await expect(page.getByTestId("report-check-intro")).toContainText(/^The report turn-72\.rep names /u);
+  await expect(page.getByTestId("report-check-intro")).toContainText(/^2 of the 2 reports you imported /u);
 });
 
 test("a report joining the check leaves the player where they were in it", async ({ page }) => {

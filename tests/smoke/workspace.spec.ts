@@ -738,7 +738,6 @@ test("clicking a changed hex on another level follows it there", async ({ page }
     buffer: Buffer.from(readReport("g5f21t0"), "utf8")
   });
   await expect(page.getByTestId("import-status")).toContainText("region");
-  await closeRulesetCheck(page);
   await page.setInputFiles('input[type="file"]', {
     name: "turn-23.rep",
     mimeType: "text/plain",
@@ -1282,7 +1281,6 @@ test("the trade chip lists routes and flies the map to one", async ({ page }) =>
 
   await choose(page, "f42-t82.rep", F42_T82);
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*82\b/);
-  await closeRulesetCheck(page);
 
   const chip = page.getByTestId("trade-chip");
   await expect(chip).toContainText("Trade 6");
@@ -1322,7 +1320,6 @@ test("hovering a trade route draws it, frames it, and puts the map back", async 
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*42\b/);
   await choose(page, "f42-t82.rep", F42_T82);
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*82\b/);
-  await closeRulesetCheck(page);
 
   await page.getByTestId("trade-chip").click();
   const panel = page.getByTestId("trade-panel");
@@ -2096,7 +2093,6 @@ test("a first turn opens on the nexus, on a level of its own", async ({ page }) 
   });
 
   await expect(page.getByTestId("import-status")).toContainText("1 region ·");
-  await closeRulesetCheck(page);
 
   // ah-l9mp: the level reads from the top bar now, and a single level is text rather than a
   // dead select.
@@ -2127,7 +2123,6 @@ test("the level selector in the header changes level", async ({ page }) => {
     buffer: Buffer.from(readReport("g5f21t0"), "utf8")
   });
   await expect(page.getByTestId("import-status")).toContainText("region");
-  await closeRulesetCheck(page);
   await page.setInputFiles('input[type="file"]', {
     name: "turn-23.rep",
     mimeType: "text/plain",
@@ -3056,7 +3051,6 @@ test("a loaded report marks no unit as an estimate", async ({ page }) => {
   // No settling wait between the header appearing and the file going in: that gap is the bug.
   await importReport(page, "g3-f42-t82.rep", F42_T82);
   await expect(page.getByTestId("import-status")).toContainText("regions");
-  await closeRulesetCheck(page);
 
   // Sweeps hexes rather than one, so both own and foreign units are covered - the table windows
   // its rows, so what is on screen per hex is a screenful rather than the lot.
@@ -5798,7 +5792,6 @@ test("a hex where a battle was fought carries a badge, and the badge switches it
   page
 }) => {
   await loadReport(page, "Battle smoke game", readReport("g7f95t72"), "regions");
-  await closeRulesetCheck(page);
 
   const map = page.getByTestId("map-canvas");
   // The default theme is Cartographer's Table, whose battle mark is crossed swords. Counted rather
@@ -5834,7 +5827,6 @@ test("a route through a passage stops at the structure and says why", async ({ p
   await expect(page.getByTestId("app-header")).toBeVisible();
   await importReport(page, "turn-0.rep", readReport("g4f17t0"));
   await expect(page.getByTestId("import-status")).toContainText("region");
-  await closeRulesetCheck(page);
 
   await selectHex(page, "0:0,0");
   await selectUnit(page, "666");

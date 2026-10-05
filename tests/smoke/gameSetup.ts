@@ -105,9 +105,10 @@ export async function importReport(page: Page, name: string, report: string) {
 }
 
 /**
- * Closes the ruleset check (ah-fdmb) that a fixture with a real gap in the scraped ruleset data
- * raises the first time it is opened - the Nexus turns (no ruleset defines `nexus`), turn 82's
- * `blasphemous ritual`, a New Origins report in a Trident game - for walks about something else.
+ * Closes the ruleset check (ah-fdmb) that a report opened under the wrong ruleset raises the first
+ * time it is opened - a New Origins report in a Trident or Arcanum game - for walks about something
+ * else. Every committed report reads cleanly under its own ruleset (ah-n30q,
+ * `rulesetCorpus.wasm.test.ts`), so a walk in a New Origins game never needs this.
  * `ruleset-check.spec.ts` is where the check itself is walked.
  */
 export async function closeRulesetCheck(page: Page) {
