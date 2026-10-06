@@ -38,7 +38,9 @@ use crate::movement::mode::{
 };
 use crate::movement::orders::{first_passage, MoveStep};
 use crate::movement::plan::{Hull, Journey};
-use crate::movement::rules::{item_spellings, ItemEntry, MovementMode, Ruleset, SkillEntry};
+use crate::movement::rules::{
+    item_spellings, ItemEntry, ItemKind, MovementMode, Ruleset, SkillEntry,
+};
 use crate::movement::sailing::refused_sail_steps;
 use crate::orders::faction_orders::{
     orders_warning, settle, FactionFailure, FactionLimits, FactionOrders, FactionSplit, Held,
@@ -15269,8 +15271,7 @@ struct MovementOverload {
 
 /// `Some` only when both the derived-or-printed allowance and `weight_after_orders` are known and
 /// the weight exceeds it. Unknown load or allowance - no ruleset, an unpriceable item - returns
-/// `None`, which callers must read as "cannot say", never as "not
-/// overloaded".
+/// `None`, which callers must read as "cannot say", never as "not overloaded".
 fn movement_overload(
     ordered: &Ordered<'_>,
     ledger: &Ledger<'_>,
