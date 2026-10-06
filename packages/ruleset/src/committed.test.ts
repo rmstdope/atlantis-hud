@@ -123,14 +123,6 @@ describe("the committed rulesets", () => {
   });
 
   /**
-   * ah-a2k.3: the census `ah-a2k.2` needs to tell a Tower from a Fort - taken from the game's own
-   * data page since ah-9js, which is why it carries ten fortifications rather than the rules
-   * table's five, nine of them seating at least one mage. A fortification that says nothing about
-   * mages seats none, which is the Tower asserted below. Since ah-3cj4.1 everything else the page
-   * calls a building - a Mine, a road, a lair - is carried too and seats nobody: the page states a
-   * capacity wherever there is one, so its silence is an answer rather than a gap.
-   */
-  /**
    * ah-yw4p: `data/Galleon` - "This ship will allow one mage to study above level 2." - and its
    * siblings, read into the item entry the way a building's sentence is read into `buildings`.
    */
@@ -153,6 +145,14 @@ describe("the committed rulesets", () => {
     ]);
   });
 
+  /**
+   * ah-a2k.3: the census `ah-a2k.2` needs to tell a Tower from a Fort - taken from the game's own
+   * data page since ah-9js, which is why it carries ten fortifications rather than the rules
+   * table's five, nine of them seating at least one mage. A fortification that says nothing about
+   * mages seats none, which is the Tower asserted below. Since ah-3cj4.1 everything else the page
+   * calls a building - a Mine, a road, a lair - is carried too and seats nobody: the page states a
+   * capacity wherever there is one, so its silence is an answer rather than a gap.
+   */
   it("carries every structure that seats a mage, and what each seats", () => {
     expect(
       Object.entries(COMMITTED.buildings)
