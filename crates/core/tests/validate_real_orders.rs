@@ -32,12 +32,11 @@ use common::ruleset;
 /// - `unit-does-nothing` (ah-dwk6): units 14451 and 13432 are given no orders at all. Both are
 ///   parked cargo units; the navigator was shown that measurement and chose to warn about them
 ///   anyway rather than exempt an empty block.
-/// - `magic-study-outside-building` (ah-a2k.2): the Borg mages aboard the Cloudship
-///   `Princess of the Dawn [1239]` study force (881, 12878, 12879, 20, 12880) and pattern (12881)
-///   while a Cloudship is not a kind the ruleset's buildings table seats mages in. The navigator
-///   settled this against the alternative on 2026-08-17: a structure the table does not name is no
-///   shelter, so these are real halved months and not invented problems - even though this turn's
-///   own "Errors during turn" section does not carry the engine's advisory for them.
+/// - `magic-study-outside-building` is **absent** since ah-yw4p. The Borg mages aboard the
+///   `Princess of the Dawn [1239]` - `Cloudship, 14 Cloudships, 4 Airships` - were warned until
+///   then, on the reading that a ship is no shelter. `data/Cloudship` ("up to 5 mages") and
+///   `data/Airship` ("up to 2 mages") say otherwise: the fleet seats 78, and the next turn's report
+///   (`g7-f95-t72`) shows five of the six gaining a full 60 days of pattern aboard it.
 /// - `study-at-maximum` (ah-1uj): unit 13402 is reported at combat [COMB] 5 (450) - the ruleset's
 ///   own maximum - and orders "@study comb" anyway, which is a real wasted month.
 /// - `not-enough-items` (ah-dbb.2): the enchant-armor mages are short plate armor between them.
@@ -60,7 +59,6 @@ use common::ruleset;
 ///   holding its starting silver being told its units starve - and its disappearance from a real
 ///   committed turn is the bead proving itself on the corpus.
 const EXPECTED: &[(&str, usize)] = &[
-    ("magic-study-outside-building", 6),
     ("not-enough-items", 1),
     ("study-at-maximum", 1),
     ("unit-does-nothing", 2),
@@ -215,12 +213,12 @@ fn the_committed_turn_has_no_semantic_problems_either() {
         .filter_map(|f| f.unit_id.as_deref())
         .collect();
     assert_eq!(idle, ["14451", "13432"]);
-    let halved: Vec<&str> = findings
-        .iter()
-        .filter(|f| f.code.as_str() == "magic-study-outside-building")
-        .filter_map(|f| f.unit_id.as_deref())
-        .collect();
-    assert_eq!(halved, ["881", "12878", "12879", "20", "12880", "12881"]);
+    assert!(
+        findings
+            .iter()
+            .all(|f| f.code.as_str() != "magic-study-outside-building"),
+        "the Cloudship fleet seats its mages (ah-yw4p)"
+    );
     let items = findings
         .iter()
         .find(|f| f.code.as_str() == "not-enough-items")

@@ -129,6 +129,11 @@ export type GameDataDetail =
       } | null;
       cargoCapacity: number | null;
       sailingSkill: number | null;
+      /**
+       * How many mages may study above level 2 aboard one of this ship (`data/Galleon`). Null for
+       * anything that is not a ship, and for a ruleset scraped before ah-yw4p.
+       */
+      mages: number | null;
       capacityCondition: string | null;
       description: string | null;
       /** Derived: the skills that produce this item, and at what level. */
@@ -219,6 +224,7 @@ type RawItem = {
   combat?: { skill: number; attacksPerRound: number; hitsToKill: number; damagePerAttack: number };
   cargoCapacity?: number;
   sailingSkill?: number;
+  mages?: number;
   capacityCondition?: string;
   description?: string;
 };
@@ -692,6 +698,7 @@ export function parseGameData(rulesetText: string): GameDataIndex | null {
       combat: item.combat ?? null,
       cargoCapacity: item.cargoCapacity ?? null,
       sailingSkill: item.sailingSkill ?? null,
+      mages: item.mages ?? null,
       capacityCondition: item.capacityCondition ?? null,
       description: item.description ?? null,
       producedBy: producedBy.get(entry.id) ?? [],

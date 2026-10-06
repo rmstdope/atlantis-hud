@@ -57,17 +57,53 @@ export function shelterSeats(input: {
         seats.set(key, 0);
         continue;
       }
-      const detail = index.detailOf(structureEntryId(index, structure.baseKind));
-      if (detail === null || detail.kind === "absent") {
-        // The catalogue never scraped this kind, so nothing can be said about it - and a mage must
-        // not lose half a month on the strength of that silence.
-        seats.set(key, null);
-        continue;
-      }
-      seats.set(key, detail.kind === "building" ? detail.mages : 0);
+      seats.set(key, structureSeats(index, structure));
     }
   }
   return seats;
+}
+
+/**
+ * How many mages one finished structure seats, or null where the catalogue cannot say.
+ *
+ * A building is its `buildings.<NAME>.mages`. A ship is its own entry's `mages` - `data/Galleon`:
+ * "This ship will allow one mage to study above level 2" - and a fleet seats what its ships seat
+ * between them, since `rules/economy_ships` has fleets "contain one or more ships" and each ship's
+ * entry states its own seats (ah-yw4p). A fleet is read from its vessels whenever the report lists
+ * them, the way `hulls_named_in` reads one in the Rust core: the lead word of `Galley, 2 Galleys`
+ * names the fleet's class rather than a hull of its own.
+ */
+function structureSeats(
+  index: GameDataIndex,
+  structure: ParsedReport["regions"][number]["structures"][number]
+): number | null {
+  if (structure.vessels.length === 0) {
+    return kindSeats(index, structure.baseKind);
+  }
+  let total = 0;
+  for (const vessel of structure.vessels) {
+    const each = kindSeats(index, vessel.name);
+    if (each === null) {
+      return null;
+    }
+    total += (vessel.count ?? 1) * each;
+  }
+  return total;
+}
+
+/** How many mages one structure of this kind - a building or a single ship - seats. */
+function kindSeats(index: GameDataIndex, kind: string): number | null {
+  const detail = index.detailOf(structureEntryId(index, kind));
+  if (detail === null || detail.kind === "absent") {
+    // The catalogue never scraped this kind, so nothing can be said about it - and a mage must
+    // not lose half a month on the strength of that silence.
+    return null;
+  }
+  if (detail.kind === "building") {
+    return detail.mages;
+  }
+  // A ship scraped before ah-yw4p carries no figure; it seats nobody, as every ship did then.
+  return detail.kind === "item" ? (detail.mages ?? 0) : 0;
 }
 
 /**

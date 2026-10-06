@@ -13,6 +13,13 @@ export type ItemEntry = { tag: string, name: string, kind: ItemKind, weight: num
  */
 skillLimits?: RaceSkillLimits, combat?: MonsterCombat, cargoCapacity?: number, capacityCondition?: string, sailingSkill?: number, 
 /**
+ * How many mages may study above level 2 aboard one ship of this kind - `data/Galleon`'s
+ * "This ship will allow one mage to study above level 2" - read from the sentence a building's
+ * [`BuildingEntry::mages`] is. Ships only, zero where the entry says nothing; `None` for
+ * anything that is not a ship and for a ruleset scraped before ah-yw4p.
+ */
+mages?: number, 
+/**
  * What WITHDRAW costs per unit of this item, in silver. `None` for an item the page prices
  * nowhere - anything that is not a basic item - and for a ruleset cached before `ah-1wcw.6`.
  */

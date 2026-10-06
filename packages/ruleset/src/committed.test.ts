@@ -130,6 +130,29 @@ describe("the committed rulesets", () => {
    * calls a building - a Mine, a road, a lair - is carried too and seats nobody: the page states a
    * capacity wherever there is one, so its silence is an answer rather than a gap.
    */
+  /**
+   * ah-yw4p: `data/Galleon` - "This ship will allow one mage to study above level 2." - and its
+   * siblings, read into the item entry the way a building's sentence is read into `buildings`.
+   */
+  it("carries how many mages each ship seats", () => {
+    expect(
+      Object.values(COMMITTED.items)
+        .filter((item) => item.kind === "ship")
+        .map((item) => [item.tag, item.mages] as const)
+        .sort(([a], [b]) => a.localeCompare(b))
+    ).toEqual([
+      ["AIRS", 2],
+      ["BALL", 1],
+      ["CLOU", 5],
+      ["COG", 0],
+      ["CORS", 0],
+      ["GALL", 1],
+      ["GLLY", 2],
+      ["LONG", 0],
+      ["RAFT", 0]
+    ]);
+  });
+
   it("carries every structure that seats a mage, and what each seats", () => {
     expect(
       Object.entries(COMMITTED.buildings)
