@@ -13492,9 +13492,9 @@ fn weight_after_orders(
 /// `None` - and the caller then falls back to the report's own printed line - with no ruleset,
 /// when any tag the unit holds is not in it, or when the report's item list does not account for
 /// every man the unit has. Men carry, so a list that names fewer of them than the unit holds
-/// understates capacity, and understating capacity is what manufactures the false warning this exists to
-/// remove. That is the absence of information rather than a unit of no capacity, and the report's
-/// own printed line is the better answer to it.
+/// understates capacity, and understating capacity is what manufactures the false warning this
+/// exists to remove. That is the absence of information rather than a unit of no capacity, and
+/// the report's own printed line is the better answer to it.
 ///
 /// A balance below zero is read as zero. Giving away more than the unit holds is its own finding,
 /// and a negative count would subtract capacity and so manufacture exactly the false warning this
