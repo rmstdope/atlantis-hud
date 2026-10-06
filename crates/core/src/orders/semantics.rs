@@ -39,7 +39,7 @@ use crate::movement::mode::{
 use crate::movement::orders::{first_passage, MoveStep};
 use crate::movement::plan::{Hull, Journey};
 use crate::movement::rules::{
-    item_spellings, ItemEntry, ItemKind, MovementMode, Ruleset, SkillEntry,
+    item_spellings, ItemEntry, MovementMode, Ruleset, SkillEntry,
 };
 use crate::movement::sailing::refused_sail_steps;
 use crate::orders::faction_orders::{
@@ -13512,12 +13512,12 @@ fn weight_after_orders(
 /// run, and it is a sum whose composition is not recoverable, so the capacity is rebuilt from the
 /// unit's item list rather than adjusted.
 ///
-/// `None` - and the caller then falls back to the report's own printed line - with no ruleset,
-/// when any tag the unit holds is not in it, or when the report's item list does not account for
-/// every man the unit has. Men carry, so a list that names fewer of them than the unit holds
-/// understates capacity, and understating capacity is what manufactures the false warning this
-/// exists to remove. That is the absence of information rather than a unit of no capacity, and
-/// the report's own printed line is the better answer to it.
+/// `None` - and the caller then falls back to the report's own printed line - with no ruleset, or
+/// when any tag the unit holds is not in it. Otherwise the list is the whole answer: a report's
+/// headcount *is* its man-tagged items, counted (`report::composition::men_in`), so the list
+/// cannot name fewer men than the unit has. A guard that fell back to the printed line when it
+/// seemed to existed only for test fixtures that listed no men, and on a real unit it was the
+/// fallback that called a unit handing off men overloaded (`ah-o6qy`, removed by `ah-4q5p`).
 ///
 /// A balance below zero is read as zero. Giving away more than the unit holds is its own finding,
 /// and a negative count would subtract capacity and so manufacture exactly the false warning this
@@ -13528,23 +13528,6 @@ fn capacity_after_orders(
     ruleset: Option<&Ruleset>,
 ) -> Option<Capacities> {
     let ruleset = ruleset?;
-
-    // Whether the report's list names every man the report counts - asked of the list as printed,
-    // before this month's transfers. Asked after them, a unit that gives men away (or forms new
-    // units out of them) names fewer than its printed headcount, and the check fell back to the
-    // printed line its departed men still carry (`ah-o6qy`).
-    let listed_men: i64 = ordered
-        .unit
-        .items
-        .iter()
-        .filter_map(|item| {
-            let priced = ruleset.find_item(&item.tag)?;
-            (priced.kind == ItemKind::Man).then_some(item.amount.max(0))
-        })
-        .sum();
-    if listed_men < ordered.unit.men {
-        return None;
-    }
 
     let mut counts: Vec<(String, i64)> = ordered
         .unit
@@ -15287,8 +15270,8 @@ struct MovementOverload {
 }
 
 /// `Some` only when both the derived-or-printed allowance and `weight_after_orders` are known and
-/// the weight exceeds it. Unknown load or allowance - no ruleset, an unpriceable item, an
-/// incomplete item list - returns `None`, which callers must read as "cannot say", never as "not
+/// the weight exceeds it. Unknown load or allowance - no ruleset, an unpriceable item - returns
+/// `None`, which callers must read as "cannot say", never as "not
 /// overloaded".
 fn movement_overload(
     ordered: &Ordered<'_>,
@@ -46318,16 +46301,28 @@ BUILD
         );
     }
 
-    /// An item list that does not name the unit's men cannot price it: men carry, and counting a
-    /// unit's capacity without them understates it. The printed line answers instead.
+    /// A report's headcount is its man-tagged items, counted (`report::composition::men_in`), so
+    /// when every item is priced the list is the whole answer: a headcount that disagrees with it
+    /// is a stale estimate, never a reason to fall back to the printed line (`ah-4q5p`). One
+    /// listed human walks 15 (`data/HUMN`), whatever the 3 and the printed 150 say.
     #[test]
-    fn a_unit_whose_items_do_not_account_for_its_men_keeps_the_printed_capacity() {
-        // one man by the headcount, no man item in the list - so 15 grain alone would derive a
-        // capacity of 0 and invent an overload; the printed 150 is used instead
-        let hauler = with_item(carrying("12054", 100, 150), 15, "grain", "GRAI");
-        assert_eq!(
-            codes(&check(vec![region(vec![hauler])], "unit 12054\nMOVE S S\n")),
-            Vec::<&str>::new()
+    fn the_item_list_decides_capacity_even_when_the_headcount_disagrees() {
+        let mut stale = ReportUnit {
+            weight: Some(100),
+            capacity: Some("0/0/150/0".to_string()),
+            ..unit("12054")
+        };
+        stale.men = 3;
+        stale.men_estimated = true;
+
+        let finding = only(check(vec![region(vec![stale])], "unit 12054\nMOVE S\n"));
+        assert_eq!(finding.code.as_str(), "unit-overloaded");
+        assert!(
+            finding
+                .message
+                .contains("it carries 100 and the most it can move with is 15"),
+            "{}",
+            finding.message
         );
     }
 
