@@ -1098,10 +1098,11 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   // 5, the ruleset's maximum, and still orders "@study comb" (ah-1uj); and four mages in a
   // different hex CAST an enchant with no plate armor on hand (ah-dbb.2). Since ah-dwk6 there
   // are two more: units 14451 and 13432 are given no orders at all (unit-does-nothing), and this
-  // test's own unit is a third, since a lone GIVE spends none of its month. Since ah-1wcw.4 the
-  // silver check also counts each unit's monthly maintenance, and one more unit turns up short:
-  // 18642, alone in hex 1:7,53, is a leader owing $50 with neither silver nor food. Four baseline
-  // plus the two this test introduces on its own unit.
+  // test's own unit is a third, since a lone GIVE spends none of its month. Four baseline, plus
+  // the two this test introduces on its own unit: that idle month, and the hex's shortfall. Since
+  // ah-1wcw.4 the silver check also counts each unit's monthly maintenance, and 18642, alone in
+  // hex 1:7,53, is a leader owing $50 with neither silver nor food - but the faction's unclaimed
+  // silver pays it (ah-fjty, below), so it is no finding of its own until the GIVE drains the purse.
   //
   // It was eleven baseline until ah-uwa3: unit 1688 owed $10 and orders "@work" in a hex paying
   // $26.0, and wages arrive in the turn's last phase - in time for maintenance, if not for
