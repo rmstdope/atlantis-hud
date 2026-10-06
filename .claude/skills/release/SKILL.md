@@ -132,7 +132,9 @@ to know what they can now do that they could not, and what has stopped going wro
 
 **Everything technical is noise here.** No bead ids, no PR numbers, no file or module names, no
 "refactored", "migrated", "wasm", "submodule". If a sentence would only make sense to somebody who
-has read the repository, it does not belong on the page.
+has read the repository, it does not belong on the page. **The one number that belongs is the
+report a change came from**: every line that exists because somebody outside the project reported
+it ends with a reference back to that report - see *Crediting the report* below.
 
 ### The range
 
@@ -213,16 +215,23 @@ Read three things, in this order, and stop when you can say what changed for the
   and behave, and therefore what a player will actually meet.
 
 ```bash
-bd show <id> --json | jq -r '.[0] | .title, .description, .acceptance_criteria, .design'
+bd show <id> --json | jq -r '.[0] | .title, .external_ref // "no external report", .description, .acceptance_criteria, .design'
 ```
 
 `bd show --json` answers with an **array**, even for one id — `.title` on it fails with "Cannot
 index array with string", which is a confusing way to learn this.
 
-**A bead from a GitHub issue is worth extra care.** Its `external_ref` is a `gh-<n>`, which means a
-real person hit it and wrote it up — they are likely to read these notes looking for their own
-report, and they will recognise a description of the thing they saw. Read the thread if the bead is
-thin.
+**A bead from an external report is worth extra care.** Its `external_ref` is a `gh-<n>` when the
+report is a GitHub issue, which means a real person hit it and wrote it up — they are likely to read
+these notes looking for their own report, and they will recognise a description of the thing they
+saw. Read the thread if the bead is thin. A report can also arrive another way, from a player on
+Discord, say, with no `external_ref`: the bead's Outcome or description then names where it came
+from ("A player on Discord wrote: …"). Note every such bead as you go; each one is owed a reference
+in the notes.
+
+A bead split into children carries its report on the **parent** as well as, usually, on the
+children: when a child has no `external_ref` of its own, check its parent (`bd show <id> --json |
+jq -r '.[0].parent'`) before deciding the change was not reported.
 
 ### Writing it
 
@@ -267,10 +276,38 @@ last with the platform in the heading.
 - **Their words, not the codebase's.** Hexes, units, orders, turns, provinces and factions are the
   game's language and belong. Name a thing on screen the way the screen names it. Components,
   stores, crates and bundles never appear.
-- **No counts of work**, no bead ids, no PR numbers, no version numbers of dependencies.
+- **No counts of work**, no bead ids, no PR numbers, no version numbers of dependencies. A report's
+  issue number is the exception, as its credit (*Crediting the report* above).
 - **Nothing conditional.** If you cannot tell whether something is user-visible, ask the navigator
   rather than hedging — "may improve performance in some cases" tells a reader nothing and costs
   their trust.
+
+### Crediting the report
+
+**Every line that exists because of an external report ends with a reference back to that report.**
+The reporter took the trouble to write it up; the reference is how they find their own report in the
+notes, and how any reader can follow it back to the whole story.
+
+- **A GitHub issue** (`external_ref` `gh-<n>`) is a link at the end of the line:
+  `(reported in [#<n>](https://github.com/rmstdope/atlantis-hud/issues/<n>))`. The full URL, never a
+  bare `#<n>`: the notes are also read as a file, where a bare number links nowhere.
+- **Several reports behind one line** are all named:
+  `(reported in [#12](…/issues/12) and [#15](…/issues/15))`.
+- **A report from somewhere else** is credited in words, with a link only when the bead gives a
+  public one: `(reported on Discord)`. Never invent a link, and never name the reporter unless the
+  report itself is public and signed.
+- **A change that answers a report only in part** still credits it — the reporter wants to know
+  something moved.
+
+The reference rides on the same single line as the item it belongs to, after the full stop of the
+sentence, if any; it is the one thing allowed to follow it.
+
+```markdown
+## Map
+
+- Forest, swamp and jungle now look clearly different at a glance (reported on Discord)
+- Fixed the map jumping back to your own units after you scrolled away (reported in [#212](https://github.com/rmstdope/atlantis-hud/issues/212))
+```
 
 **Err towards including a capability.** Something stored for later use, or a foundation a player
 will meet next release, is worth a line if it can be said in their terms — "older reports are kept
@@ -287,6 +324,10 @@ sense with it open. Then check the two failure modes that survive that reading:
 - **A fix with no symptom.** Every entry describing a fix should name something a player could have
   noticed. If you cannot state the symptom, the change was probably invisible and does not belong on
   the page at all.
+- **A report with no credit.** Go back over the beads you noted as externally reported and check each
+  surviving one has its reference at the end of its line — and that every `gh-<n>` link points at
+  the issue that bead names. A reported change that was dropped as invisible needs no credit; one
+  that made the page and lost its reference is the failure this check exists for.
 
 Then give it to the navigator to read before it goes up.
 
