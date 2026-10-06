@@ -40281,6 +40281,55 @@ BUILD
         assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
     }
 
+    /// ah-yw4p: `data/Galleon` - "This ship will allow one mage to study above level 2."
+    #[test]
+    fn a_galleon_seats_one_mage() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_of_kind("1", "Galleon")],
+                    ..region(vec![in_structure(mage(2), "1")])
+                }],
+                "unit 5\nSTUDY FORC\n",
+            ),
+            vec![]
+        );
+    }
+
+    /// `rules/economy_ships`: "Fleets may contain one or more ships", and each Galleon's entry seats
+    /// one mage, so a fleet of two seats two - and the third mage aboard is halved.
+    #[test]
+    fn a_fleet_seats_the_mages_its_ships_seat_between_them() {
+        let findings = check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("1", "Fleet, 2 Galleons, 1 Longship")],
+                ..region(vec![
+                    in_structure(mage_with_id("5", 2), "1"),
+                    in_structure(mage_with_id("6", 2), "1"),
+                    in_structure(mage_with_id("7", 2), "1"),
+                ])
+            }],
+            "unit 5\nSTUDY FORC\nunit 6\nSTUDY FORC\nunit 7\nSTUDY FORC\n",
+        );
+
+        let finding = only(findings);
+        assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
+        assert_eq!(finding.unit_id.as_deref(), Some("7"));
+    }
+
+    #[test]
+    fn a_fleet_of_ships_that_seat_no_mages_still_halves_the_study() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("1", "Fleet, 8 Corsairs")],
+                ..region(vec![in_structure(mage(2), "1")])
+            }],
+            "unit 5\nSTUDY FORC\n",
+        ));
+
+        assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
+    }
+
     #[test]
     fn a_skill_the_unit_has_never_studied_is_below_the_threshold() {
         // A leader, so `ah-ndp9`'s composition check has no opinion about this fixture.

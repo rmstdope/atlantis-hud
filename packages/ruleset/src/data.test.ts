@@ -318,6 +318,21 @@ describe("parseItemReference", () => {
   });
 
   /**
+   * ah-yw4p: `data/Galleon` - "This ship will allow one mage to study above level 2." - and
+   * `data/Galley` - "This ship will allow up to 2 mages to study above level 2." - the same sentence
+   * a building's `mages` is read from. A ship that says nothing seats nobody, as a building does.
+   */
+  it("reads how many mages a ship seats", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    expect(items.GALL.mages).toBe(1);
+    expect(items.GLLY.mages).toBe(2);
+    expect(items.CLOU.mages).toBe(5);
+    expect(items.LONG.mages).toBe(0);
+    expect(items.SWOR.mages).toBeUndefined();
+  });
+
+  /**
    * Summon Wind and the windchime talk about "ships requiring up to 12/24 sailing skill points" -
    * close enough wording to trip a careless regex, and neither is itself a ship's own requirement.
    * Summon Wind is a skill (`summon wind [SWIN] 1: ...`), so it is never read as an item at all;

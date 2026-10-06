@@ -10,7 +10,12 @@ const index = parseGameData(readRuleset()) as GameDataIndex;
 /** A report holding one region and whatever structures the case needs. */
 function reportWith(
   regionId: string,
-  structures: { structureId: string; baseKind: string; needs?: number | null }[]
+  structures: {
+    structureId: string;
+    baseKind: string;
+    needs?: number | null;
+    vessels?: { count: number | null; name: string }[];
+  }[]
 ): ParsedReport {
   return {
     regions: [
@@ -22,7 +27,7 @@ function reportWith(
           kind: structure.baseKind,
           baseKind: structure.baseKind,
           qualifiers: [],
-          vessels: [],
+          vessels: structure.vessels ?? [],
           description: null,
           needs: structure.needs ?? null
         })),
@@ -50,11 +55,60 @@ describe("where a mage can study above level 2", () => {
     expect(seats.get(shelterKey("1:7", "3"))).toBe(0);
   });
 
-  // `rules/magic_skills` speaks of buildings throughout; a ship is not one.
-  it("seats nobody in a ship", () => {
+  // ah-yw4p: `data/Galleon` - "This ship will allow one mage to study above level 2."
+  it("seats one mage aboard a lone Galleon", () => {
     const seats = shelterSeats({ report: reportWith("1:7", [{ structureId: "4", baseKind: "Galleon" }]), index });
 
+    expect(seats.get(shelterKey("1:7", "4"))).toBe(1);
+  });
+
+  // `data/Longship` says nothing about mages, so it seats nobody, as a silent building does.
+  it("seats nobody aboard a ship whose entry seats no mages", () => {
+    const seats = shelterSeats({ report: reportWith("1:7", [{ structureId: "4", baseKind: "Longship" }]), index });
+
     expect(seats.get(shelterKey("1:7", "4"))).toBe(0);
+  });
+
+  // `rules/economy_ships`: "Fleets may contain one or more ships"; each Galleon's entry allows one
+  // mage (`data/Galleon`), so a fleet seats what its ships seat between them.
+  it("seats the mages a fleet's ships seat between them", () => {
+    const seats = shelterSeats({
+      report: reportWith("1:7", [
+        {
+          structureId: "4",
+          baseKind: "Fleet",
+          vessels: [
+            { count: 2, name: "Galleons" },
+            { count: 3, name: "Longships" }
+          ]
+        }
+      ]),
+      index
+    });
+
+    expect(seats.get(shelterKey("1:7", "4"))).toBe(2);
+  });
+
+  it("seats nobody in a fleet of ships whose entries seat no mages", () => {
+    const seats = shelterSeats({
+      report: reportWith("1:7", [
+        { structureId: "4", baseKind: "Fleet", vessels: [{ count: 8, name: "Corsairs" }] }
+      ]),
+      index
+    });
+
+    expect(seats.get(shelterKey("1:7", "4"))).toBe(0);
+  });
+
+  it("says nothing about a fleet holding a ship the catalogue does not know", () => {
+    const seats = shelterSeats({
+      report: reportWith("1:7", [
+        { structureId: "4", baseKind: "Fleet", vessels: [{ count: 1, name: "Whimsy Barges" }] }
+      ]),
+      index
+    });
+
+    expect(seats.get(shelterKey("1:7", "4"))).toBeNull();
   });
 
   it("says nothing about a kind the catalogue does not know", () => {
