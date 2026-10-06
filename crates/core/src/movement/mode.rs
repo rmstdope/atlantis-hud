@@ -307,8 +307,9 @@ pub fn capacities_from_items(items: &[(&str, i64)], ruleset: &Ruleset) -> Option
 /// Classifies a unit from its complete current inventory and the supplied ruleset.
 ///
 /// Complete means every tag is priced and somebody is in the unit. The listed people are the
-/// headcount - a report's headcount is its man-tagged items, counted (`report::composition::men_in`)
-/// - so `ReportUnit::men` is not consulted: when it disagrees it is a stale estimate (`ah-4q5p`).
+/// headcount, since a report's headcount is its man-tagged items, counted
+/// (`report::composition::men_in`). So `ReportUnit::men` is not consulted: when it disagrees with
+/// the list it is a stale estimate (`ah-4q5p`).
 #[must_use]
 pub fn unit_movement_from_items(unit: &ReportUnit, ruleset: &Ruleset) -> Option<UnitMovement> {
     let mut items = Vec::with_capacity(unit.items.len());
@@ -906,9 +907,9 @@ mod tests {
         assert_eq!((movement.load, movement.walk, movement.ride), (60, 85, 70));
     }
 
-    /// The same for the wagon path: one human, one horse and the wagon it pulls walk 335 (15 + 70
-    /// + 250, as `conditional_wagon_capacity_is_limited_by_horses` prices it), so 300 walks -
-    /// even though the printed line, and a headcount of 3 the list does not reach, would not.
+    /// The same for the wagon path: one human, one horse and the wagon it pulls walk 335 - that is
+    /// 15, 70 and 250, as `conditional_wagon_capacity_is_limited_by_horses` prices them - so 300
+    /// walks, even though the printed line, and a headcount of 3 the list does not reach, would not.
     #[test]
     fn mobility_with_ruleset_reads_the_list_whatever_the_headcount_says() {
         let unit = ReportUnit {
