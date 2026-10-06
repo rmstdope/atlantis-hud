@@ -13490,11 +13490,11 @@ fn weight_after_orders(
 /// unit's item list rather than adjusted.
 ///
 /// `None` - and the caller then falls back to the report's own printed line - with no ruleset,
-/// when any tag the unit holds is not in it, or when the item list does not account for every man
-/// the unit has. Men carry, so a list that names fewer of them than the unit holds understates
-/// capacity, and understating capacity is what manufactures the false warning this exists to
-/// remove. That is the absence of information rather than a unit of no capacity, and the report's
-/// own printed line is the better answer to it.
+/// when any tag the unit holds is not in it, or when the report's item list does not account for
+/// every man the unit has. Men carry, so a list that names fewer of them than the unit holds
+/// understates capacity, and understating capacity is what manufactures the false warning this
+/// exists to remove. That is the absence of information rather than a unit of no capacity, and
+/// the report's own printed line is the better answer to it.
 ///
 /// A balance below zero is read as zero. Giving away more than the unit holds is its own finding,
 /// and a negative count would subtract capacity and so manufacture exactly the false warning this
@@ -13505,6 +13505,23 @@ fn capacity_after_orders(
     ruleset: Option<&Ruleset>,
 ) -> Option<Capacities> {
     let ruleset = ruleset?;
+
+    // Whether the report's list names every man the report counts - asked of the list as printed,
+    // before this month's transfers. Asked after them, a unit that gives men away (or forms new
+    // units out of them) names fewer than its printed headcount, and the check fell back to the
+    // printed line its departed men still carry (`ah-o6qy`).
+    let listed_men: i64 = ordered
+        .unit
+        .items
+        .iter()
+        .filter_map(|item| {
+            let priced = ruleset.find_item(&item.tag)?;
+            (priced.kind == ItemKind::Man).then_some(item.amount.max(0))
+        })
+        .sum();
+    if listed_men < ordered.unit.men {
+        return None;
+    }
 
     let mut counts: Vec<(String, i64)> = ordered
         .unit
@@ -13532,17 +13549,6 @@ fn capacity_after_orders(
         .iter()
         .map(|(tag, count)| (tag.as_str(), (*count).max(0)))
         .collect();
-
-    let listed_men: i64 = priced
-        .iter()
-        .filter_map(|(tag, count)| {
-            let item = ruleset.find_item(tag)?;
-            (item.kind == ItemKind::Man).then_some(*count)
-        })
-        .sum();
-    if listed_men < ordered.unit.men {
-        return None;
-    }
 
     capacities_from_items(&priced, ruleset)
 }
@@ -46147,6 +46153,64 @@ BUILD
                 .contains("it carries 85 and the most it can move with is 15"),
             "{}",
             finding.message
+        );
+    }
+
+    /// The Discord case (`ah-o6qy`): Riders (2871), three humans printed `Capacity: 0/0/45/0`,
+    /// forms two scouts and gives each one man, and Tamers (2442) gives it four horses. GIVE runs
+    /// before movement (`newage trident rules/sequenceofevents`), so it steps off as one human and
+    /// four horses: weight 1 x 10 + 4 x 50 = 210, and capacity ride 4 x 70 = 280, walk 15 + 4 x 70
+    /// = 295 (`newage trident data/HUMN`, `data/HORS`) - what its movement panel says.
+    fn riders_handing_off_men_and_given_horses() -> (Vec<ReportRegion>, String) {
+        let riders = ReportUnit {
+            weight: Some(30),
+            capacity: Some("0/0/45/0".to_string()),
+            ..unfed(with_people(
+                unit("2871"),
+                vec![ItemAmount {
+                    amount: 3,
+                    name: "humans".to_string(),
+                    tag: "HUMN".to_string(),
+                }],
+            ))
+        };
+        let tamers = with_item(unit("2442"), 4, "horses", "HORS");
+        let orders = "unit 2442\nGIVE 2871 4 HORS\n\
+                      unit 2871\nFORM 1\nEND\nFORM 2\nEND\n\
+                      GIVE NEW 1 1 HUMN\nGIVE NEW 2 1 HUMN\nMOVE N\n";
+        (vec![region(vec![riders, tamers])], orders.to_string())
+    }
+
+    #[test]
+    fn a_unit_given_horses_while_handing_off_men_is_not_called_overloaded() {
+        let (regions, orders) = riders_handing_off_men_and_given_horses();
+        let findings = check_against(&trident(), regions, &orders);
+        assert!(
+            !codes(&findings).contains(&"unit-overloaded"),
+            "{findings:#?}"
+        );
+    }
+
+    /// The same unit, really overloaded by four stone it also takes on (`newage trident
+    /// data/STON`: weight 50, so 210 + 200 = 410): the warning's allowance is the repriced 295 its
+    /// movement panel shows, not the printed 45 of three men on foot.
+    #[test]
+    fn a_unit_handing_off_men_is_judged_by_its_repriced_capacity() {
+        let (mut regions, orders) = riders_handing_off_men_and_given_horses();
+        let quarry = with_item(unit("3000"), 4, "stone", "STON");
+        regions[0].units.push(quarry);
+        let orders = format!("unit 3000\nGIVE 2871 4 STON\n{orders}");
+
+        let findings = check_against(&trident(), regions, &orders);
+        let overloaded: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "unit-overloaded")
+            .collect();
+        assert_eq!(overloaded.len(), 1, "{findings:#?}");
+        assert_eq!(
+            overloaded[0].message,
+            "this unit is overloaded: it carries 410 and the most it can move with is 295, so it \
+             will not move"
         );
     }
 
