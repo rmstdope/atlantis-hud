@@ -123,6 +123,29 @@ describe("the committed rulesets", () => {
   });
 
   /**
+   * ah-yw4p: `data/Galleon` - "This ship will allow one mage to study above level 2." - and its
+   * siblings, read into the item entry the way a building's sentence is read into `buildings`.
+   */
+  it("carries how many mages each ship seats", () => {
+    expect(
+      Object.values(COMMITTED.items)
+        .filter((item) => item.kind === "ship")
+        .map((item) => [item.tag, item.mages] as const)
+        .sort(([a], [b]) => a.localeCompare(b))
+    ).toEqual([
+      ["AIRS", 2],
+      ["BALL", 1],
+      ["CLOU", 5],
+      ["COG", 0],
+      ["CORS", 0],
+      ["GALL", 1],
+      ["GLLY", 2],
+      ["LONG", 0],
+      ["RAFT", 0]
+    ]);
+  });
+
+  /**
    * ah-a2k.3: the census `ah-a2k.2` needs to tell a Tower from a Fort - taken from the game's own
    * data page since ah-9js, which is why it carries ten fortifications rather than the rules
    * table's five, nine of them seating at least one mage. A fortification that says nothing about

@@ -12767,13 +12767,13 @@ fn magic_study_halved(hex: &Hex<'_>, ruleset: &Ruleset) -> Vec<Option<bool>> {
                 answers[index] = None;
                 continue;
             }
-            // Unfinished shelters nobody; a kind the table does not name - a Mine, an Inn, a ship -
-            // houses no mages either, and a Tower is named and seats zero.
+            // Unfinished shelters nobody; a kind neither table names houses no mages either, a
+            // Tower is named and seats zero, and a fleet seats what its ships seat.
             Some(Some(structure)) => {
                 if structure.needs.is_some() {
                     false
                 } else {
-                    match ruleset.mage_capacity(&structure.kind) {
+                    match mage_seats(ruleset, &structure.kind) {
                         Some(seats)
                             if occupied
                                 .get(structure.structure_id.as_str())
@@ -12792,6 +12792,29 @@ fn magic_study_halved(hex: &Hex<'_>, ruleset: &Ruleset) -> Vec<Option<bool>> {
         answers[index] = Some(!sheltered);
     }
     answers
+}
+
+/// How many mages may study above level 2 in a structure of this kind, or `None` where the
+/// catalogue cannot say.
+///
+/// A building is the buildings table's figure. Anything else is read as a ship or a fleet of them:
+/// `data/Galleon` - "This ship will allow one mage to study above level 2" - is a seat aboard each
+/// Galleon, and `rules/economy_ships` - "Fleets may contain one or more ships, and may be entered
+/// like other buildings" - so a fleet seats what its ships seat between them (ah-yw4p). A hull the
+/// catalogue does not carry, or that is not a ship, leaves the fleet uncounted.
+fn mage_seats(ruleset: &Ruleset, kind: &str) -> Option<i64> {
+    if let Some(seats) = ruleset.mage_capacity(kind) {
+        return Some(seats);
+    }
+    let mut seats = 0;
+    for (name, count) in hulls_named_in(kind)? {
+        let item = ruleset.find_item(&name)?;
+        if item.kind != ItemKind::Ship {
+            return None;
+        }
+        seats += i64::from(count) * item.mages.unwrap_or(0);
+    }
+    Some(seats)
 }
 
 fn check_magic_study(
@@ -40275,10 +40298,59 @@ BUILD
     }
 
     #[test]
-    fn a_ship_is_not_a_building_that_houses_mages() {
+    fn a_ship_whose_entry_seats_no_mages_houses_none() {
         let finding = only(check(
             vec![ReportRegion {
                 structures: vec![longship("1")],
+                ..region(vec![in_structure(mage(2), "1")])
+            }],
+            "unit 5\nSTUDY FORC\n",
+        ));
+
+        assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
+    }
+
+    /// ah-yw4p: `data/Galleon` - "This ship will allow one mage to study above level 2."
+    #[test]
+    fn a_galleon_seats_one_mage() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_of_kind("1", "Galleon")],
+                    ..region(vec![in_structure(mage(2), "1")])
+                }],
+                "unit 5\nSTUDY FORC\n",
+            ),
+            vec![]
+        );
+    }
+
+    /// `rules/economy_ships`: "Fleets may contain one or more ships", and each Galleon's entry seats
+    /// one mage, so a fleet of two seats two - and the third mage aboard is halved.
+    #[test]
+    fn a_fleet_seats_the_mages_its_ships_seat_between_them() {
+        let findings = check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("1", "Fleet, 2 Galleons, 1 Longship")],
+                ..region(vec![
+                    in_structure(mage_with_id("5", 2), "1"),
+                    in_structure(mage_with_id("6", 2), "1"),
+                    in_structure(mage_with_id("7", 2), "1"),
+                ])
+            }],
+            "unit 5\nSTUDY FORC\nunit 6\nSTUDY FORC\nunit 7\nSTUDY FORC\n",
+        );
+
+        let finding = only(findings);
+        assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
+        assert_eq!(finding.unit_id.as_deref(), Some("7"));
+    }
+
+    #[test]
+    fn a_fleet_of_ships_that_seat_no_mages_still_halves_the_study() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("1", "Fleet, 8 Corsairs")],
                 ..region(vec![in_structure(mage(2), "1")])
             }],
             "unit 5\nSTUDY FORC\n",

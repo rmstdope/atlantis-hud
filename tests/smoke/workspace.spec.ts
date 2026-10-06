@@ -1094,21 +1094,23 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   await page.keyboard.press("Escape");
 
   // And the whole map is counted, so the same problem is reachable from the header. The turn-71
-  // report carries eight findings of its own throughout - Six of Two (13402) is already at combat
-  // 5, the ruleset's maximum, and still orders "@study comb" (ah-1uj); four mages in a different
-  // hex CAST an enchant with no plate armor on hand (ah-dbb.2); and six Borg mages study force or
-  // pattern above level 2 aboard a Cloudship, which seats no mages (ah-a2k.2). Since ah-dwk6 there
+  // report carries two findings of its own throughout - Six of Two (13402) is already at combat
+  // 5, the ruleset's maximum, and still orders "@study comb" (ah-1uj); and four mages in a
+  // different hex CAST an enchant with no plate armor on hand (ah-dbb.2). Since ah-dwk6 there
   // are two more: units 14451 and 13432 are given no orders at all (unit-does-nothing), and this
-  // test's own unit is a third, since a lone GIVE spends none of its month. Since ah-1wcw.4 the
-  // silver check also counts each unit's monthly maintenance, and one more unit turns up short:
-  // 18642, alone in hex 1:7,53, is a leader owing $50 with neither silver nor food. Ten baseline
-  // plus the two this test introduces on its own unit.
+  // test's own unit is a third, since a lone GIVE spends none of its month. Four baseline, plus
+  // the two this test introduces on its own unit: that idle month, and the hex's shortfall. Since
+  // ah-1wcw.4 the silver check also counts each unit's monthly maintenance, and 18642, alone in
+  // hex 1:7,53, is a leader owing $50 with neither silver nor food - but the faction's unclaimed
+  // silver pays it (ah-fjty, below), so it is no finding of its own until the GIVE drains the purse.
   //
   // It was eleven baseline until ah-uwa3: unit 1688 owed $10 and orders "@work" in a hex paying
   // $26.0, and wages arrive in the turn's last phase - in time for maintenance, if not for
-  // anything the orders spend. So its fee is covered and it is no longer short.
+  // anything the orders spend. So its fee is covered and it is no longer short. It was ten until
+  // ah-yw4p: six Borg mages studying above level 2 aboard the Cloudship fleet were warned as
+  // unsheltered, but `data/Cloudship` and `data/Airship` seat 78 mages in that fleet.
   const chip = page.getByTestId("turn-report-chip");
-  await expect(chip).toHaveAttribute("data-problems", "12");
+  await expect(chip).toHaveAttribute("data-problems", "6");
   await chip.click();
   await page.getByTestId("turn-report-tab-problems").click();
   await expect(page.getByTestId("problems-panel")).toContainText("mountain (7,53)");
@@ -1118,11 +1120,15 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   // spend": this hex's one fee - unit 18642's $50 - is paid by the faction's unclaimed silver at
   // step 7 of the payment order, and this report's header states $6,038 of it. The wording is the
   // whole point, since a message naming an upkeep the fund has paid does not add up.
+  await expect(problems).toContainText("their orders spend");
+  await expect(problems).not.toContainText("upkeep");
+
+  // `fillOrders` replaces the draft, so "@work" takes the GIVE away and puts the unit to work:
+  // both of this test's own problems go, and the chip settles at the report's four. These used to
+  // be asserted after the "@work" and passed on the panel as it stood before the recount (ah-yw4p).
   await fillOrders(page, "@work");
-  const remaining = page.getByTestId("region-problems");
-  await expect(remaining).toContainText("their orders spend");
-  await expect(remaining).not.toContainText("upkeep");
-  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "12");
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "4");
+  await expect(page.getByTestId("region-problems")).toHaveCount(0);
 });
 
 /**
@@ -1220,16 +1226,17 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await selectUnit(page, OWN_UNIT);
   await fillOrders(page, "GIVE 0 999999999 SILV");
 
-  // The turn-71 report carries eight findings of its own throughout (unit 13402's
-  // study-at-maximum, ah-1uj; the enchant-armor not-enough-items in a different hex, ah-dbb.2;
-  // and six magic-study-outside-building for the Borg mages aboard a Cloudship, ah-a2k.2), all
-  // unaffected by the not-enough-silver toggle below - the chip counts them alongside the
-  // shortfall this test introduces.
+  // The turn-71 report carries two findings of its own throughout (unit 13402's
+  // study-at-maximum, ah-1uj; and the enchant-armor not-enough-items in a different hex,
+  // ah-dbb.2), both unaffected by the not-enough-silver toggle below - the chip counts them
+  // alongside the shortfall this test introduces.
   //
   // One fewer since ah-uwa3: unit 1688's $10 fee is covered by the wages its "@work" earns, which
   // arrive in the turn's last phase - in time for maintenance, if not for what the orders spend.
+  // Six fewer since ah-yw4p: the Borg mages aboard the Cloudship fleet are seated there
+  // (`data/Cloudship`, `data/Airship`), so their study is no longer warned as halved.
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "9");
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "3");
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-tab-warnings").click();
@@ -1237,7 +1244,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
-  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "8");
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "2");
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-tab-warnings").click();
@@ -1245,7 +1252,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "9");
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "3");
 });
 
 /**
@@ -3538,7 +3545,10 @@ test("the header chip opens the lines that could not be read", async ({ page }) 
 
   const chip = page.getByTestId("turn-report-chip");
   await expect(chip).toHaveAttribute("data-unreadable", "1");
-  await expect(chip).toContainText("1 to check");
+  // The label adds the unreadable line to the turn's problems and its engine error, so its figure
+  // is theirs as much as this test's. It used to say "1 to check", which held only as a substring
+  // of "11 to check" until ah-yw4p took six problems away; the attribute above is the line's own.
+  await expect(chip).toContainText("to check");
 
   await chip.click();
   await page.getByTestId("turn-report-tab-unreadable").click();

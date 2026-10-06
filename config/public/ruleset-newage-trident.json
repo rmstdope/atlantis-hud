@@ -2767,6 +2767,7 @@
       },
       "cargoCapacity": 800,
       "sailingSkill": 10,
+      "mages": 2,
       "description": "This is a flying 'ship' with a capacity of 800 and a speed of 4 hexes per month. This ship requires a total of 10 levels of sailing skill to sail. This ship will allow up to 2 mages to study above level 2.",
       "moves": 4
     },
@@ -2789,6 +2790,7 @@
       },
       "cargoCapacity": 100,
       "sailingSkill": 3,
+      "mages": 1,
       "description": "This is a flying 'ship' with a capacity of 100 and a speed of 4 hexes per month. This ship requires a total of 3 levels of sailing skill to sail. This ship will allow one mage to study above level 2.",
       "moves": 4
     },
@@ -2811,6 +2813,7 @@
       },
       "cargoCapacity": 1500,
       "sailingSkill": 15,
+      "mages": 5,
       "description": "This is a flying 'ship' with a capacity of 1500 and a speed of 4 hexes per month. This ship requires a total of 15 levels of sailing skill to sail. This ship provides defense to the first 140 men inside it, giving a defensive bonus of 3 against melee attacks, 3 against energy attacks, 3 against spirit attacks, 3 against weather attacks, 3 against riding attacks and 3 against ranged attacks. This ship will allow up to 5 mages to study above level 2.",
       "moves": 4
     },
@@ -2833,6 +2836,7 @@
       },
       "cargoCapacity": 750,
       "sailingSkill": 6,
+      "mages": 0,
       "description": "This is a ship with a capacity of 750 and a speed of 4 hexes per month. This ship requires a total of 6 levels of sailing skill to sail.",
       "moves": 4
     },
@@ -2855,6 +2859,7 @@
       },
       "cargoCapacity": 1500,
       "sailingSkill": 15,
+      "mages": 0,
       "description": "This is a ship with a capacity of 1500 and a speed of 5 hexes per month. This ship requires a total of 15 levels of sailing skill to sail.",
       "moves": 5
     },
@@ -2877,6 +2882,7 @@
       },
       "cargoCapacity": 2700,
       "sailingSkill": 15,
+      "mages": 1,
       "description": "This is a ship with a capacity of 2700 and a speed of 4 hexes per month. This ship requires a total of 15 levels of sailing skill to sail. This ship will allow one mage to study above level 2.",
       "moves": 4
     },
@@ -2899,6 +2905,7 @@
       },
       "cargoCapacity": 1200,
       "sailingSkill": 12,
+      "mages": 2,
       "description": "This is a ship with a capacity of 1200 and a speed of 4 hexes per month. This ship requires a total of 12 levels of sailing skill to sail. This ship provides defense to the first 120 men inside it, giving a defensive bonus of 2 against melee attacks, 2 against energy attacks, 2 against spirit attacks, 2 against weather attacks, 2 against riding attacks and 2 against ranged attacks. This ship will allow up to 2 mages to study above level 2.",
       "moves": 4
     },
@@ -2921,6 +2928,7 @@
       },
       "cargoCapacity": 150,
       "sailingSkill": 4,
+      "mages": 0,
       "description": "This is a ship with a capacity of 150 and a speed of 4 hexes per month. This ship requires a total of 4 levels of sailing skill to sail.",
       "moves": 4
     },
@@ -2943,6 +2951,7 @@
       },
       "cargoCapacity": 450,
       "sailingSkill": 2,
+      "mages": 0,
       "description": "This is a ship with a capacity of 450 and a speed of 2 hexes per month. This ship requires a total of 2 levels of sailing skill to sail.",
       "moves": 2
     },

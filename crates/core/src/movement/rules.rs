@@ -375,6 +375,13 @@ pub struct ItemEntry {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub sailing_skill: Option<i64>,
+    /// How many mages may study above level 2 aboard one ship of this kind - `data/Galleon`'s
+    /// "This ship will allow one mage to study above level 2" - read from the sentence a building's
+    /// [`BuildingEntry::mages`] is. Ships only, zero where the entry says nothing; `None` for
+    /// anything that is not a ship and for a ruleset scraped before ah-yw4p.
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub mages: Option<i64>,
     /// What WITHDRAW costs per unit of this item, in silver. `None` for an item the page prices
     /// nowhere - anything that is not a basic item - and for a ruleset cached before `ah-1wcw.6`.
     #[serde(default)]
@@ -1520,8 +1527,8 @@ impl Ruleset {
     /// `None` for a structure the data page does not name - a ship - and for a ruleset scraped
     /// before buildings were. Since ah-3cj4.1 the page's every building is carried, so a Mine, an
     /// Inn and a road now answer `Some(0)`: the page states a capacity wherever there is one, and
-    /// silence is its way of saying none. The one caller reads
-    /// `is_some_and(|seats| seats >= 1)`, which is false for `None` and `Some(0)` alike.
+    /// silence is its way of saying none. A ship's seats are on its item entry
+    /// ([`ItemEntry::mages`]), which the magic-study check reads when this answers `None`.
     #[must_use]
     pub fn mage_capacity(&self, kind: &str) -> Option<i64> {
         self.buildings

@@ -179,6 +179,15 @@ function sailingOf(kind: ItemKind, text: string): { sailingSkill?: number } {
 }
 
 /**
+ * How many mages may study above level 2 aboard one ship - `data/Galleon`: "This ship will allow
+ * one mage to study above level 2." - in the sentence `mageCount` already reads for a building.
+ * Ship-only, and zero for a ship that says nothing, as a building that says nothing seats nobody.
+ */
+function shipMagesOf(kind: ItemKind, text: string): { mages?: number } {
+  return kind === "ship" ? { mages: mageCount(text) } : {};
+}
+
+/**
  * The specialized and fallback study ceilings stated by race entries such as data/LEAD and
  * data/HUMN. Unknown wording is deliberately omitted rather than guessed.
  */
@@ -341,6 +350,7 @@ export function parseItemReference(html: string): ItemReference {
       ...maintenanceOf(paragraph),
       ...cargoOf(kind, paragraph),
       ...sailingOf(kind, paragraph),
+      ...shipMagesOf(kind, paragraph),
       ...skillLimitsOf(kind, paragraph),
       ...weaponOf(kind, paragraph),
       ...descriptionOf(paragraph),

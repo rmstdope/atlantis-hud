@@ -647,9 +647,15 @@ test("a teach month is planned in the popover, warned about in the strip, and su
 /**
  * The warnings strip, on a plan that is actually wrong (ah-lyg6.3).
  *
- * One write, so nothing here depends on two saves landing in order: Six of Seven is force 4 and
- * stands in no building, and `rules/magic_skills` cuts a study above level 2 in half without one.
- * The click and the focus move are the two things `renderToStaticMarkup` cannot reach.
+ * Six of Seven teaches Two of Seven, and then Two of Seven's month is cleared: there is nothing
+ * left for him to be taught (`rules/skills_teaching` teaches "whatever skill they are studying
+ * that month"). The pupil list is frozen first by unticking Three of Seven, so it keeps naming Two
+ * of Seven rather than following the plan away from him. The click and the focus move are the two
+ * things `renderToStaticMarkup` cannot reach.
+ *
+ * It used to plan force for Six of Seven and read the ×½ off his cell, as if he stood in the open;
+ * he is aboard the Cloudship fleet, which `data/Cloudship` and `data/Airship` seat 78 mages in,
+ * and since ah-yw4p the planner knows it.
  */
 test("the strip counts a warning, opens on a click, and focuses the cell it names", async ({
   page
@@ -659,15 +665,33 @@ test("the strip counts a warning, opens on a click, and focuses the cell it name
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
 
-  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).click();
-  await page.getByTestId("study-schedule-choice-FORC").click();
-  await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("×½");
+  const popover = page.getByTestId("study-schedule-popover");
+  for (const pupil of [STUDENT, SECOND_STUDENT]) {
+    await page.getByTestId(`study-schedule-cell-${pupil}-72`).click();
+    await page.getByTestId("study-schedule-choice-GATE").click();
+    await expect(popover).toHaveCount(0);
+  }
+
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  await cell.click();
+  await page.getByTestId("study-schedule-choice-teach").click();
+  await page.getByTestId(`study-schedule-teach-${SECOND_STUDENT}`).click();
+  await page.getByTestId("study-schedule-set").click();
+  await expect(popover).toHaveCount(0);
+  await expect(cell).toContainText("TEACH");
+  await expect(cell).not.toContainText("everyone");
+
+  await page.getByTestId(`study-schedule-cell-${STUDENT}-72`).click();
+  await page.getByTestId("study-schedule-choice-nothing").click();
+  await expect(popover).toHaveCount(0);
 
   const toggle = page.getByTestId("study-planner-warnings-toggle");
   await expect(toggle).toContainText("warning");
   await toggle.click();
   await expect(page.getByTestId("study-planner-warnings")).toBeVisible();
+  await expect(page.getByTestId("study-planner-warning-0")).toContainText(
+    "Two of Seven (12878) has nothing planned for turn 72"
+  );
   await page.getByTestId("study-planner-warning-0").click();
   await expect(page.locator("[data-cell]:focus")).toHaveCount(1);
 });

@@ -266,9 +266,10 @@ test("F8 walks to a problem in another unit's orders", async ({ page }) => {
   // Six of Two (13402), in the same hex as OTHER_OWN_UNIT below, is reported already at combat 5
   // and orders "@study comb" regardless of anything this test does - a genuine study-at-maximum
   // finding (ah-1uj) the walk below is not about, so it is turned off to keep this test isolated
-  // to the one syntax problem it introduces. That hex also holds six Borg mages studying force or
-  // pattern above level 2 aboard a Cloudship (magic-study-outside-building, ah-a2k.2), which the
-  // walk would otherwise stop at first, so it goes off for the same reason. And the fixture's two
+  // to the one syntax problem it introduces. The magic-study check goes off too: since ah-yw4p
+  // the Borg mages aboard the Cloudship fleet in that hex are seated (`data/Cloudship`) and it
+  // raises nothing here, but a ruleset or fixture that brought it back would put its stops ahead
+  // of this test's own. And the fixture's two
   // units with no orders at all - 14451 and 13432 - are `unit-does-nothing` findings (ah-dwk6)
   // that sort ahead of this one, so that check goes off for the third time for the same reason.
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -444,6 +445,8 @@ async function onlyTheUnitsWithNoOrders(page: Page) {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-tab-warnings").click();
   await page.getByTestId("settings-warning-study-at-maximum").uncheck();
+  // Raises nothing on this fixture since ah-yw4p (the Cloudship fleet seats its mages); off so
+  // that the list stays the two idle units whatever the magic-study check comes to say.
   await page.getByTestId("settings-warning-magic-study-outside-building").uncheck();
   await page.getByTestId("settings-warning-unit-does-nothing").check();
   await page.keyboard.press("Escape");
