@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { DONATE_URL } from "@atlantis/shared/src/projectLinks";
 import { describe, expect, it } from "vitest";
 import type { DesktopUpdate } from "./updateCheck";
 import {
@@ -54,6 +55,18 @@ describe("the desktop capability file", () => {
     expect(urls.filter((url) => url?.startsWith("https://api.github.com"))).toEqual([
       LATEST_RELEASE_URL
     ]);
+  });
+
+  it("lets a player reach the donation page, and nothing else on that site", () => {
+    const opener = capability.permissions.find(
+      (permission) =>
+        typeof permission !== "string" && permission.identifier === "opener:allow-open-url"
+    );
+    const urls = typeof opener === "string" ? [] : (opener?.allow ?? []).map((entry) => entry.url);
+
+    // Exactly the page the About tab's support card opens, with no wildcard: the opener hands the
+    // address to the operating system, so its scope is kept to the addresses the app needs.
+    expect(urls.filter((url) => url?.includes("buymeacoffee.com"))).toEqual([DONATE_URL]);
   });
 
   it("scopes that permission to the address the update check opens", () => {

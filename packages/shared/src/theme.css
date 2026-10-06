@@ -64,6 +64,10 @@
   --color-brass-bright: #eebe63;
   /* Trade routes are silver, so they never read as a unit's brass movement line. */
   --color-trade: #dfe6ee;
+  /* Buy Me a Coffee's own button colours, the same on either theme: it is their mark, not ours. */
+  --color-bmc-yellow: #ffdd00;
+  --color-bmc-ink: #000000;
+  --color-bmc-cup: #ffffff;
   /* The comet and the movement line's thread: a light, not ink, so the same pale gold on either theme. */
   --color-spark: #fff3cf;
   --color-trade-dim: #9fb0c2;
@@ -223,6 +227,10 @@
   --color-brass: #8a6317;
   --color-brass-bright: #7d5a15;
   --color-trade: #4a5868;
+  /* Buy Me a Coffee's own button colours, the same on either theme: it is their mark, not ours. */
+  --color-bmc-yellow: #ffdd00;
+  --color-bmc-ink: #000000;
+  --color-bmc-cup: #ffffff;
   --color-spark: #fff3cf;
   --color-trade-dim: #7a8796;
   --color-select: #1f5f8f;
@@ -604,3 +612,46 @@ body,
   fill: var(--map-road-line, var(--color-ink));
 }
 
+/*
+ * The About tab's support button, drawn as Buy Me a Coffee generates it - yellow, a black outline and
+ * black Lato, a white cup - rather than loaded from their script. Kept small beside its card.
+ */
+.bmc-button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px 4px 8px;
+  border: 1px solid var(--color-bmc-ink);
+  border-radius: 6px;
+  background: var(--color-bmc-yellow);
+  color: var(--color-bmc-ink);
+  font-family: "Lato", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.bmc-button:hover {
+  filter: brightness(0.96);
+}
+.bmc-button:focus-visible {
+  outline: 2px solid var(--color-brass-bright);
+  outline-offset: 2px;
+}
+.bmc-cup {
+  width: 16px;
+  height: 16px;
+}
+.bmc-cup-body {
+  fill: var(--color-bmc-cup);
+  stroke: var(--color-bmc-ink);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+.bmc-cup-line {
+  fill: none;
+  stroke: var(--color-bmc-ink);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}

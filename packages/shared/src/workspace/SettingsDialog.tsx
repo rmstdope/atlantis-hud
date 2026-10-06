@@ -1,5 +1,6 @@
 import type { MapSizes } from "@atlantis/core-client";
-import { ISSUES_URL } from "../projectLinks";
+import "@fontsource/lato/latin-700.css";
+import { DONATE_URL, ISSUES_URL } from "../projectLinks";
 import { mapSizesOfGame } from "../mapShape";
 import { MapSizesSettings } from "./MapSizesSettings";
 import { RulesetChanger } from "./RulesetChanger";
@@ -1252,6 +1253,44 @@ export function About({
           .
         </p>
       </div>
+
+      {/*
+        The support card: a modest card of its own at the foot of the tab, with Buy Me a Coffee's
+        own yellow button kept small beside it. Drawn here and opened in the player's browser like
+        the issues link - never their script, so it works offline and contacts nobody until clicked.
+      */}
+      <div
+        data-testid="about-support"
+        className="mt-2 flex items-center justify-between gap-2.5 rounded border border-edge bg-panel-raised px-2.5 py-2"
+      >
+        <p className="text-ink-soft">
+          <strong className="font-semibold text-ink">Enjoying Atlantis HUD?</strong>
+          <br />
+          It is free, and made in spare time.
+        </p>
+        <button
+          type="button"
+          data-testid="about-donate"
+          title="Opens buymeacoffee.com/rmstdope in your browser"
+          onClick={() => openExternal(DONATE_URL)}
+          className="bmc-button"
+        >
+          <CoffeeCup />
+          <span>Buy me a coffee</span>
+        </button>
+      </div>
     </div>
+  );
+}
+
+/** Buy Me a Coffee's cup: white with a black outline, steam above, a saucer below. */
+function CoffeeCup() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="bmc-cup">
+      <path d="M5 8h11v5.5A4.5 4.5 0 0 1 11.5 18h-2A4.5 4.5 0 0 1 5 13.5Z" className="bmc-cup-body" />
+      <path d="M16 9.5h1.4a2.3 2.3 0 0 1 0 4.6H16" className="bmc-cup-line" />
+      <path d="M8 3.5c-.8 1 .8 1.6 0 2.8M11 3.5c-.8 1 .8 1.6 0 2.8" className="bmc-cup-line" />
+      <path d="M4 20.5h13" className="bmc-cup-line" />
+    </svg>
   );
 }

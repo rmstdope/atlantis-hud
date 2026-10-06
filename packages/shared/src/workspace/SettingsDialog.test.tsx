@@ -564,6 +564,33 @@ describe("About", () => {
   });
 });
 
+/** The support card at the foot of About: a modest thanks, and Buy Me a Coffee's own button. */
+describe("About's support card", () => {
+  const markup = () =>
+    renderToStaticMarkup(
+      <About platformLabel="Desktop (macOS)" appUpdate={UNSUPPORTED_UPDATES} openExternal={() => undefined} />
+    );
+
+  it("closes the tab with a short thanks and a button in Buy Me a Coffee's own style", () => {
+    const html = markup();
+    const card = html.slice(html.indexOf('data-testid="about-support"'));
+
+    expect(card).toContain("Enjoying Atlantis HUD?");
+    expect(card).toContain("It is free, and made in spare time.");
+    expect(card).toMatch(/<button[^>]*data-testid="about-donate"[^>]*class="bmc-button"/);
+    expect(card).toContain(">Buy me a coffee</span>");
+    // The last thing in the tab, after the issues paragraph.
+    expect(html.indexOf('data-testid="about-support"')).toBeGreaterThan(html.indexOf('data-testid="about-issues-link"'));
+  });
+
+  it("is a button the shell opens in the player's browser, never a link or a third-party script", () => {
+    const html = markup();
+    expect(html).toContain('title="Opens buymeacoffee.com/rmstdope in your browser"');
+    expect(html).not.toContain("<a ");
+    expect(html).not.toContain("<script");
+  });
+});
+
 /** ah-sw92: the update section at the top of About, and the mark on the About tab. */
 describe("About's update section", () => {
   const noop = () => undefined;
