@@ -18,7 +18,13 @@
 import type { Coordinate, Direction } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
 import { COLUMN_PITCH, ROW_PITCH } from "./mapViewport";
-import { DEFAULT_WATER, terrainKindOf, type TerrainPaint, type WaterTerrains } from "./mapThemes/terrain";
+import {
+  DEFAULT_WATER,
+  pictureKindOf,
+  terrainKindOf,
+  type TerrainPaint,
+  type WaterTerrains
+} from "./mapThemes/terrain";
 
 /**
  * Terrain classes, written out so Tailwind can see them: one per kind in `TERRAIN_KINDS`, plus the
@@ -26,6 +32,7 @@ import { DEFAULT_WATER, terrainKindOf, type TerrainPaint, type WaterTerrains } f
  */
 const TERRAIN_CLASSES: Readonly<Record<TerrainPaint, string>> = {
   ocean: "fill-terrain-ocean",
+  lake: "fill-terrain-lake",
   plain: "fill-terrain-plain",
   forest: "fill-terrain-forest",
   mountain: "fill-terrain-mountain",
@@ -87,7 +94,7 @@ export function terrainFillClass(terrain: string, water: WaterTerrains = DEFAULT
 
 /**
  * The biome picture for a terrain, from the chosen texture set's `directory` (`textureSets.ts`);
- * the Standard set's directory when no set is named.
+ * the Standard set's directory when no set is named. A lake shows the ocean's (`pictureKindOf`).
  */
 export function terrainTextureUrl(
   terrain: string,
@@ -95,7 +102,7 @@ export function terrainTextureUrl(
   directory = "/biomes"
 ): string | null {
   const kind = terrainKindOf(terrain, water);
-  return kind === "other" ? null : `${directory}/${kind}_512.png`;
+  return kind === "other" ? null : `${directory}/${pictureKindOf(kind)}_512.png`;
 }
 
 export function terrainTexturePatternId(

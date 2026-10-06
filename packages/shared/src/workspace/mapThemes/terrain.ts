@@ -3,14 +3,20 @@
  *
  * A report's terrain word is resolved to a kind once, against the world's water terrains from the
  * ruleset, and a theme picks its paint by that kind alone. A new terrain is one entry here, one
- * `fill-terrain-*` line in `mapHexView.ts`, a biome image and CSS.
+ * `fill-terrain-*` line in `mapHexView.ts`, a biome image (or a `pictureKindOf` entry naming the
+ * picture it borrows) and CSS.
  *
  * Imports nothing, so a theme may import it without reaching the settings store.
  */
 
-/** Every terrain the map has paint for. Each one has a biome image, config/public/biomes/<kind>_512.png. */
+/**
+ * Every terrain the map has paint for. Each one shows a biome image,
+ * config/public/biomes/<pictureKindOf(kind)>_512.png.
+ */
 export const TERRAIN_KINDS = [
   "ocean",
+  // Fresh water, painted apart from the sea (ah-vsjg). It has no picture of its own.
+  "lake",
   "plain",
   "forest",
   "mountain",
@@ -42,13 +48,33 @@ export const DEFAULT_WATER: WaterTerrains = { ocean: "ocean", alsoWater: [] };
 
 const KINDS: ReadonlySet<string> = new Set(TERRAIN_KINDS);
 
-/** The kind a report's terrain word is painted as. Case-insensitive; water per `water` becomes "ocean". */
+/**
+ * The kind a report's terrain word is painted as. Case-insensitive.
+ *
+ * The ruleset's own ocean word is the ocean. A lake is a lake wherever the report names one,
+ * whether or not the ruleset calls it water (ah-vsjg). Any other word the ruleset adds to the
+ * water is painted as the ocean, and a word the map has paint for is otherwise itself.
+ */
 export function terrainKindOf(terrain: string, water: WaterTerrains = DEFAULT_WATER): TerrainPaint {
   const word = terrain.toLowerCase();
-  if (word === water.ocean || water.alsoWater.includes(word)) {
+  if (word === water.ocean) {
+    return "ocean";
+  }
+  if (word === "lake") {
+    return "lake";
+  }
+  if (water.alsoWater.includes(word)) {
     return "ocean";
   }
   return KINDS.has(word) ? (word as TerrainKind) : "other";
+}
+
+/**
+ * Whose biome picture a kind shows. A lake borrows the sea's, tinted fresher where it is drawn
+ * (`HexView.texture.fresh`), since no texture set has a lake picture of its own (ah-vsjg).
+ */
+export function pictureKindOf(kind: TerrainKind): TerrainKind {
+  return kind === "lake" ? "ocean" : kind;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

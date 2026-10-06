@@ -188,13 +188,13 @@ describe("the rest of the scene", () => {
 describe("terrain, painted rather than filled", () => {
   const tridentTerrains = TERRAIN_KINDS;
 
-  it("paints a lake with the ocean's paint where the ruleset calls it water", () => {
+  it("paints a lake with its own gradient and the sea's waves (ah-vsjg)", () => {
     const svg = draw(miniatureWorld.TerrainLayer, [{ ...CONGESTED_CENTRE, terrain: "lake" }], {
       showTextures: false,
       water: { ocean: "ocean", alsoWater: ["lake"] }
     });
 
-    expect(svg).toContain("url(#mw-grad-ocean)");
+    expect(svg).toContain("url(#mw-grad-lake)");
     expect(svg).toContain(`data-decoration="waves"`);
   });
 

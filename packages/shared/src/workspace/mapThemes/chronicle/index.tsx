@@ -663,8 +663,9 @@ const SAND = [
 ] as const;
 
 /**
- * One little ink icon per terrain kind, each drawn once and placed by `<use>`. Every one of the
- * seventeen kinds has its own, underground ones included, and "other" a neutral surveyor's mark.
+ * One little ink icon per terrain kind, each drawn once and placed by `<use>`. Every kind has its
+ * own, underground ones included, save the lake, which borrows the sea's; "other" is a neutral
+ * surveyor's mark.
  */
 const ICONS: Record<TerrainPaint, () => ReactElement> = {
   ocean: () => (
@@ -673,6 +674,8 @@ const ICONS: Record<TerrainPaint, () => ReactElement> = {
       className="ch-i-water"
     />
   ),
+  // The sea's own icon: a lake is told apart by its wash and the ripple symbol (ah-vsjg).
+  lake: () => ICONS.ocean(),
   plain: () => (
     <path
       d="M-10,0 l2,-4 l2,4 M3,-6 l2,-4 l2,4 M4,7 l2,-4 l2,4"

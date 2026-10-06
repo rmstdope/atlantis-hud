@@ -279,13 +279,14 @@ describe("roads, as an atlas draws them", () => {
 describe("terrain, in pigment rather than in the app's own colours", () => {
   const tridentTerrains = TERRAIN_KINDS;
 
-  it("paints a lake with the ocean's paint where the ruleset calls it water", () => {
+  it("paints a lake with its own paint, apart from the sea (ah-vsjg)", () => {
     const svg = draw(cartographersTable.TerrainLayer, [{ ...CONGESTED_CENTRE, terrain: "lake" }], {
       showTextures: false,
       water: { ocean: "ocean", alsoWater: ["lake"] }
     });
 
-    expect(svg).toContain("ct-terrain-ocean");
+    expect(svg).toContain("ct-terrain-lake");
+    expect(svg).not.toContain("ct-terrain-ocean");
   });
 
   it("paints each terrain in the atlas's own muted palette", () => {

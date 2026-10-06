@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { TERRAIN_KINDS } from "./mapThemes/terrain";
+import { pictureKindOf, TERRAIN_KINDS } from "./mapThemes/terrain";
 import {
   DEFAULT_TEXTURE_SET_ID,
   TEXTURE_SETS,
@@ -59,8 +59,9 @@ describe("texture sets", () => {
   });
 
   it("has a 512 px picture for every biome in every set", () => {
+    // Whatever picture each kind shows: a lake borrows the sea's (ah-vsjg).
     const missing = TEXTURE_SETS.flatMap((set) =>
-      TERRAIN_KINDS.map((kind) => `${set.directory}/${kind}_512.png`)
+      TERRAIN_KINDS.map((kind) => `${set.directory}/${pictureKindOf(kind)}_512.png`)
     ).filter((url) => !existsSync(path.join(PUBLIC_DIR, url)));
 
     expect(missing).toEqual([]);

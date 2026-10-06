@@ -36,6 +36,8 @@
   --sg-blocked-label: #ffe2d6;
 
   --sg-glass-ocean: #1d4f9c;
+
+  --sg-glass-lake: #2c93ad;
   --sg-glass-plain: #7fb342;
   --sg-glass-forest: #2f8f4e;
   --sg-glass-mountain: #7d3c98;
@@ -79,6 +81,8 @@
   --sg-blocked-label: #ffe2d6;
 
   --sg-glass-ocean: #1d4f9c;
+
+  --sg-glass-lake: #2c93ad;
   --sg-glass-plain: #7fb342;
   --sg-glass-forest: #2f8f4e;
   --sg-glass-mountain: #7d3c98;
@@ -101,6 +105,9 @@
 /* The pane's glass by terrain: each class only names the colour; the shards decide the tone. */
 .sg-terrain-ocean {
   --sg-pane: var(--sg-glass-ocean);
+}
+.sg-terrain-lake {
+  --sg-pane: var(--sg-glass-lake);
 }
 .sg-terrain-plain {
   --sg-pane: var(--sg-glass-plain);

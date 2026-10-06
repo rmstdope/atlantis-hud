@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TERRAIN_KINDS } from "./mapThemes/terrain";
+import { pictureKindOf, TERRAIN_KINDS } from "./mapThemes/terrain";
 import { preloadTextureSet } from "./textureSetPreload";
 
 describe("preloading a texture set", () => {
@@ -10,7 +10,9 @@ describe("preloading a texture set", () => {
       return true;
     });
 
-    expect(asked.sort()).toEqual(TERRAIN_KINDS.map((kind) => `/biomes/painted/${kind}_512.png`).sort());
+    expect(asked.sort()).toEqual(
+      TERRAIN_KINDS.map((kind) => `/biomes/painted/${pictureKindOf(kind)}_512.png`).sort()
+    );
   });
 
   it("settles only once every picture has answered", async () => {
@@ -39,15 +41,21 @@ describe("preloading a texture set", () => {
     expect(shown).toEqual({ id: "painted", missing: ["swamp", "chasm"] });
   });
 
+  it("leaves a lake flat exactly when the sea's picture failed, since it shows that one (ah-vsjg)", async () => {
+    const shown = await preloadTextureSet("painted", async (url) => !/\/ocean_512/.test(url));
+
+    expect(shown).toEqual({ id: "painted", missing: ["ocean", "lake"] });
+  });
+
   it("counts a loader that throws as a failed picture", async () => {
     const shown = await preloadTextureSet("standard", async (url) => {
-      if (url.includes("ocean")) {
+      if (url.includes("swamp")) {
         throw new Error("network");
       }
       return true;
     });
 
-    expect(shown).toEqual({ id: "standard", missing: ["ocean"] });
+    expect(shown).toEqual({ id: "standard", missing: ["swamp"] });
   });
 
   it("falls back to Standard for a set this build does not have", async () => {

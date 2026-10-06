@@ -53,6 +53,7 @@
 
   /* Watercolour washes, laid on at three-quarters over the parchment. */
   --ch-wash-ocean: #3f6482;
+  --ch-wash-lake: #4e8a92;
   --ch-wash-plain: #737c48;
   --ch-wash-forest: #4b6a3e;
   --ch-wash-mountain: #6f6554;
@@ -113,6 +114,8 @@
   --ch-road-casing: #efe3c4;
 
   --ch-wash-ocean: #8fb1c9;
+
+  --ch-wash-lake: #acd2cf;
   --ch-wash-plain: #c9d39a;
   --ch-wash-forest: #8fae72;
   --ch-wash-mountain: #b9ab95;
@@ -135,6 +138,9 @@
 /* The watercolour washes. */
 .ch-terrain-ocean {
   fill: var(--ch-wash-ocean);
+}
+.ch-terrain-lake {
+  fill: var(--ch-wash-lake);
 }
 .ch-terrain-plain {
   fill: var(--ch-wash-plain);

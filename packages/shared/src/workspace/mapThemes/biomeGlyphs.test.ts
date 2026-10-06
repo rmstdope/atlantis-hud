@@ -57,11 +57,32 @@ describe("the biome symbols' shapes", () => {
   });
 
   it("strokes the line-only shapes without a fill", () => {
-    for (const kind of ["ocean", "plain", "tundra", "wasteland"] as const) {
+    for (const kind of ["ocean", "lake", "plain", "tundra", "wasteland"] as const) {
       expect(
         BIOME_GLYPHS[kind].every((part) => part.fill === "none" && part.stroke),
         kind
       ).toBe(true);
     }
+  });
+
+  it("marks a lake with two still, round ripples, one inside the other, unlike the sea's waves (ah-vsjg)", () => {
+    const rings = BIOME_GLYPHS.lake;
+
+    expect(rings).toHaveLength(2);
+    expect(rings.every((part) => part.d.includes("A") && part.d.endsWith("Z"))).toBe(true);
+    // Concentric and flattened: both centred on the spot, each wider than it is tall, the outer
+    // ring larger. Read off each ring's leftmost point and its arcs' radii.
+    const shape = (d: string) => {
+      const [x, y, rx, ry] = numbersOf(d);
+      return { x, y, rx, ry };
+    };
+    const [inner, outer] = rings.map((part) => shape(part.d));
+    expect(inner.x).toBe(-inner.rx);
+    expect(outer.x).toBe(-outer.rx);
+    expect([inner.y, outer.y]).toEqual([0, 0]);
+    expect(inner.rx).toBeGreaterThan(inner.ry);
+    expect(outer.rx).toBeGreaterThan(outer.ry);
+    expect(outer.rx).toBeGreaterThan(inner.rx);
+    expect(BIOME_GLYPHS.lake).not.toEqual(BIOME_GLYPHS.ocean);
   });
 });

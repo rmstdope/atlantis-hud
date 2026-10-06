@@ -20,6 +20,7 @@
 
   /* Each terrain's tint: near-black, leaning towards what the ground is. */
   --co-terrain-ocean: #031a14;
+  --co-terrain-lake: #04261f;
   --co-terrain-plain: #0a1f0e;
   --co-terrain-forest: #062612;
   --co-terrain-mountain: #141a16;
@@ -53,6 +54,7 @@
 
   /* Each terrain's tint: near-black, leaning towards what the ground is. */
   --co-terrain-ocean: #031a14;
+  --co-terrain-lake: #04261f;
   --co-terrain-plain: #0a1f0e;
   --co-terrain-forest: #062612;
   --co-terrain-mountain: #141a16;
@@ -74,6 +76,9 @@
 
 .co-terrain-ocean {
   fill: var(--co-terrain-ocean);
+}
+.co-terrain-lake {
+  fill: var(--co-terrain-lake);
 }
 .co-terrain-plain {
   fill: var(--co-terrain-plain);

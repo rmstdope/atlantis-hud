@@ -1,7 +1,13 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_WATER, terrainClassName, terrainKindOf, waterTerrainsOf } from "./terrain";
+import {
+  DEFAULT_WATER,
+  pictureKindOf,
+  terrainClassName,
+  terrainKindOf,
+  waterTerrainsOf
+} from "./terrain";
 
 function ruleset(name: string): string {
   return readFileSync(
@@ -10,21 +16,33 @@ function ruleset(name: string): string {
   );
 }
 
+describe("pictureKindOf", () => {
+  it("shows a lake with the ocean's picture, and every other kind with its own", () => {
+    expect(pictureKindOf("lake")).toBe("ocean");
+    expect(pictureKindOf("ocean")).toBe("ocean");
+    expect(pictureKindOf("grotto")).toBe("grotto");
+  });
+});
+
 describe("terrainKindOf", () => {
   it("keeps a terrain the map has paint for as its own kind, case-insensitively", () => {
     expect(terrainKindOf("DeepForest")).toBe("deepforest");
   });
 
-  it("paints a word the ruleset calls water as ocean", () => {
-    expect(terrainKindOf("lake", { ocean: "ocean", alsoWater: ["lake"] })).toBe("ocean");
+  it("paints a lake as a lake in a world that calls it water (ah-vsjg)", () => {
+    expect(terrainKindOf("Lake", { ocean: "ocean", alsoWater: ["lake"] })).toBe("lake");
+  });
+
+  it("paints any other word the ruleset calls water as ocean", () => {
+    expect(terrainKindOf("mere", { ocean: "ocean", alsoWater: ["mere"] })).toBe("ocean");
   });
 
   it("paints the ruleset's own ocean terrain as ocean whatever it is called", () => {
     expect(terrainKindOf("Water", { ocean: "water", alsoWater: [] })).toBe("ocean");
   });
 
-  it("does not treat a lake as water unless the ruleset says so", () => {
-    expect(terrainKindOf("lake")).toBe("other");
+  it("paints a lake as a lake in a world that does not call it water, too", () => {
+    expect(terrainKindOf("lake")).toBe("lake");
   });
 
   it("falls back to other for a word it has no paint for", () => {

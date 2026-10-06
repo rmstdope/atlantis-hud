@@ -318,13 +318,14 @@ describe("the three knowledge states", () => {
 describe("terrain and roads", () => {
   const tridentTerrains = TERRAIN_KINDS;
 
-  it("paints a lake with the ocean's paint where the ruleset calls it water", () => {
+  it("paints a lake with its own paint, apart from the sea (ah-vsjg)", () => {
     const svg = draw(emblemAndDots.TerrainLayer, [{ ...CONGESTED_CENTRE, terrain: "lake" }], {
       showTextures: false,
       water: { ocean: "ocean", alsoWater: ["lake"] }
     });
 
-    expect(svg).toContain("ed-terrain-ocean");
+    expect(svg).toContain("ed-terrain-lake");
+    expect(svg).not.toContain("ed-terrain-ocean");
   });
 
   it("paints each terrain in the theme's own palette, falling back rather than vanishing", () => {
