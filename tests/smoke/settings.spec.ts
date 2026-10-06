@@ -545,6 +545,25 @@ test("the About tab names the variants and offers somewhere to report a bug", as
   const issues = page.getByTestId("about-issues-link");
   await expect(issues).toBeVisible();
   await expect(issues).toHaveAccessibleName("project's issue page on GitHub");
+
+  // The support card's button opens the author's Buy Me a Coffee page in the player's browser. The
+  // page's own opener is swapped for a recorder, so the walk proves the address handed over without
+  // ever loading a third party's site from CI.
+  const donate = page.getByTestId("about-donate");
+  await expect(donate).toBeVisible();
+  await expect(donate).toHaveAccessibleName("Buy me a coffee");
+  await page.evaluate(() => {
+    const opened: string[] = [];
+    (window as unknown as { __opened: string[] }).__opened = opened;
+    window.open = ((url?: string | URL) => {
+      opened.push(String(url));
+      return null;
+    }) as typeof window.open;
+  });
+  await donate.click();
+  expect(await page.evaluate(() => (window as unknown as { __opened: string[] }).__opened)).toEqual([
+    "https://www.buymeacoffee.com/rmstdope"
+  ]);
 });
 
 /**
