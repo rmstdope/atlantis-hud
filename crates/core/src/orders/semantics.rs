@@ -13512,12 +13512,12 @@ fn weight_after_orders(
 /// run, and it is a sum whose composition is not recoverable, so the capacity is rebuilt from the
 /// unit's item list rather than adjusted.
 ///
-/// `None` - and the caller then falls back to the report's own printed line - with no ruleset,
-/// when any tag the unit holds is not in it, or when the report's item list does not account for
-/// every man the unit has. Men carry, so a list that names fewer of them than the unit holds
-/// understates capacity, and understating capacity is what manufactures the false warning this
-/// exists to remove. That is the absence of information rather than a unit of no capacity, and
-/// the report's own printed line is the better answer to it.
+/// `None` - and the caller then falls back to the report's own printed line - with no ruleset, or
+/// when any tag the unit holds is not in it. Otherwise the list is the whole answer: a report's
+/// headcount *is* its man-tagged items, counted (`report::composition::men_in`), so the list
+/// cannot name fewer men than the unit has. A guard that fell back to the printed line when it
+/// seemed to existed only for test fixtures that listed no men, and on a real unit it was the
+/// fallback that called a unit handing off men overloaded (`ah-o6qy`, removed by `ah-4q5p`).
 ///
 /// A balance below zero is read as zero. Giving away more than the unit holds is its own finding,
 /// and a negative count would subtract capacity and so manufacture exactly the false warning this
@@ -13528,23 +13528,6 @@ fn capacity_after_orders(
     ruleset: Option<&Ruleset>,
 ) -> Option<Capacities> {
     let ruleset = ruleset?;
-
-    // Whether the report's list names every man the report counts - asked of the list as printed,
-    // before this month's transfers. Asked after them, a unit that gives men away (or forms new
-    // units out of them) names fewer than its printed headcount, and the check fell back to the
-    // printed line its departed men still carry (`ah-o6qy`).
-    let listed_men: i64 = ordered
-        .unit
-        .items
-        .iter()
-        .filter_map(|item| {
-            let priced = ruleset.find_item(&item.tag)?;
-            (priced.kind == ItemKind::Man).then_some(item.amount.max(0))
-        })
-        .sum();
-    if listed_men < ordered.unit.men {
-        return None;
-    }
 
     let mut counts: Vec<(String, i64)> = ordered
         .unit
@@ -15287,9 +15270,8 @@ struct MovementOverload {
 }
 
 /// `Some` only when both the derived-or-printed allowance and `weight_after_orders` are known and
-/// the weight exceeds it. Unknown load or allowance - no ruleset, an unpriceable item, an
-/// incomplete item list - returns `None`, which callers must read as "cannot say", never as "not
-/// overloaded".
+/// the weight exceeds it. Unknown load or allowance - no ruleset, an unpriceable item - returns
+/// `None`, which callers must read as "cannot say", never as "not overloaded".
 fn movement_overload(
     ordered: &Ordered<'_>,
     ledger: &Ledger<'_>,
@@ -28955,6 +28937,26 @@ BUILD
             },
         );
         with_men_grain(unit, men)
+    }
+
+    /// The fixtures' headcount is what a real report's would be: its man-tagged items, counted
+    /// (`report::composition::men_in`). A rule that reads `ReportUnit::items` must get the same
+    /// answer from a fixture as from a parsed unit, or it grows a guard against the fixture that
+    /// then misjudges real units (`ah-titf`, `ah-o6qy`, `ah-4q5p`). Any helper that changes who
+    /// is in a unit keeps the two in step; this pins that they do.
+    #[test]
+    fn the_unit_fixture_lists_the_men_it_counts() {
+        let rules = ruleset();
+        for unit in [
+            unit("1"),
+            with_men(unit("1"), 7),
+            with_men(unit("1"), 0),
+            with_race(unit("1"), 3, "leader", "LEAD"),
+        ] {
+            let (by_race, total) = crate::report::composition::men_in(&unit.items, &rules);
+            assert_eq!(unit.men, total, "{unit:#?}");
+            assert_eq!(unit.men_by_race, by_race, "{unit:#?}");
+        }
     }
 
     fn with_men_grain(mut unit: ReportUnit, men: i64) -> ReportUnit {
@@ -45984,30 +45986,28 @@ BUILD
 
     // --- movement ---------------------------------------------------------------------------
 
-    /// A unit carrying `weight` that the report says can move `allowance` on foot, as a real
-    /// report states it: `Weight: 600. Capacity: 0/0/75/0.`
+    /// A unit carrying `weight` that can move `allowance` on foot, as a real report states it:
+    /// `Weight: 600. Capacity: 0/0/75/0.` The allowance is made of men, as a real unit's is - each
+    /// human walks 15, its walking capacity of 5 plus the 10 it weighs itself (`data/HUMN`) - so
+    /// the capacity derived from the item list and the printed line agree, and neither the check
+    /// nor this fixture has to pretend the unit's men are missing (`ah-4q5p`).
     fn carrying(id: &str, weight: i64, allowance: i64) -> ReportUnit {
-        let mut base = unit(id);
-        base = with_people(base, vec![]);
-        base.men = 1;
-        base.men_estimated = true;
+        assert_eq!(allowance % 15, 0, "an allowance on foot comes in men of 15");
         ReportUnit {
             weight: Some(weight),
             capacity: Some(format!("0/0/{allowance}/0")),
-            ..base
+            ..with_men(unit(id), allowance / 15)
         }
     }
 
-    /// `carrying`, where the capacity line is stated in full rather than as a walk figure alone.
+    /// One leader carrying `weight` under a capacity line stated in full - the caravans of GitHub
+    /// #677, which add their horses and grain to it. A leader walks 15 like any man (`data/LEAD`:
+    /// weight 10, walking capacity 5).
     fn carrying_with(id: &str, weight: i64, capacity: &str) -> ReportUnit {
-        let mut base = unit(id);
-        base = with_people(base, vec![]);
-        base.men = 1;
-        base.men_estimated = true;
         ReportUnit {
             weight: Some(weight),
             capacity: Some(capacity.to_string()),
-            ..base
+            ..with_race(unit(id), 1, "leader", "LEAD")
         }
     }
 
@@ -46146,13 +46146,11 @@ BUILD
 
     /// 80 beats the ride allowance of 70 but not the walk allowance of 85, and the game takes
     /// whichever works - the comparison is against the best of the three, not the walk figure.
+    /// One leader and one horse: the horse rides and walks 70, its capacity of 20 plus its own 50
+    /// (`data/HORS`), and the leader walks 15 more (`data/LEAD`).
     #[test]
     fn the_best_of_the_three_allowances_is_what_counts() {
-        let unit = ReportUnit {
-            weight: Some(80),
-            capacity: Some("0/70/85/0".to_string()),
-            ..carrying("13432", 80, 85)
-        };
+        let unit = with_item(carrying_with("13432", 80, "0/70/85/0"), 1, "horse", "HORS");
         assert_eq!(
             codes(&check(vec![region(vec![unit])], "unit 13432\nMOVE S\n")),
             Vec::<&str>::new()
@@ -46166,17 +46164,7 @@ BUILD
     #[test]
     fn a_unit_that_buys_pack_animals_is_not_called_overloaded() {
         let caravan = with_item(
-            with_item(
-                with_item(
-                    carrying_with("11619", 135, "0/70/85/0"),
-                    1,
-                    "leader",
-                    "LEAD",
-                ),
-                1,
-                "horse",
-                "HORS",
-            ),
+            with_item(carrying_with("11619", 135, "0/70/85/0"), 1, "horse", "HORS"),
             15,
             "grain",
             "GRAI",
@@ -46199,12 +46187,7 @@ BUILD
     fn a_unit_that_gives_its_horses_away_loses_their_capacity() {
         let caravan = with_item(
             with_item(
-                with_item(
-                    carrying_with("11619", 935, "0/1190/1205/0"),
-                    1,
-                    "leader",
-                    "LEAD",
-                ),
+                carrying_with("11619", 935, "0/1190/1205/0"),
                 17,
                 "horses",
                 "HORS",
@@ -46290,7 +46273,8 @@ BUILD
     /// exactly what it is without this repair - the report's own printed allowance.
     #[test]
     fn a_unit_is_judged_by_the_printed_capacity_when_the_ruleset_cannot_price_it() {
-        let overloaded = carrying("12054", 1800, 150);
+        // fed in silver: with no ruleset to price grain, the food would not pay the upkeep
+        let overloaded = unfed(carrying("12054", 1800, 150));
 
         let findings = check_turn(
             &report(vec![region(vec![overloaded.clone()])]),
@@ -46311,30 +46295,47 @@ BUILD
         );
     }
 
-    /// An item list that does not name the unit's men cannot price it: men carry, and counting a
-    /// unit's capacity without them understates it. The printed line answers instead.
+    /// A report's headcount is its man-tagged items, counted (`report::composition::men_in`), so
+    /// when every item is priced the list is the whole answer: a headcount that disagrees with it
+    /// is a stale estimate, never a reason to fall back to the printed line (`ah-4q5p`). One
+    /// listed human walks 15 (`data/HUMN`), whatever the 3 and the printed 150 say.
     #[test]
-    fn a_unit_whose_items_do_not_account_for_its_men_keeps_the_printed_capacity() {
-        // one man by the headcount, no man item in the list - so 15 grain alone would derive a
-        // capacity of 0 and invent an overload; the printed 150 is used instead
-        let hauler = with_item(carrying("12054", 100, 150), 15, "grain", "GRAI");
-        assert_eq!(
-            codes(&check(vec![region(vec![hauler])], "unit 12054\nMOVE S S\n")),
-            Vec::<&str>::new()
+    fn the_item_list_decides_capacity_even_when_the_headcount_disagrees() {
+        let mut stale = ReportUnit {
+            weight: Some(100),
+            capacity: Some("0/0/150/0".to_string()),
+            ..unit("12054")
+        };
+        stale.men = 3;
+        stale.men_estimated = true;
+
+        let finding = only(check(vec![region(vec![stale])], "unit 12054\nMOVE S\n"));
+        assert_eq!(finding.code.as_str(), "unit-overloaded");
+        assert!(
+            finding
+                .message
+                .contains("it carries 100 and the most it can move with is 15"),
+            "{}",
+            finding.message
         );
     }
 
+    /// With a ruleset the item list gives the allowance whatever the report printed; without one,
+    /// a unit whose report prints no capacity line cannot be judged at all.
     #[test]
-    fn a_unit_the_report_gives_no_capacity_is_not_judged() {
-        let mut unit = ReportUnit {
+    fn with_no_ruleset_a_unit_the_report_gives_no_capacity_is_not_judged() {
+        let unit = ReportUnit {
             weight: Some(9999),
             capacity: None,
-            ..with_people(unit("5"), vec![])
+            ..unfed(unit("5"))
         };
-        unit.men = 1;
-        unit.men_estimated = true;
         assert_eq!(
-            codes(&check(vec![region(vec![unit])], "unit 5\nMOVE S\n")),
+            codes(&check_turn(
+                &report(vec![region(vec![unit])]),
+                "unit 5\nMOVE S\n",
+                None,
+                disabling(codes::UNIT_DOES_NOTHING),
+            )),
             Vec::<&str>::new()
         );
     }

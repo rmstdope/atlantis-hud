@@ -305,6 +305,11 @@ pub fn capacities_from_items(items: &[(&str, i64)], ruleset: &Ruleset) -> Option
 }
 
 /// Classifies a unit from its complete current inventory and the supplied ruleset.
+///
+/// Complete means every tag is priced and somebody is in the unit. The listed people are the
+/// headcount, since a report's headcount is its man-tagged items, counted
+/// (`report::composition::men_in`). So `ReportUnit::men` is not consulted: when it disagrees with
+/// the list it is a stale estimate (`ah-4q5p`).
 #[must_use]
 pub fn unit_movement_from_items(unit: &ReportUnit, ruleset: &Ruleset) -> Option<UnitMovement> {
     let mut items = Vec::with_capacity(unit.items.len());
@@ -319,7 +324,7 @@ pub fn unit_movement_from_items(unit: &ReportUnit, ruleset: &Ruleset) -> Option<
         load = load.saturating_add(count.saturating_mul(item.weight));
         items.push((amount.tag.as_str(), count));
     }
-    if men == 0 || men < unit.men {
+    if men == 0 {
         return None;
     }
     let capacities = capacities_from_items(&items, ruleset)?;
@@ -327,6 +332,8 @@ pub fn unit_movement_from_items(unit: &ReportUnit, ruleset: &Ruleset) -> Option<
 }
 
 /// Derives mobility from a complete inventory, falling back to the report when it is incomplete.
+///
+/// Complete as [`unit_movement_from_items`] means it; the headcount is read off the list there too.
 #[must_use]
 pub fn mobility_with_ruleset(unit: &ReportUnit, ruleset: &Ruleset) -> Mobility {
     let mut items = Vec::with_capacity(unit.items.len());
@@ -342,7 +349,7 @@ pub fn mobility_with_ruleset(unit: &ReportUnit, ruleset: &Ruleset) -> Mobility {
         }
         items.push((amount.tag.as_str(), amount.amount));
     }
-    if men == 0 || (!has_conditional_capacity || men < unit.men) {
+    if men == 0 || !has_conditional_capacity {
         return mobility(unit);
     }
     let Some(capacities) = capacities_from_items(&items, ruleset) else {
@@ -848,7 +855,7 @@ mod tests {
     }
 
     #[test]
-    fn item_movement_requires_a_complete_inventory_and_enough_people() {
+    fn item_movement_requires_a_complete_inventory_and_some_people() {
         let unit = ReportUnit {
             men: 1,
             items: vec![crate::report::model::ItemAmount {
@@ -869,6 +876,55 @@ mod tests {
             ..Default::default()
         };
         assert!(unit_movement_from_items(&unknown, &ruleset()).is_none());
+    }
+
+    fn holding(items: &[(i64, &str)]) -> Vec<crate::report::model::ItemAmount> {
+        items
+            .iter()
+            .map(|(amount, tag)| crate::report::model::ItemAmount {
+                amount: *amount,
+                name: tag.to_lowercase(),
+                tag: (*tag).to_string(),
+            })
+            .collect()
+    }
+
+    /// A report's headcount is its man-tagged items, counted (`report::composition::men_in`), so a
+    /// priced list is the whole answer and a headcount that disagrees is a stale estimate - not a
+    /// reason to ignore the list (`ah-4q5p`). One human and one horse weigh 60 and ride 70, the
+    /// horse's capacity of 20 plus its own 50 (`data/HUMN`, `data/HORS`).
+    #[test]
+    fn a_headcount_the_list_does_not_reach_still_classifies_from_the_list() {
+        let unit = ReportUnit {
+            men: 3,
+            men_estimated: true,
+            items: holding(&[(1, "HUMN"), (1, "HORS")]),
+            ..Default::default()
+        };
+        let movement =
+            unit_movement_from_items(&unit, &ruleset()).expect("a priced inventory classifies");
+        assert_eq!(movement.status, UnitMovementStatus::Ride);
+        assert_eq!((movement.load, movement.walk, movement.ride), (60, 85, 70));
+    }
+
+    /// The same for the wagon path: one human, one horse and the wagon it pulls walk 335 - that is
+    /// 15, 70 and 250, as `conditional_wagon_capacity_is_limited_by_horses` prices them - so 300
+    /// walks, even though the printed line, and a headcount of 3 the list does not reach, would not.
+    #[test]
+    fn mobility_with_ruleset_reads_the_list_whatever_the_headcount_says() {
+        let unit = ReportUnit {
+            men: 3,
+            men_estimated: true,
+            weight: Some(300),
+            capacity: Some("0/0/15/0".to_string()),
+            items: holding(&[(1, "HUMN"), (1, "HORS"), (1, "WAGO")]),
+            ..Default::default()
+        };
+        assert_eq!(mobility(&unit), Mobility::Overloaded, "the printed line");
+        assert_eq!(
+            mobility_with_ruleset(&unit, &ruleset()),
+            Mobility::Moves(MovementMode::Walk)
+        );
     }
 
     #[test]
