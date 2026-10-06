@@ -38,9 +38,7 @@ use crate::movement::mode::{
 };
 use crate::movement::orders::{first_passage, MoveStep};
 use crate::movement::plan::{Hull, Journey};
-use crate::movement::rules::{
-    item_spellings, ItemEntry, MovementMode, Ruleset, SkillEntry,
-};
+use crate::movement::rules::{item_spellings, ItemEntry, MovementMode, Ruleset, SkillEntry};
 use crate::movement::sailing::refused_sail_steps;
 use crate::orders::faction_orders::{
     orders_warning, settle, FactionFailure, FactionLimits, FactionOrders, FactionSplit, Held,
@@ -46165,12 +46163,7 @@ BUILD
     #[test]
     fn a_unit_that_buys_pack_animals_is_not_called_overloaded() {
         let caravan = with_item(
-            with_item(
-                carrying_with("11619", 135, "0/70/85/0"),
-                1,
-                "horse",
-                "HORS",
-            ),
+            with_item(carrying_with("11619", 135, "0/70/85/0"), 1, "horse", "HORS"),
             15,
             "grain",
             "GRAI",
