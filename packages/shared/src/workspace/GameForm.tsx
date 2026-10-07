@@ -1,8 +1,8 @@
 import type { FormEvent } from "react";
 import { useState } from "react";
-import type { MapShape, MapSizes } from "@atlantis/core-client";
+import type { MapSizes } from "@atlantis/core-client";
 import type { MapSizesDraft } from "../mapShape";
-import { mapShapeOfSizes, mapSizesDraftFor, mapSizesFromDraft, mapSizesProblems } from "../mapShape";
+import { mapSizesDraftFor, mapSizesFromDraft, mapSizesProblems } from "../mapShape";
 import { MapSizesFields } from "./MapSizesFields";
 import { RULESETS } from "../rulesets";
 
@@ -18,12 +18,12 @@ export function gameSubmission(
   name: string,
   rulesetId: string,
   map: MapSizesDraft
-): { name: string; rulesetId: string; map: MapShape | undefined; mapSizes: MapSizes } | null {
+): { name: string; rulesetId: string; mapSizes: MapSizes } | null {
   const mapSizes = mapSizesFromDraft(map);
   if (mapSizes === null) {
     return null;
   }
-  return { name, rulesetId, map: mapShapeOfSizes(mapSizes), mapSizes };
+  return { name, rulesetId, mapSizes };
 }
 
 /**
@@ -44,7 +44,7 @@ export function GameForm({
   /** Disabled without claiming work is under way: another tab holds the saved-games list. */
   unavailable?: boolean;
   error: string | null;
-  onCreate: (name: string, rulesetId: string, map?: MapShape, mapSizes?: MapSizes) => void;
+  onCreate: (name: string, rulesetId: string, mapSizes?: MapSizes) => void;
   submitLabel?: string;
 }) {
   const [name, setName] = useState("");
@@ -67,7 +67,7 @@ export function GameForm({
     if (submission === null) {
       return;
     }
-    onCreate(submission.name, submission.rulesetId, submission.map, submission.mapSizes);
+    onCreate(submission.name, submission.rulesetId, submission.mapSizes);
   };
 
   return (

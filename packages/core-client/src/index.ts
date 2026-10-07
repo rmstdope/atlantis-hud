@@ -8,6 +8,8 @@ export {
   aBattle,
   aBlockedMove,
   aBattleUnit,
+  aKnownMap,
+  aKnownMapHex,
   aParsedReport,
   aReportHeaderInfo,
   aReportRegion,
@@ -24,24 +26,17 @@ import type { Coordinate } from "./generated/Coordinate";
 import type { ReportRegion } from "./generated/ReportRegion";
 import type { SettlementInfo } from "./generated/SettlementInfo";
 import type { ReportParseResult } from "./generated/ReportParseResult";
-import type { OrderValidationResult } from "./generated/OrderValidationResult";
 import type { GameManifest } from "./generated/GameManifest";
-import type { EngineInfo } from "./generated/EngineInfo";
 import type { ParsedReport } from "./generated/ParsedReport";
-import type { RosterSkills } from "./generated/RosterSkills";
-import type { PassageClaim } from "./generated/PassageClaim";
-import type { ShelterSeat } from "./generated/ShelterSeat";
 import type { AlliedMageRecord } from "./generated/AlliedMageRecord";
 import type { AlliedMageKey } from "./generated/AlliedMageKey";
 import type { StudyPlanRecord } from "./generated/StudyPlanRecord";
 import type { StudyPlanKey } from "./generated/StudyPlanKey";
 import type { HexNoteRecord } from "./generated/HexNoteRecord";
 import type { ArmyRecord } from "./generated/ArmyRecord";
-import type { OrdersPreviewResponse } from "./generated/OrdersPreviewResponse";
-import type { ValidateOrdersRequest } from "./generated/ValidateOrdersRequest";
-import type { PreviewOrdersRequest } from "./generated/PreviewOrdersRequest";
 import type { TraceMoveOrdersRequest } from "./generated/TraceMoveOrdersRequest";
 import type { ManifestEdit } from "./generated/ManifestEdit";
+import type { CoreQueries } from "./generated/CoreQueries";
 
 export type OpenedGame = {
   gameFilePath: string;
@@ -542,9 +537,13 @@ export type ImportedTurnSummary = {
  * `@atlantis/browser-core`). One method per Rust command, positional arguments in the command's
  * order and wire form (JSON strings stay strings here; `createCoreClient` is where an object is
  * accepted instead). Returns are the types the core serializes; nothing re-validates them.
+ *
+ * The stateless queries the core declares once, in `crates/core/src/queries.rs`, arrive through
+ * `CoreQueries`, generated from that declaration (ah-w83n): a query added there needs no line here,
+ * in either adapter, or in the desktop shell. What stays below is shell-specific (storage, the
+ * games directory) or not yet declared there.
  */
-export interface CoreAdapter {
-  getEngineInfo(): Promise<EngineInfo>;
+export interface CoreAdapter extends CoreQueries {
   listGames(): Promise<GameManifest[]>;
   createGame(manifest: GameManifest): Promise<OpenedGame>;
   openGame(gameId: string, openedAt: string): Promise<OpenedGame>;
@@ -556,24 +555,6 @@ export interface CoreAdapter {
   editGameManifest(gameId: string, edit: ManifestEdit): Promise<GameManifest>;
   parseReport(rawReport: string): Promise<ReportParseResult>;
   parseReportFull(rawReport: string): Promise<ParsedReport>;
-  parseReportClassified(rawReport: string, rulesetJson: string): Promise<ParsedReport>;
-  /** Every combat skill the report's battle rosters disclosed, in report order. */
-  rosterSkills(rawReport: string): Promise<RosterSkills[]>;
-  /**
-   * Every crossing of an inner passage this turn's own orders claim.
-   *
-   * A claim, not a fact: only the next turn's report can say where the unit came out.
-   */
-  passageClaims(
-    rawReport: string,
-    ordersDocument: string,
-    rulesetJson: string
-  ): Promise<PassageClaim[]>;
-  /**
-   * How many mages each structure the report shows seats, from the one rule the core's
-   * magic-study check reads (ah-29p5). `seats` is null where the catalogue cannot say.
-   */
-  shelterSeats(rawReport: string, rulesetJson: string): Promise<ShelterSeat[]>;
   previewReportImport(
     databasePath: string,
     gameId: string,
@@ -589,15 +570,6 @@ export interface CoreAdapter {
     allowOverwrite: boolean,
     importedAt: string
   ): Promise<ImportedTurnPreview>;
-  /** Checks one orders document, and the turn it was written for, when one is loaded. */
-  validateOrders(request: ValidateOrdersRequest): Promise<OrderValidationResult>;
-  orderCommands(rulesetJson: string | null): Promise<string[]>;
-  /**
-   * Every word the rules know, uppercase and sorted: the order names, the grammar's own fixed
-   * words, and - when a ruleset is passed - the item and skill tags and the words of their names.
-   * What Order OCD uppercases as the player types.
-   */
-  orderVocabulary(rulesetJson: string | null): Promise<string[]>;
   /**
    * What may stand where the caret is, for the orders editor's completion popup: one order line
    * from its first character to the caret, answered with what the ruleset, the catalogue and the
@@ -648,15 +620,7 @@ export interface CoreAdapter {
    * units-in-hex preview alike.
    */
   traceMoveOrders(request: TraceMoveOrdersRequest): Promise<MoveOrderTraceResponse>;
-  exportMap(rawReport: string, rememberedJson: string, requestJson: string): Promise<string>;
-  /**
-   * Every named unit written out as a report fragment an ally can read back. `unitIdsJson` is a
-   * JSON array of unit ids; the caller decides who is a mage, so the core never asks the ruleset.
-   */
-  exportMageSheet(rawReport: string, unitIdsJson: string): Promise<string>;
   knownMap(rawReport: string, rulesetJson: string | null, rememberedJson: string): Promise<KnownMap>;
-  /** What the orders document makes of the faction's units, region by region. */
-  previewOrders(request: PreviewOrdersRequest): Promise<OrdersPreviewResponse>;
   /** Every trade worth making in the map the faction has seen, best first. */
   tradeRoutes(
     rulesetJson: string,
@@ -886,3 +850,5 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
 }
 
 export { createTauriAdapter, TAURI_COMMANDS, type TauriInvoke } from "./tauriCommands";
+export { CORE_QUERIES } from "./generated/CoreQueries";
+export { createQueryMethods, type QueryCall } from "./queries";

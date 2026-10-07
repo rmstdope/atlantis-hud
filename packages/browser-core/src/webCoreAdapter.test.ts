@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createWebCoreAdapter, type CoreWasmModule } from "./webCoreAdapter";
+import { CORE_QUERIES } from "@atlantis/core-client";
 import {
+  aKnownMap,
   aReportHeaderInfo,
   type GameManifest,
   type ManifestEdit,
@@ -13,15 +15,14 @@ import {
   type ParsedReport,
   type ReportParseResult,
   type ReportRegion,
-  type PreviewOrdersRequest,
   type TraceMoveOrdersRequest,
   type TradeRoute,
-  type ValidateOrdersRequest,
+  type ValidateOrdersRequest
 } from "@atlantis/core-client";
 import {
   createMemoryWebStore,
   type StoredStudyPlan,
-  type StoredTurnSnapshot,
+  type StoredTurnSnapshot
 } from "./webStore";
 import { createCoreWasmModuleDouble } from "./testing/coreWasmModuleDouble";
 
@@ -34,7 +35,7 @@ const EMPTY_PARSE_RESULT: ReportParseResult = {
   units: [],
   inventories: [],
   messageSummaries: [],
-  warnings: [],
+  warnings: []
 };
 
 /** Likewise for `ParsedReport`. */
@@ -44,7 +45,7 @@ const EMPTY_PARSED_REPORT: ParsedReport = {
   battles: [],
   blockedMoves: [],
   ordersTemplate: null,
-  unreadableLines: [],
+  unreadableLines: []
 };
 
 /** A single fixed answer `trade_routes_state` hands back, so a test can assert it passed straight through. */
@@ -61,13 +62,13 @@ const FAKE_TRADE_ROUTES: TradeRoute[] = [
         quantity: 15,
         margin: 240,
         buySeenTurn: null,
-        sellSeenTurn: null,
-      },
+        sellSeenTurn: null
+      }
     ],
     inbound: [],
     worth: 3600,
-    turns: { walk: null, ride: null, fly: null },
-  },
+    turns: { walk: null, ride: null, fly: null }
+  }
 ];
 
 /**
@@ -78,56 +79,25 @@ const FAKE_TRADE_ROUTES: TradeRoute[] = [
  */
 function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
   const stubs: Partial<CoreWasmModule> = {
-    get_engine_info: () => ({
-      id: "atlantis",
-      name: "Atlantis PBEM",
-      rulesetVersion: "4.0",
-      maxFactionCount: 128,
-    }),
+    // Every declared query (ah-w83n) answers with what it was asked, so a test can prove the name
+    // and the arguments crossed unshuffled. What each answers is the real core's business,
+    // pinned by the *.wasm.test.ts suites.
+    query: (name: string, args: unknown[]) => ({ query: name, args }),
     // `raw` rides along as an extra field (harmless - it is not part of `ReportParseResult`) so the
     // "routes logic calls to the core" test below can prove the argument crossed unshuffled.
     parse_report_state: (raw: string) => ({ ...EMPTY_PARSE_RESULT, raw }),
     parse_report_full_state: (_raw: string) => EMPTY_PARSED_REPORT,
-    roster_skills_state: (_raw: string) => [],
-    parse_report_classified_state: (_raw: string, _ruleset: string) =>
-      EMPTY_PARSED_REPORT,
-    validate_orders_state: (request: ValidateOrdersRequest) => ({
-      diagnostics: [],
-      silver: [],
-      production: {
-        limits: { pooled: null, tax: null, trade: null },
-        regions: [],
-      },
-      students: { quartermasters: 0, mages: 0, apprentices: 0 },
-      faction: { applied: null, lastFailure: null },
-      echoed: request,
-    }),
-    order_commands_state: () => ["GIVE", "MOVE", "WORK"],
-    order_vocabulary_state: () => ["ALL", "MOVE", "SILV"],
     order_argument_completions_state: () => [],
     completions_at_caret_state: () => ({
       position: "nowhere" as const,
       wordStart: 0,
       word: "",
       options: [],
-      endingCommands: [],
+      endingCommands: []
     }),
-    export_map_state: (
-      rawReport: string,
-      rememberedJson: string,
-      requestJson: string,
-    ) =>
-      `; Map export from Atlantis HUD\n; ${rawReport} ${rememberedJson} ${requestJson}\n`,
-    known_map_state: (
-      rawReport: string,
-      rulesetJson: string | null,
-      rememberedJson: string,
-    ) => ({
-      hexes: [],
-      levels: [],
-      currentTurn: null,
-      walls: [],
-      echoed: { rawReport, rulesetJson, rememberedJson },
+    known_map_state: (rawReport: string, rulesetJson: string | null, rememberedJson: string) => ({
+      ...aKnownMap({ currentTurn: null }),
+      echoed: { rawReport, rulesetJson, rememberedJson }
     }),
     plan_route_state: (
       rulesetJson: string,
@@ -135,33 +105,16 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       rememberedJson: string,
       unitId: string,
       destination: string,
-      mapJson: string,
+      mapJson: string
     ) => ({
       plan: null,
       problem: { kind: "noKnownRoute" },
       risk: null,
       fullyModelled: false,
-      echoed: {
-        rulesetJson,
-        rawReport,
-        rememberedJson,
-        unitId,
-        destination,
-        mapJson,
-      },
+      echoed: { rulesetJson, rawReport, rememberedJson, unitId, destination, mapJson }
     }),
-    trace_move_orders_state: (request: TraceMoveOrdersRequest) => ({
-      path: null,
-      echoed: request,
-    }),
-    preview_orders_state: (request: PreviewOrdersRequest) => ({
-      regions: [],
-      echoed: request,
-    }),
+    trace_move_orders_state: (request: TraceMoveOrdersRequest) => ({ path: null, echoed: request }),
     trade_routes_state: () => FAKE_TRADE_ROUTES,
-    shelter_seats_state: (rawReport: string, rulesetJson: string) => [
-      { regionId: rawReport, structureId: rulesetJson, seats: null },
-    ],
     prepare_report_import_state: (raw: string, confirmedFactionId: string) => {
       const hasTurn = raw.includes("TURN: 12");
       const factionMatches = raw.includes(`FACTION: ${confirmedFactionId}`);
@@ -170,14 +123,14 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
         candidate: {
           rawReport: raw,
           parsedPayloadJson: `parsed:${raw}`,
-          warningsPayloadJson: "[]",
+          warningsPayloadJson: "[]"
         },
         parseResult: { ...EMPTY_PARSE_RESULT, raw },
         rejection: !hasTurn
           ? "parsed report did not meet minimum import threshold"
           : factionMatches
             ? null
-            : "confirmed faction does not exist in parsed report candidates",
+            : "confirmed faction does not exist in parsed report candidates"
       };
     },
     // Echoes rather than decides, like the rest of this stand-in: what a reset actually keeps is
@@ -189,11 +142,11 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
         metadata: {
           gameId: previous.metadata.gameId,
           gameName: previous.metadata.gameName,
-          rulesetId: previous.metadata.rulesetId,
+          rulesetId: previous.metadata.rulesetId
         },
         reportSources: [],
         createdAt: now,
-        lastOpenedAt: now,
+        lastOpenedAt: now
       } satisfies GameManifest;
     },
     // Echoes rather than decides, like the reset above: what one edit does to a manifest is the
@@ -204,10 +157,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       const metadata = { ...manifest.metadata };
       switch (edit.kind) {
         case "opened":
-          return {
-            ...manifest,
-            lastOpenedAt: edit.value,
-          } satisfies GameManifest;
+          return { ...manifest, lastOpenedAt: edit.value } satisfies GameManifest;
         case "ruleset":
           metadata.rulesetId = edit.value;
           break;
@@ -217,14 +167,8 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
         case "activeFaction":
           metadata.activeFactionId = edit.value ?? undefined;
           break;
-        case "map":
-          if (edit.value === null) {
-            delete metadata.map;
-          } else {
-            metadata.map = edit.value;
-          }
-          break;
         case "mapSizes":
+          delete metadata.map;
           if (edit.value === null) {
             delete metadata.mapSizes;
           } else {
@@ -242,29 +186,19 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       _rulesetJson: string | null,
       existingImportedAt: string | null,
       _seenJson: string,
-      at: string,
-    ) => ({
-      importedAt: existingImportedAt ?? at,
-      updatedAt: at,
-      regionSightings: [],
-    }),
+      at: string
+    ) => ({ importedAt: existingImportedAt ?? at, updatedAt: at, regionSightings: [] }),
     diff_imported_turn_state: (existing: unknown, candidate: unknown) => {
       const stored = existing as StoredTurnSnapshot | null;
       const next = candidate as StoredTurnSnapshot;
       if (!stored) {
-        return {
-          exists: false,
-          rawChanged: false,
-          parsedChanged: false,
-          warningsChanged: false,
-        };
+        return { exists: false, rawChanged: false, parsedChanged: false, warningsChanged: false };
       }
       return {
         exists: true,
         rawChanged: stored.rawReport !== next.rawReport,
         parsedChanged: stored.parsedPayloadJson !== next.parsedPayloadJson,
-        warningsChanged:
-          stored.warningsPayloadJson !== next.warningsPayloadJson,
+        warningsChanged: stored.warningsPayloadJson !== next.warningsPayloadJson
       };
     },
     stored_season_state: () => undefined,
@@ -272,48 +206,35 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       (JSON.parse(recordsJson) as MergedReportRecord[]).sort(
         (left, right) =>
           left.mergedAt.localeCompare(right.mergedAt) ||
-          left.mergedFactionId.localeCompare(right.mergedFactionId),
+          left.mergedFactionId.localeCompare(right.mergedFactionId)
       ),
     // Self-consistent, not correct: dropping, back-filling and ordering are the core's, pinned in
     // `sighting.rs` and against the real module in `rememberedRegions.wasm.test.ts`. This stand-in
     // only has to agree with itself so the routing tests below read true.
     remembered_regions_state: (storedJson: string) =>
-      (
-        JSON.parse(storedJson) as Array<{
-          lastSeenTurn: number;
-          payloadJson: string;
-        }>
-      ).flatMap((sighting) => {
-        try {
-          const region = JSON.parse(
-            sighting.payloadJson,
-          ) as ReportRegion | null;
-          return region === null
-            ? []
-            : [{ region, lastSeenTurn: sighting.lastSeenTurn }];
-        } catch {
-          return [];
+      (JSON.parse(storedJson) as Array<{ lastSeenTurn: number; payloadJson: string }>).flatMap(
+        (sighting) => {
+          try {
+            const region = JSON.parse(sighting.payloadJson) as ReportRegion | null;
+            return region === null ? [] : [{ region, lastSeenTurn: sighting.lastSeenTurn }];
+          } catch {
+            return [];
+          }
         }
-      }),
+      ),
     // Self-consistent, not correct: the real rule (and its tie-break) is the core's, pinned in
     // `reopen.rs` and against the real module in `reopen.wasm.test.ts`. This stand-in only has to
     // agree with itself so the routing tests below - which check the adapter hands over every
     // turn and the remembered faction rather than deciding the ranking here - read true.
     latest_turn_state: (turnsJson: string, activeFactionId: string | null) => {
-      const turns = JSON.parse(turnsJson) as Array<{
-        factionId: string;
-        turnNumber: number;
-      }>;
+      const turns = JSON.parse(turnsJson) as Array<{ factionId: string; turnNumber: number }>;
       const mine = turns.filter((turn) => turn.factionId === activeFactionId);
       const pool = mine.length > 0 ? mine : turns;
       const latest = pool.reduce<(typeof pool)[number] | null>(
-        (best, turn) =>
-          best === null || turn.turnNumber > best.turnNumber ? turn : best,
-        null,
+        (best, turn) => (best === null || turn.turnNumber > best.turnNumber ? turn : best),
+        null
       );
-      return latest
-        ? { factionId: latest.factionId, turnNumber: latest.turnNumber }
-        : null;
+      return latest ? { factionId: latest.factionId, turnNumber: latest.turnNumber } : null;
     },
     /**
      * Self-consistent, not correct: it reads `MERGE: <factionId> <turn> <regionId,…>` out of the
@@ -325,10 +246,9 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       raw: string,
       viewerTurnNumber: number,
       viewerFactionId: string,
-      existingSightingsJson: string,
+      existingSightingsJson: string
     ) => {
-      const [, factionId, turn, regionList] =
-        /MERGE: (\S+) (\d+) (\S+)/u.exec(raw) ?? [];
+      const [, factionId, turn, regionList] = /MERGE: (\S+) (\d+) (\S+)/u.exec(raw) ?? [];
       // The real core answers this from the marker on the file's first line, and so does this.
       const mapExport = raw.startsWith("; Map export from Atlantis HUD");
       if (!factionId) {
@@ -340,7 +260,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
           mergedRegionCount: 0,
           newRegionCount: 0,
           mapExport: false,
-          rejection: "parsed report did not meet minimum import threshold",
+          rejection: "parsed report did not meet minimum import threshold"
         };
       }
       if (!mapExport && factionId === viewerFactionId) {
@@ -352,7 +272,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
           mergedRegionCount: 0,
           newRegionCount: 0,
           mapExport: false,
-          rejection: "a faction's own report is loaded rather than merged",
+          rejection: "a faction's own report is loaded rather than merged"
         };
       }
       if (!mapExport && Number(turn) !== viewerTurnNumber) {
@@ -364,13 +284,11 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
           mergedRegionCount: 0,
           newRegionCount: 0,
           mapExport: false,
-          rejection: `a report from turn ${turn} cannot be merged into turn ${viewerTurnNumber}`,
+          rejection: `a report from turn ${turn} cannot be merged into turn ${viewerTurnNumber}`
         };
       }
 
-      const existing = JSON.parse(existingSightingsJson) as Array<{
-        regionId: string;
-      }>;
+      const existing = JSON.parse(existingSightingsJson) as Array<{ regionId: string }>;
       const known = new Set(existing.map((sighting) => sighting.regionId));
       // Split on "|", because a region id has a comma in it.
       const regions = regionList.split("|");
@@ -381,13 +299,12 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
         regionSightings: regions.map((regionId) => ({
           regionId,
           lastSeenTurn: viewerTurnNumber,
-          payloadJson: JSON.stringify({ regionId, mergedFrom: factionId }),
+          payloadJson: JSON.stringify({ regionId, mergedFrom: factionId })
         })),
         mergedRegionCount: regions.length,
-        newRegionCount: regions.filter((regionId) => !known.has(regionId))
-          .length,
+        newRegionCount: regions.filter((regionId) => !known.has(regionId)).length,
         mapExport,
-        rejection: null,
+        rejection: null
       };
     },
     // Routing stand-ins, not the codec: the codec's rules are tested in Rust and against the real
@@ -398,10 +315,10 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
           format: "atlantis-hud-game-backup",
           version: 1,
           exportedAt,
-          ...JSON.parse(contentJson),
+          ...JSON.parse(contentJson)
         },
         null,
-        2,
+        2
       ),
     decode_game_backup_state: (backupJson: string, openedAt: string) => {
       const b = JSON.parse(backupJson) as Record<string, unknown>;
@@ -415,15 +332,12 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
         regionSightings: b.regionSightings ?? [],
         mergedReports: b.mergedReports ?? [],
         ...b,
-        manifest: {
-          ...(b.manifest as Record<string, unknown>),
-          lastOpenedAt: openedAt,
-        },
+        manifest: { ...(b.manifest as Record<string, unknown>), lastOpenedAt: openedAt },
         hexNotes: b.hexNotes ?? [],
-        armies: b.armies ?? [],
+        armies: b.armies ?? []
       } as unknown as ReturnType<CoreWasmModule["decode_game_backup_state"]>;
     },
-    ...overrides,
+    ...overrides
   };
   return createCoreWasmModuleDouble(stubs);
 }
@@ -448,11 +362,11 @@ function anArmy(id: string, gameId = "p"): ArmyRecord {
         combatSpell: null,
         men: 1,
         seenTurn: 71,
-        seenAt: "2026-08-01T09:00:00Z",
-      },
+        seenAt: "2026-08-01T09:00:00Z"
+      }
     ],
     createdAt: "2026-08-01T09:00:00Z",
-    updatedAt: "2026-08-01T09:00:00Z",
+    updatedAt: "2026-08-01T09:00:00Z"
   };
 }
 
@@ -468,7 +382,7 @@ function manifest(gameId: string, gameName: string): GameManifest {
     metadata: { gameId, gameName, rulesetId: "neworigins" },
     reportSources: [],
     createdAt: NOW,
-    lastOpenedAt: NOW,
+    lastOpenedAt: NOW
   };
 }
 
@@ -480,25 +394,20 @@ describe("web core adapter", () => {
 
     const updated = await adapter.editGameManifest("g1", {
       kind: "ruleset",
-      value: "magicdeep",
+      value: "magicdeep"
     });
 
     expect(updated.metadata.rulesetId).toBe("magicdeep");
     // And it stuck: the registry's copy is what every later open reads.
     const stored = await store.getGame("g1");
-    expect((stored?.manifest as GameManifest).metadata.rulesetId).toBe(
-      "magicdeep",
-    );
+    expect((stored?.manifest as GameManifest).metadata.rulesetId).toBe("magicdeep");
   });
 
   it("refuses to change the ruleset of a game it does not hold", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
     await expect(
-      adapter.editGameManifest("ghost", {
-        kind: "ruleset",
-        value: "magicdeep",
-      }),
+      adapter.editGameManifest("ghost", { kind: "ruleset", value: "magicdeep" })
     ).rejects.toThrow("no game with id ghost");
   });
 
@@ -509,15 +418,13 @@ describe("web core adapter", () => {
 
     const updated = await adapter.editGameManifest("g1", {
       kind: "name",
-      value: "Binding of the North",
+      value: "Binding of the North"
     });
 
     expect(updated.metadata.gameName).toBe("Binding of the North");
     // And it stuck: the registry's copy is what every later open reads.
     const stored = await store.getGame("g1");
-    expect((stored?.manifest as GameManifest).metadata.gameName).toBe(
-      "Binding of the North",
-    );
+    expect((stored?.manifest as GameManifest).metadata.gameName).toBe("Binding of the North");
   });
 
   it("remembers which faction is yours, and hands it back on the next open", async () => {
@@ -525,22 +432,17 @@ describe("web core adapter", () => {
     const adapter = createWebCoreAdapter(fakeWasm(), store);
     await adapter.createGame(manifest("g1", "Game One"));
 
-    await adapter.editGameManifest("g1", {
-      kind: "activeFaction",
-      value: "95",
-    });
+    await adapter.editGameManifest("g1", { kind: "activeFaction", value: "95" });
 
     const opened = await adapter.openGame("g1", "2026-08-17T00:00:00Z");
-    expect((opened.manifest as GameManifest).metadata.activeFactionId).toBe(
-      "95",
-    );
+    expect((opened.manifest as GameManifest).metadata.activeFactionId).toBe("95");
   });
 
   it("refuses to record an active faction for a game it does not hold", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
     await expect(
-      adapter.editGameManifest("ghost", { kind: "activeFaction", value: "95" }),
+      adapter.editGameManifest("ghost", { kind: "activeFaction", value: "95" })
     ).rejects.toThrow("no game with id ghost");
   });
 
@@ -548,28 +450,17 @@ describe("web core adapter", () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
     await expect(
-      adapter.editGameManifest("ghost", {
-        kind: "name",
-        value: "Binding of the North",
-      }),
+      adapter.editGameManifest("ghost", { kind: "name", value: "Binding of the North" })
     ).rejects.toThrow("no game with id ghost");
   });
 
   it("routes logic calls to the core rather than to storage", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    expect(await adapter.getEngineInfo()).toEqual({
-      id: "atlantis",
-      name: "Atlantis PBEM",
-      rulesetVersion: "4.0",
-      maxFactionCount: 128,
-    });
-    expect(await adapter.parseReport("anything")).toMatchObject({
-      raw: "anything",
-    });
-    // Every argument is asserted, not just the orders: the report and the option are what the
-    // checks that read the turn depend on, and an adapter that dropped them would still return a
-    // perfectly well-shaped answer with half the checks silently not run.
+    expect(await adapter.parseReport("anything")).toMatchObject({ raw: "anything" });
+    // Every field of the request is asserted, not just the orders: the report and the options are
+    // what the checks that read the turn depend on, and an adapter that dropped them would still
+    // return a perfectly well-shaped answer with half the checks silently not run.
     const validation: ValidateOrdersRequest = {
       rawOrders: "MOVE R1 R2",
       rulesetJson: null,
@@ -577,39 +468,12 @@ describe("web core adapter", () => {
       disabledCodes: ["hex-unguarded"],
       mapJson: "{}",
       knownPassagesJson: "[passages]",
-      rememberedJson: "[]",
+      rememberedJson: "[]"
     };
     expect(await adapter.validateOrders(validation)).toEqual({
-      diagnostics: [],
-      silver: [],
-      production: {
-        limits: { pooled: null, tax: null, trade: null },
-        regions: [],
-      },
-      students: { quartermasters: 0, mages: 0, apprentices: 0 },
-      faction: { applied: null, lastFailure: null },
-      echoed: validation,
+      query: "validate_orders",
+      args: [validation]
     });
-    expect(await adapter.orderCommands(null)).toEqual(["GIVE", "MOVE", "WORK"]);
-  });
-
-  it("hands the ruleset to the wasm vocabulary call", async () => {
-    let seen: string | null | undefined;
-    const adapter = createWebCoreAdapter(
-      fakeWasm({
-        order_vocabulary_state: (rulesetJson: string | null) => {
-          seen = rulesetJson;
-          return ["ALL", "MOVE", "SILV"];
-        },
-      }),
-    );
-
-    expect(await adapter.orderVocabulary("{}")).toEqual([
-      "ALL",
-      "MOVE",
-      "SILV",
-    ]);
-    expect(seen).toBe("{}");
   });
 
   it("routes an argument-completion call to the core, every argument included", async () => {
@@ -618,7 +482,7 @@ describe("web core adapter", () => {
       name: "",
       label: "",
       detail: "",
-      endsOrder: false,
+      endsOrder: false
     }));
     const adapter = createWebCoreAdapter(
       fakeWasm({
@@ -626,25 +490,17 @@ describe("web core adapter", () => {
           linePrefix: string,
           rulesetJson: string | null,
           rawReport: string | null,
-          unitId: string | null,
+          unitId: string | null
         ) =>
-          linePrefix === "NAME U" &&
-          rulesetJson === "the ruleset" &&
-          rawReport === "the report" &&
-          unitId === "18642"
+          linePrefix === "NAME U" && rulesetJson === "the ruleset" && rawReport === "the report" && unitId === "18642"
             ? nameables
-            : [],
+            : []
       }),
-      createMemoryWebStore(),
+      createMemoryWebStore()
     );
 
     expect(
-      await adapter.orderArgumentCompletions(
-        "NAME U",
-        "the ruleset",
-        "the report",
-        "18642",
-      ),
+      await adapter.orderArgumentCompletions("NAME U", "the ruleset", "the report", "18642")
     ).toEqual(nameables);
   });
 
@@ -657,11 +513,7 @@ describe("web core adapter", () => {
     const seen: Array<string | null> = [];
     const adapter = createWebCoreAdapter(
       fakeWasm({
-        prepare_report_import_state: (
-          raw: string,
-          _faction: string,
-          rulesetJson: string | null,
-        ) => {
+        prepare_report_import_state: (raw: string, _faction: string, rulesetJson: string | null) => {
           seen.push(rulesetJson);
           return fakeWasm().prepare_report_import_state(raw, "17", rulesetJson);
         },
@@ -670,7 +522,7 @@ describe("web core adapter", () => {
           rulesetJson: string | null,
           existingImportedAt: string | null,
           seenJson: string,
-          at: string,
+          at: string
         ) => {
           seen.push(rulesetJson);
           return fakeWasm().report_import_writes_state(
@@ -678,7 +530,7 @@ describe("web core adapter", () => {
             rulesetJson,
             existingImportedAt,
             seenJson,
-            at,
+            at
           );
         },
         prepare_report_merge_state: (
@@ -686,7 +538,7 @@ describe("web core adapter", () => {
           viewerTurnNumber: number,
           viewerFactionId: string,
           existingSightingsJson: string,
-          rulesetJson: string | null,
+          rulesetJson: string | null
         ) => {
           seen.push(rulesetJson);
           return fakeWasm().prepare_report_merge_state(
@@ -694,40 +546,21 @@ describe("web core adapter", () => {
             viewerTurnNumber,
             viewerFactionId,
             existingSightingsJson,
-            rulesetJson,
+            rulesetJson
           );
-        },
+        }
       }),
-      createMemoryWebStore(),
+      createMemoryWebStore()
     );
 
-    await adapter.commitReportImport(
-      DB,
-      "p",
-      "17",
-      REPORT,
-      '{"items":{}}',
-      false,
-      IMPORTED_AT,
-    );
-    await adapter.mergeReport(
-      DB,
-      "p",
-      "95",
-      12,
-      "MERGE: 73 12 1:1,1",
-      '{"items":{}}',
-      NOW,
-    );
+    await adapter.commitReportImport(DB, "p", "17", REPORT, '{"items":{}}', false, IMPORTED_AT);
+    await adapter.mergeReport(DB, "p", "95", 12, "MERGE: 73 12 1:1,1", '{"items":{}}', NOW);
 
     expect(seen).toEqual(['{"items":{}}', '{"items":{}}', '{"items":{}}']);
   });
 
   it("hands the stored stamp and sightings to the core, and writes back what it returns", async () => {
-    const seenArgs: Array<{
-      existingImportedAt: string | null;
-      seenJson: string;
-    }> = [];
+    const seenArgs: Array<{ existingImportedAt: string | null; seenJson: string }> = [];
     const adapter = createWebCoreAdapter(
       fakeWasm({
         report_import_writes_state: (
@@ -735,35 +568,22 @@ describe("web core adapter", () => {
           _rulesetJson: string | null,
           existingImportedAt: string | null,
           seenJson: string,
-          _at: string,
+          _at: string
         ) => {
           seenArgs.push({ existingImportedAt, seenJson });
           return {
             importedAt: "core-says-imported",
             updatedAt: "core-says-updated",
-            regionSightings: [
-              { regionId: "1:1,1", lastSeenTurn: 12, payloadJson: "{}" },
-            ],
+            regionSightings: [{ regionId: "1:1,1", lastSeenTurn: 12, payloadJson: "{}" }]
           };
-        },
+        }
       }),
-      createMemoryWebStore(),
+      createMemoryWebStore()
     );
 
-    await adapter.commitReportImport(
-      DB,
-      "p",
-      "17",
-      REPORT,
-      null,
-      false,
-      IMPORTED_AT,
-    );
+    await adapter.commitReportImport(DB, "p", "17", REPORT, null, false, IMPORTED_AT);
 
-    const listed = (await adapter.listImportedTurns(
-      DB,
-      "p",
-    )) as ImportedTurnSummary[];
+    const listed = (await adapter.listImportedTurns(DB, "p")) as ImportedTurnSummary[];
     expect(listed[0]?.importedAt).toBe("core-says-imported");
     expect(listed[0]?.updatedAt).toBe("core-says-updated");
 
@@ -771,7 +591,7 @@ describe("web core adapter", () => {
 
     expect(seenArgs[1]?.existingImportedAt).toBe("core-says-imported");
     expect(JSON.parse(seenArgs[1]?.seenJson ?? "[]")).toEqual([
-      { regionId: "1:1,1", lastSeenTurn: 12, payloadJson: "{}" },
+      { regionId: "1:1,1", lastSeenTurn: 12, payloadJson: "{}" }
     ]);
   });
 
@@ -782,81 +602,36 @@ describe("web core adapter", () => {
 
     expect(preview).toMatchObject({
       turnNumber: 12,
-      duplicatePreview: { exists: false, rawChanged: false },
+      duplicatePreview: { exists: false, rawChanged: false }
     });
   });
 
   it("detects a changed re-import of the same turn", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    await adapter.commitReportImport(
-      DB,
-      "p",
-      "17",
-      REPORT,
-      null,
-      false,
-      IMPORTED_AT,
-    );
+    await adapter.commitReportImport(DB, "p", "17", REPORT, null, false, IMPORTED_AT);
 
-    const preview = await adapter.previewReportImport(
-      DB,
-      "p",
-      "17",
-      `${REPORT}\nextra`,
-    );
+    const preview = await adapter.previewReportImport(DB, "p", "17", `${REPORT}\nextra`);
 
     expect(preview).toMatchObject({
-      duplicatePreview: { exists: true, rawChanged: true, parsedChanged: true },
+      duplicatePreview: { exists: true, rawChanged: true, parsedChanged: true }
     });
   });
 
   it("refuses to overwrite an existing turn without confirmation", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    await adapter.commitReportImport(
-      DB,
-      "p",
-      "17",
-      REPORT,
-      null,
-      false,
-      IMPORTED_AT,
-    );
+    await adapter.commitReportImport(DB, "p", "17", REPORT, null, false, IMPORTED_AT);
 
-    await expect(
-      adapter.commitReportImport(
-        DB,
-        "p",
-        "17",
-        REPORT,
-        null,
-        false,
-        IMPORTED_AT,
-      ),
-    ).rejects.toThrow(/requires explicit overwrite confirmation/u);
+    await expect(adapter.commitReportImport(DB, "p", "17", REPORT, null, false, IMPORTED_AT)).rejects.toThrow(
+      /requires explicit overwrite confirmation/u
+    );
   });
 
   it("overwrites when confirmation is given", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    await adapter.commitReportImport(
-      DB,
-      "p",
-      "17",
-      REPORT,
-      null,
-      false,
-      IMPORTED_AT,
-    );
+    await adapter.commitReportImport(DB, "p", "17", REPORT, null, false, IMPORTED_AT);
 
     await expect(
-      adapter.commitReportImport(
-        DB,
-        "p",
-        "17",
-        `${REPORT}\nextra`,
-        null,
-        true,
-        IMPORTED_AT,
-      ),
+      adapter.commitReportImport(DB, "p", "17", `${REPORT}\nextra`, null, true, IMPORTED_AT)
     ).resolves.toMatchObject({ exists: true, rawChanged: true });
 
     const loaded = await adapter.loadImportedTurn(DB, "p", "17", 12);
@@ -866,33 +641,17 @@ describe("web core adapter", () => {
   it("refuses an import the core rejects, using the core's own wording", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    await expect(
-      adapter.commitReportImport(
-        DB,
-        "p",
-        "17",
-        "no header",
-        null,
-        false,
-        IMPORTED_AT,
-      ),
-    ).rejects.toThrow(/did not meet minimum import threshold/u);
+    await expect(adapter.commitReportImport(DB, "p", "17", "no header", null, false, IMPORTED_AT)).rejects.toThrow(
+      /did not meet minimum import threshold/u
+    );
   });
 
   it("refuses an import under a faction the report does not contain", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    await expect(
-      adapter.commitReportImport(
-        DB,
-        "p",
-        "99",
-        REPORT,
-        null,
-        false,
-        IMPORTED_AT,
-      ),
-    ).rejects.toThrow(/confirmed faction does not exist/u);
+    await expect(adapter.commitReportImport(DB, "p", "99", REPORT, null, false, IMPORTED_AT)).rejects.toThrow(
+      /confirmed faction does not exist/u
+    );
   });
 
   it("treats an absent rejection field as admissible", async () => {
@@ -904,36 +663,24 @@ describe("web core adapter", () => {
         candidate: {
           rawReport: raw,
           parsedPayloadJson: `parsed:${raw}`,
-          warningsPayloadJson: "[]",
+          warningsPayloadJson: "[]"
         },
-        parseResult: { ...EMPTY_PARSE_RESULT, raw },
+        parseResult: { ...EMPTY_PARSE_RESULT, raw }
         // rejection deliberately absent
-      }),
+      })
     });
     const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
 
-    await expect(
-      adapter.commitReportImport(
-        DB,
-        "p",
-        "17",
-        REPORT,
-        null,
-        false,
-        IMPORTED_AT,
-      ),
-    ).resolves.toMatchObject({
-      exists: false,
+    await expect(adapter.commitReportImport(DB, "p", "17", REPORT, null, false, IMPORTED_AT)).resolves.toMatchObject({
+      exists: false
     });
   });
 
   it("still previews a report it would refuse to import", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    await expect(
-      adapter.previewReportImport(DB, "p", "99", REPORT),
-    ).resolves.toMatchObject({
-      turnNumber: 12,
+    await expect(adapter.previewReportImport(DB, "p", "99", REPORT)).resolves.toMatchObject({
+      turnNumber: 12
     });
   });
 
@@ -941,34 +688,13 @@ describe("web core adapter", () => {
     const store = createMemoryWebStore();
     const adapter = createWebCoreAdapter(fakeWasm(), store);
 
-    await adapter.commitReportImport(
-      "idb://campaign-a",
-      "p",
-      "17",
-      REPORT,
-      null,
-      false,
-      IMPORTED_AT,
-    );
+    await adapter.commitReportImport("idb://campaign-a", "p", "17", REPORT, null, false, IMPORTED_AT);
 
     // Same gameId, different game: must not be seen as a duplicate, and must not collide.
-    const preview = await adapter.previewReportImport(
-      "idb://campaign-b",
-      "p",
-      "17",
-      REPORT,
-    );
+    const preview = await adapter.previewReportImport("idb://campaign-b", "p", "17", REPORT);
     expect(preview).toMatchObject({ duplicatePreview: { exists: false } });
 
-    await adapter.commitReportImport(
-      "idb://campaign-b",
-      "p",
-      "17",
-      `${REPORT}\nextra`,
-      null,
-      false,
-      IMPORTED_AT,
-    );
+    await adapter.commitReportImport("idb://campaign-b", "p", "17", `${REPORT}\nextra`, null, false, IMPORTED_AT);
 
     const a = await adapter.loadImportedTurn("idb://campaign-a", "p", "17", 12);
     const b = await adapter.loadImportedTurn("idb://campaign-b", "p", "17", 12);
@@ -979,52 +705,26 @@ describe("web core adapter", () => {
   it("keeps order drafts apart across games sharing a game id", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    await adapter.saveOrderDraft(
-      "idb://campaign-a",
-      "p",
-      "17",
-      12,
-      "@work",
-      "t0",
-    );
-    await adapter.saveOrderDraft(
-      "idb://campaign-b",
-      "p",
-      "17",
-      12,
-      "@study comb",
-      "t1",
-    );
+    await adapter.saveOrderDraft("idb://campaign-a", "p", "17", 12, "@work", "t0");
+    await adapter.saveOrderDraft("idb://campaign-b", "p", "17", 12, "@study comb", "t1");
 
-    expect(
-      await adapter.loadOrderDraft("idb://campaign-a", "p", "17", 12),
-    ).toMatchObject({
-      orderText: "@work",
+    expect(await adapter.loadOrderDraft("idb://campaign-a", "p", "17", 12)).toMatchObject({
+      orderText: "@work"
     });
-    expect(
-      await adapter.loadOrderDraft("idb://campaign-b", "p", "17", 12),
-    ).toMatchObject({
-      orderText: "@study comb",
+    expect(await adapter.loadOrderDraft("idb://campaign-b", "p", "17", 12)).toMatchObject({
+      orderText: "@study comb"
     });
   });
 
   it("loads a stored turn as its report's text, leaving the stored parse in storage", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    await adapter.commitReportImport(
-      DB,
-      "p",
-      "17",
-      REPORT,
-      null,
-      false,
-      IMPORTED_AT,
-    );
+    await adapter.commitReportImport(DB, "p", "17", REPORT, null, false, IMPORTED_AT);
 
     const loaded = await adapter.loadImportedTurn(DB, "p", "17", 12);
 
     expect(loaded).toEqual({
       key: { gameId: "p", factionId: "17", turnNumber: 12 },
-      rawReport: REPORT,
+      rawReport: REPORT
     });
   });
 
@@ -1050,98 +750,46 @@ describe("web core adapter", () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     const OTHER = "TURN: 12 Spring\nFACTION: 18 | Azure Wake";
 
-    await adapter.commitReportImport(
-      DB,
-      "p",
-      "17",
-      REPORT,
-      null,
-      false,
-      "2026-08-09T18:00:00Z",
-    );
-    await adapter.commitReportImport(
-      DB,
-      "p",
-      "18",
-      OTHER,
-      null,
-      false,
-      "2026-08-09T19:00:00Z",
-    );
+    await adapter.commitReportImport(DB, "p", "17", REPORT, null, false, "2026-08-09T18:00:00Z");
+    await adapter.commitReportImport(DB, "p", "18", OTHER, null, false, "2026-08-09T19:00:00Z");
 
     // Remembering none, the fallback takes the game's highest turn - here a tie the stand-in
     // settles on the first it saw.
     expect(await adapter.loadLatestImportedTurn(DB, "p", null)).toMatchObject({
-      key: { gameId: "p", turnNumber: 12 },
+      key: { gameId: "p", turnNumber: 12 }
     });
 
     // Remembering one, that faction's turn is the answer whatever else the game holds.
     expect(await adapter.loadLatestImportedTurn(DB, "p", "17")).toMatchObject({
       key: { gameId: "p", factionId: "17", turnNumber: 12 },
-      rawReport: REPORT,
+      rawReport: REPORT
     });
   });
 
   it("never reopens one game on another game's turn", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    await adapter.commitReportImport(
-      "idb://campaign-a",
-      "p",
-      "17",
-      REPORT,
-      null,
-      false,
-      IMPORTED_AT,
-    );
+    await adapter.commitReportImport("idb://campaign-a", "p", "17", REPORT, null, false, IMPORTED_AT);
 
-    expect(
-      await adapter.loadLatestImportedTurn("idb://campaign-b", "p", null),
-    ).toBeNull();
+    expect(await adapter.loadLatestImportedTurn("idb://campaign-b", "p", null)).toBeNull();
   });
 
   it("hands every turn and the remembered faction to the core, two fields each", async () => {
     let seenTurnsJson = "";
     let seenFaction: string | null | undefined;
     const wasm = fakeWasm({
-      latest_turn_state: (
-        turnsJson: string,
-        activeFactionId: string | null,
-      ) => {
+      latest_turn_state: (turnsJson: string, activeFactionId: string | null) => {
         seenTurnsJson = turnsJson;
         seenFaction = activeFactionId;
         return { factionId: "17", turnNumber: 12 };
-      },
+      }
     });
     const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
     const OTHER = "TURN: 12 Spring\nFACTION: 18 | Azure Wake";
 
-    await adapter.commitReportImport(
-      DB,
-      "p",
-      "17",
-      REPORT,
-      null,
-      false,
-      "2026-08-09T18:00:00Z",
-    );
-    await adapter.commitReportImport(
-      DB,
-      "p",
-      "18",
-      OTHER,
-      null,
-      false,
-      "2026-08-09T19:00:00Z",
-    );
-    await adapter.saveOrderDraft(
-      DB,
-      "p",
-      "18",
-      12,
-      "@work",
-      "2026-08-09T20:00:00Z",
-    );
+    await adapter.commitReportImport(DB, "p", "17", REPORT, null, false, "2026-08-09T18:00:00Z");
+    await adapter.commitReportImport(DB, "p", "18", OTHER, null, false, "2026-08-09T19:00:00Z");
+    await adapter.saveOrderDraft(DB, "p", "18", 12, "@work", "2026-08-09T20:00:00Z");
 
     const result = await adapter.loadLatestImportedTurn(DB, "p", "17");
 
@@ -1149,8 +797,8 @@ describe("web core adapter", () => {
     expect(seenTurns).toEqual(
       expect.arrayContaining([
         { factionId: "17", turnNumber: 12 },
-        { factionId: "18", turnNumber: 12 },
-      ]),
+        { factionId: "18", turnNumber: 12 }
+      ])
     );
     expect(seenTurns).toHaveLength(2);
     expect(seenFaction).toBe("17");
@@ -1159,25 +807,14 @@ describe("web core adapter", () => {
 
   it("refuses to answer with a turn the store does not hold, rather than silently returning nothing", async () => {
     const wasm = fakeWasm({
-      latest_turn_state: () => ({
-        factionId: "never-imported",
-        turnNumber: 999,
-      }),
+      latest_turn_state: () => ({ factionId: "never-imported", turnNumber: 999 })
     });
     const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
 
-    await adapter.commitReportImport(
-      DB,
-      "p",
-      "17",
-      REPORT,
-      null,
-      false,
-      IMPORTED_AT,
-    );
+    await adapter.commitReportImport(DB, "p", "17", REPORT, null, false, IMPORTED_AT);
 
     await expect(adapter.loadLatestImportedTurn(DB, "p", null)).rejects.toThrow(
-      "the core named a turn the store does not hold",
+      "the core named a turn the store does not hold"
     );
   });
 
@@ -1192,41 +829,17 @@ describe("web core adapter", () => {
    * reading the desktop's store uses), without rebuilding the parse.
    */
   it("lists every imported turn of a game", async () => {
-    const wasm = fakeWasm({
-      stored_season_state: () => "Spring",
-    });
+    const wasm = fakeWasm({ stored_season_state: () => "Spring" });
     const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
     const OTHER = "TURN: 12 Spring\nFACTION: 18 | Azure Wake";
 
-    await adapter.commitReportImport(
-      DB,
-      "p",
-      "17",
-      REPORT,
-      null,
-      false,
-      IMPORTED_AT,
-    );
-    await adapter.commitReportImport(
-      DB,
-      "p",
-      "18",
-      OTHER,
-      null,
-      false,
-      IMPORTED_AT,
-    );
+    await adapter.commitReportImport(DB, "p", "17", REPORT, null, false, IMPORTED_AT);
+    await adapter.commitReportImport(DB, "p", "18", OTHER, null, false, IMPORTED_AT);
 
-    const listed = (await adapter.listImportedTurns(
-      DB,
-      "p",
-    )) as ImportedTurnSummary[];
+    const listed = (await adapter.listImportedTurns(DB, "p")) as ImportedTurnSummary[];
 
     expect(listed).toHaveLength(2);
-    expect(listed.map((summary) => summary.key.factionId).sort()).toEqual([
-      "17",
-      "18",
-    ]);
+    expect(listed.map((summary) => summary.key.factionId).sort()).toEqual(["17", "18"]);
     expect(listed.every((summary) => summary.key.turnNumber === 12)).toBe(true);
     expect(listed.every((summary) => summary.season === "Spring")).toBe(true);
   });
@@ -1237,8 +850,7 @@ describe("web core adapter", () => {
    */
   it("still lists a turn whose payload has no season the core can read", async () => {
     const wasm = fakeWasm({
-      stored_season_state: (json: string) =>
-        json === "not json at all" ? undefined : "Spring",
+      stored_season_state: (json: string) => (json === "not json at all" ? undefined : "Spring")
     });
     const store = createMemoryWebStore();
     const adapter = createWebCoreAdapter(wasm, store);
@@ -1252,13 +864,10 @@ describe("web core adapter", () => {
       parsedPayloadJson: "not json at all",
       warningsPayloadJson: "[]",
       importedAt: IMPORTED_AT,
-      updatedAt: IMPORTED_AT,
+      updatedAt: IMPORTED_AT
     });
 
-    const listed = (await adapter.listImportedTurns(
-      DB,
-      "p",
-    )) as ImportedTurnSummary[];
+    const listed = (await adapter.listImportedTurns(DB, "p")) as ImportedTurnSummary[];
 
     expect(listed).toHaveLength(1);
     expect(listed[0].season).toBeNull();
@@ -1267,19 +876,12 @@ describe("web core adapter", () => {
   it("round trips an order draft", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    await adapter.saveOrderDraft(
-      DB,
-      "p",
-      "17",
-      12,
-      "@work",
-      "2026-08-08T00:00:00Z",
-    );
+    await adapter.saveOrderDraft(DB, "p", "17", 12, "@work", "2026-08-08T00:00:00Z");
 
     expect(await adapter.loadOrderDraft(DB, "p", "17", 12)).toEqual({
       key: { gameId: "p", factionId: "17", turnNumber: 12 },
       orderText: "@work",
-      updatedAt: "2026-08-08T00:00:00Z",
+      updatedAt: "2026-08-08T00:00:00Z"
     });
   });
 
@@ -1299,7 +901,7 @@ describe("web core adapter", () => {
       onMap: true,
       turn: 12,
       createdAt: "2026-08-01T09:00:00Z",
-      updatedAt: "2026-08-01T09:00:00Z",
+      updatedAt: "2026-08-01T09:00:00Z"
     });
     await adapter.saveHexNote(DB, {
       id: "note-newer",
@@ -1309,14 +911,11 @@ describe("web core adapter", () => {
       onMap: false,
       turn: 13,
       createdAt: "2026-08-02T09:00:00Z",
-      updatedAt: "2026-08-02T09:00:00Z",
+      updatedAt: "2026-08-02T09:00:00Z"
     });
 
     const listed = (await adapter.listHexNotes(DB, "p")) as HexNoteRecord[];
-    expect(listed.map((note) => note.id).sort()).toEqual([
-      "note-newer",
-      "note-older",
-    ]);
+    expect(listed.map((note) => note.id).sort()).toEqual(["note-newer", "note-older"]);
   });
 
   it("saves an Army through the adapter and lists it back with its members", async () => {
@@ -1339,11 +938,11 @@ describe("web core adapter", () => {
           combatSpell: { name: "fire", tag: "FIRE" },
           men: 12,
           seenTurn: 68,
-          seenAt: "2026-08-01T09:00:00Z",
-        },
+          seenAt: "2026-08-01T09:00:00Z"
+        }
       ],
       createdAt: "2026-08-01T09:00:00Z",
-      updatedAt: "2026-08-01T09:00:00Z",
+      updatedAt: "2026-08-01T09:00:00Z"
     };
 
     await adapter.saveArmy(DB, army);
@@ -1378,17 +977,11 @@ describe("web core adapter", () => {
       DB,
       "p",
       [aMage("9003")],
-      [{ factionId: "21", unitId: "9002" }],
+      [{ factionId: "21", unitId: "9002" }]
     );
 
-    const listed = (await adapter.listAlliedMages(
-      DB,
-      "p",
-    )) as AlliedMageRecord[];
-    expect(listed.map((mage) => mage.unit.unitId).sort()).toEqual([
-      "9001",
-      "9003",
-    ]);
+    const listed = (await adapter.listAlliedMages(DB, "p")) as AlliedMageRecord[];
+    expect(listed.map((mage) => mage.unit.unitId).sort()).toEqual(["9001", "9003"]);
   });
 
   // The same resolution the desktop store documents and pins: `removed` is applied first, so a
@@ -1397,12 +990,7 @@ describe("web core adapter", () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     const mage = aMage("9001");
 
-    await adapter.saveAlliedMages(
-      DB,
-      "p",
-      [mage],
-      [{ factionId: "21", unitId: "9001" }],
-    );
+    await adapter.saveAlliedMages(DB, "p", [mage], [{ factionId: "21", unitId: "9001" }]);
 
     expect(await adapter.listAlliedMages(DB, "p")).toEqual([mage]);
   });
@@ -1414,20 +1002,12 @@ describe("web core adapter", () => {
     await adapter.saveAlliedMages("idb://campaign-b", "p", [aMage("9002")], []);
 
     expect(
-      (
-        (await adapter.listAlliedMages(
-          "idb://campaign-a",
-          "p",
-        )) as AlliedMageRecord[]
-      )[0].unit.unitId,
+      ((await adapter.listAlliedMages("idb://campaign-a", "p")) as AlliedMageRecord[])[0].unit
+        .unitId
     ).toBe("9001");
     expect(
-      (
-        (await adapter.listAlliedMages(
-          "idb://campaign-b",
-          "p",
-        )) as AlliedMageRecord[]
-      )[0].unit.unitId,
+      ((await adapter.listAlliedMages("idb://campaign-b", "p")) as AlliedMageRecord[])[0].unit
+        .unitId
     ).toBe("9002");
   });
 
@@ -1446,13 +1026,13 @@ describe("web core adapter", () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     const live: StudyPlanRecord = {
       ...aStudyPlan("9001"),
-      goals: [{ kind: "teach", turn: 25, students: [], live: true }],
+      goals: [{ kind: "teach", turn: 25, students: [], live: true }]
     };
     // The cast is the point of this row: it omits `live` because it models a plan stored before
     // that field existed. Do not "tidy" it by adding `live: false` - that deletes its premise.
     const named = {
       ...aStudyPlan("9002"),
-      goals: [{ kind: "teach", turn: 25, students: ["2517"] }],
+      goals: [{ kind: "teach", turn: 25, students: ["2517"] }]
     } as unknown as StudyPlanRecord;
 
     await adapter.saveStudyPlans(DB, "p", [live, named], []);
@@ -1475,15 +1055,7 @@ describe("web core adapter", () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     const stored = {
       ...aStudyPlan("9001"),
-      goals: [
-        {
-          kind: "teach",
-          turn: 25,
-          students: [],
-          live: true,
-          fieldAddedLater: "kept",
-        },
-      ],
+      goals: [{ kind: "teach", turn: 25, students: [], live: true, fieldAddedLater: "kept" }]
     } as unknown as StudyPlanRecord;
 
     await adapter.saveStudyPlans(DB, "p", [stored], []);
@@ -1496,7 +1068,7 @@ describe("web core adapter", () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     const stored = {
       ...aStudyPlan("9001"),
-      fieldAddedLater: "kept",
+      fieldAddedLater: "kept"
     } as unknown as StudyPlanRecord;
 
     await adapter.saveStudyPlans(DB, "p", [stored], []);
@@ -1507,18 +1079,13 @@ describe("web core adapter", () => {
 
   it("removes the study plans named in the same call that stores the rest", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    await adapter.saveStudyPlans(
-      DB,
-      "p",
-      [aStudyPlan("9001"), aStudyPlan("9002")],
-      [],
-    );
+    await adapter.saveStudyPlans(DB, "p", [aStudyPlan("9001"), aStudyPlan("9002")], []);
 
     await adapter.saveStudyPlans(
       DB,
       "p",
       [aStudyPlan("9003")],
-      [{ factionId: "21", unitId: "9002" }],
+      [{ factionId: "21", unitId: "9002" }]
     );
 
     const listed = (await adapter.listStudyPlans(DB, "p")) as StudyPlanRecord[];
@@ -1531,12 +1098,7 @@ describe("web core adapter", () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     const plan = aStudyPlan("9001");
 
-    await adapter.saveStudyPlans(
-      DB,
-      "p",
-      [plan],
-      [{ factionId: "21", unitId: "9001" }],
-    );
+    await adapter.saveStudyPlans(DB, "p", [plan], [{ factionId: "21", unitId: "9001" }]);
 
     expect(await adapter.listStudyPlans(DB, "p")).toEqual([plan]);
   });
@@ -1557,7 +1119,7 @@ describe("web core adapter", () => {
           skill: "FORC",
           targetLevel: 4,
           comment: "heading for Gate Lore",
-          updatedAt: "2026-08-07T12:00:00Z",
+          updatedAt: "2026-08-07T12:00:00Z"
         } as unknown as StoredStudyPlan,
         {
           databasePath: DB,
@@ -1566,21 +1128,19 @@ describe("web core adapter", () => {
           skill: null,
           targetLevel: null,
           comment: "just a note",
-          updatedAt: "2026-08-07T12:00:00Z",
-        } as unknown as StoredStudyPlan,
+          updatedAt: "2026-08-07T12:00:00Z"
+        } as unknown as StoredStudyPlan
       ],
-      [],
+      []
     );
 
     const listed = (await adapter.listStudyPlans(DB, "p")) as StudyPlanRecord[];
 
     expect(listed.map((plan) => plan.goals)).toEqual([
       [{ kind: "study", turn: 0, skill: "FORC" }],
-      [],
+      []
     ]);
-    expect(
-      listed.every((plan) => !("skill" in plan) && !("targetLevel" in plan)),
-    ).toBe(true);
+    expect(listed.every((plan) => !("skill" in plan) && !("targetLevel" in plan))).toBe(true);
   });
 
   // ah-lyg6.3: a goal written before the tagged union carries no `kind`. The same read path
@@ -1597,7 +1157,7 @@ describe("web core adapter", () => {
           unitId: "9001",
           goals: [{ skill: "FORC", targetLevel: 4 }],
           comment: "",
-          updatedAt: "2026-08-07T12:00:00Z",
+          updatedAt: "2026-08-07T12:00:00Z"
         } as unknown as StoredStudyPlan,
         {
           databasePath: DB,
@@ -1605,51 +1165,31 @@ describe("web core adapter", () => {
           unitId: "9002",
           goals: [{ kind: "teach", students: ["2517"] }],
           comment: "",
-          updatedAt: "2026-08-07T12:00:00Z",
-        } as unknown as StoredStudyPlan,
+          updatedAt: "2026-08-07T12:00:00Z"
+        } as unknown as StoredStudyPlan
       ],
-      [],
+      []
     );
 
     const listed = (await adapter.listStudyPlans(DB, "p")) as StudyPlanRecord[];
 
     expect(listed.map((plan) => plan.goals)).toEqual([
       [{ kind: "study", turn: 0, skill: "FORC" }],
-      [{ kind: "teach", turn: 0, students: ["2517"], live: false }],
+      [{ kind: "teach", turn: 0, students: ["2517"], live: false }]
     ]);
   });
 
   it("keeps study plans apart per database", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    await adapter.saveStudyPlans(
-      "idb://campaign-a",
-      "p",
-      [aStudyPlan("9001")],
-      [],
-    );
-    await adapter.saveStudyPlans(
-      "idb://campaign-b",
-      "p",
-      [aStudyPlan("9002")],
-      [],
-    );
+    await adapter.saveStudyPlans("idb://campaign-a", "p", [aStudyPlan("9001")], []);
+    await adapter.saveStudyPlans("idb://campaign-b", "p", [aStudyPlan("9002")], []);
 
     expect(
-      (
-        (await adapter.listStudyPlans(
-          "idb://campaign-a",
-          "p",
-        )) as StudyPlanRecord[]
-      )[0].unitId,
+      ((await adapter.listStudyPlans("idb://campaign-a", "p")) as StudyPlanRecord[])[0].unitId
     ).toBe("9001");
     expect(
-      (
-        (await adapter.listStudyPlans(
-          "idb://campaign-b",
-          "p",
-        )) as StudyPlanRecord[]
-      )[0].unitId,
+      ((await adapter.listStudyPlans("idb://campaign-b", "p")) as StudyPlanRecord[])[0].unitId
     ).toBe("9002");
   });
 
@@ -1659,15 +1199,11 @@ describe("web core adapter", () => {
     await adapter.saveArmy("idb://campaign-a", anArmy("army-a"));
     await adapter.saveArmy("idb://campaign-b", anArmy("army-b"));
 
-    expect(
-      ((await adapter.listArmies("idb://campaign-a", "p")) as ArmyRecord[])[0],
-    ).toMatchObject({
-      id: "army-a",
+    expect(((await adapter.listArmies("idb://campaign-a", "p")) as ArmyRecord[])[0]).toMatchObject({
+      id: "army-a"
     });
-    expect(
-      ((await adapter.listArmies("idb://campaign-b", "p")) as ArmyRecord[])[0],
-    ).toMatchObject({
-      id: "army-b",
+    expect(((await adapter.listArmies("idb://campaign-b", "p")) as ArmyRecord[])[0]).toMatchObject({
+      id: "army-b"
     });
   });
 
@@ -1683,7 +1219,7 @@ describe("web core adapter", () => {
       onMap: true,
       turn: 12,
       createdAt: "2026-08-01T09:00:00Z",
-      updatedAt: "2026-08-01T09:00:00Z",
+      updatedAt: "2026-08-01T09:00:00Z"
     });
 
     await adapter.deleteHexNote(DB, "p", "note-1");
@@ -1703,7 +1239,7 @@ describe("web core adapter", () => {
       onMap: true,
       turn: 12,
       createdAt: "2026-08-01T09:00:00Z",
-      updatedAt: "2026-08-01T09:00:00Z",
+      updatedAt: "2026-08-01T09:00:00Z"
     });
     await adapter.saveHexNote("idb://campaign-b", {
       id: "note-1",
@@ -1713,22 +1249,14 @@ describe("web core adapter", () => {
       onMap: true,
       turn: 12,
       createdAt: "2026-08-01T09:00:00Z",
-      updatedAt: "2026-08-01T09:00:00Z",
+      updatedAt: "2026-08-01T09:00:00Z"
     });
 
-    expect(
-      (
-        (await adapter.listHexNotes("idb://campaign-a", "p")) as HexNoteRecord[]
-      )[0],
-    ).toMatchObject({
-      text: "in a",
+    expect(((await adapter.listHexNotes("idb://campaign-a", "p")) as HexNoteRecord[])[0]).toMatchObject({
+      text: "in a"
     });
-    expect(
-      (
-        (await adapter.listHexNotes("idb://campaign-b", "p")) as HexNoteRecord[]
-      )[0],
-    ).toMatchObject({
-      text: "in b",
+    expect(((await adapter.listHexNotes("idb://campaign-b", "p")) as HexNoteRecord[])[0]).toMatchObject({
+      text: "in b"
     });
   });
 
@@ -1737,9 +1265,7 @@ describe("web core adapter", () => {
 
     await adapter.createGame(manifest("p", "P"));
 
-    await expect(adapter.createGame(manifest("p", "P"))).rejects.toThrow(
-      /already exists/u,
-    );
+    await expect(adapter.createGame(manifest("p", "P"))).rejects.toThrow(/already exists/u);
   });
 
   it("fails to open a game that was never created", async () => {
@@ -1756,10 +1282,7 @@ describe("managing games", () => {
 
     const listed = (await adapter.listGames()) as GameManifest[];
 
-    expect(listed.map((game) => game.metadata.gameId).sort()).toEqual([
-      "alpha",
-      "beta",
-    ]);
+    expect(listed.map((game) => game.metadata.gameId).sort()).toEqual(["alpha", "beta"]);
   });
 
   it("has no games before any is created", async () => {
@@ -1783,9 +1306,7 @@ describe("managing games", () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     await adapter.createGame(manifest("alpha", "Alpha"));
 
-    const opened = (await adapter.openGame("alpha", NOW)) as {
-      manifest: GameManifest;
-    };
+    const opened = (await adapter.openGame("alpha", NOW)) as { manifest: GameManifest };
 
     expect(opened.manifest.metadata.rulesetId).toBe("neworigins");
   });
@@ -1796,33 +1317,17 @@ describe("managing games", () => {
    */
   it("keeps one game's turns out of another, and deletes them with the game", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    const alpha = (await adapter.createGame(manifest("alpha", "Alpha"))) as {
-      databasePath: string;
-    };
-    const beta = (await adapter.createGame(manifest("beta", "Beta"))) as {
-      databasePath: string;
-    };
+    const alpha = (await adapter.createGame(manifest("alpha", "Alpha"))) as { databasePath: string };
+    const beta = (await adapter.createGame(manifest("beta", "Beta"))) as { databasePath: string };
 
-    await adapter.commitReportImport(
-      alpha.databasePath,
-      "alpha",
-      "17",
-      REPORT,
-      null,
-      false,
-      IMPORTED_AT,
-    );
+    await adapter.commitReportImport(alpha.databasePath, "alpha", "17", REPORT, null, false, IMPORTED_AT);
 
-    expect(
-      await adapter.loadImportedTurn(beta.databasePath, "beta", "17", 12),
-    ).toBeNull();
+    expect(await adapter.loadImportedTurn(beta.databasePath, "beta", "17", 12)).toBeNull();
 
     await adapter.deleteGame("alpha");
 
     expect((await adapter.listGames()) as GameManifest[]).toHaveLength(1);
-    expect(
-      await adapter.loadImportedTurn(alpha.databasePath, "alpha", "17", 12),
-    ).toBeNull();
+    expect(await adapter.loadImportedTurn(alpha.databasePath, "alpha", "17", 12)).toBeNull();
   });
 
   it("fails to delete a game that is not there", async () => {
@@ -1832,9 +1337,7 @@ describe("managing games", () => {
 
   it("empties a game and keeps it in the list", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    const alpha = (await adapter.createGame(manifest("alpha", "Alpha"))) as {
-      databasePath: string;
-    };
+    const alpha = (await adapter.createGame(manifest("alpha", "Alpha"))) as { databasePath: string };
     await adapter.commitReportImport(
       alpha.databasePath,
       "alpha",
@@ -1842,7 +1345,7 @@ describe("managing games", () => {
       REPORT,
       null,
       false,
-      IMPORTED_AT,
+      IMPORTED_AT
     );
     await adapter.saveHexNote(alpha.databasePath, {
       id: "note-1",
@@ -1852,30 +1355,22 @@ describe("managing games", () => {
       onMap: true,
       turn: 12,
       createdAt: IMPORTED_AT,
-      updatedAt: IMPORTED_AT,
+      updatedAt: IMPORTED_AT
     });
 
     await adapter.resetGame("alpha", "2026-08-17T09:00:00Z");
 
     expect((await adapter.listGames()) as GameManifest[]).toHaveLength(1);
-    expect(
-      await adapter.loadLatestImportedTurn(alpha.databasePath, "alpha", null),
-    ).toBeNull();
+    expect(await adapter.loadLatestImportedTurn(alpha.databasePath, "alpha", null)).toBeNull();
     expect(await adapter.listHexNotes(alpha.databasePath, "alpha")).toEqual([]);
   });
 
   it("keeps the name and ruleset and forgets the faction", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     await adapter.createGame(manifest("alpha", "Alpha"));
-    await adapter.editGameManifest("alpha", {
-      kind: "activeFaction",
-      value: "17",
-    });
+    await adapter.editGameManifest("alpha", { kind: "activeFaction", value: "17" });
 
-    const reset = (await adapter.resetGame(
-      "alpha",
-      "2026-08-17T09:00:00Z",
-    )) as {
+    const reset = (await adapter.resetGame("alpha", "2026-08-17T09:00:00Z")) as {
       manifest: GameManifest;
     };
 
@@ -1886,10 +1381,7 @@ describe("managing games", () => {
     expect(reset.manifest.createdAt).toBe("2026-08-17T09:00:00Z");
 
     // And it stuck: what a later open reads is the emptied manifest, not the old one.
-    const reopened = (await adapter.openGame(
-      "alpha",
-      "2026-08-17T10:00:00Z",
-    )) as {
+    const reopened = (await adapter.openGame("alpha", "2026-08-17T10:00:00Z")) as {
       manifest: GameManifest;
     };
     expect(reopened.manifest.metadata.gameName).toBe("Alpha");
@@ -1899,12 +1391,8 @@ describe("managing games", () => {
 
   it("a reset game is not another game's business", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    const alpha = (await adapter.createGame(manifest("alpha", "Alpha"))) as {
-      databasePath: string;
-    };
-    const beta = (await adapter.createGame(manifest("beta", "Beta"))) as {
-      databasePath: string;
-    };
+    const alpha = (await adapter.createGame(manifest("alpha", "Alpha"))) as { databasePath: string };
+    const beta = (await adapter.createGame(manifest("beta", "Beta"))) as { databasePath: string };
     await adapter.commitReportImport(
       beta.databasePath,
       "beta",
@@ -1912,16 +1400,14 @@ describe("managing games", () => {
       REPORT,
       null,
       false,
-      IMPORTED_AT,
+      IMPORTED_AT
     );
 
     await adapter.resetGame("alpha", "2026-08-17T09:00:00Z");
 
     expect((await adapter.listGames()) as GameManifest[]).toHaveLength(2);
-    expect(
-      await adapter.loadLatestImportedTurn(beta.databasePath, "beta", null),
-    ).toMatchObject({
-      key: { gameId: "beta", factionId: "17", turnNumber: 12 },
+    expect(await adapter.loadLatestImportedTurn(beta.databasePath, "beta", null)).toMatchObject({
+      key: { gameId: "beta", factionId: "17", turnNumber: 12 }
     });
     expect(alpha.databasePath).not.toBe(beta.databasePath);
   });
@@ -1931,26 +1417,16 @@ describe("exporting and importing games", () => {
   it("round trips one whole game through one backup file", async () => {
     const store = createMemoryWebStore();
     const adapter = createWebCoreAdapter(fakeWasm(), store);
-    const opened = (await adapter.createGame(manifest("alpha", "Alpha"))) as {
-      databasePath: string;
-    };
+    const opened = (await adapter.createGame(manifest("alpha", "Alpha"))) as { databasePath: string };
 
-    await adapter.commitReportImport(
-      opened.databasePath,
-      "alpha",
-      "17",
-      REPORT,
-      null,
-      false,
-      IMPORTED_AT,
-    );
+    await adapter.commitReportImport(opened.databasePath, "alpha", "17", REPORT, null, false, IMPORTED_AT);
     await adapter.saveOrderDraft(
       opened.databasePath,
       "alpha",
       "17",
       12,
       "@work\n@study combat",
-      "2026-08-08T00:00:00Z",
+      "2026-08-08T00:00:00Z"
     );
     await store.putRegionSightings([
       {
@@ -1959,12 +1435,8 @@ describe("exporting and importing games", () => {
         factionId: "17",
         regionId: "1:7,53",
         lastSeenTurn: 12,
-        payloadJson: JSON.stringify({
-          regionId: "1:7,53",
-          terrain: "plain",
-          exits: [],
-        }),
-      },
+        payloadJson: JSON.stringify({ regionId: "1:7,53", terrain: "plain", exits: [] })
+      }
     ]);
     await store.putMergedReport({
       databasePath: opened.databasePath,
@@ -1973,7 +1445,7 @@ describe("exporting and importing games", () => {
       turnNumber: 12,
       mergedFactionId: "73",
       mergedFactionName: "Faction 73",
-      mergedAt: "2026-08-08T00:05:00Z",
+      mergedAt: "2026-08-08T00:05:00Z"
     });
     await adapter.saveHexNote(opened.databasePath, {
       id: "note-1",
@@ -1983,16 +1455,11 @@ describe("exporting and importing games", () => {
       onMap: true,
       turn: 12,
       createdAt: "2026-08-08T00:00:00Z",
-      updatedAt: "2026-08-08T00:00:00Z",
+      updatedAt: "2026-08-08T00:00:00Z"
     });
 
     await adapter.saveArmy(opened.databasePath, anArmy("army-1", "alpha"));
-    await adapter.saveAlliedMages(
-      opened.databasePath,
-      "alpha",
-      [aMage("9001")],
-      [],
-    );
+    await adapter.saveAlliedMages(opened.databasePath, "alpha", [aMage("9001")], []);
 
     const backupJson = (await adapter.exportGame("alpha", NOW)) as string;
     expect(JSON.parse(backupJson)).toMatchObject({
@@ -2006,102 +1473,65 @@ describe("exporting and importing games", () => {
           turnNumber: 12,
           rawReport: REPORT,
           importedAt: IMPORTED_AT,
-          updatedAt: IMPORTED_AT,
-        },
+          updatedAt: IMPORTED_AT
+        }
       ],
-      orderDrafts: [
-        { factionId: "17", turnNumber: 12, orderText: "@work\n@study combat" },
-      ],
-      regionSightings: [
-        { factionId: "17", regionId: "1:7,53", lastSeenTurn: 12 },
-      ],
-      mergedReports: [
-        { factionId: "17", turnNumber: 12, mergedFactionId: "73" },
-      ],
-      hexNotes: [
-        {
-          id: "note-1",
-          regionId: "1:7,53",
-          text: "Mustn't forget the mountain pass",
-        },
-      ],
-      armies: [
-        {
-          id: "army-1",
-          name: "Escort",
-          members: [{ unitId: "1", seenTurn: 71 }],
-        },
-      ],
-      alliedMages: [
-        { factionId: "21", sheetTurn: 23, unit: { unitId: "9001" } },
-      ],
+      orderDrafts: [{ factionId: "17", turnNumber: 12, orderText: "@work\n@study combat" }],
+      regionSightings: [{ factionId: "17", regionId: "1:7,53", lastSeenTurn: 12 }],
+      mergedReports: [{ factionId: "17", turnNumber: 12, mergedFactionId: "73" }],
+      hexNotes: [{ id: "note-1", regionId: "1:7,53", text: "Mustn't forget the mountain pass" }],
+      armies: [{ id: "army-1", name: "Escort", members: [{ unitId: "1", seenTurn: 71 }] }],
+      alliedMages: [{ factionId: "21", sheetTurn: 23, unit: { unitId: "9001" } }]
     });
 
     const imported = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     const restored = (await imported.importGame(
       backupJson,
-      "2026-08-09T18:30:00Z",
+      "2026-08-09T18:30:00Z"
     )) as { databasePath: string; manifest: GameManifest };
 
     expect(restored.manifest.lastOpenedAt).toBe("2026-08-09T18:30:00Z");
-    expect(
-      await imported.loadImportedTurn(restored.databasePath, "alpha", "17", 12),
-    ).toEqual({
+    expect(await imported.loadImportedTurn(restored.databasePath, "alpha", "17", 12)).toEqual({
       key: { gameId: "alpha", factionId: "17", turnNumber: 12 },
-      rawReport: REPORT,
+      rawReport: REPORT
     });
-    expect(
-      await imported.loadOrderDraft(restored.databasePath, "alpha", "17", 12),
-    ).toEqual({
+    expect(await imported.loadOrderDraft(restored.databasePath, "alpha", "17", 12)).toEqual({
       key: { gameId: "alpha", factionId: "17", turnNumber: 12 },
       orderText: "@work\n@study combat",
-      updatedAt: "2026-08-08T00:00:00Z",
+      updatedAt: "2026-08-08T00:00:00Z"
     });
-    expect(
-      await imported.loadRegionSightings(restored.databasePath, "alpha", "17"),
-    ).toEqual([
+    expect(await imported.loadRegionSightings(restored.databasePath, "alpha", "17")).toEqual([
       {
         region: { regionId: "1:7,53", terrain: "plain", exits: [] },
-        lastSeenTurn: 12,
-      },
+        lastSeenTurn: 12
+      }
     ]);
-    expect(
-      await imported.loadMergedReports(
-        restored.databasePath,
-        "alpha",
-        "17",
-        12,
-      ),
-    ).toEqual([
+    expect(await imported.loadMergedReports(restored.databasePath, "alpha", "17", 12)).toEqual([
       {
         gameId: "alpha",
         factionId: "17",
         turnNumber: 12,
         mergedFactionId: "73",
         mergedFactionName: "Faction 73",
-        mergedAt: "2026-08-08T00:05:00Z",
-      },
+        mergedAt: "2026-08-08T00:05:00Z"
+      }
     ]);
-    expect(await imported.listHexNotes(restored.databasePath, "alpha")).toEqual(
-      [
-        {
-          id: "note-1",
-          gameId: "alpha",
-          regionId: "1:7,53",
-          text: "Mustn't forget the mountain pass",
-          onMap: true,
-          turn: 12,
-          createdAt: "2026-08-08T00:00:00Z",
-          updatedAt: "2026-08-08T00:00:00Z",
-        },
-      ],
-    );
+    expect(await imported.listHexNotes(restored.databasePath, "alpha")).toEqual([
+      {
+        id: "note-1",
+        gameId: "alpha",
+        regionId: "1:7,53",
+        text: "Mustn't forget the mountain pass",
+        onMap: true,
+        turn: 12,
+        createdAt: "2026-08-08T00:00:00Z",
+        updatedAt: "2026-08-08T00:00:00Z"
+      }
+    ]);
     expect(await imported.listArmies(restored.databasePath, "alpha")).toEqual([
-      anArmy("army-1", "alpha"),
+      anArmy("army-1", "alpha")
     ]);
-    expect(
-      await imported.listAlliedMages(restored.databasePath, "alpha"),
-    ).toEqual([aMage("9001")]);
+    expect(await imported.listAlliedMages(restored.databasePath, "alpha")).toEqual([aMage("9001")]);
   });
 
   it("refuses to import over an existing game", async () => {
@@ -2115,12 +1545,10 @@ describe("exporting and importing games", () => {
       importedTurns: [],
       orderDrafts: [],
       regionSightings: [],
-      mergedReports: [],
+      mergedReports: []
     });
 
-    await expect(adapter.importGame(backup, NOW)).rejects.toThrow(
-      /already exists/u,
-    );
+    await expect(adapter.importGame(backup, NOW)).rejects.toThrow(/already exists/u);
   });
 });
 
@@ -2134,11 +1562,9 @@ describe("tracing written movement", () => {
       unit: { regionId: "1:1,5", unitId: "new-1", arrivingFrom: null },
       ordersDocument: "unit 902",
       mapJson: "{map}",
-      passagesJson: "[passages]",
+      passagesJson: "[passages]"
     };
-    const answer = (await adapter.traceMoveOrders(request)) as unknown as {
-      echoed: unknown;
-    };
+    const answer = (await adapter.traceMoveOrders(request)) as unknown as { echoed: unknown };
     expect(answer.echoed).toEqual(request);
   });
 });
@@ -2159,7 +1585,7 @@ describe("planning a route", () => {
       "[remembered]",
       "18642",
       "1:7,51",
-      '{"width":72,"height":96,"wrapX":true,"wrapY":false}',
+      '{"width":72,"height":96,"wrapX":true,"wrapY":false}'
     )) as unknown as { echoed: Record<string, string> };
 
     expect(answer.echoed).toEqual({
@@ -2168,7 +1594,7 @@ describe("planning a route", () => {
       rememberedJson: "[remembered]",
       unitId: "18642",
       destination: "1:7,51",
-      mapJson: '{"width":72,"height":96,"wrapX":true,"wrapY":false}',
+      mapJson: '{"width":72,"height":96,"wrapX":true,"wrapY":false}'
     });
   });
 });
@@ -2180,27 +1606,45 @@ describe("finding trade routes", () => {
   it("resolves to what the core found", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    const routes = await adapter.tradeRoutes(
-      "{ruleset}",
-      "{report}",
-      "[remembered]",
-      "",
-    );
+    const routes = await adapter.tradeRoutes("{ruleset}", "{report}", "[remembered]", "");
 
     expect(routes).toEqual(FAKE_TRADE_ROUTES);
   });
 });
 
-describe("counting shelter seats", () => {
-  /** The seat rule is the core's (ah-29p5); the adapter passes the report and ruleset in order. */
-  it("passes the report and the ruleset straight to the core, unshuffled", async () => {
-    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+/**
+ * Every query the core declares (ah-w83n) goes to the module's one `query` export, by the name
+ * `CORE_QUERIES` gives it, with its arguments in order - so a query added to the core needs nothing
+ * in this adapter.
+ */
+describe("the core's declared queries in the browser", () => {
+  it("answers every declared query through the wasm query export, arguments in order", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore()) as unknown as Record<
+      string,
+      (...args: unknown[]) => Promise<unknown>
+    >;
 
-    const seats = await adapter.shelterSeats("{report}", "{ruleset}");
+    for (const [method, name] of Object.entries(CORE_QUERIES)) {
+      await expect(adapter[method]("first", null, 3), method).resolves.toEqual({
+        query: name,
+        args: ["first", null, 3]
+      });
+    }
+  });
 
-    expect(seats).toEqual([
-      { regionId: "{report}", structureId: "{ruleset}", seats: null },
-    ]);
+  it("rejects with the core's refusal rather than throwing it", async () => {
+    const adapter = createWebCoreAdapter(
+      fakeWasm({
+        query: () => {
+          throw "arguments could not be read: invalid length 0";
+        }
+      }),
+      createMemoryWebStore()
+    );
+
+    await expect(adapter.shelterSeats("report", "ruleset")).rejects.toBe(
+      "arguments could not be read: invalid length 0"
+    );
   });
 });
 
@@ -2212,29 +1656,21 @@ describe("resolving the known map", () => {
   it("passes the request straight to the core, unshuffled", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    const answer = (await adapter.knownMap(
-      "{report}",
-      "{ruleset}",
-      "[remembered]",
-    )) as unknown as {
+    const answer = (await adapter.knownMap("{report}", "{ruleset}", "[remembered]")) as unknown as {
       echoed: Record<string, string | null>;
     };
 
     expect(answer.echoed).toEqual({
       rawReport: "{report}",
       rulesetJson: "{ruleset}",
-      rememberedJson: "[remembered]",
+      rememberedJson: "[remembered]"
     });
   });
 
   it("passes a null ruleset through unchanged", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    const answer = (await adapter.knownMap(
-      "{report}",
-      null,
-      "[]",
-    )) as unknown as {
+    const answer = (await adapter.knownMap("{report}", null, "[]")) as unknown as {
       echoed: Record<string, string | null>;
     };
 
@@ -2251,33 +1687,33 @@ describe("remembering the map across turns", () => {
    * has the parsed regions already, so it serializes them once and only the strings cross.
    */
   const prepareWith = (
-    regions: Array<{ regionId: string; terrain: string }>,
+    regions: Array<{ regionId: string; terrain: string }>
   ): Partial<CoreWasmModule> => ({
     prepare_report_import_state: (raw: string) => ({
       turnNumber: 12,
       candidate: {
         rawReport: raw,
         parsedPayloadJson: `parsed:${raw}`,
-        warningsPayloadJson: "[]",
+        warningsPayloadJson: "[]"
       },
       parseResult: { ...EMPTY_PARSE_RESULT, raw },
-      rejection: null,
+      rejection: null
     }),
     report_import_writes_state: (
       _raw: string,
       _rulesetJson: string | null,
       existingImportedAt: string | null,
       _seenJson: string,
-      at: string,
+      at: string
     ) => ({
       importedAt: existingImportedAt ?? at,
       updatedAt: at,
       regionSightings: regions.map((region) => ({
         regionId: region.regionId,
         lastSeenTurn: 12,
-        payloadJson: JSON.stringify({ ...region, exits: [] }),
-      })),
-    }),
+        payloadJson: JSON.stringify({ ...region, exits: [] })
+      }))
+    })
   });
 
   /**
@@ -2289,31 +1725,17 @@ describe("remembering the map across turns", () => {
     const wasm = fakeWasm(
       prepareWith([
         { regionId: "1:1,1", terrain: "plain" },
-        { regionId: "1:2,2", terrain: "mountain" },
-      ]),
+        { regionId: "1:2,2", terrain: "mountain" }
+      ])
     );
     const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
 
-    await adapter.commitReportImport(
-      "/db",
-      "p",
-      "12",
-      "TURN: 12\nFACTION: 12",
-      null,
-      true,
-      IMPORTED_AT,
-    );
+    await adapter.commitReportImport("/db", "p", "12", "TURN: 12\nFACTION: 12", null, true, IMPORTED_AT);
     const remembered = await adapter.loadRegionSightings("/db", "p", "12");
 
     expect(remembered).toEqual([
-      {
-        region: { regionId: "1:1,1", terrain: "plain", exits: [] },
-        lastSeenTurn: 12,
-      },
-      {
-        region: { regionId: "1:2,2", terrain: "mountain", exits: [] },
-        lastSeenTurn: 12,
-      },
+      { region: { regionId: "1:1,1", terrain: "plain", exits: [] }, lastSeenTurn: 12 },
+      { region: { regionId: "1:2,2", terrain: "mountain", exits: [] }, lastSeenTurn: 12 }
     ]);
   });
 
@@ -2332,24 +1754,14 @@ describe("remembering the map across turns", () => {
       parse_report_full_state: (_raw: string) => {
         fullParses += 1;
         return EMPTY_PARSED_REPORT;
-      },
+      }
     });
     const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
 
-    await adapter.commitReportImport(
-      "/db",
-      "p",
-      "12",
-      "TURN: 12\nFACTION: 12",
-      null,
-      true,
-      IMPORTED_AT,
-    );
+    await adapter.commitReportImport("/db", "p", "12", "TURN: 12\nFACTION: 12", null, true, IMPORTED_AT);
 
     expect(fullParses).toBe(0);
-    await expect(
-      adapter.loadRegionSightings("/db", "p", "12"),
-    ).resolves.toHaveLength(1);
+    await expect(adapter.loadRegionSightings("/db", "p", "12")).resolves.toHaveLength(1);
   });
 
   /** A hex seen again replaces the older memory of it rather than accumulating a duplicate. */
@@ -2364,17 +1776,17 @@ describe("remembering the map across turns", () => {
           candidate: {
             rawReport: raw,
             parsedPayloadJson: `parsed:${raw}`,
-            warningsPayloadJson: "[]",
+            warningsPayloadJson: "[]"
           },
           parseResult: { ...EMPTY_PARSE_RESULT, raw },
-          rejection: null,
+          rejection: null
         }),
         report_import_writes_state: (
           _raw: string,
           _rulesetJson: string | null,
           existingImportedAt: string | null,
           _seenJson: string,
-          at: string,
+          at: string
         ) => ({
           importedAt: existingImportedAt ?? at,
           updatedAt: at,
@@ -2382,43 +1794,19 @@ describe("remembering the map across turns", () => {
             {
               regionId: "1:1,1",
               lastSeenTurn: 12,
-              payloadJson: JSON.stringify({
-                regionId: "1:1,1",
-                terrain,
-                exits: [],
-              }),
-            },
-          ],
-        }),
+              payloadJson: JSON.stringify({ regionId: "1:1,1", terrain, exits: [] })
+            }
+          ]
+        })
       }),
-      store,
+      store
     );
 
-    await adapter.commitReportImport(
-      "/db",
-      "p",
-      "12",
-      "TURN: 12\nFACTION: 12",
-      null,
-      true,
-      IMPORTED_AT,
-    );
+    await adapter.commitReportImport("/db", "p", "12", "TURN: 12\nFACTION: 12", null, true, IMPORTED_AT);
     terrain = "mountain";
-    await adapter.commitReportImport(
-      "/db",
-      "p",
-      "12",
-      "TURN: 12\nFACTION: 12",
-      null,
-      true,
-      IMPORTED_AT,
-    );
+    await adapter.commitReportImport("/db", "p", "12", "TURN: 12\nFACTION: 12", null, true, IMPORTED_AT);
 
-    const remembered = (await adapter.loadRegionSightings(
-      "/db",
-      "p",
-      "12",
-    )) as Array<{
+    const remembered = (await adapter.loadRegionSightings("/db", "p", "12")) as Array<{
       region: { terrain: string };
     }>;
     expect(remembered).toHaveLength(1);
@@ -2428,38 +1816,20 @@ describe("remembering the map across turns", () => {
   it("has nothing to remember before anything is imported", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    await expect(
-      adapter.loadRegionSightings("/db", "p", "12"),
-    ).resolves.toEqual([]);
+    await expect(adapter.loadRegionSightings("/db", "p", "12")).resolves.toEqual([]);
   });
 
   /** A payload an older build wrote may not parse. Losing one hex beats losing the whole map. */
   it("skips a memory it cannot read rather than failing the lot", async () => {
     const store = createMemoryWebStore();
     await store.putRegionSightings([
-      {
-        databasePath: "/db",
-        gameId: "p",
-        factionId: "12",
-        regionId: "1:1,1",
-        lastSeenTurn: 9,
-        payloadJson: "{",
-      },
-      {
-        databasePath: "/db",
-        gameId: "p",
-        factionId: "12",
-        regionId: "1:2,2",
-        lastSeenTurn: 9,
-        payloadJson: '{"regionId":"1:2,2"}',
-      },
+      { databasePath: "/db", gameId: "p", factionId: "12", regionId: "1:1,1", lastSeenTurn: 9, payloadJson: "{" },
+      { databasePath: "/db", gameId: "p", factionId: "12", regionId: "1:2,2", lastSeenTurn: 9, payloadJson: '{"regionId":"1:2,2"}' }
     ]);
     const adapter = createWebCoreAdapter(fakeWasm(), store);
 
     const remembered = await adapter.loadRegionSightings("/db", "p", "12");
-    expect(remembered).toEqual([
-      { region: { regionId: "1:2,2" }, lastSeenTurn: 9 },
-    ]);
+    expect(remembered).toEqual([{ region: { regionId: "1:2,2" }, lastSeenTurn: 9 }]);
   });
 });
 
@@ -2477,8 +1847,8 @@ describe("merging an allied report", () => {
         factionId: "95",
         regionId: "1:1,1",
         lastSeenTurn: 71,
-        payloadJson: '{"regionId":"1:1,1"}',
-      },
+        payloadJson: '{"regionId":"1:1,1"}'
+      }
     ]);
     return store;
   };
@@ -2491,29 +1861,17 @@ describe("merging an allied report", () => {
     const store = await withViewersMap();
     const adapter = createWebCoreAdapter(fakeWasm(), store);
 
-    const result = await adapter.mergeReport(
-      "/db",
-      "p",
-      "95",
-      71,
-      ALLY,
-      null,
-      MERGED_AT,
-    );
+    const result = await adapter.mergeReport("/db", "p", "95", 71, ALLY, null, MERGED_AT);
 
     expect(result).toEqual({
       turnNumber: 71,
       mergedFactionId: "73",
       mergedFactionName: "Faction 73",
       mergedRegionCount: 2,
-      newRegionCount: 1,
+      newRegionCount: 1
     });
-    await expect(
-      adapter.loadRegionSightings("/db", "p", "95"),
-    ).resolves.toHaveLength(2);
-    await expect(
-      adapter.loadRegionSightings("/db", "p", "73"),
-    ).resolves.toEqual([]);
+    await expect(adapter.loadRegionSightings("/db", "p", "95")).resolves.toHaveLength(2);
+    await expect(adapter.loadRegionSightings("/db", "p", "73")).resolves.toEqual([]);
   });
 
   const OWN_MAP_EXPORT = "; Map export from Atlantis HUD\nMERGE: 95 40 1:5,5";
@@ -2527,22 +1885,10 @@ describe("merging an allied report", () => {
     const store = await withViewersMap();
     const adapter = createWebCoreAdapter(fakeWasm(), store);
 
-    await adapter.mergeReport(
-      "/db",
-      "p",
-      "95",
-      71,
-      OWN_MAP_EXPORT,
-      null,
-      MERGED_AT,
-    );
+    await adapter.mergeReport("/db", "p", "95", 71, OWN_MAP_EXPORT, null, MERGED_AT);
 
-    await expect(
-      adapter.loadMergedReports("/db", "p", "95", 71),
-    ).resolves.toEqual([]);
-    await expect(
-      adapter.loadRegionSightings("/db", "p", "95"),
-    ).resolves.toHaveLength(2);
+    await expect(adapter.loadMergedReports("/db", "p", "95", 71)).resolves.toEqual([]);
+    await expect(adapter.loadRegionSightings("/db", "p", "95")).resolves.toHaveLength(2);
   });
 
   /** An ally's map export still records who it came from, which is provenance worth keeping. */
@@ -2550,19 +1896,11 @@ describe("merging an allied report", () => {
     const store = await withViewersMap();
     const adapter = createWebCoreAdapter(fakeWasm(), store);
 
-    await adapter.mergeReport(
-      "/db",
-      "p",
-      "95",
-      71,
-      ALLYS_MAP_EXPORT,
-      null,
-      MERGED_AT,
-    );
+    await adapter.mergeReport("/db", "p", "95", 71, ALLYS_MAP_EXPORT, null, MERGED_AT);
 
-    await expect(
-      adapter.loadMergedReports("/db", "p", "95", 71),
-    ).resolves.toMatchObject([{ mergedFactionId: "73" }]);
+    await expect(adapter.loadMergedReports("/db", "p", "95", 71)).resolves.toMatchObject([
+      { mergedFactionId: "73" }
+    ]);
   });
 
   /**
@@ -2576,24 +1914,14 @@ describe("merging an allied report", () => {
     await adapter.mergeReport("/db", "p", "95", 71, ALLY, null, MERGED_AT);
 
     await expect(store.getImportedTurns("/db", "p")).resolves.toEqual([]);
-    await expect(
-      adapter.loadLatestImportedTurn("/db", "p", null),
-    ).resolves.toBeNull();
+    await expect(adapter.loadLatestImportedTurn("/db", "p", null)).resolves.toBeNull();
   });
 
   it("records who was merged, and reads it back oldest first", async () => {
     const store = await withViewersMap();
     const adapter = createWebCoreAdapter(fakeWasm(), store);
 
-    await adapter.mergeReport(
-      "/db",
-      "p",
-      "95",
-      71,
-      "MERGE: 81 71 1:5,5",
-      null,
-      "2026-08-10T19:00:00Z",
-    );
+    await adapter.mergeReport("/db", "p", "95", 71, "MERGE: 81 71 1:5,5", null, "2026-08-10T19:00:00Z");
     await adapter.mergeReport("/db", "p", "95", 71, ALLY, null, MERGED_AT);
 
     const merged = await adapter.loadMergedReports("/db", "p", "95", 71);
@@ -2604,7 +1932,7 @@ describe("merging an allied report", () => {
         turnNumber: 71,
         mergedFactionId: "73",
         mergedFactionName: "Faction 73",
-        mergedAt: MERGED_AT,
+        mergedAt: MERGED_AT
       },
       {
         gameId: "p",
@@ -2612,8 +1940,8 @@ describe("merging an allied report", () => {
         turnNumber: 71,
         mergedFactionId: "81",
         mergedFactionName: "Faction 81",
-        mergedAt: "2026-08-10T19:00:00Z",
-      },
+        mergedAt: "2026-08-10T19:00:00Z"
+      }
     ]);
   });
 
@@ -2622,15 +1950,7 @@ describe("merging an allied report", () => {
     const adapter = createWebCoreAdapter(fakeWasm(), store);
 
     await adapter.mergeReport("/db", "p", "95", 71, ALLY, null, MERGED_AT);
-    await adapter.mergeReport(
-      "/db",
-      "p",
-      "95",
-      71,
-      ALLY,
-      null,
-      "2026-08-10T21:00:00Z",
-    );
+    await adapter.mergeReport("/db", "p", "95", 71, ALLY, null, "2026-08-10T21:00:00Z");
 
     const merged = await store.getMergedReports("/db", "p", "95", 71);
     expect(merged).toHaveLength(1);
@@ -2641,15 +1961,7 @@ describe("merging an allied report", () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
     await expect(
-      adapter.mergeReport(
-        "/db",
-        "p",
-        "95",
-        71,
-        "MERGE: 73 2 1:1,1",
-        null,
-        MERGED_AT,
-      ),
+      adapter.mergeReport("/db", "p", "95", 71, "MERGE: 73 2 1:1,1", null, MERGED_AT)
     ).rejects.toThrow("a report from turn 2 cannot be merged into turn 71");
   });
 
@@ -2665,32 +1977,18 @@ describe("merging an allied report", () => {
     const adapter = createWebCoreAdapter(fakeWasm(), store);
 
     await expect(
-      adapter.mergeReport(
-        "/db",
-        "p",
-        "95",
-        71,
-        "MERGE: 95 71 1:1,1",
-        null,
-        MERGED_AT,
-      ),
+      adapter.mergeReport("/db", "p", "95", 71, "MERGE: 95 71 1:1,1", null, MERGED_AT)
     ).rejects.toThrow("a faction's own report is loaded rather than merged");
 
     // And refuses it before writing anything, rather than half way through.
-    await expect(store.getMergedReports("/db", "p", "95", 71)).resolves.toEqual(
-      [],
-    );
-    await expect(
-      store.getRegionSightings("/db", "p", "95"),
-    ).resolves.toHaveLength(1);
+    await expect(store.getMergedReports("/db", "p", "95", 71)).resolves.toEqual([]);
+    await expect(store.getRegionSightings("/db", "p", "95")).resolves.toHaveLength(1);
   });
 
   it("has nothing merged into a turn nothing was merged into", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    await expect(
-      adapter.loadMergedReports("/db", "p", "95", 71),
-    ).resolves.toEqual([]);
+    await expect(adapter.loadMergedReports("/db", "p", "95", 71)).resolves.toEqual([]);
   });
 });
 
@@ -2701,7 +1999,7 @@ function aStudyPlan(unitId: string, factionId = "21"): StudyPlanRecord {
     unitId,
     goals: [{ kind: "study", turn: 24, skill: "FORC" }],
     comment: "heading for Gate Lore",
-    updatedAt: "2026-08-07T12:00:00Z",
+    updatedAt: "2026-08-07T12:00:00Z"
   };
 }
 
@@ -2729,9 +2027,9 @@ function aMage(unitId: string, factionId = "21"): AlliedMageRecord {
       capacity: null,
       movement: null,
       structureId: null,
-      read: "complete",
+      read: "complete"
     },
     sheetTurn: 23,
-    receivedAt: "2026-08-01T09:00:00Z",
+    receivedAt: "2026-08-01T09:00:00Z"
   };
 }

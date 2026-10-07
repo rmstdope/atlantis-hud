@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   aBattle,
   aBattleUnit,
+  aKnownMap,
+  aKnownMapHex,
   aParsedReport,
   aReportHeaderInfo,
   aReportRegion,
@@ -12,6 +14,20 @@ import {
 import { PARSED_STRUCTURE_KINDS } from "./structureKinds.generated";
 
 describe("the report builders", () => {
+  it("a known hex stands on the default coordinate with no history", () => {
+    const hex = aKnownMapHex();
+    expect(hex.coordinate).toEqual(aReportRegion().coordinate);
+    expect(hex.knowledge).toBe("current");
+    expect(hex.rememberedUnits).toEqual([]);
+    expect(hex.region).toBeNull();
+    expect(aKnownMapHex({ knowledge: "stale" }).knowledge).toBe("stale");
+  });
+
+  it("the known map is empty at the default turn", () => {
+    expect(aKnownMap()).toEqual({ hexes: [], levels: [], currentTurn: 71, walls: [] });
+    expect(aKnownMap({ currentTurn: null }).currentTurn).toBeNull();
+  });
+
   it("a region's id follows its coordinate", () => {
     expect(aReportRegion().regionId).toBe("1:7,53");
     expect(aReportRegion({ coordinate: { x: 1, y: 1, z: 2 } }).regionId).toBe("2:1,1");

@@ -7,25 +7,17 @@ import { parseGameData, type GameDataEntry, type GameDataIndex } from "../gameDa
 import { buildMagicTree } from "../magicTree";
 import { standingOf } from "../magicStanding";
 import { findByTestId } from "../testing/elementTree";
-import { SURFACE, type HexNode } from "../hexMapModel";
+import type { HexNode } from "../hexMapModel";
+import { aHexNode } from "../testing/builders";
 import { UnitPanel } from "./UnitPanel";
 import { splitTurnMessages } from "../turnMessages";
 
-const HEX: HexNode = {
-  regionId: "1:7,53",
-  coordinate: { x: 7, y: 53, z: SURFACE },
-  terrain: "mountain",
+const HEX: HexNode = aHexNode({
   province: "Inholm",
   label: "Inholm",
-  knowledge: "current",
-  lastSeenTurn: 71,
-  ageInTurns: 0,
   settlementName: "Inholm",
-  rememberedUnits: [],
-  ownUnitCount: 1,
-  foreignUnitCount: 0,
-  region: null
-};
+  ownUnitCount: 1
+});
 
 /** Only `byId` matters here: it is what decides an item tag's category. */
 const indexWith = (ids: string[]): GameDataIndex => ({

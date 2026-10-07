@@ -304,6 +304,102 @@ pub fn capacities_from_items(items: &[(&str, i64)], ruleset: &Ruleset) -> Option
     Some(total)
 }
 
+/// What a unit carries, and what it can carry, once this month's transfers have run.
+///
+/// Either half is `None` where nothing can say: see [`carrying_after_transfers`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Carrying {
+    pub weight: Option<i64>,
+    pub capacities: Option<Capacities>,
+}
+
+/// The one rule for a unit's load and allowance as movement runs, read by both the movement panel
+/// (`orders::effects`) and the overload check (`orders::semantics`). There used to be one copy
+/// each, with their own fallbacks, and the check was corrected in its copy three times while the
+/// panel beside it showed the right answer (`ah-titf`, `ah-0wpn`, `ah-o6qy`; consolidated by
+/// `ah-2xw5`). Each caller supplies only the input - what the report printed, and every tag the
+/// unit holds as it steps off - so the two can differ in presentation and in their input, and the
+/// rule cannot drift between them.
+///
+/// `reported_weight` and `reported_items` are the report's own `Weight:` and item list; a unit
+/// this month's `FORM` creates passes `Some(0)` and nothing. `stepping_off` is the unit's whole
+/// holding once GIVE, TAKE and the market have run (`rules/sequenceofevents` weighs a unit as it
+/// holds them when it moves).
+/// It names each tag once, as both callers build it: the weight is
+/// repriced per entry against the report's total for that tag.
+///
+/// The weight is the printed figure plus every change the ruleset can price. A change it cannot
+/// price contributes nothing and the unit keeps the report's weight for that part - the
+/// navigator's answer to "silence or fall back": fall back. `None` only when the report never
+/// said what the unit weighs.
+///
+/// The capacities are rebuilt from the item list, because the report's `Capacity:` line is printed
+/// before this month's orders run and is a sum whose composition cannot be recovered (`ah-titf`,
+/// GitHub #677). The list is the whole answer: a report's headcount *is* its man-tagged items,
+/// counted (`report::composition::men_in`, `ah-4q5p`). `None` with no ruleset or when any tag is
+/// not in it, as [`capacities_from_items`]. A balance below zero is read as zero: giving away more
+/// than the unit holds is its own finding, and a negative count would subtract capacity and so
+/// manufacture a false overload.
+#[must_use]
+pub fn carrying_after_transfers(
+    reported_weight: Option<i64>,
+    reported_items: &[crate::report::model::ItemAmount],
+    stepping_off: &[(&str, i64)],
+    ruleset: Option<&Ruleset>,
+) -> Carrying {
+    let reported = |tag: &str| {
+        reported_items
+            .iter()
+            .filter(|item| item.tag.eq_ignore_ascii_case(tag))
+            .map(|item| item.amount)
+            .sum::<i64>()
+    };
+
+    let weight = reported_weight.map(|printed| {
+        let mut weight = printed;
+        let mut changed = |tag: &str, moved: i64| {
+            if moved == 0 {
+                return;
+            }
+            if let Some(item) = ruleset.and_then(|ruleset| ruleset.find_item(tag)) {
+                weight = weight.saturating_add(moved.saturating_mul(item.weight));
+            }
+        };
+        for (tag, count) in stepping_off {
+            changed(tag, count.saturating_sub(reported(tag)));
+        }
+        // A reported tag the unit no longer holds at all left in full.
+        for item in reported_items {
+            if !stepping_off
+                .iter()
+                .any(|(tag, _)| tag.eq_ignore_ascii_case(&item.tag))
+            {
+                changed(&item.tag, -reported(&item.tag));
+            }
+        }
+        weight
+    });
+
+    let capacities = ruleset.and_then(|ruleset| {
+        let clamped: Vec<(&str, i64)> = stepping_off
+            .iter()
+            .map(|(tag, count)| (*tag, (*count).max(0)))
+            .collect();
+        capacities_from_items(&clamped, ruleset)
+    });
+
+    Carrying { weight, capacities }
+}
+
+/// A [`Carrying`] whose both halves are known, presented the way a report prints a unit's movement.
+#[must_use]
+pub fn movement_for_carrying(carrying: Carrying) -> Option<UnitMovement> {
+    Some(movement_for_capacities(
+        carrying.weight?,
+        carrying.capacities?,
+    ))
+}
+
 /// Classifies a unit from its complete current inventory and the supplied ruleset.
 ///
 /// Complete means every tag is priced and somebody is in the unit. The listed people are the
@@ -616,7 +712,7 @@ pub fn cargo_capacity(fleet: &Structure, ruleset: Option<&Ruleset>) -> Option<i6
 /// 50 + 50 + 10 - `tests/fixtures/reports/neworigins-3.0.0-g3-f42-t41.rep:2018`), and it is the
 /// arithmetic `orders::semantics`' `FLEET_OVERLOADED` finding does, so the two agree wherever both
 /// speak. Only wherever: that finding skips a hull holding any foreign unit at all
-/// (`orders::semantics`, `foreign_aboard`) and sums `weight_after_orders` where this reads the
+/// (`orders::semantics`, `foreign_aboard`) and sums `carrying_after_transfers`' weight where this reads the
 /// report's raw weight, so a fleet can be refused here with no problem line beside it. A unit
 /// aboard whose weight the report never gave - a
 /// stranger's unit in our hull - makes the sum a partial total, and a partial total is not a total,
@@ -1860,5 +1956,68 @@ mod tests {
             Some(110)
         );
         assert_eq!(fleet_load(&longship(None), &[]), None);
+    }
+
+    // ------------------------------------------------------------ carrying after transfers
+
+    fn held(amount: i64, tag: &str) -> crate::report::model::ItemAmount {
+        crate::report::model::ItemAmount {
+            amount,
+            name: tag.to_ascii_lowercase(),
+            tag: tag.to_string(),
+        }
+    }
+
+    /// The ah-o6qy riders: printed `Weight: 30` for three humans, stepping off as one human and
+    /// four horses. `newage trident data/HUMN` (weight 10, walk 5) and `data/HORS` (weight 50,
+    /// ride 20, walk 20, self-mobile riding and walking): weight 30 - 2 x 10 + 4 x 50 = 210; ride
+    /// 4 x 70 = 280; walk 15 + 4 x 70 = 295.
+    #[test]
+    fn carrying_after_transfers_reprices_a_unit_handing_off_men_and_given_horses() {
+        let carrying = carrying_after_transfers(
+            Some(30),
+            &[held(3, "HUMN")],
+            &[("HUMN", 1), ("HORS", 4)],
+            Some(&trident()),
+        );
+        assert_eq!(carrying.weight, Some(210));
+        let capacities = carrying.capacities.expect("every tag is priced");
+        assert_eq!((capacities.ride, capacities.walk), (280, 295));
+    }
+
+    /// A tag the catalogue cannot price: no capacity can be derived, and the weight is the printed
+    /// figure plus whatever the priced changes add - the navigator's "fall back" answer.
+    #[test]
+    fn an_unpriced_tag_keeps_the_printed_weight_and_derives_no_capacity() {
+        let carrying = carrying_after_transfers(
+            Some(100),
+            &[held(3, "HUMN"), held(1, "ZZZZ")],
+            &[("HUMN", 3), ("ZZZZ", 2), ("HORS", 1)],
+            Some(&trident()),
+        );
+        assert_eq!(carrying.weight, Some(150));
+        assert_eq!(carrying.capacities, None);
+    }
+
+    #[test]
+    fn with_no_ruleset_only_the_printed_weight_is_known() {
+        let carrying = carrying_after_transfers(Some(30), &[held(3, "HUMN")], &[("HUMN", 1)], None);
+        assert_eq!(carrying.weight, Some(30));
+        assert_eq!(carrying.capacities, None);
+        let unweighed = carrying_after_transfers(None, &[], &[("HUMN", 1)], Some(&trident()));
+        assert_eq!(unweighed.weight, None);
+    }
+
+    /// Giving away more than the unit holds is its own finding; a negative count must not subtract
+    /// capacity and so invent an overload.
+    #[test]
+    fn an_overdrawn_balance_adds_no_negative_capacity() {
+        let carrying = carrying_after_transfers(
+            Some(10),
+            &[held(1, "HUMN")],
+            &[("HUMN", 1), ("HORS", -2)],
+            Some(&trident()),
+        );
+        assert_eq!(carrying.capacities.map(|c| c.walk), Some(15));
     }
 }

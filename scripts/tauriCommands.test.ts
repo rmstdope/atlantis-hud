@@ -354,8 +354,10 @@ describe("the live Tauri command lockstep", () => {
       registeredButNotSwept: [],
       sweptButNotRegistered: []
     });
-    // Names: what main.rs registers, what the sweep drives and what the adapter invokes are one list.
-    expect(Object.keys(table).sort()).toEqual([...registered].sort());
+    // Names: what main.rs registers, what the sweep drives and what the adapter invokes are one list
+    // - the table's commands, plus the one `query` command every declared core query crosses
+    // through (ah-w83n), which the adapter invokes from `CORE_QUERIES` rather than from a row.
+    expect([...Object.keys(table), "query"].sort()).toEqual([...registered].sort());
 
     // Every rename says what the function name says, and every renamed command is registered.
     for (const [fn, wire] of renames) {
@@ -404,18 +406,27 @@ describe("the live Tauri command lockstep", () => {
     // 1,392 units for a year (ah-ycuj). One command with a mixed signature is then pinned in
     // full, which catches an inverted or partial rule by name rather than by count.
     const allParameters = Object.values(parameters).flat();
-    expect(allParameters.filter((parameter) => parameter.required).length).toBeGreaterThan(80);
-    expect(allParameters.filter((parameter) => !parameter.required).length).toBeGreaterThan(10);
+    // Re-pinned when eleven stateless queries moved behind the one `query` command (ah-w83n): 98
+    // required and 10 optional at the time.
+    expect(allParameters.filter((parameter) => parameter.required).length).toBeGreaterThan(90);
+    expect(allParameters.filter((parameter) => !parameter.required).length).toBeGreaterThanOrEqual(10);
     expect(parameters["known_map"], "known_map is declared").toEqual([
       { name: "raw_report", required: true },
       { name: "ruleset_json", required: false },
       { name: "remembered_json", required: true }
     ]);
-    // The three order checks cross as one request object each (ah-t8c4): adding an input is a
-    // field on the Rust struct, not a new argument in every file between the core and the screen.
-    for (const command of ["validate_orders", "preview_orders", "trace_move_orders"]) {
-      expect(parameters[command], command).toEqual([{ name: "request", required: true }]);
-    }
+    // The order checks cross as one request object each (ah-t8c4): adding an input is a field on
+    // the Rust struct, not a new argument in every file between the core and the screen. Of the
+    // three, only the trace is still a command of its own; validation and the preview are declared
+    // core queries (ah-w83n), whose request is still the one positional argument.
+    expect(parameters["trace_move_orders"], "trace_move_orders").toEqual([
+      { name: "request", required: true }
+    ]);
+    // The one command every declared core query crosses through (ah-w83n).
+    expect(parameters["query"], "query").toEqual([
+      { name: "name", required: true },
+      { name: "args", required: true }
+    ]);
 
     // The wasm boundary: same exports, same arity, both ways.
     expect(wasmModuleMembers(webCoreAdapterTs)).toEqual(wasmExports(coreWasmLibRs));

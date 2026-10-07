@@ -9,8 +9,14 @@
 import type { MapShape } from "@atlantis/core-client";
 import { defaultMapFor } from "./rulesets";
 
-/** The map a game plays on, and whether the player actually said so. */
-export type GameMapShape = {
+/**
+ * A game's map, read from its one record (ah-8nfe): the level sizes it was configured with, the
+ * shape the map view and the core plan on, and whether the player actually said so.
+ */
+export type GameMap = {
+  /** The configured level sizes - what Settings shows and edits. */
+  sizes: MapSizes | null;
+  /** The shape derived from `sizes`, the one the map view draws and the core is told. */
   map: MapShape | null;
   /**
    * `true` when the game's own manifest recorded these values, `false` when they are the ruleset's
@@ -23,19 +29,44 @@ export type GameMapShape = {
   stated: boolean;
 };
 
+/** What `gameMapOf` reads: the manifest's metadata, or the workspace's copy of it. */
+export type RecordedGameMap = {
+  rulesetId: string;
+  mapSizes?: MapSizes;
+  /** A pre-levels game's map; read only when there are no `mapSizes`, and never written. */
+  map?: MapShape;
+};
+
 /**
- * The map to plan on for a game played under `rulesetId`, given whatever its manifest recorded.
+ * The one read of a game's map, for every consumer: Settings, the map view and the core.
  *
- * A game created before the app asked adopts the ruleset's declared map rather than being
- * interrupted for an answer - the navigator's choice - and `stated: false` is what carries the
- * fact that nobody confirmed it. A ruleset with no declared map yields none at all, because a
- * guessed width would put a wrap seam where the map has none.
+ * `mapSizes` is the record; the shape is derived from it here rather than stored beside it, so the
+ * two can no longer disagree (they did, four times: ah-0w7w, ah-57u0, ah-byqe, ah-4hwa). Sizes that
+ * configure no level are read as no record at all: cleared fields mean "I do not know my map", so
+ * the ruleset's default is assumed and Settings says so, as `mapCommitOf` always intended.
+ *
+ * A game created before levels recorded only `map`, read as its sizes through `mapSizesOfGame`. A
+ * game that recorded neither adopts the ruleset's declared map rather than being interrupted for an
+ * answer - the navigator's choice - and `stated: false` is what carries the fact that nobody
+ * confirmed it. A ruleset with no declared map yields none at all, because a guessed width would
+ * put a wrap seam where the map has none.
+ *
+ * The derived shape is a fresh object per call: a caller that memoises on it keys the memo on the
+ * recorded objects, never on the result.
  */
-export function mapShapeOfGame(rulesetId: string, recorded: MapShape | undefined): GameMapShape {
-  if (recorded !== undefined) {
-    return { map: withDrawableWrapping(recorded), stated: true };
+export function gameMapOf(game: RecordedGameMap): GameMap {
+  const shape = game.mapSizes === undefined ? undefined : mapShapeOfSizes(game.mapSizes);
+  if (game.mapSizes !== undefined && shape !== undefined) {
+    return { sizes: game.mapSizes, map: withDrawableWrapping(shape), stated: true };
   }
-  return { map: defaultMapFor(rulesetId), stated: false };
+  if (game.map !== undefined) {
+    // Settings reads the same corrected wrapping the map is drawn with, so it never shows a seam
+    // that is not drawn, nor opens the editor on a draft it would refuse to save.
+    const drawable = withDrawableWrapping(game.map);
+    return { sizes: mapSizesOfGame(drawable), map: drawable, stated: true };
+  }
+  const declared = defaultMapFor(game.rulesetId);
+  return { sizes: declared === null ? null : mapSizesOfGame(declared), map: declared, stated: false };
 }
 
 /**
@@ -184,8 +215,8 @@ export function mapSizesFromDraft(draft: MapSizesDraft): MapSizes | null {
  * The shape a world with these level sizes records as its map: every configured level's size,
  * headed by the surface's (zero when no surface is configured). `undefined` when no level is.
  *
- * Mirrors `MapSizes::geometry` in `crates/core/src/backup.rs`, which records the same shape when
- * the sizes are edited; creating a game builds its manifest here instead (ah-byqe).
+ * Nothing stores this shape: `gameMapOf` derives it from the recorded sizes each time it is read
+ * (ah-8nfe), and the core receives it through `mapShapeJson`.
  */
 export function mapShapeOfSizes(sizes: MapSizes): MapShape | undefined {
   const levels: NonNullable<MapShape["levels"]> = {};
@@ -226,23 +257,26 @@ export function mapLevelLabel(level: MapLevel): string {
 }
 
 /**
- * The level sizes an existing world is configured with.
+ * The level sizes a game created before `mapSizes` existed is configured with - the legacy read,
+ * and only that (ah-8nfe); `gameMapOf` is the read every consumer uses.
  *
- * A world created before map levels existed recorded only its single map, which is the surface's -
- * so that is read as a surface-only configuration rather than as nothing at all.
+ * A world created before map levels recorded only its single map, which is the surface's - so that
+ * is read as a surface-only configuration rather than as nothing at all. One that recorded levels
+ * in its map keeps every one of them.
  */
-export function mapSizesOfGame(recorded: MapSizes | undefined, map: MapShape | null): MapSizes | null {
-  if (recorded !== undefined) {
-    return recorded;
+export function mapSizesOfGame(map: MapShape): MapSizes {
+  const levels: MapSizes["levels"] = {};
+  if (map.levels === undefined) {
+    levels.surface = { width: map.width, height: map.height };
+  } else {
+    for (const level of MAP_LEVELS) {
+      const size = map.levels[level];
+      if (size !== undefined) {
+        levels[level] = { width: size.width, height: size.height };
+      }
+    }
   }
-  if (map === null) {
-    return null;
-  }
-  return {
-    levels: { surface: { width: map.width, height: map.height } },
-    wrapX: map.wrapX,
-    wrapY: map.wrapY
-  };
+  return { levels, wrapX: map.wrapX, wrapY: map.wrapY };
 }
 
 /** The summary World settings shows: one line per map level, then one for the shared wrapping. */

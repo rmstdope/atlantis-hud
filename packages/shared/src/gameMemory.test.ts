@@ -1,5 +1,5 @@
 import type { CoreClient, KnownMap, OpenedGame, ParsedReport, RememberedRegion } from "@atlantis/core-client";
-import { aParsedReport, aReportHeaderInfo, aReportRegion } from "@atlantis/core-client";
+import { aKnownMap, aParsedReport, aReportHeaderInfo, aReportRegion } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import {
   commitMerge,
@@ -19,7 +19,7 @@ function report(factionId: string | null): ParsedReport {
   return aParsedReport({ header: aReportHeaderInfo({ factionId, factionName: "Borg", month: "January" }) });
 }
 
-const KNOWN_MAP: KnownMap = { hexes: [], levels: [], currentTurn: 71, walls: [] };
+const KNOWN_MAP: KnownMap = aKnownMap();
 
 function client(overrides: Partial<CoreClient> = {}): CoreClient {
   return {

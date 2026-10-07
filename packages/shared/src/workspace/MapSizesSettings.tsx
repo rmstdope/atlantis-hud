@@ -28,7 +28,7 @@ export function MapSizesSettings({
   busy,
   onChange
 }: {
-  /** The world's configuration, already read through `mapSizesOfGame`. */
+  /** The world's configuration, already read through `gameMapOf`. */
   mapSizes: MapSizes | null;
   /** The sizes are the ruleset's default rather than anything this world recorded. */
   assumed: boolean;

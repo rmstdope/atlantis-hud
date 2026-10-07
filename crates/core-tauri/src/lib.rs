@@ -14,10 +14,9 @@ use atlantis_hud_core::report::import::import_writes;
 use atlantis_hud_core::report::merge::StoredSighting;
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
-    apply_merge_plan, completions_at_caret, engine_info, order_argument_completions,
-    order_commands, order_vocabulary, parse_report, plan_merge, reject_import,
-    reserved_merge_identity, CaretCompletions, EngineInfo, MergePlan, OrderCompletion,
-    OrderValidationResult, ReportParseResultWire,
+    apply_merge_plan, completions_at_caret, order_argument_completions, parse_report, plan_merge,
+    reject_import, reserved_merge_identity, CaretCompletions, MergePlan, OrderCompletion,
+    ReportParseResultWire,
 };
 use atlantis_hud_core_persistence::{
     create_game, delete_army, delete_game, delete_hex_note, edit_game_manifest, export_game,
@@ -120,14 +119,34 @@ impl From<ImportedTurnPreview> for ImportedTurnPreviewDto {
 pub mod commands {
     use super::*;
 
-    /// Returns canonical engine metadata for the Tauri command surface.
-    #[must_use]
+    /// Answers any query the core declares in `atlantis_hud_core::queries` (ah-w83n): `name` is
+    /// the query, `args` its arguments as a positional array.
+    ///
+    /// This one command is why a new core query never touches this crate or the desktop shell's
+    /// handler list. The answer is serialized once, straight into JSON, and crosses as that text
+    /// (`RawValue`, which Tauri's own JSON serialization embeds verbatim) rather than through an
+    /// intermediate `Value` tree - a classified report is large.
+    ///
+    /// # Errors
+    ///
+    /// `unknown core query "<name>"` for an undeclared name, an argument error for the wrong
+    /// number or shape of arguments, or the query's own refusal.
     #[cfg_attr(
         feature = "tauri",
-        tauri::command(rename_all = "snake_case", rename = "get_engine_info")
+        tauri::command(rename_all = "snake_case", rename = "query")
     )]
-    pub fn command_get_engine_info() -> EngineInfo {
-        engine_info()
+    pub fn command_query(
+        name: &str,
+        args: serde_json::Value,
+    ) -> Result<Box<serde_json::value::RawValue>, String> {
+        let mut json = Vec::new();
+        atlantis_hud_core::queries::answer(
+            name,
+            args,
+            &mut serde_json::Serializer::new(&mut json),
+        )?;
+        let json = String::from_utf8(json).map_err(|error| error.to_string())?;
+        serde_json::value::RawValue::from_string(json).map_err(|error| error.to_string())
     }
 
     /// Parses a report into the full domain model.
@@ -142,52 +161,6 @@ pub mod commands {
     )]
     pub fn command_parse_report_full(raw_report: &str) -> ParsedReport {
         atlantis_hud_core::report::parse_report_full(raw_report)
-    }
-
-    /// Every combat skill the report's battle rosters disclosed, in report order.
-    ///
-    /// Deliberately **not** through `atlantis_hud_core::cache` - the only caller is a scan over many
-    /// stored turns, and the cache holds one report, so going through it would evict the player's
-    /// open turn on every iteration and make the next order-validation keystroke re-parse it.
-    #[must_use]
-    #[cfg_attr(
-        feature = "tauri",
-        tauri::command(rename_all = "snake_case", rename = "roster_skills")
-    )]
-    pub fn command_roster_skills(
-        raw_report: &str,
-    ) -> Vec<atlantis_hud_core::report::battle::RosterSkills> {
-        atlantis_hud_core::report::battle::roster_skills(
-            &atlantis_hud_core::report::parse_report_full(raw_report).battles,
-        )
-    }
-
-    /// Every crossing of an inner passage this turn's own orders claim.
-    ///
-    /// Deliberately **not** through `atlantis_hud_core::cache` - the only caller is a scan over many
-    /// stored turns, and the cache holds one report, so going through it would evict the player's
-    /// open turn on every iteration and make the next order-validation keystroke re-parse it.
-    ///
-    /// The ruleset is taken because an orders document is read against a world's own comment
-    /// syntax (`ah-g9sf.3`); one that will not parse falls back to `None`, exactly as
-    /// `OrderedUnits::from_document` already means.
-    #[must_use]
-    #[cfg_attr(
-        feature = "tauri",
-        tauri::command(rename_all = "snake_case", rename = "passage_claims")
-    )]
-    pub fn command_passage_claims(
-        raw_report: &str,
-        orders_document: &str,
-        ruleset_json: &str,
-    ) -> Vec<atlantis_hud_core::movement::passages::PassageClaim> {
-        let report = atlantis_hud_core::report::parse_report_full(raw_report);
-        let ruleset = atlantis_hud_core::movement::rules::Ruleset::from_json(ruleset_json).ok();
-        let ordered = atlantis_hud_core::movement::fleet::OrderedUnits::from_document(
-            orders_document,
-            ruleset.as_ref(),
-        );
-        atlantis_hud_core::movement::passages::passage_claims(&report, &ordered)
     }
 
     /// Parses one report and returns tolerant parser output.
@@ -362,45 +335,9 @@ pub mod commands {
         Ok(ImportedTurnPreviewDto::from(preview))
     }
 
-    /// The order vocabulary, for the Tauri command surface.
-    ///
-    /// Exposed so the shell need not keep a hand-copied list of its own beside the core's; the two used
-    /// to drift, and one of them was wrong.
-    #[must_use]
-    #[cfg_attr(
-        feature = "tauri",
-        tauri::command(rename_all = "snake_case", rename = "order_commands")
-    )]
-    pub fn command_order_commands(ruleset_json: Option<&str>) -> Vec<String> {
-        let ruleset = atlantis_hud_core::cache::with_global(|cache| {
-            ruleset_json.and_then(|json| cache.ruleset(json).ok())
-        });
-
-        order_commands(ruleset.as_deref())
-            .into_iter()
-            .map(str::to_string)
-            .collect()
-    }
-
-    /// Every word the rules know, for the editor that has to spot a keyword as it is typed.
-    ///
-    /// `ruleset_json` goes through the cache exactly as `command_order_argument_completions` does.
-    #[must_use]
-    #[cfg_attr(
-        feature = "tauri",
-        tauri::command(rename_all = "snake_case", rename = "order_vocabulary")
-    )]
-    pub fn command_order_vocabulary(ruleset_json: Option<&str>) -> Vec<String> {
-        let ruleset = atlantis_hud_core::cache::with_global(|cache| {
-            ruleset_json.and_then(|json| cache.ruleset(json).ok())
-        });
-
-        order_vocabulary(ruleset.as_deref())
-    }
-
     /// What may stand where the caret is, for the Tauri command surface.
     ///
-    /// `ruleset_json` and `raw_report` go through the cache exactly as `command_validate_orders`
+    /// `ruleset_json` and `raw_report` go through the cache exactly as the `validate_orders` query
     /// does; `unit_id` is whose block is being typed, which is what makes the hex-narrowed
     /// positions (`BUY`, `SELL`, `PRODUCE`) answerable at all.
     #[must_use]
@@ -446,28 +383,6 @@ pub mod commands {
         });
 
         completions_at_caret(line_prefix, ruleset.as_deref(), report.as_deref(), unit_id)
-    }
-
-    /// Validates one order draft for the Tauri command surface.
-    ///
-    /// `ruleset_json` is the served ruleset when the shell has it; without it item names go unchecked
-    /// and everything else is checked as usual. `raw_report` is the turn the orders were written for,
-    /// when one has been imported: with it the answer covers the checks that read what each unit holds
-    /// and where it stands, and without it the answer is the syntax check alone.
-    ///
-    /// Both go through the cache, as they do on the web. This runs whenever the player stops typing,
-    /// and the desktop is not entitled to be slower about it than the browser.
-    #[must_use]
-    #[cfg_attr(
-        feature = "tauri",
-        tauri::command(rename_all = "snake_case", rename = "validate_orders")
-    )]
-    pub fn command_validate_orders(
-        request: atlantis_hud_core::orders::request::ValidateOrdersRequest,
-    ) -> OrderValidationResult {
-        atlantis_hud_core::cache::with_global(|cache| {
-            atlantis_hud_core::orders::request::validate_orders_request(cache, &request)
-        })
     }
 
     /// Persists one order draft for the Tauri command surface.
@@ -952,26 +867,6 @@ pub mod commands {
             .map_err(|error| error.to_string())
     }
 
-    /// Parses a report and counts each unit's men against the catalogue.
-    ///
-    /// The classifying counterpart of `command_parse_report_full`. Kept separate rather than replacing
-    /// it, because parsing has to keep working with no ruleset loaded.
-    #[must_use]
-    #[cfg_attr(
-        feature = "tauri",
-        tauri::command(rename_all = "snake_case", rename = "parse_report_classified")
-    )]
-    pub fn command_parse_report_classified(raw_report: &str, ruleset_json: &str) -> ParsedReport {
-        let report = atlantis_hud_core::cache::with_global(|cache| {
-            atlantis_hud_core::movement::request::parse_and_classify(
-                cache,
-                raw_report,
-                ruleset_json,
-            )
-        });
-        (*report).clone()
-    }
-
     /// Plans a route for one unit against a ruleset the caller supplies.
     ///
     /// A thin delegation: the work lives in the core so the wasm adapter can call exactly the same
@@ -1002,57 +897,6 @@ pub mod commands {
                 unit_id,
                 destination,
                 map_json,
-            )
-        })
-    }
-
-    /// Writes the known map inside one rectangle out as report-shaped text.
-    ///
-    /// The desktop twin of the wasm binding, delegating to the same core entry so a map exported on
-    /// the desktop and the same map exported in the browser come out byte for byte identical.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the remembered regions or the request cannot be read. An empty rectangle
-    /// is a successful answer carrying a header and no regions.
-    #[cfg_attr(
-        feature = "tauri",
-        tauri::command(rename_all = "snake_case", rename = "export_map")
-    )]
-    pub fn command_export_map(
-        raw_report: &str,
-        remembered_json: &str,
-        request_json: &str,
-    ) -> Result<String, String> {
-        atlantis_hud_core::cache::with_global(|cache| {
-            atlantis_hud_core::report::export::export_map_text(
-                cache,
-                raw_report,
-                remembered_json,
-                request_json,
-            )
-        })
-    }
-
-    /// Writes every named unit out as a report fragment an ally can read back.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the unit ids cannot be read. An empty list is a successful answer
-    /// carrying a header and no units.
-    #[cfg_attr(
-        feature = "tauri",
-        tauri::command(rename_all = "snake_case", rename = "export_mage_sheet")
-    )]
-    pub fn command_export_mage_sheet(
-        raw_report: &str,
-        unit_ids_json: &str,
-    ) -> Result<String, String> {
-        atlantis_hud_core::cache::with_global(|cache| {
-            atlantis_hud_core::report::export::export_mage_sheet_text(
-                cache,
-                raw_report,
-                unit_ids_json,
             )
         })
     }
@@ -1105,22 +949,6 @@ pub mod commands {
         })
     }
 
-    /// What the orders document makes of the faction's units, region by region.
-    ///
-    /// Returns an error only when the ruleset or the remembered regions cannot be read. Orders that
-    /// change nothing are a successful, empty answer.
-    #[cfg_attr(
-        feature = "tauri",
-        tauri::command(rename_all = "snake_case", rename = "preview_orders")
-    )]
-    pub fn command_preview_orders(
-        request: atlantis_hud_core::orders::request::PreviewOrdersRequest,
-    ) -> Result<atlantis_hud_core::orders::effects::OrdersPreviewResponse, String> {
-        atlantis_hud_core::cache::with_global(|cache| {
-            atlantis_hud_core::orders::request::preview_orders_request(cache, &request)
-        })
-    }
-
     /// Every trade worth making in the map the faction has seen.
     ///
     /// The desktop twin of the wasm binding, delegating to the same core entry so the two shells
@@ -1150,41 +978,18 @@ pub mod commands {
             )
         })
     }
-
-    /// How many mages each structure in the report seats - the study planner's shelters, from the
-    /// one rule the magic-study check reads (ah-29p5).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error only when the ruleset cannot be read.
-    #[cfg_attr(
-        feature = "tauri",
-        tauri::command(rename_all = "snake_case", rename = "shelter_seats")
-    )]
-    pub fn command_shelter_seats(
-        raw_report: &str,
-        ruleset_json: &str,
-    ) -> Result<Vec<atlantis_hud_core::orders::shelter::ShelterSeat>, String> {
-        atlantis_hud_core::cache::with_global(|cache| {
-            atlantis_hud_core::orders::shelter::shelter_seats_in(cache, raw_report, ruleset_json)
-        })
-    }
 }
 
 pub use commands::{
     command_commit_report_import, command_completions_at_caret, command_delete_army,
-    command_delete_hex_note, command_export_mage_sheet, command_export_map,
-    command_get_engine_info, command_known_map, command_list_allied_mages, command_list_armies,
+    command_delete_hex_note, command_known_map, command_list_allied_mages, command_list_armies,
     command_list_hex_notes, command_list_imported_turns, command_list_study_plans,
     command_load_imported_turn, command_load_latest_imported_turn, command_load_merged_reports,
     command_load_order_draft, command_load_region_sightings, command_merge_report,
-    command_order_argument_completions, command_order_commands, command_order_vocabulary,
-    command_parse_report, command_parse_report_classified, command_parse_report_full,
-    command_passage_claims, command_plan_route, command_preview_orders,
-    command_preview_report_import, command_roster_skills, command_save_allied_mages,
+    command_order_argument_completions, command_parse_report, command_parse_report_full,
+    command_plan_route, command_preview_report_import, command_query, command_save_allied_mages,
     command_save_army, command_save_hex_note, command_save_order_draft, command_save_study_plans,
-    command_shelter_seats, command_trace_move_orders, command_trade_routes,
-    command_validate_orders,
+    command_trace_move_orders, command_trade_routes,
 };
 
 /// Creates a game under the application's games directory and applies migrations.
@@ -1351,25 +1156,30 @@ mod preview_orders_command_tests {
 
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
+    /// The preview is a declared core query (ah-w83n), so the desktop asks for it through `query`.
     #[test]
     fn previews_the_orders_it_is_handed() {
         let report = "Foo (1) Report\n\nplain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n";
-
-        let answer =
-            command_preview_orders(atlantis_hud_core::orders::request::PreviewOrdersRequest {
-                ruleset_json: RULESET.into(),
-                raw_report: report.into(),
-                remembered_json: "[]".into(),
-                orders_document: "unit 900
+        let request = atlantis_hud_core::orders::request::PreviewOrdersRequest {
+            ruleset_json: RULESET.into(),
+            raw_report: report.into(),
+            remembered_json: "[]".into(),
+            orders_document: "unit 900
 NAME UNIT \"Renamed\"
 "
-                .into(),
-                ..Default::default()
-            })
-            .expect("the ruleset loads");
+            .into(),
+            ..Default::default()
+        };
 
-        assert_eq!(answer.regions.len(), 1);
-        assert_eq!(answer.regions[0].units[0].unit.name, "Renamed");
+        let raw = command_query(
+            "preview_orders",
+            serde_json::json!([serde_json::to_value(request).expect("a request")]),
+        )
+        .expect("the ruleset loads");
+        let answer: serde_json::Value = serde_json::from_str(raw.get()).expect("JSON");
+
+        assert_eq!(answer["regions"].as_array().map(Vec::len), Some(1));
+        assert_eq!(answer["regions"][0]["units"][0]["unit"]["name"], "Renamed");
     }
 }
 
@@ -2292,20 +2102,23 @@ mod tests {
     use super::*;
     use atlantis_hud_core::backup::{ArmyMember, StudyGoal};
     use atlantis_hud_core::report::model::ReportUnit;
+    use atlantis_hud_core::EngineInfo;
     use tempfile::tempdir;
 
     #[test]
     fn tauri_adapter_returns_core_contract_values() {
-        let response = command_get_engine_info();
+        let raw = command_query("get_engine_info", serde_json::json!([])).expect("answered");
+        let response: serde_json::Value = serde_json::from_str(raw.get()).expect("JSON");
 
         assert_eq!(
             response,
-            EngineInfo {
+            serde_json::to_value(EngineInfo {
                 id: "atlantis".to_string(),
                 name: "Atlantis PBEM".to_string(),
                 ruleset_version: "4.0".to_string(),
                 max_faction_count: 128,
-            }
+            })
+            .expect("serializes")
         );
     }
 
@@ -2412,15 +2225,20 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         )
         .expect("create game");
 
-        let validation =
-            command_validate_orders(atlantis_hud_core::orders::request::ValidateOrdersRequest {
-                raw_orders: "FLY 1 2".into(),
-                disabled_codes: Some(Vec::new()),
-                ..Default::default()
-            });
+        let request = atlantis_hud_core::orders::request::ValidateOrdersRequest {
+            raw_orders: "FLY 1 2".into(),
+            disabled_codes: Some(Vec::new()),
+            ..Default::default()
+        };
+        let raw = command_query(
+            "validate_orders",
+            serde_json::json!([serde_json::to_value(request).expect("a request")]),
+        )
+        .expect("validation always answers");
+        let validation: serde_json::Value = serde_json::from_str(raw.get()).expect("JSON");
         assert_eq!(
-            validation.diagnostics,
-            vec![atlantis_hud_core::OrderDiagnostic {
+            validation["diagnostics"],
+            serde_json::to_value(vec![atlantis_hud_core::OrderDiagnostic {
                 code: "unknown-command".to_string(),
                 message: "unknown order command: FLY".to_string(),
                 line_start: Some(1),
@@ -2432,7 +2250,8 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
                 unit_id: None,
                 formed: None,
                 severity: atlantis_hud_core::OrderDiagnosticSeverity::Error,
-            }]
+            }])
+            .expect("serializes")
         );
 
         let saved = command_save_order_draft(
@@ -2506,36 +2325,79 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         report.push_str("+ Shaft [1] : Shaft, contains an inner location.\n");
         report.push_str("  * Digger (5), Foo (1), leader [LEAD]. Weight: 10.\n");
 
-        let claims = command_passage_claims(&report, "unit 5\nMOVE IN\n", "");
+        let raw = command_query(
+            "passage_claims",
+            serde_json::json!([report, "unit 5\nMOVE IN\n", ""]),
+        )
+        .expect("answered");
+        let claims: Vec<serde_json::Value> = serde_json::from_str(raw.get()).expect("JSON");
 
         assert_eq!(claims.len(), 1);
-        assert_eq!(claims[0].unit_id, "5");
-        assert_eq!(claims[0].structure, "Shaft [1]");
+        assert_eq!(claims[0]["unitId"], "5");
+        assert_eq!(claims[0]["structure"], "Shaft [1]");
     }
 
-    /// ah-29p5: the study planner's seats come from the core over this command, so the desktop
-    /// shell answers them from the same rule the magic-study check reads.
+    /// ah-w83n: every query the core declares crosses to the desktop through the one `query`
+    /// command - none of them is missing from this shell, whatever arguments it is sent.
     #[test]
-    fn tauri_adapter_reads_shelter_seats() {
+    fn tauri_adapter_answers_every_declared_query() {
+        for name in atlantis_hud_core::queries::QUERY_NAMES {
+            // Answered (a query without parameters), or refused as arguments (every other): either
+            // way the name was found. Anything else would be the desktop lacking a query.
+            if let Err(error) = command_query(name, serde_json::json!([])) {
+                assert!(
+                    error.starts_with("arguments could not be read: "),
+                    "{name}: {error}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tauri_adapter_refuses_an_undeclared_query_by_name() {
+        assert_eq!(
+            command_query("no_such_query", serde_json::json!([])).map(|raw| raw.get().to_owned()),
+            Err("unknown core query \"no_such_query\"".to_owned())
+        );
+    }
+
+    /// The answer crosses as the JSON the core serialized, field names and all.
+    #[test]
+    fn tauri_adapter_answers_shelter_seats_through_query() {
         let mut report = String::from("Foo (1) Report\n\n");
         report.push_str("plain (1,1) in Coast, 10 peasants (orcs), $5.\n\n");
         report.push_str("Exits:\n  North : plain (1,-1) in Coast.\n\n");
         report.push_str("+ Keep [1] : Citadel.\n");
         report.push_str("+ Ark [2] : Galleon.\n");
 
-        let seats = command_shelter_seats(&report, atlantis_hud_fixtures::RULESET_JSON)
-            .expect("a usable ruleset answers");
+        let raw = command_query(
+            "shelter_seats",
+            serde_json::json!([report, atlantis_hud_fixtures::RULESET_JSON]),
+        )
+        .expect("a usable ruleset answers");
 
+        let seats: Vec<serde_json::Value> = serde_json::from_str(raw.get()).expect("JSON");
         let counted: Vec<_> = seats
             .iter()
-            .map(|seat| (seat.structure_id.as_str(), seat.seats))
+            .map(|seat| (seat["structureId"].clone(), seat["seats"].clone()))
             .collect();
-        assert_eq!(counted, vec![("1", Some(3)), ("2", Some(1))]);
+        assert_eq!(
+            counted,
+            vec![
+                (serde_json::json!("1"), serde_json::json!(3)),
+                (serde_json::json!("2"), serde_json::json!(1))
+            ]
+        );
     }
 
     #[test]
     fn tauri_adapter_refuses_shelter_seats_without_a_usable_ruleset() {
-        assert!(command_shelter_seats("Foo (1) Report\n", "not json").is_err());
+        let error = command_query(
+            "shelter_seats",
+            serde_json::json!(["Foo (1) Report\n", "not json"]),
+        )
+        .expect_err("refused");
+        assert!(!error.starts_with("arguments could not be read"), "{error}");
     }
 
     #[test]

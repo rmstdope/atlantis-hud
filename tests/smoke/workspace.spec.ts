@@ -11,6 +11,7 @@ import {
   importReport,
   loadReport,
   mapTransform,
+  onlyChecks,
   ordersInput,
   ordersText,
   saveNow,
@@ -1071,6 +1072,7 @@ test("a bad order names itself, and belongs to the unit that carries it", async 
 test("a unit told to spend silver it has not got is warned about, without blocking export", async ({
   page
 }) => {
+  await onlyChecks(page, ["not-enough-silver"]);
   await loadReport(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
@@ -1093,24 +1095,12 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   await expect(page.getByTestId("export-orders")).toBeEnabled();
   await page.keyboard.press("Escape");
 
-  // And the whole map is counted, so the same problem is reachable from the header. The turn-71
-  // report carries two findings of its own throughout - Six of Two (13402) is already at combat
-  // 5, the ruleset's maximum, and still orders "@study comb" (ah-1uj); and four mages in a
-  // different hex CAST an enchant with no plate armor on hand (ah-dbb.2). Since ah-dwk6 there
-  // are two more: units 14451 and 13432 are given no orders at all (unit-does-nothing), and this
-  // test's own unit is a third, since a lone GIVE spends none of its month. Four baseline, plus
-  // the two this test introduces on its own unit: that idle month, and the hex's shortfall. Since
-  // ah-1wcw.4 the silver check also counts each unit's monthly maintenance, and 18642, alone in
-  // hex 1:7,53, is a leader owing $50 with neither silver nor food - but the faction's unclaimed
-  // silver pays it (ah-fjty, below), so it is no finding of its own until the GIVE drains the purse.
-  //
-  // It was eleven baseline until ah-uwa3: unit 1688 owed $10 and orders "@work" in a hex paying
-  // $26.0, and wages arrive in the turn's last phase - in time for maintenance, if not for
-  // anything the orders spend. So its fee is covered and it is no longer short. It was ten until
-  // ah-yw4p: six Borg mages studying above level 2 aboard the Cloudship fleet were warned as
-  // unsheltered, but `data/Cloudship` and `data/Airship` seat 78 mages in that fleet.
+  // The same problem is reachable from the header. Only the silver check runs in this walk, so the
+  // chip counts the one shortfall this test introduces and nothing the fixture raises elsewhere
+  // (ah-8qh8); that the chip counts other hexes too is "a unit named in the problems panel is a
+  // way to go there", below.
   const chip = page.getByTestId("turn-report-chip");
-  await expect(chip).toHaveAttribute("data-problems", "6");
+  await expect(chip).toHaveAttribute("data-problems", "1");
   await chip.click();
   await page.getByTestId("turn-report-tab-problems").click();
   await expect(page.getByTestId("problems-panel")).toContainText("mountain (7,53)");
@@ -1123,11 +1113,10 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   await expect(problems).toContainText("their orders spend");
   await expect(problems).not.toContainText("upkeep");
 
-  // `fillOrders` replaces the draft, so "@work" takes the GIVE away and puts the unit to work:
-  // both of this test's own problems go, and the chip settles at the report's four. These used to
-  // be asserted after the "@work" and passed on the panel as it stood before the recount (ah-yw4p).
+  // `fillOrders` replaces the draft, so "@work" takes the GIVE away and the shortfall goes with it.
+  // Asserted after the "@work" rather than before, so the recount has landed (ah-yw4p).
   await fillOrders(page, "@work");
-  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "4");
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "0");
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
 });
 
@@ -1138,23 +1127,18 @@ test("a unit told to spend silver it has not got is warned about, without blocki
  *
  * Two distinct hex-level findings on the same hex, so "several diagnostics" is genuine rather
  * than one message repeated: the shared-purse overspend from the test above, plus "nobody is
- * guarding this hex" - off by default, turned on here through Settings, and true of every hex the
- * faction stands in on the committed turn-71 report.
+ * guarding this hex" - off by default, and true of every hex the faction stands in on the
+ * committed turn-71 report. Those two checks and no others, so the count is theirs (ah-8qh8).
  */
-async function warnAboutUnguardedHexes(page: Page) {
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByTestId("settings-tab-warnings").click();
-  await page.getByTestId("settings-warning-hex-unguarded").check();
-  await page.keyboard.press("Escape");
-}
+const SHORTFALL_AND_UNGUARDED = ["not-enough-silver", "hex-unguarded"] as const;
 
 /**
  * Turns `unit-does-nothing` (ah-dwk6) off.
  *
- * It is on by default and is right about the fixtures below - a unit given a single GIVE, or a
- * line that does not parse, has no order that spends its month - but it is an extra finding in
- * tests that are counting a specific pair of them or reading one editor's diagnostics. The check
- * has its own coverage in the Rust suite and its own toggle test above.
+ * It is on by default and is right about the fixtures below - a unit given a line that does not
+ * parse has no order that spends its month - but it is an extra finding in tests that are reading
+ * one editor's diagnostics. The check has its own coverage in the Rust suite and its own toggle
+ * test above.
  */
 async function silenceIdleUnits(page: Page) {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -1164,9 +1148,8 @@ async function silenceIdleUnits(page: Page) {
 }
 
 test("hiding the problems brings the region facts to the top", async ({ page }) => {
+  await onlyChecks(page, SHORTFALL_AND_UNGUARDED);
   await loadReport(page);
-  await silenceIdleUnits(page);
-  await warnAboutUnguardedHexes(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
   await fillOrders(page, "GIVE 0 999999999 SILV");
@@ -1196,8 +1179,8 @@ test("hiding the problems brings the region facts to the top", async ({ page }) 
 });
 
 test("the hidden problems stay hidden across a reload", async ({ page }) => {
+  await onlyChecks(page, SHORTFALL_AND_UNGUARDED);
   await loadReport(page);
-  await warnAboutUnguardedHexes(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
   await fillOrders(page, "GIVE 0 999999999 SILV");
@@ -1220,23 +1203,16 @@ test("the hidden problems stay hidden across a reload", async ({ page }) => {
  * finding a client-side filter could not be trusted to catch consistently.
  */
 test("a silenced advisory check disappears everywhere at once", async ({ page }) => {
+  // The silver check alone, so the chip counts the shortfall this test introduces and nothing the
+  // fixture raises elsewhere (ah-8qh8).
+  await onlyChecks(page, ["not-enough-silver"]);
   await loadReport(page);
-  await silenceIdleUnits(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
   await fillOrders(page, "GIVE 0 999999999 SILV");
 
-  // The turn-71 report carries two findings of its own throughout (unit 13402's
-  // study-at-maximum, ah-1uj; and the enchant-armor not-enough-items in a different hex,
-  // ah-dbb.2), both unaffected by the not-enough-silver toggle below - the chip counts them
-  // alongside the shortfall this test introduces.
-  //
-  // One fewer since ah-uwa3: unit 1688's $10 fee is covered by the wages its "@work" earns, which
-  // arrive in the turn's last phase - in time for maintenance, if not for what the orders spend.
-  // Six fewer since ah-yw4p: the Borg mages aboard the Cloudship fleet are seated there
-  // (`data/Cloudship`, `data/Airship`), so their study is no longer warned as halved.
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "3");
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "1");
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-tab-warnings").click();
@@ -1244,7 +1220,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
-  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "2");
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "0");
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-tab-warnings").click();
@@ -1252,7 +1228,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "3");
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "1");
 });
 
 /**

@@ -11,6 +11,7 @@ import { aReportRegion, aReportUnit, aStructure } from "@atlantis/core-client";
 import type { GameDataEntry, GameDataIndex } from "../gameData";
 import type { RememberedResource } from "../resourceMemory";
 import { SURFACE, type HexNode } from "../hexMapModel";
+import { aHexNode } from "../testing/builders";
 import { resetHexNotesStore } from "../hexNotesStore";
 import { RegionPanel } from "./RegionPanel";
 import { resetWorkspaceStore } from "../workspaceStore";
@@ -31,17 +32,10 @@ const GAME = {
 } as OpenedGame;
 
 /** A minimal but visited hex, enough to reach the region facts below the Problems section. */
-const HEX: HexNode = {
-  regionId: "1:7,53",
-  coordinate: { x: 7, y: 53, z: SURFACE },
-  terrain: "mountain",
+const HEX: HexNode = aHexNode({
   province: "Inholm",
   label: "Inholm",
-  knowledge: "current",
-  lastSeenTurn: 71,
-  ageInTurns: 0,
   settlementName: "Inholm",
-  rememberedUnits: [],
   ownUnitCount: 1,
   foreignUnitCount: 91,
   region: aReportRegion({
@@ -57,7 +51,7 @@ const HEX: HexNode = {
     maxWages: 16,
     entertainment: 200
   })
-};
+});
 
 const PROBLEMS: OrderDiagnostic[] = [
   {

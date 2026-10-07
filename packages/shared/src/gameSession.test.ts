@@ -69,15 +69,12 @@ describe("creating a game", () => {
     expect(() => newGameManifest("A game", "atlantis-classic", NOW, "abc")).toThrow(/ruleset/u);
   });
 
-  it("records the map the player stated", () => {
-    const manifest = newGameManifest("A game", "neworigins", NOW, "abc", {
-      width: 64,
-      height: 64,
-      wrapX: true,
-      wrapY: true
-    });
+  it("records the map sizes the player stated, and nothing beside them (ah-8nfe)", () => {
+    const mapSizes = { levels: { surface: { width: 64, height: 64 } }, wrapX: true, wrapY: true };
+    const manifest = newGameManifest("A game", "neworigins", NOW, "abc", mapSizes);
 
-    expect(manifest.metadata.map).toEqual({ width: 64, height: 64, wrapX: true, wrapY: true });
+    expect(manifest.metadata.mapSizes).toEqual(mapSizes);
+    expect("map" in manifest.metadata).toBe(false);
   });
 
   it("omits the map entirely when nothing was stated, rather than writing the default in", () => {
@@ -86,6 +83,7 @@ describe("creating a game", () => {
     const manifest = newGameManifest("A game", "neworigins", NOW, "abc");
 
     expect("map" in manifest.metadata).toBe(false);
+    expect("mapSizes" in manifest.metadata).toBe(false);
   });
 
   it("does not bump the manifest version, because an optional field is the migration", () => {

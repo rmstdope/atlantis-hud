@@ -8,6 +8,8 @@ import {
   useWorkspaceStore,
   workspaceGameOf
 } from "./workspaceStore";
+import { gameMapOf, mapShapeOfSizes } from "./mapShape";
+import { gameSettingsPresentation } from "./workspace/settingsTabs";
 
 const store = () => useWorkspaceStore.getState();
 
@@ -36,6 +38,54 @@ describe("changing the open game's ruleset", () => {
     store().updateGameRuleset("magicdeep");
 
     expect(store().game).toBeNull();
+  });
+});
+
+describe("re-entering the open game's map sizes (ah-8nfe)", () => {
+  beforeEach(resetWorkspaceStore);
+
+  const reentered = {
+    levels: { surface: { width: 40, height: 60 }, underworld: { width: 48, height: 48 } },
+    wrapX: true,
+    wrapY: false
+  };
+
+  it("reads the new sizes back in Settings through the record the map view plans on", () => {
+    // A game from before map levels, whose only record is its surface map.
+    store().openGame({
+      gameId: "g1",
+      gameName: "Spring campaign",
+      databasePath: "idb://g1",
+      rulesetId: "neworigins",
+      map: { width: 72, height: 96, wrapX: true, wrapY: false }
+    }, null);
+
+    store().updateGameMapSizes(reentered);
+
+    const game = store().game;
+    expect(game).not.toBeNull();
+    if (game === null) return;
+    // One record: the pre-levels map is gone, so nothing else can answer instead.
+    expect("map" in game).toBe(false);
+    const shown = gameSettingsPresentation(game);
+    expect(shown).toMatchObject({ kind: "ruleset", sizes: reentered, mapStated: true });
+    expect(gameMapOf(game).map).toEqual(mapShapeOfSizes(reentered));
+    expect(shown.kind === "ruleset" ? shown.map : null).toEqual(gameMapOf(game).map);
+  });
+
+  it("puts a cleared game back on its ruleset's assumed default", () => {
+    store().openGame({
+      gameId: "g1",
+      gameName: "Spring campaign",
+      databasePath: "idb://g1",
+      rulesetId: "neworigins",
+      mapSizes: reentered
+    }, null);
+
+    store().updateGameMapSizes(undefined);
+
+    const game = store().game;
+    expect(game === null ? null : gameSettingsPresentation(game)).toMatchObject({ mapStated: false });
   });
 });
 

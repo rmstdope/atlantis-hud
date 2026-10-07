@@ -1,14 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { createTauriAdapter, TAURI_COMMANDS, type TauriInvoke } from "./tauriCommands";
 import type { CoreAdapter } from "./index";
+import { CORE_QUERIES } from "./generated/CoreQueries";
 
 type Invocation = Record<string, (...args: unknown[]) => Promise<unknown>>;
 
 describe("TAURI_COMMANDS", () => {
-  it("builds an adapter with exactly the table's methods", () => {
+  it("builds an adapter with exactly the table's methods and the core's declared queries", () => {
     const invoke: TauriInvoke = vi.fn();
     const adapter = createTauriAdapter(invoke);
-    expect(Object.keys(adapter).sort()).toEqual(Object.keys(TAURI_COMMANDS).sort());
+    expect(Object.keys(adapter).sort()).toEqual(
+      [...Object.keys(TAURI_COMMANDS), ...Object.keys(CORE_QUERIES)].sort()
+    );
   });
 
   it("invokes each row's command with its keys, in parameter order", async () => {
@@ -41,6 +44,6 @@ describe("TAURI_COMMANDS", () => {
     };
     await adapter.validateOrders(request);
 
-    expect(invoke).toHaveBeenCalledWith("validate_orders", { request });
+    expect(invoke).toHaveBeenCalledWith("query", { name: "validate_orders", args: [request] });
   });
 });

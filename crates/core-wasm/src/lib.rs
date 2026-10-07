@@ -6,6 +6,9 @@
 //! (`reset_game_manifest_state`), and
 //! which turn a game reopens on (`latest_turn_state`): the rules live in the core, and the web's
 //! store calls through here rather than deciding them itself.
+//!
+//! The core's declared queries (`atlantis_hud_core::queries`) have no export of their own: they all
+//! cross through [`query`], so a query added to the core needs nothing here (ah-w83n).
 
 use atlantis_hud_core::backup::ManifestEdit;
 use atlantis_hud_core::reopen::{latest_turn, TurnRef};
@@ -13,8 +16,8 @@ use atlantis_hud_core::report::import::import_writes;
 use atlantis_hud_core::report::merge::StoredSighting;
 use atlantis_hud_core::report::sighting::RegionSighting;
 use atlantis_hud_core::{
-    apply_merge_plan, diff_imported_turn, engine_info, plan_merge, reject_import,
-    reserved_merge_identity, ImportedTurnSnapshot, MergePlan, ReportParseResultWire,
+    apply_merge_plan, diff_imported_turn, plan_merge, reject_import, reserved_merge_identity,
+    ImportedTurnSnapshot, MergePlan, ReportParseResultWire,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -28,12 +31,38 @@ use wasm_bindgen::prelude::*;
 /// as `undefined`. It also emits `undefined` for `Option::None`, which fails the `=== null` checks
 /// the TypeScript side writes against its own `T | null` types. Always go through this.
 fn to_js<T: Serialize + ?Sized>(value: &T) -> Result<JsValue, JsValue> {
-    let serializer = serde_wasm_bindgen::Serializer::new()
-        .serialize_maps_as_objects(true)
-        .serialize_missing_as_null(true);
     value
-        .serialize(&serializer)
+        .serialize(&js_serializer())
         .map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
+/// The one serializer configuration both [`to_js`] and [`query`] write through, so the two cannot
+/// drift apart on the two overrides above.
+fn js_serializer() -> serde_wasm_bindgen::Serializer {
+    serde_wasm_bindgen::Serializer::new()
+        .serialize_maps_as_objects(true)
+        .serialize_missing_as_null(true)
+}
+
+/// Answers any query the core declares in `atlantis_hud_core::queries` (ah-w83n): `name` is the
+/// query, `args` its arguments as a positional array.
+///
+/// This one export is why a new core query never touches this crate. The arguments are read
+/// straight from the JS values and the answer is written straight into JS objects, with no JSON
+/// text or intermediate tree between them.
+///
+/// # Errors
+///
+/// `unknown core query "<name>"` for an undeclared name, an argument error for the wrong number or
+/// shape of arguments, or the query's own refusal.
+#[wasm_bindgen]
+pub fn query(name: String, args: JsValue) -> Result<JsValue, JsValue> {
+    atlantis_hud_core::queries::answer(
+        &name,
+        serde_wasm_bindgen::Deserializer::from(args),
+        &js_serializer(),
+    )
+    .map_err(|error| JsValue::from_str(&error))
 }
 
 /// Reads a request object the TypeScript side built from a ts-rs type. The counterpart of [`to_js`].
@@ -71,12 +100,6 @@ struct PreparedMergeDto {
     map_export: bool,
     /// `None` when the report may be merged; otherwise why it may not be.
     rejection: Option<String>,
-}
-
-/// Returns engine metadata serialized as a JS object.
-#[wasm_bindgen]
-pub fn get_engine_info() -> Result<JsValue, JsValue> {
-    to_js(&engine_info())
 }
 
 /// Parses one report and returns tolerant parser output including the viability threshold flag.
@@ -423,20 +446,6 @@ pub fn decode_game_backup_state(
     to_js(&decoded)
 }
 
-/// Parses a report and counts each unit's men against the catalogue.
-#[wasm_bindgen]
-pub fn parse_report_classified_state(
-    raw_report: String,
-    ruleset_json: String,
-) -> Result<JsValue, JsValue> {
-    // The lock is released before serializing: the model is large, and the cache is of no use to
-    // anyone while it is being converted into JS objects.
-    let report = atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::movement::request::parse_and_classify(cache, &raw_report, &ruleset_json)
-    });
-    to_js(&*report)
-}
-
 /// Plans a route for one unit against a ruleset the caller supplies.
 ///
 /// Available on every target: planning needs no native backing, unlike the persistence entry
@@ -499,49 +508,6 @@ pub fn trade_routes_state(
     to_js(&response)
 }
 
-/// Writes the known map inside one rectangle out as report-shaped text.
-///
-/// The browser twin of the desktop command, calling the same core entry so a map exported in the
-/// browser and the same map exported on the desktop come out byte for byte identical. The text is
-/// the whole answer: the core never touches a filesystem, so saving it is the shell's business.
-#[wasm_bindgen]
-pub fn export_map_state(
-    raw_report: String,
-    remembered_json: String,
-    request_json: String,
-) -> Result<JsValue, JsValue> {
-    let text = atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::report::export::export_map_text(
-            cache,
-            &raw_report,
-            &remembered_json,
-            &request_json,
-        )
-    })
-    .map_err(|error| JsValue::from_str(&error))?;
-    to_js(&text)
-}
-
-/// Writes every named unit out as a report fragment an ally can read back.
-///
-/// The browser twin of the desktop command, calling the same core entry so a sheet exported in the
-/// browser and the same sheet exported on the desktop come out byte for byte identical.
-#[wasm_bindgen]
-pub fn export_mage_sheet_state(
-    raw_report: String,
-    unit_ids_json: String,
-) -> Result<JsValue, JsValue> {
-    let text = atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::report::export::export_mage_sheet_text(
-            cache,
-            &raw_report,
-            &unit_ids_json,
-        )
-    })
-    .map_err(|error| JsValue::from_str(&error))?;
-    to_js(&text)
-}
-
 /// Resolves everything the faction knows about the map, once, for a caller on either shell.
 ///
 /// The browser twin of the desktop command, calling the same core entry so the two shells cannot
@@ -579,21 +545,6 @@ pub fn trace_move_orders_state(request: JsValue) -> Result<JsValue, JsValue> {
     to_js(&response)
 }
 
-/// What the orders document makes of the faction's units, region by region.
-///
-/// Thin over the core exactly as the trace is, and for the same reason: the desktop and the
-/// browser must preview the same coming month. An order that changes nothing resolves to an empty
-/// answer; only an unusable ruleset or unreadable memory rejects.
-#[wasm_bindgen]
-pub fn preview_orders_state(request: JsValue) -> Result<JsValue, JsValue> {
-    let request: atlantis_hud_core::orders::request::PreviewOrdersRequest = from_js(request)?;
-    let response = atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::orders::request::preview_orders_request(cache, &request)
-    })
-    .map_err(|error| JsValue::from_str(&error))?;
-    to_js(&response)
-}
-
 /// Parses a report into the full domain model: regions, units, structures, exits and markets.
 ///
 /// The flat summary `parse_report_state` returns is derived from this same parse, and remains for
@@ -606,118 +557,6 @@ pub fn preview_orders_state(request: JsValue) -> Result<JsValue, JsValue> {
 pub fn parse_report_full_state(raw_report: String) -> Result<JsValue, JsValue> {
     let report = atlantis_hud_core::cache::with_global(|cache| cache.report(&raw_report));
     to_js(&*report)
-}
-
-/// Every combat skill the report's battle rosters disclosed, in report order.
-///
-/// Deliberately **not** through `atlantis_hud_core::cache`, unlike every neighbouring entry point
-/// here: the only caller is a scan over many stored turns, and the cache holds one report, so going
-/// through it would evict the player's open turn on every iteration and make the next
-/// order-validation keystroke re-parse it.
-///
-/// # Errors
-///
-/// Returns an error only when the answer cannot be serialised to JS.
-#[wasm_bindgen]
-pub fn roster_skills_state(raw_report: String) -> Result<JsValue, JsValue> {
-    let report = atlantis_hud_core::report::parse_report_full(&raw_report);
-    to_js(&atlantis_hud_core::report::battle::roster_skills(
-        &report.battles,
-    ))
-}
-
-/// Every crossing of an inner passage this turn's own orders claim.
-///
-/// Deliberately **not** through `atlantis_hud_core::cache`, for the reason
-/// `roster_skills_state` gives just above: the only caller is a scan over many stored turns.
-///
-/// The ruleset is taken because an orders document is read against a world's own comment syntax
-/// (`ah-g9sf.3`); one that will not parse falls back to `None`.
-///
-/// # Errors
-///
-/// Returns an error only when the answer cannot be serialised to JS.
-#[wasm_bindgen]
-pub fn passage_claims_state(
-    raw_report: String,
-    orders_document: String,
-    ruleset_json: String,
-) -> Result<JsValue, JsValue> {
-    let report = atlantis_hud_core::report::parse_report_full(&raw_report);
-    let ruleset = atlantis_hud_core::movement::rules::Ruleset::from_json(&ruleset_json).ok();
-    let ordered = atlantis_hud_core::movement::fleet::OrderedUnits::from_document(
-        &orders_document,
-        ruleset.as_ref(),
-    );
-    to_js(&atlantis_hud_core::movement::passages::passage_claims(
-        &report, &ordered,
-    ))
-}
-
-/// How many mages each structure in the report seats - the study planner's shelters, from the
-/// one rule the magic-study check reads (ah-29p5). The browser twin of the desktop command.
-///
-/// # Errors
-///
-/// Returns an error when the ruleset cannot be read or the answer cannot be serialised to JS.
-#[wasm_bindgen]
-pub fn shelter_seats_state(raw_report: String, ruleset_json: String) -> Result<JsValue, JsValue> {
-    let seats = atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::orders::shelter::shelter_seats_in(cache, &raw_report, &ruleset_json)
-    })
-    .map_err(|error| JsValue::from_str(&error))?;
-    to_js(&seats)
-}
-
-/// Validates one draft of Atlantis orders and returns structured diagnostics.
-///
-/// Order validation is pure, so unlike the persistence entry points this is available on every
-/// target.
-///
-/// `raw_report` is the turn the orders were written for, when one has been imported. With it the
-/// answer covers the checks that need to know what each unit holds and where it stands; without it
-/// the answer is the syntax check alone, which is what the pane needs before any import. The report
-/// goes through the same cache every other entry point uses, so the whole-map pass this runs on
-/// each keystroke re-parses nothing.
-#[wasm_bindgen]
-pub fn validate_orders_state(request: JsValue) -> Result<JsValue, JsValue> {
-    let request: atlantis_hud_core::orders::request::ValidateOrdersRequest = from_js(request)?;
-    let result = atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::orders::request::validate_orders_request(cache, &request)
-    });
-    to_js(&result)
-}
-
-/// Every order name, so the shell need not keep a copy of its own. Its wider twin below,
-/// `order_vocabulary_state`, answers every word the rules know rather than only the commands.
-#[wasm_bindgen]
-pub fn order_commands_state(ruleset_json: Option<String>) -> Result<JsValue, JsValue> {
-    let ruleset = atlantis_hud_core::cache::with_global(|cache| {
-        ruleset_json
-            .as_deref()
-            .and_then(|json| cache.ruleset(json).ok())
-    });
-
-    to_js(&atlantis_hud_core::order_commands(ruleset.as_deref()))
-}
-
-/// Every word the rules know, for the editor that has to spot a keyword as it is typed.
-///
-/// `ruleset_json` goes through the same process-global cache every other entry point uses, so a
-/// ruleset already parsed for this game is not parsed again.
-///
-/// # Errors
-///
-/// Returns an error only when the answer cannot be serialized to JavaScript.
-#[wasm_bindgen]
-pub fn order_vocabulary_state(ruleset_json: Option<String>) -> Result<JsValue, JsValue> {
-    let ruleset = atlantis_hud_core::cache::with_global(|cache| {
-        ruleset_json
-            .as_deref()
-            .and_then(|json| cache.ruleset(json).ok())
-    });
-
-    to_js(&atlantis_hud_core::order_vocabulary(ruleset.as_deref()))
 }
 
 /// What may stand where the caret is, so the editor's popup can answer an argument position.

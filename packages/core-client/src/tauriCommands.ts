@@ -1,7 +1,9 @@
 /**
  * The desktop transport, declared once.
  *
- * One row per `CoreAdapter` method: the Tauri command it invokes and the argument keys, in the
+ * One row per `CoreAdapter` method that has a command of its own - every method but the core's
+ * declared queries, which share the one `query` command (`createQueryMethods`, ah-w83n): the Tauri
+ * command it invokes and the argument keys, in the
  * method's parameter order — snake_case, exactly as the `#[tauri::command(rename_all = "snake_case")]`
  * function names its parameters (core-tauri's `command_*` for most, `main.rs`'s wrappers for the
  * eight games-root commands). The type holds every row to its method's arity, and
@@ -9,6 +11,8 @@
  * `main.rs` and the native sweep, on every machine.
  */
 import type { CoreAdapter } from "./index";
+import type { CoreQueries } from "./generated/CoreQueries";
+import { createQueryMethods } from "./queries";
 
 /** `invoke` from `@tauri-apps/api/core`, as the desktop shell hands it in. */
 export type TauriInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
@@ -16,12 +20,14 @@ export type TauriInvoke = <T>(command: string, args?: Record<string, unknown>) =
 /** One string per parameter of `F`, as a tuple of the same length. */
 type ArgKeys<F> = F extends (...args: infer A) => unknown ? { readonly [I in keyof A]: string } : never;
 
+/** The methods with a command of their own: everything but the core's declared queries. */
+type CommandMethod = Exclude<keyof CoreAdapter, keyof CoreQueries>;
+
 type CommandTable = {
-  readonly [K in keyof CoreAdapter]: readonly [command: string, ...keys: ArgKeys<CoreAdapter[K]>];
+  readonly [K in CommandMethod]: readonly [command: string, ...keys: ArgKeys<CoreAdapter[K]>];
 };
 
 export const TAURI_COMMANDS = {
-  getEngineInfo: ["get_engine_info"],
   listGames: ["list_games"],
   createGame: ["create_game", "manifest"],
   openGame: ["open_game", "game_id", "opened_at"],
@@ -32,10 +38,6 @@ export const TAURI_COMMANDS = {
   editGameManifest: ["edit_game_manifest", "game_id", "edit"],
   parseReport: ["parse_report", "raw_report"],
   parseReportFull: ["parse_report_full", "raw_report"],
-  rosterSkills: ["roster_skills", "raw_report"],
-  passageClaims: ["passage_claims", "raw_report", "orders_document", "ruleset_json"],
-  shelterSeats: ["shelter_seats", "raw_report", "ruleset_json"],
-  parseReportClassified: ["parse_report_classified", "raw_report", "ruleset_json"],
   previewReportImport: ["preview_report_import", "database_path", "game_id", "confirmed_faction_id", "raw_report"],
   commitReportImport: [
     "commit_report_import",
@@ -47,9 +49,6 @@ export const TAURI_COMMANDS = {
     "allow_overwrite",
     "imported_at"
   ],
-  validateOrders: ["validate_orders", "request"],
-  orderCommands: ["order_commands", "ruleset_json"],
-  orderVocabulary: ["order_vocabulary", "ruleset_json"],
   completionsAtCaret: [
     "completions_at_caret",
     "line_prefix",
@@ -74,10 +73,7 @@ export const TAURI_COMMANDS = {
     "map_json"
   ],
   traceMoveOrders: ["trace_move_orders", "request"],
-  exportMap: ["export_map", "raw_report", "remembered_json", "request_json"],
-  exportMageSheet: ["export_mage_sheet", "raw_report", "unit_ids_json"],
   knownMap: ["known_map", "raw_report", "ruleset_json", "remembered_json"],
-  previewOrders: ["preview_orders", "request"],
   tradeRoutes: ["trade_routes", "ruleset_json", "raw_report", "remembered_json", "map_json"],
   loadRegionSightings: ["load_region_sightings", "database_path", "game_id", "faction_id"],
   mergeReport: [
@@ -118,10 +114,17 @@ export const TAURI_COMMANDS = {
 
 /**
  * Every `CoreAdapter` method invokes its row: the command, with the arguments keyed by the row.
- * Whatever Tauri resolves is the answer — the types are what the core serializes (`ah-wxk.2`).
+ * The core's declared queries have no row: each invokes the one `query` command with its name and
+ * its arguments in order (ah-w83n). Whatever Tauri resolves is the answer — the types are what the
+ * core serializes (`ah-wxk.2`).
  */
 export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
-  const adapter: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
+  const adapter: Record<string, (...args: unknown[]) => Promise<unknown>> = {
+    ...(createQueryMethods((name, args) => invoke("query", { name, args })) as unknown as Record<
+      string,
+      (...args: unknown[]) => Promise<unknown>
+    >)
+  };
   for (const [method, [command, ...keys]] of Object.entries(TAURI_COMMANDS)) {
     adapter[method] = (...args) =>
       invoke(command, Object.fromEntries(keys.map((key, index) => [key, args[index]])));
