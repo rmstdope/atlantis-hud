@@ -22,6 +22,7 @@ export type { Casualty } from "./Casualty";
 export type { CombatSpell } from "./CombatSpell";
 export type { Combatant } from "./Combatant";
 export type { Coordinate } from "./Coordinate";
+export type { CoreQueries } from "./CoreQueries";
 export type { CreatedItem } from "./CreatedItem";
 export type { DeclaredAttitudes } from "./DeclaredAttitudes";
 export type { EngineInfo } from "./EngineInfo";
