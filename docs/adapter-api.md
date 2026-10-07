@@ -122,8 +122,9 @@ the native sweep changes. What holds the two shells to the declaration:
 - **Both adapters route every declared query** — `index.test.ts` (desktop, `invoke("query", …)`)
   and `webCoreAdapter.test.ts` (browser, `wasm.query(…)`), both iterating `CORE_QUERIES`.
 
-Arguments cross as a positional array, `{ name, args }` on the desktop; a query without parameters
-ignores whatever it is sent.
+Arguments cross as a positional array, `{ name, args }` on the desktop. Both shells take exactly the
+declared number, refusing too few or too many alike; a query without parameters ignores whatever it
+is sent.
 
 ## Adding a command
 

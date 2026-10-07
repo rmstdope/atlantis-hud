@@ -52,6 +52,14 @@ describe("the core's declared queries, across the WebAssembly boundary", () => {
     );
   });
 
+  /** The desktop refuses a stray argument too, so neither shell answers a call the other refuses. */
+  it("refuses more arguments than a query declares, as the desktop does", async () => {
+    const wasm = await realCore();
+
+    expect(refusal(() => wasm.query("shelter_seats", ["Foo (1) Report\n", readRuleset(), "extra"])))
+      .toMatch(/^arguments could not be read: /u);
+  });
+
   it("delivers a declared query's answer with its field names intact", async () => {
     const wasm = await realCore();
     const report = [

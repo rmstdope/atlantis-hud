@@ -23,7 +23,7 @@
 
 use std::sync::Arc;
 
-use serde::{Deserialize, Deserializer};
+use serde::Deserializer;
 
 use crate::cache::with_global;
 use crate::movement::passages::PassageClaim;
@@ -34,20 +34,28 @@ use crate::report::battle::RosterSkills;
 use crate::report::ParsedReport;
 use crate::{EngineInfo, OrderValidationResult};
 
-/// Reads a query's positional arguments as the tuple of its declared parameter types.
+/// Reads a query's positional arguments through `visitor`, which takes exactly the declared number.
 ///
 /// A query without parameters reads nothing, so whatever a caller sends for it (`[]`, `null`) is
-/// fine; a query with parameters must be sent exactly that many, in order.
-fn decode<'de, T: Deserialize<'de>, D: Deserializer<'de>>(
-    args: D,
-    arity: usize,
-) -> Result<T, String> {
+/// fine. Every other query reads a sequence through its own visitor (see `core_queries!`), which
+/// refuses too few elements *and* too many itself, rather than trusting each format's tuple support
+/// to do so: serde_json refuses a leftover element, but serde-wasm-bindgen reads a tuple as a plain
+/// sequence and never checks, so the two shells would disagree about a stray argument.
+fn decode<'de, D, V>(args: D, arity: usize, visitor: V) -> Result<V::Value, String>
+where
+    D: Deserializer<'de>,
+    V: serde::de::Visitor<'de>,
+{
     let decoded = if arity == 0 {
         drop(args);
-        T::deserialize(serde::de::value::UnitDeserializer::<serde::de::value::Error>::new())
-            .map_err(|error| error.to_string())
+        serde::de::value::SeqDeserializer::<_, serde::de::value::Error>::new(
+            std::iter::empty::<()>(),
+        )
+        .deserialize_seq(visitor)
+        .map_err(|error| error.to_string())
     } else {
-        T::deserialize(args).map_err(|error| error.to_string())
+        args.deserialize_seq(visitor)
+            .map_err(|error| error.to_string())
     };
     decoded.map_err(|error| format!("arguments could not be read: {error}"))
 }
@@ -85,8 +93,41 @@ macro_rules! core_queries {
             match name {
                 $(
                     stringify!($name) => {
-                        let ($($arg,)*): ($($ty,)*) =
-                            decode(args, <[&str]>::len(&[$(stringify!($arg)),*]))?;
+                        const ARITY: usize = <[&str]>::len(&[$(stringify!($arg)),*]);
+
+                        /// Exactly `ARITY` elements, each as its declared type, and nothing after.
+                        struct Positional;
+
+                        impl<'v> serde::de::Visitor<'v> for Positional {
+                            type Value = ($($ty,)*);
+
+                            fn expecting(
+                                &self,
+                                formatter: &mut std::fmt::Formatter,
+                            ) -> std::fmt::Result {
+                                write!(formatter, "{ARITY} positional arguments")
+                            }
+
+                            #[allow(unused_mut, unused_variables)]
+                            fn visit_seq<A: serde::de::SeqAccess<'v>>(
+                                self,
+                                mut seq: A,
+                            ) -> Result<Self::Value, A::Error> {
+                                let mut read = 0usize;
+                                $(
+                                    let $arg: $ty = seq.next_element()?.ok_or_else(|| {
+                                        serde::de::Error::invalid_length(read, &self)
+                                    })?;
+                                    read += 1;
+                                )*
+                                if seq.next_element::<serde::de::IgnoredAny>()?.is_some() {
+                                    return Err(serde::de::Error::invalid_length(read + 1, &self));
+                                }
+                                Ok(($($arg,)*))
+                            }
+                        }
+
+                        let ($($arg,)*) = decode(args, ARITY, Positional)?;
                         serde::Serialize::serialize(&$name($($arg),*)?, out)
                             .map_err(|error| error.to_string())
                     }
