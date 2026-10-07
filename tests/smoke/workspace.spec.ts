@@ -1126,23 +1126,18 @@ test("a unit told to spend silver it has not got is warned about, without blocki
  *
  * Two distinct hex-level findings on the same hex, so "several diagnostics" is genuine rather
  * than one message repeated: the shared-purse overspend from the test above, plus "nobody is
- * guarding this hex" - off by default, turned on here through Settings, and true of every hex the
- * faction stands in on the committed turn-71 report.
+ * guarding this hex" - off by default, and true of every hex the faction stands in on the
+ * committed turn-71 report. Those two checks and no others, so the count is theirs (ah-8qh8).
  */
-async function warnAboutUnguardedHexes(page: Page) {
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByTestId("settings-tab-warnings").click();
-  await page.getByTestId("settings-warning-hex-unguarded").check();
-  await page.keyboard.press("Escape");
-}
+const SHORTFALL_AND_UNGUARDED = ["not-enough-silver", "hex-unguarded"] as const;
 
 /**
  * Turns `unit-does-nothing` (ah-dwk6) off.
  *
- * It is on by default and is right about the fixtures below - a unit given a single GIVE, or a
- * line that does not parse, has no order that spends its month - but it is an extra finding in
- * tests that are counting a specific pair of them or reading one editor's diagnostics. The check
- * has its own coverage in the Rust suite and its own toggle test above.
+ * It is on by default and is right about the fixtures below - a unit given a line that does not
+ * parse has no order that spends its month - but it is an extra finding in tests that are reading
+ * one editor's diagnostics. The check has its own coverage in the Rust suite and its own toggle
+ * test above.
  */
 async function silenceIdleUnits(page: Page) {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -1152,9 +1147,8 @@ async function silenceIdleUnits(page: Page) {
 }
 
 test("hiding the problems brings the region facts to the top", async ({ page }) => {
+  await onlyChecks(page, SHORTFALL_AND_UNGUARDED);
   await loadReport(page);
-  await silenceIdleUnits(page);
-  await warnAboutUnguardedHexes(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
   await fillOrders(page, "GIVE 0 999999999 SILV");
@@ -1184,8 +1178,8 @@ test("hiding the problems brings the region facts to the top", async ({ page }) 
 });
 
 test("the hidden problems stay hidden across a reload", async ({ page }) => {
+  await onlyChecks(page, SHORTFALL_AND_UNGUARDED);
   await loadReport(page);
-  await warnAboutUnguardedHexes(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
   await fillOrders(page, "GIVE 0 999999999 SILV");
@@ -1208,23 +1202,16 @@ test("the hidden problems stay hidden across a reload", async ({ page }) => {
  * finding a client-side filter could not be trusted to catch consistently.
  */
 test("a silenced advisory check disappears everywhere at once", async ({ page }) => {
+  // The silver check alone, so the chip counts the shortfall this test introduces and nothing the
+  // fixture raises elsewhere (ah-8qh8).
+  await onlyChecks(page, ["not-enough-silver"]);
   await loadReport(page);
-  await silenceIdleUnits(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
   await fillOrders(page, "GIVE 0 999999999 SILV");
 
-  // The turn-71 report carries two findings of its own throughout (unit 13402's
-  // study-at-maximum, ah-1uj; and the enchant-armor not-enough-items in a different hex,
-  // ah-dbb.2), both unaffected by the not-enough-silver toggle below - the chip counts them
-  // alongside the shortfall this test introduces.
-  //
-  // One fewer since ah-uwa3: unit 1688's $10 fee is covered by the wages its "@work" earns, which
-  // arrive in the turn's last phase - in time for maintenance, if not for what the orders spend.
-  // Six fewer since ah-yw4p: the Borg mages aboard the Cloudship fleet are seated there
-  // (`data/Cloudship`, `data/Airship`), so their study is no longer warned as halved.
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "3");
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "1");
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-tab-warnings").click();
@@ -1232,7 +1219,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
-  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "2");
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "0");
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-tab-warnings").click();
@@ -1240,7 +1227,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "3");
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "1");
 });
 
 /**

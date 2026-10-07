@@ -7,6 +7,7 @@ import {
   fillOrders,
   loadReport,
   mapTransform,
+  onlyChecks,
   ordersInput,
   selectHex,
   selectUnit
@@ -261,23 +262,10 @@ test("Alt+Arrows cycle the faction's units even while the editor is focused", as
 });
 
 test("F8 walks to a problem in another unit's orders", async ({ page }) => {
+  // No advisory check at all, so the one syntax problem this test introduces is the walk's only
+  // stop - whatever the fixture's other units raise, nothing sorts ahead of it (ah-8qh8).
+  await onlyChecks(page, []);
   await loadReport(page);
-
-  // Six of Two (13402), in the same hex as OTHER_OWN_UNIT below, is reported already at combat 5
-  // and orders "@study comb" regardless of anything this test does - a genuine study-at-maximum
-  // finding (ah-1uj) the walk below is not about, so it is turned off to keep this test isolated
-  // to the one syntax problem it introduces. The magic-study check goes off too: since ah-yw4p
-  // the Borg mages aboard the Cloudship fleet in that hex are seated (`data/Cloudship`) and it
-  // raises nothing here, but a ruleset or fixture that brought it back would put its stops ahead
-  // of this test's own. And the fixture's two
-  // units with no orders at all - 14451 and 13432 - are `unit-does-nothing` findings (ah-dwk6)
-  // that sort ahead of this one, so that check goes off for the third time for the same reason.
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByTestId("settings-tab-warnings").click();
-  await page.getByTestId("settings-warning-study-at-maximum").uncheck();
-  await page.getByTestId("settings-warning-magic-study-outside-building").uncheck();
-  await page.getByTestId("settings-warning-unit-does-nothing").uncheck();
-  await page.keyboard.press("Escape");
 
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
@@ -437,19 +425,13 @@ test("right-click centres the view on a hex, without selecting it", async ({ pag
  * The turn's problems walked one at a time, by mouse as well as by key (ah-dlao).
  *
  * The two units with no orders at all - 14451 and 13432 - are `unit-does-nothing` findings
- * (ah-dwk6) standing first in document order, so with the fixture's other standing warnings off
- * they are the whole list and the walk's stops are known. They are also the shape that has no
+ * (ah-dwk6) standing first in document order, so with that check alone switched on they are the
+ * whole list and the walk's stops are known (ah-8qh8). They are also the shape that has no
  * offending word to select, which is what the landing below is about.
  */
 async function onlyTheUnitsWithNoOrders(page: Page) {
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByTestId("settings-tab-warnings").click();
-  await page.getByTestId("settings-warning-study-at-maximum").uncheck();
-  // Raises nothing on this fixture since ah-yw4p (the Cloudship fleet seats its mages); off so
-  // that the list stays the two idle units whatever the magic-study check comes to say.
-  await page.getByTestId("settings-warning-magic-study-outside-building").uncheck();
-  await page.getByTestId("settings-warning-unit-does-nothing").check();
-  await page.keyboard.press("Escape");
+  await onlyChecks(page, ["unit-does-nothing"]);
+  await loadReport(page);
 }
 
 /** The first unit with no orders, and the walk's first stop. */
@@ -460,7 +442,6 @@ const OTHER_IDLE_UNIT = "13432";
 test("a problem with no offending word lands the cursor at the end of the orders", async ({
   page
 }) => {
-  await loadReport(page);
   await onlyTheUnitsWithNoOrders(page);
 
   await selectHex(page, "1:7,53");
@@ -500,7 +481,6 @@ test("a problem with no offending word lands the cursor at the end of the orders
 });
 
 test("the walk buttons step to the next problem and back, and wrap at the end", async ({ page }) => {
-  await loadReport(page);
   await onlyTheUnitsWithNoOrders(page);
 
   await selectHex(page, "1:7,53");
@@ -546,7 +526,6 @@ test("the walk buttons step to the next problem and back, and wrap at the end", 
 });
 
 test("the walk keeps its place when validation re-runs under it", async ({ page }) => {
-  await loadReport(page);
   await onlyTheUnitsWithNoOrders(page);
 
   await selectHex(page, "1:7,53");
@@ -573,12 +552,8 @@ test("the walk keeps its place when validation re-runs under it", async ({ page 
 });
 
 test("the walk buttons stay enabled with no problems at all", async ({ page }) => {
+  await onlyChecks(page, []);
   await loadReport(page);
-  await onlyTheUnitsWithNoOrders(page);
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByTestId("settings-tab-warnings").click();
-  await page.getByTestId("settings-warning-unit-does-nothing").uncheck();
-  await page.keyboard.press("Escape");
 
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
