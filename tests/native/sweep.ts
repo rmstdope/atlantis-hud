@@ -89,6 +89,26 @@ export const SWEEP: SweepEntry[] = [
     args: () => ({ name: "shelter_seats", args: [REPORT, RULESET] })
   },
   {
+    // A request object over real IPC, not only a positional string: the ruleset crosses as the
+    // request's `rulesetJson` field, and a key this side does not match deserializes to `None` over
+    // there without an error, so every item would silently go unchecked (ah-t8c4).
+    command: "query",
+    args: () => ({
+      name: "validate_orders",
+      args: [
+        {
+          rawOrders: "unit 18642\n@work",
+          rulesetJson: RULESET,
+          rawReport: null,
+          disabledCodes: null,
+          mapJson: null,
+          knownPassagesJson: null,
+          rememberedJson: null
+        }
+      ]
+    })
+  },
+  {
     command: "order_argument_completions",
     args: () => ({
       line_prefix: "BUY 5 ",
