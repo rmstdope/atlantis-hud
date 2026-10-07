@@ -7,6 +7,7 @@ import {
   fillOrders,
   importReport,
   loadReport,
+  onlyChecks,
   ordersInput,
   ordersText,
   saveNow,
@@ -236,15 +237,10 @@ test("a bad order is marked in the editor's own margin", async ({ page }) => {
  * is hidden.
  */
 test("a refused Trident construction is an ordinary problem in both lists", async ({ page }) => {
+  // This check alone, so the walk's first stop is this finding whatever else the fixture raises
+  // (ah-8qh8).
+  await onlyChecks(page, ["build-site-refused"]);
   await openTridentBuilder(page);
-
-  // The fixture's unordered units are `unit-does-nothing` findings that sort ahead of this one,
-  // and the walk would stop at the first of them - the same reason `shortcuts.spec.ts` switches
-  // that check off before walking.
-  await page.getByTestId("settings-indicator").click();
-  await page.getByTestId("settings-tab-warnings").click();
-  await page.getByTestId("settings-warning-unit-does-nothing").uncheck();
-  await page.getByTestId("settings-close").click();
 
   await fillOrders(page, "BUILD CARAVANSERAI");
 
@@ -309,17 +305,13 @@ test("a refused Trident construction is an ordinary problem in both lists", asyn
  * `rules/economy_transport` lets an ordinary unit ship to a quartermaster.
  */
 test("a shipment the game will not carry is an ordinary problem in both lists", async ({ page }) => {
+  // This check alone, so the walk's first stop is this finding whatever else the fixture raises -
+  // as in the Trident construction case above (ah-8qh8).
+  await onlyChecks(page, ["transport-out-of-reach"]);
   await loadReport(page, "Transport reach smoke", QUARTERMASTER_REPORT, "34 regions");
   await selectHex(page, "1:38,0");
   await selectUnit(page, SHIPPING_UNIT);
   await expect(page.getByTestId("orders-input")).toBeVisible();
-
-  // The fixture's unordered units sort ahead of this finding, and the walk would stop at the first
-  // of them - the same reason the Trident construction case above switches that check off.
-  await page.getByTestId("settings-indicator").click();
-  await page.getByTestId("settings-tab-warnings").click();
-  await page.getByTestId("settings-warning-unit-does-nothing").uncheck();
-  await page.getByTestId("settings-close").click();
 
   await fillOrders(page, "TRANSPORT 6857 5 WOOD");
 
