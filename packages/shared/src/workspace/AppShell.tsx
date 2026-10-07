@@ -219,6 +219,7 @@ import { fetchedTurnName } from "./newAgeHistoryView";
 import { performNewAgeSend } from "./newAgeSend";
 import { timed, timedAsync, timedCore } from "../perf";
 import { sharedReads } from "../sharedReads";
+import { afterPaint } from "../afterPaint";
 import { PerformancePanel } from "./PerformancePanel";
 import { waterMoves } from "../waterAnimation";
 import type { NewAgeSendPhase } from "./newAgeSendView";
@@ -836,20 +837,25 @@ export function AppShell({
     // ids carry over between turns, so a Fort finished since would be read at its old 0 seats.
     setShelterAnswer(null);
     let cancelled = false;
-    client
-      .shelterSeats(rawReport, ruleset.text)
-      .then((answer) => {
-        if (!cancelled) {
-          setShelterAnswer(answer);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setShelterAnswer(null);
-        }
-      });
+    // Asked once the map is on screen: the core answers on the main thread, and a game opening
+    // should not wait on its seats to show its map (see `afterPaint`).
+    const cancelWait = afterPaint(() => {
+      client
+        .shelterSeats(rawReport, ruleset.text)
+        .then((answer) => {
+          if (!cancelled) {
+            setShelterAnswer(answer);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setShelterAnswer(null);
+          }
+        });
+    });
     return () => {
       cancelled = true;
+      cancelWait();
     };
   }, [client, ruleset, rawReport]);
   /** Every structure the report shows and the mages it seats, for the study planner (ah-lyg6.3). */
@@ -4067,20 +4073,25 @@ export function AppShell({
       return undefined;
     }
     let cancelled = false;
-    void client
-      .tradeRoutes(ruleset.text, rawReport, rememberedJson, mapJson)
-      .then((found) => {
-        if (!cancelled) {
-          setTradeRoutes(found);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setTradeRoutes([]);
-        }
-      });
+    // Asked once the map is on screen, like the shelter seats: the routes draw over a map that is
+    // already there.
+    const cancelWait = afterPaint(() => {
+      void client
+        .tradeRoutes(ruleset.text, rawReport, rememberedJson, mapJson)
+        .then((found) => {
+          if (!cancelled) {
+            setTradeRoutes(found);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setTradeRoutes([]);
+          }
+        });
+    });
     return () => {
       cancelled = true;
+      cancelWait();
     };
     // `mapJson` for the reason the route planner gives.
   }, [client, ruleset, rawReport, rememberedJson, mapJson]);
