@@ -191,7 +191,7 @@ weighs.
 That same headcount is what prices a STUDY order (#82): the cost is per man per month, so a unit
 whose men are a guess is one whose study cannot be priced, and order validation declines to judge
 it rather than guessing twice over. This is why the shell classifies a report before validating
-against it, and why `validate_orders_state` takes the classified parse where a ruleset allows one.
+against it, and why the `validate_orders` query takes the classified parse where a ruleset allows one.
 
 ## What is deliberately not modelled
 
