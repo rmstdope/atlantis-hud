@@ -33,6 +33,7 @@ mod phases;
 pub mod production_overview;
 pub mod request;
 pub mod semantics;
+pub mod shelter;
 pub mod silver;
 pub mod standing;
 #[cfg(test)]

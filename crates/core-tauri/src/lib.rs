@@ -1152,6 +1152,25 @@ pub mod commands {
             )
         })
     }
+
+    /// How many mages each structure in the report seats - the study planner's shelters, from the
+    /// one rule the magic-study check reads (ah-29p5).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error only when the ruleset cannot be read.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "shelter_seats")
+    )]
+    pub fn command_shelter_seats(
+        raw_report: &str,
+        ruleset_json: &str,
+    ) -> Result<Vec<atlantis_hud_core::orders::shelter::ShelterSeat>, String> {
+        atlantis_hud_core::cache::with_global(|cache| {
+            atlantis_hud_core::orders::shelter::shelter_seats_in(cache, raw_report, ruleset_json)
+        })
+    }
 }
 
 pub use commands::{
@@ -1166,7 +1185,8 @@ pub use commands::{
     command_passage_claims, command_plan_route, command_preview_orders,
     command_preview_report_import, command_roster_skills, command_save_allied_mages,
     command_save_army, command_save_hex_note, command_save_order_draft, command_save_study_plans,
-    command_trace_move_orders, command_trade_routes, command_validate_orders,
+    command_shelter_seats, command_trace_move_orders, command_trade_routes,
+    command_validate_orders,
 };
 
 /// Creates a game under the application's games directory and applies migrations.
@@ -2493,6 +2513,31 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         assert_eq!(claims.len(), 1);
         assert_eq!(claims[0].unit_id, "5");
         assert_eq!(claims[0].structure, "Shaft [1]");
+    }
+
+    /// ah-29p5: the study planner's seats come from the core over this command, so the desktop
+    /// shell answers them from the same rule the magic-study check reads.
+    #[test]
+    fn tauri_adapter_reads_shelter_seats() {
+        let mut report = String::from("Foo (1) Report\n\n");
+        report.push_str("plain (1,1) in Coast, 10 peasants (orcs), $5.\n\n");
+        report.push_str("Exits:\n  North : plain (1,-1) in Coast.\n\n");
+        report.push_str("+ Keep [1] : Citadel.\n");
+        report.push_str("+ Ark [2] : Galleon.\n");
+
+        let seats = command_shelter_seats(&report, atlantis_hud_fixtures::RULESET_JSON)
+            .expect("a usable ruleset answers");
+
+        let counted: Vec<_> = seats
+            .iter()
+            .map(|seat| (seat.structure_id.as_str(), seat.seats))
+            .collect();
+        assert_eq!(counted, vec![("1", Some(3)), ("2", Some(1))]);
+    }
+
+    #[test]
+    fn tauri_adapter_refuses_shelter_seats_without_a_usable_ruleset() {
+        assert!(command_shelter_seats("Foo (1) Report\n", "not json").is_err());
     }
 
     #[test]

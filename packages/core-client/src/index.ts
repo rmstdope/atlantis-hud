@@ -30,6 +30,7 @@ import type { EngineInfo } from "./generated/EngineInfo";
 import type { ParsedReport } from "./generated/ParsedReport";
 import type { RosterSkills } from "./generated/RosterSkills";
 import type { PassageClaim } from "./generated/PassageClaim";
+import type { ShelterSeat } from "./generated/ShelterSeat";
 import type { AlliedMageRecord } from "./generated/AlliedMageRecord";
 import type { AlliedMageKey } from "./generated/AlliedMageKey";
 import type { StudyPlanRecord } from "./generated/StudyPlanRecord";
@@ -564,6 +565,11 @@ export interface CoreAdapter {
     ordersDocument: string,
     rulesetJson: string
   ): Promise<PassageClaim[]>;
+  /**
+   * How many mages each structure the report shows seats, from the one rule the core's
+   * magic-study check reads (ah-29p5). `seats` is null where the catalogue cannot say.
+   */
+  shelterSeats(rawReport: string, rulesetJson: string): Promise<ShelterSeat[]>;
   previewReportImport(
     databasePath: string,
     gameId: string,

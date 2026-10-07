@@ -38,9 +38,7 @@ use crate::movement::mode::{
 };
 use crate::movement::orders::{first_passage, MoveStep};
 use crate::movement::plan::{Hull, Journey};
-use crate::movement::rules::{
-    item_spellings, ItemEntry, ItemKind, MovementMode, Ruleset, SkillEntry,
-};
+use crate::movement::rules::{item_spellings, ItemEntry, MovementMode, Ruleset, SkillEntry};
 use crate::movement::sailing::refused_sail_steps;
 use crate::orders::faction_orders::{
     orders_warning, settle, FactionFailure, FactionLimits, FactionOrders, FactionSplit, Held,
@@ -52,6 +50,7 @@ use crate::orders::production_overview::{
     ProductionOverview, RegionLimits, SlotOrder, SlotOrderKind, WorkedRegion, WorkedResource,
     WorkedTax,
 };
+use crate::orders::shelter;
 use crate::orders::silver::{
     because_clause, feed_after_silver, feed_from_faction_food, flagged_to_tax, food_claim,
     food_eaten_by_holder, forecast_unit, late_income, late_income_terms, parse_wage_centis,
@@ -12767,54 +12766,26 @@ fn magic_study_halved(hex: &Hex<'_>, ruleset: &Ruleset) -> Vec<Option<bool>> {
                 answers[index] = None;
                 continue;
             }
-            // Unfinished shelters nobody; a kind neither table names houses no mages either, a
-            // Tower is named and seats zero, and a fleet seats what its ships seat.
-            Some(Some(structure)) => {
-                if structure.needs.is_some() {
-                    false
-                } else {
-                    match mage_seats(ruleset, &structure.kind) {
-                        Some(seats)
-                            if occupied
-                                .get(structure.structure_id.as_str())
-                                .copied()
-                                .unwrap_or(0)
-                                < seats =>
-                        {
-                            *occupied.entry(structure.structure_id.as_str()).or_default() += 1;
-                            true
-                        }
-                        Some(_) | None => false,
-                    }
+            // Unfinished shelters nobody; a kind the catalogue cannot count houses no mages
+            // either, a Tower is named and seats zero, and a fleet seats what its ships seat -
+            // all of it [`shelter::structure_mage_seats`], which the study planner reads too.
+            Some(Some(structure)) => match shelter::structure_mage_seats(structure, ruleset) {
+                Some(seats)
+                    if occupied
+                        .get(structure.structure_id.as_str())
+                        .copied()
+                        .unwrap_or(0)
+                        < seats =>
+                {
+                    *occupied.entry(structure.structure_id.as_str()).or_default() += 1;
+                    true
                 }
-            }
+                Some(_) | None => false,
+            },
         };
         answers[index] = Some(!sheltered);
     }
     answers
-}
-
-/// How many mages may study above level 2 in a structure of this kind, or `None` where the
-/// catalogue cannot say.
-///
-/// A building is the buildings table's figure. Anything else is read as a ship or a fleet of them:
-/// `data/Galleon` - "This ship will allow one mage to study above level 2" - is a seat aboard each
-/// Galleon, and `rules/economy_ships` - "Fleets may contain one or more ships, and may be entered
-/// like other buildings" - so a fleet seats what its ships seat between them (ah-yw4p). A hull the
-/// catalogue does not carry, or that is not a ship, leaves the fleet uncounted.
-fn mage_seats(ruleset: &Ruleset, kind: &str) -> Option<i64> {
-    if let Some(seats) = ruleset.mage_capacity(kind) {
-        return Some(seats);
-    }
-    let mut seats = 0;
-    for (name, count) in hulls_named_in(kind)? {
-        let item = ruleset.find_item(&name)?;
-        if item.kind != ItemKind::Ship {
-            return None;
-        }
-        seats += i64::from(count) * item.mages.unwrap_or(0);
-    }
-    Some(seats)
 }
 
 fn check_magic_study(

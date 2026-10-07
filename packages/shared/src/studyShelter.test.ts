@@ -1,136 +1,40 @@
 import { describe, expect, it } from "vitest";
-import { readRuleset } from "@atlantis/fixtures";
-import type { ParsedReport } from "@atlantis/core-client";
-import { parseGameData, type GameDataIndex } from "./gameData";
+import type { ShelterSeat } from "@atlantis/core-client";
 import { mageShelters, shelterKey, shelterSeats } from "./studyShelter";
 import type { PlannerGroup } from "./studyPlanner";
 
-const index = parseGameData(readRuleset()) as GameDataIndex;
-
-/** A report holding one region and whatever structures the case needs. */
-function reportWith(
-  regionId: string,
-  structures: {
-    structureId: string;
-    baseKind: string;
-    needs?: number | null;
-    vessels?: { count: number | null; name: string }[];
-  }[]
-): ParsedReport {
-  return {
-    regions: [
-      {
-        regionId,
-        structures: structures.map((structure) => ({
-          structureId: structure.structureId,
-          name: structure.baseKind,
-          kind: structure.baseKind,
-          baseKind: structure.baseKind,
-          qualifiers: [],
-          vessels: structure.vessels ?? [],
-          description: null,
-          needs: structure.needs ?? null
-        })),
-        units: []
-      }
-    ]
-  } as unknown as ParsedReport;
-}
-
+/**
+ * The seat rule itself - buildings, ships, fleets, unfinished - is the core's
+ * (`crates/core/src/orders/shelter.rs`, ah-29p5) and is tested there. What this module owns is
+ * reading the core's answer into the map the planner looks shelters up in.
+ */
 describe("where a mage can study above level 2", () => {
-  // `data/objects` for a Fort: the committed ruleset carries its seat count as `buildings.FORT.mages`.
-  it("seats one mage in a Fort", () => {
-    const seats = shelterSeats({ report: reportWith("1:7", [{ structureId: "3", baseKind: "Fort" }]), index });
+  const answer: ShelterSeat[] = [
+    { regionId: "1:7", structureId: "3", seats: 1 },
+    { regionId: "1:7", structureId: "4", seats: 0 },
+    { regionId: "2:8", structureId: "3", seats: null }
+  ];
+
+  it("keys every structure the core counted by its region and number", () => {
+    const seats = shelterSeats(answer);
 
     expect(seats.get(shelterKey("1:7", "3"))).toBe(1);
-  });
-
-  // `rules/buildings` is silent, and the Rust core takes the same line (`semantics.rs:9607-9645`).
-  it("seats nobody in an unfinished building", () => {
-    const seats = shelterSeats({
-      report: reportWith("1:7", [{ structureId: "3", baseKind: "Fort", needs: 40 }]),
-      index
-    });
-
-    expect(seats.get(shelterKey("1:7", "3"))).toBe(0);
-  });
-
-  // ah-yw4p: `data/Galleon` - "This ship will allow one mage to study above level 2."
-  it("seats one mage aboard a lone Galleon", () => {
-    const seats = shelterSeats({ report: reportWith("1:7", [{ structureId: "4", baseKind: "Galleon" }]), index });
-
-    expect(seats.get(shelterKey("1:7", "4"))).toBe(1);
-  });
-
-  // `data/Longship` says nothing about mages, so it seats nobody, as a silent building does.
-  it("seats nobody aboard a ship whose entry seats no mages", () => {
-    const seats = shelterSeats({ report: reportWith("1:7", [{ structureId: "4", baseKind: "Longship" }]), index });
-
     expect(seats.get(shelterKey("1:7", "4"))).toBe(0);
   });
 
-  // `rules/economy_ships`: "Fleets may contain one or more ships"; each Galleon's entry allows one
-  // mage (`data/Galleon`), so a fleet seats what its ships seat between them.
-  it("seats the mages a fleet's ships seat between them", () => {
-    const seats = shelterSeats({
-      report: reportWith("1:7", [
-        {
-          structureId: "4",
-          baseKind: "Fleet",
-          vessels: [
-            { count: 2, name: "Galleons" },
-            { count: 3, name: "Longships" }
-          ]
-        }
-      ]),
-      index
-    });
+  it("keeps a structure the core could not count as not known, not as none", () => {
+    const seats = shelterSeats(answer);
 
-    expect(seats.get(shelterKey("1:7", "4"))).toBe(2);
+    expect(seats.has(shelterKey("2:8", "3"))).toBe(true);
+    expect(seats.get(shelterKey("2:8", "3"))).toBeNull();
   });
 
-  it("seats nobody in a fleet of ships whose entries seat no mages", () => {
-    const seats = shelterSeats({
-      report: reportWith("1:7", [
-        { structureId: "4", baseKind: "Fleet", vessels: [{ count: 8, name: "Corsairs" }] }
-      ]),
-      index
-    });
-
-    expect(seats.get(shelterKey("1:7", "4"))).toBe(0);
+  it("has no entry for a structure the core did not answer for", () => {
+    expect(shelterSeats(answer).has(shelterKey("9:9", "3"))).toBe(false);
   });
 
-  it("says nothing about a fleet holding a ship the catalogue does not know", () => {
-    const seats = shelterSeats({
-      report: reportWith("1:7", [
-        { structureId: "4", baseKind: "Fleet", vessels: [{ count: 1, name: "Whimsy Barges" }] }
-      ]),
-      index
-    });
-
-    expect(seats.get(shelterKey("1:7", "4"))).toBeNull();
-  });
-
-  it("says nothing about a kind the catalogue does not know", () => {
-    const seats = shelterSeats({
-      report: reportWith("1:7", [{ structureId: "5", baseKind: "Whimsy Pavilion" }]),
-      index
-    });
-
-    expect(seats.get(shelterKey("1:7", "5"))).toBeNull();
-  });
-
-  it("has no entry for a region outside the report", () => {
-    const seats = shelterSeats({ report: reportWith("1:7", []), index });
-
-    expect(seats.has(shelterKey("9:9", "3"))).toBe(false);
-  });
-
-  it("has no entry at all when there is no report or no catalogue", () => {
-    expect(shelterSeats({ report: null, index }).size).toBe(0);
-    expect(shelterSeats({ report: reportWith("1:7", [{ structureId: "3", baseKind: "Fort" }]), index: null }).size).toBe(
-      0
-    );
+  it("has no entry at all before the core has answered", () => {
+    expect(shelterSeats(null).size).toBe(0);
   });
 });
 

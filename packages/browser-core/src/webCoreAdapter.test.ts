@@ -134,6 +134,9 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
     trace_move_orders_state: (request: TraceMoveOrdersRequest) => ({ path: null, echoed: request }),
     preview_orders_state: (request: PreviewOrdersRequest) => ({ regions: [], echoed: request }),
     trade_routes_state: () => FAKE_TRADE_ROUTES,
+    shelter_seats_state: (rawReport: string, rulesetJson: string) => [
+      { regionId: rawReport, structureId: rulesetJson, seats: null }
+    ],
     prepare_report_import_state: (raw: string, confirmedFactionId: string) => {
       const hasTurn = raw.includes("TURN: 12");
       const factionMatches = raw.includes(`FACTION: ${confirmedFactionId}`);
@@ -1674,6 +1677,17 @@ describe("finding trade routes", () => {
     const routes = await adapter.tradeRoutes("{ruleset}", "{report}", "[remembered]", "");
 
     expect(routes).toEqual(FAKE_TRADE_ROUTES);
+  });
+});
+
+describe("counting shelter seats", () => {
+  /** The seat rule is the core's (ah-29p5); the adapter passes the report and ruleset in order. */
+  it("passes the report and the ruleset straight to the core, unshuffled", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    const seats = await adapter.shelterSeats("{report}", "{ruleset}");
+
+    expect(seats).toEqual([{ regionId: "{report}", structureId: "{ruleset}", seats: null }]);
   });
 });
 
