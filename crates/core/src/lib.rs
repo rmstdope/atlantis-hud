@@ -5,6 +5,7 @@ pub mod cache;
 pub mod known_map;
 pub mod movement;
 pub mod orders;
+pub mod queries;
 pub mod reopen;
 pub mod report;
 pub mod trade;
