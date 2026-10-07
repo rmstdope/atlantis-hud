@@ -3,9 +3,9 @@
  * without rendering — the same split `gameSession.ts` makes for the shell.
  */
 
-import type { MapShape } from "@atlantis/core-client";
+import type { MapShape, MapSizes } from "@atlantis/core-client";
 import { RULESETS } from "../rulesets";
-import { mapShapeOfGame } from "../mapShape";
+import { gameMapOf } from "../mapShape";
 import type { WorkspaceGame } from "../workspaceStore";
 
 export type SettingsTabId = "global" | "game" | "columns" | "warnings" | "snippets" | "about";
@@ -62,6 +62,8 @@ export type GameSettingsPresentation =
       kind: "ruleset";
       gameName: string;
       rulesetId: string;
+      /** The level sizes this game is configured with, or `null` when neither it nor its ruleset names any. */
+      sizes: MapSizes | null;
       /** The map this game is played on, or `null` when neither it nor its ruleset names one. */
       map: MapShape | null;
       /**
@@ -83,11 +85,12 @@ export function gameSettingsPresentation(game: WorkspaceGame | null): GameSettin
   if (!game) {
     return { kind: "empty" };
   }
-  const shape = mapShapeOfGame(game.rulesetId, game.map);
+  const shape = gameMapOf(game);
   return {
     kind: "ruleset",
     gameName: game.gameName,
     rulesetId: game.rulesetId,
+    sizes: shape.sizes,
     map: shape.map,
     mapStated: shape.stated
   };

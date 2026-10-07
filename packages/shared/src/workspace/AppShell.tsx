@@ -44,8 +44,8 @@ import { orderProcessingFor, type OrderProcessing } from "../orderProcessing";
 import { rowKeyOf, unitRowKey } from "../unitTable";
 import { previewAtCursor, unitAtCursor } from "./unitCursor";
 import { formationRegionUnitIds } from "./ordersLock";
-import type { MapShape, MapSizes } from "@atlantis/core-client";
-import { mapShapeJson, mapShapeOfGame } from "../mapShape";
+import type { MapSizes } from "@atlantis/core-client";
+import { gameMapOf, mapShapeJson } from "../mapShape";
 import {
   deliverArmyExport,
   deliverGameBackupExport,
@@ -1182,7 +1182,6 @@ export function AppShell({
   const closeGameInStore = useWorkspaceStore((state) => state.closeGame);
   const updateGameNameInStore = useWorkspaceStore((state) => state.updateGameName);
   const updateGameRulesetInStore = useWorkspaceStore((state) => state.updateGameRuleset);
-  const updateGameMapInStore = useWorkspaceStore((state) => state.updateGameMap);
   const updateGameMapSizesInStore = useWorkspaceStore((state) => state.updateGameMapSizes);
 
   /**
@@ -1218,15 +1217,24 @@ export function AppShell({
   /**
    * The map this game is played on, as the core reads it.
    *
-   * A game that recorded its own dimensions uses them; one that never did adopts the ruleset's
-   * declared default, and a ruleset that declares none yields the empty string, which is how the
-   * core hears "the game never said" and keeps computing neighbours exactly as it always did.
+   * Derived from the game's one map record, its sizes (ah-8nfe), through the same `gameMapOf`
+   * Settings reads. A game that recorded none adopts the ruleset's declared default, and a ruleset
+   * that declares none yields the empty string, which is how the core hears "the game never said"
+   * and keeps computing neighbours exactly as it always did. Memoised on the recorded objects, so
+   * the derived shape keeps its identity until the record changes.
    */
-  const recordedMapShape = game?.manifest.metadata.map;
+  const recordedMapSizes = game?.manifest.metadata.mapSizes;
+  const recordedLegacyMap = game?.manifest.metadata.map;
   const mapShape = useMemo(
     () =>
-      openRulesetId === undefined ? null : mapShapeOfGame(openRulesetId, recordedMapShape).map,
-    [openRulesetId, recordedMapShape]
+      openRulesetId === undefined
+        ? null
+        : gameMapOf({
+            rulesetId: openRulesetId,
+            ...(recordedMapSizes === undefined ? {} : { mapSizes: recordedMapSizes }),
+            ...(recordedLegacyMap === undefined ? {} : { map: recordedLegacyMap })
+          }).map,
+    [openRulesetId, recordedMapSizes, recordedLegacyMap]
   );
 
   /**
@@ -3335,9 +3343,9 @@ export function AppShell({
   );
 
   /**
-   * Saves every level's size. The core records the surface as the game's map in the same write,
-   * because that is the one movement and the viewport still plan on. Resolves `true` once saved, so
-   * the editor keeps the player's draft when it was not.
+   * Saves every level's size, the game's one map record (ah-8nfe); the map view and the core
+   * derive their shape from it. Resolves `true` once saved, so the editor keeps the player's draft
+   * when it was not.
    */
   const changeMapSizes = useCallback(
     async (mapSizes: MapSizes): Promise<boolean> => {
@@ -3349,13 +3357,12 @@ export function AppShell({
         const manifest = await client.editGameManifest(game.manifest.metadata.gameId, edit);
         setGame({ ...game, manifest });
         updateGameMapSizesInStore(mapSizes);
-        updateGameMapInStore(manifest.metadata.map);
         setGames(await client.listGames());
         return true;
       });
       return saved === true;
     },
-    [client, game, runGameAction, updateGameMapInStore, updateGameMapSizesInStore]
+    [client, game, runGameAction, updateGameMapSizesInStore]
   );
 
   /**
@@ -3433,12 +3440,12 @@ export function AppShell({
   );
 
   const createGame = useCallback(
-    (name: string, rulesetId: string, map?: MapShape, mapSizes?: MapSizes) =>
+    (name: string, rulesetId: string, mapSizes?: MapSizes) =>
       runGameAction(async () => {
         try {
           await flush();
           const now = new Date().toISOString();
-          const outcome = await createGameAction(client, name, rulesetId, now, map, mapSizes);
+          const outcome = await createGameAction(client, name, rulesetId, now, mapSizes);
           enterGame(outcome.opened);
           setGames(outcome.games);
           closePopover("games");
@@ -5587,7 +5594,7 @@ export function AppShell({
           busy={busy}
           unavailable={heldNotice?.scope === "games-list"}
           error={gameError}
-          onCreate={(name, rulesetId, map, mapSizes) => void createGame(name, rulesetId, map, mapSizes)}
+          onCreate={(name, rulesetId, mapSizes) => void createGame(name, rulesetId, mapSizes)}
           onImport={(file) => void importGameBackup(file)}
           settingsOpen={settingsOpen}
           onToggleSettings={() => setSettingsOpen((open) => !open)}
@@ -5631,7 +5638,7 @@ export function AppShell({
             busy={busy || heldNotice?.scope === "games-list"}
             error={gameError}
             onOpen={(gameId) => void openGameById(gameId)}
-            onCreate={(name, rulesetId, map, mapSizes) => void createGame(name, rulesetId, map, mapSizes)}
+            onCreate={(name, rulesetId, mapSizes) => void createGame(name, rulesetId, mapSizes)}
             onDelete={deleteGame}
             onReset={resetGame}
             onExport={(gameId) => void exportGameBackup(gameId)}

@@ -1,4 +1,4 @@
-import type { MapShape, MapSizes } from "@atlantis/core-client";
+import type { MapSizes } from "@atlantis/core-client";
 import type { ChangeEvent, ReactNode } from "react";
 import { useRef } from "react";
 import { GameForm } from "./GameForm";
@@ -28,7 +28,7 @@ export function GameGate({
   /** Create and Import are unusable for now, though nothing is in progress: another tab holds the saved-games list. */
   unavailable?: boolean;
   error: string | null;
-  onCreate: (name: string, rulesetId: string, map?: MapShape, mapSizes?: MapSizes) => void;
+  onCreate: (name: string, rulesetId: string, mapSizes?: MapSizes) => void;
   onImport: (file: File) => void;
   /**
    * Settings are reachable here too, before any game exists. Asking which version you are running,

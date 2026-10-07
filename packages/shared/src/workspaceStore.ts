@@ -71,13 +71,15 @@ export type WorkspaceGame = {
   gameName: string;
   databasePath: string;
   rulesetId: string;
+  /** A pre-levels game's map: read through `gameMapOf` when there are no `mapSizes`, never written. */
+  map?: MapShape;
   /**
-   * The map this game recorded, when it recorded one.
+   * The game's map sizes, its one map record (ah-8nfe), when it recorded any. Read through
+   * `gameMapOf`, never directly.
    *
    * Optional, and the absence carries meaning: a game whose manifest never named a map is only
    * *assuming* its ruleset's default, which is what the per-game settings tab says out loud.
    */
-  map?: MapShape;
   mapSizes?: MapSizes;
 };
 
@@ -250,7 +252,10 @@ export type WorkspaceState = {
    *
    * Like a rename, this keeps the selection: correcting the map is not a game switch.
    */
-  updateGameMap: (map: MapShape | undefined) => void;
+  /**
+   * Records the open game's map sizes - its one map record (ah-8nfe) - and drops any pre-levels
+   * `map`, as the core's own edit does, so the two copies of the manifest cannot disagree.
+   */
   updateGameMapSizes: (mapSizes: MapSizes | undefined) => void;
   /**
    * Selects a hex, and with it a unit inside that hex.
@@ -479,32 +484,17 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       // Clearing removes the key rather than setting it to undefined: absence is what makes the
       // ruleset's default read as assumed, everywhere that asks.
-      updateGameMap: (map) =>
+      updateGameMapSizes: (mapSizes) =>
         set((state) => {
           if (!state.game) {
             return state;
           }
           // Cleared means the key goes, not that it holds undefined: absence is what makes the
           // ruleset's default read as assumed, everywhere that asks.
-          if (map === undefined) {
-            const cleared = { ...state.game };
-            delete cleared.map;
-            return { game: cleared };
-          }
-          return { game: { ...state.game, map } };
-        }),
-
-      updateGameMapSizes: (mapSizes) =>
-        set((state) => {
-          if (!state.game) {
-            return state;
-          }
-          if (mapSizes === undefined) {
-            const cleared = { ...state.game };
-            delete cleared.mapSizes;
-            return { game: cleared };
-          }
-          return { game: { ...state.game, mapSizes } };
+          const next = { ...state.game };
+          delete next.map;
+          delete next.mapSizes;
+          return { game: mapSizes === undefined ? next : { ...next, mapSizes } };
         }),
 
       // Moving to another hex abandons the unit that was selected in the old one: keeping it would

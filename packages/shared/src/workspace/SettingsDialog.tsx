@@ -1,7 +1,6 @@
 import type { MapSizes } from "@atlantis/core-client";
 import "@fontsource/lato/latin-700.css";
 import { DONATE_URL, ISSUES_URL } from "../projectLinks";
-import { mapSizesOfGame } from "../mapShape";
 import { MapSizesSettings } from "./MapSizesSettings";
 import { RulesetChanger } from "./RulesetChanger";
 import type { RulesetGaps } from "../rulesetGaps";
@@ -1009,8 +1008,8 @@ export function GameSettings({
         onChange={onChangeRuleset}
       />
       <MapSizesSettings
-        mapSizes={mapSizesOfGame(game?.mapSizes, presentation.map)}
-        assumed={game?.mapSizes === undefined && !presentation.mapStated && presentation.map !== null}
+        mapSizes={presentation.sizes}
+        assumed={!presentation.mapStated && presentation.sizes !== null}
         busy={busy}
         onChange={onChangeMapSizes}
       />

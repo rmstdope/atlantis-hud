@@ -10,7 +10,7 @@ import {
   mapDraftFor,
   mapFromDraft,
   mapShapeJson,
-  mapShapeOfGame,
+  gameMapOf,
   mapShapeAtLevel,
   mapShapeOfSizes,
   mapShapeProblems
@@ -65,9 +65,9 @@ describe("the map sizes a game can configure", () => {
 
 describe("the map a game is played on", () => {
   it("takes the player's own answer when the game recorded one", () => {
-    const shape = mapShapeOfGame("neworigins", { width: 40, height: 40, wrapX: false, wrapY: true });
+    const shape = gameMapOf({ rulesetId: "neworigins", map: { width: 40, height: 40, wrapX: false, wrapY: true } });
 
-    expect(shape).toEqual({
+    expect(shape).toMatchObject({
       map: { width: 40, height: 40, wrapX: false, wrapY: true },
       stated: true
     });
@@ -76,16 +76,17 @@ describe("the map a game is played on", () => {
   it("falls back to the ruleset's declared map, and says it is only assumed", () => {
     // The navigator's answer for games that predate the question: adopt the default rather than
     // interrupting, and let Settings say it was assumed.
-    const shape = mapShapeOfGame("neworigins", undefined);
+    const shape = gameMapOf({ rulesetId: "neworigins" });
 
     expect(shape).toEqual({
+      sizes: { levels: { surface: { width: 72, height: 96 } }, wrapX: true, wrapY: false },
       map: { width: 72, height: 96, wrapX: true, wrapY: false },
       stated: false
     });
   });
 
   it("has no map at all when the ruleset declares none either", () => {
-    expect(mapShapeOfGame("no-such-ruleset", undefined)).toEqual({ map: null, stated: false });
+    expect(gameMapOf({ rulesetId: "no-such-ruleset" })).toEqual({ sizes: null, map: null, stated: false });
   });
 
   it("writes the shape the core reads", () => {
@@ -191,13 +192,13 @@ describe("wrapping a hex lattice cannot support", () => {
 
 describe("a game that already carries wrapping that cannot be drawn", () => {
   it("reads a recorded odd width without east-west wrap", () => {
-    expect(mapShapeOfGame("neworigins", { width: 71, height: 96, wrapX: true, wrapY: true })).toEqual(
+    expect(gameMapOf({ rulesetId: "neworigins", map: { width: 71, height: 96, wrapX: true, wrapY: true } })).toMatchObject(
       { map: { width: 71, height: 96, wrapX: false, wrapY: true }, stated: true }
     );
   });
 
   it("reads a recorded odd height without north-south wrap", () => {
-    expect(mapShapeOfGame("neworigins", { width: 72, height: 95, wrapX: true, wrapY: true })).toEqual(
+    expect(gameMapOf({ rulesetId: "neworigins", map: { width: 72, height: 95, wrapX: true, wrapY: true } })).toMatchObject(
       { map: { width: 72, height: 95, wrapX: true, wrapY: false }, stated: true }
     );
   });
@@ -206,11 +207,11 @@ describe("a game that already carries wrapping that cannot be drawn", () => {
     // Identity, not just equality: the shell memoises on the map's identity.
     const recorded = { width: 72, height: 96, wrapX: true, wrapY: true };
 
-    expect(mapShapeOfGame("neworigins", recorded).map).toBe(recorded);
+    expect(gameMapOf({ rulesetId: "neworigins", map: recorded }).map).toBe(recorded);
   });
 
   it("returns a recorded shape that is fine unchanged", () => {
-    expect(mapShapeOfGame("neworigins", { width: 72, height: 96, wrapX: true, wrapY: true })).toEqual(
+    expect(gameMapOf({ rulesetId: "neworigins", map: { width: 72, height: 96, wrapX: true, wrapY: true } })).toMatchObject(
       { map: { width: 72, height: 96, wrapX: true, wrapY: true }, stated: true }
     );
   });
@@ -218,7 +219,7 @@ describe("a game that already carries wrapping that cannot be drawn", () => {
   it("leaves the manifest it was given alone", () => {
     const recorded = { width: 71, height: 96, wrapX: true, wrapY: false };
 
-    mapShapeOfGame("neworigins", recorded);
+    gameMapOf({ rulesetId: "neworigins", map: recorded });
 
     expect(recorded).toEqual({ width: 71, height: 96, wrapX: true, wrapY: false });
   });
@@ -255,17 +256,23 @@ describe("an existing world's map sizes (ah-4hwa)", () => {
     expect(mapSizesSummary({ levels: {}, wrapX: true, wrapY: false })).toEqual(["No map levels configured."]);
   });
 
-  it("reads a recorded configuration as it is", () => {
-    expect(mapSizesOfGame(trident, { width: 72, height: 96, wrapX: true, wrapY: false })).toBe(trident);
-  });
-
   it("reads a game created before map levels as a surface-only configuration", () => {
-    expect(mapSizesOfGame(undefined, { width: 72, height: 96, wrapX: true, wrapY: true })).toEqual({
+    expect(mapSizesOfGame({ width: 72, height: 96, wrapX: true, wrapY: true })).toEqual({
       levels: { surface: { width: 72, height: 96 } },
       wrapX: true,
       wrapY: true
     });
-    expect(mapSizesOfGame(undefined, null)).toBeNull();
+  });
+
+  it("reads every level a pre-sizes map recorded, not only its surface", () => {
+    const recorded = {
+      width: 64,
+      height: 64,
+      wrapX: true,
+      wrapY: false,
+      levels: { surface: { width: 64, height: 64 }, underworld: { width: 48, height: 48 } }
+    };
+    expect(mapSizesOfGame(recorded)).toEqual({ levels: recorded.levels, wrapX: true, wrapY: false });
   });
 
   it("fills an editing draft from the configuration", () => {
@@ -342,6 +349,53 @@ describe("each level's own shape (ah-byqe)", () => {
 
   it("keeps the levels when wrapping that cannot be drawn is turned off", () => {
     const recorded = { width: 71, height: 64, wrapX: true, wrapY: false, levels: { underworld: { width: 48, height: 48 } } };
-    expect(mapShapeOfGame("neworigins", recorded).map).toMatchObject({ wrapX: false, levels: recorded.levels });
+    expect(gameMapOf({ rulesetId: "neworigins", map: recorded }).map).toMatchObject({ wrapX: false, levels: recorded.levels });
+  });
+});
+
+describe("one record of a game's map (ah-8nfe)", () => {
+  const sizes = {
+    levels: { surface: { width: 40, height: 60 }, underworld: { width: 48, height: 48 } },
+    wrapX: true,
+    wrapY: false
+  };
+
+  it("derives the map the core and the map view plan on from the recorded sizes", () => {
+    expect(gameMapOf({ rulesetId: "neworigins", mapSizes: sizes })).toEqual({
+      sizes,
+      map: mapShapeOfSizes(sizes),
+      stated: true
+    });
+  });
+
+  it("prefers the sizes to a pre-levels map left beside them", () => {
+    const read = gameMapOf({
+      rulesetId: "neworigins",
+      mapSizes: sizes,
+      map: { width: 72, height: 96, wrapX: false, wrapY: true }
+    });
+    expect(read.sizes).toBe(sizes);
+    expect(read.map).toMatchObject({ width: 40, height: 60, wrapX: true });
+  });
+
+  it("reads a pre-levels game's map as its sizes, and as stated", () => {
+    const map = { width: 72, height: 96, wrapX: true, wrapY: false };
+    expect(gameMapOf({ rulesetId: "neworigins", map })).toEqual({
+      sizes: { levels: { surface: { width: 72, height: 96 } }, wrapX: true, wrapY: false },
+      map,
+      stated: true
+    });
+  });
+
+  it("reads sizes that configure no level as never stated, so the ruleset's default is assumed", () => {
+    // Cleared fields are "I do not know my map", not "my map has no levels" (mapCommitOf's rule).
+    expect(gameMapOf({ rulesetId: "neworigins", mapSizes: { levels: {}, wrapX: true, wrapY: false } })).toEqual(
+      gameMapOf({ rulesetId: "neworigins" })
+    );
+  });
+
+  it("turns off wrapping the recorded sizes cannot draw", () => {
+    const odd = { levels: { surface: { width: 71, height: 60 } }, wrapX: true, wrapY: false };
+    expect(gameMapOf({ rulesetId: "neworigins", mapSizes: odd }).map).toMatchObject({ width: 71, wrapX: false });
   });
 });

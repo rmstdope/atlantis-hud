@@ -189,14 +189,8 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
         case "activeFaction":
           metadata.activeFactionId = edit.value ?? undefined;
           break;
-        case "map":
-          if (edit.value === null) {
-            delete metadata.map;
-          } else {
-            metadata.map = edit.value;
-          }
-          break;
         case "mapSizes":
+          delete metadata.map;
           if (edit.value === null) {
             delete metadata.mapSizes;
           } else {
