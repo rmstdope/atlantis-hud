@@ -60,7 +60,10 @@ export function gameMapOf(game: RecordedGameMap): GameMap {
     return { sizes: game.mapSizes, map: withDrawableWrapping(shape), stated: true };
   }
   if (game.map !== undefined) {
-    return { sizes: mapSizesOfGame(game.map), map: withDrawableWrapping(game.map), stated: true };
+    // Settings reads the same corrected wrapping the map is drawn with, so it never shows a seam
+    // that is not drawn, nor opens the editor on a draft it would refuse to save.
+    const drawable = withDrawableWrapping(game.map);
+    return { sizes: mapSizesOfGame(drawable), map: drawable, stated: true };
   }
   const declared = defaultMapFor(game.rulesetId);
   return { sizes: declared === null ? null : mapSizesOfGame(declared), map: declared, stated: false };

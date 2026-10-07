@@ -248,13 +248,11 @@ export type WorkspaceState = {
    */
   updateGameName: (gameName: string) => void;
   /**
-   * Records the map the open game is played on, or clears it back to the ruleset's assumed default.
-   *
-   * Like a rename, this keeps the selection: correcting the map is not a game switch.
-   */
-  /**
    * Records the open game's map sizes - its one map record (ah-8nfe) - and drops any pre-levels
    * `map`, as the core's own edit does, so the two copies of the manifest cannot disagree.
+   * `undefined` clears it back to the ruleset's assumed default.
+   *
+   * Like a rename, this keeps the selection: correcting the map is not a game switch.
    */
   updateGameMapSizes: (mapSizes: MapSizes | undefined) => void;
   /**
@@ -482,8 +480,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       updateGameName: (gameName) =>
         set((state) => (state.game ? { game: { ...state.game, gameName } } : state)),
 
-      // Clearing removes the key rather than setting it to undefined: absence is what makes the
-      // ruleset's default read as assumed, everywhere that asks.
       updateGameMapSizes: (mapSizes) =>
         set((state) => {
           if (!state.game) {

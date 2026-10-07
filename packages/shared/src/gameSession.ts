@@ -54,9 +54,9 @@ export function gameNameOf(raw: string): string {
  * confidently wrong.
  *
  * `mapSizes` - the one record of a game's map (ah-8nfe) - is spread in only when given, so a game
- * created without one has no such key at all. That absence is the record that nothing was stated, which is what lets Settings show the ruleset's
- * default as *assumed* rather than as the player's word - a distinction a default written in here
- * would destroy, and destroy irrecoverably.
+ * created without one has no such key at all. That absence is the record that nothing was stated,
+ * which is what lets Settings show the ruleset's default as *assumed* rather than as the player's
+ * word - a distinction a default written in here would destroy, and destroy irrecoverably.
  */
 export function newGameManifest(
   gameName: string,

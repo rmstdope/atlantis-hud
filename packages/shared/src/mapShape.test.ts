@@ -203,6 +203,14 @@ describe("a game that already carries wrapping that cannot be drawn", () => {
     );
   });
 
+  it("shows Settings the same undrawable wrapping turned off that the map view draws (ah-8nfe review)", () => {
+    // Otherwise Settings says "Wraps east to west" over a map drawn without a seam, and the editor
+    // opens on a draft it refuses to save.
+    const read = gameMapOf({ rulesetId: "neworigins", map: { width: 71, height: 95, wrapX: true, wrapY: true } });
+    expect(read.sizes).toEqual({ levels: { surface: { width: 71, height: 95 } }, wrapX: false, wrapY: false });
+    expect(read.map).toMatchObject({ wrapX: false, wrapY: false });
+  });
+
   it("returns the very object it was given when nothing needs turning off", () => {
     // Identity, not just equality: the shell memoises on the map's identity.
     const recorded = { width: 72, height: 96, wrapX: true, wrapY: true };
