@@ -850,18 +850,6 @@ describe("a theme's own selection mark and map-wide effect", () => {
   });
 });
 
-describe("the world's wrap copies", () => {
-  it("draw only the ground and the roads: everything over them is left out of a copy", () => {
-    const svg = draw();
-    const content = svg.slice(svg.indexOf('id="map-world-content"'));
-    const detail = content.indexOf('class="map-copy-detail"');
-
-    // Roads stay with the ground, before the detail group; marks and labels are inside it.
-    expect(detail).toBeGreaterThan(content.indexOf('data-layer="roads"'));
-    expect(content.indexOf('data-layer="marks"')).toBeGreaterThan(detail);
-  });
-});
-
 describe("the map's view controls", () => {
   it("are no longer drawn in the map's own corner", () => {
     // ah-ljil moved the zoom buttons up into the overlay strip beside the Badges chip, where the
@@ -920,8 +908,6 @@ describe("a map that joins back onto itself", () => {
     expect(drawn.every((ghost) => ghost.includes('pointer-events="none"'))).toBe(true);
     // One world drawn, cloned - not three worlds.
     expect(drawn.every((ghost) => ghost.includes('href="#map-world-content"'))).toBe(true);
-    // Each copy turns off clicking and everything drawn over the ground, so it paints ground and roads.
-    expect(drawn.every((ghost) => ghost.includes("--map-hit:none") && ghost.includes("--map-copy-detail:none"))).toBe(true);
   });
 
   it("draws no ghosts when the map does not wrap", () => {

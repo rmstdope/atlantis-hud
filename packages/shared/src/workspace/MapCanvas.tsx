@@ -1673,13 +1673,6 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
             Province outlines and names, above the roads and beneath everything a player can
             select or move - a decoration, not a mark to click.
           */}
-          {/*
-            Everything drawn over the ground - names, routes, marks, rings and the hit layer - in one
-            group the world's wrap copies leave out (`--map-copy-detail`, set on each copy below). A
-            copy is a `<use>` of the whole world and a browser paints all of it however little shows;
-            the ground and the roads are what keep a seam continuous, so they are what a copy draws.
-          */}
-          <g className="map-copy-detail">
           {badges.regions && (
             <g data-testid="region-decorations" pointerEvents="none">
               {/*
@@ -2179,7 +2172,6 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
             )}
           </g>
           </g>
-          </g>
 
           {/*
             The world drawn again either side of itself, so a map that joins back onto itself runs
@@ -2199,7 +2191,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
               data-ghost-y={my}
               display={mx === 0 && my === 0 ? "none" : undefined}
               pointerEvents="none"
-              style={{ "--map-hit": "none", "--map-copy-detail": "none" } as CSSProperties}
+              style={{ "--map-hit": "none" } as CSSProperties}
               data-testid="map-world-ghost"
             />
           ))}
