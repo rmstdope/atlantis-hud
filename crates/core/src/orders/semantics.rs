@@ -13453,6 +13453,10 @@ fn could_captain(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 ///
 /// The ledger holds a balance only for what it has touched, so the stepping-off list is the
 /// report's own item list overlaid with the ledger's balances.
+///
+/// A unit this month's `FORM` creates has no printed weight (`effects::formed_unit`), but its
+/// weight is not unknown: it "will start off ... with no people or items" (`rules/form`), so it
+/// starts from `Some(0)`, as the movement panel does (`ah-4ij2`).
 fn carrying_after_orders(
     ordered: &Ordered<'_>,
     ledger: &Ledger<'_>,
@@ -13479,12 +13483,12 @@ fn carrying_after_orders(
         .map(|(tag, count)| (tag.as_str(), *count))
         .collect();
 
-    carrying_after_transfers(
-        ordered.unit.weight,
-        &ordered.unit.items,
-        &stepping_off,
-        ruleset,
-    )
+    let reported_weight = if ordered.formed.is_some() {
+        Some(0)
+    } else {
+        ordered.unit.weight
+    };
+    carrying_after_transfers(reported_weight, &ordered.unit.items, &stepping_off, ruleset)
 }
 
 /// Test-only: what the overload check makes of every own unit's load as movement runs, through the
