@@ -12,6 +12,8 @@
 pub mod blocks;
 /// Core-internal: whether a BUILD names an object this world lets a player build.
 mod build_object;
+#[cfg(test)]
+mod carrying_agreement;
 pub mod completion;
 pub mod effects;
 pub mod faction_orders;
