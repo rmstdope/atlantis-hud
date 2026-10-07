@@ -120,8 +120,13 @@ macro_rules! core_queries {
                                     })?;
                                     read += 1;
                                 )*
-                                if seq.next_element::<serde::de::IgnoredAny>()?.is_some() {
-                                    return Err(serde::de::Error::invalid_length(read + 1, &self));
+                                // Count every stray, so the refusal names the length actually sent.
+                                let mut sent = read;
+                                while seq.next_element::<serde::de::IgnoredAny>()?.is_some() {
+                                    sent += 1;
+                                }
+                                if sent > read {
+                                    return Err(serde::de::Error::invalid_length(sent, &self));
                                 }
                                 Ok(($($arg,)*))
                             }
@@ -438,8 +443,18 @@ mod tests {
         let error = ask("shelter_seats", json!(["only the report"])).expect_err("refused");
         assert!(!error.starts_with("unknown core query"), "{error}");
 
-        let error = ask("shelter_seats", json!(["a", "b", "c"])).expect_err("refused");
-        assert!(!error.starts_with("unknown core query"), "{error}");
+        // Valid arguments plus strays: refused for the strays alone, with the length actually sent.
+        let report = a_report_with_two_structures();
+        let ruleset = atlantis_hud_fixtures::RULESET_JSON;
+        let error = ask(
+            "shelter_seats",
+            json!([report, ruleset, "extra", "more", "again"]),
+        )
+        .expect_err("refused");
+        assert_eq!(
+            error,
+            "arguments could not be read: invalid length 5, expected 2 positional arguments"
+        );
     }
 
     #[test]
