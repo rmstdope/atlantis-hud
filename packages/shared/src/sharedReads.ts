@@ -12,8 +12,12 @@
  * anything that writes forgets them all, so a re-imported turn is read afresh.
  */
 
-/** The reads shared: storage reads, and parses that depend on nothing but their text. */
+/**
+ * The reads shared: storage reads, and answers that depend on nothing but their arguments - the
+ * known map among them, which reopening a game resolves twice from the same report and memory.
+ */
 const SHARED = new Set([
+  "knownMap",
   "listImportedTurns",
   "loadImportedTurn",
   "loadLatestImportedTurn",
