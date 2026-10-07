@@ -33,14 +33,14 @@ import type {
   RosterSkills,
   RoutePlanResponse,
   TradeRoute,
-  TurnRef
+  TurnRef,
 } from "@atlantis/core-client";
 import type { StoredTurn, StoredTurnSnapshot, WebStore } from "./webStore";
 import { createWebStore } from "./webStore";
 import type {
   PreviewOrdersRequest,
   TraceMoveOrdersRequest,
-  ValidateOrdersRequest
+  ValidateOrdersRequest,
 } from "@atlantis/core-client";
 
 /**
@@ -57,10 +57,13 @@ export type CoreWasmModule = {
   passage_claims_state(
     rawReport: string,
     ordersDocument: string,
-    rulesetJson: string
+    rulesetJson: string,
   ): PassageClaim[];
   shelter_seats_state(rawReport: string, rulesetJson: string): ShelterSeat[];
-  parse_report_classified_state(rawReport: string, rulesetJson: string): ParsedReport;
+  parse_report_classified_state(
+    rawReport: string,
+    rulesetJson: string,
+  ): ParsedReport;
   validate_orders_state(request: ValidateOrdersRequest): OrderValidationResult;
   order_commands_state(rulesetJson: string | null): string[];
   order_vocabulary_state(rulesetJson: string | null): string[];
@@ -68,13 +71,13 @@ export type CoreWasmModule = {
     linePrefix: string,
     rulesetJson: string | null,
     rawReport: string | null,
-    unitId: string | null
+    unitId: string | null,
   ): OrderCompletion[];
   completions_at_caret_state(
     linePrefix: string,
     rulesetJson: string | null,
     rawReport: string | null,
-    unitId: string | null
+    unitId: string | null,
   ): CaretCompletions;
   plan_route_state(
     rulesetJson: string,
@@ -82,62 +85,78 @@ export type CoreWasmModule = {
     rememberedJson: string,
     unitId: string,
     destination: string,
-    mapJson: string
+    mapJson: string,
   ): RoutePlanResponse;
-  trace_move_orders_state(request: TraceMoveOrdersRequest): MoveOrderTraceResponse;
-  export_map_state(rawReport: string, rememberedJson: string, requestJson: string): string;
+  trace_move_orders_state(
+    request: TraceMoveOrdersRequest,
+  ): MoveOrderTraceResponse;
+  export_map_state(
+    rawReport: string,
+    rememberedJson: string,
+    requestJson: string,
+  ): string;
   export_mage_sheet_state(rawReport: string, unitIdsJson: string): string;
   known_map_state(
     rawReport: string,
     rulesetJson: string | null,
-    rememberedJson: string
+    rememberedJson: string,
   ): KnownMap;
   preview_orders_state(request: PreviewOrdersRequest): OrdersPreviewResponse;
   trade_routes_state(
     rulesetJson: string,
     rawReport: string,
     rememberedJson: string,
-    mapJson: string
+    mapJson: string,
   ): TradeRoute[];
   prepare_report_import_state(
     rawReport: string,
     confirmedFactionId: string,
-    rulesetJson: string | null
+    rulesetJson: string | null,
   ): PreparedImport;
   reset_game_manifest_state(manifestJson: string, now: string): GameManifest;
-  edit_game_manifest_state(manifestJson: string, editJson: string): GameManifest;
+  edit_game_manifest_state(
+    manifestJson: string,
+    editJson: string,
+  ): GameManifest;
   report_import_writes_state(
     rawReport: string,
     rulesetJson: string | null,
     existingImportedAt: string | null,
     seenJson: string,
-    at: string
+    at: string,
   ): ImportWrites;
   prepare_report_merge_state(
     rawReport: string,
     viewerTurnNumber: number,
     viewerFactionId: string,
     existingSightingsJson: string,
-    rulesetJson: string | null
+    rulesetJson: string | null,
   ): PreparedMerge;
   diff_imported_turn_state(
     existing: StoredTurnSnapshot | null,
-    candidate: StoredTurnSnapshot
+    candidate: StoredTurnSnapshot,
   ): ImportedTurnDiff;
-  hydrate_parse_result_state(parsedPayloadJson: string): ReportParseResult;
+  /** `undefined` when the payload names no season the core can read. */
+  stored_season_state(parsedPayloadJson: string): string | undefined;
   /** Fills the split structure fields of a region payload remembered before `ah-nmts`. */
   ordered_merged_reports_state(recordsJson: string): MergedReportRecord[];
   remembered_regions_state(
-    storedJson: string
+    storedJson: string,
   ): Array<{ region: ReportRegion; lastSeenTurn: number }>;
   /**
    * Which turn a game reopens on, given every turn's `(factionId, turnNumber)` as a JSON array
    * and the faction the game remembers as the player's. Returns `{ factionId, turnNumber }` or
    * `null`. The rule and its one tie-break are `atlantis_hud_core::reopen::latest_turn`'s.
    */
-  latest_turn_state(turnsJson: string, activeFactionId: string | null): TurnRef | null;
+  latest_turn_state(
+    turnsJson: string,
+    activeFactionId: string | null,
+  ): TurnRef | null;
   encode_game_backup_state(contentJson: string, exportedAt: string): string;
-  decode_game_backup_state(backupJson: string, openedAt: string): DecodedGameBackup;
+  decode_game_backup_state(
+    backupJson: string,
+    openedAt: string,
+  ): DecodedGameBackup;
 };
 
 /** One region as the core serialized it, ready to be written as a row. */
@@ -287,12 +306,16 @@ function withGoals({
   skill: legacySkill,
   targetLevel: _legacyTargetLevel,
   ...carried
-}: StudyPlanRecord & { skill?: string | null; targetLevel?: number | null }): StudyPlanRecord {
+}: StudyPlanRecord & {
+  skill?: string | null;
+  targetLevel?: number | null;
+}): StudyPlanRecord {
   // `turn: 0` for anything written before ah-lyg6.2.3's redesign, exactly as the desktop reader
   // answers: a queue of goals names no turn and cannot be converted without the report it was
   // projected against, so `plannedGoals` drops it and the next save rewrites the row.
   const stored: StoredGoal[] =
-    carried.goals ?? (legacySkill ? [{ kind: "study", turn: 0, skill: legacySkill }] : []);
+    carried.goals ??
+    (legacySkill ? [{ kind: "study", turn: 0, skill: legacySkill }] : []);
   return {
     ...carried,
     goals: stored.map(({ targetLevel: _legacyGoalTargetLevel, ...rest }) => {
@@ -306,40 +329,52 @@ function withGoals({
             students: rest.students ?? [],
             // ah-af7i: a goal rebuilt without this reads as a frozen empty list, and the mage
             // teaches nobody. Absent is false: every row stored before that bead is a fixed list.
-            live: rest.live === true
+            live: rest.live === true,
           }
-        : { ...rest, kind: "study" as const, turn: rest.turn ?? 0, skill: rest.skill ?? "" };
-    })
+        : {
+            ...rest,
+            kind: "study" as const,
+            turn: rest.turn ?? 0,
+            skill: rest.skill ?? "",
+          };
+    }),
   };
 }
 
 export function createWebCoreAdapter(
   wasm: CoreWasmModule,
-  store: WebStore = createWebStore()
+  store: WebStore = createWebStore(),
 ): CoreAdapter {
   const prepare = (
     rawReport: string,
     confirmedFactionId: string,
-    rulesetJson: string | null
+    rulesetJson: string | null,
   ): PreparedImport => {
-    const prepared = wasm.prepare_report_import_state(rawReport, confirmedFactionId, rulesetJson);
+    const prepared = wasm.prepare_report_import_state(
+      rawReport,
+      confirmedFactionId,
+      rulesetJson,
+    );
 
     // Rust's None can arrive as undefined rather than null depending on serializer settings, and
     // the checks below are written against null. Normalise once, here.
     return {
       ...prepared,
       turnNumber: prepared.turnNumber ?? null,
-      rejection: prepared.rejection ?? null
+      rejection: prepared.rejection ?? null,
     };
   };
 
   /** Whether a candidate changes what is already stored, given whatever is already stored. */
-  const diffAgainst = (stored: StoredTurn | null, candidate: StoredTurnSnapshot) => {
+  const diffAgainst = (
+    stored: StoredTurn | null,
+    candidate: StoredTurnSnapshot,
+  ) => {
     const existing: StoredTurnSnapshot | null = stored
       ? {
           rawReport: stored.rawReport,
           parsedPayloadJson: stored.parsedPayloadJson,
-          warningsPayloadJson: stored.warningsPayloadJson
+          warningsPayloadJson: stored.warningsPayloadJson,
         }
       : null;
 
@@ -351,11 +386,11 @@ export function createWebCoreAdapter(
     gameId: string,
     factionId: string,
     turnNumber: number,
-    candidate: StoredTurnSnapshot
+    candidate: StoredTurnSnapshot,
   ): Promise<ImportedTurnDiff> =>
     diffAgainst(
       await store.getImportedTurn(databasePath, gameId, factionId, turnNumber),
-      candidate
+      candidate,
     );
 
   return {
@@ -375,7 +410,11 @@ export function createWebCoreAdapter(
       return wasm.roster_skills_state(rawReport);
     },
 
-    async passageClaims(rawReport: string, ordersDocument: string, rulesetJson: string) {
+    async passageClaims(
+      rawReport: string,
+      ordersDocument: string,
+      rulesetJson: string,
+    ) {
       return wasm.passage_claims_state(rawReport, ordersDocument, rulesetJson);
     },
 
@@ -383,8 +422,16 @@ export function createWebCoreAdapter(
       return wasm.shelter_seats_state(rawReport, rulesetJson);
     },
 
-    async loadRegionSightings(databasePath: string, gameId: string, factionId: string) {
-      const stored = await store.getRegionSightings(databasePath, gameId, factionId);
+    async loadRegionSightings(
+      databasePath: string,
+      gameId: string,
+      factionId: string,
+    ) {
+      const stored = await store.getRegionSightings(
+        databasePath,
+        gameId,
+        factionId,
+      );
 
       // Which hexes survive, what an old payload is back-filled with, and the order they come back
       // in are all the core's, and the desktop asks it the same question (`ah-8z4y.3.2`). Catching
@@ -395,9 +442,9 @@ export function createWebCoreAdapter(
           stored.map((sighting) => ({
             regionId: sighting.regionId,
             lastSeenTurn: sighting.lastSeenTurn,
-            payloadJson: sighting.payloadJson
-          }))
-        )
+            payloadJson: sighting.payloadJson,
+          })),
+        ),
       );
     },
     /**
@@ -419,9 +466,13 @@ export function createWebCoreAdapter(
       viewerTurnNumber: number,
       rawReport: string,
       rulesetJson: string | null,
-      mergedAt: string
+      mergedAt: string,
     ) {
-      const existing = await store.getRegionSightings(databasePath, gameId, viewerFactionId);
+      const existing = await store.getRegionSightings(
+        databasePath,
+        gameId,
+        viewerFactionId,
+      );
       const prepared = wasm.prepare_report_merge_state(
         rawReport,
         viewerTurnNumber,
@@ -435,10 +486,10 @@ export function createWebCoreAdapter(
           existing.map((sighting) => ({
             regionId: sighting.regionId,
             lastSeenTurn: sighting.lastSeenTurn,
-            payloadJson: sighting.payloadJson
-          }))
+            payloadJson: sighting.payloadJson,
+          })),
         ),
-        rulesetJson
+        rulesetJson,
       );
 
       if (prepared.rejection) {
@@ -454,14 +505,15 @@ export function createWebCoreAdapter(
           factionId: viewerFactionId,
           regionId: sighting.regionId,
           lastSeenTurn: sighting.lastSeenTurn,
-          payloadJson: sighting.payloadJson
-        }))
+          payloadJson: sighting.payloadJson,
+        })),
       );
 
       // A map export of the viewer's own map writes no provenance row: its key would name the
       // viewer as their own ally, which is nonsense in front of anything reading merged reports.
       // An ally's map export still writes one, which is the provenance worth keeping.
-      const ownMapExport = prepared.mapExport && prepared.mergedFactionId === viewerFactionId;
+      const ownMapExport =
+        prepared.mapExport && prepared.mergedFactionId === viewerFactionId;
       if (!ownMapExport) {
         await store.putMergedReport({
           databasePath,
@@ -469,17 +521,19 @@ export function createWebCoreAdapter(
           factionId: viewerFactionId,
           turnNumber: prepared.turnNumber,
           mergedFactionId: prepared.mergedFactionId,
-          mergedFactionName: prepared.mergedFactionName ?? prepared.mergedFactionId,
-          mergedAt
+          mergedFactionName:
+            prepared.mergedFactionName ?? prepared.mergedFactionId,
+          mergedAt,
         });
       }
 
       return {
         turnNumber: prepared.turnNumber,
         mergedFactionId: prepared.mergedFactionId,
-        mergedFactionName: prepared.mergedFactionName ?? prepared.mergedFactionId,
+        mergedFactionName:
+          prepared.mergedFactionName ?? prepared.mergedFactionId,
         mergedRegionCount: prepared.mergedRegionCount,
-        newRegionCount: prepared.newRegionCount
+        newRegionCount: prepared.newRegionCount,
       };
     },
 
@@ -487,9 +541,14 @@ export function createWebCoreAdapter(
       databasePath: string,
       gameId: string,
       factionId: string,
-      turnNumber: number
+      turnNumber: number,
     ) {
-      const stored = await store.getMergedReports(databasePath, gameId, factionId, turnNumber);
+      const stored = await store.getMergedReports(
+        databasePath,
+        gameId,
+        factionId,
+        turnNumber,
+      );
 
       // The order is the core's, and the desktop's ORDER BY implements the same definition. The
       // panel lists them in the order they happened, and a list that reorders itself between
@@ -502,9 +561,9 @@ export function createWebCoreAdapter(
             turnNumber: record.turnNumber,
             mergedFactionId: record.mergedFactionId,
             mergedFactionName: record.mergedFactionName,
-            mergedAt: record.mergedAt
-          }))
-        )
+            mergedAt: record.mergedAt,
+          })),
+        ),
       );
     },
 
@@ -517,7 +576,7 @@ export function createWebCoreAdapter(
       rememberedJson: string,
       unitId: string,
       destination: string,
-      mapJson: string
+      mapJson: string,
     ) {
       // Straight through to the core: unlike the persistence entry points there is no browser
       // storage to stand in for a database. The report goes as text, which is what the core keys
@@ -528,7 +587,7 @@ export function createWebCoreAdapter(
         rememberedJson,
         unitId,
         destination,
-        mapJson
+        mapJson,
       );
     },
     async traceMoveOrders(request: TraceMoveOrdersRequest) {
@@ -536,7 +595,11 @@ export function createWebCoreAdapter(
       // document goes, not one unit's block: a passenger's route is the hull's (ah-048).
       return wasm.trace_move_orders_state(request);
     },
-    async exportMap(rawReport: string, rememberedJson: string, requestJson: string) {
+    async exportMap(
+      rawReport: string,
+      rememberedJson: string,
+      requestJson: string,
+    ) {
       // Straight through as well: the export is pure computation over the arguments, and the file
       // it produces is handed back as text for the shell to save.
       return wasm.export_map_state(rawReport, rememberedJson, requestJson);
@@ -546,7 +609,11 @@ export function createWebCoreAdapter(
       // it produces is handed back as text for the shell to save.
       return wasm.export_mage_sheet_state(rawReport, unitIdsJson);
     },
-    async knownMap(rawReport: string, rulesetJson: string | null, rememberedJson: string) {
+    async knownMap(
+      rawReport: string,
+      rulesetJson: string | null,
+      rememberedJson: string,
+    ) {
       // Straight through as well: the resolution is pure computation over the arguments.
       return wasm.known_map_state(rawReport, rulesetJson, rememberedJson);
     },
@@ -558,10 +625,15 @@ export function createWebCoreAdapter(
       rulesetJson: string,
       rawReport: string,
       rememberedJson: string,
-      mapJson: string
+      mapJson: string,
     ) {
       // Straight through as well: finding routes is pure computation over the arguments.
-      return wasm.trade_routes_state(rulesetJson, rawReport, rememberedJson, mapJson);
+      return wasm.trade_routes_state(
+        rulesetJson,
+        rawReport,
+        rememberedJson,
+        mapJson,
+      );
     },
     async validateOrders(request: ValidateOrdersRequest) {
       // As with planning, the report goes across as text: the core keys its last parse on it, so
@@ -578,23 +650,35 @@ export function createWebCoreAdapter(
       linePrefix: string,
       rulesetJson: string | null,
       rawReport: string | null,
-      unitId: string | null
+      unitId: string | null,
     ) {
-      return wasm.order_argument_completions_state(linePrefix, rulesetJson, rawReport, unitId);
+      return wasm.order_argument_completions_state(
+        linePrefix,
+        rulesetJson,
+        rawReport,
+        unitId,
+      );
     },
     async completionsAtCaret(
       linePrefix: string,
       rulesetJson: string | null,
       rawReport: string | null,
-      unitId: string | null
+      unitId: string | null,
     ) {
-      return wasm.completions_at_caret_state(linePrefix, rulesetJson, rawReport, unitId);
+      return wasm.completions_at_caret_state(
+        linePrefix,
+        rulesetJson,
+        rawReport,
+        unitId,
+      );
     },
 
     async listGames() {
       // The registry stores a manifest as an untyped blob; every other read of it in this file
       // The manifest edits below trust the same cast.
-      return (await store.listGames()).map((game) => game.manifest as GameManifest);
+      return (await store.listGames()).map(
+        (game) => game.manifest as GameManifest,
+      );
     },
 
     async createGame(manifest: GameManifest) {
@@ -608,7 +692,7 @@ export function createWebCoreAdapter(
         gameId,
         databasePath: databaseHandleFor(gameId),
         schemaVersion: 1,
-        manifest
+        manifest,
       };
       await store.putGame(game);
       return { ...game, gameFilePath: game.databasePath };
@@ -626,7 +710,7 @@ export function createWebCoreAdapter(
       const edit: ManifestEdit = { kind: "opened", value: openedAt };
       const manifest = wasm.edit_game_manifest_state(
         JSON.stringify(game.manifest),
-        JSON.stringify(edit)
+        JSON.stringify(edit),
       );
       const opened = { ...game, manifest };
       await store.putGame(opened);
@@ -650,7 +734,10 @@ export function createWebCoreAdapter(
       const previous = game.manifest as GameManifest;
       // The rule lives in the core and is the desktop's too - `ah-8z4y.1`. What a reset keeps is
       // not this adapter's opinion.
-      const manifest = wasm.reset_game_manifest_state(JSON.stringify(previous), now);
+      const manifest = wasm.reset_game_manifest_state(
+        JSON.stringify(previous),
+        now,
+      );
       // The registry row first — the opposite order from the desktop's rename-aside, and for the same
       // reason: a failure after this leaves an empty game, which is what was asked for, while a
       // failure the other way round would leave a full game the picker no longer lists. Do not "make
@@ -675,7 +762,7 @@ export function createWebCoreAdapter(
         hexNotes,
         armies,
         alliedMages,
-        studyPlans
+        studyPlans,
       ] = await Promise.all([
         store.getImportedTurns(game.databasePath, gameId),
         store.getOrderDrafts(game.databasePath, gameId),
@@ -684,7 +771,7 @@ export function createWebCoreAdapter(
         store.getHexNotes(game.databasePath, gameId),
         store.getArmies(game.databasePath, gameId),
         store.getAlliedMages(game.databasePath, gameId),
-        store.getStudyPlans(game.databasePath, gameId)
+        store.getStudyPlans(game.databasePath, gameId),
       ]);
 
       try {
@@ -702,9 +789,9 @@ export function createWebCoreAdapter(
             hexNotes,
             armies,
             alliedMages,
-            studyPlans
+            studyPlans,
           }),
-          exportedAt
+          exportedAt,
         );
       } catch (error) {
         // wasm-bindgen throws the Rust error's text as a bare string, same as decode - see the
@@ -721,7 +808,7 @@ export function createWebCoreAdapter(
 
       const manifest = wasm.edit_game_manifest_state(
         JSON.stringify(game.manifest),
-        JSON.stringify(edit)
+        JSON.stringify(edit),
       );
       await store.putGame({ ...game, manifest });
       return manifest;
@@ -749,7 +836,7 @@ export function createWebCoreAdapter(
         gameId,
         databasePath,
         schemaVersion: 1,
-        manifest
+        manifest,
       };
 
       try {
@@ -765,9 +852,9 @@ export function createWebCoreAdapter(
               parsedPayloadJson: turn.parsedPayloadJson,
               warningsPayloadJson: turn.warningsPayloadJson,
               importedAt: turn.importedAt,
-              updatedAt: turn.updatedAt
-            })
-          )
+              updatedAt: turn.updatedAt,
+            }),
+          ),
         );
         await Promise.all(
           decoded.orderDrafts.map((draft) =>
@@ -777,9 +864,9 @@ export function createWebCoreAdapter(
               factionId: draft.factionId,
               turnNumber: draft.turnNumber,
               orderText: draft.orderText,
-              updatedAt: draft.updatedAt
-            })
-          )
+              updatedAt: draft.updatedAt,
+            }),
+          ),
         );
         await store.putRegionSightings(
           decoded.regionSightings.map((sighting) => ({
@@ -788,8 +875,8 @@ export function createWebCoreAdapter(
             factionId: sighting.factionId,
             regionId: sighting.regionId,
             lastSeenTurn: sighting.lastSeenTurn,
-            payloadJson: sighting.payloadJson
-          }))
+            payloadJson: sighting.payloadJson,
+          })),
         );
         await Promise.all(
           decoded.mergedReports.map((record) =>
@@ -800,9 +887,9 @@ export function createWebCoreAdapter(
               turnNumber: record.turnNumber,
               mergedFactionId: record.mergedFactionId,
               mergedFactionName: record.mergedFactionName,
-              mergedAt: record.mergedAt
-            })
-          )
+              mergedAt: record.mergedAt,
+            }),
+          ),
         );
         await Promise.all(
           decoded.hexNotes.map((note) =>
@@ -815,9 +902,9 @@ export function createWebCoreAdapter(
               onMap: note.onMap,
               turn: note.turn,
               createdAt: note.createdAt,
-              updatedAt: note.updatedAt
-            })
-          )
+              updatedAt: note.updatedAt,
+            }),
+          ),
         );
         await Promise.all(
           decoded.armies.map((army) =>
@@ -828,19 +915,19 @@ export function createWebCoreAdapter(
               name: army.name,
               members: army.members,
               createdAt: army.createdAt,
-              updatedAt: army.updatedAt
-            })
-          )
+              updatedAt: army.updatedAt,
+            }),
+          ),
         );
         await store.putAlliedMages(
           databasePath,
           decoded.alliedMages.map((mage) => ({ databasePath, ...mage })),
-          []
+          [],
         );
         await store.putStudyPlans(
           databasePath,
           decoded.studyPlans.map((plan) => ({ databasePath, ...plan })),
-          []
+          [],
         );
       } catch (error) {
         await store.deleteGame(gameId).catch(() => null);
@@ -854,7 +941,7 @@ export function createWebCoreAdapter(
       databasePath: string,
       gameId: string,
       confirmedFactionId: string,
-      rawReport: string
+      rawReport: string,
     ) {
       // Preview deliberately tolerates an inadmissible report: the panel shows the parse result
       // and its warnings so the user can see why it would be refused.
@@ -863,19 +950,24 @@ export function createWebCoreAdapter(
       const prepared = prepare(rawReport, confirmedFactionId, null);
       const duplicatePreview =
         prepared.turnNumber === null
-          ? { exists: false, rawChanged: false, parsedChanged: false, warningsChanged: false }
+          ? {
+              exists: false,
+              rawChanged: false,
+              parsedChanged: false,
+              warningsChanged: false,
+            }
           : await diffAgainstStored(
               databasePath,
               gameId,
               confirmedFactionId,
               prepared.turnNumber,
-              prepared.candidate
+              prepared.candidate,
             );
 
       return {
         parseResult: prepared.parseResult,
         duplicatePreview,
-        turnNumber: prepared.turnNumber
+        turnNumber: prepared.turnNumber,
       };
     },
 
@@ -886,7 +978,7 @@ export function createWebCoreAdapter(
       rawReport: string,
       rulesetJson: string | null,
       allowOverwrite: boolean,
-      importedAt: string
+      importedAt: string,
     ) {
       const prepared = prepare(rawReport, confirmedFactionId, rulesetJson);
       const turnNumber = requireAdmissible(prepared);
@@ -898,21 +990,25 @@ export function createWebCoreAdapter(
         databasePath,
         gameId,
         confirmedFactionId,
-        turnNumber
+        turnNumber,
       );
       const diff = diffAgainst(existing, prepared.candidate);
 
       if (diff.exists && !allowOverwrite) {
         throw new Error(
           `imported turn already exists for game ${gameId}, faction ${confirmedFactionId}, ` +
-            `turn ${turnNumber} and requires explicit overwrite confirmation`
+            `turn ${turnNumber} and requires explicit overwrite confirmation`,
         );
       }
 
       // What the store already holds is handed to the core, and what comes back is written as it
       // is: whether an older report may overwrite a hex, and which stamp a re-import keeps, are
       // the core's rules, decided once for both platforms (`import_writes` in the Rust core).
-      const seen = await store.getRegionSightings(databasePath, gameId, confirmedFactionId);
+      const seen = await store.getRegionSightings(
+        databasePath,
+        gameId,
+        confirmedFactionId,
+      );
       const writes = wasm.report_import_writes_state(
         rawReport,
         rulesetJson,
@@ -921,10 +1017,10 @@ export function createWebCoreAdapter(
           seen.map((s) => ({
             regionId: s.regionId,
             lastSeenTurn: s.lastSeenTurn,
-            payloadJson: s.payloadJson
-          }))
+            payloadJson: s.payloadJson,
+          })),
         ),
-        importedAt
+        importedAt,
       );
 
       // `importedAt`/`updatedAt` land on the record for the same reason the desktop writes them
@@ -937,7 +1033,7 @@ export function createWebCoreAdapter(
         turnNumber,
         importedAt: writes.importedAt,
         updatedAt: writes.updatedAt,
-        ...prepared.candidate
+        ...prepared.candidate,
       });
 
       // Regions also get remembered one by one, each carrying the turn it was seen in. Without
@@ -953,8 +1049,8 @@ export function createWebCoreAdapter(
             factionId: confirmedFactionId,
             regionId: sighting.regionId,
             lastSeenTurn: sighting.lastSeenTurn,
-            payloadJson: sighting.payloadJson
-          }))
+            payloadJson: sighting.payloadJson,
+          })),
         );
       }
 
@@ -965,9 +1061,14 @@ export function createWebCoreAdapter(
       databasePath: string,
       gameId: string,
       factionId: string,
-      turnNumber: number
+      turnNumber: number,
     ) {
-      const stored = await store.getImportedTurn(databasePath, gameId, factionId, turnNumber);
+      const stored = await store.getImportedTurn(
+        databasePath,
+        gameId,
+        factionId,
+        turnNumber,
+      );
       if (!stored) {
         return null;
       }
@@ -975,7 +1076,6 @@ export function createWebCoreAdapter(
       return {
         key: { gameId, factionId, turnNumber },
         rawReport: stored.rawReport,
-        parseResult: wasm.hydrate_parse_result_state(stored.parsedPayloadJson)
       };
     },
 
@@ -989,29 +1089,36 @@ export function createWebCoreAdapter(
     async loadLatestImportedTurn(
       databasePath: string,
       gameId: string,
-      activeFactionId: string | null
+      activeFactionId: string | null,
     ) {
       const turns = await store.getImportedTurns(databasePath, gameId);
 
       const named = wasm.latest_turn_state(
-        JSON.stringify(turns.map(({ factionId, turnNumber }) => ({ factionId, turnNumber }))),
-        activeFactionId
+        JSON.stringify(
+          turns.map(({ factionId, turnNumber }) => ({ factionId, turnNumber })),
+        ),
+        activeFactionId,
       );
       if (!named) {
         return null;
       }
 
       const latest = turns.find(
-        (turn) => turn.factionId === named.factionId && turn.turnNumber === named.turnNumber
+        (turn) =>
+          turn.factionId === named.factionId &&
+          turn.turnNumber === named.turnNumber,
       );
       if (!latest) {
         throw new Error("the core named a turn the store does not hold");
       }
 
       return {
-        key: { gameId, factionId: latest.factionId, turnNumber: latest.turnNumber },
+        key: {
+          gameId,
+          factionId: latest.factionId,
+          turnNumber: latest.turnNumber,
+        },
         rawReport: latest.rawReport,
-        parseResult: wasm.hydrate_parse_result_state(latest.parsedPayloadJson)
       };
     },
 
@@ -1020,34 +1127,19 @@ export function createWebCoreAdapter(
      * `@atlantis/core-client` orders it.
      *
      * No storage of its own is needed: `getImportedTurns` already carries everything but the
-     * season, which is read the way `loadImportedTurn` above reads a full parse result — through
-     * the wasm hydrator, so the browser reaches the same verdict as the desktop's stored-JSON peek
-     * without a second copy of the parsing rules.
+     * season, which the core reads from each stored payload (`stored_season_state`) - the same
+     * reading the desktop's store uses, and without rebuilding the parse.
      */
     async listImportedTurns(databasePath: string, gameId: string) {
       const turns = await store.getImportedTurns(databasePath, gameId);
 
-      // A row whose payload the hydrator cannot parse must not take the rest of the list down
-      // with it. `hydrate_parse_result_state` returns a Rust `Result`, so a bad payload crosses
-      // the wasm boundary as a thrown exception rather than an error value — unlike the
-      // desktop/persistence peek, which the Rust side already treats as `season: None` on a bad
-      // row rather than failing the whole list. This keeps the two paths agreeing.
-      //
-      // The hydrator returns `ReportParseResult`, camelCase throughout since ah-164.1, typed rather
-      // than cast since ah-wxk.2.
-      const seasonOf = (parsedPayloadJson: string): string | null => {
-        try {
-          return wasm.hydrate_parse_result_state(parsedPayloadJson).turnHeader?.season ?? null;
-        } catch {
-          return null;
-        }
-      };
-
+      // A payload the core cannot read a season from lists with none rather than failing the
+      // whole list - `stored_season_state` answers `None` for it, on both platforms.
       return turns.map((turn) => ({
         key: { gameId, factionId: turn.factionId, turnNumber: turn.turnNumber },
-        season: seasonOf(turn.parsedPayloadJson),
+        season: wasm.stored_season_state(turn.parsedPayloadJson) ?? null,
         importedAt: turn.importedAt ?? "",
-        updatedAt: turn.updatedAt ?? ""
+        updatedAt: turn.updatedAt ?? "",
       }));
     },
 
@@ -1057,14 +1149,21 @@ export function createWebCoreAdapter(
       factionId: string,
       turnNumber: number,
       orderText: string,
-      updatedAt: string
+      updatedAt: string,
     ) {
-      const draft = { databasePath, gameId, factionId, turnNumber, orderText, updatedAt };
+      const draft = {
+        databasePath,
+        gameId,
+        factionId,
+        turnNumber,
+        orderText,
+        updatedAt,
+      };
       await store.putOrderDraft(draft);
       return {
         key: { gameId, factionId, turnNumber },
         orderText,
-        updatedAt
+        updatedAt,
       };
     },
 
@@ -1072,9 +1171,14 @@ export function createWebCoreAdapter(
       databasePath: string,
       gameId: string,
       factionId: string,
-      turnNumber: number
+      turnNumber: number,
     ) {
-      const stored = await store.getOrderDraft(databasePath, gameId, factionId, turnNumber);
+      const stored = await store.getOrderDraft(
+        databasePath,
+        gameId,
+        factionId,
+        turnNumber,
+      );
       if (!stored) {
         return null;
       }
@@ -1082,7 +1186,7 @@ export function createWebCoreAdapter(
       return {
         key: { gameId, factionId, turnNumber },
         orderText: stored.orderText,
-        updatedAt: stored.updatedAt
+        updatedAt: stored.updatedAt,
       };
     },
 
@@ -1123,31 +1227,33 @@ export function createWebCoreAdapter(
       databasePath: string,
       gameId: string,
       mages: readonly AlliedMageRecord[],
-      removed: readonly AlliedMageKey[]
+      removed: readonly AlliedMageKey[],
     ) {
       await store.putAlliedMages(
         databasePath,
         mages.map((mage) => ({ databasePath, ...mage })),
-        removed
+        removed,
       );
     },
 
     async listStudyPlans(databasePath: string, gameId: string) {
       const plans = await store.getStudyPlans(databasePath, gameId);
-      return plans.map(({ databasePath: _databasePath, ...plan }) => withGoals(plan));
+      return plans.map(({ databasePath: _databasePath, ...plan }) =>
+        withGoals(plan),
+      );
     },
 
     async saveStudyPlans(
       databasePath: string,
       gameId: string,
       plans: readonly StudyPlanRecord[],
-      removed: readonly StudyPlanKey[]
+      removed: readonly StudyPlanKey[],
     ) {
       await store.putStudyPlans(
         databasePath,
         plans.map((plan) => ({ databasePath, ...plan })),
-        removed
+        removed,
       );
-    }
+    },
   };
 }

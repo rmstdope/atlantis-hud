@@ -55,8 +55,52 @@ pub fn latest_turn(turns: &[TurnRef], active_faction_id: Option<&str>) -> Option
         .cloned()
 }
 
+/// The season a stored turn's parse payload names, read without rebuilding the parse.
+///
+/// `parsed_payload_json` holds `ReportParseResult`; its `turn_header.season` is all a turn listing
+/// shows, and reading it through a tiny local struct keeps working if the payload's other fields
+/// change shape - and costs a fraction of rebuilding the whole parse, which on a large map was most
+/// of what listing a game's turns cost. A payload that cannot be read this way - malformed JSON, a
+/// missing header - is `None` rather than an error, so one bad row cannot take a listing down. Blobs
+/// written before ah-164.1 are snake_case (`turn_header`), later ones camelCase (`turnHeader`); this
+/// reads both, as `ReportParseResult` itself does. One reading for both shells: the desktop's store
+/// and the browser's.
+#[must_use]
+pub fn stored_season(parsed_payload_json: &str) -> Option<String> {
+    #[derive(Deserialize)]
+    struct Peek {
+        #[serde(rename = "turnHeader", alias = "turn_header")]
+        turn_header: Option<PeekTurnHeader>,
+    }
+    #[derive(Deserialize)]
+    struct PeekTurnHeader {
+        season: Option<String>,
+    }
+
+    serde_json::from_str::<Peek>(parsed_payload_json)
+        .ok()
+        .and_then(|peek| peek.turn_header)
+        .and_then(|header| header.season)
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_stored_season_is_read_from_either_casing_and_nothing_else() {
+        assert_eq!(
+            super::stored_season(
+                r#"{"turnHeader":{"turnNumber":13,"season":"Summer"},"units":[1,2]}"#
+            ),
+            Some("Summer".to_string())
+        );
+        assert_eq!(
+            super::stored_season(r#"{"turn_header":{"turn_number":12,"season":"Spring"}}"#),
+            Some("Spring".to_string())
+        );
+        assert_eq!(super::stored_season(r#"{"units":[]}"#), None);
+        assert_eq!(super::stored_season("not json"), None);
+    }
+
     use super::*;
 
     fn turn(faction_id: &str, turn_number: u32) -> TurnRef {

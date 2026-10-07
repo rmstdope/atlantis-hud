@@ -519,10 +519,14 @@ export type OrderDraftRecord = {
   updatedAt: string;
 };
 
+/**
+ * A stored turn: the report's own text. The parse stored beside it stays in storage - every reader
+ * parses what it needs from the text, and rebuilding the stored parse cost a reopened game most of a
+ * second on a large map.
+ */
 export type ImportedTurnRecord = {
   key: OrderDraftKey;
   rawReport: string;
-  parseResult: ReportParseResult;
 };
 
 /** Enough to label an imported turn without loading its full report. */

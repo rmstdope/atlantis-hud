@@ -22,8 +22,7 @@ describe("loadComparisonTurn", () => {
     const client = {
       loadImportedTurn: vi.fn().mockResolvedValue({
         key: { factionId: "17", turnNumber: 70 },
-        rawReport: "raw report text",
-        parseResult: {}
+        rawReport: "raw report text"
       })
     };
     const parse = vi.fn().mockResolvedValue(parsedComparison);
@@ -61,8 +60,7 @@ describe("loadComparisonTurn", () => {
     const client = {
       loadImportedTurn: vi.fn().mockResolvedValue({
         key: { factionId: "17", turnNumber: 70 },
-        rawReport: "raw report text",
-        parseResult: {}
+        rawReport: "raw report text"
       })
     };
     const parse = vi.fn().mockRejectedValue(new Error("malformed report"));
@@ -124,8 +122,7 @@ describe("pickComparisonTurn", () => {
     const client = {
       loadImportedTurn: vi.fn().mockResolvedValue({
         key: { factionId: "17", turnNumber: 65 },
-        rawReport: "raw report text",
-        parseResult: {}
+        rawReport: "raw report text"
       })
     };
     const parse = vi.fn().mockResolvedValue(parsedComparison);
