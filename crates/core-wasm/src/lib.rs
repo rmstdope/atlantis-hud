@@ -659,6 +659,21 @@ pub fn passage_claims_state(
     ))
 }
 
+/// How many mages each structure in the report seats - the study planner's shelters, from the
+/// one rule the magic-study check reads (ah-29p5). The browser twin of the desktop command.
+///
+/// # Errors
+///
+/// Returns an error when the ruleset cannot be read or the answer cannot be serialised to JS.
+#[wasm_bindgen]
+pub fn shelter_seats_state(raw_report: String, ruleset_json: String) -> Result<JsValue, JsValue> {
+    let seats = atlantis_hud_core::cache::with_global(|cache| {
+        atlantis_hud_core::orders::shelter::shelter_seats_in(cache, &raw_report, &ruleset_json)
+    })
+    .map_err(|error| JsValue::from_str(&error))?;
+    to_js(&seats)
+}
+
 /// Validates one draft of Atlantis orders and returns structured diagnostics.
 ///
 /// Order validation is pure, so unlike the persistence entry points this is available on every

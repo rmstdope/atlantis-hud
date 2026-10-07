@@ -27,6 +27,7 @@ import type {
   OrdersPreviewResponse,
   ParsedReport,
   PassageClaim,
+  ShelterSeat,
   ReportParseResult,
   ReportRegion,
   RosterSkills,
@@ -58,6 +59,7 @@ export type CoreWasmModule = {
     ordersDocument: string,
     rulesetJson: string
   ): PassageClaim[];
+  shelter_seats_state(rawReport: string, rulesetJson: string): ShelterSeat[];
   parse_report_classified_state(rawReport: string, rulesetJson: string): ParsedReport;
   validate_orders_state(request: ValidateOrdersRequest): OrderValidationResult;
   order_commands_state(rulesetJson: string | null): string[];
@@ -375,6 +377,10 @@ export function createWebCoreAdapter(
 
     async passageClaims(rawReport: string, ordersDocument: string, rulesetJson: string) {
       return wasm.passage_claims_state(rawReport, ordersDocument, rulesetJson);
+    },
+
+    async shelterSeats(rawReport: string, rulesetJson: string) {
+      return wasm.shelter_seats_state(rawReport, rulesetJson);
     },
 
     async loadRegionSightings(databasePath: string, gameId: string, factionId: string) {

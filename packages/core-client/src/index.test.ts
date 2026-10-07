@@ -114,6 +114,7 @@ function fakeAdapter(overrides: Partial<CoreAdapter> = {}): CoreAdapter {
     parseReportFull: vi.fn().mockResolvedValue(aParsedReport()),
     rosterSkills: vi.fn().mockResolvedValue([]),
     passageClaims: vi.fn().mockResolvedValue([]),
+    shelterSeats: vi.fn().mockResolvedValue([]),
     parseReportClassified: vi.fn().mockResolvedValue(aParsedReport()),
     previewReportImport: vi.fn().mockResolvedValue({
       parseResult: reportParseResult,

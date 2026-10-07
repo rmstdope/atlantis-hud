@@ -89,6 +89,10 @@ export const SWEEP: SweepEntry[] = [
     args: () => ({ raw_report: REPORT, orders_document: "", ruleset_json: RULESET })
   },
   {
+    command: "shelter_seats",
+    args: () => ({ raw_report: REPORT, ruleset_json: RULESET })
+  },
+  {
     command: "parse_report_classified",
     args: () => ({ raw_report: REPORT, ruleset_json: RULESET })
   },

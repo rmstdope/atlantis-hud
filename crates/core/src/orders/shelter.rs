@@ -13,6 +13,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::cache::ReportCache;
 use crate::movement::mode::hulls_named_in;
 use crate::movement::rules::{ItemKind, Ruleset};
 use crate::report::model::Structure;
@@ -77,6 +78,25 @@ pub fn shelter_seats(report: &ParsedReport, ruleset: &Ruleset) -> Vec<ShelterSea
             })
         })
         .collect()
+}
+
+/// [`shelter_seats`] for the shells: the report and the ruleset as the screen holds them, through
+/// the shared cache so the open turn is not parsed a second time.
+///
+/// # Errors
+///
+/// Returns the ruleset's refusal when it cannot be read; a report with no structures is a
+/// successful empty answer.
+pub fn shelter_seats_in(
+    cache: &mut ReportCache,
+    raw_report: &str,
+    ruleset_json: &str,
+) -> Result<Vec<ShelterSeat>, String> {
+    let ruleset = cache
+        .ruleset(ruleset_json)
+        .map_err(|error| error.to_string())?;
+    let report = cache.report(raw_report);
+    Ok(shelter_seats(&report, &ruleset))
 }
 
 #[cfg(test)]
