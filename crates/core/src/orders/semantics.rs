@@ -2759,8 +2759,9 @@ struct Hex<'a> {
     /// it carries that is not in this hex is definitely elsewhere, since gifts settle in phase 4
     /// before anything moves (`rules/sequenceofevents`, `ah-66yi`). Seeded from this region alone
     /// by `read` and widened by `hex_with_transfers`, so a hex built for a test still answers for
-    /// its own units.
-    shown_anywhere: BTreeSet<String>,
+    /// its own units. Borrowed rather than copied whenever the report's own set already holds this
+    /// region's units, which is every real caller: a copy per hex was most of a whole-map check.
+    shown_anywhere: Cow<'a, BTreeSet<String>>,
 }
 
 /// A unit's skills once this month's gifts of men have run.
@@ -2995,11 +2996,13 @@ impl<'a> Hex<'a> {
                     transfer_receipts: Receipts::default(),
                 }),
         );
-        let shown_anywhere = region
-            .units
-            .iter()
-            .map(|unit| unit.unit_id.clone())
-            .collect();
+        let shown_anywhere = Cow::Owned(
+            region
+                .units
+                .iter()
+                .map(|unit| unit.unit_id.clone())
+                .collect(),
+        );
         Self {
             region,
             units,
@@ -3047,6 +3050,10 @@ impl<'a> Hex<'a> {
 /// The only way a `Hex` is built for pricing: `UnitFacts` reads the projection, so a hex built
 /// without it is silently priced on the report. One reader for both entry points that price a
 /// hex - `review_turn` and `item_effects` - so the two cannot diverge about what a unit holds.
+/// No unit shown anywhere else: what a test with one region to hand passes to `hex_with_transfers`.
+#[cfg(test)]
+static NO_UNITS_SHOWN: BTreeSet<String> = BTreeSet::new();
+
 fn hex_with_transfers<'a>(
     region: &'a ReportRegion,
     ordered: &'a OrderedUnits,
@@ -3055,10 +3062,20 @@ fn hex_with_transfers<'a>(
     foreign_unit_ids: &BTreeSet<String>,
     // Every unit number the whole report prints - see `Hex::shown_anywhere`. Unioned with this
     // region's own, so a caller with only one region to hand may pass an empty set.
-    shown_anywhere: &BTreeSet<String>,
+    shown_anywhere: &'a BTreeSet<String>,
 ) -> Hex<'a> {
     let mut hex = Hex::read(region, ordered, formed);
-    hex.shown_anywhere.extend(shown_anywhere.iter().cloned());
+    if hex
+        .shown_anywhere
+        .iter()
+        .all(|id| shown_anywhere.contains(id))
+    {
+        hex.shown_anywhere = Cow::Borrowed(shown_anywhere);
+    } else {
+        hex.shown_anywhere
+            .to_mut()
+            .extend(shown_anywhere.iter().cloned());
+    }
     let region = hex.region;
     let report_units = std::mem::take(&mut hex.shown_anywhere);
     apply_transfers(
@@ -18856,7 +18873,7 @@ mod tests {
             &[],
             Some(&rules),
             &BTreeSet::new(),
-            &BTreeSet::new(),
+            &NO_UNITS_SHOWN,
         );
         gather_receipts(std::slice::from_ref(&hex))
             .into_iter()
@@ -20026,7 +20043,7 @@ mod tests {
             &[],
             Some(&rules),
             &BTreeSet::new(),
-            &BTreeSet::new(),
+            &NO_UNITS_SHOWN,
         );
         let ledger = ledger_for(&hex_with_transfers, Some(&rules));
         assert_eq!(balance_of(&ledger, "2390", "SILV"), 0);
@@ -20082,7 +20099,7 @@ mod tests {
             &[],
             Some(&rules),
             &BTreeSet::new(),
-            &BTreeSet::new(),
+            &NO_UNITS_SHOWN,
         );
         let ledger = ledger_for(&hex_with_transfers, Some(&rules));
         let moved: i64 = ledger
@@ -20113,7 +20130,7 @@ mod tests {
             &[],
             Some(&rules),
             &BTreeSet::new(),
-            &BTreeSet::new(),
+            &NO_UNITS_SHOWN,
         );
         let ledger = ledger_for(&hex_with_transfers, Some(&rules));
         let gifts = ledger
@@ -20175,7 +20192,7 @@ mod tests {
             &[],
             Some(&rules),
             &BTreeSet::new(),
-            &BTreeSet::new(),
+            &NO_UNITS_SHOWN,
         );
         let ledger = ledger_for(&hex_with_transfers, Some(&rules));
         let moved = |id: &str| -> i64 {
@@ -20716,7 +20733,7 @@ mod tests {
             &[],
             Some(&rules),
             &BTreeSet::new(),
-            &BTreeSet::new(),
+            &NO_UNITS_SHOWN,
         );
         let ledger = ledger_for(&hex_with_transfers, Some(&rules));
         assert_eq!(balance_of(&ledger, "2390", "FUR"), 7);
@@ -20764,7 +20781,7 @@ mod tests {
             &[],
             Some(&rules),
             &BTreeSet::new(),
-            &BTreeSet::new(),
+            &NO_UNITS_SHOWN,
         );
         let ledger = ledger_for(&hex_with_transfers, Some(&rules));
         let moved: i64 = ledger
@@ -25262,7 +25279,7 @@ BUILD
                 &[],
                 Some(&rules),
                 &BTreeSet::new(),
-                &BTreeSet::new(),
+                &NO_UNITS_SHOWN,
             );
             let ledger = ledger_for(&hex, Some(&rules));
             read(&ledger)
@@ -28114,7 +28131,7 @@ BUILD
                 &formed,
                 Some(&rules),
                 &BTreeSet::new(),
-                &BTreeSet::new(),
+                &NO_UNITS_SHOWN,
             );
             let ledger = ledger_for(&hex, Some(&rules));
             read(&ledger)
@@ -30278,7 +30295,7 @@ BUILD
             &[],
             Some(&rules),
             &BTreeSet::new(),
-            &BTreeSet::new(),
+            &NO_UNITS_SHOWN,
         );
         hex.find(unit_id)
             .expect("the unit is in the hex")
@@ -30297,7 +30314,7 @@ BUILD
             &[],
             Some(&rules),
             &BTreeSet::new(),
-            &BTreeSet::new(),
+            &NO_UNITS_SHOWN,
         );
         hex.find(unit_id)
             .expect("the unit is in the hex")
@@ -39348,7 +39365,7 @@ BUILD
             &[],
             Some(&rules),
             &BTreeSet::new(),
-            &BTreeSet::new(),
+            &NO_UNITS_SHOWN,
         );
 
         let mut overruns = Vec::new();
@@ -39428,7 +39445,7 @@ BUILD
             &[],
             Some(&rules),
             &BTreeSet::new(),
-            &BTreeSet::new(),
+            &NO_UNITS_SHOWN,
         );
 
         let mut overruns = Vec::new();
@@ -39474,7 +39491,7 @@ BUILD
             &[],
             Some(&rules),
             &BTreeSet::new(),
-            &BTreeSet::new(),
+            &NO_UNITS_SHOWN,
         );
 
         let mut overruns = Vec::new();
@@ -39531,7 +39548,7 @@ BUILD
             &[],
             Some(&rules),
             &BTreeSet::new(),
-            &BTreeSet::new(),
+            &NO_UNITS_SHOWN,
         );
 
         let mut overruns = Vec::new();
