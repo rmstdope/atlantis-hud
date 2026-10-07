@@ -2,24 +2,16 @@ import { afterEach, describe, expect, it } from "vitest";
 import { aReportUnit, type RoutePlanResponse } from "@atlantis/core-client";
 import { renderWithStoreState, restoreStoresForTest } from "../testing/storeState";
 import { SURFACE, type HexNode } from "../hexMapModel";
+import { aHexNode } from "../testing/builders";
 import { useWorkspaceStore } from "../workspaceStore";
 import { UnitMovementSlot, type SlotPlanner } from "./UnitMovementSlot";
 
-const HEX: HexNode = {
-  regionId: "1:7,53",
-  coordinate: { x: 7, y: 53, z: SURFACE },
-  terrain: "mountain",
+const HEX: HexNode = aHexNode({
   province: "Inholm",
   label: "Inholm",
-  knowledge: "current",
-  lastSeenTurn: 71,
-  ageInTurns: 0,
   settlementName: "Inholm",
-  rememberedUnits: [],
-  ownUnitCount: 1,
-  foreignUnitCount: 0,
-  region: null
-};
+  ownUnitCount: 1
+});
 
 const UNIT = aReportUnit({ own: true });
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Coordinate, ReportRegion, ReportUnit, StructureInfo } from "@atlantis/core-client";
 import { aReportRegion, aReportUnit, aStructure } from "@atlantis/core-client";
 import type { HexKnowledge, HexNode } from "../../hexMapModel";
+import { aHexNode } from "../../testing/builders";
 import { COLUMN_PITCH, ROW_PITCH } from "../mapViewport";
 import {
   allBadges,
@@ -34,21 +35,7 @@ const unit = (overrides: Partial<ReportUnit> = {}): ReportUnit =>
 const region = (overrides: Partial<ReportRegion> = {}): ReportRegion => aReportRegion({ coordinate: at(7, 53), ...overrides });
 
 function hex(overrides: Partial<HexNode> & { knowledge: HexKnowledge }): HexNode {
-  return {
-    regionId: "1:7,53",
-    coordinate: at(7, 53),
-    terrain: "mountain",
-    province: "Inhead",
-    label: "mountain (7,53) in Inhead",
-    lastSeenTurn: 71,
-    ageInTurns: 0,
-    settlementName: null,
-    region: null,
-    rememberedUnits: [],
-    ownUnitCount: 0,
-    foreignUnitCount: 0,
-    ...overrides
-  };
+  return aHexNode(overrides);
 }
 
 const ALL_ON: HexViewOptions = {

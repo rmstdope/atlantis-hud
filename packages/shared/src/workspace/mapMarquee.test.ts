@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { HexNode } from "../hexMapModel";
+import { aHexNode } from "../testing/builders";
 import {
   boundsOfKnown,
   hexesInRect,
@@ -10,21 +11,13 @@ import {
 import { COLUMN_PITCH, ROW_PITCH } from "./mapViewport";
 
 function hex(x: number, y: number, knowledge: HexNode["knowledge"] = "current"): HexNode {
-  return {
-    regionId: `1:${x},${y}`,
+  return aHexNode({
     coordinate: { x, y, z: 1 },
     terrain: "plain",
     province: "Nowhere",
     label: `plain (${x},${y}) in Nowhere`,
-    knowledge,
-    lastSeenTurn: 71,
-    ageInTurns: 0,
-    settlementName: null,
-    region: null,
-    rememberedUnits: [],
-    ownUnitCount: 0,
-    foreignUnitCount: 0
-  };
+    knowledge
+  });
 }
 
 describe("the export rectangle", () => {
