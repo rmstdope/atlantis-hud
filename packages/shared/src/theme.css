@@ -657,3 +657,13 @@ body,
   stroke-width: 1.4;
   stroke-linecap: round;
 }
+
+/*
+ * The world's wrap copies draw only the ground and the roads: everything over them is in
+ * `.map-copy-detail`, which a copy turns off by setting `--map-copy-detail: none` (MapCanvas). A
+ * copy is a `<use>` of the whole world, painted in full however little of it shows.
+ */
+.map-copy-detail {
+  display: var(--map-copy-detail, inline);
+}
+

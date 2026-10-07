@@ -44,9 +44,41 @@ describe("ghostPlacements", () => {
     const slots = ghostSlots(WRAPPED_BOTH, STEP, size);
     const placements = ghostPlacements(view, WRAPPED_BOTH, size, slots);
 
-    const hidden = placements.filter((placement) => placement.hidden);
-    expect(hidden).toHaveLength(1);
-    expect(hidden[0]).toMatchObject({ mx: 0, my: 0 });
+    const origin = placements.find((placement) => placement.mx === 0 && placement.my === 0);
+    expect(origin?.hidden).toBe(true);
+  });
+
+  it("draws every copy that has a part on screen", () => {
+    // A world 100 wide on a screen 1200 wide: the copies either side are in plain view.
+    const size = { width: 1200, height: 800 };
+    const view = { tx: 0, ty: 0, step: STEP };
+    const placements = ghostPlacements(view, WRAPPED_X, size, ghostSlots(WRAPPED_X, STEP, size));
+
+    expect(placements.filter((placement) => placement.mx > 0 && placement.mx * 100 < 1200).every((placement) => !placement.hidden)).toBe(true);
+  });
+
+  it("does not draw a copy that is entirely off screen, however near its slot", () => {
+    // Zoomed in on the middle of a world 2000 wide: the copies either side are a world away.
+    const spans: WrapSpans = { x: 2000, y: null };
+    const size = { width: 1200, height: 800 };
+    const view = { tx: -400, ty: 0, step: STEP };
+    const placements = ghostPlacements(view, spans, size, [{ mx: -1, my: 0 }, { mx: 0, my: 0 }, { mx: 1, my: 0 }]);
+
+    expect(placements.map((placement) => placement.hidden)).toEqual([true, true, true]);
+  });
+
+  it("draws a copy just before it comes into view, so nothing appears at the edge of a moving map", () => {
+    // The next world starts 150 pixels beyond the right edge: inside the margin, so it is drawn.
+    const spans: WrapSpans = { x: 2000, y: null };
+    const size = { width: 1200, height: 800 };
+    const view = { tx: -950, ty: 0, step: STEP };
+    const slots = [-2, -1, 0, 1, 2, 3].map((mx) => ({ mx, my: 0 }));
+    const placements = ghostPlacements(view, spans, size, slots);
+    // Copies follow the camera, so they are found by where they land rather than by their slot.
+    const at = (x: number) => placements.find((placement) => placement.x === x);
+
+    expect(at(2000)?.hidden).toBe(false);
+    expect(at(4000)?.hidden).toBe(true);
   });
 
   it("places each copy a whole span from the world's origin", () => {
