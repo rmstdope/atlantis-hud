@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-use crate::movement::graph::{LevelSize, LevelSizes, MapGeometry};
+use crate::movement::graph::MapGeometry;
 
 use crate::report::model::{CombatSpell, ItemAmount, ReportUnit, Skill};
 use crate::report::sighting::{sighting_from_payload, RegionSighting};
@@ -30,40 +30,6 @@ pub struct MapSizes {
     pub levels: BTreeMap<String, MapSize>,
     pub wrap_x: bool,
     pub wrap_y: bool,
-}
-
-impl MapSizes {
-    /// The shape movement and the viewport plan on: every configured level's own size, with the
-    /// surface's as the headline width and height (zero when no surface is configured, which the
-    /// planners read as unknown). `None` when no level is configured at all.
-    pub fn geometry(&self) -> Option<MapGeometry> {
-        let size = |level: &str| {
-            self.levels.get(level).map(|size| LevelSize {
-                width: size.width,
-                height: size.height,
-            })
-        };
-        let levels = LevelSizes {
-            surface: size("surface"),
-            underworld: size("underworld"),
-            underdeep: size("underdeep"),
-            dungeon: size("dungeon"),
-        };
-        if levels == LevelSizes::default() {
-            return None;
-        }
-        let surface = levels.surface.unwrap_or(LevelSize {
-            width: 0,
-            height: 0,
-        });
-        Some(MapGeometry {
-            width: surface.width,
-            height: surface.height,
-            wrap_x: self.wrap_x,
-            wrap_y: self.wrap_y,
-            levels: Some(levels),
-        })
-    }
 }
 
 /// One configured level's dimensions. Wrapping belongs to [`MapSizes`], not a level.
@@ -103,17 +69,18 @@ pub struct GameMetadata {
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
     pub active_faction_id: Option<String>,
-    /// The map this game is played on, or `None` for a game that was never told one - which is
-    /// every game created before the app asked, and every backup restored from before it.
+    /// The map a game recorded before map levels existed - **read, never written** (ah-8nfe).
     ///
-    /// The absence is the record that nothing was stated, so the ruleset's declared default is
-    /// only *assumed* and the settings dialog says so. `skip_serializing_if` keeps that true on
-    /// the way out as well: a `"map": null` written into an old game's manifest would be a claim
-    /// nobody made.
+    /// `map_sizes` is the one record of a game's dimensions; the shape movement and the
+    /// viewport plan on is derived from it by the shell. A game that predates levels kept its map
+    /// here, and the shell still reads it as a surface-only configuration until the player's first
+    /// sizes edit, which removes it. `skip_serializing_if` keeps an absent map absent on the way
+    /// out: a `"map": null` written into an old game's manifest would be a claim nobody made.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub map: Option<MapGeometry>,
-    /// The independently configured dimensions for each map level.
+    /// The independently configured dimensions for each map level: the one record of the map a
+    /// game is played on. Absent when the game never said, so the ruleset's default is assumed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub map_sizes: Option<MapSizes>,
@@ -200,13 +167,9 @@ pub enum ManifestEdit {
     Opened(String),
     /// Which ruleset the game is played under, by identifier.
     Ruleset(String),
-    /// `None` **removes** the key. A game that was never told a map is not the same as one told
-    /// `null`: the absence is what makes the settings dialog say the ruleset's default is only
-    /// assumed, and `skip_serializing_if` on the field is what keeps it absent on the way out.
-    Map(Option<MapGeometry>),
-    /// All level sizes, with wrapping shared by every configured level. `Some` also records them
-    /// as `map`, the shape movement and the viewport read, in the same write (or clears it when no
-    /// level is configured).
+    /// All level sizes, with wrapping shared by every configured level. The only edit of a game's
+    /// map: it also removes a pre-levels `map`, so one record answers the question from then on.
+    /// `None` removes both keys, and the ruleset's default is assumed again.
     MapSizes(Option<MapSizes>),
     /// The game's display name. Trimming and validating it is the shell's, not this function's.
     Name(String),
@@ -224,11 +187,8 @@ pub fn apply_manifest_edit(manifest: &mut GameManifest, edit: &ManifestEdit) {
     match edit {
         ManifestEdit::Opened(at) => manifest.last_opened_at = at.clone(),
         ManifestEdit::Ruleset(id) => manifest.metadata.ruleset_id = id.clone(),
-        ManifestEdit::Map(map) => manifest.metadata.map = *map,
         ManifestEdit::MapSizes(map_sizes) => {
-            if let Some(sizes) = map_sizes {
-                manifest.metadata.map = sizes.geometry();
-            }
+            manifest.metadata.map = None;
             manifest.metadata.map_sizes = map_sizes.clone();
         }
         ManifestEdit::Name(name) => manifest.metadata.game_name = name.clone(),
@@ -993,28 +953,18 @@ mod tests {
         assert_eq!(edited.metadata.ruleset_id, "standard");
     }
 
-    #[test]
-    fn setting_the_map_records_it() {
-        let mut edited = manifest();
-        let map = MapGeometry {
+    fn legacy_map() -> MapGeometry {
+        MapGeometry {
             width: 72,
             height: 96,
             wrap_x: true,
             wrap_y: false,
             levels: None,
-        };
-
-        apply_manifest_edit(&mut edited, &ManifestEdit::Map(Some(map)));
-
-        assert_eq!(edited.metadata.map, Some(map));
+        }
     }
 
-    /// Movement and the viewport plan on `map`, so it carries every level's size and is written
-    /// in the same edit rather than two that could fail apart (ah-4hwa, ah-byqe).
-    #[test]
-    fn setting_map_sizes_records_every_level_in_the_map() {
-        let mut edited = manifest();
-        let sizes = MapSizes {
+    fn two_level_sizes() -> MapSizes {
+        MapSizes {
             levels: BTreeMap::from([
                 (
                     "surface".to_string(),
@@ -1033,84 +983,42 @@ mod tests {
             ]),
             wrap_x: true,
             wrap_y: false,
-        };
-
-        apply_manifest_edit(&mut edited, &ManifestEdit::MapSizes(Some(sizes.clone())));
-
-        assert_eq!(edited.metadata.map_sizes, Some(sizes));
-        assert_eq!(
-            edited.metadata.map,
-            Some(MapGeometry {
-                width: 40,
-                height: 60,
-                wrap_x: true,
-                wrap_y: false,
-                levels: Some(LevelSizes {
-                    surface: Some(LevelSize {
-                        width: 40,
-                        height: 60,
-                    }),
-                    underworld: Some(LevelSize {
-                        width: 48,
-                        height: 48,
-                    }),
-                    underdeep: None,
-                    dungeon: None,
-                }),
-            })
-        );
+        }
     }
 
+    /// The sizes are the one record (ah-8nfe): the shape the map is drawn on is derived from them
+    /// where it is needed, so the edit writes nothing else, and a pre-levels game's `map` goes on
+    /// the first edit rather than lingering as a second answer to the same question.
     #[test]
-    fn map_sizes_without_a_surface_still_record_the_other_levels() {
+    fn setting_map_sizes_records_only_the_sizes() {
         let mut edited = manifest();
-        edited.metadata.map = Some(MapGeometry {
-            width: 72,
-            height: 96,
-            wrap_x: true,
-            wrap_y: false,
-            levels: None,
-        });
-        let sizes = MapSizes {
-            levels: BTreeMap::from([(
-                "underworld".to_string(),
-                MapSize {
-                    width: 48,
-                    height: 48,
-                },
-            )]),
-            wrap_x: true,
-            wrap_y: false,
-        };
+        edited.metadata.map = Some(legacy_map());
 
-        apply_manifest_edit(&mut edited, &ManifestEdit::MapSizes(Some(sizes)));
-
-        let map = edited.metadata.map.expect("a map");
-        assert_eq!((map.width, map.height), (0, 0));
-        assert_eq!(
-            map.at_level(crate::report::level::UNDERWORLD)
-                .map(|m| (m.width, m.height)),
-            Some((48, 48))
+        apply_manifest_edit(
+            &mut edited,
+            &ManifestEdit::MapSizes(Some(two_level_sizes())),
         );
-        assert_eq!(map.at_level(crate::report::level::SURFACE), None);
+
+        assert_eq!(edited.metadata.map_sizes, Some(two_level_sizes()));
+        let json = serde_json::to_value(&edited.metadata).expect("serialises");
+        let object = json.as_object().expect("an object");
+        assert!(!object.contains_key("map"), "got {object:?}");
     }
 
+    /// Cleared sizes leave nothing behind - not even a legacy map, which a reader would otherwise
+    /// take as this game's own word.
     #[test]
-    fn clearing_the_map_removes_the_key() {
+    fn clearing_map_sizes_leaves_no_map_at_all() {
         let mut edited = manifest();
-        edited.metadata.map = Some(MapGeometry {
-            width: 72,
-            height: 96,
-            wrap_x: true,
-            wrap_y: false,
-            levels: None,
-        });
+        edited.metadata.map = Some(legacy_map());
+        edited.metadata.map_sizes = Some(two_level_sizes());
 
-        apply_manifest_edit(&mut edited, &ManifestEdit::Map(None));
+        apply_manifest_edit(&mut edited, &ManifestEdit::MapSizes(None));
 
         let json = serde_json::to_value(&edited.metadata).expect("serialises");
         let object = json.as_object().expect("an object");
         assert!(!object.contains_key("map"), "got {object:?}");
+        assert!(!object.contains_key("mapSizes"), "got {object:?}");
     }
 
     /// The mirror of the map: an unstated faction really does write `null`, and the two must not

@@ -9,7 +9,8 @@ import { createMemoryWebStore } from "./webStore";
  * stand-in used elsewhere in this package. What one edit does to a manifest is the core's rule and
  * the desktop's too (`ah-8z4y.3.1`); this file pins the one the browser used to hand-code as a
  * `delete metadata.map` - clearing a map removes the key rather than writing a null, because
- * absence is what tells the settings dialog the ruleset's default is only assumed.
+ * absence is what tells the settings dialog the ruleset's default is only assumed - and that the
+ * sizes are a game's one map record (ah-8nfe).
  */
 async function realCore(): Promise<CoreWasmModule> {
   const wasm = await import("./wasm/atlantis_core.js");
@@ -31,34 +32,26 @@ function newGame(): GameManifest {
 }
 
 describe("what one manifest edit does, across the WebAssembly boundary", () => {
-  it("clearing a game's map removes the key rather than writing a null", async () => {
+  it("clearing a game's map sizes removes the keys rather than writing a null", async () => {
     const wasm = await realCore();
     const store = createMemoryWebStore();
     const adapter = createWebCoreAdapter(wasm, store);
-    await adapter.createGame(newGame());
+    await adapter.createGame({
+      ...newGame(),
+      metadata: { ...newGame().metadata, map: { width: 72, height: 96, wrapX: true, wrapY: false } }
+    });
     await adapter.editGameManifest("g1", {
-      kind: "map",
-      value: { width: 72, height: 96, wrapX: true, wrapY: false }
+      kind: "mapSizes",
+      value: { levels: { surface: { width: 72, height: 96 } }, wrapX: true, wrapY: false }
     });
 
-    const cleared = await adapter.editGameManifest("g1", { kind: "map", value: null });
+    const cleared = await adapter.editGameManifest("g1", { kind: "mapSizes", value: null });
 
+    expect("mapSizes" in cleared.metadata).toBe(false);
     expect("map" in cleared.metadata).toBe(false);
     const stored = (await store.getGame("g1"))?.manifest as GameManifest;
+    expect("mapSizes" in stored.metadata).toBe(false);
     expect("map" in stored.metadata).toBe(false);
-  });
-
-  it("records a map when it is given one", async () => {
-    const wasm = await realCore();
-    const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
-    await adapter.createGame(newGame());
-
-    const withMap = await adapter.editGameManifest("g1", {
-      kind: "map",
-      value: { width: 72, height: 96, wrapX: true, wrapY: false }
-    });
-
-    expect(withMap.metadata.map).toEqual({ width: 72, height: 96, wrapX: true, wrapY: false });
   });
 
   it("leaves every other field alone", async () => {
@@ -108,12 +101,8 @@ describe("what one manifest edit does, across the WebAssembly boundary", () => {
     const edited = await adapter.editGameManifest("g1", { kind: "mapSizes", value: mapSizes });
 
     expect(edited.metadata.mapSizes).toEqual(mapSizes);
-    expect(edited.metadata.map).toEqual({
-      ...mapSizes.levels.surface,
-      wrapX: true,
-      wrapY: false,
-      levels: mapSizes.levels
-    });
+    // The one record (ah-8nfe): the shape the map is drawn on is derived, never stored beside it.
+    expect("map" in edited.metadata).toBe(false);
     const reopened = await adapter.openGame("g1", "2026-08-06T09:00:00Z");
     expect(reopened.manifest.metadata.mapSizes).toEqual(mapSizes);
   });

@@ -13,7 +13,6 @@ import type {
   CoreClient,
   GameManifest,
   ManifestEdit,
-  MapShape,
   MapSizes,
   OpenedGame,
   ParsedReport
@@ -54,20 +53,19 @@ export async function openGame(client: GameClient, gameId: string, now: string):
 /**
  * Creates a game the player has described.
  *
- * `map` is what they were asked for at creation, or `undefined` when they cleared the fields -
- * which records nothing, so the ruleset's declared default is assumed and the settings dialog
- * says as much.
+ * `mapSizes` is what they were asked for at creation, or `undefined` when they gave none - which
+ * records nothing, so the ruleset's declared default is assumed and the settings dialog says as
+ * much.
  */
 export async function createGame(
   client: GameClient,
   name: string,
   rulesetId: string,
   now: string,
-  map?: MapShape,
   mapSizes?: MapSizes
 ): Promise<GameActionOutcome> {
   const opened = await client.createGame(
-    newGameManifest(name, rulesetId, now, newGameId(), map, mapSizes)
+    newGameManifest(name, rulesetId, now, newGameId(), mapSizes)
   );
   return { opened, games: await client.listGames() };
 }

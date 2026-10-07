@@ -22,16 +22,17 @@ rulesetId: string,
  */
 activeFactionId?: string | null, 
 /**
- * The map this game is played on, or `None` for a game that was never told one - which is
- * every game created before the app asked, and every backup restored from before it.
+ * The map a game recorded before map levels existed - **read, never written** (ah-8nfe).
  *
- * The absence is the record that nothing was stated, so the ruleset's declared default is
- * only *assumed* and the settings dialog says so. `skip_serializing_if` keeps that true on
- * the way out as well: a `"map": null` written into an old game's manifest would be a claim
- * nobody made.
+ * `map_sizes` is the one record of a game's dimensions; the shape movement and the
+ * viewport plan on is derived from it by the shell. A game that predates levels kept its map
+ * here, and the shell still reads it as a surface-only configuration until the player's first
+ * sizes edit, which removes it. `skip_serializing_if` keeps an absent map absent on the way
+ * out: a `"map": null` written into an old game's manifest would be a claim nobody made.
  */
 map?: MapShape, 
 /**
- * The independently configured dimensions for each map level.
+ * The independently configured dimensions for each map level: the one record of the map a
+ * game is played on. Absent when the game never said, so the ruleset's default is assumed.
  */
 mapSizes?: MapSizes, };

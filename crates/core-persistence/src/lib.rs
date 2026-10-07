@@ -327,7 +327,7 @@ pub fn open_game(
 /// Applies one typed edit to an existing game's manifest.
 ///
 /// Metadata edits that are mirrored in the game database refresh that snapshot before the
-/// manifest, matching `open_game`. Map edits remain manifest-only.
+/// manifest, matching `open_game`. Map-size edits remain manifest-only.
 ///
 /// # Errors
 ///
@@ -347,7 +347,7 @@ pub fn edit_game_manifest(
     ensure_supported_manifest_version(manifest.manifest_version)?;
     apply_manifest_edit(&mut manifest, edit);
 
-    if !matches!(edit, ManifestEdit::Map(_) | ManifestEdit::MapSizes(_)) {
+    if !matches!(edit, ManifestEdit::MapSizes(_)) {
         let database_path = sidecar_database_path(&game_file_path);
         let mut connection = open_database(&database_path)?;
         apply_migrations(&mut connection)?;
@@ -2240,7 +2240,6 @@ pub fn save_study_plans(
 mod tests {
     use super::*;
     use atlantis_hud_core::backup::MapSizes;
-    use atlantis_hud_core::movement::graph::MapGeometry;
     use atlantis_hud_core::report::model::{CombatSpell, ItemAmount, ReportUnit, Skill};
     use rusqlite::Connection;
     use tempfile::tempdir;
@@ -2505,29 +2504,6 @@ mod tests {
         assert_eq!(stored, "magicdeep");
     }
 
-    /// A player who guessed wrong at creation, or who imported an existing game mid-stream, must be
-    /// able to correct the map without starting over - and the correction is what turns an assumed
-    /// map into a stated one.
-    #[test]
-    fn stating_a_games_map_records_it_in_the_manifest() {
-        let dir = tempdir().expect("tempdir");
-        create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
-        let shape = MapGeometry {
-            width: 40,
-            height: 40,
-            wrap_x: true,
-            wrap_y: true,
-            levels: None,
-        };
-
-        let updated = edit_game_manifest(dir.path(), GAME_ID, &ManifestEdit::Map(Some(shape)))
-            .expect("the map change should succeed");
-        assert_eq!(updated.metadata.map, Some(shape));
-
-        let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("reopen should succeed");
-        assert_eq!(reopened.manifest.metadata.map, Some(shape));
-    }
-
     #[test]
     fn stating_map_sizes_records_them_in_the_manifest() {
         let dir = tempdir().expect("tempdir");
@@ -2588,7 +2564,10 @@ mod tests {
         )
         .expect("the manifest edit should succeed");
         assert_eq!(edited.metadata.map_sizes, Some(sizes.clone()));
-        assert_eq!(edited.metadata.map, sizes.geometry());
+        assert_eq!(
+            edited.metadata.map, None,
+            "the sizes are the one record (ah-8nfe)"
+        );
 
         let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("reopen should succeed");
         assert_eq!(reopened.manifest.metadata.map_sizes, Some(sizes.clone()));
@@ -2596,11 +2575,7 @@ mod tests {
         let cleared = edit_game_manifest(dir.path(), GAME_ID, &ManifestEdit::MapSizes(None))
             .expect("clearing map sizes should succeed");
         assert_eq!(cleared.metadata.map_sizes, None);
-        assert_eq!(
-            cleared.metadata.map,
-            sizes.geometry(),
-            "clearing map sizes leaves the recorded map unchanged"
-        );
+        assert_eq!(cleared.metadata.map, None);
     }
 
     #[test]
@@ -2623,16 +2598,6 @@ mod tests {
         let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("reopen should succeed");
 
         assert_eq!(reopened.manifest.metadata.map, None);
-    }
-
-    #[test]
-    fn changing_the_map_of_a_missing_game_names_it() {
-        let dir = tempdir().expect("tempdir");
-
-        let error = edit_game_manifest(dir.path(), "no-such-game", &ManifestEdit::Map(None))
-            .expect_err("changing a missing game should fail");
-
-        assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
     }
 
     #[test]
