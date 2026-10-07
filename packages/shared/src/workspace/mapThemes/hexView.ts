@@ -131,6 +131,11 @@ export type HexView = {
     brightness: number;
     moves: boolean;
     /**
+     * Fresh water: the ocean's picture drawn through the lake tint, and never moving (ah-vsjg).
+     * The pattern id already differs from the sea's, since it is built from the kind.
+     */
+    fresh: boolean;
+    /**
      * Moving water whose picture does not tile: drawn beside its own reflection so the edges meet
      * (the Painted set, ah-d9jb.3). Only ever true when `moves` is.
      */
@@ -263,7 +268,7 @@ export type BattleMark = BattleInvolvement | null;
 export type TextureStyle = {
   /** Turn each texture by its stable per-hex angle. */
   rotate: boolean;
-  /** Scroll ocean and lake textures along their axis. */
+  /** Scroll ocean textures along their axis. A lake never moves (ah-vsjg). */
   animateWater: boolean;
   /** Where the chosen texture set's pictures are served from (`textureSets.ts`). */
   directory: string;
@@ -457,6 +462,7 @@ function textureOf(
   rotation: number;
   brightness: number;
   moves: boolean;
+  fresh: boolean;
   mirrored: boolean;
   covers: boolean;
 } | null {
@@ -479,6 +485,7 @@ function textureOf(
         rotation,
         brightness,
         moves,
+        fresh: kind === "lake",
         mirrored,
         covers
       }

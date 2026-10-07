@@ -49,7 +49,7 @@ export const BOOLEAN_SETTINGS = {
   animateWaterTextures: {
     default: true,
     title: "Animate water textures",
-    description: "Moves ocean and lake textures along their texture direction.",
+    description: "Moves ocean textures along their texture direction.",
     testId: "settings-animate-water-textures",
     requires: "biomeTextures"
   },

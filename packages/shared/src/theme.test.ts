@@ -547,6 +547,58 @@ describe("map theme stylesheets", () => {
     expect(missing).toEqual([]);
   });
 
+  it("paints every theme's lake apart from its sea, in dark and in light (ah-vsjg)", async () => {
+    const prefixes: Record<string, readonly string[]> = {
+      beveledTile: ["bt-terrain"],
+      cartographersTable: ["ct-terrain"],
+      emblemAndDots: ["ed-terrain"],
+      tacticalHud: ["hud-terrain"],
+      miniatureWorld: ["mw-lit", "mw-shade"],
+      collective: ["co-terrain"],
+      stainedGlass: ["sg-terrain"],
+      eightBitQuest: ["eb-terrain"],
+      blueprint: ["bp-terrain"],
+      chronicle: ["ch-terrain"]
+    };
+    const block = (source: string, selector: string) => {
+      const at = source.indexOf(`${selector} {`);
+      return at < 0 ? "" : source.slice(at, source.indexOf("}", at));
+    };
+    // A rule's declarations with every `var()` replaced by its value in one mode's root block.
+    const resolved = (body: string, root: string) =>
+      body.replace(/var\((--[\w-]+)\)/g, (_match, name: string) => {
+        const value = new RegExp(`${name}:\\s*([^;]+);`).exec(root);
+        return value ? value[1].trim() : `unset ${name}`;
+      });
+    const same: string[] = [];
+    for (const sheet of await themeSheets()) {
+      const modes = {
+        dark: block(sheet.source, ":root"),
+        light: block(sheet.source, ':root[data-theme="light"]')
+      };
+      for (const prefix of prefixes[sheet.theme] ?? []) {
+        const sea = block(sheet.source, `.${prefix}-ocean`).replace(/^[^{]*\{/, "");
+        const lake = block(sheet.source, `.${prefix}-lake`).replace(/^[^{]*\{/, "");
+        for (const [mode, root] of Object.entries(modes)) {
+          const seaValue = resolved(sea, root);
+          const lakeValue = resolved(lake, root);
+          // A shade missing from either mode's block, or a rule not found at all, is a failure
+          // too: light would quietly fall back to dark's lake.
+          if (
+            sea === "" ||
+            lake === "" ||
+            /\bunset --/.test(`${seaValue} ${lakeValue}`) ||
+            seaValue === lakeValue
+          ) {
+            same.push(`${sheet.theme} ${mode}: .${prefix}-lake`);
+          }
+        }
+      }
+    }
+
+    expect(same).toEqual([]);
+  });
+
   it("gives every theme a stylesheet of its own", async () => {
     // Filtering the missing ones out instead would quietly excuse a theme that has none, and its
     // zoom-band policy - which is CSS and only CSS - would simply never apply.

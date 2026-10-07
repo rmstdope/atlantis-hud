@@ -12,7 +12,9 @@
 
 :root {
   --mw-lit-ocean: #316696;
+  --mw-lit-lake: #3f9aa6;
   --mw-shade-ocean: #154c79;
+  --mw-shade-lake: #1f6b78;
   --mw-lit-plain: #90a455;
   --mw-shade-plain: #748739;
   --mw-lit-forest: #376553;
@@ -91,7 +93,9 @@
 
 :root[data-theme="light"] {
   --mw-lit-ocean: #649acd;
+  --mw-lit-lake: #8cc7d6;
   --mw-shade-ocean: #5085b6;
+  --mw-shade-lake: #6cb0bd;
   --mw-lit-plain: #c5db8b;
   --mw-shade-plain: #afc475;
   --mw-lit-forest: #699884;
@@ -170,8 +174,14 @@
 .mw-lit-ocean {
   stop-color: var(--mw-lit-ocean);
 }
+.mw-lit-lake {
+  stop-color: var(--mw-lit-lake);
+}
 .mw-shade-ocean {
   stop-color: var(--mw-shade-ocean);
+}
+.mw-shade-lake {
+  stop-color: var(--mw-shade-lake);
 }
 .mw-lit-plain {
   stop-color: var(--mw-lit-plain);

@@ -432,6 +432,51 @@ describe("what the map hands a theme", () => {
     expect(pattern).toContain(`<g transform="${textureCoverTransform(rotation)}"><image`);
   });
 
+  it("draws a lake's picture through the fresh-water tint, and holds it still while the sea moves (ah-vsjg)", () => {
+    const lake = {
+      ...CONGESTED_CENTRE,
+      regionId: "1:30,30",
+      coordinate: { ...CONGESTED_CENTRE.coordinate, x: 30, y: 30 },
+      terrain: "lake"
+    };
+    const drawn = (textureStyle: TextureStyle) =>
+      renderToStaticMarkup(
+        <MapCanvas
+          gameId={null}
+          model={{ ...model, hexes: [...CONGESTED_HEXES, lake] }}
+          theme={probe()}
+          level={1}
+          selectedRegionId={null}
+          selectionEpoch={0}
+          pickEpoch={0}
+          onSelectRegion={() => {}}
+          showStaleness
+          showTextures
+          textureStyle={textureStyle}
+          badges={allBadges(true)}
+          notes={[]}
+        />
+      );
+    const svg = drawn(DEFAULT_TEXTURE_STYLE);
+    const pattern = svg.match(/<pattern id="biome-texture-lake-[^"]+"[^>]*>.*?<\/pattern>/)?.[0];
+    const sea = svg.match(/<pattern id="biome-texture-ocean-[^"]+"[^>]*>.*?<\/pattern>/)?.[0];
+
+    expect(svg).toMatch(/<filter id="lake-fresh"[^>]*>.*?feColorMatrix.*?<\/filter>/);
+    expect(pattern).toContain('<g filter="url(#lake-fresh)"><image href="/biomes/ocean_512.png"');
+    expect(pattern).not.toContain("<animateTransform");
+    expect(sea).toContain("<animateTransform");
+    expect(sea).not.toContain("lake-fresh");
+
+    const covering = drawn({ ...DEFAULT_TEXTURE_STYLE, tiles: false });
+    const covered = covering.match(/<pattern id="biome-texture-lake-[^"]+-c"[^>]*>.*?<\/pattern>/)?.[0];
+    expect(covered).toContain('filter="url(#lake-fresh)"');
+    expect(covered).not.toContain("<animateTransform");
+  });
+
+  it("defines the fresh-water tint only while textures are drawn", () => {
+    expect(draw()).not.toContain('id="lake-fresh"');
+  });
+
   it("leaves water textures still when their animation is off", () => {
     const svg = draw(probe(), [], allBadges(true), undefined, true, { ...DEFAULT_TEXTURE_STYLE, animateWater: false });
 

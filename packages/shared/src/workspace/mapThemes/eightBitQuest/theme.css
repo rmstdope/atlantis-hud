@@ -42,6 +42,7 @@
   --eb-magenta: #d800cc;
   --eb-pink: #f878f8;
   --eb-teal: #008888;
+  --eb-lagoon: #00a8a8;
   --eb-cyan: #00e8d8;
 }
 
@@ -77,6 +78,7 @@
   --eb-magenta: #d800cc;
   --eb-pink: #f878f8;
   --eb-teal: #008888;
+  --eb-lagoon: #00a8a8;
   --eb-cyan: #00e8d8;
 }
 
@@ -174,6 +176,9 @@
 .eb-px-teal {
   fill: var(--eb-teal);
 }
+.eb-px-lagoon {
+  fill: var(--eb-lagoon);
+}
 .eb-px-cyan {
   fill: var(--eb-cyan);
 }
@@ -185,6 +190,9 @@
  */
 .eb-terrain-ocean {
   --eb-flat: var(--eb-blue);
+}
+.eb-terrain-lake {
+  --eb-flat: var(--eb-lagoon);
 }
 .eb-terrain-plain {
   --eb-flat: var(--eb-leaf);

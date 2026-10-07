@@ -85,17 +85,18 @@ describe("terrain texture", () => {
     expect(terrainTexturePatternId(terrain)).toBe(`biome-texture-${terrain}`);
   });
 
-  it("paints a lake with the ocean's colour and texture where the ruleset calls it water", () => {
+  it("paints a lake its own colour with the ocean's picture, under a pattern of its own", () => {
     const water = { ocean: "ocean", alsoWater: ["lake"] };
-    expect(terrainFillClass("lake", water)).toBe("fill-terrain-ocean");
+    expect(terrainFillClass("lake", water)).toBe("fill-terrain-lake");
     expect(terrainTextureUrl("lake", water)).toBe("/biomes/ocean_512.png");
-    expect(terrainTexturePatternId("lake", water)).toBe("biome-texture-ocean");
+    expect(terrainTexturePatternId("lake", water)).toBe("biome-texture-lake");
   });
 
-  it("paints a lake as other terrain where the ruleset does not call it water", () => {
-    expect(terrainFillClass("lake")).toBe("fill-terrain-other");
-    expect(terrainTextureUrl("lake")).toBeNull();
-    expect(terrainTexturePatternId("lake")).toBeNull();
+  it("loads a lake's picture from the chosen set's ocean, ruleset or not", () => {
+    expect(terrainFillClass("lake")).toBe("fill-terrain-lake");
+    expect(terrainTextureUrl("lake", undefined, "/biomes/painted")).toBe(
+      "/biomes/painted/ocean_512.png"
+    );
   });
 
   it("serves a texture from the chosen set's directory", () => {

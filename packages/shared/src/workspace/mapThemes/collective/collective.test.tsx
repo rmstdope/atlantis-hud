@@ -191,12 +191,14 @@ describe("the three knowledge states, read off the paint and never off `knowledg
     expect(svg).toContain(`>${TERRAIN_CODES[kind]}<`);
   });
 
-  it("paints a lake with the ocean's tint where the ruleset calls it water", () => {
+  it("paints a lake with its own tint and labels it LAK, the sea staying OCN (ah-vsjg)", () => {
     const svg = terrain([{ ...CONGESTED_CENTRE, terrain: "lake" }], {
       water: { ocean: "ocean", alsoWater: ["lake"] }
     });
 
-    expect(svg).toContain("co-terrain-ocean");
+    expect(svg).toContain("co-terrain-lake");
+    expect(TERRAIN_CODES.lake).toBe("LAK");
+    expect(TERRAIN_CODES.ocean).toBe("OCN");
   });
 });
 
@@ -247,6 +249,7 @@ describe("with the biome textures on", () => {
       rotation: 0,
       brightness: 1,
       moves: false,
+      fresh: false,
       mirrored: false,
       covers: false
     };

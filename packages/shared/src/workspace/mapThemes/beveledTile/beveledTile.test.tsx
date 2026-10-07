@@ -321,13 +321,14 @@ describe("how the board shows what it knows", () => {
 describe("terrain and roads", () => {
   const tridentTerrains = TERRAIN_KINDS;
 
-  it("paints a lake with the ocean's paint where the ruleset calls it water", () => {
+  it("paints a lake with its own paint, apart from the sea (ah-vsjg)", () => {
     const svg = draw(beveledTile.TerrainLayer, [{ ...CONGESTED_CENTRE, terrain: "lake" }], {
       showTextures: false,
       water: { ocean: "ocean", alsoWater: ["lake"] }
     });
 
-    expect(svg).toContain("bt-terrain-ocean");
+    expect(svg).toContain("bt-terrain-lake");
+    expect(svg).not.toContain("bt-terrain-ocean");
   });
 
   it("paints each terrain in the board's own palette, falling back rather than vanishing", () => {

@@ -12,6 +12,7 @@
 
 :root {
   --bt-terrain-ocean: #215684;
+  --bt-terrain-lake: #2a8597;
   --bt-terrain-plain: #7f9244;
   --bt-terrain-forest: #275644;
   --bt-terrain-mountain: #727078;
@@ -65,6 +66,7 @@
 
 :root[data-theme="light"] {
   --bt-terrain-ocean: #649acd;
+  --bt-terrain-lake: #8cc7d6;
   --bt-terrain-plain: #c5db8b;
   --bt-terrain-forest: #699884;
   --bt-terrain-mountain: #b7b5bd;
@@ -117,6 +119,9 @@
 
 .bt-terrain-ocean {
   fill: var(--bt-terrain-ocean);
+}
+.bt-terrain-lake {
+  fill: var(--bt-terrain-lake);
 }
 .bt-terrain-plain {
   fill: var(--bt-terrain-plain);

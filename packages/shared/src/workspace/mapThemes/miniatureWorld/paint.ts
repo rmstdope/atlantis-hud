@@ -134,6 +134,7 @@ export function decorationFor(kind: TerrainPaint): "peaks" | "trees" | "waves" |
     case "deepforest":
       return "trees";
     case "ocean":
+    case "lake":
     case "grotto":
       return "waves";
     case "desert":

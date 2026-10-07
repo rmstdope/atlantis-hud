@@ -66,6 +66,7 @@ export const PALETTE = {
   X: "magenta",
   Z: "pink",
   t: "teal",
+  l: "lagoon",
   c: "cyan",
 } as const;
 
@@ -164,6 +165,8 @@ export function baseColour(bitmap: Bitmap): ColourName {
 export const TILES: Record<TerrainPaint, Bitmap> = {
   // Pale wave crests on deep blue.
   ocean: ["BBBB", "CCBB", "BBBB", "BBCC"],
+  // The sea's crests in fresh water: cyan on a lagoon teal, a base of its own (ah-vsjg).
+  lake: ["llll", "ccll", "llll", "llcc"],
   // Light grass with darker tufts.
   plain: ["gggg", "gGgg", "gggG", "Gggg"],
   // A little pixel pine on dark green: crown, branches and a trunk.

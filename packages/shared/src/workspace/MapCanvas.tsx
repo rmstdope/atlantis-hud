@@ -521,6 +521,110 @@ export type MapCanvasHandle = {
   frameAll(): void;
 };
 
+/** The id of the tint every lake picture is drawn through (ah-vsjg). */
+const LAKE_FRESH_FILTER_ID = "lake-fresh";
+
+/**
+ * The sea's picture made fresh water: turned a little toward green and lifted, the agreed
+ * mockup's own filter (`docs/ui/ah-vsjg-lakes-pictures.html`), one for every texture set.
+ */
+function LakeFreshFilter() {
+  return (
+    <filter id={LAKE_FRESH_FILTER_ID} colorInterpolationFilters="sRGB">
+      <feColorMatrix type="hueRotate" values="-24" />
+      <feComponentTransfer>
+        <feFuncR type="linear" slope="1.15" intercept="0.05" />
+        <feFuncG type="linear" slope="1.22" intercept="0.07" />
+        <feFuncB type="linear" slope="1.05" intercept="0.03" />
+      </feComponentTransfer>
+    </filter>
+  );
+}
+
+/**
+ * One biome picture inside its pattern: covering, sliding, or simply laid down. Fresh water is
+ * wrapped in the lake tint by the caller.
+ */
+function TexturePicture({ texture }: { texture: NonNullable<HexView["texture"]> }) {
+  return texture.covers ? (
+    // A picture that does not tile (Painted, ah-d9jb.3) is turned inside a square
+    // that covers the whole hex, never by turning the pattern tile itself.
+    <g transform={textureCoverTransform(texture.rotation)}>
+      {texture.mirrored ? (
+        // A picture that does not tile (Painted, ah-d9jb.3) wraps into its own
+        // reflection: upright, mirrored, upright, so every seam meets itself. The loop
+        // is two widths long, so the slide runs twice as long to keep Standard's speed.
+        <g>
+          {[-2, -1, 0].map((x) => (
+            <image
+              key={x}
+              href={texture.url}
+              x={x === -1 ? 0 : x}
+              y="0"
+              width="1"
+              height="1"
+              transform={x === -1 ? "scale(-1 1)" : undefined}
+              preserveAspectRatio="xMidYMid slice"
+              style={{ filter: `brightness(${texture.brightness})` }}
+            />
+          ))}
+          <animateTransform
+            attributeName="transform"
+            type="translate"
+            from="0 0"
+            to="2 0"
+            dur="36s"
+            repeatCount="indefinite"
+          />
+        </g>
+      ) : (
+        <image
+          href={texture.url}
+          x="0"
+          y="0"
+          width="1"
+          height="1"
+          preserveAspectRatio="none"
+          style={{ filter: `brightness(${texture.brightness})` }}
+        />
+      )}
+    </g>
+  ) : texture.moves ? (
+    <g>
+      {[-1, 0, 1].map((x) => (
+        <image
+          key={x}
+          href={texture.url}
+          x={x}
+          y="0"
+          width="1"
+          height="1"
+          preserveAspectRatio="xMidYMid slice"
+          style={{ filter: `brightness(${texture.brightness})` }}
+        />
+      ))}
+      <animateTransform
+        attributeName="transform"
+        type="translate"
+        from="0 0"
+        to="1 0"
+        dur="18s"
+        repeatCount="indefinite"
+      />
+    </g>
+  ) : (
+    <image
+      href={texture.url}
+      x="0"
+      y="0"
+      width="1"
+      height="1"
+      preserveAspectRatio="xMidYMid slice"
+      style={{ filter: `brightness(${texture.brightness})` }}
+    />
+  );
+}
+
 /**
  * The world map.
  *
@@ -1450,6 +1554,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
               style={{ strokeWidth: "calc(1px / var(--map-scale, 1))" }}
             />
           </pattern>
+          {showTextures ? <LakeFreshFilter /> : null}
           {showTextures
             ? texturePatterns.map((texture) => (
                 <pattern
@@ -1465,82 +1570,15 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                       : `rotate(${texture.rotation} 0.5 0.5)`
                   }
                 >
-                  {texture.covers ? (
-                    // A picture that does not tile (Painted, ah-d9jb.3) is turned inside a square
-                    // that covers the whole hex, never by turning the pattern tile itself.
-                    <g transform={textureCoverTransform(texture.rotation)}>
-                      {texture.mirrored ? (
-                        // A picture that does not tile (Painted, ah-d9jb.3) wraps into its own
-                        // reflection: upright, mirrored, upright, so every seam meets itself. The loop
-                        // is two widths long, so the slide runs twice as long to keep Standard's speed.
-                        <g>
-                          {[-2, -1, 0].map((x) => (
-                            <image
-                              key={x}
-                              href={texture.url}
-                              x={x === -1 ? 0 : x}
-                              y="0"
-                              width="1"
-                              height="1"
-                              transform={x === -1 ? "scale(-1 1)" : undefined}
-                              preserveAspectRatio="xMidYMid slice"
-                              style={{ filter: `brightness(${texture.brightness})` }}
-                            />
-                          ))}
-                          <animateTransform
-                            attributeName="transform"
-                            type="translate"
-                            from="0 0"
-                            to="2 0"
-                            dur="36s"
-                            repeatCount="indefinite"
-                          />
-                        </g>
-                      ) : (
-                        <image
-                          href={texture.url}
-                          x="0"
-                          y="0"
-                          width="1"
-                          height="1"
-                          preserveAspectRatio="none"
-                          style={{ filter: `brightness(${texture.brightness})` }}
-                        />
-                      )}
-                    </g>
-                  ) : texture.moves ? (
-                    <g>
-                      {[-1, 0, 1].map((x) => (
-                        <image
-                          key={x}
-                          href={texture.url}
-                          x={x}
-                          y="0"
-                          width="1"
-                          height="1"
-                          preserveAspectRatio="xMidYMid slice"
-                          style={{ filter: `brightness(${texture.brightness})` }}
-                        />
-                      ))}
-                      <animateTransform
-                        attributeName="transform"
-                        type="translate"
-                        from="0 0"
-                        to="1 0"
-                        dur="18s"
-                        repeatCount="indefinite"
-                      />
+                  {texture.fresh ? (
+                    // Fresh water shows the sea's picture through the lake tint (ah-vsjg): an SVG
+                    // filter on a group, since older WebKit will not mix a url() into the
+                    // image's own CSS brightness().
+                    <g filter={`url(#${LAKE_FRESH_FILTER_ID})`}>
+                      <TexturePicture texture={texture} />
                     </g>
                   ) : (
-                    <image
-                      href={texture.url}
-                      x="0"
-                      y="0"
-                      width="1"
-                      height="1"
-                      preserveAspectRatio="xMidYMid slice"
-                      style={{ filter: `brightness(${texture.brightness})` }}
-                    />
+                    <TexturePicture texture={texture} />
                   )}
                 </pattern>
               ))

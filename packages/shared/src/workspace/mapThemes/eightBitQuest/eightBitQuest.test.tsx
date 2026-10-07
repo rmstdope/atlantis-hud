@@ -307,7 +307,7 @@ describe("terrain, as pixel tiles", () => {
     expect(svg).toContain(`eb-terrain-${kind}`);
   });
 
-  it("paints a lake with the ocean's tile where the ruleset calls it water", () => {
+  it("paints a lake with a teal tile of its own, and the sea with its blue one (ah-vsjg)", () => {
     const svg = draw(
       eightBitQuest.TerrainLayer,
       [{ ...CONGESTED_CENTRE, terrain: "lake" }],
@@ -316,7 +316,9 @@ describe("terrain, as pixel tiles", () => {
       },
     );
 
-    expect(svg).toContain('fill="url(#eb-tile-ocean)"');
+    expect(svg).toContain('fill="url(#eb-tile-lake)"');
+    expect(baseColour(TILES.lake)).toBe("lagoon");
+    expect(baseColour(TILES.ocean)).toBe("blue");
   });
 
   /**

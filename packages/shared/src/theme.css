@@ -87,6 +87,7 @@
 
   /* Terrain. Read from the report, so these are data rather than styling choices. */
   --color-terrain-ocean: #1d3f63;
+  --color-terrain-lake: #22606e;
   --color-terrain-plain: #7a7440;
   --color-terrain-forest: #2f5d3a;
   --color-terrain-mountain: #5c5c66;
@@ -245,6 +246,7 @@
   --color-danger: #9c4040;
 
   --color-terrain-ocean: #a9c5de;
+  --color-terrain-lake: #b0d8d6;
   --color-terrain-plain: #d9d2a0;
   --color-terrain-forest: #a3c9ab;
   --color-terrain-mountain: #babac2;

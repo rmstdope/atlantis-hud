@@ -67,6 +67,16 @@ describe("the biome symbol layer", () => {
     }
   });
 
+  it("draws a lake's ripples on a lake and the sea's waves on the sea (ah-vsjg)", () => {
+    const markup = draw([
+      view({ key: "lake", terrain: "lake", terrainKind: "lake" }),
+      view({ key: "sea", terrain: "ocean", terrainKind: "ocean" })
+    ]);
+
+    expect(markup).toContain('href="#biome-symbol-lake"');
+    expect(markup).toContain('href="#biome-symbol-ocean"');
+  });
+
   it("is a decoration nothing can be clicked through", () => {
     const markup = draw([view()]);
 

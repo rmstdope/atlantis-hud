@@ -75,6 +75,11 @@ function circle(cx: number, cy: number, r: number): string {
   return `M${point(cx - r, cy)} A${n(r)},${n(r)} 0 1 0 ${point(cx + r, cy)} A${n(r)},${n(r)} 0 1 0 ${point(cx - r, cy)} Z`;
 }
 
+/** A whole flattened ring about the origin, as two half arcs. */
+function ring(rx: number, ry: number): string {
+  return `M${point(-rx, 0)} A${n(rx)},${n(ry)} 0 1 0 ${point(rx, 0)} A${n(rx)},${n(ry)} 0 1 0 ${point(-rx, 0)} Z`;
+}
+
 const line = (d: string): GlyphPart => ({ d, fill: "none", stroke: true });
 const filled = (d: string, fill: GlyphPaint = "paper"): GlyphPart => ({ d, fill, stroke: true });
 
@@ -82,6 +87,14 @@ function ocean(): GlyphPart[] {
   return [-3, 3].map((dy) =>
     line(`M${point(-8, dy)} Q${point(-4, dy - 4)} ${point(0, dy)} Q${point(4, dy + 4)} ${point(8, dy)}`)
   );
+}
+
+/**
+ * Still water (ah-vsjg): two concentric, flattened rings, the agreed mockup's
+ * `docs/ui/ah-vsjg-lakes.html`, drawn the same 17 units across as the sea's waves are 16.
+ */
+function lake(): GlyphPart[] {
+  return [ring(4, 1.8), ring(8.5, 3.8)].map(line);
 }
 
 function plain(): GlyphPart[] {
@@ -123,6 +136,7 @@ function tundra(): GlyphPart[] {
 
 export const BIOME_GLYPHS: Readonly<Record<TerrainKind, readonly GlyphPart[]>> = {
   ocean: ocean(),
+  lake: lake(),
   plain: plain(),
   forest: [line(poly([[0, 8], [0, 2]], false)), filled(circle(0, -2, 5.5))],
   mountain: [

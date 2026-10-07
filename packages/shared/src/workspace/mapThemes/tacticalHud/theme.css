@@ -30,6 +30,7 @@
   --hud-monster-unit: #f07070;
 
   --hud-terrain-ocean: #012a4b;
+  --hud-terrain-lake: #0d5263;
   --hud-terrain-plain: #536127;
   --hud-terrain-forest: #05291d;
   --hud-terrain-mountain: #454449;
@@ -69,6 +70,7 @@
   --hud-monster-unit: #b04a4a;
 
   --hud-terrain-ocean: #7199c1;
+  --hud-terrain-lake: #9ccbd3;
   --hud-terrain-plain: #c7d99b;
   --hud-terrain-forest: #729686;
   --hud-terrain-mountain: #b7b5bc;
@@ -90,6 +92,9 @@
 
 .hud-terrain-ocean {
   fill: var(--hud-terrain-ocean);
+}
+.hud-terrain-lake {
+  fill: var(--hud-terrain-lake);
 }
 .hud-terrain-plain {
   fill: var(--hud-terrain-plain);

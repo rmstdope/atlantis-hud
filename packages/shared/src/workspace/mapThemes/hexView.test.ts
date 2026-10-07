@@ -88,6 +88,7 @@ describe("what a hex shows, prepared for whichever theme draws it", () => {
       rotation: terrainTextureRotation("1:7,53"),
       brightness: terrainTextureBrightness("1:7,53"),
       moves: false,
+      fresh: false,
       mirrored: false,
       covers: false
     });
@@ -163,20 +164,57 @@ describe("what a hex shows, prepared for whichever theme draws it", () => {
     expect(texture?.rotation).toBe(0);
   });
 
-  it("marks ocean and lake textures for movement", () => {
+  it("moves only the ocean's texture: a lake is still water (ah-vsjg)", () => {
     expect(viewOf(hex({ knowledge: "current", terrain: "ocean" })).texture?.moves).toBe(true);
     expect(
       viewOf(hex({ knowledge: "current", terrain: "lake" }), { water: TRIDENT_WATER }).texture?.moves
-    ).toBe(true);
-    expect(viewOf(hex({ knowledge: "current", terrain: "lake" })).texture).toBeNull();
+    ).toBe(false);
     expect(viewOf(hex({ knowledge: "current", terrain: "mountain" })).texture?.moves).toBe(false);
   });
 
-  it("resolves a lake as ocean only where the ruleset calls it water", () => {
+  it("paints a lake as a lake, whether or not the ruleset calls it water", () => {
     const lake = hex({ knowledge: "current", terrain: "lake" });
 
-    expect(viewOf(lake, { water: TRIDENT_WATER }).terrainKind).toBe("ocean");
-    expect(viewOf(lake).terrainKind).toBe("other");
+    expect(viewOf(lake, { water: TRIDENT_WATER }).terrainKind).toBe("lake");
+    expect(viewOf(lake).terrainKind).toBe("lake");
+  });
+
+  it("shows a lake the ocean's picture, tinted fresh, never moving nor mirrored (ah-vsjg)", () => {
+    const lake = hex({ knowledge: "current", terrain: "lake" });
+    const covering = { ...DEFAULT_TEXTURE_STYLE, tiles: false };
+
+    expect(viewOf(lake).texture).toMatchObject({
+      url: "/biomes/ocean_512.png",
+      fresh: true,
+      moves: false,
+      mirrored: false
+    });
+    expect(viewOf(lake, { textureStyle: covering }).texture).toMatchObject({
+      covers: true,
+      moves: false,
+      mirrored: false
+    });
+    expect(viewOf(hex({ knowledge: "current", terrain: "ocean" })).texture?.fresh).toBe(false);
+    expect(viewOf(hex({ knowledge: "current" })).texture?.fresh).toBe(false);
+  });
+
+  it("never lets a lake share the sea's pattern", () => {
+    // Same region, so same angle and tone: only the kind tells the two apart.
+    const lake = viewOf(hex({ knowledge: "current", terrain: "lake" })).texture?.patternId;
+    const sea = viewOf(hex({ knowledge: "current", terrain: "ocean" }), {
+      textureStyle: { ...DEFAULT_TEXTURE_STYLE, animateWater: false }
+    }).texture?.patternId;
+
+    expect(lake).toMatch(/^biome-texture-lake-/);
+    expect(lake).not.toBe(sea);
+  });
+
+  it("leaves a lake flat when the ocean's picture did not load", () => {
+    const style = { ...DEFAULT_TEXTURE_STYLE, missing: ["ocean", "lake"] as const };
+
+    expect(
+      viewOf(hex({ knowledge: "current", terrain: "lake" }), { textureStyle: style }).texture
+    ).toBeNull();
   });
 
   it("leaves water textures still when animation is off", () => {

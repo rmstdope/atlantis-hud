@@ -272,13 +272,14 @@ describe("how old the reading is", () => {
 describe("terrain, flat and dark so the readout stays a readout", () => {
   const tridentTerrains = TERRAIN_KINDS;
 
-  it("paints a lake with the ocean's paint where the ruleset calls it water", () => {
+  it("paints a lake with its own paint, apart from the sea (ah-vsjg)", () => {
     const svg = draw(tacticalHud.TerrainLayer, [{ ...CONGESTED_CENTRE, terrain: "lake" }], {
       showTextures: false,
       water: { ocean: "ocean", alsoWater: ["lake"] }
     });
 
-    expect(svg).toContain("hud-terrain-ocean");
+    expect(svg).toContain("hud-terrain-lake");
+    expect(svg).not.toContain("hud-terrain-ocean");
   });
 
   it("paints each terrain in the readout's own dark palette", () => {

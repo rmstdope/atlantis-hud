@@ -59,6 +59,7 @@ export const BATTLE_SIZE = 4.5;
  */
 export const TERRAIN_CODES: Record<TerrainPaint, string> = {
   ocean: "OCN",
+  lake: "LAK",
   plain: "PLN",
   forest: "FOR",
   mountain: "MTN",
@@ -242,6 +243,8 @@ export const LATTICES: Record<TerrainPaint, { size: number; d: string }> = {
   hill: { size: 10, d: "M0,8 Q5,1 10,8" },
   // Scan lines.
   ocean: { size: 12, d: "M0,2 H12 M0,6 H12 M0,10 H12" },
+  // Fewer, wider-spaced scan lines: still water (ah-vsjg).
+  lake: { size: 12, d: "M0,3 H12 M0,9 H12" },
   // Broken scan lines: water that does not hold together.
   swamp: { size: 12, d: "M0,3 H4 M7,3 H12 M2,9 H9" },
   // Cross-hatching.

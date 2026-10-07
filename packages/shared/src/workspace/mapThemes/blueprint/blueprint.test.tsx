@@ -135,7 +135,7 @@ describe("terrain as drafting hatches", () => {
     },
   );
 
-  it("draws a lake as water where the ruleset says it is", () => {
+  it("draws a lake on a ground of its own, with the sea's hatch (ah-vsjg)", () => {
     const svg = draw(
       blueprint.TerrainLayer,
       [{ ...CONGESTED_CENTRE, terrain: "lake" }],
@@ -144,7 +144,11 @@ describe("terrain as drafting hatches", () => {
       },
     );
 
-    expect(svg).toContain("url(#bp-hatch-ocean)");
+    expect(svg).toContain("url(#bp-hatch-lake)");
+    expect(svg).toContain("bp-terrain-lake");
+    // The sea's wave, flattened: the same tile with a gentler swell.
+    expect({ ...HATCHES.lake, line: undefined }).toEqual({ ...HATCHES.ocean, line: undefined });
+    expect(HATCHES.lake.line).not.toBe(HATCHES.ocean.line);
   });
 
   it("falls back to the generic section hatch for a terrain it does not know", () => {

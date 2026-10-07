@@ -84,6 +84,8 @@ type Hatch = {
  */
 export const HATCHES: Record<TerrainPaint, Hatch> = {
   ocean: { w: 7, h: 4.5, line: "M0,2.6 q1.75,-1.9 3.5,0 t3.5,0" },
+  // The sea's wave with half its swell: still water, a material of its own (ah-vsjg).
+  lake: { w: 7, h: 4.5, line: "M0,2.6 q1.75,-0.95 3.5,0 t3.5,0" },
   plain: { w: 5, h: 5, dots: [[2.5, 2.5, 0.42]] },
   forest: {
     w: 8,
