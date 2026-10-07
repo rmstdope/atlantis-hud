@@ -20,7 +20,7 @@ describe("a boolean setting's toggle", () => {
   });
 
   it("is disabled while the setting it requires is off", () => {
-    const html = renderWithStoreState(<SettingFlag name="animateWaterTextures" />, useSettingsStore, {
+    const html = renderWithStoreState(<SettingFlag name="biomeTextureRotation" />, useSettingsStore, {
       biomeTextures: false
     });
 

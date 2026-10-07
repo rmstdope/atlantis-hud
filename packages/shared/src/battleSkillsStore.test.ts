@@ -47,7 +47,7 @@ function roster(level: number) {
 function client(overrides: Partial<CoreClient> = {}): CoreClient {
   return {
     listImportedTurns: vi.fn().mockResolvedValue([]),
-    loadImportedTurn: vi.fn().mockResolvedValue({ rawReport: "report", parseResult: {} }),
+    loadImportedTurn: vi.fn().mockResolvedValue({ rawReport: "report" }),
     rosterSkills: vi.fn().mockResolvedValue([]),
     ...overrides
   } as unknown as CoreClient;
@@ -79,7 +79,7 @@ describe("scanStoredTurns", () => {
       loadImportedTurn: vi
         .fn()
         .mockRejectedValueOnce(new Error("no"))
-        .mockResolvedValue({ rawReport: "report", parseResult: {} }),
+        .mockResolvedValue({ rawReport: "report" }),
       rosterSkills: vi.fn().mockResolvedValue(roster(5))
     });
 
@@ -146,7 +146,7 @@ describe("useBattleSkillsStore", () => {
       listImportedTurns: vi.fn().mockResolvedValue([summary("95", 68)]),
       loadImportedTurn: vi
         .fn()
-        .mockImplementation(async () => held.then(() => ({ rawReport: "r", parseResult: {} }))),
+        .mockImplementation(async () => held.then(() => ({ rawReport: "r" }))),
       rosterSkills: vi.fn().mockResolvedValue(roster(1))
     });
 

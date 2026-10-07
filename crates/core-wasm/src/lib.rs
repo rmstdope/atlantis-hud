@@ -17,7 +17,7 @@ use atlantis_hud_core::report::merge::StoredSighting;
 use atlantis_hud_core::report::sighting::RegionSighting;
 use atlantis_hud_core::{
     apply_merge_plan, diff_imported_turn, plan_merge, reject_import, reserved_merge_identity,
-    ImportedTurnSnapshot, MergePlan, ReportParseResult, ReportParseResultWire,
+    ImportedTurnSnapshot, MergePlan, ReportParseResultWire,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -380,17 +380,6 @@ pub fn prepare_report_merge_state(
     })
 }
 
-/// Rebuilds a parse result from a stored payload, recomputing the import threshold.
-///
-/// The threshold is a domain rule, so a storage adapter must never derive it itself.
-#[wasm_bindgen]
-pub fn hydrate_parse_result_state(parsed_payload_json: String) -> Result<JsValue, JsValue> {
-    let parsed = serde_json::from_str::<ReportParseResult>(&parsed_payload_json)
-        .map_err(|error| JsValue::from_str(&error.to_string()))?;
-
-    to_js(&ReportParseResultWire::from(parsed))
-}
-
 /// Compares a prepared import candidate against the stored snapshot, if any.
 ///
 /// Pass `null` for `existing` when nothing is stored under the key.
@@ -426,6 +415,13 @@ pub fn latest_turn_state(
         serde_json::from_str(&turns_json).map_err(|error| JsValue::from_str(&error.to_string()))?;
 
     to_js(&latest_turn(&turns, active_faction_id.as_deref()))
+}
+
+/// The season a stored turn's parse payload names, or `null` - without rebuilding the parse, which
+/// is all a turn listing needs from it (see `atlantis_hud_core::reopen::stored_season`).
+#[wasm_bindgen]
+pub fn stored_season_state(parsed_payload_json: &str) -> Option<String> {
+    atlantis_hud_core::reopen::stored_season(parsed_payload_json)
 }
 
 /// Encodes one game's rows as one backup document. `content_json` is the browser store's own

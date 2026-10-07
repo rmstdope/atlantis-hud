@@ -13,19 +13,13 @@ describe("the boolean settings table", () => {
       biomeTextures: true,
       biomeTextureRotation: true,
       animateMapTheme: true,
-      animateWaterTextures: true,
       animateMovement: true,
       showShortcutsAtStartup: true,
       movementPlanner: false,
       orderOcd: false,
+      showPerformancePanel: false,
       countUpkeep: true
     });
-  });
-
-  it("says water animation moves the ocean only, since a lake stays still (ah-vsjg)", () => {
-    expect(BOOLEAN_SETTINGS.animateWaterTextures.description).toBe(
-      "Moves ocean textures along their texture direction."
-    );
   });
 
   it("picks only the boolean settings out of a larger state", () => {

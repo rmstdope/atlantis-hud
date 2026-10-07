@@ -217,6 +217,11 @@ import {
 import { runNewAgeFetch } from "./newAgeFetchRun";
 import { fetchedTurnName } from "./newAgeHistoryView";
 import { performNewAgeSend } from "./newAgeSend";
+import { timed, timedAsync, timedCore } from "../perf";
+import { sharedReads } from "../sharedReads";
+import { afterPaint } from "../afterPaint";
+import { PerformancePanel } from "./PerformancePanel";
+import { waterMoves } from "../waterAnimation";
 import type { NewAgeSendPhase } from "./newAgeSendView";
 import { NEW_AGE_HOST, signInFailure } from "./newAgeSignInView";
 import { downloadNewOriginsReport, NEW_ORIGINS_HOST } from "./newOriginsApi";
@@ -489,7 +494,7 @@ async function fetchRulesetText(rulesetId: string): Promise<string> {
 }
 
 export function AppShell({
-  client,
+  client: rawClient,
   platformLabel,
   registerBeforeQuit,
   saveTextFile,
@@ -558,6 +563,9 @@ export function AppShell({
    */
   storageStop?: StorageStopSource;
 }) {
+  // Every call into the Rust core, timed for the performance panel - after the reads the stores make
+  // together when a game opens are answered once (see `sharedReads`); the same client otherwise.
+  const client = useMemo(() => sharedReads(timedCore(rawClient)), [rawClient]);
   const [parsed, setParsed] = useState<ParsedReport | null>(null);
   // The report currently on screen, readable at async resolve time. The restore effect below
   // needs to know whether anything is showing *when its promise lands*, which state in its
@@ -691,15 +699,15 @@ export function AppShell({
     []
   );
 
-  const parseReport = useMemo(
-    () =>
-      parserWaitingForRuleset(
-        client,
-        () => rulesetSettled.current,
-        () => rulesetRef.current
-      ),
-    [client]
-  );
+  const parseReport = useMemo(() => {
+    const parse = parserWaitingForRuleset(
+      client,
+      () => rulesetSettled.current,
+      () => rulesetRef.current
+    );
+    // Timed for the performance panel; the wait for the ruleset is part of what a player waits for.
+    return (text: string) => timedAsync("parse report", () => parse(text));
+  }, [client]);
 
 
   // The game data dictionary, parsed once per ruleset load. `rulesetText` is null both while the
@@ -829,20 +837,25 @@ export function AppShell({
     // ids carry over between turns, so a Fort finished since would be read at its old 0 seats.
     setShelterAnswer(null);
     let cancelled = false;
-    client
-      .shelterSeats(rawReport, ruleset.text)
-      .then((answer) => {
-        if (!cancelled) {
-          setShelterAnswer(answer);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setShelterAnswer(null);
-        }
-      });
+    // Asked once the map is on screen: the core answers on the main thread, and a game opening
+    // should not wait on its seats to show its map (see `afterPaint`).
+    const cancelWait = afterPaint(() => {
+      client
+        .shelterSeats(rawReport, ruleset.text)
+        .then((answer) => {
+          if (!cancelled) {
+            setShelterAnswer(answer);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setShelterAnswer(null);
+          }
+        });
+    });
     return () => {
       cancelled = true;
+      cancelWait();
     };
   }, [client, ruleset, rawReport]);
   /** Every structure the report shows and the mages it seats, for the study planner (ah-lyg6.3). */
@@ -1125,23 +1138,11 @@ export function AppShell({
   // The set the map shows lags the chosen one until all its pictures have loaded (ah-d9jb.3).
   const shownTextureSet = useShownTextureSet(useSettingsStore((state) => state.textureSet));
   const rotateTextures = useSettingsStore((state) => state.biomeTextureRotation);
-  const animateWater = useSettingsStore((state) => state.animateWaterTextures);
+  const waterAnimation = useSettingsStore((state) => state.waterAnimation);
   const animateMovement = useSettingsStore((state) => state.animateMovement);
   const animateMapTheme = useSettingsStore((state) => state.animateMapTheme);
+  const showPerformancePanel = useSettingsStore((state) => state.showPerformancePanel);
   const movementAnimationSpeed = useSettingsStore((state) => state.movementAnimationSpeed);
-  // Memoised, so the style keeps its identity across renders and the map's views are not rebuilt
-  // every time AppShell renders.
-  const textureStyle = useMemo((): TextureStyle => {
-    const set = textureSetOf(shownTextureSet.id);
-    return {
-      rotate: rotateTextures,
-      animateWater,
-      directory: set.directory,
-      rotationStep: set.rotationStep,
-      tiles: set.tiles,
-      missing: shownTextureSet.missing
-    };
-  }, [shownTextureSet, rotateTextures, animateWater]);
   const mapThemeId = useSettingsStore((state) => state.mapTheme);
   const advisoryChecks = useSettingsStore((state) => state.advisoryChecks);
   const movementPlanner = useSettingsStore((state) => state.movementPlanner);
@@ -1208,9 +1209,33 @@ export function AppShell({
   // could not be drawn (`memory.knownMap === null`) shows an empty lattice; the units panel, which
   // reads `parsed` rather than the map, still works.
   const model = useMemo(
-    () => (memory.knownMap ? buildHexMapModel(memory.knownMap) : EMPTY),
+    () => {
+      const known = memory.knownMap;
+      return known ? timed("build map model", () => buildHexMapModel(known)) : EMPTY;
+    },
     [memory.knownMap]
   );
+
+  // Moving water repaints the whole map every frame, so by default it moves only on a small map -
+  // counted on the level shown, which is what is drawn (see `waterAnimation.ts`).
+  const hexesOnLevel = useMemo(
+    () => model.hexes.reduce((count, hex) => (hex.coordinate.z === level ? count + 1 : count), 0),
+    [model, level]
+  );
+  const animateWater = waterMoves(waterAnimation, hexesOnLevel);
+  // Memoised, so the style keeps its identity across renders and the map's views are not rebuilt
+  // every time AppShell renders.
+  const textureStyle = useMemo((): TextureStyle => {
+    const set = textureSetOf(shownTextureSet.id);
+    return {
+      rotate: rotateTextures,
+      animateWater,
+      directory: set.directory,
+      rotationStep: set.rotationStep,
+      tiles: set.tiles,
+      missing: shownTextureSet.missing
+    };
+  }, [shownTextureSet, rotateTextures, animateWater]);
 
   const openGameId = game?.manifest.metadata.gameId ?? null;
 
@@ -2680,7 +2705,8 @@ export function AppShell({
    * file and nothing else.
    */
   const importReports = useCallback(
-    async (files: File[]) => {
+    // Timed whole for the performance panel: reading, parsing, merging and saving, as a player waits.
+    (files: File[]) => timedAsync("import reports", async () => {
       const route = routeFileImport(files);
       if (route.kind === "single") {
         const only = route.file;
@@ -2737,7 +2763,7 @@ export function AppShell({
       }
 
       await runBatch(batch, choice.factionId);
-    },
+    }),
     // Neither `client` nor `ruleset` is read here: both are reached through `parseReport`, which
     // is memoised on the client and waits for the ruleset through refs.
     [parsed, loadReport, flush, runBatch, chooseOrdersImport, parseReport]
@@ -4054,20 +4080,25 @@ export function AppShell({
       return undefined;
     }
     let cancelled = false;
-    void client
-      .tradeRoutes(ruleset.text, rawReport, rememberedJson, mapJson)
-      .then((found) => {
-        if (!cancelled) {
-          setTradeRoutes(found);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setTradeRoutes([]);
-        }
-      });
+    // Asked once the map is on screen, like the shelter seats: the routes draw over a map that is
+    // already there.
+    const cancelWait = afterPaint(() => {
+      void client
+        .tradeRoutes(ruleset.text, rawReport, rememberedJson, mapJson)
+        .then((found) => {
+          if (!cancelled) {
+            setTradeRoutes(found);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setTradeRoutes([]);
+          }
+        });
+    });
     return () => {
       cancelled = true;
+      cancelWait();
     };
     // `mapJson` for the reason the route planner gives.
   }, [client, ruleset, rawReport, rememberedJson, mapJson]);
@@ -6438,6 +6469,7 @@ export function AppShell({
         />
       ) : null}
       {keyboardPanels}
+      {showPerformancePanel ? <PerformancePanel platformLabel={platformLabel} /> : null}
     </div>
     {stopped ? (
       <StorageStoppedNotice words={stoppedNoticeWords(stopped)} onReload={reloadStopped} />

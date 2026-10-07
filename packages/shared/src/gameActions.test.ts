@@ -482,7 +482,7 @@ describe("checking a ruleset change against the game's turns", () => {
         .mockImplementation(async (_path: string, _game: string, _faction: string, turn: number) =>
           reports[turn] === null
             ? null
-            : { key: summary(turn).key, rawReport: String(turn), parseResult: null }
+            : { key: summary(turn).key, rawReport: String(turn) }
         ),
       parseReportFull: vi.fn().mockImplementation(async (raw: string) => reports[Number(raw)])
     };

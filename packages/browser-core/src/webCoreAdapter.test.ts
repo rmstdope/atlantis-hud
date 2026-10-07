@@ -201,7 +201,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
         warningsChanged: stored.warningsPayloadJson !== next.warningsPayloadJson
       };
     },
-    hydrate_parse_result_state: (json: string) => ({ ...EMPTY_PARSE_RESULT, hydratedFrom: json }),
+    stored_season_state: () => undefined,
     ordered_merged_reports_state: (recordsJson: string) =>
       (JSON.parse(recordsJson) as MergedReportRecord[]).sort(
         (left, right) =>
@@ -716,15 +716,15 @@ describe("web core adapter", () => {
     });
   });
 
-  it("rehydrates a stored parse result through the core, not in TypeScript", async () => {
+  it("loads a stored turn as its report's text, leaving the stored parse in storage", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     await adapter.commitReportImport(DB, "p", "17", REPORT, null, false, IMPORTED_AT);
 
     const loaded = await adapter.loadImportedTurn(DB, "p", "17", 12);
 
-    expect(loaded).toMatchObject({
+    expect(loaded).toEqual({
       key: { gameId: "p", factionId: "17", turnNumber: 12 },
-      parseResult: { hydratedFrom: `parsed:${REPORT}` }
+      rawReport: REPORT
     });
   });
 
@@ -825,21 +825,11 @@ describe("web core adapter", () => {
   });
 
   /**
-   * Same wasm hydrator as `loadImportedTurn` and `loadLatestImportedTurn`, so the season comes
-   * from wherever their parse results carry it, without a second copy of the parsing rules.
-   *
-   * The real hydrator returns `ReportParseResultWire`, camelCase throughout since ah-164.1: the
-   * flattened `ReportParseResult` fields and `meetsMinimumImportThreshold` beside them agree on
-   * casing now that the inner struct itself is `rename_all = "camelCase"`.
+   * The season is read by the core from each stored payload (`stored_season_state`, the same
+   * reading the desktop's store uses), without rebuilding the parse.
    */
   it("lists every imported turn of a game", async () => {
-    const wasm = fakeWasm({
-      hydrate_parse_result_state: (json: string) => ({
-        ...EMPTY_PARSE_RESULT,
-        hydratedFrom: json,
-        turnHeader: { turnNumber: 12, season: "Spring" }
-      })
-    });
+    const wasm = fakeWasm({ stored_season_state: () => "Spring" });
     const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
     const OTHER = "TURN: 12 Spring\nFACTION: 18 | Azure Wake";
 
@@ -855,15 +845,12 @@ describe("web core adapter", () => {
   });
 
   /**
-   * The wasm hydrator throws on a payload it cannot parse - `hydrate_parse_result_state` returns
-   * a Rust `Result`, and an `Err` crosses the boundary as a thrown JS exception. A list that let
-   * one bad row's throw escape would lose every turn in the game to it, not just that one.
+   * A payload the core cannot read a season from - malformed, or missing its header - lists with no
+   * season rather than taking every other turn of the game down with it.
    */
-  it("still lists a turn whose payload cannot be hydrated", async () => {
+  it("still lists a turn whose payload has no season the core can read", async () => {
     const wasm = fakeWasm({
-      hydrate_parse_result_state: () => {
-        throw new Error("payload did not parse");
-      }
+      stored_season_state: (json: string) => (json === "not json at all" ? undefined : "Spring")
     });
     const store = createMemoryWebStore();
     const adapter = createWebCoreAdapter(wasm, store);
@@ -1506,8 +1493,7 @@ describe("exporting and importing games", () => {
     expect(restored.manifest.lastOpenedAt).toBe("2026-08-09T18:30:00Z");
     expect(await imported.loadImportedTurn(restored.databasePath, "alpha", "17", 12)).toEqual({
       key: { gameId: "alpha", factionId: "17", turnNumber: 12 },
-      rawReport: REPORT,
-      parseResult: { ...EMPTY_PARSE_RESULT, hydratedFrom: `parsed:${REPORT}` }
+      rawReport: REPORT
     });
     expect(await imported.loadOrderDraft(restored.databasePath, "alpha", "17", 12)).toEqual({
       key: { gameId: "alpha", factionId: "17", turnNumber: 12 },

@@ -46,13 +46,6 @@ export const BOOLEAN_SETTINGS = {
     description: "Lets the map theme move: animated selection, sweeping light, bobbing figures.",
     testId: "settings-animate-map-theme"
   },
-  animateWaterTextures: {
-    default: true,
-    title: "Animate water textures",
-    description: "Moves ocean textures along their texture direction.",
-    testId: "settings-animate-water-textures",
-    requires: "biomeTextures"
-  },
   /**
    * Whether a spark runs along the drawn movement line. The line itself is the workspace's
    * Movement layer, which lives in another store, so the dialog disables this one by hand while
@@ -63,6 +56,17 @@ export const BOOLEAN_SETTINGS = {
     title: "Animate movement",
     description: "A spark runs along the route from the unit to where it is going.",
     testId: "settings-animate-movement"
+  },
+  /**
+   * Whether the performance panel shows: frame rate, how long the heavy steps took, how big the map
+   * is, and a button that copies it all for a report. Off by default; it is a diagnostic, and
+   * counting frames is itself a little work on every frame while it is open.
+   */
+  showPerformancePanel: {
+    default: false,
+    title: "Show performance panel",
+    description: "Shows how smoothly the app is drawing and how long its heavy steps take, with a button to copy the figures into a report.",
+    testId: "settings-performance-panel"
   },
   /**
    * Whether the keyboard shortcuts overlay shows itself when the application starts.

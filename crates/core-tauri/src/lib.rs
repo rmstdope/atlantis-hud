@@ -16,7 +16,7 @@ pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
     apply_merge_plan, completions_at_caret, order_argument_completions, parse_report, plan_merge,
     reject_import, reserved_merge_identity, CaretCompletions, MergePlan, OrderCompletion,
-    ReportParseResult, ReportParseResultWire,
+    ReportParseResultWire,
 };
 use atlantis_hud_core_persistence::{
     create_game, delete_army, delete_game, delete_hex_note, edit_game_manifest, export_game,
@@ -67,7 +67,6 @@ pub struct ReportImportPreviewDto {
 pub struct ImportedTurnRecordDto {
     pub key: OrderDraftKeyDto,
     pub raw_report: String,
-    pub parse_result: ReportParseResultWire,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -643,7 +642,7 @@ pub mod commands {
         )
         .map_err(|error| error.to_string())?;
 
-        loaded.map(imported_turn_dto).transpose()
+        Ok(loaded.map(imported_turn_dto))
     }
 
     /// Loads the turn this game was last worked on, for the Tauri command surface.
@@ -652,7 +651,7 @@ pub mod commands {
     ///
     /// # Errors
     ///
-    /// Returns an error when the database cannot be read, or when a stored payload will not parse.
+    /// Returns an error when the database cannot be read.
     #[cfg_attr(
         feature = "tauri",
         tauri::command(rename_all = "snake_case", rename = "load_latest_imported_turn")
@@ -667,9 +666,8 @@ pub mod commands {
             game_id,
             active_faction_id.as_deref(),
         )
-        .map_err(|error| error.to_string())?
-        .map(imported_turn_dto)
-        .transpose()
+        .map_err(|error| error.to_string())
+        .map(|loaded| loaded.map(imported_turn_dto))
     }
 
     /// Lists every turn imported for a game, across every faction, for the Tauri command surface.
@@ -1089,18 +1087,18 @@ pub fn command_open_game(
         .map_err(|error| error.to_string())
 }
 
-fn imported_turn_dto(record: ImportedTurnRecord) -> Result<ImportedTurnRecordDto, String> {
-    let parse_result = serde_json::from_str::<ReportParseResult>(&record.parsed_payload_json)
-        .map_err(|error| error.to_string())?;
-    Ok(ImportedTurnRecordDto {
+/// A stored turn as the shell reads it: the report's own text. The parse stored beside it is not
+/// sent - every reader parses the text it needs, and turning the stored parse back into a wire
+/// value cost a reopened game most of a second on a large map.
+fn imported_turn_dto(record: ImportedTurnRecord) -> ImportedTurnRecordDto {
+    ImportedTurnRecordDto {
         key: OrderDraftKeyDto {
             game_id: record.key.game_id,
             faction_id: record.key.faction_id,
             turn_number: record.key.turn_number,
         },
         raw_report: record.raw_report,
-        parse_result: ReportParseResultWire::from(parse_result),
-    })
+    }
 }
 
 /// One region the faction saw in some earlier turn, as the map wants it.
@@ -2699,8 +2697,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         assert_eq!(loaded.key.game_id, "faction-12");
         assert_eq!(loaded.key.faction_id, "17");
         assert_eq!(loaded.key.turn_number, 2);
-        assert_eq!(loaded.parse_result.result.regions[0].region_id, "1:12,34");
-        assert_eq!(loaded.parse_result.result.units[0].region_id, "1:12,34");
+        assert_eq!(loaded.raw_report, report);
     }
 
     #[test]

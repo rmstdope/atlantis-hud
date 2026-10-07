@@ -62,7 +62,7 @@ const PRESENT = swampReport([{ amount: 8, name: "floater hides", tag: "FLOA" }])
 function client(overrides: Partial<CoreClient> = {}): CoreClient {
   return {
     listImportedTurns: vi.fn().mockResolvedValue([]),
-    loadImportedTurn: vi.fn().mockResolvedValue({ rawReport: "report", parseResult: {} }),
+    loadImportedTurn: vi.fn().mockResolvedValue({ rawReport: "report" }),
     parseReportFull: vi.fn().mockResolvedValue(ABSENT),
     ...overrides
   } as unknown as CoreClient;
@@ -101,7 +101,7 @@ describe("scanStoredTurns (ah-tgtp)", () => {
       loadImportedTurn: vi
         .fn()
         .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({ rawReport: "report", parseResult: {} }),
+        .mockResolvedValueOnce({ rawReport: "report" }),
       parseReportFull: vi.fn().mockResolvedValue(PRESENT)
     });
 

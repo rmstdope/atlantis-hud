@@ -105,7 +105,8 @@ export type CoreWasmModule = {
     existing: StoredTurnSnapshot | null,
     candidate: StoredTurnSnapshot
   ): ImportedTurnDiff;
-  hydrate_parse_result_state(parsedPayloadJson: string): ReportParseResult;
+  /** `undefined` when the payload names no season the core can read. */
+  stored_season_state(parsedPayloadJson: string): string | undefined;
   /** Fills the split structure fields of a region payload remembered before `ah-nmts`. */
   ordered_merged_reports_state(recordsJson: string): MergedReportRecord[];
   remembered_regions_state(
@@ -916,8 +917,7 @@ export function createWebCoreAdapter(
 
       return {
         key: { gameId, factionId, turnNumber },
-        rawReport: stored.rawReport,
-        parseResult: wasm.hydrate_parse_result_state(stored.parsedPayloadJson)
+        rawReport: stored.rawReport
       };
     },
 
@@ -952,8 +952,7 @@ export function createWebCoreAdapter(
 
       return {
         key: { gameId, factionId: latest.factionId, turnNumber: latest.turnNumber },
-        rawReport: latest.rawReport,
-        parseResult: wasm.hydrate_parse_result_state(latest.parsedPayloadJson)
+        rawReport: latest.rawReport
       };
     },
 
@@ -962,32 +961,17 @@ export function createWebCoreAdapter(
      * `@atlantis/core-client` orders it.
      *
      * No storage of its own is needed: `getImportedTurns` already carries everything but the
-     * season, which is read the way `loadImportedTurn` above reads a full parse result — through
-     * the wasm hydrator, so the browser reaches the same verdict as the desktop's stored-JSON peek
-     * without a second copy of the parsing rules.
+     * season, which the core reads from each stored payload (`stored_season_state`) - the same
+     * reading the desktop's store uses, and without rebuilding the parse.
      */
     async listImportedTurns(databasePath: string, gameId: string) {
       const turns = await store.getImportedTurns(databasePath, gameId);
 
-      // A row whose payload the hydrator cannot parse must not take the rest of the list down
-      // with it. `hydrate_parse_result_state` returns a Rust `Result`, so a bad payload crosses
-      // the wasm boundary as a thrown exception rather than an error value — unlike the
-      // desktop/persistence peek, which the Rust side already treats as `season: None` on a bad
-      // row rather than failing the whole list. This keeps the two paths agreeing.
-      //
-      // The hydrator returns `ReportParseResult`, camelCase throughout since ah-164.1, typed rather
-      // than cast since ah-wxk.2.
-      const seasonOf = (parsedPayloadJson: string): string | null => {
-        try {
-          return wasm.hydrate_parse_result_state(parsedPayloadJson).turnHeader?.season ?? null;
-        } catch {
-          return null;
-        }
-      };
-
+      // A payload the core cannot read a season from lists with none rather than failing the
+      // whole list - `stored_season_state` answers `None` for it, on both platforms.
       return turns.map((turn) => ({
         key: { gameId, factionId: turn.factionId, turnNumber: turn.turnNumber },
-        season: seasonOf(turn.parsedPayloadJson),
+        season: wasm.stored_season_state(turn.parsedPayloadJson) ?? null,
         importedAt: turn.importedAt ?? "",
         updatedAt: turn.updatedAt ?? ""
       }));

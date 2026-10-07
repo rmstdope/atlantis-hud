@@ -20,7 +20,6 @@ use atlantis_hud_core::reopen::{latest_turn, TurnRef};
 pub use atlantis_hud_core::report::merge::MergedReportRecord;
 use atlantis_hud_core::{diff_imported_turn_fields, ImportedTurnSnapshotRef};
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension, Transaction};
-use serde::Deserialize;
 use thiserror::Error;
 
 /// Current schema version expected by the persistence layer.
@@ -1100,7 +1099,7 @@ pub fn list_imported_turns(
                     faction_id,
                     turn_number,
                 },
-                season: season_from_parsed_payload(&parsed_payload_json),
+                season: atlantis_hud_core::reopen::stored_season(&parsed_payload_json),
                 imported_at,
                 updated_at,
             })
@@ -1108,32 +1107,6 @@ pub fn list_imported_turns(
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(summaries)
-}
-
-/// Peeks the season out of a turn's parsed payload without depending on its full shape.
-///
-/// `parsed_payload_json` holds `ReportParseResult`, not `ReportHeaderInfo` — month and year live
-/// only in the latter, which is never stored. `turn_header.season` is what survives, and reading it
-/// through a tiny local struct means this has no dependency on `atlantis-core`'s types and keeps
-/// working if that struct's other fields change shape. A row whose payload cannot be read this way
-/// — malformed JSON, a missing `turn_header` — contributes `None` rather than failing the whole
-/// list. Blobs written before ah-164.1 are snake_case (`turn_header`), later ones camelCase
-/// (`turnHeader`); the peek reads both, as `ReportParseResult` itself does.
-fn season_from_parsed_payload(parsed_payload_json: &str) -> Option<String> {
-    #[derive(Deserialize)]
-    struct Peek {
-        #[serde(rename = "turnHeader", alias = "turn_header")]
-        turn_header: Option<PeekTurnHeader>,
-    }
-    #[derive(Deserialize)]
-    struct PeekTurnHeader {
-        season: Option<String>,
-    }
-
-    serde_json::from_str::<Peek>(parsed_payload_json)
-        .ok()
-        .and_then(|peek| peek.turn_header)
-        .and_then(|header| header.season)
 }
 
 fn ensure_supported_manifest_version(version: u32) -> Result<(), PersistenceError> {

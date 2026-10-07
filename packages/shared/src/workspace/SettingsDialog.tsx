@@ -21,6 +21,7 @@ import type { ThemeName } from "../settingsStore";
 import { mapThemeOptions } from "./mapThemes";
 import { SettingFlag } from "./SettingFlag";
 import { TEXTURE_SETS } from "./textureSets";
+import { WATER_ANIMATION_CHOICES, type WaterAnimation } from "../waterAnimation";
 import { SettingToggle } from "./SettingToggle";
 import {
   COLUMN_LABELS,
@@ -223,6 +224,8 @@ export function GlobalSettings() {
   const setPaneTransparency = useSettingsStore((state) => state.setPaneTransparency);
   const interfaceSize = useSettingsStore((state) => state.interfaceSize);
   const animateMovement = useSettingsStore((state) => state.animateMovement);
+  const waterAnimation = useSettingsStore((state) => state.waterAnimation);
+  const setWaterAnimation = useSettingsStore((state) => state.setWaterAnimation);
   const movementAnimationSpeed = useSettingsStore((state) => state.movementAnimationSpeed);
   const setMovementAnimationSpeed = useSettingsStore((state) => state.setMovementAnimationSpeed);
   const setFlag = useSettingsStore((state) => state.setFlag);
@@ -301,7 +304,37 @@ export function GlobalSettings() {
           </select>
         </label>
         <SettingFlag name="biomeTextureRotation" />
-        <SettingFlag name="animateWaterTextures" />
+        {/*
+          Moving water repaints the whole map every frame, so by default it moves only on a small
+          map; a player on a strong machine can ask for it always (see `waterAnimation.ts`).
+        */}
+        <label
+          className={`flex flex-wrap items-center justify-between gap-2 text-ink-soft ${
+            showTextures ? "" : "opacity-50"
+          }`}
+        >
+          <span>
+            <span className="block">Animate water textures</span>
+            <span className="block text-pane-sm text-ink-dim">
+              Moves ocean textures along their texture direction. Large maps are much faster with the
+              water still.
+            </span>
+          </span>
+          <select
+            data-testid="settings-water-animation"
+            aria-label="Animate water textures"
+            value={waterAnimation}
+            disabled={!showTextures}
+            onChange={(event) => setWaterAnimation(event.target.value as WaterAnimation)}
+            className="rounded border border-edge bg-panel-raised px-1.5 py-0.5 text-ink"
+          >
+            {WATER_ANIMATION_CHOICES.map((choice) => (
+              <option key={choice.id} value={choice.id}>
+                {choice.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {/*
@@ -434,6 +467,8 @@ export function GlobalSettings() {
       <SettingFlag name="orderOcd" />
 
       <SettingFlag name="countUpkeep" />
+
+      <SettingFlag name="showPerformancePanel" />
     </div>
   );
 }

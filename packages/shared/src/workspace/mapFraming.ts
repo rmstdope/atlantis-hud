@@ -18,6 +18,7 @@ import {
   fitTo,
   ghostShift,
   ghostSpread,
+  HEX_RADIUS,
   isOffScreen,
   scaleOf,
   NO_INSETS,
@@ -56,10 +57,13 @@ export function ghostSlots(
 }
 
 /**
- * Where each copy sits for a given camera, and whether it is the original and so not drawn.
+ * Where each copy sits for a given camera, and whether it is drawn at all.
  *
- * The slot standing where the world itself is drawn would be a copy on top of the original,
- * doubling every translucent pass.
+ * Two copies are not: the slot standing where the world itself is drawn, which would be a copy on
+ * top of the original and double every translucent pass; and any copy with no part on screen. A copy
+ * is a `<use>` of the whole world, and a browser paints all of it however little of it shows, so one
+ * that would show nothing is not drawn at all. A margin keeps a copy drawn a little before it comes
+ * into view, so nothing appears at the edge of a moving map.
  */
 export function ghostPlacements(
   view: Viewport,
@@ -70,18 +74,29 @@ export function ghostPlacements(
   const scale = scaleOf(view.step);
   const shiftX = ghostShift(view.tx, spans.x, scale, size.width);
   const shiftY = ghostShift(view.ty, spans.y, scale, size.height);
+  // What of the world is on screen, in world units, widened by the margin on every side.
+  const margin = Math.max(GHOST_MARGIN_HEXES * HEX_RADIUS, GHOST_MARGIN_PX / scale);
+  const onScreen = (offset: number, span: number | null, translate: number, extent: number) => {
+    if (span === null) {
+      return true;
+    }
+    const first = -translate / scale - margin;
+    const last = (extent - translate) / scale + margin;
+    return offset + span >= first && offset <= last;
+  };
   return slots.map((slot) => {
     const mx = slot.mx + shiftX;
     const my = slot.my + shiftY;
-    return {
-      mx,
-      my,
-      x: mx * (spans.x ?? 0),
-      y: my * (spans.y ?? 0),
-      hidden: mx === 0 && my === 0
-    };
+    const x = mx * (spans.x ?? 0);
+    const y = my * (spans.y ?? 0);
+    const visible = onScreen(x, spans.x, view.tx, size.width) && onScreen(y, spans.y, view.ty, size.height);
+    return { mx, my, x, y, hidden: (mx === 0 && my === 0) || !visible };
   });
 }
+
+/** How far beyond the screen a copy is still drawn: whichever is more, two hexes or 200 pixels. */
+const GHOST_MARGIN_HEXES = 2;
+const GHOST_MARGIN_PX = 200;
 
 /**
  * The viewport that brings a newly arrived selection into view, or `null` to leave it alone.

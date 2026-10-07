@@ -458,8 +458,7 @@ describe("merging an ally's report into the turn on screen", () => {
 describe("reopening the turn the player was last in", () => {
   const STORED_TURN = {
     key: { gameId: "aug-2026", factionId: "95", turnNumber: 71 },
-    rawReport: "raw text of turn 71",
-    parseResult: {}
+    rawReport: "raw text of turn 71"
   };
 
   function restoring(overrides: Partial<CoreClient> = {}): CoreClient {
