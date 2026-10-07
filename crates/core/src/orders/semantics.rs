@@ -33,8 +33,8 @@ use super::transfers;
 use crate::movement::fleet::OrderedUnits as FleetOrders;
 use crate::movement::graph::{Direction, MapKnowledge};
 use crate::movement::mode::{
-    best_allowance, capacities_from_items, cargo_capacity, fleet_flies, fleet_label,
-    hulls_named_in, is_vessel, sailing_requirement, Capacities,
+    best_allowance, cargo_capacity, carrying_after_transfers, fleet_flies, fleet_label,
+    hulls_named_in, is_vessel, sailing_requirement, Carrying,
 };
 use crate::movement::orders::{first_passage, MoveStep};
 use crate::movement::plan::{Hull, Journey};
@@ -6035,7 +6035,7 @@ impl LateHoldings {
 /// An item list with every negative amount read as zero, which is what production is allowed to
 /// work with: `plan_production` does not clamp its own materials cap, so a negative holding there
 /// would yield a negative run. Overdrawing is `judge_shortfalls`' finding to report, not
-/// production's - the same reading `capacity_after_orders` already documents (`ah-l80z`).
+/// production's - the same reading `carrying_after_orders` already documents (`ah-l80z`).
 ///
 /// **A guard rather than a live conversion.** Both of today's snapshots come from
 /// [`PhaseState::stocks`], which already drops every entry at or below zero, so neither call site
@@ -12116,7 +12116,7 @@ fn uncounted_cause(unit: &ReportUnit, facts: &UnitFacts<'_>, ruleset: Option<&Ru
 
 /// The `SAIL` that will carry this unit out of the hex, if one will.
 ///
-/// `PRODUCE` is phase 10 and movement is phase 9 (`weight_after_orders`), so a passenger produces
+/// `PRODUCE` is phase 10 and movement is phase 9 (`carrying_after_orders`), so a passenger produces
 /// in the region the vessel reaches, not the one it started in (`ah-jk9h`, `gh-679`).
 ///
 /// Returns the captain's placed `SAIL`, because the caller needs its steps to follow the boat
@@ -13434,8 +13434,8 @@ fn could_captain(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
     )
 }
 
-/// What one unit weighs once this month's orders have run: the weight the report gave it, plus
-/// everything those orders move into or out of it that the ruleset can price.
+/// What one unit carries, and can carry, once this month's orders have run - the rule is
+/// [`carrying_after_transfers`], which the movement panel reads too; this only supplies its input.
 ///
 /// The ledger is read whole rather than filtered, because every order that changes an item balance
 /// runs before the fleet does: GIVE and TAKE in phase 4, SELL and BUY in phase 7, movement in
@@ -13448,86 +13448,79 @@ fn could_captain(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 ///
 /// An order the ledger could not price changed no balance at all - `transfer`, `buy` and the
 /// WITHDRAW arm (for an item the ruleset prices nowhere) record their doubt and return before
-/// charging anything - so it contributes nothing
-/// here and the unit keeps the report's weight for that part. That is the navigator's answer to
-/// "silence or fall back": fall back. `None` only when the report never said what the unit weighs.
-fn weight_after_orders(
+/// charging anything - so it contributes nothing here and the unit keeps the report's weight for
+/// that part.
+///
+/// The ledger holds a balance only for what it has touched, so the stepping-off list is the
+/// report's own item list overlaid with the ledger's balances.
+fn carrying_after_orders(
     ordered: &Ordered<'_>,
     ledger: &Ledger<'_>,
     ruleset: Option<&Ruleset>,
-) -> Option<i64> {
-    let mut weight = ordered.unit.weight?;
-
-    for (tag, holding) in ledger
-        .state
-        .holdings_at(StatePhase::Movement, &ordered.unit.unit_id)
-    {
-        let moved = holding.saturating_sub(ordered.holding(&tag));
-        if moved == 0 {
-            continue;
-        }
-        if let Some(item) = ruleset.and_then(|ruleset| ruleset.find_item(&tag)) {
-            weight = weight.saturating_add(moved.saturating_mul(item.weight));
-        }
-    }
-
-    Some(weight)
-}
-
-/// This unit's carrying capacity once the month's transfers have run, as `weight_after_orders`
-/// does for the other side of the same comparison.
-///
-/// The two must be computed at the same moment or the check compares a repriced load against a
-/// stale allowance - which warned a real player that a perfectly mobile caravan would not move
-/// (`ah-titf`, GitHub #677). The report's `Capacity:` line is printed before this month's orders
-/// run, and it is a sum whose composition is not recoverable, so the capacity is rebuilt from the
-/// unit's item list rather than adjusted.
-///
-/// `None` - and the caller then falls back to the report's own printed line - with no ruleset, or
-/// when any tag the unit holds is not in it. Otherwise the list is the whole answer: a report's
-/// headcount *is* its man-tagged items, counted (`report::composition::men_in`), so the list
-/// cannot name fewer men than the unit has. A guard that fell back to the printed line when it
-/// seemed to existed only for test fixtures that listed no men, and on a real unit it was the
-/// fallback that called a unit handing off men overloaded (`ah-o6qy`, removed by `ah-4q5p`).
-///
-/// A balance below zero is read as zero. Giving away more than the unit holds is its own finding,
-/// and a negative count would subtract capacity and so manufacture exactly the false warning this
-/// function exists to remove.
-fn capacity_after_orders(
-    ordered: &Ordered<'_>,
-    ledger: &Ledger<'_>,
-    ruleset: Option<&Ruleset>,
-) -> Option<Capacities> {
-    let ruleset = ruleset?;
-
-    let mut counts: Vec<(String, i64)> = ordered
+) -> Carrying {
+    let mut stepping_off: Vec<(String, i64)> = ordered
         .unit
         .items
         .iter()
         .map(|item| (item.tag.to_ascii_uppercase(), item.amount))
         .collect();
-
     for (tag, holding) in ledger
         .state
         .holdings_at(StatePhase::Movement, &ordered.unit.unit_id)
     {
-        let moved = holding - ordered.holding(&tag);
-        if moved == 0 {
-            continue;
-        }
-        if let Some(entry) = counts.iter_mut().find(|(held, _)| held == &tag) {
-            entry.1 = entry.1.saturating_add(moved);
+        if let Some(entry) = stepping_off.iter_mut().find(|(held, _)| held == &tag) {
+            entry.1 = holding;
         } else {
-            counts.push((tag, moved));
+            stepping_off.push((tag, holding));
         }
     }
-
-    let priced: Vec<(&str, i64)> = counts
+    let stepping_off: Vec<(&str, i64)> = stepping_off
         .iter()
-        .map(|(tag, count)| (tag.as_str(), (*count).max(0)))
+        .map(|(tag, count)| (tag.as_str(), *count))
         .collect();
 
-    capacities_from_items(&priced, ruleset)
+    carrying_after_transfers(
+        ordered.unit.weight,
+        &ordered.unit.items,
+        &stepping_off,
+        ruleset,
+    )
+}
+
+/// Test-only: what the overload check makes of every own unit's load as movement runs, through the
+/// same [`carrying_after_orders`] the check reads, over the same per-hex ledger
+/// [`transfer_projection_for_tests`] builds. For `super::carrying_agreement`.
+#[cfg(test)]
+pub(super) fn carrying_for_tests(
+    report: &ParsedReport,
+    source: &str,
+    ruleset: Option<&Ruleset>,
+) -> Vec<(String, Carrying)> {
+    let report_skills = study::ReportSkills::of(report);
+    let ordered = OrderedUnits::read_with_ruleset(source, ruleset, &report_skills);
+    let foreign_unit_ids = foreign_unit_ids(report);
+    let shown_anywhere = unit_ids_in(report);
+    let formed: Vec<Formed> = formed_units(report, source, ruleset, &report_skills);
+
+    let mut carrying = Vec::new();
+    for region in &report.regions {
+        let hex = hex_with_transfers(
+            region,
+            &ordered,
+            &formed,
+            ruleset,
+            &foreign_unit_ids,
+            &shown_anywhere,
+        );
+        let ledger = ledger_for(&hex, ruleset);
+        for ordered_unit in &hex.units {
+            carrying.push((
+                ordered_unit.unit.unit_id.clone(),
+                carrying_after_orders(ordered_unit, &ledger, ruleset),
+            ));
+        }
+    }
+    carrying
 }
 
 /// One unit's contribution to a fleet's crew once this month's orders have run.
@@ -14741,7 +14734,7 @@ fn check_fleet_course(
 /// hull carries, and is enough sailing skill aboard to sail it? Aboard means the report's units in
 /// the fleet, plus those that ENTER it this month, minus those that LEAVE - the instant orders the
 /// server runs before anything moves. Each of them is weighed at what this month's orders leave it
-/// holding (`weight_after_orders`), not at what the report printed, because the server runs every
+/// holding (`carrying_after_orders`), not at what the report printed, because the server runs every
 /// transfer and every market order before it moves a fleet. The crew is counted the same way
 /// (`sailing_levels_after_orders`): men given or taken away this month take their sailing levels
 /// with them, and men arriving into a unit aboard silence the crew check for the fleet, because
@@ -14751,7 +14744,7 @@ fn check_fleet_course(
 /// fleet - never a guess. A single transfer the ledger or the ruleset cannot price (an
 /// item with no catalogue weight, a WITHDRAW of something the ruleset prices nowhere) instead
 /// falls back to that unit's report weight for its own
-/// contribution (`weight_after_orders`'s doc comment), rather than silencing the fleet outright.
+/// contribution (`carrying_after_orders`'s doc comment), rather than silencing the fleet outright.
 fn check_sailing(
     hex: &Hex<'_>,
     ledger: &Ledger<'_>,
@@ -14837,7 +14830,7 @@ fn check_sailing(
 
         let sailing: Option<i64> = aboard
             .iter()
-            .map(|ordered| weight_after_orders(ordered, ledger, ruleset))
+            .map(|ordered| carrying_after_orders(ordered, ledger, ruleset).weight)
             .sum();
 
         if let (Some(load), Some(capacity)) = (sailing, cargo_capacity(fleet, ruleset)) {
@@ -15240,7 +15233,7 @@ struct MovementOverload {
     allowance: i64,
 }
 
-/// `Some` only when both the derived-or-printed allowance and `weight_after_orders` are known and
+/// `Some` only when both the derived-or-printed allowance and `carrying_after_orders` are known and
 /// the weight exceeds it. Unknown load or allowance - no ruleset, an unpriceable item - returns
 /// `None`, which callers must read as "cannot say", never as "not overloaded".
 fn movement_overload(
@@ -15248,13 +15241,13 @@ fn movement_overload(
     ledger: &Ledger<'_>,
     ruleset: Option<&Ruleset>,
 ) -> Option<MovementOverload> {
-    let allowance = capacity_after_orders(ordered, ledger, ruleset)
+    let carrying = carrying_after_orders(ordered, ledger, ruleset);
+    let allowance = carrying
+        .capacities
         .map(|capacity| capacity.fly.max(capacity.ride).max(capacity.walk))
         .or_else(|| best_allowance(ordered.unit));
 
-    let (Some(allowance), Some(weight)) =
-        (allowance, weight_after_orders(ordered, ledger, ruleset))
-    else {
+    let (Some(allowance), Some(weight)) = (allowance, carrying.weight) else {
         return None;
     };
 
@@ -15314,7 +15307,7 @@ fn departures_after_load_checks(
 /// ballast away and walking off in the same month is the ordinary fix for being overloaded, and a
 /// check reading the printed weight would warn about it.
 ///
-/// The allowance is repriced for the same month, by `capacity_after_orders`, because the printed
+/// The allowance is repriced for the same month, by `carrying_after_orders`, because the printed
 /// `Capacity:` line was worked out before those same orders ran. A unit that buys pack animals
 /// gains their weight and, on that line, none of their capacity - which is how a real player was
 /// told a mobile caravan would not move (`ah-titf`, GitHub #677). The other direction is repaired
@@ -27548,7 +27541,7 @@ BUILD
 
         /// `ah-728m.3`. `rules/sequenceofevents` runs BUILD after movement, so the material a
         /// BUILD consumes is still aboard when the MOVE is checked. Read straight off
-        /// `weight_after_orders`, because one block cannot hold both BUILD and MOVE.
+        /// `carrying_after_orders`, because one block cannot hold both BUILD and MOVE.
         #[test]
         fn a_build_does_not_lighten_the_unit_that_moves() {
             let mut hex_region = report_with_a_builder();
@@ -27558,11 +27551,12 @@ BUILD
             let rules = ruleset();
             let ledger = ledger_for(&hex, Some(&rules));
             assert_eq!(
-                weight_after_orders(
+                carrying_after_orders(
                     hex.find("900").expect("the builder is in the hex"),
                     &ledger,
                     Some(&rules)
-                ),
+                )
+                .weight,
                 Some(1_500),
                 "BUILD settles after movement, so its 30 wood is still aboard when MOVE is checked",
             );
@@ -46001,7 +45995,7 @@ BUILD
     /// A unit holding one human - `data/HUMN`'s weight (10) and walking capacity (5, plus its own
     /// weight as a self-mobile carrier: 15) - light enough to move on foot until something adds
     /// to its load (`ah-0wpn`). Unlike `carrying`, this fixture's allowance and weight come from
-    /// the real `HUMN` item `capacity_after_orders` derives from, not a printed fallback line.
+    /// the real `HUMN` item `carrying_after_orders` derives from, not a printed fallback line.
     fn one_human(id: &str) -> ReportUnit {
         ReportUnit {
             weight: Some(10),
@@ -46079,7 +46073,7 @@ BUILD
     }
 
     /// The real turn-41 case: 11 stone weigh 550, so 600 - 550 = 50 <= 75. Fails if the check
-    /// read `ordered.unit.weight` instead of `weight_after_orders`.
+    /// read `ordered.unit.weight` instead of `carrying_after_orders`.
     #[test]
     fn giving_the_ballast_away_first_lets_the_unit_move() {
         let region = region(vec![
