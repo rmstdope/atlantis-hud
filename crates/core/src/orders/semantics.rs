@@ -13453,10 +13453,6 @@ fn could_captain(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 ///
 /// The ledger holds a balance only for what it has touched, so the stepping-off list is the
 /// report's own item list overlaid with the ledger's balances.
-///
-/// A unit this month's `FORM` creates has no printed weight (`effects::formed_unit`), but its
-/// weight is not unknown: it "will start off ... with no people or items" (`rules/form`), so it
-/// starts from `Some(0)`, as the movement panel does (`ah-4ij2`).
 fn carrying_after_orders(
     ordered: &Ordered<'_>,
     ledger: &Ledger<'_>,
@@ -13483,12 +13479,25 @@ fn carrying_after_orders(
         .map(|(tag, count)| (tag.as_str(), *count))
         .collect();
 
-    let reported_weight = if ordered.formed.is_some() {
+    carrying_after_transfers(
+        weight_before_orders(ordered),
+        &ordered.unit.items,
+        &stepping_off,
+        ruleset,
+    )
+}
+
+/// What a unit weighed before this month's orders: the report's `Weight:`.
+///
+/// A unit this month's `FORM` creates has no printed weight (`effects::formed_unit`), but its
+/// weight is not unknown: it "will start off ... with no people or items" (`rules/form`), so it
+/// starts from `Some(0)`, as the movement panel does (`ah-4ij2`).
+fn weight_before_orders(ordered: &Ordered<'_>) -> Option<i64> {
+    if ordered.formed.is_some() {
         Some(0)
     } else {
         ordered.unit.weight
-    };
-    carrying_after_transfers(reported_weight, &ordered.unit.items, &stepping_off, ruleset)
+    }
 }
 
 /// Test-only: what the overload check makes of every own unit's load as movement runs, through the
@@ -14829,7 +14838,7 @@ fn check_sailing(
             .filter(|ordered| {
                 ordered.unit.structure_id.as_deref() == Some(fleet.structure_id.as_str())
             })
-            .map(|ordered| ordered.unit.weight)
+            .map(weight_before_orders)
             .sum();
 
         let sailing: Option<i64> = aboard
@@ -45007,6 +45016,33 @@ BUILD
             vec![region],
             "unit 8801\nGIVE 11125 30 GRAI\nunit 11125\nSAIL N\n",
         ));
+        assert_eq!(
+            finding.message,
+            "Longship [329] is overloaded: 50 aboard plus 150 loaded this month, on a capacity of 150, so it will not sail"
+        );
+    }
+
+    /// `rules/form`: a new unit stands "in the same structure if any" as the unit forming it, and
+    /// starts "with no people or items" - so a unit formed aboard is weighed from nothing, and
+    /// what it is given is loaded this month (`ah-4ij2`).
+    #[test]
+    fn a_unit_formed_aboard_is_weighed_from_nothing_and_its_cargo_was_loaded_this_month() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 50, 4),
+                with_item(unit("8801"), 30, "grain", "GRAI"),
+            ])
+        };
+
+        let findings = check(
+            vec![region],
+            "unit 8801\nGIVE NEW 1 30 GRAI\nunit 11125\nFORM 1\nEND\nSAIL N\n",
+        );
+        let finding = findings
+            .iter()
+            .find(|finding| finding.code == codes::FLEET_OVERLOADED)
+            .unwrap_or_else(|| panic!("{findings:#?}"));
         assert_eq!(
             finding.message,
             "Longship [329] is overloaded: 50 aboard plus 150 loaded this month, on a capacity of 150, so it will not sail"
