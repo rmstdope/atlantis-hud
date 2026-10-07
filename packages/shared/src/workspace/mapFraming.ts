@@ -61,10 +61,9 @@ export function ghostSlots(
  *
  * Two copies are not: the slot standing where the world itself is drawn, which would be a copy on
  * top of the original and double every translucent pass; and any copy with no part on screen. A copy
- * is a `<use>` of the whole world, and a browser paints one in full wherever it stands - measured on
- * a map of three thousand hexes, copies standing entirely off screen made every frame of a pan six
- * times the painting work. A margin keeps a copy drawn a little before it comes into view, so
- * nothing appears at the edge of a moving map.
+ * is a `<use>` of the whole world, and a browser paints all of it however little of it shows, so one
+ * that would show nothing is not drawn at all. A margin keeps a copy drawn a little before it comes
+ * into view, so nothing appears at the edge of a moving map.
  */
 export function ghostPlacements(
   view: Viewport,
