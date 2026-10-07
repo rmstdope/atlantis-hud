@@ -815,11 +815,6 @@ export function AppShell({
   /** `Could not save this plan.` / `... this note.`, shown in the dialog rather than the header. */
   const [studyPlanError, setStudyPlanError] = useState<string | null>(null);
   /**
-   * Every mage the player can see, yours and your allies', for the study planner (ah-lyg6.2.2).
-   *
-   * Gated on the ruleset exactly as `mages` is: with no tree there are no standings to group.
-   */
-  /**
    * The core's count of every structure's mage seats in the loaded report (ah-29p5): the same rule
    * its magic-study check reads, so the planner keeps no seat rule of its own. Null until it
    * answers, and on failure - every shelter unknown, so nobody's study is halved on a guess.
@@ -830,6 +825,9 @@ export function AppShell({
       setShelterAnswer(null);
       return undefined;
     }
+    // The last turn's answer must not stand in for this one's while the core thinks: structure
+    // ids carry over between turns, so a Fort finished since would be read at its old 0 seats.
+    setShelterAnswer(null);
     let cancelled = false;
     client
       .shelterSeats(rawReport, ruleset.text)
@@ -851,6 +849,11 @@ export function AppShell({
   const shelter = useMemo(() => shelterSeats(shelterAnswer), [shelterAnswer]);
   const shelterNamesByKey = useMemo(() => shelterNames(parsed), [parsed]);
 
+  /**
+   * Every mage the player can see, yours and your allies', for the study planner (ah-lyg6.2.2).
+   *
+   * Gated on the ruleset exactly as `mages` is: with no tree there are no standings to group.
+   */
   const plannerGroupRows = useMemo(
     () =>
       magicTree === null || gameData === null
