@@ -13,7 +13,7 @@ tauri = ["dep:tauri"]
 atlantis-hud-core = { path = "../core" }
 atlantis-hud-core-persistence = { path = "../core-persistence" }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde_json = { version = "1.0", features = ["raw_value"] }
 tauri = { version = "2", optional = true, default-features = false }
 
 [dev-dependencies]

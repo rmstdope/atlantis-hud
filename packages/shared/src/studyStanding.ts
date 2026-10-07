@@ -4,7 +4,7 @@
  * Pure, and in `packages/shared` for the reason `studyShelter.ts` gives: that package has no jsdom,
  * so everything a test needs to see lives in a module with no React in it.
  *
- * The answer is read out of the orders preview the editor already computes - `preview_orders_state`
+ * The answer is read out of the orders preview the editor already computes - `preview_orders`
  * advances a unit's `structureId` through this month's LEAVE, ENTER and MOVE orders in the Rust
  * core (`crates/core/src/orders/standing.rs standing_after`, pinned by
  * `effects.rs enter_and_leave_change_the_structure`). Nothing here re-derives that rule; it exists

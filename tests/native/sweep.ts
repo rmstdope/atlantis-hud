@@ -67,7 +67,6 @@ export const SWEEP: SweepEntry[] = [
       }
     })
   },
-  { command: "get_engine_info", args: () => ({}) },
   { command: "list_games", args: () => ({}) },
   { command: "open_game", args: () => ({ game_id: GAME_ID, opened_at: ISO }) },
   { command: "export_game", args: () => ({ game_id: GAME_ID, exported_at: ISO }) },
@@ -83,38 +82,32 @@ export const SWEEP: SweepEntry[] = [
   },
   { command: "parse_report", args: () => ({ raw_report: REPORT }) },
   { command: "parse_report_full", args: () => ({ raw_report: REPORT }) },
-  { command: "roster_skills", args: () => ({ raw_report: REPORT }) },
   {
-    command: "passage_claims",
-    args: () => ({ raw_report: REPORT, orders_document: "", ruleset_json: RULESET })
+    // Every query the core declares crosses through this one command (ah-w83n); the binding spec
+    // asks it for each of them by name.
+    command: "query",
+    args: () => ({ name: "shelter_seats", args: [REPORT, RULESET] })
   },
   {
-    command: "shelter_seats",
-    args: () => ({ raw_report: REPORT, ruleset_json: RULESET })
-  },
-  {
-    command: "parse_report_classified",
-    args: () => ({ raw_report: REPORT, ruleset_json: RULESET })
-  },
-  {
-    command: "validate_orders",
-    // The ruleset is what lets an item name be checked against the catalogue, and it crosses as the
-    // request's `rulesetJson` field: a key this side does not match deserializes to `None` over
-    // there without an error, and every item would silently go unchecked (ah-t8c4).
+    // A request object over real IPC, not only a positional string: the ruleset crosses as the
+    // request's `rulesetJson` field, and a key this side does not match deserializes to `None` over
+    // there without an error, so every item would silently go unchecked (ah-t8c4).
+    command: "query",
     args: () => ({
-      request: {
-        rawOrders: "unit 18642\n@work",
-        rulesetJson: RULESET,
-        rawReport: null,
-        disabledCodes: null,
-        mapJson: null,
-        knownPassagesJson: null,
-        rememberedJson: null
-      }
+      name: "validate_orders",
+      args: [
+        {
+          rawOrders: "unit 18642\n@work",
+          rulesetJson: RULESET,
+          rawReport: null,
+          disabledCodes: null,
+          mapJson: null,
+          knownPassagesJson: null,
+          rememberedJson: null
+        }
+      ]
     })
   },
-  { command: "order_commands", args: () => ({}) },
-  { command: "order_vocabulary", args: () => ({ ruleset_json: RULESET }) },
   {
     command: "order_argument_completions",
     args: () => ({
@@ -161,52 +154,11 @@ export const SWEEP: SweepEntry[] = [
     })
   },
   {
-    command: "export_map",
-    // The request crosses as text of its own: a key this side the core does not know deserializes
-    // to a refusal naming the request rather than the key, so only real IPC proves the three
-    // arguments arrive.
-    args: () => ({
-      raw_report: REPORT,
-      remembered_json: "[]",
-      request_json: JSON.stringify({
-        level: 1,
-        fromX: 0,
-        fromY: 0,
-        toX: 20,
-        toY: 60,
-        content: { structures: true, units: true, advancedResources: true }
-      })
-    })
-  },
-  {
-    command: "export_mage_sheet",
-    // The unit ids cross as text of their own, so only real IPC proves the second argument
-    // arrives under the name the command declares.
-    args: () => ({
-      raw_report: REPORT,
-      unit_ids_json: JSON.stringify(["18642"])
-    })
-  },
-  {
     command: "known_map",
     args: () => ({
       raw_report: REPORT,
       ruleset_json: null,
       remembered_json: "[]"
-    })
-  },
-  {
-    command: "preview_orders",
-    args: () => ({
-      request: {
-        rulesetJson: RULESET,
-        rawReport: REPORT,
-        rememberedJson: "[]",
-        ordersDocument: "unit 18642\nGUARD 1",
-        mapJson: MAP,
-        passagesJson: "[]",
-        disabledCodes: []
-      }
     })
   },
   {

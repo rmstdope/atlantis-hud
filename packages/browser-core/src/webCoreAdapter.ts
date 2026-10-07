@@ -9,7 +9,6 @@
 
 import type {
   CoreAdapter,
-  EngineInfo,
   GameManifest,
   ManifestEdit,
   MergedReportRecord,
@@ -23,25 +22,17 @@ import type {
   MoveOrderTraceResponse,
   CaretCompletions,
   OrderCompletion,
-  OrderValidationResult,
-  OrdersPreviewResponse,
   ParsedReport,
-  PassageClaim,
-  ShelterSeat,
   ReportParseResult,
   ReportRegion,
-  RosterSkills,
   RoutePlanResponse,
   TradeRoute,
   TurnRef
 } from "@atlantis/core-client";
+import { createQueryMethods } from "@atlantis/core-client";
 import type { StoredTurn, StoredTurnSnapshot, WebStore } from "./webStore";
 import { createWebStore } from "./webStore";
-import type {
-  PreviewOrdersRequest,
-  TraceMoveOrdersRequest,
-  ValidateOrdersRequest
-} from "@atlantis/core-client";
+import type { TraceMoveOrdersRequest } from "@atlantis/core-client";
 
 /**
  * The subset of the generated wasm module this adapter needs, typed against what each function
@@ -50,20 +41,13 @@ import type {
  * (ah-wxk.2).
  */
 export type CoreWasmModule = {
-  get_engine_info(): EngineInfo;
+  /**
+   * Answers any query the core declares (ah-w83n), by the name `CORE_QUERIES` gives it, with its
+   * arguments in order. Throws the core's refusal as a string.
+   */
+  query(name: string, args: unknown[]): unknown;
   parse_report_state(rawReport: string): ReportParseResult;
   parse_report_full_state(rawReport: string): ParsedReport;
-  roster_skills_state(rawReport: string): RosterSkills[];
-  passage_claims_state(
-    rawReport: string,
-    ordersDocument: string,
-    rulesetJson: string
-  ): PassageClaim[];
-  shelter_seats_state(rawReport: string, rulesetJson: string): ShelterSeat[];
-  parse_report_classified_state(rawReport: string, rulesetJson: string): ParsedReport;
-  validate_orders_state(request: ValidateOrdersRequest): OrderValidationResult;
-  order_commands_state(rulesetJson: string | null): string[];
-  order_vocabulary_state(rulesetJson: string | null): string[];
   order_argument_completions_state(
     linePrefix: string,
     rulesetJson: string | null,
@@ -85,14 +69,11 @@ export type CoreWasmModule = {
     mapJson: string
   ): RoutePlanResponse;
   trace_move_orders_state(request: TraceMoveOrdersRequest): MoveOrderTraceResponse;
-  export_map_state(rawReport: string, rememberedJson: string, requestJson: string): string;
-  export_mage_sheet_state(rawReport: string, unitIdsJson: string): string;
   known_map_state(
     rawReport: string,
     rulesetJson: string | null,
     rememberedJson: string
   ): KnownMap;
-  preview_orders_state(request: PreviewOrdersRequest): OrdersPreviewResponse;
   trade_routes_state(
     rulesetJson: string,
     rawReport: string,
@@ -359,9 +340,10 @@ export function createWebCoreAdapter(
     );
 
   return {
-    async getEngineInfo() {
-      return wasm.get_engine_info();
-    },
+    // Every query the core declares (ah-w83n), through the module's one `query` export: a query
+    // added to the core arrives here with nothing written. Async, so a refusal the module throws
+    // becomes a rejection, as every other method's does.
+    ...createQueryMethods(async (name, args) => wasm.query(name, args)),
 
     async parseReport(rawReport: string) {
       return wasm.parse_report_state(rawReport);
@@ -369,18 +351,6 @@ export function createWebCoreAdapter(
 
     async parseReportFull(rawReport: string) {
       return wasm.parse_report_full_state(rawReport);
-    },
-
-    async rosterSkills(rawReport: string) {
-      return wasm.roster_skills_state(rawReport);
-    },
-
-    async passageClaims(rawReport: string, ordersDocument: string, rulesetJson: string) {
-      return wasm.passage_claims_state(rawReport, ordersDocument, rulesetJson);
-    },
-
-    async shelterSeats(rawReport: string, rulesetJson: string) {
-      return wasm.shelter_seats_state(rawReport, rulesetJson);
     },
 
     async loadRegionSightings(databasePath: string, gameId: string, factionId: string) {
@@ -508,9 +478,6 @@ export function createWebCoreAdapter(
       );
     },
 
-    async parseReportClassified(rawReport: string, rulesetJson: string) {
-      return wasm.parse_report_classified_state(rawReport, rulesetJson);
-    },
     async planRoute(
       rulesetJson: string,
       rawReport: string,
@@ -536,23 +503,9 @@ export function createWebCoreAdapter(
       // document goes, not one unit's block: a passenger's route is the hull's (ah-048).
       return wasm.trace_move_orders_state(request);
     },
-    async exportMap(rawReport: string, rememberedJson: string, requestJson: string) {
-      // Straight through as well: the export is pure computation over the arguments, and the file
-      // it produces is handed back as text for the shell to save.
-      return wasm.export_map_state(rawReport, rememberedJson, requestJson);
-    },
-    async exportMageSheet(rawReport: string, unitIdsJson: string) {
-      // Straight through as well: the sheet is pure computation over the arguments, and the file
-      // it produces is handed back as text for the shell to save.
-      return wasm.export_mage_sheet_state(rawReport, unitIdsJson);
-    },
     async knownMap(rawReport: string, rulesetJson: string | null, rememberedJson: string) {
       // Straight through as well: the resolution is pure computation over the arguments.
       return wasm.known_map_state(rawReport, rulesetJson, rememberedJson);
-    },
-    async previewOrders(request: PreviewOrdersRequest) {
-      // Straight through as well: the preview is pure computation over the request.
-      return wasm.preview_orders_state(request);
     },
     async tradeRoutes(
       rulesetJson: string,
@@ -562,17 +515,6 @@ export function createWebCoreAdapter(
     ) {
       // Straight through as well: finding routes is pure computation over the arguments.
       return wasm.trade_routes_state(rulesetJson, rawReport, rememberedJson, mapJson);
-    },
-    async validateOrders(request: ValidateOrdersRequest) {
-      // As with planning, the report goes across as text: the core keys its last parse on it, so
-      // validating against the turn already on screen re-parses nothing.
-      return wasm.validate_orders_state(request);
-    },
-    async orderCommands(rulesetJson: string | null) {
-      return wasm.order_commands_state(rulesetJson);
-    },
-    async orderVocabulary(rulesetJson: string | null) {
-      return wasm.order_vocabulary_state(rulesetJson);
     },
     async orderArgumentCompletions(
       linePrefix: string,
