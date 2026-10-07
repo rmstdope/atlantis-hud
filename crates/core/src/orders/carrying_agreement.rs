@@ -8,14 +8,11 @@
 //! consolidated by `ah-2xw5`). This runs one document through both and asserts one answer, so a
 //! drift in either input fails here rather than shipping.
 //!
-//! One divergence remains, in the input rather than the rule: a unit this month's `FORM` creates
-//! has no printed weight on the check's side (`effects::formed_unit` leaves `weight: None`), so the
-//! check cannot say it is overloaded while the panel, starting it from nothing, can. Closing it
-//! adds problems the Problems list does not raise today, so it is its own bead (filed from
-//! `ah-2xw5`'s review).
+//! A unit this month's `FORM` creates has no report weight, and both sides start it from nothing
+//! (`ah-4ij2`: the check used to read `effects::formed_unit`'s `weight: None` as "cannot say").
 
 use super::effects::preview_orders_for_remembered_report;
-use super::semantics::carrying_for_tests;
+use super::semantics::{carrying_for_tests, check_turn, CheckOptions};
 use crate::cache::ReportCache;
 use crate::movement::rules::Ruleset;
 use crate::report::{classify_units, parse_report_full};
@@ -64,6 +61,11 @@ fn by_panel(orders: &str) -> (i64, i64, i64) {
 }
 
 fn by_panel_of(report_text: &str, orders: &str) -> (i64, i64, i64) {
+    panel_for(report_text, orders, "2871")
+}
+
+/// `(weight, ride, walk)` as the unit panel shows `unit_id`.
+fn panel_for(report_text: &str, orders: &str, unit_id: &str) -> (i64, i64, i64) {
     let response = preview_orders_for_remembered_report(
         &mut ReportCache::new(),
         RULESET,
@@ -76,9 +78,9 @@ fn by_panel_of(report_text: &str, orders: &str) -> (i64, i64, i64) {
         .regions
         .iter()
         .flat_map(|region| region.units.iter())
-        .find(|unit| unit.unit.unit_id == "2871")
+        .find(|unit| unit.unit.unit_id == unit_id)
         .and_then(|unit| unit.unit.movement)
-        .expect("the panel shows Riders' movement");
+        .expect("the panel shows the unit's movement");
     (movement.load, movement.ride, movement.walk)
 }
 
@@ -88,17 +90,22 @@ fn by_check(orders: &str) -> (i64, i64, i64) {
 }
 
 fn by_check_of(report_text: &str, orders: &str) -> (i64, i64, i64) {
+    check_for(report_text, orders, "2871")
+}
+
+/// `(weight, ride, walk)` as the overload check reads `unit_id`.
+fn check_for(report_text: &str, orders: &str, unit_id: &str) -> (i64, i64, i64) {
     let ruleset = Ruleset::from_json(RULESET).expect("the ruleset loads");
     let mut report = parse_report_full(report_text);
     classify_units(&mut report, &ruleset);
     let carrying = carrying_for_tests(&report, orders, Some(&ruleset))
         .into_iter()
-        .find(|(unit_id, _)| unit_id == "2871")
+        .find(|(id, _)| id == unit_id)
         .map(|(_, carrying)| carrying)
-        .expect("Riders is an own unit");
+        .expect("the unit is an own unit");
     let capacities = carrying.capacities.expect("every tag is priced");
     (
-        carrying.weight.expect("the report weighs Riders"),
+        carrying.weight.expect("the check weighs the unit"),
         capacities.ride,
         capacities.walk,
     )
@@ -128,4 +135,41 @@ fn both_reprice_the_printed_weight_rather_than_summing_the_items() {
     let report = report_text_weighing_riders(35);
     assert_eq!(by_check_of(&report, RIDERS), (215, 280, 295));
     assert_eq!(by_panel_of(&report, RIDERS), by_check_of(&report, RIDERS));
+}
+
+/// A unit formed this month is given four stone and one man before it moves (`ah-4ij2`).
+/// `data/STON` weighs 50, `data/HUMN` weighs 10 and walks 15 of its own: weight 4 x 50 + 10 =
+/// 210 against walk 15, nothing to ride with. `newage trident rules/form`: the new unit's own
+/// orders are the ones between `FORM` and `END`.
+const FORMED_OVERLOADED: &str = "unit 3000\nGIVE NEW 1 4 STON\n\
+                                 unit 2871\nFORM 1\nMOVE N\nEND\nGIVE NEW 1 1 HUMN\n";
+
+#[test]
+fn the_panel_and_the_overload_check_agree_on_a_unit_formed_this_month() {
+    let report = report_text();
+    assert_eq!(check_for(&report, FORMED_OVERLOADED, "new-1"), (210, 0, 15));
+    assert_eq!(
+        panel_for(&report, FORMED_OVERLOADED, "new-1"),
+        check_for(&report, FORMED_OVERLOADED, "new-1")
+    );
+}
+
+#[test]
+fn a_unit_formed_this_month_that_steps_off_overloaded_is_called_overloaded() {
+    let ruleset = Ruleset::from_json(RULESET).expect("the ruleset loads");
+    let mut report = parse_report_full(&report_text());
+    classify_units(&mut report, &ruleset);
+    let findings = check_turn(
+        &report,
+        FORMED_OVERLOADED,
+        Some(&ruleset),
+        CheckOptions::default(),
+    );
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding.code.as_str() == "unit-overloaded"
+                && finding.unit_id.as_deref() == Some("new-1")),
+        "{findings:#?}"
+    );
 }
