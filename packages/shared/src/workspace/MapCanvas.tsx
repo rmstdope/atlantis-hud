@@ -9,6 +9,7 @@ import {
   useState
 } from "react";
 import type { CSSProperties } from "react";
+import { recordTiming, timed } from "../perf";
 import type {
   Coordinate,
   HexNoteRecord,
@@ -682,6 +683,12 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
   ref
 ) {
   // Each level wraps at its own size (ah-byqe).
+  // How long a render of the map takes, from here to its layout effect below - in every build, since
+  // React's own Profiler reports only in development and the slow machines run production.
+  const renderStarted = typeof performance === "undefined" ? 0 : performance.now();
+  useLayoutEffect(() => {
+    recordTiming("render map", performance.now() - renderStarted);
+  });
   const shape = useMemo(() => mapShapeAtLevel(gameShape, level), [gameShape, level]);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<SVGSVGElement | null>(null);
@@ -758,7 +765,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       theme.fogDamping
     ]
   );
-  const allViews = useMemo(() => buildHexViews(onLevel, viewOptions), [onLevel, viewOptions]);
+  const allViews = useMemo(
+    () => timed("build hex views", () => buildHexViews(onLevel, viewOptions)),
+    [onLevel, viewOptions]
+  );
   const texturePatterns = useMemo(() => {
     const patterns = new Map<string, NonNullable<HexView["texture"]>>();
     for (const view of allViews) {

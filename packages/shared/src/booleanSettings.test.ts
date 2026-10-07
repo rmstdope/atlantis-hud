@@ -18,6 +18,7 @@ describe("the boolean settings table", () => {
       showShortcutsAtStartup: true,
       movementPlanner: false,
       orderOcd: false,
+      showPerformancePanel: false,
       countUpkeep: true
     });
   });

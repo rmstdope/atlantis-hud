@@ -217,6 +217,8 @@ import {
 import { runNewAgeFetch } from "./newAgeFetchRun";
 import { fetchedTurnName } from "./newAgeHistoryView";
 import { performNewAgeSend } from "./newAgeSend";
+import { timed, timedAsync } from "../perf";
+import { PerformancePanel } from "./PerformancePanel";
 import type { NewAgeSendPhase } from "./newAgeSendView";
 import { NEW_AGE_HOST, signInFailure } from "./newAgeSignInView";
 import { downloadNewOriginsReport, NEW_ORIGINS_HOST } from "./newOriginsApi";
@@ -691,15 +693,15 @@ export function AppShell({
     []
   );
 
-  const parseReport = useMemo(
-    () =>
-      parserWaitingForRuleset(
-        client,
-        () => rulesetSettled.current,
-        () => rulesetRef.current
-      ),
-    [client]
-  );
+  const parseReport = useMemo(() => {
+    const parse = parserWaitingForRuleset(
+      client,
+      () => rulesetSettled.current,
+      () => rulesetRef.current
+    );
+    // Timed for the performance panel; the wait for the ruleset is part of what a player waits for.
+    return (text: string) => timedAsync("parse report", () => parse(text));
+  }, [client]);
 
 
   // The game data dictionary, parsed once per ruleset load. `rulesetText` is null both while the
@@ -1128,6 +1130,7 @@ export function AppShell({
   const animateWater = useSettingsStore((state) => state.animateWaterTextures);
   const animateMovement = useSettingsStore((state) => state.animateMovement);
   const animateMapTheme = useSettingsStore((state) => state.animateMapTheme);
+  const showPerformancePanel = useSettingsStore((state) => state.showPerformancePanel);
   const movementAnimationSpeed = useSettingsStore((state) => state.movementAnimationSpeed);
   // Memoised, so the style keeps its identity across renders and the map's views are not rebuilt
   // every time AppShell renders.
@@ -1209,7 +1212,10 @@ export function AppShell({
   // could not be drawn (`memory.knownMap === null`) shows an empty lattice; the units panel, which
   // reads `parsed` rather than the map, still works.
   const model = useMemo(
-    () => (memory.knownMap ? buildHexMapModel(memory.knownMap) : EMPTY),
+    () => {
+      const known = memory.knownMap;
+      return known ? timed("build map model", () => buildHexMapModel(known)) : EMPTY;
+    },
     [memory.knownMap]
   );
 
@@ -2672,7 +2678,8 @@ export function AppShell({
    * file and nothing else.
    */
   const importReports = useCallback(
-    async (files: File[]) => {
+    // Timed whole for the performance panel: reading, parsing, merging and saving, as a player waits.
+    (files: File[]) => timedAsync("import reports", async () => {
       const route = routeFileImport(files);
       if (route.kind === "single") {
         const only = route.file;
@@ -2729,7 +2736,7 @@ export function AppShell({
       }
 
       await runBatch(batch, choice.factionId);
-    },
+    }),
     // Neither `client` nor `ruleset` is read here: both are reached through `parseReport`, which
     // is memoised on the client and waits for the ruleset through refs.
     [parsed, loadReport, flush, runBatch, chooseOrdersImport, parseReport]
@@ -6431,6 +6438,7 @@ export function AppShell({
         />
       ) : null}
       {keyboardPanels}
+      {showPerformancePanel ? <PerformancePanel platformLabel={platformLabel} /> : null}
     </div>
     {stopped ? (
       <StorageStoppedNotice words={stoppedNoticeWords(stopped)} onReload={reloadStopped} />

@@ -435,6 +435,8 @@ export function GlobalSettings() {
       <SettingFlag name="orderOcd" />
 
       <SettingFlag name="countUpkeep" />
+
+      <SettingFlag name="showPerformancePanel" />
     </div>
   );
 }

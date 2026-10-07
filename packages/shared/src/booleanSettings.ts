@@ -65,6 +65,17 @@ export const BOOLEAN_SETTINGS = {
     testId: "settings-animate-movement"
   },
   /**
+   * Whether the performance panel shows: frame rate, how long the heavy steps took, how big the map
+   * is, and a button that copies it all for a report. Off by default; it is a diagnostic, and
+   * counting frames is itself a little work on every frame while it is open.
+   */
+  showPerformancePanel: {
+    default: false,
+    title: "Show performance panel",
+    description: "Shows how smoothly the app is drawing and how long its heavy steps take, with a button to copy the figures into a report.",
+    testId: "settings-performance-panel"
+  },
+  /**
    * Whether the keyboard shortcuts overlay shows itself when the application starts.
    *
    * On by default, and the only piece of the interface that appears uninvited. It earns that: the
