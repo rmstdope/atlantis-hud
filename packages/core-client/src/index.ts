@@ -8,6 +8,8 @@ export {
   aBattle,
   aBlockedMove,
   aBattleUnit,
+  aKnownMap,
+  aKnownMapHex,
   aParsedReport,
   aReportHeaderInfo,
   aReportRegion,
