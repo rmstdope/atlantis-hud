@@ -50,6 +50,11 @@ import type {
  * (ah-wxk.2).
  */
 export type CoreWasmModule = {
+  /**
+   * Answers any query the core declares (ah-w83n), by the name `CORE_QUERIES` gives it, with its
+   * arguments in order. Throws the core's refusal as a string.
+   */
+  query(name: string, args: unknown[]): unknown;
   get_engine_info(): EngineInfo;
   parse_report_state(rawReport: string): ReportParseResult;
   parse_report_full_state(rawReport: string): ParsedReport;

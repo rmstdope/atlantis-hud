@@ -884,3 +884,4 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
 }
 
 export { createTauriAdapter, TAURI_COMMANDS, type TauriInvoke } from "./tauriCommands";
+export { CORE_QUERIES } from "./generated/CoreQueries";

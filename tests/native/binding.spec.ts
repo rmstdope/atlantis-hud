@@ -48,17 +48,16 @@ describe("tauri command binding", () => {
   /**
    * Every query the core declares crosses through the one `query` command (ah-w83n), so the sweep
    * above binds that command once; this asks the running shell for each declared query by name. An
-   * empty argument list is refused as arguments for every query that takes any - which is a pass:
-   * it means the name reached the core. Only `unknown core query` would mean the desktop does not
-   * expose a query the web does.
+   * empty argument list is answered by a query that takes none and refused *as arguments* by every
+   * other - both mean the name reached the core and was found. Anything else (`unknown core query`,
+   * a binding failure) is the desktop lacking a query the core declares.
    */
   for (const name of Object.values(CORE_QUERIES)) {
     it(`answers the core query ${name} over real IPC`, async () => {
       const result = await invokeNative("query", { name, args: [] });
 
       if (!result.ok) {
-        expect(result.error).not.toMatch(BINDING_FAILURE);
-        expect(result.error).not.toMatch(/^unknown core query/u);
+        expect(result.error).toMatch(/^arguments could not be read: /u);
       }
     });
   }

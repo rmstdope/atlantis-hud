@@ -29,12 +29,38 @@ use wasm_bindgen::prelude::*;
 /// as `undefined`. It also emits `undefined` for `Option::None`, which fails the `=== null` checks
 /// the TypeScript side writes against its own `T | null` types. Always go through this.
 fn to_js<T: Serialize + ?Sized>(value: &T) -> Result<JsValue, JsValue> {
-    let serializer = serde_wasm_bindgen::Serializer::new()
-        .serialize_maps_as_objects(true)
-        .serialize_missing_as_null(true);
     value
-        .serialize(&serializer)
+        .serialize(&js_serializer())
         .map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
+/// The one serializer configuration both [`to_js`] and [`query`] write through, so the two cannot
+/// drift apart on the two overrides above.
+fn js_serializer() -> serde_wasm_bindgen::Serializer {
+    serde_wasm_bindgen::Serializer::new()
+        .serialize_maps_as_objects(true)
+        .serialize_missing_as_null(true)
+}
+
+/// Answers any query the core declares in `atlantis_hud_core::queries` (ah-w83n): `name` is the
+/// query, `args` its arguments as a positional array.
+///
+/// This one export is why a new core query never touches this crate. The arguments are read
+/// straight from the JS values and the answer is written straight into JS objects, with no JSON
+/// text or intermediate tree between them.
+///
+/// # Errors
+///
+/// `unknown core query "<name>"` for an undeclared name, an argument error for the wrong number or
+/// shape of arguments, or the query's own refusal.
+#[wasm_bindgen]
+pub fn query(name: String, args: JsValue) -> Result<JsValue, JsValue> {
+    atlantis_hud_core::queries::answer(
+        &name,
+        serde_wasm_bindgen::Deserializer::from(args),
+        &js_serializer(),
+    )
+    .map_err(|error| JsValue::from_str(&error))
 }
 
 /// Reads a request object the TypeScript side built from a ts-rs type. The counterpart of [`to_js`].

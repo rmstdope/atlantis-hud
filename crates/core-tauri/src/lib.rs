@@ -2550,8 +2550,13 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
     #[test]
     fn tauri_adapter_answers_every_declared_query() {
         for name in atlantis_hud_core::queries::QUERY_NAMES {
+            // Answered (a query without parameters), or refused as arguments (every other): either
+            // way the name was found. Anything else would be the desktop lacking a query.
             if let Err(error) = command_query(name, serde_json::json!([])) {
-                assert!(!error.starts_with("unknown core query"), "{name}: {error}");
+                assert!(
+                    error.starts_with("arguments could not be read: "),
+                    "{name}: {error}"
+                );
             }
         }
     }
