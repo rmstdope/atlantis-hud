@@ -139,6 +139,8 @@ core_queries! {
     /// Deliberately **not** through the cache, for the reason `roster_skills` gives. The ruleset is
     /// taken because an orders document is read against a world's own comment syntax
     /// (`ah-g9sf.3`); one that will not parse falls back to `None`.
+    ///
+    /// A claim, not a fact: only the next turn's report can say where the unit came out.
     passage_claims(raw_report: String, orders_document: String, ruleset_json: String) -> Vec<PassageClaim> {
         let report = crate::report::parse_report_full(&raw_report);
         let ruleset = crate::movement::rules::Ruleset::from_json(&ruleset_json).ok();
@@ -183,7 +185,9 @@ core_queries! {
             .collect())
     }
 
-    /// Every word the rules know, for the editor that has to spot a keyword as it is typed.
+    /// Every word the rules know, uppercase and sorted: the order names, the grammar's own fixed
+    /// words, and - when a ruleset is passed - the item and skill tags and the words of their names.
+    /// What Order OCD uppercases as the player types.
     order_vocabulary(ruleset_json: Option<String>) -> Vec<String> {
         let ruleset =
             with_global(|cache| ruleset_json.as_deref().and_then(|json| cache.ruleset(json).ok()));
@@ -199,8 +203,9 @@ core_queries! {
         })
     }
 
-    /// Every named unit written out as a report fragment an ally can read back. Rejects when the
-    /// unit ids cannot be read; an empty list is a header and no units.
+    /// Every named unit written out as a report fragment an ally can read back. The unit ids are a
+    /// JSON array; the caller decides who is a mage, so the core never asks the ruleset. Rejects
+    /// when the unit ids cannot be read; an empty list is a header and no units.
     export_mage_sheet(raw_report: String, unit_ids_json: String) -> String {
         with_global(|cache| {
             crate::report::export::export_mage_sheet_text(cache, &raw_report, &unit_ids_json)

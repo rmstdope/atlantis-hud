@@ -17,7 +17,9 @@ import {
   type MapExportRequest,
   type RememberedRegion,
   type TauriInvoke,
-  type ValidateOrdersRequest
+  type ValidateOrdersRequest,
+  type CoreQueries,
+  CORE_QUERIES
 } from "./index";
 
 /** A validation with nothing but the orders: no ruleset, no report, the core's own defaults. */
@@ -39,6 +41,17 @@ expectTypeOf<Awaited<ReturnType<CoreAdapter["loadImportedTurn"]>>>().toEqualType
   ImportedTurnRecord | null
 >();
 expectTypeOf<Awaited<ReturnType<CoreAdapter["deleteHexNote"]>>>().toEqualTypeOf<void>();
+
+/**
+ * One `vi.fn()` per query the core declares, derived from `CORE_QUERIES` so a query added in
+ * `crates/core/src/queries.rs` needs no line here (ah-w83n). Each resolves with nothing; a test that
+ * cares what one answers overrides it.
+ */
+function queryFakes(): CoreQueries {
+  return Object.fromEntries(
+    Object.keys(CORE_QUERIES).map((method) => [method, vi.fn().mockResolvedValue(undefined)])
+  ) as unknown as CoreQueries;
+}
 
 /**
  * One value per `CoreAdapter` method, typed against it - the compiler checks this helper is
@@ -94,12 +107,7 @@ function fakeAdapter(overrides: Partial<CoreAdapter> = {}): CoreAdapter {
   };
 
   return {
-    getEngineInfo: vi.fn().mockResolvedValue({
-      id: "atlantis",
-      name: "Atlantis PBEM",
-      rulesetVersion: "4.0",
-      maxFactionCount: 128
-    }),
+    ...queryFakes(),
     listGames: vi.fn().mockResolvedValue([gameManifest]),
     createGame: vi.fn().mockResolvedValue(openedGame),
     openGame: vi.fn().mockResolvedValue(openedGame),
@@ -112,10 +120,6 @@ function fakeAdapter(overrides: Partial<CoreAdapter> = {}): CoreAdapter {
     // `parseReportFull`/`parseReportClassified` resolve with a `ParsedReport`, not a
     // `ReportParseResult` - a different shape, caught by Copilot review on PR #331.
     parseReportFull: vi.fn().mockResolvedValue(aParsedReport()),
-    rosterSkills: vi.fn().mockResolvedValue([]),
-    passageClaims: vi.fn().mockResolvedValue([]),
-    shelterSeats: vi.fn().mockResolvedValue([]),
-    parseReportClassified: vi.fn().mockResolvedValue(aParsedReport()),
     previewReportImport: vi.fn().mockResolvedValue({
       parseResult: reportParseResult,
       duplicatePreview: {
@@ -132,19 +136,13 @@ function fakeAdapter(overrides: Partial<CoreAdapter> = {}): CoreAdapter {
       parsedChanged: false,
       warningsChanged: false
     }),
-    validateOrders: vi.fn().mockResolvedValue({ diagnostics: [] }),
-    orderCommands: vi.fn().mockResolvedValue(["GIVE", "MOVE", "WORK"]),
-    orderVocabulary: vi.fn().mockResolvedValue(["ALL", "MOVE", "SILV"]),
     orderArgumentCompletions: vi.fn().mockResolvedValue([]),
     completionsAtCaret: vi
       .fn()
       .mockResolvedValue({ position: "nowhere", wordStart: 0, word: "", options: [] }),
     planRoute: vi.fn().mockResolvedValue({ plan: null, problem: null, risk: null, fullyModelled: true }),
     traceMoveOrders: vi.fn().mockResolvedValue({ path: null }),
-    exportMap: vi.fn().mockResolvedValue("; Map export from Atlantis HUD\n"),
-    exportMageSheet: vi.fn().mockResolvedValue("; Mage sheet from Atlantis HUD\n"),
     knownMap: vi.fn().mockResolvedValue({ hexes: [], levels: [], currentTurn: null }),
-    previewOrders: vi.fn().mockResolvedValue({ regions: [] }),
     tradeRoutes: vi.fn().mockResolvedValue([]),
     loadRegionSightings: vi.fn().mockResolvedValue([]),
     mergeReport: vi.fn().mockResolvedValue({
@@ -232,6 +230,30 @@ describe("core client tauri adapter contract", () => {
 });
 
 /**
+ * Every query the core declares (ah-w83n) reaches the desktop through the one `query` command:
+ * the method's name is looked up in `CORE_QUERIES`, and its arguments cross in order.
+ */
+describe("the core's declared queries on the desktop", () => {
+  it("invokes every declared query through the one query command, arguments in order", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args });
+      return Promise.resolve("answered" as T);
+    };
+    const adapter = createTauriAdapter(invoke) as unknown as Record<
+      string,
+      (...args: unknown[]) => Promise<unknown>
+    >;
+
+    for (const [method, name] of Object.entries(CORE_QUERIES)) {
+      calls.length = 0;
+      await expect(adapter[method]("first", null, 3)).resolves.toBe("answered");
+      expect(calls, method).toEqual([{ command: "query", args: { name, args: ["first", null, 3] } }]);
+    }
+  });
+});
+
+/**
  * Merging an ally's report, across the same boundary as everything else. The argument names
  * themselves are pinned once, generically, in `tauriCommands.test.ts` — these tests are about the
  * behaviour on top of that: absent values, and how a diagnostic's fields carry through.
@@ -255,7 +277,7 @@ describe("merging an allied report", () => {
 
     await createCoreClient(createTauriAdapter(invoke)).validateOrders(bareValidation("@work"));
 
-    expect(calls).toEqual([{ request: bareValidation("@work") }]);
+    expect(calls).toEqual([{ name: "validate_orders", args: [bareValidation("@work")] }]);
   });
 
   it("carries the column span a diagnostic points at", async () => {
@@ -347,7 +369,7 @@ describe("merging an allied report", () => {
       "MOVE",
       "WORK"
     ]);
-    expect(calls).toEqual(["order_commands"]);
+    expect(calls).toEqual(["query"]);
   });
 
   it("asks tauri for every word the rules know, passing the ruleset", async () => {
@@ -360,8 +382,8 @@ describe("merging an allied report", () => {
     await expect(
       createCoreClient(createTauriAdapter(invoke)).orderVocabulary("{}")
     ).resolves.toEqual(["ALL", "MOVE", "SILV"]);
-    expect(calls.map((call) => call.command)).toEqual(["order_vocabulary"]);
-    expect(calls[0].args).toEqual({ ruleset_json: "{}" });
+    expect(calls.map((call) => call.command)).toEqual(["query"]);
+    expect(calls[0].args).toEqual({ name: "order_vocabulary", args: ["{}"] });
   });
 
   it("asks tauri for merged reports by faction and turn", async () => {

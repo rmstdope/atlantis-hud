@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createWebCoreAdapter, type CoreWasmModule } from "./webCoreAdapter";
+import { CORE_QUERIES } from "@atlantis/core-client";
 import {
   aKnownMap,
   aReportHeaderInfo,
@@ -14,7 +15,6 @@ import {
   type ParsedReport,
   type ReportParseResult,
   type ReportRegion,
-  type PreviewOrdersRequest,
   type TraceMoveOrdersRequest,
   type TradeRoute,
   type ValidateOrdersRequest
@@ -79,28 +79,14 @@ const FAKE_TRADE_ROUTES: TradeRoute[] = [
  */
 function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
   const stubs: Partial<CoreWasmModule> = {
-    get_engine_info: () => ({
-      id: "atlantis",
-      name: "Atlantis PBEM",
-      rulesetVersion: "4.0",
-      maxFactionCount: 128
-    }),
+    // Every declared query (ah-w83n) answers with what it was asked, so a test can prove the name
+    // and the arguments crossed unshuffled. What each answers is the real core's business,
+    // pinned by the *.wasm.test.ts suites.
+    query: (name: string, args: unknown[]) => ({ query: name, args }),
     // `raw` rides along as an extra field (harmless - it is not part of `ReportParseResult`) so the
     // "routes logic calls to the core" test below can prove the argument crossed unshuffled.
     parse_report_state: (raw: string) => ({ ...EMPTY_PARSE_RESULT, raw }),
     parse_report_full_state: (_raw: string) => EMPTY_PARSED_REPORT,
-    roster_skills_state: (_raw: string) => [],
-    parse_report_classified_state: (_raw: string, _ruleset: string) => EMPTY_PARSED_REPORT,
-    validate_orders_state: (request: ValidateOrdersRequest) => ({
-      diagnostics: [],
-      silver: [],
-      production: { limits: { pooled: null, tax: null, trade: null }, regions: [] },
-      students: { quartermasters: 0, mages: 0, apprentices: 0 },
-      faction: { applied: null, lastFailure: null },
-      echoed: request
-    }),
-    order_commands_state: () => ["GIVE", "MOVE", "WORK"],
-    order_vocabulary_state: () => ["ALL", "MOVE", "SILV"],
     order_argument_completions_state: () => [],
     completions_at_caret_state: () => ({
       position: "nowhere" as const,
@@ -109,8 +95,6 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       options: [],
       endingCommands: []
     }),
-    export_map_state: (rawReport: string, rememberedJson: string, requestJson: string) =>
-      `; Map export from Atlantis HUD\n; ${rawReport} ${rememberedJson} ${requestJson}\n`,
     known_map_state: (rawReport: string, rulesetJson: string | null, rememberedJson: string) => ({
       ...aKnownMap({ currentTurn: null }),
       echoed: { rawReport, rulesetJson, rememberedJson }
@@ -130,11 +114,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       echoed: { rulesetJson, rawReport, rememberedJson, unitId, destination, mapJson }
     }),
     trace_move_orders_state: (request: TraceMoveOrdersRequest) => ({ path: null, echoed: request }),
-    preview_orders_state: (request: PreviewOrdersRequest) => ({ regions: [], echoed: request }),
     trade_routes_state: () => FAKE_TRADE_ROUTES,
-    shelter_seats_state: (rawReport: string, rulesetJson: string) => [
-      { regionId: rawReport, structureId: rulesetJson, seats: null }
-    ],
     prepare_report_import_state: (raw: string, confirmedFactionId: string) => {
       const hasTurn = raw.includes("TURN: 12");
       const factionMatches = raw.includes(`FACTION: ${confirmedFactionId}`);
@@ -483,16 +463,10 @@ describe("web core adapter", () => {
   it("routes logic calls to the core rather than to storage", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    expect(await adapter.getEngineInfo()).toEqual({
-      id: "atlantis",
-      name: "Atlantis PBEM",
-      rulesetVersion: "4.0",
-      maxFactionCount: 128
-    });
     expect(await adapter.parseReport("anything")).toMatchObject({ raw: "anything" });
-    // Every argument is asserted, not just the orders: the report and the option are what the
-    // checks that read the turn depend on, and an adapter that dropped them would still return a
-    // perfectly well-shaped answer with half the checks silently not run.
+    // Every field of the request is asserted, not just the orders: the report and the options are
+    // what the checks that read the turn depend on, and an adapter that dropped them would still
+    // return a perfectly well-shaped answer with half the checks silently not run.
     const validation: ValidateOrdersRequest = {
       rawOrders: "MOVE R1 R2",
       rulesetJson: null,
@@ -503,29 +477,9 @@ describe("web core adapter", () => {
       rememberedJson: "[]"
     };
     expect(await adapter.validateOrders(validation)).toEqual({
-      diagnostics: [],
-      silver: [],
-      production: { limits: { pooled: null, tax: null, trade: null }, regions: [] },
-      students: { quartermasters: 0, mages: 0, apprentices: 0 },
-      faction: { applied: null, lastFailure: null },
-      echoed: validation
+      query: "validate_orders",
+      args: [validation]
     });
-    expect(await adapter.orderCommands(null)).toEqual(["GIVE", "MOVE", "WORK"]);
-  });
-
-  it("hands the ruleset to the wasm vocabulary call", async () => {
-    let seen: string | null | undefined;
-    const adapter = createWebCoreAdapter(
-      fakeWasm({
-        order_vocabulary_state: (rulesetJson: string | null) => {
-          seen = rulesetJson;
-          return ["ALL", "MOVE", "SILV"];
-        }
-      })
-    );
-
-    expect(await adapter.orderVocabulary("{}")).toEqual(["ALL", "MOVE", "SILV"]);
-    expect(seen).toBe("{}");
   });
 
   it("routes an argument-completion call to the core, every argument included", async () => {
@@ -1678,14 +1632,39 @@ describe("finding trade routes", () => {
   });
 });
 
-describe("counting shelter seats", () => {
-  /** The seat rule is the core's (ah-29p5); the adapter passes the report and ruleset in order. */
-  it("passes the report and the ruleset straight to the core, unshuffled", async () => {
-    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+/**
+ * Every query the core declares (ah-w83n) goes to the module's one `query` export, by the name
+ * `CORE_QUERIES` gives it, with its arguments in order - so a query added to the core needs nothing
+ * in this adapter.
+ */
+describe("the core's declared queries in the browser", () => {
+  it("answers every declared query through the wasm query export, arguments in order", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore()) as unknown as Record<
+      string,
+      (...args: unknown[]) => Promise<unknown>
+    >;
 
-    const seats = await adapter.shelterSeats("{report}", "{ruleset}");
+    for (const [method, name] of Object.entries(CORE_QUERIES)) {
+      await expect(adapter[method]("first", null, 3), method).resolves.toEqual({
+        query: name,
+        args: ["first", null, 3]
+      });
+    }
+  });
 
-    expect(seats).toEqual([{ regionId: "{report}", structureId: "{ruleset}", seats: null }]);
+  it("rejects with the core's refusal rather than throwing it", async () => {
+    const adapter = createWebCoreAdapter(
+      fakeWasm({
+        query: () => {
+          throw "arguments could not be read: invalid length 0";
+        }
+      }),
+      createMemoryWebStore()
+    );
+
+    await expect(adapter.shelterSeats("report", "ruleset")).rejects.toBe(
+      "arguments could not be read: invalid length 0"
+    );
   });
 });
 

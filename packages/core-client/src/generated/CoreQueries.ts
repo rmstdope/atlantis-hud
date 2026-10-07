@@ -30,6 +30,8 @@ export type CoreQueries = {
    * Deliberately **not** through the cache, for the reason `roster_skills` gives. The ruleset is
    * taken because an orders document is read against a world's own comment syntax
    * (`ah-g9sf.3`); one that will not parse falls back to `None`.
+   *
+   * A claim, not a fact: only the next turn's report can say where the unit came out.
    */
   passageClaims(rawReport: string, ordersDocument: string, rulesetJson: string): Promise<Array<PassageClaim>>;
   /**
@@ -56,7 +58,9 @@ export type CoreQueries = {
    */
   orderCommands(rulesetJson: string | null): Promise<Array<string>>;
   /**
-   * Every word the rules know, for the editor that has to spot a keyword as it is typed.
+   * Every word the rules know, uppercase and sorted: the order names, the grammar's own fixed
+   * words, and - when a ruleset is passed - the item and skill tags and the words of their names.
+   * What Order OCD uppercases as the player types.
    */
   orderVocabulary(rulesetJson: string | null): Promise<Array<string>>;
   /**
@@ -66,8 +70,9 @@ export type CoreQueries = {
    */
   exportMap(rawReport: string, rememberedJson: string, requestJson: string): Promise<string>;
   /**
-   * Every named unit written out as a report fragment an ally can read back. Rejects when the
-   * unit ids cannot be read; an empty list is a header and no units.
+   * Every named unit written out as a report fragment an ally can read back. The unit ids are a
+   * JSON array; the caller decides who is a mage, so the core never asks the ruleset. Rejects
+   * when the unit ids cannot be read; an empty list is a header and no units.
    */
   exportMageSheet(rawReport: string, unitIdsJson: string): Promise<string>;
   /**

@@ -8,7 +8,7 @@ import { createMemoryWebStore } from "./webStore";
 /**
  * Exercises the real WebAssembly core rather than a stand-in.
  *
- * `CoreWasmModule` declares `roster_skills_state`'s return type and nothing re-validates it at
+ * `CoreQueries` declares `rosterSkills`'s return type and nothing re-validates it at
  * runtime (`docs/adapter-api.md`), so this is the one test that proves the declaration is not a
  * lie.
  */

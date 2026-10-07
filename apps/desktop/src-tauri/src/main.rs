@@ -138,7 +138,6 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
         .invoke_handler(tauri::generate_handler![
-            atlantis_hud_core_tauri::command_get_engine_info,
             create_game,
             open_game,
             list_games,
@@ -154,9 +153,6 @@ fn main() {
             atlantis_hud_core_tauri::command_load_imported_turn,
             atlantis_hud_core_tauri::command_load_latest_imported_turn,
             atlantis_hud_core_tauri::command_list_imported_turns,
-            atlantis_hud_core_tauri::command_validate_orders,
-            atlantis_hud_core_tauri::command_order_commands,
-            atlantis_hud_core_tauri::command_order_vocabulary,
             atlantis_hud_core_tauri::command_order_argument_completions,
             atlantis_hud_core_tauri::command_completions_at_caret,
             atlantis_hud_core_tauri::command_save_order_draft,
@@ -172,19 +168,12 @@ fn main() {
             atlantis_hud_core_tauri::command_list_study_plans,
             atlantis_hud_core_tauri::command_save_study_plans,
             atlantis_hud_core_tauri::command_plan_route,
-            atlantis_hud_core_tauri::command_export_map,
-            atlantis_hud_core_tauri::command_export_mage_sheet,
             atlantis_hud_core_tauri::command_known_map,
             atlantis_hud_core_tauri::command_trace_move_orders,
-            atlantis_hud_core_tauri::command_preview_orders,
             atlantis_hud_core_tauri::command_load_region_sightings,
             atlantis_hud_core_tauri::command_merge_report,
             atlantis_hud_core_tauri::command_load_merged_reports,
-            atlantis_hud_core_tauri::command_parse_report_classified,
             atlantis_hud_core_tauri::command_trade_routes,
-            atlantis_hud_core_tauri::command_roster_skills,
-            atlantis_hud_core_tauri::command_passage_claims,
-            atlantis_hud_core_tauri::command_shelter_seats,
             atlantis_hud_core_tauri::command_query
         ])
         .run(tauri::generate_context!())
