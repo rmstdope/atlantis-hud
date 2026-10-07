@@ -7,6 +7,12 @@
 //! three times while the panel beside it showed the right answer (`ah-titf`, `ah-0wpn`, `ah-o6qy`;
 //! consolidated by `ah-2xw5`). This runs one document through both and asserts one answer, so a
 //! drift in either input fails here rather than shipping.
+//!
+//! One divergence remains, in the input rather than the rule: a unit this month's `FORM` creates
+//! has no printed weight on the check's side (`effects::formed_unit` leaves `weight: None`), so the
+//! check cannot say it is overloaded while the panel, starting it from nothing, can. Closing it
+//! adds problems the Problems list does not raise today, so it is its own bead (filed from
+//! `ah-2xw5`'s review).
 
 use super::effects::preview_orders_for_remembered_report;
 use super::semantics::carrying_for_tests;
@@ -22,6 +28,14 @@ const RULESET: &str = atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON;
 /// `data/HUMN` weighs 10 and walks 5; `data/HORS` weighs 50 and rides and walks 20, carrying itself;
 /// `data/STON` weighs 50.
 fn report_text() -> String {
+    report_text_weighing_riders(30)
+}
+
+/// [`report_text`] with Riders' printed `Weight:` set to `riders_weight`.
+fn report_text_weighing_riders(riders_weight: i64) -> String {
+    let riders = format!(
+        "* Riders (2871), Foo (1), 3 humans [HUMN]. Weight: {riders_weight}. Capacity: 0/0/45/0."
+    );
     [
         "Foo (1) Report",
         "",
@@ -30,7 +44,7 @@ fn report_text() -> String {
         "Exits:",
         "  North : plain (1,0) in Nowhere.",
         "",
-        "* Riders (2871), Foo (1), 3 humans [HUMN]. Weight: 30. Capacity: 0/0/45/0.",
+        riders.as_str(),
         "* Tamers (2442), Foo (1), human [HUMN], 4 horses [HORS]. Weight: 210. \
          Capacity: 0/280/295/0.",
         "* Quarry (3000), Foo (1), human [HUMN], 4 stone [STON]. Weight: 210. \
@@ -46,10 +60,14 @@ const RIDERS: &str = "unit 2442\nGIVE 2871 4 HORS\n\
 
 /// `(weight, ride, walk)` as the unit panel shows Riders.
 fn by_panel(orders: &str) -> (i64, i64, i64) {
+    by_panel_of(&report_text(), orders)
+}
+
+fn by_panel_of(report_text: &str, orders: &str) -> (i64, i64, i64) {
     let response = preview_orders_for_remembered_report(
         &mut ReportCache::new(),
         RULESET,
-        &report_text(),
+        report_text,
         "[]",
         orders,
     )
@@ -66,8 +84,12 @@ fn by_panel(orders: &str) -> (i64, i64, i64) {
 
 /// `(weight, ride, walk)` as the overload check reads Riders.
 fn by_check(orders: &str) -> (i64, i64, i64) {
+    by_check_of(&report_text(), orders)
+}
+
+fn by_check_of(report_text: &str, orders: &str) -> (i64, i64, i64) {
     let ruleset = Ruleset::from_json(RULESET).expect("the ruleset loads");
-    let mut report = parse_report_full(&report_text());
+    let mut report = parse_report_full(report_text);
     classify_units(&mut report, &ruleset);
     let carrying = carrying_for_tests(&report, orders, Some(&ruleset))
         .into_iter()
@@ -95,4 +117,15 @@ fn the_panel_and_the_overload_check_agree_when_the_riders_are_really_overloaded(
     // 210 + 4 x 50 = 410 against the same 295
     assert_eq!(by_check(&orders), (410, 280, 295));
     assert_eq!(by_panel(&orders), by_check(&orders));
+}
+
+/// The panel used to weigh a unit by summing its item list, the check by repricing the printed
+/// `Weight:`. A report whose printed weight is not its item sum tells the two rules apart, so this
+/// is what fails if either side stops reading the shared one: 35 - 2 x 10 + 4 x 50 = 215, where an
+/// item sum would say 210.
+#[test]
+fn both_reprice_the_printed_weight_rather_than_summing_the_items() {
+    let report = report_text_weighing_riders(35);
+    assert_eq!(by_check_of(&report, RIDERS), (215, 280, 295));
+    assert_eq!(by_panel_of(&report, RIDERS), by_check_of(&report, RIDERS));
 }

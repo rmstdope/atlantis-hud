@@ -318,12 +318,16 @@ pub struct Carrying {
 /// each, with their own fallbacks, and the check was corrected in its copy three times while the
 /// panel beside it showed the right answer (`ah-titf`, `ah-0wpn`, `ah-o6qy`; consolidated by
 /// `ah-2xw5`). Each caller supplies only the input - what the report printed, and every tag the
-/// unit holds as it steps off - so the two can differ in presentation and nothing else.
+/// unit holds as it steps off - so the two can differ in presentation and in their input, and the
+/// rule cannot drift between them. (The check's input has no printed weight for a unit formed this
+/// month; see `orders::carrying_agreement`.)
 ///
 /// `reported_weight` and `reported_items` are the report's own `Weight:` and item list; a unit
 /// this month's `FORM` creates passes `Some(0)` and nothing. `stepping_off` is the unit's whole
 /// holding once GIVE, TAKE and the market have run (`rules/sequenceofevents` weighs a unit as it
 /// holds them when it moves).
+/// It names each tag once, as both callers build it: the weight is
+/// repriced per entry against the report's total for that tag.
 ///
 /// The weight is the printed figure plus every change the ruleset can price. A change it cannot
 /// price contributes nothing and the unit keeps the report's weight for that part - the
