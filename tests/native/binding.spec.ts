@@ -57,7 +57,8 @@ describe("tauri command binding", () => {
       const result = await invokeNative("query", { name, args: [] });
 
       if (!result.ok) {
-        expect(result.error).toMatch(/^arguments could not be read: /u);
+        // Unanchored: the WebDriver bridge wraps the core's text as `WebDriverError: … when running …`.
+        expect(result.error).toMatch(/arguments could not be read: /u);
       }
     });
   }
