@@ -580,7 +580,16 @@ describe("map theme stylesheets", () => {
         const sea = block(sheet.source, `.${prefix}-ocean`).replace(/^[^{]*\{/, "");
         const lake = block(sheet.source, `.${prefix}-lake`).replace(/^[^{]*\{/, "");
         for (const [mode, root] of Object.entries(modes)) {
-          if (lake === "" || resolved(sea, root) === resolved(lake, root)) {
+          const seaValue = resolved(sea, root);
+          const lakeValue = resolved(lake, root);
+          // A shade missing from either mode's block, or a rule not found at all, is a failure
+          // too: light would quietly fall back to dark's lake.
+          if (
+            sea === "" ||
+            lake === "" ||
+            /\bunset --/.test(`${seaValue} ${lakeValue}`) ||
+            seaValue === lakeValue
+          ) {
             same.push(`${sheet.theme} ${mode}: .${prefix}-lake`);
           }
         }

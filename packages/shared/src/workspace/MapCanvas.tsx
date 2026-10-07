@@ -531,10 +531,10 @@ const LAKE_FRESH_FILTER_ID = "lake-fresh";
 function LakeFreshFilter() {
   return (
     <filter id={LAKE_FRESH_FILTER_ID} colorInterpolationFilters="sRGB">
-      <feColorMatrix type="hueRotate" values="-22" />
+      <feColorMatrix type="hueRotate" values="-24" />
       <feComponentTransfer>
-        <feFuncR type="linear" slope="1.15" intercept="0.04" />
-        <feFuncG type="linear" slope="1.2" intercept="0.06" />
+        <feFuncR type="linear" slope="1.15" intercept="0.05" />
+        <feFuncG type="linear" slope="1.22" intercept="0.07" />
         <feFuncB type="linear" slope="1.05" intercept="0.03" />
       </feComponentTransfer>
     </filter>
