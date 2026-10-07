@@ -191,7 +191,9 @@ describe("the biome texture rotation setting", () => {
     expect(html).toContain('class="ml-4 space-y-2 border-l-2 border-brass/40 pl-2"');
     expect(tag(html, "settings-biome-texture-rotation")).toContain("disabled");
     expect(html).toContain("Animate water textures");
-    expect(tag(html, "settings-animate-water-textures")).toContain("disabled");
+    // The ocean only, since a lake stays still (ah-vsjg); and the reason large maps keep it still.
+    expect(html).toContain("Moves ocean textures along their texture direction.");
+    expect(tag(html, "settings-water-animation")).toContain("disabled");
   });
 });
 

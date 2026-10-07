@@ -53,7 +53,7 @@ export function PerformancePanel({ platformLabel }: { platformLabel: string }) {
   const settings = {
     mapTheme: useSettingsStore((state) => state.mapTheme),
     biomeTextures: useSettingsStore((state) => state.biomeTextures),
-    animateWaterTextures: useSettingsStore((state) => state.animateWaterTextures),
+    waterAnimation: useSettingsStore((state) => state.waterAnimation),
     animateMapTheme: useSettingsStore((state) => state.animateMapTheme),
     animateMovement: useSettingsStore((state) => state.animateMovement)
   };
@@ -98,7 +98,7 @@ export function PerformancePanel({ platformLabel }: { platformLabel: string }) {
       ...steps.map(
         (step) => `${step.step}: last ${ms(step.last)}, median ${ms(step.median)}, worst ${ms(step.worst)} (${step.count} runs)`
       ),
-      `Settings: theme ${settings.mapTheme}, textures ${settings.biomeTextures ? "on" : "off"}, water ${settings.animateWaterTextures ? "moving" : "still"}, theme animation ${settings.animateMapTheme ? "on" : "off"}, route animation ${settings.animateMovement ? "on" : "off"}`,
+      `Settings: theme ${settings.mapTheme}, textures ${settings.biomeTextures ? "on" : "off"}, water ${settings.waterAnimation}, theme animation ${settings.animateMapTheme ? "on" : "off"}, route animation ${settings.animateMovement ? "on" : "off"}`,
       `Machine: ${box.cores} cores, memory ${box.memory}, screen ${box.screen}`,
       `Browser: ${box.agent}`
     ];

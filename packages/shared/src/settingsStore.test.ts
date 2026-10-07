@@ -71,8 +71,25 @@ describe("settings store", () => {
     expect(store().biomeTextureRotation).toBe(true);
   });
 
-  it("enables water texture animation by default", () => {
-    expect(store().animateWaterTextures).toBe(true);
+  it("moves the water on small maps only, by default", () => {
+    expect(store().waterAnimation).toBe("small-maps");
+  });
+
+  it("keeps a player's old 'water off' as still water when the checkbox becomes a choice", () => {
+    // A blob from before the choice: no `waterAnimation`, and the old checkbox turned off.
+    useSettingsStore.setState({ animateWaterTextures: false } as never);
+    applyPersistedSettings();
+    expect(store().waterAnimation).toBe("never");
+  });
+
+  it("lets the old default land on the new default, and a value it does not know too", () => {
+    useSettingsStore.setState({ animateWaterTextures: true } as never);
+    applyPersistedSettings();
+    expect(store().waterAnimation).toBe("small-maps");
+
+    useSettingsStore.setState({ waterAnimation: "sometimes" } as never);
+    applyPersistedSettings();
+    expect(store().waterAnimation).toBe("small-maps");
   });
 
   /**
@@ -255,9 +272,9 @@ describe("settings store", () => {
     expect(store().biomeTextureRotation).toBe(false);
   });
 
-  it("persists the water texture animation preference", async () => {
-    store().setFlag("animateWaterTextures", false);
-    expect(store().animateWaterTextures).toBe(false);
+  it("persists the water choice", async () => {
+    store().setWaterAnimation("always");
+    expect(store().waterAnimation).toBe("always");
 
     const storage = useSettingsStore.persist.getOptions().storage;
     const persisted = await storage?.getItem("atlantis-hud-settings");
@@ -265,11 +282,11 @@ describe("settings store", () => {
       throw new Error("settings storage was not available");
     }
 
-    useSettingsStore.setState({ animateWaterTextures: true });
+    useSettingsStore.setState({ waterAnimation: "never" });
     await storage.setItem("atlantis-hud-settings", persisted);
     await useSettingsStore.persist.rehydrate();
 
-    expect(store().animateWaterTextures).toBe(false);
+    expect(store().waterAnimation).toBe("always");
   });
 
   it("persists every boolean setting, whichever it is", async () => {

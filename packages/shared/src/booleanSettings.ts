@@ -46,13 +46,6 @@ export const BOOLEAN_SETTINGS = {
     description: "Lets the map theme move: animated selection, sweeping light, bobbing figures.",
     testId: "settings-animate-map-theme"
   },
-  animateWaterTextures: {
-    default: true,
-    title: "Animate water textures",
-    description: "Moves ocean textures along their texture direction.",
-    testId: "settings-animate-water-textures",
-    requires: "biomeTextures"
-  },
   /**
    * Whether a spark runs along the drawn movement line. The line itself is the workspace's
    * Movement layer, which lives in another store, so the dialog disables this one by hand while

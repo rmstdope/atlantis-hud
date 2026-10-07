@@ -15,6 +15,12 @@ import { normalizeSnippets, type OrderSnippet } from "./orderSnippets";
 import { DEFAULT_MAP_THEME_ID, isMapThemeId } from "./workspace/mapThemes";
 import { DEFAULT_TEXTURE_SET_ID, knownTextureSet } from "./workspace/textureSets";
 import {
+  DEFAULT_WATER_ANIMATION,
+  fromLegacyAnimateWater,
+  knownWaterAnimation,
+  type WaterAnimation
+} from "./waterAnimation";
+import {
   clampMovementAnimationSpeed,
   DEFAULT_MOVEMENT_ANIMATION_SPEED
 } from "./workspace/routeCometPath";
@@ -116,6 +122,8 @@ export type SettingsState = BooleanSettings & {
    * scale and never moves with it.
    */
   interfaceSize: number;
+  /** Whether the ocean's texture moves: on small maps (the default), always, or never. */
+  waterAnimation: WaterAnimation;
   /** How fast the movement line's spark runs, in hexes per second. */
   movementAnimationSpeed: number;
   /**
@@ -138,6 +146,7 @@ export type SettingsState = BooleanSettings & {
   setPaneTransparency: (percent: number) => void;
   setInterfaceSize: (percent: number) => void;
   setMovementAnimationSpeed: (hexesPerSecond: number) => void;
+  setWaterAnimation: (choice: WaterAnimation) => void;
   setAdvisoryCheck: (code: AdvisoryCheckCode, enabled: boolean) => void;
   /** Turns one of `BOOLEAN_SETTINGS` on or off. */
   setFlag: (key: BooleanSettingKey, value: boolean) => void;
@@ -154,6 +163,7 @@ type Persisted = Pick<
   | "paneTransparency"
   | "interfaceSize"
   | "movementAnimationSpeed"
+  | "waterAnimation"
   | "advisoryChecks"
   | "snippets"
 > &
@@ -312,6 +322,7 @@ const DEFAULTS: Persisted = {
   paneTransparency: { ...DEFAULT_PANE_TRANSPARENCY },
   interfaceSize: DEFAULT_INTERFACE_SIZE,
   movementAnimationSpeed: DEFAULT_MOVEMENT_ANIMATION_SPEED,
+  waterAnimation: DEFAULT_WATER_ANIMATION,
   advisoryChecks: DEFAULT_ADVISORY_CHECKS,
   snippets: []
 };
@@ -350,6 +361,10 @@ export const useSettingsStore = create<SettingsState>()(
         const clamped = clampInterfaceSize(percent);
         applyInterfaceSize(clamped);
         set({ interfaceSize: clamped });
+      },
+
+      setWaterAnimation: (choice) => {
+        set({ waterAnimation: knownWaterAnimation(choice) });
       },
 
       setMovementAnimationSpeed: (hexesPerSecond) => {
@@ -393,6 +408,7 @@ export const useSettingsStore = create<SettingsState>()(
         paneTransparency: state.paneTransparency,
         interfaceSize: state.interfaceSize,
         movementAnimationSpeed: state.movementAnimationSpeed,
+        waterAnimation: state.waterAnimation,
         advisoryChecks: state.advisoryChecks,
         snippets: state.snippets
       })
@@ -417,6 +433,15 @@ export function applyPersistedSettings() {
   const interfaceSize = clampInterfaceSize(useSettingsStore.getState().interfaceSize);
   useSettingsStore.setState({ interfaceSize });
   applyInterfaceSize(interfaceSize);
+  // The water's choice: a value this build does not know is the default, and a blob from before the
+  // choice existed carries the old checkbox instead - a player who had turned it off keeps still
+  // water (see `fromLegacyAnimateWater`). Read through the same unknown-key door as the advisory
+  // checks below, since rehydration merges keys this build no longer declares.
+  {
+    const current = useSettingsStore.getState() as unknown as { waterAnimation?: unknown; animateWaterTextures?: unknown };
+    const legacy = current.waterAnimation === DEFAULT_WATER_ANIMATION ? fromLegacyAnimateWater(current.animateWaterTextures) : null;
+    useSettingsStore.setState({ waterAnimation: legacy ?? knownWaterAnimation(current.waterAnimation) });
+  }
   // And for the spark's speed: anything off the slider's stops, or missing from an older blob.
   useSettingsStore.setState({
     movementAnimationSpeed: clampMovementAnimationSpeed(

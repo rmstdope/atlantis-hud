@@ -219,6 +219,7 @@ import { fetchedTurnName } from "./newAgeHistoryView";
 import { performNewAgeSend } from "./newAgeSend";
 import { timed, timedAsync } from "../perf";
 import { PerformancePanel } from "./PerformancePanel";
+import { waterMoves } from "../waterAnimation";
 import type { NewAgeSendPhase } from "./newAgeSendView";
 import { NEW_AGE_HOST, signInFailure } from "./newAgeSignInView";
 import { downloadNewOriginsReport, NEW_ORIGINS_HOST } from "./newOriginsApi";
@@ -1127,24 +1128,11 @@ export function AppShell({
   // The set the map shows lags the chosen one until all its pictures have loaded (ah-d9jb.3).
   const shownTextureSet = useShownTextureSet(useSettingsStore((state) => state.textureSet));
   const rotateTextures = useSettingsStore((state) => state.biomeTextureRotation);
-  const animateWater = useSettingsStore((state) => state.animateWaterTextures);
+  const waterAnimation = useSettingsStore((state) => state.waterAnimation);
   const animateMovement = useSettingsStore((state) => state.animateMovement);
   const animateMapTheme = useSettingsStore((state) => state.animateMapTheme);
   const showPerformancePanel = useSettingsStore((state) => state.showPerformancePanel);
   const movementAnimationSpeed = useSettingsStore((state) => state.movementAnimationSpeed);
-  // Memoised, so the style keeps its identity across renders and the map's views are not rebuilt
-  // every time AppShell renders.
-  const textureStyle = useMemo((): TextureStyle => {
-    const set = textureSetOf(shownTextureSet.id);
-    return {
-      rotate: rotateTextures,
-      animateWater,
-      directory: set.directory,
-      rotationStep: set.rotationStep,
-      tiles: set.tiles,
-      missing: shownTextureSet.missing
-    };
-  }, [shownTextureSet, rotateTextures, animateWater]);
   const mapThemeId = useSettingsStore((state) => state.mapTheme);
   const advisoryChecks = useSettingsStore((state) => state.advisoryChecks);
   const movementPlanner = useSettingsStore((state) => state.movementPlanner);
@@ -1218,6 +1206,27 @@ export function AppShell({
     },
     [memory.knownMap]
   );
+
+  // Moving water repaints the whole map every frame, so by default it moves only on a small map -
+  // counted on the level shown, which is what is drawn (see `waterAnimation.ts`).
+  const hexesOnLevel = useMemo(
+    () => model.hexes.reduce((count, hex) => (hex.coordinate.z === level ? count + 1 : count), 0),
+    [model, level]
+  );
+  const animateWater = waterMoves(waterAnimation, hexesOnLevel);
+  // Memoised, so the style keeps its identity across renders and the map's views are not rebuilt
+  // every time AppShell renders.
+  const textureStyle = useMemo((): TextureStyle => {
+    const set = textureSetOf(shownTextureSet.id);
+    return {
+      rotate: rotateTextures,
+      animateWater,
+      directory: set.directory,
+      rotationStep: set.rotationStep,
+      tiles: set.tiles,
+      missing: shownTextureSet.missing
+    };
+  }, [shownTextureSet, rotateTextures, animateWater]);
 
   const openGameId = game?.manifest.metadata.gameId ?? null;
 
