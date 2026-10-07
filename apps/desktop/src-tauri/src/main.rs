@@ -184,7 +184,8 @@ fn main() {
             atlantis_hud_core_tauri::command_trade_routes,
             atlantis_hud_core_tauri::command_roster_skills,
             atlantis_hud_core_tauri::command_passage_claims,
-            atlantis_hud_core_tauri::command_shelter_seats
+            atlantis_hud_core_tauri::command_shelter_seats,
+            atlantis_hud_core_tauri::command_query
         ])
         .run(tauri::generate_context!())
         .expect("error while running atlantis-hud desktop shell");

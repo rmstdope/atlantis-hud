@@ -354,8 +354,10 @@ describe("the live Tauri command lockstep", () => {
       registeredButNotSwept: [],
       sweptButNotRegistered: []
     });
-    // Names: what main.rs registers, what the sweep drives and what the adapter invokes are one list.
-    expect(Object.keys(table).sort()).toEqual([...registered].sort());
+    // Names: what main.rs registers, what the sweep drives and what the adapter invokes are one list
+    // - the table's commands, plus the one `query` command every declared core query crosses
+    // through (ah-w83n), which the adapter invokes from `CORE_QUERIES` rather than from a row.
+    expect([...Object.keys(table), "query"].sort()).toEqual([...registered].sort());
 
     // Every rename says what the function name says, and every renamed command is registered.
     for (const [fn, wire] of renames) {

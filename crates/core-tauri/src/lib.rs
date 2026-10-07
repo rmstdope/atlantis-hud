@@ -121,6 +121,36 @@ impl From<ImportedTurnPreview> for ImportedTurnPreviewDto {
 pub mod commands {
     use super::*;
 
+    /// Answers any query the core declares in `atlantis_hud_core::queries` (ah-w83n): `name` is
+    /// the query, `args` its arguments as a positional array.
+    ///
+    /// This one command is why a new core query never touches this crate or the desktop shell's
+    /// handler list. The answer is serialized once, straight into JSON, and crosses as that text
+    /// (`RawValue`, which Tauri's own JSON serialization embeds verbatim) rather than through an
+    /// intermediate `Value` tree - a classified report is large.
+    ///
+    /// # Errors
+    ///
+    /// `unknown core query "<name>"` for an undeclared name, an argument error for the wrong
+    /// number or shape of arguments, or the query's own refusal.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "query")
+    )]
+    pub fn command_query(
+        name: &str,
+        args: serde_json::Value,
+    ) -> Result<Box<serde_json::value::RawValue>, String> {
+        let mut json = Vec::new();
+        atlantis_hud_core::queries::answer(
+            name,
+            args,
+            &mut serde_json::Serializer::new(&mut json),
+        )?;
+        let json = String::from_utf8(json).map_err(|error| error.to_string())?;
+        serde_json::value::RawValue::from_string(json).map_err(|error| error.to_string())
+    }
+
     /// Returns canonical engine metadata for the Tauri command surface.
     #[must_use]
     #[cfg_attr(
@@ -1183,7 +1213,7 @@ pub use commands::{
     command_order_argument_completions, command_order_commands, command_order_vocabulary,
     command_parse_report, command_parse_report_classified, command_parse_report_full,
     command_passage_claims, command_plan_route, command_preview_orders,
-    command_preview_report_import, command_roster_skills, command_save_allied_mages,
+    command_preview_report_import, command_query, command_roster_skills, command_save_allied_mages,
     command_save_army, command_save_hex_note, command_save_order_draft, command_save_study_plans,
     command_shelter_seats, command_trace_move_orders, command_trade_routes,
     command_validate_orders,
@@ -2513,6 +2543,54 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         assert_eq!(claims.len(), 1);
         assert_eq!(claims[0].unit_id, "5");
         assert_eq!(claims[0].structure, "Shaft [1]");
+    }
+
+    /// ah-w83n: every query the core declares crosses to the desktop through the one `query`
+    /// command - none of them is missing from this shell, whatever arguments it is sent.
+    #[test]
+    fn tauri_adapter_answers_every_declared_query() {
+        for name in atlantis_hud_core::queries::QUERY_NAMES {
+            if let Err(error) = command_query(name, serde_json::json!([])) {
+                assert!(!error.starts_with("unknown core query"), "{name}: {error}");
+            }
+        }
+    }
+
+    #[test]
+    fn tauri_adapter_refuses_an_undeclared_query_by_name() {
+        assert_eq!(
+            command_query("no_such_query", serde_json::json!([])).map(|raw| raw.get().to_owned()),
+            Err("unknown core query \"no_such_query\"".to_owned())
+        );
+    }
+
+    /// The answer crosses as the JSON the core serialized, field names and all.
+    #[test]
+    fn tauri_adapter_answers_shelter_seats_through_query() {
+        let mut report = String::from("Foo (1) Report\n\n");
+        report.push_str("plain (1,1) in Coast, 10 peasants (orcs), $5.\n\n");
+        report.push_str("Exits:\n  North : plain (1,-1) in Coast.\n\n");
+        report.push_str("+ Keep [1] : Citadel.\n");
+        report.push_str("+ Ark [2] : Galleon.\n");
+
+        let raw = command_query(
+            "shelter_seats",
+            serde_json::json!([report, atlantis_hud_fixtures::RULESET_JSON]),
+        )
+        .expect("a usable ruleset answers");
+
+        let seats: Vec<serde_json::Value> = serde_json::from_str(raw.get()).expect("JSON");
+        let counted: Vec<_> = seats
+            .iter()
+            .map(|seat| (seat["structureId"].clone(), seat["seats"].clone()))
+            .collect();
+        assert_eq!(
+            counted,
+            vec![
+                (serde_json::json!("1"), serde_json::json!(3)),
+                (serde_json::json!("2"), serde_json::json!(1))
+            ]
+        );
     }
 
     /// ah-29p5: the study planner's seats come from the core over this command, so the desktop

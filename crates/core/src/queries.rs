@@ -38,7 +38,10 @@ use crate::{EngineInfo, OrderValidationResult};
 ///
 /// A query without parameters reads nothing, so whatever a caller sends for it (`[]`, `null`) is
 /// fine; a query with parameters must be sent exactly that many, in order.
-fn decode<'de, T: Deserialize<'de>, D: Deserializer<'de>>(args: D, arity: usize) -> Result<T, String> {
+fn decode<'de, T: Deserialize<'de>, D: Deserializer<'de>>(
+    args: D,
+    arity: usize,
+) -> Result<T, String> {
     let decoded = if arity == 0 {
         drop(args);
         T::deserialize(serde::de::value::UnitDeserializer::<serde::de::value::Error>::new())
@@ -273,7 +276,12 @@ fn camel_case(snake: &str) -> String {
 fn render_typescript(signatures: &[QuerySignature]) -> String {
     let mut imports = std::collections::BTreeMap::new();
     for signature in signatures {
-        imports.extend(signature.imports.iter().map(|(path, name)| (path.clone(), name.clone())));
+        imports.extend(
+            signature
+                .imports
+                .iter()
+                .map(|(path, name)| (path.clone(), name.clone())),
+        );
     }
 
     let mut out = String::from(
@@ -398,7 +406,8 @@ mod tests {
 
     #[test]
     fn passes_a_query_s_own_error_through() {
-        let error = ask("shelter_seats", json!(["Foo (1) Report\n", "not json"])).expect_err("refused");
+        let error =
+            ask("shelter_seats", json!(["Foo (1) Report\n", "not json"])).expect_err("refused");
         assert!(!error.starts_with("unknown core query"), "{error}");
         assert!(!error.starts_with("arguments"), "{error}");
     }
@@ -420,7 +429,11 @@ mod typescript_tests {
     fn a_signature() -> QuerySignature {
         QuerySignature {
             name: "shelter_seats",
-            doc: vec![" How many mages each structure seats.", "", " `seats` is null."],
+            doc: vec![
+                " How many mages each structure seats.",
+                "",
+                " `seats` is null.",
+            ],
             params: vec![
                 ("raw_report", "string".to_owned()),
                 ("ruleset_json", "string | null".to_owned()),
@@ -489,7 +502,10 @@ mod typescript_tests {
             .iter()
             .find(|signature| signature.name == "order_commands")
             .expect("declared");
-        assert_eq!(commands.params, vec![("ruleset_json", "string | null".to_owned())]);
+        assert_eq!(
+            commands.params,
+            vec![("ruleset_json", "string | null".to_owned())]
+        );
         assert!(commands.imports.is_empty());
     }
 }

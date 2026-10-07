@@ -93,6 +93,12 @@ export const SWEEP: SweepEntry[] = [
     args: () => ({ raw_report: REPORT, ruleset_json: RULESET })
   },
   {
+    // Every query the core declares crosses through this one command (ah-w83n); the binding spec
+    // asks it for each of them by name.
+    command: "query",
+    args: () => ({ name: "shelter_seats", args: [REPORT, RULESET] })
+  },
+  {
     command: "parse_report_classified",
     args: () => ({ raw_report: REPORT, ruleset_json: RULESET })
   },

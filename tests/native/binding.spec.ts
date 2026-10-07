@@ -1,6 +1,7 @@
 import { expect } from "@wdio/globals";
 import { invokeNative } from "./helpers";
 import { context, SWEEP } from "./sweep";
+import { CORE_QUERIES } from "../../packages/core-client/src/generated/CoreQueries";
 
 /**
  * Invokes every registered Tauri command over real IPC, with the argument names `main.rs`
@@ -40,6 +41,24 @@ describe("tauri command binding", () => {
 
       if (!result.ok) {
         expect(result.error).not.toMatch(BINDING_FAILURE);
+      }
+    });
+  }
+
+  /**
+   * Every query the core declares crosses through the one `query` command (ah-w83n), so the sweep
+   * above binds that command once; this asks the running shell for each declared query by name. An
+   * empty argument list is refused as arguments for every query that takes any - which is a pass:
+   * it means the name reached the core. Only `unknown core query` would mean the desktop does not
+   * expose a query the web does.
+   */
+  for (const name of Object.values(CORE_QUERIES)) {
+    it(`answers the core query ${name} over real IPC`, async () => {
+      const result = await invokeNative("query", { name, args: [] });
+
+      if (!result.ok) {
+        expect(result.error).not.toMatch(BINDING_FAILURE);
+        expect(result.error).not.toMatch(/^unknown core query/u);
       }
     });
   }
