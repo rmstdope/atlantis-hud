@@ -90,6 +90,11 @@ export async function clearGames(page: Page) {
  * greeting `clearGames` stands down is added beside it, never in place of it.
  */
 export async function onlyChecks(page: Page, codes: readonly AdvisoryCheckCode[]) {
+  // Once the app has stored its settings the seed below is skipped, and the walk would fail much
+  // later on a count with nothing pointing back here - so a late call fails now instead.
+  if (page.url() !== "about:blank") {
+    throw new Error("onlyChecks must be called before the walk first opens the application");
+  }
   const advisoryChecks = Object.fromEntries(
     ADVISORY_CHECK_CODES.map((code) => [code, codes.includes(code)])
   );

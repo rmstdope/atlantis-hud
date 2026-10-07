@@ -1095,9 +1095,10 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   await expect(page.getByTestId("export-orders")).toBeEnabled();
   await page.keyboard.press("Escape");
 
-  // And the whole map is counted, so the same problem is reachable from the header. Only the silver
-  // check runs in this walk, so the chip counts the one shortfall this test introduces and nothing
-  // the fixture raises elsewhere (ah-8qh8).
+  // The same problem is reachable from the header. Only the silver check runs in this walk, so the
+  // chip counts the one shortfall this test introduces and nothing the fixture raises elsewhere
+  // (ah-8qh8); that the chip counts other hexes too is "a unit named in the problems panel is a
+  // way to go there", below.
   const chip = page.getByTestId("turn-report-chip");
   await expect(chip).toHaveAttribute("data-problems", "1");
   await chip.click();
