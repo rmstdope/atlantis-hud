@@ -217,7 +217,7 @@ import {
 import { runNewAgeFetch } from "./newAgeFetchRun";
 import { fetchedTurnName } from "./newAgeHistoryView";
 import { performNewAgeSend } from "./newAgeSend";
-import { timed, timedAsync } from "../perf";
+import { timed, timedAsync, timedCore } from "../perf";
 import { PerformancePanel } from "./PerformancePanel";
 import { waterMoves } from "../waterAnimation";
 import type { NewAgeSendPhase } from "./newAgeSendView";
@@ -492,7 +492,7 @@ async function fetchRulesetText(rulesetId: string): Promise<string> {
 }
 
 export function AppShell({
-  client,
+  client: rawClient,
   platformLabel,
   registerBeforeQuit,
   saveTextFile,
@@ -561,6 +561,8 @@ export function AppShell({
    */
   storageStop?: StorageStopSource;
 }) {
+  // Every call into the Rust core, timed for the performance panel; the same client otherwise.
+  const client = useMemo(() => timedCore(rawClient), [rawClient]);
   const [parsed, setParsed] = useState<ParsedReport | null>(null);
   // The report currently on screen, readable at async resolve time. The restore effect below
   // needs to know whether anything is showing *when its promise lands*, which state in its

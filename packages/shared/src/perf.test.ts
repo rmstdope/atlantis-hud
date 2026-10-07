@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { clearTimings, recordTiming, stepSummaries, summariseFrames, timed, timedAsync } from "./perf";
+import { clearTimings, recordTiming, stepSummaries, summariseFrames, timed, timedAsync, timedCore } from "./perf";
 
 afterEach(() => clearTimings());
 
@@ -14,11 +14,13 @@ describe("the timings the performance panel shows", () => {
     ]);
   });
 
-  it("keeps only the latest twenty timings of a step, so the figures stay current", () => {
+  it("counts every call, but works its figures out from the latest twenty, so they stay current", () => {
     for (let ms = 1; ms <= 25; ms += 1) recordTiming("build hex views", ms);
     const [summary] = stepSummaries();
 
-    expect(summary.count).toBe(20);
+    expect(summary.count).toBe(25);
+    // 6..25 are kept: the first five have rolled out of the median.
+    expect(summary.median).toBe(16);
     expect(summary.worst).toBe(25);
   });
 
@@ -53,5 +55,26 @@ describe("frame timing", () => {
 
   it("says nothing until there are two frames to compare", () => {
     expect(summariseFrames([5])).toBeNull();
+  });
+});
+
+describe("timing every call into the core", () => {
+  const client = {
+    validateOrders: async (text: string) => text.length,
+    version: "1"
+  };
+
+  it("times each method as core: <name>, listed after the pipeline by what it cost in all", async () => {
+    const timedClient = timedCore(client);
+    recordTiming("render map", 1);
+
+    expect(await timedClient.validateOrders("abc")).toBe(3);
+    expect(timedClient.version).toBe("1");
+    expect(stepSummaries().map((summary) => summary.step)).toEqual(["render map", "core: validateOrders"]);
+  });
+
+  it("hands out the same function for a method every time, so hooks that list it do not re-run", () => {
+    const timedClient = timedCore(client);
+    expect(timedClient.validateOrders).toBe(timedClient.validateOrders);
   });
 });

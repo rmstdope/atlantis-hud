@@ -167,7 +167,10 @@ export function PerformancePanel({ platformLabel }: { platformLabel: string }) {
           <div key={step.step} className="contents">
             <dt>{step.step}</dt>
             <dd className="text-ink" data-step={step.step}>
-              {ms(step.last)} <span className="text-ink-dim">(median {ms(step.median)}, worst {ms(step.worst)})</span>
+              {ms(step.last)}{" "}
+              <span className="text-ink-dim">
+                ×{step.count} · median {ms(step.median)} · worst {ms(step.worst)}
+              </span>
             </dd>
           </div>
         ))}
