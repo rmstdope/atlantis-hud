@@ -2001,7 +2001,9 @@ impl WorkingUnit {
         {
             return self.original.as_ref().and_then(|unit| unit.movement);
         }
-        let mut movement = crate::movement::mode::unit_movement_from_items(&self.unit, ruleset)
+        let mut movement = self
+            .carrying(ruleset)
+            .and_then(crate::movement::mode::movement_for_carrying)
             .or_else(|| self.original.as_ref().and_then(|unit| unit.movement));
         // The other half of the clear in `report::composition::classify_units`: only the ruleset
         // can say whether a fourth capacity figure means anything, and this is the preview path's
@@ -2012,6 +2014,39 @@ impl WorkingUnit {
             }
         }
         movement
+    }
+
+    /// What this unit carries and can carry as its items stand right now, by the one rule the
+    /// overload check reads too (`movement::mode::carrying_after_transfers`, `ah-2xw5`): the
+    /// report's printed weight repriced by every change since, and the capacities rebuilt from the
+    /// list. A formed unit starts from nothing. `None` while nobody is in the unit - there is no
+    /// movement to show then, and the report's own line stands.
+    fn carrying(&self, ruleset: &Ruleset) -> Option<crate::movement::mode::Carrying> {
+        let people = self.unit.items.iter().any(|item| {
+            item.amount > 0
+                && ruleset
+                    .find_item(&item.tag)
+                    .is_some_and(|item| item.kind == crate::movement::rules::ItemKind::Man)
+        });
+        if !people {
+            return None;
+        }
+        let stepping_off: Vec<(&str, i64)> = self
+            .unit
+            .items
+            .iter()
+            .map(|item| (item.tag.as_str(), item.amount))
+            .collect();
+        let (reported_weight, reported_items) = match &self.original {
+            Some(original) => (original.weight, original.items.as_slice()),
+            None => (Some(0), &[][..]),
+        };
+        Some(crate::movement::mode::carrying_after_transfers(
+            reported_weight,
+            reported_items,
+            &stepping_off,
+            Some(ruleset),
+        ))
     }
 
     fn refresh_movement(&mut self, ruleset: &Ruleset) {
