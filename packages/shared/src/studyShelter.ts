@@ -7,21 +7,21 @@
  *
  * `rules/magic_skills`: "study into a magic skill above level 2 requires that the mage be located
  * in some sort of building which can offer specific facilities for mages ... If the mage is not in
- * such a structure, his study rate is cut in half". `data/objects` for a Hermits hut - "This
- * structure will allow one mage to study above level 2" - is the sentence the ruleset scraped into
- * `buildings.<NAME>.mages`, which is what this reads.
+ * such a structure, his study rate is cut in half". How many mages a structure seats is the
+ * core's to say (`crates/core/src/orders/shelter.rs`), the same answer its magic-study check reads,
+ * so a seat rule is written once (ah-29p5); this module only files that answer by structure.
  */
 
-import type { ParsedReport } from "@atlantis/core-client";
-import { structureEntryId, type GameDataIndex } from "./gameData";
+import type { ParsedReport, ShelterSeat } from "@atlantis/core-client";
 import type { PlannerGroup } from "./studyPlanner";
 import type { StandingAfterOrders } from "./studyStanding";
 
 /**
  * How many mages each structure seats, keyed `${regionId}/${structureId}`.
  *
- * `null` means **not known** rather than none: the report does not list that structure, or the
- * catalogue has no entry for its kind. A number - zero included - is a fact. The difference is
+ * `null` means **not known** rather than none: the core could not count it from the catalogue (an
+ * unknown kind, or a fleet with a hull it cannot read as a ship); a missing key means nobody has
+ * answered for it at all. A number - zero included - is a fact. The difference is
  * load-bearing: an unknown shelter must not halve a mage's study, because inventing a pessimistic
  * date out of ignorance is exactly the failure H2 was chosen to avoid.
  */
@@ -33,77 +33,18 @@ export function shelterKey(regionId: string, structureId: string): string {
 }
 
 /**
- * Every structure the loaded report shows, and the mages it seats.
+ * Every structure the core counted, and the mages it seats - the core's `shelterSeats` answer for
+ * the loaded report, filed by `shelterKey`.
  *
- * An unfinished building seats nobody: `rules/buildings` is silent, and the Rust core takes the
- * same line (`semantics.rs:9607-9645`, `structure.needs.is_some()` yields no shelter).
- *
- * `structure.baseKind` and not `structure.kind`: `StructureInfo` documents `kind` as the kind with
- * its qualifiers (`Lair, closed to player units`) and `baseKind` as the kind alone.
+ * `null` - no answer yet, or no report or ruleset to ask about - is an empty map: every shelter
+ * unknown, so nobody's study is halved on the strength of a question not yet answered.
  */
-export function shelterSeats(input: {
-  report: ParsedReport | null;
-  index: GameDataIndex | null;
-}): ShelterSeats {
+export function shelterSeats(answer: readonly ShelterSeat[] | null): ShelterSeats {
   const seats = new Map<string, number | null>();
-  const { report, index } = input;
-  if (report === null || index === null) {
-    return seats;
-  }
-  for (const region of report.regions) {
-    for (const structure of region.structures) {
-      const key = shelterKey(region.regionId, structure.structureId);
-      if (structure.needs !== null) {
-        seats.set(key, 0);
-        continue;
-      }
-      seats.set(key, structureSeats(index, structure));
-    }
+  for (const seat of answer ?? []) {
+    seats.set(shelterKey(seat.regionId, seat.structureId), seat.seats);
   }
   return seats;
-}
-
-/**
- * How many mages one finished structure seats, or null where the catalogue cannot say.
- *
- * A building is its `buildings.<NAME>.mages`. A ship is its own entry's `mages` - `data/Galleon`:
- * "This ship will allow one mage to study above level 2" - and a fleet seats what its ships seat
- * between them, since `rules/economy_ships` has fleets "contain one or more ships" and each ship's
- * entry states its own seats (ah-yw4p). A fleet is read from its vessels whenever the report lists
- * them, the way `hulls_named_in` reads one in the Rust core: the lead word of `Galley, 2 Galleys`
- * names the fleet's class rather than a hull of its own.
- */
-function structureSeats(
-  index: GameDataIndex,
-  structure: ParsedReport["regions"][number]["structures"][number]
-): number | null {
-  if (structure.vessels.length === 0) {
-    return kindSeats(index, structure.baseKind);
-  }
-  let total = 0;
-  for (const vessel of structure.vessels) {
-    const each = kindSeats(index, vessel.name);
-    if (each === null) {
-      return null;
-    }
-    total += (vessel.count ?? 1) * each;
-  }
-  return total;
-}
-
-/** How many mages one structure of this kind - a building or a single ship - seats. */
-function kindSeats(index: GameDataIndex, kind: string): number | null {
-  const detail = index.detailOf(structureEntryId(index, kind));
-  if (detail === null || detail.kind === "absent") {
-    // The catalogue never scraped this kind, so nothing can be said about it - and a mage must
-    // not lose half a month on the strength of that silence.
-    return null;
-  }
-  if (detail.kind === "building") {
-    return detail.mages;
-  }
-  // A ship scraped before ah-yw4p carries no figure; it seats nobody, as every ship did then.
-  return detail.kind === "item" ? (detail.mages ?? 0) : 0;
 }
 
 /**
