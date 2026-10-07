@@ -1,4 +1,4 @@
-import { aReportUnit } from "@atlantis/core-client";
+import { aKnownMapHex, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import { hexNodeOf } from "../hexMapModel";
 import type { HexNode } from "../hexMapModel";
@@ -12,16 +12,12 @@ import {
 
 function hexAt(knowledge: "current" | "stale", lastSeenTurn: number | null): HexNode {
   return hexNodeOf(
-    {
+    aKnownMapHex({
       coordinate: { x: 43, y: 81, z: 1 },
-      terrain: "mountain",
       province: "Derngill",
       knowledge,
-      lastSeenTurn,
-      region: null,
-      rememberedUnits: [],
-      settlement: null
-    },
+      lastSeenTurn
+    }),
     71
   );
 }

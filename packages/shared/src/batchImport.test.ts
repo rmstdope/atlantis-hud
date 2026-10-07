@@ -1,5 +1,5 @@
 import type { CoreClient, OpenedGame, ParsedReport, ReportHeaderInfo } from "@atlantis/core-client";
-import { aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "@atlantis/core-client";
+import { aKnownMap, aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import { batchFinish, batchSummary, batchTouchedMageSheets, prepareBatch, viewerFactionOptions, walkBatch, type ChosenFile } from "./batchImport";
 import type { BatchCandidate } from "./reportBatch";
@@ -212,7 +212,7 @@ describe("walkBatch", () => {
    * and a read-back failure would then be counted against a step that landed (ah-u4e.3, PR #313).
    */
   it("does not read the map back after each merged step", async () => {
-    const core = client({ knownMap: vi.fn().mockResolvedValue({ hexes: [], levels: [], currentTurn: 71 }) });
+    const core = client({ knownMap: vi.fn().mockResolvedValue(aKnownMap()) });
     const batch = {
       candidates: [
         candidateFor("ally.rep", classifyReportImport(report({ factionId: "73", turnNumber: 71 }), "ally")),

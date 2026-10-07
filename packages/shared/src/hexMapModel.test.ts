@@ -1,5 +1,5 @@
 import type { Coordinate, KnownMap, KnownMapHex, MapLevel, MapWall, ReportRegion, ReportUnit } from "@atlantis/core-client";
-import { aReportRegion, aReportUnit } from "@atlantis/core-client";
+import { aKnownMap, aKnownMapHex, aReportRegion, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import {
   abbreviateDirection,
@@ -34,28 +34,13 @@ const unit = (unitId: string, own: boolean, name = unitId): ReportUnit =>
 const region = (coordinate: Coordinate, overrides: Partial<ReportRegion> = {}): ReportRegion =>
   aReportRegion({ coordinate, ...overrides });
 
-/** One resolved hex, as the core hands it over. */
-function knownHex(overrides: Partial<KnownMapHex> = {}): KnownMapHex {
-  return {
-    coordinate: at(7, 53),
-    terrain: "mountain",
-    province: "Inhead",
-    knowledge: "current",
-    lastSeenTurn: 71,
-    region: null,
-    rememberedUnits: [],
-    settlement: null,
-    ...overrides
-  };
-}
-
 function knownMap(
   hexes: KnownMapHex[],
   currentTurn: number | null = 71,
   levels: MapLevel[] = [],
   walls: MapWall[] = []
 ): KnownMap {
-  return { hexes, currentTurn, levels, walls };
+  return aKnownMap({ hexes, currentTurn, levels, walls });
 }
 
 describe("hex geometry", () => {
@@ -150,7 +135,7 @@ describe("converting the known map", () => {
   });
 
   it("a resolved hex becomes a node the map can draw", () => {
-    const hex = knownHex({
+    const hex = aKnownMapHex({
       knowledge: "current",
       lastSeenTurn: 71,
       settlement: { name: "Inholm", size: "city" },
@@ -170,7 +155,7 @@ describe("converting the known map", () => {
   });
 
   it("a stale hex is aged against the current turn", () => {
-    const hex = knownHex({ knowledge: "stale", lastSeenTurn: 68, region: region(at(7, 53)) });
+    const hex = aKnownMapHex({ knowledge: "stale", lastSeenTurn: 68, region: region(at(7, 53)) });
 
     const node = hexNodeOf(hex, 71);
 
@@ -178,7 +163,7 @@ describe("converting the known map", () => {
   });
 
   it("a named hex has no age, no region and no units, but keeps its settlement name", () => {
-    const hex = knownHex({
+    const hex = aKnownMapHex({
       knowledge: "named",
       lastSeenTurn: 64,
       region: null,
@@ -195,7 +180,7 @@ describe("converting the known map", () => {
   });
 
   it("age is unknown when the report has no turn number", () => {
-    const hex = knownHex({ knowledge: "current", lastSeenTurn: null });
+    const hex = aKnownMapHex({ knowledge: "current", lastSeenTurn: null });
 
     const node = hexNodeOf(hex, null);
 
@@ -209,7 +194,7 @@ describe("converting the known map", () => {
     ];
     const model = buildHexMapModel(
       knownMap(
-        [knownHex({ coordinate: at(7, 53, 2) }), knownHex({ coordinate: at(7, 53, 1) })],
+        [aKnownMapHex({ coordinate: at(7, 53, 2) }), aKnownMapHex({ coordinate: at(7, 53, 1) })],
         71,
         levels
       )
@@ -220,9 +205,9 @@ describe("converting the known map", () => {
 
   it("the core's order is kept", () => {
     const inOrder = [
-      knownHex({ coordinate: at(5, 3) }),
-      knownHex({ coordinate: at(5, 7) }),
-      knownHex({ coordinate: at(4, 6) })
+      aKnownMapHex({ coordinate: at(5, 3) }),
+      aKnownMapHex({ coordinate: at(5, 7) }),
+      aKnownMapHex({ coordinate: at(4, 6) })
     ];
 
     const model = buildHexMapModel(knownMap(inOrder));
@@ -236,7 +221,7 @@ describe("converting the known map", () => {
   });
 
   it("currentTurn is carried through from the known map", () => {
-    const model = buildHexMapModel(knownMap([knownHex()], 42));
+    const model = buildHexMapModel(knownMap([aKnownMapHex()], 42));
     expect(model.currentTurn).toBe(42);
   });
 });
@@ -272,7 +257,7 @@ describe("levels", () => {
 
 describe("unit ordering", () => {
   function hexWith(units: ReportUnit[]): HexNode {
-    return hexNodeOf(knownHex({ region: region(at(7, 53), { units }) }), 71);
+    return hexNodeOf(aKnownMapHex({ region: region(at(7, 53), { units }) }), 71);
   }
 
   it("puts your own units first, so one of ninety-two is not buried", () => {
@@ -292,7 +277,7 @@ describe("unit ordering", () => {
   it("keeps a stale hex's remembered units and their individual turns out of map counts", () => {
     const remembered = [unit("30", false, "Alpha"), unit("7", true, "Zulu")];
     const stale = hexNodeOf(
-      knownHex({
+      aKnownMapHex({
         knowledge: "stale",
         lastSeenTurn: 68,
         region: region(at(7, 53), { units: [] }),
@@ -357,8 +342,8 @@ describe("the units a report of this turn names", () => {
   it("names every current hex's units and none of a stale hex's", () => {
     const model = buildHexMapModel(
       knownMap([
-        knownHex({ region: region(at(7, 53), { units: [unit("1", true), unit("500", false)] }) }),
-        knownHex({
+        aKnownMapHex({ region: region(at(7, 53), { units: [unit("1", true), unit("500", false)] }) }),
+        aKnownMapHex({
           coordinate: at(9, 55),
           knowledge: "stale",
           lastSeenTurn: 68,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createWebCoreAdapter, type CoreWasmModule } from "./webCoreAdapter";
 import {
+  aKnownMap,
   aReportHeaderInfo,
   type GameManifest,
   type ManifestEdit,
@@ -111,10 +112,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
     export_map_state: (rawReport: string, rememberedJson: string, requestJson: string) =>
       `; Map export from Atlantis HUD\n; ${rawReport} ${rememberedJson} ${requestJson}\n`,
     known_map_state: (rawReport: string, rulesetJson: string | null, rememberedJson: string) => ({
-      hexes: [],
-      levels: [],
-      currentTurn: null,
-      walls: [],
+      ...aKnownMap({ currentTurn: null }),
       echoed: { rawReport, rulesetJson, rememberedJson }
     }),
     plan_route_state: (
