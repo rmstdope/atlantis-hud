@@ -27,7 +27,7 @@ import { PARSED_STRUCTURE_KINDS } from "./structureKinds.generated";
 import type { UnitSilver } from "./generated/UnitSilver";
 import type { ProductionOverview } from "./generated/ProductionOverview";
 import type { WorkedRegion } from "./generated/WorkedRegion";
-import type { TradeRoute, TradedGood } from "./index";
+import type { KnownMap, KnownMapHex, TradeRoute, TradedGood } from "./index";
 
 /** The mountain at (7,53) on the surface, where the default unit stands. */
 const DEFAULT_COORDINATE: Coordinate = { x: 7, y: 53, z: 1 };
@@ -114,6 +114,32 @@ export function aReportRegion(overrides: Partial<ReportRegion> = {}): ReportRegi
     exits: [],
     structures: [],
     units: [],
+    ...overrides
+  };
+}
+
+/** The default region's hex on the known map: seen this turn, nobody remembered in it. */
+export function aKnownMapHex(overrides: Partial<KnownMapHex> = {}): KnownMapHex {
+  return {
+    coordinate: DEFAULT_COORDINATE,
+    terrain: "mountain",
+    province: "Inhead",
+    knowledge: "current",
+    lastSeenTurn: 71,
+    region: null,
+    rememberedUnits: [],
+    settlement: null,
+    ...overrides
+  };
+}
+
+/** A known map with nothing on it yet, resolved at the default turn. */
+export function aKnownMap(overrides: Partial<KnownMap> = {}): KnownMap {
+  return {
+    hexes: [],
+    levels: [],
+    currentTurn: 71,
+    walls: [],
     ...overrides
   };
 }

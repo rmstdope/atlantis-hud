@@ -8,7 +8,7 @@ import type {
   ReportHeaderInfo,
   ReportRegion
 } from "@atlantis/core-client";
-import { aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "@atlantis/core-client";
+import { aKnownMap, aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import {
   REPORT_HAS_NOTHING_IN_IT,
@@ -69,7 +69,7 @@ function report(
   return aParsedReport({ header: aReportHeaderInfo({ month: "January", ...overrides }), regions });
 }
 
-const KNOWN_MAP: KnownMap = { hexes: [], levels: [], currentTurn: 71, walls: [] };
+const KNOWN_MAP: KnownMap = aKnownMap();
 
 function client(overrides: Partial<CoreClient> = {}): CoreClient {
   return {

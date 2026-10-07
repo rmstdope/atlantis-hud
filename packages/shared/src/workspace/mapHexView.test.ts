@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Coordinate } from "@atlantis/core-client";
 import type { HexKnowledge, HexNode } from "../hexMapModel";
+import { aHexNode } from "../testing/builders";
 import { COLUMN_PITCH, ROW_PITCH } from "./mapViewport";
 import {
   fogPatternTile,
@@ -25,21 +26,7 @@ function at(x: number, y: number, z = 1): Coordinate {
 }
 
 function hex(overrides: Partial<HexNode> & { knowledge: HexKnowledge }): HexNode {
-  return {
-    regionId: "1:7,53",
-    coordinate: at(7, 53),
-    terrain: "mountain",
-    province: "Inhead",
-    label: "mountain (7,53) in Inhead",
-    lastSeenTurn: 71,
-    ageInTurns: 0,
-    settlementName: null,
-    region: null,
-    rememberedUnits: [],
-    ownUnitCount: 0,
-    foreignUnitCount: 0,
-    ...overrides
-  };
+  return aHexNode(overrides);
 }
 
 describe("terrain colour", () => {

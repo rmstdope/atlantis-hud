@@ -13,6 +13,7 @@ import type {
 } from "@atlantis/core-client";
 import { aReportRegion, aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
+import { aHexNode } from "../testing/builders";
 import {
   DEFAULT_COLUMN_SHARES,
   allColumnsShown,
@@ -38,22 +39,15 @@ const region = (overrides: Partial<ReportRegion> = {}): ReportRegion =>
   aReportRegion({ regionId: "1:6,52", coordinate: { x: 6, y: 52, z: 1 }, terrain: "tundra", province: "Farside", ...overrides });
 
 function hex(overrides: Partial<HexNode> = {}): HexNode {
-  return {
-    regionId: "1:6,52",
+  return aHexNode({
     coordinate: { x: 6, y: 52, z: 1 },
     terrain: "tundra",
     province: "Farside",
     label: "tundra (6,52) in Farside",
-    knowledge: "current",
     lastSeenTurn: 42,
-    ageInTurns: 0,
-    settlementName: null,
     region: region(),
-    rememberedUnits: [],
-    ownUnitCount: 0,
-    foreignUnitCount: 0,
     ...overrides
-  };
+  });
 }
 
 function draw(node: HexNode | null, preview: RegionPreview | null = null): string {

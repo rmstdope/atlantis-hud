@@ -13,6 +13,7 @@
 import type { Coordinate, ReportRegion, ReportUnit, StructureInfo } from "@atlantis/core-client";
 import { aReportRegion, aReportUnit, aStructure } from "@atlantis/core-client";
 import type { HexKnowledge, HexNode } from "../../hexMapModel";
+import { aHexNode } from "../../testing/builders";
 
 const LEVEL = 1;
 
@@ -69,21 +70,19 @@ function hex(spec: {
           units: held.map((held) => ({ ...held, regionId }))
         });
 
-  return {
+  return aHexNode({
     regionId,
     coordinate: spec.coordinate,
     terrain: spec.terrain,
-    province: "Inhead",
     label: `${spec.terrain} (${spec.coordinate.x},${spec.coordinate.y}) in Inhead`,
     knowledge: spec.knowledge,
     lastSeenTurn: 71 - (spec.ageInTurns ?? 0),
     ageInTurns: spec.knowledge === "named" ? null : (spec.ageInTurns ?? 0),
     settlementName: spec.settlement?.name ?? null,
     region,
-    rememberedUnits: [],
     ownUnitCount: held.filter((unit) => unit.own).length,
     foreignUnitCount: held.filter((unit) => !unit.own).length
-  };
+  });
 }
 
 /** The centre hex: everything at once, which is what the layouts have to survive. */

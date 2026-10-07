@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Coordinate } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
+import { aHexNode } from "../testing/builders";
 import { regionDecorations } from "./regionDecorations";
 
 function at(x: number, y: number, z = 1): Coordinate {
@@ -8,20 +9,7 @@ function at(x: number, y: number, z = 1): Coordinate {
 }
 
 function hex(overrides: Partial<HexNode> & { coordinate: Coordinate; province: string }): HexNode {
-  return {
-    regionId: `${overrides.coordinate.z}:${overrides.coordinate.x},${overrides.coordinate.y}`,
-    terrain: "plain",
-    label: "",
-    knowledge: "current",
-    lastSeenTurn: 1,
-    ageInTurns: 0,
-    settlementName: null,
-    region: null,
-    rememberedUnits: [],
-    ownUnitCount: 0,
-    foreignUnitCount: 0,
-    ...overrides
-  };
+  return aHexNode({ terrain: "plain", label: "", lastSeenTurn: 1, ...overrides });
 }
 
 describe("grouping hexes into pieces", () => {
