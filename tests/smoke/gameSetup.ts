@@ -1,5 +1,9 @@
 import { expect, type Page } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
+import {
+  ADVISORY_CHECK_CODES,
+  type AdvisoryCheckCode
+} from "../../packages/core-client/src/coreVocabulary.generated";
 
 /**
  * How a smoke walk reaches the application, in one place.
@@ -70,6 +74,33 @@ export async function clearGames(page: Page) {
     );
   });
   await page.reload();
+}
+
+/**
+ * Runs the walk with only the named advisory checks switched on, every other one off (ah-8qh8).
+ *
+ * A walk that counts problems, or steps the F8 walk to a known stop, is about the findings it
+ * causes - but the turn-71 fixture raises findings of its own, and every new check rule used to add
+ * one to the count and turn walks red that had nothing to do with it. With only its own checks on,
+ * the walk counts what it caused and nothing else, and a code the core adds later starts off here.
+ *
+ * Call it first, before `loadReport` or `clearGames`: it seeds the browser's settings the way a
+ * player's own choice in Settings > Warnings would be stored, and only while nothing is stored yet,
+ * so a walk that flips a check through Settings and then reloads keeps what it flipped. The
+ * greeting `clearGames` stands down is added beside it, never in place of it.
+ */
+export async function onlyChecks(page: Page, codes: readonly AdvisoryCheckCode[]) {
+  const advisoryChecks = Object.fromEntries(
+    ADVISORY_CHECK_CODES.map((code) => [code, codes.includes(code)])
+  );
+  await page.addInitScript((checks) => {
+    if (localStorage.getItem("atlantis-hud-settings") === null) {
+      localStorage.setItem(
+        "atlantis-hud-settings",
+        JSON.stringify({ state: { advisoryChecks: checks } })
+      );
+    }
+  }, advisoryChecks);
 }
 
 /**

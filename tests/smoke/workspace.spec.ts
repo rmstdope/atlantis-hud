@@ -11,6 +11,7 @@ import {
   importReport,
   loadReport,
   mapTransform,
+  onlyChecks,
   ordersInput,
   ordersText,
   saveNow,
@@ -1071,6 +1072,7 @@ test("a bad order names itself, and belongs to the unit that carries it", async 
 test("a unit told to spend silver it has not got is warned about, without blocking export", async ({
   page
 }) => {
+  await onlyChecks(page, ["not-enough-silver"]);
   await loadReport(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
@@ -1093,24 +1095,11 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   await expect(page.getByTestId("export-orders")).toBeEnabled();
   await page.keyboard.press("Escape");
 
-  // And the whole map is counted, so the same problem is reachable from the header. The turn-71
-  // report carries two findings of its own throughout - Six of Two (13402) is already at combat
-  // 5, the ruleset's maximum, and still orders "@study comb" (ah-1uj); and four mages in a
-  // different hex CAST an enchant with no plate armor on hand (ah-dbb.2). Since ah-dwk6 there
-  // are two more: units 14451 and 13432 are given no orders at all (unit-does-nothing), and this
-  // test's own unit is a third, since a lone GIVE spends none of its month. Four baseline, plus
-  // the two this test introduces on its own unit: that idle month, and the hex's shortfall. Since
-  // ah-1wcw.4 the silver check also counts each unit's monthly maintenance, and 18642, alone in
-  // hex 1:7,53, is a leader owing $50 with neither silver nor food - but the faction's unclaimed
-  // silver pays it (ah-fjty, below), so it is no finding of its own until the GIVE drains the purse.
-  //
-  // It was eleven baseline until ah-uwa3: unit 1688 owed $10 and orders "@work" in a hex paying
-  // $26.0, and wages arrive in the turn's last phase - in time for maintenance, if not for
-  // anything the orders spend. So its fee is covered and it is no longer short. It was ten until
-  // ah-yw4p: six Borg mages studying above level 2 aboard the Cloudship fleet were warned as
-  // unsheltered, but `data/Cloudship` and `data/Airship` seat 78 mages in that fleet.
+  // And the whole map is counted, so the same problem is reachable from the header. Only the silver
+  // check runs in this walk, so the chip counts the one shortfall this test introduces and nothing
+  // the fixture raises elsewhere (ah-8qh8).
   const chip = page.getByTestId("turn-report-chip");
-  await expect(chip).toHaveAttribute("data-problems", "6");
+  await expect(chip).toHaveAttribute("data-problems", "1");
   await chip.click();
   await page.getByTestId("turn-report-tab-problems").click();
   await expect(page.getByTestId("problems-panel")).toContainText("mountain (7,53)");
@@ -1123,11 +1112,10 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   await expect(problems).toContainText("their orders spend");
   await expect(problems).not.toContainText("upkeep");
 
-  // `fillOrders` replaces the draft, so "@work" takes the GIVE away and puts the unit to work:
-  // both of this test's own problems go, and the chip settles at the report's four. These used to
-  // be asserted after the "@work" and passed on the panel as it stood before the recount (ah-yw4p).
+  // `fillOrders` replaces the draft, so "@work" takes the GIVE away and the shortfall goes with it.
+  // Asserted after the "@work" rather than before, so the recount has landed (ah-yw4p).
   await fillOrders(page, "@work");
-  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "4");
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "0");
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
 });
 
