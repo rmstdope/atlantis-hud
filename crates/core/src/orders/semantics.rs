@@ -10965,7 +10965,7 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
         };
     }
 
-    let pool = sharing.pool(ledger, SILVER);
+    let pool = sharing.silver_held_at(ledger, LendingMoment::MonthEnd);
 
     // A doubted unit is judged nowhere in this module, so it claims nothing here either: lending
     // against a sum with a hole in it would put a figure on the screen nothing stands behind.
@@ -11285,22 +11285,23 @@ fn pool_shortfalls(
     }
 
     let mut shortfalls = Vec::new();
-    // A pool drained as STUDY settled is short even when later receipts net the month's end out
-    // (`ah-qrk0`), whether or not any unit is still overdrawn by then.
-    let short_at_study =
-        if sharing.walking.is_some() && sharing.reading(SILVER, None) == Reading::Pooled {
-            sharing.silver_short_at(hex, ledger, LendingMoment::Study)
-        } else {
-            0
-        };
-    if short_at_study > 0 {
+    // Silver is judged by the pool itself, at the month's end and as STUDY settles: a pool drained
+    // as STUDY settled is short even when later receipts net the month's end out (`ah-qrk0`),
+    // whether or not any unit is still overdrawn by then. Its month-end figure is the same netting
+    // the verdicts' claims make below - every undoubted claimant's overdraft against the pool.
+    let silver_by_moment =
+        sharing.walking.is_some() && sharing.reading(SILVER, None) == Reading::Pooled;
+    if silver_by_moment {
         pooled_tags.insert(SILVER.to_string());
     }
     for tag in pooled_tags {
-        let mut short = claims.get(&tag).copied().unwrap_or(0) - sharing.pool(ledger, &tag);
-        if tag == SILVER {
-            short = short.max(short_at_study);
-        }
+        let short = if silver_by_moment && tag == SILVER {
+            sharing
+                .silver_short_at(hex, ledger, LendingMoment::MonthEnd)
+                .max(sharing.silver_short_at(hex, ledger, LendingMoment::Study))
+        } else {
+            claims.get(&tag).copied().unwrap_or(0) - sharing.pool(ledger, &tag)
+        };
         if short <= 0 {
             continue;
         }
@@ -11315,11 +11316,7 @@ fn pool_shortfalls(
                     || (!ledger.doubted.contains(&o.unit.unit_id)
                         && (relieved_balance(ledger, &o.unit.unit_id, &tag) < 0
                             || (tag == SILVER
-                                && spendable_silver_at(
-                                    ledger,
-                                    &o.unit.unit_id,
-                                    StatePhase::Study,
-                                ) < 0)))
+                                && silver_at(ledger, &o.unit.unit_id, LendingMoment::Study) < 0)))
             })
             .map(|o| {
                 o.holding(&tag)
@@ -11610,8 +11607,8 @@ fn report_shortfalls(
                         || ledger.doubted.contains(who)
                         // Only a draw made after movement: an overdraft carried from `BUY` was
                         // funded while the sharers still held their silver.
-                        || spendable_silver_at(ledger, who, StatePhase::Study)
-                            >= spendable_silver_at(ledger, who, StatePhase::Movement).min(0)
+                        || silver_at(ledger, who, LendingMoment::Study)
+                            >= silver_at(ledger, who, LendingMoment::Movement).min(0)
                         || cut.iter().any(|reduced| &reduced.unit_id == who)
                         || refused.iter().any(|refused| &refused.unit_id == who)
                         || verdicts.iter().any(|verdict| {
@@ -15060,7 +15057,7 @@ fn shipping_bills(
                     }
                     // Judged before anything is booked: a shipment is all or nothing, so a
                     // refusal must leave no `Shipped` move behind (`ah-7ale.4`).
-                    if cost <= shipping_purse(ledger, hex, ordered, ruleset, settled_at) {
+                    if cost <= shipping_purse(ledger, hex, ordered, ruleset) {
                         move_silver(
                             ledger,
                             settled_at,
@@ -15287,9 +15284,8 @@ fn shipping_purse(
     hex: &Hex<'_>,
     sender: &Ordered<'_>,
     ruleset: Option<&Ruleset>,
-    phase: StatePhase,
 ) -> i64 {
-    let own = spendable_silver_at(ledger, &sender.unit.unit_id, phase);
+    let own = silver_at(ledger, &sender.unit.unit_id, LendingMoment::Transport);
     let sharing = Sharing::for_silver(hex, ledger);
     match sharing.reading(SILVER, ruleset) {
         Reading::PerUnit => own,
