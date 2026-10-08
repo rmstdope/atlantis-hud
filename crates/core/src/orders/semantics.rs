@@ -11396,13 +11396,18 @@ fn pool_shortfalls(
                                             .iter()
                                             .any(|reduced| reduced.unit_id == o.unit.unit_id))))))
             })
+            // Silver as the ledger holds it once CLAIM, GIVE and TAKE have settled, so a gift into
+            // the counted units counts and one between two of them counts once (`ah-w9dn`). The
+            // ledger's own balance rather than `early_holding`, which falls back to the report's
+            // figure for a unit whose goods the transfer walk cannot follow.
             .map(|o| {
-                o.holding(&tag)
-                    + if tag == SILVER {
-                        claimed_this_month(ledger, &o.unit.unit_id)
-                    } else {
-                        0
-                    }
+                if tag == SILVER {
+                    ledger
+                        .state
+                        .balance_at(StatePhase::Give, &o.unit.unit_id, SILVER)
+                } else {
+                    o.holding(&tag)
+                }
             })
             .sum();
 
@@ -54952,6 +54957,70 @@ BUILD
                 );
             }
         }
+    }
+
+    /// Silver a sharer was given this month is silver the hex's units can have, as the unit-level
+    /// sentence already counts it (`ah-jw85`): unit 9's `GIVE 8 50 SILV` reaches sharer 8, so the
+    /// hex reads "can have $50 and their orders spend $110", not "$0 ... $60" (`ah-w9dn`).
+    #[test]
+    fn silver_given_to_a_sharer_counts_toward_what_the_hex_can_have() {
+        let findings = a_cut_buy_in_a_caravanserai(
+            0,
+            "unit 5\nBUY 1 swords\nunit 6\nSTUDY COMB\nunit 8\nunit 9\nGIVE 8 50 SILV\n",
+            vec![with_silver(unit("6"), 0)],
+        );
+        assert_eq!(
+            hex_silver_sentence(&findings),
+            Some(
+                "the units in this hex are short $60 between them: they can have $50 and their \
+                 orders spend $110"
+            ),
+            "{findings:#?}"
+        );
+    }
+
+    /// A gift between two units the hex counts moves silver without adding any: sharer 7's
+    /// `GIVE 8 50 SILV` to sharer 8 leaves the hex $50 to have, not $100 (`ah-w9dn` review).
+    #[test]
+    fn silver_given_between_two_sharers_is_counted_once() {
+        let findings = a_cut_buy_in_a_caravanserai(
+            0,
+            "unit 5\nBUY 1 swords\nunit 6\nSTUDY COMB\nunit 7\nGIVE 8 50 SILV\nunit 8\nunit 9\n",
+            vec![
+                with_silver(unit("6"), 0),
+                sharing(with_silver(unit("7"), 50)),
+            ],
+        );
+        assert_eq!(
+            hex_silver_sentence(&findings),
+            Some(
+                "the units in this hex are short $60 between them: they can have $50 and their \
+                 orders spend $110"
+            ),
+            "{findings:#?}"
+        );
+    }
+
+    /// A sharer whose goods the transfer walk cannot follow - its `GIVE` of stone to an ally it
+    /// cannot see is uncertain (`ah-66yi`) - still holds the silver it was given (`ah-w9dn`).
+    #[test]
+    fn silver_given_to_a_sharer_whose_goods_are_unknowable_still_counts() {
+        let findings = a_cut_buy_in_a_caravanserai(
+            0,
+            "unit 5\nBUY 1 swords\nunit 7\nGIVE 7001 10 STON\nunit 8\nunit 9\nGIVE 7 50 SILV\n",
+            vec![
+                sharing(with_item(with_silver(unit("7"), 0), 15, "stone", "STON")),
+                an_ally("7001"),
+            ],
+        );
+        assert_eq!(
+            hex_silver_sentence(&findings),
+            Some(
+                "the units in this hex are short $50 between them: they can have $50 and their \
+                 orders spend $100"
+            ),
+            "{findings:#?}"
+        );
     }
 
     /// A sharer's own cut line is a fact about that line too (`ah-szye`), and silver shipped to
