@@ -5093,11 +5093,11 @@ struct Ledger<'a> {
     /// line because the walk settles units in report order, so silver a later unit gives back
     /// within the same phase is not there when this line runs - a phase-end balance cannot see it.
     ///
-    /// The charge stays the whole ask, and unlike a cut `BUY`'s nothing hands the remainder the
-    /// engine kept back to later lines ([`Ledger::overcharged`]), nor is the recipient credited
-    /// less: both are `ah-1c8p`. "What the unit has" is the engine's `GetSharedNum`, which counts
-    /// the faction's `SHARE` units in the region too, so only an unpooled hex reads these
-    /// (`judge_shortfalls`, `report_shortfalls`); a pooled one is judged through its pool.
+    /// In an unpooled hex `transfer` moves only what was given, so the giver keeps the remainder
+    /// for its later lines and the recipient is credited only the gift (`ah-1c8p`). "What the
+    /// unit has" is the engine's `GetSharedNum`, which counts the faction's `SHARE` units in the
+    /// region too, so only an unpooled hex reads these (`judge_shortfalls`, `report_shortfalls`);
+    /// a pooled one moves the whole ask and is judged through its pool.
     reduced_gives: Vec<ReducedGive>,
     /// What each unit's `GIVE` lines of silver to a unit asked, cut or not: the "spend" of a
     /// not-enough-silver sentence about a GIVE, whose "can have" is this less the cut (`ah-4k84`).
@@ -7663,6 +7663,21 @@ fn transfer(
         // Giving all of something can never overdraw it, whatever the reserve.
         TransferShape::All { except } => (known_source - except).max(0),
     };
+    // What actually changes hands. A GIVE of silver beyond what the giver holds as it runs gives
+    // what it has: the engine's `Game::DoGiveOrder` (Atlantis-PBEM/Atlantis, `runorders.cpp`)
+    // errors "Not enough." and gives that; `rules/give` does not say. So neither the giver is
+    // charged nor the recipient credited the remainder (`ah-1c8p`). "What it has" is the engine's
+    // `GetSharedNum`, which counts the faction's `SHARE` units in the region too, so a hex with a
+    // sharer moves the whole ask and its pool judges the giver's overdraft, as before.
+    let moved = if is_give
+        && reach != GiveReach::Discard
+        && tag.eq_ignore_ascii_case(SILVER)
+        && !hex.units.iter().any(|ordered| ordered.shares())
+    {
+        quantity.min(known_source.max(0))
+    } else {
+        quantity
+    };
 
     if !from.is_empty() {
         if tag.eq_ignore_ascii_case(SILVER) {
@@ -7700,12 +7715,18 @@ fn transfer(
                         ordered: quantity,
                         given: known_source.max(0),
                     });
+                    // The cut line is what overdrew the unit, so its finding points here even
+                    // where it gives nothing and so draws nothing down (`ah-1c8p`).
+                    ledger
+                        .charged_at
+                        .entry((from.clone(), SILVER.to_ascii_uppercase()))
+                        .or_insert_with(|| placed.clone());
                 }
                 move_silver(
                     ledger,
                     StatePhase::Give,
                     &from,
-                    -quantity,
+                    -moved,
                     SilverChangeCause::GaveAway,
                     Some(placed),
                     target_label.map(str::to_string),
@@ -7741,7 +7762,7 @@ fn transfer(
             // Applied, not recorded: the incoming leg's record comes from the settlement, through
             // the pass in `ledger_for_with_production` (`ah-1x2h.3`). The balance is still this
             // walk's own optimistic one (`ah-ud89`).
-            apply_silver(ledger, StatePhase::Give, &to, quantity, Some(placed));
+            apply_silver(ledger, StatePhase::Give, &to, moved, Some(placed));
         } else {
             credit(ledger, StatePhase::Give, &to, &tag, quantity);
         }
@@ -29771,10 +29792,10 @@ BUILD
         }
 
         /// `ah-1x2h.3`: the ledger records the four transfer causes from the same settlement the
-        /// SILVER column reads, so a gift the giver cannot cover is recorded by neither side -
-        /// while the ledger's *balance* stays optimistic, which is `ah-ud89`'s decision and what
-        /// the second half of this test pins. `rules/sequenceofevents` settles GIVE in the Give
-        /// phase, against what the report shows the giver holding.
+        /// SILVER column reads, so a gift the giver cannot cover is recorded by neither side.
+        /// `rules/sequenceofevents` settles GIVE in the Give phase, and the engine's
+        /// `Game::DoGiveOrder` gives what the giver has there, so the receiver's *balance* is not
+        /// credited the gift either (`ah-1c8p`, which retired the optimistic credit).
         #[test]
         fn a_gift_the_giver_could_not_cover_is_recorded_by_neither_side() {
             let hex_region = market(vec![unit("1"), with_silver(unit("2"), 1_000)]);
@@ -29792,8 +29813,41 @@ BUILD
                             .state
                             .known_balance_at(StatePhase::Give, "2", SILVER)
                             .expect("the receiver's balance is known"),
+                        1_000,
+                        "the giver held nothing, so nothing reaches the receiver (`ah-1c8p`)"
+                    );
+                },
+            );
+        }
+
+        /// The boundary of `ah-1c8p`: the engine's "what the unit has" is `GetSharedNum`, which
+        /// counts the faction's `SHARE` units in the region too (`Game::DoGiveOrder`,
+        /// Atlantis-PBEM/Atlantis, `runorders.cpp`). So in a hex with a sharer the whole ask
+        /// still moves, and the pool judges the giver's overdraft.
+        #[test]
+        fn a_gift_the_giver_could_not_cover_moves_in_full_beside_a_sharer() {
+            let hex_region = market(vec![
+                unit("1"),
+                with_silver(unit("2"), 1_000),
+                super::sharing(with_silver(unit("3"), 500)),
+            ]);
+            with_settled_ledger(
+                hex_region,
+                "unit 1\nGIVE 2 100 SILV\n\nunit 2\n\nunit 3\n",
+                |ledger| {
+                    assert_eq!(
+                        ledger
+                            .state
+                            .known_balance_at(StatePhase::Give, "2", SILVER)
+                            .expect("the receiver's balance is known"),
                         1_100,
-                        "the balance still carries the ledger's optimistic credit"
+                    );
+                    assert_eq!(
+                        ledger
+                            .state
+                            .known_balance_at(StatePhase::Give, "1", SILVER)
+                            .expect("the giver's balance is known"),
+                        -100,
                     );
                 },
             );
@@ -48412,14 +48466,13 @@ BUILD
         );
     }
 
-    /// The boundary of the decision pinned by
-    /// `a_gift_of_silver_the_giver_does_not_hold_yet_credits_nothing`, raised by the delta round
-    /// of this bead's review: the column is stricter than the ledger, and **only** the column.
-    /// The warnings read the ledger, which still credits the recipient the whole gift, so a unit
-    /// funded by a gift its giver cannot yet cover is *not* told it is short. Nothing about the
-    /// strict receipt reaches the Problems panel.
+    /// The decision pinned by `a_gift_of_silver_the_giver_does_not_hold_yet_credits_nothing`,
+    /// carried to the warnings. The column always declined to credit a gift its giver could not
+    /// yet cover; since `ah-1c8p` the ledger the warnings read does too, because the engine's
+    /// `Game::DoGiveOrder` gives only what the giver has as GIVE runs - and TAX settles after it
+    /// (`rules/sequenceofevents`). So the buyer that gift was to fund is told it is short.
     #[test]
-    fn a_recipient_of_silver_the_giver_does_not_hold_yet_is_not_told_it_is_short() {
+    fn a_recipient_of_silver_the_giver_does_not_hold_yet_is_told_it_is_short() {
         let hex_region = ReportRegion {
             tax_base: Some(1000),
             for_sale: vec![MarketItem {
@@ -48441,11 +48494,11 @@ BUILD
         );
 
         assert!(
-            !review.findings.iter().any(|finding| {
+            review.findings.iter().any(|finding| {
                 finding.code == codes::NOT_ENOUGH_SILVER
                     && finding.unit_id.as_deref() == Some("1923")
             }),
-            "the ledger funds the buyer even though the column declines to show it: {:?}",
+            "nothing reaches the buyer, so it cannot fund its BUY: {:?}",
             codes(&review.findings)
         );
     }

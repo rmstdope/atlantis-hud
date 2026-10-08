@@ -158,22 +158,26 @@ fn an_earlier_give_all_is_not_shrunk_by_a_later_exact_give() {
         .collect();
     assert_eq!(
         gifts,
-        vec![
-            (
-                Some(3),
-                -100,
-                &SilverChangeCause::GaveAway,
-                Some("unit 901")
-            ),
-            (Some(4), -50, &SilverChangeCause::GaveAway, Some("unit 902")),
-        ],
-        "the whole purse goes to the first target and the exact gift is booked in full"
+        vec![(
+            Some(3),
+            -100,
+            &SilverChangeCause::GaveAway,
+            Some("unit 901")
+        ),],
+        "the whole purse goes to the first target; the exact gift runs on an emptied purse and \
+         gives none of its 50, so nothing is booked for it (`ah-1c8p`)"
     );
-    assert_eq!(giver.expense, Some(150), "both gifts, in full");
+    assert_eq!(giver.expense, Some(100), "only what was given");
     assert_eq!(
         giver.at_month_end,
-        Some(-50),
-        "the orders spend more than the unit holds, and the column says so"
+        Some(0),
+        "the engine gives what the unit has, so the purse ends empty rather than overdrawn \
+         (`ah-1c8p`); the warning below says the exact gift was cut"
+    );
+    assert_eq!(
+        row_of(&review, "902").income,
+        Some(0),
+        "902 is given nothing (`ah-1c8p`)"
     );
 
     // The receiver's row, which the column already got right and now agrees with.
@@ -483,4 +487,68 @@ fn a_gift_of_goods_the_catalogue_cannot_name_leaves_the_month_priced() {
         Some(10),
         "and the settlement the unnameable gift used to discard is shown"
     );
+}
+
+// --- a GIVE cut down to what the giver holds moves only that (`ah-1c8p`) ---------------------
+//
+// `rules/give` does not say what a GIVE beyond holdings does; the engine's own `Game::DoGiveOrder`
+// (Atlantis-PBEM/Atlantis, `runorders.cpp`) errors "Not enough." and gives what the unit has.
+
+/// A unit holding `silver`, with no skills, to receive gifts and give some back.
+fn holder(id: &str, silver: i64) -> String {
+    format!(
+        "* Holders ({id}), Foo (1), orc [ORC], {silver} silver [SILV]. Weight: 10. \
+         Capacity: 0/0/15/0."
+    )
+}
+
+/// Unit 900 holds nothing and gives 901 $50: the engine gives none of it, so 901 ends with the
+/// $100 it had - in the column and in the ledger the ITEMS surface reads - and 900 is still warned.
+#[test]
+fn a_cut_give_credits_the_recipient_only_what_was_given() {
+    let text = report(QUIET, &[], &[&giver(0), &holder("901", 100)]);
+    let script = "unit 900\nGIVE 901 50 SILV\n";
+    let review = review_of(&text, script);
+
+    assert_eq!(
+        row_of(&review, "901").at_month_end,
+        Some(100),
+        "nothing reaches 901: 900 held no silver when its GIVE ran"
+    );
+    assert_eq!(row_of(&review, "900").at_month_end, Some(0));
+    let shortfall = review
+        .findings
+        .iter()
+        .find(|finding| finding.code.as_str() == "not-enough-silver")
+        .expect("the giver is still warned");
+    assert_eq!(shortfall.unit_id.as_deref(), Some("900"));
+    assert_eq!(
+        shortfall.message,
+        "short $50: this unit can have $0 and its orders spend $50, \
+         so it gives none of the 50 silver ordered"
+    );
+}
+
+/// Unit 900 ($0, listed first) gives 901 $50 and buys $80 of grain; 901 ($100) gives 900 $100.
+/// 900's GIVE gives nothing, so it reaches the market with the $100 901 gave it and buys it all,
+/// ending at $20. The ledger used to charge it the whole $50 ask and cut the BUY.
+#[test]
+fn a_cut_give_leaves_the_giver_its_purse_for_the_market() {
+    let text = report(
+        QUIET,
+        &["For Sale: 20 grain [GRAI] at $10."],
+        &[&giver(0), &holder("901", 100)],
+    );
+    let script = "unit 900\nGIVE 901 50 SILV\nBUY 8 grain\nunit 901\nGIVE 900 100 SILV\n";
+    let review = review_of(&text, script);
+
+    assert_eq!(row_of(&review, "900").at_month_end, Some(20));
+    assert_eq!(row_of(&review, "901").at_month_end, Some(0));
+    for finding in &review.findings {
+        assert!(
+            !finding.message.contains("buys"),
+            "the BUY is not cut: {}",
+            finding.message
+        );
+    }
 }
