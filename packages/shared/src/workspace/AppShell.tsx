@@ -34,17 +34,18 @@ import { type TextFileSaver } from "../downloadFile";
 import type { OrdersUploader } from "./ordersUpload";
 import {
   regionBannerLine,
-  reportedLongOrderFor
+  reportedLongOrderFor,
+  type ReportedLongOrder
 } from "../ordersDocument";
 import { isOrdersFile, routeFileImport, routeOrdersImport } from "../ordersImport";
 import { ordersFileFaction } from "../ordersImport";
 import { RULESETS, rulesetById } from "../rulesets";
 import type { RulesetGaps } from "../rulesetGaps";
 import { orderProcessingFor, type OrderProcessing } from "../orderProcessing";
-import { rowKeyOf, unitRowKey } from "../unitTable";
+import { bySetOutHex, rowKeyOf, unitRowKey } from "../unitTable";
 import { previewAtCursor, unitAtCursor } from "./unitCursor";
 import { formationRegionUnitIds } from "./ordersLock";
-import type { MapSizes } from "@atlantis/core-client";
+import type { MapSizes, UnitRef } from "@atlantis/core-client";
 import { gameMapOf, mapShapeJson } from "../mapShape";
 import {
   deliverArmyExport,
@@ -607,9 +608,13 @@ export function AppShell({
    * edit in the orders pane without anything having to be reselected. `readUnitOrders` answers null
    * for a unit with no block yet, which is the commonest case there is.
    */
-  const getLongOrder = useCallback(
-    (unitId: string, regionId: string) =>
-      orders.longOrderOf(orders.readUnitOrders(ordersDocument, unitId, unitIdsByRegion.get(regionId)) ?? ""),
+  const getLongOrder = useMemo(
+    () =>
+      bySetOutHex((unitId, setOutHex) =>
+        orders.longOrderOf(
+          orders.readUnitOrders(ordersDocument, unitId, unitIdsByRegion.get(setOutHex)) ?? ""
+        )
+      ),
     [ordersDocument, unitIdsByRegion, orders]
   );
   /**
@@ -622,10 +627,20 @@ export function AppShell({
     () => orders.reportedLongOrders(parsed?.ordersTemplate),
     [parsed, orders]
   );
-  const getReportedLongOrder = useCallback(
-    (unitId: string) => reportedLongOrderFor(reportedLongOrderIndex, unitId),
-    [reportedLongOrderIndex]
-  );
+  // Asked by `UnitRef` like every per-unit lookup; the template index itself is keyed by number.
+  // Each unit's answer is kept, so a row's memoised explanations see the same object on every
+  // render and do not rebuild on a scroll frame (`ah-nwh8`).
+  const getReportedLongOrder = useMemo(() => {
+    const answered = new Map<string, ReportedLongOrder>();
+    return (unit: UnitRef): ReportedLongOrder => {
+      let answer = answered.get(unit.unitId);
+      if (answer === undefined) {
+        answer = reportedLongOrderFor(reportedLongOrderIndex, unit.unitId);
+        answered.set(unit.unitId, answer);
+      }
+      return answer;
+    };
+  }, [reportedLongOrderIndex]);
   /** How many writes to the document did not come from the editor. See `OrdersOrigin`. */
   const [externalOrdersRevision, setExternalOrdersRevision] = useState(0);
   /**
@@ -3894,8 +3909,8 @@ export function AppShell({
     () => new Map(validated.silver.map((entry) => [unitRowKey(entry.regionId, entry.unitId), entry])),
     [validated.silver]
   );
-  const getSilver = useCallback(
-    (unitId: string, regionId: string) => silverByUnit.get(unitRowKey(regionId, unitId)) ?? null,
+  const getSilver = useMemo(
+    () => bySetOutHex((unitId, setOutHex) => silverByUnit.get(unitRowKey(setOutHex, unitId)) ?? null),
     [silverByUnit]
   );
 

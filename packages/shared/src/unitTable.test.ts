@@ -1,10 +1,11 @@
 import type { ReportUnit, StructureInfo, UnitSilver } from "@atlantis/core-client";
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, expectTypeOf, it } from "vitest";
+import { NO_ORDERS_TEMPLATE, type ReportedLongOrder } from "./ordersDocument";
 import { structuresByRegionOf } from "./structureLabel";
 import {
+  bySetOutHex,
   rowMonth,
-  setOutFrom,
   type RowLookups,
   unitRefKey,
   unitRefOf,
@@ -487,9 +488,11 @@ describe("rowMonth reads a row's month where the report lists the unit (ah-xu6v)
   const A = "1:6,52";
   const B = "1:7,53";
   const forecastFor = (regionId: string) => aUnitSilver({ unitId: "new-1", regionId });
+  // The caller never names a hex: the lookups are built the way the shell builds them, and a
+  // row hands over its `UnitRef` alone.
   const lookups: RowLookups = {
-    getLongOrder: (unitId, regionId) => `${unitId} in ${regionId}`,
-    getSilver: (_unitId, regionId) => forecastFor(regionId),
+    getLongOrder: bySetOutHex((unitId, hex) => `${unitId} in ${hex}`),
+    getSilver: bySetOutHex((_unitId, hex) => forecastFor(hex)),
     silverWarnings: new Set([unitRowKey(B, "new-1")]),
     silverShortHexes: new Set([A])
   };
@@ -502,6 +505,32 @@ describe("rowMonth reads a row's month where the report lists the unit (ah-xu6v)
     expect(month.silver?.regionId).toBe(B);
     expect(month.warned).toBe(true);
     expect(month.hexShort).toBe(false);
+  });
+
+  it("hands every getter the row's UnitRef, and no hex of the caller's choosing", () => {
+    const seen: unknown[] = [];
+    const reported: ReportedLongOrder = { kind: "known", order: "WORK" };
+    const month = rowMonth(
+      { regionId: A, unitId: "new-1", arrivingFrom: B, own: true },
+      {
+        getLongOrder: (unit) => (seen.push(unit), null),
+        getSilver: (unit) => (seen.push(unit), null),
+        getReportedLongOrder: (unit) => (seen.push(unit), reported)
+      }
+    );
+
+    expect(seen).toEqual([
+      { regionId: A, unitId: "new-1", arrivingFrom: B },
+      { regionId: A, unitId: "new-1", arrivingFrom: B },
+      { regionId: A, unitId: "new-1", arrivingFrom: B }
+    ]);
+    expect(month.reportedLongOrder).toBe(reported);
+  });
+
+  it("answers no orders template when nothing is asked for the reported long order", () => {
+    expect(rowMonth({ regionId: A, unitId: "new-1", arrivingFrom: null, own: true }, lookups).reportedLongOrder).toBe(
+      NO_ORDERS_TEMPLATE
+    );
   });
 
   it("reads a row that stays in its own hex", () => {
@@ -535,16 +564,24 @@ describe("rowMonth reads a row's month where the report lists the unit (ah-xu6v)
       longOrder: null,
       silver: null,
       warned: false,
-      hexShort: false
+      hexShort: false,
+      reportedLongOrder: NO_ORDERS_TEMPLATE
     });
   });
 });
 
-describe("setOutFrom", () => {
-  it("is the origin for an arrival and the row's own hex otherwise", () => {
-    expect(setOutFrom({ regionId: "1:6,52", unitId: "new-1", arrivingFrom: "1:7,53" })).toBe("1:7,53");
-    expect(setOutFrom({ regionId: "1:6,52", unitId: "new-1", arrivingFrom: null })).toBe("1:6,52");
-    expect(setOutFrom({ regionId: "1:6,52", unitId: "new-1" })).toBe("1:6,52");
+describe("bySetOutHex reads a unit where it set out from (ah-nwh8)", () => {
+  const hexOf = bySetOutHex((_unitId, hex) => hex);
+
+  it("is the origin for an arrival and the unit's own hex otherwise", () => {
+    expect(hexOf({ regionId: "1:6,52", unitId: "new-1", arrivingFrom: "1:7,53" })).toBe("1:7,53");
+    expect(hexOf({ regionId: "1:6,52", unitId: "new-1", arrivingFrom: null })).toBe("1:6,52");
+  });
+
+  it("passes the unit's number through", () => {
+    expect(bySetOutHex((unitId) => unitId)({ regionId: "1:6,52", unitId: "new-1", arrivingFrom: null })).toBe(
+      "new-1"
+    );
   });
 });
 

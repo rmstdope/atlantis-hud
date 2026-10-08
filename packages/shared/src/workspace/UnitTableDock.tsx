@@ -84,6 +84,7 @@ import {
   type ExtraColumn,
   type SortColumn,
   type SortState,
+  type UnitLookup,
   type UnitRowKey,
   type DrawnColumnId,
   type UnitColumn
@@ -144,7 +145,7 @@ import {
   type UnitSource
 } from "./unitSource";
 import { CollapsiblePanel } from "./CollapsiblePanel";
-import { NO_ORDERS_TEMPLATE, type ReportedLongOrder } from "../ordersDocument";
+import type { ReportedLongOrder } from "../ordersDocument";
 import { ColumnReorderHandle } from "./ColumnReorderHandle";
 import { ColumnSplitter } from "./ColumnSplitter";
 import { Absent, SeverityMark, UNIT_LINK_CLASS } from "./primitives";
@@ -217,11 +218,11 @@ type UnitTableDockProps = {
   /** The whole report's orders preview, so a list spanning hexes shows the coming month too. */
   ordersPreview?: OrdersPreviewResponse | null;
   /** The month-long order a unit's live orders carry, for the Long order column. */
-  getLongOrder?: (unitId: string, regionId: string) => string | null;
+  getLongOrder?: UnitLookup<string | null>;
   /** What the report's orders template said this unit's long order was (`ah-rgkk.5.4`). */
-  getReportedLongOrder?: (unitId: string) => ReportedLongOrder;
+  getReportedLongOrder?: UnitLookup<ReportedLongOrder>;
   /** Each own unit's silver forecast, or null where there is none. `ah-1wcw.1`. */
-  getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
+  getSilver?: UnitLookup<UnitSilver | null>;
   /** The unit-anchored `not-enough-silver` findings, by unit id. */
   silverWarnings?: ReadonlySet<UnitRowKey>;
   /** The hexes whose silver shortfall is anchored to the hex and names no unit (`ah-5znb`). */
@@ -2023,10 +2024,10 @@ function HoveredPopup({
   unitNames
 }: {
   hovered: { unit: PreviewedUnit; column: DrawnColumnId; at: Point } | null;
-  getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
-  getLongOrder?: (unitId: string, regionId: string) => string | null;
+  getSilver?: UnitLookup<UnitSilver | null>;
+  getLongOrder?: UnitLookup<string | null>;
   /** What the report's orders template said this unit's long order was (`ah-rgkk.5.4`). */
-  getReportedLongOrder?: (unitId: string) => ReportedLongOrder;
+  getReportedLongOrder?: UnitLookup<ReportedLongOrder>;
   silverWarnings?: ReadonlySet<UnitRowKey>;
   silverShortHexes?: ReadonlySet<string>;
   countUpkeep: boolean;
@@ -2042,9 +2043,10 @@ function HoveredPopup({
   const { unit, column, at } = hovered;
   // Read exactly as the row reads it - where the report lists the unit (`ah-xu6v`) - so the popup
   // and the cell's own hidden sentence are drawn from the same arguments to `summariseUnit`.
-  const { silver, warned, hexShort, longOrder } = rowMonth(unit, {
+  const { silver, warned, hexShort, longOrder, reportedLongOrder } = rowMonth(unit, {
     getSilver,
     getLongOrder,
+    getReportedLongOrder,
     silverWarnings,
     silverShortHexes
   });
@@ -2053,7 +2055,7 @@ function HoveredPopup({
     structureLabel: unitStructureLabelIn(structureRegionOf(unit), unit.structureId, structures),
     reportedStructureLabel: reportedStructureLabelFor(unit, structures),
     longOrder,
-    reportedLongOrder: getReportedLongOrder?.(unit.unitId) ?? NO_ORDERS_TEMPLATE,
+    reportedLongOrder,
     silver,
     silverWarned: warned,
     silverHexShort: hexShort,
@@ -2197,11 +2199,11 @@ function UnitRow({
   onPointerAt: (point: Point) => void;
   onPointerGone: () => void;
   /** The month-long order this unit's live orders carry, where it is one of ours. */
-  getLongOrder?: (unitId: string, regionId: string) => string | null;
+  getLongOrder?: UnitLookup<string | null>;
   /** What the report's orders template said this unit's long order was (`ah-rgkk.5.4`). */
-  getReportedLongOrder?: (unitId: string) => ReportedLongOrder;
+  getReportedLongOrder?: UnitLookup<ReportedLongOrder>;
   /** This unit's silver forecast, where it is one of ours. `ah-1wcw.1`. */
-  getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
+  getSilver?: UnitLookup<UnitSilver | null>;
   /** The unit-anchored `not-enough-silver` findings, by unit id. */
   silverWarnings?: ReadonlySet<UnitRowKey>;
   /** The hexes whose silver shortfall is anchored to the hex and names no unit (`ah-5znb`). */
@@ -2272,9 +2274,9 @@ function UnitRow({
   // blaming one of several would be as wrong there as it is in the Problems panel - so there is
   // deliberately no fallback to the hex. There `hexShort` says so instead, and no row carries a ⚠ -
   // but the popup must still not call the shortfall covered (`ah-5znb`).
-  const { home, longOrder, silver, warned, hexShort } = rowMonth(
+  const { home, longOrder, silver, warned, hexShort, reportedLongOrder } = rowMonth(
     { regionId, unitId: unit.unitId, arrivingFrom: unit.arrivingFrom, own: unit.own },
-    { getLongOrder, getSilver, silverWarnings, silverShortHexes }
+    { getLongOrder, getReportedLongOrder, getSilver, silverWarnings, silverShortHexes }
   );
   // Which pin this row's faction cell would set, and so whether that cell is a control at all.
   // One rule, in `foreignUnits.ts`, rather than a second concealed-test spelled out down here that
@@ -2324,7 +2326,7 @@ function UnitRow({
       structureLabel,
       reportedStructureLabel,
       longOrder,
-      reportedLongOrder: getReportedLongOrder?.(unit.unitId) ?? NO_ORDERS_TEMPLATE,
+      reportedLongOrder,
       silver,
       silverWarned: warned,
       silverHexShort: hexShort,
@@ -2343,7 +2345,7 @@ function UnitRow({
     structureLabel,
     reportedStructureLabel,
     longOrder,
-    getReportedLongOrder,
+    reportedLongOrder,
     silver,
     warned,
     hexShort,

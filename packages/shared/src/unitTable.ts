@@ -6,6 +6,7 @@ import {
   type StructureBearingRow,
   type StructuresByRegion
 } from "./structureLabel";
+import { NO_ORDERS_TEMPLATE, type ReportedLongOrder } from "./ordersDocument";
 import { compareUnitIds, idNumber } from "./unitOrder";
 
 /**
@@ -474,16 +475,36 @@ export type KeyedRow = { regionId: string; unitId: string; arrivingFrom?: string
  * own hex - the same answer as the core's `UnitRef::set_out_hex`.
  *
  * An arrival stands in a hex that numbers its `NEW n` aliases independently (`rules/form`), so
- * reading its orders or its forecast there finds a different unit or none (`ah-xu6v`).
+ * reading its orders or its forecast there finds a different unit or none (`ah-xu6v`). Private:
+ * a lookup reaches it only through `bySetOutHex`, so no caller has a hex to choose (`ah-nwh8`).
  */
-export function setOutFrom(row: KeyedRow): string {
+function setOutFrom(row: KeyedRow): string {
   return row.arrivingFrom ?? row.regionId;
 }
 
-/** The shell's per-unit answers the units table reads a row's month from. */
+/** A per-unit answer the shell gives, asked by the unit's identity and never by a hex. */
+export type UnitLookup<T> = (unit: UnitRef) => T;
+
+/**
+ * A per-unit lookup keyed by the hex the unit set out from, asked by its `UnitRef` instead.
+ *
+ * The one place a unit's identity is turned into the hex its orders block and its silver forecast
+ * are keyed by. Three times a caller handed such a lookup the hex an arrival stands in and read
+ * another unit's month or none (`ah-jxrw`, `ah-xu6v`); a lookup built here cannot be asked that way.
+ */
+export function bySetOutHex<T>(lookup: (unitId: string, setOutHex: string) => T): UnitLookup<T> {
+  return (unit) => lookup(unit.unitId, setOutFrom(unit));
+}
+
+/** The shell's per-unit answers the units table reads a row's month from, each asked by `UnitRef`. */
 export type RowLookups = {
-  getLongOrder?: (unitId: string, regionId: string) => string | null;
-  getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
+  getLongOrder?: UnitLookup<string | null>;
+  getSilver?: UnitLookup<UnitSilver | null>;
+  /**
+   * What the report's orders template said the unit's long order was (`ah-rgkk.5.4`). Answer the
+   * same object for the same unit each time: a row memoises on it.
+   */
+  getReportedLongOrder?: UnitLookup<ReportedLongOrder>;
   /** The units a silver finding names, by hex and unit. */
   silverWarnings?: ReadonlySet<UnitRowKey>;
   /** The hexes whose pooled silver falls short with nobody named (`ah-5znb`). */
@@ -492,7 +513,7 @@ export type RowLookups = {
 
 /** A row's own month, as the cell, its popup and its sort all read it. */
 export type RowMonth = {
-  /** Where the report lists the unit: `setOutFrom`. Its findings are anchored there too. */
+  /** Where the report lists the unit: the hex it set out from. Its findings are anchored there too. */
   home: string;
   longOrder: string | null;
   silver: UnitSilver | null;
@@ -500,24 +521,29 @@ export type RowMonth = {
   warned: boolean;
   /** The hex is short of silver with nobody named. Never without a forecast. */
   hexShort: boolean;
+  /** The report's own long order for the unit; `NO_ORDERS_TEMPLATE` when nothing was asked. */
+  reportedLongOrder: ReportedLongOrder;
 };
 
 /**
- * Everything the table reads about a row's own month, read in the hex the report lists the unit in
- * rather than the hex the row stands in (`ah-xu6v`). The row's cells, its hover popup and the Long
- * order and Silver sorts all come through here, so none of them can look in a different hex from
- * the others. Only our own units have orders or a forecast; anybody else's month is empty.
+ * Everything the table reads about a row's own month, gathered from lookups asked by the row's
+ * `UnitRef` (`ah-nwh8`), so each is read in the hex the report lists the unit in rather than the
+ * hex the row stands in (`ah-xu6v`). The row's cells, its hover popup and the Long order and
+ * Silver sorts all come through here, so none of them can look in a different hex from the others.
+ * Only our own units have orders or a forecast; anybody else's month is empty.
  */
 export function rowMonth(row: KeyedRow & { own: boolean }, lookups: RowLookups): RowMonth {
+  const unit = unitRefOf(row);
   const home = setOutFrom(row);
-  const longOrder = row.own ? (lookups.getLongOrder?.(row.unitId, home) ?? null) : null;
-  const silver = row.own ? (lookups.getSilver?.(row.unitId, home) ?? null) : null;
+  const longOrder = row.own ? (lookups.getLongOrder?.(unit) ?? null) : null;
+  const silver = row.own ? (lookups.getSilver?.(unit) ?? null) : null;
   return {
     home,
     longOrder,
     silver,
     warned: silver !== null && (lookups.silverWarnings?.has(unitRowKey(home, row.unitId)) ?? false),
-    hexShort: silver !== null && (lookups.silverShortHexes?.has(home) ?? false)
+    hexShort: silver !== null && (lookups.silverShortHexes?.has(home) ?? false),
+    reportedLongOrder: lookups.getReportedLongOrder?.(unit) ?? NO_ORDERS_TEMPLATE
   };
 }
 
