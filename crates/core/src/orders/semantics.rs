@@ -5087,6 +5087,21 @@ struct Ledger<'a> {
     /// `report_shortfalls` is the only reader - because the charge is the whole ask, so a reduced
     /// line always drives the balance below zero. Change the charge and that stops holding.
     reduced_buys: Vec<ReducedBuy>,
+    /// Every `GIVE` of silver beyond what the giver held as it ran, in the order they were applied
+    /// (`ah-4k84`). The engine's `Game::DoGiveOrder` (Atlantis-PBEM/Atlantis, `runorders.cpp`)
+    /// errors "Not enough." and gives what the unit has; `rules/give` does not say. Recorded per
+    /// line because the walk settles units in report order, so silver a later unit gives back
+    /// within the same phase is not there when this line runs - a phase-end balance cannot see it.
+    ///
+    /// The charge stays the whole ask, and unlike a cut `BUY`'s nothing hands the remainder the
+    /// engine kept back to later lines ([`Ledger::overcharged`]), nor is the recipient credited
+    /// less: both are `ah-1c8p`. "What the unit has" is the engine's `GetSharedNum`, which counts
+    /// the faction's `SHARE` units in the region too, so only an unpooled hex reads these
+    /// (`judge_shortfalls`, `report_shortfalls`); a pooled one is judged through its pool.
+    reduced_gives: Vec<ReducedGive>,
+    /// What each unit's `GIVE` lines of silver to a unit asked, cut or not: the "spend" of a
+    /// not-enough-silver sentence about a GIVE, whose "can have" is this less the cut (`ah-4k84`).
+    silver_given: BTreeMap<String, i64>,
     /// What each unit's `BUY` lines have been charged **beyond what they actually spent** this
     /// month: `sum(wanted - spends)` over every bounded line. Summing over all of them rather than
     /// only the reduced ones is the same figure, because `price_purchase` returns
@@ -5124,6 +5139,15 @@ struct ReducedBuy {
     /// cannot serve: it holds one entry per `(unit, tag)` - the first order to draw on it - which
     /// is often a `GIVE` and never more than one line (`ah-szye`).
     placed: PlacedIntent,
+}
+
+/// A `GIVE` of silver its giver could not fund in full as it ran (`ah-4k84`).
+struct ReducedGive {
+    unit_id: String,
+    /// What the line asked to give, as written.
+    ordered: i64,
+    /// What the engine gives: what the unit held then.
+    given: i64,
 }
 
 /// A `BUY` line with nothing left to buy, and the limit its own earlier lines had emptied.
@@ -5419,6 +5443,8 @@ fn ledger_for_reaching<'a>(
         dead_buys: Vec::new(),
         claimed: BTreeMap::new(),
         reduced_buys: Vec::new(),
+        reduced_gives: Vec::new(),
+        silver_given: BTreeMap::new(),
         overcharged: BTreeMap::new(),
         // `trusted: true` - see `MarketPurse`'s hand-written `Default`.
         market_purse: MarketPurse::default(),
@@ -7667,6 +7693,14 @@ fn transfer(
                     target_label.map(str::to_string),
                 );
             } else if is_give {
+                *ledger.silver_given.entry(from.clone()).or_default() += quantity;
+                if quantity > known_source.max(0) {
+                    ledger.reduced_gives.push(ReducedGive {
+                        unit_id: from.clone(),
+                        ordered: quantity,
+                        given: known_source.max(0),
+                    });
+                }
                 move_silver(
                     ledger,
                     StatePhase::Give,
@@ -11095,9 +11129,8 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
 /// What a unit's own silver is short as STUDY settles, the moment `rules/sequenceofevents` charges
 /// the fee - before WORK, ENTERTAIN, TRANSPORT and maintenance, so nothing received in them pays
 /// it (`ah-vle0`). Zero unless STUDY is what overdrew it: an overdraft already there as movement
-/// ended is not STUDY's, and nothing between the two phases moves silver but STUDY. Such an earlier
-/// overdraft - a GIVE of more silver than the unit holds - stays with the month-end reading here;
-/// judging it when it happens is `ah-4k84`.
+/// ended is not STUDY's, and nothing between the two phases moves silver but STUDY. An earlier
+/// overdraft - a GIVE of more silver than the unit holds - is [`silver_short_at_give`]'s.
 fn silver_short_at_study(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
     let at_study = silver_at(ledger, unit_id, LendingMoment::Study);
     let before = silver_at(ledger, unit_id, LendingMoment::Movement);
@@ -11106,6 +11139,25 @@ fn silver_short_at_study(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
     } else {
         0
     }
+}
+
+/// What a unit's own GIVEs of silver asked beyond what it held as each ran, under "Give orders" in
+/// `rules/sequenceofevents`, long before WORK, TRANSPORT and maintenance: nothing received in them,
+/// nor a gift that reaches it later in the Give phase, funds the gift (`ah-4k84`). Read from
+/// [`Ledger::reduced_gives`] rather than the phase's balance, which nets those later gifts in.
+fn silver_short_at_give(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    ledger
+        .reduced_gives
+        .iter()
+        .filter(|reduced| reduced.unit_id == unit_id)
+        .map(|reduced| reduced.ordered - reduced.given)
+        .sum()
+}
+
+/// The deeper of [`silver_short_at_give`] and [`silver_short_at_study`]: what a unit's own orders
+/// overdrew it by before a later receipt could net it out.
+fn silver_short_mid_month(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    silver_short_at_give(ledger, unit_id).max(silver_short_at_study(ledger, unit_id))
 }
 
 /// How far `unit_id`'s orders overdraw it: at the month's end, or as STUDY settles if it was
@@ -11187,8 +11239,10 @@ fn judge_shortfalls(
             let pooled = sharing.reading(tag, ruleset) == Reading::Pooled;
             // Silver a unit receives after STUDY - a shipment, wages - nets its month's end but
             // never paid for the study (`ah-vle0`). A pooled hex judges this through its pool.
+            //
+            // Likewise a GIVE, which runs long before either (`ah-4k84`).
             let at_study = if tag == SILVER && !pooled {
-                silver_short_at_study(ledger, unit_id)
+                silver_short_mid_month(ledger, unit_id)
             } else {
                 0
             };
@@ -11472,22 +11526,42 @@ fn report_shortfalls(
             // `rules/buy` buys as many as the unit can afford, so the sentence goes on to say
             // what it gets instead of what it asked for. Appended rather than replacing anything,
             // so the figures a player already reads stay where they are (`ah-omn7`, Q1).
+            //
+            // A GIVE the unit could not fund gives what it has (the engine's
+            // `Game::DoGiveOrder`; `rules/give` does not say), and it runs first (`ah-4k84`).
             let mut cut: Vec<String> = ledger
-                .reduced_buys
+                .reduced_gives
                 .iter()
                 .filter(|reduced| &reduced.unit_id == unit_id)
                 .map(|reduced| {
                     format!(
-                        "buys {} of the {} ordered",
-                        if reduced.bought == 0 {
+                        "gives {} of the {} ordered",
+                        if reduced.given == 0 {
                             "none".to_string()
                         } else {
-                            reduced.bought.to_string()
+                            reduced.given.to_string()
                         },
-                        counted_item(reduced.ordered, &reduced.tag, hex, ruleset, plurals),
+                        counted_item(reduced.ordered, SILVER, hex, ruleset, plurals),
                     )
                 })
                 .collect();
+            cut.extend(
+                ledger
+                    .reduced_buys
+                    .iter()
+                    .filter(|reduced| &reduced.unit_id == unit_id)
+                    .map(|reduced| {
+                        format!(
+                            "buys {} of the {} ordered",
+                            if reduced.bought == 0 {
+                                "none".to_string()
+                            } else {
+                                reduced.bought.to_string()
+                            },
+                            counted_item(reduced.ordered, &reduced.tag, hex, ruleset, plurals),
+                        )
+                    }),
+            );
             // A shipment is all or nothing (the agreed record), so it always ships none
             // (`ah-7ale.4`).
             cut.extend(
@@ -11512,7 +11586,8 @@ fn report_shortfalls(
             //
             // A shortfall that is STUDY's is read as STUDY settles, before maintenance, so neither
             // the fee nor the food that paid it is in its sentence (`ah-vle0`).
-            let at_study = silver_short_at_study(ledger, unit_id) >= short;
+            // A GIVE's likewise, which runs before both (`ah-4k84`).
+            let at_study = silver_short_mid_month(ledger, unit_id) >= short;
             let (food, upkeep) = if at_study {
                 (0, 0)
             } else {
@@ -11524,14 +11599,28 @@ fn report_shortfalls(
             // Claimed silver likewise, since `rules/claim` gives it to the unit, which 'may then
             // spend' it (`ah-6ak4`).
             let claimed = claimed_this_month(ledger, unit_id);
+            // A shortfall that is a GIVE's speaks of the unit's GIVE lines alone, as they ran:
+            // what they asked, and what they gave - not of silver that reached it after them
+            // (`ah-4k84`). STUDY's, when deeper, keeps the reading above.
+            let at_give = silver_short_at_give(ledger, unit_id);
+            let can_have = if at_give >= short && at_give >= silver_short_at_study(ledger, unit_id)
+            {
+                ledger
+                    .silver_given
+                    .get(unit_id)
+                    .copied()
+                    .unwrap_or_default()
+                    - short
+            } else {
+                ordered.holding(SILVER) + received + claimed + food
+            };
             ordered.finding(
                 hex,
                 codes::NOT_ENOUGH_SILVER,
                 format!(
-                    "short ${short}: this unit can have ${} and its {} spend ${}{bought}",
-                    ordered.holding(SILVER) + received + claimed + food,
+                    "short ${short}: this unit can have ${can_have} and its {} spend ${}{bought}",
                     spenders(upkeep),
-                    ordered.holding(SILVER) + received + claimed + short + food,
+                    can_have + short,
                 ),
                 at,
             )
@@ -37485,9 +37574,11 @@ BUILD
             .iter()
             .find(|finding| finding.code.as_str() == "not-enough-silver")
             .expect("the shortfall must still fire");
+        // The GIVE it funds gives what the unit holds, which is nothing (`ah-4k84`).
         assert_eq!(
             finding.message,
-            "short $500: this unit can have $0 and its orders spend $500"
+            "short $500: this unit can have $0 and its orders spend $500, \
+             so it gives none of the 500 silver ordered"
         );
     }
 
@@ -54239,7 +54330,16 @@ BUILD
         quartermaster: ReportUnit,
         orders: &str,
     ) -> Vec<(Option<String>, String)> {
-        let mut quartermaster = with_skill(with_silver(quartermaster, 0), "QUAM", 1);
+        silver_shortfalls_beside_a_shipper_holding(quartermaster, 0, orders)
+    }
+
+    /// The same, with the quartermaster holding `silver`.
+    fn silver_shortfalls_beside_a_shipper_holding(
+        quartermaster: ReportUnit,
+        silver: i64,
+        orders: &str,
+    ) -> Vec<(Option<String>, String)> {
+        let mut quartermaster = with_skill(with_silver(quartermaster, silver), "QUAM", 1);
         quartermaster.structure_id = Some("500".to_string());
         let hex = ReportRegion {
             structures: vec![Structure {
@@ -54293,6 +54393,70 @@ BUILD
                 Some("6".to_string()),
                 "short $10: this unit can have $0 and its orders spend $10".to_string()
             )],
+        );
+    }
+
+    // --- a unit's own GIVE is judged as GIVE runs, not at the month's end (`ah-4k84`) ----------
+    //
+    // `rules/sequenceofevents` runs GIVE under "Give orders", long before TRANSPORT. `rules/give`
+    // does not say what a GIVE beyond holdings does; the engine's own `Game::DoGiveOrder`
+    // (Atlantis-PBEM/Atlantis, `runorders.cpp`) errors "Not enough." and gives what the unit has.
+
+    /// Quartermaster 6 ($0) gives unit 9 $50; unit 9 ships 6 $100 by TRANSPORT, which settles
+    /// long after GIVE. 6 ends the month in credit, but held nothing when its GIVE ran.
+    #[test]
+    fn a_give_is_unfunded_when_the_silver_arrives_by_transport_afterwards() {
+        assert_eq!(
+            silver_shortfalls_beside_a_shipper(
+                unit("6"),
+                "unit 6\nGIVE 9 50 SILV\nunit 9\nTRANSPORT 6 100 SILV\n",
+            ),
+            vec![(
+                Some("6".to_string()),
+                "short $50: this unit can have $0 and its orders spend $50, \
+                 so it gives none of the 50 silver ordered"
+                    .to_string()
+            )],
+            "unit 6 holds $0 when GIVE runs; the $100 shipped after it cannot fund it"
+        );
+    }
+
+    /// The same GIVE with $20 in hand: the engine gives the $20 it has.
+    #[test]
+    fn a_give_beyond_holdings_gives_what_the_unit_has() {
+        assert_eq!(
+            silver_shortfalls_beside_a_shipper_holding(
+                unit("6"),
+                20,
+                "unit 6\nGIVE 9 50 SILV\nunit 9\nTRANSPORT 6 100 SILV\n",
+            ),
+            vec![(
+                Some("6".to_string()),
+                "short $30: this unit can have $20 and its orders spend $50, \
+                 so it gives 20 of the 50 silver ordered"
+                    .to_string()
+            )],
+        );
+    }
+
+    /// Silver given back to unit 6 later in the same Give phase, by a unit listed below it, does
+    /// not fund its GIVE either: the walk settles units in report order, so 6's GIVE has run, and
+    /// been cut, before unit 9's reaches it (review of `ah-4k84`).
+    #[test]
+    fn a_give_is_unfunded_when_the_silver_is_given_back_after_it() {
+        assert_eq!(
+            silver_shortfalls_beside_a_shipper(
+                unit("6"),
+                "unit 6\nGIVE 9 50 SILV\nunit 9\nGIVE 6 100 SILV\n",
+            ),
+            vec![(
+                Some("6".to_string()),
+                "short $50: this unit can have $0 and its orders spend $50, \
+                 so it gives none of the 50 silver ordered"
+                    .to_string()
+            )],
+            "the sentence speaks of the GIVE as it ran, as its TRANSPORT twin does - not of the \
+             $100 that reached unit 6 after it"
         );
     }
 

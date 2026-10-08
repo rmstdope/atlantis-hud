@@ -187,9 +187,11 @@ fn an_earlier_give_all_is_not_shrunk_by_a_later_exact_give() {
         .iter()
         .find(|finding| finding.code.as_str() == "not-enough-silver")
         .expect("the shortfall is reported");
+    // The exact gift runs on an emptied purse, so it gives none of its 50 (`ah-4k84`).
     assert_eq!(
         shortfall.message,
-        "short $50: this unit can have $100 and its orders spend $150"
+        "short $50: this unit can have $100 and its orders spend $150, \
+         so it gives none of the 50 silver ordered"
     );
 }
 
