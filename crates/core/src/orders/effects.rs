@@ -4661,46 +4661,37 @@ mod tests {
     }
 
     /// `rules/build` (New Age: Trident): "By default the unit will use whatever is available,
-    /// consuming stone before wood." New Origins' own `rules/build` states no such default, so a
-    /// unit there holding both stays unknowable.
+    /// consuming stone before wood." New Origins' own `rules/build` states no default; the
+    /// navigator chose to read it the same way rather than leave the line uncounted (`ah-9ctt`).
     #[test]
     fn trident_build_without_a_material_spends_stone_first() {
         let report = trident_farmer_report("20 stone [STON], 20 wood [WOOD]");
-        let trident = trident_preview_over(&report, "unit 900\nBUILD Farm\n");
-        let unit = only_unit(&trident);
-        assert_eq!(unit.built.len(), 1, "{:?}", unit.built);
-        assert_eq!(
-            unit.built[0]
-                .materials
-                .iter()
-                .map(|share| (share.tag.as_str(), share.amount))
-                .collect::<Vec<_>>(),
-            [("STON", 10)]
-        );
-        assert_eq!(unit.built[0].amount, 10);
-        assert_eq!(build_spent(unit, "STON"), Some(-10));
-        assert_eq!(build_spent(unit, "WOOD"), None);
-        assert!(unit.uncounted.is_empty(), "{:?}", unit.uncounted);
-
-        let origins = preview_over(&report, "unit 900\nBUILD Farm\n");
-        assert!(
-            origins
-                .regions
-                .iter()
-                .flat_map(|region| &region.units)
-                .all(|unit| unit.built.is_empty()),
-            "New Origins states no default, so nothing is forecast: {:?}",
-            origins.regions
-        );
-        assert!(
-            origins
-                .regions
-                .iter()
-                .flat_map(|region| &region.units)
-                .any(|unit| !unit.uncounted.is_empty()),
-            "and the line is marked uncounted instead: {:?}",
-            origins.regions
-        );
+        for (world, response) in [
+            (
+                "Trident",
+                trident_preview_over(&report, "unit 900\nBUILD Farm\n"),
+            ),
+            (
+                "New Origins",
+                preview_over(&report, "unit 900\nBUILD Farm\n"),
+            ),
+        ] {
+            let unit = only_unit(&response);
+            assert_eq!(unit.built.len(), 1, "{world}: {:?}", unit.built);
+            assert_eq!(
+                unit.built[0]
+                    .materials
+                    .iter()
+                    .map(|share| (share.tag.as_str(), share.amount))
+                    .collect::<Vec<_>>(),
+                [("STON", 10)],
+                "{world}"
+            );
+            assert_eq!(unit.built[0].amount, 10, "{world}");
+            assert_eq!(build_spent(unit, "STON"), Some(-10), "{world}");
+            assert_eq!(build_spent(unit, "WOOD"), None, "{world}");
+            assert!(unit.uncounted.is_empty(), "{world}: {:?}", unit.uncounted);
+        }
     }
 
     /// One build, two materials: the stone runs out and the wood finishes the month

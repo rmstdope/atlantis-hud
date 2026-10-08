@@ -8493,11 +8493,15 @@ fn plan_build<'a>(
     }
 }
 
-/// The materials of a New Age build, in the order the rules spend them.
+/// The materials of a build, in the order they are spent.
 ///
 /// `rules/build` (New Age: Trident and Arcanum): "By default the unit will use whatever is
 /// available, consuming stone before wood." The catalogue's own order is `["wood", "stone"]`
 /// (`Ruleset::build_recipe`), so reading the spend order off the data page would be silently wrong.
+///
+/// New Origins' `rules/build` names no default at all. The navigator chose to read it the New Age
+/// way rather than leave a build with both materials at hand uncounted (`ah-9ctt`): that is a
+/// decision, not a rule, and the one place to change if the engine is found to differ.
 fn spend_order<'a>(
     resolved: &[&'a crate::movement::rules::ItemEntry],
 ) -> Vec<&'a crate::movement::rules::ItemEntry> {
@@ -8517,13 +8521,11 @@ fn spend_order<'a>(
 
 /// The materials this `BUILD` may spend, in the order it spends them.
 ///
-/// `None` when nothing here can settle which - the caller marks the line uncounted. An empty answer
-/// is settled and means the unit holds none of any alternative.
+/// `None` only for a restriction the recipe cannot meet - the caller marks the line uncounted.
 fn build_candidates<'a>(
     ruleset: &Ruleset,
     resolved: &[&'a crate::movement::rules::ItemEntry],
     asked: Option<super::intents::BuildMaterial>,
-    held_of: impl Fn(&str) -> i64,
 ) -> Option<Vec<&'a crate::movement::rules::ItemEntry>> {
     if let Some(asked) = asked {
         // A restriction the recipe cannot meet - `BUILD Tower WOOD`. `rules/build` says the order
@@ -8535,25 +8537,7 @@ fn build_candidates<'a>(
             .find(|item| item.tag == wanted.tag)?;
         return Some(vec![found]);
     }
-    if let [only] = resolved {
-        return Some(vec![only]);
-    }
-    if ruleset.is_new_age() {
-        return Some(spend_order(resolved));
-    }
-    // New Origins states no default, so a unit holding one alternative settles it and a unit
-    // holding two does not. Holding none is settled too: no work is possible either way.
-    let holding: Vec<&'a crate::movement::rules::ItemEntry> = resolved
-        .iter()
-        .copied()
-        .filter(|item| held_of(&item.tag) > 0)
-        .collect();
-    match holding.len() {
-        0 => Some(resolved.to_vec()),
-        1 => Some(holding),
-        // Nothing in the rules says which the engine takes.
-        _ => None,
-    }
+    Some(spend_order(resolved))
 }
 
 /// The certain site refusal for a founding kind, if the selected ruleset states one.
@@ -8834,15 +8818,13 @@ fn build(
         } else {
             // The material the settlement below would have spent first: whichever of the
             // candidates the unit actually holds, in the order the rules spend them.
-            build_candidates(ruleset, &resolved, order.material, |tag| {
-                available_of(tag).unwrap_or(0)
-            })
-            .and_then(|candidates| {
-                candidates
-                    .into_iter()
-                    .find(|item| available_of(&item.tag).unwrap_or(0) > 0)
-            })
-            .map(|item| item.name.clone())
+            build_candidates(ruleset, &resolved, order.material)
+                .and_then(|candidates| {
+                    candidates
+                        .into_iter()
+                        .find(|item| available_of(&item.tag).unwrap_or(0) > 0)
+                })
+                .map(|item| item.name.clone())
         };
         if order.founding.is_some() && order.helping.is_none() {
             ledger
@@ -8865,7 +8847,7 @@ fn build(
         mark_uncounted_and_return!();
     }
     let held_of = |tag: &str| available_of(tag).unwrap_or(0);
-    let Some(candidates) = build_candidates(ruleset, &resolved, order.material, held_of) else {
+    let Some(candidates) = build_candidates(ruleset, &resolved, order.material) else {
         mark_uncounted_and_return!();
     };
     let held: Vec<(&crate::movement::rules::ItemEntry, i64)> = candidates
@@ -29415,21 +29397,43 @@ BUILD
             });
         }
 
+        /// New Origins' `rules/build` names no default between two materials; the navigator chose
+        /// New Age's *"consuming stone before wood"* over leaving the line uncounted (`ah-9ctt`).
         #[test]
-        fn a_build_of_a_structure_of_alternatives_cannot_be_counted() {
-            let hex_region = region(vec![with_item(
-                with_item(with_men(unit("900"), 10), 120, "wood", "WOOD"),
-                120,
-                "stone",
-                "STON",
+        fn a_build_of_a_structure_of_alternatives_holding_both_spends_stone_first() {
+            let hex_region = region(vec![with_skill(
+                with_item(
+                    with_item(with_men(unit("900"), 10), 120, "wood", "WOOD"),
+                    120,
+                    "stone",
+                    "STON",
+                ),
+                "MINI",
+                3,
             )]);
             with_ledger(hex_region, "unit 900\nBUILD Mine\n", |ledger| {
-                assert!(!ledger.movements.iter().any(|m| m.unit_id == "900"));
-                assert!(!ledger.built.contains_key("900"));
-                assert_eq!(
-                    ledger.uncounted.get("900").map(Vec::as_slice),
-                    Some([2].as_slice())
+                assert!(
+                    ledger.movements.contains(&movement(
+                        "900",
+                        "STON",
+                        "stone",
+                        -10,
+                        ItemChangeCause::BuildSpent,
+                        StatePhase::Build,
+                        Some(2),
+                    )),
+                    "{:?}",
+                    ledger.movements
                 );
+                assert!(
+                    !ledger
+                        .movements
+                        .iter()
+                        .any(|m| m.unit_id == "900" && m.tag == "WOOD"),
+                    "no wood leaves while stone lasts: {:?}",
+                    ledger.movements
+                );
+                assert!(!ledger.uncounted.contains_key("900"));
             });
         }
 
