@@ -11260,16 +11260,17 @@ fn judge_shortfalls(
             // Silver a unit receives after STUDY - a shipment, wages - nets its month's end but
             // never paid for the study (`ah-vle0`). A pooled hex judges this through its pool.
             //
-            // Likewise a GIVE, which runs long before either (`ah-4k84`).
-            let at_study = if tag == SILVER && !pooled {
+            // Likewise a GIVE, which runs long before either (`ah-4k84`), and a `BUY` its silver
+            // cut, which runs at the market (`ah-y70h`).
+            let mid_month = if tag == SILVER && !pooled {
                 silver_short_mid_month(ledger, unit_id)
             } else {
                 0
             };
-            if balance >= 0 && at_study <= 0 {
+            if balance >= 0 && mid_month <= 0 {
                 continue;
             }
-            let short = (-balance).max(at_study);
+            let short = (-balance).max(mid_month);
 
             if pooled {
                 verdicts.push(Verdict::DeferredToPool {
@@ -11294,7 +11295,7 @@ fn judge_shortfalls(
             // overspends on its orders keeps its own finding, its line and its name, because
             // nothing shared that silver for it (`ah-e66j`).
             if tag == SILVER
-                && at_study <= 0
+                && mid_month <= 0
                 && ledger.maintenance_pooled
                 && short <= unpaid_upkeep(ledger, who)
             {
@@ -11611,9 +11612,10 @@ fn report_shortfalls(
             //
             // A shortfall that is STUDY's is read as STUDY settles, before maintenance, so neither
             // the fee nor the food that paid it is in its sentence (`ah-vle0`).
-            // A GIVE's likewise, which runs before both (`ah-4k84`).
-            let at_study = silver_short_mid_month(ledger, unit_id) >= short;
-            let (food, upkeep) = if at_study {
+            // A GIVE's likewise, which runs before both (`ah-4k84`), and a cut `BUY`'s, at the
+            // market (`ah-y70h`).
+            let mid_month = silver_short_mid_month(ledger, unit_id) >= short;
+            let (food, upkeep) = if mid_month {
                 (0, 0)
             } else {
                 (
