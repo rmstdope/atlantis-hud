@@ -94,6 +94,13 @@ impl RouteChain {
         self.open == Some(Open::Other)
     }
 
+    /// Whether the last month-long order fed in is a TEACH, which replaces this block's movement
+    /// only for a unit the settled month finds able to teach - the caller's to judge
+    /// (`OrderedUnits::with_settled_teachers`, `ah-0x6x`).
+    pub(crate) fn closed_by_teach(&self) -> bool {
+        self.open == Some(Open::Teaching)
+    }
+
     /// The route so far. Never `Some` with empty `steps`.
     #[cfg(test)]
     pub(crate) fn route(&self) -> Option<&ChainedRoute> {
@@ -235,6 +242,7 @@ mod tests {
         chain.push("MOVE", &mv(&[Go(North)]));
         chain.push("TEACH", &teach);
         assert!(!chain.replaced());
+        assert!(chain.closed_by_teach());
         assert_eq!(chain.into_route().expect("a route").steps, vec![Go(North)]);
 
         assert_eq!(

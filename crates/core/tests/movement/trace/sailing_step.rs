@@ -134,3 +134,55 @@ fn a_traced_flight_marks_its_water_steps() {
     assert!(path.steps[0].over_water, "the lake is water in Trident");
     assert!(!path.steps[1].over_water, "the far plain is dry");
 }
+
+/// `ah-0x6x` review: a hull's owner of leaders whose TEACH replaced its SAIL sets no course
+/// (`rules/skills_teaching`: "Only leaders may use the TEACH order."), so neither a passenger
+/// already aboard nor one that ENTERs it this month is traced sailing. Owned by a human, whose
+/// TEACH spends nothing, both are.
+#[test]
+fn a_passenger_of_a_sail_an_eligible_teach_replaced_is_not_traced() {
+    let report = |owner: &str| {
+        let mut text = String::from("Foo (1) Report\n\n");
+        text.push_str("forest (2,2) in Coast, 10 peasants (orcs), $5.\n\n");
+        text.push_str("Exits:\n  South : ocean (2,4) in Sea.\n\n");
+        text.push_str(
+            "* Walker (902), Foo (1), centaur [CTAU]. Weight: 50. Capacity: 0/70/70/0.\n",
+        );
+        text.push_str("+ Ship [329] : Longship; Load: 0/150; Sailors: 4/4; MaxSpeed: 4.\n");
+        text.push_str(&format!(
+            "  * Captain (900), Foo (1), {owner}. Weight: 10. Capacity: 0/0/15/0. \
+             Skills: sailing [SAIL] 2 (90).\n"
+        ));
+        text.push_str(
+            "  * Hand (901), Foo (1), centaur [CTAU]. Weight: 50. Capacity: 0/70/70/0. \
+             Skills: sailing [SAIL] 2 (90).\n\n",
+        );
+        text.push_str("ocean (2,4) in Sea.\n\n");
+        text.push_str("Exits:\n  North : forest (2,2) in Coast.\n");
+        text
+    };
+    let orders = "unit 900\nSAIL S\nTEACH 901\nunit 902\nENTER 329\n";
+    let trace = |text: &str, unit_id: &str| {
+        trace_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            atlantis_hud_fixtures::RULESET_JSON,
+            text,
+            "[]",
+            unit_id,
+            orders,
+        )
+        .expect("the ruleset loads")
+        .path
+    };
+    let leader = report("leader [LEAD]");
+    let human = report("human [HUMN]");
+
+    for unit_id in ["901", "902"] {
+        assert_eq!(
+            trace(&leader, unit_id),
+            None,
+            "{unit_id} under a teaching leader"
+        );
+        assert!(trace(&human, unit_id).is_some(), "{unit_id} under a human");
+    }
+}

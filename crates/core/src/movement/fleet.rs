@@ -42,6 +42,10 @@ pub struct OrderedUnits {
     boardings_by_unit: BTreeMap<String, Vec<BoardingOrder>>,
     /// Each unit's syntactically valid `PROMOTE` targets this month, in the order written.
     promotes_by_unit: BTreeMap<String, Vec<String>>,
+    /// The units whose block ends its movement with a TEACH ([`RouteChain::closed_by_teach`]):
+    /// whether their route runs turns on the settled month, which this reader cannot see, so
+    /// [`Self::with_settled_teachers`] decides it (`ah-0x6x`).
+    closed_by_teach: BTreeSet<String>,
 }
 
 impl OrderedUnits {
@@ -190,9 +194,20 @@ impl OrderedUnits {
         // A SAIL a later month-long order replaced will not run, so it lends no hands to the
         // hull's course either (`ah-osny`).
         sailers.retain(|unit_id: &String| !chains.get(unit_id).is_some_and(RouteChain::replaced));
-        let by_unit = chains
+        let closed_by_teach: BTreeSet<String> = chains
+            .iter()
+            .filter(|(_, chain)| chain.closed_by_teach())
+            .map(|(unit_id, _)| unit_id.clone())
+            .collect();
+        let by_unit: BTreeMap<String, ChainedRoute> = chains
             .into_iter()
             .filter_map(|(unit_id, chain)| chain.into_route().map(|route| (unit_id, route)))
+            .collect();
+        // Only a TEACH that leaves something to replace: most teachers wrote no movement at all,
+        // and those must not cost `with_settled_teachers` a settlement.
+        let closed_by_teach = closed_by_teach
+            .into_iter()
+            .filter(|unit_id| by_unit.contains_key(unit_id) || sailers.contains(unit_id))
             .collect();
         let formed_routes = formed
             .into_iter()
@@ -205,7 +220,49 @@ impl OrderedUnits {
             sailers,
             boardings_by_unit,
             promotes_by_unit,
+            closed_by_teach,
         }
+    }
+
+    /// Whether this unit's own movement was closed by a TEACH, so whether it runs waits on
+    /// [`Self::with_settled_teachers`].
+    pub(crate) fn closed_by_teach(&self, unit_id: &str) -> bool {
+        self.closed_by_teach.contains(unit_id)
+    }
+
+    /// Whether any unit's movement waits on [`Self::with_settled_teachers`].
+    pub(crate) fn any_closed_by_teach(&self) -> bool {
+        !self.closed_by_teach.is_empty()
+    }
+
+    /// This reading with the movement a TEACH replaced taken out, for a caller holding the report.
+    ///
+    /// A TEACH spends the month only for a unit that can teach - `rules/skills_teaching`:
+    /// "Only leaders may use the TEACH order." - judged on the settled month, after this month's GIVE, TAKE and BUY.
+    /// When it does, it is the last month-long order and the one that runs, so a MOVE or SAIL
+    /// before it does not: the unit walks nowhere and lends no hands to a hull's course. Which
+    /// units that is comes from [`crate::orders::semantics::month_long_teachers`], the same
+    /// settlement the checker's "will not run" reads, so the map, the preview and the shipment
+    /// measure agree with it (`ah-0x6x`). Costs nothing when no block ends its movement on a TEACH.
+    #[must_use]
+    pub(crate) fn with_settled_teachers(
+        mut self,
+        report: &ParsedReport,
+        orders_document: &str,
+        ruleset: Option<&Ruleset>,
+    ) -> Self {
+        if self.closed_by_teach.is_empty() {
+            return self;
+        }
+        let teachers =
+            crate::orders::semantics::month_long_teachers(report, orders_document, ruleset);
+        for unit_id in std::mem::take(&mut self.closed_by_teach) {
+            if teachers.contains(&unit_id) {
+                self.by_unit.remove(&unit_id);
+                self.sailers.remove(&unit_id);
+            }
+        }
+        self
     }
 
     /// The route a unit's own block chains to, if it wrote one.
@@ -884,6 +941,34 @@ mod tests {
                 .issues_sail("10575"),
             "the SAIL written last is the one that runs"
         );
+    }
+
+    /// `ah-0x6x`: a leader's TEACH spends the month (`rules/skills_teaching`: "Only leaders
+    /// may use the TEACH order."), so once the month is settled its earlier SAIL neither sets a course nor lends
+    /// hands. A human's TEACH spends nothing, so its SAIL still runs.
+    #[test]
+    fn a_sail_an_eligible_teach_replaced_neither_departs_nor_participates() {
+        let text = "Foo (1) Report\n\
+                    \n\
+                    plain (0,0) in Nowhere, 10 peasants (orcs), $5.\n\
+                    \n\
+                    * Captain (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n\
+                    * Hand (901), Foo (1), human [HUMN]. Weight: 10. Capacity: 0/0/15/0.\n";
+        let orders = "unit 900\nSAIL SE\nTEACH 901\nunit 901\nSAIL SE\nTEACH 900\n";
+        let mut cache = ReportCache::new();
+        let report = cache.classified(text, RULESET);
+        let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
+
+        let read = OrderedUnits::from_document(orders, Some(&ruleset));
+        assert!(
+            read.sails_a_course("900"),
+            "the document alone cannot judge a TEACH"
+        );
+        let settled = read.with_settled_teachers(&report, orders, Some(&ruleset));
+        assert!(!settled.issues_sail("900"));
+        assert!(!settled.sails_a_course("900"));
+        assert!(settled.issues_sail("901"));
+        assert!(settled.sails_a_course("901"));
     }
 
     /// Two units aboard Raft [235] both write a `SAIL`, and the **owner's** wins - the first unit
