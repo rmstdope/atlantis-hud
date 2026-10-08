@@ -74,9 +74,8 @@ import {
   orderOf,
   unitNamesByRow,
   rowKeyOf,
-  setOutFrom,
+  rowMonth,
   unitRefOf,
-  unitRowKey,
   unitRowSelector,
   silverIsRed,
   silverShownUI,
@@ -537,7 +536,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         // source spanning hexes can hold two `new-1`s (`ah-9o0c.2`), and an arrival can share a
         // hex with a `new-1` formed there (`ah-xu6v`). Read where the unit set out from, which is
         // the hex its orders block is in.
-        .map((entry) => [rowKeyOf(entry), getLongOrder(entry.unitId, setOutFrom(entry))])
+        .map((entry) => [rowKeyOf(entry), rowMonth(entry, { getLongOrder }).longOrder])
     );
   }, [units, effectiveSort.column, getLongOrder]);
   // Same bargain as `longOrders` above: built only when the table actually sorts on it.
@@ -557,7 +556,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         .map((entry) => {
           const shown = dissolves(entry)
             ? null
-            : silverShownUI(getSilver(entry.unitId, setOutFrom(entry)), countUpkeep);
+            : silverShownUI(rowMonth(entry, { getSilver }).silver, countUpkeep);
           const numeric =
             shown === null || shown.kind === "unknown"
               ? null
@@ -2041,20 +2040,19 @@ function HoveredPopup({
   }
 
   const { unit, column, at } = hovered;
-  // Where the report lists the unit, which is where its orders and forecast are keyed (`ah-xu6v`).
-  const home = setOutFrom(unit);
-  const silver = unit.own ? (getSilver?.(unit.unitId, home) ?? null) : null;
-  // The same guard the row uses (`warned`, below): a finding that names a unit with no forecast
-  // has no working to explain, and without this the popup and the cell's own hidden sentence
-  // would be drawn from different arguments to `summariseUnit`.
-  const warned =
-    silver !== null && (silverWarnings?.has(unitRowKey(home, unit.unitId)) ?? false);
-  const hexShort = silver !== null && (silverShortHexes?.has(home) ?? false);
+  // Read exactly as the row reads it - where the report lists the unit (`ah-xu6v`) - so the popup
+  // and the cell's own hidden sentence are drawn from the same arguments to `summariseUnit`.
+  const { silver, warned, hexShort, longOrder } = rowMonth(unit, {
+    getSilver,
+    getLongOrder,
+    silverWarnings,
+    silverShortHexes
+  });
   const dissolving = dissolves(unit);
   const spec = popupForCell(column, unit, {
     structureLabel: unitStructureLabelIn(structureRegionOf(unit), unit.structureId, structures),
     reportedStructureLabel: reportedStructureLabelFor(unit, structures),
-    longOrder: unit.own ? (getLongOrder?.(unit.unitId, home) ?? null) : null,
+    longOrder,
     reportedLongOrder: getReportedLongOrder?.(unit.unitId) ?? NO_ORDERS_TEMPLATE,
     silver,
     silverWarned: warned,
@@ -2263,28 +2261,25 @@ function UnitRow({
   const dissolving = dissolves(unit);
   // A unit this month's FORM creates. Orthogonal to `departing`: it can be both (`ah-4hux`).
   const formed = unit.formed === true;
-  // The hex the report lists this unit in, where its orders block and its forecast are keyed: for
-  // an arrival that is its origin, since the hex it arrives in numbers its own `NEW n` units and
-  // would hand it one of theirs, or nothing (`ah-xu6v`).
-  const home = setOutFrom({ regionId, unitId: unit.unitId, arrivingFrom: unit.arrivingFrom });
-  // Only for our own units: there is nothing of anybody else's orders to read.
-  const longOrder = unit.own ? (getLongOrder?.(unit.unitId, home) ?? null) : null;
-  // Only our own units have a month to price; `getSilver` returns null for everyone else anyway,
-  // and the cell is empty either way.
-  const silver = unit.own ? (getSilver?.(unit.unitId, home) ?? null) : null;
+  // Read in the hex the report lists this unit in, where its orders block, its forecast and its
+  // findings are keyed: for an arrival that is its origin, since the hex it arrives in numbers its
+  // own `NEW n` units and would hand it one of theirs, or nothing (`ah-xu6v`). Only our own units
+  // have orders or a month to price; anybody else's cells are empty.
+  //
+  // `warned` is the silver findings that name this unit - `not-enough-silver`, or
+  // `upkeep-exceeds-unclaimed` where the faction's unclaimed fund could not reach it (`ah-fjty`). In
+  // a hex whose units share, the shortfall finding is anchored to the hex and names no unit, and
+  // blaming one of several would be as wrong there as it is in the Problems panel - so there is
+  // deliberately no fallback to the hex. There `hexShort` says so instead, and no row carries a ⚠ -
+  // but the popup must still not call the shortfall covered (`ah-5znb`).
+  const { home, longOrder, silver, warned, hexShort } = rowMonth(
+    { regionId, unitId: unit.unitId, arrivingFrom: unit.arrivingFrom, own: unit.own },
+    { getLongOrder, getSilver, silverWarnings, silverShortHexes }
+  );
   // Which pin this row's faction cell would set, and so whether that cell is a control at all.
   // One rule, in `foreignUnits.ts`, rather than a second concealed-test spelled out down here that
   // could drift from it.
   const factionPin = onPinFaction ? pinForRow(unit) : null;
-  // The silver findings that name this unit - `not-enough-silver`, or `upkeep-exceeds-unclaimed`
-  // where the faction's unclaimed fund could not reach it (`ah-fjty`). In a hex whose units share,
-  // the shortfall finding is anchored to the hex and names no unit, and blaming one of several
-  // would be as wrong there as it is in the Problems panel - so there is deliberately no fallback
-  // to the hex.
-  const warned = silver !== null && (silverWarnings?.has(unitRowKey(home, unit.unitId)) ?? false);
-  // Where the hex's pooled silver falls short, the finding names the hex and no row carries a ⚠ -
-  // but the popup must still not call the shortfall covered (`ah-5znb`).
-  const hexShort = silver !== null && (silverShortHexes?.has(home) ?? false);
   // The setting decides whether maintenance comes off the figure (`ah-1wcw.4`); the core computes
   // both answers, so switching it costs no round trip through the checks.
   const shownSilver = silverShownUI(silver, countUpkeep);
@@ -2655,7 +2650,10 @@ function UnitRow({
             type="button"
             data-testid={`unit-silver-${unit.unitId}`}
             onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => onSelectUnit?.(unit.unitId, regionId)}
+            // `home`, not the hex the row stands in: there an arrival's number may name a unit
+            // formed in that hex, and the finding this button explains is anchored where the
+            // report lists the unit (`ah-xu6v`).
+            onClick={() => onSelectUnit?.(unit.unitId, home)}
             className={`inline-flex items-center gap-0.5 ${UNIT_LINK_CLASS}`}
           >
             <span className="sr-only">unit {unit.unitId} </span>

@@ -1781,6 +1781,8 @@ describe("All my units shows the coming month (ah-tguk)", () => {
         }}
         getLongOrder={(unitId, regionId) => longOrders.get(unitRowKey(regionId, unitId)) ?? null}
         getSilver={(unitId, regionId) => forecasts.get(unitRowKey(regionId, unitId)) ?? null}
+        silverWarnings={new Set([unitRowKey(B, moverId)])}
+        onSelectUnit={() => {}}
       />
     );
     const rowOf = (name: string): string =>
@@ -1792,6 +1794,11 @@ describe("All my units shows the coming month (ah-tguk)", () => {
       expect(mover).not.toContain("STUDY FARM");
       expect(mover).toContain(">25<");
       expect(mover).not.toContain(">300<");
+    });
+
+    it("only the arriving unit carries the silver finding that names it", () => {
+      expect(rowOf("Mover")).toContain(`data-testid="unit-silver-${moverId}"`);
+      expect(rowOf("Farmer")).not.toContain('data-testid="unit-silver-');
     });
 
     it("the unit formed in A keeps its own long order and silver", () => {

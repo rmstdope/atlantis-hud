@@ -3,7 +3,9 @@ import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { structuresByRegionOf } from "./structureLabel";
 import {
+  rowMonth,
   setOutFrom,
+  type RowLookups,
   unitRefKey,
   unitRefOf,
   DEFAULT_SORT,
@@ -478,6 +480,48 @@ describe("an arriving new-1 and the new-1 formed where it arrives sort on their 
     expect(
       origins(sortUnits(rows, { ...DEFAULT_SORT, column: "silver" }, new Map(), new Map(), silver))
     ).toEqual(["1:7,53", null]);
+  });
+});
+
+describe("rowMonth reads a row's month where the report lists the unit (ah-xu6v)", () => {
+  const A = "1:6,52";
+  const B = "1:7,53";
+  const forecastFor = (regionId: string) => aUnitSilver({ unitId: "new-1", regionId });
+  const lookups: RowLookups = {
+    getLongOrder: (unitId, regionId) => `${unitId} in ${regionId}`,
+    getSilver: (_unitId, regionId) => forecastFor(regionId),
+    silverWarnings: new Set([unitRowKey(B, "new-1")]),
+    silverShortHexes: new Set([A])
+  };
+
+  it("reads an arrival in the hex it set out from", () => {
+    const month = rowMonth({ regionId: A, unitId: "new-1", arrivingFrom: B, own: true }, lookups);
+
+    expect(month.home).toBe(B);
+    expect(month.longOrder).toBe(`new-1 in ${B}`);
+    expect(month.silver?.regionId).toBe(B);
+    expect(month.warned).toBe(true);
+    expect(month.hexShort).toBe(false);
+  });
+
+  it("reads a row that stays in its own hex", () => {
+    const month = rowMonth({ regionId: A, unitId: "new-1", arrivingFrom: null, own: true }, lookups);
+
+    expect(month.home).toBe(A);
+    expect(month.longOrder).toBe(`new-1 in ${A}`);
+    expect(month.silver?.regionId).toBe(A);
+    expect(month.warned).toBe(false);
+    expect(month.hexShort).toBe(true);
+  });
+
+  it("reads nothing for somebody else's unit", () => {
+    expect(rowMonth({ regionId: A, unitId: "new-1", arrivingFrom: B, own: false }, lookups)).toEqual({
+      home: B,
+      longOrder: null,
+      silver: null,
+      warned: false,
+      hexShort: false
+    });
   });
 });
 
