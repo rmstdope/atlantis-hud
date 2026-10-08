@@ -11386,7 +11386,10 @@ fn report_shortfalls(
                     let who = &ordered.unit.unit_id;
                     if sharing.pools_silver(ordered)
                         || ledger.doubted.contains(who)
-                        || spendable_silver_at(ledger, who, StatePhase::Study) >= 0
+                        // Only a draw made after movement: an overdraft carried from `BUY` was
+                        // funded while the sharers still held their silver.
+                        || spendable_silver_at(ledger, who, StatePhase::Study)
+                            >= spendable_silver_at(ledger, who, StatePhase::Movement).min(0)
                         || cut.iter().any(|reduced| &reduced.unit_id == who)
                         || refused.iter().any(|refused| &refused.unit_id == who)
                         || verdicts.iter().any(|verdict| {
@@ -53608,6 +53611,15 @@ BUILD
                  orders spend $110"
             ],
             "sharer 8's STUDY has nothing left to pay for it"
+        );
+        // Unit 5's BUY was paid while sharer 8 still held its $100, so its line is not pointed at.
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL),
+            "{:#?}",
+            review.findings
         );
     }
 
