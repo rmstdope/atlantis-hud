@@ -789,6 +789,8 @@ pub fn review_turn(
     lend_to_month_end_hexes(&mut hexes, &departing, ruleset, price);
     // Who can share with whom once movement ends: one answer for every consumer (`ah-oby0`).
     let reach = SharingReach::read(&hexes, report, &options.month_end);
+    // A sharer's silver pays a shipment where its month ends (`ah-wyj8`) ...
+    lend_walking_sharers_silver(&mut hexes, &reach, StatePhase::Transport);
 
     // Shipping, then maintenance's steps 4 to 7, in the one order `REPORT_WIDE_STEPS` states.
     let month_end = settle_report_wide(
@@ -804,7 +806,10 @@ pub fn review_turn(
         },
         StatePhase::Maintenance,
     );
+    // ... and a STUDY, judged on what the settled month leaves it.
+    lend_walking_sharers_silver(&mut hexes, &reach, StatePhase::Maintenance);
 
+    let mut lent_across: Vec<(UnitKey, i64)> = Vec::new();
     for priced in &hexes {
         let (hex, ledger) = priced;
         // Per hex, because the pools are: what one region's units ask of its tax base says nothing
@@ -826,6 +831,7 @@ pub fn review_turn(
             &mut overruns,
             &claim_allowances,
             options.emits(codes::TRANSPORT_OUT_OF_REACH),
+            &mut lent_across,
         );
         if hex.units.is_empty() {
             continue;
@@ -899,6 +905,7 @@ pub fn review_turn(
         // one line keep the order they produced them in.
         findings[start..].sort_by_key(|finding| (finding.line.is_none(), finding.line));
     }
+    lend_across_hexes(&mut silver, &lent_across);
 
     // Everything above is about one hex. An allowance is spent across the whole map, so it is
     // counted once, after every hex has been read - and `validate_turn` sorts the whole list by
@@ -2078,6 +2085,9 @@ fn forecast_hex(
     // *which* cause left the month unpriced; that the month is unpriced is not switchable
     // (`ah-7ale.5`).
     transport_warning: bool,
+    // What sharers arriving from other hexes lent this hex's units, by the arriving sharer's own
+    // row: debited by `lend_across_hexes` once every hex's column exists (`ah-wyj8`).
+    lent_across: &mut Vec<(UnitKey, i64)>,
 ) {
     let Relief {
         shared_silver,
@@ -2155,7 +2165,7 @@ fn forecast_hex(
     let purse_for_orders = sharing_purse(hex, ledger);
     // Whether `report_shortfalls` can judge this hex's pool at all: where it cannot, its silence
     // is not coverage, and the popup must not read it as such (`ah-0jxx`).
-    let pool_doubted = !Sharing::read(hex).pool_trusted(ledger);
+    let pool_doubted = !Sharing::for_silver(hex, ledger).pool_trusted(ledger);
 
     // Step 2 of the payment order runs across the whole hex, so it needs every unit's step-1
     // leftovers before it can settle any of them. Gathered here, applied once the loop is done.
@@ -2364,6 +2374,18 @@ fn forecast_hex(
                     line: None,
                     other: None,
                 });
+            }
+        }
+        // What the hex's own sharers could not cover, a sharer arriving from elsewhere did - on its
+        // own row, in the hex the report lists it in (`ah-wyj8`).
+        for arrival in &ledger.walking_silver.arrivals {
+            if owing == 0 {
+                break;
+            }
+            let lent = arrival.lends.min(owing);
+            if lent > 0 {
+                owing -= lent;
+                lent_across.push((arrival.unit.clone(), lent));
             }
         }
     }
@@ -4949,6 +4971,10 @@ struct Ledger<'a> {
     /// than to any unit in it. Never set for a hex a fleet sails into or out of (`ah-bwxp.1`). Turns the per-unit `not-enough-silver` findings into the
     /// single hex-level one, exactly as a `SHARE` flag already does for every tag (`ah-e66j`).
     maintenance_pooled: bool,
+    /// The silver `SHARE` flags lend across a region's edge because a sharer walks or sails
+    /// (`ah-wyj8`), filled report-wide by [`lend_walking_sharers_silver`]. Empty for a hex no
+    /// sharer leaves or enters, which leaves every reading of it exactly as it was.
+    walking_silver: WalkingSilver,
     /// What step 2 (`CONSUME FACTION`) left each of this hex's units owing, by unit number - the
     /// `settled` of the [`FactionFoodPass`] of the group it ends the month in
     /// ([`feed_groups_from_faction_food`], `ah-21r0`). Read by `charge_settled_upkeep` and by the SILVER
@@ -5367,6 +5393,7 @@ fn ledger_for_reaching<'a>(
         upkeep_lent: BTreeMap::new(),
         upkeep_food: BTreeMap::new(),
         maintenance_pooled: false,
+        walking_silver: WalkingSilver::default(),
         faction_fed: BTreeMap::new(),
         food_claims: Vec::new(),
         movements: Vec::new(),
@@ -5881,6 +5908,8 @@ pub(crate) fn item_effects(
         .collect();
     lend_to_month_end_hexes(&mut priced, &departing, ruleset, price);
     let reach = SharingReach::read(&priced, report, &options.month_end);
+    // The same shipping purse `review_turn` settles against (`ah-wyj8`).
+    lend_walking_sharers_silver(&mut priced, &reach, StatePhase::Transport);
     let month_end = settle_report_wide(
         &mut priced,
         &ReportWideInputs {
@@ -10126,6 +10155,10 @@ struct Sharing<'a> {
     /// index-aligned (`ah-728m.2.2`). Unit ids are distinct anyway: one unit number is one row in a
     /// region block, because `parse_region_block` refuses a repeat (`ah-bm0d`).
     sharers: Vec<(usize, &'a Ordered<'a>)>,
+    /// Where the silver read is the month-long one ([`Sharing::for_silver`]): the sharers that
+    /// walk out of this hex and in from others (`ah-wyj8`). `None` for the readings that settle
+    /// before movement - the market's purse, and every item tag - which pool the hex as listed.
+    walking: Option<&'a WalkingSilver>,
 }
 
 impl<'a> Sharing<'a> {
@@ -10143,7 +10176,38 @@ impl<'a> Sharing<'a> {
                 .enumerate()
                 .filter(|(_, o)| o.shares() && !departing.contains(&o.unit.unit_id))
                 .collect(),
+            walking: None,
         }
+    }
+
+    /// The hex's sharing as STUDY, TRANSPORT and the month's end see its **silver**: after
+    /// movement. `rules/sequenceofevents` processes "ADVANCE, MOVE and SAIL orders" before "Month
+    /// long orders" and TRANSPORT, and `rules/share` lends to "any other unit of your faction ...
+    /// in the same region" - so a sharer whose month ends elsewhere lends here only what this
+    /// hex's units drew before it left, and one arriving lends here what it brings (`ah-wyj8`).
+    ///
+    /// Item tags read exactly as [`Sharing::read`] does.
+    fn for_silver(hex: &'a Hex<'a>, ledger: &'a Ledger<'a>) -> Self {
+        Self {
+            walking: Some(&ledger.walking_silver),
+            ..Self::read(hex)
+        }
+    }
+
+    /// Whether `ordered` is inside this hex's silver pool: a sharer that ends its month here.
+    fn pools_silver(&self, ordered: &Ordered<'_>) -> bool {
+        ordered.shares()
+            && !self
+                .walking
+                .is_some_and(|walking| walking.departing.contains_key(&ordered.unit.unit_id))
+    }
+
+    /// What this hex's sharers that walk away lent its units before they left, and what the
+    /// sharers that arrive lend it: the silver the pool holds beyond its own staying sharers.
+    fn silver_from_walkers(&self, arriving: impl Fn(&WalkingSilver) -> i64) -> i64 {
+        self.walking.map_or(0, |walking| {
+            walking.departing.values().sum::<i64>() + arriving(walking)
+        })
     }
 
     /// Whether the pool's sum can be trusted at all: the pool is the sharers' sum, so one sharer
@@ -10155,6 +10219,7 @@ impl<'a> Sharing<'a> {
             .sharers
             .iter()
             .any(|(_, o)| ledger.doubted.contains(&o.unit.unit_id))
+            && !self.walking.is_some_and(|walking| walking.arrival_doubted)
     }
 
     /// `Pooled` only when something shares AND the tag is not men.
@@ -10166,15 +10231,33 @@ impl<'a> Sharing<'a> {
     /// would put a unit's overspending on a purse the rules never open for it. The maintenance
     /// shortfall of an unflagged hex is collected separately.
     fn reading(&self, tag: &str, ruleset: Option<&Ruleset>) -> Reading {
-        if !self.sharers.is_empty() && !ruleset.is_some_and(|ruleset| ruleset.is_man(tag)) {
+        let shared = match self.walking {
+            Some(walking) if tag == SILVER => {
+                self.sharers.iter().any(|(_, o)| self.pools_silver(o))
+                    || !walking.arrivals.is_empty()
+                    || walking.departing.values().any(|lent| *lent > 0)
+            }
+            _ => !self.sharers.is_empty(),
+        };
+        if shared && !ruleset.is_some_and(|ruleset| ruleset.is_man(tag)) {
             Reading::Pooled
         } else {
             Reading::PerUnit
         }
     }
 
-    /// The pool's balance for one tag: the sharers' `relieved_balance`s, summed.
+    /// The pool's balance for one tag: the sharers' `relieved_balance`s, summed - and for silver
+    /// read after movement, the walkers' too ([`Sharing::for_silver`]).
     fn pool(&self, ledger: &Ledger<'_>, tag: &str) -> i64 {
+        if self.walking.is_some() && tag == SILVER {
+            return self
+                .sharers
+                .iter()
+                .filter(|(_, o)| self.pools_silver(o))
+                .map(|(_, o)| relieved_balance(ledger, &o.unit.unit_id, tag))
+                .sum::<i64>()
+                + self.silver_from_walkers(|walking| WalkingSilver::lends(&walking.arrivals));
+        }
         self.sharers
             .iter()
             .map(|(_, o)| relieved_balance(ledger, &o.unit.unit_id, tag))
@@ -10187,8 +10270,161 @@ impl<'a> Sharing<'a> {
     fn silver_pool_at(&self, ledger: &Ledger<'_>, phase: StatePhase) -> i64 {
         self.sharers
             .iter()
+            .filter(|(_, o)| self.pools_silver(o))
             .map(|(_, o)| spendable_silver_at(ledger, &o.unit.unit_id, phase))
-            .sum()
+            .sum::<i64>()
+            + self
+                .silver_from_walkers(|walking| WalkingSilver::lends(&walking.arrivals_at_transport))
+    }
+}
+
+/// The silver `SHARE` flags lend across one hex's edge this month (`ah-wyj8`).
+///
+/// `rules/sequenceofevents` settles `BUY` before "ADVANCE, MOVE and SAIL", and STUDY, TRANSPORT
+/// and maintenance after it; `rules/share` lends only within "the same region". So a sharer that
+/// leaves lends its old hex what was drawn on it before it left, and lends the rest wherever its
+/// month ends - [`SharingReach`]'s answer, the one every other sharing consumer reads.
+#[derive(Debug, Clone, Default)]
+struct WalkingSilver {
+    /// This hex's own sharers whose month ends in another region, each with what it lent this
+    /// hex's units before it left: their overdraft as movement begins, net of what the sharers
+    /// that stay could cover, drained from the walkers in report order.
+    departing: BTreeMap<String, i64>,
+    /// The sharers ending their month here from another hex, each with what it lends at the
+    /// month's end ([`relieved_balance`], less what it lent before it left).
+    arrivals: Vec<ArrivingSilver>,
+    /// The same, read as TRANSPORT settles ([`spendable_silver_at`]), for [`shipping_purse`].
+    arrivals_at_transport: Vec<ArrivingSilver>,
+    /// An arriving sharer whose sums cannot be trusted - as a doubted sharer of the hex's own
+    /// makes its pool untrustworthy (`Sharing::pool_trusted`).
+    arrival_doubted: bool,
+}
+
+/// One sharer arriving in a hex, and the silver it lends there.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ArrivingSilver {
+    /// Where its own row - and its own ledger - is: the hex the report lists it in.
+    unit: UnitKey,
+    lends: i64,
+}
+
+impl WalkingSilver {
+    fn lends(arrivals: &[ArrivingSilver]) -> i64 {
+        arrivals.iter().map(|arrival| arrival.lends).sum()
+    }
+}
+
+/// Debits what each arriving sharer lent in the hex its month ends in from its own row, which
+/// sits in the hex the report lists it in - so a sharer that lends 50 spends 50 wherever it lent
+/// it, as `forecast_hex` does for a sharer that stays (`ah-moq3`, `ah-wyj8`).
+fn lend_across_hexes(silver: &mut [UnitSilver], lent_across: &[(UnitKey, i64)]) {
+    for (unit, lent) in lent_across {
+        let Some(forecast) = silver.iter_mut().find(|forecast| {
+            forecast.region_id == unit.region_id && forecast.unit_id == unit.unit_id
+        }) else {
+            continue;
+        };
+        forecast.expense = forecast.expense.map(|spent| spent.saturating_add(*lent));
+        forecast.at_month_end = forecast.at_month_end.map(|end| end.saturating_sub(*lent));
+        if forecast.doubt.is_none() {
+            forecast.changes.push(SilverChange {
+                amount: -lent,
+                cause: SilverChangeCause::Lent,
+                line: None,
+                other: None,
+            });
+        }
+    }
+}
+
+/// Fills every ledger's [`WalkingSilver`]: which of its sharers walk away and what they lent
+/// before going, and which arrive and what they bring, read at `phase` - `Transport` before the
+/// report-wide steps settle shipping, `Maintenance` once they have settled the month (`ah-wyj8`).
+fn lend_walking_sharers_silver(
+    hexes: &mut [(Hex<'_>, Ledger<'_>)],
+    reach: &SharingReach,
+    phase: StatePhase,
+) {
+    let by_place: HashMap<Coordinate, usize> = hexes
+        .iter()
+        .enumerate()
+        .map(|(index, (hex, _))| (hex.region.coordinate, index))
+        .collect();
+    let mut departing: Vec<BTreeMap<String, i64>> = vec![BTreeMap::new(); hexes.len()];
+    let mut arrivals: Vec<Vec<ArrivingSilver>> = vec![Vec::new(); hexes.len()];
+    let mut doubted: Vec<bool> = vec![false; hexes.len()];
+
+    for (index, (hex, ledger)) in hexes.iter().enumerate() {
+        let here = hex.region.coordinate;
+        let ends_at = |ordered: &Ordered<'_>| {
+            reach
+                .of(index, &ordered.unit.unit_id)
+                .map_or(here, |neighbourhood| neighbourhood.at)
+        };
+        let walkers: Vec<&Ordered<'_>> = hex
+            .units
+            .iter()
+            .filter(|ordered| ordered.shares() && ends_at(ordered) != here)
+            .collect();
+        if walkers.is_empty() {
+            continue;
+        }
+
+        // What this hex's other units have overdrawn as movement begins - `BUY` and everything
+        // before it - net of what the sharers that stay hold then.
+        let mut need = 0i64;
+        let mut staying = 0i64;
+        for ordered in &hex.units {
+            let who = &ordered.unit.unit_id;
+            if ledger.doubted.contains(who) || walkers.iter().any(|w| w.unit.unit_id == *who) {
+                continue;
+            }
+            let held = spendable_silver_at(ledger, who, StatePhase::Movement);
+            if ordered.shares() {
+                staying += held;
+            } else {
+                need += (-held).max(0);
+            }
+        }
+        let mut need = (need - staying).max(0);
+
+        for walker in walkers {
+            let who = &walker.unit.unit_id;
+            let lent = spendable_silver_at(ledger, who, StatePhase::Movement)
+                .max(0)
+                .min(need);
+            need -= lent;
+            departing[index].insert(who.clone(), lent);
+
+            let Some(&arrives) = by_place.get(&ends_at(walker)) else {
+                continue;
+            };
+            let held = if phase == StatePhase::Maintenance {
+                relieved_balance(ledger, who, SILVER)
+            } else {
+                spendable_silver_at(ledger, who, phase)
+            };
+            doubted[arrives] |= ledger.doubted.contains(who);
+            arrivals[arrives].push(ArrivingSilver {
+                unit: unit_key(&hex.region.region_id, who),
+                lends: (held - lent).max(0),
+            });
+        }
+    }
+
+    for (index, (_, ledger)) in hexes.iter_mut().enumerate() {
+        let walking = &mut ledger.walking_silver;
+        walking.departing = std::mem::take(&mut departing[index]);
+        walking.arrival_doubted = doubted[index];
+        let arrived = std::mem::take(&mut arrivals[index]);
+        if phase == StatePhase::Maintenance {
+            walking.arrivals = arrived;
+        } else {
+            walking.arrivals_at_transport = arrived.clone();
+            // Membership is the same at every phase; the month-end figure replaces it once the
+            // report-wide steps have settled.
+            walking.arrivals = arrived;
+        }
     }
 }
 
@@ -10469,8 +10705,8 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
         coverage: vec![None; hex.units.len()],
     };
 
-    let sharing = Sharing::read(hex);
-    if sharing.sharers.is_empty() {
+    let sharing = Sharing::for_silver(hex, ledger);
+    if sharing.reading(SILVER, None) == Reading::PerUnit {
         return nothing;
     }
 
@@ -10498,7 +10734,7 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
     // against a sum with a hole in it would put a figure on the screen nothing stands behind.
     let mut claims = vec![0i64; hex.units.len()];
     for (index, ordered) in hex.units.iter().enumerate() {
-        if ordered.shares() || ledger.doubted.contains(&ordered.unit.unit_id) {
+        if sharing.pools_silver(ordered) || ledger.doubted.contains(&ordered.unit.unit_id) {
             continue;
         }
         let balance = relieved_balance(ledger, &ordered.unit.unit_id, SILVER);
@@ -10543,10 +10779,16 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
         .units
         .iter()
         .map(|ordered| {
-            if ordered.shares() {
+            if sharing.pools_silver(ordered) {
                 relieved_balance(ledger, &ordered.unit.unit_id, SILVER).max(0)
             } else {
-                0
+                // A sharer that walks away lends here only what was drawn on it before it left.
+                ledger
+                    .walking_silver
+                    .departing
+                    .get(&ordered.unit.unit_id)
+                    .copied()
+                    .unwrap_or_default()
             }
         })
         .collect();
@@ -10638,7 +10880,13 @@ fn judge_shortfalls(
                     short,
                     // A sharer's own overdraft is already inside the pool's sum, so it claims
                     // nothing against it - but its tag still goes up for judgement.
-                    claims_pool: !ordered.shares(),
+                    // A sharer walking away is outside the silver pool it leaves, so it claims
+                    // against it like anyone else (`ah-wyj8`).
+                    claims_pool: if tag == SILVER {
+                        !sharing.pools_silver(ordered)
+                    } else {
+                        !ordered.shares()
+                    },
                 });
                 continue;
             }
@@ -10768,7 +11016,7 @@ fn report_shortfalls(
     receipts: &BTreeMap<UnitKey, Receipts>,
     findings: &mut Vec<Finding>,
 ) {
-    let sharing = Sharing::read(hex);
+    let sharing = Sharing::for_silver(hex, ledger);
 
     // What the hex owes in maintenance that nothing in it could pay, gathered across the units
     // whose whole overdraft is that fee. Which of them the engine actually leaves unpaid cannot be
@@ -14652,13 +14900,14 @@ fn shipping_purse(
     phase: StatePhase,
 ) -> i64 {
     let own = spendable_silver_at(ledger, &sender.unit.unit_id, phase);
-    let sharing = Sharing::read(hex);
+    let sharing = Sharing::for_silver(hex, ledger);
     match sharing.reading(SILVER, ruleset) {
         Reading::PerUnit => own,
         // A sharer is already inside the pool; a non-sharer borrows from it - the rule
-        // `judge_shortfalls`' `claims_pool: !ordered.shares()` states.
+        // `judge_shortfalls`' `claims_pool` states.
         Reading::Pooled => {
-            sharing.silver_pool_at(ledger, phase) + if sender.shares() { 0 } else { own }
+            sharing.silver_pool_at(ledger, phase)
+                + if sharing.pools_silver(sender) { 0 } else { own }
         }
     }
 }
@@ -52731,5 +52980,171 @@ BUILD
             } == UnitItemEffects::default()),
             "a refused site spends and moves nothing: {effects:?}"
         );
+    }
+
+    // --- silver a sharer lends where its month ends (`ah-wyj8`) --------------------------------
+    //
+    // `rules/sequenceofevents` processes "ADVANCE, MOVE and SAIL orders" before "Month long
+    // orders", STUDY among them, and `rules/share` lends a sharing unit's silver to "any other unit
+    // of your faction ... in the same region" for "studying". So the region a sharer's silver pays
+    // a STUDY in is the one its month ends in, not the one the report lists it in.
+
+    /// Student 5 (two men, no silver) studies in `student_at`; sharer 7 with $500 is listed in
+    /// `sharer_at` and, when `ends_at` is given, ends the month there (`CheckOptions::month_end`).
+    fn study_beside_a_walking_sharer(
+        student_at: (&str, i32, i32),
+        sharer_at: (&str, i32, i32),
+        ends_at: Option<(i32, i32)>,
+    ) -> Vec<Finding> {
+        walking_sharer_review(student_at, sharer_at, ends_at, "STUDY combat")
+            .findings
+            .into_iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .collect()
+    }
+
+    fn walking_sharer_review(
+        student_at: (&str, i32, i32),
+        sharer_at: (&str, i32, i32),
+        ends_at: Option<(i32, i32)>,
+        student_orders: &str,
+    ) -> TurnReview {
+        let student = with_men(with_silver(unit("5"), 0), 2);
+        let sharer = sharing(with_silver(unit("7"), 500));
+        let swords = |region: ReportRegion| ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            ..region
+        };
+        let regions = if sharer_at.0 == student_at.0 {
+            vec![swords(region_at(
+                student_at.0,
+                student_at.1,
+                student_at.2,
+                vec![student, sharer],
+            ))]
+        } else {
+            vec![
+                swords(region_at(
+                    student_at.0,
+                    student_at.1,
+                    student_at.2,
+                    vec![student],
+                )),
+                region_at(sharer_at.0, sharer_at.1, sharer_at.2, vec![sharer]),
+            ]
+        };
+        let mut options = CheckOptions::default();
+        if let Some((x, y)) = ends_at {
+            options
+                .month_end
+                .insert("7".to_string(), Coordinate { x, y, z: 1 });
+        }
+        review_turn(
+            &report(regions),
+            &format!("unit 5\n{student_orders}\nunit 7\nMOVE S\n"),
+            Some(&ruleset()),
+            options,
+        )
+    }
+
+    /// `BUY` comes before movement (`rules/sequenceofevents`), so a sharer that leaves afterwards
+    /// has already paid for it where it stood.
+    #[test]
+    fn a_sharer_that_walks_away_still_pays_for_a_purchase_made_before_it_left() {
+        let review = walking_sharer_review(
+            ("1:7,53", 7, 53),
+            ("1:7,53", 7, 53),
+            Some((7, 55)),
+            "BUY 2 swords",
+        );
+        let short: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .collect();
+        assert_eq!(short, Vec::<&Finding>::new());
+        assert_eq!(
+            forecast_for(&review, "7").at_month_end,
+            Some(300),
+            "the $200 it lent before leaving is spent from its own row"
+        );
+    }
+
+    /// The column agrees with the warning: the arriving sharer's $20 leaves its own row, in the
+    /// hex the report lists it in, and the student is covered.
+    #[test]
+    fn a_sharer_that_walks_in_spends_what_it_lends_on_its_own_row() {
+        use super::super::silver::SharedSilverCoverage;
+
+        let review = walking_sharer_review(
+            ("1:7,53", 7, 53),
+            ("1:7,51", 7, 51),
+            Some((7, 53)),
+            "STUDY combat",
+        );
+        assert_eq!(
+            forecast_for(&review, "5").shared_silver_coverage,
+            Some(SharedSilverCoverage::Covered)
+        );
+        let sharer = forecast_for(&review, "7");
+        assert_eq!(sharer.at_month_end, Some(480));
+        assert!(
+            sharer
+                .changes
+                .iter()
+                .any(|change| change.cause == SilverChangeCause::Lent && change.amount == -20),
+            "{:?}",
+            sharer.changes
+        );
+    }
+
+    /// And a sharer that walks away lends the student nothing in the column either.
+    #[test]
+    fn a_sharer_that_walks_away_lends_nothing_on_its_own_row() {
+        let review = walking_sharer_review(
+            ("1:7,53", 7, 53),
+            ("1:7,53", 7, 53),
+            Some((7, 55)),
+            "STUDY combat",
+        );
+        assert_eq!(forecast_for(&review, "5").shared_silver_coverage, None);
+        assert_eq!(forecast_for(&review, "7").at_month_end, Some(500));
+    }
+
+    #[test]
+    fn a_sharer_that_walks_away_no_longer_pays_for_a_study_in_the_hex_it_leaves() {
+        let findings =
+            study_beside_a_walking_sharer(("1:7,53", 7, 53), ("1:7,53", 7, 53), Some((7, 55)));
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|finding| finding.unit_id.as_deref() == Some("5"))
+                .count(),
+            1,
+            "the sharer is in (7,55) when STUDY runs, so nobody lends unit 5 its $20: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_sharer_that_walks_in_pays_for_a_study_in_the_hex_it_arrives_in() {
+        let findings =
+            study_beside_a_walking_sharer(("1:7,53", 7, 53), ("1:7,51", 7, 51), Some((7, 53)));
+        assert_eq!(
+            findings,
+            vec![],
+            "the sharer is in (7,53) when STUDY runs, so it lends unit 5 its $20"
+        );
+    }
+
+    /// The control: a sharer that stays where it is listed pays as it always did.
+    #[test]
+    fn a_sharer_that_stays_pays_for_a_study_beside_it() {
+        let findings = study_beside_a_walking_sharer(("1:7,53", 7, 53), ("1:7,53", 7, 53), None);
+        assert_eq!(findings, vec![]);
     }
 }
