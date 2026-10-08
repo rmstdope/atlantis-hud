@@ -11425,14 +11425,30 @@ fn pool_shortfalls(
         pooled_tags.insert(SILVER.to_string());
     }
     for tag in pooled_tags {
+        // The silver the sharers arriving from other hexes lend here, at the moment that set the
+        // shortfall, since that is what the shortfall subtracted (`ah-asdp`).
+        let mut arrivals_lend = 0;
         let short = if silver_by_moment && tag == SILVER {
-            sharing
-                .silver_short_at(hex, ledger, LendingMoment::MonthEnd)
-                .max(sharing.silver_short_at(hex, ledger, LendingMoment::Study))
+            let at_month_end = sharing.silver_short_at(hex, ledger, LendingMoment::MonthEnd);
+            let at_study = sharing.silver_short_at(hex, ledger, LendingMoment::Study);
+            let moment = if at_study > at_month_end {
+                LendingMoment::Study
+            } else {
+                LendingMoment::MonthEnd
+            };
+            arrivals_lend = sharing
+                .walking
+                .map_or(0, |walking| walking.lends_at(moment));
+            at_month_end.max(at_study)
         } else {
             claims.get(&tag).copied().unwrap_or(0) - sharing.pool(ledger, &tag)
         };
         let short = if tag == SILVER {
+            if short_counting_cuts > short {
+                // A cut BUY set it, under "Market orders", before any arrival is here
+                // (`rules/sequenceofevents`).
+                arrivals_lend = 0;
+            }
             short.max(short_counting_cuts)
         } else {
             short
@@ -11486,7 +11502,10 @@ fn pool_shortfalls(
                     o.holding(&tag)
                 }
             })
-            .sum();
+            .sum::<i64>()
+            // ... and what the sharers arriving from other hexes lend here: `rules/share` lends
+            // within "the same region", where their month ends.
+            + arrivals_lend;
 
         shortfalls.push(PoolShortfall { tag, short, held });
     }
@@ -54396,13 +54415,22 @@ BUILD
             CheckOptions::default(),
         );
         let review = review_turn(&report, orders, Some(&ruleset()), options);
-        assert!(
-            review
-                .findings
-                .iter()
-                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
-            "sharer 7 holds nothing as STUDY runs: {:#?}",
-            review.findings
+        let hex_finding = review
+            .findings
+            .iter()
+            .find(|f| f.code == codes::NOT_ENOUGH_SILVER && f.unit_id.is_none())
+            .unwrap_or_else(|| {
+                panic!(
+                    "sharer 7 holds nothing as STUDY runs: {:#?}",
+                    review.findings
+                )
+            });
+        // What the hex can have is what the arrival lent as STUDY ran, the moment that set the
+        // shortfall - not what the shipment let it lend by the month's end (`ah-asdp` review).
+        assert_eq!(
+            hex_finding.message,
+            "the units in this hex are short $20 between them: they can have $0 \
+             and their orders spend $20"
         );
     }
 
@@ -55021,6 +55049,46 @@ BUILD
             hex_finding.message,
             "the units in this hex are short $10 between them: they can have $0 \
              and their orders spend $10"
+        );
+    }
+
+    /// A sharer arriving from another hex lends what it brings to the hex its month ends in -
+    /// `rules/share` lends within "the same region", and `rules/sequenceofevents` runs movement
+    /// before STUDY - so the hex warning counts that in what the hex can have, as the shortfall
+    /// does (`ah-asdp`). Walker 7 brings $10 into 7,51, where sharers 3 and 4 hold nothing and
+    /// each STUDY combat at $10.
+    #[test]
+    fn an_arriving_sharers_lending_counts_in_what_the_hex_can_have() {
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("7".to_string(), Coordinate { x: 7, y: 51, z: 1 });
+        let review = review_turn(
+            &report(vec![
+                region_at("1:7,53", 7, 53, vec![sharing(with_silver(unit("7"), 10))]),
+                region_at(
+                    "1:7,51",
+                    7,
+                    51,
+                    vec![
+                        sharing(with_silver(unit("3"), 0)),
+                        sharing(with_silver(unit("4"), 0)),
+                    ],
+                ),
+            ]),
+            "unit 7\nMOVE N\nunit 3\nSTUDY combat\nunit 4\nSTUDY combat\n",
+            Some(&ruleset()),
+            options,
+        );
+        let hex_finding = review
+            .findings
+            .iter()
+            .find(|f| f.code == codes::NOT_ENOUGH_SILVER && f.unit_id.is_none())
+            .unwrap_or_else(|| panic!("{:#?}", review.findings));
+        assert_eq!(
+            hex_finding.message,
+            "the units in this hex are short $10 between them: they can have $10 \
+             and their orders spend $20"
         );
     }
 
