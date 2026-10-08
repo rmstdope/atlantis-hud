@@ -781,7 +781,8 @@ pub fn review_turn(
         .collect();
     // Who can share with whom once movement ends: one answer for every consumer (`ah-oby0`).
     let reach = SharingReach::read(&hexes, report, &options.month_end);
-    // A sharing unit walking in this turn supplies a builder its own hex's ledger refused.
+    // A sharing unit arriving this turn, on foot or by sea, supplies a builder its own hex's
+    // ledger refused.
     release_refusals_met_by_arrivals(&mut hexes, &reach);
 
     // Shipping, then maintenance's steps 4 to 7, in the one order `REPORT_WIDE_STEPS` states.
@@ -9462,8 +9463,9 @@ struct Neighbourhood {
 /// - a unit nothing can follow: where it stands. "Cannot say" is not a destination.
 struct SharingReach {
     /// In report order, and each one's members in report order, so lending and eating stay in
-    /// document order. Told apart by faction as well as region, so a neighbourhood is only ever
-    /// faction-mates (`rules/share`: "your faction").
+    /// document order. Told apart by region alone: [`Hex::read`] lists only our own units, so
+    /// every neighbourhood is already faction-mates (`rules/share`: "your faction"), and a unit
+    /// whose faction number the report did not give is not cut off from its hex-mates.
     neighbourhoods: Vec<Neighbourhood>,
     /// Which neighbourhood each unit is in.
     of: HashMap<Member, usize>,
@@ -9484,13 +9486,12 @@ impl SharingReach {
             neighbourhoods: Vec::new(),
             of: HashMap::new(),
         };
-        let mut by_place: HashMap<(Coordinate, Option<String>), usize> = HashMap::new();
+        let mut by_place: HashMap<Coordinate, usize> = HashMap::new();
         for (index, (hex, ledger)) in hexes.iter().enumerate() {
             for ordered in &hex.units {
                 let at = Self::ends_at(hex, ordered, ledger.ruleset, &regions, month_end);
-                let faction = ordered.unit.faction_id.clone();
                 let member: Member = (index, ordered.unit.unit_id.clone());
-                let position = *by_place.entry((at, faction)).or_insert_with(|| {
+                let position = *by_place.entry(at).or_insert_with(|| {
                     reach.neighbourhoods.push(Neighbourhood {
                         at,
                         members: Vec::new(),
@@ -51980,6 +51981,24 @@ BUILD
     /// fleet's own `SAIL` says where it ends - no movement trace is filled for it.
     #[test]
     fn wood_a_sharing_passenger_sails_in_reaches_the_builder() {
+        let findings = sea_caravanserai_warnings(true);
+        assert!(
+            findings.is_empty(),
+            "the fleet arrives before BUILD, and the sharer aboard supplies it: {findings:?}"
+        );
+    }
+
+    /// The control: the same fleet staying at sea leaves the builder warned, so it is the sail
+    /// that clears the warning above.
+    #[test]
+    fn wood_a_sharing_passenger_keeps_at_sea_leaves_the_builder_warned() {
+        let findings = sea_caravanserai_warnings(false);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+    }
+
+    /// Builder 900 in the settled (7,53); a fleet at sea in (7,55) with captain 4022 and the
+    /// sharing wood carrier 901 aboard, sailing north into (7,53) when `sails`.
+    fn sea_caravanserai_warnings(sails: bool) -> Vec<Finding> {
         let builder = with_skill(with_men(unit("900"), 10), "BUIL", 3);
         let aboard = |unit: ReportUnit| ReportUnit {
             structure_id: Some("329".to_string()),
@@ -52006,19 +52025,14 @@ BUILD
             regions: vec![settled(region_at("1:7,53", 7, 53, vec![builder])), at_sea],
             ..Default::default()
         };
-        let findings: Vec<Finding> = check_turn(
-            &report,
-            "unit 900\nBUILD Caravanserai\nunit 4022\nSAIL N\nunit 901\n",
-            Some(&trident()),
-            CheckOptions::default(),
-        )
-        .into_iter()
-        .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
-        .collect();
-        assert!(
-            findings.is_empty(),
-            "the fleet arrives before BUILD, and the sharer aboard supplies it: {findings:?}"
+        let orders = format!(
+            "unit 900\nBUILD Caravanserai\nunit 4022\n{}unit 901\n",
+            if sails { "SAIL N\n" } else { "" }
         );
+        check_turn(&report, &orders, Some(&trident()), CheckOptions::default())
+            .into_iter()
+            .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
+            .collect()
     }
 
     #[test]
