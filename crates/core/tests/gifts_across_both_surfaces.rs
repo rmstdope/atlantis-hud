@@ -702,6 +702,8 @@ fn a_cut_take_does_not_fund_the_takers_buy() {
         review.findings.iter().any(|finding| {
             finding.code.as_str() == "not-enough-silver"
                 && finding.unit_id.as_deref() == Some("901")
+                && finding.message.starts_with("short $20:")
+                && finding.message.contains("buys 10 of the 12")
         }),
         "901 cannot fund $120 from its own $100: {:?}",
         review.findings
