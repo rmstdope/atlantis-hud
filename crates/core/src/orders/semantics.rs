@@ -11102,15 +11102,20 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
     // What the claims would be at the month's end alone, as they were read before `ah-aqqb`.
     let mut month_end_owed = 0i64;
     for (index, ordered) in hex.units.iter().enumerate() {
-        if (sharing.pools_silver(ordered) && !repaid_late(ordered))
-            || ledger.doubted.contains(&ordered.unit.unit_id)
-        {
+        if ledger.doubted.contains(&ordered.unit.unit_id) {
+            continue;
+        }
+        // A sharer overdrawn at the market drew on its faction-mates as surely as a non-sharer
+        // did, so it claims there and is lent for it, like every other sharing borrower
+        // (`ah-ludc`, following `ah-0nwd`). Its held-at-market figure below is then 0, so it never
+        // lends to itself.
+        market_claims[index] =
+            (-spendable_silver_at(ledger, &ordered.unit.unit_id, StatePhase::Movement)).max(0);
+        if sharing.pools_silver(ordered) && !repaid_late(ordered) {
             continue;
         }
         claims[index] = overdrawn_for_orders(ledger, &ordered.unit.unit_id);
         month_end_owed += (-relieved_balance(ledger, &ordered.unit.unit_id, SILVER)).max(0);
-        market_claims[index] =
-            (-spendable_silver_at(ledger, &ordered.unit.unit_id, StatePhase::Movement)).max(0);
     }
 
     if claims.iter().sum::<i64>() > pool {
@@ -55305,6 +55310,75 @@ BUILD
         assert_eq!(
             silver_rows(&review, &["8"]),
             vec![("8".to_string(), Some(90), 0)],
+            "{:#?}",
+            review.silver
+        );
+    }
+
+    /// A hex short at the month's end whose market claims fit, with a buyer that shares: sharing
+    /// unit 4 ($0) buys a $100 sword, non-sharing buyer 5 ($0) buys one too and is shipped $100
+    /// after STUDY, and sharer 8 (`silver`) studies. `rules/sequenceofevents` runs BUY under
+    /// "Market orders", before STUDY under "Month long orders"; `rules/share` lends "for buying or
+    /// studying".
+    fn a_sharing_buyer_in_a_hex_short_at_month_end(silver: i64) -> TurnReview {
+        a_shipped_buyer_beside(
+            vec![
+                sharing(with_silver(unit("4"), 0)),
+                sharing(with_silver(unit("8"), silver)),
+            ],
+            vec![],
+            "unit 4\nBUY 1 swords\nunit 8\nSTUDY combat\n",
+            CheckOptions::default(),
+        )
+    }
+
+    /// Each listed unit's `borrowed_for_orders`.
+    fn borrowed(review: &TurnReview, units: &[&str]) -> Vec<(String, i64)> {
+        units
+            .iter()
+            .map(|id| {
+                let row = review
+                    .silver
+                    .iter()
+                    .find(|row| row.unit_id == *id)
+                    .unwrap_or_else(|| panic!("no SILVER row for unit {id}"));
+                (id.to_string(), row.borrowed_for_orders)
+            })
+            .collect()
+    }
+
+    /// Sharer 8 ($200) held enough as the market closed for both swords, so the sharing buyer 4
+    /// is lent its $100 like non-sharing buyer 5 and ends the month at 0, not in the red; 8 is
+    /// debited both loans and its $10 STUDY leaves it $10 short (`ah-ludc`, following `ah-0nwd`).
+    #[test]
+    fn a_sharing_buyer_in_a_hex_short_at_month_end_is_lent_its_market_overdraft() {
+        let review = a_sharing_buyer_in_a_hex_short_at_month_end(200);
+        assert_eq!(
+            borrowed(&review, &["4", "5"]),
+            vec![("4".to_string(), 100), ("5".to_string(), 100)],
+            "{:#?}",
+            review.silver
+        );
+        assert_eq!(
+            silver_rows(&review, &["4", "8"]),
+            vec![
+                ("4".to_string(), Some(0), 0),
+                ("8".to_string(), Some(-10), 200),
+            ],
+            "{:#?}",
+            review.silver
+        );
+    }
+
+    /// Sharer 8 ($150) held $150 as the market closed, against $200 of market claims once the
+    /// sharing buyer's own overdraft counts: the market's claims do not fit, so nothing is lent -
+    /// the all-or-nothing reading - rather than lending to buyer 5 alone (`ah-ludc`).
+    #[test]
+    fn a_sharing_buyers_market_overdraft_counts_when_the_market_claims_are_judged() {
+        let review = a_sharing_buyer_in_a_hex_short_at_month_end(150);
+        assert_eq!(
+            borrowed(&review, &["4", "5"]),
+            vec![("4".to_string(), 0), ("5".to_string(), 0)],
             "{:#?}",
             review.silver
         );
