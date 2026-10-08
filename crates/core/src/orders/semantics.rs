@@ -846,15 +846,7 @@ pub fn review_turn(
         // actually happen (`ah-0wpn`).
         let departed = departures_after_load_checks(hex, ledger, ruleset);
         check_region_pools(hex, &overruns, ruleset, &plurals, &options, &mut findings);
-        check_resources(
-            hex,
-            ledger,
-            ruleset,
-            &plurals,
-            &options,
-            &receipts,
-            &mut findings,
-        );
+        check_resources(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_markets(hex, ruleset, &options, &mut findings);
         check_emptied_sales(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_emptied_buys(hex, ledger, ruleset, &plurals, &options, &mut findings);
@@ -5039,6 +5031,11 @@ struct Ledger<'a> {
     /// of settling the Give phase a second time (`ah-6m7b.3`). Written by [`transfer`]; empty for
     /// a unit that wrote none, and carrying no entry for a line this walk could not follow.
     pub(crate) settled_gifts: BTreeMap<String, Vec<SettledGift>>,
+    /// Every `GIVE`, `TAKE` and discard of silver this walk settled, in settlement order: who it
+    /// left, who it reached (`None` for a discard, or a target this walk cannot credit), and how
+    /// much - the amount the balances actually moved. What [`silver_can_have`] reads to add back
+    /// silver that left a set of units, by unit id rather than by any label (`ah-w2ou`).
+    pub(crate) silver_transfers: Vec<SilverTransfer>,
     /// Every movement of every unit's silver this month, in the order the walk settled them,
     /// keyed by unit id.
     ///
@@ -5438,6 +5435,7 @@ fn ledger_for_reaching<'a>(
         buy_all: BTreeMap::new(),
         settled_buy_all: BTreeMap::new(),
         settled_gifts: BTreeMap::new(),
+        silver_transfers: Vec::new(),
         silver_moves: BTreeMap::new(),
         shipping_paid: BTreeMap::new(),
         refused_shipments: Vec::new(),
@@ -6543,10 +6541,9 @@ fn check_resources(
     ruleset: Option<&Ruleset>,
     plurals: &Plurals,
     options: &CheckOptions,
-    receipts: &BTreeMap<UnitKey, Receipts>,
     findings: &mut Vec<Finding>,
 ) {
-    report_shortfalls(ledger, hex, ruleset, plurals, options, receipts, findings);
+    report_shortfalls(ledger, hex, ruleset, plurals, options, findings);
 }
 
 // --- markets: a BUY or SELL naming what this hex does not trade --------------------------------
@@ -7500,6 +7497,14 @@ fn class_tags(
     )
 }
 
+/// One settled transfer of silver between units, as [`Ledger::silver_transfers`] records it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SilverTransfer {
+    from: String,
+    to: Option<String>,
+    amount: i64,
+}
+
 /// Moves goods from one unit to another. Either end may be absent - a gift out of the hex is
 /// charged to the giver and credited to nobody.
 #[allow(clippy::too_many_arguments)]
@@ -7742,6 +7747,17 @@ fn transfer(
             } else {
                 apply_silver(ledger, StatePhase::Give, &from, -quantity, Some(placed));
             }
+            ledger.silver_transfers.push(SilverTransfer {
+                from: from.clone(),
+                to: to.clone(),
+                // What left `from`: a GIVE moves what the giver could fund (`ah-1c8p`), a discard
+                // and a TAKE the whole quantity.
+                amount: if is_give && reach != GiveReach::Discard {
+                    moved
+                } else {
+                    quantity
+                },
+            });
         } else {
             charge(ledger, StatePhase::Give, &from, &tag, quantity, placed);
         }
@@ -9390,19 +9406,6 @@ fn known_balance_of<'a>(
 fn withdrawn_this_month(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
     ledger.state.balance_at(StatePhase::Withdraw, unit_id, tag)
         - ledger.state.balance_at(StatePhase::Market, unit_id, tag)
-}
-
-/// The silver this unit's own `CLAIM` lines brought in this month, as the ledger priced them against
-/// the faction's fund.
-///
-/// `CLAIM` is the only order `phases::phase_of` settles in `StatePhase::Claim`, and nothing is
-/// applied at `StatePhase::Instant` that moves silver, so the step between the two slots is exactly
-/// the claim - the same slot arithmetic `withdrawn_this_month` uses for WITHDRAW (`ah-6ak4`).
-fn claimed_this_month(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
-    ledger.state.balance_at(StatePhase::Claim, unit_id, SILVER)
-        - ledger
-            .state
-            .balance_at(StatePhase::Instant, unit_id, SILVER)
 }
 
 fn balance_of(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
@@ -11210,6 +11213,121 @@ fn silver_short_mid_month(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
         .max(silver_short_at_study(ledger, unit_id))
 }
 
+/// When a not-enough-silver sentence reads its figures, in `rules/sequenceofevents` order: GIVE
+/// under "Give orders", BUY under "Market orders", STUDY under "Month long orders", and the
+/// month's end after maintenance (`ah-w2ou`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ShortfallMoment {
+    Give,
+    Market,
+    Study,
+    MonthEnd,
+}
+
+/// The moment a unit's own shortfall of `short` is read at: the deepest of its mid-month readings
+/// when one of them is the whole of `short`, and the month's end otherwise. A GIVE's reading wins
+/// a tie, since it runs first (`ah-4k84`).
+fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> ShortfallMoment {
+    let at_give = silver_short_at_give(ledger, unit_id);
+    let at_market = silver_short_at_market(ledger, unit_id);
+    let at_study = silver_short_at_study(ledger, unit_id);
+    if at_give >= short && at_give >= at_study {
+        ShortfallMoment::Give
+    } else if at_give.max(at_market).max(at_study) < short {
+        ShortfallMoment::MonthEnd
+    } else if at_study >= at_market {
+        ShortfallMoment::Study
+    } else {
+        ShortfallMoment::Market
+    }
+}
+
+/// What `members` can have of silver, for a not-enough-silver sentence read at `moment`: the one
+/// answer both the unit sentence (one member) and the sharing hex's sentence (its counted units)
+/// give, so a receipt counted for one is counted for the other (`ah-w2ou`).
+///
+/// Rule R: the silver the members held in the report, plus what their `CLAIM`s brought in
+/// (`ah-6ak4`), plus every `GIVE` or `TAKE` of silver into them from a unit outside the set
+/// (`ah-jw85`, `ah-w9dn`; `rules/take`: "The TAKE order works just like the GIVE order, except
+/// that the direction of transfer is reversed"). Silver moved between two members counts once.
+/// Nothing that leaves the set is taken off: a `GIVE` out, a discard, or a `TAKE` by an outsider
+/// is part of what the orders spend.
+///
+/// Read as the ledger's own Give-phase balance - which has every receipt in, at the amount the
+/// ledger moved, including a gift its giver funded by a `CLAIM` - with what left the set added
+/// back from [`Ledger::silver_transfers`]. Moves between members cancel in the sum.
+///
+/// `Market`, `Study` and `MonthEnd` read the same figure: everything counted settles in the Give
+/// phase, before BUY and STUDY. `Give` reads the members' `GIVE` lines as they ran instead - what
+/// they gave, less what they asked beyond it - since a gift reaching a member later in the Give
+/// phase funds none of them (`ah-4k84`).
+///
+/// `walking`, for a sharing hex, counts a sharer whose month ends elsewhere only for what the hex
+/// had of it (`ah-a68f`); what it sent out of the set is added back on top, as for anyone else.
+/// It also adds what sharers arriving from elsewhere lend here at `moment` (`ah-asdp`).
+fn silver_can_have(
+    ledger: &Ledger<'_>,
+    members: &[&Ordered<'_>],
+    moment: ShortfallMoment,
+    walking: Option<&WalkingSilver>,
+) -> i64 {
+    if moment == ShortfallMoment::Give {
+        return members
+            .iter()
+            .map(|member| {
+                let who = &member.unit.unit_id;
+                ledger.silver_given.get(who).copied().unwrap_or_default()
+                    - silver_short_at_give(ledger, who)
+            })
+            .sum();
+    }
+    let ids: BTreeSet<&str> = members
+        .iter()
+        .map(|member| member.unit.unit_id.as_str())
+        .collect();
+    let held: i64 = ids
+        .iter()
+        .map(|&who| {
+            let held = ledger.state.balance_at(StatePhase::Give, who, SILVER);
+            // A sharer whose month ends elsewhere counts only what the hex had of it - its own
+            // silver spent here before it left, and what it lent here - less what it carries
+            // away, as the shortfall counts it (`ah-a68f`). Never less than it lent: silver it
+            // earned before leaving (a SELL, TAX) is carried away too, yet was never in `held`.
+            //
+            // A walker its own transfers overdrew - a sharer may give more than it holds - is
+            // left as it is: what it sent out is added back below, and lifting the overdraft to
+            // the floor first would count that silver twice (`ah-w2ou` follow-up review).
+            match walking.and_then(|walking| walking.departing.get(who)) {
+                Some(lent) if held >= 0 => {
+                    let carried = (silver_at(ledger, who, LendingMoment::Movement) - lent).max(0);
+                    (held - carried).max(*lent)
+                }
+                _ => held,
+            }
+        })
+        .sum();
+    let sent_out: i64 = ledger
+        .silver_transfers
+        .iter()
+        .filter(|moved| {
+            ids.contains(moved.from.as_str())
+                && !moved.to.as_deref().is_some_and(|to| ids.contains(to))
+        })
+        .map(|moved| moved.amount)
+        .sum();
+    // ... and what sharers arriving from other hexes lend here: `rules/share` lends within "the
+    // same region", where their month ends, and `rules/sequenceofevents` runs movement after the
+    // market, so they lend nothing to a reading taken there (`ah-asdp`).
+    let arrivals_lend = match moment {
+        ShortfallMoment::Study => Some(LendingMoment::Study),
+        ShortfallMoment::MonthEnd => Some(LendingMoment::MonthEnd),
+        ShortfallMoment::Give | ShortfallMoment::Market => None,
+    }
+    .and_then(|lending| walking.map(|walking| walking.lends_at(lending)))
+    .unwrap_or(0);
+    held + sent_out + arrivals_lend
+}
+
 /// How far `unit_id`'s orders overdraw it: at the month's end, or as STUDY settles if it was
 /// deeper then. STUDY is the last order `rules/share` lends for ("for buying or studying"), and
 /// silver that arrives after it - a shipment, wages - repays nobody who lent (`ah-aqqb`).
@@ -11348,7 +11466,8 @@ fn judge_shortfalls(
 }
 
 /// What a pooled tag owes once its claims are netted against its pool, or nothing at all when the
-/// pool covers them. `held` is what the pool's members and its borrowers hold, for the message.
+/// pool covers them. `held` is what the pool's members and its borrowers can have, for the message:
+/// for silver, [`silver_can_have`] - the per-unit sentence's own answer (`ah-w2ou`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PoolShortfall {
     tag: String,
@@ -11414,41 +11533,35 @@ fn pool_shortfalls(
         pooled_tags.insert(SILVER.to_string());
     }
     for tag in pooled_tags {
-        // The silver the sharers arriving from other hexes lend here, at the moment that set the
-        // shortfall, since that is what the shortfall subtracted (`ah-asdp`).
-        let mut arrivals_lend = 0;
-        let short = if silver_by_moment && tag == SILVER {
+        // The moment the sentence is read at is the one whose reading set `short` (`ah-w2ou`).
+        let (short, moment) = if silver_by_moment && tag == SILVER {
             let at_month_end = sharing.silver_short_at(hex, ledger, LendingMoment::MonthEnd);
             let at_study = sharing.silver_short_at(hex, ledger, LendingMoment::Study);
-            let moment = if at_study > at_month_end {
-                LendingMoment::Study
+            if at_study > at_month_end {
+                (at_study, ShortfallMoment::Study)
             } else {
-                LendingMoment::MonthEnd
-            };
-            arrivals_lend = sharing
-                .walking
-                .map_or(0, |walking| walking.lends_at(moment));
-            at_month_end.max(at_study)
-        } else {
-            claims.get(&tag).copied().unwrap_or(0) - sharing.pool(ledger, &tag)
-        };
-        let short = if tag == SILVER {
-            if short_counting_cuts > short {
-                // A cut BUY set it, under "Market orders", before any arrival is here
-                // (`rules/sequenceofevents`).
-                arrivals_lend = 0;
+                (at_month_end, ShortfallMoment::MonthEnd)
             }
-            short.max(short_counting_cuts)
         } else {
-            short
+            (
+                claims.get(&tag).copied().unwrap_or(0) - sharing.pool(ledger, &tag),
+                ShortfallMoment::MonthEnd,
+            )
+        };
+        let (short, moment) = if tag == SILVER && short_counting_cuts > short {
+            (short_counting_cuts, ShortfallMoment::Market)
+        } else {
+            (short, moment)
         };
         if short <= 0 {
             continue;
         }
 
-        // What the pool's members and its borrowers actually hold, so the message can say "they
-        // can have X and their orders spend Y" the way the per-unit one does.
-        let held: i64 = hex
+        // What the pool's members and its borrowers can have, so the message can say "they can
+        // have X and their orders spend Y" the way the per-unit one does - and, for silver, by the
+        // per-unit sentence's own rule, so a receipt counted for one is counted for the other
+        // (`ah-w2ou`).
+        let counted: Vec<&Ordered<'_>> = hex
             .units
             .iter()
             .filter(|o| {
@@ -11463,38 +11576,12 @@ fn pool_shortfalls(
                                             .iter()
                                             .any(|reduced| reduced.unit_id == o.unit.unit_id))))))
             })
-            // Silver as the ledger holds it once CLAIM, GIVE and TAKE have settled, so a gift into
-            // the counted units counts and one between two of them counts once (`ah-w9dn`). The
-            // ledger's own balance rather than `early_holding`, which falls back to the report's
-            // figure for a unit whose goods the transfer walk cannot follow.
-            .map(|o| {
-                if tag == SILVER {
-                    let who = &o.unit.unit_id;
-                    let held = ledger.state.balance_at(StatePhase::Give, who, SILVER);
-                    // A sharer whose month ends elsewhere counts only what the hex had of it -
-                    // its own silver spent here before it left, and what it lent here - less what
-                    // it carries away, as the shortfall counts it (`ah-a68f`). Never less than
-                    // it lent: silver it earned before leaving (a SELL, TAX) is carried away too,
-                    // yet was never in `held`.
-                    let lent = sharing
-                        .walking
-                        .and_then(|walking| walking.departing.get(who.as_str()));
-                    match lent {
-                        Some(lent) => {
-                            let carried =
-                                (silver_at(ledger, who, LendingMoment::Movement) - lent).max(0);
-                            (held - carried).max(*lent)
-                        }
-                        None => held,
-                    }
-                } else {
-                    o.holding(&tag)
-                }
-            })
-            .sum::<i64>()
-            // ... and what the sharers arriving from other hexes lend here: `rules/share` lends
-            // within "the same region", where their month ends.
-            + arrivals_lend;
+            .collect();
+        let held: i64 = if tag == SILVER {
+            silver_can_have(ledger, &counted, moment, sharing.walking)
+        } else {
+            counted.iter().map(|o| o.holding(&tag)).sum()
+        };
 
         shortfalls.push(PoolShortfall { tag, short, held });
     }
@@ -11565,7 +11652,6 @@ fn report_shortfalls(
     ruleset: Option<&Ruleset>,
     plurals: &Plurals,
     options: &CheckOptions,
-    receipts: &BTreeMap<UnitKey, Receipts>,
     findings: &mut Vec<Finding>,
 ) {
     let sharing = Sharing::for_silver(hex, ledger);
@@ -11607,12 +11693,6 @@ fn report_shortfalls(
         };
         let at = ledger.charged_at.get(&(unit_id.clone(), tag.clone()));
         let finding = if tag == SILVER {
-            // Both figures count what the unit was given this month, exactly as `short` already
-            // does through the ledger's own `apply` - a unit given 100 and told to spend 200 reads
-            // "can have $100 and its orders spend $200", not "$0 ... $100" (M2, `ah-jw85`).
-            let received = receipts
-                .get(&unit_key(&hex.region.region_id, unit_id))
-                .map_or(0, |receipts| receipts.silver);
             // `rules/buy` buys as many as the unit can afford, so the sentence goes on to say
             // what it gets instead of what it asked for. Appended rather than replacing anything,
             // so the figures a player already reads stay where they are (`ah-omn7`, Q1).
@@ -11678,33 +11758,21 @@ fn report_shortfalls(
             // the fee nor the food that paid it is in its sentence (`ah-vle0`).
             // A GIVE's likewise, which runs before both (`ah-4k84`), and a cut `BUY`'s, at the
             // market (`ah-y70h`).
-            let mid_month = silver_short_mid_month(ledger, unit_id) >= short;
-            let (food, upkeep) = if mid_month {
-                (0, 0)
-            } else {
+            let moment = unit_shortfall_moment(ledger, unit_id, short);
+            let (food, upkeep) = if moment == ShortfallMoment::MonthEnd {
                 (
                     food_counted_in(ledger, unit_id),
                     upkeep_still_drawn(ledger, unit_id),
                 )
-            };
-            // Claimed silver likewise, since `rules/claim` gives it to the unit, which 'may then
-            // spend' it (`ah-6ak4`).
-            let claimed = claimed_this_month(ledger, unit_id);
-            // A shortfall that is a GIVE's speaks of the unit's GIVE lines alone, as they ran:
-            // what they asked, and what they gave - not of silver that reached it after them
-            // (`ah-4k84`). STUDY's, when deeper, keeps the reading above.
-            let at_give = silver_short_at_give(ledger, unit_id);
-            let can_have = if at_give >= short && at_give >= silver_short_at_study(ledger, unit_id)
-            {
-                ledger
-                    .silver_given
-                    .get(unit_id)
-                    .copied()
-                    .unwrap_or_default()
-                    - short
             } else {
-                ordered.holding(SILVER) + received + claimed + food
+                (0, 0)
             };
+            // What the unit can have is the one answer the hex's sentence gives too (`ah-w2ou`):
+            // what it was given or took this month counts, exactly as `short` already does
+            // through the ledger's own `apply` (M2, `ah-jw85`), and so does what it claimed
+            // (`ah-6ak4`). The food is not silver it can have: it is the part of the fee food
+            // paid, counted on both sides so the sentence states the whole fee.
+            let can_have = silver_can_have(ledger, &[ordered], moment, None) + food;
             ordered.finding(
                 hex,
                 codes::NOT_ENOUGH_SILVER,
@@ -11718,7 +11786,7 @@ fn report_shortfalls(
         } else {
             let short_of = counted_item(short, tag, hex, ruleset, plurals);
             // Both figures count what the unit withdrew this month, exactly as `short` already
-            // does through the phase model and as the silver arm above does with `receipts`
+            // does through the phase model and as the silver arm above does with what it received
             // (`ah-728m.3`).
             let withdrawn = withdrawn_this_month(ledger, unit_id, tag);
             ordered.finding(
@@ -55389,6 +55457,387 @@ BUILD
             ),
             "{findings:#?}"
         );
+    }
+
+    // --- one answer to what silver can be had (`ah-w2ou`) ------------------------------------
+    //
+    // The unit sentence and the hex sentence both read `silver_can_have`, so a receipt counted
+    // for one is counted for the other.
+
+    /// A market selling swords at `price`, holding `units`.
+    fn a_sword_market(price: i64, units: Vec<ReportUnit>) -> ReportRegion {
+        ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price,
+            }],
+            ..region(units)
+        }
+    }
+
+    /// The `not-enough-silver` sentence laid on one unit, when there is one.
+    fn unit_silver_sentence<'f>(findings: &'f [Finding], unit_id: &str) -> Option<&'f str> {
+        findings
+            .iter()
+            .find(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some(unit_id)
+            })
+            .map(|finding| finding.message.as_str())
+    }
+
+    /// Unit 5 holds $40 and is given $50 by unit 9, then buys a $100 sword: what it can have is
+    /// $90 whether it is read on its own or as part of a sharing hex (sharer 8, holding nothing).
+    #[test]
+    fn can_have_counts_a_gift_received_for_a_unit_and_for_a_sharing_hex() {
+        let orders = "unit 5\nBUY 1 swords\nunit 9\nGIVE 5 50 SILV\n";
+        let units = |pooled: bool| {
+            let mut units = vec![with_silver(unit("5"), 40), with_silver(unit("9"), 200)];
+            if pooled {
+                units.push(sharing(unit("8")));
+            }
+            units
+        };
+
+        let alone = check_turn(
+            &report(vec![a_sword_market(100, units(false))]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            unit_silver_sentence(&alone, "5"),
+            Some(
+                "short $10: this unit can have $90 and its orders spend $100, so it buys none \
+                 of the 1 sword ordered"
+            ),
+            "{alone:#?}"
+        );
+        let pooled = check_turn(
+            &report(vec![a_sword_market(100, units(true))]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            hex_silver_sentence(&pooled),
+            Some(
+                "the units in this hex are short $10 between them: they can have $90 and their \
+                 orders spend $100"
+            ),
+            "{pooled:#?}"
+        );
+
+        // And the figure is one function's answer, read for the unit at the market.
+        let region = a_sword_market(100, units(false));
+        let ordered = OrderedUnits::read(orders);
+        let rules = ruleset();
+        let hex = hex_with_transfers(
+            &region,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &NO_UNITS_SHOWN,
+        );
+        let ledger = ledger_for(&hex, Some(&rules));
+        let buyer = hex.find("5").expect("unit 5 is in the hex");
+        assert_eq!(
+            silver_can_have(&ledger, &[buyer], ShortfallMoment::Market, None),
+            90
+        );
+    }
+
+    /// Sharers 7 ($100) and 8 ($50) fund unit 5's two swords at $125; sharer 7 gives $60 to unit
+    /// 300, which the hex does not count. Under rule R the gift is part of what the orders spend
+    /// rather than silver the hex cannot have - as the unit sentence already reads a gift (M2,
+    /// `ah-jw85`): "can have $150 and spend $310", not "$90 ... $250". The shortfall is unchanged.
+    #[test]
+    fn a_gift_from_a_sharer_to_an_uncounted_unit_is_spent_not_lost_from_can_have() {
+        let findings = check_turn(
+            &report(vec![a_sword_market(
+                125,
+                vec![
+                    unit("5"),
+                    sharing(with_silver(unit("7"), 100)),
+                    sharing(with_silver(unit("8"), 50)),
+                    unit("300"),
+                ],
+            )]),
+            "unit 5\nBUY 2 swords\nunit 7\nGIVE 300 60 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            hex_silver_sentence(&findings),
+            Some(
+                "the units in this hex are short $160 between them: they can have $150 and their \
+                 orders spend $310"
+            ),
+            "{findings:#?}"
+        );
+    }
+
+    /// `rules/take`: "The TAKE order works just like the GIVE order, except that the direction of
+    /// transfer is reversed". So silver a unit takes counts in what it can have, as a gift does:
+    /// unit 5 holds $40, takes $30 from unit 88 and buys a $100 sword - "can have $70 and spend
+    /// $100", not "$40 ... $70".
+    #[test]
+    fn a_take_into_a_short_unit_counts_in_what_it_can_have() {
+        let findings = check_turn(
+            &report(vec![a_sword_market(
+                100,
+                vec![with_silver(unit("5"), 40), with_silver(unit("88"), 30)],
+            )]),
+            "unit 5\nTAKE FROM 88 30 SILV\nBUY 1 swords\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            unit_silver_sentence(&findings, "5"),
+            Some(
+                "short $30: this unit can have $70 and its orders spend $100, so it buys none \
+                 of the 1 sword ordered"
+            ),
+            "{findings:#?}"
+        );
+    }
+
+    /// The acceptance of `ah-w2ou`: a receipt counted for a unit is counted for the hex with no
+    /// second change. Unit 5 holds $10, claims $20, is given $30 by unit 9 and takes $40 from unit
+    /// 88, then buys two $100 swords. Read on its own it can have $100; beside sharer 8 and its
+    /// $50, the hex can have exactly $50 more - every one of the three receipts reached both.
+    #[test]
+    fn a_receipt_counted_for_a_unit_is_counted_for_the_hex() {
+        let orders =
+            "unit 5\nCLAIM 20\nTAKE FROM 88 40 SILV\nBUY 2 swords\nunit 9\nGIVE 5 30 SILV\n";
+        let reviewed = |pooled: bool| {
+            let mut units = vec![
+                with_silver(unit("5"), 10),
+                with_silver(unit("9"), 30),
+                with_silver(unit("88"), 40),
+            ];
+            if pooled {
+                units.push(sharing(with_silver(unit("8"), 50)));
+            }
+            check_turn(
+                &report_with_purse(Some(1000), vec![a_sword_market(100, units)]),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            )
+        };
+
+        let alone = reviewed(false);
+        assert_eq!(
+            unit_silver_sentence(&alone, "5"),
+            Some(
+                "short $100: this unit can have $100 and its orders spend $200, so it buys 1 of \
+                 the 2 swords ordered"
+            ),
+            "{alone:#?}"
+        );
+        let pooled = reviewed(true);
+        assert_eq!(
+            hex_silver_sentence(&pooled),
+            Some(
+                "the units in this hex are short $50 between them: they can have $150 and their \
+                 orders spend $200"
+            ),
+            "{pooled:#?}"
+        );
+    }
+
+    /// A gift its giver funded by a `CLAIM` arrives in full: the ledger moves the claimed silver,
+    /// and what the units can have is read from the ledger rather than from the transfer walk,
+    /// which starts from the report and never sees the claim (`ah-w2ou` review, finding 1). The
+    /// hex can have sharer 8's $50 and unit 10's $100.
+    #[test]
+    fn a_gift_funded_by_a_claim_counts_in_full_for_the_hex() {
+        let findings = check_turn(
+            &report_with_purse(
+                Some(1000),
+                vec![a_sword_market(
+                    100,
+                    vec![unit("5"), sharing(with_silver(unit("8"), 50)), unit("10")],
+                )],
+            ),
+            "unit 5\nBUY 3 swords\nunit 10\nCLAIM 100\nGIVE 8 100 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            hex_silver_sentence(&findings),
+            Some(
+                "the units in this hex are short $150 between them: they can have $150 and their \
+                 orders spend $300"
+            ),
+            "{findings:#?}"
+        );
+    }
+
+    /// ... and for a unit on its own, which read "can have $0" for the $100 that reached it.
+    #[test]
+    fn a_gift_funded_by_a_claim_counts_in_full_for_a_unit() {
+        let findings = check_turn(
+            &report_with_purse(
+                Some(1000),
+                vec![a_sword_market(100, vec![unit("5"), unit("10")])],
+            ),
+            "unit 5\nBUY 3 swords\nunit 10\nCLAIM 100\nGIVE 5 100 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            unit_silver_sentence(&findings, "5"),
+            Some(
+                "short $200: this unit can have $100 and its orders spend $300, so it buys 1 of \
+                 the 3 swords ordered"
+            ),
+            "{findings:#?}"
+        );
+    }
+
+    /// Sharers 7 ($100) and 8 ($50) fund unit 5's two $100 swords while silver leaves sharer 7
+    /// another way: taken by unit 300, which the hex does not count, or discarded (`rules/give`:
+    /// "If 0 is specified as the unit number, then the items are discarded"). Under rule R
+    /// neither is taken off what the hex can have; both are part of what its orders spend.
+    #[test]
+    fn silver_taken_by_an_outsider_or_discarded_is_spent_not_lost_from_can_have() {
+        for orders in [
+            "unit 5\nBUY 2 swords\nunit 300\nTAKE FROM 7 60 SILV\n",
+            "unit 5\nBUY 2 swords\nunit 7\nGIVE 0 60 SILV\n",
+        ] {
+            let findings = check_turn(
+                &report(vec![a_sword_market(
+                    100,
+                    vec![
+                        unit("5"),
+                        sharing(with_silver(unit("7"), 100)),
+                        sharing(with_silver(unit("8"), 50)),
+                        unit("300"),
+                    ],
+                )]),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            assert_eq!(
+                hex_silver_sentence(&findings),
+                Some(
+                    "the units in this hex are short $110 between them: they can have $150 and \
+                     their orders spend $260"
+                ),
+                "{orders}: {findings:#?}"
+            );
+        }
+    }
+
+    /// A walking sharer's gift out of the hex is added back on top of what the hex had of it
+    /// (`ah-a68f`), so silver it earned before leaving cannot cancel the gift: sharer 6 gives its
+    /// $50 to unit 9, sells two furs and walks north; sharer 8 studies with nothing. The hex can
+    /// have the $50 gift whether or not the furs were sold (`ah-w2ou` review, finding 2).
+    #[test]
+    fn a_walking_sharers_gift_out_counts_whatever_it_earned_before_leaving() {
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("6".to_string(), Coordinate { x: 7, y: 51, z: 1 });
+        for (furs, orders) in [
+            (
+                2,
+                "unit 6\nGIVE 9 50 SILV\nSELL 2 furs\nMOVE N\nunit 8\nSTUDY combat\nunit 9\n",
+            ),
+            (
+                0,
+                "unit 6\nGIVE 9 50 SILV\nMOVE N\nunit 8\nSTUDY combat\nunit 9\n",
+            ),
+        ] {
+            let mut walker = sharing(with_silver(unit("6"), 50));
+            if furs > 0 {
+                walker = with_item(walker, furs, "furs", "FUR");
+            }
+            let here = ReportRegion {
+                wanted: vec![MarketItem {
+                    amount: 10,
+                    name: "furs".to_string(),
+                    tag: "FUR".to_string(),
+                    price: 100,
+                }],
+                ..region_at(
+                    "1:7,53",
+                    7,
+                    53,
+                    vec![
+                        walker,
+                        sharing(with_silver(unit("8"), 0)),
+                        with_silver(unit("9"), 0),
+                    ],
+                )
+            };
+            let north = region_at("1:7,51", 7, 51, vec![with_silver(unit("3"), 0)]);
+            let review = review_turn(
+                &report(vec![here, north]),
+                orders,
+                Some(&ruleset()),
+                options.clone(),
+            );
+            assert_eq!(
+                hex_silver_sentence(&review.findings),
+                Some(
+                    "the units in this hex are short $10 between them: they can have $50 and \
+                     their orders spend $60"
+                ),
+                "{orders}: {:#?}",
+                review.findings
+            );
+        }
+    }
+
+    /// A walking sharer may give, or have taken, more silver than it holds - its overdraft is the
+    /// pool's - and the hex then can have what it held, no more: sharer 6 holds $50 and walks
+    /// north, sharer 8 holds $20 and studies, unit 9 is given or takes $80 from sharer 6. Rule R
+    /// adds back the $80 that left, against the $30 overdraft it made, not on top of a floor the
+    /// walk clamp lifted it to (`ah-w2ou` follow-up review).
+    #[test]
+    fn a_walking_sharer_overdrawn_by_a_transfer_out_counts_only_what_it_held() {
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("6".to_string(), Coordinate { x: 7, y: 51, z: 1 });
+        for orders in [
+            "unit 6\nGIVE 9 80 SILV\nMOVE N\nunit 8\nSTUDY combat\nunit 9\n",
+            "unit 6\nMOVE N\nunit 8\nSTUDY combat\nunit 9\nTAKE FROM 6 80 SILV\n",
+        ] {
+            let here = region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![
+                    sharing(with_silver(unit("6"), 50)),
+                    sharing(with_silver(unit("8"), 20)),
+                    with_silver(unit("9"), 0),
+                ],
+            );
+            let north = region_at("1:7,51", 7, 51, vec![with_silver(unit("3"), 0)]);
+            let review = review_turn(
+                &report(vec![here, north]),
+                orders,
+                Some(&ruleset()),
+                options.clone(),
+            );
+            assert_eq!(
+                hex_silver_sentence(&review.findings),
+                Some(
+                    "the units in this hex are short $20 between them: they can have $70 and \
+                     their orders spend $90"
+                ),
+                "{orders}: {:#?}",
+                review.findings
+            );
+        }
     }
 
     /// A sharer's own cut line is a fact about that line too (`ah-szye`), and silver shipped to
