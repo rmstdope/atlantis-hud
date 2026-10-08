@@ -2347,7 +2347,15 @@ fn forecast_hex(
         .map(|forecast| forecast.shared_silver_for_orders)
         .sum();
     if owing > 0 {
-        for (index, forecast) in into[start..].iter_mut().enumerate() {
+        // A borrower lends last: what reaches it after its own orders spent is drawn only when no
+        // faction-mate's silver is left, so it never pays its own loan back to itself while a
+        // sharer beside it holds the money (`ah-0nwd`). Drawn at all, rather than skipped, because
+        // the purse was judged covered with that silver in it, and skipping it would credit the
+        // borrower money no row is debited for.
+        let mut order: Vec<usize> = (0..into.len() - start).collect();
+        order.sort_by_key(|&index| purse_for_orders.borrows[index] > 0);
+        for index in order {
+            let forecast = &mut into[start + index];
             if owing == 0 {
                 break;
             }
@@ -11169,13 +11177,8 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
     let lendable = hex
         .units
         .iter()
-        .zip(&borrows)
-        .map(|(ordered, &borrowed)| {
-            if borrowed > 0 {
-                // It was overdrawn when its orders spent, so it had nothing to lend then; whatever
-                // reaches it afterwards never pays its own loan back to itself (`ah-0nwd`).
-                0
-            } else if sharing.pools_silver(ordered) {
+        .map(|ordered| {
+            if sharing.pools_silver(ordered) {
                 relieved_balance(ledger, &ordered.unit.unit_id, SILVER).max(0)
             } else {
                 // A sharer that walks away lends here only what was drawn on it before it left.
@@ -54687,6 +54690,57 @@ BUILD
         );
         assert_eq!(student.at_month_end, Some(100), "{student:?}");
         assert_eq!(forecast_for(&review, "8").at_month_end, Some(480));
+    }
+
+    /// The sharing student's own late silver is the only money in the hex: whatever the purse is
+    /// judged to lend is debited from somebody, so the hex ends with what it started with less
+    /// what it spent - no `was lent` without a `lent` (`ah-0nwd` delta review, finding 1).
+    #[test]
+    fn a_purse_whose_only_silver_is_a_borrowers_later_receipt_creates_none() {
+        for (others, orders, spent) in [
+            (
+                vec![sharing(with_silver(unit("8"), 0))],
+                "unit 5\nTRANSPORT 6 100 SILV\nunit 6\nSTUDY combat\n",
+                20,
+            ),
+            (
+                vec![
+                    sharing(with_silver(unit("8"), 0)),
+                    with_silver(unit("9"), 0),
+                ],
+                "unit 5\nTRANSPORT 6 100 SILV\nunit 6\nSTUDY combat\nunit 9\nSTUDY combat\n",
+                30,
+            ),
+        ] {
+            let mut units = vec![sharing(with_men(with_silver(unit("6"), 0), 2))];
+            units.extend(others);
+            let (report, options) = traced(
+                report(vec![caravanserai_hex("5", 100, units)]),
+                orders,
+                &ruleset(),
+                CheckOptions::default(),
+            );
+            let review = review_turn(&report, orders, Some(&ruleset()), options);
+            let total: i64 = review
+                .silver
+                .iter()
+                .map(|row| row.at_month_end.expect("priced"))
+                .sum();
+            assert_eq!(total, 100 - spent, "{orders}: {:?}", review.silver);
+            let lent: i64 = review
+                .silver
+                .iter()
+                .flat_map(|row| &row.changes)
+                .filter(|change| change.cause == SilverChangeCause::Lent)
+                .map(|change| -change.amount)
+                .sum();
+            let borrowed: i64 = review
+                .silver
+                .iter()
+                .map(|row| row.borrowed_for_orders)
+                .sum();
+            assert_eq!(lent, borrowed, "{orders}: every loan is somebody's");
+        }
     }
 
     /// A sharer that walks in lends at STUDY what it holds then: silver shipped to it afterwards
