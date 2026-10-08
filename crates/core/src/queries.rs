@@ -190,18 +190,18 @@ core_queries! {
     passage_claims(raw_report: String, orders_document: String, ruleset_json: String) -> Vec<PassageClaim> {
         let report = crate::report::parse_report_full(&raw_report);
         let ruleset = crate::movement::rules::Ruleset::from_json(&ruleset_json).ok();
-        let read =
-            crate::movement::fleet::OrderedUnits::from_document(&orders_document, ruleset.as_ref());
+        let written =
+            crate::movement::fleet::WrittenMovement::from_document(&orders_document, ruleset.as_ref());
         // Whether a TEACH replaces a MOVE IN turns on what the unit is made of, which only a
         // classified report states - unclassified, every headcount is an estimate and every TEACH
         // "cannot say". Classified only then, since this runs over many stored turns (`ah-0x6x`).
         let ordered = match &ruleset {
-            Some(rules) if read.any_closed_by_teach() => {
+            Some(rules) if written.waits_on_teachers() => {
                 let mut classified = report.clone();
                 crate::report::classify_units(&mut classified, rules);
-                read.with_settled_teachers(&classified, &orders_document, Some(rules))
+                written.settle(&classified, &orders_document, Some(rules))
             }
-            _ => read.with_settled_teachers(&report, &orders_document, ruleset.as_ref()),
+            _ => written.settle(&report, &orders_document, ruleset.as_ref()),
         };
         Ok(crate::movement::passages::passage_claims(&report, &ordered))
     }
