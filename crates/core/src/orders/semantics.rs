@@ -55095,4 +55095,68 @@ BUILD
             "{findings:#?}"
         );
     }
+
+    /// A TRANSPORT to a hex-mate settles after STUDY (`rules/sequenceofevents`), the moment the
+    /// hex's pooled silver is judged, so it is neither the sender's spending nor the receiver's
+    /// silver in the hex's sentence: the case of
+    /// `market_claims_beyond_what_the_sharers_lend_it_are_not_lent_for` reads the same with shipper
+    /// 9's `TRANSPORT 5 100 SILV` as without it (`ah-vn5y`).
+    #[test]
+    fn a_transport_to_a_hex_mate_leaves_the_hex_shortfall_sentence_unchanged() {
+        let hex_sentence = |transport: &str| {
+            let mut options = CheckOptions::default();
+            for walker in ["6", "7"] {
+                options
+                    .month_end
+                    .insert(walker.to_string(), Coordinate { x: 7, y: 51, z: 1 });
+            }
+            let mut quartermaster = with_skill(with_silver(unit("5"), 0), "QUAM", 1);
+            quartermaster.structure_id = Some("500".to_string());
+            let hex = ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 10,
+                    name: "swords".to_string(),
+                    tag: "SWOR".to_string(),
+                    price: 100,
+                }],
+                structures: vec![Structure {
+                    structure_id: "500".to_string(),
+                    name: "Caravan".to_string(),
+                    kind: "Caravanserai".to_string(),
+                    ..Default::default()
+                }],
+                ..region_at(
+                    "1:7,53",
+                    7,
+                    53,
+                    vec![
+                        sharing(with_silver(unit("6"), 50)),
+                        sharing(with_silver(unit("7"), 100)),
+                        sharing(with_silver(unit("8"), 100)),
+                        quartermaster,
+                        with_silver(unit("9"), 100),
+                    ],
+                )
+            };
+            let walked_to = region_at("1:7,51", 7, 51, vec![with_silver(unit("3"), 0)]);
+            let orders = format!(
+                "unit 6\nBUY 1 swords\nMOVE N\nunit 7\nMOVE N\nunit 8\nSTUDY combat\n\
+                 unit 3\nSTUDY combat\nunit 5\nBUY 1 swords\nunit 9\n{transport}"
+            );
+            review_turn(
+                &report(vec![hex, walked_to]),
+                &orders,
+                Some(&ruleset()),
+                options,
+            )
+            .findings
+            .into_iter()
+            .filter(|finding| finding.unit_id.is_none() && finding.code == codes::NOT_ENOUGH_SILVER)
+            .map(|finding| finding.message)
+            .collect::<Vec<_>>()
+        };
+        let shipped = hex_sentence("TRANSPORT 5 100 SILV\n");
+        assert_eq!(shipped.len(), 1, "{shipped:?}");
+        assert_eq!(shipped, hex_sentence(""));
+    }
 }
