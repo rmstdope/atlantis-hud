@@ -54419,6 +54419,43 @@ BUILD
         );
     }
 
+    /// The market's claims can still outrun what the sharers lend it: walker 6 overdraws $50 on
+    /// its own BUY, staying sharer 8 pays buyer 5's $100, and walker 7 has only $20 to lend before
+    /// it leaves. Only $120 of the $150 claimed can be lent, so nothing is - the all-or-nothing
+    /// reading - rather than crediting a loan nobody made (`ah-aqqb`, `ah-k0ob` review).
+    #[test]
+    fn market_claims_beyond_what_the_walking_sharers_lend_it_are_not_lent_for() {
+        let mut options = CheckOptions::default();
+        for walker in ["6", "7"] {
+            options
+                .month_end
+                .insert(walker.to_string(), Coordinate { x: 7, y: 51, z: 1 });
+        }
+        let review = a_shipped_buyer_beside(
+            vec![
+                sharing(with_silver(unit("6"), 50)),
+                sharing(with_silver(unit("7"), 20)),
+                sharing(with_silver(unit("8"), 100)),
+            ],
+            vec![region_at("1:7,51", 7, 51, vec![with_silver(unit("3"), 0)])],
+            "unit 6\nBUY 1 swords\nMOVE N\nunit 7\nMOVE N\nunit 8\nSTUDY combat\nunit 3\nSTUDY combat\n",
+            options,
+        );
+        let borrowed: Vec<(&str, i64)> = review
+            .silver
+            .iter()
+            .filter(|row| row.unit_id == "5" || row.unit_id == "6")
+            .map(|row| (row.unit_id.as_str(), row.borrowed_for_orders))
+            .collect();
+        assert_eq!(borrowed, vec![("6", 0), ("5", 0)], "{:#?}", review.silver);
+        assert_eq!(
+            silver_rows(&review, &["8"]),
+            vec![("8".to_string(), Some(90), 0)],
+            "{:#?}",
+            review.silver
+        );
+    }
+
     /// A walking sharer's own market overdraft is drawn on the sharers before movement like any
     /// other claimant's: walking sharer 6 overdraws $50 on its own BUY, staying sharer 8 pays
     /// buyer 5's $100, so walker 7 lends the $50 before it leaves and the column lends the
