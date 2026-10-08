@@ -648,6 +648,8 @@ mod tests {
             .expect("the walker")
             .clone();
         unit.weight = Some(1000);
+        // Weighed again, as parsing weighs it: the movement follows the weight.
+        unit.movement = crate::movement::mode::unit_movement(&unit);
 
         let path = trace_move(
             &map,
@@ -786,6 +788,8 @@ mod tests {
             .expect("the walker")
             .clone();
         unit.weight = Some(1000);
+        // Weighed again, as parsing weighs it: the movement follows the weight.
+        unit.movement = crate::movement::mode::unit_movement(&unit);
 
         let path = trace_move(
             &map,

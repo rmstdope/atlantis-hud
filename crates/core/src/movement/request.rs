@@ -320,6 +320,25 @@ fn trace_orders(
     let Some(steps) = course_followed(&report, &ruleset, &ordered, &unit, own, own_is_sail) else {
         return Ok(MoveOrderTraceResponse { path: None });
     };
+    // A unit the report prints is timed at the speed it has when it moves, after this month's
+    // GIVE, TAKE and market (`rules/sequenceofevents`) - the settled row's, as a formed unit's
+    // already is. Its printed Weight and Capacity were written before any of them: timed from
+    // those, a unit given its horses this month was drawn walking beside a row that said Riding.
+    let mut unit = unit;
+    if !unit
+        .unit_id
+        .starts_with(crate::orders::effects::FORMED_ID_PREFIX)
+    {
+        if let Some(movement) = crate::orders::effects::settled_movement(
+            &report,
+            &ruleset,
+            orders_document,
+            &ordered,
+            unit_id,
+        ) {
+            unit.movement = Some(movement);
+        }
+    }
 
     let map = MapKnowledge::from_remembered(&report, &remembered)
         .with_geometry(crate::movement::graph::geometry_from_json(map_json)?)
@@ -730,6 +749,109 @@ mod reaches_the_planner_tests {
             plan.steps.iter().all(|step| !step.estimated),
             "the memory describes the way, so nothing along it is guessed at"
         );
+    }
+
+    /// Plain, then three tundra hexes running southeast. `units` stand in the plain.
+    fn tundra_corridor(units: &str) -> String {
+        let terrains = ["plain", "tundra", "tundra", "tundra"];
+        let mut text = String::from("Foo (1) Report\n\n");
+        for (index, terrain) in terrains.iter().enumerate() {
+            let at = 1 + i32::try_from(index).expect("four hexes");
+            text.push_str(&format!(
+                "{terrain} ({at},{at}) in Nowhere, 10 peasants (orcs), $5.\n\nExits:\n"
+            ));
+            if index > 0 {
+                text.push_str(&format!(
+                    "  Northwest : {} ({},{}) in Nowhere.\n",
+                    terrains[index - 1],
+                    at - 1,
+                    at - 1
+                ));
+            }
+            if index + 1 < terrains.len() {
+                text.push_str(&format!(
+                    "  Southeast : {} ({},{}) in Nowhere.\n",
+                    terrains[index + 1],
+                    at + 1,
+                    at + 1
+                ));
+            }
+            text.push('\n');
+            if index == 0 {
+                text.push_str(units);
+            }
+        }
+        text
+    }
+
+    /// Archers who hold no horses, and a stable beside them that holds forty. 60 high elves and 60
+    /// longbows weigh 660 (`data/HELF`: weight 10; `rules/tableitemweights`: longbow 1); forty
+    /// horses carry 800 ridden (`data/HORS`: riding capacity 20), so with them the archers ride.
+    const ARCHERS_AND_STABLE: &str = "* Archers (900), Foo (1), behind, 60 high elves [HELF], 60 longbows [LBOW]. Weight: 660. Capacity: 0/0/900/0.\n* Stable (901), Foo (1), 1 high elf [HELF], 40 horses [HORS]. Weight: 2010. Capacity: 0/2800/2815/0.\n";
+
+    fn first_month_steps(raw_report: &str, unit_id: &str, orders: &str) -> usize {
+        let path = trace_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            raw_report,
+            "[]",
+            unit_id,
+            orders,
+        )
+        .expect("the ruleset loads")
+        .path
+        .expect("a route from the plain");
+        path.months.first().expect("a timed route").steps
+    }
+
+    /// A unit's movement is weighed as it holds things when it moves, and GIVE runs before
+    /// movement (`rules/sequenceofevents`). A riding unit has four movement points and tundra costs
+    /// riders two (`rules/movement_normal`): two tundra hexes in the first month. The map once
+    /// timed the route from the report's printed Weight and Capacity, before the gift, and drew one
+    /// hex a month while the unit's own row said Riding.
+    #[test]
+    fn horses_given_this_month_carry_the_route_at_a_ride() {
+        let report = tundra_corridor(ARCHERS_AND_STABLE);
+        let orders = "unit 900\nMOVE SE SE SE\nunit 901\nGIVE 900 40 HORS\n";
+
+        assert_eq!(first_month_steps(&report, "900", orders), 2);
+    }
+
+    /// The other way round: a unit that gives its horses away walks, at two movement points, and
+    /// a walker spends both on one tundra hex (`rules/movement_normal`).
+    #[test]
+    fn horses_given_away_this_month_leave_the_route_at_a_walk() {
+        let riders = "* Archers (900), Foo (1), behind, 60 high elves [HELF], 60 longbows [LBOW], 40 horses [HORS]. Weight: 2660. Capacity: 0/2800/3700/0.\n* Stable (901), Foo (1), 1 high elf [HELF]. Weight: 10. Capacity: 0/0/15/0.\n";
+        let report = tundra_corridor(riders);
+        let orders = "unit 900\nGIVE 901 40 HORS\nMOVE SE SE SE\n";
+
+        assert_eq!(first_month_steps(&report, "900", orders), 1);
+    }
+
+    /// The units-in-hex preview says where a unit ends the month by the same trace, so the gift
+    /// carries it two tundra hexes there too, not only on the map.
+    #[test]
+    fn the_preview_sends_a_unit_given_horses_as_far_as_it_rides() {
+        let report = tundra_corridor(ARCHERS_AND_STABLE);
+        let orders = "unit 900\nMOVE SE SE SE\nunit 901\nGIVE 900 40 HORS\n";
+        let preview = crate::orders::effects::preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            orders,
+        )
+        .expect("the ruleset loads");
+        let json = serde_json::to_value(&preview).expect("serializes");
+        let departing = json["regions"]
+            .as_array()
+            .expect("regions")
+            .iter()
+            .flat_map(|region| region["units"].as_array().cloned().unwrap_or_default())
+            .find(|row| row["unit"]["unitId"] == "900" && row["status"] == "departing")
+            .expect("the archers leave the plain");
+
+        assert_eq!(departing["departingTo"], "1:3,3");
     }
 
     /// The bug ah-048 was filed for: Drones (10594) writes nothing and stands in Raft [235], which
