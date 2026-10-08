@@ -10899,6 +10899,9 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
             })
             .collect();
         let market_owed: i64 = market_claims.iter().sum();
+        // Load-bearing: a walking sharer that overdraws at the market is a claimant here, and
+        // the walker that paid for it may record nothing drawn on it before it left, so the
+        // market's claims can exceed what the sharers lend it - and then nothing is lent.
         if month_end_owed <= pool
             && market_owed > 0
             && market_owed <= held_at_market.iter().sum::<i64>()
@@ -54058,6 +54061,43 @@ BUILD
         assert_eq!(
             silver_rows(&review, &["8"]),
             vec![("8".to_string(), Some(40), 0)],
+            "{:#?}",
+            review.silver
+        );
+    }
+
+    /// The market's claims can outrun what the sharers lend it: walking sharer 6 overdraws $50 on
+    /// its own BUY and is a claimant here, while walker 7, which paid for it, records nothing drawn
+    /// on it before it left. Only $100 of the $150 claimed can be lent, so nothing is - the
+    /// all-or-nothing reading - rather than crediting a loan nobody made (`ah-aqqb` review).
+    #[test]
+    fn market_claims_beyond_what_the_sharers_lend_it_are_not_lent_for() {
+        let mut options = CheckOptions::default();
+        for walker in ["6", "7"] {
+            options
+                .month_end
+                .insert(walker.to_string(), Coordinate { x: 7, y: 51, z: 1 });
+        }
+        let review = a_shipped_buyer_beside(
+            vec![
+                sharing(with_silver(unit("6"), 50)),
+                sharing(with_silver(unit("7"), 100)),
+                sharing(with_silver(unit("8"), 100)),
+            ],
+            vec![region_at("1:7,51", 7, 51, vec![with_silver(unit("3"), 0)])],
+            "unit 6\nBUY 1 swords\nMOVE N\nunit 7\nMOVE N\nunit 8\nSTUDY combat\nunit 3\nSTUDY combat\n",
+            options,
+        );
+        let borrowed: Vec<(&str, i64)> = review
+            .silver
+            .iter()
+            .filter(|row| row.unit_id == "5" || row.unit_id == "6")
+            .map(|row| (row.unit_id.as_str(), row.borrowed_for_orders))
+            .collect();
+        assert_eq!(borrowed, vec![("6", 0), ("5", 0)], "{:#?}", review.silver);
+        assert_eq!(
+            silver_rows(&review, &["8"]),
+            vec![("8".to_string(), Some(90), 0)],
             "{:#?}",
             review.silver
         );
