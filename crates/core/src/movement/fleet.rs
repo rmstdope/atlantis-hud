@@ -187,6 +187,9 @@ impl OrderedUnits {
             _ => {}
         });
 
+        // A SAIL a later month-long order replaced will not run, so it lends no hands to the
+        // hull's course either (`ah-osny`).
+        sailers.retain(|unit_id: &String| !chains.get(unit_id).is_some_and(RouteChain::replaced));
         let by_unit = chains
             .into_iter()
             .filter_map(|(unit_id, chain)| chain.into_route().map(|route| (unit_id, route)))
@@ -862,6 +865,25 @@ mod tests {
         assert!(!in_only.issues_sail("10575"));
         assert!(!out_only.issues_sail("10575"));
         assert!(directional.issues_sail("10575"));
+    }
+
+    /// A STUDY after a SAIL replaces it ("STUDY replaces this SAIL as the unit's month-long order,
+    /// so this SAIL will not run"), so the unit sets no course and lends no hands (`ah-osny`).
+    #[test]
+    fn a_sail_a_later_study_replaced_neither_departs_nor_participates() {
+        for orders in [
+            "unit 10575\nSAIL SE\nSTUDY COMB\n",
+            "unit 10575\nSAIL\nSTUDY COMB\n",
+        ] {
+            let ordered = OrderedUnits::from_document(orders, None);
+            assert!(!ordered.issues_sail("10575"), "{orders:?}");
+            assert!(!ordered.sails_a_course("10575"), "{orders:?}");
+        }
+        assert!(
+            OrderedUnits::from_document("unit 10575\nSTUDY COMB\nSAIL SE\n", None)
+                .issues_sail("10575"),
+            "the SAIL written last is the one that runs"
+        );
     }
 
     /// Two units aboard Raft [235] both write a `SAIL`, and the **owner's** wins - the first unit

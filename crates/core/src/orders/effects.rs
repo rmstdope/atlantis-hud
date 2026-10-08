@@ -11359,6 +11359,64 @@ mod tests {
         assert!(month_end_for(&report, orders).is_empty());
     }
 
+    /// `ah-osny` review: the sharing case of `ah-wyj8` through the month end production measures
+    /// with. A sharer whose MOVE S a STUDY replaced stays in (0,0) and lends its hex-mate the
+    /// silver for its own STUDY (`rules/share`).
+    #[test]
+    fn a_sharer_whose_move_a_study_replaced_lends_where_it_stands() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (0,0) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  South : plain (0,2) in Nowhere.",
+            "",
+            "* Student (5), Foo (1), 2 leaders [LEAD]. Weight: 20. Capacity: 0/0/30/0.",
+            "* Sharer (7), Foo (1), sharing, leader [LEAD], 500 silver [SILV]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+            "plain (0,2) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  North : plain (0,0) in Nowhere.",
+            "",
+        ]
+        .join("\n");
+        let short_of_silver = |orders: &str| -> Vec<String> {
+            let mut cache = ReportCache::new();
+            let ruleset = cache.ruleset(RULESET).expect("the ruleset loads");
+            let parsed = cache.classified(&report, RULESET);
+            let month_end = month_end_for(&report, orders);
+            super::super::semantics::review_turn(
+                &parsed,
+                orders,
+                Some(ruleset.as_ref()),
+                super::super::semantics::CheckOptions {
+                    geometry: crate::movement::graph::geometry_from_json(FLAT_MAP)
+                        .expect("the map reads"),
+                    month_end,
+                    ..super::super::semantics::CheckOptions::default()
+                },
+            )
+            .findings
+            .iter()
+            .filter(|finding| finding.code == super::super::semantics::codes::NOT_ENOUGH_SILVER)
+            .filter_map(|finding| finding.unit_id.clone())
+            .collect()
+        };
+
+        assert_eq!(
+            short_of_silver("unit 5\nSTUDY COMB\nunit 7\nMOVE S\nSTUDY COMB\n"),
+            Vec::<String>::new()
+        );
+        // The control: the sharer that does walk away leaves the student short.
+        assert_eq!(
+            short_of_silver("unit 5\nSTUDY COMB\nunit 7\nMOVE S\n"),
+            vec!["5".to_string()]
+        );
+    }
+
     /// The report's own row for a unit, which a unit weighed as it steps off still matches.
     fn reported_unit(report: &str, unit_id: &str) -> ReportUnit {
         ReportCache::new()

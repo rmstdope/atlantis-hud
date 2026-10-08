@@ -9535,11 +9535,10 @@ struct Neighbourhood {
 ///   and is fed in the same place, wherever [`sail_destination`] says its fleet arrives
 ///   (`ah-jk9h`, `ah-bwxp.1`). Never the movement trace, which the shells fill for a sail only
 ///   when something else in the document walks or ships;
-/// - any other unit the movement trace walks: `CheckOptions::month_end`, the trace's answer, since
-///   a walker's month end depends on its movement points and the terrain (`ah-n3qb`). The trace
-///   follows only a route that runs, so a unit whose MOVE a later month-long order replaced has
-///   no entry there and stands where it is (`ah-wyj8`, `ah-osny`) - the same answer the shipment
-///   measure reads (`transport::standing_at`);
+/// - any other unit whose effective orders still walk (a `MOVE` or `ADVANCE` no later
+///   month-long order replaced): `CheckOptions::month_end`, the movement trace's answer, since a
+///   walker's month end depends on its movement points and the terrain (`ah-n3qb`). A unit whose
+///   MOVE was replaced stands where it is (`ah-wyj8`, `ah-osny`);
 /// - a unit nothing can follow: where it stands. "Cannot say" is not a destination.
 struct SharingReach {
     /// In report order, and each one's members in report order, so lending and eating stay in
@@ -9605,7 +9604,17 @@ impl SharingReach {
         month_end: &super::transport::MonthEndHexes,
     ) -> Coordinate {
         let sails = ruleset.is_some_and(|rules| carried_away(hex, ordered, rules).is_some());
-        if !sails {
+        // A later month-long order replaces a MOVE ("STUDY replaces this MOVE as the unit's
+        // month-long order, so this MOVE will not run"), so the trace is believed only for a unit
+        // whose effective orders still walk (`ah-wyj8`). The trace already drops a route any other
+        // order replaces (`movement::chain::RouteChain`, `ah-osny`); a TEACH it cannot judge, since
+        // whether one spends the month turns on the settled month's eligibility, so this filter is
+        // what still answers `MOVE` / `TEACH` here.
+        let walks = ordered
+            .intents
+            .iter()
+            .any(|placed| matches!(placed.intent, Intent::Move { .. }));
+        if !sails && walks {
             if let Some(at) = month_end.get(&ordered.unit.unit_id) {
                 return *at;
             }
@@ -53383,6 +53392,36 @@ BUILD
             vec![],
             "the sharer is in (7,53) when STUDY runs, so it lends unit 5 its $20"
         );
+    }
+
+    /// A MOVE that a later STUDY replaces never runs ("STUDY replaces this MOVE as the unit's
+    /// month-long order"), so the sharer stays and pays - whatever the movement trace, which
+    /// follows every MOVE written, says about where it ends (`ah-wyj8`).
+    #[test]
+    fn a_sharer_whose_move_a_study_replaces_stays_and_pays() {
+        let regions = vec![region_at(
+            "1:7,53",
+            7,
+            53,
+            vec![
+                with_men(with_silver(unit("5"), 0), 2),
+                sharing(with_silver(unit("7"), 500)),
+            ],
+        )];
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("7".to_string(), Coordinate { x: 7, y: 55, z: 1 });
+        let findings: Vec<Finding> = check_turn(
+            &report(regions),
+            "unit 5\nSTUDY combat\nunit 7\nMOVE S\nSTUDY combat\n",
+            Some(&ruleset()),
+            options,
+        )
+        .into_iter()
+        .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+        .collect();
+        assert_eq!(findings, vec![]);
     }
 
     /// The control: a sharer that stays where it is listed pays as it always did.
