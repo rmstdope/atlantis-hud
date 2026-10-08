@@ -154,15 +154,17 @@ pub fn parse_capacities(text: &str) -> Option<Capacities> {
 /// order. Swimming is not among them: it decides whether water is passable, not how fast the unit
 /// goes, and this ruleset gives it no allowance of its own.
 ///
-/// The weight and capacity lines are read first, since they are what the game itself printed. A
-/// unit the report never carried has neither - a unit this month's `FORM` creates is the case
-/// (`ah-4hux`) - and for one of those the already-settled [`ReportUnit::movement`] is the only
-/// statement of speed there is. Preferring the report's own lines keeps every reported unit
-/// answering exactly as it did.
+/// [`ReportUnit::movement`] is read first. Parsing fills it from the report's own weight and
+/// capacity lines, so for a unit as the report printed it this is exactly what those lines say;
+/// once this month's orders have settled the unit it is the movement it has when it moves, after
+/// GIVE, TAKE and the market (`rules/sequenceofevents`), which the printed lines - written before
+/// any of them - cannot know. Reading the lines first is how a unit given its horses this month
+/// was drawn walking while its own row said Riding. The lines are the fallback for a unit whose
+/// movement was never filled in.
 #[must_use]
 pub fn mobility(unit: &ReportUnit) -> Mobility {
-    unit_movement(unit)
-        .or(unit.movement)
+    unit.movement
+        .or_else(|| unit_movement(unit))
         .map_or(Mobility::Unstated, |movement| match movement.status {
             UnitMovementStatus::Overloaded => Mobility::Overloaded,
             UnitMovementStatus::Fly => Mobility::Moves(MovementMode::Fly),
@@ -906,19 +908,33 @@ mod tests {
         assert_eq!(mobility(&unit), Mobility::Moves(MovementMode::Walk));
     }
 
-    /// And the report's own lines are read first, so a reported unit answers exactly as it always
-    /// did. They cannot disagree in practice - `report::unit` assigns `movement` from
-    /// `unit_movement` as it parses - which is what makes the fallback above safe; this pins the
-    /// precedence rather than the agreement, so a future writer of `movement` cannot quietly
-    /// overrule what the game printed.
+    /// And the settled movement is read before the report's own lines. For a unit as the report
+    /// printed it the two agree - `report::unit` assigns `movement` from `unit_movement` as it
+    /// parses - but once this month's orders have run, the settled movement is the unit as it holds
+    /// things when it moves, after GIVE, TAKE and the market (`rules/sequenceofevents`), and the
+    /// lines were printed before any of them. Here the lines say a walker and the settle, which
+    /// gave it horses, says a rider: the rider is what moves.
     #[test]
-    fn the_reports_own_weight_and_capacity_are_read_before_the_settled_movement() {
-        let overloaded =
-            movement_for_capacities(900, parse_capacities("0/0/15/0").expect("readable"));
+    fn the_settled_movement_is_read_before_the_reports_own_weight_and_capacity() {
+        let riding =
+            movement_for_capacities(660, parse_capacities("0/800/900/0").expect("readable"));
+        let unit = ReportUnit {
+            weight: Some(660),
+            capacity: Some("0/0/900/0".to_string()),
+            movement: Some(riding),
+            ..Default::default()
+        };
+
+        assert_eq!(mobility(&unit), Mobility::Moves(MovementMode::Ride));
+    }
+
+    /// With no movement filled in, the report's lines still answer.
+    #[test]
+    fn the_reports_own_lines_answer_for_a_unit_whose_movement_was_never_filled_in() {
         let unit = ReportUnit {
             weight: Some(10),
             capacity: Some("0/0/15/0".to_string()),
-            movement: Some(overloaded),
+            movement: None,
             ..Default::default()
         };
 

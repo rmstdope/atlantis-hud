@@ -1250,6 +1250,30 @@ pub(crate) fn formed_unit_as_ordered(
     })
 }
 
+/// How a unit the report prints moves once this month's orders before movement have run: the
+/// settled row's movement, weighed as it holds things after GIVE, TAKE and the market
+/// (`rules/sequenceofevents`). `None` when the settle has no row for it.
+pub(crate) fn settled_movement(
+    report: &crate::report::ParsedReport,
+    ruleset: &std::sync::Arc<crate::movement::rules::Ruleset>,
+    orders_document: &str,
+    ordered: &crate::movement::fleet::OrderedUnits,
+    unit_id: &str,
+) -> Option<crate::report::model::UnitMovement> {
+    let (units, _) = settle(
+        report,
+        ruleset,
+        orders_document,
+        ordered,
+        None,
+        super::semantics::CheckOptions::default(),
+    );
+    units
+        .into_iter()
+        .find(|entry| !entry.formed && entry.unit.unit_id == unit_id)
+        .and_then(|entry| entry.unit.movement)
+}
+
 /// What validation measures a shipment with: how far the reports have shown the world, and where
 /// each unit ends the month. Both come from one build of the known map (`ah-hc7z`, `ah-b6fz`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
