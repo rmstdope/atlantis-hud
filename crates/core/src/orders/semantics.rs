@@ -10055,7 +10055,7 @@ fn charge_shared_material(
                 tag: tag.to_ascii_uppercase(),
                 amount: take,
                 phase,
-                line: placed.line,
+                placed: placed.clone(),
                 cause,
                 actor: ItemChangeParty {
                     unit_id: actor.unit_id.clone(),
@@ -12196,7 +12196,9 @@ struct ArrivalDebit {
     tag: String,
     amount: i64,
     phase: StatePhase,
-    line: usize,
+    /// The order that consumed it, so the supplier's row is charged through [`charge`] as an
+    /// in-hex debit is.
+    placed: PlacedIntent,
     cause: ItemChangeCause,
     /// The unit whose order consumed it, named on the supplier's movement as an in-hex debit is.
     actor: ItemChangeParty,
@@ -12285,6 +12287,11 @@ fn lend_to_month_end_hexes<'a>(
             let Some(ordered) = hex.find(unit_id) else {
                 continue;
             };
+            // A sharer whose own sums this walk cannot follow lends nothing, as it would lend
+            // nothing standing beside the producer (`Sharing::pool_trusted`).
+            if ledger.doubted.contains(unit_id) {
+                continue;
+            }
             let tags: BTreeSet<String> = ledger
                 .state
                 .balances
@@ -12293,7 +12300,7 @@ fn lend_to_month_end_hexes<'a>(
                 .filter(|(unit, tag)| unit == unit_id && !tag.eq_ignore_ascii_case(SILVER))
                 .map(|(_, tag)| tag.to_ascii_uppercase())
                 .collect();
-            let stock = tags
+            let stock: BTreeMap<String, Option<i64>> = tags
                 .into_iter()
                 .filter_map(|tag| {
                     let at_phase = |phase| ledger.state.known_balance_at(phase, unit_id, &tag).ok();
@@ -12303,6 +12310,10 @@ fn lend_to_month_end_hexes<'a>(
                     left.is_none_or(|left| left > 0).then_some((tag, left))
                 })
                 .collect();
+            // Nothing to lend is nothing to price the destination again for.
+            if stock.is_empty() {
+                continue;
+            }
             arriving
                 .entry(destination)
                 .or_default()
@@ -12331,9 +12342,14 @@ fn lend_to_month_end_hexes<'a>(
     for debit in debits {
         let (hex, ledger) = &mut priced[debit.origin];
         let name = item_name(&debit.tag, hex, ledger.ruleset);
-        ledger
-            .state
-            .apply(debit.phase, &debit.unit_id, &debit.tag, -debit.amount);
+        charge(
+            ledger,
+            debit.phase,
+            &debit.unit_id,
+            &debit.tag,
+            debit.amount,
+            &debit.placed,
+        );
         ledger
             .spent_after_production
             .entry((debit.unit_id.clone(), debit.tag.clone()))
@@ -12345,7 +12361,7 @@ fn lend_to_month_end_hexes<'a>(
             delta: -debit.amount,
             cause: debit.cause,
             phase: debit.phase,
-            line: Some(debit.line as i64),
+            line: Some(debit.placed.line as i64),
             unit_price: None,
             other: Some(debit.actor),
             created: None,
@@ -52442,6 +52458,96 @@ BUILD
             sharer.moved.iter().all(|movement| movement.tag != "WOOD"),
             "{sharer:?}"
         );
+    }
+
+    fn made_by(effects: &BTreeMap<UnitKey, UnitItemEffects>, unit_id: &str, tag: &str) -> i64 {
+        effects_for(effects, unit_id)
+            .map(|unit| {
+                unit.moved
+                    .iter()
+                    .filter(|movement| movement.tag == tag)
+                    .map(|movement| movement.delta)
+                    .sum()
+            })
+            .unwrap_or_default()
+    }
+
+    /// One arrival's wood is lent once: the higher producer takes fifteen, the lower the five
+    /// left, and the sharer's row loses the twenty it carried in - never twenty to each.
+    #[test]
+    fn two_producers_share_one_arrivals_wood_in_report_order() {
+        let carpenters = |id: &str| with_skill(with_men(unit(id), 15), "CARP", 1);
+        let report = ParsedReport {
+            regions: vec![
+                region_at("1:7,53", 7, 53, vec![carpenters("900"), carpenters("902")]),
+                region_at(
+                    "1:7,51",
+                    7,
+                    51,
+                    vec![sharing(with_item(
+                        with_men(unit("901"), 2),
+                        20,
+                        "wood",
+                        "WOOD",
+                    ))],
+                ),
+            ],
+            ..Default::default()
+        };
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
+        let orders = "unit 900\nPRODUCE wagon\nunit 902\nPRODUCE wagon\nunit 901\nMOVE S\n";
+
+        let effects = item_effects(&report, orders, Some(&ruleset()), &options);
+        assert_eq!(made_by(&effects, "900", "WAGO"), 15);
+        assert_eq!(made_by(&effects, "902", "WAGO"), 5);
+        assert_eq!(made_by(&effects, "901", "WOOD"), -20);
+    }
+
+    /// A sharer whose own sums this walk cannot follow lends nothing where it arrives, exactly
+    /// as it would lend nothing standing beside the producer (`Sharing::pool_trusted`).
+    #[test]
+    fn an_arriving_sharer_whose_sums_are_doubted_lends_nothing() {
+        let (report, _, options) = wagon_turn();
+        let orders = "unit 900\nPRODUCE wagon\nunit 901\nSELL 5 xyzzy\nMOVE S\n";
+        let effects = item_effects(&report, orders, Some(&ruleset()), &options);
+        assert_eq!(made_by(&effects, "900", "WAGO"), 0, "{effects:?}");
+        assert_eq!(made_by(&effects, "901", "WOOD"), 0, "{effects:?}");
+    }
+
+    /// The departing half for BUILD: a builder whose only wood walks out with its sharer is
+    /// told it has none.
+    #[test]
+    fn a_builder_whose_sharer_walks_away_is_refused_for_material() {
+        let builder = with_skill(with_men(unit("900"), 10), "BUIL", 3);
+        let report = ParsedReport {
+            regions: vec![
+                settled(region_at(
+                    "1:7,53",
+                    7,
+                    53,
+                    vec![builder, sharing(wood_carrier())],
+                )),
+                region_at("1:7,51", 7, 51, vec![]),
+            ],
+            ..Default::default()
+        };
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("901".to_string(), Coordinate { x: 7, y: 51, z: 1 });
+        let findings: Vec<Finding> = check_turn(
+            &report,
+            "unit 900\nBUILD Caravanserai\nunit 901\nMOVE N\n",
+            Some(&trident()),
+            options,
+        )
+        .into_iter()
+        .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
+        .collect();
+        assert_eq!(findings.len(), 1, "{findings:?}");
     }
 
     #[test]
