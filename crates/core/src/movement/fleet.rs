@@ -22,9 +22,9 @@ use crate::report::ParsedReport;
 /// This is the only walk of the orders document that chains a route: `effects::Working` reads each
 /// row's route from here rather than chaining one of its own (`ah-xmqo`). Every route is keyed by
 /// an [`OrderedUnitKey`]: a block's by its unit number, a `FORM` block's by the 1-based line of the
-/// `FORM` that opened it, in one map, so a rule over the map reaches both (`ah-74y9`). A `TURN` block holds orders for the turn after this one and is skipped,
-/// and movement inside a `FORM` block says nothing about where the unit whose block it is goes
-/// next. A unit's movement lines
+/// `FORM` that opened it, in one map, so a rule over the map reaches both (`ah-74y9`). A `TURN`
+/// block holds orders for the turn after this one and is skipped, and movement inside a `FORM`
+/// block says nothing about where the unit whose block it is goes next. A unit's movement lines
 /// are chained by `movement::chain::RouteChain` (`rules/move`: "Multiple MOVE orders given by one
 /// unit will chain together."); a different month-long order replaces the chain, as
 /// `orders::semantics::month_segments` states.
@@ -1344,13 +1344,12 @@ mod tests {
     }
 
     #[test]
-    fn a_formed_units_move_lines_are_recorded_for_nobody() {
+    fn a_formed_units_move_lines_are_not_the_parents() {
         use crate::movement::graph::Direction::{North, Northeast};
         let ordered = OrderedUnits::unreported(
             "unit 900\nMOVE N\nFORM 1\nMOVE S\nMOVE SE\nEND\nMOVE NE\n",
             None,
         );
-        assert_eq!(ordered.steps_for(&OrderedUnitKey::shown("new-1")), None);
         assert_eq!(
             ordered.steps_for(&OrderedUnitKey::shown("900")),
             Some(&[MoveStep::Go(North), MoveStep::Go(Northeast)][..])
