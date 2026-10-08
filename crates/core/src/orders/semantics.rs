@@ -12369,48 +12369,6 @@ fn lend_to_month_end_hexes<'a>(
     }
 }
 
-/// The materials that would let a refused `BUILD` do work, upper-cased: the one it restricted
-/// itself to, or any the recipe offers.
-fn wanted_materials(refusal: &BuildMaterialRefusal, ruleset: Option<&Ruleset>) -> Vec<String> {
-    refusal
-        .alternatives
-        .iter()
-        .filter(|name| {
-            refusal
-                .asked
-                .as_ref()
-                .is_none_or(|asked| asked.eq_ignore_ascii_case(name))
-        })
-        .filter_map(|name| ruleset?.find_item(name))
-        .map(|item| item.tag.to_ascii_uppercase())
-        .collect()
-}
-
-/// Whether `unit_id`, listed in the hex given, arrives in `at` from elsewhere this month, shares,
-/// and still holds some of a `wanted` tag once movement ends - or a holding a `GIVE` left
-/// uncertain.
-fn supplies_on_arrival(
-    (hex, ledger): &(Hex<'_>, Ledger<'_>),
-    unit_id: &str,
-    at: Coordinate,
-    wanted: &[String],
-) -> bool {
-    if hex.region.coordinate == at || !hex.find(unit_id).is_some_and(Ordered::shares) {
-        return false;
-    }
-    let state = &ledger.state;
-    let mut held = state
-        .balances
-        .keys()
-        .chain(state.uncertain.keys())
-        .filter(|(unit, tag)| unit == unit_id && wanted.contains(tag));
-    held.any(|(_, tag)| {
-        state
-            .known_balance_at(StatePhase::Movement, unit_id, tag)
-            .map_or(true, |held| held > 0)
-    })
-}
-
 /// `"wood nor stone"`, and `"wood, stone nor iron"` for a recipe offering three.
 fn nor_list(names: &[String]) -> String {
     match names {
