@@ -779,6 +779,8 @@ pub fn review_turn(
             (hex, ledger)
         })
         .collect();
+    // A sharing unit walking in this turn supplies a builder its own hex's ledger refused.
+    release_refusals_met_by_arrivals(&mut hexes, &options.month_end);
 
     // Shipping, then maintenance's steps 4 to 7, in the one order `REPORT_WIDE_STEPS` states.
     let month_end = settle_report_wide(
@@ -5830,6 +5832,8 @@ pub(crate) fn item_effects(
             (hex, ledger)
         })
         .collect();
+    // The same release `review_turn` makes, so the ITEMS column agrees with Problems.
+    release_refusals_met_by_arrivals(&mut priced, &options.month_end);
     let month_end = settle_report_wide(
         &mut priced,
         &ReportWideInputs {
@@ -11993,6 +11997,126 @@ fn check_build_material(
             message,
             Some(&refusal.placed),
         ));
+    }
+}
+
+/// Withdraw every [`BuildMaterialRefusal`] a sharing faction-mate arriving this turn can meet
+/// (`ah-z1f5`).
+///
+/// `build` prices a `BUILD` against the hex the report lists the builder in, which holds only the
+/// units the report shows there. But `rules/sequenceofevents` processes "ADVANCE, MOVE and SAIL
+/// orders" before "BUILD orders", and `rules/share` lets a sharing unit supply "any other unit of
+/// your faction that needs them ... in the same region" - so a sharing unit whose month ends in the
+/// builder's region (`CheckOptions::month_end`, the movement trace's answer) brings its material
+/// within reach in time. Report-wide because that unit sits in another hex's ledger.
+///
+/// The build is then **uncounted**, not priced: what it spends would come out of another hex's
+/// ledger, which this per-hex settlement does not cross. Leaving the builder's line uncounted is
+/// the accept-on-doubt posture every other unsettleable `BUILD` takes, and both entry points call
+/// this so Problems and the ITEMS column agree. The **arriving sharer's** own row is not touched:
+/// its ledger never sees the build, so it still shows the material it carried in, as it did
+/// before this release existed. Debiting it would need a cross-hex material settlement, which is
+/// a follow-up (it would serve PRODUCE as well), not this fix.
+///
+/// The arriving unit's holding is read at [`StatePhase::Movement`], after its gifts and market
+/// orders and before any month-long order. A holding a `GIVE` left uncertain counts as reachable:
+/// a refusal says the builder certainly has nothing, which an uncertain supplier does not support.
+fn release_refusals_met_by_arrivals(
+    hexes: &mut [(Hex<'_>, Ledger<'_>)],
+    month_end: &super::transport::MonthEndHexes,
+) {
+    if month_end.is_empty() {
+        return;
+    }
+
+    struct Arrival {
+        at: Coordinate,
+        faction: Option<String>,
+        /// Upper-cased tags the unit may hold some of once movement ends.
+        reachable: BTreeSet<String>,
+    }
+
+    let arrivals: Vec<Arrival> = hexes
+        .iter()
+        .flat_map(|(hex, ledger)| {
+            hex.units.iter().filter_map(move |ordered| {
+                let id = &ordered.unit.unit_id;
+                let at = *month_end.get(id)?;
+                if at == hex.region.coordinate || !ordered.shares() {
+                    return None;
+                }
+                let tags: BTreeSet<String> = ledger
+                    .state
+                    .balances
+                    .keys()
+                    .filter(|(unit, _)| unit == id)
+                    .map(|(_, tag)| tag.clone())
+                    .chain(
+                        ledger
+                            .state
+                            .uncertain
+                            .keys()
+                            .filter(|(unit, _)| unit == id)
+                            .map(|(_, tag)| tag.clone()),
+                    )
+                    .collect();
+                let reachable = tags
+                    .into_iter()
+                    .filter(|tag| {
+                        ledger
+                            .state
+                            .known_balance_at(StatePhase::Movement, id, tag)
+                            .map_or(true, |held| held > 0)
+                    })
+                    .collect();
+                Some(Arrival {
+                    at,
+                    faction: ordered.unit.faction_id.clone(),
+                    reachable,
+                })
+            })
+        })
+        .collect();
+    if arrivals.is_empty() {
+        return;
+    }
+
+    for (hex, ledger) in hexes.iter_mut() {
+        if ledger.build_material_refusals.is_empty() {
+            continue;
+        }
+        let ruleset = ledger.ruleset;
+        let refusals = std::mem::take(&mut ledger.build_material_refusals);
+        for refusal in refusals {
+            let builder = hex.find(&refusal.unit_id);
+            let builds_at =
+                super::transport::standing_at(month_end, &refusal.unit_id, hex.region.coordinate);
+            let faction = builder.and_then(|ordered| ordered.unit.faction_id.clone());
+            // The materials that would let this BUILD do work: the one it restricted itself to,
+            // or any the recipe offers.
+            let wanted: Vec<String> = refusal
+                .alternatives
+                .iter()
+                .filter(|name| {
+                    refusal
+                        .asked
+                        .as_ref()
+                        .is_none_or(|asked| asked.eq_ignore_ascii_case(name))
+                })
+                .filter_map(|name| ruleset?.find_item(name))
+                .map(|item| item.tag.to_ascii_uppercase())
+                .collect();
+            let met = arrivals.iter().any(|arrival| {
+                arrival.at == builds_at
+                    && arrival.faction == faction
+                    && wanted.iter().any(|tag| arrival.reachable.contains(tag))
+            });
+            if met {
+                mark_uncounted(ledger, &refusal.unit_id, refusal.placed.line);
+            } else {
+                ledger.build_material_refusals.push(refusal);
+            }
+        }
     }
 }
 
@@ -51610,6 +51734,178 @@ BUILD
                 "cannot build a Farm: has neither wood nor stone"
             );
         }
+    }
+
+    // --- material a sharing unit brings in this turn (`ah-z1f5`) ------------------------------
+    //
+    // `rules/sequenceofevents` (Trident) processes "ADVANCE, MOVE and SAIL orders" before "BUILD
+    // orders", and `rules/share` lets a sharing unit's possessions supply "any other unit of your
+    // faction that needs them ... in the same region". So wood a sharing faction-mate carries into
+    // the builder's region this turn is there by the time the builder builds. A Caravanserai is
+    // 20 wood or stone at building 2 (`rules/tableroadstructures`), and only in a settlement
+    // (`data/Caravanserai`).
+
+    /// The Discord case: builder 900 in the settled (7,53) with no material, carrier 901 in (7,51)
+    /// with 30 wood. `carrier` decides 901's flags and orders; `arrives` puts its month end in
+    /// (7,53), as the shells fill `CheckOptions::month_end` from the movement trace.
+    fn caravanserai_turn(
+        carrier: ReportUnit,
+        carrier_orders: &str,
+        arrives: bool,
+    ) -> (ParsedReport, String, CheckOptions) {
+        let builder = with_skill(with_men(unit("900"), 10), "BUIL", 3);
+        let report = ParsedReport {
+            regions: vec![
+                settled(region_at("1:7,53", 7, 53, vec![builder])),
+                region_at("1:7,51", 7, 51, vec![carrier]),
+            ],
+            ..Default::default()
+        };
+        let mut options = CheckOptions::default();
+        if arrives {
+            options
+                .month_end
+                .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
+        }
+        let orders = format!("unit 900\nBUILD Caravanserai\nunit 901\n{carrier_orders}");
+        (report, orders, options)
+    }
+
+    fn caravanserai_warnings(
+        carrier: ReportUnit,
+        carrier_orders: &str,
+        arrives: bool,
+    ) -> Vec<Finding> {
+        let (report, orders, options) = caravanserai_turn(carrier, carrier_orders, arrives);
+        check_turn(&report, &orders, Some(&trident()), options)
+            .into_iter()
+            .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
+            .collect()
+    }
+
+    /// The ITEMS column reads the same release: the build is uncounted rather than shown as
+    /// spending nothing, since the wood it spends sits in another hex's ledger.
+    #[test]
+    fn a_build_supplied_by_an_arriving_sharer_is_uncounted_in_the_items_column() {
+        let (report, orders, options) =
+            caravanserai_turn(sharing(wood_carrier()), "MOVE S\n", true);
+        let effects = item_effects(&report, &orders, Some(&trident()), &options);
+        let uncounted = effects_for(&effects, "900")
+            .map(|unit| unit.uncounted.clone())
+            .unwrap_or_default();
+        assert_eq!(uncounted, vec!["BUILD Caravanserai".to_string()]);
+    }
+
+    fn wood_carrier() -> ReportUnit {
+        with_item(with_men(unit("901"), 2), 30, "wood", "WOOD")
+    }
+
+    #[test]
+    fn wood_a_sharing_unit_carries_in_this_turn_reaches_the_builder() {
+        let findings = caravanserai_warnings(sharing(wood_carrier()), "MOVE S\n", true);
+        assert!(
+            findings.is_empty(),
+            "movement comes before BUILD, and the arriving sharer supplies it: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_sharing_unit_switched_on_this_turn_supplies_the_builder_too() {
+        let findings = caravanserai_warnings(wood_carrier(), "SHARE 1\nMOVE S\n", true);
+        assert!(
+            findings.is_empty(),
+            "SHARE is processed before movement and BUILD: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn an_arriving_unit_that_does_not_share_leaves_the_builder_warned() {
+        let findings = caravanserai_warnings(wood_carrier(), "MOVE S\n", true);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(
+            findings[0].message,
+            "cannot build a Caravanserai: has neither wood nor stone"
+        );
+    }
+
+    /// What the arriving sharer holds is read once movement ends: GIVE runs before MOVE
+    /// (`rules/sequenceofevents`), and "If 0 is specified as the unit number, then the items are
+    /// discarded" (`rules/give`). So wood thrown away before the walk reaches nobody.
+    #[test]
+    fn wood_the_sharer_gives_away_before_it_moves_leaves_the_builder_warned() {
+        let findings =
+            caravanserai_warnings(sharing(wood_carrier()), "GIVE 0 30 wood\nMOVE S\n", true);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+    }
+
+    /// A GIVE of goods to another faction's unit cannot be settled from our report (`rules/give`
+    /// needs that faction's declaration toward us, `ah-66yi`), so whether the wood is still aboard
+    /// when the sharer arrives is unknown - and "has neither" would be a claim nothing supports.
+    #[test]
+    fn wood_a_gift_left_uncertain_does_not_warn_the_builder() {
+        let builder = with_skill(with_men(unit("900"), 10), "BUIL", 3);
+        let report = ParsedReport {
+            regions: vec![
+                settled(region_at("1:7,53", 7, 53, vec![builder])),
+                region_at(
+                    "1:7,51",
+                    7,
+                    51,
+                    vec![sharing(wood_carrier()), an_ally("7001")],
+                ),
+            ],
+            ..Default::default()
+        };
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
+        let findings: Vec<Finding> = check_turn(
+            &report,
+            "unit 900\nBUILD Caravanserai\nunit 901\nGIVE 7001 30 wood\nMOVE S\n",
+            Some(&trident()),
+            options,
+        )
+        .into_iter()
+        .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
+        .collect();
+        assert!(findings.is_empty(), "{findings:?}");
+    }
+
+    #[test]
+    fn a_sharing_unit_that_stays_away_leaves_the_builder_warned() {
+        let findings = caravanserai_warnings(sharing(wood_carrier()), "", false);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+    }
+
+    #[test]
+    fn an_arriving_sharer_carrying_only_the_other_material_does_not_meet_a_restriction() {
+        let builder = with_skill(with_men(unit("900"), 10), "BUIL", 3);
+        let report = ParsedReport {
+            regions: vec![
+                settled(region_at("1:7,53", 7, 53, vec![builder])),
+                region_at("1:7,51", 7, 51, vec![sharing(wood_carrier())]),
+            ],
+            ..Default::default()
+        };
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
+        let findings: Vec<Finding> = check_turn(
+            &report,
+            "unit 900\nBUILD Caravanserai STONE\nunit 901\nMOVE S\n",
+            Some(&trident()),
+            options,
+        )
+        .into_iter()
+        .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
+        .collect();
+        assert_eq!(
+            findings.len(),
+            1,
+            "wood does not meet BUILD ... STONE: {findings:?}"
+        );
     }
 
     /// `BUILD Tower WOOD`: a Tower is built from stone alone (`newage trident data/Tower`), so the
