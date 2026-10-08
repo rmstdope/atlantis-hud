@@ -762,28 +762,33 @@ pub fn review_turn(
 
     let production = production_shares_for(&hexes, ruleset);
 
+    // A sharer lends its material where its month ends, not where it is listed (`ah-7r9p`).
+    let departing = departing_sharers(&hexes, report, ruleset, &options.month_end);
+    let price = |hex: &Hex<'_>, reach: MonthLongReach| {
+        ledger_for_reaching(
+            hex,
+            ruleset,
+            &production,
+            &foreign_unit_ids,
+            &claim_allowances,
+            withdrawal_allowances,
+            reach,
+        )
+    };
     let mut hexes: Vec<(Hex<'_>, Ledger<'_>)> = hexes
         .into_iter()
-        .map(|hex| {
-            let ledger = ledger_for_with_production(
-                &hex,
-                ruleset,
-                &production,
-                &foreign_unit_ids,
-                &claim_allowances,
-                withdrawal_allowances,
-            );
+        .zip(&departing)
+        .map(|(hex, leaving)| {
             // Recruits are already settled, once, by `settle_recruits_before_production` above -
             // this final ledger is a reader of that state, not another recruitment settlement.
             // `item_effects` follows the same shape (`ah-40c9`).
+            let ledger = price(&hex, departing_ids(leaving));
             (hex, ledger)
         })
         .collect();
+    lend_to_month_end_hexes(&mut hexes, &departing, ruleset, price);
     // Who can share with whom once movement ends: one answer for every consumer (`ah-oby0`).
     let reach = SharingReach::read(&hexes, report, &options.month_end);
-    // A sharing unit arriving this turn, on foot or by sea, supplies a builder its own hex's
-    // ledger refused.
-    release_refusals_met_by_arrivals(&mut hexes, &reach);
 
     // Shipping, then maintenance's steps 4 to 7, in the one order `REPORT_WIDE_STEPS` states.
     let month_end = settle_report_wide(
@@ -5066,6 +5071,14 @@ struct Ledger<'a> {
     /// opened. Read by `buy` and `settle_buy_all` here, and by `forecast_hex` for the SILVER
     /// column, so the two surfaces cannot size one purchase two ways (`ah-lu0f.2`, `ah-szye`).
     market_purse: MarketPurse,
+    /// Sharing faction-mates of another hex whose month ends in this one, and what each walks in
+    /// with: material this hex's month-long orders may draw on (`ah-7r9p`). Empty unless
+    /// [`lend_to_month_end_hexes`] rebuilt this ledger with them.
+    arrivals: Vec<ArrivingSupply>,
+    /// What this hex's month-long orders drew from [`Ledger::arrivals`]. Debited on the
+    /// supplier's own row, in the ledger of the hex it is listed in, by
+    /// [`lend_to_month_end_hexes`] once every hex is priced.
+    arrival_debits: Vec<ArrivalDebit>,
 }
 
 /// A bounded `BUY` this unit's silver cut down (`ah-omn7`).
@@ -5314,6 +5327,30 @@ fn ledger_for_with_production<'a>(
     claim_allowances: &ClaimAllowances,
     withdrawal_allowances: WithdrawalAllowances<'_>,
 ) -> Ledger<'a> {
+    ledger_for_reaching(
+        hex,
+        ruleset,
+        production,
+        foreign_unit_ids,
+        claim_allowances,
+        withdrawal_allowances,
+        MonthLongReach::default(),
+    )
+}
+
+/// [`ledger_for_with_production`], with the sharers that cross a hex border this month settled:
+/// those leaving lend this hex nothing for its month-long orders, and those arriving lend what
+/// they carry in (`ah-7r9p`). Both entry points build through this; see
+/// [`lend_to_month_end_hexes`].
+fn ledger_for_reaching<'a>(
+    hex: &Hex<'_>,
+    ruleset: Option<&'a Ruleset>,
+    production: &ProductionShares,
+    foreign_unit_ids: &BTreeSet<String>,
+    claim_allowances: &ClaimAllowances,
+    withdrawal_allowances: WithdrawalAllowances<'_>,
+    reach: MonthLongReach,
+) -> Ledger<'a> {
     let mut ledger = Ledger {
         ruleset,
         state: PhaseState::from_hex(hex),
@@ -5354,6 +5391,8 @@ fn ledger_for_with_production<'a>(
         overcharged: BTreeMap::new(),
         // `trusted: true` - see `MarketPurse`'s hand-written `Default`.
         market_purse: MarketPurse::default(),
+        arrivals: reach.supplies,
+        arrival_debits: Vec::new(),
     };
 
     let pillaged = own_unit_pillages(hex);
@@ -5513,7 +5552,9 @@ fn ledger_for_with_production<'a>(
         .stocks(&[PhaseState::BEFORE_MANUFACTURING], hex, ruleset)
         .remove(0);
 
-    let sharing = Sharing::read(hex);
+    // A sharer whose month ends in another hex is gone by the time any month-long order runs
+    // (`rules/sequenceofevents`: movement first), so it lends this hex nothing for them.
+    let sharing = Sharing::staying(hex, &reach.departing);
 
     // The month-long passes, in the order this world's rules state - three in New Origins
     // (manufacturing PRODUCE, then BUILD, then primary PRODUCE), two in Trident (BUILD, then one
@@ -5817,23 +5858,29 @@ pub(crate) fn item_effects(
     // `review_turn` runs it: the food upkeep eats comes off the ITEMS column, and steps 5 and 6
     // are only known once step 4 has lent what it lends (`ah-q490`).
     let shipping = ruleset.map(|rules| super::transport::Shipping::read(report, rules, options));
+    // The same cross-hex lending `review_turn` settles, so the ITEMS column agrees with Problems.
+    let departing = departing_sharers(&hexes, report, ruleset, &options.month_end);
+    let price = |hex: &Hex<'_>, reach: MonthLongReach| {
+        ledger_for_reaching(
+            hex,
+            ruleset,
+            &production,
+            &foreign_unit_ids,
+            &claim_allowances,
+            withdrawal_allowances,
+            reach,
+        )
+    };
     let mut priced: Vec<(Hex<'_>, Ledger<'_>)> = hexes
         .into_iter()
-        .map(|hex| {
-            let ledger = ledger_for_with_production(
-                &hex,
-                ruleset,
-                &production,
-                &foreign_unit_ids,
-                &claim_allowances,
-                withdrawal_allowances,
-            );
+        .zip(&departing)
+        .map(|(hex, leaving)| {
+            let ledger = price(&hex, departing_ids(leaving));
             (hex, ledger)
         })
         .collect();
+    lend_to_month_end_hexes(&mut priced, &departing, ruleset, price);
     let reach = SharingReach::read(&priced, report, &options.month_end);
-    // The same release `review_turn` makes, so the ITEMS column agrees with Problems.
-    release_refusals_met_by_arrivals(&mut priced, &reach);
     let month_end = settle_report_wide(
         &mut priced,
         &ReportWideInputs {
@@ -9442,10 +9489,11 @@ struct Neighbourhood {
 }
 
 /// **The one answer to "which faction-mates can this unit share with this month, and where"**
-/// (`ah-oby0`). Every consumer of sharing reads it - maintenance steps 2 and 4 to 7 and a
-/// `BUILD`'s material - and a new one (`PRODUCE` inputs, say) gets arrival-awareness by reading it
-/// too, rather than by writing its own month-end grouping: four bug fixes were paid for exactly
-/// that (`ah-bwxp.1`, `ah-n3qb`, `ah-21r0`, `ah-z1f5`).
+/// (`ah-oby0`). Every consumer of sharing reads it - maintenance steps 2 and 4 to 7 through
+/// [`SharingReach::read`], and the material `BUILD` and `PRODUCE` draw on through
+/// [`SharingReach::ends_at`] in [`departing_sharers`] (`ah-7r9p`), which has to answer before any
+/// ledger exists - rather than by writing its own month-end grouping: four bug fixes were paid
+/// for exactly that (`ah-bwxp.1`, `ah-n3qb`, `ah-21r0`, `ah-z1f5`).
 ///
 /// A unit is placed in the region it **ends** the month in. `rules/sequenceofevents` processes
 /// "ADVANCE, MOVE and SAIL orders" before "BUILD orders" and before "Maintenance costs are
@@ -9923,7 +9971,33 @@ fn material_available_at(
             .max(0);
         total = total.saturating_add(held);
     }
+    for index in arriving_suppliers(ledger, pool, tag) {
+        let held = ledger.arrivals[index].left_of(tag)?;
+        total = total.saturating_add(held);
+    }
     Some(total)
+}
+
+/// The arriving sharers ([`Ledger::arrivals`]) this actor may draw on for `tag`, by index, in the
+/// order they were gathered.
+///
+/// `rules/share` lends to "any other unit of your faction", so only the actor's own faction's;
+/// and not silver or men, which [`material_suppliers`] keeps out of the material pool too.
+fn arriving_suppliers(ledger: &Ledger<'_>, pool: &Pool<'_>, tag: &str) -> Vec<usize> {
+    if ledger.arrivals.is_empty()
+        || tag.eq_ignore_ascii_case(SILVER)
+        || ledger.ruleset.is_some_and(|ruleset| ruleset.is_man(tag))
+    {
+        return Vec::new();
+    }
+    let faction = &pool.hex.units[pool.actor_index].unit.faction_id;
+    ledger
+        .arrivals
+        .iter()
+        .enumerate()
+        .filter(|(_, arrival)| &arrival.faction == faction)
+        .map(|(index, _)| index)
+        .collect()
 }
 
 /// Spend `amount` of `tag` at `phase`: the actor's own stock first, then the sharing units in
@@ -9961,6 +10035,34 @@ fn charge_shared_material(
                 amount: take,
             });
             remaining -= take;
+        }
+    }
+    // Then what arriving sharers carried in, after everything listed here: they are lower on no
+    // report of this hex, so the hex's own rows go first (`ah-7r9p`). Their rows are in another
+    // hex's ledger, so the debit is recorded here and moved there by `lend_to_month_end_hexes`.
+    let actor = &pool.hex.units[actor_index].unit;
+    for index in arriving_suppliers(ledger, pool, tag) {
+        if remaining == 0 {
+            break;
+        }
+        let arrival = &mut ledger.arrivals[index];
+        let take = remaining.min(arrival.left_of(tag).unwrap_or(0));
+        if take > 0 {
+            arrival.spend(tag, take);
+            remaining -= take;
+            ledger.arrival_debits.push(ArrivalDebit {
+                origin: arrival.origin,
+                unit_id: arrival.unit_id.clone(),
+                tag: tag.to_ascii_uppercase(),
+                amount: take,
+                phase,
+                placed: placed.clone(),
+                cause,
+                actor: ItemChangeParty {
+                    unit_id: actor.unit_id.clone(),
+                    name: Some(actor.name.clone()),
+                },
+            });
         }
     }
     // Priced against `material_available_at`, so this is unreachable on today's paths; the actor
@@ -10028,12 +10130,18 @@ struct Sharing<'a> {
 
 impl<'a> Sharing<'a> {
     fn read(hex: &'a Hex<'a>) -> Self {
+        Self::staying(hex, &BTreeSet::new())
+    }
+
+    /// [`Sharing::read`], less the sharers whose month ends in another hex: the pool a hex's
+    /// month-long orders draw on, since movement comes before them (`ah-7r9p`).
+    fn staying(hex: &'a Hex<'a>, departing: &BTreeSet<String>) -> Self {
         Self {
             sharers: hex
                 .units
                 .iter()
                 .enumerate()
-                .filter(|(_, o)| o.shares())
+                .filter(|(_, o)| o.shares() && !departing.contains(&o.unit.unit_id))
                 .collect(),
         }
     }
@@ -12037,94 +12145,231 @@ fn check_build_material(
     }
 }
 
-/// Withdraw every [`BuildMaterialRefusal`] a sharing faction-mate arriving this turn can meet
-/// (`ah-z1f5`).
+/// The sharers that cross one hex's border this month, as its month-long orders see them
+/// (`ah-7r9p`).
 ///
-/// `build` prices a `BUILD` against the hex the report lists the builder in, which holds only the
-/// units the report shows there. But `rules/sequenceofevents` processes "ADVANCE, MOVE and SAIL
-/// orders" before "BUILD orders", and `rules/share` lets a sharing unit supply "any other unit of
-/// your faction that needs them ... in the same region" - so a sharing unit whose month ends in the
-/// builder's region brings its material within reach in time, whether it walks or sails in.
-/// Where each unit ends the month, and so who is in reach, is [`SharingReach`]'s answer
-/// (`ah-oby0`). Report-wide because that unit sits in another hex's ledger.
-///
-/// The build is then **uncounted**, not priced: what it spends would come out of another hex's
-/// ledger, which this per-hex settlement does not cross. Leaving the builder's line uncounted is
-/// the accept-on-doubt posture every other unsettleable `BUILD` takes, and both entry points call
-/// this so Problems and the ITEMS column agree. The **arriving sharer's** own row is not touched:
-/// its ledger never sees the build, so it still shows the material it carried in, as it did
-/// before this release existed. Debiting it would need a cross-hex material settlement, which is
-/// a follow-up (it would serve PRODUCE as well), not this fix.
-///
-/// The arriving unit's holding is read at [`StatePhase::Movement`], after its gifts and market
-/// orders and before any month-long order. A holding a `GIVE` left uncertain counts as reachable:
-/// a refusal says the builder certainly has nothing, which an uncertain supplier does not support.
-fn release_refusals_met_by_arrivals(hexes: &mut [(Hex<'_>, Ledger<'_>)], reach: &SharingReach) {
-    for index in 0..hexes.len() {
-        if hexes[index].1.build_material_refusals.is_empty() {
-            continue;
+/// `rules/sequenceofevents` processes "ADVANCE, MOVE and SAIL orders" before BUILD and both
+/// PRODUCE phases, and `rules/share` lets a sharing unit supply "any other unit of your faction
+/// that needs them ... in the same region" - production named as the main case. So by the time a
+/// month-long order runs, a sharer is wherever its month ends: gone from the hex it is listed in,
+/// and lending in the one it walked or sailed to.
+#[derive(Debug, Default)]
+struct MonthLongReach {
+    /// This hex's sharers whose month ends somewhere else.
+    departing: BTreeSet<String>,
+    /// Other hexes' sharers whose month ends here.
+    supplies: Vec<ArrivingSupply>,
+}
+
+/// One sharing unit of another hex, and what it brings to the hex its month ends in.
+#[derive(Debug, Clone)]
+struct ArrivingSupply {
+    /// Where the unit is listed: its index in the entry point's hexes, whose ledger holds its row.
+    origin: usize,
+    unit_id: String,
+    faction: Option<String>,
+    /// Upper-cased tag to what is still to lend. `None` where a `GIVE` this walk could not follow
+    /// left the holding uncertain, which the pool reads as a question it cannot answer.
+    stock: BTreeMap<String, Option<i64>>,
+}
+
+impl ArrivingSupply {
+    fn left_of(&self, tag: &str) -> Option<i64> {
+        self.stock
+            .get(&tag.to_ascii_uppercase())
+            .copied()
+            .unwrap_or(Some(0))
+    }
+
+    fn spend(&mut self, tag: &str, amount: i64) {
+        if let Some(Some(left)) = self.stock.get_mut(&tag.to_ascii_uppercase()) {
+            *left -= amount;
         }
-        let refusals = std::mem::take(&mut hexes[index].1.build_material_refusals);
-        let mut kept = Vec::new();
-        for refusal in refusals {
-            let met = reach
-                .of(index, &refusal.unit_id)
-                .is_some_and(|neighbourhood| {
-                    let wanted = wanted_materials(&refusal, hexes[index].1.ruleset);
-                    neighbourhood.members.iter().any(|member| {
-                        supplies_on_arrival(&hexes[member.0], &member.1, neighbourhood.at, &wanted)
-                    })
-                });
-            if met {
-                mark_uncounted(&mut hexes[index].1, &refusal.unit_id, refusal.placed.line);
-            } else {
-                kept.push(refusal);
-            }
-        }
-        hexes[index].1.build_material_refusals = kept;
     }
 }
 
-/// The materials that would let a refused `BUILD` do work, upper-cased: the one it restricted
-/// itself to, or any the recipe offers.
-fn wanted_materials(refusal: &BuildMaterialRefusal, ruleset: Option<&Ruleset>) -> Vec<String> {
-    refusal
-        .alternatives
+/// What a month-long order drew from an [`ArrivingSupply`], waiting to be debited on the
+/// supplier's own row in the ledger of the hex it is listed in.
+#[derive(Debug, Clone)]
+struct ArrivalDebit {
+    origin: usize,
+    unit_id: String,
+    tag: String,
+    amount: i64,
+    phase: StatePhase,
+    /// The order that consumed it, so the supplier's row is charged through [`charge`] as an
+    /// in-hex debit is.
+    placed: PlacedIntent,
+    cause: ItemChangeCause,
+    /// The unit whose order consumed it, named on the supplier's movement as an in-hex debit is.
+    actor: ItemChangeParty,
+}
+
+/// Each hex's sharers whose month ends in another hex, with the hex it ends in, index-aligned with
+/// `hexes`.
+///
+/// Where a unit ends the month is [`SharingReach::ends_at`]'s answer - the movement trace for a
+/// walker, the fleet's arrival for a passenger - the one every other consumer of sharing reads
+/// (`ah-oby0`), so a sharer is lent where it is fed. Read here rather than through
+/// [`SharingReach::read`] because the pools have to be withheld before any ledger exists.
+fn departing_sharers(
+    hexes: &[Hex<'_>],
+    report: &ParsedReport,
+    ruleset: Option<&Ruleset>,
+    month_end: &super::transport::MonthEndHexes,
+) -> Vec<BTreeMap<String, Coordinate>> {
+    let regions: HashMap<Coordinate, &ReportRegion> = report
+        .regions
         .iter()
-        .filter(|name| {
-            refusal
-                .asked
-                .as_ref()
-                .is_none_or(|asked| asked.eq_ignore_ascii_case(name))
+        .map(|region| (region.coordinate, region))
+        .collect();
+    hexes
+        .iter()
+        .map(|hex| {
+            hex.units
+                .iter()
+                .filter(|ordered| ordered.shares())
+                .filter_map(|ordered| {
+                    let at = SharingReach::ends_at(hex, ordered, ruleset, &regions, month_end);
+                    (at != hex.region.coordinate).then(|| (ordered.unit.unit_id.clone(), at))
+                })
+                .collect()
         })
-        .filter_map(|name| ruleset?.find_item(name))
-        .map(|item| item.tag.to_ascii_uppercase())
         .collect()
 }
 
-/// Whether `unit_id`, listed in the hex given, arrives in `at` from elsewhere this month, shares,
-/// and still holds some of a `wanted` tag once movement ends - or a holding a `GIVE` left
-/// uncertain.
-fn supplies_on_arrival(
-    (hex, ledger): &(Hex<'_>, Ledger<'_>),
-    unit_id: &str,
-    at: Coordinate,
-    wanted: &[String],
-) -> bool {
-    if hex.region.coordinate == at || !hex.find(unit_id).is_some_and(Ordered::shares) {
-        return false;
+/// The hex's own departing sharers, as [`ledger_for_reaching`] takes them.
+fn departing_ids(departing: &BTreeMap<String, Coordinate>) -> MonthLongReach {
+    MonthLongReach {
+        departing: departing.keys().cloned().collect(),
+        supplies: Vec::new(),
     }
-    let state = &ledger.state;
-    let mut held = state
-        .balances
-        .keys()
-        .chain(state.uncertain.keys())
-        .filter(|(unit, tag)| unit == unit_id && wanted.contains(tag));
-    held.any(|(_, tag)| {
-        state
-            .known_balance_at(StatePhase::Movement, unit_id, tag)
-            .map_or(true, |held| held > 0)
-    })
+}
+
+/// Lend every departing sharer's material to the hex its month ends in, and debit what that
+/// hex's month-long orders took on the sharer's own row (`ah-7r9p`).
+///
+/// `priced` was built with each hex's `departing` already withheld from its own pool. A hex some
+/// sharer arrives in is then priced again by `rebuild`, with the arrivals in its pool, and each
+/// draw on an arrival is moved into the ledger of the hex the arrival is listed in: a negative
+/// movement on the supplier, naming the unit whose order spent it, exactly as an in-hex sharer's
+/// debit reads. So a BUILD or a PRODUCE is priced against material that is there in time, and the
+/// sharer's row stops showing what was spent. Both entry points call this, so Problems and the
+/// ITEMS column agree.
+///
+/// What an arrival lends is what it holds once movement ends - after its gifts and market orders
+/// (`rules/sequenceofevents`) - less anything its own month-long orders spend, which are still
+/// priced in the hex it is listed in: the lower of its balance at [`StatePhase::Movement`] and at
+/// the month's last month-long pass, so nothing is lent twice.
+fn lend_to_month_end_hexes<'a>(
+    priced: &mut [(Hex<'_>, Ledger<'a>)],
+    departing: &[BTreeMap<String, Coordinate>],
+    ruleset: Option<&Ruleset>,
+    rebuild: impl Fn(&Hex<'_>, MonthLongReach) -> Ledger<'a>,
+) {
+    if departing.iter().all(BTreeMap::is_empty) {
+        return;
+    }
+    let last_pass = *month_long_passes(ruleset)
+        .last()
+        .expect("every world has a month-long pass");
+    let index_of: HashMap<Coordinate, usize> = priced
+        .iter()
+        .enumerate()
+        .map(|(index, (hex, _))| (hex.region.coordinate, index))
+        .collect();
+
+    let mut arriving: BTreeMap<usize, Vec<ArrivingSupply>> = BTreeMap::new();
+    for (origin, ((hex, ledger), leaving)) in priced.iter().zip(departing).enumerate() {
+        for (unit_id, at) in leaving {
+            let Some(&destination) = index_of.get(at) else {
+                continue;
+            };
+            let Some(ordered) = hex.find(unit_id) else {
+                continue;
+            };
+            // A sharer whose own sums this walk cannot follow lends nothing. Per sharer, unlike
+            // the in-hex pool, which `Sharing::pool_trusted` silences whole: an arrival's doubt is
+            // about its own sums, and silencing the destination's staying sharers for it would
+            // hide stock nobody doubts (the per-sharer posture `material_available_at` states).
+            if ledger.doubted.contains(unit_id) {
+                continue;
+            }
+            let tags: BTreeSet<String> = ledger
+                .state
+                .balances
+                .keys()
+                .chain(ledger.state.uncertain.keys())
+                .filter(|(unit, tag)| unit == unit_id && !tag.eq_ignore_ascii_case(SILVER))
+                .map(|(_, tag)| tag.to_ascii_uppercase())
+                .collect();
+            let stock: BTreeMap<String, Option<i64>> = tags
+                .into_iter()
+                .filter_map(|tag| {
+                    let at_phase = |phase| ledger.state.known_balance_at(phase, unit_id, &tag).ok();
+                    let left = at_phase(StatePhase::Movement)
+                        .zip(at_phase(last_pass))
+                        .map(|(walked_in, after_own)| walked_in.min(after_own));
+                    left.is_none_or(|left| left > 0).then_some((tag, left))
+                })
+                .collect();
+            // Nothing to lend is nothing to price the destination again for.
+            if stock.is_empty() {
+                continue;
+            }
+            arriving
+                .entry(destination)
+                .or_default()
+                .push(ArrivingSupply {
+                    origin,
+                    unit_id: unit_id.clone(),
+                    faction: ordered.unit.faction_id.clone(),
+                    stock,
+                });
+        }
+    }
+
+    for (destination, supplies) in arriving {
+        let reach = MonthLongReach {
+            supplies,
+            ..departing_ids(&departing[destination])
+        };
+        let ledger = rebuild(&priced[destination].0, reach);
+        priced[destination].1 = ledger;
+    }
+
+    let debits: Vec<ArrivalDebit> = priced
+        .iter_mut()
+        .flat_map(|(_, ledger)| std::mem::take(&mut ledger.arrival_debits))
+        .collect();
+    for debit in debits {
+        let (hex, ledger) = &mut priced[debit.origin];
+        let name = item_name(&debit.tag, hex, ledger.ruleset);
+        charge(
+            ledger,
+            debit.phase,
+            &debit.unit_id,
+            &debit.tag,
+            debit.amount,
+            &debit.placed,
+        );
+        ledger
+            .spent_after_production
+            .entry((debit.unit_id.clone(), debit.tag.clone()))
+            .or_insert([0; StatePhase::COUNT])[debit.phase as usize] += debit.amount;
+        ledger.movements.push(ItemMovement {
+            unit_id: debit.unit_id,
+            tag: debit.tag,
+            name,
+            delta: -debit.amount,
+            cause: debit.cause,
+            phase: debit.phase,
+            line: Some(debit.placed.line as i64),
+            unit_price: None,
+            other: Some(debit.actor),
+            created: None,
+        });
+    }
 }
 
 /// `"wood nor stone"`, and `"wood, stone nor iron"` for a recipe offering three.
@@ -51881,17 +52126,32 @@ BUILD
             .collect()
     }
 
-    /// The ITEMS column reads the same release: the build is uncounted rather than shown as
-    /// spending nothing, since the wood it spends sits in another hex's ledger.
+    /// The ITEMS column reads the same settlement: the build spends the wood the sharer carried
+    /// in, and that wood leaves the sharer's own row in the hex it is listed in (`ah-7r9p`, which
+    /// replaced `ah-z1f5`'s uncounted release).
     #[test]
-    fn a_build_supplied_by_an_arriving_sharer_is_uncounted_in_the_items_column() {
+    fn a_build_supplied_by_an_arriving_sharer_spends_the_sharers_wood() {
         let (report, orders, options) =
             caravanserai_turn(sharing(wood_carrier()), "MOVE S\n", true);
         let effects = item_effects(&report, &orders, Some(&trident()), &options);
-        let uncounted = effects_for(&effects, "900")
-            .map(|unit| unit.uncounted.clone())
-            .unwrap_or_default();
-        assert_eq!(uncounted, vec!["BUILD Caravanserai".to_string()]);
+        let builder = effects_for(&effects, "900").cloned().unwrap_or_default();
+        assert!(builder.uncounted.is_empty(), "{builder:?}");
+        let spent: i64 = builder.built.iter().map(|spend| spend.amount).sum();
+        assert!(spent > 0, "{builder:?}");
+        let sharer = effects_for(&effects, "901").cloned().unwrap_or_default();
+        let wood: i64 = sharer
+            .moved
+            .iter()
+            .filter(|movement| movement.tag == "WOOD")
+            .map(|movement| movement.delta)
+            .sum();
+        assert_eq!(wood, -spent, "{sharer:?}");
+        assert!(sharer
+            .moved
+            .iter()
+            .filter(|movement| movement.tag == "WOOD")
+            .all(|movement| movement.cause == ItemChangeCause::BuildSpent
+                && movement.other.as_ref().map(|party| party.unit_id.as_str()) == Some("900")));
     }
 
     fn wood_carrier() -> ReportUnit {
@@ -52062,6 +52322,208 @@ BUILD
             findings.len(),
             1,
             "wood does not meet BUILD ... STONE: {findings:?}"
+        );
+    }
+
+    // --- material a sharing unit brings in this turn, for PRODUCE (`ah-7r9p`) ----------------
+    //
+    // The same reach as `ah-z1f5`'s BUILD: `rules/sequenceofevents` processes "ADVANCE, MOVE and
+    // SAIL orders" before "Manufacturing PRODUCE orders", and `rules/share` names production as
+    // the main case - "if a sharing unit has wood in its inventory, and another unit is producing
+    // axes but has no wood, then the sharing unit will automatically supply wood for that
+    // production".
+
+    /// Carpenters 900 in (7,53) with no wood, ordered to `PRODUCE wagon`; sharing 901 in (7,51)
+    /// with 20 wood walks in this turn.
+    fn wagon_turn() -> (ParsedReport, String, CheckOptions) {
+        let carpenters = with_skill(with_men(unit("900"), 15), "CARP", 1);
+        let report = ParsedReport {
+            regions: vec![
+                region_at("1:7,53", 7, 53, vec![carpenters]),
+                region_at(
+                    "1:7,51",
+                    7,
+                    51,
+                    vec![sharing(with_item(
+                        with_men(unit("901"), 2),
+                        20,
+                        "wood",
+                        "WOOD",
+                    ))],
+                ),
+            ],
+            ..Default::default()
+        };
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
+        let orders = "unit 900\nPRODUCE wagon\nunit 901\nMOVE S\n".to_string();
+        (report, orders, options)
+    }
+
+    #[test]
+    fn wood_a_sharing_unit_carries_in_this_turn_reaches_the_producer() {
+        let (report, orders, options) = wagon_turn();
+        let effects = item_effects(&report, &orders, Some(&ruleset()), &options);
+        let producer = effects_for(&effects, "900").cloned().unwrap_or_default();
+        let made: i64 = producer
+            .moved
+            .iter()
+            .filter(|movement| movement.tag == "WAGO")
+            .map(|movement| movement.delta)
+            .sum();
+        assert_eq!(
+            made, 15,
+            "movement comes before PRODUCE and the arriving sharer supplies it, so the producer is \
+             not shown making nothing: {producer:?}"
+        );
+        assert!(producer.uncounted.is_empty(), "{producer:?}");
+    }
+
+    /// The other side of the same reach: a sharer that walks out is gone before any month-long
+    /// order runs (`rules/sequenceofevents`), so the carpenters it leaves behind make nothing from
+    /// its wood, and its wood is not spent twice.
+    #[test]
+    fn a_sharer_that_walks_away_no_longer_supplies_the_hex_it_leaves() {
+        let carpenters = with_skill(with_men(unit("900"), 15), "CARP", 1);
+        let report = ParsedReport {
+            regions: vec![
+                region_at(
+                    "1:7,51",
+                    7,
+                    51,
+                    vec![
+                        carpenters,
+                        sharing(with_item(with_men(unit("901"), 2), 20, "wood", "WOOD")),
+                    ],
+                ),
+                region_at("1:7,53", 7, 53, vec![]),
+            ],
+            ..Default::default()
+        };
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
+        let orders = "unit 900\nPRODUCE wagon\nunit 901\nMOVE S\n";
+
+        let effects = item_effects(&report, orders, Some(&ruleset()), &options);
+        let producer = effects_for(&effects, "900").cloned().unwrap_or_default();
+        assert!(
+            producer.moved.iter().all(|movement| movement.tag != "WAGO"),
+            "{producer:?}"
+        );
+        let sharer = effects_for(&effects, "901").cloned().unwrap_or_default();
+        assert!(
+            sharer.moved.iter().all(|movement| movement.tag != "WOOD"),
+            "{sharer:?}"
+        );
+    }
+
+    fn made_by(effects: &BTreeMap<UnitKey, UnitItemEffects>, unit_id: &str, tag: &str) -> i64 {
+        effects_for(effects, unit_id)
+            .map(|unit| {
+                unit.moved
+                    .iter()
+                    .filter(|movement| movement.tag == tag)
+                    .map(|movement| movement.delta)
+                    .sum()
+            })
+            .unwrap_or_default()
+    }
+
+    /// One arrival's wood is lent once: the higher producer takes fifteen, the lower the five
+    /// left, and the sharer's row loses the twenty it carried in - never twenty to each.
+    #[test]
+    fn two_producers_share_one_arrivals_wood_in_report_order() {
+        let carpenters = |id: &str| with_skill(with_men(unit(id), 15), "CARP", 1);
+        let report = ParsedReport {
+            regions: vec![
+                region_at("1:7,53", 7, 53, vec![carpenters("900"), carpenters("902")]),
+                region_at(
+                    "1:7,51",
+                    7,
+                    51,
+                    vec![sharing(with_item(
+                        with_men(unit("901"), 2),
+                        20,
+                        "wood",
+                        "WOOD",
+                    ))],
+                ),
+            ],
+            ..Default::default()
+        };
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
+        let orders = "unit 900\nPRODUCE wagon\nunit 902\nPRODUCE wagon\nunit 901\nMOVE S\n";
+
+        let effects = item_effects(&report, orders, Some(&ruleset()), &options);
+        assert_eq!(made_by(&effects, "900", "WAGO"), 15);
+        assert_eq!(made_by(&effects, "902", "WAGO"), 5);
+        assert_eq!(made_by(&effects, "901", "WOOD"), -20);
+    }
+
+    /// A sharer whose own sums this walk cannot follow lends nothing where it arrives.
+    #[test]
+    fn an_arriving_sharer_whose_sums_are_doubted_lends_nothing() {
+        let (report, _, options) = wagon_turn();
+        let orders = "unit 900\nPRODUCE wagon\nunit 901\nSELL 5 xyzzy\nMOVE S\n";
+        let effects = item_effects(&report, orders, Some(&ruleset()), &options);
+        assert_eq!(made_by(&effects, "900", "WAGO"), 0, "{effects:?}");
+        assert_eq!(made_by(&effects, "901", "WOOD"), 0, "{effects:?}");
+    }
+
+    /// The departing half for BUILD: a builder whose only wood walks out with its sharer is
+    /// told it has none.
+    #[test]
+    fn a_builder_whose_sharer_walks_away_is_refused_for_material() {
+        let builder = with_skill(with_men(unit("900"), 10), "BUIL", 3);
+        let report = ParsedReport {
+            regions: vec![
+                settled(region_at(
+                    "1:7,53",
+                    7,
+                    53,
+                    vec![builder, sharing(wood_carrier())],
+                )),
+                region_at("1:7,51", 7, 51, vec![]),
+            ],
+            ..Default::default()
+        };
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("901".to_string(), Coordinate { x: 7, y: 51, z: 1 });
+        let findings: Vec<Finding> = check_turn(
+            &report,
+            "unit 900\nBUILD Caravanserai\nunit 901\nMOVE N\n",
+            Some(&trident()),
+            options,
+        )
+        .into_iter()
+        .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
+        .collect();
+        assert_eq!(findings.len(), 1, "{findings:?}");
+    }
+
+    #[test]
+    fn wood_the_arriving_sharer_supplies_leaves_its_row() {
+        let (report, orders, options) = wagon_turn();
+        let effects = item_effects(&report, &orders, Some(&ruleset()), &options);
+        let sharer = effects_for(&effects, "901").cloned().unwrap_or_default();
+        let wood: i64 = sharer
+            .moved
+            .iter()
+            .filter(|movement| movement.tag == "WOOD")
+            .map(|movement| movement.delta)
+            .sum();
+        assert_eq!(
+            wood, -15,
+            "fifteen carpenters at level 1 make fifteen wagons from fifteen wood: {sharer:?}"
         );
     }
 
