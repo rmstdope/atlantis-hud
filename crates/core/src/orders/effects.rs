@@ -1333,7 +1333,7 @@ pub(crate) fn measure_shipments(
         orders_document,
         Some(ruleset.as_ref()),
     )
-    .with_settled_teachers(&report, orders_document, Some(ruleset.as_ref()));
+    .with_settled_teachers(report, orders_document, Some(ruleset.as_ref()));
     let (units, dissolved) = settle(
         report,
         ruleset,
