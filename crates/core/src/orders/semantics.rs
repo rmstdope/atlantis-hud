@@ -5840,9 +5840,22 @@ fn discard_unfinished_ships_after_movement(
     }
 }
 
-/// Every own unit the report shows whose settled month is a TEACH: one that can teach once this
-/// month's GIVE, TAKE and BUY have run (`rules/skills_teaching`: "Only leaders may use the TEACH order.";
-/// `rules/sequenceofevents`), and whose TEACH is therefore the month-long order that runs.
+/// The units whose settled month is a TEACH, in the two identities the movement readers key
+/// routes by: [`month_long_teachers`] says why.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct MonthLongTeachers {
+    /// Units the report shows, by unit number.
+    pub(crate) units: BTreeSet<String>,
+    /// Units this month's `FORM` orders create, by the 1-based line of their `FORM` - the key
+    /// `movement::fleet::OrderedUnits` holds a formed route under, since `new-<alias>` is unique
+    /// only inside a hex (`rules/form`; `ah-r3rv`).
+    pub(crate) form_lines: BTreeSet<usize>,
+}
+
+/// Every own unit whose settled month is a TEACH: one that can teach once this month's GIVE, TAKE
+/// and BUY have run (`rules/skills_teaching`: "Only leaders may use the TEACH order.";
+/// `rules/sequenceofevents`), and whose TEACH is therefore the month-long order that runs. A unit
+/// this month's FORM creates is judged the same way, on the men its block is given (`ah-r3rv`).
 ///
 /// Read through the same settlement `review_turn` and [`item_effects`] open with - the transfers,
 /// then the recruits - so the movement readers that drop a route for these units
@@ -5853,7 +5866,7 @@ pub(crate) fn month_long_teachers(
     report: &ParsedReport,
     orders_document: &str,
     ruleset: Option<&Ruleset>,
-) -> BTreeSet<String> {
+) -> MonthLongTeachers {
     let report_skills = study::ReportSkills::of(report);
     let ordered = OrderedUnits::read_with_ruleset(orders_document, ruleset, &report_skills);
     let foreign_unit_ids = foreign_unit_ids(report);
@@ -5888,17 +5901,23 @@ pub(crate) fn month_long_teachers(
             .as_ref()
             .map(|plan| &plan.withdrawal_allowances),
     );
-    hexes
-        .iter()
-        .flat_map(|hex| &hex.units)
-        .filter(|ordered| ordered.formed.is_none())
-        .filter(|ordered| {
-            ordered.intents().any(|intent| {
-                matches!(intent, Intent::Teach { .. }) && ordered.intent_spends_the_month(intent)
-            })
+    let mut teachers = MonthLongTeachers::default();
+    for ordered in hexes.iter().flat_map(|hex| &hex.units).filter(|ordered| {
+        ordered.intents().any(|intent| {
+            matches!(intent, Intent::Teach { .. }) && ordered.intent_spends_the_month(intent)
         })
-        .map(|ordered| ordered.unit.unit_id.clone())
-        .collect()
+    }) {
+        match (&ordered.formed, ordered.block_line) {
+            (None, _) => {
+                teachers.units.insert(ordered.unit.unit_id.clone());
+            }
+            (Some(_), Some(form_line)) => {
+                teachers.form_lines.insert(form_line);
+            }
+            (Some(_), None) => {}
+        }
+    }
+    teachers
 }
 
 /// What this month's `BUY`, `SELL` and `WITHDRAW` do to each unit's item list. `GIVE` and `TAKE`
