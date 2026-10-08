@@ -5099,6 +5099,9 @@ struct Ledger<'a> {
     /// the faction's `SHARE` units in the region too, so only an unpooled hex reads these
     /// (`judge_shortfalls`, `report_shortfalls`); a pooled one is judged through its pool.
     reduced_gives: Vec<ReducedGive>,
+    /// What each unit's `GIVE` lines of silver to a unit asked, cut or not: the "spend" of a
+    /// not-enough-silver sentence about a GIVE, whose "can have" is this less the cut (`ah-4k84`).
+    silver_given: BTreeMap<String, i64>,
     /// What each unit's `BUY` lines have been charged **beyond what they actually spent** this
     /// month: `sum(wanted - spends)` over every bounded line. Summing over all of them rather than
     /// only the reduced ones is the same figure, because `price_purchase` returns
@@ -5441,6 +5444,7 @@ fn ledger_for_reaching<'a>(
         claimed: BTreeMap::new(),
         reduced_buys: Vec::new(),
         reduced_gives: Vec::new(),
+        silver_given: BTreeMap::new(),
         overcharged: BTreeMap::new(),
         // `trusted: true` - see `MarketPurse`'s hand-written `Default`.
         market_purse: MarketPurse::default(),
@@ -7689,6 +7693,7 @@ fn transfer(
                     target_label.map(str::to_string),
                 );
             } else if is_give {
+                *ledger.silver_given.entry(from.clone()).or_default() += quantity;
                 if quantity > known_source.max(0) {
                     ledger.reduced_gives.push(ReducedGive {
                         unit_id: from.clone(),
@@ -11531,14 +11536,28 @@ fn report_shortfalls(
             // Claimed silver likewise, since `rules/claim` gives it to the unit, which 'may then
             // spend' it (`ah-6ak4`).
             let claimed = claimed_this_month(ledger, unit_id);
+            // A shortfall that is a GIVE's speaks of the unit's GIVE lines alone, as they ran:
+            // what they asked, and what they gave - not of silver that reached it after them
+            // (`ah-4k84`). STUDY's, when deeper, keeps the reading above.
+            let at_give = silver_short_at_give(ledger, unit_id);
+            let can_have = if at_give >= short && at_give >= silver_short_at_study(ledger, unit_id)
+            {
+                ledger
+                    .silver_given
+                    .get(unit_id)
+                    .copied()
+                    .unwrap_or_default()
+                    - short
+            } else {
+                ordered.holding(SILVER) + received + claimed + food
+            };
             ordered.finding(
                 hex,
                 codes::NOT_ENOUGH_SILVER,
                 format!(
-                    "short ${short}: this unit can have ${} and its {} spend ${}{bought}",
-                    ordered.holding(SILVER) + received + claimed + food,
+                    "short ${short}: this unit can have ${can_have} and its {} spend ${}{bought}",
                     spenders(upkeep),
-                    ordered.holding(SILVER) + received + claimed + short + food,
+                    can_have + short,
                 ),
                 at,
             )
@@ -54369,10 +54388,12 @@ BUILD
             ),
             vec![(
                 Some("6".to_string()),
-                "short $50: this unit can have $100 and its orders spend $150, \
+                "short $50: this unit can have $0 and its orders spend $50, \
                  so it gives none of the 50 silver ordered"
                     .to_string()
             )],
+            "the sentence speaks of the GIVE as it ran, as its TRANSPORT twin does - not of the \
+             $100 that reached unit 6 after it"
         );
     }
 
