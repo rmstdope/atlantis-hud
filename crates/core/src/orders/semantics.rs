@@ -2304,6 +2304,8 @@ fn forecast_hex(
             .copied()
             .unwrap_or_default();
         facts.transport_warning = transport_warning;
+        facts.overdrawn_at_study =
+            (-spendable_silver_at(ledger, &ordered.unit.unit_id, StatePhase::Study)).max(0);
         claims.push(food_claim(&facts, ruleset));
 
         into.push(forecast_unit(
@@ -6267,6 +6269,7 @@ fn unit_facts<'a>(
         // Filled by `forecast_hex`, the one caller that holds a settled ledger (`ah-7ale.5`).
         shipping_unmeasured: super::transport::UnmeasuredShipments::default(),
         transport_warning: true,
+        overdrawn_at_study: 0,
         phases,
     }
 }
@@ -10848,18 +10851,56 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
 
     // A doubted unit is judged nowhere in this module, so it claims nothing here either: lending
     // against a sum with a hole in it would put a figure on the screen nothing stands behind.
+    //
+    // A claim is the unit's overdraft at the month's end, or as STUDY settles if that is deeper:
+    // `rules/share` lends "for buying or studying", and nothing in it returns a receipt that comes
+    // after STUDY - a shipment, wages - to the sharer that already paid (`ah-aqqb`).
     let mut claims = vec![0i64; hex.units.len()];
+    // What each claimant had drawn as the market closed (`BUY` runs under "Market orders",
+    // `rules/sequenceofevents`), for a pool that covers the market and not the month.
+    let mut market_claims = vec![0i64; hex.units.len()];
+    // What the claims would be at the month's end alone, as they were read before `ah-aqqb`.
+    let mut month_end_owed = 0i64;
     for (index, ordered) in hex.units.iter().enumerate() {
         if sharing.pools_silver(ordered) || ledger.doubted.contains(&ordered.unit.unit_id) {
             continue;
         }
-        let balance = relieved_balance(ledger, &ordered.unit.unit_id, SILVER);
-        if balance < 0 {
-            claims[index] = -balance;
-        }
+        claims[index] = overdrawn_for_orders(ledger, &ordered.unit.unit_id);
+        month_end_owed += (-relieved_balance(ledger, &ordered.unit.unit_id, SILVER)).max(0);
+        market_claims[index] =
+            (-spendable_silver_at(ledger, &ordered.unit.unit_id, StatePhase::Movement)).max(0);
     }
 
     if claims.iter().sum::<i64>() > pool {
+        // The month's claims are more than the pool holds only because a claimant was paid back
+        // after STUDY - but the market's claims came first, and were paid while the sharers still
+        // held their silver: the navigator chose to follow the phases here rather than lend
+        // nothing (`ah-aqqb`). Every sharer present at the market, walking away or not, lends
+        // what it held as the market closed. A hex short at the month's end as well keeps the
+        // all-or-nothing reading it always had.
+        let held_at_market: Vec<i64> = hex
+            .units
+            .iter()
+            .map(|ordered| {
+                if ordered.shares() && !ledger.doubted.contains(&ordered.unit.unit_id) {
+                    spendable_silver_at(ledger, &ordered.unit.unit_id, StatePhase::Movement).max(0)
+                } else {
+                    0
+                }
+            })
+            .collect();
+        let market_owed: i64 = market_claims.iter().sum();
+        if month_end_owed <= pool
+            && market_owed > 0
+            && market_owed <= held_at_market.iter().sum::<i64>()
+        {
+            return SharingPurse {
+                lends_to: market_claims.clone(),
+                lendable: held_at_market,
+                borrows: market_claims,
+                coverage: coverage_for(super::silver::SharedSilverCoverage::Shortfall),
+            };
+        }
         return SharingPurse {
             coverage: coverage_for(super::silver::SharedSilverCoverage::Shortfall),
             ..nothing
@@ -10878,7 +10919,7 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
             if ledger.doubted.contains(&ordered.unit.unit_id) {
                 0
             } else {
-                (-relieved_balance(ledger, &ordered.unit.unit_id, SILVER)).max(0)
+                overdrawn_for_orders(ledger, &ordered.unit.unit_id)
             }
         })
         .collect();
@@ -10931,6 +10972,15 @@ fn silver_short_at_study(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
     } else {
         0
     }
+}
+
+/// How far `unit_id`'s orders overdraw it: at the month's end, or as STUDY settles if it was
+/// deeper then. STUDY is the last order `rules/share` lends for ("for buying or studying"), and
+/// silver that arrives after it - a shipment, wages - repays nobody who lent (`ah-aqqb`).
+fn overdrawn_for_orders(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    (-relieved_balance(ledger, unit_id, SILVER))
+        .max(-spendable_silver_at(ledger, unit_id, StatePhase::Study))
+        .max(0)
 }
 
 /// What the shortfall pass decided about one unit and one item tag.
@@ -53854,6 +53904,63 @@ BUILD
                 tag: SILVER.to_string(),
                 short: 80,
             }]
+        );
+    }
+    // --- the SILVER column settles SHARE lending as STUDY settles too (`ah-aqqb`) --------------
+    //
+    // `rules/sequenceofevents` runs BUY under "Market orders", STUDY under "Month long orders" and
+    // TRANSPORT after WORK; `rules/share` lends "for buying or studying", and nothing returns a
+    // later receipt to the lender. So what sharer 8 lent unit 5's BUY is spent, whatever unit 5 is
+    // shipped afterwards.
+
+    /// Each listed unit's SILVER row, as `(unit, at_month_end, lent)`.
+    fn silver_rows(review: &TurnReview, units: &[&str]) -> Vec<(String, Option<i64>, i64)> {
+        units
+            .iter()
+            .map(|id| {
+                let row = review
+                    .silver
+                    .iter()
+                    .find(|row| row.unit_id == *id)
+                    .unwrap_or_else(|| panic!("no SILVER row for unit {id}"));
+                let lent = row
+                    .changes
+                    .iter()
+                    .filter(|change| change.cause == SilverChangeCause::Lent)
+                    .map(|change| -change.amount)
+                    .sum();
+                (id.to_string(), row.at_month_end, lent)
+            })
+            .collect()
+    }
+
+    /// Sharer 8 lent its $100 to unit 5's BUY before it studied, so its row is debited the $100
+    /// and its $10 STUDY leaves it $10 overdrawn - the shortfall the warning reports for the hex.
+    /// The navigator chose to follow the phases here rather than lend all or nothing.
+    #[test]
+    fn the_column_debits_a_sharer_for_a_buy_whose_buyer_is_shipped_silver_later() {
+        let review = a_sharer_funds_a_buy_and_then_studies(false);
+        assert_eq!(
+            silver_rows(&review, &["8"]),
+            vec![("8".to_string(), Some(-10), 100)],
+            "{:#?}",
+            review.silver
+        );
+    }
+
+    /// The walking variant: sharer 7 arrives in time for STUDY and lends the $10 sharer 8 no longer
+    /// has, so 7 ends at $490 and 8, which lent all it had left, at $0.
+    #[test]
+    fn the_column_debits_an_arriving_sharer_for_the_study_a_drained_pool_could_not_pay() {
+        let review = a_sharer_funds_a_buy_and_then_studies(true);
+        assert_eq!(
+            silver_rows(&review, &["8", "7"]),
+            vec![
+                ("8".to_string(), Some(0), 90),
+                ("7".to_string(), Some(490), 10),
+            ],
+            "{:#?}",
+            review.silver
         );
     }
 }

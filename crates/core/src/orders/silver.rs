@@ -1347,6 +1347,11 @@ pub struct UnitFacts<'a> {
     pub shipping_unmeasured: super::transport::UnmeasuredShipments,
     /// Whether the hover may name the cause - `Settings › Warnings › Transport` is on.
     pub transport_warning: bool,
+    /// How far the ledger has this unit overdrawn as STUDY settles, from `spendable_silver_at`;
+    /// `0` where it is not. The `SHARE` purse may lend it this much even where silver it receives
+    /// afterwards - a shipment, wages - makes its month look paid for: that silver comes too late
+    /// for a `BUY` or a `STUDY` (`rules/sequenceofevents`, `ah-aqqb`).
+    pub overdrawn_at_study: i64,
     /// The unit's skills once this month's gifts and recruits have merged in.
     ///
     /// Read by the PRODUCE arm, which `rules/buy` says a `BUY` dilutes, and by the STUDY arm's
@@ -2904,7 +2909,12 @@ pub fn forecast_unit(
         ),
         _ => None,
     };
-    let shared = short_before_sharing.map_or(0, |short| shared_for_orders.clamp(0, short));
+    // ... or than the ledger has it overdrawn as STUDY settles, which a receipt that comes after
+    // STUDY hides from `short_before_sharing` but does not repay (`ah-aqqb`).
+    let overdrawn_at_study = facts.overdrawn_at_study;
+    let shared = short_before_sharing.map_or(0, |short| {
+        shared_for_orders.clamp(0, short.max(overdrawn_at_study))
+    });
     let at_month_end = match (income, expense) {
         (Some(income), Some(expense)) => Some(
             held.saturating_add(income)
@@ -2913,7 +2923,7 @@ pub fn forecast_unit(
         ),
         _ => None,
     };
-    let short_for_orders = short_before_sharing.map(|short| short.saturating_sub(shared));
+    let short_for_orders = short_before_sharing.map(|short| short.saturating_sub(shared).max(0));
 
     // The note says *this unit's month costs nothing*, so a unit that paid for a study anywhere
     // must not carry it, whatever else it also ordered.
@@ -7249,6 +7259,7 @@ mod tests {
             food_uncertain: false,
             shipping_unmeasured: Default::default(),
             transport_warning: true,
+            overdrawn_at_study: 0,
             skills_unknown: false,
             skills_after_arrivals: &[],
             skills_after_arrivals_unknown: false,
@@ -9393,6 +9404,7 @@ mod tests {
             food_uncertain: false,
             shipping_unmeasured: Default::default(),
             transport_warning: true,
+            overdrawn_at_study: 0,
             skills_unknown: false,
             skills_after_arrivals: &[],
             skills_after_arrivals_unknown: false,
@@ -10297,6 +10309,7 @@ mod combat_ready_tests {
             food_uncertain: false,
             shipping_unmeasured: Default::default(),
             transport_warning: true,
+            overdrawn_at_study: 0,
             skills_unknown: false,
             skills_after_arrivals: skills,
             skills_after_arrivals_unknown: false,
