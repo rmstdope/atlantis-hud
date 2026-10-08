@@ -11154,10 +11154,30 @@ fn silver_short_at_give(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
         .sum()
 }
 
-/// The deeper of [`silver_short_at_give`] and [`silver_short_at_study`]: what a unit's own orders
-/// overdrew it by before a later receipt could net it out.
+/// What a unit's own silver is short as the market closes, when its silver cut a `BUY` down:
+/// `rules/sequenceofevents` runs BUY under "Market orders", long before WORK, TRANSPORT and
+/// maintenance, and `rules/buy` buys "as many as it can" then, so nothing received later buys
+/// what the market refused (`ah-y70h`). Zero unless a `BUY` of this unit's was cut
+/// ([`Ledger::reduced_buys`]); the charge is the line's whole ask, so the Market balance carries
+/// exactly what the purse lacked.
+fn silver_short_at_market(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    if !ledger
+        .reduced_buys
+        .iter()
+        .any(|reduced| reduced.unit_id == unit_id)
+    {
+        return 0;
+    }
+    (-ledger.state.balance_at(StatePhase::Market, unit_id, SILVER)).max(0)
+}
+
+/// The deepest of [`silver_short_at_give`], [`silver_short_at_market`] and
+/// [`silver_short_at_study`]: what a unit's own orders overdrew it by before a later receipt could
+/// net it out.
 fn silver_short_mid_month(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
-    silver_short_at_give(ledger, unit_id).max(silver_short_at_study(ledger, unit_id))
+    silver_short_at_give(ledger, unit_id)
+        .max(silver_short_at_market(ledger, unit_id))
+        .max(silver_short_at_study(ledger, unit_id))
 }
 
 /// How far `unit_id`'s orders overdraw it: at the month's end, or as STUDY settles if it was
@@ -11240,16 +11260,17 @@ fn judge_shortfalls(
             // Silver a unit receives after STUDY - a shipment, wages - nets its month's end but
             // never paid for the study (`ah-vle0`). A pooled hex judges this through its pool.
             //
-            // Likewise a GIVE, which runs long before either (`ah-4k84`).
-            let at_study = if tag == SILVER && !pooled {
+            // Likewise a GIVE, which runs long before either (`ah-4k84`), and a `BUY` its silver
+            // cut, which runs at the market (`ah-y70h`).
+            let mid_month = if tag == SILVER && !pooled {
                 silver_short_mid_month(ledger, unit_id)
             } else {
                 0
             };
-            if balance >= 0 && at_study <= 0 {
+            if balance >= 0 && mid_month <= 0 {
                 continue;
             }
-            let short = (-balance).max(at_study);
+            let short = (-balance).max(mid_month);
 
             if pooled {
                 verdicts.push(Verdict::DeferredToPool {
@@ -11274,7 +11295,7 @@ fn judge_shortfalls(
             // overspends on its orders keeps its own finding, its line and its name, because
             // nothing shared that silver for it (`ah-e66j`).
             if tag == SILVER
-                && at_study <= 0
+                && mid_month <= 0
                 && ledger.maintenance_pooled
                 && short <= unpaid_upkeep(ledger, who)
             {
@@ -11591,9 +11612,10 @@ fn report_shortfalls(
             //
             // A shortfall that is STUDY's is read as STUDY settles, before maintenance, so neither
             // the fee nor the food that paid it is in its sentence (`ah-vle0`).
-            // A GIVE's likewise, which runs before both (`ah-4k84`).
-            let at_study = silver_short_mid_month(ledger, unit_id) >= short;
-            let (food, upkeep) = if at_study {
+            // A GIVE's likewise, which runs before both (`ah-4k84`), and a cut `BUY`'s, at the
+            // market (`ah-y70h`).
+            let mid_month = silver_short_mid_month(ledger, unit_id) >= short;
+            let (food, upkeep) = if mid_month {
                 (0, 0)
             } else {
                 (
@@ -55093,6 +55115,114 @@ BUILD
                     || (finding.code == codes::NOT_ENOUGH_SILVER && finding.unit_id.is_none())
             }),
             "{findings:#?}"
+        );
+    }
+
+    // --- a unit's own BUY is judged as the market runs, not at the month's end (`ah-y70h`) -----
+    //
+    // `rules/sequenceofevents` runs BUY under "Market orders", long before TRANSPORT; `rules/buy`:
+    // "If the unit can't afford as many as [quantity], it will attempt to buy as many as it can."
+    // So silver shipped to the buyer afterwards buys nothing the market has already refused.
+
+    /// Quartermaster 5 (holding `silver`) in a Caravanserai, where swords sell at $100, beside
+    /// unit 9 ($200); nothing shares. The not-enough-silver findings, as unit and sentence.
+    fn silver_shortfalls_of_an_unshared_buy(
+        silver: i64,
+        orders: &str,
+    ) -> Vec<(Option<String>, String)> {
+        let mut quartermaster = with_skill(with_silver(unit("5"), silver), "QUAM", 5);
+        quartermaster.structure_id = Some("500".to_string());
+        let hex = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            structures: vec![Structure {
+                structure_id: "500".to_string(),
+                name: "Caravan".to_string(),
+                kind: "Caravanserai".to_string(),
+                ..Default::default()
+            }],
+            ..region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![quartermaster, with_silver(unit("9"), 200)],
+            )
+        };
+        check_turn(
+            &report(vec![hex]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        )
+        .into_iter()
+        .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+        .map(|finding| (finding.unit_id, finding.message))
+        .collect()
+    }
+
+    /// Quartermaster 5 ($0) buys one sword at $100; unit 9 ships it $100 by TRANSPORT after the
+    /// market has closed. 5 ends the month even, but held nothing when its BUY ran.
+    #[test]
+    fn a_buy_is_cut_when_the_silver_arrives_by_transport_afterwards() {
+        let expected = vec![(
+            Some("5".to_string()),
+            "short $100: this unit can have $0 and its orders spend $100, \
+             so it buys none of the 1 sword ordered"
+                .to_string(),
+        )];
+        for orders in [
+            "unit 5\nBUY 1 swords\nunit 9\n",
+            "unit 5\nBUY 1 swords\nunit 9\nTRANSPORT 5 100 SILV\n",
+        ] {
+            assert_eq!(
+                silver_shortfalls_of_an_unshared_buy(0, orders),
+                expected,
+                "{orders}"
+            );
+        }
+    }
+
+    /// The same BUY of two swords with $150 in hand buys one, and the shipment afterwards buys
+    /// the second no more than it bought the first.
+    #[test]
+    fn a_partly_cut_buy_is_cut_when_the_silver_arrives_by_transport_afterwards() {
+        let expected = vec![(
+            Some("5".to_string()),
+            "short $50: this unit can have $150 and its orders spend $200, \
+             so it buys 1 of the 2 swords ordered"
+                .to_string(),
+        )];
+        for orders in [
+            "unit 5\nBUY 2 swords\nunit 9\n",
+            "unit 5\nBUY 2 swords\nunit 9\nTRANSPORT 5 100 SILV\n",
+        ] {
+            assert_eq!(
+                silver_shortfalls_of_an_unshared_buy(150, orders),
+                expected,
+                "{orders}"
+            );
+        }
+    }
+
+    /// Silver GIVEn to the buyer runs before the market (`rules/sequenceofevents`: "Give orders"
+    /// before "Market orders") and pays; the shipment after it does not.
+    #[test]
+    fn a_buy_counts_silver_given_before_the_market_but_not_shipped_after_it() {
+        assert_eq!(
+            silver_shortfalls_of_an_unshared_buy(
+                0,
+                "unit 5\nBUY 1 swords\nunit 9\nGIVE 5 50 SILV\nTRANSPORT 5 100 SILV\n",
+            ),
+            vec![(
+                Some("5".to_string()),
+                "short $50: this unit can have $50 and its orders spend $100, \
+                 so it buys none of the 1 sword ordered"
+                    .to_string(),
+            )],
         );
     }
 }
