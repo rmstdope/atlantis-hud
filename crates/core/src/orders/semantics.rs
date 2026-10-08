@@ -9489,10 +9489,11 @@ struct Neighbourhood {
 }
 
 /// **The one answer to "which faction-mates can this unit share with this month, and where"**
-/// (`ah-oby0`). Every consumer of sharing reads it - maintenance steps 2 and 4 to 7 and a
-/// `BUILD`'s material - and a new one (`PRODUCE` inputs, say) gets arrival-awareness by reading it
-/// too, rather than by writing its own month-end grouping: four bug fixes were paid for exactly
-/// that (`ah-bwxp.1`, `ah-n3qb`, `ah-21r0`, `ah-z1f5`).
+/// (`ah-oby0`). Every consumer of sharing reads it - maintenance steps 2 and 4 to 7 through
+/// [`SharingReach::read`], and the material `BUILD` and `PRODUCE` draw on through
+/// [`SharingReach::ends_at`] in [`departing_sharers`] (`ah-7r9p`), which has to answer before any
+/// ledger exists - rather than by writing its own month-end grouping: four bug fixes were paid
+/// for exactly that (`ah-bwxp.1`, `ah-n3qb`, `ah-21r0`, `ah-z1f5`).
 ///
 /// A unit is placed in the region it **ends** the month in. `rules/sequenceofevents` processes
 /// "ADVANCE, MOVE and SAIL orders" before "BUILD orders" and before "Maintenance costs are
@@ -12287,8 +12288,10 @@ fn lend_to_month_end_hexes<'a>(
             let Some(ordered) = hex.find(unit_id) else {
                 continue;
             };
-            // A sharer whose own sums this walk cannot follow lends nothing, as it would lend
-            // nothing standing beside the producer (`Sharing::pool_trusted`).
+            // A sharer whose own sums this walk cannot follow lends nothing. Per sharer, unlike
+            // the in-hex pool, which `Sharing::pool_trusted` silences whole: an arrival's doubt is
+            // about its own sums, and silencing the destination's staying sharers for it would
+            // hide stock nobody doubts (the per-sharer posture `material_available_at` states).
             if ledger.doubted.contains(unit_id) {
                 continue;
             }
@@ -52464,8 +52467,7 @@ BUILD
         assert_eq!(made_by(&effects, "901", "WOOD"), -20);
     }
 
-    /// A sharer whose own sums this walk cannot follow lends nothing where it arrives, exactly
-    /// as it would lend nothing standing beside the producer (`Sharing::pool_trusted`).
+    /// A sharer whose own sums this walk cannot follow lends nothing where it arrives.
     #[test]
     fn an_arriving_sharer_whose_sums_are_doubted_lends_nothing() {
         let (report, _, options) = wagon_turn();
