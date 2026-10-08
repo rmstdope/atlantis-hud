@@ -17522,6 +17522,112 @@ mod tests {
         Ruleset::from_json(RULESET).expect("the committed ruleset should be usable")
     }
 
+    /// The report [`as_printed`], and `options` with `month_end` filled as the shells fill it:
+    /// from the movement trace on these orders, through [`crate::orders::effects::measure_shipments`], over `options.geometry` or,
+    /// when it has none, [`FIXTURE_MAP`] (`ah-sj06`). A test of where a sharing unit ends the month
+    /// uses this, so a trace that puts a unit somewhere the checker does not fails here and not
+    /// only in the smoke suite; one that needs a month end the orders cannot produce fills the map
+    /// by hand through [`counterfactual_month_end`] instead.
+    fn traced(
+        report: ParsedReport,
+        orders: &str,
+        ruleset: &Ruleset,
+        options: CheckOptions,
+    ) -> (ParsedReport, CheckOptions) {
+        let report = as_printed(report, ruleset);
+        let geometry = Ok(options.geometry.or(Some(FIXTURE_MAP)));
+        let measures = crate::orders::effects::measure_shipments(
+            &report,
+            &std::sync::Arc::new(ruleset.clone()),
+            &[],
+            orders,
+            geometry,
+            options.clone(),
+        );
+        let options = CheckOptions {
+            month_end: measures.month_end,
+            ..options
+        };
+        (report, options)
+    }
+
+    /// The report as the server would print it for the trace to read: every pair of its regions
+    /// that stand side by side on the hex lattice lists the other as an exit, as an `Exits:`
+    /// block does - the trace walks only crossings a report states (`MapKnowledge::neighbours`) -
+    /// and every unit whose weight was never stated carries the `Weight:` and `Capacity:` its
+    /// items give under `ruleset`, as a unit line does (`rules/movement_normal`: "Most people
+    /// weigh 10 units and have a capacity of 5 units"). The fixtures state neither, and without
+    /// both the trace names no month end. A region or unit that already states its own keeps it.
+    fn as_printed(mut report: ParsedReport, ruleset: &Ruleset) -> ParsedReport {
+        let all: Vec<(Coordinate, String, String)> = report
+            .regions
+            .iter()
+            .map(|region| {
+                (
+                    region.coordinate,
+                    region.terrain.clone(),
+                    region.province.clone(),
+                )
+            })
+            .collect();
+        for region in &mut report.regions {
+            if region.exits.is_empty() {
+                for direction in Direction::ALL {
+                    let (dx, dy) = direction.offset();
+                    let to = Coordinate {
+                        x: region.coordinate.x + dx,
+                        y: region.coordinate.y + dy,
+                        z: region.coordinate.z,
+                    };
+                    if let Some((_, terrain, province)) = all.iter().find(|(at, ..)| *at == to) {
+                        region.exits.push(Exit {
+                            direction: direction.label().to_string(),
+                            terrain: terrain.clone(),
+                            coordinate: to,
+                            province: province.clone(),
+                            settlement: None,
+                        });
+                    }
+                }
+            }
+            for unit in &mut region.units {
+                if unit.weight.is_some() {
+                    continue;
+                }
+                let items: Vec<(&str, i64)> = unit
+                    .items
+                    .iter()
+                    .map(|item| (item.tag.as_str(), item.amount))
+                    .collect();
+                let weight = items.iter().try_fold(0_i64, |total, (tag, count)| {
+                    Some(total + count * ruleset.find_item(tag)?.weight)
+                });
+                let capacity = crate::movement::mode::capacities_from_items(&items, ruleset);
+                if let (Some(weight), Some(capacity)) = (weight, capacity) {
+                    unit.weight = Some(weight);
+                    unit.capacity = Some(format!(
+                        "{}/{}/{}/{}",
+                        capacity.fly, capacity.ride, capacity.walk, capacity.swim
+                    ));
+                }
+            }
+        }
+        report
+    }
+
+    /// `options` with a month end the orders under test cannot produce, for the test that asks
+    /// what a checker does with whatever the trace says - the exception to [`traced`].
+    fn counterfactual_month_end(
+        mut options: CheckOptions,
+        ends: &[(&str, Coordinate)],
+    ) -> CheckOptions {
+        options.month_end = ends
+            .iter()
+            .map(|(id, at)| ((*id).to_string(), *at))
+            .collect();
+        options
+    }
+
     #[test]
     fn trident_month_segments_ignore_form_and_turn_orders() {
         let ruleset = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
@@ -33211,12 +33317,12 @@ BUILD
             },
             ..Default::default()
         };
-        let mut options = disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]);
-        if walks {
-            options
-                .month_end
-                .insert("4021".to_string(), Coordinate { x: 7, y: 51, z: 1 });
-        }
+        let (report, options) = traced(
+            report,
+            &orders,
+            &ruleset(),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+        );
         (report, orders, options)
     }
 
@@ -33385,7 +33491,9 @@ BUILD
     #[test]
     fn a_stayer_is_not_fed_by_grain_a_walker_carried_away() {
         let (report, orders, options) = this_walkers_turn(
-            with_item(starving(with_men(unit("4021"), 4)), 6, "grain", "GRAI"),
+            // Four grain: `data/GRAI` weighs 5, and four men carry 20 on foot
+            // (`rules/movement_normal`), so any more and the walker could not walk at all.
+            with_item(starving(with_men(unit("4021"), 4)), 4, "grain", "GRAI"),
             vec![with_flag(
                 starving(with_men(unit("1796"), 4)),
                 "consuming faction's food",
@@ -33410,7 +33518,9 @@ BUILD
     #[test]
     fn step_two_in_a_hex_split_by_a_walker_eats_exact_grain() {
         let (report, orders, options) = this_walkers_turn(
-            with_item(starving(with_men(unit("4021"), 4)), 6, "grain", "GRAI"),
+            // Four grain: `data/GRAI` weighs 5, and four men carry 20 on foot
+            // (`rules/movement_normal`), so any more and the walker could not walk at all.
+            with_item(starving(with_men(unit("4021"), 4)), 4, "grain", "GRAI"),
             vec![
                 with_item(starving(unit("1795")), 6, "grain", "GRAI"),
                 with_flag(
@@ -33570,6 +33680,47 @@ BUILD
                 )
             })
             .collect()
+    }
+
+    /// `ah-sj06`: [`traced`] fills `month_end` from the movement trace itself, so a walker's
+    /// month end is wherever its `MOVE` takes it, not whatever a test wrote down.
+    #[test]
+    fn traced_puts_a_walker_where_its_move_ends() {
+        let (_, options) = traced(
+            report(vec![
+                region_at("1:7,53", 7, 53, vec![unit("4021")]),
+                region_at("1:7,51", 7, 51, Vec::new()),
+            ]),
+            "unit 4021\nMOVE N\n",
+            &ruleset(),
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            options.month_end.get("4021"),
+            Some(&Coordinate { x: 7, y: 51, z: 1 })
+        );
+    }
+
+    /// `ah-sj06`, the disagreement `ah-wyj8` met only in the smoke suite: a `MOVE` a later `STUDY`
+    /// replaces never runs (the checker's own "STUDY replaces this MOVE"), so the trace must not
+    /// end the sharer's month where that `MOVE` would have taken it.
+    #[test]
+    fn traced_leaves_a_sharer_whose_move_a_study_replaced_where_it_stands() {
+        let (_, options) = traced(
+            report(vec![
+                region_at("1:7,53", 7, 53, vec![sharing(with_silver(unit("7"), 500))]),
+                region_at("1:7,55", 7, 55, Vec::new()),
+            ]),
+            "unit 7\nMOVE S\nSTUDY combat\n",
+            &ruleset(),
+            CheckOptions::default(),
+        );
+        assert_ne!(
+            options.month_end.get("7"),
+            Some(&Coordinate { x: 7, y: 55, z: 1 }),
+            "{:?}",
+            options.month_end
+        );
     }
 
     #[test]
