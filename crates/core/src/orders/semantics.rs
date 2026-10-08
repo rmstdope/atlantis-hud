@@ -10875,17 +10875,26 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
         // The month's claims are more than the pool holds only because a claimant was paid back
         // after STUDY - but the market's claims came first, and were paid while the sharers still
         // held their silver: the navigator chose to follow the phases here rather than lend
-        // nothing (`ah-aqqb`). Every sharer present at the market, walking away or not, lends
-        // what it held as the market closed. A hex short at the month's end as well keeps the
-        // all-or-nothing reading it always had.
+        // nothing (`ah-aqqb`). A staying sharer lends what it held as the market closed; one
+        // walking away lends only what `lend_walking_sharers_silver` found drawn on it before it
+        // left, since the staying sharers pay first and its arrival lends the rest elsewhere. A
+        // hex short at the month's end as well keeps the all-or-nothing reading it always had.
         let held_at_market: Vec<i64> = hex
             .units
             .iter()
             .map(|ordered| {
-                if ordered.shares() && !ledger.doubted.contains(&ordered.unit.unit_id) {
-                    spendable_silver_at(ledger, &ordered.unit.unit_id, StatePhase::Movement).max(0)
-                } else {
+                let who = &ordered.unit.unit_id;
+                if ledger.doubted.contains(who) {
                     0
+                } else if sharing.pools_silver(ordered) {
+                    spendable_silver_at(ledger, who, StatePhase::Movement).max(0)
+                } else {
+                    ledger
+                        .walking_silver
+                        .departing
+                        .get(who)
+                        .copied()
+                        .unwrap_or_default()
                 }
             })
             .collect();
@@ -53962,6 +53971,93 @@ BUILD
                 ("8".to_string(), Some(0), 90),
                 ("7".to_string(), Some(490), 10),
             ],
+            "{:#?}",
+            review.silver
+        );
+    }
+
+    /// A hex like `a_sharer_funds_a_buy_and_then_studies`, buyer 5 ($0) and shipper 9 ($100)
+    /// around `others`, with orders `orders`.
+    fn a_shipped_buyer_beside(
+        others: Vec<ReportUnit>,
+        more: Vec<ReportRegion>,
+        orders: &str,
+        options: CheckOptions,
+    ) -> TurnReview {
+        let mut quartermaster = with_skill(with_silver(unit("5"), 0), "QUAM", 1);
+        quartermaster.structure_id = Some("500".to_string());
+        let mut units = others;
+        units.push(quartermaster);
+        units.push(with_silver(unit("9"), 100));
+        let hex = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            structures: vec![Structure {
+                structure_id: "500".to_string(),
+                name: "Caravan".to_string(),
+                kind: "Caravanserai".to_string(),
+                ..Default::default()
+            }],
+            ..region_at("1:7,53", 7, 53, units)
+        };
+        let mut regions = vec![hex];
+        regions.extend(more);
+        let orders = format!("{orders}unit 5\nBUY 1 swords\nunit 9\nTRANSPORT 5 100 SILV\n");
+        review_turn(&report(regions), &orders, Some(&ruleset()), options)
+    }
+
+    /// A sharer that walks away lends the market only what `WalkingSilver::departing` says was
+    /// drawn on it there: the staying sharers pay first, so sharer 6, listed first, lends nothing
+    /// and sharer 8 pays the BUY (`ah-aqqb` review).
+    #[test]
+    fn a_departing_sharer_lends_the_market_no_more_than_was_drawn_on_it() {
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("6".to_string(), Coordinate { x: 7, y: 51, z: 1 });
+        let review = a_shipped_buyer_beside(
+            vec![
+                sharing(with_silver(unit("6"), 100)),
+                sharing(with_silver(unit("8"), 100)),
+            ],
+            vec![region_at("1:7,51", 7, 51, vec![with_silver(unit("3"), 0)])],
+            "unit 6\nMOVE N\nunit 8\nSTUDY combat\nunit 3\nSTUDY combat\n",
+            options,
+        );
+        let (_, six_end, six_lent) = silver_rows(&review, &["6"]).remove(0);
+        assert!(
+            six_lent <= 100 && six_end.is_some_and(|end| end >= 0),
+            "{:#?}",
+            review.silver
+        );
+        assert_eq!(
+            silver_rows(&review, &["8"]),
+            vec![("8".to_string(), Some(-10), 100)],
+            "{:#?}",
+            review.silver
+        );
+    }
+
+    /// A BUY the sharers could not cover even at the market lends nothing: the ledger's market
+    /// purse holds only the sharers' silver, so it cuts the purchase rather than leaving buyer 5
+    /// a loan no lender could pay, and the column credits none (`ah-aqqb` review).
+    #[test]
+    fn a_buy_the_market_pool_cannot_cover_is_not_lent_for() {
+        let review = a_shipped_buyer_beside(
+            vec![sharing(with_silver(unit("8"), 50))],
+            vec![],
+            "unit 8\nSTUDY combat\n",
+            CheckOptions::default(),
+        );
+        let buyer = review.silver.iter().find(|row| row.unit_id == "5").unwrap();
+        assert_eq!(buyer.borrowed_for_orders, 0, "{:#?}", review.silver);
+        assert_eq!(
+            silver_rows(&review, &["8"]),
+            vec![("8".to_string(), Some(40), 0)],
             "{:#?}",
             review.silver
         );
