@@ -53269,11 +53269,12 @@ BUILD
             Some(&ruleset()),
             options,
         );
+        // Unit 6's STUDY alone: whether unit 5's BUY - which nothing funds when the market runs -
+        // is warned about is the month-end netting's business, not this test's (`ah-wyj8` review).
         assert!(
-            !review
-                .findings
-                .iter()
-                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
+            !review.findings.iter().any(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER && finding.unit_id.as_deref() == Some("6")
+            }),
             "{:?}",
             review.findings
         );
