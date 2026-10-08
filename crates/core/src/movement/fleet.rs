@@ -1073,6 +1073,39 @@ mod tests {
         );
     }
 
+    /// `ah-y1yr`: a unit this month's FORM creates is settled by the same constructor as one the
+    /// report shows. Given leaders it can teach (`rules/skills_teaching`: "Only leaders may use
+    /// the TEACH order."), so the MOVE its TEACH closes is gone from its FORM line's route; given
+    /// humans, its TEACH spends nothing and the route stands.
+    #[test]
+    fn a_formed_route_an_eligible_teach_replaced_is_settled_out() {
+        let text = "Foo (1) Report\n\
+                    \n\
+                    plain (0,0) in Nowhere, 10 peasants (orcs), $5.\n\
+                    \n\
+                    * Source (900), Foo (1), 2 leaders [LEAD]. Weight: 20. Capacity: 0/0/30/0.\n\
+                    * Other (901), Foo (1), 2 humans [HUMN]. Weight: 20. Capacity: 0/0/30/0.\n";
+        let mut cache = ReportCache::new();
+        let report = cache.classified(text, RULESET);
+        let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
+        let route_under_form = |giver: &str, tag: &str| {
+            let orders =
+                format!("unit {giver}\nFORM 1\nMOVE N\nTEACH {giver}\nEND\nGIVE NEW 1 1 {tag}\n");
+            OrderedUnits::of_month(&report, &orders, Some(&ruleset))
+                .formed_route(2)
+                .is_some()
+        };
+
+        assert!(
+            !route_under_form("900", "LEAD"),
+            "a formed leader teaches instead"
+        );
+        assert!(
+            route_under_form("901", "HUMN"),
+            "a formed human still walks"
+        );
+    }
+
     /// `ah-0x6x`: a leader's TEACH spends the month (`rules/skills_teaching`: "Only leaders
     /// may use the TEACH order."), so once the month is settled its earlier SAIL neither sets a course nor lends
     /// hands. A human's TEACH spends nothing, so its SAIL still runs.
