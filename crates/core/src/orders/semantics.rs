@@ -638,7 +638,9 @@ pub fn review_turn(
     // lazily: this runs on every keystroke once typing settles, and it is a second full walk of
     // the orders document.
     let fleet_orders = if options.emits(codes::SAIL_NOT_BY_OWNER) {
-        FleetOrders::from_document(source, ruleset)
+        // Settled, so an owner whose TEACH replaced its SAIL is said to set no course, as the map
+        // draws it (`ah-0x6x`).
+        FleetOrders::from_document(source, ruleset).with_settled_teachers(report, source, ruleset)
     } else {
         FleetOrders::default()
     };
@@ -4253,9 +4255,9 @@ fn sailing_level_phrase(levels: i64, noun: &str) -> String {
 }
 
 impl Ordered<'_> {
-    /// Whether the unit can teach - `rules/skills_teaching`: "only leaders will teach", read
-    /// against the settled state `rules/sequenceofevents` puts before `TEACH`: this month's
-    /// `GIVE`, `TAKE` and `BUY` have all already run.
+    /// Whether the unit can teach - `rules/skills_teaching`: "Only leaders may
+    /// use the TEACH order.", read against the settled state `rules/sequenceofevents` puts before
+    /// `TEACH`: this month's `GIVE`, `TAKE` and `BUY` have all already run.
     ///
     /// `None` for an estimated report headcount, an unfollowable transfer, or unknown post-recruit
     /// composition - the same three routes `skills()` goes silent for, and for the same reason:
@@ -5811,7 +5813,7 @@ fn discard_unfinished_ships_after_movement(
 }
 
 /// Every own unit the report shows whose settled month is a TEACH: one that can teach once this
-/// month's GIVE, TAKE and BUY have run (`rules/skills_teaching`: "only leaders will teach";
+/// month's GIVE, TAKE and BUY have run (`rules/skills_teaching`: "Only leaders may use the TEACH order.";
 /// `rules/sequenceofevents`), and whose TEACH is therefore the month-long order that runs.
 ///
 /// Read through the same settlement `review_turn` and [`item_effects`] open with - the transfers,
@@ -45834,6 +45836,48 @@ BUILD
             finding.message,
             "Only Longship [329]'s owner, Sea Rovers (900), can set its course: Deckhands (901) \
              ordered SAIL SE, and the owner ordered NE, so the ship sails NE."
+        );
+    }
+
+    /// `ah-0x6x` review: an owner of leaders whose TEACH replaced its SAIL sets no course
+    /// (`rules/skills_teaching`: "Only leaders may use the TEACH order."), and the line says so,
+    /// as the map draws it. Owned by humans, the same TEACH spends nothing and NE stands.
+    #[test]
+    fn an_owners_course_an_eligible_teach_replaced_is_no_course() {
+        let led = |race: (&str, &str)| {
+            let mut region = owned_longship(vec![]);
+            region.units[0] = ReportUnit {
+                name: "Sea Rovers".to_string(),
+                ..with_people(
+                    region.units[0].clone(),
+                    vec![ItemAmount {
+                        amount: 1,
+                        name: race.0.to_string(),
+                        tag: race.1.to_string(),
+                    }],
+                )
+            };
+            region
+        };
+        let orders = "unit 900\nSAIL NE\nTEACH 901\nunit 901\nSAIL SE\n";
+        let opening = "Only Longship [329]'s owner, Sea Rovers (900), can set its course: \
+                       Deckhands (901) ordered SAIL SE, and the owner ordered ";
+
+        let said = |region: ReportRegion| -> Vec<String> {
+            check(vec![region], orders)
+                .into_iter()
+                .filter(|finding| finding.code == codes::SAIL_NOT_BY_OWNER)
+                .map(|finding| finding.message)
+                .collect()
+        };
+
+        assert_eq!(
+            said(led(("leader", "LEAD"))),
+            vec![format!("{opening}no course, so the ship will not sail.")]
+        );
+        assert_eq!(
+            said(led(("human", "HUMN"))),
+            vec![format!("{opening}NE, so the ship sails NE.")]
         );
     }
 

@@ -205,3 +205,27 @@ fn a_step_on_a_later_line_after_the_passage_is_not_claimed() {
     );
     assert_eq!(claims(orders), vec![]);
 }
+
+/// `ah-0x6x` review: a leader's TEACH spends the month (`rules/skills_teaching`: "Only leaders may
+/// use the TEACH order."), so a `MOVE IN` before it does not run and claims no crossing. A human's
+/// TEACH spends nothing, so the same orders still claim one. Through the query the shells call,
+/// which is where the settled teachers are read.
+#[test]
+fn a_passage_an_eligible_teach_replaced_is_not_claimed() {
+    let claimed = |report: &str| {
+        atlantis_hud_core::queries::passage_claims(
+            report.to_string(),
+            "unit 5\nMOVE IN\nTEACH 7\n".to_string(),
+            atlantis_hud_fixtures::RULESET_JSON.to_string(),
+        )
+        .expect("the query answers")
+    };
+    let leader = report_with_a_shaft();
+    let human = leader.replace(
+        "* Digger (5), Foo (1), leader [LEAD]",
+        "* Digger (5), Foo (1), human [HUMN]",
+    );
+
+    assert_eq!(claimed(&leader), vec![]);
+    assert_eq!(claimed(&human).len(), 1, "a human's MOVE IN still runs");
+}

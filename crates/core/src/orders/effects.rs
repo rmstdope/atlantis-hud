@@ -11363,7 +11363,7 @@ mod tests {
     }
 
     /// `ah-0x6x`: a TEACH spends the month only for a unit that can teach - `rules/skills_teaching`:
-    /// "only leaders will teach" - and the last month-long order is the one that runs, so for a
+    /// "Only leaders may use the TEACH order." - and the last month-long order is the one that runs, so for a
     /// leader `MOVE N` then `TEACH` the MOVE will not run. The sender ships from the hex it is
     /// listed in, the preview has it stay, and the map traces no walk. A human's TEACH spends
     /// nothing, so with the same orders it still walks north.
@@ -11640,6 +11640,15 @@ mod tests {
             None,
         )
         .expect("the ruleset loads")
+    }
+
+    /// `ah-0x6x` review: Walker (900) is a leader, whose TEACH spends the month (`rules/
+    /// skills_teaching`: "Only leaders may use the TEACH order."), so a `MOVE NE` before it does not
+    /// run and meets no wall.
+    #[test]
+    fn a_move_an_eligible_teach_replaced_meets_no_wall() {
+        assert!(walled_for("unit 900\nMOVE NE\nTEACH 901\n").is_empty());
+        assert!(!walled_for("unit 900\nMOVE NE\n").is_empty());
     }
 
     #[test]

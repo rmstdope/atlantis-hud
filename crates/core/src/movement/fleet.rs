@@ -224,10 +224,21 @@ impl OrderedUnits {
         }
     }
 
+    /// Whether this unit's own movement was closed by a TEACH, so whether it runs waits on
+    /// [`Self::with_settled_teachers`].
+    pub(crate) fn closed_by_teach(&self, unit_id: &str) -> bool {
+        self.closed_by_teach.contains(unit_id)
+    }
+
+    /// Whether any unit's movement waits on [`Self::with_settled_teachers`].
+    pub(crate) fn any_closed_by_teach(&self) -> bool {
+        !self.closed_by_teach.is_empty()
+    }
+
     /// This reading with the movement a TEACH replaced taken out, for a caller holding the report.
     ///
-    /// A TEACH spends the month only for a unit that can teach - `rules/skills_teaching`: "only
-    /// leaders will teach" - judged on the settled month, after this month's GIVE, TAKE and BUY.
+    /// A TEACH spends the month only for a unit that can teach - `rules/skills_teaching`:
+    /// "Only leaders may use the TEACH order." - judged on the settled month, after this month's GIVE, TAKE and BUY.
     /// When it does, it is the last month-long order and the one that runs, so a MOVE or SAIL
     /// before it does not: the unit walks nowhere and lends no hands to a hull's course. Which
     /// units that is comes from [`crate::orders::semantics::month_long_teachers`], the same
@@ -932,8 +943,8 @@ mod tests {
         );
     }
 
-    /// `ah-0x6x`: a leader's TEACH spends the month (`rules/skills_teaching`: "only leaders will
-    /// teach"), so once the month is settled its earlier SAIL neither sets a course nor lends
+    /// `ah-0x6x`: a leader's TEACH spends the month (`rules/skills_teaching`: "Only leaders
+    /// may use the TEACH order."), so once the month is settled its earlier SAIL neither sets a course nor lends
     /// hands. A human's TEACH spends nothing, so its SAIL still runs.
     #[test]
     fn a_sail_an_eligible_teach_replaced_neither_departs_nor_participates() {
