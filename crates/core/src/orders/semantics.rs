@@ -11298,6 +11298,12 @@ fn pool_shortfalls(
     if silver_by_moment {
         pooled_tags.insert(SILVER.to_string());
     }
+    // ... and one whose purse cut a `BUY` at the market is short that too, however the month's
+    // end nets out (`ah-10kw`).
+    let short_counting_cuts = silver_short_counting_cuts(hex, ledger, sharing);
+    if short_counting_cuts > 0 {
+        pooled_tags.insert(SILVER.to_string());
+    }
     for tag in pooled_tags {
         let short = if silver_by_moment && tag == SILVER {
             sharing
@@ -11305,6 +11311,11 @@ fn pool_shortfalls(
                 .max(sharing.silver_short_at(hex, ledger, LendingMoment::Study))
         } else {
             claims.get(&tag).copied().unwrap_or(0) - sharing.pool(ledger, &tag)
+        };
+        let short = if tag == SILVER {
+            short.max(short_counting_cuts)
+        } else {
+            short
         };
         if short <= 0 {
             continue;
@@ -11320,7 +11331,12 @@ fn pool_shortfalls(
                     || (!ledger.doubted.contains(&o.unit.unit_id)
                         && (relieved_balance(ledger, &o.unit.unit_id, &tag) < 0
                             || (tag == SILVER
-                                && silver_at(ledger, &o.unit.unit_id, LendingMoment::Study) < 0)))
+                                && (silver_at(ledger, &o.unit.unit_id, LendingMoment::Study) < 0
+                                    || (short_counting_cuts > 0
+                                        && ledger
+                                            .reduced_buys
+                                            .iter()
+                                            .any(|reduced| reduced.unit_id == o.unit.unit_id))))))
             })
             .map(|o| {
                 o.holding(&tag)
@@ -11335,6 +11351,49 @@ fn pool_shortfalls(
         shortfalls.push(PoolShortfall { tag, short, held });
     }
     shortfalls
+}
+
+/// What a hex whose `SHARE` purse cut a `BUY` is short of silver, read where the cut happened
+/// (`ah-10kw`); `0` where nothing was cut, nothing shares as listed - the purse `buy` read - or
+/// the month ends with nothing pooled, when each unit is judged on its own.
+///
+/// `rules/share` lends silver "for buying or studying", and `rules/sequenceofevents` processes
+/// BUY orders under "Market orders" and STUDY under "Month long orders", both before WORK and
+/// TRANSPORT. A receipt after them pays for neither, yet [`Sharing::pool`]'s month-end netting
+/// counts it - and so does ah-qrk0's `short_at_study`, which reads a cut line at what it spent. So
+/// the hex is read at both of those moments, on balances that carry each cut line's whole ask, the
+/// way the month-end figure reads them when nothing arrives later: what its claimants have
+/// overdrawn beyond what its sharers hold then, and the larger of the two.
+fn silver_short_counting_cuts(hex: &Hex<'_>, ledger: &Ledger<'_>, sharing: &Sharing<'_>) -> i64 {
+    if ledger.reduced_buys.is_empty()
+        || sharing.sharers.is_empty()
+        || sharing.reading(SILVER, None) != Reading::Pooled
+    {
+        return 0;
+    }
+    // A sharer's balance counts in full - its surplus lends, its overdraft is the pool's own -
+    // and anyone else's only as an overdraft.
+    let short_at = |phase: StatePhase, pools: &dyn Fn(&Ordered<'_>) -> bool| -> i64 {
+        hex.units
+            .iter()
+            .filter(|ordered| !ledger.doubted.contains(&ordered.unit.unit_id))
+            .map(|ordered| {
+                let held = ledger
+                    .state
+                    .balance_at(phase, &ordered.unit.unit_id, SILVER);
+                if pools(ordered) {
+                    -held
+                } else {
+                    (-held).max(0)
+                }
+            })
+            .sum()
+    };
+    // Every sharer listed here is still here at the market: movement comes after it.
+    let at_market = short_at(StatePhase::Market, &|ordered| ordered.shares());
+    let at_study = short_at(StatePhase::Study, &|ordered| sharing.pools_silver(ordered))
+        - sharing.silver_from_walkers(LendingMoment::Study);
+    at_market.max(at_study).max(0)
 }
 
 /// Silver and items a unit is short of, and what the hex's sharing units can cover for it.
@@ -54517,5 +54576,229 @@ BUILD
                 "sharer 8's STUDY has nothing left to pay for it"
             );
         });
+    }
+
+    // --- a BUY the pool cut, paid back later in the month (`ah-10kw`) -------------------------
+    //
+    // `rules/sequenceofevents` processes BUY orders under "Market orders", long before TRANSPORT;
+    // `rules/share` lends a sharer's silver "for buying or studying". A receipt after the market
+    // buys nothing the market has already refused.
+
+    /// Quartermaster 5 (no silver) in a Caravanserai buys one sword at $100; sharer 8 has nothing
+    /// to lend; unit 9 ships 5 $100 by TRANSPORT after the market has closed.
+    fn a_cut_buy_paid_back_by_transport() -> Vec<Finding> {
+        a_cut_buy_in_a_caravanserai(
+            0,
+            "unit 5\nBUY 1 swords\nunit 8\nunit 9\nTRANSPORT 5 100 SILV\n",
+            vec![],
+        )
+    }
+
+    /// Quartermaster 5 (no silver) in a Caravanserai, where swords sell at $100, beside sharer 8
+    /// holding `lends`, unit 9 holding $200, and `others`.
+    fn a_cut_buy_in_a_caravanserai(
+        lends: i64,
+        orders: &str,
+        others: Vec<ReportUnit>,
+    ) -> Vec<Finding> {
+        a_cut_buy_reviewed(false, lends, orders, others, CheckOptions::default())
+    }
+
+    /// [`a_cut_buy_in_a_caravanserai`], with the quartermaster sharing when `buyer_shares`, and
+    /// checked under `options`.
+    fn a_cut_buy_reviewed(
+        buyer_shares: bool,
+        lends: i64,
+        orders: &str,
+        others: Vec<ReportUnit>,
+        options: CheckOptions,
+    ) -> Vec<Finding> {
+        let mut quartermaster = with_skill(with_silver(unit("5"), 0), "QUAM", 5);
+        quartermaster.structure_id = Some("500".to_string());
+        if buyer_shares {
+            quartermaster = sharing(quartermaster);
+        }
+        let hex = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            structures: vec![Structure {
+                structure_id: "500".to_string(),
+                name: "Caravan".to_string(),
+                kind: "Caravanserai".to_string(),
+                ..Default::default()
+            }],
+            ..region_at(
+                "1:7,53",
+                7,
+                53,
+                [
+                    vec![
+                        quartermaster,
+                        sharing(with_silver(unit("8"), lends)),
+                        with_silver(unit("9"), 200),
+                    ],
+                    others,
+                ]
+                .concat(),
+            )
+        };
+        check_turn(&report(vec![hex]), orders, Some(&ruleset()), options)
+    }
+
+    #[test]
+    fn a_buy_the_pool_cut_is_marked_on_its_line_though_silver_arrives_later() {
+        let findings = a_cut_buy_paid_back_by_transport();
+        let marker = findings
+            .iter()
+            .find(|finding| {
+                finding.code == codes::PART_OF_HEX_SHORTFALL
+                    && finding.unit_id.as_deref() == Some("5")
+            })
+            .unwrap_or_else(|| panic!("unit 5's BUY line is marked: {findings:#?}"));
+        assert_eq!(
+            marker.message,
+            "This hex is short of silver between its units, so this order buys none of the 1 \
+             sword. See Problems for the hex."
+        );
+        assert_eq!(marker.line, Some(2));
+    }
+
+    #[test]
+    fn a_buy_the_pool_cut_reports_the_hex_short_though_silver_arrives_later() {
+        let findings = a_cut_buy_paid_back_by_transport();
+        assert!(
+            findings.iter().any(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.is_none()
+                    && finding
+                        .message
+                        .starts_with("the units in this hex are short $100")
+            }),
+            "{findings:#?}"
+        );
+    }
+
+    /// The hex's own `not-enough-silver` sentence, when there is one.
+    fn hex_silver_sentence(findings: &[Finding]) -> Option<&str> {
+        findings
+            .iter()
+            .find(|finding| finding.code == codes::NOT_ENOUGH_SILVER && finding.unit_id.is_none())
+            .map(|finding| finding.message.as_str())
+    }
+
+    /// A purse that covers part of a line is short only the rest: two swords at $100 against a
+    /// $150 purse leave the hex $50 short, whether or not silver reaches the buyer later.
+    #[test]
+    fn a_partly_cut_buy_states_the_hex_short_by_what_the_purse_lacked() {
+        let expected = "the units in this hex are short $50 between them: they can have $150 and \
+                        their orders spend $200";
+        for orders in [
+            "unit 5\nBUY 2 swords\nunit 8\nunit 9\n",
+            "unit 5\nBUY 2 swords\nunit 8\nunit 9\nTRANSPORT 5 200 SILV\n",
+        ] {
+            let findings = a_cut_buy_in_a_caravanserai(150, orders, vec![]);
+            assert_eq!(hex_silver_sentence(&findings), Some(expected), "{orders}");
+        }
+    }
+
+    /// The cut silver and another unit's unpaid study are different money, and the hex is short
+    /// both (`rules/skills_studying`: most skills "cost $10 per person per month to study") -
+    /// $110 against an empty purse, $60 against one of $50 - whether or not silver reaches the
+    /// buyer after STUDY.
+    #[test]
+    fn a_cut_buy_paid_back_later_adds_to_another_claim_on_the_pool() {
+        for (lends, short) in [(0, "$110"), (50, "$60")] {
+            for orders in [
+                "unit 5\nBUY 1 swords\nunit 6\nSTUDY COMB\nunit 8\nunit 9\n",
+                "unit 5\nBUY 1 swords\nunit 6\nSTUDY COMB\nunit 8\nunit 9\nTRANSPORT 5 100 SILV\n",
+            ] {
+                let findings =
+                    a_cut_buy_in_a_caravanserai(lends, orders, vec![with_silver(unit("6"), 0)]);
+                let sentence = hex_silver_sentence(&findings).unwrap_or_default();
+                assert!(
+                    sentence.starts_with(&format!(
+                        "the units in this hex are short {short} between them"
+                    )),
+                    "{lends} {orders}: {sentence}"
+                );
+            }
+        }
+    }
+
+    /// A sharer's own cut line is a fact about that line too (`ah-szye`), and silver shipped to
+    /// it after the market buys nothing either.
+    #[test]
+    fn a_sharing_buyers_cut_line_is_marked_though_silver_arrives_later() {
+        let findings = a_cut_buy_reviewed(
+            true,
+            0,
+            "unit 5\nBUY 1 swords\nunit 8\nunit 9\nTRANSPORT 5 100 SILV\n",
+            vec![],
+            CheckOptions::default(),
+        );
+        assert!(
+            findings.iter().any(|finding| {
+                finding.code == codes::PART_OF_HEX_SHORTFALL
+                    && finding.unit_id.as_deref() == Some("5")
+                    && finding.line == Some(2)
+            }),
+            "{findings:#?}"
+        );
+        assert!(
+            hex_silver_sentence(&findings).is_some_and(
+                |sentence| sentence.starts_with("the units in this hex are short $100")
+            ),
+            "{findings:#?}"
+        );
+    }
+
+    /// The buyer's own study runs before the shipment arrives (`rules/sequenceofevents`: STUDY
+    /// before TRANSPORT), so the shipment pays for neither the cut sword nor the study.
+    #[test]
+    fn a_cut_buyer_that_also_studies_is_short_both_though_silver_arrives_later() {
+        for (lends, short) in [(0, "$110"), (50, "$60")] {
+            for orders in [
+                "unit 5\nBUY 1 swords\nSTUDY COMB\nunit 8\nunit 9\n",
+                "unit 5\nBUY 1 swords\nSTUDY COMB\nunit 8\nunit 9\nTRANSPORT 5 100 SILV\n",
+            ] {
+                let findings = a_cut_buy_in_a_caravanserai(lends, orders, vec![]);
+                let sentence = hex_silver_sentence(&findings).unwrap_or_default();
+                assert!(
+                    sentence.starts_with(&format!(
+                        "the units in this hex are short {short} between them"
+                    )),
+                    "{lends} {orders}: {sentence}"
+                );
+            }
+        }
+    }
+
+    /// Once the hex's only sharer has walked away the buyer is judged on its own, and its cut is
+    /// stated once, in its own sentence - never also as a hex shortfall (`ah-szye`, round 1 Q2:
+    /// shape *ii*, not *iii*).
+    #[test]
+    fn a_cut_buy_whose_sharer_walks_away_is_not_also_a_hex_shortfall() {
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("8".to_string(), Coordinate { x: 7, y: 55, z: 1 });
+        let findings = a_cut_buy_reviewed(
+            false,
+            0,
+            "unit 5\nBUY 1 swords\nunit 8\nMOVE S\nunit 9\nTRANSPORT 5 50 SILV\n",
+            vec![],
+            options,
+        );
+        assert!(
+            !findings.iter().any(|finding| {
+                finding.code == codes::PART_OF_HEX_SHORTFALL
+                    || (finding.code == codes::NOT_ENOUGH_SILVER && finding.unit_id.is_none())
+            }),
+            "{findings:#?}"
+        );
     }
 }
