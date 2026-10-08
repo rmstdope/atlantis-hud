@@ -10428,6 +10428,10 @@ fn lend_walking_sharers_silver(
             // the hex is short at the month's end beyond what it was already short as movement
             // began - net figures, since a staying sharer that lent before movement may spend its
             // own silver after it and never go negative. Drawn from the arrivals in report order.
+            // `departing` was measured on `spendable_silver_at`, which carries the `overcharged`
+            // credit these figures do not; both sides subtract the same sum, so the difference
+            // cancels except at the clamps. Deliberate: no
+            // input is known where it changes the outcome.
             let lent_before = departing[index].values().sum::<i64>();
             let short_at = |at_end: bool| {
                 let mut short = -lent_before;
@@ -10438,15 +10442,18 @@ fn lend_walking_sharers_silver(
                     }
                     // Both figures read alike: the month-end one carries no `overcharged`
                     // credit, so neither does the one it is set against.
+                    let at_month_end = relieved_balance(ledger, who, SILVER);
                     let held = if at_end {
-                        relieved_balance(ledger, who, SILVER)
+                        at_month_end
                     } else {
                         ledger.state.balance_at(StatePhase::Movement, who, SILVER)
                     };
                     if ordered.shares() && !departing[index].contains_key(who) {
                         short -= held;
                     } else {
-                        short += (-held).max(0);
+                        // Only what a claimant still owes at the month's end: silver it receives
+                        // later - a shipment, say - pays its own debt, never another's need.
+                        short += (-held).max(0).min((-at_month_end).max(0));
                     }
                 }
                 short.max(0)
@@ -53215,6 +53222,62 @@ BUILD
             review.findings
         );
         assert_eq!(forecast_for(&review, "7").at_month_end, Some(490));
+    }
+
+    /// Silver a claimant receives after STUDY - by TRANSPORT, `rules/sequenceofevents` - pays its
+    /// own debt and nobody else's, so it cannot cancel what a student needs from the sharer that
+    /// walks in.
+    #[test]
+    fn a_debt_paid_off_after_movement_does_not_stop_an_arrival_paying_for_a_study() {
+        let mut quartermaster = with_skill(with_silver(unit("5"), 0), "QUAM", 1);
+        quartermaster.structure_id = Some("500".to_string());
+        let hex = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            structures: vec![Structure {
+                structure_id: "500".to_string(),
+                name: "Caravan".to_string(),
+                kind: "Caravanserai".to_string(),
+                ..Default::default()
+            }],
+            ..region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![
+                    quartermaster,
+                    with_men(with_silver(unit("6"), 0), 2),
+                    with_silver(unit("9"), 100),
+                ],
+            )
+        };
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("7".to_string(), Coordinate { x: 7, y: 53, z: 1 });
+        let review = review_turn(
+            &report(vec![
+                hex,
+                region_at("1:7,51", 7, 51, vec![sharing(with_silver(unit("7"), 500))]),
+            ]),
+            "unit 5\nBUY 1 swords\nunit 6\nSTUDY combat\nunit 9\nTRANSPORT 5 100 SILV\n\
+             unit 7\nMOVE S\n",
+            Some(&ruleset()),
+            options,
+        );
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
+            "{:?}",
+            review.findings
+        );
+        assert_eq!(forecast_for(&review, "7").at_month_end, Some(480));
     }
 
     /// An arriving sharer whose sums cannot be trusted leaves the pool it joins unjudged, as a
