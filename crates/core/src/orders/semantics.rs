@@ -53729,8 +53729,7 @@ BUILD
         );
         // Absence alone: before `ah-qrk0` there was no warning to suppress either, so this pins
         // the arrival's cap only together with the test above, which shows the hex short without
-        // the arrival. The SILVER column still nets at the month's end, so it shows neither sharer
-        // 8's nor sharer 7's draw; that is `ah-aqqb`, not this test's.
+        // the arrival. The SILVER column's rows for sharers 8 and 7 are `ah-aqqb`'s tests.
     }
 
     /// A one-man quartermaster `q` in a Caravanserai with `silver`, beside `others`, in (7,53).
@@ -53940,9 +53939,13 @@ BUILD
     #[test]
     fn the_column_debits_a_sharer_for_a_buy_whose_buyer_is_shipped_silver_later() {
         let review = a_sharer_funds_a_buy_and_then_studies(false);
+        // Unit 5 keeps the $100 shipped to it: its sword was paid for with sharer 8's silver.
         assert_eq!(
-            silver_rows(&review, &["8"]),
-            vec![("8".to_string(), Some(-10), 100)],
+            silver_rows(&review, &["8", "5"]),
+            vec![
+                ("8".to_string(), Some(-10), 100),
+                ("5".to_string(), Some(100), 0),
+            ],
             "{:#?}",
             review.silver
         );
