@@ -11083,7 +11083,24 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
         };
     }
 
-    let pool = sharing.silver_held_at(ledger, LendingMoment::MonthEnd);
+    // A sharer whose own orders overdrew it deeper mid-month than at the month's end was repaid
+    // by a receipt after STUDY - a shipment, wages - and that receipt repays nobody who lent to
+    // it (`rules/share`). Its month-end silver is not what it had to lend as BUY and STUDY ran, so
+    // it claims on the pool like any other unit instead of netting inside it: the verified swamp
+    // (7,25), where quartermaster 667 shares as well as its funder 1529 (`ah-aqqb`).
+    let repaid_late = |ordered: &Ordered<'_>| {
+        let who = &ordered.unit.unit_id;
+        sharing.pools_silver(ordered)
+            && !ledger.doubted.contains(who)
+            && overdrawn_for_orders(ledger, who) > (-relieved_balance(ledger, who, SILVER)).max(0)
+    };
+    let pool = sharing.silver_held_at(ledger, LendingMoment::MonthEnd)
+        - hex
+            .units
+            .iter()
+            .filter(|ordered| repaid_late(ordered))
+            .map(|ordered| silver_at(ledger, &ordered.unit.unit_id, LendingMoment::MonthEnd))
+            .sum::<i64>();
 
     // A doubted unit is judged nowhere in this module, so it claims nothing here either: lending
     // against a sum with a hole in it would put a figure on the screen nothing stands behind.
@@ -11098,7 +11115,9 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
     // What the claims would be at the month's end alone, as they were read before `ah-aqqb`.
     let mut month_end_owed = 0i64;
     for (index, ordered) in hex.units.iter().enumerate() {
-        if sharing.pools_silver(ordered) || ledger.doubted.contains(&ordered.unit.unit_id) {
+        if (sharing.pools_silver(ordered) && !repaid_late(ordered))
+            || ledger.doubted.contains(&ordered.unit.unit_id)
+        {
             continue;
         }
         claims[index] = overdrawn_for_orders(ledger, &ordered.unit.unit_id);
@@ -11120,7 +11139,7 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
             .iter()
             .map(|ordered| {
                 let who = &ordered.unit.unit_id;
-                if ledger.doubted.contains(who) {
+                if ledger.doubted.contains(who) || repaid_late(ordered) {
                     0
                 } else if sharing.pools_silver(ordered) {
                     spendable_silver_at(ledger, who, StatePhase::Movement).max(0)
@@ -11183,7 +11202,10 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
         .units
         .iter()
         .map(|ordered| {
-            if sharing.pools_silver(ordered) {
+            if repaid_late(ordered) {
+                // Overdrawn as STUDY ran: what it holds now arrived too late to lend.
+                0
+            } else if sharing.pools_silver(ordered) {
                 relieved_balance(ledger, &ordered.unit.unit_id, SILVER).max(0)
             } else {
                 // A sharer that walks away lends here only what was drawn on it before it left.
@@ -54453,8 +54475,17 @@ BUILD
     /// then studies; unit 9 ships 5 $100 by TRANSPORT after STUDY. `walker`, when given, is a sharer
     /// with $500 listed in (7,51) that ends the month in this hex.
     fn a_sharer_funds_a_buy_and_then_studies(walker: bool) -> TurnReview {
+        a_sharer_funds_a_buy_for(walker, false)
+    }
+
+    /// The same hex, with the buyer itself flagged `SHARE` when `buyer_shares` - the verified
+    /// swamp (7,25), where quartermaster 667 shares as well as its funder 1529 (`ah-aqqb`).
+    fn a_sharer_funds_a_buy_for(walker: bool, buyer_shares: bool) -> TurnReview {
         let mut quartermaster = with_skill(with_silver(unit("5"), 0), "QUAM", 1);
         quartermaster.structure_id = Some("500".to_string());
+        if buyer_shares {
+            quartermaster = sharing(quartermaster);
+        }
         let hex = ReportRegion {
             for_sale: vec![MarketItem {
                 amount: 10,
@@ -54857,6 +54888,54 @@ BUILD
             vec![
                 ("8".to_string(), Some(0), 90),
                 ("7".to_string(), Some(490), 10),
+            ],
+            "{:#?}",
+            review.silver
+        );
+    }
+
+    /// The buyer shares too, as quartermaster 667 does in the verified swamp (7,25): its own
+    /// overdraft at the market is still a draw on sharer 8, made before 8 studied, so 8's row is
+    /// debited the $100 and ends $10 short, as the hex warning says (`ah-aqqb` verification).
+    #[test]
+    fn the_column_debits_a_sharer_for_a_sharing_buyer_shipped_silver_later() {
+        let review = a_sharer_funds_a_buy_for(false, true);
+        assert_eq!(
+            silver_rows(&review, &["8", "5"]),
+            vec![
+                ("8".to_string(), Some(-10), 100),
+                ("5".to_string(), Some(100), 0),
+            ],
+            "{:#?}",
+            review.silver
+        );
+    }
+
+    /// A sharer short only as STUDY runs, listed first, cannot lend itself the silver shipped to
+    /// it afterwards: sharer 6 ($0) studies and is shipped $100 by TRANSPORT, so sharer 8 ($100)
+    /// pays the $10 and is debited it (`ah-aqqb` verification; `rules/sequenceofevents`).
+    #[test]
+    fn a_sharer_repaid_after_study_does_not_lend_itself_the_late_silver() {
+        let mut hex = caravanserai_hex(
+            "6",
+            0,
+            vec![
+                sharing(with_silver(unit("8"), 100)),
+                with_silver(unit("9"), 100),
+            ],
+        );
+        hex.units[0] = sharing(hex.units[0].clone());
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 6\nSTUDY combat\nunit 9\nTRANSPORT 6 100 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            silver_rows(&review, &["6", "8"]),
+            vec![
+                ("6".to_string(), Some(100), 0),
+                ("8".to_string(), Some(90), 10),
             ],
             "{:#?}",
             review.silver
