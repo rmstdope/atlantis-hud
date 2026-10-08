@@ -10234,7 +10234,7 @@ impl<'a> Sharing<'a> {
         let shared = match self.walking {
             Some(walking) if tag == SILVER => {
                 self.sharers.iter().any(|(_, o)| self.pools_silver(o))
-                    || !walking.arrivals.is_empty()
+                    || walking.arrivals.iter().any(|arrival| arrival.lends > 0)
                     || walking.departing.values().any(|lent| *lent > 0)
             }
             _ => !self.sharers.is_empty(),
@@ -10289,9 +10289,15 @@ struct WalkingSilver {
     /// This hex's own sharers whose month ends in another region, each with what it lent this
     /// hex's units before it left: their overdraft as movement begins, net of what the sharers
     /// that stay could cover, drained from the walkers in report order.
+    ///
+    /// Letting the staying sharers pay first, and the walkers in report order, is **our choice,
+    /// not a rule**: the rules do not say which sharer the engine draws on, and it drains them in
+    /// whatever order it iterates them - the same reason `forecast_hex` drains in hex order. The
+    /// hex's total is exact either way; only which unit a shortfall is laid on can differ.
     departing: BTreeMap<String, i64>,
     /// The sharers ending their month here from another hex, each with what it lends at the
-    /// month's end ([`relieved_balance`], less what it lent before it left).
+    /// month's end ([`relieved_balance`], less what it lent before it left), capped together at
+    /// what this hex's units overdraw after movement - an arrival is not there for a `BUY`.
     arrivals: Vec<ArrivingSilver>,
     /// The same, read as TRANSPORT settles ([`spendable_silver_at`]), for [`shipping_purse`].
     arrivals_at_transport: Vec<ArrivingSilver>,
@@ -10412,11 +10418,43 @@ fn lend_walking_sharers_silver(
         }
     }
 
-    for (index, (_, ledger)) in hexes.iter_mut().enumerate() {
+    for (index, (hex, ledger)) in hexes.iter_mut().enumerate() {
+        let mut arrived = std::mem::take(&mut arrivals[index]);
+        // An arrival is there after `BUY` (`rules/sequenceofevents`), so it lends only against
+        // what this hex's units overdraw after movement - drawn from the arrivals in report order.
+        let mut after_movement: i64 = hex
+            .units
+            .iter()
+            .filter(|ordered| !ledger.doubted.contains(&ordered.unit.unit_id))
+            .map(|ordered| {
+                let who = &ordered.unit.unit_id;
+                // Both figures read alike: the month-end one carries no `overcharged` credit,
+                // so neither does the one it is set against.
+                let (then, before) = if phase == StatePhase::Maintenance {
+                    (
+                        relieved_balance(ledger, who, SILVER),
+                        ledger.state.balance_at(StatePhase::Movement, who, SILVER),
+                    )
+                } else {
+                    (
+                        spendable_silver_at(ledger, who, phase),
+                        spendable_silver_at(ledger, who, StatePhase::Movement),
+                    )
+                };
+                ((-then).max(0) - (-before).max(0)).max(0)
+            })
+            .sum();
+        // Not at `Transport`: a shipment's bill is not in the ledger until shipping settles, and
+        // `shipping_purse` sets the pool against that bill alone.
+        if phase == StatePhase::Maintenance {
+            for arrival in &mut arrived {
+                arrival.lends = arrival.lends.min(after_movement);
+                after_movement -= arrival.lends;
+            }
+        }
         let walking = &mut ledger.walking_silver;
         walking.departing = std::mem::take(&mut departing[index]);
         walking.arrival_doubted = doubted[index];
-        let arrived = std::mem::take(&mut arrivals[index]);
         if phase == StatePhase::Maintenance {
             walking.arrivals = arrived;
         } else {
@@ -43938,6 +43976,39 @@ BUILD
         assert!(codes(&unpaid_findings(with_mate(10), UNPAID)).contains(&"part-of-hex-shortfall"));
     }
 
+    /// TRANSPORT runs after movement (`rules/sequenceofevents`), so a sharing faction-mate that
+    /// walks in this month pays the bill too (`ah-wyj8`).
+    #[test]
+    fn a_faction_mate_sharing_silver_that_walks_in_pays_the_bill() {
+        let mut regions = unpaid_shipping(20);
+        let here = regions[0].coordinate;
+        regions.push(region_at(
+            "1:90,90",
+            90,
+            90,
+            vec![sharing(with_silver(unit("903"), 1000))],
+        ));
+        let mut options = with_map();
+        options.month_end.insert("903".to_string(), here);
+
+        let orders = format!("{UNPAID}unit 903\nMOVE N\n");
+        let silver = sender_silver(regions.clone(), &orders, options.clone());
+        assert_eq!(silver.shipping.len(), 1, "the arriving sharer pays");
+        let findings = unpaid_findings_with(regions, &orders, options);
+        assert!(
+            !codes(&findings).contains(&"not-enough-silver"),
+            "{findings:?}"
+        );
+    }
+
+    fn unpaid_findings_with(
+        regions: Vec<ReportRegion>,
+        orders: &str,
+        options: CheckOptions,
+    ) -> Vec<Finding> {
+        review_turn(&report(regions), orders, Some(&ruleset()), options).findings
+    }
+
     // --- a claim pays for a shipment (`ah-6ak4`) ------------------------------------------------
 
     /// `review_turn` over a report whose faction holds $1000 unclaimed, so a `CLAIM` is paid in full
@@ -53072,6 +53143,61 @@ BUILD
             forecast_for(&review, "7").at_month_end,
             Some(300),
             "the $200 it lent before leaving is spent from its own row"
+        );
+    }
+
+    /// The mirror: a sharer that walks in arrives after `BUY` (`rules/sequenceofevents`), so it
+    /// cannot pay for a purchase made before it got there.
+    #[test]
+    fn a_sharer_that_walks_in_does_not_pay_for_a_purchase_made_before_it_arrived() {
+        let review = walking_sharer_review(
+            ("1:7,53", 7, 53),
+            ("1:7,51", 7, 51),
+            Some((7, 53)),
+            "BUY 2 swords",
+        );
+        assert!(
+            review.findings.iter().any(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER && finding.unit_id.as_deref() == Some("5")
+            }),
+            "{:?}",
+            review.findings
+        );
+        assert_eq!(forecast_for(&review, "7").at_month_end, Some(500));
+    }
+
+    /// An arriving sharer whose sums cannot be trusted leaves the pool it joins unjudged, as a
+    /// doubted sharer of the hex's own does.
+    #[test]
+    fn a_doubted_sharer_that_walks_in_leaves_the_pool_unjudged() {
+        use super::super::silver::SharedSilverCoverage;
+
+        let student = with_men(with_silver(unit("5"), 0), 2);
+        let sharer = sharing(with_silver(unit("7"), 500));
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("7".to_string(), Coordinate { x: 7, y: 53, z: 1 });
+        let review = review_turn(
+            &report(vec![
+                region_at("1:7,53", 7, 53, vec![student]),
+                region_at("1:7,51", 7, 51, vec![sharer]),
+            ]),
+            "unit 5\nSTUDY combat\nunit 7\nBUY 1 unobtainium\nMOVE S\n",
+            Some(&ruleset()),
+            options,
+        );
+        assert_eq!(
+            forecast_for(&review, "5").shared_silver_coverage,
+            Some(SharedSilverCoverage::Unjudged)
+        );
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
+            "{:?}",
+            review.findings
         );
     }
 
