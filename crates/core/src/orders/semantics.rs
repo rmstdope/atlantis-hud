@@ -12011,9 +12011,12 @@ fn check_build_material(
 /// within reach in time. Report-wide because that unit sits in another hex's ledger.
 ///
 /// The build is then **uncounted**, not priced: what it spends would come out of another hex's
-/// ledger, which this per-hex settlement does not cross. Saying nothing about the amount is the
-/// accept-on-doubt posture every other unsettleable `BUILD` takes, and both entry points call
-/// this so Problems and the ITEMS column agree.
+/// ledger, which this per-hex settlement does not cross. Leaving the builder's line uncounted is
+/// the accept-on-doubt posture every other unsettleable `BUILD` takes, and both entry points call
+/// this so Problems and the ITEMS column agree. The **arriving sharer's** own row is not touched:
+/// its ledger never sees the build, so it still shows the material it carried in, as it did
+/// before this release existed. Debiting it would need a cross-hex material settlement, which is
+/// a follow-up (it would serve PRODUCE as well), not this fix.
 ///
 /// The arriving unit's holding is read at [`StatePhase::Movement`], after its gifts and market
 /// orders and before any month-long order. A holding a `GIVE` left uncertain counts as reachable:
@@ -51823,6 +51826,50 @@ BUILD
             findings[0].message,
             "cannot build a Caravanserai: has neither wood nor stone"
         );
+    }
+
+    /// What the arriving sharer holds is read once movement ends: GIVE runs before MOVE
+    /// (`rules/sequenceofevents`), and "If 0 is specified as the unit number, then the items are
+    /// discarded" (`rules/give`). So wood thrown away before the walk reaches nobody.
+    #[test]
+    fn wood_the_sharer_gives_away_before_it_moves_leaves_the_builder_warned() {
+        let findings =
+            caravanserai_warnings(sharing(wood_carrier()), "GIVE 0 30 wood\nMOVE S\n", true);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+    }
+
+    /// A GIVE of goods to another faction's unit cannot be settled from our report (`rules/give`
+    /// needs that faction's declaration toward us, `ah-66yi`), so whether the wood is still aboard
+    /// when the sharer arrives is unknown - and "has neither" would be a claim nothing supports.
+    #[test]
+    fn wood_a_gift_left_uncertain_does_not_warn_the_builder() {
+        let builder = with_skill(with_men(unit("900"), 10), "BUIL", 3);
+        let report = ParsedReport {
+            regions: vec![
+                settled(region_at("1:7,53", 7, 53, vec![builder])),
+                region_at(
+                    "1:7,51",
+                    7,
+                    51,
+                    vec![sharing(wood_carrier()), an_ally("7001")],
+                ),
+            ],
+            ..Default::default()
+        };
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
+        let findings: Vec<Finding> = check_turn(
+            &report,
+            "unit 900\nBUILD Caravanserai\nunit 901\nGIVE 7001 30 wood\nMOVE S\n",
+            Some(&trident()),
+            options,
+        )
+        .into_iter()
+        .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
+        .collect();
+        assert!(findings.is_empty(), "{findings:?}");
     }
 
     #[test]
