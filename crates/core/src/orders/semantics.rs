@@ -54785,7 +54785,8 @@ BUILD
     /// only silver a unit has, and `rules/sequenceofevents` runs STUDY before TRANSPORT - so the
     /// hex is short every fee, the purse lends nothing, and a non-sharing student is marked
     /// short in its column rather than covered (`ah-vusi`, settled by `ah-aqqb`'s repaid-late
-    /// claim).
+    /// claim). What pins the regression is the column: nobody borrows, and no row reads covered.
+    /// The hex warning's sentence is a control - it read the same before `ah-aqqb` too.
     #[test]
     fn a_purse_whose_only_silver_arrives_after_study_is_judged_short() {
         for (others, orders, spent, student) in [
