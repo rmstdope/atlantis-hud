@@ -10467,8 +10467,9 @@ impl<'a> Sharing<'a> {
 #[derive(Debug, Clone, Default)]
 struct WalkingSilver {
     /// This hex's own sharers whose month ends in another region, each with what it lent this
-    /// hex's units before it left: their overdraft as movement begins, net of what the sharers
-    /// that stay could cover, drained from the walkers in report order.
+    /// hex's units before it left: their overdraft as movement begins - the walkers' own included
+    /// (`ah-k0ob`) - net of what the sharers that stay could cover, drained from the walkers in
+    /// report order.
     ///
     /// Letting the staying sharers pay first, and the walkers in report order, is **our choice,
     /// not a rule**: the rules do not say which sharer the engine draws on, and it drains them in
@@ -10571,17 +10572,21 @@ fn lend_walking_sharers_silver(
             continue;
         }
 
-        // What this hex's other units have overdrawn as movement begins - `BUY` and everything
-        // before it - net of what the sharers that stay hold then.
+        // What this hex's units have overdrawn as movement begins - `BUY` and everything before
+        // it - net of what the sharers that stay hold then. A walker's own overdraft counts: its
+        // BUY ran under "Market orders" while it was still here (`rules/sequenceofevents`), so
+        // the sharers here paid it, the walkers among them included (`ah-k0ob`).
         let mut need = 0i64;
         let mut staying = 0i64;
         for ordered in &hex.units {
             let who = &ordered.unit.unit_id;
-            if ledger.doubted.contains(who) || walkers.iter().any(|w| w.unit.unit_id == *who) {
+            if ledger.doubted.contains(who) {
                 continue;
             }
             let held = silver_at(ledger, who, LendingMoment::Movement);
-            if ordered.shares() {
+            if walkers.iter().any(|w| w.unit.unit_id == *who) {
+                need += (-held).max(0);
+            } else if ordered.shares() {
                 staying += held;
             } else {
                 need += (-held).max(0);
@@ -11017,9 +11022,8 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
             })
             .collect();
         let market_owed: i64 = market_claims.iter().sum();
-        // Load-bearing: a walking sharer that overdraws at the market is a claimant here, and
-        // the walker that paid for it may record nothing drawn on it before it left, so the
-        // market's claims can exceed what the sharers lend it - and then nothing is lent.
+        // The market's claims can still exceed what the sharers lend it - when they did not hold
+        // enough between them as the market closed - and then nothing is lent.
         if month_end_owed <= pool
             && market_owed > 0
             && market_owed <= held_at_market.iter().sum::<i64>()
@@ -54474,12 +54478,50 @@ BUILD
         );
     }
 
-    /// The market's claims can outrun what the sharers lend it: walking sharer 6 overdraws $50 on
-    /// its own BUY and is a claimant here, while walker 7, which paid for it, records nothing drawn
-    /// on it before it left. Only $100 of the $150 claimed can be lent, so nothing is - the
-    /// all-or-nothing reading - rather than crediting a loan nobody made (`ah-aqqb` review).
+    /// The market's claims can still outrun what the sharers lend it: walker 6 overdraws $50 on
+    /// its own BUY, staying sharer 8 pays buyer 5's $100, and walker 7 has only $20 to lend before
+    /// it leaves. Only $120 of the $150 claimed can be lent, so nothing is - the all-or-nothing
+    /// reading - rather than crediting a loan nobody made (`ah-aqqb`, `ah-k0ob` review).
     #[test]
-    fn market_claims_beyond_what_the_sharers_lend_it_are_not_lent_for() {
+    fn market_claims_beyond_what_the_walking_sharers_lend_it_are_not_lent_for() {
+        let mut options = CheckOptions::default();
+        for walker in ["6", "7"] {
+            options
+                .month_end
+                .insert(walker.to_string(), Coordinate { x: 7, y: 51, z: 1 });
+        }
+        let review = a_shipped_buyer_beside(
+            vec![
+                sharing(with_silver(unit("6"), 50)),
+                sharing(with_silver(unit("7"), 20)),
+                sharing(with_silver(unit("8"), 100)),
+            ],
+            vec![region_at("1:7,51", 7, 51, vec![with_silver(unit("3"), 0)])],
+            "unit 6\nBUY 1 swords\nMOVE N\nunit 7\nMOVE N\nunit 8\nSTUDY combat\nunit 3\nSTUDY combat\n",
+            options,
+        );
+        let borrowed: Vec<(&str, i64)> = review
+            .silver
+            .iter()
+            .filter(|row| row.unit_id == "5" || row.unit_id == "6")
+            .map(|row| (row.unit_id.as_str(), row.borrowed_for_orders))
+            .collect();
+        assert_eq!(borrowed, vec![("6", 0), ("5", 0)], "{:#?}", review.silver);
+        assert_eq!(
+            silver_rows(&review, &["8"]),
+            vec![("8".to_string(), Some(90), 0)],
+            "{:#?}",
+            review.silver
+        );
+    }
+
+    /// A walking sharer's own market overdraft is drawn on the sharers before movement like any
+    /// other claimant's: walking sharer 6 overdraws $50 on its own BUY, staying sharer 8 pays
+    /// buyer 5's $100, so walker 7 lends the $50 before it leaves and the column lends the
+    /// market's $150 of claims (`ah-k0ob`; `rules/sequenceofevents` runs BUY under "Market
+    /// orders", before movement).
+    #[test]
+    fn a_walking_sharer_lends_for_another_walkers_market_overdraft() {
         let mut options = CheckOptions::default();
         for walker in ["6", "7"] {
             options
@@ -54502,10 +54544,29 @@ BUILD
             .filter(|row| row.unit_id == "5" || row.unit_id == "6")
             .map(|row| (row.unit_id.as_str(), row.borrowed_for_orders))
             .collect();
-        assert_eq!(borrowed, vec![("6", 0), ("5", 0)], "{:#?}", review.silver);
         assert_eq!(
-            silver_rows(&review, &["8"]),
-            vec![("8".to_string(), Some(90), 0)],
+            borrowed,
+            vec![("6", 50), ("5", 100)],
+            "{:#?}",
+            review.silver
+        );
+        // Walker 7 lends $50 here before it leaves, and $10 of what it carries to unit 3's STUDY
+        // where its month ends; sharer 8, paying first, lends buyer 5 its $100.
+        assert_eq!(
+            silver_rows(&review, &["7", "8"]),
+            vec![
+                ("7".to_string(), Some(40), 60),
+                ("8".to_string(), Some(-10), 100),
+            ],
+            "{:#?}",
+            review.silver
+        );
+        let seven = review.silver.iter().find(|row| row.unit_id == "7").unwrap();
+        assert!(
+            seven
+                .changes
+                .iter()
+                .any(|change| change.cause == SilverChangeCause::Lent && change.amount == -50),
             "{:#?}",
             review.silver
         );
