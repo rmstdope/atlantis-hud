@@ -10273,6 +10273,19 @@ impl<'a> Sharing<'a> {
             .sum()
     }
 
+    /// What this hex's silver pool is short as STUDY settles, the last moment `rules/share` lends
+    /// silver for an order ("for buying or studying"; `rules/sequenceofevents` runs BUY and then
+    /// STUDY before WORK and TRANSPORT). Silver a unit receives after it - wages, a shipment - is
+    /// not lent back to the sharer that already paid, so [`Sharing::pool`]'s month-end netting
+    /// cannot see a study the pool had already been drained of (`ah-qrk0`).
+    ///
+    /// Negative or zero when the pool covered every claim then.
+    fn silver_short_at_study(&self, hex: &Hex<'_>, ledger: &Ledger<'_>) -> i64 {
+        silver_short_at(hex, ledger, StatePhase::Study, |ordered| {
+            self.pools_silver(ordered)
+        }) - self.silver_from_walkers(|walking| WalkingSilver::lends(&walking.arrivals))
+    }
+
     /// The hex's silver pool at one phase: [`spendable_silver_at`] summed over the sharers.
     /// [`Sharing::pool`] answers the month's end, after maintenance and its relief; a shipment is
     /// paid before either, so it asks this instead (`ah-7ale.4`).
@@ -10285,6 +10298,29 @@ impl<'a> Sharing<'a> {
             + self
                 .silver_from_walkers(|walking| WalkingSilver::lends(&walking.arrivals_at_transport))
     }
+}
+
+/// What a hex's claimants have overdrawn by `phase` beyond what its pooled sharers hold then:
+/// every undoubted unit `pools` says is in the pool counts its [`spendable_silver_at`], every other
+/// one its overdraft. Unclamped, and counting no sharer from another hex.
+fn silver_short_at(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    phase: StatePhase,
+    pools: impl Fn(&Ordered<'_>) -> bool,
+) -> i64 {
+    hex.units
+        .iter()
+        .filter(|ordered| !ledger.doubted.contains(&ordered.unit.unit_id))
+        .map(|ordered| {
+            let held = spendable_silver_at(ledger, &ordered.unit.unit_id, phase);
+            if pools(ordered) {
+                -held
+            } else {
+                (-held).max(0)
+            }
+        })
+        .sum()
 }
 
 /// The silver `SHARE` flags lend across one hex's edge this month (`ah-wyj8`).
@@ -10467,7 +10503,16 @@ fn lend_walking_sharers_silver(
                 }
                 short.max(0)
             };
-            let mut after_movement = (short_at(true) - short_at(false)).max(0);
+            // ... and at least what the hex is short as STUDY settles beyond what it was short
+            // as movement began: a debt paid off after STUDY - a shipment, wages - leaves the
+            // month's end netted but the study still unpaid (`ah-qrk0`).
+            let staying = |ordered: &Ordered<'_>| {
+                ordered.shares() && !departing[index].contains_key(&ordered.unit.unit_id)
+            };
+            let short_plain =
+                |phase| (silver_short_at(hex, ledger, phase, staying) - lent_before).max(0);
+            let at_study = short_plain(StatePhase::Study) - short_plain(StatePhase::Movement);
+            let mut after_movement = (short_at(true) - short_at(false)).max(at_study).max(0);
             for arrival in &mut arrived {
                 arrival.lends = arrival.lends.min(after_movement);
                 after_movement -= arrival.lends;
@@ -11020,8 +11065,22 @@ fn pool_shortfalls(
     }
 
     let mut shortfalls = Vec::new();
+    // A pool drained as STUDY settled is short even when later receipts net the month's end out
+    // (`ah-qrk0`), whether or not any unit is still overdrawn by then.
+    let short_at_study =
+        if sharing.walking.is_some() && sharing.reading(SILVER, None) == Reading::Pooled {
+            sharing.silver_short_at_study(hex, ledger)
+        } else {
+            0
+        };
+    if short_at_study > 0 {
+        pooled_tags.insert(SILVER.to_string());
+    }
     for tag in pooled_tags {
-        let short = claims.get(&tag).copied().unwrap_or(0) - sharing.pool(ledger, &tag);
+        let mut short = claims.get(&tag).copied().unwrap_or(0) - sharing.pool(ledger, &tag);
+        if tag == SILVER {
+            short = short.max(short_at_study);
+        }
         if short <= 0 {
             continue;
         }
@@ -11034,7 +11093,13 @@ fn pool_shortfalls(
             .filter(|o| {
                 o.shares()
                     || (!ledger.doubted.contains(&o.unit.unit_id)
-                        && relieved_balance(ledger, &o.unit.unit_id, &tag) < 0)
+                        && (relieved_balance(ledger, &o.unit.unit_id, &tag) < 0
+                            || (tag == SILVER
+                                && spendable_silver_at(
+                                    ledger,
+                                    &o.unit.unit_id,
+                                    StatePhase::Study,
+                                ) < 0)))
             })
             .map(|o| {
                 o.holding(&tag)
@@ -53426,5 +53491,98 @@ BUILD
     fn a_sharer_that_stays_pays_for_a_study_beside_it() {
         let findings = study_beside_a_walking_sharer(("1:7,53", 7, 53), ("1:7,53", 7, 53), None);
         assert_eq!(findings, vec![]);
+    }
+
+    // --- silver a sharer lent to a BUY is gone for the month (`ah-qrk0`) ----------------------
+    //
+    // `rules/sequenceofevents` runs BUY under "Market orders", before movement; STUDY under "Month
+    // long orders"; TRANSPORT after WORK. `rules/share` lends a sharer's silver "for buying or
+    // studying", and nothing in it makes a later receipt flow back to the lender.
+
+    /// Unit 5 (quartermaster, no silver) buys one sword at $100 that sharer 8 ($100) pays for; 8
+    /// then studies; unit 9 ships 5 $100 by TRANSPORT after STUDY. `walker`, when given, is a sharer
+    /// with $500 listed in (7,51) that ends the month in this hex.
+    fn a_sharer_funds_a_buy_and_then_studies(walker: bool) -> TurnReview {
+        let mut quartermaster = with_skill(with_silver(unit("5"), 0), "QUAM", 1);
+        quartermaster.structure_id = Some("500".to_string());
+        let hex = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            structures: vec![Structure {
+                structure_id: "500".to_string(),
+                name: "Caravan".to_string(),
+                kind: "Caravanserai".to_string(),
+                ..Default::default()
+            }],
+            ..region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![
+                    quartermaster,
+                    sharing(with_silver(unit("8"), 100)),
+                    with_silver(unit("9"), 100),
+                ],
+            )
+        };
+        let mut regions = vec![hex];
+        let mut options = CheckOptions::default();
+        let mut orders =
+            "unit 5\nBUY 1 swords\nunit 8\nSTUDY combat\nunit 9\nTRANSPORT 5 100 SILV\n"
+                .to_string();
+        if walker {
+            regions.push(region_at(
+                "1:7,51",
+                7,
+                51,
+                vec![sharing(with_silver(unit("7"), 500))],
+            ));
+            options
+                .month_end
+                .insert("7".to_string(), Coordinate { x: 7, y: 53, z: 1 });
+            orders.push_str("unit 7\nMOVE S\n");
+        }
+        review_turn(&report(regions), &orders, Some(&ruleset()), options)
+    }
+
+    /// The engine has sharer 8 lend its $100 at BUY and hold $0 at STUDY, so its study is unfunded;
+    /// the $100 unit 5 receives by TRANSPORT afterwards is unit 5's, not 8's.
+    #[test]
+    fn a_sharer_that_funded_a_buy_cannot_pay_for_its_own_study_with_silver_shipped_later() {
+        let review = a_sharer_funds_a_buy_and_then_studies(false);
+        let short: Vec<&str> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(
+            short,
+            vec![
+                "the units in this hex are short $10 between them: they can have $100 and their \
+                 orders spend $110"
+            ],
+            "sharer 8's STUDY has nothing left to pay for it"
+        );
+    }
+
+    /// The `ah-wyj8` variant: a sharer that walks in is in the hex when STUDY runs, so it pays.
+    #[test]
+    fn a_sharer_that_walks_in_pays_for_a_study_whose_sharer_funded_a_buy_shipped_silver_later() {
+        let review = a_sharer_funds_a_buy_and_then_studies(true);
+        assert!(
+            !review.findings.iter().any(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    || finding.code == codes::PART_OF_HEX_SHORTFALL
+            }),
+            "{:?}",
+            review.findings
+        );
+        // The SILVER column still nets at the month's end, so it shows neither sharer 8's nor
+        // sharer 7's draw; that is `ah-qrk0`'s follow-up, not this test's.
     }
 }
