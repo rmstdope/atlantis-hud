@@ -2382,7 +2382,7 @@ fn forecast_hex(
         }
         // What the hex's own sharers could not cover, a sharer arriving from elsewhere did - on its
         // own row, in the hex the report lists it in (`ah-wyj8`).
-        for arrival in &ledger.walking_silver.arrivals {
+        for arrival in ledger.walking_silver.arrivals_at(LendingMoment::MonthEnd) {
             if owing == 0 {
                 break;
             }
@@ -10221,6 +10221,49 @@ enum Reading {
     Pooled,
 }
 
+/// The moments a hex's `SHARE` silver pool is read at, in the order `rules/sequenceofevents` runs
+/// them: BUY and WITHDRAW under "Market orders", then movement; STUDY among "Month long orders";
+/// TRANSPORT after WORK; maintenance last. `rules/share` lends silver "for buying or studying", so
+/// the first two are when it lends; TRANSPORT is when a shipment is paid from the pool
+/// (`ah-7ale.4`), and the month's end is what the pool is netted at.
+///
+/// The one place a moment is named: every reader asks [`Sharing::silver_short_at`] or
+/// [`Sharing::silver_held_at`] at one of these rather than deriving its own figure (`ah-4oz9`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LendingMoment {
+    /// After BUY, and as movement begins: nothing between WITHDRAW and movement moves silver
+    /// (`rules/sequenceofevents`). An arrival is not here yet.
+    Movement,
+    /// As STUDY settles: the last moment `rules/share` lends silver for an order.
+    Study,
+    /// As TRANSPORT settles, before maintenance.
+    Transport,
+    /// After maintenance and its relief.
+    MonthEnd,
+}
+
+impl LendingMoment {
+    const COUNT: usize = LendingMoment::MonthEnd as usize + 1;
+
+    fn phase(self) -> StatePhase {
+        match self {
+            LendingMoment::Movement => StatePhase::Movement,
+            LendingMoment::Study => StatePhase::Study,
+            LendingMoment::Transport => StatePhase::Transport,
+            LendingMoment::MonthEnd => StatePhase::Maintenance,
+        }
+    }
+}
+
+/// One unit's silver as the pool reads it at `moment`: [`spendable_silver_at`], and at the month's
+/// end [`relieved_balance`], which has maintenance and its relief settled.
+fn silver_at(ledger: &Ledger<'_>, unit_id: &str, moment: LendingMoment) -> i64 {
+    match moment {
+        LendingMoment::MonthEnd => relieved_balance(ledger, unit_id, SILVER),
+        _ => spendable_silver_at(ledger, unit_id, moment.phase()),
+    }
+}
+
 /// The hex's sharing units, read once, and the rule for whether a tag pools in it.
 ///
 /// The single home of "does this hex pool this tag?". Four plans in a row have assumed a hex is
@@ -10266,8 +10309,14 @@ impl<'a> Sharing<'a> {
     ///
     /// Item tags read exactly as [`Sharing::read`] does.
     fn for_silver(hex: &'a Hex<'a>, ledger: &'a Ledger<'a>) -> Self {
+        Self::with_walking(hex, &ledger.walking_silver)
+    }
+
+    /// [`Sharing::for_silver`] with the walkers given rather than the ledger's - so the arrival
+    /// cap can ask the pool what it is short before any arrival lends (`ah-4oz9`).
+    fn with_walking(hex: &'a Hex<'a>, walking: &'a WalkingSilver) -> Self {
         Self {
-            walking: Some(&ledger.walking_silver),
+            walking: Some(walking),
             ..Self::read(hex)
         }
     }
@@ -10281,10 +10330,11 @@ impl<'a> Sharing<'a> {
     }
 
     /// What this hex's sharers that walk away lent its units before they left, and what the
-    /// sharers that arrive lend it: the silver the pool holds beyond its own staying sharers.
-    fn silver_from_walkers(&self, arriving: impl Fn(&WalkingSilver) -> i64) -> i64 {
+    /// sharers that arrive lend it at `moment`: the silver the pool holds beyond its own staying
+    /// sharers.
+    fn silver_from_walkers(&self, moment: LendingMoment) -> i64 {
         self.walking.map_or(0, |walking| {
-            walking.departing.values().sum::<i64>() + arriving(walking)
+            walking.departing.values().sum::<i64>() + walking.lends_at(moment)
         })
     }
 
@@ -10312,7 +10362,10 @@ impl<'a> Sharing<'a> {
         let shared = match self.walking {
             Some(walking) if tag == SILVER => {
                 self.sharers.iter().any(|(_, o)| self.pools_silver(o))
-                    || walking.arrivals.iter().any(|arrival| arrival.lends > 0)
+                    || walking
+                        .arrivals_at(LendingMoment::MonthEnd)
+                        .iter()
+                        .any(|arrival| arrival.lends > 0)
                     || walking.departing.values().any(|lent| *lent > 0)
             }
             _ => !self.sharers.is_empty(),
@@ -10328,13 +10381,7 @@ impl<'a> Sharing<'a> {
     /// read after movement, the walkers' too ([`Sharing::for_silver`]).
     fn pool(&self, ledger: &Ledger<'_>, tag: &str) -> i64 {
         if self.walking.is_some() && tag == SILVER {
-            return self
-                .sharers
-                .iter()
-                .filter(|(_, o)| self.pools_silver(o))
-                .map(|(_, o)| relieved_balance(ledger, &o.unit.unit_id, tag))
-                .sum::<i64>()
-                + self.silver_from_walkers(|walking| WalkingSilver::lends(&walking.arrivals));
+            return self.silver_held_at(ledger, LendingMoment::MonthEnd);
         }
         self.sharers
             .iter()
@@ -10342,54 +10389,73 @@ impl<'a> Sharing<'a> {
             .sum()
     }
 
-    /// What this hex's silver pool is short as STUDY settles, the last moment `rules/share` lends
-    /// silver for an order ("for buying or studying"; `rules/sequenceofevents` runs BUY and then
-    /// STUDY before WORK and TRANSPORT). Silver a unit receives after it - wages, a shipment - is
-    /// not lent back to the sharer that already paid, so [`Sharing::pool`]'s month-end netting
-    /// cannot see a study the pool had already been drained of (`ah-qrk0`).
+    /// What this hex's silver pool holds at `moment`: its pooled sharers' [`silver_at`], what
+    /// the sharers that walked away lent before they left, and what the arrivals lend then.
     ///
-    /// Negative or zero when the pool covered every claim then.
-    fn silver_short_at_study(&self, hex: &Hex<'_>, ledger: &Ledger<'_>) -> i64 {
-        silver_short_at(hex, ledger, StatePhase::Study, |ordered| {
-            self.pools_silver(ordered)
-        }) - self.silver_from_walkers(|walking| WalkingSilver::lends(&walking.arrivals_at_study))
-    }
-
-    /// The hex's silver pool at one phase: [`spendable_silver_at`] summed over the sharers.
-    /// [`Sharing::pool`] answers the month's end, after maintenance and its relief; a shipment is
-    /// paid before either, so it asks this instead (`ah-7ale.4`).
-    fn silver_pool_at(&self, ledger: &Ledger<'_>, phase: StatePhase) -> i64 {
+    /// A doubted sharer is counted here: what reads this either gates on
+    /// [`Sharing::pool_trusted`] first, or is the shipping purse, which never has.
+    fn silver_held_at(&self, ledger: &Ledger<'_>, moment: LendingMoment) -> i64 {
         self.sharers
             .iter()
             .filter(|(_, o)| self.pools_silver(o))
-            .map(|(_, o)| spendable_silver_at(ledger, &o.unit.unit_id, phase))
+            .map(|(_, o)| silver_at(ledger, &o.unit.unit_id, moment))
             .sum::<i64>()
-            + self
-                .silver_from_walkers(|walking| WalkingSilver::lends(&walking.arrivals_at_transport))
+            + self.silver_from_walkers(moment)
     }
-}
 
-/// What a hex's claimants have overdrawn by `phase` beyond what its pooled sharers hold then:
-/// every undoubted unit `pools` says is in the pool counts its [`spendable_silver_at`], every other
-/// one its overdraft. Unclamped, and counting no sharer from another hex.
-fn silver_short_at(
-    hex: &Hex<'_>,
-    ledger: &Ledger<'_>,
-    phase: StatePhase,
-    pools: impl Fn(&Ordered<'_>) -> bool,
-) -> i64 {
-    hex.units
-        .iter()
-        .filter(|ordered| !ledger.doubted.contains(&ordered.unit.unit_id))
-        .map(|ordered| {
-            let held = spendable_silver_at(ledger, &ordered.unit.unit_id, phase);
-            if pools(ordered) {
-                -held
-            } else {
-                (-held).max(0)
-            }
-        })
-        .sum()
+    /// What this hex's silver pool is short at `moment`: what its claimants have overdrawn then,
+    /// less what its pooled sharers hold then and what the walkers lend it then. Every undoubted
+    /// unit in the pool counts its [`silver_at`], every other one its overdraft. Unclamped:
+    /// negative or zero when the pool covers every claim then.
+    ///
+    /// Silver a unit receives after STUDY - wages, a shipment - is not lent back to the sharer
+    /// that already paid, so the month's end alone cannot see a study the pool had already been
+    /// drained of; [`LendingMoment::Study`] can (`ah-qrk0`).
+    fn silver_short_at(&self, hex: &Hex<'_>, ledger: &Ledger<'_>, moment: LendingMoment) -> i64 {
+        hex.units
+            .iter()
+            .filter(|ordered| !ledger.doubted.contains(&ordered.unit.unit_id))
+            .map(|ordered| {
+                let held = silver_at(ledger, &ordered.unit.unit_id, moment);
+                if self.pools_silver(ordered) {
+                    -held
+                } else {
+                    (-held).max(0)
+                }
+            })
+            .sum::<i64>()
+            - self.silver_from_walkers(moment)
+    }
+
+    /// What this hex's silver pool was short as movement began **of what its claimants still owe
+    /// at the month's end** - the side of the arrival cap the month's end is set against
+    /// (`ah-wyj8`). Deliberately not [`Sharing::silver_short_at`] at
+    /// [`LendingMoment::Movement`], in two ways:
+    ///
+    /// - a claimant counts only the overdraft it still has at the month's end: silver it receives
+    ///   later - a shipment, say - pays its own debt, never another's need;
+    /// - every unit reads its raw movement balance, without the `overcharged` credit, since the
+    ///   month-end figure it is set against carries none either. Where both clamps are slack the
+    ///   difference cancels; no input is known where it changes the outcome.
+    ///
+    /// Unclamped, like [`Sharing::silver_short_at`].
+    fn silver_short_carried_from_movement(&self, hex: &Hex<'_>, ledger: &Ledger<'_>) -> i64 {
+        hex.units
+            .iter()
+            .filter(|ordered| !ledger.doubted.contains(&ordered.unit.unit_id))
+            .map(|ordered| {
+                let who = &ordered.unit.unit_id;
+                let held = ledger.state.balance_at(StatePhase::Movement, who, SILVER);
+                if self.pools_silver(ordered) {
+                    -held
+                } else {
+                    let at_month_end = silver_at(ledger, who, LendingMoment::MonthEnd);
+                    (-held).max(0).min((-at_month_end).max(0))
+                }
+            })
+            .sum::<i64>()
+            - self.silver_from_walkers(LendingMoment::Movement)
+    }
 }
 
 /// The silver `SHARE` flags lend across one hex's edge this month (`ah-wyj8`).
@@ -10409,16 +10475,18 @@ struct WalkingSilver {
     /// whatever order it iterates them - the same reason `forecast_hex` drains in hex order. The
     /// hex's total is exact either way; only which unit a shortfall is laid on can differ.
     departing: BTreeMap<String, i64>,
-    /// The sharers ending their month here from another hex, each with what it lends at the
-    /// month's end ([`relieved_balance`], less what it lent before it left), capped together at
-    /// what the hex is short at the month's end beyond what it was short as movement began - an
-    /// arrival is not there for a `BUY`.
-    arrivals: Vec<ArrivingSilver>,
-    /// The same, read as TRANSPORT settles ([`spendable_silver_at`]), for [`shipping_purse`].
-    arrivals_at_transport: Vec<ArrivingSilver>,
-    /// The same, read as STUDY settles and uncapped, for [`Sharing::silver_short_at_study`]:
-    /// silver a walker receives after STUDY pays for nothing studied (`ah-qrk0`).
-    arrivals_at_study: Vec<ArrivingSilver>,
+    /// The sharers ending their month here from another hex, each with what it lends at each
+    /// [`LendingMoment`]: its [`silver_at`] then, less what it lent before it left. Indexed by
+    /// the moment; read through [`WalkingSilver::arrivals_at`].
+    ///
+    /// - `Movement` is always empty: an arrival is not there for a `BUY`.
+    /// - `Study` is uncapped: silver a walker receives after STUDY pays for nothing studied
+    ///   (`ah-qrk0`).
+    /// - `Transport` is read before shipping settles, for [`shipping_purse`].
+    /// - `MonthEnd` is capped together at what the hex is short after movement beyond what it
+    ///   was short as movement began. Until the month has settled it holds the `Transport`
+    ///   figures: membership is the same at every moment.
+    arrivals: [Vec<ArrivingSilver>; LendingMoment::COUNT],
     /// An arriving sharer whose sums cannot be trusted - as a doubted sharer of the hex's own
     /// makes its pool untrustworthy (`Sharing::pool_trusted`).
     arrival_doubted: bool,
@@ -10433,8 +10501,16 @@ struct ArrivingSilver {
 }
 
 impl WalkingSilver {
-    fn lends(arrivals: &[ArrivingSilver]) -> i64 {
-        arrivals.iter().map(|arrival| arrival.lends).sum()
+    fn arrivals_at(&self, moment: LendingMoment) -> &[ArrivingSilver] {
+        &self.arrivals[moment as usize]
+    }
+
+    /// What the arrivals lend the hex at `moment`, together.
+    fn lends_at(&self, moment: LendingMoment) -> i64 {
+        self.arrivals_at(moment)
+            .iter()
+            .map(|arrival| arrival.lends)
+            .sum()
     }
 }
 
@@ -10475,8 +10551,8 @@ fn lend_walking_sharers_silver(
         .map(|(index, (hex, _))| (hex.region.coordinate, index))
         .collect();
     let mut departing: Vec<BTreeMap<String, i64>> = vec![BTreeMap::new(); hexes.len()];
-    let mut arrivals: Vec<Vec<ArrivingSilver>> = vec![Vec::new(); hexes.len()];
-    let mut arrivals_at_study: Vec<Vec<ArrivingSilver>> = vec![Vec::new(); hexes.len()];
+    let mut arrivals: Vec<[Vec<ArrivingSilver>; LendingMoment::COUNT]> =
+        vec![Default::default(); hexes.len()];
     let mut doubted: Vec<bool> = vec![false; hexes.len()];
 
     for (index, (hex, ledger)) in hexes.iter().enumerate() {
@@ -10504,7 +10580,7 @@ fn lend_walking_sharers_silver(
             if ledger.doubted.contains(who) || walkers.iter().any(|w| w.unit.unit_id == *who) {
                 continue;
             }
-            let held = spendable_silver_at(ledger, who, StatePhase::Movement);
+            let held = silver_at(ledger, who, LendingMoment::Movement);
             if ordered.shares() {
                 staying += held;
             } else {
@@ -10515,7 +10591,7 @@ fn lend_walking_sharers_silver(
 
         for walker in walkers {
             let who = &walker.unit.unit_id;
-            let lent = spendable_silver_at(ledger, who, StatePhase::Movement)
+            let lent = silver_at(ledger, who, LendingMoment::Movement)
                 .max(0)
                 .min(need);
             need -= lent;
@@ -10524,73 +10600,54 @@ fn lend_walking_sharers_silver(
             let Some(&arrives) = by_place.get(&ends_at(walker)) else {
                 continue;
             };
-            let held = if phase == StatePhase::Maintenance {
-                relieved_balance(ledger, who, SILVER)
-            } else {
-                spendable_silver_at(ledger, who, phase)
-            };
             doubted[arrives] |= ledger.doubted.contains(who);
-            arrivals_at_study[arrives].push(ArrivingSilver {
+            let lends_at = |moment: LendingMoment| ArrivingSilver {
                 unit: unit_key(&hex.region.region_id, who),
-                lends: (spendable_silver_at(ledger, who, StatePhase::Study) - lent).max(0),
-            });
-            arrivals[arrives].push(ArrivingSilver {
-                unit: unit_key(&hex.region.region_id, who),
-                lends: (held - lent).max(0),
-            });
+                lends: (silver_at(ledger, who, moment) - lent).max(0),
+            };
+            let slots = &mut arrivals[arrives];
+            slots[LendingMoment::Study as usize].push(lends_at(LendingMoment::Study));
+            slots[LendingMoment::Transport as usize].push(lends_at(LendingMoment::Transport));
+            // Until the report-wide steps have settled the month, the month's end reads as
+            // TRANSPORT does: membership is the same at every moment.
+            slots[LendingMoment::MonthEnd as usize].push(lends_at(
+                if phase == StatePhase::Maintenance {
+                    LendingMoment::MonthEnd
+                } else {
+                    LendingMoment::Transport
+                },
+            ));
         }
     }
 
     for (index, (hex, ledger)) in hexes.iter_mut().enumerate() {
-        let mut arrived = std::mem::take(&mut arrivals[index]);
+        let [_, at_study, at_transport, mut at_month_end] = std::mem::take(&mut arrivals[index]);
         // Not at `Transport`: a shipment's bill is not in the ledger until shipping settles, and
         // `shipping_purse` sets the pool against that bill alone.
         if phase == StatePhase::Maintenance {
             // An arrival is there after `BUY` (`rules/sequenceofevents`), so it lends only what
-            // the hex is short at the month's end beyond what it was already short as movement
-            // began - net figures, since a staying sharer that lent before movement may spend its
-            // own silver after it and never go negative. Drawn from the arrivals in report order.
-            // `departing` was measured on `spendable_silver_at`, which carries the `overcharged`
-            // credit these figures do not; both sides subtract the same sum, so the difference
-            // cancels except at the clamps. Deliberate: no
-            // input is known where it changes the outcome.
-            let lent_before = departing[index].values().sum::<i64>();
-            let short_at = |at_end: bool| {
-                let mut short = -lent_before;
-                for ordered in &hex.units {
-                    let who = &ordered.unit.unit_id;
-                    if ledger.doubted.contains(who) {
-                        continue;
-                    }
-                    // Both figures read alike: the month-end one carries no `overcharged`
-                    // credit, so neither does the one it is set against.
-                    let at_month_end = relieved_balance(ledger, who, SILVER);
-                    let held = if at_end {
-                        at_month_end
-                    } else {
-                        ledger.state.balance_at(StatePhase::Movement, who, SILVER)
-                    };
-                    if ordered.shares() && !departing[index].contains_key(who) {
-                        short -= held;
-                    } else {
-                        // Only what a claimant still owes at the month's end: silver it receives
-                        // later - a shipment, say - pays its own debt, never another's need.
-                        short += (-held).max(0).min((-at_month_end).max(0));
-                    }
-                }
-                short.max(0)
+            // the hex is short after movement beyond what it was already short as movement
+            // began, read from the pool before any arrival lends. Net figures, since a staying
+            // sharer that lent before movement may spend its own silver after it and never go
+            // negative. Drawn from the arrivals in report order.
+            //
+            // At the month's end, against what was short as movement began and is still owed
+            // then ([`Sharing::silver_short_carried_from_movement`]); and at least what the hex
+            // is short as STUDY settles beyond what it was short as movement began: a debt paid
+            // off after STUDY - a shipment, wages - leaves the month's end netted but the study
+            // still unpaid (`ah-qrk0`).
+            let before = WalkingSilver {
+                departing: departing[index].clone(),
+                ..WalkingSilver::default()
             };
-            // ... and at least what the hex is short as STUDY settles beyond what it was short
-            // as movement began: a debt paid off after STUDY - a shipment, wages - leaves the
-            // month's end netted but the study still unpaid (`ah-qrk0`).
-            let staying = |ordered: &Ordered<'_>| {
-                ordered.shares() && !departing[index].contains_key(&ordered.unit.unit_id)
-            };
-            let short_plain =
-                |phase| (silver_short_at(hex, ledger, phase, staying) - lent_before).max(0);
-            let at_study = short_plain(StatePhase::Study) - short_plain(StatePhase::Movement);
-            let mut after_movement = (short_at(true) - short_at(false)).max(at_study).max(0);
-            for arrival in &mut arrived {
+            let pool = Sharing::with_walking(hex, &before);
+            let short = |moment| pool.silver_short_at(hex, ledger, moment).max(0);
+            let at_movement = short(LendingMoment::Movement);
+            let by_month_end = short(LendingMoment::MonthEnd)
+                - pool.silver_short_carried_from_movement(hex, ledger).max(0);
+            let by_study = short(LendingMoment::Study) - at_movement;
+            let mut after_movement = by_month_end.max(by_study).max(0);
+            for arrival in &mut at_month_end {
                 arrival.lends = arrival.lends.min(after_movement);
                 after_movement -= arrival.lends;
             }
@@ -10598,14 +10655,12 @@ fn lend_walking_sharers_silver(
         let walking = &mut ledger.walking_silver;
         walking.departing = std::mem::take(&mut departing[index]);
         walking.arrival_doubted = doubted[index];
-        walking.arrivals_at_study = std::mem::take(&mut arrivals_at_study[index]);
-        if phase == StatePhase::Maintenance {
-            walking.arrivals = arrived;
-        } else {
-            walking.arrivals_at_transport = arrived.clone();
-            // Membership is the same at every phase; the month-end figure replaces it once the
-            // report-wide steps have settled.
-            walking.arrivals = arrived;
+        walking.arrivals[LendingMoment::Study as usize] = at_study;
+        walking.arrivals[LendingMoment::MonthEnd as usize] = at_month_end;
+        // The TRANSPORT figures are the ones shipping settled against; the month's settlement
+        // does not rewrite them.
+        if phase != StatePhase::Maintenance {
+            walking.arrivals[LendingMoment::Transport as usize] = at_transport;
         }
     }
 }
@@ -11040,8 +11095,8 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
 /// overdraft - a GIVE of more silver than the unit holds - stays with the month-end reading here;
 /// judging it when it happens is `ah-4k84`.
 fn silver_short_at_study(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
-    let at_study = spendable_silver_at(ledger, unit_id, StatePhase::Study);
-    let before = spendable_silver_at(ledger, unit_id, StatePhase::Movement);
+    let at_study = silver_at(ledger, unit_id, LendingMoment::Study);
+    let before = silver_at(ledger, unit_id, LendingMoment::Movement);
     if at_study < before.min(0) {
         -at_study
     } else {
@@ -11234,7 +11289,7 @@ fn pool_shortfalls(
     // (`ah-qrk0`), whether or not any unit is still overdrawn by then.
     let short_at_study =
         if sharing.walking.is_some() && sharing.reading(SILVER, None) == Reading::Pooled {
-            sharing.silver_short_at_study(hex, ledger)
+            sharing.silver_short_at(hex, ledger, LendingMoment::Study)
         } else {
             0
         };
@@ -15241,7 +15296,7 @@ fn shipping_purse(
         // A sharer is already inside the pool; a non-sharer borrows from it - the rule
         // `judge_shortfalls`' `claims_pool` states.
         Reading::Pooled => {
-            sharing.silver_pool_at(ledger, phase)
+            sharing.silver_held_at(ledger, LendingMoment::Transport)
                 + if sharing.pools_silver(sender) { 0 } else { own }
         }
     }
@@ -54396,5 +54451,67 @@ BUILD
             "{:#?}",
             review.silver
         );
+    }
+
+    // --- the pool, asked at a named moment (`ah-4oz9`) ----------------------------------------
+    //
+    // `rules/sequenceofevents` runs BUY under "Market orders", before movement, and STUDY under
+    // "Month long orders" after it; `rules/share` lends a sharer's silver "for buying or studying".
+
+    /// Unit 5 (no silver) buys one sword at $100 that sharer 8 ($100) pays for; 8 then studies
+    /// combat, which `data/COMB` prices at 10 silver a month.
+    fn with_a_pool_drained_by_a_buy<R>(
+        read: impl FnOnce(&Sharing<'_>, &Hex<'_>, &Ledger<'_>) -> R,
+    ) -> R {
+        let hex_region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            ..region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![
+                    with_silver(unit("5"), 0),
+                    sharing(with_silver(unit("8"), 100)),
+                ],
+            )
+        };
+        let ordered = OrderedUnits::read("unit 5\nBUY 1 swords\nunit 8\nSTUDY combat\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let rules = ruleset();
+        let ledger = ledger_for(&hex, Some(&rules));
+        let sharing = Sharing::for_silver(&hex, &ledger);
+        read(&sharing, &hex, &ledger)
+    }
+
+    #[test]
+    fn a_pool_is_asked_its_shortfall_at_a_named_moment() {
+        with_a_pool_drained_by_a_buy(|sharing, hex, ledger| {
+            assert_eq!(
+                sharing.silver_short_at(hex, ledger, LendingMoment::Movement),
+                0,
+                "sharer 8's $100 paid unit 5's BUY exactly"
+            );
+            assert_eq!(
+                sharing.silver_held_at(ledger, LendingMoment::Movement),
+                100,
+                "the pool holds sharer 8's own $100; unit 5's $100 BUY is the claim against it"
+            );
+        });
+    }
+
+    #[test]
+    fn a_pool_drained_by_a_buy_is_short_only_from_study_on() {
+        with_a_pool_drained_by_a_buy(|sharing, hex, ledger| {
+            assert_eq!(
+                sharing.silver_short_at(hex, ledger, LendingMoment::Study),
+                10,
+                "sharer 8's STUDY has nothing left to pay for it"
+            );
+        });
     }
 }
