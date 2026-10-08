@@ -11,6 +11,7 @@ use crate::cache::ReportCache;
 use crate::movement::fleet::OrderedUnits;
 use crate::movement::graph::Direction;
 use crate::movement::orders::MoveStep;
+use crate::orders::blocks::OrderedUnitKey;
 use crate::orders::effects::{preview_orders_for_remembered_report, UnitPreviewStatus};
 
 const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
@@ -61,8 +62,8 @@ fn a_formed_units_move_belongs_to_the_formed_unit_in_both_readers() {
     // inside a hex, so the settled row in `effects::Working` is its one owner (`ah-5nqc`). What
     // both readers still agree on is that the parent does not take the MOVE.
     let ordered = OrderedUnits::unreported(orders, None);
-    assert_eq!(ordered.steps_for("new-1"), None);
-    assert_eq!(ordered.steps_for("900"), None);
+    assert_eq!(ordered.steps_for(&OrderedUnitKey::shown("new-1")), None);
+    assert_eq!(ordered.steps_for(&OrderedUnitKey::shown("900")), None);
 }
 
 #[test]
@@ -85,9 +86,9 @@ fn an_order_after_a_form_block_belongs_to_the_block_it_is_in_again() {
     // inside a hex, so the settled row in `effects::Working` is its one owner (`ah-5nqc`). What
     // both readers still agree on is that the parent does not take the MOVE.
     let ordered = OrderedUnits::unreported(orders, None);
-    assert_eq!(ordered.steps_for("new-1"), None);
+    assert_eq!(ordered.steps_for(&OrderedUnitKey::shown("new-1")), None);
     assert_eq!(
-        ordered.steps_for("900"),
+        ordered.steps_for(&OrderedUnitKey::shown("900")),
         Some(&[MoveStep::Go(Direction::South)][..])
     );
 }
@@ -103,6 +104,6 @@ fn a_form_whose_alias_cannot_be_read_swallows_its_orders() {
     );
 
     let ordered = OrderedUnits::unreported(orders, None);
-    assert_eq!(ordered.steps_for("900"), None);
-    assert_eq!(ordered.steps_for("new-1"), None);
+    assert_eq!(ordered.steps_for(&OrderedUnitKey::shown("900")), None);
+    assert_eq!(ordered.steps_for(&OrderedUnitKey::shown("new-1")), None);
 }

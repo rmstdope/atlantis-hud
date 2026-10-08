@@ -10,6 +10,7 @@ use crate::known_map::KnownMap;
 use crate::movement::fleet::OrderedUnits;
 use crate::movement::graph::{Direction, MapKnowledge};
 use crate::movement::rules::Ruleset;
+use crate::orders::blocks::OrderedUnitKey;
 use crate::report::model::Coordinate;
 use crate::report::ParsedReport;
 
@@ -61,7 +62,7 @@ pub(crate) fn walled_moves_on(
         .flat_map(|region| region.units.iter())
         .filter(|unit| unit.own)
     {
-        let Some(route) = ordered.route_of(&unit.unit_id) else {
+        let Some(route) = ordered.route(&OrderedUnitKey::shown(&unit.unit_id)) else {
             continue;
         };
         if route.sail {

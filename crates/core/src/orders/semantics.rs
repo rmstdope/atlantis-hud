@@ -22,6 +22,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
 
+use super::blocks::OrderedUnitKey;
 use super::effects::{self, ItemChangeCause, ItemChangeParty};
 use super::forms::{Amount, Party, Selector};
 use super::intents::{
@@ -2859,6 +2860,9 @@ impl Arrivals {
 /// One of our units, and its orders.
 struct Ordered<'a> {
     unit: &'a ReportUnit,
+    /// The unit as the movement reader keys it: its number when the report shows it, the line of
+    /// its `FORM` when this month creates it (`ah-74y9`).
+    key: OrderedUnitKey,
     /// The unit's flag list with **this month's flag orders already applied**, which is the list
     /// every flag reader in this module and in [`super::silver`] must use.
     ///
@@ -2969,6 +2973,7 @@ impl<'a> Hex<'a> {
                 let orders = ordered.get(&unit.unit_id);
                 Ordered {
                     unit,
+                    key: OrderedUnitKey::shown(&unit.unit_id),
                     flags: flags_after_orders(
                         &unit.flags,
                         orders.map_or(&[][..], |orders| orders.flag_changes.as_slice()),
@@ -3003,6 +3008,7 @@ impl<'a> Hex<'a> {
                 .filter(|formed| formed.unit.region_id == region.region_id)
                 .map(|formed| Ordered {
                     unit: &formed.unit,
+                    key: formed.block.key(),
                     flags: flags_after_orders(&formed.unit.flags, &formed.block.flag_changes),
                     destroys_structure: formed.block.destroys_structure,
                     promotes_units: formed.block.promotes_units.clone(),
@@ -5840,22 +5846,12 @@ fn discard_unfinished_ships_after_movement(
     }
 }
 
-/// The units whose settled month is a TEACH, in the two identities the movement readers key
-/// routes by: [`month_long_teachers`] says why.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub(crate) struct MonthLongTeachers {
-    /// Units the report shows, by unit number.
-    pub(crate) units: BTreeSet<String>,
-    /// Units this month's `FORM` orders create, by the 1-based line of their `FORM` - the key
-    /// `movement::fleet::OrderedUnits` holds a formed route under, since `new-<alias>` is unique
-    /// only inside a hex (`rules/form`; `ah-r3rv`).
-    pub(crate) form_lines: BTreeSet<usize>,
-}
-
 /// Every own unit whose settled month is a TEACH: one that can teach once this month's GIVE, TAKE
 /// and BUY have run (`rules/skills_teaching`: "Only leaders may use the TEACH order.";
 /// `rules/sequenceofevents`), and whose TEACH is therefore the month-long order that runs. A unit
-/// this month's FORM creates is judged the same way, on the men its block is given (`ah-r3rv`).
+/// this month's FORM creates is judged the same way, on the men its block is given (`ah-r3rv`),
+/// and named by the same kind of key, so the movement reader settles both with one rule
+/// (`ah-74y9`).
 ///
 /// Read through the same settlement `review_turn` and [`item_effects`] open with - the transfers,
 /// then the recruits - so the movement readers that drop a route for these units
@@ -5866,7 +5862,7 @@ pub(crate) fn month_long_teachers(
     report: &ParsedReport,
     orders_document: &str,
     ruleset: Option<&Ruleset>,
-) -> MonthLongTeachers {
+) -> BTreeSet<OrderedUnitKey> {
     let report_skills = study::ReportSkills::of(report);
     let ordered = OrderedUnits::read_with_ruleset(orders_document, ruleset, &report_skills);
     let foreign_unit_ids = foreign_unit_ids(report);
@@ -5901,23 +5897,16 @@ pub(crate) fn month_long_teachers(
             .as_ref()
             .map(|plan| &plan.withdrawal_allowances),
     );
-    let mut teachers = MonthLongTeachers::default();
-    for ordered in hexes.iter().flat_map(|hex| &hex.units).filter(|ordered| {
-        ordered.intents().any(|intent| {
-            matches!(intent, Intent::Teach { .. }) && ordered.intent_spends_the_month(intent)
+    hexes
+        .iter()
+        .flat_map(|hex| &hex.units)
+        .filter(|ordered| {
+            ordered.intents().any(|intent| {
+                matches!(intent, Intent::Teach { .. }) && ordered.intent_spends_the_month(intent)
+            })
         })
-    }) {
-        match (&ordered.formed, ordered.block_line) {
-            (None, _) => {
-                teachers.units.insert(ordered.unit.unit_id.clone());
-            }
-            (Some(_), Some(form_line)) => {
-                teachers.form_lines.insert(form_line);
-            }
-            (Some(_), None) => {}
-        }
-    }
-    teachers
+        .map(|ordered| ordered.key.clone())
+        .collect()
 }
 
 /// What this month's `BUY`, `SELL` and `WITHDRAW` do to each unit's item list. `GIVE` and `TAKE`
@@ -17925,6 +17914,34 @@ mod tests {
         assert!(
             unit_key("1:7,53", "new-1") < unit_key("1:8,54", "new-1"),
             "ordering is by hex and then by number, as the tuple's was"
+        );
+    }
+
+    /// `ah-74y9`: the teachers whose month is a TEACH come back as one set of [`OrderedUnitKey`],
+    /// a shown unit by its number and a formed one by its `FORM` line, so the movement reader
+    /// settles both with one rule. A leader can teach (`rules/skills_teaching`: "Only leaders may
+    /// use the TEACH order."); a human cannot.
+    #[test]
+    fn month_long_teachers_names_shown_and_formed_teachers_in_one_set() {
+        use crate::orders::blocks::OrderedUnitKey;
+
+        let text = "Foo (1) Report\n\
+                    \n\
+                    plain (0,0) in Nowhere, 10 peasants (orcs), $5.\n\
+                    \n\
+                    * Source (900), Foo (1), 2 leaders [LEAD]. Weight: 20. Capacity: 0/0/30/0.\n\
+                    * Other (901), Foo (1), 2 humans [HUMN]. Weight: 20. Capacity: 0/0/30/0.\n";
+        let mut cache = crate::cache::ReportCache::new();
+        let report = cache.classified(text, RULESET);
+        let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
+        // Line 2 is the leader's `FORM 1`, line 7 the human's `FORM 2`.
+        let orders = "unit 900\nFORM 1\nTEACH 901\nEND\nGIVE NEW 1 1 LEAD\n\
+                      unit 901\nFORM 2\nTEACH 900\nEND\nGIVE NEW 2 1 HUMN\nTEACH 900\n\
+                      unit 900\nTEACH 901\n";
+
+        assert_eq!(
+            month_long_teachers(&report, orders, Some(&ruleset)),
+            BTreeSet::from([OrderedUnitKey::shown("900"), OrderedUnitKey::Formed(2)])
         );
     }
 

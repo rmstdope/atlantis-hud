@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::movement::chain::{ChainedRoute, RouteChain};
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::Ruleset;
+use crate::orders::blocks::OrderedUnitKey;
 use crate::orders::intents::Intent;
 use crate::orders::standing::{self, standing_after, Boarding, BoardingOrder};
 use crate::report::model::{ReportRegion, ReportUnit, Structure};
@@ -19,10 +20,9 @@ use crate::report::ParsedReport;
 /// Each unit's movement lines, chained into one route and read once from the whole orders document.
 ///
 /// This is the only walk of the orders document that chains a route: `effects::Working` reads each
-/// row's route from here rather than chaining one of its own (`ah-xmqo`). A block's route is keyed
-/// by its unit number; a `FORM` block's route by the 1-based line of the `FORM` that opened it,
-/// because a formed unit's `new-<alias>` is unique only inside its hex (`rules/form`) and this
-/// reader sees no regions. A `TURN` block holds orders for the turn after this one and is skipped,
+/// row's route from here rather than chaining one of its own (`ah-xmqo`). Every route is keyed by
+/// an [`OrderedUnitKey`]: a block's by its unit number, a `FORM` block's by the 1-based line of the
+/// `FORM` that opened it, in one map, so a rule over the map reaches both (`ah-74y9`). A `TURN` block holds orders for the turn after this one and is skipped,
 /// and movement inside a `FORM` block says nothing about where the unit whose block it is goes
 /// next. A unit's movement lines
 /// are chained by `movement::chain::RouteChain` (`rules/move`: "Multiple MOVE orders given by one
@@ -35,10 +35,12 @@ use crate::report::ParsedReport;
 /// month has not settled (`ah-y1yr`).
 #[derive(Debug, Default, Clone)]
 pub struct WrittenMovement {
-    by_unit: BTreeMap<String, ChainedRoute>,
-    /// Each readable `FORM` block's route, keyed by the 1-based line of its `FORM`.
-    formed_routes: BTreeMap<usize, ChainedRoute>,
-    sailers: BTreeSet<String>,
+    /// Each unit's route, shown and formed alike.
+    routes: BTreeMap<OrderedUnitKey, ChainedRoute>,
+    /// The units whose `SAIL` lends hands to their hull. Only ever a shown unit: a formed unit's
+    /// `SAIL` is not recorded (see the walk in [`Self::from_document`]), but the set is keyed like
+    /// `routes` so [`Self::settle`] drops a teacher from both with one key.
+    sailers: BTreeSet<OrderedUnitKey>,
     /// Each unit's ENTER and LEAVE orders, in the order they were written. A unit that wrote
     /// neither is absent, and the report's own answer stands for it.
     ///
@@ -47,13 +49,10 @@ pub struct WrittenMovement {
     boardings_by_unit: BTreeMap<String, Vec<BoardingOrder>>,
     /// Each unit's syntactically valid `PROMOTE` targets this month, in the order written.
     promotes_by_unit: BTreeMap<String, Vec<String>>,
-    /// The units whose block ends its movement with a TEACH ([`RouteChain::closed_by_teach`]):
-    /// whether their route runs turns on the settled month, which this reader cannot see, so
-    /// [`Self::settle`] decides it (`ah-0x6x`).
-    closed_by_teach: BTreeSet<String>,
-    /// The `FORM` blocks, by the line of their `FORM`, whose movement a TEACH closed: the same
-    /// question for a unit this month creates (`ah-r3rv`).
-    formed_closed_by_teach: BTreeSet<usize>,
+    /// The units, shown or formed, whose block ends its movement with a TEACH
+    /// ([`RouteChain::closed_by_teach`]): whether their route runs turns on the settled month,
+    /// which this reader cannot see, so [`Self::settle`] decides it (`ah-0x6x`, `ah-r3rv`).
+    closed_by_teach: BTreeSet<OrderedUnitKey>,
 }
 
 /// This month's movement once it is settled: which route each unit walks or sails, whose `SAIL`
@@ -75,8 +74,7 @@ impl WrittenMovement {
     pub fn from_document(orders_document: &str, ruleset: Option<&Ruleset>) -> Self {
         use crate::orders::walk::{walk, BlockKind, Event};
 
-        let mut chains: BTreeMap<String, RouteChain> = BTreeMap::new();
-        let mut formed: BTreeMap<usize, RouteChain> = BTreeMap::new();
+        let mut chains: BTreeMap<OrderedUnitKey, RouteChain> = BTreeMap::new();
         let mut promotes_by_unit: BTreeMap<String, Vec<String>> = BTreeMap::new();
         let mut boardings_by_unit: BTreeMap<String, Vec<BoardingOrder>> = BTreeMap::new();
         let mut sailers = BTreeSet::new();
@@ -169,13 +167,13 @@ impl WrittenMovement {
                     crate::orders::blocks::Owner::Block => {
                         if let Some(unit_id) = current.clone() {
                             chains
-                                .entry(unit_id)
+                                .entry(OrderedUnitKey::Shown(unit_id))
                                 .or_default()
                                 .push(&line.command.text, &intent);
                         }
                     }
-                    crate::orders::blocks::Owner::Formed(form_line) => formed
-                        .entry(**form_line)
+                    crate::orders::blocks::Owner::Formed(form_line) => chains
+                        .entry(OrderedUnitKey::Formed(**form_line))
                         .or_default()
                         .push(&line.command.text, &intent),
                     crate::orders::blocks::Owner::Nobody => {}
@@ -195,7 +193,7 @@ impl WrittenMovement {
                         if steps.is_empty()
                             || steps.iter().any(|step| matches!(step, MoveStep::Go(_))) =>
                     {
-                        sailers.insert(unit_id.clone());
+                        sailers.insert(OrderedUnitKey::shown(unit_id));
                     }
                     Intent::Enter { structure } => boardings_by_unit
                         .entry(unit_id.clone())
@@ -213,45 +211,29 @@ impl WrittenMovement {
 
         // A SAIL a later month-long order replaced will not run, so it lends no hands to the
         // hull's course either (`ah-osny`).
-        sailers.retain(|unit_id: &String| !chains.get(unit_id).is_some_and(RouteChain::replaced));
-        let closed_by_teach: BTreeSet<String> = chains
+        sailers.retain(|key| !chains.get(key).is_some_and(RouteChain::replaced));
+        let closed_by_teach: BTreeSet<OrderedUnitKey> = chains
             .iter()
             .filter(|(_, chain)| chain.closed_by_teach())
-            .map(|(unit_id, _)| unit_id.clone())
+            .map(|(key, _)| key.clone())
             .collect();
-        let by_unit: BTreeMap<String, ChainedRoute> = chains
+        let routes: BTreeMap<OrderedUnitKey, ChainedRoute> = chains
             .into_iter()
-            .filter_map(|(unit_id, chain)| chain.into_route().map(|route| (unit_id, route)))
+            .filter_map(|(key, chain)| chain.into_route().map(|route| (key, route)))
             .collect();
         // Only a TEACH that leaves something to replace: most teachers wrote no movement at all,
         // and those must not cost `settle` a settlement.
         let closed_by_teach = closed_by_teach
             .into_iter()
-            .filter(|unit_id| by_unit.contains_key(unit_id) || sailers.contains(unit_id))
-            .collect();
-        let formed_closed_by_teach: BTreeSet<usize> = formed
-            .iter()
-            .filter(|(_, chain)| chain.closed_by_teach())
-            .map(|(form_line, _)| *form_line)
-            .collect();
-        let formed_routes: BTreeMap<usize, ChainedRoute> = formed
-            .into_iter()
-            .filter_map(|(form_line, chain)| chain.into_route().map(|route| (form_line, route)))
-            .collect();
-        // A formed unit's SAIL lends no hands here (see the walk above), so only a route counts.
-        let formed_closed_by_teach = formed_closed_by_teach
-            .into_iter()
-            .filter(|form_line| formed_routes.contains_key(form_line))
+            .filter(|key| routes.contains_key(key) || sailers.contains(key))
             .collect();
 
         Self {
-            by_unit,
-            formed_routes,
+            routes,
             sailers,
             boardings_by_unit,
             promotes_by_unit,
             closed_by_teach,
-            formed_closed_by_teach,
         }
     }
 
@@ -259,7 +241,7 @@ impl WrittenMovement {
     /// report it settles against, and would rather not when nothing waits.
     #[must_use]
     pub fn waits_on_teachers(&self) -> bool {
-        !self.closed_by_teach.is_empty() || !self.formed_closed_by_teach.is_empty()
+        !self.closed_by_teach.is_empty()
     }
 
     /// This reading as the month settles it, for a caller holding the report.
@@ -270,9 +252,9 @@ impl WrittenMovement {
     /// a MOVE or SAIL before it does not: the unit walks nowhere and lends no hands to a hull's
     /// course. Which units that is comes from [`crate::orders::semantics::month_long_teachers`],
     /// the same settlement the checker's "will not run" reads, so the map, the preview and the
-    /// shipment measure agree with it (`ah-0x6x`). A `FORM` block's route is dropped the same way
-    /// when the unit it creates teaches (`ah-r3rv`), so formed and reported units are settled here
-    /// alike. Costs nothing when no block ends its movement on a TEACH.
+    /// shipment measure agree with it (`ah-0x6x`). Shown and formed units share one key
+    /// ([`OrderedUnitKey`]), so one loop settles both (`ah-r3rv`, `ah-74y9`). Costs nothing when no
+    /// block ends its movement on a TEACH.
     #[must_use]
     pub fn settle(
         mut self,
@@ -283,17 +265,10 @@ impl WrittenMovement {
         if self.waits_on_teachers() {
             let teachers =
                 crate::orders::semantics::month_long_teachers(report, orders_document, ruleset);
-            for unit_id in std::mem::take(&mut self.closed_by_teach) {
-                if teachers.units.contains(&unit_id) {
-                    self.by_unit.remove(&unit_id);
-                    self.sailers.remove(&unit_id);
-                }
-            }
-            // A unit this month's FORM creates walks under its `FORM` line, so it is matched there
-            // (`ah-r3rv`).
-            for form_line in std::mem::take(&mut self.formed_closed_by_teach) {
-                if teachers.form_lines.contains(&form_line) {
-                    self.formed_routes.remove(&form_line);
+            for key in std::mem::take(&mut self.closed_by_teach) {
+                if teachers.contains(&key) {
+                    self.routes.remove(&key);
+                    self.sailers.remove(&key);
                 }
             }
         }
@@ -327,21 +302,16 @@ impl OrderedUnits {
         )
     }
 
-    /// The route a unit's own block chains to, if it wrote one.
-    pub(crate) fn route_of(&self, unit_id: &str) -> Option<&ChainedRoute> {
-        self.0.by_unit.get(unit_id)
-    }
-
-    /// The route chained inside the `FORM` block opened on this 1-based document line, when that
-    /// line's alias could be read. The formed unit's identity is the caller's business.
-    pub(crate) fn formed_route(&self, form_line: usize) -> Option<&ChainedRoute> {
-        self.0.formed_routes.get(&form_line)
+    /// The route a unit's own block chains to, if it wrote one. A formed unit's is the one chained
+    /// inside its `FORM` block, when that block's alias could be read.
+    pub(crate) fn route(&self, key: &OrderedUnitKey) -> Option<&ChainedRoute> {
+        self.0.routes.get(key)
     }
 
     /// The unit's own movement steps, if it wrote any.
     #[must_use]
-    pub fn steps_for(&self, unit_id: &str) -> Option<&[MoveStep]> {
-        self.route_of(unit_id).map(|route| route.steps.as_slice())
+    pub fn steps_for(&self, key: &OrderedUnitKey) -> Option<&[MoveStep]> {
+        self.route(key).map(|route| route.steps.as_slice())
     }
 
     /// Whether this unit's own movement order was a `SAIL` naming a course.
@@ -349,8 +319,8 @@ impl OrderedUnits {
     /// Distinct from [`Self::issues_sail`], which answers participation - a bare `SAIL` lends a
     /// pair of hands and sets no course.
     #[must_use]
-    pub fn sails_a_course(&self, unit_id: &str) -> bool {
-        self.route_of(unit_id).is_some_and(|route| route.sail)
+    pub fn sails_a_course(&self, key: &OrderedUnitKey) -> bool {
+        self.route(key).is_some_and(|route| route.sail)
     }
 
     /// The units this unit named in a syntactically valid `PROMOTE` this month, in the order they
@@ -364,8 +334,8 @@ impl OrderedUnits {
     }
 
     #[must_use]
-    pub(crate) fn issues_sail(&self, unit_id: &str) -> bool {
-        self.0.sailers.contains(unit_id)
+    pub(crate) fn issues_sail(&self, key: &OrderedUnitKey) -> bool {
+        self.0.sailers.contains(key)
     }
 
     /// The structure this unit is in once this month's ENTER/LEAVE orders have run.
@@ -511,8 +481,8 @@ pub fn fleet_course<'o>(
             steps: None,
         };
     };
-    let steps = if ordered.sails_a_course(&owner_id) {
-        ordered.steps_for(&owner_id)
+    let steps = if ordered.sails_a_course(&OrderedUnitKey::shown(&owner_id)) {
+        ordered.steps_for(&OrderedUnitKey::shown(&owner_id))
     } else {
         None
     };
@@ -574,8 +544,8 @@ pub fn steps_followed_by<'a>(
         ruleset,
         ordered,
         unit,
-        ordered.steps_for(&unit.unit_id),
-        ordered.sails_a_course(&unit.unit_id),
+        ordered.steps_for(&OrderedUnitKey::shown(&unit.unit_id)),
+        ordered.sails_a_course(&OrderedUnitKey::shown(&unit.unit_id)),
     )
 }
 
@@ -692,8 +662,8 @@ mod tests {
             .intents
             .is_empty());
         let ordered = OrderedUnits::unreported(unreadable, None);
-        assert_eq!(ordered.steps_for("1471"), None);
-        assert!(!ordered.issues_sail("1471"));
+        assert_eq!(ordered.steps_for(&OrderedUnitKey::shown("1471")), None);
+        assert!(!ordered.issues_sail(&OrderedUnitKey::shown("1471")));
 
         let bare = "#atlantis 95 pw\nunit 1471\n  SAIL\n#end\n";
         assert_eq!(
@@ -707,8 +677,8 @@ mod tests {
             "{intents:?}"
         );
         let ordered = OrderedUnits::unreported(bare, None);
-        assert_eq!(ordered.steps_for("1471"), None);
-        assert!(ordered.issues_sail("1471"));
+        assert_eq!(ordered.steps_for(&OrderedUnitKey::shown("1471")), None);
+        assert!(ordered.issues_sail(&OrderedUnitKey::shown("1471")));
     }
 
     /// The scene the ah-ofra design was agreed against, which no committed report carries: one
@@ -963,10 +933,13 @@ mod tests {
 
     #[test]
     fn a_sail_is_told_from_a_move_and_a_promote_is_read() {
-        assert!(OrderedUnits::unreported("unit 10575\nSAIL SE\n", None).sails_a_course("10575"));
-        assert!(!OrderedUnits::unreported("unit 10575\nMOVE N\n", None).sails_a_course("10575"));
+        assert!(OrderedUnits::unreported("unit 10575\nSAIL SE\n", None)
+            .sails_a_course(&OrderedUnitKey::shown("10575")));
+        assert!(!OrderedUnits::unreported("unit 10575\nMOVE N\n", None)
+            .sails_a_course(&OrderedUnitKey::shown("10575")));
         assert!(
-            !OrderedUnits::unreported("unit 10575\nSAIL\n", None).sails_a_course("10575"),
+            !OrderedUnits::unreported("unit 10575\nSAIL\n", None)
+                .sails_a_course(&OrderedUnitKey::shown("10575")),
             "a bare SAIL stores no steps, so it names no course"
         );
         assert_eq!(
@@ -982,10 +955,10 @@ mod tests {
         let out_only = OrderedUnits::unreported("unit 10575\nSAIL OUT\n", None);
         let directional = OrderedUnits::unreported("unit 10575\nSAIL SE\n", None);
 
-        assert!(bare.issues_sail("10575"));
-        assert!(!in_only.issues_sail("10575"));
-        assert!(!out_only.issues_sail("10575"));
-        assert!(directional.issues_sail("10575"));
+        assert!(bare.issues_sail(&OrderedUnitKey::shown("10575")));
+        assert!(!in_only.issues_sail(&OrderedUnitKey::shown("10575")));
+        assert!(!out_only.issues_sail(&OrderedUnitKey::shown("10575")));
+        assert!(directional.issues_sail(&OrderedUnitKey::shown("10575")));
     }
 
     /// A STUDY after a SAIL replaces it ("STUDY replaces this SAIL as the unit's month-long order,
@@ -997,12 +970,18 @@ mod tests {
             "unit 10575\nSAIL\nSTUDY COMB\n",
         ] {
             let ordered = OrderedUnits::unreported(orders, None);
-            assert!(!ordered.issues_sail("10575"), "{orders:?}");
-            assert!(!ordered.sails_a_course("10575"), "{orders:?}");
+            assert!(
+                !ordered.issues_sail(&OrderedUnitKey::shown("10575")),
+                "{orders:?}"
+            );
+            assert!(
+                !ordered.sails_a_course(&OrderedUnitKey::shown("10575")),
+                "{orders:?}"
+            );
         }
         assert!(
             OrderedUnits::unreported("unit 10575\nSTUDY COMB\nSAIL SE\n", None)
-                .issues_sail("10575"),
+                .issues_sail(&OrderedUnitKey::shown("10575")),
             "the SAIL written last is the one that runs"
         );
     }
@@ -1029,14 +1008,17 @@ mod tests {
         assert!(WrittenMovement::from_document(orders, Some(&ruleset)).waits_on_teachers());
         let month = OrderedUnits::of_month(&report, orders, Some(&ruleset));
         assert_eq!(
-            month.route_of("900"),
+            month.route(&OrderedUnitKey::shown("900")),
             None,
             "the leader teaches instead of walking"
         );
-        assert_eq!(month.steps_for("900"), None);
-        assert!(!month.issues_sail("902") && !month.sails_a_course("902"));
+        assert_eq!(month.steps_for(&OrderedUnitKey::shown("900")), None);
         assert!(
-            month.steps_for("901").is_some(),
+            !month.issues_sail(&OrderedUnitKey::shown("902"))
+                && !month.sails_a_course(&OrderedUnitKey::shown("902"))
+        );
+        assert!(
+            month.steps_for(&OrderedUnitKey::shown("901")).is_some(),
             "the human's TEACH replaces nothing"
         );
     }
@@ -1060,7 +1042,7 @@ mod tests {
             let orders =
                 format!("unit {giver}\nFORM 1\nMOVE N\nTEACH {giver}\nEND\nGIVE NEW 1 1 {tag}\n");
             OrderedUnits::of_month(&report, &orders, Some(&ruleset))
-                .formed_route(2)
+                .route(&OrderedUnitKey::Formed(2))
                 .is_some()
         };
 
@@ -1071,6 +1053,35 @@ mod tests {
         assert!(
             route_under_form("901", "HUMN"),
             "a formed human still walks"
+        );
+    }
+
+    /// `ah-74y9`: a unit the report shows and a unit this month's FORM creates are keyed alike, so
+    /// the one settlement rule reaches both without a second change. A leader can teach
+    /// (`rules/skills_teaching`: "Only leaders may use the TEACH order."), so the shown leader's
+    /// and the formed leader's MOVE are both replaced, while a formed human's still runs.
+    #[test]
+    fn one_settlement_drops_a_shown_and_a_formed_teachers_route_alike() {
+        let text = "Foo (1) Report\n\
+                    \n\
+                    plain (0,0) in Nowhere, 10 peasants (orcs), $5.\n\
+                    \n\
+                    * Source (900), Foo (1), 2 leaders [LEAD]. Weight: 20. Capacity: 0/0/30/0.\n\
+                    * Other (901), Foo (1), 2 humans [HUMN]. Weight: 20. Capacity: 0/0/30/0.\n";
+        let mut cache = ReportCache::new();
+        let report = cache.classified(text, RULESET);
+        let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
+        // Lines: 1 `unit 900`, 2 `FORM 1`, ... 7 `unit 901`, 8 `FORM 2`.
+        let orders = "unit 900\nFORM 1\nMOVE N\nTEACH 900\nEND\nGIVE NEW 1 1 LEAD\n\
+                      unit 901\nFORM 2\nMOVE N\nTEACH 901\nEND\nGIVE NEW 2 1 HUMN\n\
+                      unit 900\nMOVE N\nTEACH 901\n";
+        let month = OrderedUnits::of_month(&report, orders, Some(&ruleset));
+
+        assert_eq!(month.route(&OrderedUnitKey::shown("900")), None);
+        assert_eq!(month.route(&OrderedUnitKey::Formed(2)), None);
+        assert!(
+            month.route(&OrderedUnitKey::Formed(8)).is_some(),
+            "a formed human's TEACH replaces nothing"
         );
     }
 
@@ -1096,10 +1107,10 @@ mod tests {
             "the document alone cannot judge a TEACH"
         );
         let settled = written.settle(&report, orders, Some(&ruleset));
-        assert!(!settled.issues_sail("900"));
-        assert!(!settled.sails_a_course("900"));
-        assert!(settled.issues_sail("901"));
-        assert!(settled.sails_a_course("901"));
+        assert!(!settled.issues_sail(&OrderedUnitKey::shown("900")));
+        assert!(!settled.sails_a_course(&OrderedUnitKey::shown("900")));
+        assert!(settled.issues_sail(&OrderedUnitKey::shown("901")));
+        assert!(settled.sails_a_course(&OrderedUnitKey::shown("901")));
     }
 
     /// Two units aboard Raft [235] both write a `SAIL`, and the **owner's** wins - the first unit
@@ -1305,7 +1316,7 @@ mod tests {
         use crate::movement::graph::Direction::{North, Northeast};
         let ordered = OrderedUnits::unreported("unit 900\nMOVE N\nMOVE NE\n", None);
         assert_eq!(
-            ordered.steps_for("900"),
+            ordered.steps_for(&OrderedUnitKey::shown("900")),
             Some(&[MoveStep::Go(North), MoveStep::Go(Northeast)][..])
         );
     }
@@ -1316,17 +1327,20 @@ mod tests {
         use crate::movement::graph::Direction::{North, Northwest};
         let ordered = OrderedUnits::unreported("unit 10575\nSAIL N\nSAIL NW\n", None);
         assert_eq!(
-            ordered.steps_for("10575"),
+            ordered.steps_for(&OrderedUnitKey::shown("10575")),
             Some(&[MoveStep::Go(North), MoveStep::Go(Northwest)][..])
         );
-        assert!(ordered.sails_a_course("10575"));
+        assert!(ordered.sails_a_course(&OrderedUnitKey::shown("10575")));
     }
 
     #[test]
     fn a_work_between_two_moves_leaves_only_the_second() {
         use crate::movement::graph::Direction::South;
         let ordered = OrderedUnits::unreported("unit 900\nMOVE N\nWORK\nMOVE S\n", None);
-        assert_eq!(ordered.steps_for("900"), Some(&[MoveStep::Go(South)][..]));
+        assert_eq!(
+            ordered.steps_for(&OrderedUnitKey::shown("900")),
+            Some(&[MoveStep::Go(South)][..])
+        );
     }
 
     #[test]
@@ -1336,9 +1350,9 @@ mod tests {
             "unit 900\nMOVE N\nFORM 1\nMOVE S\nMOVE SE\nEND\nMOVE NE\n",
             None,
         );
-        assert_eq!(ordered.steps_for("new-1"), None);
+        assert_eq!(ordered.steps_for(&OrderedUnitKey::shown("new-1")), None);
         assert_eq!(
-            ordered.steps_for("900"),
+            ordered.steps_for(&OrderedUnitKey::shown("900")),
             Some(&[MoveStep::Go(North), MoveStep::Go(Northeast)][..])
         );
     }
@@ -1352,7 +1366,7 @@ mod tests {
             .expect("the Trident ruleset loads");
         let ordered = OrderedUnits::unreported("unit 900\nMOVE SE;scouting\n", Some(&trident));
         assert_eq!(
-            ordered.steps_for("900"),
+            ordered.steps_for(&OrderedUnitKey::shown("900")),
             Some(&[MoveStep::Go(Southeast)][..])
         );
     }
@@ -1363,7 +1377,10 @@ mod tests {
     fn an_order_after_a_directive_belongs_to_no_unit() {
         use crate::movement::graph::Direction::North;
         let ordered = OrderedUnits::unreported("unit 900\nMOVE N\n#end\nMOVE S\n", None);
-        assert_eq!(ordered.steps_for("900"), Some(&[MoveStep::Go(North)][..]));
+        assert_eq!(
+            ordered.steps_for(&OrderedUnitKey::shown("900")),
+            Some(&[MoveStep::Go(North)][..])
+        );
     }
 
     #[test]
@@ -1374,7 +1391,7 @@ mod tests {
             None,
         );
         let formed = ordered
-            .formed_route(3)
+            .route(&OrderedUnitKey::Formed(3))
             .expect("the FORM on line 3 chains a route");
         assert_eq!(
             formed.steps,
@@ -1382,14 +1399,14 @@ mod tests {
         );
         assert_eq!(formed.command, "MOVE");
         assert!(!formed.sail);
-        assert_eq!(ordered.formed_route(1), None);
+        assert_eq!(ordered.route(&OrderedUnitKey::Formed(1)), None);
         assert_eq!(
-            ordered.steps_for("900"),
+            ordered.steps_for(&OrderedUnitKey::shown("900")),
             Some(&[MoveStep::Go(North), MoveStep::Go(Northeast)][..])
         );
 
         let unreadable = OrderedUnits::unreported("unit 900\nFORM 0\nMOVE S\nEND\n", None);
-        assert_eq!(unreadable.formed_route(2), None);
+        assert_eq!(unreadable.route(&OrderedUnitKey::Formed(2)), None);
     }
 
     /// `ah-r3rv`: a FORM block whose movement a TEACH closed waits on the settlement; one whose

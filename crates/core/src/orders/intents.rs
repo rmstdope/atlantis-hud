@@ -384,9 +384,8 @@ pub struct FormedBlock {
     /// that wrote `FORM 1`. Anything resolving a nested block's `formed_by` needs this as well as
     /// the id.
     pub region_id: String,
-    /// The 1-based line of this block's `FORM` order, for a finding that must sit on a line. Also
-    /// the key `movement::fleet::OrderedUnits` holds the formed unit's route under, which
-    /// `semantics::month_long_teachers` joins on (`ah-r3rv`), so it must stay the `FORM` line.
+    /// The 1-based line of this block's `FORM` order, for a finding that must sit on a line.
+    /// [`Self::key`] names the formed unit by it.
     pub block_line: usize,
     /// This month's orders written inside its own block. An inner `FORM`'s orders belong to the
     /// inner unit and are not here.
@@ -401,6 +400,16 @@ pub struct FormedBlock {
     pub destroys_structure: bool,
     /// The units named by syntactically valid `PROMOTE` orders in this formed unit's block.
     pub promotes_units: Vec<String>,
+}
+
+impl FormedBlock {
+    /// The formed unit as the movement reader keys it: by the line of its `FORM`, since its
+    /// `new-<alias>` is unique only inside its hex (`rules/form`). The one place that join is made,
+    /// so a reader of formed units cannot key them any other way (`ah-74y9`).
+    #[must_use]
+    pub fn key(&self) -> crate::orders::blocks::OrderedUnitKey {
+        crate::orders::blocks::OrderedUnitKey::Formed(self.block_line)
+    }
 }
 
 /// Every unit this document's `FORM` blocks create this month, in document order.

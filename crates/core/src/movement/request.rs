@@ -270,6 +270,7 @@ fn trace_orders(
     use crate::movement::fleet::{course_followed, OrderedUnits};
     use crate::movement::graph::MapKnowledge;
     use crate::movement::trace::trace_move;
+    use crate::orders::blocks::OrderedUnitKey;
 
     let ruleset = cache
         .ruleset(ruleset_json)
@@ -289,8 +290,8 @@ fn trace_orders(
         match report.units().find(|unit| unit.unit_id == unit_id).cloned() {
             Some(unit) => (
                 unit,
-                ordered.steps_for(unit_id),
-                ordered.sails_a_course(unit_id),
+                ordered.steps_for(&OrderedUnitKey::shown(unit_id)),
+                ordered.sails_a_course(&OrderedUnitKey::shown(unit_id)),
             ),
             // A unit the report does not carry is either a `FORM`ed unit's synthetic id or a
             // number that names nothing. The first can still be traced, from the row this month's
