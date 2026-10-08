@@ -583,3 +583,115 @@ fn a_cut_give_does_not_fund_the_recipients_buy() {
         review.findings
     );
 }
+
+// --- a discard and a TAKE cut down to what the source holds move only that (`ah-759k`) --------
+//
+// `rules/take`: "The TAKE order works just like the GIVE order, except that the direction of
+// transfer is reversed". The engine's `Game::DoGiveOrder` (Atlantis-PBEM/Atlantis,
+// `runorders.cpp`) cuts both the same way as a GIVE: `GIVE 0` takes `amt = u->GetSharedNum(item)`
+// after "Not enough.", and a TAKE swaps source and target and takes `amt = s->GetSharedNum(item)`.
+
+/// Unit 900 ($0, listed first) discards $50 and buys $80 of grain; 901 ($100) gives 900 $100.
+/// The discard runs on an empty purse and drops nothing, so 900 reaches the market with $100,
+/// buys all its grain and ends at $20. The ledger used to charge the whole $50 and cut the BUY.
+#[test]
+fn a_cut_discard_leaves_the_unit_its_purse_for_the_market() {
+    let text = report(
+        QUIET,
+        &["For Sale: 20 grain [GRAI] at $10."],
+        &[&giver(0), &holder("901", 100)],
+    );
+    let script = "unit 900\nGIVE 0 50 SILV\nBUY 8 grain\nunit 901\nGIVE 900 100 SILV\n";
+    let review = review_of(&text, script);
+
+    assert_eq!(row_of(&review, "900").at_month_end, Some(20));
+    assert!(
+        !review.findings.iter().any(|finding| {
+            finding.code.as_str() == "not-enough-silver"
+                && finding.unit_id.as_deref() == Some("900")
+                && finding.message.contains("BUY")
+        }),
+        "900's BUY is not cut by a discard that dropped nothing: {:?}",
+        review.findings
+    );
+}
+
+/// Unit 900 holds nothing and discards $50: the engine drops what it has, so its row is not
+/// overdrawn, and the "Not enough." it raises still reaches the player as a warning on the line.
+#[test]
+fn a_cut_discard_drops_only_what_the_unit_holds_and_is_still_warned() {
+    let text = report(QUIET, &[], &[&giver(0), &holder("901", 100)]);
+    let script = "unit 900\nGIVE 0 50 SILV\n";
+    let review = review_of(&text, script);
+
+    assert_eq!(row_of(&review, "900").at_month_end, Some(0));
+    let shortfall = review
+        .findings
+        .iter()
+        .find(|finding| {
+            finding.code.as_str() == "not-enough-silver"
+                && finding.unit_id.as_deref() == Some("900")
+        })
+        .unwrap_or_else(|| panic!("the discarder is still warned: {:?}", review.findings));
+    assert_eq!(
+        shortfall.message,
+        "short $50: this unit can have $0 and its orders spend $50, \
+         so it discards none of the 50 silver ordered"
+    );
+}
+
+/// 901 ($100) takes $50 from 900, which holds nothing. The engine takes what 900 has, so neither
+/// row moves: 900 is not overdrawn and 901 is not funded by silver that never arrived. The
+/// warning on the source stays, now saying what it hands over.
+#[test]
+fn a_cut_take_moves_only_what_the_source_holds() {
+    let text = report(QUIET, &[], &[&giver(0), &holder("901", 100)]);
+    let script = "unit 901\nTAKE FROM 900 50 SILV\n";
+    let review = review_of(&text, script);
+
+    assert_eq!(
+        row_of(&review, "900").at_month_end,
+        Some(0),
+        "900 held nothing, so nothing is taken from it"
+    );
+    assert_eq!(
+        row_of(&review, "901").at_month_end,
+        Some(100),
+        "nothing reaches 901"
+    );
+    let shortfall = review
+        .findings
+        .iter()
+        .find(|finding| {
+            finding.code.as_str() == "not-enough-silver"
+                && finding.unit_id.as_deref() == Some("900")
+        })
+        .unwrap_or_else(|| panic!("the source is still warned: {:?}", review.findings));
+    assert_eq!(
+        shortfall.message,
+        "short $50: this unit can have $0 and its orders spend $50, \
+         so it hands over none of the 50 silver ordered"
+    );
+}
+
+/// The ledger side of the same TAKE: 901 holds $100 and buys $120 of grain, counting on taking
+/// $50 from 900, which holds nothing. Nothing arrives, so 901 is warned.
+#[test]
+fn a_cut_take_does_not_fund_the_takers_buy() {
+    let text = report(
+        QUIET,
+        &["For Sale: 20 grain [GRAI] at $10."],
+        &[&giver(0), &holder("901", 100)],
+    );
+    let script = "unit 901\nTAKE FROM 900 50 SILV\nBUY 12 grain\n";
+    let review = review_of(&text, script);
+
+    assert!(
+        review.findings.iter().any(|finding| {
+            finding.code.as_str() == "not-enough-silver"
+                && finding.unit_id.as_deref() == Some("901")
+        }),
+        "901 cannot fund $120 from its own $100: {:?}",
+        review.findings
+    );
+}

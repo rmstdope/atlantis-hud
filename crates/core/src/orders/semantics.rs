@@ -5088,8 +5088,10 @@ struct Ledger<'a> {
     /// line always drives the balance below zero. Change the charge and that stops holding.
     reduced_buys: Vec<ReducedBuy>,
     /// Every `GIVE` of silver beyond what the giver held as it ran, in the order they were applied
-    /// (`ah-4k84`). The engine's `Game::DoGiveOrder` (Atlantis-PBEM/Atlantis, `runorders.cpp`)
-    /// errors "Not enough." and gives what the unit has; `rules/give` does not say. Recorded per
+    /// (`ah-4k84`) - a discard (`GIVE 0`) and a `TAKE` beyond what their source held too, which
+    /// the same engine function cuts the same way (`ah-759k`). The engine's `Game::DoGiveOrder`
+    /// (Atlantis-PBEM/Atlantis, `runorders.cpp`) errors "Not enough." and gives what the unit has;
+    /// `rules/give` does not say. Recorded per
     /// line because the walk settles units in report order, so silver a later unit gives back
     /// within the same phase is not there when this line runs - a phase-end balance cannot see it.
     ///
@@ -5099,8 +5101,9 @@ struct Ledger<'a> {
     /// region too, so only an unpooled hex reads these (`judge_shortfalls`, `report_shortfalls`);
     /// a pooled one moves the whole ask and is judged through its pool.
     reduced_gives: Vec<ReducedGive>,
-    /// What each unit's `GIVE` lines of silver to a unit asked, cut or not: the "spend" of a
-    /// not-enough-silver sentence about a GIVE, whose "can have" is this less the cut (`ah-4k84`).
+    /// What each unit's `GIVE` lines of silver asked, cut or not, and the `TAKE`s from it: the
+    /// "spend" of a not-enough-silver sentence about a GIVE, whose "can have" is this less the cut
+    /// (`ah-4k84`, `ah-759k`).
     silver_given: BTreeMap<String, i64>,
     /// What each unit's `BUY` lines have been charged **beyond what they actually spent** this
     /// month: `sum(wanted - spends)` over every bounded line. Summing over all of them rather than
@@ -5141,9 +5144,14 @@ struct ReducedBuy {
     placed: PlacedIntent,
 }
 
-/// A `GIVE` of silver its giver could not fund in full as it ran (`ah-4k84`).
+/// A `GIVE` of silver its giver could not fund in full as it ran (`ah-4k84`), or a discard or a
+/// `TAKE` its source could not (`ah-759k`).
 struct ReducedGive {
+    /// The unit the silver leaves: the giver, the discarder, or the unit taken from.
     unit_id: String,
+    /// How the not-enough-silver sentence says what the unit did: "gives", "discards", or
+    /// "hands over" for a `TAKE` from it.
+    verb: &'static str,
     /// What the line asked to give, as written.
     ordered: i64,
     /// What the engine gives: what the unit held then.
@@ -7685,11 +7693,15 @@ fn transfer(
     // What actually changes hands. A GIVE of silver beyond what the giver holds as it runs gives
     // what it has: the engine's `Game::DoGiveOrder` (Atlantis-PBEM/Atlantis, `runorders.cpp`)
     // errors "Not enough." and gives that; `rules/give` does not say. So neither the giver is
-    // charged nor the recipient credited the remainder (`ah-1c8p`). "What it has" is the engine's
-    // `GetSharedNum`, which counts the faction's `SHARE` units in the region too, so a hex with a
-    // sharer moves the whole ask and its pool judges the giver's overdraft, as before.
-    let moved = if is_give
-        && reach != GiveReach::Discard
+    // charged nor the recipient credited the remainder (`ah-1c8p`). The same function cuts a
+    // `GIVE 0` (`amt = u->GetSharedNum(...)`) and a TAKE, whose source it swaps in before the
+    // same check (`amt = s->GetSharedNum(...)`), so a discard and a TAKE move only what the
+    // source holds too (`ah-759k`; `rules/take`: "works just like the GIVE order"). "What it
+    // has" is the engine's `GetSharedNum`, which counts the faction's `SHARE` units in the region
+    // too, so a hex with a sharer moves the whole ask and its pool judges the source's overdraft,
+    // as before. A TAKE from a unit outside this hex has no source here (`from` is empty) and no
+    // holding to cut against, so the stated quantity is granted in full, as the TAKE arm says.
+    let moved = if !from.is_empty()
         && tag.eq_ignore_ascii_case(SILVER)
         && !hex.units.iter().any(|ordered| ordered.shares())
     {
@@ -7716,31 +7728,38 @@ fn transfer(
             // `ledger_for_with_production` - so the ledger and the column cannot tell two stories
             // about one transfer. `GaveAway` and `Discarded` stay: they are the acting unit's own
             // orders, they already agree with the column, and the settlement books neither.
+            *ledger.silver_given.entry(from.clone()).or_default() += quantity;
+            if quantity > known_source.max(0) {
+                ledger.reduced_gives.push(ReducedGive {
+                    unit_id: from.clone(),
+                    verb: if reach == GiveReach::Discard {
+                        "discards"
+                    } else if is_give {
+                        "gives"
+                    } else {
+                        "hands over"
+                    },
+                    ordered: quantity,
+                    given: known_source.max(0),
+                });
+                // The cut line is what overdrew the unit, so its finding points here even where
+                // it moves nothing and so draws nothing down (`ah-1c8p`).
+                ledger
+                    .charged_at
+                    .entry((from.clone(), SILVER.to_ascii_uppercase()))
+                    .or_insert_with(|| placed.clone());
+            }
             if reach == GiveReach::Discard {
                 move_silver(
                     ledger,
                     StatePhase::Give,
                     &from,
-                    -quantity,
+                    -moved,
                     SilverChangeCause::Discarded,
                     Some(placed),
                     target_label.map(str::to_string),
                 );
             } else if is_give {
-                *ledger.silver_given.entry(from.clone()).or_default() += quantity;
-                if quantity > known_source.max(0) {
-                    ledger.reduced_gives.push(ReducedGive {
-                        unit_id: from.clone(),
-                        ordered: quantity,
-                        given: known_source.max(0),
-                    });
-                    // The cut line is what overdrew the unit, so its finding points here even
-                    // where it gives nothing and so draws nothing down (`ah-1c8p`).
-                    ledger
-                        .charged_at
-                        .entry((from.clone(), SILVER.to_ascii_uppercase()))
-                        .or_insert_with(|| placed.clone());
-                }
                 move_silver(
                     ledger,
                     StatePhase::Give,
@@ -7751,7 +7770,7 @@ fn transfer(
                     target_label.map(str::to_string),
                 );
             } else {
-                apply_silver(ledger, StatePhase::Give, &from, -quantity, Some(placed));
+                apply_silver(ledger, StatePhase::Give, &from, -moved, Some(placed));
             }
         } else {
             charge(ledger, StatePhase::Give, &from, &tag, quantity, placed);
@@ -11182,7 +11201,8 @@ fn silver_short_at_study(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
     }
 }
 
-/// What a unit's own GIVEs of silver asked beyond what it held as each ran, under "Give orders" in
+/// What a unit's own GIVEs of silver (its discards, and TAKEs from it, too: `ah-759k`) asked beyond
+/// what it held as each ran, under "Give orders" in
 /// `rules/sequenceofevents`, long before WORK, TRANSPORT and maintenance: nothing received in them,
 /// nor a gift that reaches it later in the Give phase, funds the gift (`ah-4k84`). Read from
 /// [`Ledger::reduced_gives`] rather than the phase's balance, which nets those later gifts in.
@@ -11617,7 +11637,8 @@ fn report_shortfalls(
                 .filter(|reduced| &reduced.unit_id == unit_id)
                 .map(|reduced| {
                     format!(
-                        "gives {} of the {} ordered",
+                        "{} {} of the {} ordered",
+                        reduced.verb,
                         if reduced.given == 0 {
                             "none".to_string()
                         } else {
@@ -34669,13 +34690,12 @@ BUILD
         );
     }
 
-    /// The sale is added to the *unclamped* pre-market balance, because that is what the ledger
-    /// funds a `BUY` from: `known_balance_at(Market)` is unclamped and `semantics::buy` clamps
-    /// only after adding to it. Clamping first would let a sale rescue an overdrawn unit on the
-    /// column and not on the ledger, and the two surfaces must cut one `BUY` to one quantity
-    /// (`ah-6m7b.5.3`).
+    /// A discard beyond the purse drops only what the unit holds, so it leaves no overdraft for
+    /// a sale to pay off, and the column and the ledger fund the `BUY` from the same empty purse
+    /// plus the sale (`ah-759k`; the two surfaces must cut one `BUY` to one quantity,
+    /// `ah-6m7b.5.3`).
     #[test]
-    fn a_sale_does_not_rescue_a_unit_that_is_already_overdrawn() {
+    fn a_discard_beyond_the_purse_leaves_the_sale_to_fund_a_purchase() {
         let mut hex = region(vec![with_item(
             with_silver(unit("5"), 100),
             10,
@@ -34695,8 +34715,11 @@ BUILD
             price: 250,
         });
 
-        // 100 held, 300 given away: overdrawn by 200 as the market opens. The 300 the sale earns
-        // leaves 100, which buys no horse at 250.
+        // 100 held, 300 discarded. The engine's `Game::DoGiveOrder` (Atlantis-PBEM/Atlantis,
+        // `runorders.cpp`) discards what the unit has, so the purse is empty - not overdrawn - as
+        // the market opens, and the 300 the sale earns buys the horse at 250 (`ah-759k`). Before
+        // that bead the whole 300 was charged and this test pinned that the sale did not rescue
+        // the overdraft; a discard can no longer make one in a hex with no sharer.
         let silver = forecast_with_ruleset(
             vec![hex],
             "unit 5\nGIVE 0 300 SILV\nSELL 10 grain\nBUY 1 horse\n",
@@ -34708,10 +34731,12 @@ BUILD
             .map(|change| (change.cause, change.line, change.amount))
             .collect();
         assert!(
-            !rows
-                .iter()
-                .any(|(cause, _, _)| *cause == SilverChangeCause::Bought),
-            "the sale pays off the overdraft and leaves too little to buy: {rows:?}"
+            rows.contains(&(SilverChangeCause::Discarded, Some(2), -100)),
+            "only what the unit held is discarded: {rows:?}"
+        );
+        assert!(
+            rows.contains(&(SilverChangeCause::Bought, Some(4), -250)),
+            "the sale funds the purchase: {rows:?}"
         );
     }
 
