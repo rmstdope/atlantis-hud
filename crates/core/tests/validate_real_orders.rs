@@ -64,7 +64,8 @@ const EXPECTED: &[(&str, usize)] = &[
     ("unit-does-nothing", 2),
 ];
 
-/// What the committed turn's 27 own units spend between them, all of it on `STUDY`.
+/// What the committed turn's 27 own units spend between them: studying, and the `SHARE` lending
+/// that pays for some of it.
 ///
 /// Unmoved by `ah-66yi`, and that is the point: four of these units carry a standing
 /// `GIVE 2396 ALL MARM`/`ALL MSWO` to another faction, which that bead leaves unresolved - and all
@@ -75,7 +76,11 @@ const EXPECTED: &[(&str, usize)] = &[
 /// `ah-jzs9` took $10 off it. Unit 13402 is a lone leader at combat 5, which `data/LEAD` and
 /// combat's own maximum both stop at, so its month cannot raise the level and is no longer billed -
 /// the same unit the turn's one `study-at-maximum` finding is about, whose count below is unchanged.
-const EXPECTED_SPENDING: i64 = 790;
+///
+/// `ah-0nwd` added $430, none of it new spending: it is the study fees of sharing units that a
+/// faction-mate's `SHARE` paid, counted a second time as the lenders' `lent` outflow. Until then
+/// only a non-sharer was lent its fee, and a sharing student stayed in the red instead.
+const EXPECTED_SPENDING: i64 = 1220;
 
 /// The expectation table as a map, so an assertion can be read as a table.
 fn expected_counts() -> BTreeMap<&'static str, usize> {

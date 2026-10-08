@@ -858,8 +858,8 @@ describe("the silver section", () => {
   });
 
   it("a_sharing_borrower_is_told_a_neighbour_paid", () => {
-    // `sharedSilverForOrders` is `0` for a sharer by decision, so the sentence has to read the
-    // borrowing to reach the agreed record's own scene (`ah-3c2t.2`).
+    // The sentence reads the borrowing, so a sharer that borrows is told too - the agreed
+    // record's own scene (`ah-3c2t.2`).
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
       forecast({
