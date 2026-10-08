@@ -1220,11 +1220,13 @@ pub(crate) fn formed_unit_as_ordered(
         return None;
     }
     // A `FORM`ed row is looked up on its own; no transport is applied here, so the map's shape
-    // is not needed (`ah-7ale.2.1`).
+    // is not needed (`ah-7ale.2.1`). Settled, so a formed unit whose TEACH replaced its MOVE is
+    // traced walking nowhere, as the preview draws it (`ah-r3rv`).
     let ordered = crate::movement::fleet::OrderedUnits::from_document(
         orders_document,
         Some(ruleset.as_ref()),
-    );
+    )
+    .with_settled_teachers(report, orders_document, Some(ruleset.as_ref()));
     let (units, _) = settle(
         report,
         ruleset,
@@ -11434,6 +11436,58 @@ mod tests {
             Some(&crate::report::model::Coordinate { x: 0, y: 0, z })
         );
         assert!(trace(&human).is_some(), "the human's walk is traced");
+    }
+
+    /// `ah-r3rv`: the formed case of `ah-0x6x`. A unit this month's FORM creates and makes a
+    /// leader can teach (`rules/skills_teaching`: "Only leaders may use the TEACH order."), so its
+    /// TEACH is the month-long order that runs and the `MOVE N` before it in its FORM block does
+    /// not: the preview keeps it where it is formed. Formed a human instead, its TEACH spends
+    /// nothing and it still walks north.
+    #[test]
+    fn a_formed_unit_whose_move_an_eligible_teach_replaced_stands_where_it_is_formed() {
+        let leader = moving_reach_report((0, 2), (0, 6), true).replace(
+            "* Source (900), Foo (1), leader [LEAD]",
+            "* Source (900), Foo (1), 2 leaders [LEAD]",
+        );
+        let human = leader.replace("2 leaders [LEAD]", "2 humans [HUMN]");
+        let orders =
+            |tag: &str| format!("unit 900\nFORM 1\nMOVE N\nTEACH 900\nEND\nGIVE NEW 1 1 {tag}\n");
+        let trace = |report: &str, tag: &str| {
+            crate::movement::request::trace_orders_for_remembered_report(
+                &mut ReportCache::new(),
+                RULESET,
+                report,
+                "[]",
+                "new-1",
+                &orders(tag),
+            )
+            .expect("the ruleset loads")
+            .path
+        };
+
+        let z = reach_z(&leader);
+        let response = reach_preview(&leader, &orders("LEAD"), FLAT_MAP);
+        let drawn: Vec<(&str, UnitPreviewStatus)> = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .filter(|unit| unit.unit.unit_id == "new-1")
+            .map(|unit| (unit.unit.region_id.as_str(), unit.status))
+            .collect();
+        let formed_at = format!("{z}:0,2");
+        assert_eq!(
+            drawn,
+            vec![(formed_at.as_str(), UnitPreviewStatus::Present)],
+            "drawn only where it is formed"
+        );
+        assert_eq!(trace(&leader, "LEAD"), None, "the map traces no walk");
+
+        let response = reach_preview(&human, &orders("HUMN"), FLAT_MAP);
+        assert_eq!(departing_to(&response, "new-1"), Some(format!("{z}:0,0")));
+        assert!(
+            trace(&human, "HUMN").is_some(),
+            "the human's walk is traced"
+        );
     }
 
     /// `ah-osny` review: the sharing case of `ah-wyj8` through the month end production measures

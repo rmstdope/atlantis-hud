@@ -46,6 +46,9 @@ pub struct OrderedUnits {
     /// whether their route runs turns on the settled month, which this reader cannot see, so
     /// [`Self::with_settled_teachers`] decides it (`ah-0x6x`).
     closed_by_teach: BTreeSet<String>,
+    /// The `FORM` blocks, by the line of their `FORM`, whose movement a TEACH closed: the same
+    /// question for a unit this month creates (`ah-r3rv`).
+    formed_closed_by_teach: BTreeSet<usize>,
 }
 
 impl OrderedUnits {
@@ -209,9 +212,19 @@ impl OrderedUnits {
             .into_iter()
             .filter(|unit_id| by_unit.contains_key(unit_id) || sailers.contains(unit_id))
             .collect();
-        let formed_routes = formed
+        let formed_closed_by_teach: BTreeSet<usize> = formed
+            .iter()
+            .filter(|(_, chain)| chain.closed_by_teach())
+            .map(|(form_line, _)| *form_line)
+            .collect();
+        let formed_routes: BTreeMap<usize, ChainedRoute> = formed
             .into_iter()
             .filter_map(|(form_line, chain)| chain.into_route().map(|route| (form_line, route)))
+            .collect();
+        // A formed unit's SAIL lends no hands here (see the walk above), so only a route counts.
+        let formed_closed_by_teach = formed_closed_by_teach
+            .into_iter()
+            .filter(|form_line| formed_routes.contains_key(form_line))
             .collect();
 
         Self {
@@ -221,6 +234,7 @@ impl OrderedUnits {
             boardings_by_unit,
             promotes_by_unit,
             closed_by_teach,
+            formed_closed_by_teach,
         }
     }
 
@@ -232,7 +246,7 @@ impl OrderedUnits {
 
     /// Whether any unit's movement waits on [`Self::with_settled_teachers`].
     pub(crate) fn any_closed_by_teach(&self) -> bool {
-        !self.closed_by_teach.is_empty()
+        !self.closed_by_teach.is_empty() || !self.formed_closed_by_teach.is_empty()
     }
 
     /// This reading with the movement a TEACH replaced taken out, for a caller holding the report.
@@ -243,7 +257,9 @@ impl OrderedUnits {
     /// before it does not: the unit walks nowhere and lends no hands to a hull's course. Which
     /// units that is comes from [`crate::orders::semantics::month_long_teachers`], the same
     /// settlement the checker's "will not run" reads, so the map, the preview and the shipment
-    /// measure agree with it (`ah-0x6x`). Costs nothing when no block ends its movement on a TEACH.
+    /// measure agree with it (`ah-0x6x`). A `FORM` block's route is dropped the same way when the
+    /// unit it creates teaches (`ah-r3rv`). Costs nothing when no block ends its movement on a
+    /// TEACH.
     #[must_use]
     pub(crate) fn with_settled_teachers(
         mut self,
@@ -251,15 +267,22 @@ impl OrderedUnits {
         orders_document: &str,
         ruleset: Option<&Ruleset>,
     ) -> Self {
-        if self.closed_by_teach.is_empty() {
+        if !self.any_closed_by_teach() {
             return self;
         }
         let teachers =
             crate::orders::semantics::month_long_teachers(report, orders_document, ruleset);
         for unit_id in std::mem::take(&mut self.closed_by_teach) {
-            if teachers.contains(&unit_id) {
+            if teachers.units.contains(&unit_id) {
                 self.by_unit.remove(&unit_id);
                 self.sailers.remove(&unit_id);
+            }
+        }
+        // A unit this month's FORM creates walks under its `FORM` line, so it is matched there
+        // (`ah-r3rv`).
+        for form_line in std::mem::take(&mut self.formed_closed_by_teach) {
+            if teachers.form_lines.contains(&form_line) {
+                self.formed_routes.remove(&form_line);
             }
         }
         self
@@ -1259,5 +1282,16 @@ mod tests {
 
         let unreadable = OrderedUnits::from_document("unit 900\nFORM 0\nMOVE S\nEND\n", None);
         assert_eq!(unreadable.formed_route(2), None);
+    }
+
+    /// `ah-r3rv`: a FORM block whose movement a TEACH closed waits on the settlement; one whose
+    /// TEACH replaced no movement leaves nothing to drop and must not cost one.
+    #[test]
+    fn only_a_formed_teach_closing_a_route_waits_on_the_settlement() {
+        let closing =
+            OrderedUnits::from_document("unit 900\nFORM 1\nMOVE N\nTEACH 900\nEND\n", None);
+        assert!(closing.any_closed_by_teach());
+        let teaching_only = OrderedUnits::from_document("unit 900\nFORM 1\nTEACH 900\nEND\n", None);
+        assert!(!teaching_only.any_closed_by_teach());
     }
 }

@@ -185,4 +185,29 @@ fn a_passenger_of_a_sail_an_eligible_teach_replaced_is_not_traced() {
         );
         assert!(trace(&human, unit_id).is_some(), "{unit_id} under a human");
     }
+
+    // `ah-r3rv` review: a unit formed aboard this month is formed "in the same structure if any"
+    // (`rules/form`), so it rides the same hull and must be judged the same way.
+    let formed_orders = "unit 900\nSAIL S\nTEACH 901\nunit 901\nFORM 1\nEND\nGIVE NEW 1 1 CTAU\n";
+    let trace_formed = |text: &str| {
+        trace_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            atlantis_hud_fixtures::RULESET_JSON,
+            text,
+            "[]",
+            "new-1",
+            formed_orders,
+        )
+        .expect("the ruleset loads")
+        .path
+    };
+    assert_eq!(
+        trace_formed(&leader),
+        None,
+        "formed aboard under a teaching leader"
+    );
+    assert!(
+        trace_formed(&human).is_some(),
+        "formed aboard under a human"
+    );
 }
