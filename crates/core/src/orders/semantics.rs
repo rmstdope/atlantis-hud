@@ -11342,12 +11342,15 @@ fn pool_shortfalls(
                                             .iter()
                                             .any(|reduced| reduced.unit_id == o.unit.unit_id))))))
             })
-            // Silver as GIVE and TAKE leave it, so a gift to a counted unit counts, as the per-unit
-            // sentence counts it (`ah-jw85`), and one between two counted units counts once
-            // (`ah-w9dn`).
+            // Silver as the ledger holds it once CLAIM, GIVE and TAKE have settled, so a gift into
+            // the counted units counts and one between two of them counts once (`ah-w9dn`). The
+            // ledger's own balance rather than `early_holding`, which falls back to the report's
+            // figure for a unit whose goods the transfer walk cannot follow.
             .map(|o| {
                 if tag == SILVER {
-                    o.early_holding(SILVER) + claimed_this_month(ledger, &o.unit.unit_id)
+                    ledger
+                        .state
+                        .balance_at(StatePhase::Give, &o.unit.unit_id, SILVER)
                 } else {
                     o.holding(&tag)
                 }
@@ -54829,6 +54832,28 @@ BUILD
             Some(
                 "the units in this hex are short $60 between them: they can have $50 and their \
                  orders spend $110"
+            ),
+            "{findings:#?}"
+        );
+    }
+
+    /// A sharer whose goods the transfer walk cannot follow - its `GIVE` of stone to an ally it
+    /// cannot see is uncertain (`ah-66yi`) - still holds the silver it was given (`ah-w9dn`).
+    #[test]
+    fn silver_given_to_a_sharer_whose_goods_are_unknowable_still_counts() {
+        let findings = a_cut_buy_in_a_caravanserai(
+            0,
+            "unit 5\nBUY 1 swords\nunit 7\nGIVE 7001 10 STON\nunit 8\nunit 9\nGIVE 7 50 SILV\n",
+            vec![
+                sharing(with_item(with_silver(unit("7"), 0), 15, "stone", "STON")),
+                an_ally("7001"),
+            ],
+        );
+        assert_eq!(
+            hex_silver_sentence(&findings),
+            Some(
+                "the units in this hex are short $50 between them: they can have $50 and their \
+                 orders spend $100"
             ),
             "{findings:#?}"
         );
