@@ -52,14 +52,16 @@ jobs:
           version: 9.12.0
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          # The bundle is universal (#56), so both halves are named rather than leaning on the
-          # host's - macos-latest is Apple Silicon and would otherwise supply only that one. The
-          # wasm target is a third thing: `tauri build` runs the frontend build first, and that
-          # builds the core for the browser - the desktop shell falls back to it when there is no
-          # IPC.
-          targets: wasm32-unknown-unknown, aarch64-apple-darwin, x86_64-apple-darwin
+        # The release and its components are the ones rust-toolchain.toml names, so CI
+        # compiles and lints with what the local gate does (ah-3kge).
+        # The bundle is universal (#56), so both halves are named rather than leaning on the
+        # host's - macos-latest is Apple Silicon and would otherwise supply only that one. The
+        # wasm target is a third thing: `tauri build` runs the frontend build first, and that
+        # builds the core for the browser - the desktop shell falls back to it when there is no
+        # IPC.
+        run: |
+          rustup toolchain install
+          rustup target add wasm32-unknown-unknown aarch64-apple-darwin x86_64-apple-darwin
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
@@ -173,9 +175,11 @@ jobs:
           version: 9.12.0
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
+        # The release and its components are the ones rust-toolchain.toml names, so CI
+        # compiles and lints with what the local gate does (ah-3kge).
+        run: |
+          rustup toolchain install
+          rustup target add wasm32-unknown-unknown
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
@@ -220,9 +224,11 @@ jobs:
           version: 9.12.0
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
+        # The release and its components are the ones rust-toolchain.toml names, so CI
+        # compiles and lints with what the local gate does (ah-3kge).
+        run: |
+          rustup toolchain install
+          rustup target add wasm32-unknown-unknown
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
@@ -290,9 +296,11 @@ jobs:
           version: 9.12.0
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
+        # The release and its components are the ones rust-toolchain.toml names, so CI
+        # compiles and lints with what the local gate does (ah-3kge).
+        run: |
+          rustup toolchain install
+          rustup target add wasm32-unknown-unknown
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
