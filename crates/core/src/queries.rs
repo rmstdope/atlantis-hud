@@ -191,7 +191,8 @@ core_queries! {
         let report = crate::report::parse_report_full(&raw_report);
         let ruleset = crate::movement::rules::Ruleset::from_json(&ruleset_json).ok();
         let ordered =
-            crate::movement::fleet::OrderedUnits::from_document(&orders_document, ruleset.as_ref());
+            crate::movement::fleet::OrderedUnits::from_document(&orders_document, ruleset.as_ref())
+                .with_settled_teachers(&report, &orders_document, ruleset.as_ref());
         Ok(crate::movement::passages::passage_claims(&report, &ordered))
     }
 

@@ -763,7 +763,8 @@ pub fn preview_orders_on_map(
     let ordered = crate::movement::fleet::OrderedUnits::from_document(
         orders_document,
         Some(ruleset.as_ref()),
-    );
+    )
+    .with_settled_teachers(&report, orders_document, Some(ruleset.as_ref()));
     let (units, dissolved) = settle(
         &report,
         &ruleset,
@@ -1310,7 +1311,8 @@ pub fn shipment_measures(
     let ordered = crate::movement::fleet::OrderedUnits::from_document(
         orders_document,
         Some(ruleset.as_ref()),
-    );
+    )
+    .with_settled_teachers(&report, orders_document, Some(ruleset.as_ref()));
     let (units, dissolved) = settle(
         &report,
         &ruleset,
@@ -1362,7 +1364,8 @@ pub fn walled_moves(
     let ordered = crate::movement::fleet::OrderedUnits::from_document(
         orders_document,
         Some(ruleset.as_ref()),
-    );
+    )
+    .with_settled_teachers(&report, orders_document, Some(ruleset.as_ref()));
     Ok(super::walls::walled_moves_on(
         &report, &ruleset, &known, &map, &ordered,
     ))
@@ -11357,6 +11360,59 @@ mod tests {
         );
         assert_eq!(reach_held(&response, "901", "STON"), 5);
         assert!(month_end_for(&report, orders).is_empty());
+    }
+
+    /// `ah-0x6x`: a TEACH spends the month only for a unit that can teach - `rules/skills_teaching`:
+    /// "only leaders will teach" - and the last month-long order is the one that runs, so for a
+    /// leader `MOVE N` then `TEACH` the MOVE will not run. The sender ships from the hex it is
+    /// listed in, the preview has it stay, and the map traces no walk. A human's TEACH spends
+    /// nothing, so with the same orders it still walks north.
+    #[test]
+    fn a_sender_whose_move_an_eligible_teach_replaced_ships_from_where_it_stands() {
+        let leader = moving_reach_report((0, 2), (0, 6), true);
+        let human = leader.replace(
+            "* Source (900), Foo (1), leader [LEAD]",
+            "* Source (900), Foo (1), human [HUMN]",
+        );
+        let orders = "unit 900\nMOVE N\nTEACH 901\nTRANSPORT 901 5 STON\n";
+        let trace = |report: &str| {
+            crate::movement::request::trace_orders_for_remembered_report(
+                &mut ReportCache::new(),
+                RULESET,
+                report,
+                "[]",
+                "900",
+                orders,
+            )
+            .expect("the ruleset loads")
+            .path
+        };
+
+        let response = reach_preview(&leader, orders, FLAT_MAP);
+        assert_eq!(
+            reach_unit(&response, "900").status,
+            UnitPreviewStatus::Present
+        );
+        assert_eq!(reach_unit(&response, "900").departing_to, None);
+        assert!(
+            reach_unit(&response, "900")
+                .transport_target_issues
+                .is_empty(),
+            "{:?}",
+            reach_unit(&response, "900").transport_target_issues
+        );
+        assert_eq!(reach_held(&response, "901", "STON"), 5);
+        assert!(month_end_for(&leader, orders).is_empty());
+        assert_eq!(trace(&leader), None, "the map traces no walk");
+
+        let z = reach_z(&human);
+        let response = reach_preview(&human, orders, FLAT_MAP);
+        assert_eq!(departing_to(&response, "900"), Some(format!("{z}:0,0")));
+        assert_eq!(
+            month_end_for(&human, orders).get("900"),
+            Some(&crate::report::model::Coordinate { x: 0, y: 0, z })
+        );
+        assert!(trace(&human).is_some(), "the human's walk is traced");
     }
 
     /// `ah-osny` review: the sharing case of `ah-wyj8` through the month end production measures
