@@ -11468,7 +11468,9 @@ fn pool_shortfalls(
                     let held = ledger.state.balance_at(StatePhase::Give, who, SILVER);
                     // A sharer whose month ends elsewhere counts only what the hex had of it -
                     // its own silver spent here before it left, and what it lent here - less what
-                    // it carries away, as the shortfall counts it (`ah-a68f`).
+                    // it carries away, as the shortfall counts it (`ah-a68f`). Never less than
+                    // it lent: silver it earned before leaving (a SELL, TAX) is carried away too,
+                    // yet was never in `held`.
                     let lent = sharing
                         .walking
                         .and_then(|walking| walking.departing.get(who.as_str()));
@@ -11476,7 +11478,7 @@ fn pool_shortfalls(
                         Some(lent) => {
                             let carried =
                                 (silver_at(ledger, who, LendingMoment::Movement) - lent).max(0);
-                            held - carried
+                            (held - carried).max(*lent)
                         }
                         None => held,
                     }
@@ -54971,6 +54973,54 @@ BUILD
             hex_finding.message,
             "the units in this hex are short $10 between them: they can have $200 \
              and their orders spend $210"
+        );
+    }
+
+    /// A walking sharer's silver earned here before it leaves - two furs sold at $100 under
+    /// "Market orders", before movement (`rules/sequenceofevents`) - goes with it, so it neither
+    /// counts in what the hex can have nor drives that figure below what it lent (`ah-a68f`
+    /// review). Sharer 8's STUDY combat costs $10, which nobody here can pay.
+    #[test]
+    fn a_walking_sharers_sale_before_it_leaves_is_not_taken_from_what_the_hex_can_have() {
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("6".to_string(), Coordinate { x: 7, y: 51, z: 1 });
+        let hex = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 10,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 100,
+            }],
+            ..region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![
+                    sharing(with_item(with_silver(unit("6"), 0), 2, "furs", "FUR")),
+                    sharing(with_silver(unit("8"), 0)),
+                ],
+            )
+        };
+        let review = review_turn(
+            &report(vec![
+                hex,
+                region_at("1:7,51", 7, 51, vec![with_silver(unit("3"), 0)]),
+            ]),
+            "unit 6\nSELL 2 furs\nMOVE N\nunit 8\nSTUDY combat\n",
+            Some(&ruleset()),
+            options,
+        );
+        let hex_finding = review
+            .findings
+            .iter()
+            .find(|f| f.code == codes::NOT_ENOUGH_SILVER && f.unit_id.is_none())
+            .unwrap_or_else(|| panic!("{:#?}", review.findings));
+        assert_eq!(
+            hex_finding.message,
+            "the units in this hex are short $10 between them: they can have $0 \
+             and their orders spend $10"
         );
     }
 
