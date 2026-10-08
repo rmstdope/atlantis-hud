@@ -500,7 +500,10 @@ export function bySetOutHex<T>(lookup: (unitId: string, setOutHex: string) => T)
 export type RowLookups = {
   getLongOrder?: UnitLookup<string | null>;
   getSilver?: UnitLookup<UnitSilver | null>;
-  /** What the report's orders template said the unit's long order was (`ah-rgkk.5.4`). */
+  /**
+   * What the report's orders template said the unit's long order was (`ah-rgkk.5.4`). Answer the
+   * same object for the same unit each time: a row memoises on it.
+   */
   getReportedLongOrder?: UnitLookup<ReportedLongOrder>;
   /** The units a silver finding names, by hex and unit. */
   silverWarnings?: ReadonlySet<UnitRowKey>;

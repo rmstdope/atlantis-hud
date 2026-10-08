@@ -34,7 +34,8 @@ import { type TextFileSaver } from "../downloadFile";
 import type { OrdersUploader } from "./ordersUpload";
 import {
   regionBannerLine,
-  reportedLongOrderFor
+  reportedLongOrderFor,
+  type ReportedLongOrder
 } from "../ordersDocument";
 import { isOrdersFile, routeFileImport, routeOrdersImport } from "../ordersImport";
 import { ordersFileFaction } from "../ordersImport";
@@ -627,10 +628,19 @@ export function AppShell({
     [parsed, orders]
   );
   // Asked by `UnitRef` like every per-unit lookup; the template index itself is keyed by number.
-  const getReportedLongOrder = useCallback(
-    (unit: UnitRef) => reportedLongOrderFor(reportedLongOrderIndex, unit.unitId),
-    [reportedLongOrderIndex]
-  );
+  // Each unit's answer is kept, so a row's memoised explanations see the same object on every
+  // render and do not rebuild on a scroll frame (`ah-nwh8`).
+  const getReportedLongOrder = useMemo(() => {
+    const answered = new Map<string, ReportedLongOrder>();
+    return (unit: UnitRef): ReportedLongOrder => {
+      let answer = answered.get(unit.unitId);
+      if (answer === undefined) {
+        answer = reportedLongOrderFor(reportedLongOrderIndex, unit.unitId);
+        answered.set(unit.unitId, answer);
+      }
+      return answer;
+    };
+  }, [reportedLongOrderIndex]);
   /** How many writes to the document did not come from the editor. See `OrdersOrigin`. */
   const [externalOrdersRevision, setExternalOrdersRevision] = useState(0);
   /**

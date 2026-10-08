@@ -145,7 +145,7 @@ import {
   type UnitSource
 } from "./unitSource";
 import { CollapsiblePanel } from "./CollapsiblePanel";
-import { NO_ORDERS_TEMPLATE, type ReportedLongOrder } from "../ordersDocument";
+import type { ReportedLongOrder } from "../ordersDocument";
 import { ColumnReorderHandle } from "./ColumnReorderHandle";
 import { ColumnSplitter } from "./ColumnSplitter";
 import { Absent, SeverityMark, UNIT_LINK_CLASS } from "./primitives";
@@ -2274,9 +2274,9 @@ function UnitRow({
   // blaming one of several would be as wrong there as it is in the Problems panel - so there is
   // deliberately no fallback to the hex. There `hexShort` says so instead, and no row carries a ⚠ -
   // but the popup must still not call the shortfall covered (`ah-5znb`).
-  const { home, longOrder, silver, warned, hexShort } = rowMonth(
+  const { home, longOrder, silver, warned, hexShort, reportedLongOrder } = rowMonth(
     { regionId, unitId: unit.unitId, arrivingFrom: unit.arrivingFrom, own: unit.own },
-    { getLongOrder, getSilver, silverWarnings, silverShortHexes }
+    { getLongOrder, getReportedLongOrder, getSilver, silverWarnings, silverShortHexes }
   );
   // Which pin this row's faction cell would set, and so whether that cell is a control at all.
   // One rule, in `foreignUnits.ts`, rather than a second concealed-test spelled out down here that
@@ -2326,12 +2326,7 @@ function UnitRow({
       structureLabel,
       reportedStructureLabel,
       longOrder,
-      // Asked here, by the row's `UnitRef`, rather than taken from `rowMonth`: the getter answers a
-      // fresh object on every call, and this memo must not change on every render (`ah-nwh8`).
-      reportedLongOrder:
-        getReportedLongOrder?.(
-          unitRefOf({ regionId, unitId: unit.unitId, arrivingFrom: unit.arrivingFrom })
-        ) ?? NO_ORDERS_TEMPLATE,
+      reportedLongOrder,
       silver,
       silverWarned: warned,
       silverHexShort: hexShort,
@@ -2349,9 +2344,8 @@ function UnitRow({
     unit,
     structureLabel,
     reportedStructureLabel,
-    regionId,
     longOrder,
-    getReportedLongOrder,
+    reportedLongOrder,
     silver,
     warned,
     hexShort,
