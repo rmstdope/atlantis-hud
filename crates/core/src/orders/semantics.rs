@@ -17561,6 +17561,123 @@ mod tests {
         Ruleset::from_json(RULESET).expect("the committed ruleset should be usable")
     }
 
+    /// The report [`as_printed`], and `options` with `month_end` filled as the shells fill it:
+    /// from the movement trace on these orders, through
+    /// [`crate::orders::effects::measure_shipments`], over `options.geometry` or, when it has
+    /// none, [`FIXTURE_MAP`] - which the returned options then carry too, since the shells read
+    /// the trace's map and the checks' from one `map_json` (`ah-sj06`). A test of where a sharing unit ends the month
+    /// uses this, so a trace that puts a unit somewhere the checker does not fails here and not
+    /// only in the smoke suite; one that needs a month end the orders cannot produce fills the map
+    /// by hand through [`counterfactual_month_end`] instead.
+    fn traced(
+        report: ParsedReport,
+        orders: &str,
+        ruleset: &Ruleset,
+        options: CheckOptions,
+    ) -> (ParsedReport, CheckOptions) {
+        let report = as_printed(report, ruleset);
+        let options = CheckOptions {
+            geometry: options.geometry.or(Some(FIXTURE_MAP)),
+            ..options
+        };
+        let measures = crate::orders::effects::measure_shipments(
+            &report,
+            &std::sync::Arc::new(ruleset.clone()),
+            &[],
+            orders,
+            Ok(options.geometry),
+            options.clone(),
+        );
+        let options = CheckOptions {
+            month_end: measures.month_end,
+            ..options
+        };
+        (report, options)
+    }
+
+    /// The report as the server would print it for the trace to read: every pair of its regions
+    /// that stand side by side on the hex lattice lists the other as an exit, as an `Exits:`
+    /// block does - the trace walks only crossings a report states (`MapKnowledge::neighbours`) -
+    /// and every unit whose weight was never stated carries the `Weight:` and `Capacity:` its
+    /// items give under `ruleset`, as a unit line does (`rules/movement_normal`: "Most people
+    /// weigh 10 units and have a capacity of 5 units"). The fixtures state neither, and without
+    /// both the trace names no month end. A region or unit that already states its own keeps it.
+    fn as_printed(mut report: ParsedReport, ruleset: &Ruleset) -> ParsedReport {
+        let all: Vec<(Coordinate, String, String)> = report
+            .regions
+            .iter()
+            .map(|region| {
+                (
+                    region.coordinate,
+                    region.terrain.clone(),
+                    region.province.clone(),
+                )
+            })
+            .collect();
+        for region in &mut report.regions {
+            if region.exits.is_empty() {
+                for direction in Direction::ALL {
+                    let (dx, dy) = direction.offset();
+                    let to = Coordinate {
+                        x: region.coordinate.x + dx,
+                        y: region.coordinate.y + dy,
+                        z: region.coordinate.z,
+                    };
+                    if let Some((_, terrain, province)) = all.iter().find(|(at, ..)| *at == to) {
+                        region.exits.push(Exit {
+                            direction: direction.label().to_string(),
+                            terrain: terrain.clone(),
+                            coordinate: to,
+                            province: province.clone(),
+                            settlement: None,
+                        });
+                    }
+                }
+            }
+            for unit in &mut region.units {
+                if unit.weight.is_some() {
+                    continue;
+                }
+                let items: Vec<(&str, i64)> = unit
+                    .items
+                    .iter()
+                    .map(|item| (item.tag.as_str(), item.amount))
+                    .collect();
+                let weight = items.iter().try_fold(0_i64, |total, (tag, count)| {
+                    Some(total + count * ruleset.find_item(tag)?.weight)
+                });
+                let capacity = crate::movement::mode::capacities_from_items(&items, ruleset);
+                // A unit the ruleset cannot weigh would get no month end, and a test expecting it
+                // to stay would pass for the wrong reason: a fixture fault, said out loud.
+                let (Some(weight), Some(capacity)) = (weight, capacity) else {
+                    panic!(
+                        "as_printed cannot weigh unit {} from its items: {:?}",
+                        unit.unit_id, unit.items
+                    );
+                };
+                unit.weight = Some(weight);
+                unit.capacity = Some(format!(
+                    "{}/{}/{}/{}",
+                    capacity.fly, capacity.ride, capacity.walk, capacity.swim
+                ));
+            }
+        }
+        report
+    }
+
+    /// `options` with a month end the orders under test cannot produce, for the test that asks
+    /// what a checker does with whatever the trace says - the exception to [`traced`].
+    fn counterfactual_month_end(
+        mut options: CheckOptions,
+        ends: &[(&str, Coordinate)],
+    ) -> CheckOptions {
+        options.month_end = ends
+            .iter()
+            .map(|(id, at)| ((*id).to_string(), *at))
+            .collect();
+        options
+    }
+
     #[test]
     fn trident_month_segments_ignore_form_and_turn_orders() {
         let ruleset = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
@@ -33250,12 +33367,12 @@ BUILD
             },
             ..Default::default()
         };
-        let mut options = disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]);
-        if walks {
-            options
-                .month_end
-                .insert("4021".to_string(), Coordinate { x: 7, y: 51, z: 1 });
-        }
+        let (report, options) = traced(
+            report,
+            &orders,
+            &ruleset(),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+        );
         (report, orders, options)
     }
 
@@ -33424,7 +33541,9 @@ BUILD
     #[test]
     fn a_stayer_is_not_fed_by_grain_a_walker_carried_away() {
         let (report, orders, options) = this_walkers_turn(
-            with_item(starving(with_men(unit("4021"), 4)), 6, "grain", "GRAI"),
+            // Four grain: `data/GRAI` weighs 5, and four men carry 20 on foot
+            // (`rules/movement_normal`), so any more and the walker could not walk at all.
+            with_item(starving(with_men(unit("4021"), 4)), 4, "grain", "GRAI"),
             vec![with_flag(
                 starving(with_men(unit("1796"), 4)),
                 "consuming faction's food",
@@ -33449,7 +33568,9 @@ BUILD
     #[test]
     fn step_two_in_a_hex_split_by_a_walker_eats_exact_grain() {
         let (report, orders, options) = this_walkers_turn(
-            with_item(starving(with_men(unit("4021"), 4)), 6, "grain", "GRAI"),
+            // Four grain: `data/GRAI` weighs 5, and four men carry 20 on foot
+            // (`rules/movement_normal`), so any more and the walker could not walk at all.
+            with_item(starving(with_men(unit("4021"), 4)), 4, "grain", "GRAI"),
             vec![
                 with_item(starving(unit("1795")), 6, "grain", "GRAI"),
                 with_flag(
@@ -33557,12 +33678,11 @@ BUILD
     #[test]
     fn a_fleet_is_fed_where_its_sail_arrives_whatever_the_trace_says() {
         let (report, orders) = a_fleet_sailing_north_to_a_banker_inputs(true);
-        let mut options = disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]);
-        for id in ["4021", "4022"] {
-            options
-                .month_end
-                .insert(id.to_string(), Coordinate { x: 7, y: 53, z: 1 });
-        }
+        let still = Coordinate { x: 7, y: 53, z: 1 };
+        let options = counterfactual_month_end(
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+            &[("4021", still), ("4022", still)],
+        );
         let review = review_turn(&report, &orders, Some(&ruleset()), options);
         assert!(
             upkeep_warnings(&review).is_empty(),
@@ -33611,6 +33731,49 @@ BUILD
             .collect()
     }
 
+    /// `ah-sj06`: [`traced`] fills `month_end` from the movement trace itself, so a walker's
+    /// month end is wherever its `MOVE` takes it, not whatever a test wrote down.
+    #[test]
+    fn traced_puts_a_walker_where_its_move_ends() {
+        let (_, options) = traced(
+            report(vec![
+                region_at("1:7,53", 7, 53, vec![unit("4021")]),
+                region_at("1:7,51", 7, 51, Vec::new()),
+            ]),
+            "unit 4021\nMOVE N\n",
+            &ruleset(),
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            options.month_end.get("4021"),
+            Some(&Coordinate { x: 7, y: 51, z: 1 })
+        );
+    }
+
+    /// `ah-sj06`, the disagreement `ah-wyj8` met only in the smoke suite: a `MOVE` a later `STUDY`
+    /// replaces never runs (the checker's own "STUDY replaces this MOVE"), so the trace must not
+    /// end the sharer's month where that `MOVE` would have taken it - while the same `MOVE` alone
+    /// does take it there, so the first answer is the trace's and not an empty one.
+    #[test]
+    fn traced_leaves_a_sharer_whose_move_a_study_replaced_where_it_stands() {
+        let month_end = |orders: &str| {
+            let (_, options) = traced(
+                report(vec![
+                    region_at("1:7,53", 7, 53, vec![sharing(with_silver(unit("7"), 500))]),
+                    region_at("1:7,55", 7, 55, Vec::new()),
+                ]),
+                orders,
+                &ruleset(),
+                CheckOptions::default(),
+            );
+            options.month_end.get("7").copied()
+        };
+        let south = Some(Coordinate { x: 7, y: 55, z: 1 });
+
+        assert_eq!(month_end("unit 7\nMOVE S\n"), south, "the control walks");
+        assert_ne!(month_end("unit 7\nMOVE S\nSTUDY combat\n"), south);
+    }
+
     #[test]
     fn the_sharing_reach_puts_a_walker_where_its_trace_ends() {
         let (report, orders, options) = a_walkers_turn(
@@ -33635,10 +33798,10 @@ BUILD
     #[test]
     fn the_sharing_reach_puts_a_sailing_passenger_where_its_fleet_arrives() {
         let (report, orders) = a_fleet_sailing_north_to_a_banker_inputs(true);
-        let mut month_end = crate::orders::transport::MonthEndHexes::new();
-        for id in ["4021", "4022"] {
-            month_end.insert(id.to_string(), Coordinate { x: 7, y: 53, z: 1 });
-        }
+        let still = Coordinate { x: 7, y: 53, z: 1 };
+        let month_end =
+            counterfactual_month_end(CheckOptions::default(), &[("4021", still), ("4022", still)])
+                .month_end;
         assert_eq!(
             neighbourhoods(&report, &orders, &month_end),
             vec![(
@@ -43199,6 +43362,19 @@ BUILD
             .collect()
     }
 
+    /// [`reach_findings`] with every month end the movement trace's answer ([`traced`]).
+    fn traced_reach_findings(
+        regions: Vec<ReportRegion>,
+        orders: &str,
+        options: CheckOptions,
+    ) -> Vec<Finding> {
+        let (report, options) = traced(report(regions), orders, &ruleset(), options);
+        check_turn(&report, orders, Some(&ruleset()), options)
+            .into_iter()
+            .filter(|finding| finding.code == codes::TRANSPORT_OUT_OF_REACH)
+            .collect()
+    }
+
     /// `rules/economy_transport`: items may be transported to a transport structure "by any unit
     /// located within 2 hexes of the transport structure" - so three hexes away is refused, and the
     /// sentence is the agreed experience's own, character for character.
@@ -43236,16 +43412,14 @@ BUILD
     #[test]
     fn a_shipment_is_measured_from_where_both_units_end_the_month() {
         let sender = with_item(unit("900"), 5, "stone", "STON");
-        let mut options = with_map();
-        options.month_end =
-            std::iter::once(("901".to_string(), Coordinate { x: 0, y: 6, z: 1 })).collect();
-        let finding = only(reach_findings(
+        let finding = only(traced_reach_findings(
             vec![
                 shipping_from(vec![sender]),
                 caravanserai_owner("901", 1, 0, 4),
+                region_at("1:0,6", 0, 6, Vec::new()),
             ],
-            "unit 900\nTRANSPORT 901 5 STON\n",
-            options,
+            "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n",
+            with_map(),
         ));
 
         assert_eq!(
@@ -43255,43 +43429,44 @@ BUILD
         assert_eq!(finding.region_id, "1:0,0");
     }
 
+    /// Furs rather than stone, and two men, so the sender can walk with them and the grain every
+    /// fixture unit holds: `data/FUR` weighs 1, `data/STON` 50 and `data/GRAI` 5, and a unit
+    /// walks only when its capacity covers its load (`rules/movement_normal`).
     #[test]
     fn a_sender_moving_closer_brings_its_shipment_into_reach() {
-        let sender = with_item(unit("900"), 5, "stone", "STON");
-        let mut options = with_map();
-        options.month_end =
-            std::iter::once(("900".to_string(), Coordinate { x: 0, y: 2, z: 1 })).collect();
+        let sender = with_item(with_men(unit("900"), 2), 5, "furs", "FUR");
         assert_eq!(
-            reach_findings(
+            traced_reach_findings(
                 vec![
                     shipping_from(vec![sender]),
+                    region_at("1:0,2", 0, 2, Vec::new()),
                     caravanserai_owner("901", 1, 0, 6),
                 ],
-                "unit 900\nTRANSPORT 901 5 STON\n",
-                options,
+                "unit 900\nTRANSPORT 901 5 FUR\nMOVE S\n",
+                with_map(),
             ),
             Vec::new()
         );
     }
 
     /// The agreed record: a refusal is listed in the hex the report shows the sender in, even when
-    /// the sender walks away.
+    /// the sender walks away - here from (0,2), two hexes from the quartermaster, north to (0,0),
+    /// three. Furs and two men, so the sender can walk with them, as in
+    /// [`a_sender_moving_closer_brings_its_shipment_into_reach`].
     #[test]
     fn a_refusal_after_a_move_is_listed_where_the_sender_wrote_it() {
-        let sender = with_item(unit("900"), 5, "stone", "STON");
-        let mut options = with_map();
-        options.month_end =
-            std::iter::once(("900".to_string(), Coordinate { x: 0, y: -2, z: 1 })).collect();
-        let finding = only(reach_findings(
+        let sender = with_item(with_men(unit("900"), 2), 5, "furs", "FUR");
+        let finding = only(traced_reach_findings(
             vec![
-                shipping_from(vec![sender]),
-                caravanserai_owner("901", 1, 0, 4),
+                region_at("1:0,2", 0, 2, vec![sender]),
+                region_at("1:0,0", 0, 0, Vec::new()),
+                caravanserai_owner("901", 1, 0, 6),
             ],
-            "unit 900\nTRANSPORT 901 5 STON\n",
-            options,
+            "unit 900\nTRANSPORT 901 5 FUR\nMOVE N\n",
+            with_map(),
         ));
 
-        assert_eq!(finding.region_id, "1:0,0");
+        assert_eq!(finding.region_id, "1:0,2");
         assert!(
             finding.message.starts_with("Unit 901 is 3 hexes away"),
             "{}",
@@ -43302,17 +43477,15 @@ BUILD
     #[test]
     fn a_silenced_reach_warning_says_nothing_about_a_moved_shipment() {
         let sender = with_item(unit("900"), 5, "stone", "STON");
-        let mut options = disabling(codes::TRANSPORT_OUT_OF_REACH);
-        options.month_end =
-            std::iter::once(("901".to_string(), Coordinate { x: 0, y: 6, z: 1 })).collect();
         assert_eq!(
-            reach_findings(
+            traced_reach_findings(
                 vec![
                     shipping_from(vec![sender]),
                     caravanserai_owner("901", 1, 0, 4),
+                    region_at("1:0,6", 0, 6, Vec::new()),
                 ],
-                "unit 900\nTRANSPORT 901 5 STON\n",
-                options,
+                "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n",
+                disabling(codes::TRANSPORT_OUT_OF_REACH),
             ),
             Vec::new()
         );
@@ -43875,17 +44048,23 @@ BUILD
             priced_shipping(
                 1,
                 &[(9, "fur", "FUR")],
-                vec![caravanserai_owner("901", 1, 0, 6)],
+                vec![
+                    caravanserai_owner("901", 1, 0, 6),
+                    region_at("1:0,4", 0, 4, Vec::new()),
+                ],
             )
         };
         let orders = "unit 900\nTRANSPORT 901 9 FUR\n";
         let control = sender_silver_in(&trident_rules(), regions(), orders, with_map());
         assert_eq!(shipped(&control).len(), 1, "three hexes is priced");
 
-        let mut options = with_map();
-        options.month_end =
-            std::iter::once(("901".to_string(), Coordinate { x: 0, y: 4, z: 1 })).collect();
-        let moved = sender_silver_in(&trident_rules(), regions(), orders, options);
+        let orders = "unit 900\nTRANSPORT 901 9 FUR\nunit 901\nMOVE N\n";
+        let (report, options) = traced(report(regions()), orders, &trident_rules(), with_map());
+        let moved = review_turn(&report, orders, Some(&trident_rules()), options)
+            .silver
+            .into_iter()
+            .find(|forecast| forecast.unit_id == "900")
+            .expect("the sender is forecast");
         assert_eq!(shipped(&moved), Vec::<&SilverChange>::new());
     }
 
@@ -44153,17 +44332,17 @@ BUILD
     #[test]
     fn a_faction_mate_sharing_silver_that_walks_in_pays_the_bill() {
         let mut regions = unpaid_shipping(20);
-        let here = regions[0].coordinate;
+        // South of the sender's (0,0), so `MOVE N` walks it in.
         regions.push(region_at(
-            "1:90,90",
-            90,
-            90,
+            "1:0,2",
+            0,
+            2,
             vec![sharing(with_silver(unit("903"), 1000))],
         ));
-        let mut options = with_map();
-        options.month_end.insert("903".to_string(), here);
-
         let orders = format!("{UNPAID}unit 903\nMOVE N\n");
+        let (traced_report, options) =
+            traced(report(regions.clone()), &orders, &ruleset(), with_map());
+        regions = traced_report.regions;
         let silver = sender_silver(regions.clone(), &orders, options.clone());
         assert_eq!(silver.shipping.len(), 1, "the arriving sharer pays");
         let findings = unpaid_findings_with(regions, &orders, options);
@@ -52581,12 +52760,11 @@ BUILD
     // (`data/Caravanserai`).
 
     /// The Discord case: builder 900 in the settled (7,53) with no material, carrier 901 in (7,51)
-    /// with 30 wood. `carrier` decides 901's flags and orders; `arrives` puts its month end in
-    /// (7,53), as the shells fill `CheckOptions::month_end` from the movement trace.
+    /// with 30 wood. `carrier` decides 901's flags and `carrier_orders` its orders; where it ends
+    /// the month is the movement trace's answer ([`traced`]).
     fn caravanserai_turn(
         carrier: ReportUnit,
         carrier_orders: &str,
-        arrives: bool,
     ) -> (ParsedReport, String, CheckOptions) {
         let builder = with_skill(with_men(unit("900"), 10), "BUIL", 3);
         let report = ParsedReport {
@@ -52596,22 +52774,13 @@ BUILD
             ],
             ..Default::default()
         };
-        let mut options = CheckOptions::default();
-        if arrives {
-            options
-                .month_end
-                .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
-        }
         let orders = format!("unit 900\nBUILD Caravanserai\nunit 901\n{carrier_orders}");
+        let (report, options) = traced(report, &orders, &trident(), CheckOptions::default());
         (report, orders, options)
     }
 
-    fn caravanserai_warnings(
-        carrier: ReportUnit,
-        carrier_orders: &str,
-        arrives: bool,
-    ) -> Vec<Finding> {
-        let (report, orders, options) = caravanserai_turn(carrier, carrier_orders, arrives);
+    fn caravanserai_warnings(carrier: ReportUnit, carrier_orders: &str) -> Vec<Finding> {
+        let (report, orders, options) = caravanserai_turn(carrier, carrier_orders);
         check_turn(&report, &orders, Some(&trident()), options)
             .into_iter()
             .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
@@ -52623,8 +52792,7 @@ BUILD
     /// replaced `ah-z1f5`'s uncounted release).
     #[test]
     fn a_build_supplied_by_an_arriving_sharer_spends_the_sharers_wood() {
-        let (report, orders, options) =
-            caravanserai_turn(sharing(wood_carrier()), "MOVE S\n", true);
+        let (report, orders, options) = caravanserai_turn(sharing(wood_carrier()), "MOVE S\n");
         let effects = item_effects(&report, &orders, Some(&trident()), &options);
         let builder = effects_for(&effects, "900").cloned().unwrap_or_default();
         assert!(builder.uncounted.is_empty(), "{builder:?}");
@@ -52646,13 +52814,23 @@ BUILD
                 && movement.other.as_ref().map(|party| party.unit_id.as_str()) == Some("900")));
     }
 
+    /// Two men, 30 wood and the eight horses that let them walk with it: Trident's wood weighs 5
+    /// and its horse weighs 50 and carries 70 on foot (`data/WOOD`, and `data/HORS`'s structured
+    /// `capacity.walk` in `newage-trident-database.json`, which is what the ruleset reads - the
+    /// item's prose there says 20), and a unit walks only when its capacity covers its load
+    /// (`rules/movement_normal`) - 575 against 590 here.
     fn wood_carrier() -> ReportUnit {
-        with_item(with_men(unit("901"), 2), 30, "wood", "WOOD")
+        with_item(
+            with_item(with_men(unit("901"), 2), 30, "wood", "WOOD"),
+            8,
+            "horse",
+            "HORS",
+        )
     }
 
     #[test]
     fn wood_a_sharing_unit_carries_in_this_turn_reaches_the_builder() {
-        let findings = caravanserai_warnings(sharing(wood_carrier()), "MOVE S\n", true);
+        let findings = caravanserai_warnings(sharing(wood_carrier()), "MOVE S\n");
         assert!(
             findings.is_empty(),
             "movement comes before BUILD, and the arriving sharer supplies it: {findings:?}"
@@ -52661,7 +52839,7 @@ BUILD
 
     #[test]
     fn a_sharing_unit_switched_on_this_turn_supplies_the_builder_too() {
-        let findings = caravanserai_warnings(wood_carrier(), "SHARE 1\nMOVE S\n", true);
+        let findings = caravanserai_warnings(wood_carrier(), "SHARE 1\nMOVE S\n");
         assert!(
             findings.is_empty(),
             "SHARE is processed before movement and BUILD: {findings:?}"
@@ -52670,7 +52848,7 @@ BUILD
 
     #[test]
     fn an_arriving_unit_that_does_not_share_leaves_the_builder_warned() {
-        let findings = caravanserai_warnings(wood_carrier(), "MOVE S\n", true);
+        let findings = caravanserai_warnings(wood_carrier(), "MOVE S\n");
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert_eq!(
             findings[0].message,
@@ -52683,8 +52861,7 @@ BUILD
     /// discarded" (`rules/give`). So wood thrown away before the walk reaches nobody.
     #[test]
     fn wood_the_sharer_gives_away_before_it_moves_leaves_the_builder_warned() {
-        let findings =
-            caravanserai_warnings(sharing(wood_carrier()), "GIVE 0 30 wood\nMOVE S\n", true);
+        let findings = caravanserai_warnings(sharing(wood_carrier()), "GIVE 0 30 wood\nMOVE S\n");
         assert_eq!(findings.len(), 1, "{findings:?}");
     }
 
@@ -52706,25 +52883,18 @@ BUILD
             ],
             ..Default::default()
         };
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
-        let findings: Vec<Finding> = check_turn(
-            &report,
-            "unit 900\nBUILD Caravanserai\nunit 901\nGIVE 7001 30 wood\nMOVE S\n",
-            Some(&trident()),
-            options,
-        )
-        .into_iter()
-        .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
-        .collect();
+        let orders = "unit 900\nBUILD Caravanserai\nunit 901\nGIVE 7001 30 wood\nMOVE S\n";
+        let (report, options) = traced(report, orders, &trident(), CheckOptions::default());
+        let findings: Vec<Finding> = check_turn(&report, orders, Some(&trident()), options)
+            .into_iter()
+            .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
+            .collect();
         assert!(findings.is_empty(), "{findings:?}");
     }
 
     #[test]
     fn a_sharing_unit_that_stays_away_leaves_the_builder_warned() {
-        let findings = caravanserai_warnings(sharing(wood_carrier()), "", false);
+        let findings = caravanserai_warnings(sharing(wood_carrier()), "");
         assert_eq!(findings.len(), 1, "{findings:?}");
     }
 
@@ -52797,19 +52967,12 @@ BUILD
             ],
             ..Default::default()
         };
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
-        let findings: Vec<Finding> = check_turn(
-            &report,
-            "unit 900\nBUILD Caravanserai STONE\nunit 901\nMOVE S\n",
-            Some(&trident()),
-            options,
-        )
-        .into_iter()
-        .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
-        .collect();
+        let orders = "unit 900\nBUILD Caravanserai STONE\nunit 901\nMOVE S\n";
+        let (report, options) = traced(report, orders, &trident(), CheckOptions::default());
+        let findings: Vec<Finding> = check_turn(&report, orders, Some(&trident()), options)
+            .into_iter()
+            .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
+            .collect();
         assert_eq!(
             findings.len(),
             1,
@@ -52825,6 +52988,19 @@ BUILD
     // axes but has no wood, then the sharing unit will automatically supply wood for that
     // production".
 
+    /// Unit 901: two men carrying `wood`, with the five horses that let them walk with twenty of
+    /// it - New Origins' wood weighs 5 and its horse weighs 50 and carries 20 on foot
+    /// (`data/WOOD`, `data/HORS`), and a unit walks only when its capacity covers its load
+    /// (`rules/movement_normal`).
+    fn walking_wood(wood: i64) -> ReportUnit {
+        with_item(
+            with_item(with_men(unit("901"), 2), wood, "wood", "WOOD"),
+            5,
+            "horse",
+            "HORS",
+        )
+    }
+
     /// Carpenters 900 in (7,53) with no wood, ordered to `PRODUCE wagon`; sharing 901 in (7,51)
     /// with 20 wood walks in this turn.
     fn wagon_turn() -> (ParsedReport, String, CheckOptions) {
@@ -52832,25 +53008,12 @@ BUILD
         let report = ParsedReport {
             regions: vec![
                 region_at("1:7,53", 7, 53, vec![carpenters]),
-                region_at(
-                    "1:7,51",
-                    7,
-                    51,
-                    vec![sharing(with_item(
-                        with_men(unit("901"), 2),
-                        20,
-                        "wood",
-                        "WOOD",
-                    ))],
-                ),
+                region_at("1:7,51", 7, 51, vec![sharing(walking_wood(20))]),
             ],
             ..Default::default()
         };
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
         let orders = "unit 900\nPRODUCE wagon\nunit 901\nMOVE S\n".to_string();
+        let (report, options) = traced(report, &orders, &ruleset(), CheckOptions::default());
         (report, orders, options)
     }
 
@@ -52881,24 +53044,13 @@ BUILD
         let carpenters = with_skill(with_men(unit("900"), 15), "CARP", 1);
         let report = ParsedReport {
             regions: vec![
-                region_at(
-                    "1:7,51",
-                    7,
-                    51,
-                    vec![
-                        carpenters,
-                        sharing(with_item(with_men(unit("901"), 2), 20, "wood", "WOOD")),
-                    ],
-                ),
+                region_at("1:7,51", 7, 51, vec![carpenters, sharing(walking_wood(20))]),
                 region_at("1:7,53", 7, 53, vec![]),
             ],
             ..Default::default()
         };
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
         let orders = "unit 900\nPRODUCE wagon\nunit 901\nMOVE S\n";
+        let (report, options) = traced(report, orders, &ruleset(), CheckOptions::default());
 
         let effects = item_effects(&report, orders, Some(&ruleset()), &options);
         let producer = effects_for(&effects, "900").cloned().unwrap_or_default();
@@ -52933,25 +53085,12 @@ BUILD
         let report = ParsedReport {
             regions: vec![
                 region_at("1:7,53", 7, 53, vec![carpenters("900"), carpenters("902")]),
-                region_at(
-                    "1:7,51",
-                    7,
-                    51,
-                    vec![sharing(with_item(
-                        with_men(unit("901"), 2),
-                        20,
-                        "wood",
-                        "WOOD",
-                    ))],
-                ),
+                region_at("1:7,51", 7, 51, vec![sharing(walking_wood(20))]),
             ],
             ..Default::default()
         };
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
         let orders = "unit 900\nPRODUCE wagon\nunit 902\nPRODUCE wagon\nunit 901\nMOVE S\n";
+        let (report, options) = traced(report, orders, &ruleset(), CheckOptions::default());
 
         let effects = item_effects(&report, orders, Some(&ruleset()), &options);
         assert_eq!(made_by(&effects, "900", "WAGO"), 15);
@@ -52962,8 +53101,9 @@ BUILD
     /// A sharer whose own sums this walk cannot follow lends nothing where it arrives.
     #[test]
     fn an_arriving_sharer_whose_sums_are_doubted_lends_nothing() {
-        let (report, _, options) = wagon_turn();
+        let (report, _, _) = wagon_turn();
         let orders = "unit 900\nPRODUCE wagon\nunit 901\nSELL 5 xyzzy\nMOVE S\n";
+        let (report, options) = traced(report, orders, &ruleset(), CheckOptions::default());
         let effects = item_effects(&report, orders, Some(&ruleset()), &options);
         assert_eq!(made_by(&effects, "900", "WAGO"), 0, "{effects:?}");
         assert_eq!(made_by(&effects, "901", "WOOD"), 0, "{effects:?}");
@@ -52986,19 +53126,12 @@ BUILD
             ],
             ..Default::default()
         };
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("901".to_string(), Coordinate { x: 7, y: 51, z: 1 });
-        let findings: Vec<Finding> = check_turn(
-            &report,
-            "unit 900\nBUILD Caravanserai\nunit 901\nMOVE N\n",
-            Some(&trident()),
-            options,
-        )
-        .into_iter()
-        .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
-        .collect();
+        let orders = "unit 900\nBUILD Caravanserai\nunit 901\nMOVE N\n";
+        let (report, options) = traced(report, orders, &trident(), CheckOptions::default());
+        let findings: Vec<Finding> = check_turn(&report, orders, Some(&trident()), options)
+            .into_iter()
+            .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
+            .collect();
         assert_eq!(findings.len(), 1, "{findings:?}");
     }
 
@@ -53233,7 +53366,8 @@ BUILD
     // a STUDY in is the one its month ends in, not the one the report lists it in.
 
     /// Student 5 (two men, no silver) studies in `student_at`; sharer 7 with $500 is listed in
-    /// `sharer_at` and, when `ends_at` is given, ends the month there (`CheckOptions::month_end`).
+    /// `sharer_at` and, when `ends_at` is given, walks `MOVE S` into it - which must be the hex
+    /// south of `sharer_at` - so the movement trace ends its month there ([`traced`]).
     fn study_beside_a_walking_sharer(
         student_at: (&str, i32, i32),
         sharer_at: (&str, i32, i32),
@@ -53281,18 +53415,31 @@ BUILD
                 region_at(sharer_at.0, sharer_at.1, sharer_at.2, vec![sharer]),
             ]
         };
-        let mut options = CheckOptions::default();
+        let mut regions = regions;
         if let Some((x, y)) = ends_at {
-            options
-                .month_end
-                .insert("7".to_string(), Coordinate { x, y, z: 1 });
+            assert_eq!(
+                (x, y),
+                (sharer_at.1, sharer_at.2 + 2),
+                "the sharer walks MOVE S"
+            );
+            if !regions
+                .iter()
+                .any(|region| region.coordinate.x == x && region.coordinate.y == y)
+            {
+                regions.push(region_at(&format!("1:{x},{y}"), x, y, Vec::new()));
+            }
         }
-        review_turn(
-            &report(regions),
-            &format!("unit 5\n{student_orders}\nunit 7\nMOVE S\n"),
-            Some(&ruleset()),
-            options,
-        )
+        let orders = format!(
+            "unit 5\n{student_orders}\nunit 7\n{}",
+            if ends_at.is_some() { "MOVE S\n" } else { "" }
+        );
+        let (report, options) = traced(
+            report(regions),
+            &orders,
+            &ruleset(),
+            CheckOptions::default(),
+        );
+        review_turn(&report, &orders, Some(&ruleset()), options)
     }
 
     /// `BUY` comes before movement (`rules/sequenceofevents`), so a sharer that leaves afterwards
@@ -53360,19 +53507,17 @@ BUILD
                 ],
             )
         };
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("7".to_string(), Coordinate { x: 7, y: 53, z: 1 });
-        let review = review_turn(
-            &report(vec![
+        let orders = "unit 5\nBUY 1 swords\nunit 8\nSTUDY combat\nunit 7\nMOVE S\n";
+        let (report, options) = traced(
+            report(vec![
                 hex,
                 region_at("1:7,51", 7, 51, vec![sharing(with_silver(unit("7"), 500))]),
             ]),
-            "unit 5\nBUY 1 swords\nunit 8\nSTUDY combat\nunit 7\nMOVE S\n",
-            Some(&ruleset()),
-            options,
+            orders,
+            &ruleset(),
+            CheckOptions::default(),
         );
+        let review = review_turn(&report, orders, Some(&ruleset()), options);
         assert!(
             !review
                 .findings
@@ -53415,20 +53560,18 @@ BUILD
                 ],
             )
         };
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("7".to_string(), Coordinate { x: 7, y: 53, z: 1 });
-        let review = review_turn(
-            &report(vec![
+        let orders = "unit 5\nBUY 1 swords\nunit 6\nSTUDY combat\nunit 9\nTRANSPORT 5 100 SILV\n\
+                      unit 7\nMOVE S\n";
+        let (report, options) = traced(
+            report(vec![
                 hex,
                 region_at("1:7,51", 7, 51, vec![sharing(with_silver(unit("7"), 500))]),
             ]),
-            "unit 5\nBUY 1 swords\nunit 6\nSTUDY combat\nunit 9\nTRANSPORT 5 100 SILV\n\
-             unit 7\nMOVE S\n",
-            Some(&ruleset()),
-            options,
+            orders,
+            &ruleset(),
+            CheckOptions::default(),
         );
+        let review = review_turn(&report, orders, Some(&ruleset()), options);
         // Unit 6's STUDY alone: whether unit 5's BUY - which nothing funds when the market runs -
         // is warned about is the month-end netting's business, not this test's (`ah-wyj8` review).
         assert!(
@@ -53449,19 +53592,17 @@ BUILD
 
         let student = with_men(with_silver(unit("5"), 0), 2);
         let sharer = sharing(with_silver(unit("7"), 500));
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("7".to_string(), Coordinate { x: 7, y: 53, z: 1 });
-        let review = review_turn(
-            &report(vec![
+        let orders = "unit 5\nSTUDY combat\nunit 7\nBUY 1 unobtainium\nMOVE S\n";
+        let (report, options) = traced(
+            report(vec![
                 region_at("1:7,53", 7, 53, vec![student]),
                 region_at("1:7,51", 7, 51, vec![sharer]),
             ]),
-            "unit 5\nSTUDY combat\nunit 7\nBUY 1 unobtainium\nMOVE S\n",
-            Some(&ruleset()),
-            options,
+            orders,
+            &ruleset(),
+            CheckOptions::default(),
         );
+        let review = review_turn(&report, orders, Some(&ruleset()), options);
         assert_eq!(
             forecast_for(&review, "5").shared_silver_coverage,
             Some(SharedSilverCoverage::Unjudged)
@@ -53543,39 +53684,88 @@ BUILD
     }
 
     /// A MOVE that a later STUDY replaces never runs ("STUDY replaces this MOVE as the unit's
-    /// month-long order"), so the sharer stays and pays - whatever the movement trace, which
-    /// follows every MOVE written, says about where it ends (`ah-wyj8`).
+    /// month-long order"), so the sharer stays and pays (`ah-wyj8`, `ah-osny`), with the month end
+    /// the trace gives. The checker reads the orders that run as well, so this alone would not
+    /// catch the trace going wrong again (the sibling below shows as much);
+    /// [`traced_leaves_a_sharer_whose_move_a_study_replaced_where_it_stands`] is what does.
     #[test]
     fn a_sharer_whose_move_a_study_replaces_stays_and_pays() {
-        let regions = vec![region_at(
-            "1:7,53",
-            7,
-            53,
-            vec![
-                with_men(with_silver(unit("5"), 0), 2),
-                sharing(with_silver(unit("7"), 500)),
-            ],
-        )];
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("7".to_string(), Coordinate { x: 7, y: 55, z: 1 });
-        let findings: Vec<Finding> = check_turn(
-            &report(regions),
-            "unit 5\nSTUDY combat\nunit 7\nMOVE S\nSTUDY combat\n",
-            Some(&ruleset()),
-            options,
-        )
-        .into_iter()
-        .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
-        .collect();
-        assert_eq!(findings, vec![]);
+        assert_eq!(
+            sharer_whose_move_a_study_replaces(|report, orders, options| {
+                traced(report, orders, &ruleset(), options)
+            }),
+            vec![]
+        );
+    }
+
+    /// The same, whatever the trace says: a month end the replaced MOVE would have reached does
+    /// not take the sharer away either, because the checker reads the orders that run
+    /// (`SharingReach::ends_at`), not only the trace.
+    #[test]
+    fn a_sharer_whose_move_a_study_replaces_stays_and_pays_whatever_the_trace_says() {
+        assert_eq!(
+            sharer_whose_move_a_study_replaces(|report, _, options| {
+                let options =
+                    counterfactual_month_end(options, &[("7", Coordinate { x: 7, y: 55, z: 1 })]);
+                (report, options)
+            }),
+            vec![]
+        );
+    }
+
+    /// Student 5 and sharer 7 in (7,53), (7,55) empty to the south; 7 writes `MOVE S` and then
+    /// `STUDY`. `month_end` fills the options; the unpaid-study warnings come back.
+    fn sharer_whose_move_a_study_replaces(
+        month_end: impl FnOnce(ParsedReport, &str, CheckOptions) -> (ParsedReport, CheckOptions),
+    ) -> Vec<Finding> {
+        let regions = vec![
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![
+                    with_men(with_silver(unit("5"), 0), 2),
+                    sharing(with_silver(unit("7"), 500)),
+                ],
+            ),
+            region_at("1:7,55", 7, 55, Vec::new()),
+        ];
+        let orders = "unit 5\nSTUDY combat\nunit 7\nMOVE S\nSTUDY combat\n";
+        let (report, options) = month_end(report(regions), orders, CheckOptions::default());
+        check_turn(&report, orders, Some(&ruleset()), options)
+            .into_iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .collect()
     }
 
     /// The control: a sharer that stays where it is listed pays as it always did.
     #[test]
     fn a_sharer_that_stays_pays_for_a_study_beside_it() {
         let findings = study_beside_a_walking_sharer(("1:7,53", 7, 53), ("1:7,53", 7, 53), None);
+        assert_eq!(findings, vec![]);
+    }
+
+    /// A sharer that writes a `MOVE` nobody can follow - no month end known, as a shell without
+    /// the remembered map sends it - is pooled where the report lists it, and pays there.
+    #[test]
+    fn a_sharer_whose_walk_has_no_known_month_end_pays_where_it_is_listed() {
+        let findings: Vec<Finding> = check_turn(
+            &report(vec![region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![
+                    with_men(with_silver(unit("5"), 0), 2),
+                    sharing(with_silver(unit("7"), 500)),
+                ],
+            )]),
+            "unit 5\nSTUDY combat\nunit 7\nMOVE S\n",
+            Some(&ruleset()),
+            counterfactual_month_end(CheckOptions::default(), &[]),
+        )
+        .into_iter()
+        .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+        .collect();
         assert_eq!(findings, vec![]);
     }
 
@@ -53616,7 +53806,6 @@ BUILD
             )
         };
         let mut regions = vec![hex];
-        let mut options = CheckOptions::default();
         let mut orders =
             "unit 5\nBUY 1 swords\nunit 8\nSTUDY combat\nunit 9\nTRANSPORT 5 100 SILV\n"
                 .to_string();
@@ -53627,12 +53816,15 @@ BUILD
                 51,
                 vec![sharing(with_silver(unit("7"), 500))],
             ));
-            options
-                .month_end
-                .insert("7".to_string(), Coordinate { x: 7, y: 53, z: 1 });
             orders.push_str("unit 7\nMOVE S\n");
         }
-        review_turn(&report(regions), &orders, Some(&ruleset()), options)
+        let (report, options) = traced(
+            report(regions),
+            &orders,
+            &ruleset(),
+            CheckOptions::default(),
+        );
+        review_turn(&report, &orders, Some(&ruleset()), options)
     }
 
     /// The engine has sharer 8 lend its $100 at BUY and hold $0 at STUDY, so its study is unfunded;
@@ -53704,19 +53896,17 @@ BUILD
     /// pays nothing that has already been studied (`rules/sequenceofevents`, `ah-qrk0` review).
     #[test]
     fn silver_shipped_to_an_arriving_sharer_after_study_does_not_pay_for_the_study() {
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("7".to_string(), Coordinate { x: 7, y: 53, z: 1 });
-        let review = review_turn(
-            &report(vec![
+        let orders = "unit 5\nTRANSPORT 7 100 SILV\nunit 6\nSTUDY combat\nunit 7\nMOVE S\n";
+        let (report, options) = traced(
+            report(vec![
                 caravanserai_hex("5", 100, vec![with_men(with_silver(unit("6"), 0), 2)]),
                 region_at("1:7,51", 7, 51, vec![sharing(with_silver(unit("7"), 0))]),
             ]),
-            "unit 5\nTRANSPORT 7 100 SILV\nunit 6\nSTUDY combat\nunit 7\nMOVE S\n",
-            Some(&ruleset()),
-            options,
+            orders,
+            &ruleset(),
+            CheckOptions::default(),
         );
+        let review = review_turn(&report, orders, Some(&ruleset()), options);
         assert!(
             review
                 .findings

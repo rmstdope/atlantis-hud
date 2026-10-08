@@ -1278,29 +1278,50 @@ pub fn shipment_measures(
     map_json: &str,
     options: super::semantics::CheckOptions,
 ) -> Result<ShipmentMeasures, String> {
-    use crate::movement::graph::MapKnowledge;
-
     let ruleset = cache
         .ruleset(ruleset_json)
         .map_err(|error| error.to_string())?;
     let remembered: Vec<crate::movement::graph::RememberedRegion> =
         serde_json::from_str(remembered_json)
             .map_err(|error| format!("remembered regions could not be read: {error}"))?;
-    if !ships_anything(orders_document, &ruleset) && !moves_anywhere(orders_document, &ruleset) {
-        return Ok(ShipmentMeasures::default());
-    }
-
     let report = cache.classified(raw_report, ruleset_json);
+    Ok(measure_shipments(
+        &report,
+        &ruleset,
+        &remembered,
+        orders_document,
+        crate::movement::graph::geometry_from_json(map_json),
+        options,
+    ))
+}
+
+/// [`shipment_measures`] past its reading of the strings: what a caller holding the parsed report
+/// gets, so the semantics tests fill `CheckOptions::month_end` from the same trace the shells do
+/// rather than by hand (`ah-sj06`). `geometry` is the map's shape as `geometry_from_json` read it;
+/// an `Err` measures the shown extent and leaves `month_end` empty.
+pub(crate) fn measure_shipments(
+    report: &crate::report::ParsedReport,
+    ruleset: &std::sync::Arc<Ruleset>,
+    remembered: &[crate::movement::graph::RememberedRegion],
+    orders_document: &str,
+    geometry: Result<Option<crate::movement::graph::MapGeometry>, String>,
+    options: super::semantics::CheckOptions,
+) -> ShipmentMeasures {
+    use crate::movement::graph::MapKnowledge;
+
+    if !ships_anything(orders_document, ruleset) && !moves_anywhere(orders_document, ruleset) {
+        return ShipmentMeasures::default();
+    }
     // Passages are not read: a crossing the faction has not proved names no month end, and one it
     // has is not needed to measure a walk in the same hexes. As the preview does otherwise.
-    let map = MapKnowledge::from_remembered(&report, &remembered);
+    let map = MapKnowledge::from_remembered(report, remembered);
     // The shown extent reads coordinates only, so it is measured before the shape is.
     let shown = map.shown_extent();
-    let Ok(geometry) = crate::movement::graph::geometry_from_json(map_json) else {
-        return Ok(ShipmentMeasures {
+    let Ok(geometry) = geometry else {
+        return ShipmentMeasures {
             shown,
             month_end: Default::default(),
-        });
+        };
     };
     let map = map.with_geometry(geometry);
     let options = super::semantics::CheckOptions {
@@ -1312,18 +1333,18 @@ pub fn shipment_measures(
         Some(ruleset.as_ref()),
     );
     let (units, dissolved) = settle(
-        &report,
-        &ruleset,
+        report,
+        ruleset,
         orders_document,
         &ordered,
         geometry,
         options,
     );
-    let (decided, _) = decide_movement(&report, &ruleset, &map, &ordered, units, &dissolved);
-    Ok(ShipmentMeasures {
+    let (decided, _) = decide_movement(report, ruleset, &map, &ordered, units, &dissolved);
+    ShipmentMeasures {
         shown,
         month_end: month_end_of(&decided),
-    })
+    }
 }
 
 /// Every own unit whose MOVE would cross a wall a report proves, for a caller that checks orders
