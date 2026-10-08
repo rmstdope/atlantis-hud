@@ -779,6 +779,8 @@ pub fn review_turn(
             (hex, ledger)
         })
         .collect();
+    // Who can share with whom once movement ends: one answer for every consumer (`ah-oby0`).
+    let reach = SharingReach::read(&hexes, report, &options.month_end);
     // A sharing unit walking in this turn supplies a builder its own hex's ledger refused.
     release_refusals_met_by_arrivals(&mut hexes, &options.month_end);
 
@@ -792,7 +794,7 @@ pub fn review_turn(
             pre_maintenance_fund_remaining: unclaimed_plan
                 .as_ref()
                 .map(|plan| plan.remaining_before_maintenance),
-            month_end: &options.month_end,
+            reach: &reach,
         },
         StatePhase::Maintenance,
     );
@@ -975,19 +977,17 @@ struct ReportWideInputs<'r> {
     ruleset: Option<&'r Ruleset>,
     shipping: Option<&'r super::transport::Shipping>,
     pre_maintenance_fund_remaining: Option<i64>,
-    /// Where each unit ends the month, from the movement trace (`CheckOptions::month_end`), so
-    /// maintenance is shared where a walker arrives (`ah-n3qb`).
-    month_end: &'r super::transport::MonthEndHexes,
+    /// Who shares with whom: maintenance is shared where a walker or a fleet arrives
+    /// (`ah-n3qb`, `ah-bwxp.1`).
+    reach: &'r SharingReach,
 }
 
 /// What the maintenance steps paid on the units' behalf. All empty when the driver was asked to
 /// stop before `StatePhase::Maintenance`.
 #[derive(Default)]
 struct ReportWideSettlement {
-    /// Who shares maintenance with whom ([`maintenance_groups`]), for steps 2 to 6.
-    groups: Vec<Vec<Member>>,
-    /// What each group's faction food still holds once step 2 has run, index-aligned with
-    /// `groups`: `None` where step 2 was contended (`FactionFoodPass::pool_left`).
+    /// What each neighbourhood's faction food still holds once step 2 has run, index-aligned with
+    /// [`SharingReach::neighbourhoods`]: `None` where step 2 was contended (`FactionFoodPass::pool_left`).
     food_left: Vec<Option<Vec<FoodAmount>>>,
     shared_silver: BTreeMap<UnitKey, i64>,
     food_relief: BTreeMap<UnitKey, LateFoodRelief>,
@@ -1041,8 +1041,8 @@ fn settle_report_wide(
                 for (hex, ledger) in hexes.iter_mut() {
                     ledger.food_claims = step_one_claims(ledger, hex);
                 }
-                settlement.groups = maintenance_groups(hexes, inputs.report, inputs.month_end);
-                settlement.food_left = feed_groups_from_faction_food(hexes, &settlement.groups);
+                settlement.food_left =
+                    feed_groups_from_faction_food(hexes, inputs.reach.neighbourhoods());
                 for (hex, ledger) in hexes.iter_mut() {
                     charge_settled_upkeep(ledger, hex);
                 }
@@ -1050,12 +1050,16 @@ fn settle_report_wide(
             // Step 4 comes before steps 5 and 6: a neighbour's silver is spent before anybody's
             // grain.
             ReportWideStep::ShareSilverForUpkeep => {
-                settlement.shared_silver = share_silver_for_upkeep(hexes, &settlement.groups);
+                settlement.shared_silver =
+                    share_silver_for_upkeep(hexes, inputs.reach.neighbourhoods());
             }
             // Steps 5 and 6 come before step 7, and `upkeep_claims` reads the relief they leave.
             ReportWideStep::FeedFromFood => {
-                settlement.food_relief =
-                    feed_from_food_after_silver(hexes, &settlement.groups, &settlement.food_left);
+                settlement.food_relief = feed_from_food_after_silver(
+                    hexes,
+                    inputs.reach.neighbourhoods(),
+                    &settlement.food_left,
+                );
             }
             ReportWideStep::DrawOnUnclaimedFund => {
                 settlement.fund = draw_on_unclaimed_fund(hexes, inputs);
@@ -1070,13 +1074,7 @@ fn draw_on_unclaimed_fund(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
     inputs: &ReportWideInputs<'_>,
 ) -> UpkeepSettlement {
-    let regions: HashMap<Coordinate, &ReportRegion> = inputs
-        .report
-        .regions
-        .iter()
-        .map(|region| (region.coordinate, region))
-        .collect();
-    let claims = upkeep_claims(hexes, &regions, inputs.month_end);
+    let claims = upkeep_claims(hexes, inputs.reach);
     // `CLAIM` resolves during the month and maintenance is settled at its end, so this month's
     // claims come off the fund before step 7 ever sees it (`ah-fjty`).
     // A fund whose withdrawals nothing can price is not a fund we can spend on upkeep, so an
@@ -5832,6 +5830,7 @@ pub(crate) fn item_effects(
             (hex, ledger)
         })
         .collect();
+    let reach = SharingReach::read(&priced, report, &options.month_end);
     // The same release `review_turn` makes, so the ITEMS column agrees with Problems.
     release_refusals_met_by_arrivals(&mut priced, &options.month_end);
     let month_end = settle_report_wide(
@@ -5843,11 +5842,11 @@ pub(crate) fn item_effects(
             pre_maintenance_fund_remaining: unclaimed_plan
                 .as_ref()
                 .map(|plan| plan.remaining_before_maintenance),
-            month_end: &options.month_end,
+            reach: &reach,
         },
         StatePhase::Maintenance,
     );
-    let mut eaten = eaten_by_group(&priced, &month_end);
+    let mut eaten = eaten_by_group(&priced, &reach, &month_end);
 
     for (hex, ledger) in priced {
         let hex = &hex;
@@ -6240,10 +6239,10 @@ fn step_one_claims(ledger: &Ledger<'_>, hex: &Hex<'_>) -> Vec<FoodClaim> {
 /// still holds for steps 5 and 6, index-aligned with `groups`.
 fn feed_groups_from_faction_food(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
-    groups: &[Vec<Member>],
+    groups: &[Neighbourhood],
 ) -> Vec<Option<Vec<FoodAmount>>> {
     let mut food_left = Vec::with_capacity(groups.len());
-    for members in groups {
+    for Neighbourhood { members, .. } in groups {
         // Keyed by the member's position in the group: a number alone does not name a unit across
         // hexes (`ah-9o0c.3`).
         let claims: Vec<FoodClaim> = members
@@ -9247,26 +9246,18 @@ fn relieved_balance(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
 /// ours rather than the engine's, and it is only ever visible in a hex whose pooled silver is
 /// short by less than its units' fees between them; the total - which is what the settlement and
 /// every message state - is exact either way.
-fn upkeep_claims(
-    hexes: &[(Hex<'_>, Ledger<'_>)],
-    regions: &HashMap<Coordinate, &ReportRegion>,
-    month_end: &super::transport::MonthEndHexes,
-) -> Vec<UpkeepClaim> {
+fn upkeep_claims(hexes: &[(Hex<'_>, Ledger<'_>)], reach: &SharingReach) -> Vec<UpkeepClaim> {
     let mut claims = Vec::new();
-    for (hex, ledger) in hexes {
+    for (index, (hex, ledger)) in hexes.iter().enumerate() {
         claims.extend(
             unpayable_upkeep(hex, ledger)
                 .into_iter()
                 .map(|(unit_id, short)| {
                     // Where the fee falls due, for the warning's breakdown (`ah-bwxp.2`): the
                     // region the unit ends the month in, as step 4 already groups it.
-                    let pays_in = hex
-                        .units
-                        .iter()
-                        .find(|ordered| ordered.unit.unit_id == unit_id)
-                        .map_or(hex.region.coordinate, |ordered| {
-                            month_end_region(hex, ordered, ledger.ruleset, regions, month_end)
-                        });
+                    let pays_in = reach
+                        .of(index, &unit_id)
+                        .map_or(hex.region.coordinate, |neighbourhood| neighbourhood.at);
                     UpkeepClaim {
                         region_id: hex.region.region_id.clone(),
                         unit_id,
@@ -9328,7 +9319,7 @@ fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<(String, i64)> {
 /// **The region a unit ends the month in, not the one it starts it in** (`ah-bwxp.1`, GitHub
 /// #1326). `rules/sequenceofevents` assesses maintenance after "ADVANCE, MOVE and SAIL orders are
 /// processed", so a passenger whose fleet sails into a hex shares with the units standing there
-/// and no longer with the ones it left behind. Where a unit ends up is [`month_end_region`]'s
+/// and no longer with the ones it left behind. Where a unit ends up is [`SharingReach`]'s
 /// answer.
 ///
 /// **Automatic and unconditional.** The `SHARE` flag governs discretionary spending only - the
@@ -9345,7 +9336,7 @@ fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<(String, i64)> {
 /// to the unclaimed fund that step 4 had already met.
 fn share_silver_for_upkeep(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
-    groups: &[Vec<Member>],
+    groups: &[Neighbourhood],
 ) -> BTreeMap<UnitKey, i64> {
     // What each unit could not pay itself, read once per hex before anything is lent.
     let owing: Vec<BTreeMap<String, i64>> = hexes
@@ -9354,7 +9345,7 @@ fn share_silver_for_upkeep(
         .collect();
 
     let mut covered: BTreeMap<UnitKey, i64> = BTreeMap::new();
-    for members in groups {
+    for Neighbourhood { members, .. } in groups {
         let claims: Vec<(&Member, i64)> = members
             .iter()
             .filter_map(|member| {
@@ -9441,35 +9432,106 @@ fn share_silver_for_upkeep(
 /// not name a unit across hexes (`ah-9o0c.3`).
 type Member = (usize, String);
 
-/// Who shares maintenance with whom (`rules/economy_maintenance` steps 2 and 4 to 6: "faction
-/// units in the same region"): every hex's units, grouped by the region each one ends the month in
-/// ([`month_end_region`]), since `rules/sequenceofevents` assesses maintenance after "ADVANCE,
-/// MOVE and SAIL orders are processed" (`ah-bwxp.1`, `ah-n3qb`).
+/// Faction-mates that end the month in one region: who a `SHARE` consumer may pool with.
+struct Neighbourhood {
+    /// The region they end the month in.
+    at: Coordinate,
+    /// In report order.
+    members: Vec<Member>,
+}
+
+/// **The one answer to "which faction-mates can this unit share with this month, and where"**
+/// (`ah-oby0`). Every consumer of sharing reads it - maintenance steps 2 and 4 to 7 and a
+/// `BUILD`'s material - and a new one (`PRODUCE` inputs, say) gets arrival-awareness by reading it
+/// too, rather than by writing its own month-end grouping: four bug fixes were paid for exactly
+/// that (`ah-bwxp.1`, `ah-n3qb`, `ah-21r0`, `ah-z1f5`).
 ///
-/// In report order - a `Vec` rather than a map keyed by coordinate, so lending and eating stay in
-/// document order, and a group's members are in document order too.
-fn maintenance_groups(
-    hexes: &[(Hex<'_>, Ledger<'_>)],
-    report: &ParsedReport,
-    month_end: &super::transport::MonthEndHexes,
-) -> Vec<Vec<Member>> {
-    let regions: HashMap<Coordinate, &ReportRegion> = report
-        .regions
-        .iter()
-        .map(|region| (region.coordinate, region))
-        .collect();
-    let mut groups: Vec<(Coordinate, Vec<Member>)> = Vec::new();
-    for (index, (hex, ledger)) in hexes.iter().enumerate() {
-        for ordered in &hex.units {
-            let at = month_end_region(hex, ordered, ledger.ruleset, &regions, month_end);
-            let member = (index, ordered.unit.unit_id.clone());
-            match groups.iter_mut().find(|(coordinate, _)| *coordinate == at) {
-                Some((_, members)) => members.push(member),
-                None => groups.push((at, vec![member])),
+/// A unit is placed in the region it **ends** the month in. `rules/sequenceofevents` processes
+/// "ADVANCE, MOVE and SAIL orders" before "BUILD orders" and before "Maintenance costs are
+/// assessed", and `rules/share` reaches "any other unit of your faction ... in the same region".
+/// Which balance each consumer then reads, and whether it needs the `SHARE` flag (maintenance does
+/// not; `rules/economy_maintenance`), is the consumer's own business.
+///
+/// Where a unit ends the month:
+/// - one its fleet carries away: [`production_region`]'s answer, so a sailing passenger produces
+///   and is fed in the same place, wherever [`sail_destination`] says its fleet arrives
+///   (`ah-jk9h`, `ah-bwxp.1`). Never the movement trace, which the shells fill for a sail only
+///   when something else in the document walks or ships;
+/// - any other unit: `CheckOptions::month_end`, the movement trace's answer, since a walker's
+///   month end depends on its movement points and the terrain (`ah-n3qb`);
+/// - a unit nothing can follow: where it stands. "Cannot say" is not a destination.
+struct SharingReach {
+    /// In report order, and each one's members in report order, so lending and eating stay in
+    /// document order. Told apart by faction as well as region, so a neighbourhood is only ever
+    /// faction-mates (`rules/share`: "your faction").
+    neighbourhoods: Vec<Neighbourhood>,
+    /// Which neighbourhood each unit is in.
+    of: HashMap<Member, usize>,
+}
+
+impl SharingReach {
+    fn read(
+        hexes: &[(Hex<'_>, Ledger<'_>)],
+        report: &ParsedReport,
+        month_end: &super::transport::MonthEndHexes,
+    ) -> Self {
+        let regions: HashMap<Coordinate, &ReportRegion> = report
+            .regions
+            .iter()
+            .map(|region| (region.coordinate, region))
+            .collect();
+        let mut reach = Self {
+            neighbourhoods: Vec::new(),
+            of: HashMap::new(),
+        };
+        let mut by_place: HashMap<(Coordinate, Option<String>), usize> = HashMap::new();
+        for (index, (hex, ledger)) in hexes.iter().enumerate() {
+            for ordered in &hex.units {
+                let at = Self::ends_at(hex, ordered, ledger.ruleset, &regions, month_end);
+                let faction = ordered.unit.faction_id.clone();
+                let member: Member = (index, ordered.unit.unit_id.clone());
+                let position = *by_place.entry((at, faction)).or_insert_with(|| {
+                    reach.neighbourhoods.push(Neighbourhood {
+                        at,
+                        members: Vec::new(),
+                    });
+                    reach.neighbourhoods.len() - 1
+                });
+                reach.neighbourhoods[position].members.push(member.clone());
+                reach.of.insert(member, position);
             }
         }
+        reach
     }
-    groups.into_iter().map(|(_, members)| members).collect()
+
+    fn neighbourhoods(&self) -> &[Neighbourhood] {
+        &self.neighbourhoods
+    }
+
+    /// The neighbourhood of the unit numbered `unit_id` in `hexes[index]`.
+    fn of(&self, index: usize, unit_id: &str) -> Option<&Neighbourhood> {
+        self.of
+            .get(&(index, unit_id.to_string()))
+            .map(|position| &self.neighbourhoods[*position])
+    }
+
+    /// Where `ordered` ends the month, by coordinate; see the type's own documentation.
+    fn ends_at(
+        hex: &Hex<'_>,
+        ordered: &Ordered<'_>,
+        ruleset: Option<&Ruleset>,
+        regions: &HashMap<Coordinate, &ReportRegion>,
+        month_end: &super::transport::MonthEndHexes,
+    ) -> Coordinate {
+        let sails = ruleset.is_some_and(|rules| carried_away(hex, ordered, rules).is_some());
+        if !sails {
+            if let Some(at) = month_end.get(&ordered.unit.unit_id) {
+                return *at;
+            }
+        }
+        production_region(hex, ordered, ruleset, regions)
+            .map_or(hex.region.coordinate, |region| region.coordinate)
+    }
 }
 
 /// The hex `members` is, when it is exactly one hex's units: all of them listed in that hex, and
@@ -9481,45 +9543,16 @@ fn one_whole_hex(members: &[(usize, String)], hexes: &[(Hex<'_>, Ledger<'_>)]) -
     .then_some(*index)
 }
 
-/// The region `ordered` stands in when maintenance is assessed, by coordinate.
-///
-/// A unit its fleet carries away: [`production_region`]'s answer, so a sailing passenger produces
-/// and is fed in the same place, wherever [`sail_destination`] says its fleet arrives (`ah-jk9h`,
-/// `ah-bwxp.1`). Never `month_end`, which the shells fill for a sail only when something else in
-/// the document walks or ships - so an unrelated order would otherwise move where a fleet is fed.
-///
-/// Any other unit: `month_end`, the movement trace's answer (`CheckOptions::month_end`), since a
-/// walker's month end depends on its movement points and the terrain, which is `movement::plan`'s
-/// whole business and not a thing to guess here (`ah-n3qb`). A unit nothing can follow is counted
-/// where it stands: "cannot say" is not a destination, and staying put is what the sharing did
-/// before `ah-bwxp.1`.
-fn month_end_region(
-    hex: &Hex<'_>,
-    ordered: &Ordered<'_>,
-    ruleset: Option<&Ruleset>,
-    regions: &HashMap<Coordinate, &ReportRegion>,
-    month_end: &super::transport::MonthEndHexes,
-) -> Coordinate {
-    let sails = ruleset.is_some_and(|rules| carried_away(hex, ordered, rules).is_some());
-    if !sails {
-        if let Some(at) = month_end.get(&ordered.unit.unit_id) {
-            return *at;
-        }
-    }
-    production_region(hex, ordered, ruleset, regions)
-        .map_or(hex.region.coordinate, |region| region.coordinate)
-}
-
 /// Steps 5 and 6 of the payment order, per maintenance group, and what they leave for step 7.
 ///
-/// A group is the units that end the month in one region ([`maintenance_groups`]): step 6 feeds a
+/// A group is the units that end the month in one region ([`SharingReach`]): step 6 feeds a
 /// unit from "faction units in the same region" (`rules/economy_maintenance`), and maintenance is
 /// assessed after movement (`rules/sequenceofevents`), so a walker or a fleet eats the food waiting
 /// where it arrives and not the food it left (`ah-n3qb`). What the group can eat is what its own
 /// step 2 left, `food_left` (`ah-21r0`).
 fn feed_from_food_after_silver(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
-    groups: &[Vec<Member>],
+    groups: &[Neighbourhood],
     food_left: &[Option<Vec<FoodAmount>>],
 ) -> BTreeMap<UnitKey, LateFoodRelief> {
     let mut all: BTreeMap<UnitKey, LateFoodRelief> = BTreeMap::new();
@@ -9530,7 +9563,7 @@ fn feed_from_food_after_silver(
         .map(|(hex, ledger)| unpayable_upkeep(hex, ledger).into_iter().collect())
         .collect();
 
-    for (members, food_left) in groups.iter().zip(food_left) {
+    for (Neighbourhood { members, .. }, food_left) in groups.iter().zip(food_left) {
         if !members
             .iter()
             .any(|(index, unit_id)| owing[*index].contains_key(unit_id))
@@ -9580,11 +9613,14 @@ fn feed_from_food_after_silver(
 /// from, so the ITEMS and SILVER columns count one meal.
 fn eaten_by_group(
     hexes: &[(Hex<'_>, Ledger<'_>)],
+    reach: &SharingReach,
     settlement: &ReportWideSettlement,
 ) -> BTreeMap<UnitKey, Vec<FoodAmount>> {
     let key = |(index, unit_id): &Member| unit_key(&hexes[*index].0.region.region_id, unit_id);
     let mut eaten = BTreeMap::new();
-    for (members, food_left) in settlement.groups.iter().zip(&settlement.food_left) {
+    for (Neighbourhood { members, .. }, food_left) in
+        reach.neighbourhoods().iter().zip(&settlement.food_left)
+    {
         // Keyed by position in the group, as `feed_from_food_after_silver` keys its claims.
         let claims: Vec<FoodClaim> = members
             .iter()
@@ -32857,6 +32893,97 @@ BUILD
             upkeep_warnings(&review).is_empty(),
             "the banker where the sail arrives pays: {:?}",
             review.findings
+        );
+    }
+
+    // --- the one answer to where a sharing unit ends the month (`ah-oby0`) --------------------
+    //
+    // `rules/sequenceofevents` processes "ADVANCE, MOVE and SAIL orders" before "BUILD orders"
+    // and before "Maintenance costs are assessed", and `rules/share` reaches "any other unit of
+    // your faction ... in the same region". So every SHARE consumer groups faction-mates by the
+    // region they end the month in, and [`SharingReach`] is the one place that says which.
+
+    /// Each neighbourhood [`SharingReach::read`] finds, as its region and its members' numbers.
+    fn neighbourhoods(
+        report: &ParsedReport,
+        orders: &str,
+        month_end: &crate::orders::transport::MonthEndHexes,
+    ) -> Vec<(Coordinate, Vec<String>)> {
+        let ordered = OrderedUnits::read(orders);
+        let rules = ruleset();
+        let hexes: Vec<(Hex<'_>, Ledger<'_>)> = report
+            .regions
+            .iter()
+            .map(|region| {
+                let hex = Hex::read(region, &ordered, &[]);
+                let ledger = ledger_for(&hex, Some(&rules));
+                (hex, ledger)
+            })
+            .collect();
+        SharingReach::read(&hexes, report, month_end)
+            .neighbourhoods()
+            .iter()
+            .map(|neighbourhood| {
+                (
+                    neighbourhood.at,
+                    neighbourhood
+                        .members
+                        .iter()
+                        .map(|(_, unit_id)| unit_id.clone())
+                        .collect(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_sharing_reach_puts_a_walker_where_its_trace_ends() {
+        let (report, orders, options) = a_walkers_turn(
+            vec![with_silver(unit("1794"), 500)],
+            vec![with_silver(unit("1795"), 500)],
+            true,
+        );
+        assert_eq!(
+            neighbourhoods(&report, &orders, &options.month_end),
+            vec![
+                (
+                    Coordinate { x: 7, y: 51, z: 1 },
+                    vec!["4021".to_string(), "1795".to_string()]
+                ),
+                (Coordinate { x: 7, y: 53, z: 1 }, vec!["1794".to_string()]),
+            ]
+        );
+    }
+
+    /// A sail is never read from the trace, which the shells fill for a sail only when something
+    /// else in the document walks or ships (`ah-n3qb`): the fleet ends where its own `SAIL` does.
+    #[test]
+    fn the_sharing_reach_puts_a_sailing_passenger_where_its_fleet_arrives() {
+        let (report, orders) = a_fleet_sailing_north_to_a_banker_inputs(true);
+        let mut month_end = crate::orders::transport::MonthEndHexes::new();
+        for id in ["4021", "4022"] {
+            month_end.insert(id.to_string(), Coordinate { x: 7, y: 53, z: 1 });
+        }
+        assert_eq!(
+            neighbourhoods(&report, &orders, &month_end),
+            vec![(
+                Coordinate { x: 7, y: 51, z: 1 },
+                vec!["4022".to_string(), "4021".to_string(), "1795".to_string()]
+            )]
+        );
+    }
+
+    /// "Cannot say" is not a destination: a unit nothing can follow shares where it stands.
+    #[test]
+    fn the_sharing_reach_leaves_an_unfollowed_unit_where_it_stands() {
+        let (report, orders, _) =
+            a_walkers_turn(vec![], vec![with_silver(unit("1795"), 500)], true);
+        assert_eq!(
+            neighbourhoods(&report, &orders, &Default::default()),
+            vec![
+                (Coordinate { x: 7, y: 53, z: 1 }, vec!["4021".to_string()]),
+                (Coordinate { x: 7, y: 51, z: 1 }, vec!["1795".to_string()]),
+            ]
         );
     }
 
