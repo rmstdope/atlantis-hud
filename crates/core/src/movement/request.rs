@@ -284,11 +284,15 @@ fn trace_orders(
     // The settled teachers cost a pass over the whole report, and this runs for every unit the
     // player selects, so it is paid only where the answer can reach the traced unit: its own
     // movement closed by a TEACH, or a hull it stands in once this month's ENTER and LEAVE have
-    // run, whose captain's may have been (`ah-0x6x`).
+    // run, whose captain's may have been (`ah-0x6x`). A unit the report does not show may be one
+    // this month's FORM creates, which stands where its parent does, hull included (`rules/form`),
+    // so it is settled whenever any movement waits on a TEACH (`ah-r3rv`).
+    let shown = report.units().find(|unit| unit.unit_id == unit_id);
     let reaches_trace = read.closed_by_teach(unit_id)
-        || report
-            .units()
-            .any(|unit| unit.unit_id == unit_id && read.structure_of(unit).is_some());
+        || match shown {
+            Some(unit) => read.structure_of(unit).is_some(),
+            None => read.any_closed_by_teach(),
+        };
     let ordered = if reaches_trace {
         read.with_settled_teachers(&report, orders_document, Some(ruleset.as_ref()))
     } else {

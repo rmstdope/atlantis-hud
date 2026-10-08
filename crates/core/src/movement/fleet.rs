@@ -1283,4 +1283,15 @@ mod tests {
         let unreadable = OrderedUnits::from_document("unit 900\nFORM 0\nMOVE S\nEND\n", None);
         assert_eq!(unreadable.formed_route(2), None);
     }
+
+    /// `ah-r3rv`: a FORM block whose movement a TEACH closed waits on the settlement; one whose
+    /// TEACH replaced no movement leaves nothing to drop and must not cost one.
+    #[test]
+    fn only_a_formed_teach_closing_a_route_waits_on_the_settlement() {
+        let closing =
+            OrderedUnits::from_document("unit 900\nFORM 1\nMOVE N\nTEACH 900\nEND\n", None);
+        assert!(closing.any_closed_by_teach());
+        let teaching_only = OrderedUnits::from_document("unit 900\nFORM 1\nTEACH 900\nEND\n", None);
+        assert!(!teaching_only.any_closed_by_teach());
+    }
 }

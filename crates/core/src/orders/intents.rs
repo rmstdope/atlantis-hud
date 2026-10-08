@@ -384,7 +384,9 @@ pub struct FormedBlock {
     /// that wrote `FORM 1`. Anything resolving a nested block's `formed_by` needs this as well as
     /// the id.
     pub region_id: String,
-    /// The `unit` line of the block that forms it, for a finding that must sit on a line.
+    /// The 1-based line of this block's `FORM` order, for a finding that must sit on a line. Also
+    /// the key `movement::fleet::OrderedUnits` holds the formed unit's route under, which
+    /// `semantics::month_long_teachers` joins on (`ah-r3rv`), so it must stay the `FORM` line.
     pub block_line: usize,
     /// This month's orders written inside its own block. An inner `FORM`'s orders belong to the
     /// inner unit and are not here.
