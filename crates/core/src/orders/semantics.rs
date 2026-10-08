@@ -8446,8 +8446,8 @@ struct BuildPlan<'a> {
 /// spread over the materials in the order the rules spend them.
 ///
 /// `held` is each material's availability, in that spend order: one entry is the ordinary month,
-/// two is a New Age build that exhausts its stone and falls back on wood (`rules/build`, New Age:
-/// Trident: "consuming stone before wood").
+/// two is a two-material build that exhausts its stone and falls back on wood (`rules/build`, New
+/// Age: Trident: "consuming stone before wood"; New Origins by the choice [`spend_order`] records).
 ///
 /// `Needs` is named first when both bind exactly, because a structure about to be finished is the
 /// more actionable fact: "buy more stone" would be wasted advice.
@@ -53278,8 +53278,8 @@ BUILD
     ///
     /// In a New Age world it no longer is: `rules/build` states the default outright - "consuming
     /// stone before wood" - so the refusal names the stone this build would have taken (ah-g9sf.4).
-    /// New Origins' own `rules/build` states no such default, so there the sentence still stops
-    /// after the reason.
+    /// New Origins reads the same spend order since `ah-9ctt`, but states no placement rule, so
+    /// no New Origins build reaches this refusal at all.
     #[test]
     fn an_ambiguous_material_leaves_the_sentence_after_the_reason() {
         let builder = || {
