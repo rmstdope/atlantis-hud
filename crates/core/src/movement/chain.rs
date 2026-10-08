@@ -36,7 +36,8 @@ impl RouteChain {
     /// `orders::intents::read_order` read from that same line.
     ///
     /// An order that leaves the month free does not touch the chain. A month-long order other
-    /// than MOVE/ADVANCE/SAIL ends it, and a movement line of a different kind replaces the route.
+    /// than MOVE/ADVANCE/SAIL ends it and erases the route, and a movement line of a different kind
+    /// replaces the route.
     /// A bare `SAIL` (no steps - `parse_move` refuses an empty MOVE) stores no route and erases
     /// none, but still ends a MOVE chain: without that, `steps_followed_by` would read an empty
     /// route instead of looking for the hull's.
@@ -47,7 +48,11 @@ impl RouteChain {
         let (kind, steps) = match intent {
             Intent::Move { steps } => (Open::Travelling, steps),
             Intent::Sail { steps } => (Open::Sailing, steps),
+            // The last month-long segment is the one that runs (`orders::semantics::month_segments`),
+            // so a route this order follows will not run: "STUDY replaces this MOVE as the unit's
+            // month-long order, so this MOVE will not run" (`ah-osny`).
             _ => {
+                self.route = None;
                 self.open = Some(Open::Other);
                 return;
             }
@@ -183,11 +188,23 @@ mod tests {
         );
     }
 
+    /// The last month-long segment is the one that runs (`orders::semantics::month_segments`), so
+    /// a STUDY after a MOVE leaves no route at all: "STUDY replaces this MOVE as the unit's
+    /// month-long order, so this MOVE will not run" (`ah-osny`).
     #[test]
-    fn a_trailing_month_long_order_leaves_the_route_standing() {
+    fn a_trailing_month_long_order_replaces_the_route() {
         assert_eq!(
-            steps(&[("MOVE", mv(&[Go(North)])), ("STUDY", study())]),
-            vec![Go(North)]
+            chained(&[("MOVE", mv(&[Go(North)])), ("STUDY", study())]),
+            None
+        );
+        assert_eq!(
+            chained(&[
+                ("MOVE", mv(&[Go(North)])),
+                ("ADVANCE", mv(&[Go(Northeast)])),
+                ("LEAVE", Intent::Leave),
+                ("STUDY", study())
+            ]),
+            None
         );
     }
 

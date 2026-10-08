@@ -10666,10 +10666,11 @@ mod tests {
         assert!(unit.study.is_some(), "{:?}", unit.study);
     }
 
-    /// A unit that moves and studies is one unit with one month, so both of its rows carry the
-    /// same forecast - the reading `produced` and `built` already take of a mover (`ah-rgkk.2.2`).
+    /// A STUDY written after a MOVE replaces it ("STUDY replaces this MOVE as the unit's
+    /// month-long order, so this MOVE will not run"), so the unit stays: one row, which carries the
+    /// study forecast (`ah-rgkk.2.2`, `ah-osny`).
     #[test]
-    fn a_mover_carries_its_forecast_onto_both_of_its_rows() {
+    fn a_unit_whose_move_a_study_replaced_studies_where_it_stands() {
         let response = preview_over(
             &report_with_market_selling_people(),
             "unit 900\nMOVE SE\nSTUDY lumberjack\n",
@@ -10681,14 +10682,9 @@ mod tests {
             .flat_map(|region| region.units.iter())
             .filter(|unit| unit.unit.unit_id == "900")
             .collect();
-        assert_eq!(rows.len(), 2, "a departure and its arrival");
-        for row in rows {
-            assert!(
-                row.study.is_some(),
-                "the {:?} row carries the forecast",
-                row.status
-            );
-        }
+        assert_eq!(rows.len(), 1, "no departure and no arrival: {rows:?}");
+        assert_eq!(rows[0].status, UnitPreviewStatus::Present);
+        assert!(rows[0].study.is_some(), "{:?}", rows[0].study);
     }
 
     /// A unit `rules/form` dissolves never exists, so it studies nothing.
@@ -11336,6 +11332,31 @@ mod tests {
         assert!(reach_unit(&response, "900")
             .transport_target_issues
             .is_empty());
+    }
+
+    /// `ah-osny`: a STUDY after the MOVE replaces it ("STUDY replaces this MOVE as the unit's
+    /// month-long order, so this MOVE will not run"), so the sender ships from the hex it is
+    /// listed in - two hexes from the quartermaster, in reach - and the map draws no walk.
+    #[test]
+    fn a_sender_whose_move_a_study_replaced_ships_from_where_it_stands() {
+        let report = moving_reach_report((0, 2), (0, 6), true);
+        let orders = "unit 900\nMOVE N\nSTUDY COMB\nTRANSPORT 901 5 STON\n";
+        let response = reach_preview(&report, orders, FLAT_MAP);
+
+        assert_eq!(
+            reach_unit(&response, "900").status,
+            UnitPreviewStatus::Present
+        );
+        assert_eq!(reach_unit(&response, "900").departing_to, None);
+        assert!(
+            reach_unit(&response, "900")
+                .transport_target_issues
+                .is_empty(),
+            "{:?}",
+            reach_unit(&response, "900").transport_target_issues
+        );
+        assert_eq!(reach_held(&response, "901", "STON"), 5);
+        assert!(month_end_for(&report, orders).is_empty());
     }
 
     /// The report's own row for a unit, which a unit weighed as it steps off still matches.
