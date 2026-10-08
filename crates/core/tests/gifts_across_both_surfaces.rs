@@ -640,9 +640,12 @@ fn a_cut_discard_drops_only_what_the_unit_holds_and_is_still_warned() {
     );
 }
 
-/// 901 ($100) takes $50 from 900, which holds nothing. The engine takes what 900 has, so neither
-/// row moves: 900 is not overdrawn and 901 is not funded by silver that never arrived. The
-/// warning on the source stays, now saying what it hands over.
+/// 901 ($100) takes $50 from 900, which holds nothing. The engine takes what 900 has and errors
+/// "TAKE: Not enough." on 901, the unit that wrote the order (`u->error`), so 901 is warned and
+/// 900, which has no order of its own here, is not. The row figures already agreed before
+/// `ah-759k` - the column never booked a TAKE its source could not cover - and are kept as the
+/// guard that the two surfaces still agree; the ledger side is
+/// `a_cut_take_does_not_fund_the_takers_buy`.
 #[test]
 fn a_cut_take_moves_only_what_the_source_holds() {
     let text = report(QUIET, &[], &[&giver(0), &holder("901", 100)]);
@@ -664,13 +667,22 @@ fn a_cut_take_moves_only_what_the_source_holds() {
         .iter()
         .find(|finding| {
             finding.code.as_str() == "not-enough-silver"
-                && finding.unit_id.as_deref() == Some("900")
+                && finding.unit_id.as_deref() == Some("901")
         })
-        .unwrap_or_else(|| panic!("the source is still warned: {:?}", review.findings));
+        .unwrap_or_else(|| panic!("the taker is warned: {:?}", review.findings));
+    assert_eq!(shortfall.line, Some(3), "at its TAKE line");
     assert_eq!(
         shortfall.message,
         "short $50: this unit can have $0 and its orders spend $50, \
-         so it hands over none of the 50 silver ordered"
+         so it takes none of the 50 silver ordered"
+    );
+    assert!(
+        !review.findings.iter().any(|finding| {
+            finding.code.as_str() == "not-enough-silver"
+                && finding.unit_id.as_deref() == Some("900")
+        }),
+        "900 gave no order: {:?}",
+        review.findings
     );
 }
 

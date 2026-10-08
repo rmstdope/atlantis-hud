@@ -5101,7 +5101,7 @@ struct Ledger<'a> {
     /// region too, so only an unpooled hex reads these (`judge_shortfalls`, `report_shortfalls`);
     /// a pooled one moves the whole ask and is judged through its pool.
     reduced_gives: Vec<ReducedGive>,
-    /// What each unit's `GIVE` lines of silver asked, cut or not, and the `TAKE`s from it: the
+    /// What each unit's `GIVE`, discard and `TAKE` lines of silver asked, cut or not: the
     /// "spend" of a not-enough-silver sentence about a GIVE, whose "can have" is this less the cut
     /// (`ah-4k84`, `ah-759k`).
     silver_given: BTreeMap<String, i64>,
@@ -5147,10 +5147,10 @@ struct ReducedBuy {
 /// A `GIVE` of silver its giver could not fund in full as it ran (`ah-4k84`), or a discard or a
 /// `TAKE` its source could not (`ah-759k`).
 struct ReducedGive {
-    /// The unit the silver leaves: the giver, the discarder, or the unit taken from.
+    /// The unit whose order was cut, and so the one warned: the giver, the discarder, or the
+    /// taker - the engine reports "TAKE: Not enough." on the unit that wrote the `TAKE`.
     unit_id: String,
-    /// How the not-enough-silver sentence says what the unit did: "gives", "discards", or
-    /// "hands over" for a `TAKE` from it.
+    /// How the not-enough-silver sentence says what the unit did: "gives", "discards" or "takes".
     verb: &'static str,
     /// What the line asked to give, as written.
     ordered: i64,
@@ -7728,25 +7728,30 @@ fn transfer(
             // `ledger_for_with_production` - so the ledger and the column cannot tell two stories
             // about one transfer. `GaveAway` and `Discarded` stay: they are the acting unit's own
             // orders, they already agree with the column, and the settlement books neither.
-            *ledger.silver_given.entry(from.clone()).or_default() += quantity;
+            // The unit whose order this is, and so the one told when it is cut: the giver or
+            // discarder, or for a TAKE the taker - the engine's "TAKE: Not enough." is
+            // `u->error`, on the unit that wrote the order, never on the one taken from
+            // (`ah-759k`, the navigator's answer).
+            let (warned, verb) = if reach == GiveReach::Discard {
+                (from.clone(), "discards")
+            } else if is_give {
+                (from.clone(), "gives")
+            } else {
+                (actor.unit.unit_id.clone(), "takes")
+            };
+            *ledger.silver_given.entry(warned.clone()).or_default() += quantity;
             if quantity > known_source.max(0) {
                 ledger.reduced_gives.push(ReducedGive {
-                    unit_id: from.clone(),
-                    verb: if reach == GiveReach::Discard {
-                        "discards"
-                    } else if is_give {
-                        "gives"
-                    } else {
-                        "hands over"
-                    },
+                    unit_id: warned.clone(),
+                    verb,
                     ordered: quantity,
                     given: known_source.max(0),
                 });
-                // The cut line is what overdrew the unit, so its finding points here even where
-                // it moves nothing and so draws nothing down (`ah-1c8p`).
+                // The cut line is what its finding points at, even where it moves nothing and so
+                // draws nothing down (`ah-1c8p`).
                 ledger
                     .charged_at
-                    .entry((from.clone(), SILVER.to_ascii_uppercase()))
+                    .entry((warned, SILVER.to_ascii_uppercase()))
                     .or_insert_with(|| placed.clone());
             }
             if reach == GiveReach::Discard {
@@ -11201,8 +11206,8 @@ fn silver_short_at_study(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
     }
 }
 
-/// What a unit's own GIVEs of silver (its discards, and TAKEs from it, too: `ah-759k`) asked beyond
-/// what it held as each ran, under "Give orders" in
+/// What a unit's own GIVEs of silver (its discards and TAKEs too, the latter against what their
+/// source held: `ah-759k`) asked beyond what was held as each ran, under "Give orders" in
 /// `rules/sequenceofevents`, long before WORK, TRANSPORT and maintenance: nothing received in them,
 /// nor a gift that reaches it later in the Give phase, funds the gift (`ah-4k84`). Read from
 /// [`Ledger::reduced_gives`] rather than the phase's balance, which nets those later gifts in.
