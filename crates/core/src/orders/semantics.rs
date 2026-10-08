@@ -10917,6 +10917,22 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
     }
 }
 
+/// What a unit's own silver is short as STUDY settles, the moment `rules/sequenceofevents` charges
+/// the fee - before WORK, ENTERTAIN, TRANSPORT and maintenance, so nothing received in them pays
+/// it (`ah-vle0`). Zero unless STUDY is what overdrew it: an overdraft already there as movement
+/// ended is not STUDY's, and nothing between the two phases moves silver but STUDY. Such an earlier
+/// overdraft - a GIVE of more silver than the unit holds - stays with the month-end reading here;
+/// judging it when it happens is `ah-4k84`.
+fn silver_short_at_study(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    let at_study = spendable_silver_at(ledger, unit_id, StatePhase::Study);
+    let before = spendable_silver_at(ledger, unit_id, StatePhase::Movement);
+    if at_study < before.min(0) {
+        -at_study
+    } else {
+        0
+    }
+}
+
 /// What the shortfall pass decided about one unit and one item tag.
 ///
 /// Every negative balance produces exactly one of these, so a test can assert *which* reading a
@@ -10984,12 +11000,20 @@ fn judge_shortfalls(
 
         for (unit_id, tag, balance) in &mine {
             let (unit_id, tag, balance) = (unit_id, tag, *balance);
-            if balance >= 0 {
+            let pooled = sharing.reading(tag, ruleset) == Reading::Pooled;
+            // Silver a unit receives after STUDY - a shipment, wages - nets its month's end but
+            // never paid for the study (`ah-vle0`). A pooled hex judges this through its pool.
+            let at_study = if tag == SILVER && !pooled {
+                silver_short_at_study(ledger, unit_id)
+            } else {
+                0
+            };
+            if balance >= 0 && at_study <= 0 {
                 continue;
             }
-            let short = -balance;
+            let short = (-balance).max(at_study);
 
-            if sharing.reading(tag, ruleset) == Reading::Pooled {
+            if pooled {
                 verdicts.push(Verdict::DeferredToPool {
                     unit_id: unit_id.clone(),
                     tag: tag.clone(),
@@ -11011,7 +11035,11 @@ fn judge_shortfalls(
             // between its units is not named: it may well be one the engine feeds. One that also
             // overspends on its orders keeps its own finding, its line and its name, because
             // nothing shared that silver for it (`ah-e66j`).
-            if tag == SILVER && ledger.maintenance_pooled && short <= unpaid_upkeep(ledger, who) {
+            if tag == SILVER
+                && at_study <= 0
+                && ledger.maintenance_pooled
+                && short <= unpaid_upkeep(ledger, who)
+            {
                 verdicts.push(Verdict::DeferredToMaintenance {
                     unit_id: unit_id.clone(),
                     short,
@@ -11237,7 +11265,18 @@ fn report_shortfalls(
             };
             // The food that paid part of the fee is counted in on both sides, so the sentence
             // states the whole fee (`ah-pyiy`).
-            let food = food_counted_in(ledger, unit_id);
+            //
+            // A shortfall that is STUDY's is read as STUDY settles, before maintenance, so neither
+            // the fee nor the food that paid it is in its sentence (`ah-vle0`).
+            let at_study = silver_short_at_study(ledger, unit_id) >= short;
+            let (food, upkeep) = if at_study {
+                (0, 0)
+            } else {
+                (
+                    food_counted_in(ledger, unit_id),
+                    upkeep_still_drawn(ledger, unit_id),
+                )
+            };
             // Claimed silver likewise, since `rules/claim` gives it to the unit, which 'may then
             // spend' it (`ah-6ak4`).
             let claimed = claimed_this_month(ledger, unit_id);
@@ -11247,7 +11286,7 @@ fn report_shortfalls(
                 format!(
                     "short ${short}: this unit can have ${} and its {} spend ${}{bought}",
                     ordered.holding(SILVER) + received + claimed + food,
-                    spenders(upkeep_still_drawn(ledger, unit_id)),
+                    spenders(upkeep),
                     ordered.holding(SILVER) + received + claimed + short + food,
                 ),
                 at,
@@ -53713,6 +53752,108 @@ BUILD
             }),
             "{:#?}",
             review.findings
+        );
+    }
+
+    // --- a unit's own STUDY is paid as STUDY runs, not at the month's end (`ah-vle0`) ----------
+    //
+    // `rules/sequenceofevents` runs STUDY under "Month long orders", before WORK and TRANSPORT;
+    // `data/COMB` costs 10 silver per month of study.
+
+    /// Quartermaster `quartermaster` (unit 6, $0) in a Caravanserai beside unit 9 ($100), on
+    /// `orders`; the not-enough-silver findings, as unit and sentence.
+    fn silver_shortfalls_beside_a_shipper(
+        quartermaster: ReportUnit,
+        orders: &str,
+    ) -> Vec<(Option<String>, String)> {
+        let mut quartermaster = with_skill(with_silver(quartermaster, 0), "QUAM", 1);
+        quartermaster.structure_id = Some("500".to_string());
+        let hex = ReportRegion {
+            structures: vec![Structure {
+                structure_id: "500".to_string(),
+                name: "Caravan".to_string(),
+                kind: "Caravanserai".to_string(),
+                ..Default::default()
+            }],
+            ..region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![quartermaster, with_silver(unit("9"), 100)],
+            )
+        };
+        check_turn(
+            &report(vec![hex]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        )
+        .into_iter()
+        .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+        .map(|finding| (finding.unit_id, finding.message))
+        .collect()
+    }
+
+    const STUDY_THEN_SHIPMENT: &str = "unit 6\nSTUDY combat\nunit 9\nTRANSPORT 6 100 SILV\n";
+
+    /// Quartermaster 6 ($0) studies combat; unit 9 ships it $100 by TRANSPORT, which settles
+    /// after STUDY. Nobody shares.
+    #[test]
+    fn a_study_is_unfunded_when_the_silver_arrives_by_transport_afterwards() {
+        assert_eq!(
+            silver_shortfalls_beside_a_shipper(unit("6"), STUDY_THEN_SHIPMENT),
+            vec![(
+                Some("6".to_string()),
+                "short $10: this unit can have $0 and its orders spend $10".to_string()
+            )],
+            "unit 6 holds $0 when STUDY runs; the $100 shipped after it cannot pay"
+        );
+    }
+
+    /// The same with unit 6 paying its maintenance in silver: the fee is charged after STUDY, so a
+    /// shortfall that is STUDY's names neither it nor any food.
+    #[test]
+    fn a_study_shortfall_does_not_name_the_upkeep_charged_after_it() {
+        assert_eq!(
+            silver_shortfalls_beside_a_shipper(starving(unit("6")), STUDY_THEN_SHIPMENT),
+            vec![(
+                Some("6".to_string()),
+                "short $10: this unit can have $0 and its orders spend $10".to_string()
+            )],
+        );
+    }
+
+    /// A unit whose overdraft at the month's end is all unpaid maintenance, but whose STUDY was
+    /// already unfunded when it ran, keeps its own finding: it overspent on an order, which
+    /// nothing in the hex shared for it (`ah-e66j`), even though a later receipt netted the fee.
+    #[test]
+    fn an_unfunded_study_is_not_deferred_to_the_hexs_maintenance() {
+        let hex_region = region(vec![with_silver(unit("5"), 0)]);
+        let ordered = OrderedUnits::read("");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let rules = ruleset();
+        let mut ledger = ledger_for(&hex, Some(&rules));
+
+        // STUDY charges $10 the unit does not have; $10 arrives after it (a TRANSPORT) and the
+        // $80 fee is drawn at maintenance with nothing to pay it.
+        ledger.state.apply(StatePhase::Study, "5", SILVER, -10);
+        ledger.state.apply(StatePhase::Maintenance, "5", SILVER, 10);
+        ledger
+            .state
+            .apply(StatePhase::Maintenance, "5", SILVER, -80);
+        ledger.upkeep.insert("5".to_string(), 80);
+        ledger.upkeep_drawn.insert("5".to_string(), 80);
+        ledger.maintenance_pooled = true;
+
+        let sharing = Sharing::read(&hex);
+
+        assert_eq!(
+            judge_shortfalls(&hex, &ledger, &sharing, Some(&rules)),
+            vec![Verdict::UnitShort {
+                unit_id: "5".to_string(),
+                tag: SILVER.to_string(),
+                short: 80,
+            }]
         );
     }
 }
