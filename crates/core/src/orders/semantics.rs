@@ -54590,11 +54590,29 @@ BUILD
         orders: &str,
         options: CheckOptions,
     ) -> TurnReview {
+        a_buyer_beside(
+            others,
+            with_silver(unit("9"), 100),
+            more,
+            &format!("{orders}unit 9\nTRANSPORT 5 100 SILV\n"),
+            options,
+        )
+    }
+
+    /// The hex of [`a_shipped_buyer_beside`], with `shipper` as unit 9 and its orders left to
+    /// `orders`, so a test can run the same hex with and without the shipment.
+    fn a_buyer_beside(
+        others: Vec<ReportUnit>,
+        shipper: ReportUnit,
+        more: Vec<ReportRegion>,
+        orders: &str,
+        options: CheckOptions,
+    ) -> TurnReview {
         let mut quartermaster = with_skill(with_silver(unit("5"), 0), "QUAM", 1);
         quartermaster.structure_id = Some("500".to_string());
         let mut units = others;
         units.push(quartermaster);
-        units.push(with_silver(unit("9"), 100));
+        units.push(shipper);
         let hex = ReportRegion {
             for_sale: vec![MarketItem {
                 amount: 10,
@@ -54612,7 +54630,7 @@ BUILD
         };
         let mut regions = vec![hex];
         regions.extend(more);
-        let orders = format!("{orders}unit 5\nBUY 1 swords\nunit 9\nTRANSPORT 5 100 SILV\n");
+        let orders = format!("unit 5\nBUY 1 swords\n{orders}");
         review_turn(&report(regions), &orders, Some(&ruleset()), options)
     }
 
@@ -54761,6 +54779,77 @@ BUILD
             "{:#?}",
             review.silver
         );
+    }
+
+    /// A TRANSPORT to a hex-mate is not in the hex's pooled silver sentence when the reading that
+    /// decides it is the one taken as STUDY settles: `rules/sequenceofevents` processes TRANSPORT
+    /// after STUDY, so the shipment is neither the shipper's spending nor the receiver's silver
+    /// then. Both shapes of shipper are pinned - one outside the pool, in the hex of
+    /// `a_walking_sharer_lends_for_another_walkers_market_overdraft`, and one inside it, whose
+    /// silver pays buyer 5's BUY before it would ship (`ah-vn5y`). A month-end reading does count
+    /// the receipt; neither case here is decided by it.
+    #[test]
+    fn a_transport_to_a_hex_mate_is_not_in_the_hex_sentence_read_as_study_settles() {
+        let hex_sentence = |others: Vec<ReportUnit>,
+                            shipper: ReportUnit,
+                            more: Vec<ReportRegion>,
+                            orders: &str,
+                            options: CheckOptions| {
+            a_buyer_beside(others, shipper, more, orders, options)
+                .findings
+                .into_iter()
+                .filter(|finding| {
+                    finding.unit_id.is_none() && finding.code == codes::NOT_ENOUGH_SILVER
+                })
+                .map(|finding| finding.message)
+                .collect::<Vec<_>>()
+        };
+
+        // Shipper 9 outside the pool, beside walking sharers 6 and 7.
+        let walking = |transport: &str| {
+            let mut options = CheckOptions::default();
+            for walker in ["6", "7"] {
+                options
+                    .month_end
+                    .insert(walker.to_string(), Coordinate { x: 7, y: 51, z: 1 });
+            }
+            hex_sentence(
+                vec![
+                    sharing(with_silver(unit("6"), 50)),
+                    sharing(with_silver(unit("7"), 100)),
+                    sharing(with_silver(unit("8"), 100)),
+                ],
+                with_silver(unit("9"), 100),
+                vec![region_at("1:7,51", 7, 51, vec![with_silver(unit("3"), 0)])],
+                &format!(
+                    "unit 6\nBUY 1 swords\nMOVE N\nunit 7\nMOVE N\nunit 8\nSTUDY combat\n\
+                     unit 3\nSTUDY combat\nunit 9\n{transport}"
+                ),
+                options,
+            )
+        };
+        let shipped = walking("TRANSPORT 5 100 SILV\n");
+        assert_eq!(shipped.len(), 1, "{shipped:?}");
+        assert_eq!(shipped, walking(""));
+
+        // Shipper 9 inside the pool: its $100 pays buyer 5's BUY, and sharer 8's STUDY overdraws
+        // the pool by $10, whether or not 9 then ships.
+        let pooled = |transport: &str| {
+            hex_sentence(
+                vec![sharing(with_silver(unit("8"), 0))],
+                sharing(with_silver(unit("9"), 100)),
+                vec![],
+                &format!("unit 8\nSTUDY combat\nunit 9\n{transport}"),
+                CheckOptions::default(),
+            )
+        };
+        let sentence = vec![
+            "the units in this hex are short $10 between them: they can have $100 and their \
+             orders spend $110"
+                .to_string(),
+        ];
+        assert_eq!(pooled("TRANSPORT 5 100 SILV\n"), sentence);
+        assert_eq!(pooled(""), sentence);
     }
 
     // --- the pool, asked at a named moment (`ah-4oz9`) ----------------------------------------
