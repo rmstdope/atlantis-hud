@@ -12,6 +12,30 @@
 //! not take this `FORM` up", so both the unreadable-alias case and the taken-alias case stay each
 //! reader's own decision while the nesting rules stay here.
 
+/// The unit a block of an orders document speaks for: one the report shows, by its number, or one
+/// this month's `FORM` creates, by the 1-based line of that `FORM`.
+///
+/// The line rather than `new-<alias>`: an alias is unique only inside its hex (`rules/form`), and
+/// the document readers see no regions. One type for both, so a per-unit map or set holds both in
+/// one field and a rule written over it reaches a formed unit without a second change - before it,
+/// every such rule was written for shown units first and for formed ones in a later fix
+/// (`ah-0x6x` then `ah-r3rv`; `ah-74y9`).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum OrderedUnitKey {
+    /// A unit the report shows, by its unit number.
+    Shown(String),
+    /// A unit this month's `FORM` creates, by the 1-based line of that `FORM`.
+    Formed(usize),
+}
+
+impl OrderedUnitKey {
+    /// The key of a unit the report shows.
+    #[must_use]
+    pub fn shown(unit_id: &str) -> Self {
+        Self::Shown(unit_id.to_string())
+    }
+}
+
 /// Who an order line at this month's depth belongs to.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Owner<'a, T> {

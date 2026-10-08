@@ -1074,10 +1074,7 @@ fn settle(
     // Every route is chained by `movement::fleet::OrderedUnits` alone, so the map and the preview
     // cannot chain one document two ways (`ah-xmqo`). Before the boardings, which read `move_steps`.
     for unit in &mut working.units {
-        let route = match unit.form_line {
-            Some(line) => ordered.formed_route(line),
-            None => ordered.route_of(&unit.unit.unit_id),
-        };
+        let route = ordered.route(&unit.key());
         unit.move_steps = route.map(|route| route.steps.clone());
         unit.move_command = route.map(|route| route.command.clone());
     }
@@ -1803,8 +1800,8 @@ struct WorkingUnit {
     /// The movement command as written, upper-cased: `MOVE`, `ADVANCE` or `SAIL`. Kept beside
     /// `move_steps` so a rendered order clause names the word the player actually typed.
     move_command: Option<String>,
-    /// The 1-based line of the `FORM` that created this row, or `None` for a report unit. How
-    /// `settle` finds this row's route in `movement::fleet::OrderedUnits`.
+    /// The 1-based line of the `FORM` that created this row, or `None` for a report unit. Read
+    /// through [`WorkingUnit::key`].
     form_line: Option<usize>,
     /// `MOVE OUT`/`MOVE 12`/... when a step of the movement order set this unit's structure in the
     /// hex it started in. Read by `changes()`.
@@ -1907,6 +1904,15 @@ struct Transfer<'a> {
 }
 
 impl WorkingUnit {
+    /// This row as the movement reader keys it, which is how `settle` finds its route in
+    /// `movement::fleet::OrderedUnits` (`ah-74y9`).
+    fn key(&self) -> crate::orders::blocks::OrderedUnitKey {
+        match self.form_line {
+            Some(line) => crate::orders::blocks::OrderedUnitKey::Formed(line),
+            None => crate::orders::blocks::OrderedUnitKey::shown(&self.unit.unit_id),
+        }
+    }
+
     /// Which order put this unit where it is standing, for the `structureId` change.
     ///
     /// A movement step wins where there was one, because it runs last. Failing that the boarding
@@ -4150,6 +4156,11 @@ mod tests {
             .iter()
             .find(|entry| entry.formed && entry.unit.unit_id == "new-1")
             .expect("the formed row is settled");
+        assert_eq!(
+            formed.key(),
+            crate::orders::blocks::OrderedUnitKey::Formed(2),
+            "the row is keyed by the line of its FORM (ah-74y9)"
+        );
         assert_eq!(formed.move_steps, Some(vec![MoveStep::Go(Southeast)]));
     }
 

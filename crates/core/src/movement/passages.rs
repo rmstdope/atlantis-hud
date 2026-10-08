@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::movement::fleet::OrderedUnits;
 use crate::movement::orders::first_passage;
 use crate::movement::orders::MoveStep;
+use crate::orders::blocks::OrderedUnitKey;
 use crate::report::level::NEXUS;
 use crate::report::model::{numbered_structure_label, Coordinate};
 use crate::report::ParsedReport;
@@ -64,10 +65,10 @@ pub fn passage_claims(report: &ParsedReport, ordered: &OrderedUnits) -> Vec<Pass
         }
 
         for unit in region.units.iter().filter(|unit| unit.own) {
-            if ordered.issues_sail(&unit.unit_id) {
+            if ordered.issues_sail(&OrderedUnitKey::shown(&unit.unit_id)) {
                 continue;
             }
-            let Some(steps) = ordered.steps_for(&unit.unit_id) else {
+            let Some(steps) = ordered.steps_for(&OrderedUnitKey::shown(&unit.unit_id)) else {
                 continue;
             };
             let Some(passage) = first_passage(ordered.structure_of(unit), steps) else {

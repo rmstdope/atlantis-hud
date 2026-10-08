@@ -7,6 +7,7 @@
 
 use atlantis_hud_core::movement::fleet::OrderedUnits;
 use atlantis_hud_core::movement::passages::passage_claims;
+use atlantis_hud_core::orders::blocks::OrderedUnitKey;
 use atlantis_hud_core::report::model::Coordinate;
 use atlantis_hud_core::report::parse_report_full;
 
@@ -200,7 +201,7 @@ fn a_step_on_a_later_line_after_the_passage_is_not_claimed() {
     let orders = "unit 5\nMOVE IN\nMOVE SE\n";
     assert_eq!(
         OrderedUnits::of_month(&parse_report_full(&report_with_a_shaft()), orders, None)
-            .steps_for("5"),
+            .steps_for(&OrderedUnitKey::shown("5")),
         Some(&[MoveStep::In, MoveStep::Go(Southeast)][..]),
         "the two lines are one route, so the step follows the passage"
     );

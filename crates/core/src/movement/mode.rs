@@ -11,6 +11,7 @@
 use crate::movement::fleet::OrderedUnits;
 use crate::movement::graph::KnownHex;
 use crate::movement::rules::{ItemKind, MovementMode, Ruleset};
+use crate::orders::blocks::OrderedUnitKey;
 use crate::report::model::{
     ReportUnit, Structure, SwimCapacity, UnitMovement, UnitMovementMode, UnitMovementStatus,
 };
@@ -813,7 +814,8 @@ pub fn crew_sailing_levels(
         .filter(|unit| {
             unit.own
                 && aboard_structure(unit, ordered) == Some(structure_id)
-                && ordered.is_none_or(|orders| orders.issues_sail(&unit.unit_id))
+                && ordered
+                    .is_none_or(|orders| orders.issues_sail(&OrderedUnitKey::shown(&unit.unit_id)))
         })
         .flat_map(|unit| {
             unit.skills
