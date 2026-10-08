@@ -211,3 +211,53 @@ fn a_passenger_of_a_sail_an_eligible_teach_replaced_is_not_traced() {
         "formed aboard under a human"
     );
 }
+
+/// `ah-y1yr`: the formed case of the test above. A unit this month's `FORM` creates aboard the
+/// hull follows its course like any passenger, and the report does not show it, so a trace that
+/// settled the month only for units the report shows aboard read the teaching owner's SAIL as a
+/// course. Every movement reading is settled now, whoever is traced. Owned by a human, whose TEACH
+/// spends nothing (`rules/skills_teaching`: "Only leaders may use the TEACH order."), the formed
+/// unit still sails.
+#[test]
+fn a_formed_passenger_of_a_sail_an_eligible_teach_replaced_is_not_traced() {
+    let report = |owner: &str| {
+        let mut text = String::from("Foo (1) Report\n\n");
+        text.push_str("forest (2,2) in Coast, 10 peasants (orcs), $5.\n\n");
+        text.push_str("Exits:\n  South : ocean (2,4) in Sea.\n\n");
+        text.push_str("+ Ship [329] : Longship; Load: 0/150; Sailors: 4/4; MaxSpeed: 4.\n");
+        text.push_str(&format!(
+            "  * Captain (900), Foo (1), {owner}. Weight: 10. Capacity: 0/0/15/0. \
+             Skills: sailing [SAIL] 2 (90).\n"
+        ));
+        text.push_str(
+            "  * Hand (901), Foo (1), 2 centaurs [CTAU]. Weight: 100. Capacity: 0/140/140/0. \
+             Skills: sailing [SAIL] 2 (90).\n\n",
+        );
+        text.push_str("ocean (2,4) in Sea.\n\n");
+        text.push_str("Exits:\n  North : forest (2,2) in Coast.\n");
+        text
+    };
+    let orders = "unit 900\nSAIL S\nTEACH 901\nunit 901\nFORM 1\nEND\nGIVE NEW 1 1 CTAU\n";
+    let trace = |text: &str| {
+        trace_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            atlantis_hud_fixtures::RULESET_JSON,
+            text,
+            "[]",
+            "new-1",
+            orders,
+        )
+        .expect("the ruleset loads")
+        .path
+    };
+
+    assert_eq!(
+        trace(&report("leader [LEAD]")),
+        None,
+        "under a teaching leader"
+    );
+    assert!(
+        trace(&report("human [HUMN]")).is_some(),
+        "under a human the formed unit sails"
+    );
+}
