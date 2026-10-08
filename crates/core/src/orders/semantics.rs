@@ -11262,6 +11262,7 @@ fn pool_shortfalls(
     ledger: &Ledger<'_>,
     sharing: &Sharing<'_>,
     verdicts: &[Verdict],
+    receipts: &BTreeMap<UnitKey, Receipts>,
 ) -> Vec<PoolShortfall> {
     if !sharing.pool_trusted(ledger) {
         return Vec::new();
@@ -11342,10 +11343,15 @@ fn pool_shortfalls(
                                             .iter()
                                             .any(|reduced| reduced.unit_id == o.unit.unit_id))))))
             })
+            // Silver given this month counts too, as the per-unit sentence counts it (`ah-jw85`,
+            // `ah-w9dn`).
             .map(|o| {
                 o.holding(&tag)
                     + if tag == SILVER {
                         claimed_this_month(ledger, &o.unit.unit_id)
+                            + receipts
+                                .get(&unit_key(&hex.region.region_id, &o.unit.unit_id))
+                                .map_or(0, |receipts| receipts.silver)
                     } else {
                         0
                     }
@@ -11555,7 +11561,9 @@ fn report_shortfalls(
         findings.push(finding);
     }
 
-    for PoolShortfall { tag, short, held } in pool_shortfalls(hex, ledger, &sharing, &verdicts) {
+    for PoolShortfall { tag, short, held } in
+        pool_shortfalls(hex, ledger, &sharing, &verdicts, receipts)
+    {
         // ... and a pointer on every order line that claims against that pool (`ah-eurs`). The
         // hex finding is right to be hex-anchored (`ah-sdda`), but it reaches no editor, so the
         // player typing the order that overdrew the hex is told nothing where they are looking.
@@ -32630,14 +32638,14 @@ BUILD
         let verdicts = judge_shortfalls(&hex, &ledger, &sharing, Some(&rules));
 
         assert!(
-            !pool_shortfalls(&hex, &ledger, &sharing, &verdicts).is_empty(),
+            !pool_shortfalls(&hex, &ledger, &sharing, &verdicts, &BTreeMap::new()).is_empty(),
             "the hex is genuinely short before anything is doubted"
         );
 
         ledger.doubted.insert("7".to_string());
 
         assert_eq!(
-            pool_shortfalls(&hex, &ledger, &sharing, &verdicts),
+            pool_shortfalls(&hex, &ledger, &sharing, &verdicts, &BTreeMap::new()),
             vec![],
             "one doubted sharer silences the pool"
         );
@@ -54788,6 +54796,26 @@ BUILD
                 );
             }
         }
+    }
+
+    /// Silver a sharer was given this month is silver the hex's units can have, as the unit-level
+    /// sentence already counts it (`ah-jw85`): unit 9's `GIVE 8 50 SILV` reaches sharer 8, so the
+    /// hex reads "can have $50 and their orders spend $110", not "$0 ... $60" (`ah-w9dn`).
+    #[test]
+    fn silver_given_to_a_sharer_counts_toward_what_the_hex_can_have() {
+        let findings = a_cut_buy_in_a_caravanserai(
+            0,
+            "unit 5\nBUY 1 swords\nunit 6\nSTUDY COMB\nunit 8\nunit 9\nGIVE 8 50 SILV\n",
+            vec![with_silver(unit("6"), 0)],
+        );
+        assert_eq!(
+            hex_silver_sentence(&findings),
+            Some(
+                "the units in this hex are short $60 between them: they can have $50 and their \
+                 orders spend $110"
+            ),
+            "{findings:#?}"
+        );
     }
 
     /// A sharer's own cut line is a fact about that line too (`ah-szye`), and silver shipped to
