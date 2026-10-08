@@ -10297,7 +10297,8 @@ struct WalkingSilver {
     departing: BTreeMap<String, i64>,
     /// The sharers ending their month here from another hex, each with what it lends at the
     /// month's end ([`relieved_balance`], less what it lent before it left), capped together at
-    /// what this hex's units overdraw after movement - an arrival is not there for a `BUY`.
+    /// what the hex is short at the month's end beyond what it was short as movement began - an
+    /// arrival is not there for a `BUY`.
     arrivals: Vec<ArrivingSilver>,
     /// The same, read as TRANSPORT settles ([`spendable_silver_at`]), for [`shipping_purse`].
     arrivals_at_transport: Vec<ArrivingSilver>,
@@ -10420,33 +10421,37 @@ fn lend_walking_sharers_silver(
 
     for (index, (hex, ledger)) in hexes.iter_mut().enumerate() {
         let mut arrived = std::mem::take(&mut arrivals[index]);
-        // An arrival is there after `BUY` (`rules/sequenceofevents`), so it lends only against
-        // what this hex's units overdraw after movement - drawn from the arrivals in report order.
-        let mut after_movement: i64 = hex
-            .units
-            .iter()
-            .filter(|ordered| !ledger.doubted.contains(&ordered.unit.unit_id))
-            .map(|ordered| {
-                let who = &ordered.unit.unit_id;
-                // Both figures read alike: the month-end one carries no `overcharged` credit,
-                // so neither does the one it is set against.
-                let (then, before) = if phase == StatePhase::Maintenance {
-                    (
-                        relieved_balance(ledger, who, SILVER),
-                        ledger.state.balance_at(StatePhase::Movement, who, SILVER),
-                    )
-                } else {
-                    (
-                        spendable_silver_at(ledger, who, phase),
-                        spendable_silver_at(ledger, who, StatePhase::Movement),
-                    )
-                };
-                ((-then).max(0) - (-before).max(0)).max(0)
-            })
-            .sum();
         // Not at `Transport`: a shipment's bill is not in the ledger until shipping settles, and
         // `shipping_purse` sets the pool against that bill alone.
         if phase == StatePhase::Maintenance {
+            // An arrival is there after `BUY` (`rules/sequenceofevents`), so it lends only what
+            // the hex is short at the month's end beyond what it was already short as movement
+            // began - net figures, since a staying sharer that lent before movement may spend its
+            // own silver after it and never go negative. Drawn from the arrivals in report order.
+            let lent_before = departing[index].values().sum::<i64>();
+            let short_at = |at_end: bool| {
+                let mut short = -lent_before;
+                for ordered in &hex.units {
+                    let who = &ordered.unit.unit_id;
+                    if ledger.doubted.contains(who) {
+                        continue;
+                    }
+                    // Both figures read alike: the month-end one carries no `overcharged`
+                    // credit, so neither does the one it is set against.
+                    let held = if at_end {
+                        relieved_balance(ledger, who, SILVER)
+                    } else {
+                        ledger.state.balance_at(StatePhase::Movement, who, SILVER)
+                    };
+                    if ordered.shares() && !departing[index].contains_key(who) {
+                        short -= held;
+                    } else {
+                        short += (-held).max(0);
+                    }
+                }
+                short.max(0)
+            };
+            let mut after_movement = (short_at(true) - short_at(false)).max(0);
             for arrival in &mut arrived {
                 arrival.lends = arrival.lends.min(after_movement);
                 after_movement -= arrival.lends;
@@ -53164,6 +53169,52 @@ BUILD
             review.findings
         );
         assert_eq!(forecast_for(&review, "7").at_month_end, Some(500));
+    }
+
+    /// A staying sharer that pays for a `BUY` before movement and then studies has already lent
+    /// its silver away, so the sharer that walks in pays for its STUDY (`rules/share`,
+    /// `rules/sequenceofevents`).
+    #[test]
+    fn a_sharer_that_walks_in_pays_for_a_staying_sharers_study_after_it_funded_a_purchase() {
+        let hex = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            ..region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![
+                    with_silver(unit("5"), 0),
+                    sharing(with_silver(unit("8"), 100)),
+                ],
+            )
+        };
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("7".to_string(), Coordinate { x: 7, y: 53, z: 1 });
+        let review = review_turn(
+            &report(vec![
+                hex,
+                region_at("1:7,51", 7, 51, vec![sharing(with_silver(unit("7"), 500))]),
+            ]),
+            "unit 5\nBUY 1 swords\nunit 8\nSTUDY combat\nunit 7\nMOVE S\n",
+            Some(&ruleset()),
+            options,
+        );
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
+            "{:?}",
+            review.findings
+        );
+        assert_eq!(forecast_for(&review, "7").at_month_end, Some(490));
     }
 
     /// An arriving sharer whose sums cannot be trusted leaves the pool it joins unjudged, as a
