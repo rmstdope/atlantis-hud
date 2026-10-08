@@ -1622,8 +1622,9 @@ impl Ruleset {
     ///
     /// Both New Age worlds do - "By default the unit will use whatever is available, consuming
     /// stone before wood" (`rules/build`, New Age: Trident and Arcanum). New Origins' own
-    /// `rules/build` has neither the forms nor any statement of which material the engine takes,
-    /// so a unit there holding both alternatives stays unknowable.
+    /// `rules/build` has neither the forms nor any statement of which material the engine takes.
+    /// This decides the grammar only: the spend order is `spend_order`'s, which reads every world
+    /// the New Age way by the navigator's choice (`ah-9ctt`).
     #[must_use]
     pub fn is_new_age(&self) -> bool {
         matches!(
