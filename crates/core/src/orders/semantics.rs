@@ -11139,7 +11139,9 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
             .iter()
             .map(|ordered| {
                 let who = &ordered.unit.unit_id;
-                if ledger.doubted.contains(who) || repaid_late(ordered) {
+                // A sharer repaid after STUDY still held, as the market ran, whatever its
+                // Movement balance says: only what reached it after STUDY was late.
+                if ledger.doubted.contains(who) {
                     0
                 } else if sharing.pools_silver(ordered) {
                     spendable_silver_at(ledger, who, StatePhase::Movement).max(0)
@@ -54936,6 +54938,48 @@ BUILD
             vec![
                 ("6".to_string(), Some(100), 0),
                 ("8".to_string(), Some(90), 10),
+            ],
+            "{:#?}",
+            review.silver
+        );
+    }
+
+    /// A sharer repaid after STUDY still lends the market what it held as the market ran:
+    /// sharing quartermaster 6 (15 men, $100) pays non-sharing quartermaster 5's $100 sword, then
+    /// its own $150 STUDY is unpaid; unit 9 ships each of them $100 afterwards. So 6 lent $100 and
+    /// ends $50 short, and 5 keeps its shipment (`ah-aqqb` review; `rules/sequenceofevents`).
+    #[test]
+    fn a_sharer_repaid_after_study_still_lends_the_market_what_it_held() {
+        let mut student = with_men(
+            sharing(with_skill(with_silver(unit("6"), 100), "QUAM", 1)),
+            15,
+        );
+        student.structure_id = Some("501".to_string());
+        let mut hex = caravanserai_hex("5", 0, vec![student, with_silver(unit("9"), 300)]);
+        hex.structures.push(Structure {
+            structure_id: "501".to_string(),
+            name: "Second".to_string(),
+            kind: "Caravanserai".to_string(),
+            ..Default::default()
+        });
+        hex.for_sale = vec![MarketItem {
+            amount: 10,
+            name: "swords".to_string(),
+            tag: "SWOR".to_string(),
+            price: 100,
+        }];
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 5\nBUY 1 swords\nunit 6\nSTUDY combat\nunit 9\nTRANSPORT 5 100 SILV\n\
+             TRANSPORT 6 100 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            silver_rows(&review, &["6", "5"]),
+            vec![
+                ("6".to_string(), Some(-50), 100),
+                ("5".to_string(), Some(100), 0),
             ],
             "{:#?}",
             review.silver
