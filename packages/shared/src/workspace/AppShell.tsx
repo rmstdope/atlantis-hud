@@ -41,10 +41,10 @@ import { ordersFileFaction } from "../ordersImport";
 import { RULESETS, rulesetById } from "../rulesets";
 import type { RulesetGaps } from "../rulesetGaps";
 import { orderProcessingFor, type OrderProcessing } from "../orderProcessing";
-import { rowKeyOf, unitRowKey } from "../unitTable";
+import { bySetOutHex, rowKeyOf, unitRowKey } from "../unitTable";
 import { previewAtCursor, unitAtCursor } from "./unitCursor";
 import { formationRegionUnitIds } from "./ordersLock";
-import type { MapSizes } from "@atlantis/core-client";
+import type { MapSizes, UnitRef } from "@atlantis/core-client";
 import { gameMapOf, mapShapeJson } from "../mapShape";
 import {
   deliverArmyExport,
@@ -607,9 +607,13 @@ export function AppShell({
    * edit in the orders pane without anything having to be reselected. `readUnitOrders` answers null
    * for a unit with no block yet, which is the commonest case there is.
    */
-  const getLongOrder = useCallback(
-    (unitId: string, regionId: string) =>
-      orders.longOrderOf(orders.readUnitOrders(ordersDocument, unitId, unitIdsByRegion.get(regionId)) ?? ""),
+  const getLongOrder = useMemo(
+    () =>
+      bySetOutHex((unitId, setOutHex) =>
+        orders.longOrderOf(
+          orders.readUnitOrders(ordersDocument, unitId, unitIdsByRegion.get(setOutHex)) ?? ""
+        )
+      ),
     [ordersDocument, unitIdsByRegion, orders]
   );
   /**
@@ -622,8 +626,9 @@ export function AppShell({
     () => orders.reportedLongOrders(parsed?.ordersTemplate),
     [parsed, orders]
   );
+  // Asked by `UnitRef` like every per-unit lookup; the template index itself is keyed by number.
   const getReportedLongOrder = useCallback(
-    (unitId: string) => reportedLongOrderFor(reportedLongOrderIndex, unitId),
+    (unit: UnitRef) => reportedLongOrderFor(reportedLongOrderIndex, unit.unitId),
     [reportedLongOrderIndex]
   );
   /** How many writes to the document did not come from the editor. See `OrdersOrigin`. */
@@ -3894,8 +3899,8 @@ export function AppShell({
     () => new Map(validated.silver.map((entry) => [unitRowKey(entry.regionId, entry.unitId), entry])),
     [validated.silver]
   );
-  const getSilver = useCallback(
-    (unitId: string, regionId: string) => silverByUnit.get(unitRowKey(regionId, unitId)) ?? null,
+  const getSilver = useMemo(
+    () => bySetOutHex((unitId, setOutHex) => silverByUnit.get(unitRowKey(setOutHex, unitId)) ?? null),
     [silverByUnit]
   );
 

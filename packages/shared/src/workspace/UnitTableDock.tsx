@@ -84,6 +84,7 @@ import {
   type ExtraColumn,
   type SortColumn,
   type SortState,
+  type UnitLookup,
   type UnitRowKey,
   type DrawnColumnId,
   type UnitColumn
@@ -217,11 +218,11 @@ type UnitTableDockProps = {
   /** The whole report's orders preview, so a list spanning hexes shows the coming month too. */
   ordersPreview?: OrdersPreviewResponse | null;
   /** The month-long order a unit's live orders carry, for the Long order column. */
-  getLongOrder?: (unitId: string, regionId: string) => string | null;
+  getLongOrder?: UnitLookup<string | null>;
   /** What the report's orders template said this unit's long order was (`ah-rgkk.5.4`). */
-  getReportedLongOrder?: (unitId: string) => ReportedLongOrder;
+  getReportedLongOrder?: UnitLookup<ReportedLongOrder>;
   /** Each own unit's silver forecast, or null where there is none. `ah-1wcw.1`. */
-  getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
+  getSilver?: UnitLookup<UnitSilver | null>;
   /** The unit-anchored `not-enough-silver` findings, by unit id. */
   silverWarnings?: ReadonlySet<UnitRowKey>;
   /** The hexes whose silver shortfall is anchored to the hex and names no unit (`ah-5znb`). */
@@ -2023,10 +2024,10 @@ function HoveredPopup({
   unitNames
 }: {
   hovered: { unit: PreviewedUnit; column: DrawnColumnId; at: Point } | null;
-  getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
-  getLongOrder?: (unitId: string, regionId: string) => string | null;
+  getSilver?: UnitLookup<UnitSilver | null>;
+  getLongOrder?: UnitLookup<string | null>;
   /** What the report's orders template said this unit's long order was (`ah-rgkk.5.4`). */
-  getReportedLongOrder?: (unitId: string) => ReportedLongOrder;
+  getReportedLongOrder?: UnitLookup<ReportedLongOrder>;
   silverWarnings?: ReadonlySet<UnitRowKey>;
   silverShortHexes?: ReadonlySet<string>;
   countUpkeep: boolean;
@@ -2042,9 +2043,10 @@ function HoveredPopup({
   const { unit, column, at } = hovered;
   // Read exactly as the row reads it - where the report lists the unit (`ah-xu6v`) - so the popup
   // and the cell's own hidden sentence are drawn from the same arguments to `summariseUnit`.
-  const { silver, warned, hexShort, longOrder } = rowMonth(unit, {
+  const { silver, warned, hexShort, longOrder, reportedLongOrder } = rowMonth(unit, {
     getSilver,
     getLongOrder,
+    getReportedLongOrder,
     silverWarnings,
     silverShortHexes
   });
@@ -2053,7 +2055,7 @@ function HoveredPopup({
     structureLabel: unitStructureLabelIn(structureRegionOf(unit), unit.structureId, structures),
     reportedStructureLabel: reportedStructureLabelFor(unit, structures),
     longOrder,
-    reportedLongOrder: getReportedLongOrder?.(unit.unitId) ?? NO_ORDERS_TEMPLATE,
+    reportedLongOrder,
     silver,
     silverWarned: warned,
     silverHexShort: hexShort,
@@ -2197,11 +2199,11 @@ function UnitRow({
   onPointerAt: (point: Point) => void;
   onPointerGone: () => void;
   /** The month-long order this unit's live orders carry, where it is one of ours. */
-  getLongOrder?: (unitId: string, regionId: string) => string | null;
+  getLongOrder?: UnitLookup<string | null>;
   /** What the report's orders template said this unit's long order was (`ah-rgkk.5.4`). */
-  getReportedLongOrder?: (unitId: string) => ReportedLongOrder;
+  getReportedLongOrder?: UnitLookup<ReportedLongOrder>;
   /** This unit's silver forecast, where it is one of ours. `ah-1wcw.1`. */
-  getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
+  getSilver?: UnitLookup<UnitSilver | null>;
   /** The unit-anchored `not-enough-silver` findings, by unit id. */
   silverWarnings?: ReadonlySet<UnitRowKey>;
   /** The hexes whose silver shortfall is anchored to the hex and names no unit (`ah-5znb`). */
@@ -2324,7 +2326,12 @@ function UnitRow({
       structureLabel,
       reportedStructureLabel,
       longOrder,
-      reportedLongOrder: getReportedLongOrder?.(unit.unitId) ?? NO_ORDERS_TEMPLATE,
+      // Asked here, by the row's `UnitRef`, rather than taken from `rowMonth`: the getter answers a
+      // fresh object on every call, and this memo must not change on every render (`ah-nwh8`).
+      reportedLongOrder:
+        getReportedLongOrder?.(
+          unitRefOf({ regionId, unitId: unit.unitId, arrivingFrom: unit.arrivingFrom })
+        ) ?? NO_ORDERS_TEMPLATE,
       silver,
       silverWarned: warned,
       silverHexShort: hexShort,
@@ -2342,6 +2349,7 @@ function UnitRow({
     unit,
     structureLabel,
     reportedStructureLabel,
+    regionId,
     longOrder,
     getReportedLongOrder,
     silver,

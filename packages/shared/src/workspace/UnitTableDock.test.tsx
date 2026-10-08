@@ -17,6 +17,7 @@ import { aHexNode } from "../testing/builders";
 import {
   DEFAULT_COLUMN_SHARES,
   allColumnsShown,
+  bySetOutHex,
   unitRowKey,
   UNIT_COLUMNS,
   type UnitColumn
@@ -490,7 +491,9 @@ describe("the long order column", () => {
     });
 
   const drawWith = (getLongOrder: (unitId: string) => string | null): string =>
-    renderToStaticMarkup(<UnitTableDock hex={twoUnits()} preview={null} getLongOrder={getLongOrder} />);
+    renderToStaticMarkup(
+      <UnitTableDock hex={twoUnits()} preview={null} getLongOrder={(unit) => getLongOrder(unit.unitId)} />
+    );
 
 
   const rowOf = (markup: string, unitId: string): string =>
@@ -926,7 +929,7 @@ describe("the Silver column", () => {
             region: region({ regionId, units: [forming] }),
             ownUnitCount: 1
           })}
-          getSilver={(unitId, hexId) => byRowKey.get(unitRowKey(hexId, unitId)) ?? null}
+          getSilver={bySetOutHex((unitId, hexId) => byRowKey.get(unitRowKey(hexId, unitId)) ?? null)}
         />
       );
     };
@@ -1779,8 +1782,8 @@ describe("All my units shows the coming month (ah-tguk)", () => {
             previewed({ unitId: "new-1", name: "Farmer", regionId: A, own: true }, { formed: true })
           ]
         }}
-        getLongOrder={(unitId, regionId) => longOrders.get(unitRowKey(regionId, unitId)) ?? null}
-        getSilver={(unitId, regionId) => forecasts.get(unitRowKey(regionId, unitId)) ?? null}
+        getLongOrder={bySetOutHex((unitId, hex) => longOrders.get(unitRowKey(hex, unitId)) ?? null)}
+        getSilver={bySetOutHex((unitId, hex) => forecasts.get(unitRowKey(hex, unitId)) ?? null)}
         silverWarnings={new Set([unitRowKey(B, moverId)])}
         onSelectUnit={() => {}}
       />
