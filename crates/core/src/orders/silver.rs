@@ -756,10 +756,10 @@ pub enum SilverChangeCause {
     /// (`ah-3c2t.2`).
     ///
     /// **Outside both totals, and the only cause that is.** The money never enters this unit's
-    /// `income`: the column counts each unit on its own (`ah-1wcw.1`), so the borrower keeps the
-    /// red month-end figure the purchase left it with and this line says who covered it. That is
-    /// why `crates/core/tests/silver_totals_are_its_movements.rs` excludes it from the sum, and
-    /// the exclusion is the whole of the cost the navigator accepted for it.
+    /// `income`; it reaches `at_month_end` as `shared_silver_for_orders` instead, so the borrower,
+    /// sharer or not, ends the month at what it has rather than in the red (`ah-moq3`, `ah-0nwd`),
+    /// and this line says who covered it. That is why
+    /// `crates/core/tests/silver_totals_are_its_movements.rs` excludes it from the income sum.
     WasLent,
     /// What a `TRANSPORT`/`DISTRIBUTE` pays to ship goods by weight (`data/quartermaster`). One
     /// line however many shipments the unit wrote, the way two purchases already add into one

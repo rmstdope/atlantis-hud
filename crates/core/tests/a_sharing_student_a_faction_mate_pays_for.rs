@@ -13,15 +13,16 @@
 
 use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::orders::effects::shipment_measures;
-use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions};
+use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions, TurnReview};
+use atlantis_hud_core::orders::silver::UnitSilver;
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
 mod common;
 use common::{ruleset, without_standing_month_orders};
 
-#[test]
-fn unit_9932_a_walking_sharer_pays_for_ends_the_month_at_nothing() {
+/// The turn's own orders, with the scene's three written in, and 9932 studying or not.
+fn review(studies: bool) -> TurnReview {
     let ruleset = ruleset();
     let text = atlantis_hud_fixtures::G5_F21_T39.text;
     let mut parsed = parse_report_full(text);
@@ -34,7 +35,14 @@ fn unit_9932_a_walking_sharer_pays_for_ends_the_month_at_nothing() {
         assert_eq!(template.matches(header).count(), 1, "{header:?} once");
     }
     let orders = template
-        .replace("unit 9932\n", "unit 9932\nSTUDY MINI\n")
+        .replace(
+            "unit 9932\n",
+            if studies {
+                "unit 9932\nSTUDY MINI\n"
+            } else {
+                "unit 9932\n"
+            },
+        )
         .replace("unit 3154\n", "unit 3154\nSHARE 0\n")
         .replace("unit 8333\n", "unit 8333\nMOVE SW\n");
 
@@ -56,13 +64,21 @@ fn unit_9932_a_walking_sharer_pays_for_ends_the_month_at_nothing() {
         month_end: measures.month_end,
         ..CheckOptions::default()
     };
-    let review = review_turn(&parsed, &orders, Some(&ruleset), options);
+    review_turn(&parsed, &orders, Some(&ruleset), options)
+}
 
-    let student = review
+fn row<'r>(review: &'r TurnReview, unit_id: &str) -> &'r UnitSilver {
+    review
         .silver
         .iter()
-        .find(|row| row.unit_id == "9932")
-        .expect("unit 9932 is forecast");
+        .find(|row| row.unit_id == unit_id)
+        .unwrap_or_else(|| panic!("unit {unit_id} is forecast"))
+}
+
+#[test]
+fn unit_9932_a_walking_sharer_pays_for_ends_the_month_at_nothing() {
+    let studying = review(true);
+    let student = row(&studying, "9932");
     assert_eq!(student.borrowed_for_orders, 30, "{student:?}");
     assert_eq!(
         student.at_month_end,
@@ -70,4 +86,9 @@ fn unit_9932_a_walking_sharer_pays_for_ends_the_month_at_nothing() {
         "the fee a faction-mate paid is not its debt: {student:?}"
     );
     assert_eq!(student.short_for_orders, Some(0), "{student:?}");
+
+    // And the walking sharer pays it, on its own row: 8333 also lends in the hex it leaves, so
+    // what 9932's study costs it is measured against the same turn without the study.
+    let end = |review: &TurnReview| row(review, "8333").at_month_end.expect("priced");
+    assert_eq!(end(&review(false)) - end(&studying), 30);
 }
