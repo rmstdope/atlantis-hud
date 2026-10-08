@@ -11022,10 +11022,13 @@ struct SharingPurse {
     /// with `hex.units`, `0` for a unit that is not overdrawn and `0` for every unit in a hex the
     /// purse could not cover (`ah-3c2t.2`).
     ///
-    /// A sharer's overdraft is inside the purse's sum rather than a claim against it, so it never
-    /// decides whether the hex is covered - but once it is, the sharer was lent the money as surely
-    /// as a non-sharer was, and counts it in its own column (`ah-0nwd`). Until then this was a
-    /// separate field from what the purse lent, which was `0` for a sharer.
+    /// A sharer's month-end overdraft is inside the purse's sum rather than a claim against it, so
+    /// it never decides whether the hex is covered at the month's end. Its overdraft at the market
+    /// does: in a hex short at the month's end, it is a market claim like any other and counts
+    /// when the market's claims are judged to fit (`ah-ludc`). Once covered, either way, the sharer
+    /// was lent the money as surely as a non-sharer was, and counts it in its own column
+    /// (`ah-0nwd`). Until then this was a separate field from what the purse lent, which was `0`
+    /// for a sharer.
     borrows: Vec<i64>,
     /// The result of judging each known shortfall against this pool, aligned with `hex.units`.
     coverage: Vec<Option<super::silver::SharedSilverCoverage>>,
