@@ -17523,8 +17523,10 @@ mod tests {
     }
 
     /// The report [`as_printed`], and `options` with `month_end` filled as the shells fill it:
-    /// from the movement trace on these orders, through [`crate::orders::effects::measure_shipments`], over `options.geometry` or,
-    /// when it has none, [`FIXTURE_MAP`] (`ah-sj06`). A test of where a sharing unit ends the month
+    /// from the movement trace on these orders, through
+    /// [`crate::orders::effects::measure_shipments`], over `options.geometry` or, when it has
+    /// none, [`FIXTURE_MAP`] - which the returned options then carry too, since the shells read
+    /// the trace's map and the checks' from one `map_json` (`ah-sj06`). A test of where a sharing unit ends the month
     /// uses this, so a trace that puts a unit somewhere the checker does not fails here and not
     /// only in the smoke suite; one that needs a month end the orders cannot produce fills the map
     /// by hand through [`counterfactual_month_end`] instead.
@@ -17535,13 +17537,16 @@ mod tests {
         options: CheckOptions,
     ) -> (ParsedReport, CheckOptions) {
         let report = as_printed(report, ruleset);
-        let geometry = Ok(options.geometry.or(Some(FIXTURE_MAP)));
+        let options = CheckOptions {
+            geometry: options.geometry.or(Some(FIXTURE_MAP)),
+            ..options
+        };
         let measures = crate::orders::effects::measure_shipments(
             &report,
             &std::sync::Arc::new(ruleset.clone()),
             &[],
             orders,
-            geometry,
+            Ok(options.geometry),
             options.clone(),
         );
         let options = CheckOptions {
@@ -17603,13 +17608,19 @@ mod tests {
                     Some(total + count * ruleset.find_item(tag)?.weight)
                 });
                 let capacity = crate::movement::mode::capacities_from_items(&items, ruleset);
-                if let (Some(weight), Some(capacity)) = (weight, capacity) {
-                    unit.weight = Some(weight);
-                    unit.capacity = Some(format!(
-                        "{}/{}/{}/{}",
-                        capacity.fly, capacity.ride, capacity.walk, capacity.swim
-                    ));
-                }
+                // A unit the ruleset cannot weigh would get no month end, and a test expecting it
+                // to stay would pass for the wrong reason: a fixture fault, said out loud.
+                let (Some(weight), Some(capacity)) = (weight, capacity) else {
+                    panic!(
+                        "as_printed cannot weigh unit {} from its items: {:?}",
+                        unit.unit_id, unit.items
+                    );
+                };
+                unit.weight = Some(weight);
+                unit.capacity = Some(format!(
+                    "{}/{}/{}/{}",
+                    capacity.fly, capacity.ride, capacity.walk, capacity.swim
+                ));
             }
         }
         report
@@ -33702,24 +33713,26 @@ BUILD
 
     /// `ah-sj06`, the disagreement `ah-wyj8` met only in the smoke suite: a `MOVE` a later `STUDY`
     /// replaces never runs (the checker's own "STUDY replaces this MOVE"), so the trace must not
-    /// end the sharer's month where that `MOVE` would have taken it.
+    /// end the sharer's month where that `MOVE` would have taken it - while the same `MOVE` alone
+    /// does take it there, so the first answer is the trace's and not an empty one.
     #[test]
     fn traced_leaves_a_sharer_whose_move_a_study_replaced_where_it_stands() {
-        let (_, options) = traced(
-            report(vec![
-                region_at("1:7,53", 7, 53, vec![sharing(with_silver(unit("7"), 500))]),
-                region_at("1:7,55", 7, 55, Vec::new()),
-            ]),
-            "unit 7\nMOVE S\nSTUDY combat\n",
-            &ruleset(),
-            CheckOptions::default(),
-        );
-        assert_ne!(
-            options.month_end.get("7"),
-            Some(&Coordinate { x: 7, y: 55, z: 1 }),
-            "{:?}",
-            options.month_end
-        );
+        let month_end = |orders: &str| {
+            let (_, options) = traced(
+                report(vec![
+                    region_at("1:7,53", 7, 53, vec![sharing(with_silver(unit("7"), 500))]),
+                    region_at("1:7,55", 7, 55, Vec::new()),
+                ]),
+                orders,
+                &ruleset(),
+                CheckOptions::default(),
+            );
+            options.month_end.get("7").copied()
+        };
+        let south = Some(Coordinate { x: 7, y: 55, z: 1 });
+
+        assert_eq!(month_end("unit 7\nMOVE S\n"), south, "the control walks");
+        assert_ne!(month_end("unit 7\nMOVE S\nSTUDY combat\n"), south);
     }
 
     #[test]
@@ -43433,10 +43446,7 @@ BUILD
                     region_at("1:0,6", 0, 6, Vec::new()),
                 ],
                 "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n",
-                CheckOptions {
-                    geometry: Some(FIXTURE_MAP),
-                    ..disabling(codes::TRANSPORT_OUT_OF_REACH)
-                },
+                disabling(codes::TRANSPORT_OUT_OF_REACH),
             ),
             Vec::new()
         );
@@ -52766,8 +52776,9 @@ BUILD
     }
 
     /// Two men, 30 wood and the eight horses that let them walk with it: Trident's wood weighs 5
-    /// and its horse weighs 50 and carries 70 on foot (`data/WOOD`, `data/HORS` in `newage
-    /// trident`), and a unit walks only when its capacity covers its load
+    /// and its horse weighs 50 and carries 70 on foot (`data/WOOD`, and `data/HORS`'s structured
+    /// `capacity.walk` in `newage-trident-database.json`, which is what the ruleset reads - the
+    /// item's prose there says 20), and a unit walks only when its capacity covers its load
     /// (`rules/movement_normal`) - 575 against 590 here.
     fn wood_carrier() -> ReportUnit {
         with_item(
@@ -53634,8 +53645,10 @@ BUILD
     }
 
     /// A MOVE that a later STUDY replaces never runs ("STUDY replaces this MOVE as the unit's
-    /// month-long order"), so the sharer stays and pays (`ah-wyj8`, `ah-osny`) - through the
-    /// movement trace, which is where `ah-wyj8` first went wrong.
+    /// month-long order"), so the sharer stays and pays (`ah-wyj8`, `ah-osny`), with the month end
+    /// the trace gives. The checker reads the orders that run as well, so this alone would not
+    /// catch the trace going wrong again (the sibling below shows as much);
+    /// [`traced_leaves_a_sharer_whose_move_a_study_replaced_where_it_stands`] is what does.
     #[test]
     fn a_sharer_whose_move_a_study_replaces_stays_and_pays() {
         assert_eq!(
@@ -53690,6 +53703,30 @@ BUILD
     #[test]
     fn a_sharer_that_stays_pays_for_a_study_beside_it() {
         let findings = study_beside_a_walking_sharer(("1:7,53", 7, 53), ("1:7,53", 7, 53), None);
+        assert_eq!(findings, vec![]);
+    }
+
+    /// A sharer that writes a `MOVE` nobody can follow - no month end known, as a shell without
+    /// the remembered map sends it - is pooled where the report lists it, and pays there.
+    #[test]
+    fn a_sharer_whose_walk_has_no_known_month_end_pays_where_it_is_listed() {
+        let findings: Vec<Finding> = check_turn(
+            &report(vec![region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![
+                    with_men(with_silver(unit("5"), 0), 2),
+                    sharing(with_silver(unit("7"), 500)),
+                ],
+            )]),
+            "unit 5\nSTUDY combat\nunit 7\nMOVE S\n",
+            Some(&ruleset()),
+            counterfactual_month_end(CheckOptions::default(), &[]),
+        )
+        .into_iter()
+        .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+        .collect();
         assert_eq!(findings, vec![]);
     }
 
