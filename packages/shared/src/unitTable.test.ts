@@ -3,6 +3,9 @@ import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { structuresByRegionOf } from "./structureLabel";
 import {
+  rowMonth,
+  setOutFrom,
+  type RowLookups,
   unitRefKey,
   unitRefOf,
   DEFAULT_SORT,
@@ -443,6 +446,105 @@ describe("a sort value belongs to a row, not to a unit number", () => {
         (entry) => entry.regionId
       )
     ).toEqual(["1:8,54", "1:7,53"]);
+  });
+});
+
+/**
+ * An arrival can stand in a hex that formed its own `new-1` this month (`ah-xu6v`): the two rows
+ * share a hex and a number, and only the arrival's origin tells them apart.
+ */
+describe("an arriving new-1 and the new-1 formed where it arrives sort on their own values", () => {
+  const formedHere = unit("new-1", true, { regionId: "1:6,52" });
+  const arriving = { ...unit("new-1", true, { regionId: "1:6,52" }), arrivingFrom: "1:7,53" };
+  const rows = [formedHere, arriving];
+  const origins = (sorted: readonly ReportUnit[]) =>
+    sorted.map((entry) => ("arrivingFrom" in entry ? entry.arrivingFrom : null));
+
+  it("by long order", () => {
+    const longOrders = new Map<UnitRowKey, string | null>([
+      [rowKeyOf(formedHere), "study farm"],
+      [rowKeyOf(arriving), "move n"]
+    ]);
+
+    expect(
+      origins(sortUnits(rows, { ...DEFAULT_SORT, column: "longOrder" }, new Map(), longOrders))
+    ).toEqual(["1:7,53", null]);
+  });
+
+  it("by silver", () => {
+    const silver = new Map<UnitRowKey, number | null>([
+      [rowKeyOf(formedHere), 300],
+      [rowKeyOf(arriving), 25]
+    ]);
+
+    expect(
+      origins(sortUnits(rows, { ...DEFAULT_SORT, column: "silver" }, new Map(), new Map(), silver))
+    ).toEqual(["1:7,53", null]);
+  });
+});
+
+describe("rowMonth reads a row's month where the report lists the unit (ah-xu6v)", () => {
+  const A = "1:6,52";
+  const B = "1:7,53";
+  const forecastFor = (regionId: string) => aUnitSilver({ unitId: "new-1", regionId });
+  const lookups: RowLookups = {
+    getLongOrder: (unitId, regionId) => `${unitId} in ${regionId}`,
+    getSilver: (_unitId, regionId) => forecastFor(regionId),
+    silverWarnings: new Set([unitRowKey(B, "new-1")]),
+    silverShortHexes: new Set([A])
+  };
+
+  it("reads an arrival in the hex it set out from", () => {
+    const month = rowMonth({ regionId: A, unitId: "new-1", arrivingFrom: B, own: true }, lookups);
+
+    expect(month.home).toBe(B);
+    expect(month.longOrder).toBe(`new-1 in ${B}`);
+    expect(month.silver?.regionId).toBe(B);
+    expect(month.warned).toBe(true);
+    expect(month.hexShort).toBe(false);
+  });
+
+  it("reads a row that stays in its own hex", () => {
+    const month = rowMonth({ regionId: A, unitId: "new-1", arrivingFrom: null, own: true }, lookups);
+
+    expect(month.home).toBe(A);
+    expect(month.longOrder).toBe(`new-1 in ${A}`);
+    expect(month.silver?.regionId).toBe(A);
+    expect(month.warned).toBe(false);
+    expect(month.hexShort).toBe(true);
+  });
+
+  it("raises no silver flag on an own unit with no forecast to explain it", () => {
+    const month = rowMonth(
+      { regionId: A, unitId: "new-1", arrivingFrom: null, own: true },
+      {
+        ...lookups,
+        getSilver: () => null,
+        silverWarnings: new Set([unitRowKey(A, "new-1")])
+      }
+    );
+
+    expect(month.silver).toBeNull();
+    expect(month.warned).toBe(false);
+    expect(month.hexShort).toBe(false);
+  });
+
+  it("reads nothing for somebody else's unit", () => {
+    expect(rowMonth({ regionId: A, unitId: "new-1", arrivingFrom: B, own: false }, lookups)).toEqual({
+      home: B,
+      longOrder: null,
+      silver: null,
+      warned: false,
+      hexShort: false
+    });
+  });
+});
+
+describe("setOutFrom", () => {
+  it("is the origin for an arrival and the row's own hex otherwise", () => {
+    expect(setOutFrom({ regionId: "1:6,52", unitId: "new-1", arrivingFrom: "1:7,53" })).toBe("1:7,53");
+    expect(setOutFrom({ regionId: "1:6,52", unitId: "new-1", arrivingFrom: null })).toBe("1:6,52");
+    expect(setOutFrom({ regionId: "1:6,52", unitId: "new-1" })).toBe("1:6,52");
   });
 });
 

@@ -216,15 +216,15 @@ function valueOf(
       return unit.men;
     case "structure":
       return structureKey(unit, structures);
-    // Both of these are keyed by hex and unit, because a unit number is unique to a hex and not to
-    // a turn: two hexes can each hold a `new-1` (`ah-9o0c.2`), and a lookup on the id alone hands
-    // one hex's row the other's answer.
+    // Both of these are keyed by the row, because a unit number is unique to a hex and not to a
+    // turn: two hexes can each hold a `new-1` (`ah-9o0c.2`), and one of them can arrive where the
+    // other was formed (`ah-xu6v`), so a lookup on less than the whole row hands one the other's.
     case "longOrder":
-      return longOrderKey(longOrders.get(unitRowKey(unit.regionId, unit.unitId)) ?? null);
+      return longOrderKey(longOrders.get(rowKeyOf(unit)) ?? null);
     // A forecast that could not be priced, and a foreign unit that has none at all, are both null
     // - which `compareValues` already sorts last in either direction, so neither needs a sentinel.
     case "silver":
-      return silver.get(unitRowKey(unit.regionId, unit.unitId)) ?? null;
+      return silver.get(rowKeyOf(unit)) ?? null;
     // A row with no entry - every row of a source that is not an Army - is null, which
     // `compareValues` already sorts last in either direction.
     case "seen":
@@ -467,6 +467,59 @@ export function unitRowKey(
 
 /** The parts of a row its identity is read from. `ReportUnit` and `PreviewedUnit` both satisfy it. */
 export type KeyedRow = { regionId: string; unitId: string; arrivingFrom?: string | null };
+
+/**
+ * The hex a row's unit sets out from this month: where the report lists it, and so the hex its
+ * orders block and its silver forecast are keyed by. `arrivingFrom` for an arrival, else the row's
+ * own hex - the same answer as the core's `UnitRef::set_out_hex`.
+ *
+ * An arrival stands in a hex that numbers its `NEW n` aliases independently (`rules/form`), so
+ * reading its orders or its forecast there finds a different unit or none (`ah-xu6v`).
+ */
+export function setOutFrom(row: KeyedRow): string {
+  return row.arrivingFrom ?? row.regionId;
+}
+
+/** The shell's per-unit answers the units table reads a row's month from. */
+export type RowLookups = {
+  getLongOrder?: (unitId: string, regionId: string) => string | null;
+  getSilver?: (unitId: string, regionId: string) => UnitSilver | null;
+  /** The units a silver finding names, by hex and unit. */
+  silverWarnings?: ReadonlySet<UnitRowKey>;
+  /** The hexes whose pooled silver falls short with nobody named (`ah-5znb`). */
+  silverShortHexes?: ReadonlySet<string>;
+};
+
+/** A row's own month, as the cell, its popup and its sort all read it. */
+export type RowMonth = {
+  /** Where the report lists the unit: `setOutFrom`. Its findings are anchored there too. */
+  home: string;
+  longOrder: string | null;
+  silver: UnitSilver | null;
+  /** A silver finding names this unit. Never without a forecast to explain it. */
+  warned: boolean;
+  /** The hex is short of silver with nobody named. Never without a forecast. */
+  hexShort: boolean;
+};
+
+/**
+ * Everything the table reads about a row's own month, read in the hex the report lists the unit in
+ * rather than the hex the row stands in (`ah-xu6v`). The row's cells, its hover popup and the Long
+ * order and Silver sorts all come through here, so none of them can look in a different hex from
+ * the others. Only our own units have orders or a forecast; anybody else's month is empty.
+ */
+export function rowMonth(row: KeyedRow & { own: boolean }, lookups: RowLookups): RowMonth {
+  const home = setOutFrom(row);
+  const longOrder = row.own ? (lookups.getLongOrder?.(row.unitId, home) ?? null) : null;
+  const silver = row.own ? (lookups.getSilver?.(row.unitId, home) ?? null) : null;
+  return {
+    home,
+    longOrder,
+    silver,
+    warned: silver !== null && (lookups.silverWarnings?.has(unitRowKey(home, row.unitId)) ?? false),
+    hexShort: silver !== null && (lookups.silverShortHexes?.has(home) ?? false)
+  };
+}
 
 /** The `UnitRef` a row names. A row with no `arrivingFrom` does not arrive. */
 export function unitRefOf(row: KeyedRow): UnitRef {
