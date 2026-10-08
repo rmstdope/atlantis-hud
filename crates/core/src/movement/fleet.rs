@@ -28,8 +28,13 @@ use crate::report::ParsedReport;
 /// are chained by `movement::chain::RouteChain` (`rules/move`: "Multiple MOVE orders given by one
 /// unit will chain together."); a different month-long order replaces the chain, as
 /// `orders::semantics::month_segments` states.
+///
+/// This is the document as **written**, and it answers nothing about routes: whether a route closed
+/// by a TEACH runs turns on the settled month, which only a report can say. [`Self::settle`] turns
+/// it into the [`OrderedUnits`] every movement reader takes, so no reader can be handed a route the
+/// month has not settled (`ah-y1yr`).
 #[derive(Debug, Default, Clone)]
-pub struct OrderedUnits {
+pub struct WrittenMovement {
     by_unit: BTreeMap<String, ChainedRoute>,
     /// Each readable `FORM` block's route, keyed by the 1-based line of its `FORM`.
     formed_routes: BTreeMap<usize, ChainedRoute>,
@@ -44,14 +49,26 @@ pub struct OrderedUnits {
     promotes_by_unit: BTreeMap<String, Vec<String>>,
     /// The units whose block ends its movement with a TEACH ([`RouteChain::closed_by_teach`]):
     /// whether their route runs turns on the settled month, which this reader cannot see, so
-    /// [`Self::with_settled_teachers`] decides it (`ah-0x6x`).
+    /// [`Self::settle`] decides it (`ah-0x6x`).
     closed_by_teach: BTreeSet<String>,
     /// The `FORM` blocks, by the line of their `FORM`, whose movement a TEACH closed: the same
     /// question for a unit this month creates (`ah-r3rv`).
     formed_closed_by_teach: BTreeSet<usize>,
 }
 
-impl OrderedUnits {
+/// This month's movement once it is settled: which route each unit walks or sails, whose `SAIL`
+/// lends hands, and where each unit stands after its ENTER and LEAVE.
+///
+/// The one input every movement reader takes - the preview, the shipment measures, the wall check,
+/// the map trace, the passage claims and the fleet-course check. Its only constructors settle the
+/// month first ([`Self::of_month`], [`WrittenMovement::settle`]), so a rule that stops a unit moving
+/// is applied once, in [`WrittenMovement::settle`], and every reader gets it (`ah-y1yr`; before it
+/// each caller had to remember the settlement, and `ah-0x6x` needed three rounds to find them).
+/// `Default` is the empty month: nobody moves.
+#[derive(Debug, Default, Clone)]
+pub struct OrderedUnits(WrittenMovement);
+
+impl WrittenMovement {
     /// Reads every unit's block out of one orders document. `None` reads it under the New Origins
     /// lexical rules.
     #[must_use]
@@ -207,7 +224,7 @@ impl OrderedUnits {
             .filter_map(|(unit_id, chain)| chain.into_route().map(|route| (unit_id, route)))
             .collect();
         // Only a TEACH that leaves something to replace: most teachers wrote no movement at all,
-        // and those must not cost `with_settled_teachers` a settlement.
+        // and those must not cost `settle` a settlement.
         let closed_by_teach = closed_by_teach
             .into_iter()
             .filter(|unit_id| by_unit.contains_key(unit_id) || sailers.contains(unit_id))
@@ -238,65 +255,77 @@ impl OrderedUnits {
         }
     }
 
-    /// Whether this unit's own movement was closed by a TEACH, so whether it runs waits on
-    /// [`Self::with_settled_teachers`].
-    pub(crate) fn closed_by_teach(&self, unit_id: &str) -> bool {
-        self.closed_by_teach.contains(unit_id)
-    }
-
-    /// Whether any unit's movement waits on [`Self::with_settled_teachers`].
-    pub(crate) fn any_closed_by_teach(&self) -> bool {
+    /// Whether any unit's movement waits on [`Self::settle`] - for a caller that has to prepare the
+    /// report it settles against, and would rather not when nothing waits.
+    #[must_use]
+    pub fn waits_on_teachers(&self) -> bool {
         !self.closed_by_teach.is_empty() || !self.formed_closed_by_teach.is_empty()
     }
 
-    /// This reading with the movement a TEACH replaced taken out, for a caller holding the report.
+    /// This reading as the month settles it, for a caller holding the report.
     ///
     /// A TEACH spends the month only for a unit that can teach - `rules/skills_teaching`:
-    /// "Only leaders may use the TEACH order." - judged on the settled month, after this month's GIVE, TAKE and BUY.
-    /// When it does, it is the last month-long order and the one that runs, so a MOVE or SAIL
-    /// before it does not: the unit walks nowhere and lends no hands to a hull's course. Which
-    /// units that is comes from [`crate::orders::semantics::month_long_teachers`], the same
-    /// settlement the checker's "will not run" reads, so the map, the preview and the shipment
-    /// measure agree with it (`ah-0x6x`). A `FORM` block's route is dropped the same way when the
-    /// unit it creates teaches (`ah-r3rv`). Costs nothing when no block ends its movement on a
-    /// TEACH.
+    /// "Only leaders may use the TEACH order." - judged on the settled month, after this month's
+    /// GIVE, TAKE and BUY. When it does, it is the last month-long order and the one that runs, so
+    /// a MOVE or SAIL before it does not: the unit walks nowhere and lends no hands to a hull's
+    /// course. Which units that is comes from [`crate::orders::semantics::month_long_teachers`],
+    /// the same settlement the checker's "will not run" reads, so the map, the preview and the
+    /// shipment measure agree with it (`ah-0x6x`). A `FORM` block's route is dropped the same way
+    /// when the unit it creates teaches (`ah-r3rv`), so formed and reported units are settled here
+    /// alike. Costs nothing when no block ends its movement on a TEACH.
     #[must_use]
-    pub(crate) fn with_settled_teachers(
+    pub fn settle(
         mut self,
         report: &ParsedReport,
         orders_document: &str,
         ruleset: Option<&Ruleset>,
+    ) -> OrderedUnits {
+        if self.waits_on_teachers() {
+            let teachers =
+                crate::orders::semantics::month_long_teachers(report, orders_document, ruleset);
+            for unit_id in std::mem::take(&mut self.closed_by_teach) {
+                if teachers.units.contains(&unit_id) {
+                    self.by_unit.remove(&unit_id);
+                    self.sailers.remove(&unit_id);
+                }
+            }
+            // A unit this month's FORM creates walks under its `FORM` line, so it is matched there
+            // (`ah-r3rv`).
+            for form_line in std::mem::take(&mut self.formed_closed_by_teach) {
+                if teachers.form_lines.contains(&form_line) {
+                    self.formed_routes.remove(&form_line);
+                }
+            }
+        }
+        OrderedUnits(self)
+    }
+}
+
+impl OrderedUnits {
+    /// This month's movement, read from the orders document and settled against the report it was
+    /// written for. `None` reads the document under the New Origins lexical rules.
+    #[must_use]
+    pub fn of_month(
+        report: &ParsedReport,
+        orders_document: &str,
+        ruleset: Option<&Ruleset>,
     ) -> Self {
-        if !self.any_closed_by_teach() {
-            return self;
-        }
-        let teachers =
-            crate::orders::semantics::month_long_teachers(report, orders_document, ruleset);
-        for unit_id in std::mem::take(&mut self.closed_by_teach) {
-            if teachers.units.contains(&unit_id) {
-                self.by_unit.remove(&unit_id);
-                self.sailers.remove(&unit_id);
-            }
-        }
-        // A unit this month's FORM creates walks under its `FORM` line, so it is matched there
-        // (`ah-r3rv`).
-        for form_line in std::mem::take(&mut self.formed_closed_by_teach) {
-            if teachers.form_lines.contains(&form_line) {
-                self.formed_routes.remove(&form_line);
-            }
-        }
-        self
+        WrittenMovement::from_document(orders_document, ruleset).settle(
+            report,
+            orders_document,
+            ruleset,
+        )
     }
 
     /// The route a unit's own block chains to, if it wrote one.
     pub(crate) fn route_of(&self, unit_id: &str) -> Option<&ChainedRoute> {
-        self.by_unit.get(unit_id)
+        self.0.by_unit.get(unit_id)
     }
 
     /// The route chained inside the `FORM` block opened on this 1-based document line, when that
     /// line's alias could be read. The formed unit's identity is the caller's business.
     pub(crate) fn formed_route(&self, form_line: usize) -> Option<&ChainedRoute> {
-        self.formed_routes.get(&form_line)
+        self.0.formed_routes.get(&form_line)
     }
 
     /// The unit's own movement steps, if it wrote any.
@@ -318,14 +347,15 @@ impl OrderedUnits {
     /// were written.
     #[must_use]
     pub fn promotes_of(&self, unit_id: &str) -> &[String] {
-        self.promotes_by_unit
+        self.0
+            .promotes_by_unit
             .get(unit_id)
             .map_or(&[][..], Vec::as_slice)
     }
 
     #[must_use]
     pub(crate) fn issues_sail(&self, unit_id: &str) -> bool {
-        self.sailers.contains(unit_id)
+        self.0.sailers.contains(unit_id)
     }
 
     /// The structure this unit is in once this month's ENTER/LEAVE orders have run.
@@ -347,7 +377,8 @@ impl OrderedUnits {
 
     /// One unit's boardings as the rule reads them.
     fn boardings_of(&self, unit_id: &str) -> impl Iterator<Item = Boarding<'_>> + '_ {
-        self.boardings_by_unit
+        self.0
+            .boardings_by_unit
             .get(unit_id)
             .into_iter()
             .flatten()
@@ -585,7 +616,7 @@ mod tests {
         let mut cache = ReportCache::new();
         let report = cache.classified(TURN_24, RULESET);
         let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
-        let ordered = OrderedUnits::from_document(orders, None);
+        let ordered = OrderedUnits::of_month(&crate::report::ParsedReport::default(), orders, None);
         let unit = report
             .units()
             .find(|unit| unit.unit_id == unit_id)
@@ -650,7 +681,8 @@ mod tests {
         assert!(crate::orders::intents::read_intents(unreadable, None)[0]
             .intents
             .is_empty());
-        let ordered = OrderedUnits::from_document(unreadable, None);
+        let ordered =
+            OrderedUnits::of_month(&crate::report::ParsedReport::default(), unreadable, None);
         assert_eq!(ordered.steps_for("1471"), None);
         assert!(!ordered.issues_sail("1471"));
 
@@ -665,7 +697,7 @@ mod tests {
             matches!(&intents[0].intent, crate::orders::intents::Intent::Sail { steps, .. } if steps.is_empty()),
             "{intents:?}"
         );
-        let ordered = OrderedUnits::from_document(bare, None);
+        let ordered = OrderedUnits::of_month(&crate::report::ParsedReport::default(), bare, None);
         assert_eq!(ordered.steps_for("1471"), None);
         assert!(ordered.issues_sail("1471"));
     }
@@ -709,7 +741,7 @@ mod tests {
             .iter()
             .find(|region| region.region_id == "1:1,1")
             .expect("the scene's ocean hex");
-        let ordered = OrderedUnits::from_document(orders, None);
+        let ordered = OrderedUnits::of_month(&crate::report::ParsedReport::default(), orders, None);
         fleet_owner(region, &ordered, structure_id)
     }
 
@@ -721,7 +753,7 @@ mod tests {
             .iter()
             .find(|region| region.region_id == "1:1,1")
             .expect("the scene's ocean hex");
-        let ordered = OrderedUnits::from_document(orders, None);
+        let ordered = OrderedUnits::of_month(&crate::report::ParsedReport::default(), orders, None);
         fleet_course(region, &ordered, structure_id)
             .steps
             .map(<[MoveStep]>::to_vec)
@@ -831,7 +863,7 @@ mod tests {
         let mut cache = ReportCache::new();
         let report = cache.classified(&owner_scene(), RULESET);
         let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
-        let ordered = OrderedUnits::from_document(orders, None);
+        let ordered = OrderedUnits::of_month(&crate::report::ParsedReport::default(), orders, None);
         let unit = report
             .units()
             .find(|unit| unit.unit_id == unit_id)
@@ -922,24 +954,60 @@ mod tests {
 
     #[test]
     fn a_sail_is_told_from_a_move_and_a_promote_is_read() {
-        assert!(OrderedUnits::from_document("unit 10575\nSAIL SE\n", None).sails_a_course("10575"));
-        assert!(!OrderedUnits::from_document("unit 10575\nMOVE N\n", None).sails_a_course("10575"));
+        assert!(OrderedUnits::of_month(
+            &crate::report::ParsedReport::default(),
+            "unit 10575\nSAIL SE\n",
+            None
+        )
+        .sails_a_course("10575"));
+        assert!(!OrderedUnits::of_month(
+            &crate::report::ParsedReport::default(),
+            "unit 10575\nMOVE N\n",
+            None
+        )
+        .sails_a_course("10575"));
         assert!(
-            !OrderedUnits::from_document("unit 10575\nSAIL\n", None).sails_a_course("10575"),
+            !OrderedUnits::of_month(
+                &crate::report::ParsedReport::default(),
+                "unit 10575\nSAIL\n",
+                None
+            )
+            .sails_a_course("10575"),
             "a bare SAIL stores no steps, so it names no course"
         );
         assert_eq!(
-            OrderedUnits::from_document("unit 900\nPROMOTE 901\n", None).promotes_of("900"),
+            OrderedUnits::of_month(
+                &crate::report::ParsedReport::default(),
+                "unit 900\nPROMOTE 901\n",
+                None
+            )
+            .promotes_of("900"),
             ["901".to_string()]
         );
     }
 
     #[test]
     fn bare_sail_participates_but_only_directional_sail_departs() {
-        let bare = OrderedUnits::from_document("unit 10575\nSAIL\n", None);
-        let in_only = OrderedUnits::from_document("unit 10575\nSAIL IN\n", None);
-        let out_only = OrderedUnits::from_document("unit 10575\nSAIL OUT\n", None);
-        let directional = OrderedUnits::from_document("unit 10575\nSAIL SE\n", None);
+        let bare = OrderedUnits::of_month(
+            &crate::report::ParsedReport::default(),
+            "unit 10575\nSAIL\n",
+            None,
+        );
+        let in_only = OrderedUnits::of_month(
+            &crate::report::ParsedReport::default(),
+            "unit 10575\nSAIL IN\n",
+            None,
+        );
+        let out_only = OrderedUnits::of_month(
+            &crate::report::ParsedReport::default(),
+            "unit 10575\nSAIL OUT\n",
+            None,
+        );
+        let directional = OrderedUnits::of_month(
+            &crate::report::ParsedReport::default(),
+            "unit 10575\nSAIL SE\n",
+            None,
+        );
 
         assert!(bare.issues_sail("10575"));
         assert!(!in_only.issues_sail("10575"));
@@ -955,14 +1023,53 @@ mod tests {
             "unit 10575\nSAIL SE\nSTUDY COMB\n",
             "unit 10575\nSAIL\nSTUDY COMB\n",
         ] {
-            let ordered = OrderedUnits::from_document(orders, None);
+            let ordered =
+                OrderedUnits::of_month(&crate::report::ParsedReport::default(), orders, None);
             assert!(!ordered.issues_sail("10575"), "{orders:?}");
             assert!(!ordered.sails_a_course("10575"), "{orders:?}");
         }
         assert!(
-            OrderedUnits::from_document("unit 10575\nSTUDY COMB\nSAIL SE\n", None)
-                .issues_sail("10575"),
+            OrderedUnits::of_month(
+                &crate::report::ParsedReport::default(),
+                "unit 10575\nSTUDY COMB\nSAIL SE\n",
+                None
+            )
+            .issues_sail("10575"),
             "the SAIL written last is the one that runs"
+        );
+    }
+
+    /// `ah-y1yr`: the only way to a route is through the settled month. A leader's TEACH spends
+    /// the month (`rules/skills_teaching`: "Only leaders may use the TEACH order."), so the MOVE
+    /// and the SAIL it closes are gone before any reader can ask for them; a human's TEACH spends
+    /// nothing, so its own still run. The document alone can only say that a settlement is owed.
+    #[test]
+    fn a_month_read_from_the_document_is_settled_before_any_route_is_read() {
+        let text = "Foo (1) Report\n\
+                    \n\
+                    plain (0,0) in Nowhere, 10 peasants (orcs), $5.\n\
+                    \n\
+                    * Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n\
+                    * Hand (901), Foo (1), human [HUMN]. Weight: 10. Capacity: 0/0/15/0.\n\
+                    * Captain (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n";
+        let orders = "unit 900\nMOVE N\nTEACH 901\nunit 901\nMOVE N\nTEACH 900\n\
+                      unit 902\nSAIL SE\nTEACH 901\n";
+        let mut cache = ReportCache::new();
+        let report = cache.classified(text, RULESET);
+        let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
+
+        assert!(WrittenMovement::from_document(orders, Some(&ruleset)).waits_on_teachers());
+        let month = OrderedUnits::of_month(&report, orders, Some(&ruleset));
+        assert_eq!(
+            month.route_of("900"),
+            None,
+            "the leader teaches instead of walking"
+        );
+        assert_eq!(month.steps_for("900"), None);
+        assert!(!month.issues_sail("902") && !month.sails_a_course("902"));
+        assert!(
+            month.steps_for("901").is_some(),
+            "the human's TEACH replaces nothing"
         );
     }
 
@@ -982,12 +1089,12 @@ mod tests {
         let report = cache.classified(text, RULESET);
         let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
 
-        let read = OrderedUnits::from_document(orders, Some(&ruleset));
+        let written = WrittenMovement::from_document(orders, Some(&ruleset));
         assert!(
-            read.sails_a_course("900"),
+            written.waits_on_teachers(),
             "the document alone cannot judge a TEACH"
         );
-        let settled = read.with_settled_teachers(&report, orders, Some(&ruleset));
+        let settled = written.settle(&report, orders, Some(&ruleset));
         assert!(!settled.issues_sail("900"));
         assert!(!settled.sails_a_course("900"));
         assert!(settled.issues_sail("901"));
@@ -1027,7 +1134,7 @@ mod tests {
     fn structure_after(orders: &str, unit_id: &str) -> Option<String> {
         let mut cache = ReportCache::new();
         let report = cache.classified(TURN_24, RULESET);
-        let ordered = OrderedUnits::from_document(orders, None);
+        let ordered = OrderedUnits::of_month(&crate::report::ParsedReport::default(), orders, None);
         let unit = report
             .units()
             .find(|unit| unit.unit_id == unit_id)
@@ -1164,7 +1271,11 @@ mod tests {
         // The hull's course is its owner's, and the first unit listed under Frozen Tomb [194] is
         // the **foreign** `A Tomb's Crew (6311)` - which is exactly why our own 13401 sailing it
         // now carries nobody, and why the SAIL is written under 6311 here (`ah-ofra`).
-        let ordered = OrderedUnits::from_document("unit 6311\nsail sw\n", None);
+        let ordered = OrderedUnits::of_month(
+            &crate::report::ParsedReport::default(),
+            "unit 6311\nsail sw\n",
+            None,
+        );
         let passenger = report
             .units()
             .find(|unit| unit.unit_id == "13848")
@@ -1195,7 +1306,11 @@ mod tests {
     #[test]
     fn chained_move_lines_are_one_route() {
         use crate::movement::graph::Direction::{North, Northeast};
-        let ordered = OrderedUnits::from_document("unit 900\nMOVE N\nMOVE NE\n", None);
+        let ordered = OrderedUnits::of_month(
+            &crate::report::ParsedReport::default(),
+            "unit 900\nMOVE N\nMOVE NE\n",
+            None,
+        );
         assert_eq!(
             ordered.steps_for("900"),
             Some(&[MoveStep::Go(North), MoveStep::Go(Northeast)][..])
@@ -1206,7 +1321,11 @@ mod tests {
     #[test]
     fn chained_sail_lines_are_one_course() {
         use crate::movement::graph::Direction::{North, Northwest};
-        let ordered = OrderedUnits::from_document("unit 10575\nSAIL N\nSAIL NW\n", None);
+        let ordered = OrderedUnits::of_month(
+            &crate::report::ParsedReport::default(),
+            "unit 10575\nSAIL N\nSAIL NW\n",
+            None,
+        );
         assert_eq!(
             ordered.steps_for("10575"),
             Some(&[MoveStep::Go(North), MoveStep::Go(Northwest)][..])
@@ -1217,14 +1336,19 @@ mod tests {
     #[test]
     fn a_work_between_two_moves_leaves_only_the_second() {
         use crate::movement::graph::Direction::South;
-        let ordered = OrderedUnits::from_document("unit 900\nMOVE N\nWORK\nMOVE S\n", None);
+        let ordered = OrderedUnits::of_month(
+            &crate::report::ParsedReport::default(),
+            "unit 900\nMOVE N\nWORK\nMOVE S\n",
+            None,
+        );
         assert_eq!(ordered.steps_for("900"), Some(&[MoveStep::Go(South)][..]));
     }
 
     #[test]
     fn a_formed_units_move_lines_are_recorded_for_nobody() {
         use crate::movement::graph::Direction::{North, Northeast};
-        let ordered = OrderedUnits::from_document(
+        let ordered = OrderedUnits::of_month(
+            &crate::report::ParsedReport::default(),
             "unit 900\nMOVE N\nFORM 1\nMOVE S\nMOVE SE\nEND\nMOVE NE\n",
             None,
         );
@@ -1242,7 +1366,11 @@ mod tests {
         use crate::movement::graph::Direction::Southeast;
         let trident = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
             .expect("the Trident ruleset loads");
-        let ordered = OrderedUnits::from_document("unit 900\nMOVE SE;scouting\n", Some(&trident));
+        let ordered = OrderedUnits::of_month(
+            &crate::report::ParsedReport::default(),
+            "unit 900\nMOVE SE;scouting\n",
+            Some(&trident),
+        );
         assert_eq!(
             ordered.steps_for("900"),
             Some(&[MoveStep::Go(Southeast)][..])
@@ -1254,14 +1382,19 @@ mod tests {
     #[test]
     fn an_order_after_a_directive_belongs_to_no_unit() {
         use crate::movement::graph::Direction::North;
-        let ordered = OrderedUnits::from_document("unit 900\nMOVE N\n#end\nMOVE S\n", None);
+        let ordered = OrderedUnits::of_month(
+            &crate::report::ParsedReport::default(),
+            "unit 900\nMOVE N\n#end\nMOVE S\n",
+            None,
+        );
         assert_eq!(ordered.steps_for("900"), Some(&[MoveStep::Go(North)][..]));
     }
 
     #[test]
     fn a_form_blocks_route_is_recorded_under_its_form_line() {
         use crate::movement::graph::Direction::{North, Northeast, South, Southeast};
-        let ordered = OrderedUnits::from_document(
+        let ordered = OrderedUnits::of_month(
+            &crate::report::ParsedReport::default(),
             "unit 900\nMOVE N\nFORM 1\nMOVE S\nMOVE SE\nEND\nMOVE NE\n",
             None,
         );
@@ -1280,7 +1413,11 @@ mod tests {
             Some(&[MoveStep::Go(North), MoveStep::Go(Northeast)][..])
         );
 
-        let unreadable = OrderedUnits::from_document("unit 900\nFORM 0\nMOVE S\nEND\n", None);
+        let unreadable = OrderedUnits::of_month(
+            &crate::report::ParsedReport::default(),
+            "unit 900\nFORM 0\nMOVE S\nEND\n",
+            None,
+        );
         assert_eq!(unreadable.formed_route(2), None);
     }
 
@@ -1289,9 +1426,10 @@ mod tests {
     #[test]
     fn only_a_formed_teach_closing_a_route_waits_on_the_settlement() {
         let closing =
-            OrderedUnits::from_document("unit 900\nFORM 1\nMOVE N\nTEACH 900\nEND\n", None);
-        assert!(closing.any_closed_by_teach());
-        let teaching_only = OrderedUnits::from_document("unit 900\nFORM 1\nTEACH 900\nEND\n", None);
-        assert!(!teaching_only.any_closed_by_teach());
+            WrittenMovement::from_document("unit 900\nFORM 1\nMOVE N\nTEACH 900\nEND\n", None);
+        assert!(closing.waits_on_teachers());
+        let teaching_only =
+            WrittenMovement::from_document("unit 900\nFORM 1\nTEACH 900\nEND\n", None);
+        assert!(!teaching_only.waits_on_teachers());
     }
 }

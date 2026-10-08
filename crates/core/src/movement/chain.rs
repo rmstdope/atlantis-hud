@@ -96,7 +96,7 @@ impl RouteChain {
 
     /// Whether the last month-long order fed in is a TEACH, which replaces this block's movement
     /// only for a unit the settled month finds able to teach - the caller's to judge
-    /// (`OrderedUnits::with_settled_teachers`, `ah-0x6x`).
+    /// (`WrittenMovement::settle`, `ah-0x6x`).
     pub(crate) fn closed_by_teach(&self) -> bool {
         self.open == Some(Open::Teaching)
     }

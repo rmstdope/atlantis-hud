@@ -640,7 +640,7 @@ pub fn review_turn(
     let fleet_orders = if options.emits(codes::SAIL_NOT_BY_OWNER) {
         // Settled, so an owner whose TEACH replaced its SAIL is said to set no course, as the map
         // draws it (`ah-0x6x`).
-        FleetOrders::from_document(source, ruleset).with_settled_teachers(report, source, ruleset)
+        FleetOrders::of_month(report, source, ruleset)
     } else {
         FleetOrders::default()
     };
@@ -5859,7 +5859,7 @@ pub(crate) struct MonthLongTeachers {
 ///
 /// Read through the same settlement `review_turn` and [`item_effects`] open with - the transfers,
 /// then the recruits - so the movement readers that drop a route for these units
-/// (`movement::fleet::OrderedUnits::with_settled_teachers`) agree with the "will not run" the
+/// (`movement::fleet::WrittenMovement::settle`) agree with the "will not run" the
 /// checker writes on the MOVE (`ah-0x6x`). A unit whose eligibility cannot be said is included, as
 /// [`month_spending_intent`] counts its TEACH as spending the month.
 pub(crate) fn month_long_teachers(
@@ -9727,7 +9727,7 @@ impl SharingReach {
         // month-long order, so this MOVE will not run"), so the trace is believed only for a unit
         // whose effective orders still walk (`ah-wyj8`). The trace drops such a route itself
         // (`movement::chain::RouteChain`, `ah-osny`; an eligible TEACH's through
-        // `OrderedUnits::with_settled_teachers`, `ah-0x6x`), but a caller's `month_end` is not
+        // `WrittenMovement::settle`, `ah-0x6x`), but a caller's `month_end` is not
         // bound to have come from that trace, so the effective orders still have the last word.
         let walks = ordered
             .intents

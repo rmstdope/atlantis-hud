@@ -280,24 +280,10 @@ fn trace_orders(
 
     let report = cache.classified(raw_report, ruleset_json);
 
-    let read = OrderedUnits::from_document(orders_document, Some(ruleset.as_ref()));
-    // The settled teachers cost a pass over the whole report, and this runs for every unit the
-    // player selects, so it is paid only where the answer can reach the traced unit: its own
-    // movement closed by a TEACH, or a hull it stands in once this month's ENTER and LEAVE have
-    // run, whose captain's may have been (`ah-0x6x`). A unit the report does not show may be one
-    // this month's FORM creates, which stands where its parent does, hull included (`rules/form`),
-    // so it is settled whenever any movement waits on a TEACH (`ah-r3rv`).
-    let shown = report.units().find(|unit| unit.unit_id == unit_id);
-    let reaches_trace = read.closed_by_teach(unit_id)
-        || match shown {
-            Some(unit) => read.structure_of(unit).is_some(),
-            None => read.any_closed_by_teach(),
-        };
-    let ordered = if reaches_trace {
-        read.with_settled_teachers(&report, orders_document, Some(ruleset.as_ref()))
-    } else {
-        read
-    };
+    // Settled whatever unit is traced: the traced unit's own TEACH, or its hull captain's, may
+    // replace the movement it would follow, and a guard that guessed which could reach it was
+    // itself a review finding of `ah-0x6x` (`ah-y1yr`). Costs nothing when no block waits.
+    let ordered = OrderedUnits::of_month(&report, orders_document, Some(ruleset.as_ref()));
     let formed;
     let (unit, own, own_is_sail) =
         match report.units().find(|unit| unit.unit_id == unit_id).cloned() {

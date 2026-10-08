@@ -760,11 +760,11 @@ pub fn preview_orders_on_map(
         ..options
     };
     // One reading serves both settles and the movement decision alike.
-    let ordered = crate::movement::fleet::OrderedUnits::from_document(
+    let ordered = crate::movement::fleet::OrderedUnits::of_month(
+        &report,
         orders_document,
         Some(ruleset.as_ref()),
-    )
-    .with_settled_teachers(&report, orders_document, Some(ruleset.as_ref()));
+    );
     let (units, dissolved) = settle(
         &report,
         &ruleset,
@@ -1023,7 +1023,8 @@ pub(super) fn transported_out(
     geometry: Option<crate::movement::graph::MapGeometry>,
 ) -> BTreeMap<String, Vec<(String, i64)>> {
     let ruleset = std::sync::Arc::new(ruleset.clone());
-    let ordered = crate::movement::fleet::OrderedUnits::from_document(
+    let ordered = crate::movement::fleet::OrderedUnits::of_month(
+        report,
         orders_document,
         Some(ruleset.as_ref()),
     );
@@ -1220,13 +1221,12 @@ pub(crate) fn formed_unit_as_ordered(
         return None;
     }
     // A `FORM`ed row is looked up on its own; no transport is applied here, so the map's shape
-    // is not needed (`ah-7ale.2.1`). Settled, so a formed unit whose TEACH replaced its MOVE is
-    // traced walking nowhere, as the preview draws it (`ah-r3rv`).
-    let ordered = crate::movement::fleet::OrderedUnits::from_document(
+    // is not needed (`ah-7ale.2.1`). Settled, as every movement reading is (`ah-y1yr`).
+    let ordered = crate::movement::fleet::OrderedUnits::of_month(
+        report,
         orders_document,
         Some(ruleset.as_ref()),
-    )
-    .with_settled_teachers(report, orders_document, Some(ruleset.as_ref()));
+    );
     let (units, _) = settle(
         report,
         ruleset,
@@ -1331,11 +1331,11 @@ pub(crate) fn measure_shipments(
         shown: shown.clone(),
         ..options
     };
-    let ordered = crate::movement::fleet::OrderedUnits::from_document(
+    let ordered = crate::movement::fleet::OrderedUnits::of_month(
+        report,
         orders_document,
         Some(ruleset.as_ref()),
-    )
-    .with_settled_teachers(report, orders_document, Some(ruleset.as_ref()));
+    );
     let (units, dissolved) = settle(
         report,
         ruleset,
@@ -1384,11 +1384,11 @@ pub fn walled_moves(
     // settlement, which only the known map carries.
     let known = crate::known_map::resolve_known_map(&report, &remembered);
     let map = MapKnowledge::from_known_map(&known).with_geometry(geometry);
-    let ordered = crate::movement::fleet::OrderedUnits::from_document(
+    let ordered = crate::movement::fleet::OrderedUnits::of_month(
+        &report,
         orders_document,
         Some(ruleset.as_ref()),
-    )
-    .with_settled_teachers(&report, orders_document, Some(ruleset.as_ref()));
+    );
     Ok(super::walls::walled_moves_on(
         &report, &ruleset, &known, &map, &ordered,
     ))
@@ -4080,7 +4080,8 @@ mod tests {
         let mut cache = crate::cache::ReportCache::new();
         let parsed = cache.classified(&report(), RULESET);
         let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
-        let ordered = crate::movement::fleet::OrderedUnits::from_document(
+        let ordered = crate::movement::fleet::OrderedUnits::of_month(
+            &parsed,
             "unit 900\nMOVE SE\n",
             Some(ruleset.as_ref()),
         );
@@ -4108,8 +4109,11 @@ mod tests {
         let mut cache = crate::cache::ReportCache::new();
         let parsed = cache.classified(&report(), RULESET);
         let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
-        let ordered =
-            crate::movement::fleet::OrderedUnits::from_document(document, Some(ruleset.as_ref()));
+        let ordered = crate::movement::fleet::OrderedUnits::of_month(
+            &parsed,
+            document,
+            Some(ruleset.as_ref()),
+        );
         let (units, _) = settle(
             &parsed,
             &ruleset,
@@ -4237,8 +4241,11 @@ mod tests {
         let ruleset = std::sync::Arc::new(Ruleset::from_json(RULESET).expect("the ruleset loads"));
         let decided_900 = |text: &str, orders: &str, dissolving: bool| {
             let report = ReportCache::new().classified(text, RULESET);
-            let ordered =
-                crate::movement::fleet::OrderedUnits::from_document(orders, Some(ruleset.as_ref()));
+            let ordered = crate::movement::fleet::OrderedUnits::of_month(
+                &report,
+                orders,
+                Some(ruleset.as_ref()),
+            );
             let (units, _) = settle(
                 &report,
                 &ruleset,
