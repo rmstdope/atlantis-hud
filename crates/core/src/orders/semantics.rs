@@ -11611,8 +11611,7 @@ fn report_shortfalls(
                         || ledger.doubted.contains(who)
                         // Only a draw made after movement: an overdraft carried from `BUY` was
                         // funded while the sharers still held their silver.
-                        || silver_at(ledger, who, LendingMoment::Study)
-                            >= silver_at(ledger, who, LendingMoment::Movement).min(0)
+                        || silver_short_at_study(ledger, who) <= 0
                         || cut.iter().any(|reduced| &reduced.unit_id == who)
                         || refused.iter().any(|refused| &refused.unit_id == who)
                         || verdicts.iter().any(|verdict| {
