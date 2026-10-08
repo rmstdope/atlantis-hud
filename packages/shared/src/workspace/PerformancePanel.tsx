@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { APP_VERSION } from "../appVersion";
 import { clearTimings, stepSummaries, summariseFrames, type FrameSummary, type StepSummary } from "../perf";
 import { useSettingsStore } from "../settingsStore";
+import { useDialogDrag } from "./useDialogDrag";
 
 /** How much frame history the rate is worked out over, and how often the panel refreshes. */
 const FRAME_WINDOW_MS = 3000;
@@ -26,6 +27,63 @@ function mapCensus(): MapCensus | null {
 }
 
 const ms = (value: number) => `${value < 10 ? value.toFixed(1) : Math.round(value)} ms`;
+
+/** Every call into the Rust core is timed as `core: <method>` (`timedCore`). */
+const CORE_PREFIX = "core: ";
+
+const cell = "whitespace-nowrap pl-2 text-right tabular-nums";
+
+/**
+ * The timings, one row per step and one column per figure: the pipeline's own steps first, then the
+ * core's calls under a heading of their own. Every figure keeps to one line - a name too long for its
+ * column is cut short and named in full on hover, rather than squeezing the numbers into wrapping.
+ */
+export function StepTable({ steps }: { steps: StepSummary[] }) {
+  const pipeline = steps.filter((step) => !step.step.startsWith(CORE_PREFIX));
+  const core = steps.filter((step) => step.step.startsWith(CORE_PREFIX));
+  const row = (step: StepSummary, name: string) => (
+    <tr key={step.step} data-step={step.step}>
+      <td className="max-w-0 truncate whitespace-nowrap" title={name}>
+        {name}
+      </td>
+      <td className={`${cell} text-ink`}>{ms(step.last)}</td>
+      <td className={cell}>{step.count}</td>
+      <td className={cell}>{ms(step.median)}</td>
+      <td className={cell}>{ms(step.worst)}</td>
+    </tr>
+  );
+  return (
+    <table className="w-full table-fixed border-collapse">
+      <colgroup>
+        <col />
+        <col className="w-16" />
+        <col className="w-10" />
+        <col className="w-16" />
+        <col className="w-16" />
+      </colgroup>
+      <thead className="text-ink-dim">
+        <tr>
+          <th className="text-left font-normal">step</th>
+          <th className="text-right font-normal">last</th>
+          <th className="text-right font-normal">runs</th>
+          <th className="text-right font-normal">median</th>
+          <th className="text-right font-normal">worst</th>
+        </tr>
+      </thead>
+      <tbody>{pipeline.map((step) => row(step, step.step))}</tbody>
+      {core.length > 0 && (
+        <tbody>
+          <tr>
+            <th colSpan={5} className="pt-1 text-left font-normal text-brass">
+              Rust core
+            </th>
+          </tr>
+          {core.map((step) => row(step, step.step.slice(CORE_PREFIX.length)))}
+        </tbody>
+      )}
+    </table>
+  );
+}
 
 type Machine = { cores: string; memory: string; screen: string; agent: string };
 
@@ -62,6 +120,9 @@ export function PerformancePanel({ platformLabel }: { platformLabel: string }) {
   const [steps, setSteps] = useState<StepSummary[]>([]);
   const [census, setCensus] = useState<MapCensus | null>(null);
   const [copied, setCopied] = useState(false);
+  const setFlag = useSettingsStore((state) => state.setFlag);
+  // Moved by its bar like a dialog, so it can be put wherever it hides the least.
+  const drag = useDialogDrag();
 
   useEffect(() => {
     let frame = 0;
@@ -124,13 +185,16 @@ export function PerformancePanel({ platformLabel }: { platformLabel: string }) {
 
   return (
     <section
+      ref={drag.dialogRef}
+      style={drag.dialogStyle}
       data-testid="performance-panel"
       aria-label="Performance"
-      className="fixed bottom-3 left-3 z-40 w-80 rounded border border-edge bg-panel px-2.5 py-2 text-pane-sm text-ink-soft shadow-lg"
+      // Bottom left until it is moved; from then on where it was put, which `dialogStyle` sets.
+      className={`fixed ${drag.moved ? "" : "bottom-3 left-3 "}z-40 flex max-h-[70vh] w-[26rem] max-w-[calc(100vw-1.5rem)] flex-col rounded border border-edge bg-panel px-2.5 py-2 text-pane-sm text-ink-soft shadow-lg`}
     >
-      <header className="mb-1 flex items-center justify-between gap-2">
+      <header {...drag.barProps} className="mb-1 flex cursor-move select-none items-center justify-between gap-2">
         <strong className="text-brass">Performance</strong>
-        <span className="flex gap-1.5">
+        <span className="flex items-center gap-1.5">
           <button
             type="button"
             data-testid="performance-reset"
@@ -150,6 +214,16 @@ export function PerformancePanel({ platformLabel }: { platformLabel: string }) {
           >
             {copied ? "Copied" : "Copy"}
           </button>
+          <button
+            type="button"
+            data-testid="performance-close"
+            aria-label="close performance panel"
+            title="Close - Settings turns it on again"
+            onClick={() => setFlag("showPerformancePanel", false)}
+            className="rounded border border-edge px-1.5 text-ink-dim hover:border-brass hover:text-brass"
+          >
+            ×
+          </button>
         </span>
       </header>
       <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
@@ -163,18 +237,11 @@ export function PerformancePanel({ platformLabel }: { platformLabel: string }) {
         <dd data-testid="performance-map" className="text-ink">
           {census ? `${census.hexes} hexes · ${census.elements} elements · ${census.copies} copies` : "none open"}
         </dd>
-        {steps.map((step) => (
-          <div key={step.step} className="contents">
-            <dt>{step.step}</dt>
-            <dd className="text-ink" data-step={step.step}>
-              {ms(step.last)}{" "}
-              <span className="text-ink-dim">
-                ×{step.count} · median {ms(step.median)} · worst {ms(step.worst)}
-              </span>
-            </dd>
-          </div>
-        ))}
       </dl>
+      {/* The one part that grows - a call into the core is a row - so the one part that scrolls. */}
+      <div data-testid="performance-steps" className="mt-1.5 min-h-0 overflow-y-auto">
+        <StepTable steps={steps} />
+      </div>
     </section>
   );
 }
