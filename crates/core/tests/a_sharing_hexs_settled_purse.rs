@@ -20,8 +20,9 @@
 //!
 //! **The quantity does not fall here, and that is the agreed design.** Consequence 1 of the
 //! family's agreed record asks that the quantity and every money figure come from the *same* pool,
-//! not that the quantity fall; consequence 2 says in terms that the buying unit keeps its red
-//! month-end figure. What reconciles unit 9498's row is `ah-3c2t.2`'s `was lent` line, merged.
+//! not that the quantity fall; consequence 2 said in terms that the buying unit keeps its red
+//! month-end figure, which `ah-0nwd` has since reversed: what its neighbours lend now counts in its
+//! own column. What reconciles unit 9498's row is `ah-3c2t.2`'s `was lent` line, merged.
 //! `bought == 389` is therefore asserted deliberately, so the next reader does not re-raise it —
 //! cutting it would mean reopening rejected option A (*only silver already in hand counts*), which
 //! the designer refused.

@@ -2311,7 +2311,7 @@ fn forecast_hex(
                 claim_allowances,
                 &unit_key(&hex.region.region_id, &ordered.unit.unit_id),
             ),
-            purse_for_orders.lends_to[index],
+            purse_for_orders.borrows[index],
             Lookups {
                 sale: &sale,
                 purchase: &purchase,
@@ -2347,7 +2347,15 @@ fn forecast_hex(
         .map(|forecast| forecast.shared_silver_for_orders)
         .sum();
     if owing > 0 {
-        for (index, forecast) in into[start..].iter_mut().enumerate() {
+        // A borrower lends last: what reaches it after its own orders spent is drawn only when no
+        // faction-mate's silver is left, so it never pays its own loan back to itself while a
+        // sharer beside it holds the money (`ah-0nwd`). Drawn at all, rather than skipped, because
+        // the purse was judged covered with that silver in it, and skipping it would credit the
+        // borrower money no row is debited for.
+        let mut order: Vec<usize> = (0..into.len() - start).collect();
+        order.sort_by_key(|&index| purse_for_orders.borrows[index] > 0);
+        for index in order {
+            let forecast = &mut into[start + index];
             if owing == 0 {
                 break;
             }
@@ -2389,10 +2397,11 @@ fn forecast_hex(
 
     // The borrower's mirror of the `Lent` rows above, and deliberately not part of that loop: the
     // draw is not drained out of anything here. The lender's row is an expense and moves `expense`
-    // and `at_month_end` with it; this one moves no total at all, because the column counts each
-    // unit on its own (`ah-1wcw.1`) and the borrower keeps the red figure the purchase left it
-    // (`ah-3c2t.2`). Appended after the `Lent` pass so it is the last line in the list, which is
-    // where the agreed mockup draws it - under `bought`.
+    // and `at_month_end` with it; this one moves no total itself, because `forecast_unit` already
+    // counted the loan into the borrower's month end as `shared_silver_for_orders` - a sharer's
+    // too, since `ah-0nwd` (`ah-3c2t.2` had a sharing borrower keep its red figure). Appended
+    // after the `Lent` pass so it is the last line in the list, which is where the agreed mockup
+    // draws it - under `bought`.
     for (index, forecast) in into[start..].iter_mut().enumerate() {
         forecast.pool_doubted = pool_doubted;
         forecast.shared_silver_coverage = purse_for_orders.coverage[index];
@@ -11005,21 +11014,18 @@ impl MarketPurse {
 /// (`ah-bm0d`).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct SharingPurse {
-    /// What the purse lends each unit for its orders. `0` for a sharer - a sharer's own overdraft
-    /// is already inside the purse's sum rather than a claim against it - and `0` for every unit
-    /// in a hex whose purse could not cover every claimant.
-    lends_to: Vec<i64>,
     /// What each sharer has to lend, before anything is drawn. `0` for every non-sharer, and `0`
     /// for every unit in a hex that lends nothing at all.
     lendable: Vec<i64>,
-    /// What each unit's orders drew out of its faction-mates' pockets: its own overdraft, where
-    /// the purse settled the whole hex. Index-aligned with `hex.units`, `0` for a unit that is not
-    /// overdrawn and `0` for every unit in a hex the purse could not cover (`ah-3c2t.2`).
+    /// What each unit's orders drew out of its faction-mates' pockets, and so what the purse lends
+    /// it: its own overdraft, sharer or not, where the purse settled the whole hex. Index-aligned
+    /// with `hex.units`, `0` for a unit that is not overdrawn and `0` for every unit in a hex the
+    /// purse could not cover (`ah-3c2t.2`).
     ///
-    /// Not `lends_to`, and the difference is the whole of this bead: `lends_to` is what the purse
-    /// lends a *claimant*, and a sharer is never a claimant. This answers the reader's question
-    /// instead - did somebody else's money pay for this - which a sharer's overdraft answers yes
-    /// to.
+    /// A sharer's overdraft is inside the purse's sum rather than a claim against it, so it never
+    /// decides whether the hex is covered - but once it is, the sharer was lent the money as surely
+    /// as a non-sharer was, and counts it in its own column (`ah-0nwd`). Until then this was a
+    /// separate field from what the purse lent, which was `0` for a sharer.
     borrows: Vec<i64>,
     /// The result of judging each known shortfall against this pool, aligned with `hex.units`.
     coverage: Vec<Option<super::silver::SharedSilverCoverage>>,
@@ -11036,7 +11042,6 @@ struct SharingPurse {
 /// and what this bead was filed from.
 fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
     let nothing = SharingPurse {
-        lends_to: vec![0; hex.units.len()],
         lendable: vec![0; hex.units.len()],
         borrows: vec![0; hex.units.len()],
         coverage: vec![None; hex.units.len()],
@@ -11145,7 +11150,6 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
             && market_owed <= held_at_market.iter().sum::<i64>()
         {
             return SharingPurse {
-                lends_to: market_claims.clone(),
                 lendable: held_at_market,
                 borrows: market_claims,
                 coverage: coverage_for(super::silver::SharedSilverCoverage::Shortfall),
@@ -11157,11 +11161,10 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
         };
     }
 
-    // Every undoubted unit's own overdraft, sharer or not - the borrowing this hex settled. Above
-    // the `pool <= 0` return below, and that is the whole reason the return moved: a hex whose
-    // sharers' surplus exactly covers their own overdrafts nets to `pool == 0` and lends nothing
-    // to a claimant, yet a neighbour's money did pay for somebody's orders. That is the agreed
-    // record's own scene (`ah-3c2t.2`).
+    // Every undoubted unit's own overdraft, sharer or not - the borrowing this hex settled. A hex
+    // whose sharers' surplus exactly covers their own overdrafts nets to `pool == 0`, yet a
+    // neighbour's money did pay for somebody's orders: the agreed record's own scene
+    // (`ah-3c2t.2`), and the reason there is no early return for an empty pool.
     let borrows: Vec<i64> = hex
         .units
         .iter()
@@ -11173,14 +11176,6 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
             }
         })
         .collect();
-
-    if pool <= 0 {
-        return SharingPurse {
-            borrows,
-            coverage: coverage_for(super::silver::SharedSilverCoverage::Covered),
-            ..nothing
-        };
-    }
 
     let lendable = hex
         .units
@@ -11203,8 +11198,11 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
         })
         .collect();
 
+    // `borrows` is also what the purse lends: what a faction-mate's silver paid for counts in the
+    // borrower's own column, sharer or not, so the borrower ends the month at what it really has
+    // and the lender is debited what it lent (`ah-0nwd`, reversing `ah-3c2t.2`'s "the buying unit
+    // keeps its red month-end figure" at the navigator's word).
     SharingPurse {
-        lends_to: claims,
         lendable,
         borrows,
         coverage: coverage_for(super::silver::SharedSilverCoverage::Covered),
@@ -27257,8 +27255,9 @@ BUILD
             );
         }
 
-        /// The borrowing unit's own row names the neighbours' money that paid for it, and the
-        /// figures the agreed record insists on keeping stay exactly as they were (`ah-3c2t.2`).
+        /// The borrowing unit's own row names the neighbours' money that paid for it
+        /// (`ah-3c2t.2`), and since `ah-0nwd` it counts that money in its month end, so a sharer
+        /// that borrows ends at what it has rather than in the red, and the lender is debited.
         #[test]
         fn a_borrowing_unit_says_whose_silver_paid() {
             let hex = ReportRegion {
@@ -27296,8 +27295,8 @@ BUILD
             assert_eq!(buyer.borrowed_for_orders, 300);
             assert_eq!(
                 buyer.at_month_end,
-                Some(-300),
-                "the red figure the agreed record keeps"
+                Some(0),
+                "what it borrowed counts in its own column (`ah-0nwd`)"
             );
             assert_eq!(buyer.income, Some(0), "borrowed silver is not income");
 
@@ -27310,9 +27309,11 @@ BUILD
                 neighbour
                     .changes
                     .iter()
-                    .all(|change| change.cause != SilverChangeCause::Lent),
-                "no silver moved, so the lender is charged nothing"
+                    .any(|change| change.cause == SilverChangeCause::Lent && change.amount == -300),
+                "the lender is charged what it lent: {:?}",
+                neighbour.changes
             );
+            assert_eq!(neighbour.at_month_end, Some(0));
         }
 
         /// The SILVER column reads the ledger's own market-open snapshot, so the two surfaces cut
@@ -27709,7 +27710,22 @@ BUILD
             assert_eq!(buyer.buy_all[0].bought, 52);
             assert_eq!(buyer.income, Some(1000), "its settled share of the pool");
             assert_eq!(buyer.expense, Some(2600), "52 horses at $50");
-            assert_eq!(buyer.at_month_end, Some(-1600));
+            // What its neighbours lent counts in its own column (`ah-0nwd`), and the hex adds up:
+            // $2,600 in (two settled $1,000 taxes and $600 held), $2,600 out. How much was lent
+            // is the ledger's own overdraft, which reads the tax unsettled - see `ah-0nwd`'s
+            // follow-up - so this pins the relationship rather than the figure.
+            assert_eq!(
+                buyer.at_month_end,
+                Some(-1600 + buyer.borrowed_for_orders),
+                "{buyer:?}"
+            );
+            assert!(buyer.borrowed_for_orders > 0);
+            let hex_total: i64 = review
+                .silver
+                .iter()
+                .map(|row| row.at_month_end.expect("every row is a number"))
+                .sum();
+            assert_eq!(hex_total, 0, "every lent dollar is debited from a lender");
         }
 
         /// Accept-on-doubt means "your own silver" for a `BUY ALL`, not "unlimited": it has always
@@ -33114,9 +33130,8 @@ BUILD
 
         let purse = purse_of(&hex_region, "unit 5\nSTUDY combat\n");
 
-        assert_eq!(purse.lends_to, vec![0, 0]);
-        assert_eq!(purse.lendable, vec![0, 0]);
         assert_eq!(purse.borrows, vec![0, 0]);
+        assert_eq!(purse.lendable, vec![0, 0]);
     }
 
     #[test]
@@ -33128,13 +33143,13 @@ BUILD
 
         let purse = purse_of(&hex_region, "unit 5\nSTUDY combat\n");
 
-        assert_eq!(purse.lends_to, vec![10, 0], "the studier's whole shortfall");
+        assert_eq!(purse.borrows, vec![10, 0], "the studier's whole shortfall");
         assert_eq!(purse.lendable, vec![0, 500], "and the sharer can cover it");
     }
 
-    /// A sharer never claims from the purse (`lends_to` is `0` for one by decision), yet its
-    /// overdraft is still paid out of its faction-mates' pockets. `borrows` is what answers the
-    /// reader's question - did somebody else's money pay for this (`ah-3c2t.2`).
+    /// A sharer's overdraft never decides whether the hex is covered, yet it is still paid out of
+    /// its faction-mates' pockets (`ah-3c2t.2`), and lent to it like anyone else's: what it
+    /// borrowed counts in its own column (`ah-0nwd`).
     #[test]
     fn a_sharer_that_overspends_borrows_from_the_hex() {
         let hex_region = region(vec![
@@ -33144,8 +33159,11 @@ BUILD
 
         let purse = purse_of(&hex_region, "unit 5\nSTUDY combat\n");
 
-        assert_eq!(purse.borrows, vec![10, 0], "the studier's whole overdraft");
-        assert_eq!(purse.lends_to, vec![0, 0], "a sharer is not a claimant");
+        assert_eq!(
+            purse.borrows,
+            vec![10, 0],
+            "the studier's whole overdraft, lent like any claimant's"
+        );
     }
 
     /// The agreed record's own shape: the sharers' surplus exactly covers their own overdrafts, so
@@ -33198,12 +33216,7 @@ BUILD
 
         let purse = purse_of(&hex_region, "unit 5\nSTUDY combat\nunit 9\nSTUDY combat\n");
 
-        assert_eq!(purse.lends_to, vec![0, 0, 0]);
-        assert_eq!(
-            purse.borrows,
-            vec![0, 0, 0],
-            "the rule reaches the borrowing too"
-        );
+        assert_eq!(purse.borrows, vec![0, 0, 0]);
     }
 
     #[test]
@@ -33218,7 +33231,7 @@ BUILD
         let mut ledger = ledger_for(&hex, Some(&rules));
 
         assert_eq!(
-            sharing_purse(&hex, &ledger).lends_to,
+            sharing_purse(&hex, &ledger).borrows,
             vec![10, 0],
             "it lends before anything is doubted"
         );
@@ -33226,7 +33239,7 @@ BUILD
         ledger.doubted.insert("7".to_string());
 
         assert_eq!(
-            sharing_purse(&hex, &ledger).lends_to,
+            sharing_purse(&hex, &ledger).borrows,
             vec![0, 0],
             "one doubted sharer silences the purse"
         );
@@ -54088,7 +54101,23 @@ BUILD
         ends_at: Option<(i32, i32)>,
         student_orders: &str,
     ) -> TurnReview {
-        let student = with_men(with_silver(unit("5"), 0), 2);
+        walking_sharer_review_of(
+            with_men(with_silver(unit("5"), 0), 2),
+            student_at,
+            sharer_at,
+            ends_at,
+            student_orders,
+        )
+    }
+
+    /// [`walking_sharer_review`] with the student given, so a test can make it a sharer itself.
+    fn walking_sharer_review_of(
+        student: ReportUnit,
+        student_at: (&str, i32, i32),
+        sharer_at: (&str, i32, i32),
+        ends_at: Option<(i32, i32)>,
+        student_orders: &str,
+    ) -> TurnReview {
         let sharer = sharing(with_silver(unit("7"), 500));
         let swords = |region: ReportRegion| ReportRegion {
             for_sale: vec![MarketItem {
@@ -54347,6 +54376,70 @@ BUILD
         );
     }
 
+    /// A control for `ah-0nwd`, which passed before its fix too: a student that does not share
+    /// was already lent its fee by a walking-in sharer and ends its month at 0 (`ah-moq3`).
+    #[test]
+    fn a_student_a_walking_in_sharer_pays_for_ends_the_month_at_nothing() {
+        let review = walking_sharer_review(
+            ("1:7,53", 7, 53),
+            ("1:7,51", 7, 51),
+            Some((7, 53)),
+            "STUDY combat",
+        );
+        let student = forecast_for(&review, "5");
+        assert_eq!(student.at_month_end, Some(0), "{student:?}");
+        assert_eq!(student.short_for_orders, Some(0));
+        assert_eq!(student.shared_silver_for_orders, 20);
+    }
+
+    /// The same control with the sharer staying beside the student.
+    #[test]
+    fn a_student_a_staying_sharer_pays_for_ends_the_month_at_nothing() {
+        let review =
+            walking_sharer_review(("1:7,53", 7, 53), ("1:7,53", 7, 53), None, "STUDY combat");
+        let student = forecast_for(&review, "5");
+        assert_eq!(student.at_month_end, Some(0), "{student:?}");
+        assert_eq!(student.shared_silver_for_orders, 20);
+    }
+
+    /// Unit 9932 in the Borg turn 39 report: the student shares its own (empty) purse, and a
+    /// faction-mate's `SHARE` pays its fee. Being a sharer itself does not make the fee its own
+    /// debt: it ends the month at 0, and nothing on its row says it is short (`ah-0nwd`).
+    #[test]
+    fn a_sharing_student_a_walking_in_sharer_pays_for_ends_the_month_at_nothing() {
+        let review = walking_sharer_review_of(
+            sharing(with_men(with_silver(unit("5"), 0), 2)),
+            ("1:7,53", 7, 53),
+            ("1:7,51", 7, 51),
+            Some((7, 53)),
+            "STUDY combat",
+        );
+        let student = forecast_for(&review, "5");
+        assert_eq!(student.borrowed_for_orders, 20, "{student:?}");
+        assert_eq!(student.at_month_end, Some(0), "{student:?}");
+        let lender = forecast_for(&review, "7");
+        assert_eq!(
+            lender.at_month_end,
+            Some(480),
+            "the arrival pays: {lender:?}"
+        );
+    }
+
+    /// The same student with the sharer already beside it: not specific to arriving sharers.
+    #[test]
+    fn a_sharing_student_a_staying_sharer_pays_for_ends_the_month_at_nothing() {
+        let review = walking_sharer_review_of(
+            sharing(with_men(with_silver(unit("5"), 0), 2)),
+            ("1:7,53", 7, 53),
+            ("1:7,53", 7, 53),
+            None,
+            "STUDY combat",
+        );
+        let student = forecast_for(&review, "5");
+        assert_eq!(student.borrowed_for_orders, 20, "{student:?}");
+        assert_eq!(student.at_month_end, Some(0), "{student:?}");
+    }
+
     /// And a sharer that walks away lends the student nothing in the column either.
     #[test]
     fn a_sharer_that_walks_away_lends_nothing_on_its_own_row() {
@@ -54599,6 +54692,91 @@ BUILD
                 ..Default::default()
             }],
             ..region_at("1:7,53", 7, 53, units)
+        }
+    }
+
+    /// A sharing student overdrawn as STUDY settles, and shipped silver only afterwards, borrowed
+    /// its fee from the sharer beside it - and the silver it ends the month holding never pays
+    /// its own loan back to itself (`ah-0nwd` review, finding 3).
+    #[test]
+    fn a_sharer_that_borrowed_at_study_does_not_lend_to_itself() {
+        let orders = "unit 5\nTRANSPORT 6 100 SILV\nunit 6\nSTUDY combat\n";
+        let (report, options) = traced(
+            report(vec![caravanserai_hex(
+                "5",
+                100,
+                vec![
+                    sharing(with_men(with_silver(unit("6"), 0), 2)),
+                    sharing(with_silver(unit("8"), 500)),
+                ],
+            )]),
+            orders,
+            &ruleset(),
+            CheckOptions::default(),
+        );
+        let review = review_turn(&report, orders, Some(&ruleset()), options);
+        let student = forecast_for(&review, "6");
+        assert_eq!(student.borrowed_for_orders, 20, "{student:?}");
+        assert!(
+            student
+                .changes
+                .iter()
+                .all(|change| change.cause != SilverChangeCause::Lent),
+            "{:?}",
+            student.changes
+        );
+        assert_eq!(student.at_month_end, Some(100), "{student:?}");
+        assert_eq!(forecast_for(&review, "8").at_month_end, Some(480));
+    }
+
+    /// The sharing student's own late silver is the only money in the hex: whatever the purse is
+    /// judged to lend is debited from somebody, so the hex ends with what it started with less
+    /// what it spent - no `was lent` without a `lent` (`ah-0nwd` delta review, finding 1).
+    #[test]
+    fn a_purse_whose_only_silver_is_a_borrowers_later_receipt_creates_none() {
+        for (others, orders, spent) in [
+            (
+                vec![sharing(with_silver(unit("8"), 0))],
+                "unit 5\nTRANSPORT 6 100 SILV\nunit 6\nSTUDY combat\n",
+                20,
+            ),
+            (
+                vec![
+                    sharing(with_silver(unit("8"), 0)),
+                    with_silver(unit("9"), 0),
+                ],
+                "unit 5\nTRANSPORT 6 100 SILV\nunit 6\nSTUDY combat\nunit 9\nSTUDY combat\n",
+                30,
+            ),
+        ] {
+            let mut units = vec![sharing(with_men(with_silver(unit("6"), 0), 2))];
+            units.extend(others);
+            let (report, options) = traced(
+                report(vec![caravanserai_hex("5", 100, units)]),
+                orders,
+                &ruleset(),
+                CheckOptions::default(),
+            );
+            let review = review_turn(&report, orders, Some(&ruleset()), options);
+            let total: i64 = review
+                .silver
+                .iter()
+                .map(|row| row.at_month_end.expect("priced"))
+                .sum();
+            assert_eq!(total, 100 - spent, "{orders}: {:?}", review.silver);
+            let lent: i64 = review
+                .silver
+                .iter()
+                .flat_map(|row| &row.changes)
+                .filter(|change| change.cause == SilverChangeCause::Lent)
+                .map(|change| -change.amount)
+                .sum();
+            let borrowed: i64 = review
+                .silver
+                .iter()
+                .map(|row| row.borrowed_for_orders)
+                .sum();
+            assert_eq!(lent, borrowed, "{orders}: every loan is somebody's");
         }
     }
 

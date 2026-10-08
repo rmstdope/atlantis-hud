@@ -917,9 +917,9 @@ export const SILVER_NOTES: readonly SilverNote[] = [
     // first way keeps a populated `borrowedForOrders` and draws no line - so this case is reachable,
     // and it is the one this entry exists for.
     restatedBy: (groups) => groups.some((group) => group.cause === "was-lent"),
-    // `borrowedForOrders` and not `sharedSilverForOrders`: that field is `0` for a sharer by
-    // decision, and a sharer that overspends is exactly the borrower the agreed record draws
-    // (`ah-3c2t.2`). A superset, so no hover that shows the sentence today loses it.
+    // `borrowedForOrders` and not `sharedSilverForOrders`: that field is clamped to what the
+    // unit's own orders left it short, and the sentence is about whether a faction-mate paid at
+    // all - a sharer that overspends included (`ah-3c2t.2`, `ah-0nwd`).
     when: ({ silver }) => silver.borrowedForOrders > 0,
     say: () => "A faction-mate's silver in this hex pays for this unit's orders.",
     example: () => ({

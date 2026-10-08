@@ -66,9 +66,9 @@ fn every_unit_in_the_corpus_totals_what_its_changes_say() {
         let income_moved: i64 = unit
             .changes
             .iter()
-            // The one arm that is in neither total, by decision: the column counts each unit on
-            // its own, so borrowed silver is not this unit's income - it keeps the red month-end
-            // figure the purchase left it with and the line says who covered it (`ah-3c2t.2`).
+            // The one arm that is in neither total, by decision: borrowed silver is not this
+            // unit's income. It reaches the month end as `shared_silver_for_orders` instead, a
+            // sharer's included (`ah-3c2t.2`, `ah-0nwd`), and the line says who covered it.
             .filter(|change| change.cause != SilverChangeCause::WasLent)
             .filter(|change| change.amount > 0)
             .map(|change| change.amount)
@@ -111,7 +111,10 @@ fn a_sharing_unit_says_where_its_loan_went() {
         .collect();
 
     assert_eq!(lent.len(), 1, "one loan, one line");
-    assert_eq!(lent[0].amount, -90, "signed out of the unit");
+    // $90 until `ah-0nwd`, when only non-sharers were lent to. The hex's sharing students
+    // (12222's $500, 683's $656 and the rest) are lent their fees too now, and 3493 is drained
+    // first, in hex order; the hex's total month end is unchanged.
+    assert_eq!(lent[0].amount, -1042, "signed out of the unit");
     assert_eq!(lent[0].line, None, "the SHARE flag lent it, not an order");
     assert_eq!(lent[0].other, None, "the hex's purse is not a unit");
 }

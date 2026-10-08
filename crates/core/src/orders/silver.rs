@@ -406,15 +406,15 @@ pub struct UnitSilver {
     /// What the hex's `SHARE` purse paid for this unit's orders out of *other* units' silver -
     /// this unit's own overdraft, where the hex's purse settled it (`ah-3c2t.2`).
     ///
-    /// A superset of [`Self::shared_silver_for_orders`] and never smaller: that field is `0` for a
-    /// sharer by decision, because a sharer's overdraft is inside the purse's own sum rather than
-    /// a claim against it, and this one is not - the agreed record's borrower shares. Equal to it
-    /// for every non-sharer, and `0` wherever the purse could not cover every claimant, where
-    /// every figure stays pessimistic exactly as `shared_silver_for_orders` does.
+    /// The purse's own figure for what [`Self::shared_silver_for_orders`] counts, sharer or not:
+    /// a sharer that borrows is lent the money like anyone else and ends the month at what it has,
+    /// not in the red (`ah-0nwd`, reversing `ah-3c2t.2`'s "keeps its red month-end figure").
+    /// `0` wherever the purse could not cover every claimant, where every figure stays
+    /// pessimistic exactly as `shared_silver_for_orders` does.
     ///
-    /// Read by the change list and by the hover's `shared-silver-pays-orders` note. It feeds
-    /// **no** total: `short_for_orders` still counts `shared_silver_for_orders` alone, so the cell
-    /// stays red exactly where it is red today (`ah-moq3`).
+    /// Read by the change list and by the hover's `shared-silver-pays-orders` note. It feeds no
+    /// total itself: `shared_silver_for_orders` is that figure clamped to what the unit's own
+    /// orders left it short, and it is the one `at_month_end` and `short_for_orders` count.
     pub borrowed_for_orders: i64,
     /// Silver of this unit's upkeep paid by food it holds itself, at step 1 of the payment order.
     /// `0` when the unit is not set to consume, holds no food, or owes nothing.
@@ -756,10 +756,10 @@ pub enum SilverChangeCause {
     /// (`ah-3c2t.2`).
     ///
     /// **Outside both totals, and the only cause that is.** The money never enters this unit's
-    /// `income`: the column counts each unit on its own (`ah-1wcw.1`), so the borrower keeps the
-    /// red month-end figure the purchase left it with and this line says who covered it. That is
-    /// why `crates/core/tests/silver_totals_are_its_movements.rs` excludes it from the sum, and
-    /// the exclusion is the whole of the cost the navigator accepted for it.
+    /// `income`; it reaches `at_month_end` as `shared_silver_for_orders` instead, so the borrower,
+    /// sharer or not, ends the month at what it has rather than in the red (`ah-moq3`, `ah-0nwd`),
+    /// and this line says who covered it. That is why
+    /// `crates/core/tests/silver_totals_are_its_movements.rs` excludes it from the income sum.
     WasLent,
     /// What a `TRANSPORT`/`DISTRIBUTE` pays to ship goods by weight (`data/quartermaster`). One
     /// line however many shipments the unit wrote, the way two purchases already add into one
