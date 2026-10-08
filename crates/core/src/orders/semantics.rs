@@ -33628,12 +33628,11 @@ BUILD
     #[test]
     fn a_fleet_is_fed_where_its_sail_arrives_whatever_the_trace_says() {
         let (report, orders) = a_fleet_sailing_north_to_a_banker_inputs(true);
-        let mut options = disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]);
-        for id in ["4021", "4022"] {
-            options
-                .month_end
-                .insert(id.to_string(), Coordinate { x: 7, y: 53, z: 1 });
-        }
+        let still = Coordinate { x: 7, y: 53, z: 1 };
+        let options = counterfactual_month_end(
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+            &[("4021", still), ("4022", still)],
+        );
         let review = review_turn(&report, &orders, Some(&ruleset()), options);
         assert!(
             upkeep_warnings(&review).is_empty(),
@@ -33747,10 +33746,10 @@ BUILD
     #[test]
     fn the_sharing_reach_puts_a_sailing_passenger_where_its_fleet_arrives() {
         let (report, orders) = a_fleet_sailing_north_to_a_banker_inputs(true);
-        let mut month_end = crate::orders::transport::MonthEndHexes::new();
-        for id in ["4021", "4022"] {
-            month_end.insert(id.to_string(), Coordinate { x: 7, y: 53, z: 1 });
-        }
+        let still = Coordinate { x: 7, y: 53, z: 1 };
+        let month_end =
+            counterfactual_month_end(CheckOptions::default(), &[("4021", still), ("4022", still)])
+                .month_end;
         assert_eq!(
             neighbourhoods(&report, &orders, &month_end),
             vec![(
@@ -43311,6 +43310,19 @@ BUILD
             .collect()
     }
 
+    /// [`reach_findings`] with every month end the movement trace's answer ([`traced`]).
+    fn traced_reach_findings(
+        regions: Vec<ReportRegion>,
+        orders: &str,
+        options: CheckOptions,
+    ) -> Vec<Finding> {
+        let (report, options) = traced(report(regions), orders, &ruleset(), options);
+        check_turn(&report, orders, Some(&ruleset()), options)
+            .into_iter()
+            .filter(|finding| finding.code == codes::TRANSPORT_OUT_OF_REACH)
+            .collect()
+    }
+
     /// `rules/economy_transport`: items may be transported to a transport structure "by any unit
     /// located within 2 hexes of the transport structure" - so three hexes away is refused, and the
     /// sentence is the agreed experience's own, character for character.
@@ -43348,16 +43360,14 @@ BUILD
     #[test]
     fn a_shipment_is_measured_from_where_both_units_end_the_month() {
         let sender = with_item(unit("900"), 5, "stone", "STON");
-        let mut options = with_map();
-        options.month_end =
-            std::iter::once(("901".to_string(), Coordinate { x: 0, y: 6, z: 1 })).collect();
-        let finding = only(reach_findings(
+        let finding = only(traced_reach_findings(
             vec![
                 shipping_from(vec![sender]),
                 caravanserai_owner("901", 1, 0, 4),
+                region_at("1:0,6", 0, 6, Vec::new()),
             ],
-            "unit 900\nTRANSPORT 901 5 STON\n",
-            options,
+            "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n",
+            with_map(),
         ));
 
         assert_eq!(
@@ -43367,43 +43377,44 @@ BUILD
         assert_eq!(finding.region_id, "1:0,0");
     }
 
+    /// Furs rather than stone, and two men, so the sender can walk with them and the grain every
+    /// fixture unit holds: `data/FUR` weighs 1, `data/STON` 50 and `data/GRAI` 5, and a unit
+    /// walks only when its capacity covers its load (`rules/movement_normal`).
     #[test]
     fn a_sender_moving_closer_brings_its_shipment_into_reach() {
-        let sender = with_item(unit("900"), 5, "stone", "STON");
-        let mut options = with_map();
-        options.month_end =
-            std::iter::once(("900".to_string(), Coordinate { x: 0, y: 2, z: 1 })).collect();
+        let sender = with_item(with_men(unit("900"), 2), 5, "furs", "FUR");
         assert_eq!(
-            reach_findings(
+            traced_reach_findings(
                 vec![
                     shipping_from(vec![sender]),
+                    region_at("1:0,2", 0, 2, Vec::new()),
                     caravanserai_owner("901", 1, 0, 6),
                 ],
-                "unit 900\nTRANSPORT 901 5 STON\n",
-                options,
+                "unit 900\nTRANSPORT 901 5 FUR\nMOVE S\n",
+                with_map(),
             ),
             Vec::new()
         );
     }
 
     /// The agreed record: a refusal is listed in the hex the report shows the sender in, even when
-    /// the sender walks away.
+    /// the sender walks away - here from (0,2), two hexes from the quartermaster, north to (0,0),
+    /// three. Furs and two men, so the sender can walk with them, as in
+    /// [`a_sender_moving_closer_brings_its_shipment_into_reach`].
     #[test]
     fn a_refusal_after_a_move_is_listed_where_the_sender_wrote_it() {
-        let sender = with_item(unit("900"), 5, "stone", "STON");
-        let mut options = with_map();
-        options.month_end =
-            std::iter::once(("900".to_string(), Coordinate { x: 0, y: -2, z: 1 })).collect();
-        let finding = only(reach_findings(
+        let sender = with_item(with_men(unit("900"), 2), 5, "furs", "FUR");
+        let finding = only(traced_reach_findings(
             vec![
-                shipping_from(vec![sender]),
-                caravanserai_owner("901", 1, 0, 4),
+                region_at("1:0,2", 0, 2, vec![sender]),
+                region_at("1:0,0", 0, 0, Vec::new()),
+                caravanserai_owner("901", 1, 0, 6),
             ],
-            "unit 900\nTRANSPORT 901 5 STON\n",
-            options,
+            "unit 900\nTRANSPORT 901 5 FUR\nMOVE N\n",
+            with_map(),
         ));
 
-        assert_eq!(finding.region_id, "1:0,0");
+        assert_eq!(finding.region_id, "1:0,2");
         assert!(
             finding.message.starts_with("Unit 901 is 3 hexes away"),
             "{}",
@@ -43414,17 +43425,18 @@ BUILD
     #[test]
     fn a_silenced_reach_warning_says_nothing_about_a_moved_shipment() {
         let sender = with_item(unit("900"), 5, "stone", "STON");
-        let mut options = disabling(codes::TRANSPORT_OUT_OF_REACH);
-        options.month_end =
-            std::iter::once(("901".to_string(), Coordinate { x: 0, y: 6, z: 1 })).collect();
         assert_eq!(
-            reach_findings(
+            traced_reach_findings(
                 vec![
                     shipping_from(vec![sender]),
                     caravanserai_owner("901", 1, 0, 4),
+                    region_at("1:0,6", 0, 6, Vec::new()),
                 ],
-                "unit 900\nTRANSPORT 901 5 STON\n",
-                options,
+                "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n",
+                CheckOptions {
+                    geometry: Some(FIXTURE_MAP),
+                    ..disabling(codes::TRANSPORT_OUT_OF_REACH)
+                },
             ),
             Vec::new()
         );
@@ -43987,17 +43999,23 @@ BUILD
             priced_shipping(
                 1,
                 &[(9, "fur", "FUR")],
-                vec![caravanserai_owner("901", 1, 0, 6)],
+                vec![
+                    caravanserai_owner("901", 1, 0, 6),
+                    region_at("1:0,4", 0, 4, Vec::new()),
+                ],
             )
         };
         let orders = "unit 900\nTRANSPORT 901 9 FUR\n";
         let control = sender_silver_in(&trident_rules(), regions(), orders, with_map());
         assert_eq!(shipped(&control).len(), 1, "three hexes is priced");
 
-        let mut options = with_map();
-        options.month_end =
-            std::iter::once(("901".to_string(), Coordinate { x: 0, y: 4, z: 1 })).collect();
-        let moved = sender_silver_in(&trident_rules(), regions(), orders, options);
+        let orders = "unit 900\nTRANSPORT 901 9 FUR\nunit 901\nMOVE N\n";
+        let (report, options) = traced(report(regions()), orders, &trident_rules(), with_map());
+        let moved = review_turn(&report, orders, Some(&trident_rules()), options)
+            .silver
+            .into_iter()
+            .find(|forecast| forecast.unit_id == "900")
+            .expect("the sender is forecast");
         assert_eq!(shipped(&moved), Vec::<&SilverChange>::new());
     }
 
@@ -44265,17 +44283,17 @@ BUILD
     #[test]
     fn a_faction_mate_sharing_silver_that_walks_in_pays_the_bill() {
         let mut regions = unpaid_shipping(20);
-        let here = regions[0].coordinate;
+        // South of the sender's (0,0), so `MOVE N` walks it in.
         regions.push(region_at(
-            "1:90,90",
-            90,
-            90,
+            "1:0,2",
+            0,
+            2,
             vec![sharing(with_silver(unit("903"), 1000))],
         ));
-        let mut options = with_map();
-        options.month_end.insert("903".to_string(), here);
-
         let orders = format!("{UNPAID}unit 903\nMOVE N\n");
+        let (traced_report, options) =
+            traced(report(regions.clone()), &orders, &ruleset(), with_map());
+        regions = traced_report.regions;
         let silver = sender_silver(regions.clone(), &orders, options.clone());
         assert_eq!(silver.shipping.len(), 1, "the arriving sharer pays");
         let findings = unpaid_findings_with(regions, &orders, options);
