@@ -52693,12 +52693,11 @@ BUILD
     // (`data/Caravanserai`).
 
     /// The Discord case: builder 900 in the settled (7,53) with no material, carrier 901 in (7,51)
-    /// with 30 wood. `carrier` decides 901's flags and orders; `arrives` puts its month end in
-    /// (7,53), as the shells fill `CheckOptions::month_end` from the movement trace.
+    /// with 30 wood. `carrier` decides 901's flags and `carrier_orders` its orders; where it ends
+    /// the month is the movement trace's answer ([`traced`]).
     fn caravanserai_turn(
         carrier: ReportUnit,
         carrier_orders: &str,
-        arrives: bool,
     ) -> (ParsedReport, String, CheckOptions) {
         let builder = with_skill(with_men(unit("900"), 10), "BUIL", 3);
         let report = ParsedReport {
@@ -52708,22 +52707,13 @@ BUILD
             ],
             ..Default::default()
         };
-        let mut options = CheckOptions::default();
-        if arrives {
-            options
-                .month_end
-                .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
-        }
         let orders = format!("unit 900\nBUILD Caravanserai\nunit 901\n{carrier_orders}");
+        let (report, options) = traced(report, &orders, &trident(), CheckOptions::default());
         (report, orders, options)
     }
 
-    fn caravanserai_warnings(
-        carrier: ReportUnit,
-        carrier_orders: &str,
-        arrives: bool,
-    ) -> Vec<Finding> {
-        let (report, orders, options) = caravanserai_turn(carrier, carrier_orders, arrives);
+    fn caravanserai_warnings(carrier: ReportUnit, carrier_orders: &str) -> Vec<Finding> {
+        let (report, orders, options) = caravanserai_turn(carrier, carrier_orders);
         check_turn(&report, &orders, Some(&trident()), options)
             .into_iter()
             .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
@@ -52735,8 +52725,7 @@ BUILD
     /// replaced `ah-z1f5`'s uncounted release).
     #[test]
     fn a_build_supplied_by_an_arriving_sharer_spends_the_sharers_wood() {
-        let (report, orders, options) =
-            caravanserai_turn(sharing(wood_carrier()), "MOVE S\n", true);
+        let (report, orders, options) = caravanserai_turn(sharing(wood_carrier()), "MOVE S\n");
         let effects = item_effects(&report, &orders, Some(&trident()), &options);
         let builder = effects_for(&effects, "900").cloned().unwrap_or_default();
         assert!(builder.uncounted.is_empty(), "{builder:?}");
@@ -52758,13 +52747,22 @@ BUILD
                 && movement.other.as_ref().map(|party| party.unit_id.as_str()) == Some("900")));
     }
 
+    /// Two men, 30 wood and the eight horses that let them walk with it: Trident's wood weighs 5
+    /// and its horse weighs 50 and carries 70 on foot (`data/WOOD`, `data/HORS` in `newage
+    /// trident`), and a unit walks only when its capacity covers its load
+    /// (`rules/movement_normal`) - 575 against 590 here.
     fn wood_carrier() -> ReportUnit {
-        with_item(with_men(unit("901"), 2), 30, "wood", "WOOD")
+        with_item(
+            with_item(with_men(unit("901"), 2), 30, "wood", "WOOD"),
+            8,
+            "horse",
+            "HORS",
+        )
     }
 
     #[test]
     fn wood_a_sharing_unit_carries_in_this_turn_reaches_the_builder() {
-        let findings = caravanserai_warnings(sharing(wood_carrier()), "MOVE S\n", true);
+        let findings = caravanserai_warnings(sharing(wood_carrier()), "MOVE S\n");
         assert!(
             findings.is_empty(),
             "movement comes before BUILD, and the arriving sharer supplies it: {findings:?}"
@@ -52773,7 +52771,7 @@ BUILD
 
     #[test]
     fn a_sharing_unit_switched_on_this_turn_supplies_the_builder_too() {
-        let findings = caravanserai_warnings(wood_carrier(), "SHARE 1\nMOVE S\n", true);
+        let findings = caravanserai_warnings(wood_carrier(), "SHARE 1\nMOVE S\n");
         assert!(
             findings.is_empty(),
             "SHARE is processed before movement and BUILD: {findings:?}"
@@ -52782,7 +52780,7 @@ BUILD
 
     #[test]
     fn an_arriving_unit_that_does_not_share_leaves_the_builder_warned() {
-        let findings = caravanserai_warnings(wood_carrier(), "MOVE S\n", true);
+        let findings = caravanserai_warnings(wood_carrier(), "MOVE S\n");
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert_eq!(
             findings[0].message,
@@ -52795,8 +52793,7 @@ BUILD
     /// discarded" (`rules/give`). So wood thrown away before the walk reaches nobody.
     #[test]
     fn wood_the_sharer_gives_away_before_it_moves_leaves_the_builder_warned() {
-        let findings =
-            caravanserai_warnings(sharing(wood_carrier()), "GIVE 0 30 wood\nMOVE S\n", true);
+        let findings = caravanserai_warnings(sharing(wood_carrier()), "GIVE 0 30 wood\nMOVE S\n");
         assert_eq!(findings.len(), 1, "{findings:?}");
     }
 
@@ -52818,25 +52815,18 @@ BUILD
             ],
             ..Default::default()
         };
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
-        let findings: Vec<Finding> = check_turn(
-            &report,
-            "unit 900\nBUILD Caravanserai\nunit 901\nGIVE 7001 30 wood\nMOVE S\n",
-            Some(&trident()),
-            options,
-        )
-        .into_iter()
-        .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
-        .collect();
+        let orders = "unit 900\nBUILD Caravanserai\nunit 901\nGIVE 7001 30 wood\nMOVE S\n";
+        let (report, options) = traced(report, orders, &trident(), CheckOptions::default());
+        let findings: Vec<Finding> = check_turn(&report, orders, Some(&trident()), options)
+            .into_iter()
+            .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
+            .collect();
         assert!(findings.is_empty(), "{findings:?}");
     }
 
     #[test]
     fn a_sharing_unit_that_stays_away_leaves_the_builder_warned() {
-        let findings = caravanserai_warnings(sharing(wood_carrier()), "", false);
+        let findings = caravanserai_warnings(sharing(wood_carrier()), "");
         assert_eq!(findings.len(), 1, "{findings:?}");
     }
 
@@ -52909,19 +52899,12 @@ BUILD
             ],
             ..Default::default()
         };
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
-        let findings: Vec<Finding> = check_turn(
-            &report,
-            "unit 900\nBUILD Caravanserai STONE\nunit 901\nMOVE S\n",
-            Some(&trident()),
-            options,
-        )
-        .into_iter()
-        .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
-        .collect();
+        let orders = "unit 900\nBUILD Caravanserai STONE\nunit 901\nMOVE S\n";
+        let (report, options) = traced(report, orders, &trident(), CheckOptions::default());
+        let findings: Vec<Finding> = check_turn(&report, orders, Some(&trident()), options)
+            .into_iter()
+            .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
+            .collect();
         assert_eq!(
             findings.len(),
             1,
@@ -52937,6 +52920,19 @@ BUILD
     // axes but has no wood, then the sharing unit will automatically supply wood for that
     // production".
 
+    /// Unit 901: two men carrying `wood`, with the five horses that let them walk with twenty of
+    /// it - New Origins' wood weighs 5 and its horse weighs 50 and carries 20 on foot
+    /// (`data/WOOD`, `data/HORS`), and a unit walks only when its capacity covers its load
+    /// (`rules/movement_normal`).
+    fn walking_wood(wood: i64) -> ReportUnit {
+        with_item(
+            with_item(with_men(unit("901"), 2), wood, "wood", "WOOD"),
+            5,
+            "horse",
+            "HORS",
+        )
+    }
+
     /// Carpenters 900 in (7,53) with no wood, ordered to `PRODUCE wagon`; sharing 901 in (7,51)
     /// with 20 wood walks in this turn.
     fn wagon_turn() -> (ParsedReport, String, CheckOptions) {
@@ -52944,25 +52940,12 @@ BUILD
         let report = ParsedReport {
             regions: vec![
                 region_at("1:7,53", 7, 53, vec![carpenters]),
-                region_at(
-                    "1:7,51",
-                    7,
-                    51,
-                    vec![sharing(with_item(
-                        with_men(unit("901"), 2),
-                        20,
-                        "wood",
-                        "WOOD",
-                    ))],
-                ),
+                region_at("1:7,51", 7, 51, vec![sharing(walking_wood(20))]),
             ],
             ..Default::default()
         };
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
         let orders = "unit 900\nPRODUCE wagon\nunit 901\nMOVE S\n".to_string();
+        let (report, options) = traced(report, &orders, &ruleset(), CheckOptions::default());
         (report, orders, options)
     }
 
@@ -52993,24 +52976,13 @@ BUILD
         let carpenters = with_skill(with_men(unit("900"), 15), "CARP", 1);
         let report = ParsedReport {
             regions: vec![
-                region_at(
-                    "1:7,51",
-                    7,
-                    51,
-                    vec![
-                        carpenters,
-                        sharing(with_item(with_men(unit("901"), 2), 20, "wood", "WOOD")),
-                    ],
-                ),
+                region_at("1:7,51", 7, 51, vec![carpenters, sharing(walking_wood(20))]),
                 region_at("1:7,53", 7, 53, vec![]),
             ],
             ..Default::default()
         };
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
         let orders = "unit 900\nPRODUCE wagon\nunit 901\nMOVE S\n";
+        let (report, options) = traced(report, orders, &ruleset(), CheckOptions::default());
 
         let effects = item_effects(&report, orders, Some(&ruleset()), &options);
         let producer = effects_for(&effects, "900").cloned().unwrap_or_default();
@@ -53045,25 +53017,12 @@ BUILD
         let report = ParsedReport {
             regions: vec![
                 region_at("1:7,53", 7, 53, vec![carpenters("900"), carpenters("902")]),
-                region_at(
-                    "1:7,51",
-                    7,
-                    51,
-                    vec![sharing(with_item(
-                        with_men(unit("901"), 2),
-                        20,
-                        "wood",
-                        "WOOD",
-                    ))],
-                ),
+                region_at("1:7,51", 7, 51, vec![sharing(walking_wood(20))]),
             ],
             ..Default::default()
         };
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("901".to_string(), Coordinate { x: 7, y: 53, z: 1 });
         let orders = "unit 900\nPRODUCE wagon\nunit 902\nPRODUCE wagon\nunit 901\nMOVE S\n";
+        let (report, options) = traced(report, orders, &ruleset(), CheckOptions::default());
 
         let effects = item_effects(&report, orders, Some(&ruleset()), &options);
         assert_eq!(made_by(&effects, "900", "WAGO"), 15);
@@ -53074,8 +53033,9 @@ BUILD
     /// A sharer whose own sums this walk cannot follow lends nothing where it arrives.
     #[test]
     fn an_arriving_sharer_whose_sums_are_doubted_lends_nothing() {
-        let (report, _, options) = wagon_turn();
+        let (report, _, _) = wagon_turn();
         let orders = "unit 900\nPRODUCE wagon\nunit 901\nSELL 5 xyzzy\nMOVE S\n";
+        let (report, options) = traced(report, orders, &ruleset(), CheckOptions::default());
         let effects = item_effects(&report, orders, Some(&ruleset()), &options);
         assert_eq!(made_by(&effects, "900", "WAGO"), 0, "{effects:?}");
         assert_eq!(made_by(&effects, "901", "WOOD"), 0, "{effects:?}");
@@ -53098,19 +53058,12 @@ BUILD
             ],
             ..Default::default()
         };
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("901".to_string(), Coordinate { x: 7, y: 51, z: 1 });
-        let findings: Vec<Finding> = check_turn(
-            &report,
-            "unit 900\nBUILD Caravanserai\nunit 901\nMOVE N\n",
-            Some(&trident()),
-            options,
-        )
-        .into_iter()
-        .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
-        .collect();
+        let orders = "unit 900\nBUILD Caravanserai\nunit 901\nMOVE N\n";
+        let (report, options) = traced(report, orders, &trident(), CheckOptions::default());
+        let findings: Vec<Finding> = check_turn(&report, orders, Some(&trident()), options)
+            .into_iter()
+            .filter(|finding| finding.code == codes::BUILD_WITHOUT_MATERIAL)
+            .collect();
         assert_eq!(findings.len(), 1, "{findings:?}");
     }
 
