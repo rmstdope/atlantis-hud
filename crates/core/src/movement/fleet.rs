@@ -301,6 +301,16 @@ impl WrittenMovement {
     }
 }
 
+#[cfg(test)]
+impl OrderedUnits {
+    /// The month settled against a report that shows no unit, for a test of the document's own
+    /// shape with no report to hand. Nobody's TEACH can be judged there, so a test whose answer
+    /// turns on one settles against its fixture with [`Self::of_month`] instead.
+    pub(crate) fn unreported(orders_document: &str, ruleset: Option<&Ruleset>) -> Self {
+        Self::of_month(&ParsedReport::default(), orders_document, ruleset)
+    }
+}
+
 impl OrderedUnits {
     /// This month's movement, read from the orders document and settled against the report it was
     /// written for. `None` reads the document under the New Origins lexical rules.
@@ -616,7 +626,7 @@ mod tests {
         let mut cache = ReportCache::new();
         let report = cache.classified(TURN_24, RULESET);
         let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
-        let ordered = OrderedUnits::of_month(&crate::report::ParsedReport::default(), orders, None);
+        let ordered = OrderedUnits::of_month(&report, orders, Some(&ruleset));
         let unit = report
             .units()
             .find(|unit| unit.unit_id == unit_id)
@@ -681,8 +691,7 @@ mod tests {
         assert!(crate::orders::intents::read_intents(unreadable, None)[0]
             .intents
             .is_empty());
-        let ordered =
-            OrderedUnits::of_month(&crate::report::ParsedReport::default(), unreadable, None);
+        let ordered = OrderedUnits::unreported(unreadable, None);
         assert_eq!(ordered.steps_for("1471"), None);
         assert!(!ordered.issues_sail("1471"));
 
@@ -697,7 +706,7 @@ mod tests {
             matches!(&intents[0].intent, crate::orders::intents::Intent::Sail { steps, .. } if steps.is_empty()),
             "{intents:?}"
         );
-        let ordered = OrderedUnits::of_month(&crate::report::ParsedReport::default(), bare, None);
+        let ordered = OrderedUnits::unreported(bare, None);
         assert_eq!(ordered.steps_for("1471"), None);
         assert!(ordered.issues_sail("1471"));
     }
@@ -741,7 +750,7 @@ mod tests {
             .iter()
             .find(|region| region.region_id == "1:1,1")
             .expect("the scene's ocean hex");
-        let ordered = OrderedUnits::of_month(&crate::report::ParsedReport::default(), orders, None);
+        let ordered = OrderedUnits::unreported(orders, None);
         fleet_owner(region, &ordered, structure_id)
     }
 
@@ -753,7 +762,7 @@ mod tests {
             .iter()
             .find(|region| region.region_id == "1:1,1")
             .expect("the scene's ocean hex");
-        let ordered = OrderedUnits::of_month(&crate::report::ParsedReport::default(), orders, None);
+        let ordered = OrderedUnits::unreported(orders, None);
         fleet_course(region, &ordered, structure_id)
             .steps
             .map(<[MoveStep]>::to_vec)
@@ -863,7 +872,7 @@ mod tests {
         let mut cache = ReportCache::new();
         let report = cache.classified(&owner_scene(), RULESET);
         let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
-        let ordered = OrderedUnits::of_month(&crate::report::ParsedReport::default(), orders, None);
+        let ordered = OrderedUnits::of_month(&report, orders, Some(&ruleset));
         let unit = report
             .units()
             .find(|unit| unit.unit_id == unit_id)
@@ -954,60 +963,24 @@ mod tests {
 
     #[test]
     fn a_sail_is_told_from_a_move_and_a_promote_is_read() {
-        assert!(OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
-            "unit 10575\nSAIL SE\n",
-            None
-        )
-        .sails_a_course("10575"));
-        assert!(!OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
-            "unit 10575\nMOVE N\n",
-            None
-        )
-        .sails_a_course("10575"));
+        assert!(OrderedUnits::unreported("unit 10575\nSAIL SE\n", None).sails_a_course("10575"));
+        assert!(!OrderedUnits::unreported("unit 10575\nMOVE N\n", None).sails_a_course("10575"));
         assert!(
-            !OrderedUnits::of_month(
-                &crate::report::ParsedReport::default(),
-                "unit 10575\nSAIL\n",
-                None
-            )
-            .sails_a_course("10575"),
+            !OrderedUnits::unreported("unit 10575\nSAIL\n", None).sails_a_course("10575"),
             "a bare SAIL stores no steps, so it names no course"
         );
         assert_eq!(
-            OrderedUnits::of_month(
-                &crate::report::ParsedReport::default(),
-                "unit 900\nPROMOTE 901\n",
-                None
-            )
-            .promotes_of("900"),
+            OrderedUnits::unreported("unit 900\nPROMOTE 901\n", None).promotes_of("900"),
             ["901".to_string()]
         );
     }
 
     #[test]
     fn bare_sail_participates_but_only_directional_sail_departs() {
-        let bare = OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
-            "unit 10575\nSAIL\n",
-            None,
-        );
-        let in_only = OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
-            "unit 10575\nSAIL IN\n",
-            None,
-        );
-        let out_only = OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
-            "unit 10575\nSAIL OUT\n",
-            None,
-        );
-        let directional = OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
-            "unit 10575\nSAIL SE\n",
-            None,
-        );
+        let bare = OrderedUnits::unreported("unit 10575\nSAIL\n", None);
+        let in_only = OrderedUnits::unreported("unit 10575\nSAIL IN\n", None);
+        let out_only = OrderedUnits::unreported("unit 10575\nSAIL OUT\n", None);
+        let directional = OrderedUnits::unreported("unit 10575\nSAIL SE\n", None);
 
         assert!(bare.issues_sail("10575"));
         assert!(!in_only.issues_sail("10575"));
@@ -1023,18 +996,13 @@ mod tests {
             "unit 10575\nSAIL SE\nSTUDY COMB\n",
             "unit 10575\nSAIL\nSTUDY COMB\n",
         ] {
-            let ordered =
-                OrderedUnits::of_month(&crate::report::ParsedReport::default(), orders, None);
+            let ordered = OrderedUnits::unreported(orders, None);
             assert!(!ordered.issues_sail("10575"), "{orders:?}");
             assert!(!ordered.sails_a_course("10575"), "{orders:?}");
         }
         assert!(
-            OrderedUnits::of_month(
-                &crate::report::ParsedReport::default(),
-                "unit 10575\nSTUDY COMB\nSAIL SE\n",
-                None
-            )
-            .issues_sail("10575"),
+            OrderedUnits::unreported("unit 10575\nSTUDY COMB\nSAIL SE\n", None)
+                .issues_sail("10575"),
             "the SAIL written last is the one that runs"
         );
     }
@@ -1167,7 +1135,7 @@ mod tests {
     fn structure_after(orders: &str, unit_id: &str) -> Option<String> {
         let mut cache = ReportCache::new();
         let report = cache.classified(TURN_24, RULESET);
-        let ordered = OrderedUnits::of_month(&crate::report::ParsedReport::default(), orders, None);
+        let ordered = OrderedUnits::of_month(&report, orders, None);
         let unit = report
             .units()
             .find(|unit| unit.unit_id == unit_id)
@@ -1304,11 +1272,7 @@ mod tests {
         // The hull's course is its owner's, and the first unit listed under Frozen Tomb [194] is
         // the **foreign** `A Tomb's Crew (6311)` - which is exactly why our own 13401 sailing it
         // now carries nobody, and why the SAIL is written under 6311 here (`ah-ofra`).
-        let ordered = OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
-            "unit 6311\nsail sw\n",
-            None,
-        );
+        let ordered = OrderedUnits::unreported("unit 6311\nsail sw\n", None);
         let passenger = report
             .units()
             .find(|unit| unit.unit_id == "13848")
@@ -1339,11 +1303,7 @@ mod tests {
     #[test]
     fn chained_move_lines_are_one_route() {
         use crate::movement::graph::Direction::{North, Northeast};
-        let ordered = OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
-            "unit 900\nMOVE N\nMOVE NE\n",
-            None,
-        );
+        let ordered = OrderedUnits::unreported("unit 900\nMOVE N\nMOVE NE\n", None);
         assert_eq!(
             ordered.steps_for("900"),
             Some(&[MoveStep::Go(North), MoveStep::Go(Northeast)][..])
@@ -1354,11 +1314,7 @@ mod tests {
     #[test]
     fn chained_sail_lines_are_one_course() {
         use crate::movement::graph::Direction::{North, Northwest};
-        let ordered = OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
-            "unit 10575\nSAIL N\nSAIL NW\n",
-            None,
-        );
+        let ordered = OrderedUnits::unreported("unit 10575\nSAIL N\nSAIL NW\n", None);
         assert_eq!(
             ordered.steps_for("10575"),
             Some(&[MoveStep::Go(North), MoveStep::Go(Northwest)][..])
@@ -1369,19 +1325,14 @@ mod tests {
     #[test]
     fn a_work_between_two_moves_leaves_only_the_second() {
         use crate::movement::graph::Direction::South;
-        let ordered = OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
-            "unit 900\nMOVE N\nWORK\nMOVE S\n",
-            None,
-        );
+        let ordered = OrderedUnits::unreported("unit 900\nMOVE N\nWORK\nMOVE S\n", None);
         assert_eq!(ordered.steps_for("900"), Some(&[MoveStep::Go(South)][..]));
     }
 
     #[test]
     fn a_formed_units_move_lines_are_recorded_for_nobody() {
         use crate::movement::graph::Direction::{North, Northeast};
-        let ordered = OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
+        let ordered = OrderedUnits::unreported(
             "unit 900\nMOVE N\nFORM 1\nMOVE S\nMOVE SE\nEND\nMOVE NE\n",
             None,
         );
@@ -1399,11 +1350,7 @@ mod tests {
         use crate::movement::graph::Direction::Southeast;
         let trident = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
             .expect("the Trident ruleset loads");
-        let ordered = OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
-            "unit 900\nMOVE SE;scouting\n",
-            Some(&trident),
-        );
+        let ordered = OrderedUnits::unreported("unit 900\nMOVE SE;scouting\n", Some(&trident));
         assert_eq!(
             ordered.steps_for("900"),
             Some(&[MoveStep::Go(Southeast)][..])
@@ -1415,19 +1362,14 @@ mod tests {
     #[test]
     fn an_order_after_a_directive_belongs_to_no_unit() {
         use crate::movement::graph::Direction::North;
-        let ordered = OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
-            "unit 900\nMOVE N\n#end\nMOVE S\n",
-            None,
-        );
+        let ordered = OrderedUnits::unreported("unit 900\nMOVE N\n#end\nMOVE S\n", None);
         assert_eq!(ordered.steps_for("900"), Some(&[MoveStep::Go(North)][..]));
     }
 
     #[test]
     fn a_form_blocks_route_is_recorded_under_its_form_line() {
         use crate::movement::graph::Direction::{North, Northeast, South, Southeast};
-        let ordered = OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
+        let ordered = OrderedUnits::unreported(
             "unit 900\nMOVE N\nFORM 1\nMOVE S\nMOVE SE\nEND\nMOVE NE\n",
             None,
         );
@@ -1446,11 +1388,7 @@ mod tests {
             Some(&[MoveStep::Go(North), MoveStep::Go(Northeast)][..])
         );
 
-        let unreadable = OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
-            "unit 900\nFORM 0\nMOVE S\nEND\n",
-            None,
-        );
+        let unreadable = OrderedUnits::unreported("unit 900\nFORM 0\nMOVE S\nEND\n", None);
         assert_eq!(unreadable.formed_route(2), None);
     }
 

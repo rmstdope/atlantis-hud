@@ -1771,8 +1771,7 @@ mod tests {
         boarding.skills = skills;
 
         let units = vec![a, boarding];
-        let ordered = crate::movement::fleet::OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
+        let ordered = crate::movement::fleet::OrderedUnits::unreported(
             "unit 11125\nSAIL N\nunit 12590\nENTER 329\nSAIL N\n",
             None,
         );
@@ -1793,8 +1792,7 @@ mod tests {
         leaving.skills = skills;
 
         let units = vec![a, leaving];
-        let ordered = crate::movement::fleet::OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
+        let ordered = crate::movement::fleet::OrderedUnits::unreported(
             "unit 11125\nSAIL N\nunit 12590\nSAIL N\nLEAVE\n",
             None,
         );
@@ -1813,22 +1811,19 @@ mod tests {
         }];
         let units = vec![captain, passenger];
 
-        let work = crate::movement::fleet::OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
+        let work = crate::movement::fleet::OrderedUnits::unreported(
             "unit 11125\nSAIL N\nunit 12590\nWORK\n",
             None,
         );
         assert_eq!(crew_sailing_levels(&units, "329", Some(&work)), 0);
 
-        let sail = crate::movement::fleet::OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
+        let sail = crate::movement::fleet::OrderedUnits::unreported(
             "unit 11125\nSAIL N\nunit 12590\nSAIL N\n",
             None,
         );
         assert_eq!(crew_sailing_levels(&units, "329", Some(&sail)), 4);
 
-        let bare_sail = crate::movement::fleet::OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
+        let bare_sail = crate::movement::fleet::OrderedUnits::unreported(
             "unit 11125\nSAIL N\nunit 12590\nSAIL\n",
             None,
         );
@@ -1876,11 +1871,8 @@ mod tests {
             last_seen_turn: Some(40),
         };
         let ashore = sample_unit("11126", None);
-        let ordered = crate::movement::fleet::OrderedUnits::of_month(
-            &crate::report::ParsedReport::default(),
-            "unit 11126\nENTER 329\n",
-            None,
-        );
+        let ordered =
+            crate::movement::fleet::OrderedUnits::unreported("unit 11126\nENTER 329\n", None);
 
         assert!(
             fleet_of(&ashore, &hex, None).is_none(),

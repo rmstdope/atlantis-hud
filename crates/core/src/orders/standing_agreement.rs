@@ -57,7 +57,7 @@ fn by_document(report_text: &str, orders: &str) -> Option<String> {
         .flat_map(|region| region.units.iter())
         .find(|unit| unit.unit_id == "900")
         .expect("unit 900 is in the report");
-    OrderedUnits::of_month(&crate::report::ParsedReport::default(), orders, None)
+    OrderedUnits::of_month(&parsed, orders, None)
         .structure_of(unit)
         .map(str::to_string)
 }
