@@ -10666,10 +10666,11 @@ mod tests {
         assert!(unit.study.is_some(), "{:?}", unit.study);
     }
 
-    /// A unit that moves and studies is one unit with one month, so both of its rows carry the
-    /// same forecast - the reading `produced` and `built` already take of a mover (`ah-rgkk.2.2`).
+    /// A STUDY written after a MOVE replaces it ("STUDY replaces this MOVE as the unit's
+    /// month-long order, so this MOVE will not run"), so the unit stays: one row, which carries the
+    /// study forecast (`ah-rgkk.2.2`, `ah-osny`).
     #[test]
-    fn a_mover_carries_its_forecast_onto_both_of_its_rows() {
+    fn a_unit_whose_move_a_study_replaced_studies_where_it_stands() {
         let response = preview_over(
             &report_with_market_selling_people(),
             "unit 900\nMOVE SE\nSTUDY lumberjack\n",
@@ -10681,14 +10682,9 @@ mod tests {
             .flat_map(|region| region.units.iter())
             .filter(|unit| unit.unit.unit_id == "900")
             .collect();
-        assert_eq!(rows.len(), 2, "a departure and its arrival");
-        for row in rows {
-            assert!(
-                row.study.is_some(),
-                "the {:?} row carries the forecast",
-                row.status
-            );
-        }
+        assert_eq!(rows.len(), 1, "no departure and no arrival: {rows:?}");
+        assert_eq!(rows[0].status, UnitPreviewStatus::Present);
+        assert!(rows[0].study.is_some(), "{:?}", rows[0].study);
     }
 
     /// A unit `rules/form` dissolves never exists, so it studies nothing.
@@ -11336,6 +11332,89 @@ mod tests {
         assert!(reach_unit(&response, "900")
             .transport_target_issues
             .is_empty());
+    }
+
+    /// `ah-osny`: a STUDY after the MOVE replaces it ("STUDY replaces this MOVE as the unit's
+    /// month-long order, so this MOVE will not run"), so the sender ships from the hex it is
+    /// listed in - two hexes from the quartermaster, in reach - and the map draws no walk.
+    #[test]
+    fn a_sender_whose_move_a_study_replaced_ships_from_where_it_stands() {
+        let report = moving_reach_report((0, 2), (0, 6), true);
+        let orders = "unit 900\nMOVE N\nSTUDY COMB\nTRANSPORT 901 5 STON\n";
+        let response = reach_preview(&report, orders, FLAT_MAP);
+
+        assert_eq!(
+            reach_unit(&response, "900").status,
+            UnitPreviewStatus::Present
+        );
+        assert_eq!(reach_unit(&response, "900").departing_to, None);
+        assert!(
+            reach_unit(&response, "900")
+                .transport_target_issues
+                .is_empty(),
+            "{:?}",
+            reach_unit(&response, "900").transport_target_issues
+        );
+        assert_eq!(reach_held(&response, "901", "STON"), 5);
+        assert!(month_end_for(&report, orders).is_empty());
+    }
+
+    /// `ah-osny` review: the sharing case of `ah-wyj8` through the month end production measures
+    /// with. A sharer whose MOVE S a STUDY replaced stays in (0,0) and lends its hex-mate the
+    /// silver for its own STUDY (`rules/share`).
+    #[test]
+    fn a_sharer_whose_move_a_study_replaced_lends_where_it_stands() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (0,0) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  South : plain (0,2) in Nowhere.",
+            "",
+            "* Student (5), Foo (1), 2 leaders [LEAD]. Weight: 20. Capacity: 0/0/30/0.",
+            "* Sharer (7), Foo (1), sharing, leader [LEAD], 500 silver [SILV]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+            "plain (0,2) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  North : plain (0,0) in Nowhere.",
+            "",
+        ]
+        .join("\n");
+        let short_of_silver = |orders: &str| -> Vec<String> {
+            let mut cache = ReportCache::new();
+            let ruleset = cache.ruleset(RULESET).expect("the ruleset loads");
+            let parsed = cache.classified(&report, RULESET);
+            let month_end = month_end_for(&report, orders);
+            super::super::semantics::review_turn(
+                &parsed,
+                orders,
+                Some(ruleset.as_ref()),
+                super::super::semantics::CheckOptions {
+                    geometry: crate::movement::graph::geometry_from_json(FLAT_MAP)
+                        .expect("the map reads"),
+                    month_end,
+                    ..super::super::semantics::CheckOptions::default()
+                },
+            )
+            .findings
+            .iter()
+            .filter(|finding| finding.code == super::super::semantics::codes::NOT_ENOUGH_SILVER)
+            .filter_map(|finding| finding.unit_id.clone())
+            .collect()
+        };
+
+        assert_eq!(
+            short_of_silver("unit 5\nSTUDY COMB\nunit 7\nMOVE S\nSTUDY COMB\n"),
+            Vec::<String>::new()
+        );
+        // The control: the sharer that does walk away leaves the student short.
+        assert_eq!(
+            short_of_silver("unit 5\nSTUDY COMB\nunit 7\nMOVE S\n"),
+            vec!["5".to_string()]
+        );
     }
 
     /// The report's own row for a unit, which a unit weighed as it steps off still matches.

@@ -21,6 +21,10 @@ pub(crate) struct ChainedRoute {
 enum Open {
     Travelling,
     Sailing,
+    /// A TEACH: it breaks a chain, but whether it replaces the route turns on the unit's settled
+    /// teaching eligibility (`orders::semantics::month_spending_intent`), which this reader cannot
+    /// see, so the route is left standing for the readers that can.
+    Teaching,
     Other,
 }
 
@@ -36,7 +40,9 @@ impl RouteChain {
     /// `orders::intents::read_order` read from that same line.
     ///
     /// An order that leaves the month free does not touch the chain. A month-long order other
-    /// than MOVE/ADVANCE/SAIL ends it, and a movement line of a different kind replaces the route.
+    /// than MOVE/ADVANCE/SAIL ends it and erases the route - except a TEACH, which ends it but
+    /// leaves the route (see [`Open::Teaching`]) - and a movement line of a different kind replaces
+    /// the route.
     /// A bare `SAIL` (no steps - `parse_move` refuses an empty MOVE) stores no route and erases
     /// none, but still ends a MOVE chain: without that, `steps_followed_by` would read an empty
     /// route instead of looking for the hull's.
@@ -47,7 +53,15 @@ impl RouteChain {
         let (kind, steps) = match intent {
             Intent::Move { steps } => (Open::Travelling, steps),
             Intent::Sail { steps } => (Open::Sailing, steps),
+            Intent::Teach { .. } => {
+                self.open = Some(Open::Teaching);
+                return;
+            }
+            // The last month-long segment is the one that runs (`orders::semantics::month_segments`),
+            // so a route this order follows will not run: "STUDY replaces this MOVE as the unit's
+            // month-long order, so this MOVE will not run" (`ah-osny`).
             _ => {
+                self.route = None;
                 self.open = Some(Open::Other);
                 return;
             }
@@ -72,6 +86,12 @@ impl RouteChain {
             }
         }
         self.open = Some(kind);
+    }
+
+    /// Whether the last month-long order fed in is one that is neither movement nor TEACH, so no
+    /// movement line of this block runs - a bare `SAIL` included (`ah-osny`).
+    pub(crate) fn replaced(&self) -> bool {
+        self.open == Some(Open::Other)
     }
 
     /// The route so far. Never `Some` with empty `steps`.
@@ -183,12 +203,57 @@ mod tests {
         );
     }
 
+    /// The last month-long segment is the one that runs (`orders::semantics::month_segments`), so
+    /// a STUDY after a MOVE leaves no route at all: "STUDY replaces this MOVE as the unit's
+    /// month-long order, so this MOVE will not run" (`ah-osny`).
     #[test]
-    fn a_trailing_month_long_order_leaves_the_route_standing() {
+    fn a_trailing_month_long_order_replaces_the_route() {
         assert_eq!(
-            steps(&[("MOVE", mv(&[Go(North)])), ("STUDY", study())]),
-            vec![Go(North)]
+            chained(&[("MOVE", mv(&[Go(North)])), ("STUDY", study())]),
+            None
         );
+        assert_eq!(
+            chained(&[
+                ("MOVE", mv(&[Go(North)])),
+                ("ADVANCE", mv(&[Go(Northeast)])),
+                ("LEAVE", Intent::Leave),
+                ("STUDY", study())
+            ]),
+            None
+        );
+    }
+
+    /// Whether a TEACH spends the month turns on the unit's settled eligibility
+    /// (`orders::semantics::month_spending_intent`), which a document reader cannot see, so it
+    /// breaks the chain but leaves the route for the readers that can (`ah-osny` review).
+    #[test]
+    fn a_trailing_teach_leaves_the_route_for_the_settled_month() {
+        let teach = Intent::Teach {
+            students: Vec::new(),
+        };
+        let mut chain = RouteChain::default();
+        chain.push("MOVE", &mv(&[Go(North)]));
+        chain.push("TEACH", &teach);
+        assert!(!chain.replaced());
+        assert_eq!(chain.into_route().expect("a route").steps, vec![Go(North)]);
+
+        assert_eq!(
+            steps(&[
+                ("MOVE", mv(&[Go(North)])),
+                ("TEACH", teach.clone()),
+                ("MOVE", mv(&[Go(South)]))
+            ]),
+            vec![Go(South)]
+        );
+    }
+
+    #[test]
+    fn a_trailing_study_replaces_a_bare_sail_too() {
+        let mut chain = RouteChain::default();
+        chain.push("SAIL", &sail(&[]));
+        chain.push("STUDY", &study());
+        assert!(chain.replaced());
+        assert_eq!(chain.into_route(), None);
     }
 
     #[test]

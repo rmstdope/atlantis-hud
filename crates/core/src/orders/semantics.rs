@@ -9537,8 +9537,8 @@ struct Neighbourhood {
 ///   when something else in the document walks or ships;
 /// - any other unit whose effective orders still walk (a `MOVE` or `ADVANCE` no later
 ///   month-long order replaced): `CheckOptions::month_end`, the movement trace's answer, since a
-///   walker's month end depends on its movement points and the terrain (`ah-n3qb`). The trace
-///   follows every MOVE written, so a unit whose MOVE was replaced stands where it is (`ah-wyj8`);
+///   walker's month end depends on its movement points and the terrain (`ah-n3qb`). A unit whose
+///   MOVE was replaced stands where it is (`ah-wyj8`, `ah-osny`);
 /// - a unit nothing can follow: where it stands. "Cannot say" is not a destination.
 struct SharingReach {
     /// In report order, and each one's members in report order, so lending and eating stay in
@@ -9604,9 +9604,12 @@ impl SharingReach {
         month_end: &super::transport::MonthEndHexes,
     ) -> Coordinate {
         let sails = ruleset.is_some_and(|rules| carried_away(hex, ordered, rules).is_some());
-        // The trace follows every MOVE written, but a later month-long order replaces one ("STUDY
-        // replaces this MOVE as the unit's month-long order, so this MOVE will not run"), so it is
-        // believed only for a unit whose effective orders still walk (`ah-wyj8`).
+        // A later month-long order replaces a MOVE ("STUDY replaces this MOVE as the unit's
+        // month-long order, so this MOVE will not run"), so the trace is believed only for a unit
+        // whose effective orders still walk (`ah-wyj8`). The trace already drops a route any other
+        // order replaces (`movement::chain::RouteChain`, `ah-osny`); a TEACH it cannot judge, since
+        // whether one spends the month turns on the settled month's eligibility, so this filter is
+        // what still answers `MOVE` / `TEACH` here.
         let walks = ordered
             .intents
             .iter()
