@@ -7760,8 +7760,9 @@ fn transfer(
     if let Some(to) = to {
         if tag.eq_ignore_ascii_case(SILVER) {
             // Applied, not recorded: the incoming leg's record comes from the settlement, through
-            // the pass in `ledger_for_with_production` (`ah-1x2h.3`). The balance is still this
-            // walk's own optimistic one (`ah-ud89`).
+            // the pass in `ledger_for_with_production` (`ah-1x2h.3`). The balance is this walk's
+            // own: what `moved` says changed hands, which is the whole ask only where a sharer can
+            // fund it (`ah-ud89`, `ah-1c8p`).
             apply_silver(ledger, StatePhase::Give, &to, moved, Some(placed));
         } else {
             credit(ledger, StatePhase::Give, &to, &tag, quantity);
@@ -48382,9 +48383,9 @@ BUILD
     /// credited the stated $100, because it summed what the orders asked for rather than what the
     /// settlement moved - which is the same reading that credited one finite holding twice.
     ///
-    /// The ledger still charges and credits the full amount, so the column is deliberately
-    /// stricter than the ledger here. That is the cost the navigator accepted for settling a
-    /// contested transfer once.
+    /// The ledger used to charge and credit the full amount, leaving the column deliberately
+    /// stricter than the ledger here. Since `ah-1c8p` the ledger moves only what the giver holds
+    /// as GIVE runs, in a hex with no sharer, so the two agree.
     #[test]
     fn a_gift_of_silver_the_giver_does_not_hold_yet_credits_nothing() {
         let hex_region = ReportRegion {

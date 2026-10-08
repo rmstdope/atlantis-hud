@@ -502,8 +502,9 @@ fn holder(id: &str, silver: i64) -> String {
     )
 }
 
-/// Unit 900 holds nothing and gives 901 $50: the engine gives none of it, so 901 ends with the
-/// $100 it had - in the column and in the ledger the ITEMS surface reads - and 900 is still warned.
+/// Unit 900 holds nothing and gives 901 $50: the engine gives none of it, so 900 is not overdrawn
+/// and is still warned. 901's column was already strict; the ledger side of 901 is
+/// `a_cut_give_does_not_fund_the_recipients_buy`.
 #[test]
 fn a_cut_give_credits_the_recipient_only_what_was_given() {
     let text = report(QUIET, &[], &[&giver(0), &holder("901", 100)]);
@@ -544,11 +545,41 @@ fn a_cut_give_leaves_the_giver_its_purse_for_the_market() {
 
     assert_eq!(row_of(&review, "900").at_month_end, Some(20));
     assert_eq!(row_of(&review, "901").at_month_end, Some(0));
-    for finding in &review.findings {
-        assert!(
-            !finding.message.contains("buys"),
-            "the BUY is not cut: {}",
-            finding.message
-        );
-    }
+    let warned: Vec<&str> = review
+        .findings
+        .iter()
+        .filter(|finding| finding.code.as_str() == "not-enough-silver")
+        .map(|finding| finding.message.as_str())
+        .collect();
+    assert_eq!(
+        warned,
+        vec![
+            "short $50: this unit can have $0 and its orders spend $50, \
+             so it gives none of the 50 silver ordered"
+        ],
+        "900's GIVE is cut and its BUY is not"
+    );
+}
+
+/// The ledger side of the same gift: 901 holds $100 and buys $120 of grain, counting on 900's $50.
+/// 900 held nothing, so nothing arrives and 901 is warned. The ledger used to credit the whole ask
+/// and say nothing (`ah-1c8p`).
+#[test]
+fn a_cut_give_does_not_fund_the_recipients_buy() {
+    let text = report(
+        QUIET,
+        &["For Sale: 20 grain [GRAI] at $10."],
+        &[&giver(0), &holder("901", 100)],
+    );
+    let script = "unit 900\nGIVE 901 50 SILV\nunit 901\nBUY 12 grain\n";
+    let review = review_of(&text, script);
+
+    assert!(
+        review.findings.iter().any(|finding| {
+            finding.code.as_str() == "not-enough-silver"
+                && finding.unit_id.as_deref() == Some("901")
+        }),
+        "901 cannot fund $120 from its own $100: {:?}",
+        review.findings
+    );
 }
