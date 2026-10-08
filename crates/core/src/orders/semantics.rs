@@ -11262,7 +11262,6 @@ fn pool_shortfalls(
     ledger: &Ledger<'_>,
     sharing: &Sharing<'_>,
     verdicts: &[Verdict],
-    receipts: &BTreeMap<UnitKey, Receipts>,
 ) -> Vec<PoolShortfall> {
     if !sharing.pool_trusted(ledger) {
         return Vec::new();
@@ -11343,18 +11342,15 @@ fn pool_shortfalls(
                                             .iter()
                                             .any(|reduced| reduced.unit_id == o.unit.unit_id))))))
             })
-            // Silver given this month counts too, as the per-unit sentence counts it (`ah-jw85`,
-            // `ah-w9dn`).
+            // Silver as GIVE and TAKE leave it, so a gift to a counted unit counts, as the per-unit
+            // sentence counts it (`ah-jw85`), and one between two counted units counts once
+            // (`ah-w9dn`).
             .map(|o| {
-                o.holding(&tag)
-                    + if tag == SILVER {
-                        claimed_this_month(ledger, &o.unit.unit_id)
-                            + receipts
-                                .get(&unit_key(&hex.region.region_id, &o.unit.unit_id))
-                                .map_or(0, |receipts| receipts.silver)
-                    } else {
-                        0
-                    }
+                if tag == SILVER {
+                    o.early_holding(SILVER) + claimed_this_month(ledger, &o.unit.unit_id)
+                } else {
+                    o.holding(&tag)
+                }
             })
             .sum();
 
@@ -11561,9 +11557,7 @@ fn report_shortfalls(
         findings.push(finding);
     }
 
-    for PoolShortfall { tag, short, held } in
-        pool_shortfalls(hex, ledger, &sharing, &verdicts, receipts)
-    {
+    for PoolShortfall { tag, short, held } in pool_shortfalls(hex, ledger, &sharing, &verdicts) {
         // ... and a pointer on every order line that claims against that pool (`ah-eurs`). The
         // hex finding is right to be hex-anchored (`ah-sdda`), but it reaches no editor, so the
         // player typing the order that overdrew the hex is told nothing where they are looking.
@@ -32638,14 +32632,14 @@ BUILD
         let verdicts = judge_shortfalls(&hex, &ledger, &sharing, Some(&rules));
 
         assert!(
-            !pool_shortfalls(&hex, &ledger, &sharing, &verdicts, &BTreeMap::new()).is_empty(),
+            !pool_shortfalls(&hex, &ledger, &sharing, &verdicts).is_empty(),
             "the hex is genuinely short before anything is doubted"
         );
 
         ledger.doubted.insert("7".to_string());
 
         assert_eq!(
-            pool_shortfalls(&hex, &ledger, &sharing, &verdicts, &BTreeMap::new()),
+            pool_shortfalls(&hex, &ledger, &sharing, &verdicts),
             vec![],
             "one doubted sharer silences the pool"
         );
@@ -54807,6 +54801,28 @@ BUILD
             0,
             "unit 5\nBUY 1 swords\nunit 6\nSTUDY COMB\nunit 8\nunit 9\nGIVE 8 50 SILV\n",
             vec![with_silver(unit("6"), 0)],
+        );
+        assert_eq!(
+            hex_silver_sentence(&findings),
+            Some(
+                "the units in this hex are short $60 between them: they can have $50 and their \
+                 orders spend $110"
+            ),
+            "{findings:#?}"
+        );
+    }
+
+    /// A gift between two units the hex counts moves silver without adding any: sharer 7's
+    /// `GIVE 8 50 SILV` to sharer 8 leaves the hex $50 to have, not $100 (`ah-w9dn` review).
+    #[test]
+    fn silver_given_between_two_sharers_is_counted_once() {
+        let findings = a_cut_buy_in_a_caravanserai(
+            0,
+            "unit 5\nBUY 1 swords\nunit 6\nSTUDY COMB\nunit 7\nGIVE 8 50 SILV\nunit 8\nunit 9\n",
+            vec![
+                with_silver(unit("6"), 0),
+                sharing(with_silver(unit("7"), 50)),
+            ],
         );
         assert_eq!(
             hex_silver_sentence(&findings),
