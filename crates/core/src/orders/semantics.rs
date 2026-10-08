@@ -11289,6 +11289,10 @@ fn pool_shortfalls(
     // as STUDY settled is short even when later receipts net the month's end out (`ah-qrk0`),
     // whether or not any unit is still overdrawn by then. Its month-end figure is the same netting
     // the verdicts' claims make below - every undoubted claimant's overdraft against the pool.
+    // The verdicts see only units with a SILVER entry at maintenance, while this reads every
+    // unit's `relieved_balance`; they agree because that balance can be negative only through a
+    // charge, which books the entry - `upkeep_relieved` only adds, and only a sharer that holds
+    // silver has `upkeep_lent` to subtract.
     let silver_by_moment =
         sharing.walking.is_some() && sharing.reading(SILVER, None) == Reading::Pooled;
     if silver_by_moment {
@@ -54496,6 +54500,11 @@ BUILD
                 sharing.silver_held_at(ledger, LendingMoment::Movement),
                 100,
                 "the pool holds sharer 8's own $100; unit 5's $100 BUY is the claim against it"
+            );
+            assert_eq!(
+                sharing.silver_held_at(ledger, LendingMoment::Study),
+                90,
+                "sharer 8's $100 less the $10 its own STUDY costs"
             );
         });
     }
