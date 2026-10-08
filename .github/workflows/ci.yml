@@ -121,13 +121,15 @@ jobs:
         uses: actions/cache@v5
         with:
           path: packages/browser-core/src/wasm
-          key: wasm-module-${{ hashFiles('crates/**', 'Cargo.toml', 'Cargo.lock') }}
+          key: wasm-module-${{ hashFiles('crates/**', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml') }}
 
       - name: Setup Rust
         if: steps.wasm-module.outputs.cache-hit != 'true'
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
+        # The release and its components are the ones rust-toolchain.toml names, so CI
+        # compiles and lints with what the local gate does (ah-3kge).
+        run: |
+          rustup toolchain install
+          rustup target add wasm32-unknown-unknown
 
       # Without this every job recompiles the whole workspace from scratch. Cold, the Rust steps
       # in this workflow came to about 212 seconds; warm they are a few.
@@ -180,7 +182,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: packages/browser-core/src/wasm
-          key: wasm-module-${{ hashFiles('crates/**', 'Cargo.toml', 'Cargo.lock') }}
+          key: wasm-module-${{ hashFiles('crates/**', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml') }}
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -196,9 +198,11 @@ jobs:
       # pretypecheck hook has to build the module after all.
       - name: Setup Rust
         if: steps.wasm-module.outputs.cache-hit != 'true'
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
+        # The release and its components are the ones rust-toolchain.toml names, so CI
+        # compiles and lints with what the local gate does (ah-3kge).
+        run: |
+          rustup toolchain install
+          rustup target add wasm32-unknown-unknown
 
       - name: Cache Rust build
         if: steps.wasm-module.outputs.cache-hit != 'true'
@@ -244,9 +248,10 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+        # The release and its components are the ones rust-toolchain.toml names, so CI
+        # compiles and lints with what the local gate does (ah-3kge).
+        run: |
+          rustup toolchain install
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
@@ -449,9 +454,10 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
+        # The release and its components are the ones rust-toolchain.toml names, so CI
+        # compiles and lints with what the local gate does (ah-3kge).
+        run: |
+          rustup toolchain install
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
@@ -534,7 +540,10 @@ jobs:
           version: 9.12.0
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        # The release and its components are the ones rust-toolchain.toml names, so CI
+        # compiles and lints with what the local gate does (ah-3kge).
+        run: |
+          rustup toolchain install
 
       # Its own key: this is the only job building the workspace with the desktop-runtime
       # feature, so sharing the `native` cache would just thrash both. Saved even on a failed

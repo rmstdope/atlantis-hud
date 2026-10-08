@@ -97,9 +97,11 @@ jobs:
           version: 9.12.0
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
+        # The release and its components are the ones rust-toolchain.toml names, so what ships
+        # is built with the same Rust the local gate uses (ah-3kge).
+        run: |
+          rustup toolchain install
+          rustup target add wasm32-unknown-unknown
 
       # Same key as CI's, so this run inherits a warm cache rather than compiling the core cold.
       - name: Cache Rust build
