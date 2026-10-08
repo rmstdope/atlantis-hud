@@ -53298,7 +53298,8 @@ BUILD
     // a STUDY in is the one its month ends in, not the one the report lists it in.
 
     /// Student 5 (two men, no silver) studies in `student_at`; sharer 7 with $500 is listed in
-    /// `sharer_at` and, when `ends_at` is given, ends the month there (`CheckOptions::month_end`).
+    /// `sharer_at` and, when `ends_at` is given, walks `MOVE S` into it - which must be the hex
+    /// south of `sharer_at` - so the movement trace ends its month there ([`traced`]).
     fn study_beside_a_walking_sharer(
         student_at: (&str, i32, i32),
         sharer_at: (&str, i32, i32),
@@ -53346,18 +53347,31 @@ BUILD
                 region_at(sharer_at.0, sharer_at.1, sharer_at.2, vec![sharer]),
             ]
         };
-        let mut options = CheckOptions::default();
+        let mut regions = regions;
         if let Some((x, y)) = ends_at {
-            options
-                .month_end
-                .insert("7".to_string(), Coordinate { x, y, z: 1 });
+            assert_eq!(
+                (x, y),
+                (sharer_at.1, sharer_at.2 + 2),
+                "the sharer walks MOVE S"
+            );
+            if !regions
+                .iter()
+                .any(|region| region.coordinate.x == x && region.coordinate.y == y)
+            {
+                regions.push(region_at(&format!("1:{x},{y}"), x, y, Vec::new()));
+            }
         }
-        review_turn(
-            &report(regions),
-            &format!("unit 5\n{student_orders}\nunit 7\nMOVE S\n"),
-            Some(&ruleset()),
-            options,
-        )
+        let orders = format!(
+            "unit 5\n{student_orders}\nunit 7\n{}",
+            if ends_at.is_some() { "MOVE S\n" } else { "" }
+        );
+        let (report, options) = traced(
+            report(regions),
+            &orders,
+            &ruleset(),
+            CheckOptions::default(),
+        );
+        review_turn(&report, &orders, Some(&ruleset()), options)
     }
 
     /// `BUY` comes before movement (`rules/sequenceofevents`), so a sharer that leaves afterwards
@@ -53425,19 +53439,17 @@ BUILD
                 ],
             )
         };
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("7".to_string(), Coordinate { x: 7, y: 53, z: 1 });
-        let review = review_turn(
-            &report(vec![
+        let orders = "unit 5\nBUY 1 swords\nunit 8\nSTUDY combat\nunit 7\nMOVE S\n";
+        let (report, options) = traced(
+            report(vec![
                 hex,
                 region_at("1:7,51", 7, 51, vec![sharing(with_silver(unit("7"), 500))]),
             ]),
-            "unit 5\nBUY 1 swords\nunit 8\nSTUDY combat\nunit 7\nMOVE S\n",
-            Some(&ruleset()),
-            options,
+            orders,
+            &ruleset(),
+            CheckOptions::default(),
         );
+        let review = review_turn(&report, orders, Some(&ruleset()), options);
         assert!(
             !review
                 .findings
@@ -53480,20 +53492,18 @@ BUILD
                 ],
             )
         };
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("7".to_string(), Coordinate { x: 7, y: 53, z: 1 });
-        let review = review_turn(
-            &report(vec![
+        let orders = "unit 5\nBUY 1 swords\nunit 6\nSTUDY combat\nunit 9\nTRANSPORT 5 100 SILV\n\
+                      unit 7\nMOVE S\n";
+        let (report, options) = traced(
+            report(vec![
                 hex,
                 region_at("1:7,51", 7, 51, vec![sharing(with_silver(unit("7"), 500))]),
             ]),
-            "unit 5\nBUY 1 swords\nunit 6\nSTUDY combat\nunit 9\nTRANSPORT 5 100 SILV\n\
-             unit 7\nMOVE S\n",
-            Some(&ruleset()),
-            options,
+            orders,
+            &ruleset(),
+            CheckOptions::default(),
         );
+        let review = review_turn(&report, orders, Some(&ruleset()), options);
         // Unit 6's STUDY alone: whether unit 5's BUY - which nothing funds when the market runs -
         // is warned about is the month-end netting's business, not this test's (`ah-wyj8` review).
         assert!(
@@ -53514,19 +53524,17 @@ BUILD
 
         let student = with_men(with_silver(unit("5"), 0), 2);
         let sharer = sharing(with_silver(unit("7"), 500));
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("7".to_string(), Coordinate { x: 7, y: 53, z: 1 });
-        let review = review_turn(
-            &report(vec![
+        let orders = "unit 5\nSTUDY combat\nunit 7\nBUY 1 unobtainium\nMOVE S\n";
+        let (report, options) = traced(
+            report(vec![
                 region_at("1:7,53", 7, 53, vec![student]),
                 region_at("1:7,51", 7, 51, vec![sharer]),
             ]),
-            "unit 5\nSTUDY combat\nunit 7\nBUY 1 unobtainium\nMOVE S\n",
-            Some(&ruleset()),
-            options,
+            orders,
+            &ruleset(),
+            CheckOptions::default(),
         );
+        let review = review_turn(&report, orders, Some(&ruleset()), options);
         assert_eq!(
             forecast_for(&review, "5").shared_silver_coverage,
             Some(SharedSilverCoverage::Unjudged)
@@ -53608,33 +53616,56 @@ BUILD
     }
 
     /// A MOVE that a later STUDY replaces never runs ("STUDY replaces this MOVE as the unit's
-    /// month-long order"), so the sharer stays and pays - whatever the movement trace, which
-    /// follows every MOVE written, says about where it ends (`ah-wyj8`).
+    /// month-long order"), so the sharer stays and pays (`ah-wyj8`, `ah-osny`) - through the
+    /// movement trace, which is where `ah-wyj8` first went wrong.
     #[test]
     fn a_sharer_whose_move_a_study_replaces_stays_and_pays() {
-        let regions = vec![region_at(
-            "1:7,53",
-            7,
-            53,
-            vec![
-                with_men(with_silver(unit("5"), 0), 2),
-                sharing(with_silver(unit("7"), 500)),
-            ],
-        )];
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("7".to_string(), Coordinate { x: 7, y: 55, z: 1 });
-        let findings: Vec<Finding> = check_turn(
-            &report(regions),
-            "unit 5\nSTUDY combat\nunit 7\nMOVE S\nSTUDY combat\n",
-            Some(&ruleset()),
-            options,
-        )
-        .into_iter()
-        .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
-        .collect();
-        assert_eq!(findings, vec![]);
+        assert_eq!(
+            sharer_whose_move_a_study_replaces(|report, orders, options| {
+                traced(report, orders, &ruleset(), options)
+            }),
+            vec![]
+        );
+    }
+
+    /// The same, whatever the trace says: a month end the replaced MOVE would have reached does
+    /// not take the sharer away either, because the checker reads the orders that run
+    /// (`SharingReach::ends_at`), not only the trace.
+    #[test]
+    fn a_sharer_whose_move_a_study_replaces_stays_and_pays_whatever_the_trace_says() {
+        assert_eq!(
+            sharer_whose_move_a_study_replaces(|report, _, options| {
+                let options =
+                    counterfactual_month_end(options, &[("7", Coordinate { x: 7, y: 55, z: 1 })]);
+                (report, options)
+            }),
+            vec![]
+        );
+    }
+
+    /// Student 5 and sharer 7 in (7,53), (7,55) empty to the south; 7 writes `MOVE S` and then
+    /// `STUDY`. `month_end` fills the options; the unpaid-study warnings come back.
+    fn sharer_whose_move_a_study_replaces(
+        month_end: impl FnOnce(ParsedReport, &str, CheckOptions) -> (ParsedReport, CheckOptions),
+    ) -> Vec<Finding> {
+        let regions = vec![
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![
+                    with_men(with_silver(unit("5"), 0), 2),
+                    sharing(with_silver(unit("7"), 500)),
+                ],
+            ),
+            region_at("1:7,55", 7, 55, Vec::new()),
+        ];
+        let orders = "unit 5\nSTUDY combat\nunit 7\nMOVE S\nSTUDY combat\n";
+        let (report, options) = month_end(report(regions), orders, CheckOptions::default());
+        check_turn(&report, orders, Some(&ruleset()), options)
+            .into_iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .collect()
     }
 
     /// The control: a sharer that stays where it is listed pays as it always did.
@@ -53681,7 +53712,6 @@ BUILD
             )
         };
         let mut regions = vec![hex];
-        let mut options = CheckOptions::default();
         let mut orders =
             "unit 5\nBUY 1 swords\nunit 8\nSTUDY combat\nunit 9\nTRANSPORT 5 100 SILV\n"
                 .to_string();
@@ -53692,12 +53722,15 @@ BUILD
                 51,
                 vec![sharing(with_silver(unit("7"), 500))],
             ));
-            options
-                .month_end
-                .insert("7".to_string(), Coordinate { x: 7, y: 53, z: 1 });
             orders.push_str("unit 7\nMOVE S\n");
         }
-        review_turn(&report(regions), &orders, Some(&ruleset()), options)
+        let (report, options) = traced(
+            report(regions),
+            &orders,
+            &ruleset(),
+            CheckOptions::default(),
+        );
+        review_turn(&report, &orders, Some(&ruleset()), options)
     }
 
     /// The engine has sharer 8 lend its $100 at BUY and hold $0 at STUDY, so its study is unfunded;
@@ -53769,19 +53802,17 @@ BUILD
     /// pays nothing that has already been studied (`rules/sequenceofevents`, `ah-qrk0` review).
     #[test]
     fn silver_shipped_to_an_arriving_sharer_after_study_does_not_pay_for_the_study() {
-        let mut options = CheckOptions::default();
-        options
-            .month_end
-            .insert("7".to_string(), Coordinate { x: 7, y: 53, z: 1 });
-        let review = review_turn(
-            &report(vec![
+        let orders = "unit 5\nTRANSPORT 7 100 SILV\nunit 6\nSTUDY combat\nunit 7\nMOVE S\n";
+        let (report, options) = traced(
+            report(vec![
                 caravanserai_hex("5", 100, vec![with_men(with_silver(unit("6"), 0), 2)]),
                 region_at("1:7,51", 7, 51, vec![sharing(with_silver(unit("7"), 0))]),
             ]),
-            "unit 5\nTRANSPORT 7 100 SILV\nunit 6\nSTUDY combat\nunit 7\nMOVE S\n",
-            Some(&ruleset()),
-            options,
+            orders,
+            &ruleset(),
+            CheckOptions::default(),
         );
+        let review = review_turn(&report, orders, Some(&ruleset()), options);
         assert!(
             review
                 .findings
