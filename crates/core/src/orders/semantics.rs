@@ -9535,8 +9535,10 @@ struct Neighbourhood {
 ///   and is fed in the same place, wherever [`sail_destination`] says its fleet arrives
 ///   (`ah-jk9h`, `ah-bwxp.1`). Never the movement trace, which the shells fill for a sail only
 ///   when something else in the document walks or ships;
-/// - any other unit: `CheckOptions::month_end`, the movement trace's answer, since a walker's
-///   month end depends on its movement points and the terrain (`ah-n3qb`);
+/// - any other unit whose effective orders still walk (a `MOVE` or `ADVANCE` no later
+///   month-long order replaced): `CheckOptions::month_end`, the movement trace's answer, since a
+///   walker's month end depends on its movement points and the terrain (`ah-n3qb`). The trace
+///   follows every MOVE written, so a unit whose MOVE was replaced stands where it is (`ah-wyj8`);
 /// - a unit nothing can follow: where it stands. "Cannot say" is not a destination.
 struct SharingReach {
     /// In report order, and each one's members in report order, so lending and eating stay in
