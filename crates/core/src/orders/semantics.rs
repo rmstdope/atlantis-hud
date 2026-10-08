@@ -11425,14 +11425,30 @@ fn pool_shortfalls(
         pooled_tags.insert(SILVER.to_string());
     }
     for tag in pooled_tags {
+        // The silver the sharers arriving from other hexes lend here, at the moment that set the
+        // shortfall, since that is what the shortfall subtracted (`ah-asdp`).
+        let mut arrivals_lend = 0;
         let short = if silver_by_moment && tag == SILVER {
-            sharing
-                .silver_short_at(hex, ledger, LendingMoment::MonthEnd)
-                .max(sharing.silver_short_at(hex, ledger, LendingMoment::Study))
+            let at_month_end = sharing.silver_short_at(hex, ledger, LendingMoment::MonthEnd);
+            let at_study = sharing.silver_short_at(hex, ledger, LendingMoment::Study);
+            let moment = if at_study > at_month_end {
+                LendingMoment::Study
+            } else {
+                LendingMoment::MonthEnd
+            };
+            arrivals_lend = sharing
+                .walking
+                .map_or(0, |walking| walking.lends_at(moment));
+            at_month_end.max(at_study)
         } else {
             claims.get(&tag).copied().unwrap_or(0) - sharing.pool(ledger, &tag)
         };
         let short = if tag == SILVER {
+            if short_counting_cuts > short {
+                // A cut BUY set it, under "Market orders", before any arrival is here
+                // (`rules/sequenceofevents`).
+                arrivals_lend = 0;
+            }
             short.max(short_counting_cuts)
         } else {
             short
@@ -11487,17 +11503,9 @@ fn pool_shortfalls(
                 }
             })
             .sum::<i64>()
-            // ... and what the sharers arriving from other hexes lend here, as the shortfall
-            // subtracts it (`ah-asdp`): `rules/share` lends within "the same region", where their
-            // month ends. The month's end figure, capped at what the hex needed of them, so an
-            // arrival counts only what it actually lends.
-            + if tag == SILVER {
-                sharing
-                    .walking
-                    .map_or(0, |walking| walking.lends_at(LendingMoment::MonthEnd))
-            } else {
-                0
-            };
+            // ... and what the sharers arriving from other hexes lend here: `rules/share` lends
+            // within "the same region", where their month ends.
+            + arrivals_lend;
 
         shortfalls.push(PoolShortfall { tag, short, held });
     }
@@ -54407,13 +54415,22 @@ BUILD
             CheckOptions::default(),
         );
         let review = review_turn(&report, orders, Some(&ruleset()), options);
-        assert!(
-            review
-                .findings
-                .iter()
-                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
-            "sharer 7 holds nothing as STUDY runs: {:#?}",
-            review.findings
+        let hex_finding = review
+            .findings
+            .iter()
+            .find(|f| f.code == codes::NOT_ENOUGH_SILVER && f.unit_id.is_none())
+            .unwrap_or_else(|| {
+                panic!(
+                    "sharer 7 holds nothing as STUDY runs: {:#?}",
+                    review.findings
+                )
+            });
+        // What the hex can have is what the arrival lent as STUDY ran, the moment that set the
+        // shortfall - not what the shipment let it lend by the month's end (`ah-asdp` review).
+        assert_eq!(
+            hex_finding.message,
+            "the units in this hex are short $20 between them: they can have $0 \
+             and their orders spend $20"
         );
     }
 
