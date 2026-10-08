@@ -5088,8 +5088,8 @@ struct Ledger<'a> {
     /// line always drives the balance below zero. Change the charge and that stops holding.
     reduced_buys: Vec<ReducedBuy>,
     /// Every `GIVE` of silver beyond what the giver held as it ran, in the order they were applied
-    /// (`ah-4k84`) - a discard (`GIVE 0`) and a `TAKE` beyond what their source held too, which
-    /// the same engine function cuts the same way (`ah-759k`). The engine's `Game::DoGiveOrder`
+    /// (`ah-4k84`) - a discard (`GIVE 0`) beyond what the unit held too, which the same engine
+    /// function cuts the same way (`ah-759k`). The engine's `Game::DoGiveOrder`
     /// (Atlantis-PBEM/Atlantis, `runorders.cpp`) errors "Not enough." and gives what the unit has;
     /// `rules/give` does not say. Recorded per
     /// line because the walk settles units in report order, so silver a later unit gives back
@@ -5101,7 +5101,11 @@ struct Ledger<'a> {
     /// region too, so only an unpooled hex reads these (`judge_shortfalls`, `report_shortfalls`);
     /// a pooled one moves the whole ask and is judged through its pool.
     reduced_gives: Vec<ReducedGive>,
-    /// What each unit's `GIVE`, discard and `TAKE` lines of silver asked, cut or not: the
+    /// Every `TAKE` of silver beyond what its source held as it ran, in an unpooled hex
+    /// (`ah-759k`). Reported on the taker by `report_shortfalls`, each on its own line and never
+    /// folded into the taker's own shortfall: the silver that ran short was the source's.
+    reduced_takes: Vec<ReducedTake>,
+    /// What each unit's `GIVE` and discard lines of silver asked, cut or not: the
     /// "spend" of a not-enough-silver sentence about a GIVE, whose "can have" is this less the cut
     /// (`ah-4k84`, `ah-759k`).
     silver_given: BTreeMap<String, i64>,
@@ -5144,13 +5148,24 @@ struct ReducedBuy {
     placed: PlacedIntent,
 }
 
-/// A `GIVE` of silver its giver could not fund in full as it ran (`ah-4k84`), or a discard or a
-/// `TAKE` its source could not (`ah-759k`).
-struct ReducedGive {
-    /// The unit whose order was cut, and so the one warned: the giver, the discarder, or the
-    /// taker - the engine reports "TAKE: Not enough." on the unit that wrote the `TAKE`.
+/// A `TAKE` of silver its source could not cover in full as it ran (`ah-759k`).
+struct ReducedTake {
+    /// The taker: the engine's "TAKE: Not enough." is `u->error`, on the unit that wrote it.
     unit_id: String,
-    /// How the not-enough-silver sentence says what the unit did: "gives", "discards" or "takes".
+    /// What the line asked to take, as written.
+    ordered: i64,
+    /// What the engine takes: what the source held then.
+    taken: i64,
+    /// The `TAKE` line, where the warning is anchored.
+    placed: PlacedIntent,
+}
+
+/// A `GIVE` of silver its giver could not fund in full as it ran (`ah-4k84`), or a discard its
+/// unit could not (`ah-759k`).
+struct ReducedGive {
+    /// The giver or the discarder.
+    unit_id: String,
+    /// How the not-enough-silver sentence says what the unit did: "gives" or "discards".
     verb: &'static str,
     /// What the line asked to give, as written.
     ordered: i64,
@@ -5452,6 +5467,7 @@ fn ledger_for_reaching<'a>(
         claimed: BTreeMap::new(),
         reduced_buys: Vec::new(),
         reduced_gives: Vec::new(),
+        reduced_takes: Vec::new(),
         silver_given: BTreeMap::new(),
         overcharged: BTreeMap::new(),
         // `trusted: true` - see `MarketPurse`'s hand-written `Default`.
@@ -7728,31 +7744,37 @@ fn transfer(
             // `ledger_for_with_production` - so the ledger and the column cannot tell two stories
             // about one transfer. `GaveAway` and `Discarded` stay: they are the acting unit's own
             // orders, they already agree with the column, and the settlement books neither.
-            // The unit whose order this is, and so the one told when it is cut: the giver or
-            // discarder, or for a TAKE the taker - the engine's "TAKE: Not enough." is
-            // `u->error`, on the unit that wrote the order, never on the one taken from
-            // (`ah-759k`, the navigator's answer).
-            let (warned, verb) = if reach == GiveReach::Discard {
-                (from.clone(), "discards")
-            } else if is_give {
-                (from.clone(), "gives")
-            } else {
-                (actor.unit.unit_id.clone(), "takes")
-            };
-            *ledger.silver_given.entry(warned.clone()).or_default() += quantity;
-            if quantity > known_source.max(0) {
-                ledger.reduced_gives.push(ReducedGive {
-                    unit_id: warned.clone(),
-                    verb,
+            if is_give {
+                *ledger.silver_given.entry(from.clone()).or_default() += quantity;
+                if quantity > known_source.max(0) {
+                    ledger.reduced_gives.push(ReducedGive {
+                        unit_id: from.clone(),
+                        verb: if reach == GiveReach::Discard {
+                            "discards"
+                        } else {
+                            "gives"
+                        },
+                        ordered: quantity,
+                        given: known_source.max(0),
+                    });
+                    // The cut line is what overdrew the unit, so its finding points here even
+                    // where it moves nothing and so draws nothing down (`ah-1c8p`).
+                    ledger
+                        .charged_at
+                        .entry((from.clone(), SILVER.to_ascii_uppercase()))
+                        .or_insert_with(|| placed.clone());
+                }
+            } else if moved < quantity {
+                // A cut TAKE is the taker's to be told of - the engine's "TAKE: Not enough." is
+                // `u->error`, on the unit that wrote the order (`ah-759k`, the navigator's answer)
+                // - but it is the source's silver that ran short, not the taker's, so it is kept
+                // out of the taker's own shortfall and said on its own line.
+                ledger.reduced_takes.push(ReducedTake {
+                    unit_id: actor.unit.unit_id.clone(),
                     ordered: quantity,
-                    given: known_source.max(0),
+                    taken: moved,
+                    placed: placed.clone(),
                 });
-                // The cut line is what its finding points at, even where it moves nothing and so
-                // draws nothing down (`ah-1c8p`).
-                ledger
-                    .charged_at
-                    .entry((warned, SILVER.to_ascii_uppercase()))
-                    .or_insert_with(|| placed.clone());
             }
             if reach == GiveReach::Discard {
                 move_silver(
@@ -11206,8 +11228,8 @@ fn silver_short_at_study(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
     }
 }
 
-/// What a unit's own GIVEs of silver (its discards and TAKEs too, the latter against what their
-/// source held: `ah-759k`) asked beyond what was held as each ran, under "Give orders" in
+/// What a unit's own GIVEs of silver (its discards too: `ah-759k`) asked beyond what it held as
+/// each ran, under "Give orders" in
 /// `rules/sequenceofevents`, long before WORK, TRANSPORT and maintenance: nothing received in them,
 /// nor a gift that reaches it later in the Give phase, funds the gift (`ah-4k84`). Read from
 /// [`Ledger::reduced_gives`] rather than the phase's balance, which nets those later gifts in.
@@ -11594,6 +11616,34 @@ fn report_shortfalls(
     let mut maintenance_short: i64 = 0;
 
     let verdicts = judge_shortfalls(hex, ledger, &sharing, ruleset);
+
+    // A `TAKE` its source could not cover, said to the taker at its own line (`ah-759k`). Its
+    // figures are the line's: what the source had and what was asked.
+    if options.emits(codes::NOT_ENOUGH_SILVER) {
+        for reduced in &ledger.reduced_takes {
+            let Some(ordered) = hex.find(&reduced.unit_id) else {
+                continue;
+            };
+            findings.push(ordered.finding(
+                hex,
+                codes::NOT_ENOUGH_SILVER,
+                format!(
+                    "short ${}: this unit can have ${} and its orders spend ${}, so it takes {} of \
+                     the {} ordered",
+                    reduced.ordered - reduced.taken,
+                    reduced.taken,
+                    reduced.ordered,
+                    if reduced.taken == 0 {
+                        "none".to_string()
+                    } else {
+                        reduced.taken.to_string()
+                    },
+                    counted_item(reduced.ordered, SILVER, hex, ruleset, plurals),
+                ),
+                Some(&reduced.placed),
+            ));
+        }
+    }
 
     for verdict in &verdicts {
         let (unit_id, tag, short) = match verdict {

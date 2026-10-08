@@ -707,3 +707,43 @@ fn a_cut_take_does_not_fund_the_takers_buy() {
         review.findings
     );
 }
+
+/// The TAKE's warning is about the source's silver, not the taker's, so it must not stand in for
+/// the taker's own shortfall. 901 ($100) takes $50 from 900 ($0) and buys 13 grain at $10: the
+/// TAKE brings nothing, and the BUY is $30 short of 901's own purse. Both are said, each at its
+/// own line.
+#[test]
+fn a_cut_take_does_not_hide_the_takers_own_shortfall() {
+    let text = report(
+        QUIET,
+        &["For Sale: 20 grain [GRAI] at $10."],
+        &[&giver(0), &holder("901", 100)],
+    );
+    let script = "unit 901\nTAKE FROM 900 50 SILV\nBUY 13 grain\n";
+    let review = review_of(&text, script);
+
+    let warned: Vec<(Option<usize>, &str)> = review
+        .findings
+        .iter()
+        .filter(|finding| {
+            finding.code.as_str() == "not-enough-silver"
+                && finding.unit_id.as_deref() == Some("901")
+        })
+        .map(|finding| (finding.line, finding.message.as_str()))
+        .collect();
+    assert!(
+        warned.contains(&(
+            Some(3),
+            "short $50: this unit can have $0 and its orders spend $50, \
+             so it takes none of the 50 silver ordered"
+        )),
+        "the TAKE is warned at its line: {warned:?}"
+    );
+    assert!(
+        warned
+            .iter()
+            .any(|(_, message)| message.starts_with("short $30:")
+                && message.contains("buys 10 of the 13")),
+        "the BUY's own $30 shortfall is still said: {warned:?}"
+    );
+}
