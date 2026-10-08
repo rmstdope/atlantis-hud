@@ -9602,7 +9602,14 @@ impl SharingReach {
         month_end: &super::transport::MonthEndHexes,
     ) -> Coordinate {
         let sails = ruleset.is_some_and(|rules| carried_away(hex, ordered, rules).is_some());
-        if !sails {
+        // The trace follows every MOVE written, but a later month-long order replaces one ("STUDY
+        // replaces this MOVE as the unit's month-long order, so this MOVE will not run"), so it is
+        // believed only for a unit whose effective orders still walk (`ah-wyj8`).
+        let walks = ordered
+            .intents
+            .iter()
+            .any(|placed| matches!(placed.intent, Intent::Move { .. }));
+        if !sails && walks {
             if let Some(at) = month_end.get(&ordered.unit.unit_id) {
                 return *at;
             }
@@ -53380,6 +53387,36 @@ BUILD
             vec![],
             "the sharer is in (7,53) when STUDY runs, so it lends unit 5 its $20"
         );
+    }
+
+    /// A MOVE that a later STUDY replaces never runs ("STUDY replaces this MOVE as the unit's
+    /// month-long order"), so the sharer stays and pays - whatever the movement trace, which
+    /// follows every MOVE written, says about where it ends (`ah-wyj8`).
+    #[test]
+    fn a_sharer_whose_move_a_study_replaces_stays_and_pays() {
+        let regions = vec![region_at(
+            "1:7,53",
+            7,
+            53,
+            vec![
+                with_men(with_silver(unit("5"), 0), 2),
+                sharing(with_silver(unit("7"), 500)),
+            ],
+        )];
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("7".to_string(), Coordinate { x: 7, y: 55, z: 1 });
+        let findings: Vec<Finding> = check_turn(
+            &report(regions),
+            "unit 5\nSTUDY combat\nunit 7\nMOVE S\nSTUDY combat\n",
+            Some(&ruleset()),
+            options,
+        )
+        .into_iter()
+        .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+        .collect();
+        assert_eq!(findings, vec![]);
     }
 
     /// The control: a sharer that stays where it is listed pays as it always did.
