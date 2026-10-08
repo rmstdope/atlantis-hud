@@ -44,7 +44,7 @@ describe("one Rust release, named in rust-toolchain.toml", () => {
   });
 
   it("no workflow installs Rust from an action's own channel", () => {
-    const offenders = workflows().filter(({ text }) => /dtolnay\/rust-toolchain|toolchain:/.test(text));
+    const offenders = workflows().filter(({ text }) => /dtolnay\/rust-toolchain|toolchain:|@stable\b/.test(text));
     expect(offenders.map(({ file }) => file)).toEqual([]);
   });
 
