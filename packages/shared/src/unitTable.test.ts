@@ -514,6 +514,21 @@ describe("rowMonth reads a row's month where the report lists the unit (ah-xu6v)
     expect(month.hexShort).toBe(true);
   });
 
+  it("raises no silver flag on an own unit with no forecast to explain it", () => {
+    const month = rowMonth(
+      { regionId: A, unitId: "new-1", arrivingFrom: null, own: true },
+      {
+        ...lookups,
+        getSilver: () => null,
+        silverWarnings: new Set([unitRowKey(A, "new-1")])
+      }
+    );
+
+    expect(month.silver).toBeNull();
+    expect(month.warned).toBe(false);
+    expect(month.hexShort).toBe(false);
+  });
+
   it("reads nothing for somebody else's unit", () => {
     expect(rowMonth({ regionId: A, unitId: "new-1", arrivingFrom: B, own: false }, lookups)).toEqual({
       home: B,
