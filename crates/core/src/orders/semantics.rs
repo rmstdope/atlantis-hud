@@ -10283,7 +10283,7 @@ impl<'a> Sharing<'a> {
     fn silver_short_at_study(&self, hex: &Hex<'_>, ledger: &Ledger<'_>) -> i64 {
         silver_short_at(hex, ledger, StatePhase::Study, |ordered| {
             self.pools_silver(ordered)
-        }) - self.silver_from_walkers(|walking| WalkingSilver::lends(&walking.arrivals))
+        }) - self.silver_from_walkers(|walking| WalkingSilver::lends(&walking.arrivals_at_study))
     }
 
     /// The hex's silver pool at one phase: [`spendable_silver_at`] summed over the sharers.
@@ -10347,6 +10347,9 @@ struct WalkingSilver {
     arrivals: Vec<ArrivingSilver>,
     /// The same, read as TRANSPORT settles ([`spendable_silver_at`]), for [`shipping_purse`].
     arrivals_at_transport: Vec<ArrivingSilver>,
+    /// The same, read as STUDY settles and uncapped, for [`Sharing::silver_short_at_study`]:
+    /// silver a walker receives after STUDY pays for nothing studied (`ah-qrk0`).
+    arrivals_at_study: Vec<ArrivingSilver>,
     /// An arriving sharer whose sums cannot be trusted - as a doubted sharer of the hex's own
     /// makes its pool untrustworthy (`Sharing::pool_trusted`).
     arrival_doubted: bool,
@@ -10404,6 +10407,7 @@ fn lend_walking_sharers_silver(
         .collect();
     let mut departing: Vec<BTreeMap<String, i64>> = vec![BTreeMap::new(); hexes.len()];
     let mut arrivals: Vec<Vec<ArrivingSilver>> = vec![Vec::new(); hexes.len()];
+    let mut arrivals_at_study: Vec<Vec<ArrivingSilver>> = vec![Vec::new(); hexes.len()];
     let mut doubted: Vec<bool> = vec![false; hexes.len()];
 
     for (index, (hex, ledger)) in hexes.iter().enumerate() {
@@ -10457,6 +10461,10 @@ fn lend_walking_sharers_silver(
                 spendable_silver_at(ledger, who, phase)
             };
             doubted[arrives] |= ledger.doubted.contains(who);
+            arrivals_at_study[arrives].push(ArrivingSilver {
+                unit: unit_key(&hex.region.region_id, who),
+                lends: (spendable_silver_at(ledger, who, StatePhase::Study) - lent).max(0),
+            });
             arrivals[arrives].push(ArrivingSilver {
                 unit: unit_key(&hex.region.region_id, who),
                 lends: (held - lent).max(0),
@@ -10521,6 +10529,7 @@ fn lend_walking_sharers_silver(
         let walking = &mut ledger.walking_silver;
         walking.departing = std::mem::take(&mut departing[index]);
         walking.arrival_doubted = doubted[index];
+        walking.arrivals_at_study = std::mem::take(&mut arrivals_at_study[index]);
         if phase == StatePhase::Maintenance {
             walking.arrivals = arrived;
         } else {
@@ -11369,6 +11378,38 @@ fn report_shortfalls(
                     ),
                     at,
                 ));
+            }
+            // A claimant overdrawn as STUDY settles and paid back later - a shipment, wages - has
+            // no month-end verdict, but its line drew on the pool all the same (`ah-qrk0`).
+            if tag == SILVER {
+                for ordered in &hex.units {
+                    let who = &ordered.unit.unit_id;
+                    if sharing.pools_silver(ordered)
+                        || ledger.doubted.contains(who)
+                        || spendable_silver_at(ledger, who, StatePhase::Study) >= 0
+                        || cut.iter().any(|reduced| &reduced.unit_id == who)
+                        || refused.iter().any(|refused| &refused.unit_id == who)
+                        || verdicts.iter().any(|verdict| {
+                            matches!(
+                                verdict,
+                                Verdict::DeferredToPool { unit_id, tag: claimed, claims_pool: true, .. }
+                                    if unit_id == who && claimed == &tag
+                            )
+                        })
+                    {
+                        continue;
+                    }
+                    let at = ledger.charged_at.get(&(who.clone(), tag.clone()));
+                    findings.push(ordered.finding(
+                        hex,
+                        codes::PART_OF_HEX_SHORTFALL,
+                        format!(
+                            "This hex is short of {name} between its units. \
+                             See Problems for the hex."
+                        ),
+                        at,
+                    ));
+                }
             }
         }
 
@@ -53582,7 +53623,81 @@ BUILD
             "{:?}",
             review.findings
         );
-        // The SILVER column still nets at the month's end, so it shows neither sharer 8's nor
-        // sharer 7's draw; that is `ah-qrk0`'s follow-up, not this test's.
+        // Absence alone: before `ah-qrk0` there was no warning to suppress either, so this pins
+        // the arrival's cap only together with the test above, which shows the hex short without
+        // the arrival. The SILVER column still nets at the month's end, so it shows neither sharer
+        // 8's nor sharer 7's draw; that is `ah-aqqb`, not this test's.
+    }
+
+    /// A one-man quartermaster `q` in a Caravanserai with `silver`, beside `others`, in (7,53).
+    fn caravanserai_hex(q: &str, silver: i64, others: Vec<ReportUnit>) -> ReportRegion {
+        let mut quartermaster = with_skill(with_silver(unit(q), silver), "QUAM", 1);
+        quartermaster.structure_id = Some("500".to_string());
+        let mut units = vec![quartermaster];
+        units.extend(others);
+        ReportRegion {
+            structures: vec![Structure {
+                structure_id: "500".to_string(),
+                name: "Caravan".to_string(),
+                kind: "Caravanserai".to_string(),
+                ..Default::default()
+            }],
+            ..region_at("1:7,53", 7, 53, units)
+        }
+    }
+
+    /// A sharer that walks in lends at STUDY what it holds then: silver shipped to it afterwards
+    /// pays nothing that has already been studied (`rules/sequenceofevents`, `ah-qrk0` review).
+    #[test]
+    fn silver_shipped_to_an_arriving_sharer_after_study_does_not_pay_for_the_study() {
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("7".to_string(), Coordinate { x: 7, y: 53, z: 1 });
+        let review = review_turn(
+            &report(vec![
+                caravanserai_hex("5", 100, vec![with_men(with_silver(unit("6"), 0), 2)]),
+                region_at("1:7,51", 7, 51, vec![sharing(with_silver(unit("7"), 0))]),
+            ]),
+            "unit 5\nTRANSPORT 7 100 SILV\nunit 6\nSTUDY combat\nunit 7\nMOVE S\n",
+            Some(&ruleset()),
+            options,
+        );
+        assert!(
+            review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
+            "sharer 7 holds nothing as STUDY runs: {:#?}",
+            review.findings
+        );
+    }
+
+    /// A unit that is short only as STUDY runs - a shipment pays it back afterwards - is pointed
+    /// at on its own line like any other claimant on the pool (`ah-eurs`, `ah-qrk0` review).
+    #[test]
+    fn a_student_short_only_at_study_is_pointed_at_on_its_line() {
+        let review = review_turn(
+            &report(vec![caravanserai_hex(
+                "6",
+                0,
+                vec![
+                    with_silver(unit("9"), 100),
+                    sharing(with_silver(unit("8"), 0)),
+                ],
+            )]),
+            "unit 6\nSTUDY combat\nunit 9\nTRANSPORT 6 100 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        assert!(
+            review.findings.iter().any(|finding| {
+                finding.code == codes::PART_OF_HEX_SHORTFALL
+                    && finding.unit_id.as_deref() == Some("6")
+                    && finding.line == Some(2)
+            }),
+            "{:#?}",
+            review.findings
+        );
     }
 }
