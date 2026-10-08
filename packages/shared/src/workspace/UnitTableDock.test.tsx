@@ -1751,6 +1751,57 @@ describe("All my units shows the coming month (ah-tguk)", () => {
     expect(selected[0]).toContain("← 1:7,53");
   });
 
+  // `ah-xu6v`: a unit's orders and its silver forecast belong to the hex the report lists it in,
+  // which for an arrival is the hex it set out from. Read in the hex it arrives in, a `NEW 1` from
+  // B was handed the `NEW 1` formed in A's STUDY FARM and silver, and a `NEW 2` from B read
+  // whatever A's numbering made of `new-2`.
+  describe.each(["new-1", "new-2"])("a %s formed in B that moves into A, where A forms a new-1 (ah-xu6v)", (moverId) => {
+    const A = "1:6,52";
+    const B = "1:7,53";
+    const longOrders = new Map([
+      [unitRowKey(A, "new-1"), "STUDY FARM"],
+      [unitRowKey(B, moverId), "MOVE N"]
+    ]);
+    const forecasts = new Map([
+      [unitRowKey(A, "new-1"), aUnitSilver({ unitId: "new-1", regionId: A, atMonthEnd: 300 })],
+      [unitRowKey(B, moverId), aUnitSilver({ unitId: moverId, regionId: B, atMonthEnd: 25 })]
+    ]);
+    const markup = renderToStaticMarkup(
+      <UnitTableDock
+        hex={hex({ regionId: A, region: region({ regionId: A, units: [] }) })}
+        preview={{
+          regionId: A,
+          units: [
+            previewed(
+              { unitId: moverId, name: "Mover", regionId: A, own: true },
+              { formed: true, status: "arriving", arrivingFrom: B }
+            ),
+            previewed({ unitId: "new-1", name: "Farmer", regionId: A, own: true }, { formed: true })
+          ]
+        }}
+        getLongOrder={(unitId, regionId) => longOrders.get(unitRowKey(regionId, unitId)) ?? null}
+        getSilver={(unitId, regionId) => forecasts.get(unitRowKey(regionId, unitId)) ?? null}
+      />
+    );
+    const rowOf = (name: string): string =>
+      (markup.match(/<tr data-testid="unit-row-[\s\S]*?<\/tr>/g) ?? []).find((row) => row.includes(name)) ?? "";
+
+    it("the arriving unit shows its own long order and silver", () => {
+      const mover = rowOf("Mover");
+      expect(mover).toContain("MOVE N");
+      expect(mover).not.toContain("STUDY FARM");
+      expect(mover).toContain(">25<");
+      expect(mover).not.toContain(">300<");
+    });
+
+    it("the unit formed in A keeps its own long order and silver", () => {
+      const farmer = rowOf("Farmer");
+      expect(farmer).toContain("STUDY FARM");
+      expect(farmer).toContain(">300<");
+      expect(farmer).not.toContain(">25<");
+    });
+  });
+
   it("renders movement as an accessible letter with prediction history", () => {
     const preview = previewed(
       { movement: { ...WALKING, status: "ride", capacityMode: "ride", ride: 70 } },

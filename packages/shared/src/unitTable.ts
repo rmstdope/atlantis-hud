@@ -216,15 +216,15 @@ function valueOf(
       return unit.men;
     case "structure":
       return structureKey(unit, structures);
-    // Both of these are keyed by hex and unit, because a unit number is unique to a hex and not to
-    // a turn: two hexes can each hold a `new-1` (`ah-9o0c.2`), and a lookup on the id alone hands
-    // one hex's row the other's answer.
+    // Both of these are keyed by the row, because a unit number is unique to a hex and not to a
+    // turn: two hexes can each hold a `new-1` (`ah-9o0c.2`), and one of them can arrive where the
+    // other was formed (`ah-xu6v`), so a lookup on less than the whole row hands one the other's.
     case "longOrder":
-      return longOrderKey(longOrders.get(unitRowKey(unit.regionId, unit.unitId)) ?? null);
+      return longOrderKey(longOrders.get(rowKeyOf(unit)) ?? null);
     // A forecast that could not be priced, and a foreign unit that has none at all, are both null
     // - which `compareValues` already sorts last in either direction, so neither needs a sentinel.
     case "silver":
-      return silver.get(unitRowKey(unit.regionId, unit.unitId)) ?? null;
+      return silver.get(rowKeyOf(unit)) ?? null;
     // A row with no entry - every row of a source that is not an Army - is null, which
     // `compareValues` already sorts last in either direction.
     case "seen":
@@ -467,6 +467,18 @@ export function unitRowKey(
 
 /** The parts of a row its identity is read from. `ReportUnit` and `PreviewedUnit` both satisfy it. */
 export type KeyedRow = { regionId: string; unitId: string; arrivingFrom?: string | null };
+
+/**
+ * The hex a row's unit sets out from this month: where the report lists it, and so the hex its
+ * orders block and its silver forecast are keyed by. `arrivingFrom` for an arrival, else the row's
+ * own hex - the same answer as the core's `UnitRef::origin`.
+ *
+ * An arrival stands in a hex that numbers its `NEW n` aliases independently (`rules/form`), so
+ * reading its orders or its forecast there finds a different unit or none (`ah-xu6v`).
+ */
+export function setOutFrom(row: KeyedRow): string {
+  return row.arrivingFrom ?? row.regionId;
+}
 
 /** The `UnitRef` a row names. A row with no `arrivingFrom` does not arrive. */
 export function unitRefOf(row: KeyedRow): UnitRef {

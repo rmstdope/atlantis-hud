@@ -3,6 +3,7 @@ import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { structuresByRegionOf } from "./structureLabel";
 import {
+  setOutFrom,
   unitRefKey,
   unitRefOf,
   DEFAULT_SORT,
@@ -443,6 +444,48 @@ describe("a sort value belongs to a row, not to a unit number", () => {
         (entry) => entry.regionId
       )
     ).toEqual(["1:8,54", "1:7,53"]);
+  });
+});
+
+/**
+ * An arrival can stand in a hex that formed its own `new-1` this month (`ah-xu6v`): the two rows
+ * share a hex and a number, and only the arrival's origin tells them apart.
+ */
+describe("an arriving new-1 and the new-1 formed where it arrives sort on their own values", () => {
+  const formedHere = unit("new-1", true, { regionId: "1:6,52" });
+  const arriving = { ...unit("new-1", true, { regionId: "1:6,52" }), arrivingFrom: "1:7,53" };
+  const rows = [formedHere, arriving];
+  const origins = (sorted: readonly ReportUnit[]) =>
+    sorted.map((entry) => ("arrivingFrom" in entry ? entry.arrivingFrom : null));
+
+  it("by long order", () => {
+    const longOrders = new Map<UnitRowKey, string | null>([
+      [rowKeyOf(formedHere), "study farm"],
+      [rowKeyOf(arriving), "move n"]
+    ]);
+
+    expect(
+      origins(sortUnits(rows, { ...DEFAULT_SORT, column: "longOrder" }, new Map(), longOrders))
+    ).toEqual(["1:7,53", null]);
+  });
+
+  it("by silver", () => {
+    const silver = new Map<UnitRowKey, number | null>([
+      [rowKeyOf(formedHere), 300],
+      [rowKeyOf(arriving), 25]
+    ]);
+
+    expect(
+      origins(sortUnits(rows, { ...DEFAULT_SORT, column: "silver" }, new Map(), new Map(), silver))
+    ).toEqual(["1:7,53", null]);
+  });
+});
+
+describe("setOutFrom", () => {
+  it("is the origin for an arrival and the row's own hex otherwise", () => {
+    expect(setOutFrom({ regionId: "1:6,52", unitId: "new-1", arrivingFrom: "1:7,53" })).toBe("1:7,53");
+    expect(setOutFrom({ regionId: "1:6,52", unitId: "new-1", arrivingFrom: null })).toBe("1:6,52");
+    expect(setOutFrom({ regionId: "1:6,52", unitId: "new-1" })).toBe("1:6,52");
   });
 });
 
