@@ -3773,24 +3773,6 @@ impl Working {
         }
     }
 
-    /// What one transfer actually moves out of `holder`: the tag, the name the holder writes it
-    /// by, and how many.
-    ///
-    /// Snapshotted before anything moves, because the caller mutates the list this was read
-    /// from.
-    ///
-    /// `rules/give` lists the classes and defines `ITEM`/`ITEMS` as "the combination of all of
-    /// the previous categories", so it needs no classifying: it is everything. `MAN`/`MEN` is
-    /// `composition::men_in`'s filter, the same one that derived the headcount to begin with.
-    /// Every other class asks the catalogue (`Ruleset::class_members`, `ah-3sp7.1`); `ADVANCED`,
-    /// `MAGIC` and `SPECIAL` stay unresolvable because the data page never states their members,
-    /// and so does a word that is not a class at all.
-    ///
-    /// `GIVE target UNIT` hands over the whole unit rather than anything it holds - ownership is
-    /// a different question from what a row shows, and is left to a later issue.
-    ///
-    /// `give_outcome` preserves the discard exception, rejects men aimed at another faction, and
-    /// holds back a tag whose permission the report cannot establish (`rules/give`, `ah-66yi`).
     /// The units that lend `source` what it spends: every *other* unit of its faction in its
     /// region carrying `SHARE`, in report order - the engine's `Unit::GetSharedNum` and
     /// `Unit::ConsumeShared` (`unit.cpp`), which count the spender once, as itself (`ah-0mch`).
@@ -3831,6 +3813,24 @@ impl Working {
         pooled
     }
 
+    /// What one transfer actually moves out of `holder`: the tag, the name the holder writes it
+    /// by, and how many.
+    ///
+    /// Snapshotted before anything moves, because the caller mutates the list this was read
+    /// from.
+    ///
+    /// `rules/give` lists the classes and defines `ITEM`/`ITEMS` as "the combination of all of
+    /// the previous categories", so it needs no classifying: it is everything. `MAN`/`MEN` is
+    /// `composition::men_in`'s filter, the same one that derived the headcount to begin with.
+    /// Every other class asks the catalogue (`Ruleset::class_members`, `ah-3sp7.1`); `ADVANCED`,
+    /// `MAGIC` and `SPECIAL` stay unresolvable because the data page never states their members,
+    /// and so does a word that is not a class at all.
+    ///
+    /// `GIVE target UNIT` hands over the whole unit rather than anything it holds - ownership is
+    /// a different question from what a row shows, and is left to a later issue.
+    ///
+    /// `give_outcome` preserves the discard exception, rejects men aimed at another faction, and
+    /// holds back a tag whose permission the report cannot establish (`rules/give`, `ah-66yi`).
     fn tags_moved(
         &self,
         holder: usize,
