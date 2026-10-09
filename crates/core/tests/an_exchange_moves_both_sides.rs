@@ -387,3 +387,19 @@ fn an_unknown_item_is_listed_uncounted() {
     assert_eq!(swords, 5);
     assert_eq!(uncounted, vec![smith.to_string()]);
 }
+
+/// A foreign partner's answer is out of sight, so an exchange of silver with one may or may not
+/// move it: the SILVER column cannot be added up on either side (round-3 review's finding 1).
+#[test]
+fn an_exchange_of_silver_with_a_foreign_partner_doubts_the_silver_column() {
+    let paying = silver_row("", "EXCHANGE 7001 50 SILV 2 SWOR", "2392");
+    assert_eq!(
+        paying.doubt,
+        Some(SilverDoubt::ExchangeUncertain),
+        "{paying:?}"
+    );
+    let paid = silver_row("EXCHANGE 7001 2 SWOR 50 SILV", "", "2391");
+    assert_eq!(paid.doubt, Some(SilverDoubt::ExchangeUncertain), "{paid:?}");
+    let goods = silver_row("EXCHANGE 7001 2 SWOR 2 WOLF", "", "2391");
+    assert_eq!(goods.doubt, None, "no silver in it: {goods:?}");
+}

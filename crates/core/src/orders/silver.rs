@@ -2913,16 +2913,22 @@ pub fn forecast_unit(
                 income_doubt = income_doubt.or(Some(SilverDoubt::StealUncertain));
             }
             // An exchange whose holding is in doubt leaves every tag it might move uncertain on
-            // both parties (`semantics::apply_transfers`), so one moving silver cannot be added up
-            // on either side (`ah-mw1r.2`). A certain exchange is the ledger's record, as a gift
-            // each way.
+            // both parties (`semantics::apply_transfers`), and one with a foreign or unshown
+            // partner turns on an answer the report cannot show (the ledger's `Exchange` arm), so
+            // one moving silver cannot be added up on either side (`ah-mw1r.2`). A certain
+            // exchange is the ledger's record, as a gift each way.
             Intent::Exchange {
+                with,
                 give_item,
                 expect_item,
                 ..
             } if [give_item, expect_item].into_iter().any(|item| {
                 (lookups.item_tag)(item).is_some_and(|tag| tag.eq_ignore_ascii_case(SILVER_TAG))
-            }) && (lookups.uncertain_after_gifts)(SILVER_TAG).is_some() =>
+            }) && ((lookups.uncertain_after_gifts)(SILVER_TAG).is_some()
+                || matches!(
+                    (lookups.give_reach)(with),
+                    GiveReach::Foreign | GiveReach::Unshown
+                )) =>
             {
                 income_doubt = income_doubt.or(Some(SilverDoubt::ExchangeUncertain));
                 expense_doubt = expense_doubt.or(Some(SilverDoubt::ExchangeUncertain));
