@@ -1111,10 +1111,17 @@ pub fn pool_wants(
             Intent::Entertain => {
                 // ENTERTAIN is month-long, after the market (`rules/sequenceofevents`), and the
                 // engine reads a skill as days over men (`unit.cpp` `GetRealSkill`), so a recruit
-                // dilutes the level the entertainers are paid on (`ah-8n8y`).
+                // dilutes the level the entertainers are paid on (`ah-8n8y`). Where the
+                // arrivals cannot be merged there is no settled level, and the pre-market one is
+                // the best this report holds.
+                let skills = if facts.skills_after_arrivals_unknown {
+                    facts.skills
+                } else {
+                    facts.skills_after_arrivals
+                };
                 wants.entertainment = late
                     .men
-                    .saturating_mul(skill_level(facts.skills_after_arrivals, ENTERTAIN_TAG))
+                    .saturating_mul(skill_level(skills, ENTERTAIN_TAG))
                     .saturating_mul(ENTERTAIN_PER_MAN_PER_LEVEL);
             }
             _ => {}
@@ -1388,8 +1395,9 @@ pub struct UnitFacts<'a> {
     /// month-long order `rules/sequenceofevents` runs after the market (`ah-8n8y`). The arms that
     /// run before the market - TAX readiness and CAST - keep reading `skills`, the pre-market view.
     pub skills_after_arrivals: &'a [Skill],
-    /// Set when arrivals - gifts or recruits - cannot be merged into the unit's skills, so both
-    /// arms above go silent rather than judge a unit against a guess.
+    /// Set when arrivals - gifts or recruits - cannot be merged into the unit's skills, so
+    /// PRODUCE and the STUDY ceiling go silent rather than judge a unit against a guess, and
+    /// ENTERTAIN - a share of a contended pool, with no doubt of its own - falls back to `skills`.
     pub skills_after_arrivals_unknown: bool,
     /// The same picture's race breakdown - what `rules/skills_limitations` reads to find the
     /// least common denominator. Empty and `unknown` together where a recruit arrived by a route
@@ -8829,6 +8837,30 @@ mod tests {
             SharedMarket::Adds(0),
             None,
         )
+    }
+
+    /// `ah-8n8y`, review finding 2. Where this month's arrivals cannot be merged into the
+    /// unit's skills, ENTERTAIN keeps the pre-market view it read before the fix - the gifts
+    /// merged, the recruits not - rather than the empty settled one.
+    #[test]
+    fn an_entertainer_whose_arrivals_cannot_be_merged_keeps_the_pre_market_level() {
+        let receipts = Receipts::default();
+        let intents = [placed(Intent::Entertain)];
+        let skills = [skill("ENTE", 2)];
+        let wants = pool_wants(
+            &UnitFacts {
+                skills: &skills,
+                skills_after_arrivals: &[],
+                skills_after_arrivals_unknown: true,
+                ..facts(3, &intents, &receipts)
+            },
+            RegionWages {
+                entertainment: Some(10_000),
+                ..RegionWages::default()
+            },
+            None,
+        );
+        assert_eq!(wants.entertainment, 3 * 2 * ENTERTAIN_PER_MAN_PER_LEVEL);
     }
 
     #[test]

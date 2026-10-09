@@ -6611,8 +6611,8 @@ fn unit_facts<'a>(
         skills_unknown: ordered.skills_before_the_market().is_none(),
         // `ordered.skills()` already carries this month's recruits merged on top of its gifts,
         // since `apply_recruits` runs before a hex is priced. That post-recruit picture is read
-        // only by the SILVER column's PRODUCE arm (`ah-40c9`); `skills` above is deliberately the
-        // pre-market one.
+        // by the SILVER column's arms that run after the market - PRODUCE (`ah-40c9`), the STUDY
+        // ceiling and ENTERTAIN (`ah-8n8y`); `skills` above is deliberately the pre-market one.
         skills_after_arrivals: ordered.skills().unwrap_or(&ordered.unit.skills),
         skills_after_arrivals_unknown: ordered.skills().is_none(),
         men_by_race_after_arrivals: ordered
@@ -54782,7 +54782,7 @@ BUILD
             ..region(vec![with_men(with_silver(unit("900"), 9 * 38 + 50), 1)])
         };
         let study = study_of(
-            vec![hex_region],
+            vec![hex_region.clone()],
             "unit 900\nBUY 9 HUMN\nSTUDY Combat\n",
             "900",
         )
@@ -54792,6 +54792,17 @@ BUILD
         assert_eq!(study.doubts[0].reason, effects::StudyDoubtReason::FeeShort);
         assert_eq!(study.doubts[0].fee, 100);
         assert_eq!(study.doubts[0].short_by, 50);
+
+        // And the popup's fee is the ledger's own charge for the same orders.
+        let silver =
+            forecast_with_ruleset(vec![hex_region], "unit 900\nBUY 9 HUMN\nSTUDY Combat\n");
+        let studied: Vec<_> = silver
+            .changes
+            .iter()
+            .filter(|change| change.cause == SilverChangeCause::Studied)
+            .map(|change| change.amount)
+            .collect();
+        assert_eq!(studied, vec![-study.doubts[0].fee], "{:?}", silver.changes);
     }
 
     #[test]
