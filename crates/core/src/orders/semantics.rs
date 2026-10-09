@@ -11435,10 +11435,13 @@ fn settle_foundings<'a>(
             continue;
         }
         let actor = &hexes[index].units[unit].unit;
+        // A founding on a site the known map cannot clear spends its founders (`ah-m24v`), but an
+        // unseen settlement may still refuse it, so it only may refuse the later one (review
+        // finding 2 on PR #1489).
         let earlier = EarlierFounding {
             founder: format!("{} ({})", actor.name, actor.unit_id),
             at: at(index),
-            certain: founds,
+            certain: founds && hexes[index].village_site == VillageSite::Clear,
         };
         for (other, other_unit) in later {
             let beaten = hexes[other].units[other_unit].unit.unit_id.clone();
@@ -11492,14 +11495,6 @@ fn create_village(
         return;
     }
     let who = &actor.unit.unit_id;
-    // An earlier founding within two hexes refuses this one; one that may not found leaves this
-    // one admitted rather than counted (`ah-flx2`).
-    if let Some(earlier) = hex.beaten_foundings.get(who) {
-        if !earlier.certain {
-            mark_uncounted(ledger, who, placed.line);
-        }
-        return;
-    }
     let phase = StatePhase::PrimaryProduction;
     let mut people: Vec<(String, i64)> = ledger
         .state
@@ -11527,6 +11522,16 @@ fn create_village(
     }
     let founders: i64 = people.iter().map(|(_, amount)| amount).sum();
     if founders < VILLAGE_FOUNDERS || ledger.state.balance_at(phase, who, WAGON) < VILLAGE_WAGONS {
+        return;
+    }
+    // An earlier founding within two hexes refuses this one; one that may not found leaves this
+    // one admitted rather than counted (`ah-flx2`). Asked only of a founder that has what it takes,
+    // so one short of people stays a founding that cannot happen, which `settle_foundings` lets
+    // refuse nobody (review finding 1 on PR #1489).
+    if let Some(earlier) = hex.beaten_foundings.get(who) {
+        if !earlier.certain {
+            mark_uncounted(ledger, who, placed.line);
+        }
         return;
     }
     let mut owed = VILLAGE_FOUNDERS;

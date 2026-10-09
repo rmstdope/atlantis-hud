@@ -34,17 +34,27 @@ const DIRECTIONS: [(&str, i32, i32); 6] = [
     ("Northwest", -1, -1),
 ];
 
-/// A settler with 1005 orcs and 102 wagons: enough to found, five orcs and two wagons over.
-fn settler(id: u32) -> String {
+/// A settler with `orcs` orcs and 102 wagons.
+fn settler(id: u32, orcs: i64) -> String {
     format!(
-        "* Settlers ({id}), Foo (1), 1005 orcs [ORC], 102 wagons [WAGO], 20000 silver [SILV]. \
+        "* Settlers ({id}), Foo (1), {orcs} orcs [ORC], 102 wagons [WAGO], 20000 silver [SILV]. \
          Weight: 10000. Capacity: 0/0/15000/0."
     )
 }
 
 /// A report describing every plain hex of x and y in 4..=18, none settled, so every founding's
-/// neighbourhood is known to be empty, with `settlers` standing at the hexes named.
+/// neighbourhood is known to be empty, with `settlers` standing at the hexes named. Each settler
+/// holds 1005 orcs and 102 wagons: enough to found, five orcs and two wagons over.
 fn report(settlers: &[(i32, i32, u32)]) -> String {
+    let settlers: Vec<(i32, i32, u32, i64)> = settlers
+        .iter()
+        .map(|&(x, y, id)| (x, y, id, 1005))
+        .collect();
+    report_with_orcs(&settlers)
+}
+
+/// [`report`], with each settler's orcs given.
+fn report_with_orcs(settlers: &[(i32, i32, u32, i64)]) -> String {
     let mut lines = vec!["Foo (1) Report".to_string(), String::new()];
     for y in 4..=18 {
         for x in 4..=18 {
@@ -64,8 +74,11 @@ fn report(settlers: &[(i32, i32, u32)]) -> String {
                 ));
             }
             lines.push(String::new());
-            for &(_, _, id) in settlers.iter().filter(|&&(sx, sy, _)| (sx, sy) == (x, y)) {
-                lines.push(settler(id));
+            for &(_, _, id, orcs) in settlers
+                .iter()
+                .filter(|&&(sx, sy, _, _)| (sx, sy) == (x, y))
+            {
+                lines.push(settler(id, orcs));
                 lines.push(String::new());
             }
         }
@@ -251,5 +264,69 @@ fn a_founding_that_may_not_happen_leaves_the_later_one_admitted() {
              settlement"
                 .to_string()
         )]
+    );
+}
+
+/// Review finding 1 on PR #1489: a founder short of people founds nothing, so it casts no doubt on
+/// a later founding, even when an earlier founding may refuse it.
+#[test]
+fn a_founder_short_of_people_refuses_nobody() {
+    // (10,8) may found (men given to a unit no report shows); (10,10) has 500 orcs and never
+    // founds (`newage trident rules/create_village`: "at least 1000 people"); (10,14) is three
+    // hexes from (10,8) and two from (10,10), so it founds.
+    let text = report_with_orcs(&[(10, 8, 900, 1005), (10, 10, 901, 500), (10, 14, 902, 1005)]);
+    let orders = script(&text, &[900, 901, 902]).replace(
+        &format!("unit 900\n{CREATE}\n"),
+        &format!("unit 900\n{CREATE}\nGIVE 9999 10 ORC\n"),
+    );
+    let preview = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+        &text,
+        "[]",
+        &orders,
+    )
+    .expect("the Trident ruleset loads");
+    let last = common::preview_row(&text, &preview, "902").expect("902 founds");
+    assert_eq!(common::held_before_upkeep(last, "ORC"), 5);
+    assert_eq!(last.uncounted, Vec::<String>::new());
+}
+
+/// Review finding 2 on PR #1489: an earlier founding whose own neighbourhood the known map does
+/// not show may itself be refused, so the later one is only "may be refused", and admitted.
+#[test]
+fn an_earlier_founding_on_an_unsure_site_only_may_refuse() {
+    // (5,5)'s ring two hexes out reaches (5,1), which the report does not describe; (6,8) is two
+    // hexes from it, and its own neighbourhood is described in full.
+    let text = report(&[(5, 5, 900), (6, 8, 901)]);
+
+    assert_eq!(held(&text, &[900, 901], "ORC"), vec![5, 1005]);
+    let preview = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+        &text,
+        "[]",
+        &script(&text, &[900, 901]),
+    )
+    .expect("the Trident ruleset loads");
+    let later = common::preview_row(&text, &preview, "901").expect("the line is admitted");
+    assert_eq!(later.uncounted, vec![CREATE.to_string()]);
+    assert_eq!(
+        warnings(&validate(&text, &[900, 901])),
+        vec![
+            (
+                "900".to_string(),
+                "a settlement within 2 hexes may not be visible on the known map; CREATE VILLAGE \
+                 is refused if there is one"
+                    .to_string()
+            ),
+            (
+                "901".to_string(),
+                "CREATE VILLAGE may be refused: Settlers (900) may found a village at (5,5) first \
+                 this month, within 2 hexes, and a village must be at least 3 hexes from any \
+                 other settlement"
+                    .to_string()
+            )
+        ]
     );
 }
