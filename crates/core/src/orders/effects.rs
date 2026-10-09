@@ -2409,11 +2409,9 @@ impl Working {
             // `ARegion::Kill` adds every item that is not a soldier to the first unit's stock -
             // what it was given, what it `TAKE`s and what it `BUY`s alike (`ah-308c`).
             for item in self.units[index].inventory_when_deleted() {
-                // Read before the push: `self.units` is indexed mutably for `recipient` while
-                // `index` is still being read. `ARegion::Kill` skips `IsSoldier` items - men and
-                // monsters - which an empty unit holds none of.
-                let is_man = self.ruleset.is_man(&item.tag);
-                if is_man {
+                // `ARegion::Kill` skips `IsSoldier` items - men and monsters - which an empty unit
+                // holds none of.
+                if self.ruleset.is_man(&item.tag) {
                     continue;
                 }
                 add_item(
@@ -2438,7 +2436,7 @@ impl Working {
                         line: None,
                         unit_price: None,
                         other: Some(dissolving),
-                        is_man,
+                        is_man: false,
                     },
                     Stock::Moved,
                 );
