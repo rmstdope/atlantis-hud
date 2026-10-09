@@ -40,10 +40,14 @@ fn orders() -> String {
 }
 
 fn forecast_of(report: &str, unit_id: &str) -> UnitSilver {
+    forecast_under(report, &orders(), unit_id)
+}
+
+fn forecast_under(report: &str, orders: &str, unit_id: &str) -> UnitSilver {
     let ruleset = ruleset();
     let mut parsed = parse_report_full(report);
     classify_units(&mut parsed, &ruleset);
-    let review = review_turn(&parsed, &orders(), Some(&ruleset), CheckOptions::default());
+    let review = review_turn(&parsed, orders, Some(&ruleset), CheckOptions::default());
     review
         .silver
         .into_iter()
@@ -157,4 +161,38 @@ fn a_unit_hiding_its_faction_may_be_a_player() {
     let report = with_foreigners_of_the_hex(&["- Scout (99904), orc [ORC]."]);
     assert!(forecast_of(&report, "5105").production_foreign_sharer);
     assert!(forecast_of(&report, "1164").late_income_foreign_sharer);
+}
+
+#[test]
+fn a_workers_wages_are_a_ceiling_beside_a_foreign_unit() {
+    // `Wages: $19.4 (Max: $4530).` - a wage pool with money in it.
+    let worker = forecast_under(
+        &the_report(),
+        "#atlantis 42 \"<password>\"\n\nunit 1164\nWORK\n",
+        "1164",
+    );
+    assert!(
+        worker.late_income.is_some_and(|late| late > 0),
+        "the worker should be earning, or the assertion below is vacuous"
+    );
+    assert!(worker.late_income_foreign_sharer);
+    assert_eq!(worker.doubt, None);
+}
+
+/// A pool of nothing is divided among nobody, so its arithmetic is exact whoever else stands here.
+#[test]
+fn an_empty_entertainment_pool_bounds_nobody() {
+    let report = the_report();
+    assert!(report.contains("  Entertainment available: $1253.\n"));
+    let empty = report.replacen(
+        "  Entertainment available: $1253.\n",
+        "  Entertainment available: $0.\n",
+        1,
+    );
+    let entertainer = forecast_of(&empty, "1164");
+    assert!(
+        entertainer.late_income.is_some(),
+        "the month must still be a number, or the flag is false for the wrong reason"
+    );
+    assert!(!entertainer.late_income_foreign_sharer);
 }

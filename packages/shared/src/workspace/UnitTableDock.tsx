@@ -38,7 +38,7 @@ import { describeMenBriefly } from "../unitComposition";
 import {
   atMost,
   NOT_KNOWN,
-  monthEndIsACeiling,
+  shareBoundedByAnUnreadUnit,
   silverWasNeverRead,
   unitWasFullyRead,
   unreadCount,
@@ -2307,7 +2307,7 @@ function UnitRow({
       </span>
     </>
   ) : (
-    silverFigure(shownSilver, monthEndIsACeiling(silver))
+    silverFigure(shownSilver, shareBoundedByAnUnreadUnit(silver))
   );
 
   /**

@@ -26228,6 +26228,43 @@ mod tests {
             assert_eq!(produced_in_items(&effects, "1795", "IRON"), 16);
         }
 
+        /// A unit of another player's faction, for `ah-e23d.2`.
+        fn foreigner(id: &str) -> ReportUnit {
+            ReportUnit {
+                faction_id: Some("77".to_string()),
+                faction_name: Some("Rivals".to_string()),
+                own: false,
+                ..unit(id)
+            }
+        }
+
+        /// `ah-e23d.2`. A passenger produces from the destination's yield, so a foreign player
+        /// standing *there* is what makes its share a ceiling - judged by the region it produces
+        /// in, not the one it is listed in.
+        #[test]
+        fn a_passenger_beside_a_foreigner_where_it_lands_produces_a_ceiling() {
+            let report = sailing_north(vec![iron_to_the_north(vec![foreigner("9001")])]);
+            let orders = "unit 4021\nPRODUCE iron\nunit 4022\nSAIL N\n";
+            let review = review_turn(&report, orders, Some(&ruleset()), CheckOptions::default());
+            let passenger = silver_of(&review, "4021");
+            assert!(passenger.produced > 0);
+            assert!(passenger.production_foreign_sharer);
+            assert_eq!(passenger.production_region_name.as_deref(), Some("iron"));
+        }
+
+        /// `ah-e23d.2`. The same voyage with the foreigner left behind on the quay: the hex the
+        /// passenger draws on holds no foreign unit, so its share is not bounded.
+        #[test]
+        fn a_passenger_leaving_a_foreigner_behind_produces_a_figure() {
+            let mut report = sailing_north(vec![iron_to_the_north(Vec::new())]);
+            report.regions[0].units.push(foreigner("9001"));
+            let orders = "unit 4021\nPRODUCE iron\nunit 4022\nSAIL N\n";
+            let review = review_turn(&report, orders, Some(&ruleset()), CheckOptions::default());
+            let passenger = silver_of(&review, "4021");
+            assert!(passenger.produced > 0);
+            assert!(!passenger.production_foreign_sharer);
+        }
+
         /// `ah-k43x`. `sail_destination` answering `None` means "cannot say", never "did not
         /// move": the exit is reported but the region beyond it is not, so there is no yield to
         /// settle against and the passenger keeps today's uncapped answer. Never the origin's

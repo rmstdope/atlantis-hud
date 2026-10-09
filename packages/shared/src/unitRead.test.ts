@@ -4,7 +4,6 @@ import {
   atMost,
   monthLostToAnUnreadLine,
   shareBoundedByAnUnreadUnit,
-  monthEndIsACeiling,
   NOT_KNOWN,
   silverWasNeverRead,
   unitWasFullyRead,
@@ -176,25 +175,6 @@ describe("shareBoundedByAnUnreadUnit", () => {
   it("is false where there is no forecast at all", () => {
     expect(shareBoundedByAnUnreadUnit(null)).toBe(false);
     expect(shareBoundedByAnUnreadUnit(undefined)).toBe(false);
-  });
-});
-
-describe("monthEndIsACeiling (ah-e23d.2)", () => {
-  it("is true for a share an unread hex-mate bounds", () => {
-    expect(monthEndIsACeiling(aUnitSilver({ lateIncomeAtMost: true }))).toBe(true);
-  });
-
-  it("is true for wages a foreign player unit may share", () => {
-    expect(monthEndIsACeiling(aUnitSilver({ lateIncomeForeignSharer: true }))).toBe(true);
-  });
-
-  it("is not moved by a production ceiling, which costs no silver", () => {
-    expect(monthEndIsACeiling(aUnitSilver({ productionForeignSharer: true }))).toBe(false);
-  });
-
-  it("is false where there is no forecast, or nothing bounds it", () => {
-    expect(monthEndIsACeiling(aUnitSilver())).toBe(false);
-    expect(monthEndIsACeiling(null)).toBe(false);
   });
 });
 

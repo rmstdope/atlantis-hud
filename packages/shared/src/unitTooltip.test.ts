@@ -361,6 +361,37 @@ describe("the silver section", () => {
     ]);
   });
 
+  // `ah-e23d.2`. A foreign player that may share the pool leaves every figure plain - the
+  // navigator chose the note alone - and the note says why the figure may be less.
+  it("the_silver_section_leaves_a_foreign_sharers_figures_plain_and_says_why", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({
+        held: 60,
+        income: 60,
+        lateIncome: 60,
+        expense: 0,
+        upkeep: 50,
+        atMonthEnd: 582,
+        lateIncomeForeignSharer: true
+      }),
+      false,
+      true
+    );
+
+    expect(summary.silver?.rows).toEqual([
+      { label: "Held now", value: "60" },
+      { label: "In, in time", value: "0" },
+      { label: "In, too late", value: "60" },
+      { label: "Out", value: "0" },
+      { label: "Upkeep", value: "50" },
+      { label: "At month end", value: "532" }
+    ]);
+    expect(summary.silver?.note).toContain(
+      "A foreign unit in this region may also draw on this pool, so this unit may be paid less than this."
+    );
+  });
+
   it("the_silver_section_bounds_the_in_time_half_for_a_taxer", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),

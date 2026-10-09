@@ -415,7 +415,8 @@ pub struct UnitSilver {
     /// True when `late_income` is an **upper bound** because a foreign player unit stands in this
     /// hex and may work or entertain beside this unit: the engine divides the wage pool and the
     /// entertainment demand across every faction (`ah-e23d.2`). Apart from
-    /// [`Self::late_income_at_most`] because the hover explains the two differently. `false`
+    /// [`Self::late_income_at_most`] because the navigator chose a note alone for this one: no
+    /// figure is labelled `at most`, only the hover says why it may be less (2026-10-09). `false`
     /// wherever `late_income` is `None`, and for a unit drawing on no such pool here.
     pub late_income_foreign_sharer: bool,
     /// What the hex's `SHARE` purse paid for this unit's orders out of *other* units' silver -
@@ -2968,7 +2969,7 @@ pub fn forecast_unit(
             || (shares.unread_claimant_entertainment && draws_entertainment));
     // A foreign player unit in the hex may work or entertain here too, and the engine divides both
     // pools across every faction (`ah-e23d.2`): the same ceiling on the same two predicates, kept
-    // apart only because the hover gives it a different reason.
+    // apart because the shell shows it as a note alone and labels no figure with it.
     let late_income_foreign_sharer = late_income.is_some()
         && ((shares.foreign_claimant_wages && draws_wages)
             || (shares.foreign_claimant_entertainment && draws_entertainment));

@@ -189,7 +189,8 @@ lateIncomeAtMost: boolean,
  * True when `late_income` is an **upper bound** because a foreign player unit stands in this
  * hex and may work or entertain beside this unit: the engine divides the wage pool and the
  * entertainment demand across every faction (`ah-e23d.2`). Apart from
- * [`Self::late_income_at_most`] because the hover explains the two differently. `false`
+ * [`Self::late_income_at_most`] because the navigator chose a note alone for this one: no
+ * figure is labelled `at most`, only the hover says why it may be less (2026-10-09). `false`
  * wherever `late_income` is `None`, and for a unit drawing on no such pool here.
  */
 lateIncomeForeignSharer: boolean, 

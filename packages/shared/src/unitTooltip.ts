@@ -5,7 +5,7 @@ import {
   atMost,
   monthLostToAnUnreadLine,
   NOT_KNOWN,
-  monthEndIsACeiling,
+  shareBoundedByAnUnreadUnit,
   silverWasNeverRead
 } from "./unitRead";
 
@@ -202,17 +202,13 @@ function summariseSilver(
     },
     {
       label: "In, too late",
-      value: atMostIf(
-        figure(silver.lateIncome, unknown),
-        silver.lateIncome,
-        silver.lateIncomeAtMost || silver.lateIncomeForeignSharer
-      )
+      value: atMostIf(figure(silver.lateIncome, unknown), silver.lateIncome, silver.lateIncomeAtMost)
     },
     { label: "Out", value: figure(silver.expense, unknown) },
     ...(countUpkeep ? [{ label: "Upkeep", value: figure(silver.upkeep, unknown) }] : []),
     {
       label: "At month end",
-      value: atMostIf(figure(end, unknown), end, monthEndIsACeiling(silver))
+      value: atMostIf(figure(end, unknown), end, shareBoundedByAnUnreadUnit(silver))
     }
   ];
 

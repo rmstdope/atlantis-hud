@@ -37,7 +37,7 @@ import {
   atMost,
   monthLostToAnUnreadLine,
   NOT_KNOWN,
-  monthEndIsACeiling,
+  shareBoundedByAnUnreadUnit,
   silverWasNeverRead
 } from "./unitRead";
 import {
@@ -1786,7 +1786,7 @@ export function silverTotalLine(
       : shownObj.kind === "single"
         ? shownObj.value
         : shownObj.low;
-  const bounded = monthEndIsACeiling(silver);
+  const bounded = shareBoundedByAnUnreadUnit(silver);
   const displayValue =
     shownValue === null ? "?" : bounded && shownObj?.kind === "single" ? atMost(String(shownValue)) : formatShown(shownObj);
 

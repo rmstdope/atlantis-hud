@@ -139,15 +139,3 @@ export function atMost(text: string): string {
 export function shareBoundedByAnUnreadUnit(silver: UnitSilver | null | undefined): boolean {
   return (silver?.incomeInTimeAtMost ?? false) || (silver?.lateIncomeAtMost ?? false);
 }
-
-/**
- * Whether this unit's month-end figure is a ceiling for any reason: an unread hex-mate
- * ([`shareBoundedByAnUnreadUnit`]), or a foreign player unit that may work or entertain beside it
- * (`ah-e23d.2`). What every `at most` label reads; the notes that say *why* read the two apart.
- *
- * A production ceiling is not one of them: a primary `PRODUCE` costs no silver, so it bounds no
- * silver figure.
- */
-export function monthEndIsACeiling(silver: UnitSilver | null | undefined): boolean {
-  return shareBoundedByAnUnreadUnit(silver) || (silver?.lateIncomeForeignSharer ?? false);
-}
