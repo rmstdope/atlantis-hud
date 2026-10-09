@@ -44,6 +44,17 @@ pub enum Intent {
         from: Party,
         item: String,
     },
+    /// `EXCHANGE [unit] [quantity given] [item given] [quantity expected] [item expected]`. A free
+    /// order settled in the Give orders after GIVE and TAKE (`rules/sequenceofevents`). It moves
+    /// both items only when the partner's line is complementary and each side holds what it offers
+    /// (`rules/exchange`), which the ledger settles across the hex (`ah-mw1r.2`).
+    Exchange {
+        with: Party,
+        give_amount: i64,
+        give_item: String,
+        expect_amount: i64,
+        expect_item: String,
+    },
     /// `TAKE FROM`, which is a GIVE written from the other end.
     Take {
         from: Party,
@@ -607,9 +618,9 @@ impl<'a, 'r> FormReader<'a, 'r> {
 /// the navigator on 2026-08-19: TRANSPORT and its synonym DISTRIBUTE are free; ANNIHILATE is
 /// month-long and is given an intent below.
 ///
-/// Keywords that already yield an intent (BUY, SELL, GIVE, TAKE, STEAL, ENTER, LEAVE, GUARD, AVOID,
-/// CLAIM, WITHDRAW, FORM, CAST) never reach this list at runtime. They are listed anyway so that the
-/// classification of every order lives in one readable place.
+/// Keywords that already yield an intent (BUY, SELL, GIVE, TAKE, STEAL, EXCHANGE, ENTER, LEAVE,
+/// GUARD, AVOID, CLAIM, WITHDRAW, FORM, CAST) never reach this list at runtime. They are listed
+/// anyway so that the classification of every order lives in one readable place.
 const FREE_ORDERS: &[&str] = &[
     "ADDRESS",
     "ARMOR",
@@ -752,6 +763,21 @@ pub fn read_order(
             let (from, rest) = forms::read_party(arguments)?;
             let item = rest.first().filter(|_| rest.len() == 1)?.text.clone();
             Some(Intent::Steal { from, item })
+        }
+        "EXCHANGE" => {
+            let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
+            let (with, rest) = forms::read_party(arguments)?;
+            let [give_amount, give_item, expect_amount, expect_item] = rest else {
+                return None;
+            };
+            let count = |token: &Token| token.text.parse::<i64>().ok().filter(|count| *count >= 0);
+            Some(Intent::Exchange {
+                with,
+                give_amount: count(give_amount)?,
+                give_item: give_item.text.clone(),
+                expect_amount: count(expect_amount)?,
+                expect_item: expect_item.text.clone(),
+            })
         }
         "BUY" | "SELL" => {
             let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
@@ -1030,6 +1056,7 @@ pub fn spends_the_month(intent: &Intent) -> bool {
         | Intent::Transport { .. }
         | Intent::Take { .. }
         | Intent::Steal { .. }
+        | Intent::Exchange { .. }
         | Intent::Buy { .. }
         | Intent::Sell { .. }
         | Intent::Guard(_)
