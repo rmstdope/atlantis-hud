@@ -37366,8 +37366,11 @@ BUILD
     /// `counted_by_name` built in `forecast_hex`, not a test double. `plurals_in` reads the whole
     /// report for a plural, not the caster's own inventory - the caster does not hold the thing it
     /// is about to create - so a bystander unit holding two supplies the word (`ah-rsdz`).
+    ///
+    /// No longer capped since `ah-jmr8`: a create-artifact cast pays its 200 once, so the 400 this
+    /// mage holds makes all three where `ah-ofpb.4`'s charge per item cut it to two.
     #[test]
-    fn a_capped_cast_names_what_it_will_make() {
+    fn a_cast_names_what_it_will_make() {
         let forecast = forecast_with_ruleset(
             vec![region(vec![
                 with_silver(with_skill(unit("5"), "CRPA", 3), 400),
@@ -37376,17 +37379,14 @@ BUILD
             "unit 5\nCAST Create_Amulet_Of_Protection\n",
         );
 
-        assert_eq!(forecast.cast_made, 2);
+        assert_eq!(forecast.cast_made, 3);
         assert_eq!(
             forecast.cast_made_named.as_deref(),
-            Some("2 amulets of protection")
+            Some("3 amulets of protection")
         );
         assert_eq!(forecast.cast_wanted, 3);
-        assert_eq!(
-            forecast.cast_capped_by,
-            Some(crate::orders::silver::ProductionCap::Silver)
-        );
-        assert_eq!(forecast.expense, Some(400));
+        assert_eq!(forecast.cast_capped_by, None);
+        assert_eq!(forecast.expense, Some(200));
     }
 
     #[test]
@@ -37399,7 +37399,8 @@ BUILD
             "unit 5\nCAST Create_Amulet_Of_Protection\n",
         );
 
-        assert_eq!(forecast.expense, Some(600));
+        // Once per cast (`ah-jmr8`), however many it makes.
+        assert_eq!(forecast.expense, Some(200));
         assert_eq!(forecast.cast_made, 3);
         assert_eq!(forecast.cast_capped_by, None);
     }
@@ -37421,7 +37422,8 @@ BUILD
 
         let mage = forecast(&review, "5");
         assert_eq!(mage.cast_made, 3);
-        assert_eq!(mage.expense, Some(600));
+        // One cast's price, not one per amulet (`ah-jmr8`).
+        assert_eq!(mage.expense, Some(200));
     }
 
     #[test]
@@ -39797,9 +39799,10 @@ BUILD
         );
     }
 
-    /// `ah-ofpb.4`: the engine charges the stated cost once **per item** the cast will make, not
-    /// once whatever the level makes. A capped cast can never overspend on its own, so the gift to
-    /// unit 6 is what makes the charge observable at all; unit 6 has to stand in the hex or the
+    /// A mage that cannot pay is still charged one cast's price, so the warning fires (`ah-ofpb.4`
+    /// R2). `ah-ofpb.4` read the cost as charged once per item; `ah-jmr8` replaced that with the
+    /// engine's once per cast (`Game::RunCreateArtifact`). The gift to unit 6 is what makes the
+    /// charge observable at all; unit 6 has to stand in the hex or the
     /// gift goes uncounted and a second, unrelated finding breaks `only()`.
     ///
     /// `ah-gdd3.1` changed what the mage can afford, and so this message. `rules/sequenceofevents`
@@ -39810,12 +39813,10 @@ BUILD
     /// any. $500 + $200 = $700 against a purse of $600. Before that correction the cast was priced
     /// from the report's opening holding, which is the bug `ah-gdd3.1` exists to fix.
     ///
-    /// A capped cast can never overspend on its own, so with the gift settled first this fixture
-    /// can only reach `plan_cast`'s `charged = max(1, made)` fallback: the **per-item** charge
-    /// `ah-ofpb.4` introduced is pinned by `silver::tests::prices_a_cast_for_every_item_it_makes`,
+    /// The once-per-cast charge itself is pinned by `silver::tests::prices_a_created_artifact_once_per_cast`,
     /// which is where a reader should go for it.
     #[test]
-    fn a_mage_is_charged_for_every_artifact_it_makes() {
+    fn a_mage_that_cannot_pay_is_charged_one_cast() {
         let regions = vec![region(vec![
             with_silver(with_skill(unit("5"), "CRPA", 3), 600),
             unit("6"),
