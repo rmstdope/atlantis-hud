@@ -27,10 +27,19 @@ pub(crate) enum StatePhase {
     Withdraw,
     Movement,
     Study,
+    /// Manufacturing PRODUCE **and** BUILD, as one walk of the hex in report order.
+    ///
+    /// The rules pages list them as two phases (`rules/sequenceofevents`; `newage trident
+    /// rules/sequenceofevents` even puts BUILD first), but both engines run them together:
+    /// `monthorders.cpp` `RunProduceOrders` reaches each unit in turn and runs its manufacturing
+    /// PRODUCE or its BUILD there and then, so a builder above a manufacturer on the report is
+    /// served before it and one below is served after it. The navigator chose the engine's
+    /// schedule for every world (`ah-e23d.1`). One phase, so a spend by either order is seen by the
+    /// next unit the walk reaches whichever kind of order it carries.
     Manufacturing,
-    Build,
     /// Primary PRODUCE - a recipe taking no item inputs, which draws on the region's resources
-    /// rather than on goods. `rules/sequenceofevents` runs it *after* BUILD, which is the whole
+    /// rather than on goods. Both engines run it after the manufacturing and BUILD walk
+    /// (`monthorders.cpp` `RunAProduction`, after `RunProduceOrders`'s loop), which is the whole
     /// reason it is a phase of its own: an output credited here is invisible to BUILD, while one
     /// credited at [`StatePhase::Manufacturing`] is not (`ah-728m.2.2`).
     ///
@@ -47,7 +56,7 @@ pub(crate) enum StatePhase {
 }
 
 impl StatePhase {
-    pub(crate) const COUNT: usize = 15;
+    pub(crate) const COUNT: usize = 14;
 }
 
 /// Every phase an order can settle in, in the turn's order.
@@ -58,7 +67,7 @@ impl StatePhase {
 /// before starting the next phase"). [`StatePhase::PrimaryProduction`]: [`phase_of`] cannot answer
 /// it without a ruleset, and [`super::semantics`] runs both PRODUCE passes outside this walk
 /// anyway (`ah-728m.2.2`).
-pub(crate) const ORDER: [StatePhase; 12] = [
+pub(crate) const ORDER: [StatePhase; 11] = [
     StatePhase::Instant,
     StatePhase::Claim,
     StatePhase::Give,
@@ -69,7 +78,6 @@ pub(crate) const ORDER: [StatePhase; 12] = [
     StatePhase::Movement,
     StatePhase::Study,
     StatePhase::Manufacturing,
-    StatePhase::Build,
     StatePhase::Wages,
 ];
 
@@ -113,8 +121,9 @@ pub(crate) fn phase_of(intent: &Intent) -> StatePhase {
         // but only a manufacturing recipe has a silver input, so nothing here can tell them apart
         // by cash. An unrecognised month-long keyword settles nothing and belongs in the same block.
         Intent::Produce { .. } | Intent::MonthLong(_) => StatePhase::Manufacturing,
-        // "BUILD orders are processed", after manufacturing.
-        Intent::Build { .. } => StatePhase::Build,
+        // BUILD shares manufacturing's walk: `monthorders.cpp` `RunProduceOrders` runs either
+        // order as it reaches the unit (`ah-e23d.1`).
+        Intent::Build { .. } => StatePhase::Manufacturing,
         // "ENTERTAIN orders are processed. WORK orders are processed." - the last earners.
         Intent::Work | Intent::Entertain => StatePhase::Wages,
     }
@@ -235,7 +244,7 @@ mod tests {
                     helping: None,
                     material: None,
                 },
-                StatePhase::Build,
+                StatePhase::Manufacturing,
             ),
             (Intent::Work, StatePhase::Wages),
             (Intent::Entertain, StatePhase::Wages),

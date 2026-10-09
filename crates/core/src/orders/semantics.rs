@@ -789,7 +789,7 @@ pub fn review_turn(
             (hex, ledger)
         })
         .collect();
-    lend_to_month_end_hexes(&mut hexes, &departing, ruleset, price);
+    lend_to_month_end_hexes(&mut hexes, &departing, price);
     // Who can share with whom once movement ends: one answer for every consumer (`ah-oby0`).
     let reach = SharingReach::read(&hexes, report, &options.month_end);
     // A sharer's silver pays a shipment where its month ends (`ah-wyj8`) ...
@@ -4915,10 +4915,10 @@ struct Ledger<'a> {
     /// settle *before* production - a GIVE is nine phases earlier
     /// (`produced_goods_do_not_arrive_in_time_to_be_given_away`). But unwinding the whole credit
     /// would then bill the producer for output another unit legitimately consumed at
-    /// `Manufacturing` or `Build`, and warn about goods that existed. So the credit reaches the
+    /// `Manufacturing` (where BUILD settles too), and warn about goods that existed. So the credit reaches the
     /// phases that may consume it, and `unwind_unconsumed_production` takes back only what nothing
     /// did. **Per phase, not per tag**: a spend at `Manufacturing` cannot have consumed an output
-    /// credited at `PrimaryProduction`, which is two phases later (`ah-728m.2.2`).
+    /// credited at `PrimaryProduction`, which is the phase after it (`ah-728m.2.2`).
     produced: BTreeMap<(String, String), [i64; StatePhase::COUNT]>,
     /// What each `PRODUCE` was priced against, material by material - the pooled availability
     /// `material_available_at` answered at that order's turn in the report-order pass.
@@ -5706,7 +5706,7 @@ fn ledger_for_reaching<'a>(
     // `produce` has read the balance is one `produce` never saw, whichever phase it wrote into
     // (`rules/sequenceofevents`, `ah-l80z`). The walk above is itself phase-ordered since
     // `ah-gdd3.1`, so this pass is what puts manufacturing after everything deferred *out* of that
-    // walk rather than what puts it after the market. The same treatment BUILD has directly below.
+    // walk rather than what puts it after the market. BUILD settles in the same pass below.
     //
     // One walk of the whole hex's balances, not one per PRODUCE order: this path runs on every
     // keystroke, and `PhaseState::stocks` reads every unit and every tag (`ah-1ad6.2`,
@@ -5720,17 +5720,18 @@ fn ledger_for_reaching<'a>(
     // (`rules/sequenceofevents`: movement first), so it lends this hex nothing for them.
     let sharing = Sharing::staying(hex, &reach.departing);
 
-    // The month-long passes, in the order this world's rules state - three in New Origins
-    // (manufacturing PRODUCE, then BUILD, then primary PRODUCE), two in Trident (BUILD, then one
-    // combined production phase); see `month_long_passes`. Each walks `hex.units` whole before
-    // the next begins, because the rules settle a phase across the region rather than a unit's
-    // block at a time - so a
-    // sharing unit's material is consumed by the manufacturer above it on the report before the
-    // builder below it can spend the rest, and "units that appear higher on the report get
-    // precedence" is what breaks the tie inside each pass (`ah-728m.2.2`).
-    for pass in month_long_passes(ruleset) {
+    // The month-long passes, in the order both engines run them (`monthorders.cpp`
+    // `RunMonthOrders`): one walk running each unit's manufacturing PRODUCE or BUILD as it is
+    // reached, then primary production; see `month_long_passes`. Each pass walks the whole hex
+    // before the next begins, so a sharing unit's material goes to whichever of a manufacturer and
+    // a builder the walk reaches first, and the other gets what is left (`ah-728m.2.2`,
+    // `ah-e23d.1`). The walk's order is `month_long_walk`'s: report order, with the units founding
+    // a structure moved to the end.
+    let walk = month_long_walk(hex, ruleset);
+    for pass in month_long_passes() {
         let pass = *pass;
-        for (index, ordered) in hex.units.iter().enumerate() {
+        for &index in &walk {
+            let ordered = &hex.units[index];
             // The tools and the men this unit works with, as its month-long orders open. Not its
             // materials: those are read from `PhaseState` inside `produce`, which pools the hex's
             // shared stock and carries what earlier consumers in this pass already took.
@@ -5767,7 +5768,7 @@ fn ledger_for_reaching<'a>(
                         founding,
                         helping,
                         material,
-                    } if pass == StatePhase::Build => {
+                    } if pass == StatePhase::Manufacturing => {
                         build(
                             &mut ledger,
                             ordered,
@@ -5825,7 +5826,7 @@ fn unwind_unconsumed_production(ledger: &mut Ledger<'_>) {
             // Walk the phases in the turn's order, carrying forward what has been credited and
             // not yet spent. A spend can only consume output credited at its own phase or an
             // earlier one, which is what keeps a `Manufacturing` spend from netting off a
-            // `PrimaryProduction` output two phases later.
+            // `PrimaryProduction` output in the phase after it.
             let mut unspent = 0i64;
             for phase in 0..StatePhase::COUNT {
                 unspent += made[phase];
@@ -5846,32 +5847,21 @@ fn unwind_unconsumed_production(ledger: &mut Ledger<'_>) {
 
 /// Which of the month's two PRODUCE phases one order settles in.
 ///
-/// `rules/sequenceofevents` runs "Manufacturing PRODUCE orders (those that produce items from
-/// other items ...)" before BUILD and "Primary PRODUCE orders (those that produce items from
-/// region resources ...)" after it. A recipe with no inputs is primary - the same predicate
+/// Both engines run a manufacturing PRODUCE inside the walk that also runs BUILD
+/// (`monthorders.cpp` `RunProduceOrders` -> `RunUnitProduce`), and a PRODUCE drawing on the
+/// region's resources after it (`RunAProduction`); `rules/sequenceofevents` agrees that primary
+/// PRODUCE follows BUILD. A recipe with no inputs is primary - the same predicate
 /// `production_tag_of` and `check_production` read, and neither the item's category nor the
 /// region's `Products` line is a substitute.
 ///
 /// An order nothing in the ruleset prices settles in the manufacturing pass, so its existing
 /// uncounted/doubted handling runs exactly once and in the place it always ran.
-///
-/// Trident has one production phase rather than two, and it runs after BUILD - see the early
-/// return in the body, and [`month_long_passes`] below.
 fn produce_phase(
     hex: &Hex<'_>,
     actor: &Ordered<'_>,
     item: &str,
     ruleset: Option<&Ruleset>,
 ) -> StatePhase {
-    // Trident has one production phase holding both kinds, and it runs after BUILD
-    // (`newage trident rules/sequenceofevents`), so every PRODUCE there settles in the later slot
-    // whatever its recipe - which is also what makes this month's output invisible to this
-    // month's BUILD, since `PhaseState::apply` writes a delta into its own slot and every later
-    // one. The unpriced-settles-in-the-manufacturing-pass rule in this function's own doc comment
-    // has nothing to choose between in a world with a single production phase.
-    if ruleset.is_some_and(Ruleset::builds_before_production) {
-        return StatePhase::PrimaryProduction;
-    }
     let primary = resolve_item(item, hex, actor, ruleset)
         .as_deref()
         .and_then(|tag| producing_skill(ruleset, tag, actor.skills()))
@@ -5883,23 +5873,38 @@ fn produce_phase(
     }
 }
 
-/// The month-long passes this world runs, in the turn's order.
+/// The month-long passes, in the turn's order, for every world.
 ///
-/// New Origins settles manufacturing PRODUCE, then BUILD, then primary PRODUCE
-/// (`rules/sequenceofevents`). Trident settles BUILD and then one production phase holding both
-/// kinds (`newage trident rules/sequenceofevents`), which is why its list is two long:
-/// [`produce_phase`] sends every Trident PRODUCE to [`StatePhase::PrimaryProduction`], so a
-/// manufacturing pass would be a whole extra walk of every unit in the hex with nothing to do.
-fn month_long_passes(ruleset: Option<&Ruleset>) -> &'static [StatePhase] {
-    if ruleset.is_some_and(Ruleset::builds_before_production) {
-        &[StatePhase::Build, StatePhase::PrimaryProduction]
-    } else {
-        &[
-            StatePhase::Manufacturing,
-            StatePhase::Build,
-            StatePhase::PrimaryProduction,
-        ]
-    }
+/// Both engines (`../Atlantis` and `../atlantis-newage` `monthorders.cpp`) run one walk of the
+/// region holding manufacturing PRODUCE and BUILD together, then primary production. The rules
+/// pages disagree with each other and with the engine - New Origins lists manufacturing, BUILD,
+/// primary; Trident and Arcanum list BUILD, then one PRODUCE phase - and the navigator chose the
+/// engine's schedule for all three (`ah-e23d.1`).
+fn month_long_passes() -> &'static [StatePhase] {
+    &[StatePhase::Manufacturing, StatePhase::PrimaryProduction]
+}
+
+/// The order the month-long walk reaches the hex's units in, as indices into `hex.units`.
+///
+/// Report order, except that a unit founding a structure comes after every other unit, keeping
+/// the founders' own order. `monthorders.cpp` `AddNewBuildings` runs before the walk, makes each
+/// new structure, appends it to the region's objects and moves its founder into it, and
+/// `RunProduceOrders` then walks the objects in order - so a founder is reached last, wherever it
+/// sat on the report. A ship is not founded that way (`RunBuildShipOrder` runs where the unit
+/// is), and neither is a name the catalogue has no structure for.
+fn month_long_walk(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<usize> {
+    let founds_a_structure = |ordered: &Ordered<'_>| {
+        ordered.intents.iter().any(|placed| match &placed.intent {
+            Intent::Build {
+                founding: Some(kind),
+                ..
+            } => ruleset.is_some_and(|ruleset| ruleset.build_recipe(kind).is_some()),
+            _ => false,
+        })
+    };
+    let (founders, others): (Vec<usize>, Vec<usize>) =
+        (0..hex.units.len()).partition(|&index| founds_a_structure(&hex.units[index]));
+    others.into_iter().chain(founders).collect()
 }
 
 fn discard_unfinished_ships_after_movement(
@@ -6108,7 +6113,7 @@ pub(crate) fn item_effects(
             (hex, ledger)
         })
         .collect();
-    lend_to_month_end_hexes(&mut priced, &departing, ruleset, price);
+    lend_to_month_end_hexes(&mut priced, &departing, price);
     let reach = SharingReach::read(&priced, report, &options.month_end);
     // The same shipping purse `review_turn` settles against (`ah-wyj8`).
     lend_walking_sharers_silver(&mut priced, &reach, StatePhase::Transport);
@@ -8557,7 +8562,7 @@ fn produce(
     );
     // The running deduction is `PhaseState`'s since `ah-728m.2.2`: every charge below writes into
     // it at this phase and every later one, so a second `PRODUCE` line - or the next unit in
-    // report order, or the BUILD pass - reads what this one consumed without a list being threaded
+    // the walk, or a BUILD it reaches later - reads what this one consumed without a list being threaded
     // between them.
     for material in &plan.materials {
         charge_shared_material(
@@ -8571,11 +8576,12 @@ fn produce(
         );
     }
     if let Some(tag) = tag.filter(|_| plan.made != 0) {
-        // Credited into the phase, not only recorded as a movement: manufacturing runs before
-        // BUILD and before every later manufacturer, so an earlier sharing producer's output is
-        // material they may work from (`rules/sequenceofevents`, the navigator's choice in
-        // `docs/ui/ah-728m.2.2-same-phase.html`). A primary run credits at
-        // `StatePhase::PrimaryProduction`, which is after BUILD and so invisible to it.
+        // Credited into the phase, not only recorded as a movement: a manufacturer's output is
+        // there for every builder and manufacturer the walk reaches after it, so a sharing
+        // producer's output is material they may work from (`monthorders.cpp` `RunUnitProduce`,
+        // the navigator's choice in `docs/ui/ah-728m.2.2-same-phase.html`, `ah-e23d.1`). A primary
+        // run credits at `StatePhase::PrimaryProduction`, which is after BUILD and so invisible to
+        // it.
         credit(ledger, phase, who, &tag, plan.made);
         // ...and remembered, so `unwind_unconsumed_production` can take back at `Wages` whatever
         // no later order spent. What the unit ends the month holding is the preview's answer,
@@ -8995,7 +9001,12 @@ fn build(
     // among its alternatives cannot be settled (`ah-66yi`). Read through the pool since
     // `ah-728m.2.2`, which withholds a doubted sharer's stock without silencing the order.
     let available_of = |tag: &str| {
-        material_available_at(ledger, StatePhase::Build, pool, &tag.to_ascii_uppercase())
+        material_available_at(
+            ledger,
+            StatePhase::Manufacturing,
+            pool,
+            &tag.to_ascii_uppercase(),
+        )
     };
     if let Some(reason) = founding_kind
         .as_deref()
@@ -9108,7 +9119,7 @@ fn build(
         // in report order, each debited on its own row (`ah-728m.2.2`).
         charge_shared_material(
             ledger,
-            StatePhase::Build,
+            StatePhase::Manufacturing,
             pool,
             &tag,
             share.amount,
@@ -13597,13 +13608,12 @@ fn departing_ids(departing: &BTreeMap<String, Coordinate>) -> MonthLongReach {
 fn lend_to_month_end_hexes<'a>(
     priced: &mut [(Hex<'_>, Ledger<'a>)],
     departing: &[BTreeMap<String, Coordinate>],
-    ruleset: Option<&Ruleset>,
     rebuild: impl Fn(&Hex<'_>, MonthLongReach) -> Ledger<'a>,
 ) {
     if departing.iter().all(BTreeMap::is_empty) {
         return;
     }
-    let last_pass = *month_long_passes(ruleset)
+    let last_pass = *month_long_passes()
         .last()
         .expect("every world has a month-long pass");
     let index_of: HashMap<Coordinate, usize> = priced
@@ -18702,10 +18712,10 @@ mod tests {
             .known_balance_at(StatePhase::Market, "1", "IRON")
             .is_err());
         assert!(state
-            .known_balance_at(StatePhase::Build, "1", "iron")
+            .known_balance_at(StatePhase::Manufacturing, "1", "iron")
             .is_err());
         assert_eq!(
-            state.known_balance_at(StatePhase::Build, "1", "STON"),
+            state.known_balance_at(StatePhase::Manufacturing, "1", "STON"),
             Ok(12)
         );
     }
@@ -26498,15 +26508,16 @@ mod tests {
             read(&ledger)
         }
 
-        /// `newage trident rules/sequenceofevents` runs "BUILD orders are processed" first and
-        /// then one PRODUCE phase, so the builder reads a pool no manufacturer has touched - the
-        /// exact opposite of the New Origins case above.
+        /// Trident's engine walks manufacturing PRODUCE and BUILD together in report order
+        /// (`../atlantis-newage` `monthorders.cpp` `RunProduceOrders`), so a builder below a
+        /// manufacturer gets what the manufacturer leaves - the same as New Origins, whatever
+        /// `newage trident rules/sequenceofevents` says about BUILD going first (`ah-e23d.1`).
         ///
         /// `newage trident data/carpenter`: "CARP 1 ... may PRODUCE wagons [WAGO] from wood
         /// [WOOD] at a rate of 1 per man-month". `newage trident data/farming`: "FARM 3: ... may
         /// BUILD a Farm from 10 wood".
         #[test]
-        fn a_trident_builder_takes_shared_material_before_a_manufacturer() {
+        fn a_trident_builder_below_a_manufacturer_gets_what_it_leaves() {
             let hex_region = ReportRegion {
                 structures: vec![unfinished_building("4")],
                 ..region(vec![
@@ -26525,8 +26536,8 @@ BUILD
                 |ledger| {
                     assert_eq!(
                         ledger.built.get("902").map(|spends| spends[0].amount),
-                        Some(30),
-                        "the builder settles first and takes the thirty its men can lay"
+                        Some(25),
+                        "the wagons take fifteen first; the builder lays the twenty-five left"
                     );
                     assert_eq!(
                         ledger
@@ -26535,17 +26546,18 @@ BUILD
                             .filter(|movement| movement.tag == "WOOD")
                             .map(|movement| (movement.unit_id.as_str(), movement.delta))
                             .collect::<Vec<_>>(),
-                        vec![("901", -30), ("901", -10)],
-                        "the build debit comes first; the wagons get what is left"
+                        vec![("901", -15), ("901", -25)],
+                        "the production debit comes first; the build gets what is left"
                     );
                     assert_eq!(balance_of(ledger, "901", "WOOD"), 0);
                 },
             );
         }
 
-        /// Under Trident the whole BUILD phase is over before any PRODUCE runs, so a unit cannot
-        /// lay this month's own output: `PhaseState::apply` writes a credit into its own slot and
-        /// every later one, and `PrimaryProduction` is later than `Build`.
+        /// Trident's engine runs primary production after the walk holding BUILD
+        /// (`../atlantis-newage` `monthorders.cpp` `RunAProduction`), so a unit cannot lay this
+        /// month's own cut wood: `PhaseState::apply` writes a credit into its own slot and every
+        /// later one, and `PrimaryProduction` is later than `Manufacturing`.
         ///
         /// `newage trident data/lumberjack`: "LUMB 1 ... may PRODUCE wood [WOOD] at a rate of 1
         /// per man-month". `newage trident data/farming`: "FARM 3: ... may BUILD a Farm from 10
@@ -26599,11 +26611,12 @@ BUILD Farm
             );
         }
 
-        /// Trident settles manufacturing and primary production in one phase, tied by report
-        /// position, so a lumberjack above a carpenter feeds it the wood it cuts this month. New
-        /// Origins settles primary production last and gets this the other way round.
+        /// Trident's engine runs primary production after the manufacturing walk
+        /// (`../atlantis-newage` `monthorders.cpp`: `RunAProduction` follows `RunProduceOrders`'
+        /// loop), so wood a lumberjack cuts this month is not there for a carpenter, wherever the
+        /// two sit on the report - as in New Origins (`ah-e23d.1`).
         #[test]
-        fn a_trident_primary_producer_feeds_a_manufacturer_below_it() {
+        fn a_trident_primary_producer_does_not_feed_a_manufacturer_below_it() {
             let hex_region = ReportRegion {
                 products: vec![ItemAmount {
                     amount: 100,
@@ -26624,13 +26637,11 @@ PRODUCE wagon
 ",
                 |ledger| {
                     assert!(
-                        ledger
+                        !ledger
                             .movements
                             .iter()
-                            .any(|movement| movement.tag == "WAGO"
-                                && movement.unit_id == "901"
-                                && movement.delta == 5),
-                        "the wagon-maker works from the wood cut above it: {:?}",
+                            .any(|movement| movement.tag == "WAGO" && movement.delta > 0),
+                        "the wagon-maker has no wood when it is reached: {:?}",
                         ledger.movements
                     );
                     assert_eq!(
@@ -26640,8 +26651,8 @@ PRODUCE wagon
                             .filter(|movement| movement.tag == "WOOD")
                             .map(|movement| (movement.unit_id.as_str(), movement.delta))
                             .collect::<Vec<_>>(),
-                        vec![("900", 10), ("900", -5)],
-                        "ten cut, five of them handed to the carpenter below in the same phase"
+                        vec![("900", 10)],
+                        "ten cut, none of them handed on this month"
                     );
                 },
             );
@@ -26649,8 +26660,8 @@ PRODUCE wagon
 
         /// "Where there is no other basis for deciding in which order units will be processed
         /// within a phase, units that appear higher on the report get precedence"
-        /// (`newage trident rules/sequenceofevents`) - and in Trident the builder is not in that
-        /// phase at all, so it goes first however low it sits.
+        /// (`newage trident rules/sequenceofevents`) - and the builder is in that walk too, so the
+        /// lowest unit on the report is served last whatever its order (`ah-e23d.1`).
         #[test]
         fn trident_producers_share_one_pool_in_report_order() {
             let small_builder =
@@ -26681,8 +26692,8 @@ PRODUCE wagon
             with_trident_ledger(units("900", "902"), &orders("900", "902"), |ledger| {
                 assert_eq!(
                     debits(ledger),
-                    vec![-6, -7, -7],
-                    "the builder takes its six first, then the two producers top-down"
+                    vec![-7, -7, -6],
+                    "the two producers top-down, then the builder below them takes the six left"
                 );
                 assert_eq!(
                     (
@@ -26696,7 +26707,7 @@ PRODUCE wagon
             with_trident_ledger(units("902", "900"), &orders("902", "900"), |ledger| {
                 assert_eq!(
                     debits(ledger),
-                    vec![-6, -7, -7],
+                    vec![-7, -7, -6],
                     "swapping the two producers in the report swaps only which of them is served first"
                 );
             });
@@ -27005,9 +27016,10 @@ BUILD
                         .balance_at(StatePhase::Manufacturing, "1", "WOOD"),
                     7
                 );
-                assert_eq!(ledger.state.balance_at(StatePhase::Build, "1", "WOOD"), 7);
                 assert_eq!(
-                    ledger.state.balance_at(StatePhase::Build, "1", "STON"),
+                    ledger
+                        .state
+                        .balance_at(StatePhase::Manufacturing, "1", "STON"),
                     0,
                     "primary production settles after BUILD, so BUILD cannot spend it"
                 );
@@ -29628,7 +29640,7 @@ BUILD
                         "stone",
                         -30,
                         ItemChangeCause::BuildSpent,
-                        StatePhase::Build,
+                        StatePhase::Manufacturing,
                         Some(3),
                     )));
                     assert_eq!(balance_of(ledger, "900", "STON"), 90);
@@ -29715,7 +29727,7 @@ BUILD
                         "stone",
                         -30,
                         ItemChangeCause::BuildSpent,
-                        StatePhase::Build,
+                        StatePhase::Manufacturing,
                         Some(5),
                     )));
                     assert_eq!(balance_of(ledger, "901", "STON"), 90);
@@ -29821,7 +29833,7 @@ BUILD
                         "stone",
                         -30,
                         ItemChangeCause::BuildSpent,
-                        StatePhase::Build,
+                        StatePhase::Manufacturing,
                         Some(6),
                     )));
                     assert_eq!(balance_of(ledger, "901", "STON"), 90);
@@ -29855,7 +29867,7 @@ BUILD
                         "wood",
                         -30,
                         ItemChangeCause::BuildSpent,
-                        StatePhase::Build,
+                        StatePhase::Manufacturing,
                         Some(2),
                     )),
                     "the material a BUILD consumes should be among the recorded movements: {:?}",
@@ -30076,7 +30088,7 @@ BUILD
                         "wood",
                         -30,
                         ItemChangeCause::BuildSpent,
-                        StatePhase::Build,
+                        StatePhase::Manufacturing,
                         Some(2),
                     )],
                     "a BUILD should charge material and credit nothing else: {for_900:?}"
@@ -30096,7 +30108,7 @@ BUILD
                         "wood",
                         -15,
                         ItemChangeCause::BuildSpent,
-                        StatePhase::Build,
+                        StatePhase::Manufacturing,
                         Some(2),
                     )),
                     "{:?}",
@@ -30121,7 +30133,7 @@ BUILD
                         "wood",
                         -6,
                         ItemChangeCause::BuildSpent,
-                        StatePhase::Build,
+                        StatePhase::Manufacturing,
                         Some(2),
                     )),
                     "{:?}",
@@ -30202,7 +30214,7 @@ BUILD
                         "stone",
                         -10,
                         ItemChangeCause::BuildSpent,
-                        StatePhase::Build,
+                        StatePhase::Manufacturing,
                         Some(2),
                     )),
                     "{:?}",
@@ -30235,7 +30247,7 @@ BUILD
                         "wood",
                         -10,
                         ItemChangeCause::BuildSpent,
-                        StatePhase::Build,
+                        StatePhase::Manufacturing,
                         Some(2),
                     )),
                     "{:?}",
@@ -30322,7 +30334,7 @@ BUILD
                         "stone",
                         -10,
                         ItemChangeCause::BuildSpent,
-                        StatePhase::Build,
+                        StatePhase::Manufacturing,
                         Some(2),
                     )),
                     "{:?}",
@@ -30378,7 +30390,7 @@ BUILD
                             "wood",
                             -30,
                             ItemChangeCause::BuildSpent,
-                            StatePhase::Build,
+                            StatePhase::Manufacturing,
                             Some(4),
                         )),
                         "{:?}",
@@ -45586,7 +45598,6 @@ BUILD
             StatePhase::Movement,
             StatePhase::Study,
             StatePhase::Manufacturing,
-            StatePhase::Build,
             StatePhase::PrimaryProduction,
             StatePhase::Wages,
             StatePhase::Transport,

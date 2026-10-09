@@ -41,23 +41,6 @@ fn knows_new_age_weather_changes_nothing() {
     }
 }
 
-#[test]
-fn trident_settles_builds_before_production() {
-    // `newage trident rules/sequenceofevents`: "BUILD orders are processed: new structures are
-    // laid down first, then the work of everyone building on them is counted." and only then
-    // "PRODUCE orders are processed -- both those that make items out of other items ... and
-    // those that take items from the region's own resources".
-    assert!(trident().builds_before_production());
-
-    // Arcanum's own page states Trident's order, but the audit behind this accessor is a Trident
-    // audit whose charter is to preserve New Origins and Arcanum behaviour. An Arcanum audit, with
-    // its own regressions behind it, is what should flip this.
-    assert!(
-        !arcanum().builds_before_production(),
-        "Arcanum stays on the New Origins schedule until an Arcanum audit moves it"
-    );
-}
-
 /// `ah-g9sf.9`. `rules/economy_maintenance` prices a leader at 50 on New Origins and New Age:
 /// Arcanum and at 90 on New Age: Trident, and an ordinary character at 10 on all three. Each
 /// committed file carries the block rather than falling back, so the figure the application
