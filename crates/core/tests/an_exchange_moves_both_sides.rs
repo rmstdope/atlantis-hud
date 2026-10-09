@@ -17,19 +17,21 @@ use atlantis_hud_core::report::{classify_units, parse_report_full};
 mod common;
 use common::ruleset;
 
-/// One hex: Smith (2391) with swords and a little silver, Buyer (2392) with silver, and a foreign
-/// unit Mark (7001) both can see.
+/// One hex wanting swords: Smith (2391) with swords, wolves and a little silver, Buyer (2392) with
+/// silver, and a foreign unit Mark (7001) both can see.
 fn report_text() -> String {
     [
         "Foo (1) Report",
         "",
         "plain (1,1) in Nowhere, 1000 peasants (orcs), $0.",
+        "  Wanted: 10 swords [SWOR] at $100.",
+        "  For Sale: none.",
         "",
         "Exits:",
         "  Southeast : plain (2,2) in Nowhere.",
         "",
-        "* Smith (2391), Foo (1), orc [ORC], 100 silver [SILV], 5 swords [SWOR]. Weight: 15. \
-         Capacity: 0/0/15/0.",
+        "* Smith (2391), Foo (1), orc [ORC], 100 silver [SILV], 5 swords [SWOR], 2 wolves \
+         [WOLF]. Weight: 15. Capacity: 0/0/15/0.",
         "* Buyer (2392), Foo (1), orc [ORC], 80 silver [SILV]. Weight: 10. Capacity: 0/0/15/0.",
         "- Mark (7001), Bar (2), 5 orcs [ORC], 900 silver [SILV], 4 swords [SWOR].",
         "",
@@ -229,4 +231,126 @@ fn a_foreign_partner_moves_nothing_and_is_listed_uncounted() {
 fn a_matched_exchange_is_counted() {
     let (_, uncounted) = preview_of(SMITH_OFFERS, BUYER_ANSWERS, "2391", "SWOR", 5);
     assert!(uncounted.is_empty(), "{uncounted:?}");
+}
+
+/// What `SELL` reads from the turn's Give phase: the buyer can sell swords it gets by exchange, the
+/// same as swords it is given (reviewer's finding 1 on PR #1476). `rules/sequenceofevents` runs
+/// EXCHANGE in the Give orders, before SELL in the Market orders.
+#[test]
+fn goods_received_by_exchange_can_be_sold() {
+    let buyer = format!("{BUYER_ANSWERS}\nSELL 5 SWOR");
+    assert_eq!(
+        silver_moved(SMITH_OFFERS, &buyer, "2392", SilverChangeCause::Sold),
+        500
+    );
+    assert_eq!(preview_of(SMITH_OFFERS, &buyer, "2392", "SWOR", 0).0, 0);
+}
+
+/// ... and the smith cannot sell swords the exchange has already taken: the same warning a GIVE
+/// of them raises.
+#[test]
+fn goods_given_by_exchange_are_not_there_to_sell() {
+    let smith = format!("{SMITH_OFFERS}\nSELL 5 SWOR");
+    let review = review_of(&smith, BUYER_ANSWERS);
+    assert!(
+        review
+            .findings
+            .iter()
+            .any(|finding| finding.code.as_str() == "nothing-left-to-sell"
+                && finding.unit_id.as_deref() == Some("2391")),
+        "{:?}",
+        review.findings
+    );
+    assert_eq!(
+        silver_moved(&smith, BUYER_ANSWERS, "2391", SilverChangeCause::Sold),
+        0
+    );
+}
+
+/// When what one side holds is itself in doubt - here the smith's swords, after a gift of them to
+/// a foreign unit whose declaration toward us the report cannot show (`ah-66yi`) - whether the
+/// exchange goes ahead is too: both lines are uncounted, and the buyer's SELL of swords it may
+/// never get is doubted on the SILVER column rather than counted (reviewer's finding 2).
+#[test]
+fn an_exchange_from_a_doubted_holding_is_uncounted_on_both_sides() {
+    let smith = format!("GIVE 7001 5 SWOR\n{SMITH_OFFERS}");
+    let buyer = format!("{BUYER_ANSWERS}\nSELL 5 SWOR");
+    let (_, uncounted) = preview_of(&smith, &buyer, "2391", "SWOR", 5);
+    assert!(
+        uncounted.contains(&SMITH_OFFERS.to_string()),
+        "{uncounted:?}"
+    );
+    let (swords, uncounted) = preview_of(&smith, &buyer, "2392", "SWOR", 0);
+    assert_eq!(swords, 0, "nothing is credited as certain");
+    assert!(
+        uncounted.contains(&BUYER_ANSWERS.to_string()),
+        "{uncounted:?}"
+    );
+    let row = silver_row(&smith, &buyer, "2392");
+    assert!(row.doubt.is_some(), "{row:?}");
+}
+
+/// The same doubt raised by a theft, which only the ledger sees: the lines are still uncounted on
+/// both sides.
+#[test]
+fn an_exchange_after_a_theft_is_uncounted_on_both_sides() {
+    let buyer = format!("STEAL 7001 SILV\n{BUYER_ANSWERS}");
+    let (_, uncounted) = preview_of(SMITH_OFFERS, &buyer, "2391", "SWOR", 5);
+    assert!(
+        uncounted.contains(&SMITH_OFFERS.to_string()),
+        "{uncounted:?}"
+    );
+    let (_, uncounted) = preview_of(SMITH_OFFERS, &buyer, "2392", "SWOR", 0);
+    assert!(
+        uncounted.contains(&BUYER_ANSWERS.to_string()),
+        "{uncounted:?}"
+    );
+}
+
+/// A side certainly short aborts the exchange whatever the other side's doubt (reviewer's finding
+/// 3): nothing moves and the smith's line is not uncounted.
+#[test]
+fn a_certainly_short_side_aborts_even_when_the_other_is_doubted() {
+    let smith = "EXCHANGE 2392 9 SWOR 50 SILV";
+    let buyer = "STEAL 7001 SILV\nEXCHANGE 2391 50 SILV 9 SWOR";
+    let (swords, uncounted) = preview_of(smith, buyer, "2391", "SWOR", 5);
+    assert_eq!(swords, 5);
+    assert!(uncounted.is_empty(), "{uncounted:?}");
+}
+
+/// `rules/exchange`: "Men may not be exchanged."
+#[test]
+fn men_are_not_exchanged() {
+    let smith = "EXCHANGE 2392 1 ORC 50 SILV";
+    let buyer = "EXCHANGE 2391 50 SILV 1 ORC";
+    assert_eq!(preview_of(smith, buyer, "2392", "SILV", 80).0, 80);
+    assert_eq!(preview_of(smith, buyer, "2392", "ORC", 1).0, 1);
+}
+
+/// The engine aborts an exchange of an item the game will not hand over (`runorders.cpp`
+/// `DoExchangeOrder`, `CANTGIVE`); `data` lists wolves among them.
+#[test]
+fn an_item_the_game_will_not_hand_over_is_not_exchanged() {
+    let smith = "EXCHANGE 2392 2 WOLF 50 SILV";
+    let buyer = "EXCHANGE 2391 50 SILV 2 WOLF";
+    assert_eq!(preview_of(smith, buyer, "2391", "WOLF", 2).0, 2);
+    assert_eq!(preview_of(smith, buyer, "2392", "SILV", 80).0, 80);
+}
+
+/// `rules/exchange`'s own example spells items out; the names match as the tags do.
+#[test]
+fn items_written_out_in_full_match_their_tags() {
+    let smith = "EXCHANGE 2392 5 SWORDS 50 SILVER";
+    let buyer = "EXCHANGE 2391 50 SILV 5 SWOR";
+    assert_eq!(preview_of(smith, buyer, "2392", "SWOR", 0).0, 5);
+    assert_eq!(preview_of(smith, buyer, "2391", "SILV", 100).0, 150);
+}
+
+/// Goods nothing can name: whether the partner's line matches cannot be said.
+#[test]
+fn an_unknown_item_is_listed_uncounted() {
+    let smith = "EXCHANGE 2392 5 WIDGETS 50 SILV";
+    let (swords, uncounted) = preview_of(smith, BUYER_ANSWERS, "2391", "SWOR", 5);
+    assert_eq!(swords, 5);
+    assert_eq!(uncounted, vec![smith.to_string()]);
 }

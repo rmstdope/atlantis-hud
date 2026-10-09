@@ -3672,7 +3672,22 @@ fn apply_transfers(
                 })
         })
         .collect();
-    if transfers.is_empty() {
+    let exchanges = exchange_offers(
+        units,
+        ruleset,
+        |unit, with| {
+            let endpoint = resolve_give_endpoint(
+                &position_of,
+                &shown_here,
+                shown_anywhere,
+                &units[unit].unit.unit_id,
+                with,
+            );
+            endpoint.row.filter(|_| endpoint.reach == GiveReach::Ours)
+        },
+        |_, item| ruleset.find_item(item).map(|entry| entry.tag.clone()),
+    );
+    if transfers.is_empty() && exchanges.offers.is_empty() {
         // Nothing moves in this hex, so nothing is allocated for it.
         return;
     }
@@ -4196,6 +4211,86 @@ fn apply_transfers(
                     moving,
                 },
             ));
+        }
+    }
+
+    // "EXCHANGE orders are processed" after GIVE and TAKE (`rules/sequenceofevents`), from what
+    // they left - the same pairs and the same verdict the ledger's `settle_exchanges` reaches, so
+    // a check sizing from `early_holding` (a SELL of exchanged goods, `nothing-left-to-sell`) sees
+    // what the exchange moved (`ah-mw1r.2`). Silver is not recorded here: the ledger records both
+    // legs itself.
+    let offers = &exchanges.offers;
+    for (first, second) in complementary_pairs(offers) {
+        let (one, other) = (&offers[first], &offers[second]);
+        let holds = |offer: &ExchangeOffer| -> Result<i64, UncertainGive> {
+            match working
+                .get(&offer.unit)
+                .and_then(|state| state.uncertain_after_gifts.get(&offer.give_tag))
+            {
+                Some(uncertain) => Err(uncertain.clone()),
+                None => Ok(held_by(&working, units, offer.unit, &offer.give_tag)),
+            }
+        };
+        let (held, other_held) = (holds(one), holds(other));
+        let doubt = held.as_ref().err().or(other_held.as_ref().err()).cloned();
+        match exchange_verdict((one, held), (other, other_held)) {
+            ExchangeVerdict::Moves => {}
+            ExchangeVerdict::Aborted => continue,
+            ExchangeVerdict::Uncertain => {
+                // Both ends of both legs, as the ledger's `settle_exchanges` marks them.
+                let doubt = doubt.expect("an uncertain verdict has a doubted side");
+                for offer in [one, other] {
+                    for unit in [offer.unit, offer.partner] {
+                        working
+                            .entry(unit)
+                            .or_insert_with(|| seed_working(units, unit))
+                            .uncertain_after_gifts
+                            .entry(offer.give_tag.clone())
+                            .or_insert_with(|| doubt.clone());
+                    }
+                }
+                continue;
+            }
+        }
+        for offer in [one, other] {
+            let name = units[offer.unit]
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag.eq_ignore_ascii_case(&offer.give_tag))
+                .map(|item| item.name.clone())
+                .or_else(|| {
+                    working
+                        .get(&offer.unit)
+                        .and_then(|state| state.held.get(&offer.give_tag))
+                        .map(|item| item.name.clone())
+                })
+                .unwrap_or_else(|| offer.give_tag.to_ascii_lowercase());
+            let tag = working
+                .get(&offer.unit)
+                .and_then(|state| state.held.get(&offer.give_tag))
+                .map_or_else(|| offer.give_tag.clone(), |item| item.tag.clone());
+            let giver = working
+                .entry(offer.unit)
+                .or_insert_with(|| seed_working(units, offer.unit));
+            move_holding(giver, &offer.give_tag, &name, -offer.give_amount);
+            let receiver = working
+                .entry(offer.partner)
+                .or_insert_with(|| seed_working(units, offer.partner));
+            match receiver.held.get_mut(&offer.give_tag) {
+                Some(entry) => entry.amount += offer.give_amount,
+                None => {
+                    receiver.held.insert(
+                        offer.give_tag.clone(),
+                        ItemAmount {
+                            amount: offer.give_amount,
+                            name,
+                            tag,
+                        },
+                    );
+                    receiver.arrived.push(offer.give_tag.clone());
+                }
+            }
         }
     }
 
@@ -7013,6 +7108,11 @@ fn emptied_by(
                 .is_some_and(|resolved| resolved.eq_ignore_ascii_case(tag)),
             Selector::Class(_) | Selector::WholeUnit | Selector::UnfinishedShip(_) => true,
         },
+        // What an `EXCHANGE` hands over leaves in the Give orders too (`rules/sequenceofevents`),
+        // so it is said the way a gift is (`ah-mw1r.2`). Only a line that actually moved reaches
+        // here: a dead sale is a sale the ledger found nothing left for.
+        Intent::Exchange { give_item, .. } => resolve_item(give_item, hex, actor, ruleset)
+            .is_some_and(|resolved| resolved.eq_ignore_ascii_case(tag)),
         _ => false,
     });
     if gives_it_away {
@@ -8259,28 +8359,46 @@ fn transfer(
 }
 
 /// One of our units' `EXCHANGE` lines whose partner is another of our units in the same hex.
-struct ExchangeOffer<'h> {
+///
+/// Read by [`exchange_offers`] for both settlements that move goods in the Give phase - the
+/// ledger's [`settle_exchanges`] and `apply_transfers`, which every check sizing from
+/// `early_holding` reads - so the two pair the same lines (`ah-mw1r.2`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ExchangeOffer {
+    /// Positions in the hex's own units.
     unit: usize,
     partner: usize,
-    placed: &'h PlacedIntent,
+    line: usize,
+    /// Upper-cased canonical tags.
     give_tag: String,
     give_amount: i64,
     expect_tag: String,
     expect_amount: i64,
 }
 
-/// Settles every `EXCHANGE` between two of our units in `hex`, after the hex's Give phase.
+/// What [`exchange_offers`] makes of a hex's `EXCHANGE` lines.
+#[derive(Debug, Default)]
+struct ExchangeOffers {
+    /// Lines whose partner is one of ours here, in report order and written order within a unit.
+    offers: Vec<ExchangeOffer>,
+    /// `(unit, line)` of a line whose goods nothing can name: whether it matches cannot be said.
+    unnamed: Vec<(usize, usize)>,
+}
+
+/// Reads every `EXCHANGE` between two of our units in one hex.
 ///
-/// `rules/exchange`: "The orders given by the two units must be complementary. If either unit
-/// involved does not have the items it is offering, or if the exchange orders given are not
-/// complementary, the exchange is aborted. Men may not be exchanged." Complementary is the engine's
-/// test (`runorders.cpp` `DoExchangeOrder`): each names the other, each offers the item the other
-/// expects, and each offers exactly the amount the other expects. What each side holds is its
-/// balance once every GIVE and TAKE has run. A matched pair moves both items, recorded as a gift
-/// each way on the line that hands it over; anything else moves nothing.
-fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
-    let mut offers: Vec<ExchangeOffer<'_>> = Vec::new();
-    for (unit, ordered) in hex.units.iter().enumerate() {
+/// `partner_of` resolves the named unit to a position among `units` (`None` for anyone not ours
+/// here), and `tag_of` an item word to its canonical tag. A line naming men or an item the game
+/// will not hand over is dropped: `rules/exchange` says "Men may not be exchanged", and the engine
+/// (`runorders.cpp` `DoExchangeOrder`) aborts a `CANTGIVE` item the same way.
+fn exchange_offers(
+    units: &[Ordered<'_>],
+    ruleset: &Ruleset,
+    partner_of: impl Fn(usize, &Party) -> Option<usize>,
+    tag_of: impl Fn(usize, &str) -> Option<String>,
+) -> ExchangeOffers {
+    let mut read = ExchangeOffers::default();
+    for (unit, ordered) in units.iter().enumerate() {
         for placed in &ordered.intents {
             let Intent::Exchange {
                 with,
@@ -8292,87 +8410,160 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
             else {
                 continue;
             };
-            let endpoint = hex.give_endpoint(with, &ordered.unit.unit_id);
-            let Some(partner) = endpoint
-                .row
-                .filter(|_| endpoint.reach == GiveReach::Ours)
-                .and_then(|id| hex.units.iter().position(|other| other.unit.unit_id == id))
+            let Some(partner) = partner_of(unit, with) else {
+                continue;
+            };
+            let (Some(give_tag), Some(expect_tag)) =
+                (tag_of(unit, give_item), tag_of(unit, expect_item))
             else {
+                read.unnamed.push((unit, placed.line));
                 continue;
             };
-            let resolved = (
-                resolve_item(give_item, hex, ordered, ledger.ruleset),
-                resolve_item(expect_item, hex, ordered, ledger.ruleset),
+            let (give_tag, expect_tag) = (
+                give_tag.to_ascii_uppercase(),
+                expect_tag.to_ascii_uppercase(),
             );
-            let (Some(give_tag), Some(expect_tag)) = resolved else {
-                // Goods nothing can name: the player is told by `unknown-item`, and whether the
-                // partner's line matches cannot be said.
-                mark_uncounted(ledger, &ordered.unit.unit_id, placed.line);
-                continue;
-            };
-            let is_man = |tag: &str| ledger.ruleset.is_some_and(|rules| rules.is_man(tag));
-            if is_man(&give_tag) || is_man(&expect_tag) {
+            let refused = |tag: &str| ruleset.is_man(tag) || !ruleset.can_be_given(tag);
+            if refused(&give_tag) || refused(&expect_tag) {
                 continue;
             }
-            offers.push(ExchangeOffer {
+            read.offers.push(ExchangeOffer {
                 unit,
                 partner,
-                placed,
-                give_tag: give_tag.to_ascii_uppercase(),
+                line: placed.line,
+                give_tag,
                 give_amount: *give_amount,
-                expect_tag: expect_tag.to_ascii_uppercase(),
+                expect_tag,
                 expect_amount: *expect_amount,
             });
         }
     }
-    let mut settled = vec![false; offers.len()];
+    read
+}
+
+/// The pairs of `offers` that are complementary, each offer in at most one pair, in the order the
+/// first of each pair was written.
+///
+/// Complementary is the engine's test (`runorders.cpp` `DoExchangeOrder`): each names the other,
+/// each offers the item the other expects, and each offers exactly the amount the other expects.
+fn complementary_pairs(offers: &[ExchangeOffer]) -> Vec<(usize, usize)> {
+    let mut paired = vec![false; offers.len()];
+    let mut pairs = Vec::new();
     for first in 0..offers.len() {
-        if settled[first] {
+        if paired[first] {
             continue;
         }
         let one = &offers[first];
-        let Some(second) = (first + 1..offers.len()).find(|&index| {
+        let found = (first + 1..offers.len()).find(|&index| {
             let other = &offers[index];
-            !settled[index]
+            !paired[index]
                 && other.unit == one.partner
                 && other.partner == one.unit
                 && other.give_tag == one.expect_tag
                 && other.expect_tag == one.give_tag
                 && other.give_amount == one.expect_amount
                 && other.expect_amount == one.give_amount
-        }) else {
-            continue;
+        });
+        if let Some(second) = found {
+            paired[first] = true;
+            paired[second] = true;
+            pairs.push((first, second));
+        }
+    }
+    pairs
+}
+
+/// Whether a pair of exchange lines goes ahead, given what each side holds of what it offers once
+/// every GIVE and TAKE has run - `Err` where that holding is itself in doubt.
+#[derive(Debug, PartialEq, Eq)]
+enum ExchangeVerdict {
+    Moves,
+    /// `rules/exchange`: "If either unit involved does not have the items it is offering ... the
+    /// exchange is aborted." Certain as soon as one side is certainly short, whatever the other
+    /// side's doubt.
+    Aborted,
+    Uncertain,
+}
+
+fn exchange_verdict<E>(
+    one: (&ExchangeOffer, Result<i64, E>),
+    other: (&ExchangeOffer, Result<i64, E>),
+) -> ExchangeVerdict {
+    let short = |(offer, held): &(&ExchangeOffer, Result<i64, E>)| matches!(held, Ok(held) if *held < offer.give_amount);
+    if short(&one) || short(&other) {
+        ExchangeVerdict::Aborted
+    } else if one.1.is_err() || other.1.is_err() {
+        ExchangeVerdict::Uncertain
+    } else {
+        ExchangeVerdict::Moves
+    }
+}
+
+/// Settles every `EXCHANGE` between two of our units in `hex`, after the hex's Give phase.
+///
+/// `rules/exchange`: "The orders given by the two units must be complementary. If either unit
+/// involved does not have the items it is offering, or if the exchange orders given are not
+/// complementary, the exchange is aborted." What each side holds is its own balance once every
+/// GIVE and TAKE has run. The engine also lets a unit offer what its `SHARE` faction-mates hold
+/// (`GetSharedNum`, `ConsumeShared`); that is not modelled here, so such an exchange is forecast as
+/// short and moving nothing. A matched pair moves both items, recorded as a gift each way on the
+/// line that hands it over; a pair whose holding is in doubt marks both lines uncounted and every
+/// tag it might move uncertain; anything else moves nothing.
+fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
+    let Some(ruleset) = ledger.ruleset else {
+        return;
+    };
+    let read = exchange_offers(
+        &hex.units,
+        ruleset,
+        |unit, with| {
+            let endpoint = hex.give_endpoint(with, &hex.units[unit].unit.unit_id);
+            endpoint
+                .row
+                .filter(|_| endpoint.reach == GiveReach::Ours)
+                .and_then(|id| hex.units.iter().position(|other| other.unit.unit_id == id))
+        },
+        |unit, item| resolve_item(item, hex, &hex.units[unit], Some(ruleset)),
+    );
+    for &(unit, line) in &read.unnamed {
+        // Goods nothing can name: the player is told by `unknown-item`.
+        mark_uncounted(ledger, &hex.units[unit].unit.unit_id, line);
+    }
+    let offers = &read.offers;
+    for (first, second) in complementary_pairs(offers) {
+        let (one, other) = (&offers[first], &offers[second]);
+        let holds = |offer: &ExchangeOffer| {
+            ledger
+                .state
+                .known_balance_at(
+                    StatePhase::Give,
+                    &hex.units[offer.unit].unit.unit_id,
+                    &offer.give_tag,
+                )
+                .map_err(Clone::clone)
         };
-        settled[first] = true;
-        settled[second] = true;
-        let other = &offers[second];
-        let holds = |offer: &ExchangeOffer<'_>| {
-            ledger.state.known_balance_at(
-                StatePhase::Give,
-                &hex.units[offer.unit].unit.unit_id,
-                &offer.give_tag,
-            )
-        };
-        match (holds(one), holds(other)) {
-            (Ok(held), Ok(other_held))
-                if held >= one.give_amount && other_held >= other.give_amount =>
-            {
+        let (held, other_held) = (holds(one), holds(other));
+        let doubt = held.as_ref().err().or(other_held.as_ref().err()).cloned();
+        match exchange_verdict((one, held), (other, other_held)) {
+            ExchangeVerdict::Moves => {
                 hand_over(ledger, hex, one);
                 hand_over(ledger, hex, other);
             }
-            (Ok(_), Ok(_)) => {}
-            // What one side holds is itself in doubt, so whether the exchange goes ahead is too.
-            (Err(uncertain), _) | (_, Err(uncertain)) => {
-                let uncertain = uncertain.clone();
+            ExchangeVerdict::Aborted => {}
+            ExchangeVerdict::Uncertain => {
+                let doubt = doubt.expect("an uncertain verdict has a doubted side");
+                // Both ends of both legs: what each side gives may leave, and what each receives
+                // may arrive, so no later order reads either as certain - exactly as an uncertain
+                // `GIVE` marks its giver (`transfer`, `GiveOutcome::Uncertain`).
                 for offer in [one, other] {
-                    let receiver = hex.units[offer.partner].unit.unit_id.clone();
-                    ledger
-                        .state
-                        .uncertain
-                        .entry((receiver, offer.give_tag.clone()))
-                        .or_insert_with(|| uncertain.clone());
-                    let giver = hex.units[offer.unit].unit.unit_id.clone();
-                    mark_uncounted(ledger, &giver, offer.placed.line);
+                    for unit in [offer.unit, offer.partner] {
+                        ledger
+                            .state
+                            .uncertain
+                            .entry((hex.units[unit].unit.unit_id.clone(), offer.give_tag.clone()))
+                            .or_insert_with(|| doubt.clone());
+                    }
+                    mark_uncounted(ledger, &hex.units[offer.unit].unit.unit_id, offer.line);
                 }
             }
         }
@@ -8380,10 +8571,17 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
 }
 
 /// One side of a settled exchange: `offer`'s unit hands what it offered to its partner.
-fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer<'_>) {
+fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
     let giver = hex.units[offer.unit].unit;
     let receiver = hex.units[offer.partner].unit;
-    let (tag, amount, placed) = (&offer.give_tag, offer.give_amount, offer.placed);
+    let (tag, amount) = (&offer.give_tag, offer.give_amount);
+    let Some(placed) = hex.units[offer.unit]
+        .intents
+        .iter()
+        .find(|placed| placed.line == offer.line)
+    else {
+        return;
+    };
     if amount == 0 {
         return;
     }
