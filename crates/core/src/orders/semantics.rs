@@ -6129,6 +6129,7 @@ fn month_long_walk(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<usize> {
     let Some(ruleset) = ruleset else {
         return (0..hex.units.len()).collect();
     };
+    let destroyed_structure_ids = destroyed_structure_ids(hex);
     let founds_a_structure = |ordered: &Ordered<'_>| {
         ordered.intents.iter().any(|placed| match &placed.intent {
             Intent::Build {
@@ -6136,7 +6137,8 @@ fn month_long_walk(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<usize> {
                 ..
             } => {
                 ruleset.build_recipe(kind).is_some()
-                    && !(ruleset.is_new_age() && inside_unfinished(hex, ordered, kind))
+                    && !(ruleset.is_new_age()
+                        && stands_in_unfinished(hex, ordered, kind, &destroyed_structure_ids))
             }
             _ => false,
         })
@@ -6144,19 +6146,6 @@ fn month_long_walk(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<usize> {
     let (founders, others): (Vec<usize>, Vec<usize>) =
         (0..hex.units.len()).partition(|&index| founds_a_structure(&hex.units[index]));
     others.into_iter().chain(founders).collect()
-}
-
-/// Whether `ordered` stands, once its ENTER and LEAVE have run, in an unfinished structure of
-/// `kind`.
-fn inside_unfinished(hex: &Hex<'_>, ordered: &Ordered<'_>, kind: &str) -> bool {
-    let wanted = kind.replace('_', " ");
-    structure_after_orders(ordered).is_some_and(|id| {
-        hex.region.structures.iter().any(|structure| {
-            structure.structure_id == id
-                && structure.needs.is_some_and(|needs| needs > 0)
-                && structure.kind.eq_ignore_ascii_case(&wanted)
-        })
-    })
 }
 
 fn discard_unfinished_ships_after_movement(
@@ -9167,6 +9156,29 @@ fn unit_is_in_structure(hex: &Hex<'_>, unit_id: &str, structure_id: &str) -> boo
         == Some(structure_id)
 }
 
+/// Whether `ordered` stands, once its ENTER and LEAVE have run, in an unfinished structure of
+/// `kind` that [`destroyed_structure_ids`] does not count as destroyed first - the New Age
+/// engine's continuation branch in `AddNewBuildings`. One reading for both callers, the
+/// month-long walk and BUILD's pricing, so the two cannot disagree about the same unit. `kind` is
+/// the order's spelling, `_` for a space. That set reads every owner's DESTROY as a full one,
+/// though a weak destroyer can leave the structure standing, unit and all.
+fn stands_in_unfinished(
+    hex: &Hex<'_>,
+    ordered: &Ordered<'_>,
+    kind: &str,
+    destroyed_structure_ids: &BTreeSet<String>,
+) -> bool {
+    let Some(structure_id) = structure_after_orders(ordered) else {
+        return false;
+    };
+    !destroyed_structure_ids.contains(structure_id)
+        && hex.region.structures.iter().any(|structure| {
+            structure.structure_id == structure_id
+                && structure.needs.is_some_and(|needs| needs > 0)
+                && super::transport::structure_kind_is(structure, &kind.replace('_', " "))
+        })
+}
+
 /// What a `BUILD` order named, straight off [`Intent::Build`].
 #[derive(Debug, Clone, Copy)]
 struct BuildOrder<'a> {
@@ -9267,6 +9279,19 @@ fn build(
     if founding_kind.is_none() && carries_unfinished_ship(task_owner) {
         mark_uncounted_and_return!();
     }
+
+    // 3b. New Age founds nothing for a unit already inside an unfinished structure of the kind it
+    // names: it keeps working on that one (`newage trident rules/build`, "the unit will remain in
+    // the current building if it is not complete, and it is the same type as the one specified";
+    // the engine's `AddNewBuildings` does so for every `BUILD [object type]`). Read from here on
+    // as the bare form, so it is priced against what that structure still needs. New Origins'
+    // engine founds a new structure regardless, so it is left alone. The engine's branch ends in
+    // `break`, which also skips founding for every later unit in the same structure; that reads as
+    // an engine bug rather than a rule, and is deliberately not mirrored here.
+    let founding_kind = founding_kind.filter(|kind| {
+        !(ruleset.is_new_age()
+            && stands_in_unfinished(hex, task_owner, kind, &destroyed_structure_ids))
+    });
 
     // 4/5. The structure being worked on, and its recipe. A founding build spends against its
     // whole cost, and is named by the kind the player wrote, verbatim.
@@ -27427,6 +27452,163 @@ BUILD Farm
                                 && movement.delta > 0),
                         "the wood is still cut, and still credited: {:?}",
                         ledger.movements
+                    );
+                },
+            );
+        }
+
+        /// A Farm still being built, with `needs` left to lay.
+        fn unfinished_farm(structure_id: &str, needs: i64) -> Structure {
+            Structure {
+                structure_id: structure_id.to_string(),
+                name: "Building".to_string(),
+                kind: "Farm".to_string(),
+                description: None,
+                needs: Some(needs),
+                ..Default::default()
+            }
+        }
+
+        /// `newage trident rules/build`: "In the case of BUILD [object type] COMPLETE, the unit
+        /// will remain in the current building if it is not complete, and it is the same type as
+        /// the one specified" - and the New Age engine (`monthorders.cpp` `AddNewBuildings`) keeps
+        /// a unit in an unfinished structure of the kind it names, so the work is priced against
+        /// what that structure still needs, not against a new one's full cost (`ah-m2dy`).
+        ///
+        /// `newage trident data/farming`: "FARM 3: ... may BUILD a Farm from 10 wood".
+        #[test]
+        fn a_trident_build_of_the_kind_it_stands_in_finishes_that_structure() {
+            let hex_region = ReportRegion {
+                structures: vec![unfinished_farm("4", 3)],
+                ..region(vec![in_structure(
+                    with_item(
+                        with_skill(with_men(unit("900"), 10), "FARM", 3),
+                        40,
+                        "wood",
+                        "WOOD",
+                    ),
+                    "4",
+                )])
+            };
+            with_trident_ledger(
+                hex_region,
+                "unit 900
+BUILD Farm COMPLETE
+",
+                |ledger| {
+                    let spend = &ledger.built.get("900").expect("the unit builds")[0];
+                    assert_eq!(
+                        spend.amount, 3,
+                        "the Farm it stands in needs 3, so 3 is all that is laid"
+                    );
+                    assert!(!spend.founding, "nothing new is founded");
+                    assert_eq!(balance_of(ledger, "900", "WOOD"), 37);
+                },
+            );
+        }
+
+        /// A Trident farmer with 40 wood, inside unfinished Farm 4 needing 3.
+        fn trident_farmer_in_farm(id: &str) -> ReportUnit {
+            in_structure(
+                with_item(
+                    with_skill(with_men(unit(id), 10), "FARM", 3),
+                    40,
+                    "wood",
+                    "WOOD",
+                ),
+                "4",
+            )
+        }
+
+        /// The continuation is for the kind the unit stands in only: `newage trident rules/build`
+        /// goes on "otherwise it will start a new object of the type specified".
+        /// `newage trident data/farming`: "FARM 3: ... or a Ranch from 10 wood".
+        #[test]
+        fn a_trident_build_of_another_kind_still_founds_a_new_one() {
+            let hex_region = ReportRegion {
+                structures: vec![unfinished_farm("4", 3)],
+                ..region(vec![trident_farmer_in_farm("900")])
+            };
+            with_trident_ledger(hex_region, "unit 900\nBUILD Ranch COMPLETE\n", |ledger| {
+                let spend = &ledger.built.get("900").expect("the unit builds")[0];
+                assert!(spend.founding, "a new Ranch is founded");
+                assert_eq!(spend.amount, 10, "priced at a new Ranch's full cost");
+            });
+        }
+
+        /// `BUILD HELP` works on the helped unit's task, and that task is the Farm it stands in.
+        #[test]
+        fn a_trident_helper_of_a_continuing_builder_works_on_that_structure() {
+            let hex_region = ReportRegion {
+                structures: vec![unfinished_farm("4", 3)],
+                ..region(vec![
+                    trident_farmer_in_farm("900"),
+                    with_item(
+                        with_skill(with_men(unit("901"), 10), "FARM", 3),
+                        40,
+                        "wood",
+                        "WOOD",
+                    ),
+                ])
+            };
+            with_trident_ledger(
+                hex_region,
+                "unit 900\nBUILD Farm COMPLETE\nunit 901\nBUILD HELP 900\n",
+                |ledger| {
+                    let spend = &ledger.built.get("901").expect("the helper builds")[0];
+                    assert!(!spend.founding, "the helper founds nothing either");
+                    assert!(
+                        spend.amount <= 3,
+                        "capped by the Farm's needs: {}",
+                        spend.amount
+                    );
+                },
+            );
+        }
+
+        /// A structure its owner DESTROYs this turn is gone before BUILD, so there is nothing to
+        /// remain in and the order founds a new one.
+        #[test]
+        fn a_trident_build_after_destroying_the_structure_founds_a_new_one() {
+            let hex_region = ReportRegion {
+                structures: vec![unfinished_farm("4", 3)],
+                ..region(vec![trident_farmer_in_farm("900")])
+            };
+            with_trident_ledger(
+                hex_region,
+                "unit 900\nDESTROY\nBUILD Farm COMPLETE\n",
+                |ledger| {
+                    let spend = &ledger.built.get("900").expect("the unit builds")[0];
+                    assert!(spend.founding, "a new Farm is founded");
+                    assert_eq!(spend.amount, 10);
+                },
+            );
+        }
+
+        /// The New Origins engine founds a new structure for every `BUILD [object type]`
+        /// (`parseorders.cpp` sets `new_building` unconditionally and `monthorders.cpp`
+        /// `RunBuildOrders` creates it), so the New Age continuation above stays New Age only.
+        #[test]
+        fn a_new_origins_build_of_the_kind_it_stands_in_founds_a_new_one() {
+            let hex_region = ReportRegion {
+                structures: vec![Structure {
+                    needs: Some(3),
+                    ..unfinished_building("4")
+                }],
+                ..region(vec![with_item(builder("902", "4"), 100, "wood", "WOOD")])
+            };
+            with_ledger(
+                hex_region,
+                "unit 902
+BUILD Stockade
+",
+                |ledger| {
+                    let spend = &ledger.built.get("902").expect("the unit builds")[0];
+                    assert!(spend.founding, "a new Stockade is founded");
+                    assert!(
+                        spend.amount > 3,
+                        "priced against the new Stockade's cost, not the old one's needs: {}",
+                        spend.amount
                     );
                 },
             );

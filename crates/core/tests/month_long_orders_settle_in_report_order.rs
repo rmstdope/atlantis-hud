@@ -179,3 +179,28 @@ fn a_new_origins_builder_naming_a_structure_always_founds_one() {
         "{world}: the farmer founds a new Farm, walked last"
     );
 }
+
+/// A New Age farmer that DESTROYs its half-built Farm first has nothing left to remain in:
+/// `runorders.cpp` runs `RunDestroyOrders` before `RunMonthOrders`, and `Do1Destroy` removes the
+/// Farm and moves its units out once the unit's destroy power (`PER_SKILL`: men times `BUIL`,
+/// at least one each - ten here) covers the five points laid. So the `BUILD Farm COMPLETE` founds
+/// a new Farm, walked last. `newage trident rules/destroy`: "Destroy the object you are in (of
+/// which you must be the owner)."
+#[test]
+fn a_new_age_builder_that_destroys_its_structure_founds_a_new_one() {
+    let half_built_farm_then_tower = format!(
+        "{SHARER}\n\n+ Building [1] : Farm, needs 5.\n  * {FARMER}\n\n\
+         + Building [2] : Tower.\n  * {CARPENTER}"
+    );
+    for (world, ruleset) in &WORLDS[1..] {
+        assert_eq!(
+            wood_changes(
+                ruleset,
+                &half_built_farm_then_tower,
+                "DESTROY\nBUILD Farm COMPLETE"
+            ),
+            manufacturer_first(),
+            "{world}: the Farm is gone before BUILD, so a new one is founded and walked last"
+        );
+    }
+}
