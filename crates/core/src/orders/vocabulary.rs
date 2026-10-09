@@ -49,13 +49,22 @@ pub fn order_vocabulary(ruleset: Option<&Ruleset>) -> Vec<String> {
     words.into_iter().collect()
 }
 
-/// The fixed words one argument can take, `Arg::Rest` and `Arg::Repeat` unwrapped.
+/// The fixed words one argument can take, `Arg::Rest` and `Arg::Repeat` unwrapped, and the words a
+/// unit may be written with.
 ///
 /// `grammar::keywords` lumps both in with the open arguments and answers nothing for either, so
 /// without this recursion every repeated argument's keywords - the directions among them - vanish.
 fn collect_argument(argument: &'static Arg, words: &mut BTreeSet<String>) {
     if let Arg::Rest(inner) | Arg::Repeat(inner) = argument {
         collect_argument(inner, words);
+        return;
+    }
+
+    // A unit is open - a number - but `rules/form` lets it be written `NEW [alias]` or
+    // `FACTION [faction] NEW [alias]` too, and `grammar::keywords` answers nothing for it.
+    if let Arg::Unit = argument {
+        words.insert("NEW".to_string());
+        words.insert("FACTION".to_string());
         return;
     }
 
@@ -109,6 +118,16 @@ mod tests {
         for word in ["N", "NE", "SE", "S", "SW", "NW", "IN", "OUT"] {
             assert!(vocabulary.contains(&word.to_string()), "{word} is missing");
         }
+    }
+
+    #[test]
+    fn a_unit_argument_contributes_new() {
+        // `rules/form`: a unit this month's FORM creates "can then be referred to as NEW in place
+        // of the regular unit number", so `GIVE NEW 1 10 SILV` is written with NEW where a unit
+        // number goes - and `Arg::Unit` is an open argument that `grammar::keywords` answers
+        // nothing for.
+        let vocabulary = order_vocabulary(None);
+        assert!(vocabulary.contains(&"NEW".to_string()), "NEW is missing");
     }
 
     #[test]
