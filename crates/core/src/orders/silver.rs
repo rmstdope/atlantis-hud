@@ -260,18 +260,25 @@ pub struct NoStudyFee {
     pub limiting_races: Vec<LimitingRace>,
 }
 
-/// [`UnitSilver::short_for_orders`] from the fields beside it, by the formula its doc states - for a
-/// pass that changes `wanted_for_orders` after the forecast was built (`ah-7ale.4`).
+/// [`UnitSilver::short_for_orders`] once a refused shipment has been added to `wanted_for_orders`
+/// after the forecast was built (`ah-7ale.4`).
+///
+/// TRANSPORT is the last thing the orders spend on (`rules/sequenceofevents`), so every receipt the
+/// month has - wages and a shipment's silver among them - has arrived by the time it is asked
+/// for: the shipment is short what the whole month cannot cover. Anything an earlier spend was
+/// already short stays short, since nothing that arrived later paid for it (`ah-9n7l.2`).
 pub(crate) fn short_for_orders_of(silver: &UnitSilver) -> Option<i64> {
-    let (Some(income), Some(late), Some(wanted)) =
-        (silver.income, silver.late_income, silver.wanted_for_orders)
-    else {
+    let (Some(income), Some(wanted), Some(earlier)) = (
+        silver.income,
+        silver.wanted_for_orders,
+        silver.short_for_orders,
+    ) else {
         return None;
     };
-    let short_before = wanted
-        .saturating_sub(silver.held.saturating_add(income).saturating_sub(late))
-        .max(0);
-    Some(short_before.saturating_sub(silver.shared_silver_for_orders.clamp(0, short_before)))
+    let at_transport = wanted
+        .saturating_sub(silver.held.saturating_add(income))
+        .saturating_sub(silver.shared_silver_for_orders.max(0));
+    Some(earlier.max(at_transport).max(0))
 }
 
 /// What one unit's month is expected to do to its silver.
@@ -310,7 +317,9 @@ pub struct UnitSilver {
     pub at_month_end: Option<i64>,
     /// What this unit's orders spend that no silver reaching it *in time* can cover.
     ///
-    /// `max(0, wanted_for_orders - (held + income + shared_silver_for_orders - late_income))`.
+    /// The deepest the unit's silver falls below zero as the turn runs its orders, each spend met
+    /// only by what has arrived by its phase (`rules/sequenceofevents`, `ah-9n7l.2`), less what
+    /// `shared_silver_for_orders` lends it.
     /// Measured against what the orders *asked* for rather than what a capped `BUY` actually
     /// spends, so a purchase the unit cannot pay for is still reported as short (`ah-omn7`).
     /// `Some(0)`
@@ -1917,6 +1926,40 @@ fn listed_moves(record: &[SilverMove]) -> Vec<(phases::StatePhase, SilverChange)
     listed
 }
 
+/// The deepest a unit's silver falls below zero as its month runs, `0` where it never does.
+///
+/// `moves` is the ledger's record in the turn's order ([`listed_moves`]), so each spend is met only
+/// by the silver that has arrived by its phase (`rules/sequenceofevents`): a sale at the market is
+/// too late for a CAST, and wages and a shipment's silver are too late for everything the orders
+/// spend (`ah-9n7l.2`). `unmet_market_demand` is what the exact `BUY` lines asked beyond what they
+/// were settled at, charged as the market closes, so a cut-down purchase is still short
+/// (`ah-omn7`).
+#[must_use]
+fn short_in_turn_order(
+    held: i64,
+    moves: &[(phases::StatePhase, SilverChange)],
+    unmet_market_demand: i64,
+) -> i64 {
+    let mut balance = held;
+    let mut deepest = 0i64;
+    let mut demand = Some(unmet_market_demand);
+    for (phase, change) in moves {
+        if *phase > phases::StatePhase::Market {
+            if let Some(unmet) = demand.take() {
+                balance = balance.saturating_sub(unmet);
+                deepest = deepest.max(balance.saturating_neg());
+            }
+        }
+        balance = balance.saturating_add(change.amount);
+        deepest = deepest.max(balance.saturating_neg());
+    }
+    if let Some(unmet) = demand {
+        balance = balance.saturating_sub(unmet);
+        deepest = deepest.max(balance.saturating_neg());
+    }
+    deepest
+}
+
 /// What one cause moved on lines written above `line`. For a term that must see only the orders its
 /// phase settled before it - a second `CAST` sees the first one's cost, not its own.
 #[must_use]
@@ -2901,12 +2944,15 @@ pub fn forecast_unit(
             || (shares.unread_seller && sells_here));
     // What the hex's `SHARE` purse actually lends this unit: never more than it is short of, so an
     // allowance settled from the ledger cannot inflate a figure here (`ah-moq3`).
+    // Judged in the turn's order rather than over the whole month: a spend is paid only from
+    // what has arrived by its phase, so a SELL, a TAX or a shipment's silver never pays for a
+    // CAST or a STUDY that runs before it (`rules/sequenceofevents`, `ah-9n7l.2`).
     let short_before_sharing = match (income, wanted_for_orders) {
-        (Some(income), Some(wanted)) => Some(
-            wanted
-                .saturating_sub(held.saturating_add(income).saturating_sub(late))
-                .max(0),
-        ),
+        (Some(_), Some(wanted)) => Some(short_in_turn_order(
+            held,
+            &moves,
+            wanted.saturating_sub(expense.unwrap_or(wanted)).max(0),
+        )),
         _ => None,
     };
     // ... or than the ledger has it overdrawn as STUDY settles, which a receipt that comes after

@@ -2565,12 +2565,6 @@ fn forecast_hex(
             .filter(|refused| refused.unit_id == forecast.unit_id)
             .map(|refused| refused.cost)
             .sum();
-        if refused > 0 {
-            forecast.wanted_for_orders = forecast
-                .wanted_for_orders
-                .map(|wanted| wanted.saturating_add(refused));
-            forecast.short_for_orders = super::silver::short_for_orders_of(forecast);
-        }
         if bill == 0 && shipped.is_empty() && refused == 0 {
             continue;
         }
@@ -2579,6 +2573,13 @@ fn forecast_hex(
         forecast.wanted_for_orders = forecast
             .wanted_for_orders
             .map(|wanted| wanted.saturating_add(bill));
+        // After the paid bill is in, so the refused ask is judged against what the paid ones left.
+        if refused > 0 {
+            forecast.wanted_for_orders = forecast
+                .wanted_for_orders
+                .map(|wanted| wanted.saturating_add(refused));
+            forecast.short_for_orders = super::silver::short_for_orders_of(forecast);
+        }
         forecast.at_month_end = forecast.at_month_end.map(|end| end.saturating_sub(bill));
         if forecast.doubt.is_none() {
             for moved in &shipped_moves {
@@ -4949,8 +4950,10 @@ struct Ledger<'a> {
     /// part of what drew the balance down - it is not an order, and saying "its orders spend" of
     /// it would tell a player their orders spend silver they do not (`ah-1wcw.4`).
     upkeep: BTreeMap<String, i64>,
-    /// What maintenance actually took off each unit's silver balance - the fee less the silver
-    /// that arrives in time to pay it. Different from `upkeep` for any unit that works or
+    /// The part of each unit's fee its own wages do not cover - the fee less the silver that
+    /// arrives in time to pay it. The balance is charged the whole fee, since the wages are in it
+    /// (`pay_wages`, `ah-9n7l.2`); this is what the wording and the unclaimed fund read as
+    /// maintenance's own draw. Different from `upkeep` for any unit that works or
     /// entertains, and it is this figure, not the fee, that the faction's unclaimed fund can be
     /// asked to settle (`ah-fjty`). Present for every unit that owes a fee at all, including one
     /// whose wages cover the whole of it, so an absent key means "no fee" rather than "covered".
@@ -5049,9 +5052,8 @@ struct Ledger<'a> {
     ///
     /// The SILVER column's rows and totals: `forecast_hex` hands each unit's list to `forecast_unit`
     /// through `PhaseFacts::silver_moves` (`ah-xryu`). It carries every cause the column shows except
-    /// `Lent` and `WasLent`, which the hex pass books between units; the wage terms are recorded by
-    /// `charge_settled_upkeep` without being applied, because the balance already carries them netted against
-    /// the fee. What keeps it exhaustive is the `debug_assert` in `charge` and `credit`.
+    /// `Lent` and `WasLent`, which the hex pass books between units; the wage terms are recorded and
+    /// applied by `pay_wages` (`ah-9n7l.2`). What keeps it exhaustive is the `debug_assert` in `charge` and `credit`.
     pub(crate) silver_moves: BTreeMap<String, Vec<SilverMove>>,
     /// What each unit this hex pays for shipments, keyed by unit id. Written by
     /// `settle_report_wide`'s shipping steps.
@@ -5780,6 +5782,7 @@ fn ledger_for_reaching<'a>(
     }
 
     unwind_unconsumed_production(&mut ledger);
+    pay_wages(&mut ledger, hex);
 
     // Upkeep is not charged here: `rules/sequenceofevents` assesses maintenance after TRANSPORT,
     // which settles across the whole report, so `settle_report_wide` charges it once every
@@ -6492,11 +6495,10 @@ fn unit_facts<'a>(
 /// fire, so the check always counts it. A unit whose headcount is a guess is charged nothing rather
 /// than a guess.
 ///
-/// Silver the unit earns in the turn's last phase - wages, entertaining, Phantasmal Entertainment -
-/// arrives too late to pay for anything the orders spend but *is* in time for maintenance
-/// (`ah-uwa3`), so it is netted off the fee. Netted off rather than credited to the balance: a
-/// credit would leave the surplus where the orders could spend it, which is the very error this
-/// removes.
+/// Silver the unit earns in the Wages phase - wages and entertaining - arrives too late to pay for
+/// anything the orders spend but *is* in time for TRANSPORT and maintenance (`ah-uwa3`). It is
+/// credited to the balance at that phase by `pay_wages` (`ah-9n7l.2`), and the orders are kept off
+/// it by [`silver_short_before_wages`].
 ///
 /// This is the one-hex form, for [`ledger_for`]: the hex is its own maintenance group. The entry
 /// points settle step 2 across groups instead, in `settle_report_wide`.
@@ -6561,6 +6563,45 @@ fn feed_groups_from_faction_food(
     food_left
 }
 
+/// Credits what each unit earns in the Wages phase - `WORK`, `ENTERTAIN` - to its balance there.
+///
+/// `rules/sequenceofevents` processes "ENTERTAIN orders" and "WORK orders" before "TRANSPORT
+/// orders", and the wages are the unit's silver from then on, so a shipment and the maintenance
+/// after it can both spend them (`ah-9n7l.2`). Nothing the orders spend reads a slot this late, and
+/// [`silver_short_before_wages`] judges what they spent before the wages came, so a wage cannot
+/// pay for an earlier order (`ah-uwa3`).
+///
+/// The same settlement `forecast_hex` prices the column from: `WORK` and `ENTERTAIN` reach both
+/// surfaces through one `late_income_terms`, so two settlements would be two answers to one
+/// question.
+fn pay_wages(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
+    let phases = ledger.phase_holdings(hex);
+    let nothing = Receipts::default();
+    let facts = hex_facts(hex, &nothing, Some(&phases), ledger.ruleset);
+    let region = region_wages(hex, ledger.ruleset);
+    let shares = pool_shares_for(hex, region, Some(&phases), ledger.ruleset).shares;
+    for ((ordered, facts), shares) in hex.units.iter().zip(&facts).zip(&shares) {
+        for term in late_income_terms(facts, region, *shares, ledger.ruleset) {
+            record_silver(
+                ledger,
+                StatePhase::Wages,
+                &ordered.unit.unit_id,
+                term.amount,
+                term.cause,
+                term.line,
+                None,
+            );
+            apply_silver(
+                ledger,
+                StatePhase::Wages,
+                &ordered.unit.unit_id,
+                term.amount,
+                None,
+            );
+        }
+    }
+}
+
 /// Steps 1 to 3 of the payment order for one hex, once step 2 has been settled into
 /// `ledger.faction_fed`.
 fn charge_settled_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
@@ -6571,8 +6612,8 @@ fn charge_settled_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     let nothing = Receipts::default();
     let facts = hex_facts(hex, &nothing, Some(&phases), ledger.ruleset);
 
-    // The same settlement `forecast_hex` prices the column from: `WORK` and `ENTERTAIN` reach both
-    // surfaces through one `late_income`, so two settlements would be two answers to one question.
+    // The same settlement `pay_wages` credited from, so what the wages covered here is what they
+    // paid in.
     let region = region_wages(hex, ledger.ruleset);
     let shares = pool_shares_for(hex, region, Some(&phases), ledger.ruleset).shares;
 
@@ -6585,21 +6626,6 @@ fn charge_settled_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     for (((ordered, facts), shares), claim) in
         hex.units.iter().zip(&facts).zip(&shares).zip(&claims)
     {
-        // What the unit earns in the Wages phase, recorded and not applied: the balance already
-        // carries these terms netted against the fee below, so applying them as well would pay
-        // each wage twice. Recorded for every unit, before the `continue`s below skip a unit whose
-        // fee is contended or nothing, because a worker with no fee still earns its wage.
-        for term in late_income_terms(facts, region, *shares, ledger.ruleset) {
-            record_silver(
-                ledger,
-                StatePhase::Wages,
-                &ordered.unit.unit_id,
-                term.amount,
-                term.cause,
-                term.line,
-                None,
-            );
-        }
         let owed = match settled.get(&ordered.unit.unit_id) {
             // The pool fed this unit: it owes what step 2 left it, not what step 1 did.
             Some(Some(left)) => *left,
@@ -6615,24 +6641,20 @@ fn charge_settled_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
         if owed <= 0 {
             continue;
         }
-        // Only what the late earnings cannot cover reaches the balance. `ledger.upkeep` keeps the
-        // *full* fee: it is read only to word the finding ("orders and upkeep" against "orders"),
-        // and a unit whose wages cover its fee is still a unit with a fee.
+        // The whole fee reaches the balance: the wages are already in it (`pay_wages`). A direct
+        // apply, and deliberately not a `move_silver`: upkeep is not one of the column's
+        // `SilverChangeCause`s either - `UnitSilver::upkeep` is its own field, kept out of
+        // `changes` - so recording it here would put a term in the ledger's account that the
+        // column's list can never carry (`ah-6m7b.5.2`).
+        ledger.state.apply(
+            StatePhase::Maintenance,
+            &ordered.unit.unit_id,
+            SILVER,
+            -owed,
+        );
+        // What the wages did not cover, which is what the wording and the unclaimed fund read as
+        // maintenance's own draw (`ah-fjty`, `ah-gjq4`). `ledger.upkeep` keeps the *full* fee.
         let charged = (owed - late_income(facts, region, *shares, ledger.ruleset)).max(0);
-        if charged > 0 {
-            // A direct apply, and deliberately not a `move_silver`: upkeep is not one of the
-            // column's `SilverChangeCause`s either - `UnitSilver::upkeep` is its own field, kept
-            // out of `changes` - so recording it here would put a term in the ledger's account
-            // that the column's list can never carry (`ah-6m7b.5.2`). The wages this fee was
-            // netted against are recorded, above, for the opposite reason: they are movements the
-            // column's list does carry.
-            ledger.state.apply(
-                StatePhase::Maintenance,
-                &ordered.unit.unit_id,
-                SILVER,
-                -charged,
-            );
-        }
         ledger.upkeep.insert(ordered.unit.unit_id.clone(), owed);
         // Steps 1 and 2 paid this much of the fee before silver was asked for anything - the same
         // rule `forecast_hex` names the column's food by, so the warning and the column agree.
@@ -8463,8 +8485,8 @@ fn produce(
     );
     // Every phase `rules/sequenceofevents` runs before "Manufacturing PRODUCE orders ... are
     // processed" has been applied to this unit by the phase-major dispatch, and `PhaseState::apply`
-    // writes each delta forward, so this balance is the whole answer. Wages never enter it at all:
-    // `charge_settled_upkeep` nets `late_income` against the fee rather than crediting it (`ah-gdd3.2`).
+    // writes each delta forward, so this balance is the whole answer. Wages never enter it: `pay_wages`
+    // credits them at the later Wages phase (`ah-gdd3.2`, `ah-9n7l.2`).
     // `held` stays the material slice `ah-l80z` gave it.
     //
     // **Do not simplify this into `held`'s own `SILV` line.** The two coincide *today* and no test
@@ -11537,6 +11559,15 @@ fn silver_short_mid_month(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
     silver_short_at_give(ledger, unit_id)
         .max(silver_short_at_market(ledger, unit_id))
         .max(silver_short_at_study(ledger, unit_id))
+        .max(silver_short_before_wages(ledger, unit_id))
+}
+
+/// What a unit's own silver is short once every order that spends it has run, and before the
+/// Wages phase pays it anything: `rules/sequenceofevents` processes "WORK orders" after every
+/// CAST, PRODUCE and BUILD, so a wage pays none of them however much it leaves at the month's end
+/// (`ah-uwa3`, `ah-9n7l.2`).
+fn silver_short_before_wages(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    (-spendable_silver_at(ledger, unit_id, StatePhase::PrimaryProduction)).max(0)
 }
 
 /// When a not-enough-silver sentence reads its figures, in `rules/sequenceofevents` order: GIVE
@@ -36195,6 +36226,83 @@ BUILD
         assert_eq!(forecast.cast_made, 0);
     }
 
+    /// The column agrees with the ledger: the sale's 300 arrives at the market, after
+    /// `Spells are CAST` (`rules/sequenceofevents`), so a unit holding nothing is short the whole
+    /// 200 the cast costs (`data/CRPA`) however rich its month ends (`ah-9n7l.2`).
+    #[test]
+    fn a_cast_funded_only_by_a_later_sale_is_short() {
+        let forecast = forecast_with_ruleset(
+            vec![ReportRegion {
+                wanted: vec![MarketItem {
+                    amount: 100,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 10,
+                }],
+                ..region(vec![with_skill(
+                    with_item(unit("5"), 101, "grain", "GRAI"),
+                    "CRPA",
+                    1,
+                )])
+            }],
+            "unit 5\nSELL 30 grain\nCAST Create_Amulet_Of_Protection\n",
+        );
+
+        assert_eq!(forecast.income, Some(300));
+        assert_eq!(forecast.short_for_orders, Some(200), "{forecast:#?}");
+    }
+
+    /// The order the lines are written in changes nothing: the market still opens after the cast.
+    #[test]
+    fn a_cast_written_above_the_sale_that_would_fund_it_is_still_short() {
+        let forecast = forecast_with_ruleset(
+            vec![ReportRegion {
+                wanted: vec![MarketItem {
+                    amount: 100,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 10,
+                }],
+                ..region(vec![with_skill(
+                    with_item(unit("5"), 101, "grain", "GRAI"),
+                    "CRPA",
+                    1,
+                )])
+            }],
+            "unit 5\nCAST Create_Amulet_Of_Protection\nSELL 30 grain\n",
+        );
+
+        assert_eq!(forecast.short_for_orders, Some(200), "{forecast:#?}");
+    }
+
+    /// Wages are in the balance from the Wages phase on (`ah-9n7l.2`), and that phase follows every
+    /// CAST (`rules/sequenceofevents`), so a month's wages that more than pay for a 200-silver cast
+    /// (`data/CRPA`) still leave the cast unpaid on both surfaces.
+    #[test]
+    fn a_months_wages_do_not_pay_for_its_cast() {
+        let regions = || {
+            vec![ReportRegion {
+                wages: Some("$400.0".to_string()),
+                ..region(vec![with_skill(unit("5"), "CRPA", 1)])
+            }]
+        };
+        let orders = "unit 5\nCAST Create_Amulet_Of_Protection\nWORK\n";
+
+        let forecast = forecast_with_ruleset(regions(), orders);
+        assert_eq!(forecast.short_for_orders, Some(200), "{forecast:#?}");
+        let findings = review_turn(
+            &report(regions()),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        )
+        .findings;
+        assert!(
+            codes(&findings).contains(&"not-enough-silver"),
+            "{findings:#?}"
+        );
+    }
+
     #[test]
     fn changes_names_a_production_cost() {
         let forecast = forecast_with_ruleset(
@@ -45483,6 +45591,28 @@ BUILD
         assert_eq!(silver.wanted_for_orders, Some(45));
         assert_eq!(silver.short_for_orders, Some(25));
         assert!(codes(&unpaid_findings(unpaid_shipping(20), UNPAID)).contains(&"not-enough-silver"));
+    }
+
+    /// `rules/sequenceofevents` runs "WORK orders are processed" before "TRANSPORT orders are
+    /// processed", so a sender holding nothing pays the bill out of the same month's wages
+    /// (`ah-9n7l.2`).
+    #[test]
+    fn a_shipment_is_paid_from_the_same_months_wages() {
+        let mut regions = unpaid_shipping(0);
+        regions[0].wages = Some("$60.0".to_string());
+        let orders = "unit 900\nWORK\nTRANSPORT 901 9 FUR\n";
+
+        let silver = sender_silver(regions.clone(), orders, with_map());
+        assert_eq!(shipped(&silver).len(), 1, "{silver:#?}");
+        assert_eq!(silver.short_for_orders, Some(0));
+        let findings = unpaid_findings(regions, orders);
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.code.as_str() == "not-enough-silver"
+                    && finding.line == Some(3)),
+            "{findings:#?}"
+        );
     }
 
     /// `rules/sequenceofevents`: TRANSPORT runs before "Maintenance costs are assessed", so silver
