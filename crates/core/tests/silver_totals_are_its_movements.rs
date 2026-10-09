@@ -118,7 +118,11 @@ fn a_sharing_unit_says_where_its_loan_went() {
     // $1042 until `ah-9n7l.2`, when wages became silver in the balance: maintenance step 4 used to
     // draw 3493 $404 short paying its hex-mates' fees, and 8048 lent that back. Now 8048's and
     // 1164's wages pay those fees, and 3493 lends the whole purse.
-    assert_eq!(lent[0].amount, -1446, "signed out of the unit");
+    //
+    // $1446 until `ah-0mch`, when a CAST began drawing on the hex's other sharers: 683's spell is
+    // now cast in full at $1200 rather than cut to its own $600, and of the $600 more it borrows,
+    // 3493 lends $496 and 8048 the remaining $104.
+    assert_eq!(lent[0].amount, -1942, "signed out of the unit");
     assert_eq!(lent[0].line, None, "the SHARE flag lent it, not an order");
     assert_eq!(lent[0].other, None, "the hex's purse is not a unit");
 }

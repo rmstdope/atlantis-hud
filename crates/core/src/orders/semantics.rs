@@ -6611,8 +6611,8 @@ fn unit_facts<'a>(
         skills_unknown: ordered.skills_before_the_market().is_none(),
         // `ordered.skills()` already carries this month's recruits merged on top of its gifts,
         // since `apply_recruits` runs before a hex is priced. That post-recruit picture is read
-        // only by the SILVER column's PRODUCE arm (`ah-40c9`); `skills` above is deliberately the
-        // pre-market one.
+        // by the SILVER column's arms that run after the market - PRODUCE (`ah-40c9`), the STUDY
+        // ceiling and ENTERTAIN (`ah-8n8y`); `skills` above is deliberately the pre-market one.
         skills_after_arrivals: ordered.skills().unwrap_or(&ordered.unit.skills),
         skills_after_arrivals_unknown: ordered.skills().is_none(),
         men_by_race_after_arrivals: ordered
@@ -15119,13 +15119,14 @@ fn one_study_forecast(
         doubts.push(doubt(StudyDoubtReason::HeadcountEstimated));
     }
 
-    // The identical call the ledger's own `study` makes (`semantics.rs`'s `study`), on the
-    // report-era headcount, so the popup's fee is the figure the Silver column charged.
+    // The identical call the ledger's own `study` makes (`semantics.rs`'s `study`), on the same
+    // post-recruit headcount, so the popup's fee is the figure the Silver column charged: BUY
+    // settles before STUDY (`rules/sequenceofevents`) and the fee is per person (`ah-8n8y`).
     let priced = price_study(
         (!ordered.unit.men_estimated)
             .then_some(skill.cost)
             .flatten(),
-        ordered.unit.men,
+        ordered.men_after_orders,
     );
     if skill.cost.is_none() {
         doubts.push(doubt(StudyDoubtReason::FeeUnpriced));
@@ -31142,6 +31143,45 @@ BUILD
                 studied,
                 vec![-50],
                 "3 men plus the 2 recruited, at $10 a head: {:?}",
+                silver.changes
+            );
+        }
+
+        /// `ah-8n8y`. `rules/sequenceofevents` runs the market before the month-long orders, and
+        /// the engine reads a skill as its days over the unit's men (`unit.cpp` `GetRealSkill`;
+        /// `skills.cpp` `GetDaysByLevel` gives 30 and 90 days for levels 1 and 2). One man at
+        /// Entertainment 2 holds 90 days; with one recruit that is 45 days a man, level 1, so two
+        /// men earn 2 x 1 x $30 - not the 2 x 2 x $30 the pre-market level would pay.
+        #[test]
+        fn a_recruit_dilutes_an_entertainers_level() {
+            let hex_region = ReportRegion {
+                entertainment: Some(10_000),
+                for_sale: vec![MarketItem {
+                    amount: 5,
+                    name: "men".to_string(),
+                    tag: "HUMN".to_string(),
+                    price: 38,
+                }],
+                ..region(vec![with_skill_points(
+                    with_men(with_silver(unit("5"), 10_000), 1),
+                    "ENTE",
+                    2,
+                    90,
+                )])
+            };
+
+            let silver = forecast_with_ruleset(vec![hex_region], "unit 5\nBUY 1 HUMN\nENTERTAIN\n");
+
+            let entertained: Vec<_> = silver
+                .changes
+                .iter()
+                .filter(|change| change.cause == SilverChangeCause::Entertained)
+                .map(|change| change.amount)
+                .collect();
+            assert_eq!(
+                entertained,
+                vec![60],
+                "2 men at 45 days a man, level 1, at $30 a man a level: {:?}",
                 silver.changes
             );
         }
@@ -54723,6 +54763,46 @@ BUILD
         assert_eq!(study.doubts[0].fee, 200);
         assert_eq!(study.doubts[0].short_by, 160);
         assert_eq!(study.points_after, 30);
+    }
+
+    /// `ah-8n8y`. `rules/sequenceofevents` settles BUY before STUDY and `rules/skills_studying`
+    /// charges per person, so the ledger charges the men the unit holds once it has recruited; the
+    /// popup's fee, and the `FeeShort` judged against it, must be that same figure. One man buying
+    /// nine more and studying Combat ($10 a man) owes 100, and the 50 left after the purchase
+    /// cannot pay it.
+    #[test]
+    fn a_study_after_recruiting_is_priced_on_the_recruited_headcount() {
+        let hex_region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![with_men(with_silver(unit("900"), 9 * 38 + 50), 1)])
+        };
+        let study = study_of(
+            vec![hex_region.clone()],
+            "unit 900\nBUY 9 HUMN\nSTUDY Combat\n",
+            "900",
+        )
+        .expect("a studying unit is forecast");
+
+        assert_eq!(study.doubts.len(), 1, "{study:?}");
+        assert_eq!(study.doubts[0].reason, effects::StudyDoubtReason::FeeShort);
+        assert_eq!(study.doubts[0].fee, 100);
+        assert_eq!(study.doubts[0].short_by, 50);
+
+        // And the popup's fee is the ledger's own charge for the same orders.
+        let silver =
+            forecast_with_ruleset(vec![hex_region], "unit 900\nBUY 9 HUMN\nSTUDY Combat\n");
+        let studied: Vec<_> = silver
+            .changes
+            .iter()
+            .filter(|change| change.cause == SilverChangeCause::Studied)
+            .map(|change| change.amount)
+            .collect();
+        assert_eq!(studied, vec![-study.doubts[0].fee], "{:?}", silver.changes);
     }
 
     #[test]
