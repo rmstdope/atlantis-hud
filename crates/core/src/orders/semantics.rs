@@ -6101,6 +6101,7 @@ fn month_long_walk(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<usize> {
     let Some(ruleset) = ruleset else {
         return (0..hex.units.len()).collect();
     };
+    let destroyed_structure_ids = destroyed_structure_ids(hex);
     let founds_a_structure = |ordered: &Ordered<'_>| {
         ordered.intents.iter().any(|placed| match &placed.intent {
             Intent::Build {
@@ -6108,7 +6109,8 @@ fn month_long_walk(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<usize> {
                 ..
             } => {
                 ruleset.build_recipe(kind).is_some()
-                    && !(ruleset.is_new_age() && inside_unfinished(hex, ordered, kind))
+                    && !(ruleset.is_new_age()
+                        && stands_in_unfinished(hex, ordered, kind, &destroyed_structure_ids))
             }
             _ => false,
         })
@@ -6116,19 +6118,6 @@ fn month_long_walk(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<usize> {
     let (founders, others): (Vec<usize>, Vec<usize>) =
         (0..hex.units.len()).partition(|&index| founds_a_structure(&hex.units[index]));
     others.into_iter().chain(founders).collect()
-}
-
-/// Whether `ordered` stands, once its ENTER and LEAVE have run, in an unfinished structure of
-/// `kind`.
-fn inside_unfinished(hex: &Hex<'_>, ordered: &Ordered<'_>, kind: &str) -> bool {
-    let wanted = kind.replace('_', " ");
-    structure_after_orders(ordered).is_some_and(|id| {
-        hex.region.structures.iter().any(|structure| {
-            structure.structure_id == id
-                && structure.needs.is_some_and(|needs| needs > 0)
-                && structure.kind.eq_ignore_ascii_case(&wanted)
-        })
-    })
 }
 
 fn discard_unfinished_ships_after_movement(
@@ -9120,7 +9109,10 @@ fn unit_is_in_structure(hex: &Hex<'_>, unit_id: &str, structure_id: &str) -> boo
         == Some(structure_id)
 }
 
-/// Whether `ordered` ends its orders inside an unfinished, surviving structure of `kind`.
+/// Whether `ordered` stands, once its ENTER and LEAVE have run, in an unfinished structure of
+/// `kind` that no `DESTROY` removes first - the New Age engine's continuation branch in
+/// `AddNewBuildings`. One reading for both callers, the month-long walk and BUILD's pricing, so
+/// the two cannot disagree about the same unit. `kind` is the order's spelling, `_` for a space.
 fn stands_in_unfinished(
     hex: &Hex<'_>,
     ordered: &Ordered<'_>,
@@ -9134,7 +9126,7 @@ fn stands_in_unfinished(
         && hex.region.structures.iter().any(|structure| {
             structure.structure_id == structure_id
                 && structure.needs.is_some_and(|needs| needs > 0)
-                && super::transport::structure_kind_is(structure, kind)
+                && super::transport::structure_kind_is(structure, &kind.replace('_', " "))
         })
 }
 
