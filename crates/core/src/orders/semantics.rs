@@ -6309,10 +6309,17 @@ fn ledger_for_reaching<'a>(
                 match &placed.intent {
                     // A contested landing's manufacturing races the passengers' builds for the
                     // stock shared there (`AwaySite::contested`), so it is not priced (`ah-i6d0`).
+                    // Nor is a passenger's, where it lands somewhere contested or somewhere the
+                    // report cannot follow its sail (`ah-jda3`).
                     Intent::Produce { item, .. }
-                        if ledger.contested_landing
-                            && pass == StatePhase::Manufacturing
-                            && produce_phase(hex, ordered, item, ruleset) == pass =>
+                        if pass == StatePhase::Manufacturing
+                            && produce_phase(hex, ordered, item, ruleset) == pass
+                            && ledger
+                                .away
+                                .get(&ordered.unit.unit_id)
+                                .map_or(ledger.contested_landing, |site| {
+                                    site.as_ref().is_none_or(|site| site.contested)
+                                }) =>
                     {
                         ledger
                             .uncounted
@@ -12290,7 +12297,7 @@ fn material_suppliers(ledger: &Ledger<'_>, pool: &Pool<'_>, tag: &str) -> Vec<(u
     if tag.eq_ignore_ascii_case(SILVER)
         || pool.sharing.reading(tag, ledger.ruleset) != Reading::Pooled
         || !pool.sharing.pool_trusted(ledger)
-        // A passenger building where its fleet lands is not in this hex when it builds.
+        // A passenger building or manufacturing where its fleet lands is not in this hex then.
         || ledger.away.contains_key(pool.actor_id())
     {
         return Vec::new();
@@ -12364,7 +12371,7 @@ fn arriving_suppliers(ledger: &Ledger<'_>, pool: &Pool<'_>, tag: &str) -> Vec<us
         .iter()
         .enumerate()
         .filter(|(_, arrival)| &arrival.faction == faction && arrival.unit_id != actor)
-        // Where the actor builds decides which sharers are beside it then (`ah-i6d0`).
+        // Where the actor builds or manufactures decides which sharers are beside it then (`ah-i6d0`).
         .filter(|(_, arrival)| match &arrival.lends_to {
             None => !away,
             Some(builders) => builders.contains(actor),
@@ -15738,7 +15745,8 @@ struct MonthLongReach {
     /// Other hexes' sharers whose month ends here - and, for this hex's [`MonthLongReach::away`]
     /// builders only, the sharers where they land.
     supplies: Vec<ArrivingSupply>,
-    /// This hex's passengers whose `BUILD` runs where their fleet arrives ([`away_builders`]).
+    /// This hex's passengers whose `BUILD` or manufacturing `PRODUCE` runs where their fleet
+    /// arrives ([`away_builders`]).
     away: BTreeMap<String, Option<AwaySite>>,
     /// Whether this hex is a contested landing ([`AwayBuilders::contested_landing`]).
     contested_landing: bool,
@@ -15861,16 +15869,18 @@ fn departing_ids(
 /// [`away_builders`]' answer, index-aligned with the entry point's hexes.
 #[derive(Debug, Default)]
 struct AwayBuilders {
-    /// Each hex's sailing passengers with a `BUILD`, and where each builds.
+    /// Each hex's sailing passengers with a `BUILD` or a manufacturing `PRODUCE`, and where each
+    /// works (`ah-jda3`).
     sites: Vec<BTreeMap<String, Option<AwaySite>>>,
     /// Whether each hex is a contested landing ([`AwaySite::contested`]), so the builds of the
     /// units already standing in it are uncounted too.
     contested_landing: Vec<bool>,
 }
 
-/// Each hex's sailing passengers with a `BUILD`, index-aligned with `hexes`, each with the site
-/// it builds at - the region its fleet arrives in - or `None` where the report cannot follow the
-/// sail (`ah-i6d0`). A fleet that does not leave its hex carries nobody away.
+/// Each hex's sailing passengers with a `BUILD` or a manufacturing `PRODUCE`, index-aligned with
+/// `hexes`, each with the site it works at - the region its fleet arrives in - or `None` where the
+/// report cannot follow the sail (`ah-i6d0`, `ah-jda3`). A fleet that does not leave its hex
+/// carries nobody away.
 ///
 /// `rules/sequenceofevents` processes "ADVANCE, MOVE and SAIL orders" before "BUILD orders", and
 /// `rules/movement_sailing` lets "units on board the fleet, but not aiding in the sailing of the
@@ -15894,17 +15904,23 @@ fn away_builders(
         .iter()
         .map(|region| (region.coordinate, region))
         .collect();
+    // A manufacturing PRODUCE draws on the same pooled stock in the same walk as BUILD
+    // (`month_long_passes`), so it is supplied where the fleet lands too (`ah-jda3`).
+    let consumes = |hex: &Hex<'_>, ordered: &Ordered<'_>| {
+        ordered.intents.iter().any(|placed| match &placed.intent {
+            Intent::Build { .. } => true,
+            Intent::Produce { item, .. } => {
+                produce_phase(hex, ordered, item, ruleset) == StatePhase::Manufacturing
+            }
+            _ => false,
+        })
+    };
     let mut away = hexes
         .iter()
         .map(|hex| {
             hex.units
                 .iter()
-                .filter(|ordered| {
-                    ordered
-                        .intents
-                        .iter()
-                        .any(|placed| matches!(placed.intent, Intent::Build { .. }))
-                })
+                .filter(|ordered| consumes(hex, ordered))
                 .filter(|ordered| carried_away(hex, ordered, rules).is_some())
                 .filter_map(|ordered| {
                     let site = match production_region(hex, ordered, ruleset, &regions) {
@@ -15933,22 +15949,12 @@ fn away_builders(
     // any fleet, sharers arriving there, and the units already standing there - and anything is
     // shared there: which of them the engine reaches first, and so who draws whose material, is
     // nothing the report settles. Across every fleet, since two fleets may land in one region.
-    // A manufacturing PRODUCE draws on the same pooled stock in the same walk as BUILD
-    // (`month_long_passes`), so a resident making goods competes with a passenger building.
+    // A resident making goods competes with a passenger building, as `consumes` above says.
     let builds = |ordered: &Ordered<'_>| {
         ordered
             .intents
             .iter()
             .any(|placed| matches!(placed.intent, Intent::Build { .. }))
-    };
-    let consumes = |hex: &Hex<'_>, ordered: &Ordered<'_>| {
-        ordered.intents.iter().any(|placed| match &placed.intent {
-            Intent::Build { .. } => true,
-            Intent::Produce { item, .. } => {
-                produce_phase(hex, ordered, item, ruleset) == StatePhase::Manufacturing
-            }
-            _ => false,
-        })
     };
     let mut landings: Vec<Coordinate> = Vec::new();
     for site in away.iter().flat_map(BTreeMap::values).flatten() {
@@ -15985,15 +15991,17 @@ fn away_builders(
             }
             // Every sharer whose month ends here lends here, and one that manufactures lends only
             // what its own PRODUCE leaves - as if it went first, which nothing settles either.
-            for (hex, leaving) in hexes.iter().zip(departing) {
+            // A passenger making goods is already counted among the sites above (`ah-jda3`).
+            for ((hex, leaving), sites) in hexes.iter().zip(departing).zip(&away) {
                 for (unit_id, to) in leaving {
                     if *to != at {
                         continue;
                     }
                     shared = true;
-                    if hex
-                        .find(unit_id)
-                        .is_some_and(|ordered| consumes(hex, ordered) && !builds(ordered))
+                    if !sites.contains_key(unit_id)
+                        && hex
+                            .find(unit_id)
+                            .is_some_and(|ordered| consumes(hex, ordered) && !builds(ordered))
                     {
                         builders += 1;
                     }
@@ -59140,6 +59148,154 @@ BUILD
                 .sum::<i64>(),
             -30,
             "{holder:?}"
+        );
+    }
+
+    // --- a sailing passenger manufactures where its fleet arrives (`ah-jda3`) ---------------
+    //
+    // As BUILD above: `rules/sequenceofevents` runs SAIL before the month-long orders, and
+    // `rules/movement_sailing` lets a passenger "execute other orders while the fleet is
+    // sailing", so a passenger's manufacturing PRODUCE draws on the sharers where it lands.
+    // `newage trident data/carpenter`: "CARP 1 ... may PRODUCE wagons [WAGO] from wood [WOOD] at
+    // a rate of 1 per man-month".
+
+    /// Passenger 901 - ten men at carpentry 1 - making wagons aboard longship 329 in `origin`,
+    /// whose captain 4022 sails north into `destination`.
+    fn passenger_wagons(origin: ReportRegion, destination: ReportRegion) -> (ParsedReport, String) {
+        let (mut report, _) = passenger_palace(origin, destination, None);
+        let passenger = report
+            .regions
+            .iter_mut()
+            .flat_map(|region| region.units.iter_mut())
+            .find(|unit| unit.unit_id == "901")
+            .expect("passenger_palace lists 901");
+        passenger.skills.clear();
+        *passenger = with_skill(passenger.clone(), "CARP", 1);
+        (
+            report,
+            "unit 4022\nSAIL N\nunit 901\nPRODUCE wagon\n".to_string(),
+        )
+    }
+
+    fn wood_moved(
+        effects: &BTreeMap<UnitKey, UnitItemEffects>,
+        unit_id: &str,
+    ) -> Vec<ItemMovement> {
+        effects_for(effects, unit_id)
+            .cloned()
+            .unwrap_or_default()
+            .moved
+            .into_iter()
+            .filter(|movement| movement.tag == "WOOD")
+            .collect()
+    }
+
+    /// The bead's regression: a sharer staying in the open sea the fleet leaves holds wood, and so
+    /// does one in the region it lands in. The passenger makes its wagons where it lands, so the
+    /// wood is drawn there and the sharer left behind keeps its own.
+    #[test]
+    fn a_passenger_making_wagons_draws_on_the_sharer_where_it_lands() {
+        let behind = sharing(with_item(unit("903"), 40, "wood", "WOOD"));
+        let there = sharing(with_item(unit("902"), 40, "wood", "WOOD"));
+        let (report, orders) = passenger_wagons(
+            open_sea(vec![behind]),
+            region_at("1:7,53", 7, 53, vec![there]),
+        );
+
+        let effects = item_effects(&report, &orders, Some(&trident()), &CheckOptions::default());
+        let passenger = effects_for(&effects, "901").cloned().unwrap_or_default();
+        assert!(passenger.uncounted.is_empty(), "{passenger:?}");
+        assert!(
+            wood_moved(&effects, "903").is_empty(),
+            "the sharer left behind is not beside the passenger: {:?}",
+            wood_moved(&effects, "903")
+        );
+        let drawn = wood_moved(&effects, "902");
+        assert_eq!(
+            drawn.iter().map(|movement| movement.delta).sum::<i64>(),
+            -10,
+            "ten men at a wagon a man-month: {drawn:?}"
+        );
+        assert!(drawn.iter().all(
+            |movement| movement.cause == ItemChangeCause::ProductionSpent
+                && movement.other.as_ref().map(|party| party.unit_id.as_str()) == Some("901")
+        ));
+    }
+
+    /// With wood only in the region left behind, the passenger has none where it makes wagons:
+    /// the sharer left behind keeps its wood, and no wagons are made.
+    #[test]
+    fn a_passenger_making_wagons_is_not_supplied_by_a_sharer_left_behind() {
+        let behind = sharing(with_item(unit("903"), 40, "wood", "WOOD"));
+        let (report, orders) =
+            passenger_wagons(open_sea(vec![behind]), region_at("1:7,53", 7, 53, vec![]));
+
+        let effects = item_effects(&report, &orders, Some(&trident()), &CheckOptions::default());
+        assert!(
+            wood_moved(&effects, "903").is_empty(),
+            "{:?}",
+            wood_moved(&effects, "903")
+        );
+        let passenger = effects_for(&effects, "901").cloned().unwrap_or_default();
+        assert!(
+            passenger
+                .moved
+                .iter()
+                .all(|movement| !(movement.tag == "WAGO" && movement.delta > 0)),
+            "{passenger:?}"
+        );
+    }
+
+    /// `ah-i6d0`'s contested-landing rule: a resident already making wagons where the fleet lands,
+    /// beside a sharer there, races the passenger for the wood in an order the report does not
+    /// settle - so neither's manufacturing is priced and the wood is not spent.
+    #[test]
+    fn a_passenger_and_a_resident_making_wagons_from_a_sharers_wood_are_uncounted() {
+        let there = sharing(with_item(unit("902"), 15, "wood", "WOOD"));
+        let resident = with_skill(with_men(unit("903"), 10), "CARP", 1);
+        let (report, mut orders) = passenger_wagons(
+            open_sea(vec![]),
+            region_at("1:7,53", 7, 53, vec![there, resident]),
+        );
+        orders.push_str("unit 903\nPRODUCE wagon\n");
+
+        let effects = item_effects(&report, &orders, Some(&trident()), &CheckOptions::default());
+        for unit_id in ["901", "903"] {
+            let maker = effects_for(&effects, unit_id).cloned().unwrap_or_default();
+            assert_eq!(
+                maker.uncounted,
+                vec!["PRODUCE wagon".to_string()],
+                "{unit_id}: {maker:?}"
+            );
+        }
+        assert!(
+            wood_moved(&effects, "902").is_empty(),
+            "{:?}",
+            wood_moved(&effects, "902")
+        );
+    }
+
+    /// A sail the report cannot follow leaves where the passenger makes its wagons unknown, so
+    /// the PRODUCE is uncounted rather than priced against the hex it leaves - as its BUILD is
+    /// (`a_passenger_whose_sail_cannot_be_followed_builds_uncounted`).
+    #[test]
+    fn a_passenger_whose_sail_cannot_be_followed_makes_wagons_uncounted() {
+        let behind = sharing(with_item(unit("903"), 40, "wood", "WOOD"));
+        let (report, orders) =
+            passenger_wagons(open_sea(vec![behind]), region_at("1:7,53", 7, 53, vec![]));
+        let orders = orders.replace("SAIL N", "SAIL S");
+
+        let effects = item_effects(&report, &orders, Some(&trident()), &CheckOptions::default());
+        let passenger = effects_for(&effects, "901").cloned().unwrap_or_default();
+        assert_eq!(
+            passenger.uncounted,
+            vec!["PRODUCE wagon".to_string()],
+            "{passenger:?}"
+        );
+        assert!(
+            wood_moved(&effects, "903").is_empty(),
+            "{:?}",
+            wood_moved(&effects, "903")
         );
     }
 
