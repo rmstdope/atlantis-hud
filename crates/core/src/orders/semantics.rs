@@ -5892,19 +5892,46 @@ fn month_long_passes() -> &'static [StatePhase] {
 /// `RunProduceOrders` then walks the objects in order - so a founder is reached last, wherever it
 /// sat on the report. A ship is not founded that way (`RunBuildShipOrder` runs where the unit
 /// is), and neither is a name the catalogue has no structure for.
+///
+/// New Age only: a unit already inside an unfinished structure of the kind it names founds
+/// nothing and keeps working where it stands (`../atlantis-newage` `AddNewBuildings`, the
+/// `o->new_building == u->object->type && u->object->incomplete > 0` branch) - the shape of the
+/// `BUILD Farm COMPLETE` repeat order that engine writes. New Origins' engine has no such branch.
+///
+/// Known gap: a unit that ENTERs or LEAVEs a structure this month is walked from its report row,
+/// though the engine reaches it among its new structure's units (`Unit::MoveUnit` appends it).
 fn month_long_walk(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<usize> {
+    let Some(ruleset) = ruleset else {
+        return (0..hex.units.len()).collect();
+    };
     let founds_a_structure = |ordered: &Ordered<'_>| {
         ordered.intents.iter().any(|placed| match &placed.intent {
             Intent::Build {
                 founding: Some(kind),
                 ..
-            } => ruleset.is_some_and(|ruleset| ruleset.build_recipe(kind).is_some()),
+            } => {
+                ruleset.build_recipe(kind).is_some()
+                    && !(ruleset.is_new_age() && inside_unfinished(hex, ordered, kind))
+            }
             _ => false,
         })
     };
     let (founders, others): (Vec<usize>, Vec<usize>) =
         (0..hex.units.len()).partition(|&index| founds_a_structure(&hex.units[index]));
     others.into_iter().chain(founders).collect()
+}
+
+/// Whether `ordered` stands, once its ENTER and LEAVE have run, in an unfinished structure of
+/// `kind`.
+fn inside_unfinished(hex: &Hex<'_>, ordered: &Ordered<'_>, kind: &str) -> bool {
+    let wanted = kind.replace('_', " ");
+    structure_after_orders(ordered).is_some_and(|id| {
+        hex.region.structures.iter().any(|structure| {
+            structure.structure_id == id
+                && structure.needs.is_some_and(|needs| needs > 0)
+                && structure.kind.eq_ignore_ascii_case(&wanted)
+        })
+    })
 }
 
 fn discard_unfinished_ships_after_movement(

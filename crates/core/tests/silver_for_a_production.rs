@@ -507,14 +507,14 @@ mod a_market_before_the_manufacture {
 
 // --- the two columns under Trident (`ah-g9sf.5`) -------------------------------------------------
 
-/// Trident settles every BUILD before one combined production phase
-/// (`newage trident rules/sequenceofevents`), which moves a manufacturing PRODUCE from
-/// `StatePhase::Manufacturing` to `StatePhase::PrimaryProduction` in the ITEMS ledger.
+/// Trident runs the same month-long walk as New Origins: manufacturing PRODUCE and BUILD in
+/// report order, then primary production (`../atlantis-newage` `monthorders.cpp`
+/// `RunProduceOrders`, the navigator's choice in `ah-e23d.1`), so the ITEMS ledger settles a
+/// manufacturing PRODUCE at `StatePhase::Manufacturing` here too.
 ///
-/// `orders/silver.rs` is deliberately untouched by that change: it records a production's silver at
-/// `Manufacturing` and reads the purse with `as_manufacturing_opens()`, and BUILD spends no silver
-/// at all, so nothing writes silver between the two slots. This test pins that agreement rather
-/// than leaving it to the argument.
+/// `orders/silver.rs` records a production's silver at `Manufacturing` and reads the purse with
+/// `as_manufacturing_opens()`, and BUILD spends no silver at all. This test pins that the two
+/// columns agree under the Trident ruleset rather than leaving it to the argument.
 ///
 /// `newage trident data/carpenter`: "CARP 1 ... may PRODUCE wagons [WAGO] from wood [WOOD] at a
 /// rate of 1 per man-month". `newage trident data/farming`: "FARM 3: ... may BUILD a Farm from 10
@@ -531,8 +531,8 @@ mod under_trident {
             .expect("the committed Trident ruleset parses and validates")
     }
 
-    /// A carpenter above a sharer of fifteen wood, and a farmer below founding a Farm - the same
-    /// hex `builders_take_material_first_in_trident.rs` reads the item changes of.
+    /// A carpenter above a sharer of fifteen wood, and a farmer below founding a Farm - the shape
+    /// `month_long_orders_settle_in_report_order.rs` reads the item changes of.
     fn report() -> String {
         [
             "Foo (1) Report",
@@ -599,7 +599,7 @@ mod under_trident {
 
         assert_eq!(
             items, 5,
-            "the builder took ten of the fifteen a phase earlier, leaving five"
+            "the carpenter is reached before the founder and makes its five"
         );
         assert_eq!(
             silver.produced, items,

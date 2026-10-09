@@ -152,3 +152,30 @@ fn a_founder_is_reached_after_every_other_unit() {
         );
     }
 }
+
+/// A New Age unit already inside an unfinished structure of the kind it names founds nothing: it
+/// keeps working on it where it stands (`../atlantis-newage` `monthorders.cpp` `AddNewBuildings`,
+/// the `o->new_building == u->object->type && u->object->incomplete > 0` branch). That engine
+/// writes `BUILD Farm COMPLETE` as the repeat order for exactly such a unit.
+#[test]
+fn a_new_age_builder_naming_its_own_unfinished_structure_keeps_its_place() {
+    for (world, ruleset) in &WORLDS[1..] {
+        assert_eq!(
+            wood_changes(ruleset, &farm_then_tower(), "BUILD Farm COMPLETE"),
+            builder_first(),
+            "{world}: the farmer is still in its Farm, above the carpenter"
+        );
+    }
+}
+
+/// New Origins' `AddNewBuildings` has no such branch: any `BUILD <structure>` founds a new one and
+/// moves its founder to the end of the walk, even from inside an unfinished one of that kind.
+#[test]
+fn a_new_origins_builder_naming_a_structure_always_founds_one() {
+    let (world, ruleset) = WORLDS[0];
+    assert_eq!(
+        wood_changes(ruleset, &farm_then_tower(), "BUILD Farm"),
+        manufacturer_first(),
+        "{world}: the farmer founds a new Farm, walked last"
+    );
+}
