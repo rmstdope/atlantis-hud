@@ -9244,7 +9244,9 @@ fn build(
     // the current building if it is not complete, and it is the same type as the one specified";
     // the engine's `AddNewBuildings` does so for every `BUILD [object type]`). Read from here on
     // as the bare form, so it is priced against what that structure still needs. New Origins'
-    // engine founds a new structure regardless, so it is left alone.
+    // engine founds a new structure regardless, so it is left alone. The engine's branch ends in
+    // `break`, which also skips founding for every later unit in the same structure; that reads as
+    // an engine bug rather than a rule, and is deliberately not mirrored here.
     let founding_kind = founding_kind.filter(|kind| {
         !(ruleset.is_new_age()
             && stands_in_unfinished(hex, task_owner, kind, &destroyed_structure_ids))
@@ -27460,6 +27462,80 @@ BUILD Farm COMPLETE
                     );
                     assert!(!spend.founding, "nothing new is founded");
                     assert_eq!(balance_of(ledger, "900", "WOOD"), 37);
+                },
+            );
+        }
+
+        /// A Trident farmer with 40 wood, inside unfinished Farm 4 needing 3.
+        fn trident_farmer_in_farm(id: &str) -> ReportUnit {
+            in_structure(
+                with_item(
+                    with_skill(with_men(unit(id), 10), "FARM", 3),
+                    40,
+                    "wood",
+                    "WOOD",
+                ),
+                "4",
+            )
+        }
+
+        /// The continuation is for the kind the unit stands in only: `newage trident rules/build`
+        /// goes on "otherwise it will start a new object of the type specified".
+        /// `newage trident data/farming`: "FARM 3: ... or a Ranch from 10 wood".
+        #[test]
+        fn a_trident_build_of_another_kind_still_founds_a_new_one() {
+            let hex_region = ReportRegion {
+                structures: vec![unfinished_farm("4", 3)],
+                ..region(vec![trident_farmer_in_farm("900")])
+            };
+            with_trident_ledger(hex_region, "unit 900\nBUILD Ranch COMPLETE\n", |ledger| {
+                let spend = &ledger.built.get("900").expect("the unit builds")[0];
+                assert!(spend.founding, "a new Ranch is founded");
+                assert_eq!(spend.amount, 10, "priced at a new Ranch's full cost");
+            });
+        }
+
+        /// `BUILD HELP` works on the helped unit's task, and that task is the Farm it stands in.
+        #[test]
+        fn a_trident_helper_of_a_continuing_builder_works_on_that_structure() {
+            let hex_region = ReportRegion {
+                structures: vec![unfinished_farm("4", 3)],
+                ..region(vec![
+                    trident_farmer_in_farm("900"),
+                    with_item(
+                        with_skill(with_men(unit("901"), 10), "FARM", 3),
+                        40,
+                        "wood",
+                        "WOOD",
+                    ),
+                ])
+            };
+            with_trident_ledger(
+                hex_region,
+                "unit 900\nBUILD Farm COMPLETE\nunit 901\nBUILD HELP 900\n",
+                |ledger| {
+                    let spend = &ledger.built.get("901").expect("the helper builds")[0];
+                    assert!(!spend.founding, "the helper founds nothing either");
+                    assert!(spend.amount <= 3, "capped by the Farm's needs: {}", spend.amount);
+                },
+            );
+        }
+
+        /// A structure its owner DESTROYs this turn is gone before BUILD, so there is nothing to
+        /// remain in and the order founds a new one.
+        #[test]
+        fn a_trident_build_after_destroying_the_structure_founds_a_new_one() {
+            let hex_region = ReportRegion {
+                structures: vec![unfinished_farm("4", 3)],
+                ..region(vec![trident_farmer_in_farm("900")])
+            };
+            with_trident_ledger(
+                hex_region,
+                "unit 900\nDESTROY\nBUILD Farm COMPLETE\n",
+                |ledger| {
+                    let spend = &ledger.built.get("900").expect("the unit builds")[0];
+                    assert!(spend.founding, "a new Farm is founded");
+                    assert_eq!(spend.amount, 10);
                 },
             );
         }
