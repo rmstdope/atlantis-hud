@@ -122,9 +122,34 @@ fn a_sharing_unit_says_where_its_loan_went() {
     // $1446 until `ah-0mch`, when a CAST began drawing on the hex's other sharers: 683's spell is
     // now cast in full at $1200 rather than cut to its own $600, and of the $600 more it borrows,
     // 3493 lends $496 and 8048 the remaining $104.
-    assert_eq!(lent[0].amount, -1942, "signed out of the unit");
+    //
+    // $1942 until `ah-jmr8`, when a create-artifact cast began paying its inputs once per cast,
+    // as the engine's `Game::RunCreateArtifact` does: 683's level 2 flaming sword costs $600, its
+    // own, and borrows nothing.
+    assert_eq!(lent[0].amount, -1446, "signed out of the unit");
     assert_eq!(lent[0].line, None, "the SHARE flag lent it, not an order");
     assert_eq!(lent[0].other, None, "the hex's purse is not a unit");
+}
+
+/// A create-artifact CAST is charged its inputs once per cast, whatever it yields (`ah-jmr8`):
+/// the engine's `Game::RunCreateArtifact` consumes each input once and only then rolls the count.
+/// Unit 683 of `G3_F42_T40` is a level 2 flaming-sword maker (`data/CFSW`: "at a cost of 600
+/// silver"), so its cast costs 600, not one 600 for each of the two swords its level may make.
+#[test]
+fn a_created_artifact_is_charged_once_per_cast() {
+    let (_, mage) = the_corpus()
+        .into_iter()
+        .find(|(fixture, unit)| *fixture == "G3_F42_T40" && unit.unit_id == "683")
+        .expect("unit 683 of G3_F42_T40 casts Create Flaming Sword");
+
+    let spent: Vec<i64> = mage
+        .changes
+        .iter()
+        .filter(|change| change.cause == SilverChangeCause::CastSpent)
+        .map(|change| change.amount)
+        .collect();
+
+    assert_eq!(spent, vec![-600], "one cast, one price");
 }
 
 /// One hex with a market, and two own units: a buyer whose `TAKE ... ALL SILV` cannot be priced,

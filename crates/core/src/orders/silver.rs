@@ -46,6 +46,15 @@ const ENTERTAIN_TAG: &str = "ENTE";
 /// The item tag silver itself carries, both in a report's inventory and in a cast's costs.
 const SILVER_TAG: &str = "SILV";
 
+/// What the three enchantments make - `data/ESWO` mithril swords, `data/EARM` mithril armor,
+/// `data/ESHD` mithril shields. They are the only creations the engine prices **per item**
+/// (`Game::RunEnchant`, `../Atlantis` `spells.cpp`); every other creation that costs anything is
+/// `Game::RunCreateArtifact`'s, priced once per cast (`ah-jmr8`). Hard-coded for the reason the
+/// earning spells below are: the data page words both shapes alike ("at a cost of ..."), so the
+/// ruleset carries nothing to tell them apart. New Age's arcanum prices the same three; trident has
+/// no enchantment spells at all.
+const ENCHANTED_OUTPUTS: [&str; 3] = ["MSWO", "MARM", "MSHD"];
+
 /// The two spells this ruleset describes as earning. Hard-coding them in the core is a real cost,
 /// accepted knowingly: the ruleset carries no structured earning for any spell, so there is nothing
 /// to drive this from. Kept beside each other, with the rules text above, so a second ruleset makes
@@ -5058,7 +5067,8 @@ pub fn price_production(
 /// hundredths, so the multiplication comes before the division by 100 and a fractional wage is not
 /// lost. A hex stating no wage pays nothing and raises no doubt, exactly as `WORK` treats one.
 ///
-/// **Every spell may cost, charged for every item it will make** (`ah-ofpb.4`). Only the `SILV`
+/// **Every spell may cost**: a create-artifact spell once per cast, whatever it makes (`ah-jmr8`,
+/// which replaced `ah-ofpb.4`'s charge per item), an enchantment for every item it will make. Only the `SILV`
 /// entries of the cast cost move silver here; item costs and the whole `transmute` map are the item
 /// ledger's business and are not this function's - `spends` is `plan.silver` alone.
 ///
@@ -5614,16 +5624,18 @@ pub struct CastPlan {
     /// `made_certain` above is the floor beside this ceiling, added by `ah-ofpb.5`. `1` for a spell
     /// that creates nothing an item catalogue can carry, which the page prices per attempt.
     pub wanted: i64,
-    /// How many the ledger is charged for: `made`, but never fewer than one when `wanted` is more
-    /// than none. A mage that cannot afford even one is charged for one and is warned that it is
-    /// short; a mage whose level makes none of the thing at all is charged nothing.
+    /// How many times the per-item cost is charged: for an enchantment or a transmutation `made`,
+    /// but never fewer than one when `wanted` is more than none; for a create-artifact cast, which
+    /// pays once per cast (`ah-jmr8`), `1`. A mage that cannot afford even one is charged for one
+    /// and is warned that it is short; a mage whose level makes none of the thing at all is
+    /// charged nothing.
     pub charged: i64,
     /// The tag of the item created, upper-cased. `None` for a spell that creates nothing an item
     /// catalogue can carry - `data/CGAT` makes a Gate, which is a region feature.
     pub tag: Option<String>,
-    /// Silver the cast spends: `charged` times the `SILV` entry of the per-item cost.
+    /// Silver the cast spends: `charged` times the `SILV` entry of the cast's cost.
     pub silver: i64,
-    /// Everything else it spends, `charged` times each per-item amount. `name` is the tag, exactly
+    /// Everything else it spends, `charged` times each amount of the cast's cost. `name` is the tag, exactly
     /// as `plan_production` leaves it - the caller names the item.
     pub materials: Vec<ItemAmount>,
     /// What stopped it making `wanted`, or `None` when nothing did. Silver is named first when both
@@ -5736,6 +5748,31 @@ pub fn plan_cast(cost: &CastCost, caster: &Caster<'_>, level: i64) -> CastPlan {
         }
     };
 
+    // Whether the inputs are paid once for the whole cast rather than once per item. The engine
+    // has two shapes: `Game::RunEnchant` sizes the run from the materials and consumes `num * amt`,
+    // a price per item; `Game::RunCreateArtifact` checks and consumes each input once and only
+    // then rolls how many it made, a price per cast (`../Atlantis` `spells.cpp`; `ah-jmr8`, which
+    // replaces `ah-ofpb.4`'s per-item reading). Transmutation takes one source per output.
+    let per_cast = caster.transmuting.is_none()
+        && output.is_some_and(|output| {
+            !ENCHANTED_OUTPUTS
+                .iter()
+                .any(|tag| output.tag.eq_ignore_ascii_case(tag))
+        });
+    // What the inputs allow, against what one item (or, per cast, the one cast) costs: per cast,
+    // having one price in hand allows the whole run and lacking it allows nothing.
+    let afford = |have: i64, each: i64| -> i64 {
+        if per_cast {
+            if have >= each {
+                i64::MAX
+            } else {
+                0
+            }
+        } else {
+            have / each
+        }
+    };
+
     // 4. The caps, exactly as `plan_production` computes them, with one difference: silver is
     // divided out of `caster.silver_available` rather than out of the unit's own `SILV` holding.
     let holding = |tag: &str| -> i64 {
@@ -5747,14 +5784,14 @@ pub fn plan_cast(cost: &CastCost, caster: &Caster<'_>, level: i64) -> CastPlan {
     };
 
     let by_silver = if silver_each > 0 {
-        caster.silver_available.max(0) / silver_each
+        afford(caster.silver_available.max(0), silver_each)
     } else {
         i64::MAX
     };
     let by_materials = materials_each
         .iter()
         .filter(|(_, amount)| *amount > 0)
-        .map(|(tag, amount)| holding(tag) / amount)
+        .map(|(tag, amount)| afford(holding(tag), *amount))
         .min()
         .unwrap_or(i64::MAX);
 
@@ -5792,7 +5829,7 @@ pub fn plan_cast(cost: &CastCost, caster: &Caster<'_>, level: i64) -> CastPlan {
     // What this mage would have made had its faction-mates not claimed part of the region's tax
     // pool. Read only by the `charged` rule below (`ah-ud89`).
     let by_silver_hopeful = if silver_each > 0 {
-        caster.silver_hopeful.max(0) / silver_each
+        afford(caster.silver_hopeful.max(0), silver_each)
     } else {
         i64::MAX
     };
@@ -5807,6 +5844,8 @@ pub fn plan_cast(cost: &CastCost, caster: &Caster<'_>, level: i64) -> CastPlan {
         // The mage could have paid; only its faction-mates' claim on the tax pool stopped it. No
         // warning is owed, so no charge is either (`ah-ud89`).
         0
+    } else if per_cast {
+        1
     } else {
         made.max(1)
     };
@@ -6674,11 +6713,13 @@ mod cast_tests {
             },
             3,
         );
-        assert_eq!(amulets.made, 2);
+        // One cast's 200 is all the amulets need (`ah-jmr8`): 400 in hand makes all three, for
+        // 200. It was 2 made for 400 under `ah-ofpb.4`'s charge per item.
+        assert_eq!(amulets.made, 3);
         assert_eq!(amulets.wanted, 3);
-        assert_eq!(amulets.capped_by, Some(ProductionCap::Silver));
-        assert_eq!(amulets.charged, 2);
-        assert_eq!(amulets.silver, 400);
+        assert_eq!(amulets.capped_by, None);
+        assert_eq!(amulets.charged, 1);
+        assert_eq!(amulets.silver, 200);
 
         let swords = plan_cast(
             &cast_cost("ESWO"),
@@ -6750,6 +6791,73 @@ mod cast_tests {
         assert_eq!(
             short_on_two_materials.capped_by,
             Some(ProductionCap::Materials)
+        );
+    }
+
+    /// A create-artifact cast pays its inputs once, whatever it yields (`ah-jmr8`): the engine's
+    /// `RunCreateArtifact` checks and consumes each `mInput` amount once per cast and only then
+    /// rolls how many it made (`../Atlantis` `spells.cpp`, `Game::RunCreateArtifact`). `data/CFSW`
+    /// prices it "at a cost of 600 silver [SILV]", so a level 2 flaming-sword maker that may make
+    /// two still pays 600.
+    #[test]
+    fn plan_cast_charges_a_created_artifact_once_per_cast() {
+        let swords = plan_cast(&cast_cost("CFSW"), &unlimited(), 2);
+        assert_eq!(swords.wanted, 2);
+        assert_eq!(swords.made, 2);
+        assert_eq!(swords.silver, 600, "one cast, one price");
+
+        // One price is all the cast needs to have in hand: 600 makes both swords.
+        let just_enough = plan_cast(
+            &cast_cost("CFSW"),
+            &Caster {
+                skills: &[],
+                held: &[],
+                silver_available: 600,
+                silver_hopeful: 600,
+                transmuting: None,
+            },
+            2,
+        );
+        assert_eq!(just_enough.made, 2);
+        assert_eq!(just_enough.capped_by, None);
+        assert_eq!(just_enough.silver, 600);
+
+        // Short of the one price, the engine makes nothing ("Doesn't have sufficient ...") - and
+        // the shipped warning still wants the cast charged, as `ah-ofpb.4` R2 decided.
+        let short = plan_cast(
+            &cast_cost("CFSW"),
+            &Caster {
+                skills: &[],
+                held: &[],
+                silver_available: 599,
+                silver_hopeful: 599,
+                transmuting: None,
+            },
+            2,
+        );
+        assert_eq!(short.made, 0);
+        assert_eq!(short.capped_by, Some(ProductionCap::Silver));
+        assert_eq!(short.silver, 600);
+
+        // Materials too: a cloud ship (`data/SWIN`) takes 75 floater hides and 75 ironwood once.
+        let ship = plan_cast(
+            &cast_cost("SWIN"),
+            &Caster {
+                skills: &[],
+                held: &holding(&[("FLOA", 75), ("IRWD", 75)]),
+                silver_available: 0,
+                silver_hopeful: 0,
+                transmuting: None,
+            },
+            5,
+        );
+        assert_eq!(ship.made, 1);
+        assert_eq!(
+            ship.materials
+                .iter()
+                .map(|item| (item.tag.as_str(), item.amount))
+                .collect::<Vec<_>>(),
+            vec![("FLOA", 75), ("IRWD", 75)]
         );
     }
 
@@ -8151,11 +8259,11 @@ mod tests {
         );
     }
 
-    /// `ah-ofpb.4`: a level 3 amulet maker with enough silver spends for every item it makes, not
-    /// for one - `$200` once was the shipped reading `price_cast`'s own doc comment named as the
-    /// defect this bead fixes.
+    /// `ah-jmr8`: a level 3 amulet maker spends one cast's `$200` for all three it makes, as the
+    /// engine's `Game::RunCreateArtifact` consumes its inputs once per cast. `ah-ofpb.4` had
+    /// charged `$600`, one price per amulet.
     #[test]
-    fn prices_a_cast_for_every_item_it_makes() {
+    fn prices_a_created_artifact_once_per_cast() {
         let ruleset = ruleset();
         let skills = [skill("CRPA", 3)];
         let caster = Caster {
@@ -8168,7 +8276,7 @@ mod tests {
 
         let (priced, plan) =
             price_cast(ruleset.find_skill("CRPA"), &caster, RegionWages::default());
-        assert_eq!(priced.spends, 600);
+        assert_eq!(priced.spends, 200);
         assert_eq!(plan.expect("a priceable cast").made, 3);
     }
 
