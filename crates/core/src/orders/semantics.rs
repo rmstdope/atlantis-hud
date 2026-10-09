@@ -6385,7 +6385,11 @@ fn month_long_walk(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<usize> {
 ///
 /// Every unit that did not move keeps its place in the report order; each mover is inserted after
 /// the last unit standing in its new structure or in one the report lists before it, nothing
-/// coming before the units outside any structure, and a structure the report does not list last.
+/// coming before the units outside any structure.
+///
+/// Known gap: PROMOTE (`Do1PromoteOrder` puts the promoted unit first in its structure) and EVICT
+/// (`Do1EvictOrder` appends the evicted unit to the units outside) also reorder units before the
+/// walk, and neither is modelled here.
 fn walk_after_boarding(hex: &Hex<'_>) -> Vec<usize> {
     let structures = &hex.region.structures;
     let rank = |structure: Option<&str>| match structure {
@@ -6395,19 +6399,37 @@ fn walk_after_boarding(hex: &Hex<'_>) -> Vec<usize> {
             .position(|listed| listed.structure_id == id)
             .map_or(structures.len() + 1, |position| position + 1),
     };
+    // Moved by any ENTER or LEAVE that runs, even one landing where the unit started:
+    // `Do1EnterOrder` does not ask, and `Unit::MoveUnit` always removes and appends. An ENTER of a
+    // structure the hex does not have fails ("ENTER: Can't enter that.") and moves nothing.
     let moved = |index: usize| {
         let ordered = &hex.units[index];
-        structure_after_orders(ordered) != ordered.unit.structure_id.as_deref()
+        ordered
+            .intents
+            .iter()
+            .any(|placed| boarding_of(placed).is_some())
+            && structure_after_orders(ordered)
+                .is_none_or(|id| structures.iter().any(|listed| listed.structure_id == id))
+    };
+    // Where each unit stands once the boarding orders have run: a mover where it went, any
+    // other unit where the report puts it.
+    let standing = |index: usize| {
+        let ordered = &hex.units[index];
+        if moved(index) {
+            structure_after_orders(ordered)
+        } else {
+            ordered.unit.structure_id.as_deref()
+        }
     };
     let (movers, mut order): (Vec<usize>, Vec<usize>) = hex
         .report_order()
         .into_iter()
         .partition(|&index| moved(index));
     for mover in movers {
-        let target = rank(structure_after_orders(&hex.units[mover]));
+        let target = rank(standing(mover));
         let at = order
             .iter()
-            .rposition(|&index| rank(structure_after_orders(&hex.units[index])) <= target)
+            .rposition(|&index| rank(standing(index)) <= target)
             .map_or(0, |last| last + 1);
         order.insert(at, mover);
     }
@@ -29090,7 +29112,7 @@ PRODUCE wagon
                         0,
                         "the manufacturer ate all seven before the builder was reached: {debits:?}"
                     );
-                    assert_eq!(balance_of(ledger, "901", "WOOD"), 0);
+                    assert_eq!(debits, vec![-7], "the carpenter is served in full");
                 },
             );
         }
@@ -29121,6 +29143,36 @@ PRODUCE wagon
                 .map(|index| hex.units[index].unit.unit_id.as_str())
                 .collect();
             assert_eq!(walk, ["901", "902", "903", "904", "900"]);
+        }
+
+        /// `Do1EnterOrder` never asks whether the unit is already where it is going, and
+        /// `Unit::MoveUnit` always removes and appends it: a LEAVE from outside, or an ENTER of
+        /// the structure the unit stands in, still sends it to the end of its group. An ENTER of a
+        /// structure the hex does not have fails ("ENTER: Can't enter that.") and moves nothing
+        /// (`ah-dqik`).
+        #[test]
+        fn a_boarding_order_that_lands_where_it_started_still_moves_the_unit_last() {
+            let hex_region = ReportRegion {
+                structures: vec![unfinished_building("4")],
+                ..region(vec![
+                    with_men(unit("900"), 1),
+                    with_men(unit("901"), 1),
+                    with_men(unit("905"), 1),
+                    in_structure(with_men(unit("902"), 1), "4"),
+                    in_structure(with_men(unit("903"), 1), "4"),
+                ])
+            };
+            let ordered = OrderedUnits::read(
+                "unit 900\nLEAVE\nunit 901\nunit 905\nENTER 7\nunit 902\nENTER 4\nunit 903\n",
+            );
+            let hex = Hex::read(&hex_region, &ordered, &[]);
+            let rules = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+                .expect("the committed Trident ruleset should be usable");
+            let walk: Vec<&str> = month_long_walk(&hex, Some(&rules))
+                .into_iter()
+                .map(|index| hex.units[index].unit.unit_id.as_str())
+                .collect();
+            assert_eq!(walk, ["901", "905", "900", "903", "902"]);
         }
 
         /// `rules/sequenceofevents` runs "Manufacturing PRODUCE orders ... are processed" before
