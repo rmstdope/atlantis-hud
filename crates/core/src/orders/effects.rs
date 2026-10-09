@@ -1084,17 +1084,13 @@ fn settle(
     // here. After the walk, because a `FORM` reads its parent's structure mid-walk and
     // `rules/sequenceofevents` creates every formed unit long before any movement (`ah-ehgy`).
     apply_movement_boardings(&mut working.units);
-    // `rules/sequenceofevents` settles GIVE and TAKE in one Give phase, before the market - and
-    // processes units in report order, which is why nothing moved while the document was being
-    // read (`ah-3mwm`).
-    working.apply_transfers();
-
     // What `BUY`, `SELL`, `WITHDRAW` and `TAKE` do to each unit's item list, read from the same
     // ledger the Silver column and the shortfall warnings settle an oversubscribed market line
     // from - so the ITEMS and SILVER cells on one row cannot disagree (`ah-agbm`). `GIVE` is not
-    // read here: the walk above already applied every gift through `Working::give`.
+    // read here: `apply_transfers` below applies every gift through `Working::give`.
     // With the geometry this settle holds, which `options.geometry` may not carry - without it
-    // nothing is priced and no unpaid shipment is ever refused (`ah-7ale.4`).
+    // nothing is priced and no unpaid shipment is ever refused (`ah-7ale.4`). Read before the
+    // Give phase, which needs the ledger's claims, and applied after it.
     let priced_with = super::semantics::CheckOptions {
         geometry,
         ..working.options.clone()
@@ -1105,6 +1101,15 @@ fn settle(
         Some(ruleset.as_ref()),
         &priced_with,
     );
+    // `rules/claim` gives the claimed silver to the unit issuing the order, and
+    // `rules/sequenceofevents` settles CLAIM among the first instant orders, before "Give
+    // orders" - so it is there for this month's GIVE and TAKE. The amount is the ledger's, capped
+    // at the faction's unclaimed silver as the SILVER column caps it (`ah-ixq7`).
+    working.apply_claims(&item_effects);
+    // `rules/sequenceofevents` settles GIVE and TAKE in one Give phase, before the market - and
+    // processes units in report order, which is why nothing moved while the document was being
+    // read (`ah-3mwm`).
+    working.apply_transfers();
     working.apply_item_effects(&item_effects);
     settle_headcounts(&mut working.units, ruleset);
     // `rules/form`, and only once the market has settled: a formed unit's own BUY is what decides
@@ -2709,23 +2714,6 @@ impl Working {
             }
         } else if command.is("leave") && arguments.is_empty() {
             self.board(active, BoardingOrder::Leave);
-        } else if command.is("claim") {
-            // `rules/claim` gives the claimed silver to the unit issuing the order, and
-            // `rules/sequenceofevents` settles CLAIM among the first instant orders, before "Give
-            // orders" - so it is folded in now, while every GIVE and TAKE is still only queued for
-            // `apply_transfers` (`ah-ixq7`). Priced exactly as the ledger prices it, uncapped by
-            // the faction purse (`silver::price_claim`, `ah-bumi`).
-            if let Some(amount) = super::forms::read_only_number(arguments) {
-                let earns = super::silver::price_claim(amount, None).earns;
-                if earns > 0 {
-                    add_item(
-                        &mut self.units[active].unit.items,
-                        "silver",
-                        SILVER_TAG,
-                        earns,
-                    );
-                }
-            }
         } else if command.is("give") {
             self.queue_give(active, arguments, line);
         } else if command.is("take") {
@@ -2834,6 +2822,24 @@ impl Working {
             amount: Cow::Owned(amount),
             is_give: false,
         });
+    }
+
+    /// Adds what each unit's `CLAIM` orders earn, as the ledger settled them, to its item list.
+    fn apply_claims(
+        &mut self,
+        effects: &BTreeMap<super::semantics::UnitKey, super::semantics::UnitItemEffects>,
+    ) {
+        for unit in &mut self.units {
+            let claimed = effects
+                .get(&super::semantics::unit_key(
+                    &unit.unit.region_id,
+                    &unit.unit.unit_id,
+                ))
+                .map_or(0, |effect| effect.claimed);
+            if claimed > 0 {
+                add_item(&mut unit.unit.items, "silver", SILVER_TAG, claimed);
+            }
+        }
     }
 
     /// Settles this month's Give phase.
@@ -6795,6 +6801,28 @@ mod tests {
             silver_changes(previewed(&response, "new-1")),
             vec![(1000, ItemChangeCause::WasGiven, Some("902"))],
             "and reaches the formed unit"
+        );
+    }
+
+    /// `rules/claim` claims "an amount of the faction's unclaimed silver", so a claim larger than
+    /// the purse the report states earns only what is there - and the preview hands on what the
+    /// SILVER column's ledger says was claimed, not what the order asked for (`ah-ixq7`).
+    #[test]
+    fn a_claim_beyond_the_unclaimed_silver_gives_only_what_was_there() {
+        let report = claims_report("5").replacen(
+            "Foo (1) Report\n\n",
+            "Foo (1) Report\n\nUnclaimed silver: 300.\n\n",
+            1,
+        );
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 1 humans\nEND\nCLAIM 2500\nGIVE NEW 1 1000 silver\n",
+        );
+
+        assert_eq!(
+            silver_changes(previewed(&response, "902")),
+            vec![(-300, ItemChangeCause::GivenAway, Some("new-1"))],
+            "only the 300 the faction had unclaimed can be given on"
         );
     }
 

@@ -6085,6 +6085,19 @@ pub(crate) fn item_effects(
                 });
             }
         }
+        for (unit_id, moves) in &ledger.silver_moves {
+            let claimed: i64 = moves
+                .iter()
+                .filter(|moved| moved.cause == SilverChangeCause::Claimed)
+                .map(|moved| moved.amount)
+                .sum();
+            if claimed != 0 {
+                result
+                    .entry(unit_key(&hex.region.region_id, unit_id))
+                    .or_default()
+                    .claimed = claimed;
+            }
+        }
         for refused in &ledger.refused_shipments {
             result
                 .entry(unit_key(&hex.region.region_id, &refused.unit_id))
@@ -6197,6 +6210,11 @@ pub(crate) struct UnitItemEffects {
     /// `moved` because it is applied last: `rules/sequenceofevents` assesses maintenance after
     /// every `TRANSPORT`, which the preview applies after `moved`.
     pub eaten: Vec<ItemMovement>,
+    /// The silver this unit's `CLAIM` orders earn, as the ledger settled them - capped at the
+    /// faction's unclaimed silver whenever the report states it (`claim_allowances_for`).
+    /// `rules/sequenceofevents` settles CLAIM before "Give orders", so the item preview folds it
+    /// in before its own Give phase (`ah-ixq7`).
+    pub claimed: i64,
 }
 
 /// What each unit in a hex holds once its whole month has run, in `hex.units` order.
@@ -7252,11 +7270,11 @@ fn apply(
                 );
             }
         }
-        // Priced by `silver::price_claim`, which `silver::forecast_unit` calls too. The `None`
-        // is this surface's policy and is deliberate: the ledger does not cap a claim at the
-        // faction purse, because the overrun has its own finding, `claims-exceed-unclaimed`
-        // (`ah-wur4`), computed faction-wide - and warning twice about one mistake is worse than
-        // warning once (`ah-bumi`).
+        // Priced by `silver::price_claim`, which `silver::forecast_unit` calls too, against this
+        // unit's allowance from `claim_allowances_for`: capped at the faction's unclaimed silver
+        // whenever the report states it, and uncapped (`None`) only when it does not. The overrun
+        // itself is reported once, faction-wide, by `claims-exceed-unclaimed` (`ah-wur4`). The
+        // item preview folds the same capped figure in before its Give phase (`ah-ixq7`).
         Intent::Claim(amount) => {
             let priced = price_claim(*amount, *claim_remaining);
             // `rules/sequenceofevents` processes CLAIM in the first batch of instant orders, ahead
