@@ -327,8 +327,8 @@ fn a_buy_all_after_taking_all_the_silver_spends_what_the_take_brought() {
     );
 }
 
-/// `borrows` needs a negative relieved balance and `lendable` a positive one, so the two are
-/// mutually exclusive by construction. This is what keeps them so (`ah-3c2t.2`).
+/// `sharing_purse` nets what a unit lent against what it was lent, so the two are mutually
+/// exclusive by construction. This is what keeps them so (`ah-3c2t.2`, `ah-49j0`).
 #[test]
 fn a_borrowing_unit_never_also_lends() {
     for (fixture, unit) in the_corpus() {

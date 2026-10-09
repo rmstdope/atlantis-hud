@@ -2341,27 +2341,19 @@ fn forecast_hex(
 
     // A sharer that lends 50 spends 50: what the purse settled out of it is an expense of its
     // own, so the hex's total silver is unchanged and a player adding their hex up finds it
-    // (`ah-moq3`). Drained in hex order rather than split proportionally - the engine drains its
-    // sharers in whatever order it iterates them, so no split is truer than another, and a whole
-    // number needs no rounding rule.
+    // (`ah-moq3`). Who lent what is [`sharing_purse`]'s settlement, moment by moment (`ah-49j0`).
     let mut owing: i64 = into[start..]
         .iter()
         .map(|forecast| forecast.shared_silver_for_orders)
         .sum();
     if owing > 0 {
-        // A borrower lends last: what reaches it after its own orders spent is drawn only when no
-        // faction-mate's silver is left, so it never pays its own loan back to itself while a
-        // sharer beside it holds the money (`ah-0nwd`). Drawn at all, rather than skipped, because
-        // the purse was judged covered with that silver in it, and skipping it would credit the
-        // borrower money no row is debited for.
-        let mut order: Vec<usize> = (0..into.len() - start).collect();
-        order.sort_by_key(|&index| purse_for_orders.borrows[index] > 0);
-        for index in order {
-            let forecast = &mut into[start + index];
+        // Who lent is the purse's settlement; drained here only so the column never debits more
+        // than its borrowers were credited.
+        for (index, forecast) in into[start..].iter_mut().enumerate() {
             if owing == 0 {
                 break;
             }
-            let lent = purse_for_orders.lendable[index].min(owing);
+            let lent = purse_for_orders.lends[index].min(owing);
             if lent == 0 {
                 continue;
             }
@@ -2385,11 +2377,16 @@ fn forecast_hex(
         }
         // What the hex's own sharers could not cover, a sharer arriving from elsewhere did - on its
         // own row, in the hex the report lists it in (`ah-wyj8`).
-        for arrival in ledger.walking_silver.arrivals_at(LendingMoment::MonthEnd) {
+        for (arrival, lends) in ledger
+            .walking_silver
+            .arrivals_at(LendingMoment::MonthEnd)
+            .iter()
+            .zip(&purse_for_orders.arrivals_lend)
+        {
             if owing == 0 {
                 break;
             }
-            let lent = arrival.lends.min(owing);
+            let lent = (*lends).min(owing);
             if lent > 0 {
                 owing -= lent;
                 lent_across.push((arrival.unit.clone(), lent));
@@ -11007,73 +11004,87 @@ impl MarketPurse {
     }
 }
 
-/// What this hex's `SHARE` flags lend for orders, and how it is settled between claimants.
+/// What this hex's `SHARE` flags lend for orders, and who lent it to whom.
 ///
-/// The pool is the sharers' own silver, after what their own orders spend: a sharer cannot lend
-/// what it is spending itself. Claimants are the units whose orders cost more than they hold.
+/// Settled **moment by moment** - the market, STUDY, the month's end - by [`sharing_purse`], the
+/// moments [`Sharing::silver_short_at`] reads the hex's warning at (`ah-4oz9`, `ah-49j0`).
 ///
 /// **All or nothing, deliberately** - the rule `ah-e66j` set for maintenance sharing and for the
 /// same reason: where the pool cannot cover every claimant, which unit is fed cannot be told, so
 /// none is credited and every figure stays pessimistic. A player then sees a shortfall that is
-/// real for *somebody* rather than a guess about who.
+/// real for *somebody* rather than a guess about who. The rule is applied per moment: what was
+/// lent at a moment the purse covered stays lent when a later one runs dry (`ah-aqqb`).
 ///
-/// Both vectors are index-aligned with `hex.units`, so a claimant is named by where it sits in the
-/// report rather than by a lookup. That does not depend on unit ids being distinct, and they are:
-/// one unit number is one row in a region block, because `parse_region_block` refuses a repeat
-/// (`ah-bm0d`).
+/// Every vector but `arrivals_lend` is index-aligned with `hex.units`, so a claimant is named by
+/// where it sits in the report rather than by a lookup. That does not depend on unit ids being
+/// distinct, and they are: one unit number is one row in a region block, because
+/// `parse_region_block` refuses a repeat (`ah-bm0d`).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct SharingPurse {
-    /// What each sharer has to lend, before anything is drawn. `0` for every non-sharer, and `0`
-    /// for every unit in a hex that lends nothing at all.
-    lendable: Vec<i64>,
+    /// What each unit of the hex lent its faction-mates' orders this month. `0` for a unit that
+    /// lent nothing, and for every unit in a hex that lends nothing at all.
+    lends: Vec<i64>,
+    /// What each sharer arriving from another hex lent here, aligned with
+    /// [`WalkingSilver::arrivals_at`] at [`LendingMoment::MonthEnd`] (`ah-wyj8`).
+    arrivals_lend: Vec<i64>,
     /// What each unit's orders drew out of its faction-mates' pockets, and so what the purse lends
-    /// it: its own overdraft, sharer or not, where the purse settled the whole hex. Index-aligned
-    /// with `hex.units`, `0` for a unit that is not overdrawn and `0` for every unit in a hex the
-    /// purse could not cover (`ah-3c2t.2`).
+    /// it: its own overdraft, sharer or not, at each moment the purse covered. `0` for a unit that
+    /// is not overdrawn and `0` for every unit in a hex the purse could not cover (`ah-3c2t.2`).
     ///
-    /// A sharer's month-end overdraft is inside the purse's sum rather than a claim against it, so
-    /// it never decides whether the hex is covered at the month's end. Its overdraft at the market
-    /// does: in a hex short at the month's end, it is a market claim like any other and counts
-    /// when the market's claims are judged to fit (`ah-ludc`). Once covered, either way, the sharer
-    /// was lent the money as surely as a non-sharer was, and counts it in its own column
-    /// (`ah-0nwd`). Until then this was a separate field from what the purse lent, which was `0`
-    /// for a sharer.
+    /// A sharer that borrows is lent the money as surely as a non-sharer is, and counts it in its
+    /// own column (`ah-0nwd`).
     borrows: Vec<i64>,
     /// The result of judging each known shortfall against this pool, aligned with `hex.units`.
     coverage: Vec<Option<super::silver::SharedSilverCoverage>>,
 }
 
+/// The moments `SHARE` lends silver for orders at, in the order `rules/sequenceofevents` runs
+/// them: BUY under "Market orders" (read as movement begins), STUDY among "Month long orders",
+/// and the month's end, where what is still owed is netted.
+const PURSE_MOMENTS: [LendingMoment; 3] = [
+    LendingMoment::Movement,
+    LendingMoment::Study,
+    LendingMoment::MonthEnd,
+];
+
+/// A unit or an arriving sharer the purse can draw on at a moment.
+#[derive(Debug, Clone, Copy)]
+enum Lender {
+    /// A unit of the hex, by its index into `hex.units`.
+    Unit(usize),
+    /// A sharer arriving from another hex, by its index into the arrivals.
+    Arrival(usize),
+}
+
 /// The purse this hex's `SHARE` flags open for orders, settled between the units that claim it.
 ///
-/// **The same computation `report_shortfalls` judges against** - [`Sharing`], [`Sharing::pool`]
-/// and [`Sharing::pool_trusted`], reused rather than re-derived. Two implementations of this
-/// question is exactly the defect this exists to fix: the silver column said a unit was short
-/// while the warning, reading the hex, said it was not (`ah-moq3`).
+/// **The same moments the warning judges at** - [`Sharing`], [`Sharing::silver_short_at`] and
+/// [`Sharing::pool_trusted`], reused rather than re-derived. Two implementations of this question
+/// is exactly the defect this exists to fix: the silver column said a unit was short while the
+/// warning, reading the hex, said it was not (`ah-moq3`).
+///
+/// A hex short at the month's end, read as the warning reads it, lends nothing. Otherwise each moment of
+/// [`PURSE_MOMENTS`] in turn reads every unit's **position** - its own [`silver_at`] then, less
+/// what it has lent and plus what it has been lent so far - and fills every negative one from
+/// the lenders' positive ones, or, where they cannot cover them all, lends nothing from that
+/// moment on. A loan is never paid back by a later receipt: `rules/share` lends silver "for
+/// buying or studying", and nothing in it returns a shipment or wages that arrive after STUDY to
+/// the sharer that already paid (`ah-qrk0`, `ah-aqqb`).
+///
+/// Every reading of a unit's silver here takes off its [`Ledger::tax_overstated`] - what the
+/// ledger's hopeful tax credit says beyond the settled share the column counts - so a sharer that
+/// taxes a contended region is judged and lent on its own column's figures (`ah-m2d9`). The
+/// warning reads the hopeful figure, so a contended sharing hex short only on its settled tax
+/// shows red with no pool warning: the gap `ah-ud89` already accepts for a contended taxer that
+/// does not share.
 ///
 /// Silver only. Items pool too (`Sharing::reading`), but the silver column is what a player reads
 /// and what this bead was filed from.
-///
-/// [`Ledger::tax_overstated`] is what the ledger's hopeful tax credit says beyond the settled
-/// share the column counts. Every reading
-/// here - whether the pool covers its claims, the market's fallback, what each unit borrows and
-/// what each sharer lends - takes it off, so a sharer that taxes a contended region is judged and
-/// lent on its own column's figures (`ah-m2d9`).
 fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
-    let overstated = |index: usize| ledger.tax_overstated.get(index).copied().unwrap_or(0);
-    // The column's own readings of a unit's silver: the ledger's, less the tax the region's
-    // settlement says it will not collect. TAX runs before the market and STUDY
-    // (`rules/sequenceofevents`), so the overstatement is in every one of them. Coverage, the
-    // market's fallback and the settled loans all read these, so a hex is judged on the same
-    // figures it is then lent on (`ah-m2d9`).
-    let month_end = |index: usize, who: &str| {
-        relieved_balance(ledger, who, SILVER).saturating_sub(overstated(index))
-    };
-    let at_market = |index: usize, who: &str| {
-        spendable_silver_at(ledger, who, StatePhase::Movement).saturating_sub(overstated(index))
-    };
-    let overdraft = |index: usize, who: &str| overdrawn_for_orders(ledger, who, overstated(index));
+    let arrivals = ledger.walking_silver.arrivals_at(LendingMoment::MonthEnd);
     let nothing = SharingPurse {
-        lendable: vec![0; hex.units.len()],
+        lends: vec![0; hex.units.len()],
+        arrivals_lend: vec![0; arrivals.len()],
         borrows: vec![0; hex.units.len()],
         coverage: vec![None; hex.units.len()],
     };
@@ -11083,14 +11094,22 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
         return nothing;
     }
 
+    // A doubted unit is judged nowhere in this module, so it neither borrows nor lends here:
+    // lending against a sum with a hole in it would put a figure on the screen nothing stands
+    // behind.
+    let judged = |index: usize| !ledger.doubted.contains(&hex.units[index].unit.unit_id);
+    // A unit's own silver at `at` as its column reads it: less the tax the region's settlement
+    // says it will not collect. TAX runs before the market and STUDY (`rules/sequenceofevents`),
+    // so the overstatement is in every moment (`ah-m2d9`).
+    let own = |index: usize, at: LendingMoment| {
+        silver_at(ledger, &hex.units[index].unit.unit_id, at)
+            .saturating_sub(ledger.tax_overstated.get(index).copied().unwrap_or(0))
+    };
+
     let coverage_for = |outcome| {
-        hex.units
-            .iter()
-            .enumerate()
-            .map(|(index, ordered)| {
-                (!ledger.doubted.contains(&ordered.unit.unit_id)
-                    && month_end(index, &ordered.unit.unit_id) < 0)
-                    .then_some(outcome)
+        (0..hex.units.len())
+            .map(|index| {
+                (judged(index) && own(index, LendingMoment::MonthEnd) < 0).then_some(outcome)
             })
             .collect()
     };
@@ -11101,167 +11120,117 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
             ..nothing
         };
     }
-
-    // A sharer whose own orders overdrew it deeper mid-month than at the month's end was repaid
-    // by a receipt after STUDY - a shipment, wages - and that receipt repays nobody who lent to
-    // it (`rules/share`). Its month-end silver is not what it had to lend as BUY and STUDY ran, so
-    // it claims on the pool like any other unit instead of netting inside it: the verified swamp
-    // (7,25), where quartermaster 667 shares as well as its funder 1529 (`ah-aqqb`).
-    let repaid_late = |index: usize, ordered: &Ordered<'_>| {
-        let who = &ordered.unit.unit_id;
-        sharing.pools_silver(ordered)
-            && !ledger.doubted.contains(who)
-            && overdraft(index, who) > (-month_end(index, who)).max(0)
-    };
-    // What the pooled sharers hold, each less the tax it will not collect, and without the ones
-    // repaid late.
-    let pool = sharing.silver_held_at(ledger, LendingMoment::MonthEnd)
-        - hex
-            .units
-            .iter()
-            .enumerate()
-            .filter(|(_, ordered)| sharing.pools_silver(ordered))
-            .map(|(index, ordered)| {
-                if repaid_late(index, ordered) {
-                    silver_at(ledger, &ordered.unit.unit_id, LendingMoment::MonthEnd)
-                } else {
-                    overstated(index)
-                }
-            })
-            .sum::<i64>();
-
-    // A doubted unit is judged nowhere in this module, so it claims nothing here either: lending
-    // against a sum with a hole in it would put a figure on the screen nothing stands behind.
-    //
-    // A claim is the unit's overdraft at the month's end, or as STUDY settles if that is deeper:
-    // `rules/share` lends "for buying or studying", and nothing in it returns a receipt that comes
-    // after STUDY - a shipment, wages - to the sharer that already paid (`ah-aqqb`).
-    let mut claims = vec![0i64; hex.units.len()];
-    // What each claimant had drawn as the market closed (`BUY` runs under "Market orders",
-    // `rules/sequenceofevents`), for a pool that covers the market and not the month.
-    let mut market_claims = vec![0i64; hex.units.len()];
-    // What the claims would be at the month's end alone, as they were read before `ah-aqqb`.
-    let mut month_end_owed = 0i64;
-    for (index, ordered) in hex.units.iter().enumerate() {
-        let who = &ordered.unit.unit_id;
-        if ledger.doubted.contains(who) {
-            continue;
-        }
-        // A sharer overdrawn at the market drew on its faction-mates as surely as a non-sharer
-        // did, so it claims there and is lent for it, like every other sharing borrower
-        // (`ah-ludc`, following `ah-0nwd`). Its held-at-market figure below is then 0, so it never
-        // lends to itself.
-        market_claims[index] = (-at_market(index, who)).max(0);
-        if sharing.pools_silver(ordered) && !repaid_late(index, ordered) {
-            continue;
-        }
-        claims[index] = overdraft(index, who);
-        month_end_owed += (-month_end(index, who)).max(0);
-    }
-
-    if claims.iter().sum::<i64>() > pool {
-        // The month's claims are more than the pool holds only because a claimant was paid back
-        // after STUDY - but the market's claims came first, and were paid while the sharers still
-        // held their silver: the navigator chose to follow the phases here rather than lend
-        // nothing (`ah-aqqb`). A staying sharer lends what it held as the market closed; one
-        // walking away lends only what `lend_walking_sharers_silver` found drawn on it before it
-        // left, since the staying sharers pay first and its arrival lends the rest elsewhere. A
-        // hex short at the month's end as well keeps the all-or-nothing reading it always had.
-        let held_at_market: Vec<i64> = hex
-            .units
-            .iter()
-            .enumerate()
-            .map(|(index, ordered)| {
-                let who = &ordered.unit.unit_id;
-                // A sharer repaid after STUDY still held, as the market ran, whatever its
-                // Movement balance says: only what reached it after STUDY was late.
-                if ledger.doubted.contains(who) {
-                    0
-                } else if sharing.pools_silver(ordered) {
-                    at_market(index, who).max(0)
-                } else {
-                    ledger
-                        .walking_silver
-                        .departing
-                        .get(who)
-                        .copied()
-                        .unwrap_or_default()
-                }
-            })
-            .collect();
-        let market_owed: i64 = market_claims.iter().sum();
-        // The market's claims can still exceed what the sharers lend it - when they did not hold
-        // enough between them as the market closed - and then nothing is lent.
-        if month_end_owed <= pool
-            && market_owed > 0
-            && market_owed <= held_at_market.iter().sum::<i64>()
-        {
-            return SharingPurse {
-                lendable: held_at_market,
-                borrows: market_claims,
-                coverage: coverage_for(super::silver::SharedSilverCoverage::Shortfall),
-            };
-        }
+    // The warning's month-end reading ([`Sharing::silver_short_at`]) on the column's figures: a
+    // pooled unit's whole balance counts, anyone else's only as an overdraft.
+    let short_at_month_end = (0..hex.units.len())
+        .filter(|&index| judged(index))
+        .map(|index| {
+            let held = own(index, LendingMoment::MonthEnd);
+            if sharing.pools_silver(&hex.units[index]) {
+                -held
+            } else {
+                (-held).max(0)
+            }
+        })
+        .sum::<i64>()
+        - sharing.silver_from_walkers(LendingMoment::MonthEnd);
+    if short_at_month_end > 0 {
         return SharingPurse {
             coverage: coverage_for(super::silver::SharedSilverCoverage::Shortfall),
             ..nothing
         };
     }
 
-    // Every undoubted unit's own overdraft, sharer or not - the borrowing this hex settled. A hex
-    // whose sharers' surplus exactly covers their own overdrafts nets to `pool == 0`, yet a
-    // neighbour's money did pay for somebody's orders: the agreed record's own scene
-    // (`ah-3c2t.2`), and the reason there is no early return for an empty pool.
-    //
-    // Read against the settled tax, as the column prices income (`ah-3c2t.1`): with the ledger's
-    // hopeful credit a contended taxer that buys is lent only what that credit leaves it short and
-    // ends the month in the red (`ah-m2d9`).
-    let borrows: Vec<i64> = hex
-        .units
-        .iter()
-        .enumerate()
-        .map(|(index, ordered)| {
-            let who = &ordered.unit.unit_id;
-            if ledger.doubted.contains(who) {
-                0
-            } else {
-                overdraft(index, who)
-            }
-        })
-        .collect();
+    let mut purse = nothing;
+    let mut covered = true;
+    for moment in PURSE_MOMENTS {
+        let position = |purse: &SharingPurse, index: usize, at: LendingMoment| {
+            own(index, at) - purse.lends[index] + purse.borrows[index]
+        };
+        let needs: Vec<i64> = (0..hex.units.len())
+            .map(|index| {
+                if judged(index) {
+                    (-position(&purse, index, moment)).max(0)
+                } else {
+                    0
+                }
+            })
+            .collect();
+        let need: i64 = needs.iter().sum();
+        if need == 0 {
+            continue;
+        }
 
-    let lendable = hex
-        .units
-        .iter()
-        .enumerate()
-        .map(|(index, ordered)| {
-            if repaid_late(index, ordered) {
-                // Overdrawn as STUDY ran: what it holds now arrived too late to lend.
-                0
-            } else if sharing.pools_silver(ordered) {
-                // What its own column holds: the tax it will not collect is not there to lend.
-                month_end(index, &ordered.unit.unit_id).max(0)
-            } else {
+        // Each lender and what it holds to lend then.
+        let mut lenders: Vec<(Lender, i64)> = Vec::new();
+        for (index, ordered) in hex.units.iter().enumerate() {
+            if !judged(index) {
+                continue;
+            }
+            if sharing.pools_silver(ordered) {
+                lenders.push((Lender::Unit(index), position(&purse, index, moment).max(0)));
+            } else if moment == LendingMoment::Movement {
                 // A sharer that walks away lends here only what was drawn on it before it left.
-                ledger
-                    .walking_silver
-                    .departing
-                    .get(&ordered.unit.unit_id)
-                    .copied()
-                    .unwrap_or_default()
+                if let Some(&departing) = ledger.walking_silver.departing.get(&ordered.unit.unit_id)
+                {
+                    lenders.push((Lender::Unit(index), (departing - purse.lends[index]).max(0)));
+                }
             }
-        })
-        .collect();
+        }
+        // An arrival is not here for the market, and lends in all no more than its month-end
+        // figure, which `lend_walking_sharers_silver` capped at what the hex needs of it. Defensive
+        // at STUDY: a market the purse covered leaves STUDY needing no more than that cap already
+        // allows for, so no input is known that reaches it.
+        if moment != LendingMoment::Movement {
+            for (index, (now, all_month)) in ledger
+                .walking_silver
+                .arrivals_at(moment)
+                .iter()
+                .zip(arrivals)
+                .enumerate()
+            {
+                let can = (now.lends.min(all_month.lends) - purse.arrivals_lend[index]).max(0);
+                lenders.push((Lender::Arrival(index), can));
+            }
+        }
 
-    // `borrows` is also what the purse lends: what a faction-mate's silver paid for counts in the
-    // borrower's own column, sharer or not, so the borrower ends the month at what it really has
-    // and the lender is debited what it lent (`ah-0nwd`, reversing `ah-3c2t.2`'s "the buying unit
-    // keeps its red month-end figure" at the navigator's word).
-    SharingPurse {
-        lendable,
-        borrows,
-        coverage: coverage_for(super::silver::SharedSilverCoverage::Covered),
+        if lenders.iter().map(|(_, can)| can).sum::<i64>() < need {
+            covered = false;
+            break;
+        }
+        // In hex order and then the arrivals', rather than a proportional split: the engine
+        // drains its sharers in whatever order it iterates them, so no split is truer than
+        // another, and a whole number needs no rounding rule.
+        let mut owing = need;
+        for (lender, can) in lenders {
+            let lent = can.min(owing);
+            owing -= lent;
+            match lender {
+                Lender::Unit(index) => purse.lends[index] += lent,
+                Lender::Arrival(index) => purse.arrivals_lend[index] += lent,
+            }
+        }
+        for (borrowed, need) in purse.borrows.iter_mut().zip(needs) {
+            *borrowed += need;
+        }
     }
+
+    // A unit that lent at one moment and was lent at a later one only passed its faction-mates'
+    // silver on: a sharer that paid for a `BUY` and then had its own STUDY paid for lent the
+    // difference, and its column shows that, not both halves (`ah-49j0`). So no unit both lends
+    // and borrows, and what a borrower is credited is what its own orders overdrew it.
+    for (lent, borrowed) in purse.lends.iter_mut().zip(purse.borrows.iter_mut()) {
+        let passed_on = (*lent).min(*borrowed);
+        *lent -= passed_on;
+        *borrowed -= passed_on;
+    }
+
+    purse.coverage = coverage_for(if covered {
+        super::silver::SharedSilverCoverage::Covered
+    } else {
+        super::silver::SharedSilverCoverage::Shortfall
+    });
+    purse
 }
 
 /// What a unit's own silver is short as STUDY settles, the moment `rules/sequenceofevents` charges
@@ -11432,19 +11401,6 @@ fn silver_can_have(
     .and_then(|lending| walking.map(|walking| walking.lends_at(lending)))
     .unwrap_or(0);
     held + sent_out + arrivals_lend
-}
-
-/// How far `unit_id`'s orders overdraw it: at the month's end, or as STUDY settles if it was
-/// deeper then. STUDY is the last order `rules/share` lends for ("for buying or studying"), and
-/// silver that arrives after it - a shipment, wages - repays nobody who lent (`ah-aqqb`).
-///
-/// `tax_overstated` is taken off both readings: what the ledger's hopeful tax credit says beyond
-/// the unit's settled share, `0` for a unit nobody contends with (`ah-m2d9`).
-fn overdrawn_for_orders(ledger: &Ledger<'_>, unit_id: &str, tax_overstated: i64) -> i64 {
-    (-relieved_balance(ledger, unit_id, SILVER))
-        .max(-spendable_silver_at(ledger, unit_id, StatePhase::Study))
-        .saturating_add(tax_overstated)
-        .max(0)
 }
 
 /// What the shortfall pass decided about one unit and one item tag.
@@ -33282,7 +33238,7 @@ BUILD
         let purse = purse_of(&hex_region, "unit 5\nSTUDY combat\n");
 
         assert_eq!(purse.borrows, vec![0, 0]);
-        assert_eq!(purse.lendable, vec![0, 0]);
+        assert_eq!(purse.lends, vec![0, 0]);
     }
 
     #[test]
@@ -33295,7 +33251,58 @@ BUILD
         let purse = purse_of(&hex_region, "unit 5\nSTUDY combat\n");
 
         assert_eq!(purse.borrows, vec![10, 0], "the studier's whole shortfall");
-        assert_eq!(purse.lendable, vec![0, 500], "and the sharer can cover it");
+        assert_eq!(
+            purse.lends,
+            vec![0, 10],
+            "and the sharer lends exactly that"
+        );
+    }
+
+    /// A hex with a `$100` sword on sale, for a purse test that wants a `BUY` (`ah-49j0`).
+    fn selling_swords(units: Vec<ReportUnit>) -> ReportRegion {
+        ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            ..region(units)
+        }
+    }
+
+    /// Sharer 7 ($100) pays unit 5's $100 sword at the market and then studies $10 itself, and
+    /// nothing repays 5 later: the month nets $10 short, so - as the warning reads it, and by the
+    /// all-or-nothing rule of `ah-e66j` - the purse lends nothing at all, not even at the market
+    /// (`ah-49j0`).
+    #[test]
+    fn a_hex_short_at_the_months_end_lends_nothing_even_at_the_market() {
+        let hex_region = selling_swords(vec![
+            with_silver(unit("5"), 0),
+            sharing(with_silver(unit("7"), 100)),
+        ]);
+
+        let purse = purse_of(&hex_region, "unit 5\nBUY 1 swords\nunit 7\nSTUDY combat\n");
+
+        assert_eq!(purse.borrows, vec![0, 0]);
+        assert_eq!(purse.lends, vec![0, 0]);
+    }
+
+    /// Sharers 7 and 8 ($100 each) pay unit 5's $100 sword at the market, 7 first; 7 then studies
+    /// $50 of its own, which 8 pays. 7 only passed $50 of 8's silver on, so the purse shows 7
+    /// lending $50 and 8 the rest rather than 7 lending $100 and being lent $50 (`ah-49j0`).
+    #[test]
+    fn a_sharer_that_lent_and_was_lent_shows_only_the_difference() {
+        let hex_region = selling_swords(vec![
+            with_silver(unit("5"), 0),
+            with_men(sharing(with_silver(unit("7"), 100)), 5),
+            sharing(with_silver(unit("8"), 100)),
+        ]);
+
+        let purse = purse_of(&hex_region, "unit 5\nBUY 1 swords\nunit 7\nSTUDY combat\n");
+
+        assert_eq!(purse.borrows, vec![100, 0, 0]);
+        assert_eq!(purse.lends, vec![0, 50, 50]);
     }
 
     /// A sharer's overdraft never decides whether the hex is covered, yet it is still paid out of
