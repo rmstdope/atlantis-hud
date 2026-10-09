@@ -5399,6 +5399,11 @@ struct Ledger<'a> {
     /// What each unit's `BUILD` orders spend, in document order (`ah-ofpb.2`). Keyed by unit id,
     /// exactly as `uncounted` is, because a `BUILD` records more than a movement can carry.
     pub(crate) built: BTreeMap<String, Vec<super::effects::BuildSpend>>,
+    /// The work each structure has already received this month from the builders walked so far.
+    /// `Run1BuildOrder` (`monthorders.cpp`) decrements the object's `incomplete` as each builder
+    /// is reached, so a later builder of the same structure is priced against what is left
+    /// (`ah-d60n`).
+    build_laid: BTreeMap<BuildSite, i64>,
     /// Direct founding `BUILD`s whose selected ruleset refuses their reported site.
     pub(crate) build_placement_refusals:
         BTreeMap<String, Vec<super::effects::BuildPlacementRefusal>>,
@@ -5862,6 +5867,7 @@ fn ledger_for_reaching<'a>(
         uncounted: BTreeMap::new(),
         refused_recruits: Vec::new(),
         built: BTreeMap::new(),
+        build_laid: BTreeMap::new(),
         build_placement_refusals: BTreeMap::new(),
         buy_all: BTreeMap::new(),
         settled_buy_all: BTreeMap::new(),
@@ -9738,6 +9744,15 @@ fn stands_in_unfinished(
         })
 }
 
+/// The structure a `BUILD` works on, as [`Ledger::build_laid`] keys it: one the report already
+/// shows, by its id, or one founded this month, by the unit founding it - which is also whose
+/// structure every `BUILD HELP` of that unit works on.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum BuildSite {
+    Existing(String),
+    FoundedBy(String),
+}
+
 /// What a `BUILD` order named, straight off [`Intent::Build`].
 #[derive(Debug, Clone, Copy)]
 struct BuildOrder<'a> {
@@ -9853,40 +9868,45 @@ fn build(
 
     // 4/5. The structure being worked on, and its recipe. A founding build spends against its
     // whole cost, and is named by the kind the player wrote, verbatim.
-    let (place, kind, is_founding, existing_remaining) = if let Some(kind) = founding_kind.clone() {
-        (kind.clone(), kind, true, None)
-    } else {
-        let Some(structure_id) = structure_after_orders(task_owner) else {
-            // No structure at all, and no unfinished ship: the order does nothing and we know it
-            // does nothing (`build-outside-structure` is the warning for it).
-            return;
+    let (place, kind, is_founding, existing_remaining, site) =
+        if let Some(kind) = founding_kind.clone() {
+            let site = BuildSite::FoundedBy(task_owner.unit.unit_id.clone());
+            (kind.clone(), kind, true, None, site)
+        } else {
+            let Some(structure_id) = structure_after_orders(task_owner) else {
+                // No structure at all, and no unfinished ship: the order does nothing and we know it
+                // does nothing (`build-outside-structure` is the warning for it).
+                return;
+            };
+            let Some(structure) = hex
+                .region
+                .structures
+                .iter()
+                .find(|structure| structure.structure_id == structure_id)
+            else {
+                // An id not among the region's structures: nothing can be said.
+                mark_uncounted_and_return!();
+            };
+            let Some(needs) = after_destroy.needs(structure) else {
+                // Finished: no work is possible (`already-built` is the warning for it).
+                return;
+            };
+            (
+                structure_label(structure),
+                structure.kind.clone(),
+                false,
+                Some(needs),
+                BuildSite::Existing(structure_id.to_string()),
+            )
         };
-        let Some(structure) = hex
-            .region
-            .structures
-            .iter()
-            .find(|structure| structure.structure_id == structure_id)
-        else {
-            // An id not among the region's structures: nothing can be said.
-            mark_uncounted_and_return!();
-        };
-        let Some(needs) = after_destroy.needs(structure) else {
-            // Finished: no work is possible (`already-built` is the warning for it).
-            return;
-        };
-        (
-            structure_label(structure),
-            structure.kind.clone(),
-            false,
-            Some(needs),
-        )
-    };
 
     let Some((cost, materials)) = ruleset.build_recipe(&kind) else {
         // A Shaft, a ship, or a misspelling: the catalogue states neither cost nor material.
         mark_uncounted_and_return!();
     };
-    let remaining = existing_remaining.unwrap_or(cost);
+    // What earlier builders of the same structure already laid this month is no longer needed.
+    let remaining =
+        existing_remaining.unwrap_or(cost) - ledger.build_laid.get(&site).copied().unwrap_or(0);
 
     // 6. The skill tag. The minimum level is not read here - whether the unit may build at all is
     // `build-without-skill`'s business, and a unit below the minimum still does `men * level`
@@ -10016,6 +10036,8 @@ fn build(
         // A zero movement would reorder the item list into a phantom "items changed" row.
         return;
     }
+
+    *ledger.build_laid.entry(site).or_default() += plan.done;
 
     // 10. Record the movements and the spend, one movement per material. Every value has exactly
     // one source.
@@ -28089,11 +28111,12 @@ BUILD Farm COMPLETE
             });
         }
 
-        /// `BUILD HELP` works on the helped unit's task, and that task is the Farm it stands in.
+        /// `BUILD HELP` works on the helped unit's task, and that task is the Farm it stands in. The
+        /// Farm needs 33, so the helped unit's 30 leave the helper 3 (`ah-d60n`).
         #[test]
         fn a_trident_helper_of_a_continuing_builder_works_on_that_structure() {
             let hex_region = ReportRegion {
-                structures: vec![unfinished_farm("4", 3)],
+                structures: vec![unfinished_farm("4", 33)],
                 ..region(vec![
                     trident_farmer_in_farm("900"),
                     with_item(
@@ -28110,10 +28133,9 @@ BUILD Farm COMPLETE
                 |ledger| {
                     let spend = &ledger.built.get("901").expect("the helper builds")[0];
                     assert!(!spend.founding, "the helper founds nothing either");
-                    assert!(
-                        spend.amount <= 3,
-                        "capped by the Farm's needs: {}",
-                        spend.amount
+                    assert_eq!(
+                        spend.amount, 3,
+                        "capped by what the Farm still needs after 900's work"
                     );
                 },
             );
@@ -32132,7 +32154,8 @@ BUILD
                             "901",
                             "WOOD",
                             "wood",
-                            -30,
+                            // The Stockade needs 45 and 900 laid 30 of it first (`ah-d60n`).
+                            -15,
                             ItemChangeCause::BuildSpent,
                             StatePhase::Manufacturing,
                             Some(4),
@@ -32168,6 +32191,90 @@ BUILD
                     assert_eq!(spend.helping.as_deref(), Some("900"));
                     // 900 itself holds no stone, so it does nothing on its own account.
                     assert!(!ledger.built.contains_key("900"));
+                },
+            );
+        }
+
+        /// Several builders on one structure share what it still needs, in walk order: the engine's
+        /// `Run1BuildOrder` (`monthorders.cpp`) reads `buildobj->incomplete` and decrements it as
+        /// each builder is reached, so a later builder lays only what is left (`ah-d60n`).
+        fn two_builders_on_a_stockade_needing(needs: i64, second: &str) -> Vec<(String, i64)> {
+            let mut hex_region = report_with_a_builder();
+            hex_region.structures[0].needs = Some(needs);
+            hex_region.units.push(in_structure(
+                with_skill(
+                    with_item(with_men(unit("901"), 10), 120, "wood", "WOOD"),
+                    "BUIL",
+                    3,
+                ),
+                "4",
+            ));
+            let mut laid = Vec::new();
+            with_ledger(
+                hex_region,
+                &format!("unit 900\nBUILD\nunit 901\n{second}\n"),
+                |ledger| {
+                    for who in ["900", "901"] {
+                        let amount = ledger
+                            .built
+                            .get(who)
+                            .map_or(0, |spends| spends.iter().map(|s| s.amount).sum());
+                        let wood: i64 = ledger
+                            .movements
+                            .iter()
+                            .filter(|m| m.unit_id == who && m.tag == "WOOD")
+                            .map(|m| m.delta)
+                            .sum();
+                        assert_eq!(wood, -amount, "{who}'s wood follows its work");
+                        laid.push((who.to_string(), amount));
+                    }
+                },
+            );
+            laid
+        }
+
+        #[test]
+        fn two_bare_builds_in_one_structure_lay_only_what_it_needs() {
+            assert_eq!(
+                two_builders_on_a_stockade_needing(40, "BUILD"),
+                vec![("900".to_string(), 30), ("901".to_string(), 10)]
+            );
+        }
+
+        #[test]
+        fn a_build_help_lays_only_what_the_structure_still_needs() {
+            assert_eq!(
+                two_builders_on_a_stockade_needing(3, "BUILD HELP 900"),
+                vec![("900".to_string(), 3), ("901".to_string(), 0)]
+            );
+        }
+
+        /// `data` (BUIL): "may BUILD a Tower from 10 stone". The helper is walked first - a founder
+        /// is reached last (`month_long_walk`) - so the founder lays what the helper left.
+        #[test]
+        fn a_founder_and_its_helper_lay_the_new_structures_cost_between_them() {
+            let hex_region = region(vec![
+                with_skill(
+                    with_item(with_men(unit("900"), 10), 120, "stone", "STON"),
+                    "BUIL",
+                    3,
+                ),
+                with_skill(
+                    with_item(with_men(unit("901"), 2), 120, "stone", "STON"),
+                    "BUIL",
+                    3,
+                ),
+            ]);
+            with_ledger(
+                hex_region,
+                "unit 900\nBUILD Tower\nunit 901\nBUILD HELP 900\n",
+                |ledger| {
+                    assert_eq!(ledger.built["901"][0].amount, 6);
+                    assert_eq!(ledger.built["900"][0].amount, 4);
+                    assert_eq!(
+                        ledger.built["900"][0].capped_by,
+                        Some(effects::BuildCap::Needs)
+                    );
                 },
             );
         }
