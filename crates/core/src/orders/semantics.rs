@@ -59102,6 +59102,30 @@ BUILD
         );
     }
 
+    /// A sail the report cannot follow leaves where the passenger makes its wagons unknown, so
+    /// the PRODUCE is uncounted rather than priced against the hex it leaves - as its BUILD is
+    /// (`a_passenger_whose_sail_cannot_be_followed_builds_uncounted`).
+    #[test]
+    fn a_passenger_whose_sail_cannot_be_followed_makes_wagons_uncounted() {
+        let behind = sharing(with_item(unit("903"), 40, "wood", "WOOD"));
+        let (report, orders) =
+            passenger_wagons(open_sea(vec![behind]), region_at("1:7,53", 7, 53, vec![]));
+        let orders = orders.replace("SAIL N", "SAIL S");
+
+        let effects = item_effects(&report, &orders, Some(&trident()), &CheckOptions::default());
+        let passenger = effects_for(&effects, "901").cloned().unwrap_or_default();
+        assert_eq!(
+            passenger.uncounted,
+            vec!["PRODUCE wagon".to_string()],
+            "{passenger:?}"
+        );
+        assert!(
+            wood_moved(&effects, "903").is_empty(),
+            "{:?}",
+            wood_moved(&effects, "903")
+        );
+    }
+
     /// A builder already standing where the fleet lands, beside a passenger builder and a sharing
     /// shipmate: who reaches the shipmate's stone first is not in the report, so neither build is
     /// priced and the stone is not spent twice - nor once.
