@@ -1111,7 +1111,11 @@ fn settle(
     // processes units in report order, which is why nothing moved while the document was being
     // read (`ah-3mwm`).
     working.apply_transfers();
-    working.apply_item_effects(&item_effects);
+    // Only what settles up to movement, for now: `rules/sequenceofevents` processes "ADVANCE,
+    // MOVE and SAIL orders" before every month-long order, so a mover is weighed below with what
+    // it holds as it steps off, before a BUILD or PRODUCE where it arrives spends any of it
+    // (`ah-i6d0`). The month-long movements follow once it has been weighed.
+    working.apply_item_effects(&item_effects, MonthPart::ThroughMovement);
     settle_headcounts(&mut working.units, ruleset);
     // `rules/form`, and only once the market has settled: a formed unit's own BUY is what decides
     // whether it gained anybody, so nothing can be dissolved before `item_effects` has been
@@ -1125,6 +1129,7 @@ fn settle(
         .iter()
         .map(|working_unit| working_unit.movement_now(ruleset))
         .collect();
+    working.apply_item_effects(&item_effects, MonthPart::MonthLong);
     // Last of all, because `rules/sequenceofevents` runs TRANSPORT in the month's final phases -
     // after the market, after movement, after production. A sale takes its goods first, and
     // whatever a PRODUCE made this month is there to be sent.
@@ -1797,6 +1802,68 @@ struct MoveDestination {
     cause: String,
 }
 
+/// Which of a month's item effects one call of `Working::apply_item_effects` applies: everything
+/// up to and including movement, or the month-long orders after it (`ah-i6d0`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MonthPart {
+    ThroughMovement,
+    MonthLong,
+}
+
+/// One ledger movement applied to a row's items and recorded in its log, as it is applied.
+fn apply_item_movement(
+    unit: &mut WorkingUnit,
+    movement: &super::semantics::ItemMovement,
+    ruleset: &Ruleset,
+) {
+    let stock = match movement.delta.cmp(&0) {
+        std::cmp::Ordering::Greater => {
+            add_item(
+                &mut unit.unit.items,
+                &movement.name,
+                &movement.tag,
+                movement.delta,
+            );
+            Stock::Moved
+        }
+        std::cmp::Ordering::Less => {
+            // A stock can go negative here - the ledger clamps against a running
+            // balance while `give` above clamped against the report's holding, so an
+            // overdrawn unit can reach one. `take_item` already drops a stock at or
+            // below zero, which is the clamp this column needs; an item already
+            // absent (emptied by an earlier movement) has nothing left to remove.
+            if let Some(index) = unit
+                .unit
+                .items
+                .iter()
+                .position(|item| item.tag.eq_ignore_ascii_case(&movement.tag))
+            {
+                take_item(&mut unit.unit.items, index, -movement.delta);
+                Stock::Moved
+            } else {
+                Stock::Untouched
+            }
+        }
+        std::cmp::Ordering::Equal => Stock::Untouched,
+    };
+    // Recorded as it is applied, so the change and whether it moved stock are one
+    // fact (`ah-z9g8`). `apply_transfers` has already recorded this month's GIVE and
+    // TAKE in the Give phase, and `apply_transports` records after us (`ah-rgkk.3.1`).
+    unit.item_log.record(
+        ItemChange {
+            tag: movement.tag.clone(),
+            name: movement.name.clone(),
+            delta: movement.delta,
+            cause: movement.cause,
+            line: movement.line,
+            unit_price: movement.unit_price,
+            other: movement.other.clone(),
+            is_man: ruleset.is_man(&movement.tag),
+        },
+        stock,
+    );
+}
+
 /// One unit as the walker holds it: the state being changed, and the report's word for diffing.
 struct WorkingUnit {
     unit: ReportUnit,
@@ -1912,9 +1979,10 @@ impl WorkingUnit {
     /// What this row holds at the moment `rules/sequenceofevents` would delete it as empty - after
     /// `BUY` and `FORGET`, before `WITHDRAW` (`runorders.cpp` `RunOrders`) - in report-tag order.
     ///
-    /// `apply_item_effects` has already applied the whole month to `unit.items`, so what the later
-    /// phases moved is undone here: a deleted unit never withdraws, produces or builds. A stock
-    /// that undoing would take below zero was never there and is dropped.
+    /// `apply_item_effects` has already applied everything up to movement to `unit.items`, so a
+    /// `WITHDRAW` is undone here, and so is any later phase's change already in the log: a deleted
+    /// unit never withdraws, produces or builds. A stock that undoing would take below zero was
+    /// never there and is dropped.
     fn inventory_when_deleted(&self) -> Vec<crate::report::model::ItemAmount> {
         let mut items = self.unit.items.clone();
         for change in self.item_log.changes() {
@@ -2525,7 +2593,26 @@ impl Working {
     fn apply_item_effects(
         &mut self,
         effects: &BTreeMap<super::semantics::UnitKey, super::semantics::UnitItemEffects>,
+        part: MonthPart,
     ) {
+        let in_part = |phase: super::phases::StatePhase| match part {
+            MonthPart::ThroughMovement => phase <= super::phases::StatePhase::Movement,
+            MonthPart::MonthLong => phase > super::phases::StatePhase::Movement,
+        };
+        if part == MonthPart::MonthLong {
+            for unit in &mut self.units {
+                let Some(effect) = effects.get(&super::semantics::unit_key(
+                    &unit.unit.region_id,
+                    &unit.unit.unit_id,
+                )) else {
+                    continue;
+                };
+                for movement in effect.moved.iter().filter(|m| in_part(m.phase)) {
+                    apply_item_movement(unit, movement, &self.ruleset);
+                }
+            }
+            return;
+        }
         for (index, unit) in self.units.iter().enumerate() {
             let Some(effect) = effects.get(&super::semantics::unit_key(
                 &unit.unit.region_id,
@@ -2548,53 +2635,8 @@ impl Working {
             )) else {
                 continue;
             };
-            for movement in &effect.moved {
-                let stock = match movement.delta.cmp(&0) {
-                    std::cmp::Ordering::Greater => {
-                        add_item(
-                            &mut unit.unit.items,
-                            &movement.name,
-                            &movement.tag,
-                            movement.delta,
-                        );
-                        Stock::Moved
-                    }
-                    std::cmp::Ordering::Less => {
-                        // A stock can go negative here - the ledger clamps against a running
-                        // balance while `give` above clamped against the report's holding, so an
-                        // overdrawn unit can reach one. `take_item` already drops a stock at or
-                        // below zero, which is the clamp this column needs; an item already
-                        // absent (emptied by an earlier movement) has nothing left to remove.
-                        if let Some(index) = unit
-                            .unit
-                            .items
-                            .iter()
-                            .position(|item| item.tag.eq_ignore_ascii_case(&movement.tag))
-                        {
-                            take_item(&mut unit.unit.items, index, -movement.delta);
-                            Stock::Moved
-                        } else {
-                            Stock::Untouched
-                        }
-                    }
-                    std::cmp::Ordering::Equal => Stock::Untouched,
-                };
-                // Recorded as it is applied, so the change and whether it moved stock are one
-                // fact (`ah-z9g8`). `apply_transfers` has already recorded this month's GIVE and
-                // TAKE in the Give phase, and `apply_transports` records after us (`ah-rgkk.3.1`).
-                unit.item_log.record(
-                    ItemChange {
-                        tag: movement.tag.clone(),
-                        name: movement.name.clone(),
-                        delta: movement.delta,
-                        cause: movement.cause,
-                        line: movement.line,
-                        unit_price: movement.unit_price,
-                        other: movement.other.clone(),
-                        is_man: ruleset.is_man(&movement.tag),
-                    },
-                    stock,
-                );
+            for movement in effect.moved.iter().filter(|m| in_part(m.phase)) {
+                apply_item_movement(unit, movement, &ruleset);
             }
             unit.uncounted = effect.uncounted.clone();
             unit.recruited = effect.recruited.clone();
@@ -12054,6 +12096,52 @@ mod tests {
             .changes
             .iter()
             .any(|change| change.field == "movement"));
+    }
+
+    /// `ah-i6d0`: a sharer walking into a builder's hex lends it stone there, but
+    /// `rules/sequenceofevents` processes "ADVANCE, MOVE and SAIL orders" before "BUILD orders",
+    /// so the walk is made carrying every stone it set out with. A Tower is built of stone at
+    /// building 1 (`rules/tablebuildings`).
+    #[test]
+    fn a_sharer_is_weighed_for_its_walk_before_a_build_spends_its_stone() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (0,0) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  South : plain (0,2) in Nowhere.",
+            "",
+            "* Carrier (901), Foo (1), sharing, leader [LEAD], 1 stone [STON]. Weight: 60. \
+             Capacity: 0/0/70/0.",
+            "",
+            "plain (0,2) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  North : plain (0,0) in Nowhere.",
+            "",
+            "* Builder (900), Foo (1), leader [LEAD]. Skills: building [BUIL] 1 (30).",
+            "",
+        ]
+        .join("\n");
+        let response = reach_preview(
+            &report,
+            "unit 901\nMOVE S\nunit 900\nBUILD Tower\n",
+            FLAT_MAP,
+        );
+
+        assert_eq!(
+            build_spent(reach_unit(&response, "901"), "STON"),
+            Some(-1),
+            "the builder spends the stone the sharer carried in: {response:?}"
+        );
+        let carrier = reach_unit(&response, "901");
+        assert_eq!(
+            carrier.unit.movement,
+            reported_unit(&report, "901").movement,
+            "{:?}",
+            carrier.changes
+        );
     }
 
     /// The same rule the other way: a sender that walks carries the goods it ships on its walk.
