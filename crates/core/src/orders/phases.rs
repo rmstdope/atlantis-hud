@@ -96,6 +96,11 @@ pub(crate) fn phase_of(intent: &Intent) -> StatePhase {
         | Intent::Faction { .. }
         | Intent::Enter { .. }
         | Intent::Leave => StatePhase::Instant,
+        // "Subterfuge orders. STEAL and ASSASSINATE orders are processed", after the instant
+        // orders and before "Give orders". Nothing is credited for a theft (`ah-mw1r.1`), so all
+        // that turns on its phase is that the doubt it raises is in place before any GIVE reads
+        // the stolen tag - which any phase ahead of `Give` gives.
+        Intent::Steal { .. } => StatePhase::Instant,
         // CLAIM is in that same first batch, and so ahead of GIVE.
         Intent::Claim(_) => StatePhase::Claim,
         // "Give orders. GIVE and TAKE orders are processed."

@@ -7415,6 +7415,12 @@ fn apply(
         Intent::Produce { .. } => {}
         // FACTION moves no silver, goods or people (`rules/faction`).
         Intent::Faction { .. } => {}
+        // `rules/steal` attempts to steal "as much as possible" of the item from a unit the thief
+        // can see, so whether anything arrives is dice and the target's stock. Nothing is
+        // credited; the line is admitted instead, which the ITEMS cell draws as `+ ?`, and the
+        // SILVER column doubts a theft of silver for itself (`silver::forecast_unit`,
+        // `ah-mw1r.1`).
+        Intent::Steal { .. } => mark_uncounted(ledger, who, placed.line),
         // Never reached from the walk: `phases::ORDER` holds no Transport phase. TRANSPORT settles
         // report-wide in `settle_report_wide`.
         Intent::Transport { .. } => {}

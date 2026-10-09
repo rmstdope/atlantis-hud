@@ -651,6 +651,8 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
       "This unit is giving away all its MAGIC items, and this application cannot tell which items those are.",
     "give-consequences-uncertain":
       "Because this GIVE cannot be predicted, what this unit earns or spends afterwards cannot be said.",
+    "doubt-steal-uncertain":
+      "Whether this STEAL succeeds, and how much silver it takes, cannot be predicted, so what this unit ends the month with cannot be said.",
     "doubt-unknown-combat-ready":
       "The combat ready men in this region cannot be added up, so what a pillage earns cannot be said.",
     "doubt-contested-faction-food":
