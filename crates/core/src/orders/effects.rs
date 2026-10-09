@@ -20,7 +20,7 @@ use crate::movement::rules::Ruleset;
 use crate::orders::item_change_log::Stock;
 use crate::orders::items::item_named;
 use crate::orders::standing::{standing_after, BoardingOrder};
-use crate::orders::transfers::{in_report_order, PendingTransfer};
+use crate::orders::transfers::{in_report_order, report_ranks, PendingTransfer, Placement};
 use crate::report::composition;
 use crate::report::flags::FlagChange;
 use crate::report::model::{level_for_points, ReportUnit, Skill, UnitMovementStatus};
@@ -2849,7 +2849,18 @@ impl Working {
     /// walk and `semantics`'.
     fn apply_transfers(&mut self) {
         let mut pending = std::mem::take(&mut self.transfers);
-        in_report_order(&mut pending);
+        let placements: Vec<Placement<'_>> = self
+            .units
+            .iter()
+            .map(|working| Placement {
+                formed: working.formed,
+                region: &working.unit.region_id,
+                // As FORM settles, before this month's ENTER and LEAVE (`rules/sequenceofevents`).
+                structure: working.reported.as_deref(),
+            })
+            .collect();
+        let ranks = report_ranks(&placements);
+        in_report_order(&mut pending, &ranks);
         for transfer in pending {
             if transfer.is_give {
                 self.give(
@@ -10334,6 +10345,44 @@ mod tests {
                 .flat_map(|region| region.units.iter())
                 .find(|unit| unit.unit.unit_id == id)
                 .unwrap_or_else(|| panic!("unit {id} is previewed"))
+        }
+
+        /// `rules/form` puts a formed unit "in the same structure if any" as its former, and the
+        /// engine appends it to that structure's units (`ProcessFormOrder`, `Unit::MoveUnit`), so
+        /// a unit formed outside any structure gives before the units inside one in the Give
+        /// phase's report order (`rules/sequenceofevents`) - not after every unit in the hex
+        /// (`ah-qzxe`).
+        #[test]
+        fn a_unit_formed_outside_any_structure_gives_before_the_units_inside_one() {
+            let report = [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "Exits:",
+                "  Southeast : plain (2,2) in Nowhere.",
+                "",
+                "* Former (900), Foo (1), leader [LEAD], 10 swords [SWOR]. Weight: 20. \
+                 Capacity: 0/0/15/0.",
+                "",
+                "+ Tower [4] : Tower.",
+                "  * Keeper (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                "  * Recipient (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                "",
+            ]
+            .join("\n");
+            let response = preview_over(
+                &report,
+                "unit 900\nGIVE NEW 1 10 SWOR\nFORM 1\nGIVE 901 ALL SWOR\nEND\n\
+                 unit 901\nGIVE 902 ALL SWOR\n",
+            );
+
+            assert_eq!(amount_of(row_of(&response, "901"), "SWOR"), 0);
+            assert_eq!(
+                amount_of(row_of(&response, "902"), "SWOR"),
+                10,
+                "the formed unit's gift landed before the keeper gave everything on"
+            );
         }
 
         /// A gift is one movement seen from two sides, so both rows carry it - `rules/give`.
