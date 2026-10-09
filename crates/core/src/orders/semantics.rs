@@ -5971,8 +5971,10 @@ pub(crate) fn item_effects(
     //
     // `hex_with_transfers` projects this month's GIVE/TAKE onto the hex's units (`ah-dxfd.2`),
     // exactly as `review_turn` does - one reader for both entry points, so they cannot
-    // diverge. `item_effects` only ever reads `ledger.movements` and `ledger.uncounted`,
-    // neither of which the projection touches, so this changes no output here.
+    // diverge. Of what `item_effects` reads off the ledger - `movements`, `uncounted`, `built`,
+    // `refused_shipments`, the food eaten, and the `Claimed` entries of `silver_moves` - the
+    // projection touches none: the silver moves it adds are gifts and takes, never a claim, so
+    // this changes no output here.
     let formed = formed_units(report, orders_document, ruleset, &report_skills);
     let hexes: Vec<Hex<'_>> = report
         .regions

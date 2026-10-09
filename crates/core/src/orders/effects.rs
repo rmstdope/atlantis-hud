@@ -6826,6 +6826,22 @@ mod tests {
         );
     }
 
+    /// A formed unit's own `CLAIM` is credited to its `new-<alias>` row, so what it gives on in
+    /// the same month moves too (`ah-ixq7`).
+    #[test]
+    fn a_formed_unit_can_give_what_it_claimed_itself() {
+        let response = preview_over(
+            &claims_report("5"),
+            "unit 902\nFORM 1\nBUY 1 humans\nCLAIM 100\nGIVE 902 50 silver\nEND\n",
+        );
+
+        assert_eq!(
+            silver_changes(previewed(&response, "902")),
+            vec![(50, ItemChangeCause::WasGiven, Some("new-1"))],
+            "the formed unit's claim is there for its own gift"
+        );
+    }
+
     /// `rules/form`: an empty formed unit's "silver and any other items it was given will revert
     /// to the first unit you have in that region" - claimed silver included.
     #[test]
