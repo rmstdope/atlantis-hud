@@ -9330,12 +9330,12 @@ fn build(
         });
 }
 
-/// The other sharing units that lend `borrower` its `tag` before movement, each with what it has
-/// to lend, in report order: the engine's `Unit::GetSharedNum` and `Unit::ConsumeShared`
-/// (`unit.cpp`), which count the borrower once, as itself, and never pool men (`ah-0mch`). Empty
-/// where the tag does not pool or the pool's sum is not to be trusted, which leaves the borrower
-/// with its own stock exactly as before. `has` is what the caller reads a unit's holding as.
-fn lenders_before_movement(
+/// The other sharing units that lend `borrower` its `tag` where [`SharerStock`] cannot be read - a
+/// sharer's balance a `GIVE` left uncertain - each with what `has` reads it holding, in report
+/// order: this module's accept-on-doubt reading, which lends what the walk shows rather than
+/// inventing a clamp. Empty where the tag does not pool or the pool's sum is not to be trusted,
+/// which leaves the borrower with its own stock exactly as before.
+fn lenders_on_doubt(
     ledger: &Ledger<'_>,
     hex: &Hex<'_>,
     borrower: &str,
@@ -9462,17 +9462,18 @@ fn sell(
     // `Game::DoSell` (`runorders.cpp`) cuts a line to `GetSharedNum`: the seller's own stock and
     // every other sharer's, spent in that order (`ah-0mch`). A sharer's is read as the seller's
     // own is, so an earlier line that sold or gave it away has already taken it out.
-    let lenders = lenders_before_movement(ledger, hex, who, &tag, |lender| {
+    let has = |lender: &Ordered<'_>| {
         known_balance_of(ledger, &lender.unit.unit_id, &tag)
             .map_or(0, |known| lender.early_holding(&tag).min(known))
-    });
-    // What the sharers can still lend, read off the pool as a whole ([`SharerStock`]) so goods an
-    // earlier GIVE or cast already drew from them are not sold again.
-    let lendable: i64 = lenders.iter().map(|(_, lends)| lends).sum();
-    let lent = SharerStock::for_spender(ledger, hex, StatePhase::Market, who, &tag).map_or(
-        lendable,
-        |(stock, x)| (stock.available_to(x) - stock.position(x).max(0)).clamp(0, lendable),
-    );
+    };
+    // What each sharer can still lend, off the one reading ([`SharerStock`]) so goods an earlier
+    // GIVE or cast already drew from them are not sold again - and never more than the walk shows
+    // the sharer holding.
+    let lenders = match SharerStock::for_spender(ledger, hex, StatePhase::Market, who, &tag) {
+        Some((stock, x)) => stock.lenders_within(x, hex, has),
+        None => lenders_on_doubt(ledger, hex, who, &tag, has),
+    };
+    let lent: i64 = lenders.iter().map(|(_, lends)| lends).sum();
     let remaining_holding = own_holding.saturating_add(lent);
     // What this hex's other own sellers left of the line, or the line itself where nothing was
     // settled (`ah-t2pn.3`), less what this unit's own earlier lines have already taken out of it.
@@ -9793,19 +9794,29 @@ fn cast(
     // answer C).
     for material in &plan.materials {
         // The caster's own stock first, then the other sharers' (`Unit::ConsumeShared`,
-        // `ah-0mch`), each charged where the goods were. Whatever none of them covers stays on the
-        // caster, so a cast the pool cannot fund still overdraws it.
-        let own = material.amount.min(
-            ledger
-                .state
-                .balance_at(StatePhase::Cast, who, &material.tag)
-                .max(0),
-        );
-        let lenders = lenders_before_movement(ledger, hex, who, &material.tag, |lender| {
+        // `ah-0mch`), each charged where the goods were - read off the one reading
+        // ([`SharerStock`]), so stock an earlier borrower drew on is not spent again. Whatever none
+        // of them covers stays on the caster, so a cast the pool cannot fund still overdraws it.
+        let cast_balance = |lender: &Ordered<'_>| {
             ledger
                 .state
                 .balance_at(StatePhase::Cast, &lender.unit.unit_id, &material.tag)
-        });
+        };
+        let (own, lenders) =
+            match SharerStock::for_spender(ledger, hex, StatePhase::Cast, who, &material.tag) {
+                Some((stock, x)) => (
+                    stock.own_for(x),
+                    stock.lenders_within(x, hex, cast_balance),
+                ),
+                None => (
+                    ledger
+                        .state
+                        .balance_at(StatePhase::Cast, who, &material.tag)
+                        .max(0),
+                    lenders_on_doubt(ledger, hex, who, &material.tag, cast_balance),
+                ),
+            };
+        let own = material.amount.min(own);
         let uncovered = draw_on_lenders(
             ledger,
             hex,
@@ -11116,6 +11127,24 @@ impl SharerStock {
             }
         }
         lenders
+    }
+
+    /// [`SharerStock::lenders_to`], each lender capped at what `has` reads it holding - the
+    /// caller's own reading of a unit's stock, such as the transfer walk's - so a lender is never
+    /// drawn for more than it has on either reading. For a reading index-aligned with `hex.units`.
+    fn lenders_within(
+        &self,
+        x: usize,
+        hex: &Hex<'_>,
+        has: impl Fn(&Ordered<'_>) -> i64,
+    ) -> Vec<(usize, i64)> {
+        self.lenders_to(x)
+            .into_iter()
+            .filter_map(|(index, left)| {
+                let lends = left.min(hex.units.get(index).map_or(0, |o| has(o).max(0)));
+                (lends > 0).then_some((index, lends))
+            })
+            .collect()
     }
 
     /// Every overdraft laid on the lenders in party order: what each party lent, aligned with the
@@ -34287,6 +34316,74 @@ BUILD
                         |who: &str| ledger.state.balance_at(StatePhase::Market, who, "WOOD");
                     assert_eq!(market("3"), 0, "they leave the sharer's stock");
                     assert_eq!(market("1"), 0, "and the seller is not overdrawn");
+                },
+            );
+        }
+
+        /// Two spenders on one sharer's stock (`ah-lnz4`): a GIVE draws the sharer's ten for a
+        /// neighbour, so the sharer's own SELL later in the month finds none. `GetSharedNum`
+        /// reads the stock as it stands when the sale resolves, and "Give orders" run before
+        /// "Market orders" (`rules/sequenceofevents`); the ledger leaves a lender's row alone, so
+        /// its own balance still reads ten.
+        #[test]
+        fn a_sharers_sale_finds_none_of_what_a_neighbours_gift_drew_on() {
+            let hex_region = ReportRegion {
+                wanted: vec![MarketItem {
+                    amount: 20,
+                    name: "wood".to_string(),
+                    tag: "WOOD".to_string(),
+                    price: 3,
+                }],
+                ..region(vec![
+                    unit("1"),
+                    unit("2"),
+                    sharing(with_item(unit("3"), 10, "wood", "WOOD")),
+                ])
+            };
+            settled(
+                hex_region,
+                "unit 1\nGIVE 2 10 wood\n\nunit 2\n\nunit 3\nSELL 10 wood\n",
+                |_, ledger| {
+                    assert_eq!(
+                        ledger
+                            .sold
+                            .get(&("3".to_string(), "WOOD".to_string()))
+                            .map_or(0, |sold| sold.quantity),
+                        0,
+                        "the sharer's wood went to unit 2"
+                    );
+                },
+            );
+        }
+
+        /// Two spenders on one sharer's stock, the second a CAST (`ah-lnz4`): a neighbour's GIVE
+        /// draws the mage's own five swords, so its Enchant Swords finds none to enchant. The
+        /// engine's `Unit::ConsumeShared` spent them at the Give phase, and "Spells are CAST"
+        /// after it (`rules/sequenceofevents`; `data/ESWO`: a sword each).
+        #[test]
+        fn a_sharing_mages_cast_finds_none_of_what_a_neighbours_gift_drew_on() {
+            let hex_region = region(vec![
+                unit("1"),
+                unit("2"),
+                sharing(with_item(
+                    with_skill(unit("5"), "ESWO", 1),
+                    5,
+                    "swords",
+                    "SWOR",
+                )),
+            ]);
+            settled(
+                hex_region,
+                "unit 1\nGIVE 2 5 SWOR\n\nunit 2\n\nunit 5\nCAST Enchant_Swords\n",
+                |_, ledger| {
+                    assert!(
+                        !ledger
+                            .movements
+                            .iter()
+                            .any(|movement| movement.tag == "MSWO" && movement.delta > 0),
+                        "no sword is left to enchant: {:?}",
+                        ledger.movements
+                    );
                 },
             );
         }
