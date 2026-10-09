@@ -3162,6 +3162,8 @@ describe("the items popup's cause sentences", () => {
     ],
     ["consumed by a spell", { cause: "cast-spent", delta: -2 }, "consumed 2 by a spell"],
     ["spent founding a village", { cause: "create-spent", delta: -100 }, "used 100 to found a village"],
+    ["handed in on a quest", { cause: "quest-spent", delta: -3 }, "handed in 3 on a quest"],
+    ["studied on an exploration", { cause: "explore-spent", delta: -1 }, "used 1 to explore"],
     [
       "transported to a unit the report does not show",
       { cause: "transported-out", delta: -20, other: { unitId: "4102", name: null } },

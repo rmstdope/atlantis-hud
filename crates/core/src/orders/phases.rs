@@ -25,6 +25,9 @@ pub(crate) enum StatePhase {
     Cast,
     Market,
     Withdraw,
+    /// `newage trident rules/sequenceofevents`: "QUEST orders are processed" after WITHDRAW and
+    /// before the movement orders (`ah-mw1r.4`).
+    Quest,
     Movement,
     Study,
     /// Manufacturing PRODUCE **and** BUILD, as one walk of the hex in report order.
@@ -56,7 +59,7 @@ pub(crate) enum StatePhase {
 }
 
 impl StatePhase {
-    pub(crate) const COUNT: usize = 14;
+    pub(crate) const COUNT: usize = 15;
 }
 
 /// Every phase an order can settle in, in the turn's order.
@@ -67,7 +70,7 @@ impl StatePhase {
 /// before starting the next phase"). [`StatePhase::PrimaryProduction`]: [`phase_of`] cannot answer
 /// it without a ruleset, and [`super::semantics`] runs both PRODUCE passes outside this walk
 /// anyway (`ah-728m.2.2`).
-pub(crate) const ORDER: [StatePhase; 11] = [
+pub(crate) const ORDER: [StatePhase; 12] = [
     StatePhase::Instant,
     StatePhase::Claim,
     StatePhase::Give,
@@ -75,6 +78,7 @@ pub(crate) const ORDER: [StatePhase; 11] = [
     StatePhase::Cast,
     StatePhase::Market,
     StatePhase::Withdraw,
+    StatePhase::Quest,
     StatePhase::Movement,
     StatePhase::Study,
     StatePhase::Manufacturing,
@@ -124,6 +128,9 @@ pub(crate) fn phase_of(intent: &Intent) -> StatePhase {
         Intent::Sell { .. } | Intent::Buy { .. } => StatePhase::Market,
         // WITHDRAW follows BUY in the market block.
         Intent::Withdraw { .. } => StatePhase::Withdraw,
+        // "QUEST orders are processed", right after WITHDRAW (`newage trident
+        // rules/sequenceofevents`).
+        Intent::Quest { .. } => StatePhase::Quest,
         // "Movement orders. ADVANCE, MOVE and SAIL orders are processed phase by phase".
         Intent::Move { .. } | Intent::Sail { .. } => StatePhase::Movement,
         // "Month long orders. TEACH orders are processed. STUDY orders are processed."
@@ -137,6 +144,9 @@ pub(crate) fn phase_of(intent: &Intent) -> StatePhase {
         Intent::Build { .. } => StatePhase::Manufacturing,
         // "ENTERTAIN orders are processed. WORK orders are processed." - the last earners.
         Intent::Work | Intent::Entertain => StatePhase::Wages,
+        // "WORK orders are processed. EXPLORE orders are processed." (`newage trident
+        // rules/sequenceofevents`), so after the last earners and before TRANSPORT.
+        Intent::Explore { .. } => StatePhase::Wages,
     }
 }
 

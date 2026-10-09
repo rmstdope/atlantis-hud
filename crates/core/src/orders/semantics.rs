@@ -239,6 +239,10 @@ pub mod codes {
     /// no month-long order. Always on: the bead asks for the warning and gives it no switch, so it
     /// is in [`ALWAYS_ON`] and not in [`ALL`].
     pub const UNKNOWN_SKILL: Code = Code("unknown-skill");
+    /// An `EXPLORE TMAP` below the surface, which `newage trident rules/explore` refuses: "This
+    /// order can only be used on the surface" (`ah-mw1r.4`). Always on: the bead asks for the
+    /// warning and gives it no switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
+    pub const EXPLORE_BELOW_THE_SURFACE: Code = Code("explore-below-the-surface");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -322,7 +326,12 @@ pub mod codes {
 
     /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
     /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
-    pub const ALWAYS_ON: [Code; 3] = [MOVE_INTO_A_WALL, FACTION_ORDER_WILL_FAIL, UNKNOWN_SKILL];
+    pub const ALWAYS_ON: [Code; 4] = [
+        MOVE_INTO_A_WALL,
+        FACTION_ORDER_WILL_FAIL,
+        UNKNOWN_SKILL,
+        EXPLORE_BELOW_THE_SURFACE,
+    ];
 }
 
 /// Which checks to run, and - in the forecast - which refusals to make.
@@ -888,6 +897,7 @@ pub fn review_turn(
         check_refused_transfers(hex, ruleset, &plurals, &options, &mut findings);
         check_mage_arrivals(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_withdraw_in_nexus(hex, &options, &mut findings);
+        check_explore_below_the_surface(hex, &mut findings);
         check_withdraw_not_a_basic_item(hex, ruleset, &options, &mut findings);
         check_cast_material(hex, ruleset, &options, &mut findings);
         check_sailing(hex, ledger, ruleset, &options, &mut findings);
@@ -7996,6 +8006,50 @@ fn apply(
         // leaders and 100 wagons", after PRODUCE and before ENTERTAIN, which
         // `rules/sequenceofevents` puts before maintenance - so the founders pay no upkeep
         // (`ah-mw1r.3`). Trident only, as `grammar.rs` offers it.
+        // `newage trident rules/quest`: "Without DISCOUNT, tokens not covered by bounty owed stay
+        // with the unit" - and what the mayor owes is not in the report, so only `DISCOUNT`,
+        // which "also" accepts the rest, is certain to take every token named. Arcanum's QUEST
+        // has no DISCOUNT (`newage arcanum rules/quest`), so there it is always the uncertain kind
+        // (`ah-mw1r.4`).
+        Intent::Quest { tokens, discount } => {
+            if *discount && super::grammar::is_trident(ruleset) {
+                hand_in(
+                    ledger,
+                    hex,
+                    actor,
+                    placed,
+                    StatePhase::Quest,
+                    BOUNTY_TOKEN,
+                    *tokens,
+                    ItemChangeCause::QuestSpent,
+                    ruleset,
+                );
+            } else {
+                mark_uncounted(ledger, who, placed.line);
+            }
+        }
+        // `newage trident rules/explore`: a resource map "is consumed when the order executes,
+        // even if the region has nothing to chart"; a treasure map only "when a hideout is
+        // actually placed" and on half the failures, so its line is admitted rather than
+        // guessed - unless the unit is below the surface, where the order cannot run and the map
+        // certainly stays (`check_explore_below_the_surface` warns of that) (`ah-mw1r.4`).
+        Intent::Explore { map } => {
+            if map.eq_ignore_ascii_case(RESOURCE_MAP) {
+                hand_in(
+                    ledger,
+                    hex,
+                    actor,
+                    placed,
+                    StatePhase::Wages,
+                    RESOURCE_MAP,
+                    1,
+                    ItemChangeCause::ExploreSpent,
+                    ruleset,
+                );
+            } else if map.eq_ignore_ascii_case(TREASURE_MAP) && !explore_refused(hex.region) {
+                mark_uncounted(ledger, who, placed.line);
+            }
+        }
         Intent::MonthLong("CREATE") if super::grammar::is_trident(ruleset) => {
             create_village(ledger, hex, actor, placed, ruleset);
         }
@@ -10768,6 +10822,77 @@ fn names_the_same_item(text: &str, tag: &str, name: &str) -> bool {
         .flatten()
         .any(|spelling| tag.eq_ignore_ascii_case(spelling) || name.eq_ignore_ascii_case(spelling));
     matched
+}
+
+/// `newage trident data/BNTY`, handed in by `QUEST`.
+const BOUNTY_TOKEN: &str = "BNTY";
+/// `newage trident data/RMAP` and `data/TMAP`, studied by `EXPLORE`.
+const RESOURCE_MAP: &str = "RMAP";
+const TREASURE_MAP: &str = "TMAP";
+
+/// Whether `EXPLORE TMAP` cannot be used here: `newage trident rules/explore` says "This order can
+/// only be used on the surface".
+fn explore_refused(region: &ReportRegion) -> bool {
+    region.coordinate.z != crate::report::level::SURFACE
+}
+
+/// Consumes up to `wanted` of `tag` from the unit whose `QUEST` or `EXPLORE` hands them in, capped
+/// by what it holds at `phase` (`ah-mw1r.4`). A holding a `GIVE` or `STEAL` left uncertain cannot
+/// say how many go, so nothing is consumed and the line is admitted instead.
+#[allow(clippy::too_many_arguments)]
+fn hand_in(
+    ledger: &mut Ledger<'_>,
+    hex: &Hex<'_>,
+    actor: &Ordered<'_>,
+    placed: &PlacedIntent,
+    phase: StatePhase,
+    tag: &str,
+    wanted: i64,
+    cause: ItemChangeCause,
+    ruleset: Option<&Ruleset>,
+) {
+    let who = &actor.unit.unit_id;
+    let Ok(held) = ledger.state.known_balance_at(phase, who, tag) else {
+        mark_uncounted(ledger, who, placed.line);
+        return;
+    };
+    let spent = wanted.min(held);
+    if spent <= 0 {
+        return;
+    }
+    charge(ledger, phase, who, tag, spent, placed);
+    ledger.movements.push(ItemMovement {
+        unit_id: who.clone(),
+        name: item_name(tag, hex, ruleset),
+        tag: tag.to_string(),
+        delta: -spent,
+        cause,
+        phase,
+        line: Some(placed.line as i64),
+        unit_price: None,
+        other: None,
+        created: None,
+    });
+}
+
+/// Always on (`codes::ALWAYS_ON`), so no option is read.
+fn check_explore_below_the_surface(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
+    if !explore_refused(hex.region) {
+        return;
+    }
+    for ordered in &hex.units {
+        for placed in &ordered.intents {
+            if matches!(&placed.intent, Intent::Explore { map } if map.eq_ignore_ascii_case(TREASURE_MAP))
+            {
+                findings.push(ordered.finding(
+                    hex,
+                    codes::EXPLORE_BELOW_THE_SURFACE,
+                    "a treasure map can only be explored on the surface".to_string(),
+                    Some(placed),
+                ));
+            }
+        }
+    }
 }
 
 /// What a founding `CREATE VILLAGE` takes (`newage trident rules/create_village`).
@@ -48462,6 +48587,7 @@ BUILD
             StatePhase::Cast,
             StatePhase::Market,
             StatePhase::Withdraw,
+            StatePhase::Quest,
             StatePhase::Movement,
             StatePhase::Study,
             StatePhase::Manufacturing,
