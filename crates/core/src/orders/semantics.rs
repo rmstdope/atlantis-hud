@@ -63,9 +63,9 @@ use crate::orders::silver::{
     FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups, MarketFunds, MarketSide,
     MoneyRead, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
     PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages, SaleAnswer, SettledBuyAll,
-    SettledGift, SharedMarket, ShipmentPriced, SilverChange, SilverChangeCause, SilverDoubt,
-    SilverMove, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
-    Workforce,
+    SettledGift, SharedCast, SharedMarket, ShipmentPriced, SilverChange, SilverChangeCause,
+    SilverDoubt, SilverMove, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
+    UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
@@ -1354,6 +1354,7 @@ fn market_shares_for(
     // `BUY ALL` lines are one attempt, not two. Settled after the loop rather than inside it, so
     // the claim does not depend on which line the player typed first (`ah-lauy`).
     let mut unbounded: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
+    let sharing_for_sales = Sharing::read(hex);
 
     for (index, ordered) in hex.units.iter().enumerate() {
         for placed in &ordered.intents {
@@ -1408,7 +1409,21 @@ fn market_shares_for(
                 // goods can only claim what an earlier line of this unit's own has left (`ah-vw8e`).
                 (Intent::Sell { amount, .. }, _) => {
                     let already = claimed.get(&(index, tag.clone())).copied().unwrap_or(0);
-                    let holds = (ordered.early_holding(&tag) - already).max(0);
+                    // `Game::DoSell` cuts an exact line to `GetSharedNum`: the seller's own stock
+                    // and every other sharer's (`ah-0mch`). `SELL ALL` is the seller's own.
+                    let pooled = matches!(amount, Amount::Exact(_))
+                        && sharing_for_sales.reading(&tag, ruleset) == Reading::Pooled;
+                    let lent: i64 = if pooled {
+                        sharing_for_sales
+                            .sharers
+                            .iter()
+                            .filter(|(other, _)| *other != index)
+                            .map(|(_, lender)| lender.early_holding(&tag).max(0))
+                            .sum()
+                    } else {
+                        0
+                    };
+                    let holds = (ordered.early_holding(&tag) + lent - already).max(0);
                     match amount {
                         Amount::Exact(count) => (*count).min(holds),
                         Amount::All { except } => (holds - except).max(0),
@@ -2336,15 +2351,22 @@ fn forecast_hex(
             receipts
                 .get(&unit_key(&hex.region.region_id, &ordered.unit.unit_id))
                 .unwrap_or(&nothing),
-            Some(phases.of_with(
-                index,
-                &clamped[index],
-                shared_materials_of(&ordered.unit.unit_id),
-                settled_buy_all_of(&ordered.unit.unit_id),
-                settled_gifts_of(&ordered.unit.unit_id),
-                silver_moves_of(&ordered.unit.unit_id),
-                market_purse.also_withholds_from(index),
-            )),
+            Some(PhaseFacts {
+                // The `CAST` lines a sharer funded, as the ledger priced them (`ah-0mch`).
+                casts: ledger
+                    .shared_casts
+                    .get(&ordered.unit.unit_id)
+                    .map_or(&[][..], Vec::as_slice),
+                ..phases.of_with(
+                    index,
+                    &clamped[index],
+                    shared_materials_of(&ordered.unit.unit_id),
+                    settled_buy_all_of(&ordered.unit.unit_id),
+                    settled_gifts_of(&ordered.unit.unit_id),
+                    silver_moves_of(&ordered.unit.unit_id),
+                    market_purse.also_withholds_from(index),
+                )
+            }),
             ruleset,
         );
         facts.shipping_unmeasured = ledger
@@ -3329,6 +3351,38 @@ struct Working {
     men_clamped: bool,
 }
 
+/// The units that lend `source` what it spends: every *other* unit of the hex carrying `SHARE`,
+/// in report order - the engine's `Unit::GetSharedNum` and `Unit::ConsumeShared` (`unit.cpp`),
+/// which count the spender once, as itself (`ah-0mch`). The hex holds our own units alone, so
+/// every one is of the spender's faction.
+fn lending_sharers(units: &[Ordered<'_>], source: usize) -> Vec<usize> {
+    units
+        .iter()
+        .enumerate()
+        .filter(|(index, ordered)| *index != source && ordered.shares())
+        .map(|(index, _)| index)
+        .collect()
+}
+
+/// What the unit at `position` holds of `tag` as the settlement stands: its running holding where
+/// a transfer has touched it, the report's figure where none has.
+fn held_by(
+    working: &BTreeMap<usize, Working>,
+    units: &[Ordered<'_>],
+    position: usize,
+    tag: &str,
+) -> i64 {
+    match working.get(&position) {
+        Some(state) => state.held.get(tag).map_or(0, |item| item.amount),
+        None => units[position]
+            .unit
+            .items
+            .iter()
+            .find(|item| item.tag.eq_ignore_ascii_case(tag))
+            .map_or(0, |item| item.amount),
+    }
+}
+
 fn seed_working(units: &[Ordered<'_>], position: usize) -> Working {
     let unit = units[position].unit;
     Working {
@@ -3791,15 +3845,50 @@ fn apply_transfers(
         // decision 9).
         let discarding = receiver.reach == GiveReach::Discard;
 
-        let source_state = working
+        working
             .entry(source)
             .or_insert_with(|| seed_working(units, source));
-        let tags = match moves(
-            &source_state.held,
-            &transfer.what,
-            &transfer.amount,
-            ruleset,
-        ) {
+        // An exact quantity may name goods only the sharers hold (`GetSharedNum`, `ah-0mch`), so
+        // it is resolved against the source's holdings with theirs added in, men excepted.
+        let pooled_held;
+        let selectable = match &*transfer.amount {
+            Amount::Exact(_)
+                if units
+                    .iter()
+                    .enumerate()
+                    .any(|(i, o)| i != source && o.shares()) =>
+            {
+                let mut held = working[&source].held.clone();
+                for lender in lending_sharers(units, source) {
+                    let items: Vec<ItemAmount> = match working.get(&lender) {
+                        Some(state) => state.held.values().cloned().collect(),
+                        None => units[lender].unit.items.clone(),
+                    };
+                    for item in items {
+                        let tag = item.tag.to_ascii_uppercase();
+                        if item.amount <= 0 || ruleset.is_man(&tag) {
+                            continue;
+                        }
+                        held.entry(tag)
+                            .and_modify(|own| own.amount += item.amount)
+                            .or_insert(item);
+                    }
+                }
+                pooled_held = held;
+                &pooled_held
+            }
+            _ => &working[&source].held,
+        };
+        let tags = moves(selectable, &transfer.what, &transfer.amount, ruleset);
+        // How each selectable tag is written, so goods only a sharer held arrive under their name.
+        let names: BTreeMap<String, String> = selectable
+            .iter()
+            .map(|(tag, item)| (tag.clone(), item.name.clone()))
+            .collect();
+        let source_state = working
+            .get_mut(&source)
+            .expect("seeded above this same transfer");
+        let tags = match tags {
             Moves::Tags(tags) => tags,
             Moves::Unknowable => {
                 source_state.items_unknowable = true;
@@ -3829,17 +3918,32 @@ fn apply_transfers(
                 .held
                 .get(tag.as_str())
                 .map_or(0, |item| item.amount);
-            let requested = transfers::quantity_requested(&transfer.amount, held);
-            let moved = transfers::quantity_moved(&transfer.amount, held);
             // Read above the `moved == 0` return so `source_state`'s borrow ends here: the block
             // below takes a second `working.entry`, which will not compile while it lives.
-            let name = source_state
-                .held
-                .get(tag.as_str())
-                .map_or_else(|| tag.clone(), |item| item.name.clone());
+            let name = source_state.held.get(tag.as_str()).map_or_else(
+                || names.get(&tag).cloned().unwrap_or_else(|| tag.clone()),
+                |item| item.name.clone(),
+            );
             let is_man = ruleset.is_man(&tag);
             let source_doubted = source_state.doubted;
             let source_skills = source_state.skills.clone();
+            // What the source has as the engine counts it for an exact quantity: its own stock and
+            // the other sharers' (`GetSharedNum`, `Game::DoGiveOrder`; `ah-0mch`). An `ALL` is
+            // still what the source itself holds.
+            let lenders = if is_man {
+                Vec::new()
+            } else {
+                lending_sharers(units, source)
+            };
+            let lent: i64 = lenders
+                .iter()
+                .map(|&lender| held_by(&working, units, lender, &tag).max(0))
+                .sum();
+            let requested = transfers::quantity_requested(&transfer.amount, held);
+            let moved = match &*transfer.amount {
+                Amount::Exact(_) => requested.clamp(0, held.max(0).saturating_add(lent)),
+                Amount::All { .. } => transfers::quantity_moved(&transfer.amount, held),
+            };
 
             // `rules/magic`: "mages may not GIVE men at all". Asked against the source's *current*
             // skills, so a later order in this same document still sees the men, the skills and
@@ -4055,7 +4159,27 @@ fn apply_transfers(
             if is_man {
                 source_state.men -= moved;
             }
-            move_holding(source_state, &tag, &name, -moved);
+            // The source's own stock first, then the sharers' in report order: the engine's
+            // `Unit::ConsumeShared` (`ah-0mch`).
+            let own = moved.min(held.max(0));
+            move_holding(source_state, &tag, &name, -own);
+            let mut remaining = moved - own;
+            for lender in lenders {
+                if remaining <= 0 {
+                    break;
+                }
+                let lender_state = working
+                    .entry(lender)
+                    .or_insert_with(|| seed_working(units, lender));
+                let has = lender_state
+                    .held
+                    .get(tag.as_str())
+                    .map_or(0, |item| item.amount)
+                    .max(0);
+                let take = remaining.min(has);
+                move_holding(lender_state, &tag, &name, -take);
+                remaining -= take;
+            }
         }
 
         if !refused.is_empty() || !refused_to_another_faction.is_empty() || !into_a_mage.is_empty()
@@ -4873,6 +4997,7 @@ impl PhaseHoldings {
             silver: Some(self.silver[index]),
             buy_all: &[],
             gifts: &[],
+            casts: &[],
             silver_moves: &[],
             market_withholds: 0,
         }
@@ -4901,6 +5026,7 @@ impl PhaseHoldings {
             silver: Some(self.silver[index]),
             buy_all,
             gifts,
+            casts: &[],
             silver_moves,
             market_withholds,
         }
@@ -5098,6 +5224,16 @@ struct Ledger<'a> {
     /// of settling the Give phase a second time (`ah-6m7b.3`). Written by [`transfer`]; empty for
     /// a unit that wrote none, and carrying no entry for a line this walk could not follow.
     pub(crate) settled_gifts: BTreeMap<String, Vec<SettledGift>>,
+    /// Every `CAST` line another sharer lent to, as [`cast`] priced it: handed to the SILVER
+    /// column through [`PhaseFacts::casts`] so it prices the spell from the same purse
+    /// (`ah-0mch`).
+    pub(crate) shared_casts: BTreeMap<String, Vec<SharedCast>>,
+    /// What each unit was charged for a tag beyond what actually moved, because neither it nor
+    /// any sharer could fund it: a `GIVE` the engine cuts with "Not enough.", a cast or sale the
+    /// pool fell short of. The charge stays the whole ask, so the shortfall keeps its warning,
+    /// and this adds it back wherever the stock really left is wanted - [`shared_num_at`] -
+    /// the way [`Ledger::overcharged`] does for a cut `BUY` (`ah-0mch`).
+    unfunded: BTreeMap<(String, String), i64>,
     /// Every `GIVE`, `TAKE` and discard of silver this walk settled, in settlement order: who it
     /// left, who it reached (`None` for a discard, or a target this walk cannot credit), and how
     /// much - the amount the balances actually moved. What [`silver_can_have`] reads to add back
@@ -5529,6 +5665,8 @@ fn ledger_for_reaching<'a>(
         buy_all: BTreeMap::new(),
         settled_buy_all: BTreeMap::new(),
         settled_gifts: BTreeMap::new(),
+        shared_casts: BTreeMap::new(),
+        unfunded: BTreeMap::new(),
         silver_transfers: Vec::new(),
         silver_moves: BTreeMap::new(),
         shipping_paid: BTreeMap::new(),
@@ -6529,8 +6667,8 @@ fn unit_facts<'a>(
         skills_unknown: ordered.skills_before_the_market().is_none(),
         // `ordered.skills()` already carries this month's recruits merged on top of its gifts,
         // since `apply_recruits` runs before a hex is priced. That post-recruit picture is read
-        // only by the SILVER column's PRODUCE arm (`ah-40c9`); `skills` above is deliberately the
-        // pre-market one.
+        // by the SILVER column's arms that run after the market - PRODUCE (`ah-40c9`), the STUDY
+        // ceiling and ENTERTAIN (`ah-8n8y`); `skills` above is deliberately the pre-market one.
         skills_after_arrivals: ordered.skills().unwrap_or(&ordered.unit.skills),
         skills_after_arrivals_unknown: ordered.skills().is_none(),
         men_by_race_after_arrivals: ordered
@@ -7709,6 +7847,80 @@ struct SilverTransfer {
     amount: i64,
 }
 
+/// What `unit_id` has of `tag` at `phase` as the engine reads it for a spend: its own stock plus
+/// every *other* sharing unit's in the hex - the engine's `Unit::GetSharedNum` (`unit.cpp`), which
+/// counts the unit once, as itself, so its own `SHARE` flag lends it nothing, and never pools men.
+/// GIVE and TAKE (`Game::DoGiveOrder`), SELL (`Game::DoSell`, both `runorders.cpp`) and CAST
+/// (`spells.cpp`) all clamp to it (`ah-0mch`; `rules/share`).
+///
+/// Read as a pool rather than lender by lender, because this ledger charges a borrower the whole
+/// of what it spent and leaves its lenders' rows alone: what the sharers still have is their
+/// balances less every overdraft a non-sharer has already drawn on them. Each balance has its
+/// [`Ledger::unfunded`] part added back, since that silver or those goods never left anyone.
+///
+/// `None` where it cannot be read: the spender's or a sharer's balance a `GIVE` left uncertain, or
+/// a pool whose sum is not to be trusted. A non-sharer whose balance is uncertain is read as having
+/// drawn nothing on the pool. A caller given `None` keeps the reading it had before this existed,
+/// rather than inventing a clamp.
+fn shared_num_at(
+    ledger: &Ledger<'_>,
+    hex: &Hex<'_>,
+    phase: StatePhase,
+    unit_id: &str,
+    tag: &str,
+) -> Option<i64> {
+    let held = |who: &str| -> Option<i64> {
+        let known = ledger.state.known_balance_at(phase, who, tag).ok()?;
+        let unfunded = ledger
+            .unfunded
+            .get(&(who.to_string(), tag.to_ascii_uppercase()))
+            .copied()
+            .unwrap_or(0);
+        Some(known.saturating_add(unfunded))
+    };
+    let own = held(unit_id)?;
+    let sharing = Sharing::read(hex);
+    if sharing.reading(tag, ledger.ruleset) != Reading::Pooled {
+        return Some(own.max(0));
+    }
+    if !sharing.pool_trusted(ledger) {
+        return None;
+    }
+    // The other sharers' stock, less what every other non-sharer has already drawn from it.
+    let mut others = 0i64;
+    let mut spender_shares = false;
+    for ordered in &hex.units {
+        if ordered.unit.unit_id == unit_id {
+            spender_shares = ordered.shares();
+            continue;
+        }
+        // A sharer whose stock is not established leaves the pool unreadable; a non-sharer whose
+        // own is not is read as having drawn nothing on it.
+        others = others.saturating_add(if ordered.shares() {
+            held(&ordered.unit.unit_id)?
+        } else {
+            held(&ordered.unit.unit_id).map_or(0, |balance| balance.min(0))
+        });
+    }
+    // A sharer's own stock is in the pool others drew on; a non-sharer's is its own, and only
+    // what it overdrew itself came out of the pool.
+    Some(if spender_shares {
+        own.saturating_add(others).max(0)
+    } else {
+        own.max(0) + others.saturating_add(own.min(0)).max(0)
+    })
+}
+
+/// Books what a unit was charged for `tag` beyond what it could fund (`Ledger::unfunded`).
+fn record_unfunded(ledger: &mut Ledger<'_>, unit_id: &str, tag: &str, amount: i64) {
+    if amount > 0 {
+        *ledger
+            .unfunded
+            .entry((unit_id.to_string(), tag.to_ascii_uppercase()))
+            .or_default() += amount;
+    }
+}
+
 /// Moves goods from one unit to another. Either end may be absent - a gift out of the hex is
 /// charged to the giver and credited to nobody.
 #[allow(clippy::too_many_arguments)]
@@ -7899,6 +8111,26 @@ fn transfer(
     } else {
         quantity
     };
+    // What reaches the receiver: never more than the source has as the engine counts it - its own
+    // stock and the *other* sharers' ([`shared_num_at`]), for goods as for silver (`ah-0mch`). In
+    // a hex with a sharer the source is still charged `moved`, the whole ask, so the pool goes on
+    // judging the overdraft and a gift it cannot fund keeps its warning; only the credit is cut.
+    let received = if from.is_empty() {
+        quantity
+    } else {
+        shared_num_at(ledger, hex, StatePhase::Give, &from, &tag)
+            .map_or(quantity, |has| quantity.min(has))
+    };
+    // What the source is charged below beyond what it gives: the ask itself for goods, `moved`
+    // for silver.
+    if !from.is_empty() {
+        let charged = if tag.eq_ignore_ascii_case(SILVER) {
+            moved
+        } else {
+            quantity
+        };
+        record_unfunded(ledger, &from, &tag, charged - received);
+    }
 
     if !from.is_empty() {
         if tag.eq_ignore_ascii_case(SILVER) {
@@ -8011,11 +8243,11 @@ fn transfer(
         if tag.eq_ignore_ascii_case(SILVER) {
             // Applied, not recorded: the incoming leg's record comes from the settlement, through
             // the pass in `ledger_for_with_production` (`ah-1x2h.3`). The balance is this walk's
-            // own: what `moved` says changed hands, which is the whole ask only where a sharer can
-            // fund it (`ah-ud89`, `ah-1c8p`).
-            apply_silver(ledger, StatePhase::Give, &to, moved, Some(placed));
+            // own: what the source had to give as the engine counts it, its own silver and the
+            // other sharers' (`ah-ud89`, `ah-1c8p`, `ah-0mch`).
+            apply_silver(ledger, StatePhase::Give, &to, received, Some(placed));
         } else {
-            credit(ledger, StatePhase::Give, &to, &tag, quantity);
+            credit(ledger, StatePhase::Give, &to, &tag, received);
         }
     }
 }
@@ -9218,6 +9450,79 @@ fn build(
         });
 }
 
+/// The other sharing units that lend `borrower` its `tag` before movement, each with what it has
+/// to lend, in report order: the engine's `Unit::GetSharedNum` and `Unit::ConsumeShared`
+/// (`unit.cpp`), which count the borrower once, as itself, and never pool men (`ah-0mch`). Empty
+/// where the tag does not pool or the pool's sum is not to be trusted, which leaves the borrower
+/// with its own stock exactly as before. `has` is what the caller reads a unit's holding as.
+fn lenders_before_movement(
+    ledger: &Ledger<'_>,
+    hex: &Hex<'_>,
+    borrower: &str,
+    tag: &str,
+    has: impl Fn(&Ordered<'_>) -> i64,
+) -> Vec<(usize, i64)> {
+    let sharing = Sharing::read(hex);
+    if sharing.reading(tag, ledger.ruleset) != Reading::Pooled || !sharing.pool_trusted(ledger) {
+        return Vec::new();
+    }
+    sharing
+        .sharers
+        .iter()
+        .filter(|(_, lender)| lender.unit.unit_id != borrower)
+        .map(|(index, lender)| (*index, has(lender).max(0)))
+        .filter(|(_, lends)| *lends > 0)
+        .collect()
+}
+
+/// Charges each lender in turn for what `amount` still needs once the borrower's own stock is
+/// spent, recording the movement on the lender, against the borrower, so every projected
+/// inventory loses the goods where they actually were (`ah-0mch`, the attribution
+/// `charge_shared_material` makes for production). Returns what no lender could cover.
+#[allow(clippy::too_many_arguments)]
+fn draw_on_lenders(
+    ledger: &mut Ledger<'_>,
+    hex: &Hex<'_>,
+    phase: StatePhase,
+    borrower: &Ordered<'_>,
+    tag: &str,
+    lenders: &[(usize, i64)],
+    amount: i64,
+    placed: &PlacedIntent,
+    cause: ItemChangeCause,
+    unit_price: Option<i64>,
+) -> i64 {
+    let mut remaining = amount.max(0);
+    for &(index, lends) in lenders {
+        if remaining == 0 {
+            break;
+        }
+        let take = remaining.min(lends);
+        if take == 0 {
+            continue;
+        }
+        remaining -= take;
+        let lender = &hex.units[index].unit;
+        charge(ledger, phase, &lender.unit_id, tag, take, placed);
+        ledger.movements.push(ItemMovement {
+            unit_id: lender.unit_id.clone(),
+            tag: tag.to_ascii_uppercase(),
+            name: item_name(tag, hex, ledger.ruleset),
+            delta: -take,
+            cause,
+            phase,
+            line: Some(placed.line as i64),
+            unit_price,
+            other: Some(ItemChangeParty {
+                unit_id: borrower.unit.unit_id.clone(),
+                name: Some(borrower.unit.name.clone()),
+            }),
+            created: None,
+        });
+    }
+    remaining
+}
+
 fn sell(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
@@ -9273,7 +9578,32 @@ fn sell(
             return;
         }
     };
-    let remaining_holding = actor.early_holding(&tag).min(known_holding);
+    let own_holding = actor.early_holding(&tag).min(known_holding);
+    // `Game::DoSell` (`runorders.cpp`) cuts a line to `GetSharedNum`: the seller's own stock and
+    // every other sharer's, spent in that order (`ah-0mch`). A sharer's is read as the seller's
+    // own is, so an earlier line that sold or gave it away has already taken it out.
+    let lenders = lenders_before_movement(ledger, hex, who, &tag, |lender| {
+        known_balance_of(ledger, &lender.unit.unit_id, &tag)
+            .map_or(0, |known| lender.early_holding(&tag).min(known))
+    });
+    // What the sharers can still lend, read off the pool as a whole ([`shared_num_at`]) so goods an
+    // earlier GIVE or cast already drew from them are not sold again.
+    let lendable: i64 = lenders.iter().map(|(_, lends)| lends).sum();
+    let lent = shared_num_at(ledger, hex, StatePhase::Market, who, &tag).map_or(lendable, |has| {
+        let own = ledger
+            .state
+            .balance_at(StatePhase::Market, who, &tag)
+            .saturating_add(
+                ledger
+                    .unfunded
+                    .get(&(who.clone(), tag.clone()))
+                    .copied()
+                    .unwrap_or(0),
+            )
+            .max(0);
+        (has - own).clamp(0, lendable)
+    });
+    let remaining_holding = own_holding.saturating_add(lent);
     // What this hex's other own sellers left of the line, or the line itself where nothing was
     // settled (`ah-t2pn.3`), less what this unit's own earlier lines have already taken out of it.
     let allowed = standing
@@ -9286,7 +9616,24 @@ fn sell(
         demand.price,
     );
 
-    charge(ledger, StatePhase::Market, who, &tag, line.quantity, placed);
+    // The seller's own stock first, then the sharers' - each charged, and its movement recorded,
+    // where the goods were. Whatever neither covers stays on the seller, as before.
+    let own_sold = line.quantity.min(own_holding.max(0));
+    let uncovered = draw_on_lenders(
+        ledger,
+        hex,
+        StatePhase::Market,
+        actor,
+        &tag,
+        &lenders,
+        line.quantity - own_sold,
+        placed,
+        ItemChangeCause::Sold,
+        Some(demand.price),
+    );
+    record_unfunded(ledger, who, &tag, uncovered);
+    let sold_from_own = own_sold + uncovered;
+    charge(ledger, StatePhase::Market, who, &tag, sold_from_own, placed);
     move_silver(
         ledger,
         StatePhase::Market,
@@ -9310,12 +9657,13 @@ fn sell(
             sold_before: before,
         });
     }
-    if line.quantity != 0 {
+    // What left the seller's own stock; a sharer's part is on the sharer's row (`ah-0mch`).
+    if sold_from_own != 0 {
         ledger.movements.push(ItemMovement {
             unit_id: who.clone(),
             tag: tag.clone(),
             name: item_name(&tag, hex, ledger.ruleset),
-            delta: -line.quantity,
+            delta: -sold_from_own,
             cause: ItemChangeCause::Sold,
             phase: StatePhase::Market,
             line: Some(placed.line as i64),
@@ -9448,16 +9796,87 @@ fn cast(
         .state
         .balance_at(StatePhase::Cast, who, SILVER)
         .max(0);
+    // Every cost a spell has is read through `GetSharedNum` or `GetSharedMoney` (`spells.cpp`:
+    // `RunCreateArtifact`, Construct Gate, Engrave Runes): the caster's own and every other
+    // sharer's, as each stands when the spell resolves (`ah-0mch`).
+    // What another sharer lends, for a tag: the pool's reading less the caster's own.
+    let lent_of = |tag: &str| -> i64 {
+        let own = ledger
+            .state
+            .balance_at(StatePhase::Cast, who, tag)
+            .saturating_add(
+                ledger
+                    .unfunded
+                    .get(&(who.clone(), tag.to_ascii_uppercase()))
+                    .copied()
+                    .unwrap_or(0),
+            )
+            .max(0);
+        // Negative where the caster shares and an earlier borrower drew on its own stock.
+        shared_num_at(ledger, hex, StatePhase::Cast, who, tag).map_or(0, |has| has - own)
+    };
+    let lent_silver = lent_of(SILVER);
+    let mut held = actor.unit.items.clone();
+    let mut goods_lent = false;
+    // Every tag a sharer holds as the spell resolves - what it received this month included, and
+    // the caster's own, which an earlier borrower may have drawn on.
+    let lent_tags: BTreeSet<String> = Sharing::read(hex)
+        .sharers
+        .iter()
+        .map(|(_, lender)| lender)
+        .chain(std::iter::once(&actor))
+        .flat_map(|lender| {
+            ledger
+                .state
+                .holdings_at(StatePhase::Cast, &lender.unit.unit_id)
+                .into_keys()
+        })
+        .filter(|tag| !tag.eq_ignore_ascii_case(SILVER))
+        .collect();
+    for tag in lent_tags {
+        let lends = lent_of(&tag);
+        if lends == 0 {
+            continue;
+        }
+        goods_lent = true;
+        match held
+            .iter_mut()
+            .find(|own| own.tag.eq_ignore_ascii_case(&tag))
+        {
+            Some(own) => own.amount = own.amount.saturating_add(lends).max(0),
+            None if lends < 0 => {}
+            None => held.push(ItemAmount {
+                amount: lends,
+                name: item_name(&tag, hex, ruleset),
+                tag,
+            }),
+        }
+    }
+    if lent_silver != 0 || goods_lent {
+        ledger
+            .shared_casts
+            .entry(who.clone())
+            .or_default()
+            .push(SharedCast {
+                line: placed.line as i64,
+                silver: lent_silver,
+                held: held.clone(),
+            });
+    }
     let caster = Caster {
         skills: actor
             .skills_before_the_market()
             .unwrap_or(&actor.unit.skills),
-        held: &actor.unit.items,
+        held: &held,
         // The settled purse: what this unit will actually hold once its faction-mates' claim on
         // the region's tax pool is settled against it (`ah-ud89`). `silver_hopeful` below keeps
         // the reading every `not-enough-silver` finding uses, so no warning moves.
-        silver_available: hopeful.saturating_sub(standing.overstated_tax()).max(0),
-        silver_hopeful: hopeful,
+        silver_available: hopeful
+            .saturating_sub(standing.overstated_tax())
+            .max(0)
+            .saturating_add(lent_silver)
+            .max(0),
+        silver_hopeful: hopeful.saturating_add(lent_silver).max(0),
         transmuting,
     };
 
@@ -9465,6 +9884,14 @@ fn cast(
     // `not-enough-silver` warning cannot disagree about a mage's month (`ah-lu0f.3`). Silver is
     // charged from `spends` alone; `plan.materials` never contains `SILV` (`ah-ofpb.4`).
     let (priced, plan) = price_cast(resolved, &caster, region);
+    // A cast the purse could not pay is still charged in full, to keep its warning; what nobody
+    // funded is booked so the pool is not read as drained by it (`ah-0mch`).
+    record_unfunded(
+        ledger,
+        who,
+        SILVER,
+        priced.spends - hopeful.saturating_add(lent_silver).max(0),
+    );
     move_silver(
         ledger,
         StatePhase::Cast,
@@ -9505,15 +9932,43 @@ fn cast(
     // credited - `cast()` has never called `credit` for an item and must not start (round 2, Q5,
     // answer C).
     for material in &plan.materials {
+        // The caster's own stock first, then the other sharers' (`Unit::ConsumeShared`,
+        // `ah-0mch`), each charged where the goods were. Whatever none of them covers stays on the
+        // caster, so a cast the pool cannot fund still overdraws it.
+        let own = material.amount.min(
+            ledger
+                .state
+                .balance_at(StatePhase::Cast, who, &material.tag)
+                .max(0),
+        );
+        let lenders = lenders_before_movement(ledger, hex, who, &material.tag, |lender| {
+            ledger
+                .state
+                .balance_at(StatePhase::Cast, &lender.unit.unit_id, &material.tag)
+        });
+        let uncovered = draw_on_lenders(
+            ledger,
+            hex,
+            StatePhase::Cast,
+            actor,
+            &material.tag,
+            &lenders,
+            material.amount - own,
+            placed,
+            ItemChangeCause::CastSpent,
+            None,
+        );
+        let from_caster = own + uncovered;
+        record_unfunded(ledger, who, &material.tag, uncovered);
         charge(
             ledger,
             StatePhase::Cast,
             who,
             &material.tag,
-            material.amount,
+            from_caster,
             placed,
         );
-        if material.amount != 0 {
+        if from_caster != 0 {
             ledger.movements.push(ItemMovement {
                 unit_id: who.clone(),
                 tag: material.tag.to_ascii_uppercase(),
@@ -9521,8 +9976,8 @@ fn cast(
                 // What a cast consumes leaves at the ceiling, because that is what the ledger was
                 // charged: the ITEMS column, the SILVER column and `not-enough-items` must read one
                 // number (`ah-ofpb.5`, round 1 Q4). `plan.materials` is already `charged` times the
-                // per-item amount.
-                delta: -material.amount,
+                // per-item amount - less what a sharer supplied, which is on its row.
+                delta: -from_caster,
                 cause: ItemChangeCause::CastSpent,
                 phase: StatePhase::Cast,
                 line: Some(placed.line as i64),
@@ -14720,13 +15175,14 @@ fn one_study_forecast(
         doubts.push(doubt(StudyDoubtReason::HeadcountEstimated));
     }
 
-    // The identical call the ledger's own `study` makes (`semantics.rs`'s `study`), on the
-    // report-era headcount, so the popup's fee is the figure the Silver column charged.
+    // The identical call the ledger's own `study` makes (`semantics.rs`'s `study`), on the same
+    // post-recruit headcount, so the popup's fee is the figure the Silver column charged: BUY
+    // settles before STUDY (`rules/sequenceofevents`) and the fee is per person (`ah-8n8y`).
     let priced = price_study(
         (!ordered.unit.men_estimated)
             .then_some(skill.cost)
             .flatten(),
-        ordered.unit.men,
+        ordered.men_after_orders,
     );
     if skill.cost.is_none() {
         doubts.push(doubt(StudyDoubtReason::FeeUnpriced));
@@ -30784,6 +31240,45 @@ BUILD
             );
         }
 
+        /// `ah-8n8y`. `rules/sequenceofevents` runs the market before the month-long orders, and
+        /// the engine reads a skill as its days over the unit's men (`unit.cpp` `GetRealSkill`;
+        /// `skills.cpp` `GetDaysByLevel` gives 30 and 90 days for levels 1 and 2). One man at
+        /// Entertainment 2 holds 90 days; with one recruit that is 45 days a man, level 1, so two
+        /// men earn 2 x 1 x $30 - not the 2 x 2 x $30 the pre-market level would pay.
+        #[test]
+        fn a_recruit_dilutes_an_entertainers_level() {
+            let hex_region = ReportRegion {
+                entertainment: Some(10_000),
+                for_sale: vec![MarketItem {
+                    amount: 5,
+                    name: "men".to_string(),
+                    tag: "HUMN".to_string(),
+                    price: 38,
+                }],
+                ..region(vec![with_skill_points(
+                    with_men(with_silver(unit("5"), 10_000), 1),
+                    "ENTE",
+                    2,
+                    90,
+                )])
+            };
+
+            let silver = forecast_with_ruleset(vec![hex_region], "unit 5\nBUY 1 HUMN\nENTERTAIN\n");
+
+            let entertained: Vec<_> = silver
+                .changes
+                .iter()
+                .filter(|change| change.cause == SilverChangeCause::Entertained)
+                .map(|change| change.amount)
+                .collect();
+            assert_eq!(
+                entertained,
+                vec![60],
+                "2 men at 45 days a man, level 1, at $30 a man a level: {:?}",
+                silver.changes
+            );
+        }
+
         fn market(units: Vec<ReportUnit>) -> ReportRegion {
             ReportRegion {
                 tax_base: Some(2500),
@@ -33340,6 +33835,447 @@ BUILD
     fn sharing(mut unit: ReportUnit) -> ReportUnit {
         unit.flags.push("sharing".to_string());
         unit
+    }
+
+    // --- one sharing rule for every spend (`ah-0mch`) ------------------------------------------
+    //
+    // The engine's `Unit::GetSharedNum` (`unit.cpp`) is what a unit "has" of a tag: its own stock
+    // plus every other same-faction `SHARE` unit's in the region, men excepted, and
+    // `Unit::ConsumeShared` spends its own first and then the sharers' in region order. GIVE
+    // (`Game::DoGiveOrder`, `runorders.cpp`: "Not enough." then the clamp), SELL (`Game::DoSell`)
+    // and CAST (`RunCreateArtifact`, Construct Gate and Engrave Runes in `spells.cpp`) all read
+    // it. `rules/share`: a sharing unit "will automatically provide silver if any of your other
+    // units in the same region does not have enough to perform an action".
+    mod one_sharing_rule {
+        use super::*;
+
+        /// The hex through the transfer settlement, and its ledger: the two surfaces a transfer
+        /// is read from (`apply_transfers` for the SILVER column's receipts and the projected
+        /// holdings, `transfer` for the ledger's balances).
+        fn settled<R>(
+            hex_region: ReportRegion,
+            orders: &str,
+            read: impl FnOnce(&Hex<'_>, &Ledger<'_>) -> R,
+        ) -> R {
+            let parsed = report(vec![hex_region]);
+            let ordered = OrderedUnits::read(orders);
+            let formed = formed_units(&parsed, orders, None, &study::ReportSkills::default());
+            let rules = ruleset();
+            let hex = hex_with_transfers(
+                &parsed.regions[0],
+                &ordered,
+                &formed,
+                Some(&rules),
+                &BTreeSet::new(),
+                &NO_UNITS_SHOWN,
+            );
+            let ledger = ledger_for(&hex, Some(&rules));
+            read(&hex, &ledger)
+        }
+
+        fn given_at(ledger: &Ledger<'_>, who: &str, tag: &str) -> i64 {
+            ledger
+                .state
+                .known_balance_at(StatePhase::Give, who, tag)
+                .expect("the balance is known")
+        }
+
+        fn early(hex: &Hex<'_>, who: &str, tag: &str) -> i64 {
+            hex.find(who)
+                .expect("the unit is in the hex")
+                .early_holding(tag)
+        }
+
+        /// Case 1: an exact GIVE of goods credits the receiver what the giver has, not the ask.
+        #[test]
+        fn an_exact_gift_of_goods_credits_only_what_the_giver_has() {
+            let hex_region = region(vec![with_item(unit("1"), 10, "swords", "SWOR"), unit("2")]);
+            settled(
+                hex_region,
+                "unit 1\nGIVE 2 50 SWOR\n\nunit 2\n",
+                |hex, ledger| {
+                    assert_eq!(given_at(ledger, "2", "SWOR"), 10, "the ledger credits 10");
+                    assert_eq!(early(hex, "2", "SWOR"), 10, "the settlement moves 10");
+                },
+            );
+        }
+
+        /// Case 1, pooled: what the giver has includes another sharer's stock, spent after its
+        /// own - on both surfaces.
+        #[test]
+        fn an_exact_gift_of_goods_draws_on_another_sharer() {
+            let hex_region = region(vec![
+                with_item(unit("1"), 10, "swords", "SWOR"),
+                unit("2"),
+                sharing(with_item(unit("3"), 15, "swords", "SWOR")),
+            ]);
+            settled(
+                hex_region,
+                "unit 1\nGIVE 2 50 SWOR\n\nunit 2\n\nunit 3\n",
+                |hex, ledger| {
+                    assert_eq!(
+                        given_at(ledger, "2", "SWOR"),
+                        25,
+                        "own 10 plus the sharer's 15"
+                    );
+                    assert_eq!(early(hex, "2", "SWOR"), 25, "the settlement moves 25");
+                    assert_eq!(early(hex, "1", "SWOR"), 0);
+                    assert_eq!(early(hex, "3", "SWOR"), 0, "the sharer supplied the rest");
+                },
+            );
+        }
+
+        /// Case 2: a giver's own `SHARE` flag lends it nothing (`GetSharedNum` counts the unit
+        /// once, as itself), so a lone sharer giving more than it holds gives what it holds.
+        #[test]
+        fn a_givers_own_flag_lends_it_nothing() {
+            let hex_region = region(vec![sharing(with_silver(unit("1"), 100)), unit("2")]);
+            settled(
+                hex_region,
+                "unit 1\nGIVE 2 500 SILV\n\nunit 2\n",
+                |hex, ledger| {
+                    assert_eq!(
+                        given_at(ledger, "2", SILVER),
+                        100,
+                        "the receiver is credited the 100 the giver had"
+                    );
+                    assert_eq!(
+                        hex.find("2").unwrap().transfer_receipts.silver,
+                        100,
+                        "the column's receipt agrees"
+                    );
+                },
+            );
+        }
+
+        /// The other half of case 2: cutting the credit does not hide the overdraft. The giver
+        /// asked for 400 more than anyone could fund, and is still told so.
+        #[test]
+        fn a_lone_sharer_giving_beyond_its_purse_is_still_warned() {
+            let review = review_turn(
+                &report(vec![region(vec![
+                    sharing(with_silver(unit("1"), 100)),
+                    unit("2"),
+                ])]),
+                "unit 1\nGIVE 2 500 SILV\n\nunit 2\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            assert!(
+                codes(&review.findings).contains(&codes::NOT_ENOUGH_SILVER.as_str()),
+                "{:?}",
+                review.findings
+            );
+        }
+
+        /// Case 2, the other side: another sharer's silver does fund the gift, on both surfaces.
+        #[test]
+        fn another_sharers_silver_funds_a_gift_on_both_surfaces() {
+            let hex_region = region(vec![
+                with_silver(unit("1"), 30),
+                unit("2"),
+                sharing(with_silver(unit("3"), 50)),
+            ]);
+            settled(
+                hex_region,
+                "unit 1\nGIVE 2 100 SILV\n\nunit 2\n\nunit 3\n",
+                |hex, ledger| {
+                    let receipt = hex.find("2").unwrap().transfer_receipts.silver;
+                    assert_eq!(
+                        receipt, 80,
+                        "own 30 plus the sharer's 50 reach the receiver"
+                    );
+                    assert_eq!(given_at(ledger, "2", SILVER), 80, "and the ledger's credit");
+                },
+            );
+        }
+
+        /// Review finding 1: what one gift drew from a sharer is gone for the next. Unit 1 takes
+        /// the sharer's 15 swords for its gift, so the sharer's own gift finds nothing ("Not
+        /// enough.", `Game::DoGiveOrder`) - on both surfaces.
+        #[test]
+        fn a_sharers_stock_is_not_lent_twice_in_the_give_phase() {
+            let hex_region = region(vec![
+                with_item(unit("1"), 10, "swords", "SWOR"),
+                unit("2"),
+                sharing(with_item(unit("3"), 15, "swords", "SWOR")),
+                unit("4"),
+            ]);
+            settled(
+                hex_region,
+                "unit 1\nGIVE 2 50 SWOR\n\nunit 2\n\nunit 3\nGIVE 4 15 SWOR\n\nunit 4\n",
+                |hex, ledger| {
+                    assert_eq!(given_at(ledger, "2", "SWOR"), 25);
+                    assert_eq!(
+                        given_at(ledger, "4", "SWOR"),
+                        0,
+                        "the ledger lends nothing twice"
+                    );
+                    assert_eq!(early(hex, "4", "SWOR"), 0, "nor does the settlement");
+                },
+            );
+        }
+
+        /// Review finding 1, the other half: an ask beyond the whole pool leaves the giver with
+        /// nothing, not an overdraft that eats the next borrower's share.
+        #[test]
+        fn an_unfunded_ask_does_not_drain_the_pool_for_the_next_borrower() {
+            let hex_region = region(vec![
+                sharing(with_silver(unit("1"), 100)),
+                unit("2"),
+                with_silver(unit("3"), 50),
+                unit("4"),
+            ]);
+            settled(
+                hex_region,
+                "unit 1\nGIVE 2 500 SILV\n\nunit 2\n\nunit 3\nGIVE 4 50 SILV\n\nunit 4\n",
+                |_, ledger| {
+                    assert_eq!(given_at(ledger, "2", SILVER), 100);
+                    assert_eq!(
+                        given_at(ledger, "4", SILVER),
+                        50,
+                        "unit 3's own 50 still move"
+                    );
+                },
+            );
+        }
+
+        /// Review finding 2: a giver holding none of the goods still gives a sharer's.
+        #[test]
+        fn a_giver_holding_none_gives_a_sharers_goods_on_both_surfaces() {
+            let hex_region = region(vec![
+                unit("1"),
+                unit("2"),
+                sharing(with_item(unit("3"), 15, "swords", "SWOR")),
+            ]);
+            settled(
+                hex_region,
+                "unit 1\nGIVE 2 10 SWOR\n\nunit 2\n\nunit 3\n",
+                |hex, ledger| {
+                    assert_eq!(given_at(ledger, "2", "SWOR"), 10);
+                    assert_eq!(early(hex, "2", "SWOR"), 10, "the settlement moves 10");
+                    assert_eq!(early(hex, "3", "SWOR"), 5, "out of the sharer's stock");
+                },
+            );
+        }
+
+        /// Review finding 2, silver: the SILVER column's receipt agrees with the ledger.
+        #[test]
+        fn a_giver_holding_no_silver_gives_a_sharers_on_both_surfaces() {
+            let hex_region = region(vec![
+                unit("1"),
+                unit("2"),
+                sharing(with_silver(unit("3"), 100)),
+            ]);
+            settled(
+                hex_region,
+                "unit 1\nGIVE 2 100 SILV\n\nunit 2\n\nunit 3\n",
+                |hex, ledger| {
+                    assert_eq!(given_at(ledger, "2", SILVER), 100);
+                    assert_eq!(hex.find("2").unwrap().transfer_receipts.silver, 100);
+                },
+            );
+        }
+
+        /// Review finding 3: two casters cannot both spend one sharer's purse. 300 silver pays
+        /// for one amulet at 200 (`data/CRPA`); the second mage finds 100 (`spells.cpp`).
+        #[test]
+        fn two_casters_do_not_both_spend_one_sharers_purse() {
+            let review = review_turn(
+                &report(vec![region(vec![
+                    with_skill(unit("5"), "CRPA", 1),
+                    sharing(with_silver(unit("6"), 300)),
+                    with_skill(unit("7"), "CRPA", 1),
+                ])]),
+                "unit 5\nCAST Create_Amulet_Of_Protection\n\nunit 6\n\n\
+                 unit 7\nCAST Create_Amulet_Of_Protection\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            assert_eq!(forecast(&review, "5").cast_made, 1, "the first mage casts");
+            assert_eq!(forecast(&review, "7").cast_made, 0, "the second finds 100");
+        }
+
+        /// Follow-up finding 1: a sharing caster's purse is what the pool left it. Unit 5 casts
+        /// first on 200 of sharer 6's 300, so 6 finds 100 and makes nothing (`spells.cpp`).
+        #[test]
+        fn a_sharing_caster_finds_what_an_earlier_borrower_left() {
+            let review = review_turn(
+                &report(vec![region(vec![
+                    with_skill(unit("5"), "CRPA", 1),
+                    sharing(with_silver(with_skill(unit("6"), "CRPA", 1), 300)),
+                ])]),
+                "unit 5\nCAST Create_Amulet_Of_Protection\n\n\
+                 unit 6\nCAST Create_Amulet_Of_Protection\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            assert_eq!(forecast(&review, "5").cast_made, 1, "the borrower casts");
+            assert_eq!(forecast(&review, "6").cast_made, 0, "the sharer finds 100");
+        }
+
+        /// Follow-up finding 1, materials: a gift that drew on a sharer's swords leaves the
+        /// sharing caster fewer to enchant (`data/ESWO`: five per level, a sword each).
+        #[test]
+        fn a_sharing_caster_enchants_only_what_a_gift_left_it() {
+            let hex_region = region(vec![
+                unit("1"),
+                unit("2"),
+                sharing(with_item(
+                    with_skill(unit("6"), "ESWO", 1),
+                    5,
+                    "swords",
+                    "SWOR",
+                )),
+            ]);
+            settled(
+                hex_region,
+                "unit 1\nGIVE 2 3 SWOR\n\nunit 2\n\nunit 6\nCAST Enchant_Swords\n",
+                |_, ledger| {
+                    let made: i64 = ledger
+                        .movements
+                        .iter()
+                        .filter(|movement| movement.unit_id == "6" && movement.tag == "MSWO")
+                        .map(|movement| movement.delta)
+                        .sum();
+                    assert_eq!(made, 2, "the gift took three of the five");
+                },
+            );
+        }
+
+        /// Follow-up finding 2: goods only a sharer held arrive under their name.
+        #[test]
+        fn a_sharers_goods_arrive_under_their_name() {
+            let hex_region = region(vec![
+                unit("1"),
+                unit("2"),
+                sharing(with_item(unit("3"), 15, "swords", "SWOR")),
+            ]);
+            settled(
+                hex_region,
+                "unit 1\nGIVE 2 10 SWOR\n\nunit 2\n\nunit 3\n",
+                |hex, _| {
+                    let arrived = hex
+                        .find("2")
+                        .unwrap()
+                        .early_items()
+                        .iter()
+                        .find(|item| item.tag == "SWOR")
+                        .map(|item| item.name.clone());
+                    assert_eq!(arrived.as_deref(), Some("swords"));
+                },
+            );
+        }
+
+        /// Follow-up finding 3: a non-sharer whose gift to another faction cannot be settled
+        /// (`ah-66yi`) does not switch the pool's clamp off for everyone else.
+        #[test]
+        fn an_uncertain_non_sharer_does_not_unclamp_the_hex() {
+            // Unit 3 stands first, so its gift runs before unit 1's (`rules/sequenceofevents`).
+            let hex_region = region(vec![
+                with_item(unit("3"), 5, "swords", "SWOR"),
+                with_item(unit("1"), 10, "swords", "SWOR"),
+                unit("2"),
+                sharing(with_item(unit("4"), 15, "swords", "SWOR")),
+                an_ally("7001"),
+            ]);
+            settled(
+                hex_region,
+                "unit 1\nGIVE 2 50 SWOR\n\nunit 2\n\nunit 3\nGIVE 7001 5 SWOR\n\nunit 4\n",
+                |_, ledger| {
+                    assert_eq!(
+                        given_at(ledger, "2", "SWOR"),
+                        25,
+                        "own 10 and the sharer's 15"
+                    );
+                },
+            );
+        }
+
+        /// Case 3: a mage with no silver casts on a sharer's (`data/CRPA`: 200 silver each).
+        #[test]
+        fn a_cast_draws_silver_from_a_sharer() {
+            let review = review_turn(
+                &report(vec![region(vec![
+                    with_skill(unit("5"), "CRPA", 1),
+                    sharing(with_silver(unit("6"), 500)),
+                ])]),
+                "unit 5\nCAST Create_Amulet_Of_Protection\n\nunit 6\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let mage = forecast(&review, "5");
+            assert_eq!(mage.cast_made, 1, "the sharer pays for one amulet");
+            assert!(
+                !codes(&review.findings).contains(&codes::NOT_ENOUGH_SILVER.as_str()),
+                "{:?}",
+                review.findings
+            );
+        }
+
+        /// Case 3, materials: a mage with no swords enchants a sharer's (`data/ESWO`: five
+        /// mithril swords per level, a sword each).
+        #[test]
+        fn a_cast_draws_materials_from_a_sharer() {
+            let hex_region = region(vec![
+                with_skill(unit("5"), "ESWO", 1),
+                sharing(with_item(unit("6"), 5, "swords", "SWOR")),
+            ]);
+            settled(
+                hex_region,
+                "unit 5\nCAST Enchant_Swords\n\nunit 6\n",
+                |_, ledger| {
+                    assert!(
+                        ledger
+                            .movements
+                            .iter()
+                            .any(|movement| movement.unit_id == "5"
+                                && movement.tag == "MSWO"
+                                && movement.delta == 5),
+                        "five mithril swords from the sharer's five swords: {:?}",
+                        ledger.movements
+                    );
+                    let cast = |who: &str| ledger.state.balance_at(StatePhase::Cast, who, "SWOR");
+                    assert_eq!(cast("6"), 0, "the swords leave the sharer");
+                    assert_eq!(cast("5"), 0, "and the mage is not overdrawn");
+                },
+            );
+        }
+
+        /// Case 4: a seller with none of the goods sells a sharer's (`rules/sell`).
+        #[test]
+        fn a_sale_draws_goods_from_a_sharer() {
+            let hex_region = ReportRegion {
+                wanted: vec![MarketItem {
+                    amount: 20,
+                    name: "wood".to_string(),
+                    tag: "WOOD".to_string(),
+                    price: 3,
+                }],
+                ..region(vec![
+                    unit("1"),
+                    sharing(with_item(unit("3"), 10, "wood", "WOOD")),
+                ])
+            };
+            settled(
+                hex_region,
+                "unit 1\nSELL 10 wood\n\nunit 3\n",
+                |_, ledger| {
+                    assert_eq!(
+                        ledger
+                            .sold
+                            .get(&("1".to_string(), "WOOD".to_string()))
+                            .map(|sold| sold.quantity),
+                        Some(10),
+                        "the sharer's ten are sold"
+                    );
+                    let market =
+                        |who: &str| ledger.state.balance_at(StatePhase::Market, who, "WOOD");
+                    assert_eq!(market("3"), 0, "they leave the sharer's stock");
+                    assert_eq!(market("1"), 0, "and the seller is not overdrawn");
+                },
+            );
+        }
     }
 
     // --- how a hex reads one tag (`ah-3ddq`) ----------------------------------------------------
@@ -53920,6 +54856,46 @@ BUILD
         assert_eq!(study.doubts[0].fee, 200);
         assert_eq!(study.doubts[0].short_by, 160);
         assert_eq!(study.points_after, 30);
+    }
+
+    /// `ah-8n8y`. `rules/sequenceofevents` settles BUY before STUDY and `rules/skills_studying`
+    /// charges per person, so the ledger charges the men the unit holds once it has recruited; the
+    /// popup's fee, and the `FeeShort` judged against it, must be that same figure. One man buying
+    /// nine more and studying Combat ($10 a man) owes 100, and the 50 left after the purchase
+    /// cannot pay it.
+    #[test]
+    fn a_study_after_recruiting_is_priced_on_the_recruited_headcount() {
+        let hex_region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![with_men(with_silver(unit("900"), 9 * 38 + 50), 1)])
+        };
+        let study = study_of(
+            vec![hex_region.clone()],
+            "unit 900\nBUY 9 HUMN\nSTUDY Combat\n",
+            "900",
+        )
+        .expect("a studying unit is forecast");
+
+        assert_eq!(study.doubts.len(), 1, "{study:?}");
+        assert_eq!(study.doubts[0].reason, effects::StudyDoubtReason::FeeShort);
+        assert_eq!(study.doubts[0].fee, 100);
+        assert_eq!(study.doubts[0].short_by, 50);
+
+        // And the popup's fee is the ledger's own charge for the same orders.
+        let silver =
+            forecast_with_ruleset(vec![hex_region], "unit 900\nBUY 9 HUMN\nSTUDY Combat\n");
+        let studied: Vec<_> = silver
+            .changes
+            .iter()
+            .filter(|change| change.cause == SilverChangeCause::Studied)
+            .map(|change| change.amount)
+            .collect();
+        assert_eq!(studied, vec![-study.doubts[0].fee], "{:?}", silver.changes);
     }
 
     #[test]

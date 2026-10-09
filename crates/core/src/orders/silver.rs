@@ -665,6 +665,22 @@ pub struct SettledGift {
     pub other: String,
 }
 
+/// What the hex's other `SHARE` units lend one `CAST` line, as the ledger read it when the spell
+/// resolved: `Unit::GetSharedNum` and `GetSharedMoney` (`unit.cpp`), which every cast cost reads in
+/// `spells.cpp` (`ah-0mch`). Recorded only for a line something was lent to, so the column prices
+/// the cast from the same purse the ledger charged it from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedCast {
+    /// The document line the order was written on.
+    pub line: i64,
+    /// What the pool adds to the caster's own silver as the spell resolved - negative where the
+    /// caster shares and an earlier borrower already drew on its own.
+    pub silver: i64,
+    /// The caster's own goods with every other sharer's added in, men excepted: what the
+    /// spell's materials are counted against.
+    pub held: Vec<ItemAmount>,
+}
+
 /// One priced shipment, as the SILVER hover's aside and the editor's note state it (`ah-7ale.3`).
 ///
 /// A `Vec` on [`UnitSilver`] rather than flat fields, for [`BuyAllShown`]'s reason: a unit may
@@ -1120,9 +1136,19 @@ pub fn pool_wants(
                 wants.wages = late.men.saturating_mul(region.wage_centis.unwrap_or(0)) / 100;
             }
             Intent::Entertain => {
+                // ENTERTAIN is month-long, after the market (`rules/sequenceofevents`), and the
+                // engine reads a skill as days over men (`unit.cpp` `GetRealSkill`), so a recruit
+                // dilutes the level the entertainers are paid on (`ah-8n8y`). Where the
+                // arrivals cannot be merged there is no settled level, and the pre-market one is
+                // the best this report holds.
+                let skills = if facts.skills_after_arrivals_unknown {
+                    facts.skills
+                } else {
+                    facts.skills_after_arrivals
+                };
                 wants.entertainment = late
                     .men
-                    .saturating_mul(skill_level(facts.skills, ENTERTAIN_TAG))
+                    .saturating_mul(skill_level(skills, ENTERTAIN_TAG))
                     .saturating_mul(ENTERTAIN_PER_MAN_PER_LEVEL);
             }
             _ => {}
@@ -1391,13 +1417,14 @@ pub struct UnitFacts<'a> {
     pub overdrawn_at_study: i64,
     /// The unit's skills once this month's gifts and recruits have merged in.
     ///
-    /// Read by the PRODUCE arm, which `rules/buy` says a `BUY` dilutes, and by the STUDY arm's
-    /// ceiling test, which asks how far this unit may go next month. Every other arm keeps
-    /// reading `skills`, the pre-market view, because `rules/sequenceofevents` prices STUDY,
-    /// ENTERTAIN and maintenance against a phase that has not seen the market yet (`ah-40c9`).
+    /// Read by the PRODUCE arm, which `rules/buy` says a `BUY` dilutes, by the STUDY arm's
+    /// ceiling test, which asks how far this unit may go next month, and by ENTERTAIN, a
+    /// month-long order `rules/sequenceofevents` runs after the market (`ah-8n8y`). The arms that
+    /// run before the market - TAX readiness and CAST - keep reading `skills`, the pre-market view.
     pub skills_after_arrivals: &'a [Skill],
-    /// Set when arrivals - gifts or recruits - cannot be merged into the unit's skills, so both
-    /// arms above go silent rather than judge a unit against a guess.
+    /// Set when arrivals - gifts or recruits - cannot be merged into the unit's skills, so
+    /// PRODUCE and the STUDY ceiling go silent rather than judge a unit against a guess, and
+    /// ENTERTAIN - a share of a contended pool, with no doubt of its own - falls back to `skills`.
     pub skills_after_arrivals_unknown: bool,
     /// The same picture's race breakdown - what `rules/skills_limitations` reads to find the
     /// least common denominator. Empty and `unknown` together where a recruit arrived by a route
@@ -1580,6 +1607,9 @@ pub struct PhaseFacts<'a> {
     /// for a caller with no ledger to read them from, which is every test that builds its own
     /// `PhaseFacts`.
     pub gifts: &'a [SettledGift],
+    /// This unit's `CAST` lines that drew on another sharer, as the ledger settled them. Empty for
+    /// a caller with no ledger, which is every test that builds its own `PhaseFacts`.
+    pub casts: &'a [SharedCast],
     /// This unit's silver movements as the ledger recorded them, in settlement order: what the
     /// SILVER column's rows and totals are (`ah-xryu`). Empty for a caller with no ledger, which is
     /// every test that builds its own `PhaseFacts`.
@@ -1608,6 +1638,7 @@ impl<'a> PhaseFacts<'a> {
             silver: None,
             buy_all: &[],
             gifts: &[],
+            casts: &[],
             silver_moves: &[],
             market_withholds: 0,
         }
@@ -1654,6 +1685,13 @@ impl<'a> UnitFacts<'a> {
     #[must_use]
     pub fn settled_gifts(&self) -> &'a [SettledGift] {
         self.phases.map_or(&[][..], |phases| phases.gifts)
+    }
+
+    /// The `CAST` lines of this unit's the ledger priced on a sharer's purse. Empty where there is
+    /// no ledger.
+    #[must_use]
+    pub fn shared_casts(&self) -> &'a [SharedCast] {
+        self.phases.map_or(&[][..], |phases| phases.casts)
     }
 
     /// The ledger's record of this unit's silver. Empty where there is no ledger.
@@ -2666,15 +2704,26 @@ pub fn forecast_unit(
                     .saturating_add(moved_above(&moves, SilverChangeCause::CastEarned, line))
                     .saturating_add(moved_above(&moves, SilverChangeCause::CastSpent, line))
                     .max(0);
+                // What the hex's other sharers lend this line, as the ledger priced it
+                // (`ah-0mch`): their silver on top of the caster's own, their goods beside its.
+                let shared = facts
+                    .shared_casts()
+                    .iter()
+                    .find(|shared| shared.line == line);
+                let lent = shared.map_or(0, |shared| shared.silver);
                 let caster = Caster {
                     skills: facts.skills,
-                    held: facts.items,
+                    held: shared.map_or(facts.items, |shared| shared.held.as_slice()),
                     // The settled purse (`ah-ud89`). `PhaseSilver::as_the_cast_opens_on_share` is
                     // deliberately not used here: this site sums the accessor with `CastEarned`
                     // and `CastSpent` before clamping, and subtracting after that sum is the same
                     // arithmetic with the two adjustments left where they are.
-                    silver_available: hopeful.saturating_sub(tax_overstated).max(0),
-                    silver_hopeful: hopeful,
+                    silver_available: hopeful
+                        .saturating_sub(tax_overstated)
+                        .max(0)
+                        .saturating_add(lent)
+                        .max(0),
+                    silver_hopeful: hopeful.saturating_add(lent).max(0),
                     transmuting,
                 };
                 let (priced, plan) = price_cast(resolved, &caster, region);
@@ -7691,6 +7740,7 @@ mod tests {
                 )),
                 buy_all: &[],
                 gifts: &[],
+                casts: &[],
                 silver_moves: &[],
                 market_withholds: 0,
             }),
@@ -8814,9 +8864,12 @@ mod tests {
         let receipts = Receipts::default();
         let intents = [placed(Intent::Entertain)];
         let skills = [skill("ENTE", level)];
+        let held: &[Skill] = if level == 0 { &[] } else { &skills };
         forecast_unit(
             UnitFacts {
-                skills: if level == 0 { &[] } else { &skills },
+                skills: held,
+                // No recruit, so the settled view is the report's (`ah-8n8y`).
+                skills_after_arrivals: held,
                 ..facts(men, &intents, &receipts)
             },
             RegionWages {
@@ -8830,6 +8883,30 @@ mod tests {
             SharedMarket::Adds(0),
             None,
         )
+    }
+
+    /// `ah-8n8y`, review finding 2. Where this month's arrivals cannot be merged into the
+    /// unit's skills, ENTERTAIN keeps the pre-market view it read before the fix - the gifts
+    /// merged, the recruits not - rather than the empty settled one.
+    #[test]
+    fn an_entertainer_whose_arrivals_cannot_be_merged_keeps_the_pre_market_level() {
+        let receipts = Receipts::default();
+        let intents = [placed(Intent::Entertain)];
+        let skills = [skill("ENTE", 2)];
+        let wants = pool_wants(
+            &UnitFacts {
+                skills: &skills,
+                skills_after_arrivals: &[],
+                skills_after_arrivals_unknown: true,
+                ..facts(3, &intents, &receipts)
+            },
+            RegionWages {
+                entertainment: Some(10_000),
+                ..RegionWages::default()
+            },
+            None,
+        );
+        assert_eq!(wants.entertainment, 3 * 2 * ENTERTAIN_PER_MAN_PER_LEVEL);
     }
 
     #[test]
