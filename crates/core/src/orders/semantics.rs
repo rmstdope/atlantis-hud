@@ -8002,7 +8002,15 @@ fn buy(
     // spent is gone, though: the purse shrinks between items (`ah-zus2`). An untrusted purse
     // leaves the line uncapped, which is the behaviour before `ah-szye`.
     let overcharged = ledger.overcharged.get(who).copied().unwrap_or(0);
-    let shared = ledger.market_purse.adds_for(standing.actor_index);
+    // A neighbour's sale nobody can price leaves the line uncapped too (`ah-9n7l.1`).
+    let shared = if ledger
+        .market_purse
+        .a_neighbours_sale_is_doubted(standing.actor_index)
+    {
+        None
+    } else {
+        ledger.market_purse.adds_for(standing.actor_index)
+    };
     let funds = match (
         shared,
         ledger
@@ -11045,8 +11053,8 @@ struct MarketPurse {
     /// The `doubted` half of that is narrower than it looks: the snapshot is taken as the market
     /// opens, so it sees the doubts raised in the phases before it - the first five of
     /// [`phases::ORDER`]: `Instant`, `Claim`, `Give`, `Tax`, `Cast`. A sharer doubted by its own
-    /// `SELL` is [`MarketPurse::sale_doubted`]'s, which leaves the purse unpriced for every *other*
-    /// unit (`ah-9n7l.1`). A sharer doubted later still, by a `PRODUCE` in a phase after the
+    /// `SELL` is [`MarketPurse::sale_doubted`]'s, which leaves every *other* unit's bounded `BUY`
+    /// uncapped (`ah-9n7l.1`). A sharer doubted later still, by a `PRODUCE` in a phase after the
     /// market, is still counted: that doubt is about what the unit will hold at the *end* of the
     /// month, not what it lends at the market. The `known_balance_at` half is what catches a market-open balance that
     /// genuinely cannot be priced, whenever the doubt was raised.
@@ -11074,11 +11082,11 @@ struct MarketPurse {
     /// `hex.units`; empty reads as nothing sold.
     sold: Vec<i64>,
     /// Which units of the hex are doubted once every SELL is applied - in practice, by a `SELL`
-    /// that could not be counted. Such a sharer's proceeds cannot be priced, so the purse it lends
-    /// to every *other* unit is not a number and [`MarketPurse::adds_for`] answers `None` for
-    /// them: the accept-on-doubt policy of `trusted`, applied to proceeds (`ah-9n7l.1`, review
-    /// finding 1). Not for the seller itself, whose own sale is its own balance. Set by the market
-    /// pass with `sold`; index-aligned with `hex.units`; empty reads as nobody doubted.
+    /// that could not be counted. Such a sharer's proceeds cannot be priced, so a bounded `BUY` by
+    /// any *other* unit is left uncapped ([`MarketPurse::a_neighbours_sale_is_doubted`]): the
+    /// accept-on-doubt policy of `trusted`, applied to proceeds (`ah-9n7l.1`, review finding 1).
+    /// Not for the seller itself, whose own sale is its own balance. Set by the market pass with
+    /// `sold`; index-aligned with `hex.units`; empty reads as nobody doubted.
     sale_doubted: Vec<bool>,
     /// Which units of the hex lend to the purse. Index-aligned with `hex.units`.
     sharer: Vec<bool>,
@@ -11199,13 +11207,6 @@ impl MarketPurse {
         if !self.trusted {
             return None;
         }
-        let a_neighbours_sale_is_doubted =
-            self.sale_doubted.iter().enumerate().any(|(i, doubted)| {
-                *doubted && i != index && self.sharer.get(i).copied().unwrap_or(false)
-            });
-        if a_neighbours_sale_is_doubted {
-            return None;
-        }
         Some(
             self.lendable
                 .iter()
@@ -11226,6 +11227,18 @@ impl MarketPurse {
                 })
                 .sum(),
         )
+    }
+
+    /// `true` when another sharer's `SELL` could not be counted, so what the purse lends the unit
+    /// at `index` has proceeds in it nobody can price ([`MarketPurse::sale_doubted`]). A bounded
+    /// `BUY` is then left uncapped, the accept-on-doubt reading of `trusted`. Deliberately not
+    /// folded into [`Self::adds_for`]: `BUY ALL` and the SILVER column read its `None` as "lends
+    /// nothing", where the certain figure - every sharer's silver, the uncounted sale lending no
+    /// proceeds - is the better floor (`ah-9n7l.1`, review finding 1 and its follow-up).
+    fn a_neighbours_sale_is_doubted(&self, index: usize) -> bool {
+        self.sale_doubted.iter().enumerate().any(|(i, doubted)| {
+            *doubted && i != index && self.sharer.get(i).copied().unwrap_or(false)
+        })
     }
 
     fn spent_by(&self, index: usize) -> i64 {
@@ -27676,6 +27689,29 @@ BUILD
                 |ledger| {
                     assert!(ledger.doubted.contains("2"), "the sale is uncounted");
                     assert_eq!(bought_of(ledger, "1", "HORS"), 5);
+                },
+            );
+        }
+
+        /// But a `BUY ALL` beside that uncounted sale still spends every sharer's certain silver:
+        /// the sale lends no proceeds, and what the sharer held is not in doubt (`ah-9n7l.1`,
+        /// follow-up review finding 1).
+        #[test]
+        fn a_buy_all_beside_a_sharers_uncounted_sale_spends_its_certain_silver() {
+            let hex = ReportRegion {
+                for_sale: vec![line(20, 50, "horses", "HORS")],
+                wanted: vec![line(100, 30, "fur", "FUR")],
+                ..region(vec![
+                    with_silver(unit("1"), 0),
+                    sharing(with_silver(unit("2"), 600)),
+                ])
+            };
+            with_ledger(
+                hex,
+                "unit 1\nBUY ALL horses\nunit 2\nSELL 10 zorblax\n",
+                |ledger| {
+                    assert!(ledger.doubted.contains("2"), "the sale is uncounted");
+                    assert_eq!(bought_of(ledger, "1", "HORS"), 12);
                 },
             );
         }
