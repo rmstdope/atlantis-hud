@@ -9110,9 +9110,11 @@ fn unit_is_in_structure(hex: &Hex<'_>, unit_id: &str, structure_id: &str) -> boo
 }
 
 /// Whether `ordered` stands, once its ENTER and LEAVE have run, in an unfinished structure of
-/// `kind` that no `DESTROY` removes first - the New Age engine's continuation branch in
-/// `AddNewBuildings`. One reading for both callers, the month-long walk and BUILD's pricing, so
-/// the two cannot disagree about the same unit. `kind` is the order's spelling, `_` for a space.
+/// `kind` that [`destroyed_structure_ids`] does not count as destroyed first - the New Age
+/// engine's continuation branch in `AddNewBuildings`. One reading for both callers, the
+/// month-long walk and BUILD's pricing, so the two cannot disagree about the same unit. `kind` is
+/// the order's spelling, `_` for a space. That set reads every owner's DESTROY as a full one,
+/// though a weak destroyer can leave the structure standing, unit and all.
 fn stands_in_unfinished(
     hex: &Hex<'_>,
     ordered: &Ordered<'_>,
