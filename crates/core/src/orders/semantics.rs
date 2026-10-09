@@ -7693,9 +7693,10 @@ struct SilverTransfer {
 /// balances less every overdraft a non-sharer has already drawn on them. Each balance has its
 /// [`Ledger::unfunded`] part added back, since that silver or those goods never left anyone.
 ///
-/// `None` where it cannot be read: a balance a `GIVE` left uncertain, or a pool whose sum is not
-/// to be trusted. A caller then keeps the reading it had before this existed, rather than inventing
-/// a clamp.
+/// `None` where it cannot be read: the spender's or a sharer's balance a `GIVE` left uncertain, or
+/// a pool whose sum is not to be trusted. A non-sharer whose balance is uncertain is read as having
+/// drawn nothing on the pool. A caller given `None` keeps the reading it had before this existed,
+/// rather than inventing a clamp.
 fn shared_num_at(
     ledger: &Ledger<'_>,
     hex: &Hex<'_>,
