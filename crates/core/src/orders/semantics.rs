@@ -27706,14 +27706,26 @@ BUILD
                     sharing(with_silver(unit("2"), 600)),
                 ])
             };
-            with_ledger(
-                hex,
-                "unit 1\nBUY ALL horses\nunit 2\nSELL 10 zorblax\n",
-                |ledger| {
-                    assert!(ledger.doubted.contains("2"), "the sale is uncounted");
-                    assert_eq!(bought_of(ledger, "1", "HORS"), 12);
-                },
+            let orders = "unit 1\nBUY ALL horses\nunit 2\nSELL 10 zorblax\n";
+            with_ledger(hex.clone(), orders, |ledger| {
+                assert!(ledger.doubted.contains("2"), "the sale is uncounted");
+                assert_eq!(bought_of(ledger, "1", "HORS"), 12);
+            });
+            // The SILVER column reads the same certain purse, not an unmeasured one.
+            let review = review_turn(
+                &report(vec![hex]),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
             );
+            let buyer = review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "1")
+                .expect("the buyer is forecast");
+            let shown = buyer.buy_all.first().expect("the BUY ALL line is shown");
+            assert_eq!(shown.silver_available, 600);
+            assert_eq!(shown.bought, 12);
         }
 
         /// And a `BUY ALL` after a reduced bounded line spends what that line really left, not
