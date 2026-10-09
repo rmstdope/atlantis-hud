@@ -5533,9 +5533,10 @@ fn ledger_for_reaching<'a>(
         .collect();
     for phase in phases::ORDER {
         if phase == StatePhase::Market {
-            // Snapshotted once, before any `BUY` is applied: the engine's sizing pass decrements
-            // nothing, so one buyer spending the purse does not shrink it for the next
-            // (`ah-szye`).
+            // Snapshotted once, before any `BUY` is applied: the engine's sizing pass for one item
+            // decrements nothing, so one buyer spending the purse does not shrink it for the next
+            // buyer of that item (`ah-szye`). The market pass below draws it down between items
+            // (`ah-zus2`).
             ledger.market_purse =
                 MarketPurse::read(&ledger.state, &ledger.doubted, hex, &market_tax);
         }
@@ -5589,8 +5590,13 @@ fn ledger_for_reaching<'a>(
             for placed in &ordered.intents {
                 // BUILD and manufacturing PRODUCE are each deferred to a pass of their own
                 // below, after this walk has applied every other order (`ah-l80z`).
+                // BUY is the market pass's below, item by item in the market list's order, after
+                // every SELL in the hex: `rules/sequenceofevents` runs SELL before BUY (`ah-zus2`).
                 if phases::phase_of(&placed.intent) != phase
-                    || matches!(placed.intent, Intent::Build { .. } | Intent::Produce { .. })
+                    || matches!(
+                        placed.intent,
+                        Intent::Build { .. } | Intent::Produce { .. } | Intent::Buy { .. }
+                    )
                 {
                     continue;
                 }
@@ -5615,23 +5621,72 @@ fn ledger_for_reaching<'a>(
                 );
             }
         }
-    }
-
-    // After the whole walk, not inside the market phase: the call site is what makes a `BUY ALL`'s
-    // item movements sort behind the rest of the block's (`ah-gdd3.1`). What it is *sized* from is
-    // the `StatePhase::Market` balance, which `rules/sequenceofevents` says is what the market may
-    // spend - a later STUDY does not shrink a purchase the turn has already made (`ah-6m7b.2`).
-    for (index, ordered) in hex.units.iter().enumerate() {
-        settle_buy_all(
-            &mut ledger,
-            hex,
-            index,
-            ordered,
-            // `.get(..).unwrap_or(0)` rather than indexing: a length mismatch reads as *nobody is
-            // contended*, matching `HexStanding::overstated_tax`, never as a panic on a keystroke
-            // path (`ah-ud89.2`).
-            tax_overstated.get(index).copied().unwrap_or(0),
-        );
+        if phase != StatePhase::Market {
+            continue;
+        }
+        // The engine's `RunBuyOrders` walks the region's market list one line at a time: every
+        // unit's orders for that item are sized together, against a purse nothing within the item
+        // decrements (`ah-szye`), and charged before the next item is sized. The report writes
+        // `For Sale:` in that same list's order (aregion.cpp `ARegion::WriteMarkets`), so the
+        // ledger settles `BUY` in the order of `hex.region.for_sale`, not the document's
+        // (`ah-zus2`). Within one item: units as the report lists them, lines as written, and a
+        // unit's `BUY ALL` after every bounded line for the item - it spends what they leave.
+        let buys = buys_in_market_order(hex, ruleset);
+        let mut start = 0;
+        while start < buys.len() {
+            let item = buys[start].market_line;
+            let end = start
+                + buys[start..]
+                    .iter()
+                    .take_while(|buy| buy.market_line == item)
+                    .count();
+            // What every unit spent on the items settled so far is gone from the purse
+            // (`ConsumeSharedMoney`) by the time this one is sized.
+            let spent = market_spent(&ledger, hex);
+            ledger.market_purse.spent = spent;
+            for buy in &buys[start..end] {
+                let ordered = &hex.units[buy.unit];
+                apply(
+                    &mut ledger,
+                    hex,
+                    ordered,
+                    &ordered.intents[buy.intent],
+                    ruleset,
+                    region,
+                    HexStanding {
+                        market: &market_shares,
+                        production,
+                        tax_overstated: &tax_overstated,
+                        actor_index: buy.unit,
+                    },
+                    foreign_unit_ids,
+                    claim_remaining
+                        .get_mut(&ordered.unit.unit_id)
+                        .expect("every unit of this hex was given a claim purse above"),
+                    withdrawal_allowances,
+                );
+            }
+            if let Some(line) = item {
+                let tag = hex.region.for_sale[line].tag.to_ascii_uppercase();
+                for (index, ordered) in hex.units.iter().enumerate() {
+                    settle_buy_all(
+                        &mut ledger,
+                        hex,
+                        index,
+                        ordered,
+                        // `.get(..).unwrap_or(0)` rather than indexing: a length mismatch reads as
+                        // *nobody is contended*, matching `HexStanding::overstated_tax`, never as a
+                        // panic on a keystroke path (`ah-ud89.2`).
+                        tax_overstated.get(index).copied().unwrap_or(0),
+                        &tag,
+                    );
+                }
+            }
+            start = end;
+        }
+        // Whatever each unit spent at the market, for the SILVER column's later reading of the
+        // purse.
+        ledger.market_purse.spent = market_spent(&ledger, hex);
     }
 
     discard_unfinished_ships_after_movement(&mut ledger, hex, ruleset);
@@ -7933,10 +7988,11 @@ fn buy(
     // behaviour before `ah-omn7`.
     //
     // `rules/share`: a faction-mate's silver funds this purchase too. The purse is the region's,
-    // as the engine's `GetSharedNum` reads it, and it is *not* decremented by another buyer in
-    // this hex - the engine's sizing pass decrements nothing, so no buyer is ever cut on account
-    // of a neighbour's order (`ah-szye`). An untrusted purse leaves the line uncapped, which is
-    // the behaviour before this bead.
+    // as the engine's `GetSharedNum` reads it, and it is *not* decremented by another buyer of
+    // the same item - the engine's sizing pass for one market line decrements nothing, so no
+    // buyer is cut on account of a neighbour's order for it (`ah-szye`). What earlier market lines
+    // spent is gone, though: the purse shrinks between items (`ah-zus2`). An untrusted purse
+    // leaves the line uncapped, which is the behaviour before `ah-szye`.
     let overcharged = ledger.overcharged.get(who).copied().unwrap_or(0);
     let shared = ledger.market_purse.adds_for(standing.actor_index);
     let funds = match (
@@ -7978,6 +8034,11 @@ fn buy(
                         .market_purse
                         .also_withholds_from(standing.actor_index),
                 )
+                // What this unit borrowed from the purse on earlier market lines. Its own balance
+                // is clamped at nothing above, so the debt would otherwise vanish and the purse
+                // be spent twice (`ah-zus2`). `0` before the first item and in a hex that shares
+                // nothing.
+                .saturating_sub(ledger.market_purse.borrowed_by(standing.actor_index))
                 .saturating_add(shared),
         ),
         _ => MarketFunds::Unmeasured,
@@ -8034,15 +8095,81 @@ fn buy(
     }
 }
 
-/// Settles this unit's `BUY ALL` lines, in document order, once the rest of its month has been
-/// applied.
+/// One `BUY` line of the hex, placed in the market pass's order.
+struct MarketBuy {
+    /// Index into `hex.units`.
+    unit: usize,
+    /// Index into that unit's `intents`.
+    intent: usize,
+    /// The line's place in `hex.region.for_sale`. `None` for a line the market does not offer,
+    /// which `buy` refuses or leaves uncounted and which therefore spends nothing; the engine
+    /// answers those after every market line (`BUY: Can't buy that.`), and so does this pass.
+    market_line: Option<usize>,
+}
+
+/// Every `BUY` in the hex, in the order the engine's `RunBuyOrders` settles them: by market line
+/// in `For Sale:` order, then by unit as the report lists them, then as written (`ah-zus2`).
+fn buys_in_market_order(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<MarketBuy> {
+    let lines = &hex.region.for_sale;
+    let mut buys: Vec<MarketBuy> = hex
+        .units
+        .iter()
+        .enumerate()
+        .flat_map(|(unit, ordered)| {
+            ordered
+                .intents
+                .iter()
+                .enumerate()
+                .filter_map(move |(intent, placed)| match &placed.intent {
+                    Intent::Buy { item, .. } => Some(MarketBuy {
+                        unit,
+                        intent,
+                        market_line: market(lines, item, hex, ordered, ruleset).and_then(
+                            |offered| lines.iter().position(|line| std::ptr::eq(line, offered)),
+                        ),
+                    }),
+                    _ => None,
+                })
+        })
+        .collect();
+    // Stable, so units keep the report's order and lines the document's within one market line.
+    buys.sort_by_key(|buy| buy.market_line.unwrap_or(usize::MAX));
+    buys
+}
+
+/// What each unit of the hex has spent at the market so far - the `Bought` records, which carry
+/// what a line actually paid rather than the whole ask it was charged. Index-aligned with
+/// `hex.units`.
+fn market_spent(ledger: &Ledger<'_>, hex: &Hex<'_>) -> Vec<i64> {
+    hex.units
+        .iter()
+        .map(|ordered| {
+            ledger
+                .silver_moves
+                .get(&ordered.unit.unit_id)
+                .map_or(0, |moves| {
+                    moves
+                        .iter()
+                        .filter(|moved| {
+                            moved.phase == StatePhase::Market
+                                && moved.cause == SilverChangeCause::Bought
+                        })
+                        .map(|moved| -moved.amount)
+                        .sum()
+                })
+        })
+        .collect()
+}
+
+/// Settles this unit's `BUY ALL` lines for one market line, in document order.
 ///
-/// Called from `ledger_for` once every phase of `phases::ORDER` has run for every unit in the hex,
-/// so that a `BUY ALL`'s movements sort behind the block's (`ah-gdd3.1`). The **figure** it is
-/// sized from is not the balance at that moment: it is the balance at `StatePhase::Market`, which
-/// is what `rules/sequenceofevents` leaves the market to spend - *"BUY orders are processed"* runs
-/// before *"STUDY orders are processed"*, so a later study cannot shrink a purchase the turn has
-/// already made (`ah-6m7b.2`).
+/// Called from the market pass of `ledger_for_with_production`, at that item's place in the
+/// region's market list and after every unit's bounded lines for the same item: the engine sizes
+/// one item's orders together and charges them before the next item is sized (`ah-zus2`). The
+/// figure it is sized from is the balance at `StatePhase::Market`, which is what
+/// `rules/sequenceofevents` leaves the market to spend - *"BUY orders are processed"* runs before
+/// *"STUDY orders are processed"*, so a later study cannot shrink a purchase the turn has already
+/// made (`ah-6m7b.2`).
 fn settle_buy_all(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
@@ -8052,11 +8179,22 @@ fn settle_buy_all(
     // (`ah-ud89.1`'s `tax_overstated_by`). `0` for a unit nobody contends with, which is every
     // unit in every hex with a tax pool big enough to go round (`ah-ud89.2`).
     tax_overstated: i64,
+    // The one market line being settled: `BUY ALL` runs item by item in the market list's order,
+    // like every other `BUY` (`ah-zus2`), so a unit's lines for other items wait for their turn.
+    tag: &str,
 ) {
     let who = &actor.unit.unit_id;
-    let Some(lines) = ledger.buy_all.remove(who) else {
+    let Some(deferred_lines) = ledger.buy_all.get_mut(who) else {
         return;
     };
+    let (lines, rest): (Vec<_>, Vec<_>) = std::mem::take(deferred_lines)
+        .into_iter()
+        .partition(|deferred| deferred.tag == tag);
+    if rest.is_empty() {
+        ledger.buy_all.remove(who);
+    } else {
+        ledger.buy_all.insert(who.clone(), rest);
+    }
 
     for deferred in lines {
         // A doubted unit is left uncounted, and the line reaches the player through `uncounted`
@@ -10864,9 +11002,11 @@ fn market_tax_for(hex: &Hex<'_>, region: RegionWages, ruleset: Option<&Ruleset>)
 /// Every sharing unit's silver as the market opens, which is the purse `rules/share` lends a
 /// `BUY`.
 ///
-/// The engine's `GetBuyAmount` sizes every unit's `BUY` against `GetSharedMoney()` in a pass that
-/// decrements nothing, so this is a **snapshot**: one buyer spending it does not shrink it for the
-/// next. That is why it is taken once, as `StatePhase::Market` opens, rather than read per order.
+/// The engine's `GetBuyAmount` sizes every unit's `BUY` for one market line against
+/// `GetSharedMoney()` in a pass that decrements nothing, so this is a **snapshot**: one buyer of
+/// an item spending it does not shrink it for the next buyer of that item. It is taken once, as
+/// `StatePhase::Market` opens, and the market pass then records in [`MarketPurse::spent`] what
+/// each item cost before the next is sized, since `DoBuy` really spends it (`ah-zus2`).
 ///
 /// Not [`sharing_purse`], which settles what the hex lends for the month *after* every order has
 /// been priced and is read by the SILVER column's shortfall arithmetic. Two questions, two
@@ -10903,6 +11043,16 @@ struct MarketPurse {
     /// floor. Kept on the purse rather than recomputed there because the rule that chose the
     /// fallback lives here.
     fell_back: bool,
+    /// What each unit of the hex can pay out of its own silver as the market opens - the
+    /// `lendable` figure, kept for non-sharers too. `None` where the balance could not be priced,
+    /// which reads as "paid its own way" so a doubt never cuts a neighbour. Index-aligned with
+    /// `hex.units`; empty when nothing shares.
+    own: Vec<Option<i64>>,
+    /// What each unit has spent at the market on the items settled so far. Set by the market pass
+    /// before each item is sized: the engine's `ConsumeSharedMoney` really spends a sharer's
+    /// silver, so what one item drew out of the purse is gone when the next is sized
+    /// (`ah-zus2`). Index-aligned with `hex.units`; empty reads as nothing spent.
+    spent: Vec<i64>,
 }
 
 impl Default for MarketPurse {
@@ -10915,6 +11065,8 @@ impl Default for MarketPurse {
             also_withheld: Vec::new(),
             trusted: true,
             fell_back: false,
+            own: Vec::new(),
+            spent: Vec::new(),
         }
     }
 }
@@ -10939,6 +11091,7 @@ impl MarketPurse {
         let mut fell_back = false;
         let mut lendable = Vec::with_capacity(hex.units.len());
         let mut also_withheld = Vec::with_capacity(hex.units.len());
+        let mut own = Vec::with_capacity(hex.units.len());
         for (index, ordered) in hex.units.iter().enumerate() {
             // `.get(...).unwrap_or_default()` rather than indexing: a length mismatch reads as
             // *nobody is contended*, never as a panic on a keystroke path - the same
@@ -10949,6 +11102,12 @@ impl MarketPurse {
                 // unit puts nothing into it. Its balance keeps the reading `ah-ud89.2` gave it.
                 lendable.push(0);
                 also_withheld.push(0);
+                own.push(
+                    state
+                        .known_balance_at(StatePhase::Market, &ordered.unit.unit_id, SILVER)
+                        .ok()
+                        .map(|silver| silver.saturating_sub(tax.overstated).max(0)),
+                );
                 continue;
             }
             let held_back = if tax.unknowable {
@@ -10965,10 +11124,15 @@ impl MarketPurse {
                 trusted = false;
             }
             match state.known_balance_at(StatePhase::Market, id, SILVER) {
-                Ok(silver) => lendable.push(silver.saturating_sub(held_back).max(0)),
+                Ok(silver) => {
+                    let silver = silver.saturating_sub(held_back).max(0);
+                    lendable.push(silver);
+                    own.push(Some(silver));
+                }
                 Err(_) => {
                     trusted = false;
                     lendable.push(0);
+                    own.push(None);
                 }
             }
         }
@@ -10978,14 +11142,22 @@ impl MarketPurse {
             also_withheld,
             trusted,
             fell_back,
+            own,
+            spent: Vec::new(),
         }
     }
 
-    /// What the purse adds to the unit at `index`: every **other** sharer's market-open silver.
+    /// What the purse adds to the unit at `index`: every **other** sharer's market-open silver,
+    /// less what the hex's other units have already spent of it on earlier market lines.
     ///
     /// This unit's own silver is already in its own balance, so counting it here would let a
     /// sharer buy twice what it holds. `None` where the purse is not trusted, which the bounded
     /// callers read as "apply no cap".
+    ///
+    /// Across items the purse shrinks (`ah-zus2`): a sharer's spending comes out of what it lends,
+    /// and a unit that spent beyond its own silver drew the rest out of the sharers. May go
+    /// negative, where another unit has borrowed more than the others' silver it is counted
+    /// against; the callers' own clamps keep a purchase from going below nothing.
     fn adds_for(&self, index: usize) -> Option<i64> {
         if !self.trusted {
             return None;
@@ -10995,9 +11167,32 @@ impl MarketPurse {
                 .iter()
                 .enumerate()
                 .filter(|(i, _)| *i != index)
-                .map(|(_, silver)| *silver)
+                // A lender's spending comes out of what it lends. A unit that lends nothing -
+                // a non-sharer, or a sharer with no silver - only drains the purse by what it
+                // spent beyond its own.
+                .map(|(i, lent)| {
+                    if *lent > 0 {
+                        lent.saturating_sub(self.spent_by(i))
+                    } else {
+                        -self.borrowed_by(i)
+                    }
+                })
                 .sum(),
         )
+    }
+
+    fn spent_by(&self, index: usize) -> i64 {
+        self.spent.get(index).copied().unwrap_or(0)
+    }
+
+    /// What the unit at `index` has spent at the market beyond its own silver - the part the
+    /// sharers paid for (`ah-zus2`). `0` where its own silver could not be priced: the doubt is
+    /// this unit's, and a neighbour's purchase is not cut on account of it.
+    fn borrowed_by(&self, index: usize) -> i64 {
+        match self.own.get(index) {
+            Some(Some(own)) => self.spent_by(index).saturating_sub(*own).max(0),
+            _ => 0,
+        }
     }
 
     /// What the market must take off the unit at `index`'s own market-open balance **in addition
@@ -27127,6 +27322,127 @@ BUILD
             assert_eq!(column.at_month_end, Some(0));
         }
 
+        /// What one unit's lines for each tag bought, in the ledger's movements.
+        fn bought_of(ledger: &Ledger<'_>, id: &str, tag: &str) -> i64 {
+            ledger
+                .movements
+                .iter()
+                .filter(|m| m.unit_id == id && m.tag == tag && m.cause == ItemChangeCause::Bought)
+                .map(|m| m.delta)
+                .sum()
+        }
+
+        /// The engine runs `BUY` one market line at a time, in the order of the region's market
+        /// list - which is the order the report writes `For Sale:` in (runorders.cpp
+        /// `RunBuyOrders`, aregion.cpp `ARegion::WriteMarkets`) - and charges each item before
+        /// the next is sized. So a unit's second item is sized after the first was paid for, in
+        /// the market's order, not the document's (`ah-zus2`).
+        #[test]
+        fn buy_lines_for_two_items_settle_in_the_market_lists_order() {
+            let orders = "unit 2390\nBUY 2 horses\nBUY 5 grain\n";
+            for (for_sale, horses, grain) in [
+                // horses listed first: both horses take the whole 100, and no grain is left
+                (
+                    vec![
+                        line(12, 50, "horses", "HORS"),
+                        line(12, 10, "grain", "GRAI"),
+                    ],
+                    2,
+                    0,
+                ),
+                // grain listed first: 5 grain spend 50, which leaves one horse
+                (
+                    vec![
+                        line(12, 10, "grain", "GRAI"),
+                        line(12, 50, "horses", "HORS"),
+                    ],
+                    1,
+                    5,
+                ),
+            ] {
+                let hex = ReportRegion {
+                    for_sale,
+                    ..region(vec![with_silver(unit("2390"), 100)])
+                };
+                with_ledger(hex.clone(), orders, |ledger| {
+                    assert_eq!(bought_of(ledger, "2390", "HORS"), horses, "horses");
+                    assert_eq!(bought_of(ledger, "2390", "GRAI"), grain, "grain");
+                });
+                let review = review_turn(
+                    &report(vec![hex]),
+                    orders,
+                    Some(&ruleset()),
+                    CheckOptions::default(),
+                );
+                let column = review
+                    .silver
+                    .iter()
+                    .find(|row| row.unit_id == "2390")
+                    .expect("the buyer is forecast");
+                assert_eq!(column.expense, Some(100), "the column spends the same 100");
+            }
+        }
+
+        /// A `BUY ALL` is sized at its own item's place in the market list too: one on an item
+        /// listed first takes everything before a later item's exact line is sized (`ah-zus2`).
+        #[test]
+        fn a_buy_all_settles_at_its_items_place_in_the_market_list() {
+            let orders = "unit 2390\nBUY 1 horse\nBUY ALL grain\n";
+            for (for_sale, horses, grain) in [
+                (
+                    vec![
+                        line(100, 10, "grain", "GRAI"),
+                        line(12, 50, "horses", "HORS"),
+                    ],
+                    0,
+                    10,
+                ),
+                (
+                    vec![
+                        line(12, 50, "horses", "HORS"),
+                        line(100, 10, "grain", "GRAI"),
+                    ],
+                    1,
+                    5,
+                ),
+            ] {
+                let hex = ReportRegion {
+                    for_sale,
+                    ..region(vec![with_silver(unit("2390"), 100)])
+                };
+                with_ledger(hex, orders, |ledger| {
+                    assert_eq!(bought_of(ledger, "2390", "HORS"), horses, "horses");
+                    assert_eq!(bought_of(ledger, "2390", "GRAI"), grain, "grain");
+                });
+            }
+        }
+
+        /// `rules/share` lends a faction-mate's silver to the market, and the engine's
+        /// `ConsumeSharedMoney` really spends it: what one item drew out of the purse is gone
+        /// when the next item is sized. Within one item nothing is decremented (`ah-szye`), but
+        /// across items the purse shrinks (`ah-zus2`).
+        #[test]
+        fn the_shared_purse_is_drawn_down_between_items() {
+            let hex = ReportRegion {
+                for_sale: vec![
+                    line(12, 10, "grain", "GRAI"),
+                    line(12, 50, "horses", "HORS"),
+                ],
+                ..region(vec![
+                    with_silver(unit("1"), 0),
+                    sharing(with_silver(unit("2"), 100)),
+                ])
+            };
+            // unit 1 buys 5 grain with 50 of unit 2's silver, so unit 2 has 50 left for horses
+            with_ledger(
+                hex,
+                "unit 1\nBUY 5 grain\nunit 2\nBUY 2 horses\n",
+                |ledger| {
+                    assert_eq!(bought_of(ledger, "1", "GRAI"), 5);
+                    assert_eq!(bought_of(ledger, "2", "HORS"), 1);
+                },
+            );
+        }
         /// And a `BUY ALL` after a reduced bounded line spends what that line really left, not
         /// what it was charged (`ah-omn7`).
         #[test]
