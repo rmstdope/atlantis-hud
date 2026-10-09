@@ -1115,7 +1115,7 @@ pub fn pool_wants(
                 // arrivals cannot be merged there is no settled level, and the pre-market one is
                 // the best this report holds.
                 let skills = if facts.skills_after_arrivals_unknown {
-                    facts.skills
+                    facts.skills_before_market
                 } else {
                     facts.skills_after_arrivals
                 };
@@ -1353,8 +1353,12 @@ pub struct UnitFacts<'a> {
     pub items: &'a [ItemAmount],
     /// The unit's report flags, read here only for the two `consuming ...` ones.
     pub flags: &'a [String],
-    /// The unit's own skills, which price entertaining and Phantasmal Entertainment.
-    pub skills: &'a [Skill],
+    /// The unit's skills as the market opens - this month's gifts merged in, its recruits not yet
+    /// (`rules/sequenceofevents`: *Give orders* before *Market orders*). Read by the arms that run
+    /// before the market, TAX readiness and CAST; an arm that runs after it reads
+    /// `skills_after_arrivals`. Named for its phase so a post-market arm cannot pick it up by
+    /// accident (`ah-8n8y`, `ah-tmnk`).
+    pub skills_before_market: &'a [Skill],
     pub intents: &'a [PlacedIntent],
     pub receipts: &'a Receipts,
     /// Set when this unit is not one the report shows but one this month's `FORM` orders create.
@@ -1368,8 +1372,8 @@ pub struct UnitFacts<'a> {
     /// before this bead, and the unit already carries an existing doubt for the order that caused
     /// this.
     pub after_gifts_unknown: bool,
-    /// Set when arrivals cannot be merged into the unit's skills.
-    pub skills_unknown: bool,
+    /// Set when gifts cannot be merged into `skills_before_market`.
+    pub skills_before_market_unknown: bool,
     /// Whether a `GIVE` this month left food this unit could have eaten unresolved.
     ///
     /// Maintenance is settled from the whole food stock rather than from a tag an order names, so
@@ -1393,11 +1397,12 @@ pub struct UnitFacts<'a> {
     /// Read by the PRODUCE arm, which `rules/buy` says a `BUY` dilutes, by the STUDY arm's
     /// ceiling test, which asks how far this unit may go next month, and by ENTERTAIN, a
     /// month-long order `rules/sequenceofevents` runs after the market (`ah-8n8y`). The arms that
-    /// run before the market - TAX readiness and CAST - keep reading `skills`, the pre-market view.
+    /// run before the market - TAX readiness and CAST - keep reading `skills_before_market`.
     pub skills_after_arrivals: &'a [Skill],
     /// Set when arrivals - gifts or recruits - cannot be merged into the unit's skills, so
     /// PRODUCE and the STUDY ceiling go silent rather than judge a unit against a guess, and
-    /// ENTERTAIN - a share of a contended pool, with no doubt of its own - falls back to `skills`.
+    /// ENTERTAIN - a share of a contended pool, with no doubt of its own - falls back to
+    /// `skills_before_market`.
     pub skills_after_arrivals_unknown: bool,
     /// The same picture's race breakdown - what `rules/skills_limitations` reads to find the
     /// least common denominator. Empty and `unknown` together where a recruit arrived by a route
@@ -2674,7 +2679,7 @@ pub fn forecast_unit(
                     .find(|shared| shared.line == line);
                 let lent = shared.map_or(0, |shared| shared.silver);
                 let caster = Caster {
-                    skills: facts.skills,
+                    skills: facts.skills_before_market,
                     held: shared.map_or(facts.items, |shared| shared.held.as_slice()),
                     // The settled purse (`ah-ud89`). `PhaseSilver::as_the_cast_opens_on_share` is
                     // deliberately not used here: this site sums the accessor with `CastEarned`
@@ -4239,7 +4244,7 @@ pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Rea
     if facts.money_read != MoneyRead::Whole {
         return None;
     }
-    if facts.skills_unknown {
+    if facts.skills_before_market_unknown {
         return None;
     }
     // A transfer this month cannot be followed, so the weapons and men this unit will actually
@@ -4253,14 +4258,14 @@ pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Rea
     // The rules' fourth taxing character: "or is a mage who knows a spell which damages enemies"
     // (`ah-v585`). Any level will do - the rules ask whether the mage knows the spell, not how
     // well, unlike Combat's explicit "of at least level 1".
-    let knows_a_damaging_spell = facts.skills.iter().any(|held| {
+    let knows_a_damaging_spell = facts.skills_before_market.iter().any(|held| {
         held.level >= 1
             && ruleset
                 .skills
                 .get(&held.tag.to_uppercase())
                 .is_some_and(|entry| entry.damages_enemies)
     });
-    if skill_level(facts.skills, "COMB") >= 1 || knows_a_damaging_spell {
+    if skill_level(facts.skills_before_market, "COMB") >= 1 || knows_a_damaging_spell {
         return Some(Readiness {
             men,
             ready: men,
@@ -4287,7 +4292,7 @@ pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Rea
             None
         };
         let counts = match wanted {
-            Some((skill, level)) => skill_level(facts.skills, skill) >= level,
+            Some((skill, level)) => skill_level(facts.skills_before_market, skill) >= level,
             // A weapon with no requirement counts; anything that is neither weapon nor mount does
             // not, and is no near miss either.
             None => entry.weapon.is_some(),
@@ -4300,7 +4305,7 @@ pub fn readiness(facts: &UnitFacts<'_>, ruleset: Option<&Ruleset>) -> Option<Rea
                 count: held.amount.max(0),
                 skill: skill.to_string(),
                 level,
-                held: skill_level(facts.skills, skill),
+                held: skill_level(facts.skills_before_market, skill),
             };
             if nearest_miss
                 .as_ref()
@@ -7347,7 +7352,7 @@ mod tests {
             men_by_race: &[],
             items: &[],
             flags: &[],
-            skills: &[],
+            skills_before_market: &[],
             intents,
             receipts,
             formed: None,
@@ -7356,7 +7361,7 @@ mod tests {
             shipping_unmeasured: Default::default(),
             transport_warning: true,
             overdrawn_at_study: 0,
-            skills_unknown: false,
+            skills_before_market_unknown: false,
             skills_after_arrivals: &[],
             skills_after_arrivals_unknown: false,
             men_by_race_after_arrivals: &[],
@@ -7570,7 +7575,7 @@ mod tests {
         let skills = [combat_one()];
         forecast_unit(
             UnitFacts {
-                skills: &skills,
+                skills_before_market: &skills,
                 ..facts(men, intents, &receipts)
             },
             region,
@@ -7623,7 +7628,7 @@ mod tests {
             UnitFacts {
                 men_reported: 8,
                 items: &items,
-                skills: &smith,
+                skills_before_market: &smith,
                 skills_after_arrivals: &smith,
                 phases: Some(PhaseFacts::uniform(LateFacts {
                     men: 3,
@@ -7682,7 +7687,7 @@ mod tests {
             men_reported: 9,
             held: 100_000,
             items: &items,
-            skills: &smith,
+            skills_before_market: &smith,
             skills_after_arrivals: &smith,
             phases: Some(PhaseFacts {
                 study: picture(3),
@@ -7763,7 +7768,7 @@ mod tests {
         forecast_unit(
             UnitFacts {
                 held,
-                skills,
+                skills_before_market: skills,
                 phases: Some(phases),
                 ..facts(1, intents, &receipts)
             },
@@ -7919,7 +7924,7 @@ mod tests {
             UnitFacts {
                 men_reported: 3,
                 items: &items,
-                skills: &smith,
+                skills_before_market: &smith,
                 skills_after_arrivals: &smith,
                 phases: Some(PhaseFacts::uniform(LateFacts {
                     men: 8,
@@ -8775,7 +8780,7 @@ mod tests {
 
         let unit = forecast_unit(
             UnitFacts {
-                skills: &skills,
+                skills_before_market: &skills,
                 ..facts(1, &intents, &receipts)
             },
             RegionWages::default(),
@@ -8821,7 +8826,7 @@ mod tests {
         let held: &[Skill] = if level == 0 { &[] } else { &skills };
         forecast_unit(
             UnitFacts {
-                skills: held,
+                skills_before_market: held,
                 // No recruit, so the settled view is the report's (`ah-8n8y`).
                 skills_after_arrivals: held,
                 ..facts(men, &intents, &receipts)
@@ -8849,7 +8854,7 @@ mod tests {
         let skills = [skill("ENTE", 2)];
         let wants = pool_wants(
             &UnitFacts {
-                skills: &skills,
+                skills_before_market: &skills,
                 skills_after_arrivals: &[],
                 skills_after_arrivals_unknown: true,
                 ..facts(3, &intents, &receipts)
@@ -8889,7 +8894,7 @@ mod tests {
         let skills = [skill(tag, level)];
         forecast_unit(
             UnitFacts {
-                skills: if level == 0 { &[] } else { &skills },
+                skills_before_market: if level == 0 { &[] } else { &skills },
                 ..facts(1, &intents, &receipts)
             },
             RegionWages {
@@ -8931,7 +8936,7 @@ mod tests {
         let skills = [skill(tag, level)];
         forecast_unit(
             UnitFacts {
-                skills: if level == 0 { &[] } else { &skills },
+                skills_before_market: if level == 0 { &[] } else { &skills },
                 ..facts(1, &intents, &receipts)
             },
             region,
@@ -9520,7 +9525,7 @@ mod tests {
             men_by_race,
             items,
             flags,
-            skills: &[],
+            skills_before_market: &[],
             intents: &[],
             receipts: no_receipts(),
             formed: None,
@@ -9529,7 +9534,7 @@ mod tests {
             shipping_unmeasured: Default::default(),
             transport_warning: true,
             overdrawn_at_study: 0,
-            skills_unknown: false,
+            skills_before_market_unknown: false,
             skills_after_arrivals: &[],
             skills_after_arrivals_unknown: false,
             men_by_race_after_arrivals: &[],
@@ -10425,7 +10430,7 @@ mod combat_ready_tests {
             men_by_race: &[],
             items,
             flags,
-            skills,
+            skills_before_market: skills,
             intents: &[],
             receipts,
             formed: None,
@@ -10434,7 +10439,7 @@ mod combat_ready_tests {
             shipping_unmeasured: Default::default(),
             transport_warning: true,
             overdrawn_at_study: 0,
-            skills_unknown: false,
+            skills_before_market_unknown: false,
             skills_after_arrivals: skills,
             skills_after_arrivals_unknown: false,
             men_by_race_after_arrivals: &[],
