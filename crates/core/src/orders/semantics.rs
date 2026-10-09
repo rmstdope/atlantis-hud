@@ -1759,7 +1759,7 @@ fn production_tag_of(
     ruleset: Option<&Ruleset>,
 ) -> Option<String> {
     let tag = resolve_item(item, hex, ordered, ruleset)?.to_ascii_uppercase();
-    let (_, recipe) = producing_skill(ruleset, &tag, ordered.skills())?;
+    let (_, recipe) = producing_skill(ruleset, &tag, ordered.after_the_market().skills)?;
     // Only a recipe with no material inputs comes from the region itself - the same test
     // `check_production` applies before it says `produce-not-here`.
     if !recipe.inputs.is_empty() {
@@ -1776,7 +1776,7 @@ fn production_tag_of(
 /// have a numbered producer take regional yield it never asked for away from its faction-mates,
 /// whose own shares are settled from these claims before either surface reads one (`ah-6x5u`).
 ///
-/// Built from **`men_after_orders`, `Ordered::skills()` and `early_items()`** - the settled
+/// Built from **[`Ordered::after_the_market`] and `early_items()`** - the settled
 /// post-recruit people and skill picture, paired with the early-phase item picture. `rules/buy`
 /// dilutes a unit's skills with what it recruits, and `rules/sequenceofevents` settles BUY before
 /// either PRODUCE phase, so both the Problems check and this claim must read the same post-market
@@ -1797,13 +1797,14 @@ fn production_ask(
     requested: Option<i64>,
     ruleset: Option<&Ruleset>,
 ) -> Option<i64> {
-    let (skill, recipe) = producing_skill(ruleset, tag, ordered.skills())?;
+    let settled = ordered.after_the_market();
+    let (skill, recipe) = producing_skill(ruleset, tag, settled.skills)?;
     let work = workforce_for(
         ruleset,
         skill,
         tag,
-        ordered.men_after_orders,
-        ordered.skills()?,
+        settled.men,
+        settled.skills?,
         ordered.early_items(),
     );
     let plan = plan_production(
@@ -2934,6 +2935,29 @@ impl Arrivals {
     fn total(self) -> i64 {
         self.given + self.taken + self.bought
     }
+}
+
+/// One unit as every phase after the market sees it: this month's GIVE/TAKE and BUY recruits
+/// settled. `rules/sequenceofevents` runs *Give orders* and *Market orders* before Movement and
+/// every month-long order - TEACH, STUDY, PRODUCE, BUILD, ENTERTAIN, WORK - so each of those reads
+/// this view, and none of them reads the report's own `unit.men` or `unit.skills` (`ah-tmnk`).
+///
+/// Five fixes in five weeks each moved one arm from the report's figures to the settled ones
+/// (`ah-40c9`, `ah-3y8i`, `ah-4a13`, `ah-1x2h.2`, `ah-8n8y`); this is the one source they now
+/// share. Built only by [`Ordered::after_the_market`].
+#[derive(Debug, Clone, Copy)]
+struct AfterTheMarket<'a> {
+    /// The headcount once this month's gifts, takes and recruits have run.
+    men: i64,
+    /// Whether that headcount rests on the report's own guess.
+    men_estimated: bool,
+    /// The skills, gifts and recruits merged in. `None` means men arrive by a route the merge
+    /// cannot follow, so the caller must go silent for this unit rather than judge it on figures
+    /// the turn has already moved past: a warning that is wrong is worse than one that is missing.
+    skills: Option<&'a [Skill]>,
+    /// The race breakdown of `men`, which teaching and the study ceiling read. `None` exactly as
+    /// `skills`.
+    men_by_race: Option<&'a [ItemAmount]>,
 }
 
 /// One of our units, and its orders.
@@ -4449,19 +4473,20 @@ impl Ordered<'_> {
     /// `TEACH`: this month's `GIVE`, `TAKE` and `BUY` have all already run.
     ///
     /// `None` for an estimated report headcount, an unfollowable transfer, or unknown post-recruit
-    /// composition - the same three routes `skills()` goes silent for, and for the same reason:
-    /// a warning built on a figure the turn has already moved past is wrong more often than it is
-    /// missing.
+    /// composition - the same three routes `AfterTheMarket::skills` goes silent for, and for the
+    /// same reason: a warning built on a figure the turn has already moved past is wrong more often
+    /// than it is missing.
     fn teaching_eligibility(&self) -> Option<bool> {
-        if self.unit.men_estimated || self.holdings_unknown() {
+        let settled = self.after_the_market();
+        if settled.men_estimated || self.holdings_unknown() {
             return None;
         }
-        let races = self.men_by_race_after_orders()?;
-        if races.iter().map(|item| item.amount).sum::<i64>() != self.men_after_orders {
+        let races = settled.men_by_race?;
+        if races.iter().map(|item| item.amount).sum::<i64>() != settled.men {
             return None;
         }
         Some(
-            self.men_after_orders > 0
+            settled.men > 0
                 && races
                     .iter()
                     .all(|item| item.tag.eq_ignore_ascii_case("LEAD")),
@@ -4597,13 +4622,19 @@ impl Ordered<'_> {
             .any(|intent| spends_the_month(intent) && !matches!(intent, Intent::Teach { .. }))
     }
 
-    /// The unit's skills as every skill-reading check must read them.
-    ///
-    /// `None` means men arrive by a route the merge cannot follow, so the caller must go silent
-    /// for this unit rather than judge it on figures the turn has already moved past. This
-    /// module's rule is that a warning that is wrong is worse than one that is missing, and
-    /// `sailing_levels_after_orders` already answers `None` for the same reason.
-    fn skills(&self) -> Option<&[Skill]> {
+    /// The unit as every phase after the market sees it - the one place a post-market arm reads a
+    /// headcount, a race breakdown or a skill list from (`ah-tmnk`). See [`AfterTheMarket`].
+    fn after_the_market(&self) -> AfterTheMarket<'_> {
+        AfterTheMarket {
+            men: self.men_after_orders,
+            men_estimated: self.unit.men_estimated,
+            skills: self.settled_skills(),
+            men_by_race: self.settled_men_by_race(),
+        }
+    }
+
+    /// `AfterTheMarket::skills`. Read it through [`Ordered::after_the_market`].
+    fn settled_skills(&self) -> Option<&[Skill]> {
         match self
             .skills_after_recruits
             .as_ref()
@@ -4623,12 +4654,8 @@ impl Ordered<'_> {
         }
     }
 
-    /// The unit's race breakdown once this month's gifts, takes and recruits have all run - what
-    /// teaching must read, since `rules/sequenceofevents` settles `BUY` before `TEACH`.
-    ///
-    /// `None` exactly as `skills()`: a recruit arrived by a route this application does not
-    /// model, so no race-reading check may judge this unit either.
-    fn men_by_race_after_orders(&self) -> Option<&[ItemAmount]> {
+    /// `AfterTheMarket::men_by_race`. Read it through [`Ordered::after_the_market`].
+    fn settled_men_by_race(&self) -> Option<&[ItemAmount]> {
         match &self.races_after_recruits {
             RacesAfterRecruits::Unchanged => Some(self.early_men_by_race()),
             RacesAfterRecruits::Merged(merged) => Some(merged),
@@ -4655,7 +4682,8 @@ impl Ordered<'_> {
     /// The unit's headcount as the early phases see it - the report's own figure, with this
     /// month's `GIVE`/`TAKE` applied where they could be followed. Falls back to the report where
     /// they could not; a caller for which that distinction matters reads `holdings_unknown()`
-    /// separately, exactly as `skills()`'s callers do for `SkillsAfterGifts::Unknowable`.
+    /// separately, exactly as `AfterTheMarket::skills`'s callers do for
+    /// `SkillsAfterGifts::Unknowable`.
     fn early_men(&self) -> i64 {
         self.after_gifts()
             .map_or(self.unit.men, |holdings| holdings.men)
@@ -4680,7 +4708,7 @@ impl Ordered<'_> {
     /// `None` exactly as `skills`. `Some(0)` still means "has not got it" - the two are as
     /// distinct here as they were before, and only the outer `Option` is new.
     fn skill_level(&self, tag: &str) -> Option<u32> {
-        Some(level_in(self.skills()?, tag))
+        Some(level_in(self.after_the_market().skills?, tag))
     }
 
     fn studies(&self) -> Option<&str> {
@@ -6061,7 +6089,7 @@ fn produce_phase(
 ) -> StatePhase {
     let primary = resolve_item(item, hex, actor, ruleset)
         .as_deref()
-        .and_then(|tag| producing_skill(ruleset, tag, actor.skills()))
+        .and_then(|tag| producing_skill(ruleset, tag, actor.after_the_market().skills))
         .is_some_and(|(_, recipe)| recipe.inputs.is_empty());
     if primary {
         StatePhase::PrimaryProduction
@@ -6682,6 +6710,7 @@ fn unit_facts<'a>(
     phases: Option<PhaseFacts<'a>>,
     ruleset: Option<&Ruleset>,
 ) -> UnitFacts<'a> {
+    let settled = ordered.after_the_market();
     UnitFacts {
         unit_id: &ordered.unit.unit_id,
         region_id: &hex.region.region_id,
@@ -6693,20 +6722,17 @@ fn unit_facts<'a>(
         men_by_race: ordered.early_men_by_race(),
         items: ordered.early_items(),
         flags: &ordered.flags,
-        skills: ordered
+        skills_before_market: ordered
             .skills_before_the_market()
             .unwrap_or(&ordered.unit.skills),
-        skills_unknown: ordered.skills_before_the_market().is_none(),
-        // `ordered.skills()` already carries this month's recruits merged on top of its gifts,
-        // since `apply_recruits` runs before a hex is priced. That post-recruit picture is read
-        // by the SILVER column's arms that run after the market - PRODUCE (`ah-40c9`), the STUDY
-        // ceiling and ENTERTAIN (`ah-8n8y`); `skills` above is deliberately the pre-market one.
-        skills_after_arrivals: ordered.skills().unwrap_or(&ordered.unit.skills),
-        skills_after_arrivals_unknown: ordered.skills().is_none(),
-        men_by_race_after_arrivals: ordered
-            .men_by_race_after_orders()
-            .unwrap_or(ordered.early_men_by_race()),
-        men_by_race_after_arrivals_unknown: ordered.men_by_race_after_orders().is_none(),
+        skills_before_market_unknown: ordered.skills_before_the_market().is_none(),
+        // The `*_after_arrivals` fields are `Ordered::after_the_market`, the one post-market view
+        // (`ah-tmnk`): every SILVER arm that `rules/sequenceofevents` runs after the market reads
+        // them, and `skills_before_market` above is the pre-market list, named so.
+        skills_after_arrivals: settled.skills.unwrap_or(&ordered.unit.skills),
+        skills_after_arrivals_unknown: settled.skills.is_none(),
+        men_by_race_after_arrivals: settled.men_by_race.unwrap_or(ordered.early_men_by_race()),
+        men_by_race_after_arrivals_unknown: settled.men_by_race.is_none(),
         intents: &ordered.intents,
         receipts,
         formed: ordered.formed.as_ref(),
@@ -8740,20 +8766,21 @@ fn produce(
     // The level and the tools enter through `workforce_for`, which the SILVER column also calls -
     // one builder, so the two surfaces cannot be given different workforces (`ah-vtwn`).
     //
-    // Use `Ordered::skills()`, the post-recruit picture: `settle_recruits_before_production` has
-    // already run `apply_recruits` on this hex by the time either ledger prices a `PRODUCE`, so
-    // this and the SILVER column's `skills_after_arrivals` read the same settled skill level
-    // (`ah-40c9`).
+    // Read [`Ordered::after_the_market`], the post-recruit picture:
+    // `settle_recruits_before_production` has already run `apply_recruits` on this hex by the
+    // time either ledger prices a `PRODUCE`, so this and the SILVER column's
+    // `skills_after_arrivals` read the same settled skill level (`ah-40c9`).
+    let settled = actor.after_the_market();
     let found = tag
         .as_deref()
-        .and_then(|tag| producing_skill(ruleset, tag, actor.skills()));
+        .and_then(|tag| producing_skill(ruleset, tag, settled.skills));
     let work = found.map_or(Workforce::default(), |(skill, _)| {
         workforce_for(
             ruleset,
             skill,
             tag.as_deref().unwrap_or_default(),
-            actor.men_after_orders,
-            actor.skills().unwrap_or(&actor.unit.skills),
+            settled.men,
+            settled.skills.unwrap_or(&actor.unit.skills),
             held,
         )
     });
@@ -8761,7 +8788,7 @@ fn produce(
     // `rules/sequenceofevents` settles the Give phase nine phases before either PRODUCE phase, and
     // BUY before that, so the men who work this month and their diluted skill level are the ones
     // this month's gifts and recruits leave behind - not the ones the report printed.
-    // `men_after_orders`/`Ordered::skills()` are exactly that settled picture (`ah-dxfd.2`,
+    // `Ordered::after_the_market` is exactly that settled picture (`ah-dxfd.2`,
     // `ah-40c9`). The materials and the tools are `held`, the balance as manufacturing opens: the
     // market settles eleven entries before manufacturing PRODUCE, so iron bought this month is
     // iron a sword can be made from and iron sold this month is not (`rules/sequenceofevents`,
@@ -9396,11 +9423,12 @@ fn build(
     };
 
     // 9. The arithmetic.
-    let Some(skills) = actor.skills() else {
+    let settled = actor.after_the_market();
+    let Some(skills) = settled.skills else {
         mark_uncounted_and_return!();
     };
     let level = i64::from(level_in(skills, skill_tag));
-    let plan = plan_build(actor.men_after_orders, level, remaining, &held);
+    let plan = plan_build(settled.men, level, remaining, &held);
     if plan.done == 0 {
         // A zero movement would reorder the item list into a phantom "items changed" row.
         return;
@@ -9679,37 +9707,25 @@ fn study(
     // short-circuits such a unit with `SilverDoubt::EstimatedMen` before any arm runs
     // (`silver::forecast_unit`), so a ledger that fell silent instead would describe it
     // differently from the column - and `ledger.doubted` is read well past the fee.
-    if let Some(ruleset) = ruleset.filter(|_| !actor.unit.men_estimated) {
+    let settled = actor.after_the_market();
+    if let Some(ruleset) = ruleset.filter(|_| !settled.men_estimated) {
         if let Some(entry) = ruleset.find_skill(skill) {
             if !entry.is_studyable() {
                 return;
             }
-            if study::at_the_ceiling(
-                ruleset,
-                actor.skills(),
-                actor.men_by_race_after_orders(),
-                entry,
-            )
-            .is_some()
+            if study::at_the_ceiling(ruleset, settled.skills, settled.men_by_race, entry).is_some()
             {
                 return;
             }
         }
     }
 
-    // A headcount that is a guess cannot price a study, and neither can a catalogue that does not
-    // price the skill - annihilation being the one the page refuses to price at all.
+    // A catalogue that does not price the skill cannot price a study - annihilation being the one
+    // the page refuses to price at all. The headcount is `study_fee`'s, shared with the popup.
     let cost = ruleset
-        .filter(|_| !actor.unit.men_estimated)
         .and_then(|ruleset| ruleset.find_skill(skill))
         .and_then(|skill| skill.cost);
-
-    // `rules/sequenceofevents` settles GIVE/TAKE, TAX and the market before STUDY, and
-    // `rules/skills_studying` charges per person - so the fee counts the men the unit holds by the
-    // time STUDY runs, not the headcount the report printed (`ah-1x2h.2`). `men_after_orders` is
-    // the settled post-recruit figure: `apply_transfers` writes it for every unit its walk touches
-    // and `apply_recruits` adds this month's recruits, a `BUY ALL`'s included.
-    let priced = price_study(cost, actor.men_after_orders);
+    let priced = study_fee(settled, cost);
     if priced.doubt.is_some() {
         ledger.doubted.insert(who.clone());
         return;
@@ -13490,7 +13506,7 @@ fn check_one_teacher(
                 // `teaching_eligibility` only ever returns `Some` once this settled slice is
                 // itself `Some`, but read defensively rather than fall back to report-era races
                 // or panic - a future divergence between the two must go silent, not wrong.
-                let Some(races) = teacher.men_by_race_after_orders() else {
+                let Some(races) = teacher.after_the_market().men_by_race else {
                     return;
                 };
                 let non_leaders: Vec<String> = races
@@ -13563,7 +13579,7 @@ fn check_one_teacher(
             continue;
         };
 
-        taught_men += pupil.men_after_orders;
+        taught_men += pupil.after_the_market().men;
 
         // "In order to teach, the teacher must be at a higher level in the skill than the
         // student." Without a catalogue the skill cannot be turned into a tag, so the two levels
@@ -13594,7 +13610,8 @@ fn check_one_teacher(
     // reads each pupil's: a recruit or a gift changes how many students the teacher can carry,
     // and `rules/sequenceofevents` settles all of it before `TEACH` (`ah-4a13`).
     let slots = teacher
-        .men_after_orders
+        .after_the_market()
+        .men
         .saturating_mul(STUDENTS_PER_TEACHER);
     if taught_men > slots && options.emits(codes::TEACHING_OVERSUBSCRIBED) {
         findings.push(teacher.finding(
@@ -13681,7 +13698,8 @@ fn offer_free_slots(
     }
 
     let free = teacher
-        .men_after_orders
+        .after_the_market()
+        .men
         .saturating_mul(STUDENTS_PER_TEACHER)
         - taught_by(teacher, hex, departed);
     if free <= 0 {
@@ -13788,7 +13806,7 @@ fn taught_by(teacher: &Ordered<'_>, hex: &Hex<'_>, departed: &BTreeSet<String>) 
         // A student that marches off is taught by nobody, so it holds no slot - the same reading
         // `could_take` and `check_one_teacher` take of a departing pupil.
         .filter(|pupil| !departed.contains(&pupil.unit.unit_id))
-        .map(|pupil| pupil.men_after_orders)
+        .map(|pupil| pupil.after_the_market().men)
         .sum()
 }
 
@@ -14600,7 +14618,7 @@ fn uncounted_cause(unit: &ReportUnit, facts: &UnitFacts<'_>, ruleset: Option<&Ru
         // An estimate with nothing to name: the report was never read against a catalogue at all.
         return NO_CATALOGUE.to_string();
     }
-    if facts.skills_unknown || facts.after_gifts_unknown {
+    if facts.skills_before_market_unknown || facts.after_gifts_unknown {
         return "a transfer this month means this unit's cannot be counted".to_string();
     }
     NO_CATALOGUE.to_string()
@@ -14754,7 +14772,7 @@ fn check_production(
             .find_item(item)
             .map_or_else(|| item.to_lowercase(), |entry| entry.name.clone());
 
-        let skills = ordered.skills(); // Option<&[Skill]>
+        let skills = ordered.after_the_market().skills; // Option<&[Skill]>
         let recipe = resolve_item(item, hex, ordered, Some(ruleset))
             .and_then(|tag| producing_skill(Some(ruleset), &tag, skills).map(|found| (tag, found)));
         let Some((tag, (skill, recipe))) = recipe else {
@@ -14921,7 +14939,7 @@ fn check_studying(
         }
         // `None` means the unit's skills cannot be said this month, so it goes unjudged. No entry
         // for this skill on the unit means it has never studied it, so it is not at any maximum.
-        let Some(skills) = ordered.skills() else {
+        let Some(skills) = ordered.after_the_market().skills else {
             continue;
         };
         let Some(level) = skills
@@ -14933,7 +14951,7 @@ fn check_studying(
         };
 
         // The composition the study month has, which `rules/sequenceofevents` puts after this
-        // month's GIVE and TAKE - the same view `skills()` above was merged from.
+        // month's GIVE and TAKE - the same view `AfterTheMarket::skills` above was merged from.
         let ceiling = study::study_ceiling(ruleset, &men[index].men_by_race, skill);
         if options.emits(codes::STUDY_AT_MAXIMUM) && level >= ceiling.level() {
             findings.push(ordered.finding(
@@ -15110,7 +15128,7 @@ fn check_magic_study_prerequisites(
         if !ruleset.is_magic(&skill.tag) || skill.requires.is_empty() {
             continue;
         }
-        let Some(skills) = ordered.skills() else {
+        let Some(skills) = ordered.after_the_market().skills else {
             continue;
         };
         let level = skills
@@ -15227,7 +15245,7 @@ fn magic_study_halved(hex: &Hex<'_>, ruleset: &Ruleset) -> Vec<Option<bool>> {
         // "Above level 2" is the level reached, so the level held must be 2 or more. No entry at
         // all means the unit has never studied it - level 0, and below the threshold either way.
         // `None` means the unit's skills cannot be said this month, so it goes unjudged.
-        let Some(skills) = ordered.skills() else {
+        let Some(skills) = ordered.after_the_market().skills else {
             continue;
         };
         let level = skills
@@ -15324,9 +15342,9 @@ fn check_magic_study(
 /// Where each studying unit's month lands next turn, by its index in `hex.units` (`ah-rgkk.2.2`).
 ///
 /// `None` for a unit with no `STUDY` this month, for one whose skills this month cannot be said
-/// ([`Ordered::skills`] answered `None`), and for a skill the catalogue does not know - there is no
-/// ceiling, no fee and no tag to find the unit's points under, and guessing at any of them is what
-/// this module's accept-on-doubt policy forbids.
+/// ([`AfterTheMarket::skills`] is `None`), and for a skill the catalogue does not know - there is
+/// no ceiling, no fee and no tag to find the unit's points under, and guessing at any of them is
+/// what this module's accept-on-doubt policy forbids.
 fn study_forecasts(
     hex: &Hex<'_>,
     ledger: &Ledger<'_>,
@@ -15356,6 +15374,17 @@ fn study_forecasts(
     forecasts
 }
 
+/// What one `STUDY` costs the unit that studies - the one call the ledger's `study` and the
+/// study popup both make, so neither chooses a headcount of its own (`ah-tmnk`).
+///
+/// `rules/sequenceofevents` settles GIVE/TAKE, TAX and the market before STUDY, and
+/// `rules/skills_studying` charges "per person per month" - so the fee counts the men the unit
+/// holds by the time STUDY runs, not the headcount the report printed (`ah-1x2h.2`, `ah-8n8y`).
+/// A headcount that is the report's own guess cannot price an exact fee, so it prices nothing.
+fn study_fee(unit: AfterTheMarket<'_>, cost: Option<i64>) -> super::silver::Priced {
+    price_study(cost.filter(|_| !unit.men_estimated), unit.men)
+}
+
 /// One unit's forecast, split out of [`study_forecasts`] so the per-hex reads happen once.
 #[allow(clippy::too_many_arguments)]
 fn one_study_forecast(
@@ -15375,8 +15404,10 @@ fn one_study_forecast(
     if !skill.is_studyable() {
         return None;
     }
+    // Every figure below - skills, headcount, fee - is the unit after the market (`ah-tmnk`).
+    let settled = ordered.after_the_market();
     // `None` means the unit's skills cannot be said this month, so there is nothing to add to.
-    let skills = ordered.skills()?;
+    let skills = settled.skills?;
 
     let held = skills
         .iter()
@@ -15391,19 +15422,13 @@ fn one_study_forecast(
     let limiting_races = study::limiting_races(&ceiling);
 
     let mut doubts = Vec::new();
-    if ordered.unit.men_estimated {
+    if settled.men_estimated {
         doubts.push(doubt(StudyDoubtReason::HeadcountEstimated));
     }
 
-    // The identical call the ledger's own `study` makes (`semantics.rs`'s `study`), on the same
-    // post-recruit headcount, so the popup's fee is the figure the Silver column charged: BUY
-    // settles before STUDY (`rules/sequenceofevents`) and the fee is per person (`ah-8n8y`).
-    let priced = price_study(
-        (!ordered.unit.men_estimated)
-            .then_some(skill.cost)
-            .flatten(),
-        ordered.men_after_orders,
-    );
+    // The identical call the ledger's own `study` makes, so the popup's fee is the figure the
+    // Silver column charged (`ah-8n8y`, `ah-tmnk`).
+    let priced = study_fee(settled, skill.cost);
     if skill.cost.is_none() {
         doubts.push(doubt(StudyDoubtReason::FeeUnpriced));
     } else {
@@ -15444,7 +15469,7 @@ fn one_study_forecast(
         // studying" (`rules/skills_teaching`) - `check_one_teacher`'s own test.
         // `Ordered::skill_level` answers `None` only when a unit's whole skill list cannot be said
         // this month, and **no fixture reaches this arm**: the student's case is already excluded
-        // by the `ordered.skills()?` above, and every route that leaves a *teacher's* skills
+        // by the `settled.skills?` above, and every route that leaves a *teacher's* skills
         // unknowable leaves its races unknowable with them (`apply_recruits` sets the two
         // together), so `teaching_eligibility` has already answered `None` and taken the doubt
         // branch above. Defensive, and it doubts rather than dropping the teacher silently, so a
@@ -15473,7 +15498,8 @@ fn one_study_forecast(
             name: candidate.unit.name.clone(),
             // Ten student-months per **person**, so a two-leader unit has twenty.
             slots: candidate
-                .men_after_orders
+                .after_the_market()
+                .men
                 .saturating_mul(STUDENTS_PER_TEACHER),
             students: taught_by(candidate, hex, departed),
         });
@@ -16058,14 +16084,15 @@ fn sailing_levels_after_orders(
     // Without a catalogue there is no telling which tags name people, so nothing here has been
     // computed and the report's own figures are not a substitute for it.
     ruleset?;
-    let skills = ordered.skills()?;
+    let settled = ordered.after_the_market();
+    let skills = settled.skills?;
     let level: i64 = skills
         .iter()
         .filter(|skill| skill.tag.eq_ignore_ascii_case("SAIL"))
         .map(|skill| i64::from(skill.level))
         .sum();
     Some(CrewAfterOrders {
-        levels: level.saturating_mul(ordered.men_after_orders.max(0)),
+        levels: level.saturating_mul(settled.men.max(0)),
         men_joined: ordered.arrivals.total() > 0,
     })
 }
@@ -16268,7 +16295,7 @@ fn judge_shipment(
             sender_reported,
             target_id,
             super::transport::FormedTarget {
-                skills: target.skills(),
+                skills: target.after_the_market().skills,
                 coordinate: hex.region.coordinate,
             },
         )),
@@ -16958,9 +16985,9 @@ fn check_arrivals(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Find
             continue;
         }
         // A unit whose arrivals this month cannot be followed is not judged at all: this module's
-        // rule is that a warning that is wrong is worse than one that is missing, and `skills()`
-        // answering `None` is the one doubt signal there is.
-        let Some(after) = ordered.skills() else {
+        // rule is that a warning that is wrong is worse than one that is missing, and
+        // `AfterTheMarket::skills` answering `None` is the one doubt signal there is.
+        let Some(after) = ordered.after_the_market().skills else {
             continue;
         };
         // Only a skill the *report* showed can fall; one that arrived cannot go below 0.
@@ -18050,7 +18077,7 @@ fn reported_region_allowances(report: &ParsedReport) -> Option<RegionAllowances>
 /// orders inside the block act for it - unless it still has nobody after projected gifts, takes
 /// and recruitment, in which case `rules/form` dissolves it and its orders never run.
 fn spends_faction_allowance(ordered: &Ordered<'_>) -> bool {
-    ordered.formed.is_none() || ordered.men_after_orders > 0
+    ordered.formed.is_none() || ordered.after_the_market().men > 0
 }
 
 /// A counting order's place: the hex, the unit and the line a region-limit warning sits on.
@@ -52318,9 +52345,9 @@ BUILD
         );
     }
 
-    /// Exercises the `skills()`-is-`None` guard: `apply_transfers` credits the arrivals and then
-    /// marks the unit doubted, so `arrivals.total()` is above zero and only the second guard can
-    /// silence it.
+    /// Exercises the `AfterTheMarket::skills`-is-`None` guard: `apply_transfers` credits the
+    /// arrivals and then marks the unit doubted, so `arrivals.total()` is above zero and only the
+    /// second guard can silence it.
     #[test]
     fn a_unit_with_an_estimated_headcount_is_not_judged() {
         let giver = men_holder("1010", 5);
@@ -52687,7 +52714,8 @@ BUILD
         let skills = hex
             .find("900")
             .unwrap()
-            .skills()
+            .after_the_market()
+            .skills
             .expect("skills are knowable");
         assert_eq!(
             skills
@@ -52720,7 +52748,7 @@ BUILD
             let ordered = OrderedUnits::read(&orders);
             let hex = hex_after_orders(&region, &ordered);
             assert!(
-                hex.find("900").unwrap().skills().is_none(),
+                hex.find("900").unwrap().after_the_market().skills.is_none(),
                 "{line}: the recruits are invisible, so the skills cannot be known"
             );
         }
@@ -52780,6 +52808,65 @@ BUILD
         // (10*105 + 5*0)/15 = 70 points, level 1.
         assert_eq!(hex.find("2200").unwrap().skill_level("LUMB"), Some(1));
         assert_eq!(hex.find("2200").unwrap().men_after_orders, 15);
+    }
+
+    /// `ah-tmnk`. The one view every post-market arm reads carries both of this month's routes in
+    /// (`rules/sequenceofevents`: *Give orders* and *Market orders* both run before the month-long
+    /// orders): five men given, five recruited, their skills merged, their races summed - and
+    /// none of it the report's own ten-men-short picture.
+    #[test]
+    fn after_the_market_carries_gifts_and_recruits() {
+        let receiver = with_silver(with_skill_pts(men_holder("2200", 5), "LUMB", 30), 400);
+        let giver = with_skill_pts(men_holder("1010", 5), "LUMB", 180);
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![receiver, giver])
+        };
+        let orders = "unit 1010\nGIVE 2200 5 HUMN\nunit 2200\nBUY 5 HUMN\n";
+        let ordered = OrderedUnits::read(orders);
+        let hex = hex_after_orders(&region, &ordered);
+
+        let after = hex.find("2200").unwrap().after_the_market();
+        assert_eq!(after.men, 15);
+        assert!(!after.men_estimated);
+        assert_eq!(level_in(after.skills.expect("settled skills"), "LUMB"), 1);
+        let races = after.men_by_race.expect("settled races");
+        let humans: i64 = races
+            .iter()
+            .filter(|item| item.tag.eq_ignore_ascii_case("HUMN"))
+            .map(|item| item.amount)
+            .sum();
+        assert_eq!(humans, 15, "{races:?}");
+        assert_eq!(races.iter().map(|item| item.amount).sum::<i64>(), 15);
+    }
+
+    /// `ah-tmnk`. The ledger's `study` and the study popup price the fee through this one call,
+    /// so neither picks a headcount of its own: `rules/skills_studying` charges per person, on the
+    /// men the view holds, and a headcount that is the report's guess prices nothing.
+    #[test]
+    fn study_fee_prices_the_settled_headcount_and_refuses_a_guess() {
+        let settled = AfterTheMarket {
+            men: 15,
+            men_estimated: false,
+            skills: Some(&[]),
+            men_by_race: Some(&[]),
+        };
+        let priced = study_fee(settled, Some(10));
+        assert_eq!(priced.spends, 150);
+        assert_eq!(priced.doubt, None);
+
+        let guessed = AfterTheMarket {
+            men_estimated: true,
+            ..settled
+        };
+        let priced = study_fee(guessed, Some(10));
+        assert_eq!(priced.spends, 0);
+        assert_eq!(priced.doubt, Some(SilverDoubt::UnpricedSkill));
     }
 
     // --- the same six checks, each reading the merged view -----------------------------------
