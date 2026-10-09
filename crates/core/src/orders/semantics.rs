@@ -10522,11 +10522,28 @@ impl<'a> Sharing<'a> {
     /// that already paid, so the month's end alone cannot see a study the pool had already been
     /// drained of; [`LendingMoment::Study`] can (`ah-qrk0`).
     fn silver_short_at(&self, hex: &Hex<'_>, ledger: &Ledger<'_>, moment: LendingMoment) -> i64 {
+        self.silver_short_reading(hex, ledger, moment, |index| {
+            silver_at(ledger, &hex.units[index].unit.unit_id, moment)
+        })
+    }
+
+    /// [`Sharing::silver_short_at`] with each unit's silver read by `held`, given its index into
+    /// `hex.units`: the one formula, so the SILVER column's purse can read its own figures
+    /// through it - the settled tax rather than the hopeful one (`ah-m2d9`) - and still cannot
+    /// net the pool differently from the warning (`ah-moq3`, `ah-49j0`).
+    fn silver_short_reading(
+        &self,
+        hex: &Hex<'_>,
+        ledger: &Ledger<'_>,
+        moment: LendingMoment,
+        held: impl Fn(usize) -> i64,
+    ) -> i64 {
         hex.units
             .iter()
-            .filter(|ordered| !ledger.doubted.contains(&ordered.unit.unit_id))
-            .map(|ordered| {
-                let held = silver_at(ledger, &ordered.unit.unit_id, moment);
+            .enumerate()
+            .filter(|(_, ordered)| !ledger.doubted.contains(&ordered.unit.unit_id))
+            .map(|(index, ordered)| {
+                let held = held(index);
                 if self.pools_silver(ordered) {
                     -held
                 } else {
@@ -11058,16 +11075,16 @@ enum Lender {
 
 /// The purse this hex's `SHARE` flags open for orders, settled between the units that claim it.
 ///
-/// **The same moments the warning judges at** - [`Sharing`], [`Sharing::silver_short_at`] and
+/// **The same moments the warning judges at** - [`Sharing`], [`Sharing::silver_short_reading`] and
 /// [`Sharing::pool_trusted`], reused rather than re-derived. Two implementations of this question
 /// is exactly the defect this exists to fix: the silver column said a unit was short while the
 /// warning, reading the hex, said it was not (`ah-moq3`).
 ///
-/// A hex short at the month's end, read as the warning reads it, lends nothing. Otherwise each moment of
-/// [`PURSE_MOMENTS`] in turn reads every unit's **position** - its own [`silver_at`] then, less
-/// what it has lent and plus what it has been lent so far - and fills every negative one from
-/// the lenders' positive ones, or, where they cannot cover them all, lends nothing from that
-/// moment on. A loan is never paid back by a later receipt: `rules/share` lends silver "for
+/// A hex short at the month's end, by the warning's formula on the column's figures, lends
+/// nothing. Otherwise each moment of [`PURSE_MOMENTS`] in turn reads every unit's **position** -
+/// its own [`silver_at`] then, less what it has lent and plus what it has been lent so far - and
+/// fills every negative one from the lenders' positive ones, or, where they cannot cover them
+/// all, lends nothing from that moment on. A loan is never paid back by a later receipt: `rules/share` lends silver "for
 /// buying or studying", and nothing in it returns a shipment or wages that arrive after STUDY to
 /// the sharer that already paid (`ah-qrk0`, `ah-aqqb`).
 ///
@@ -11120,21 +11137,11 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
             ..nothing
         };
     }
-    // The warning's month-end reading ([`Sharing::silver_short_at`]) on the column's figures: a
-    // pooled unit's whole balance counts, anyone else's only as an overdraft.
-    let short_at_month_end = (0..hex.units.len())
-        .filter(|&index| judged(index))
-        .map(|index| {
-            let held = own(index, LendingMoment::MonthEnd);
-            if sharing.pools_silver(&hex.units[index]) {
-                -held
-            } else {
-                (-held).max(0)
-            }
-        })
-        .sum::<i64>()
-        - sharing.silver_from_walkers(LendingMoment::MonthEnd);
-    if short_at_month_end > 0 {
+    // The warning's month-end reading, on the column's figures.
+    if sharing.silver_short_reading(hex, ledger, LendingMoment::MonthEnd, |index| {
+        own(index, LendingMoment::MonthEnd)
+    }) > 0
+    {
         return SharingPurse {
             coverage: coverage_for(super::silver::SharedSilverCoverage::Shortfall),
             ..nothing
@@ -27833,6 +27840,14 @@ BUILD
                 .sum();
             let credited: i64 = rows.iter().map(|row| row.shared_silver_for_orders).sum();
             assert_eq!(lent, credited, "every lent dollar is debited: {rows:?}");
+            // Short at the month's end on its settled tax, though not on the hopeful tax the
+            // warning reads: the purse is gated on the column's figures, so nothing is lent
+            // (`ah-49j0` review).
+            let buyer = rows
+                .iter()
+                .find(|row| row.unit_id == "1")
+                .expect("the buyer is forecast");
+            assert_eq!(buyer.borrowed_for_orders, 0, "{buyer:?}");
         }
 
         /// Accept-on-doubt means "your own silver" for a `BUY ALL`, not "unlimited": it has always
