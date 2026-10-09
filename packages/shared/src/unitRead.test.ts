@@ -177,3 +177,9 @@ describe("shareBoundedByAnUnreadUnit", () => {
     expect(shareBoundedByAnUnreadUnit(undefined)).toBe(false);
   });
 });
+
+describe("shareBoundedByAnUnreadUnit beside a foreign unit (ah-e23d.2)", () => {
+  it("is the unread hex-mate's reason alone, not a foreign unit's", () => {
+    expect(shareBoundedByAnUnreadUnit(aUnitSilver({ lateIncomeForeignSharer: true }))).toBe(false);
+  });
+});

@@ -1154,6 +1154,9 @@ fn pool_shares_for(
         /// Where this pool's `unread_claimant_*` flag lives, so the bound is set beside the share
         /// it bounds and cannot be set for a pool the region does not state (`ah-0n2k.1`).
         bound_of: fn(&mut PoolShares) -> &mut bool,
+        /// Where this pool's `foreign_claimant_*` flag lives, or `None` for a pool no foreign
+        /// unit is taken to share (`ah-e23d.2`).
+        foreign_of: Option<fn(&mut PoolShares) -> &mut bool>,
         pool: Option<i64>,
         names: ContendedPool,
     }
@@ -1210,6 +1213,8 @@ fn pool_shares_for(
             want_of: |want| want.tax,
             share_of: |into| &mut into.tax,
             bound_of: |into| &mut into.unread_claimant_tax,
+            // Out of `ah-e23d.2`'s scope: that bead names the region resources, WORK and ENTERTAIN.
+            foreign_of: None,
             // A pillage empties the hex before any TAX reaches it (`ah-cxxa`), so there is no
             // pool left for anybody to draw on, let alone oversubscribe: every taxer here
             // collects a certain nothing whatever the settlement would have said, and
@@ -1222,6 +1227,7 @@ fn pool_shares_for(
             want_of: |want| want.wages,
             share_of: |into| &mut into.wages,
             bound_of: |into| &mut into.unread_claimant_wages,
+            foreign_of: Some(|into| &mut into.foreign_claimant_wages),
             pool: region.max_wages,
             names: ContendedPool::Wages,
         },
@@ -1229,15 +1235,18 @@ fn pool_shares_for(
             want_of: |want| want.entertainment,
             share_of: |into| &mut into.entertainment,
             bound_of: |into| &mut into.unread_claimant_entertainment,
+            foreign_of: Some(|into| &mut into.foreign_claimant_entertainment),
             pool: region.entertainment,
             names: ContendedPool::Entertainment,
         },
     ];
 
+    let foreign_claimant = a_foreign_player_unit_in(hex.region);
     for Contended {
         want_of,
         share_of,
         bound_of,
+        foreign_of,
         pool,
         names,
     } in pools
@@ -1261,6 +1270,15 @@ fn pool_shares_for(
         if unread_claimant && pool.is_some_and(|pool| pool > 0) {
             for share in &mut shares {
                 *bound_of(share) = true;
+            }
+        }
+        // A foreign player unit may draw on the same pool, and the engine divides it across every
+        // faction (`ah-e23d.2`), so the same ceiling - on the same test of what the pool holds.
+        if let Some(foreign_of) = foreign_of.filter(|_| foreign_claimant) {
+            if pool.is_some_and(|pool| pool > 0) {
+                for share in &mut shares {
+                    *foreign_of(share) = true;
+                }
             }
         }
         // A region stating no pool has none to divide, and one unit is not contention: both keep
@@ -1505,6 +1523,25 @@ struct ProductionRegionAnswer {
     /// not the catalogue's singular for `HORS`, `HERB`, `FLOA`, `TURT`, `MUSH`, `WING` or `CAME`.
     /// `None` where that region lists none of the goods, which is exactly [`RegionShare::NothingHere`].
     product_name: Option<String>,
+    /// Whether a foreign player unit stands in the producing region, so the share is a ceiling
+    /// rather than a figure: the engine divides the resource across every faction producing it
+    /// (`RunAProduction` in the engine's `monthorders.cpp`, `ah-e23d.2`).
+    foreign_sharer: bool,
+}
+
+/// Whether a unit of another player's faction stands in `region`, and so may draw on the same
+/// resource, wage or entertainment pool as ours (`ah-e23d.2`).
+///
+/// The engine settles each of those pools across every unit working it whatever its faction
+/// (`RunAProduction`), and a foreign unit's orders are never in the report, so its presence is all
+/// that can be known. The Guardsmen (faction 1) and the Creatures (faction 2) - the two non-player
+/// factions every committed report names, `The Guardsmen (1)` and `Creatures (2)` - issue no such
+/// orders, so they are not counted. A unit that hides its faction may be a player, so it is.
+fn a_foreign_player_unit_in(region: &ReportRegion) -> bool {
+    region
+        .units
+        .iter()
+        .any(|unit| !unit.own && !matches!(unit.faction_id.as_deref(), Some("1") | Some("2")))
 }
 
 /// Every own unit's claim on the `Products` line it actually produces against, settled across the
@@ -1528,6 +1565,16 @@ struct ProductionShares {
 }
 
 impl ProductionShares {
+    /// Whether a foreign player unit may share the pool the unit at `actor_index` of the hex at
+    /// `origin` produces from (`ah-e23d.2`). A unit has one settled `PRODUCE` at most - the first,
+    /// as [`production_shares_for`] reads it - so any answer it has is that one.
+    fn foreign_sharer_for(&self, origin: Coordinate, actor_index: usize) -> bool {
+        self.by_origin
+            .get(&origin)
+            .and_then(|units| units.get(actor_index))
+            .is_some_and(|answers| answers.values().any(|answer| answer.foreign_sharer))
+    }
+
     /// What was settled for the unit at `actor_index` of the hex at `origin`, for `tag`.
     ///
     /// `None` where nothing was settled, which every caller reads as
@@ -1631,6 +1678,7 @@ fn production_shares_for(hexes: &[Hex<'_>], ruleset: Option<&Ruleset>) -> Produc
                     ProductionRegionAnswer {
                         share: RegionShare::NothingHere,
                         product_name: None,
+                        foreign_sharer: false,
                     },
                 );
                 continue;
@@ -1655,6 +1703,9 @@ fn production_shares_for(hexes: &[Hex<'_>], ruleset: Option<&Ruleset>) -> Produc
         });
         let pool = product.map_or(0, |product| product.amount);
         let name = product.map(|product| product.name.clone());
+        let foreign_sharer = by_coordinate
+            .get(&coordinate)
+            .is_some_and(|region| a_foreign_player_unit_in(region));
         let wants: Vec<i64> = group.iter().map(|claim| claim.wanted).collect();
         let shares = split_pool(&wants, pool);
         for (claim, share) in group.iter().zip(shares) {
@@ -1666,6 +1717,7 @@ fn production_shares_for(hexes: &[Hex<'_>], ruleset: Option<&Ruleset>) -> Produc
                 ProductionRegionAnswer {
                     share: RegionShare::Share(share),
                     product_name: name.clone(),
+                    foreign_sharer,
                 },
             );
         }
@@ -2330,7 +2382,11 @@ fn forecast_hex(
         into.push(forecast_unit(
             facts,
             region,
-            shares[index],
+            PoolShares {
+                foreign_claimant_production: production
+                    .foreign_sharer_for(hex.region.coordinate, index),
+                ..shares[index]
+            },
             claim_purse_for(
                 claim_allowances,
                 &unit_key(&hex.region.region_id, &ordered.unit.unit_id),
@@ -26663,6 +26719,43 @@ mod tests {
             );
             assert_eq!(produced_in_items(&effects, "4021", "IRON"), 20);
             assert_eq!(produced_in_items(&effects, "1795", "IRON"), 16);
+        }
+
+        /// A unit of another player's faction, for `ah-e23d.2`.
+        fn foreigner(id: &str) -> ReportUnit {
+            ReportUnit {
+                faction_id: Some("77".to_string()),
+                faction_name: Some("Rivals".to_string()),
+                own: false,
+                ..unit(id)
+            }
+        }
+
+        /// `ah-e23d.2`. A passenger produces from the destination's yield, so a foreign player
+        /// standing *there* is what makes its share a ceiling - judged by the region it produces
+        /// in, not the one it is listed in.
+        #[test]
+        fn a_passenger_beside_a_foreigner_where_it_lands_produces_a_ceiling() {
+            let report = sailing_north(vec![iron_to_the_north(vec![foreigner("9001")])]);
+            let orders = "unit 4021\nPRODUCE iron\nunit 4022\nSAIL N\n";
+            let review = review_turn(&report, orders, Some(&ruleset()), CheckOptions::default());
+            let passenger = silver_of(&review, "4021");
+            assert!(passenger.produced > 0);
+            assert!(passenger.production_foreign_sharer);
+            assert_eq!(passenger.production_region_name.as_deref(), Some("iron"));
+        }
+
+        /// `ah-e23d.2`. The same voyage with the foreigner left behind on the quay: the hex the
+        /// passenger draws on holds no foreign unit, so its share is not bounded.
+        #[test]
+        fn a_passenger_leaving_a_foreigner_behind_produces_a_figure() {
+            let mut report = sailing_north(vec![iron_to_the_north(Vec::new())]);
+            report.regions[0].units.push(foreigner("9001"));
+            let orders = "unit 4021\nPRODUCE iron\nunit 4022\nSAIL N\n";
+            let review = review_turn(&report, orders, Some(&ruleset()), CheckOptions::default());
+            let passenger = silver_of(&review, "4021");
+            assert!(passenger.produced > 0);
+            assert!(!passenger.production_foreign_sharer);
         }
 
         /// `ah-k43x`. `sail_destination` answering `None` means "cannot say", never "did not
