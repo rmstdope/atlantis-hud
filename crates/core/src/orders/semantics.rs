@@ -9469,10 +9469,14 @@ fn sell(
     // What each sharer can still lend, off the one reading ([`SharerStock`]) so goods an earlier
     // GIVE or cast already drew from them are not sold again - and never more than the walk shows
     // the sharer holding.
-    let lenders = match SharerStock::for_spender(ledger, hex, StatePhase::Market, who, &tag) {
-        Some((stock, x)) => stock.lenders_within(x, hex, has),
-        None => lenders_on_doubt(ledger, hex, who, &tag, has),
-    };
+    let (own_holding, lenders) =
+        match SharerStock::for_spender(ledger, hex, StatePhase::Market, who, &tag) {
+            Some((stock, x)) => (
+                own_holding.min(stock.own_for(x)),
+                stock.lenders_within(x, hex, has),
+            ),
+            None => (own_holding, lenders_on_doubt(ledger, hex, who, &tag, has)),
+        };
     let lent: i64 = lenders.iter().map(|(_, lends)| lends).sum();
     let remaining_holding = own_holding.saturating_add(lent);
     // What this hex's other own sellers left of the line, or the line itself where nothing was
@@ -11097,34 +11101,37 @@ impl SharerStock {
         }
     }
 
-    /// What `x` spends of its own before it borrows: its stock, less whatever the others' overdrafts
-    /// already drew on it.
+    /// What `x` spends of its own before it borrows: its stock, less whatever the overdrafts laid
+    /// on it in party order already drew - a lender listed before the others is drained first, as
+    /// `Unit::ConsumeShared` drained it for the earlier borrower. A non-lender is never drawn on.
     fn own_for(&self, x: usize) -> i64 {
-        self.position(x).max(0).min(self.available_to(x))
+        if self.lends(x) {
+            self.left_after_overdrafts().get(x).copied().unwrap_or(0)
+        } else {
+            self.position(x).max(0)
+        }
     }
 
-    /// The other lenders and what each still has for `x`, in party order: every overdraft - `x`'s
-    /// own included - laid on them in that order first. Lenders left with nothing are omitted.
-    /// Sums to `available_to(x) - own_for(x)`.
+    /// The other lenders and what each still has for `x`, in party order, once every overdraft -
+    /// `x`'s own included - has been laid on the lenders in party order, `x` among them where it
+    /// lends. Lenders left with nothing are omitted. Sums to `available_to(x) - own_for(x)`.
     fn lenders_to(&self, x: usize) -> Vec<(usize, i64)> {
-        let mut owing: i64 = self
-            .parties
+        self.left_after_overdrafts()
+            .into_iter()
+            .enumerate()
+            .filter(|(i, left)| *i != x && self.lends(*i) && *left > 0)
+            .collect()
+    }
+
+    /// What each party still holds once every overdraft is laid on the lenders in party order: a
+    /// lender its stock less what it lent, a non-lender its own stock.
+    fn left_after_overdrafts(&self) -> Vec<i64> {
+        let (lent, _) = self.drained();
+        self.parties
             .iter()
-            .map(|party| (-party.position).max(0))
-            .sum();
-        let mut lenders = Vec::new();
-        for (i, party) in self.parties.iter().enumerate() {
-            if i == x || !party.lends {
-                continue;
-            }
-            let has = party.position.max(0);
-            let drawn = has.min(owing);
-            owing -= drawn;
-            if has > drawn {
-                lenders.push((i, has - drawn));
-            }
-        }
-        lenders
+            .zip(lent)
+            .map(|(party, lent)| party.position.max(0) - lent)
+            .collect()
     }
 
     /// [`SharerStock::lenders_to`], each lender capped at what `has` reads it holding - the
@@ -34372,6 +34379,80 @@ BUILD
                         0,
                         "the sharer's wood went to unit 2"
                     );
+                },
+            );
+        }
+
+        /// The same two spenders with the seller listed **before** another sharer (`ah-lnz4`,
+        /// review finding 1): the neighbour's GIVE drained the seller's own ten first -
+        /// `Unit::ConsumeShared` takes the sharers in region order - so the seller's SELL finds
+        /// the later sharer's ten still there (`rules/share`; `rules/sequenceofevents`: "Give
+        /// orders" before "Market orders"). The answer must not depend on which way the overdraft
+        /// is laid.
+        #[test]
+        fn a_sharers_sale_finds_a_later_sharers_stock_when_a_gift_drew_its_own() {
+            let hex_region = ReportRegion {
+                wanted: vec![MarketItem {
+                    amount: 20,
+                    name: "wood".to_string(),
+                    tag: "WOOD".to_string(),
+                    price: 3,
+                }],
+                ..region(vec![
+                    sharing(with_item(unit("3"), 10, "wood", "WOOD")),
+                    sharing(with_item(unit("4"), 10, "wood", "WOOD")),
+                    unit("1"),
+                    unit("2"),
+                ])
+            };
+            settled(
+                hex_region,
+                "unit 3\nSELL 10 wood\n\nunit 4\n\nunit 1\nGIVE 2 10 wood\n\nunit 2\n",
+                |_, ledger| {
+                    assert_eq!(
+                        ledger
+                            .sold
+                            .get(&("3".to_string(), "WOOD".to_string()))
+                            .map_or(0, |sold| sold.quantity),
+                        10,
+                        "unit 4's ten are still in the pool"
+                    );
+                },
+            );
+        }
+
+        /// The cast in the same report order (`ah-lnz4`, review finding 1): the neighbour's GIVE
+        /// drained the mage's own five swords, listed first, so its Enchant Swords takes the later
+        /// sharer's five (`data/ESWO`: a sword each).
+        #[test]
+        fn a_sharing_mages_cast_finds_a_later_sharers_stock_when_a_gift_drew_its_own() {
+            let hex_region = region(vec![
+                sharing(with_item(
+                    with_skill(unit("5"), "ESWO", 1),
+                    5,
+                    "swords",
+                    "SWOR",
+                )),
+                sharing(with_item(unit("6"), 5, "swords", "SWOR")),
+                unit("1"),
+                unit("2"),
+            ]);
+            settled(
+                hex_region,
+                "unit 5\nCAST Enchant_Swords\n\nunit 6\n\nunit 1\nGIVE 2 5 SWOR\n\nunit 2\n",
+                |_, ledger| {
+                    let cast = |who: &str| ledger.state.balance_at(StatePhase::Cast, who, "SWOR");
+                    assert!(
+                        ledger
+                            .movements
+                            .iter()
+                            .any(|movement| movement.unit_id == "5"
+                                && movement.tag == "MSWO"
+                                && movement.delta == 5),
+                        "five swords are enchanted: {:?}",
+                        ledger.movements
+                    );
+                    assert_eq!(cast("6"), 0, "the later sharer's five are spent");
                 },
             );
         }
@@ -58813,14 +58894,17 @@ BUILD
             assert_eq!(stock.available_to(0), 15);
         }
 
-        /// Others' overdrafts drain the other lenders first; only what they cannot cover comes
-        /// out of the spender's own stock.
+        /// Overdrafts are laid on the lenders in report order, the spender among them: a sharer
+        /// listed first was drained first (`Unit::ConsumeShared`), and the later lender still has
+        /// all of its stock (`ah-lnz4`, review finding 1).
         #[test]
         fn a_sharer_whose_stock_others_drew_on_spends_only_what_is_left() {
             let stock = SharerStock::new(vec![lender(10), lender(4), keeper(-9)]);
-            assert_eq!(stock.lenders_to(0), Vec::<(usize, i64)>::new());
-            assert_eq!(stock.own_for(0), 5);
+            assert_eq!(stock.own_for(0), 1);
+            assert_eq!(stock.lenders_to(0), vec![(1, 4)]);
             assert_eq!(stock.available_to(0), 5);
+            assert_eq!(stock.own_for(1), 4, "listed after, so not drawn on");
+            assert_eq!(stock.lenders_to(1), vec![(0, 1)]);
             assert_eq!(stock.others_net(0), -5);
         }
 
