@@ -118,7 +118,13 @@ fn a_sharing_unit_says_where_its_loan_went() {
     // $1042 until `ah-9n7l.2`, when wages became silver in the balance: maintenance step 4 used to
     // draw 3493 $404 short paying its hex-mates' fees, and 8048 lent that back. Now 8048's and
     // 1164's wages pay those fees, and 3493 lends the whole purse.
-    assert_eq!(lent[0].amount, -1446, "signed out of the unit");
+    //
+    // $1446 until `ah-0mch`, which prices a CAST on the caster's purse plus every other sharer's
+    // (spells.cpp reads `Unit::GetSharedNum`): 683's standing `@CAST CFSW` was capped at no swords
+    // by its own $44, and now makes both its level allows at $600 each (`data/CFSW`), so 3493
+    // lends $496 more and 8048 the last $104. The two beads merged minutes apart, each pinning
+    // this figure against a main without the other.
+    assert_eq!(lent[0].amount, -1942, "signed out of the unit");
     assert_eq!(lent[0].line, None, "the SHARE flag lent it, not an order");
     assert_eq!(lent[0].other, None, "the hex's purse is not a unit");
 }
