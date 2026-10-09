@@ -5632,6 +5632,8 @@ fn ledger_for_reaching<'a>(
         // (`ah-zus2`). Within one item: units as the report lists them, lines as written, and a
         // unit's `BUY ALL` after every bounded line for the item - it spends what they leave.
         let buys = buys_in_market_order(hex, ruleset);
+        // Every SELL has been applied by now, so its proceeds are the seller's own silver.
+        ledger.market_purse.sold = market_moves(&ledger, hex, SilverChangeCause::Sold);
         let mut start = 0;
         while start < buys.len() {
             let item = buys[start].market_line;
@@ -5642,8 +5644,7 @@ fn ledger_for_reaching<'a>(
                     .count();
             // What every unit spent on the items settled so far is gone from the purse
             // (`ConsumeSharedMoney`) by the time this one is sized.
-            let spent = market_spent(&ledger, hex);
-            ledger.market_purse.spent = spent;
+            ledger.market_purse.spent = market_spent(&ledger, hex);
             for buy in &buys[start..end] {
                 let ordered = &hex.units[buy.unit];
                 apply(
@@ -8095,6 +8096,15 @@ fn buy(
     }
 }
 
+/// What each unit of the hex has spent at the market so far, positive. Index-aligned with
+/// `hex.units`.
+fn market_spent(ledger: &Ledger<'_>, hex: &Hex<'_>) -> Vec<i64> {
+    market_moves(ledger, hex, SilverChangeCause::Bought)
+        .into_iter()
+        .map(|amount| -amount)
+        .collect()
+}
+
 /// One `BUY` line of the hex, placed in the market pass's order.
 struct MarketBuy {
     /// Index into `hex.units`.
@@ -8137,10 +8147,10 @@ fn buys_in_market_order(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<MarketB
     buys
 }
 
-/// What each unit of the hex has spent at the market so far - the `Bought` records, which carry
-/// what a line actually paid rather than the whole ask it was charged. Index-aligned with
-/// `hex.units`.
-fn market_spent(ledger: &Ledger<'_>, hex: &Hex<'_>) -> Vec<i64> {
+/// What each unit of the hex has moved at the market so far under one cause, signed as the
+/// record is: `Bought` records carry what a line actually paid (negative) rather than the whole
+/// ask it was charged, `Sold` records what a sale earned. Index-aligned with `hex.units`.
+fn market_moves(ledger: &Ledger<'_>, hex: &Hex<'_>, cause: SilverChangeCause) -> Vec<i64> {
     hex.units
         .iter()
         .map(|ordered| {
@@ -8150,11 +8160,8 @@ fn market_spent(ledger: &Ledger<'_>, hex: &Hex<'_>) -> Vec<i64> {
                 .map_or(0, |moves| {
                     moves
                         .iter()
-                        .filter(|moved| {
-                            moved.phase == StatePhase::Market
-                                && moved.cause == SilverChangeCause::Bought
-                        })
-                        .map(|moved| -moved.amount)
+                        .filter(|moved| moved.phase == StatePhase::Market && moved.cause == cause)
+                        .map(|moved| moved.amount)
                         .sum()
                 })
         })
@@ -11053,6 +11060,14 @@ struct MarketPurse {
     /// silver, so what one item drew out of the purse is gone when the next is sized
     /// (`ah-zus2`). Index-aligned with `hex.units`; empty reads as nothing spent.
     spent: Vec<i64>,
+    /// What each unit sold for at the market. `rules/sequenceofevents` runs SELL before BUY, so
+    /// the proceeds are the seller's own silver when the purse is sized, and spending them is
+    /// never a debt to the purse. Set by the market pass once every
+    /// SELL is applied; the snapshot itself is taken before them, so a SELL's doubt still does
+    /// not reach it (see `trusted`). Index-aligned with `hex.units`; empty reads as nothing sold.
+    sold: Vec<i64>,
+    /// Which units of the hex lend to the purse. Index-aligned with `hex.units`.
+    sharer: Vec<bool>,
 }
 
 impl Default for MarketPurse {
@@ -11067,6 +11082,8 @@ impl Default for MarketPurse {
             fell_back: false,
             own: Vec::new(),
             spent: Vec::new(),
+            sold: Vec::new(),
+            sharer: Vec::new(),
         }
     }
 }
@@ -11092,6 +11109,7 @@ impl MarketPurse {
         let mut lendable = Vec::with_capacity(hex.units.len());
         let mut also_withheld = Vec::with_capacity(hex.units.len());
         let mut own = Vec::with_capacity(hex.units.len());
+        let sharer: Vec<bool> = hex.units.iter().map(Ordered::shares).collect();
         for (index, ordered) in hex.units.iter().enumerate() {
             // `.get(...).unwrap_or_default()` rather than indexing: a length mismatch reads as
             // *nobody is contended*, never as a panic on a keystroke path - the same
@@ -11144,6 +11162,8 @@ impl MarketPurse {
             fell_back,
             own,
             spent: Vec::new(),
+            sold: Vec::new(),
+            sharer,
         }
     }
 
@@ -11167,12 +11187,14 @@ impl MarketPurse {
                 .iter()
                 .enumerate()
                 .filter(|(i, _)| *i != index)
-                // A lender's spending comes out of what it lends. A unit that lends nothing -
-                // a non-sharer, or a sharer with no silver - only drains the purse by what it
-                // spent beyond its own.
+                // A sharer lends what it held, less what it has spent beyond its own sale
+                // proceeds. A non-sharer lends nothing, and drains the purse only by what it spent
+                // beyond its own silver and proceeds. Proceeds pay for the seller's own purchases
+                // but are not lent onward: the market-open snapshot never counted them, and that
+                // older gap is a bead of its own.
                 .map(|(i, lent)| {
-                    if *lent > 0 {
-                        lent.saturating_sub(self.spent_by(i))
+                    if self.sharer.get(i).copied().unwrap_or(false) {
+                        lent.saturating_sub(self.spent_by(i).saturating_sub(self.sold_by(i)).max(0))
                     } else {
                         -self.borrowed_by(i)
                     }
@@ -11185,12 +11207,19 @@ impl MarketPurse {
         self.spent.get(index).copied().unwrap_or(0)
     }
 
+    fn sold_by(&self, index: usize) -> i64 {
+        self.sold.get(index).copied().unwrap_or(0)
+    }
+
     /// What the unit at `index` has spent at the market beyond its own silver - the part the
     /// sharers paid for (`ah-zus2`). `0` where its own silver could not be priced: the doubt is
     /// this unit's, and a neighbour's purchase is not cut on account of it.
     fn borrowed_by(&self, index: usize) -> i64 {
         match self.own.get(index) {
-            Some(Some(own)) => self.spent_by(index).saturating_sub(*own).max(0),
+            Some(Some(own)) => self
+                .spent_by(index)
+                .saturating_sub(own.saturating_add(self.sold_by(index)))
+                .max(0),
             _ => 0,
         }
     }
@@ -27442,6 +27471,47 @@ BUILD
                     assert_eq!(bought_of(ledger, "2", "HORS"), 1);
                 },
             );
+        }
+
+        /// `rules/sequenceofevents` runs SELL before BUY, so what a unit sold for is its own
+        /// silver at the market: spending it borrows nothing from the purse, whether or not the
+        /// seller shares (`ah-zus2`, review finding 1).
+        #[test]
+        fn spending_ones_own_sale_proceeds_does_not_draw_the_purse_down() {
+            for seller_shares in [false, true] {
+                let seller = with_item(with_silver(unit("1"), 0), 10, "fur", "FUR");
+                let hex = ReportRegion {
+                    for_sale: vec![
+                        line(12, 10, "grain", "GRAI"),
+                        line(12, 50, "horses", "HORS"),
+                    ],
+                    wanted: vec![line(100, 10, "fur", "FUR")],
+                    ..region(vec![
+                        if seller_shares {
+                            sharing(seller)
+                        } else {
+                            seller
+                        },
+                        sharing(with_silver(unit("2"), 100)),
+                    ])
+                };
+                with_ledger(
+                    hex,
+                    "unit 1\nSELL 10 fur\nBUY 10 grain\nunit 2\nBUY 2 horses\n",
+                    |ledger| {
+                        assert_eq!(
+                            bought_of(ledger, "1", "GRAI"),
+                            10,
+                            "sharing: {seller_shares}"
+                        );
+                        assert_eq!(
+                            bought_of(ledger, "2", "HORS"),
+                            2,
+                            "sharing: {seller_shares}"
+                        );
+                    },
+                );
+            }
         }
         /// And a `BUY ALL` after a reduced bounded line spends what that line really left, not
         /// what it was charged (`ah-omn7`).
