@@ -4326,15 +4326,27 @@ fn apply_transfers(
                 });
             // What the unit has as the engine counts an offer: its own stock and its `SHARE`
             // faction-mates' in the hex (`GetSharedNum` in `Game::DoExchangeOrder`; `ah-80mj`).
-            let lent: i64 = lending_sharers(units, offer.unit)
+            // A sharer whose stock a gift left in doubt leaves the offer in doubt too, as the
+            // ledger's `SharerStock` refuses to read such a pool.
+            let own = held_by(&working, units, offer.unit, &offer.give_tag);
+            if stolen.is_none() && own >= offer.give_amount {
+                return Ok(own);
+            }
+            let lenders = lending_sharers(units, offer.unit);
+            if let Some(uncertain) = lenders.iter().find_map(|lender| {
+                working
+                    .get(lender)
+                    .and_then(|state| state.uncertain_after_gifts.get(&offer.give_tag))
+            }) {
+                return Err(uncertain.clone());
+            }
+            let lent: i64 = lenders
                 .into_iter()
                 .map(|lender| held_by(&working, units, lender, &offer.give_tag).max(0))
                 .sum();
             match stolen {
                 Some(uncertain) => Err(uncertain),
-                None => Ok(held_by(&working, units, offer.unit, &offer.give_tag)
-                    .max(0)
-                    .saturating_add(lent)),
+                None => Ok(own.max(0).saturating_add(lent)),
             }
         };
         let (held, other_held) = (holds(one), holds(other));
@@ -8701,12 +8713,23 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
                 .state
                 .known_balance_at(StatePhase::Give, who, &offer.give_tag)
                 .map_err(Clone::clone)?;
-            if !hex
+            let lenders: Vec<&str> = hex
                 .units
                 .iter()
-                .any(|other| other.shares() && other.unit.unit_id != *who)
-            {
+                .filter(|other| other.shares() && other.unit.unit_id != *who)
+                .map(|other| other.unit.unit_id.as_str())
+                .collect();
+            // Its own stock is read first, so a sharer is only asked about what it lends.
+            if lenders.is_empty() || own >= offer.give_amount {
                 return Ok(own);
+            }
+            // A sharer whose stock a gift left in doubt leaves the offer in doubt too: whether it
+            // still lends enough is the answer the report cannot give.
+            for lender in lenders {
+                ledger
+                    .state
+                    .known_balance_at(StatePhase::Give, lender, &offer.give_tag)
+                    .map_err(Clone::clone)?;
             }
             Ok(
                 SharerStock::for_spender(ledger, hex, StatePhase::Give, who, &offer.give_tag)
@@ -8756,9 +8779,30 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
     if amount == 0 {
         return;
     }
+    // The giver's own stock first, then the sharers' in report order - the engine's
+    // `Unit::ConsumeShared`, read off the one reading every spend from the pool takes
+    // ([`SharerStock`]), exactly as a SELL draws (`ah-0mch`, `ah-80mj`). Read before anything
+    // below moves a balance.
+    let (own, lenders) =
+        match SharerStock::for_spender(ledger, hex, StatePhase::Give, &giver.unit_id, tag) {
+            Some((stock, x)) => (
+                stock.own_for(x),
+                stock.lenders_within(x, hex, |lender| {
+                    ledger
+                        .state
+                        .known_balance_at(StatePhase::Give, &lender.unit.unit_id, tag)
+                        .unwrap_or(0)
+                }),
+            ),
+            None => (amount, Vec::new()),
+        };
+    let own_sold = amount.min(own.max(0));
     // What leaves the giver's own row; the rest is on the sharers' rows.
     let own_part;
     if tag.eq_ignore_ascii_case(SILVER) {
+        // The SILVER column charges the giver whole, as it does a GIVE's silver: its purse lays
+        // the overdraft on the sharers (`ah-0mch`). The ITEMS preview is told where the silver
+        // actually was, so a sharer's row loses what it lent.
         move_silver(
             ledger,
             StatePhase::Give,
@@ -8777,26 +8821,31 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
             Some(placed),
             Some(format!("{} ({})", giver.name, giver.unit_id)),
         );
-        // Silver a sharer lends is charged to the giver whole, as a GIVE's is: the SILVER
-        // column's purse lays the overdraft on the sharers (`ah-0mch`, `ah-80mj`).
-        own_part = amount;
+        let mut remaining = amount - own_sold;
+        for &(index, lends) in &lenders {
+            let take = remaining.min(lends);
+            if take <= 0 {
+                continue;
+            }
+            remaining -= take;
+            ledger.movements.push(ItemMovement {
+                unit_id: hex.units[index].unit.unit_id.clone(),
+                tag: tag.clone(),
+                name: item_name(tag, hex, ledger.ruleset),
+                delta: -take,
+                cause: ItemChangeCause::GivenAway,
+                phase: StatePhase::Give,
+                line: Some(placed.line as i64),
+                unit_price: None,
+                other: Some(ItemChangeParty {
+                    unit_id: giver.unit_id.clone(),
+                    name: Some(giver.name.clone()),
+                }),
+                created: None,
+            });
+        }
+        own_part = own_sold + remaining;
     } else {
-        // The giver's own stock first, then the sharers' in report order, each charged and its
-        // movement recorded where the goods were - exactly as a SELL draws (`ah-0mch`, `ah-80mj`).
-        let (own, lenders) =
-            match SharerStock::for_spender(ledger, hex, StatePhase::Give, &giver.unit_id, tag) {
-                Some((stock, x)) => (
-                    stock.own_for(x),
-                    stock.lenders_within(x, hex, |lender| {
-                        ledger
-                            .state
-                            .known_balance_at(StatePhase::Give, &lender.unit.unit_id, tag)
-                            .unwrap_or(0)
-                    }),
-                ),
-                None => (amount, Vec::new()),
-            };
-        let own_sold = amount.min(own.max(0));
         let uncovered = draw_on_lenders(
             ledger,
             hex,
