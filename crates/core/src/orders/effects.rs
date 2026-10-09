@@ -1447,8 +1447,8 @@ pub fn walled_moves(
     ))
 }
 
-/// What the known map says about each hex a `CREATE VILLAGE` is ordered in, for a caller that
-/// checks orders but draws no map (`ah-m24v`). Empty when the document founds nothing, which keeps
+/// What the known map says about founding a village in each region holding an own unit, once the
+/// document writes a `CREATE`, for a caller that checks orders but draws no map (`ah-m24v`). Empty when the document founds nothing, which keeps
 /// the known map off the keystroke path, as [`walled_moves`] does.
 ///
 /// # Errors

@@ -371,8 +371,8 @@ pub struct CheckOptions {
     /// Each own unit whose MOVE crosses a wall a report proves, from `effects::walled_moves`.
     /// Empty by default: a caller without the remembered map warns about no wall.
     pub walled_moves: super::walls::WalledMoves,
-    /// What the known map says about founding a village in each hex a `CREATE VILLAGE` is ordered
-    /// in, from `village_site::village_sites` (`ah-m24v`). Empty by default: a caller without the
+    /// What the known map says about founding a village in each region holding an own unit, once
+    /// the document writes a `CREATE`, from `village_site::village_sites` (`ah-m24v`). Empty by default: a caller without the
     /// remembered map cannot rule out a settlement nearby, so every founding is unsure.
     pub village_sites: super::village_site::VillageSites,
 }
