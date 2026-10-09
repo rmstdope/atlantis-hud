@@ -81,6 +81,7 @@ pub fn validate_orders_request(
             .unwrap_or_default(),
         month_end: Default::default(),
         walled_moves: Default::default(),
+        village_sites: Default::default(),
     };
 
     // Both the ruleset and the report come from the cache. This runs every time the player stops
@@ -122,6 +123,18 @@ pub fn validate_orders_request(
         // sighting shows. An error is nothing known - bad config, not bad orders - and no wall is
         // warned about (`ah-wq2e.4`).
         options.walled_moves = super::effects::walled_moves(
+            cache,
+            rules,
+            raw,
+            remembered,
+            &request.raw_orders,
+            options.geometry,
+        )
+        .unwrap_or_default();
+        // Whether a founding the 3-hex rule refuses is near a settlement the known map shows. An
+        // error is nothing known - bad config, not bad orders - and every founding is unsure
+        // (`ah-m24v`).
+        options.village_sites = super::effects::village_sites(
             cache,
             rules,
             raw,

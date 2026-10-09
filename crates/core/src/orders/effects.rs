@@ -769,6 +769,18 @@ pub fn preview_orders_on_map(
         shown: map.shown_extent(),
         ..options
     };
+    // Whether a founding the 3-hex rule refuses is near a settlement the known map shows
+    // (`ah-m24v`).
+    let options = super::semantics::CheckOptions {
+        village_sites: super::village_site::village_sites(
+            &report,
+            || crate::known_map::resolve_known_map(&report, &remembered),
+            orders_document,
+            &ruleset,
+            geometry,
+        ),
+        ..options
+    };
     // One reading serves both settles and the movement decision alike.
     let ordered = crate::movement::fleet::OrderedUnits::of_month(
         &report,
@@ -1432,6 +1444,37 @@ pub fn walled_moves(
     );
     Ok(super::walls::walled_moves_on(
         &report, &ruleset, &known, &map, &ordered,
+    ))
+}
+
+/// What the known map says about each hex a `CREATE VILLAGE` is ordered in, for a caller that
+/// checks orders but draws no map (`ah-m24v`). Empty when the document founds nothing, which keeps
+/// the known map off the keystroke path, as [`walled_moves`] does.
+///
+/// # Errors
+///
+/// As [`shipment_measures`].
+pub fn village_sites(
+    cache: &mut ReportCache,
+    ruleset_json: &str,
+    raw_report: &str,
+    remembered_json: &str,
+    orders_document: &str,
+    geometry: Option<crate::movement::graph::MapGeometry>,
+) -> Result<super::village_site::VillageSites, String> {
+    let ruleset = cache
+        .ruleset(ruleset_json)
+        .map_err(|error| error.to_string())?;
+    let remembered: Vec<crate::movement::graph::RememberedRegion> =
+        serde_json::from_str(remembered_json)
+            .map_err(|error| format!("remembered regions could not be read: {error}"))?;
+    let report = cache.classified(raw_report, ruleset_json);
+    Ok(super::village_site::village_sites(
+        &report,
+        || crate::known_map::resolve_known_map(&report, &remembered),
+        orders_document,
+        &ruleset,
+        geometry,
     ))
 }
 
