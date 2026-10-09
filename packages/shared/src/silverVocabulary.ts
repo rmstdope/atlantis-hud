@@ -164,6 +164,32 @@ export function productionStatusSentence(
   if (!silver || silver.producedName === null) {
     return undefined;
   }
+  const status = productionLimitSentence({ ...silver, producedName: silver.producedName });
+  const shared = foreignProducerSentence(silver);
+  if (shared === undefined) {
+    return status;
+  }
+  return status === undefined ? shared : `${status}\n${shared}`;
+}
+
+/**
+ * "At most 20: a foreign unit in this region may also produce iron." - `undefined` unless a
+ * foreign player unit stands in the region the run draws on (`ah-e23d.2`).
+ *
+ * The engine divides a region's resource across every unit producing it, whatever its faction,
+ * and a foreign unit's orders are not in the report: the navigator chose to keep the figure and
+ * call it a ceiling (2026-10-09). Worded in the region's own noun, as the region cap is.
+ */
+function foreignProducerSentence(silver: UnitSilver): string | undefined {
+  if (!silver.productionForeignSharer || silver.producedName === null) {
+    return undefined;
+  }
+  const named = silver.productionRegionName ?? silver.producedName;
+  return `At most ${silver.produced}: a foreign unit in this region may also produce ${named}.`;
+}
+
+/** What limited the run, as [`productionStatusSentence`] has always said it. */
+function productionLimitSentence(silver: UnitSilver & { producedName: string }): string | undefined {
   const requested = silver.productionRequested;
   if (requested === null) {
     return unnumberedProductionCapSentence(silver);
@@ -554,6 +580,26 @@ export const SILVER_NOTES: readonly SilverNote[] = [
     example: () => ({
       unit: aReportUnit(),
       silver: aUnitSilver({ doubt: "contested-region-pool" }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
+  // The foreign twin of the note below, and not `doubt-`-prefixed for the same reason: the figure
+  // is kept and only its label changes. The engine divides the wage pool and the entertainment
+  // demand across every faction, and a foreign unit's orders are not in the report (`ah-e23d.2`).
+  {
+    id: "pool-shared-with-a-foreign-unit",
+    when: ({ silver }) => silver.lateIncomeForeignSharer,
+    say: () =>
+      "A foreign unit in this region may also draw on this pool, so this unit may be paid less than this.",
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({
+        lateIncomeForeignSharer: true,
+        income: 60,
+        lateIncome: 60,
+        atMonthEnd: 582
+      }),
       warned: false,
       countUpkeep: true
     })

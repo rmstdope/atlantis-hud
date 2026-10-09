@@ -71,6 +71,56 @@ describe("productionMenSentence", () => {
   });
 });
 
+describe("productionStatusSentence beside a foreign producer (ah-e23d.2)", () => {
+  it("calls an otherwise silent run a ceiling, in the region's own word", () => {
+    expect(
+      productionStatusSentence(
+        aUnitSilver({
+          produced: 20,
+          producedName: "iron",
+          productionWanted: 20,
+          productionRegionName: "iron",
+          productionForeignSharer: true
+        })
+      )
+    ).toBe("At most 20: a foreign unit in this region may also produce iron.");
+  });
+
+  it("follows the cap sentence of a run the region already limited", () => {
+    expect(
+      productionStatusSentence(
+        aUnitSilver({
+          produced: 16,
+          producedName: "horse",
+          productionWanted: 24,
+          productionCappedBy: "region",
+          productionRegionName: "horses",
+          productionForeignSharer: true
+        })
+      )
+    ).toBe(
+      "This region has horses for 16, not the 24 its skill and tools could make.\nAt most 16: a foreign unit in this region may also produce horses."
+    );
+  });
+
+  it("follows a numbered order's breakdown", () => {
+    expect(
+      productionStatusSentence(
+        aUnitSilver({
+          produced: 3,
+          producedName: "horse",
+          productionWanted: 8,
+          productionRequested: 3,
+          productionRegionName: "horses",
+          productionForeignSharer: true
+        })
+      )
+    ).toBe(
+      "Requested: 3 horses. This month: 3.\nAt most 3: a foreign unit in this region may also produce horses."
+    );
+  });
+});
+
 describe("productionStatusSentence, unnumbered (ah-19l2.2, ah-256d)", () => {
   it("words a capped production the same way wherever it is asked", () => {
     expect(
@@ -643,6 +693,8 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
       "Part of this unit's line in the turn report could not be read, so this unit's month cannot be added up.",
     "doubt-contested-region-pool":
       "Another of your units here draws on the same pool and its headcount is an estimate, so this unit's share cannot be worked out.",
+    "pool-shared-with-a-foreign-unit":
+      "A foreign unit in this region may also draw on this pool, so this unit may be paid less than this.",
     "pool-bounded-by-an-unread-unit":
       "Another of your units here draws on the same pool and its line could not be read from the turn report, so this unit may be paid less than this.",
     "doubt-market-does-not-sell":

@@ -1604,6 +1604,8 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
       // `ah-0n2k.1`: a hex-mate whose line was cut short bounds both halves of the month.
       incomeInTimeAtMost: true,
       lateIncomeAtMost: true,
+      // `ah-e23d.2`: a foreign player unit in the hex bounds the wage and entertainment half too.
+      lateIncomeForeignSharer: true,
       worksByDefault: true,
       taxesByFlag: true,
       castMade: 2,

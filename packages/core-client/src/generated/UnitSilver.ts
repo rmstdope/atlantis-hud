@@ -186,6 +186,14 @@ incomeInTimeAtMost: boolean,
  */
 lateIncomeAtMost: boolean, 
 /**
+ * True when `late_income` is an **upper bound** because a foreign player unit stands in this
+ * hex and may work or entertain beside this unit: the engine divides the wage pool and the
+ * entertainment demand across every faction (`ah-e23d.2`). Apart from
+ * [`Self::late_income_at_most`] because the hover explains the two differently. `false`
+ * wherever `late_income` is `None`, and for a unit drawing on no such pool here.
+ */
+lateIncomeForeignSharer: boolean, 
+/**
  * What the hex's `SHARE` purse paid for this unit's orders out of *other* units' silver -
  * this unit's own overdraft, where the hex's purse settled it (`ah-3c2t.2`).
  *
@@ -316,9 +324,17 @@ productionCappedBy: ProductionCap | null,
  * writes `horses`, `herbs` and `floater hides` where the catalogue writes `horse`, `herb` and
  * `floater hide`, and this sentence needs a bare noun rather than a counted one.
  *
- * `None` unless [`UnitSilver::production_capped_by`] is [`ProductionCap::Region`].
+ * `None` unless [`UnitSilver::production_capped_by`] is [`ProductionCap::Region`] or
+ * [`UnitSilver::production_foreign_sharer`] is set - the two sentences that name it.
  */
 productionRegionName: string | null, 
+/**
+ * True when what this unit's primary `PRODUCE` makes is an **upper bound**, because a foreign
+ * player unit stands in the region it produces in and the engine divides a region's resource
+ * across every faction producing it (`RunAProduction`, `ah-e23d.2`). `false` where the run
+ * makes nothing.
+ */
+productionForeignSharer: boolean, 
 /**
  * Whether this unit has no month-long order and will therefore be set to work, earning the
  * region's wage. `false` for every unit that spends its month on something (`ah-gjq4`).

@@ -412,6 +412,12 @@ pub struct UnitSilver {
     /// (`In, in time` and `In, too late`) and one boolean would put ` at most` beside an exact
     /// figure on whichever row the bound did not land in.
     pub late_income_at_most: bool,
+    /// True when `late_income` is an **upper bound** because a foreign player unit stands in this
+    /// hex and may work or entertain beside this unit: the engine divides the wage pool and the
+    /// entertainment demand across every faction (`ah-e23d.2`). Apart from
+    /// [`Self::late_income_at_most`] because the hover explains the two differently. `false`
+    /// wherever `late_income` is `None`, and for a unit drawing on no such pool here.
+    pub late_income_foreign_sharer: bool,
     /// What the hex's `SHARE` purse paid for this unit's orders out of *other* units' silver -
     /// this unit's own overdraft, where the hex's purse settled it (`ah-3c2t.2`).
     ///
@@ -510,8 +516,14 @@ pub struct UnitSilver {
     /// writes `horses`, `herbs` and `floater hides` where the catalogue writes `horse`, `herb` and
     /// `floater hide`, and this sentence needs a bare noun rather than a counted one.
     ///
-    /// `None` unless [`UnitSilver::production_capped_by`] is [`ProductionCap::Region`].
+    /// `None` unless [`UnitSilver::production_capped_by`] is [`ProductionCap::Region`] or
+    /// [`UnitSilver::production_foreign_sharer`] is set - the two sentences that name it.
     pub production_region_name: Option<String>,
+    /// True when what this unit's primary `PRODUCE` makes is an **upper bound**, because a foreign
+    /// player unit stands in the region it produces in and the engine divides a region's resource
+    /// across every faction producing it (`RunAProduction`, `ah-e23d.2`). `false` where the run
+    /// makes nothing.
+    pub production_foreign_sharer: bool,
     /// Whether this unit has no month-long order and will therefore be set to work, earning the
     /// region's wage. `false` for every unit that spends its month on something (`ah-gjq4`).
     ///
@@ -1050,6 +1062,20 @@ pub struct PoolShares {
     /// Not per item: a unit ordered to sell anything bounds every `Wanted` line this hex has. The
     /// coarseness is deliberate - see this bead's plan.
     pub unread_seller: bool,
+    /// True when a foreign player unit stands in this hex **and** the region's wage pool holds
+    /// money, so this unit's wages are an **upper bound** (`ah-e23d.2`). The engine divides the
+    /// pool across every unit working it whatever its faction (`RunAProduction` in the engine's
+    /// `monthorders.cpp`; `rules/economy_income`: "All units may WORK, regardless of skills or
+    /// faction type"), and a foreign unit's orders are not in the report.
+    pub foreign_claimant_wages: bool,
+    /// The same, for the region's entertainment demand (`rules/economy_entertainment`: "All
+    /// factions may have entertainers").
+    pub foreign_claimant_entertainment: bool,
+    /// True when a foreign player unit stands in the region this unit's primary `PRODUCE` draws
+    /// on, so what the settlement leaves it is an **upper bound** (`ah-e23d.2`). Set by the
+    /// caller from the report-wide production settlement, since a passenger produces in another
+    /// hex than its own.
+    pub foreign_claimant_production: bool,
 }
 
 /// What one unit's orders ask of each of its region's contended pools, before any settlement.
@@ -2121,6 +2147,7 @@ pub fn forecast_unit(
             market_purse_held_only: false,
             income_in_time_at_most: false,
             late_income_at_most: false,
+            late_income_foreign_sharer: false,
             borrowed_for_orders: 0,
             own_food_covered: 0,
             forced_own_food: 0,
@@ -2138,6 +2165,7 @@ pub fn forecast_unit(
             production_requested: None,
             production_capped_by: None,
             production_region_name: None,
+            production_foreign_sharer: false,
             works_by_default: is_set_to_work(unit_flags, intents),
             taxes_by_flag: false,
             cast_made: 0,
@@ -2189,6 +2217,7 @@ pub fn forecast_unit(
             market_purse_held_only: false,
             income_in_time_at_most: false,
             late_income_at_most: false,
+            late_income_foreign_sharer: false,
             borrowed_for_orders: 0,
             own_food_covered: 0,
             forced_own_food: 0,
@@ -2206,6 +2235,7 @@ pub fn forecast_unit(
             production_requested: None,
             production_capped_by: None,
             production_region_name: None,
+            production_foreign_sharer: false,
             works_by_default: is_set_to_work(unit_flags, intents),
             taxes_by_flag: false,
             cast_made: 0,
@@ -2266,6 +2296,8 @@ pub fn forecast_unit(
     // The region's own word for what a `PRODUCE` order makes, for the one sentence that says the
     // hex's yield is what limited it. Set only where it did (`ah-256d`).
     let mut production_region_name: Option<String> = None;
+    // Whether a foreign player unit may share the region this unit produces from (`ah-e23d.2`).
+    let mut production_foreign_sharer = false;
     // The count a numbered `PRODUCE <number> <item>` asked for, for the sentence that repeats it
     // back. `None` for the unbounded form and for a unit with no priceable `PRODUCE` at all, which
     // are one and the same answer to the hover: there is no written request to quote (`ah-6x5u`).
@@ -2503,6 +2535,7 @@ pub fn forecast_unit(
                             spent_on = spent_on.or(Some(SilverSpender::Produce));
                         }
                         let capped_by = plan.capped_by;
+                        let made = plan.made;
                         production = Some(((lookups.item_name)(&recipe.tag), plan));
                         // `rules/sequenceofevents` settles GIVE and TAKE before either PRODUCE
                         // phase, so a unit that parts with men produces less than its report
@@ -2514,9 +2547,13 @@ pub fn forecast_unit(
                         // Only when the region is what bound, so the value and the sentence it
                         // feeds cannot disagree. `None` for a unit whose `PRODUCE` the ruleset
                         // cannot price, exactly as `produced` and `production_men_left` are.
-                        production_region_name = capped_by
-                            .filter(|cap| matches!(cap, ProductionCap::Region))
-                            .and_then(|_| (lookups.region_product_name)(item));
+                        // A primary run beside a foreign player is a ceiling (`ah-e23d.2`); a run
+                        // that makes nothing has no figure to bound.
+                        production_foreign_sharer = shares.foreign_claimant_production && made > 0;
+                        production_region_name = (production_foreign_sharer
+                            || matches!(capped_by, Some(ProductionCap::Region)))
+                        .then(|| (lookups.region_product_name)(item))
+                        .flatten();
                         // Beside `production`, and set from the same first priceable order, so the
                         // request and the figures it bounded can never describe different lines.
                         production_requested = *requested;
@@ -2929,6 +2966,12 @@ pub fn forecast_unit(
     let late_income_at_most = late_income.is_some()
         && ((shares.unread_claimant_wages && draws_wages)
             || (shares.unread_claimant_entertainment && draws_entertainment));
+    // A foreign player unit in the hex may work or entertain here too, and the engine divides both
+    // pools across every faction (`ah-e23d.2`): the same ceiling on the same two predicates, kept
+    // apart only because the hover gives it a different reason.
+    let late_income_foreign_sharer = late_income.is_some()
+        && ((shares.foreign_claimant_wages && draws_wages)
+            || (shares.foreign_claimant_entertainment && draws_entertainment));
     // A hex-mate whose line was cut short and which is ordered to sell makes every own seller's
     // market earnings a ceiling: the goods its claim is measured in went with the tail, so
     // `rules/sell`'s proportional split ran against a claim that is a floor - too small, or
@@ -3013,6 +3056,7 @@ pub fn forecast_unit(
         market_purse_held_only: matches!(shared_market, SharedMarket::HeldOnly(_)),
         income_in_time_at_most,
         late_income_at_most,
+        late_income_foreign_sharer,
         borrowed_for_orders: 0,
         own_food_covered,
         forced_own_food: 0,
@@ -3030,6 +3074,7 @@ pub fn forecast_unit(
         production_requested,
         production_capped_by: production.as_ref().and_then(|(_, plan)| plan.capped_by),
         production_region_name,
+        production_foreign_sharer,
         works_by_default: is_set_to_work(unit_flags, intents),
         taxes_by_flag: taxes(unit_flags, intents)
             && !intents
