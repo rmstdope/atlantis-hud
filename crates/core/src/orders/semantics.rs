@@ -6389,7 +6389,9 @@ fn month_long_walk(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<usize> {
 ///
 /// Known gap: PROMOTE (`Do1PromoteOrder` puts the promoted unit first in its structure) and EVICT
 /// (`Do1EvictOrder` appends the evicted unit to the units outside) also reorder units before the
-/// walk, and neither is modelled here.
+/// walk, and neither is modelled here; nor is an ENTER the engine refuses into a structure the hex
+/// does have (`CanEnter`, `ForbiddenBy`), or a LEAVE it refuses at sea, each of which moves
+/// nothing but is walked here as a move.
 fn walk_after_boarding(hex: &Hex<'_>) -> Vec<usize> {
     let structures = &hex.region.structures;
     let rank = |structure: Option<&str>| match structure {
