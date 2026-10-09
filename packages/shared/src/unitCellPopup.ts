@@ -467,6 +467,12 @@ function itemCauseClause(change: ItemChange, unit: PreviewedUnit, people: boolea
     // `newage trident rules/create_village` consumes the founders and their wagons (`ah-mw1r.3`).
     case "create-spent":
       return `used ${n} to found a village`;
+    // `newage trident rules/quest` hands in the tokens a QUEST ... DISCOUNT names (`ah-mw1r.4`).
+    case "quest-spent":
+      return `handed in ${n} on a quest`;
+    // `newage trident rules/explore` consumes the resource map EXPLORE RMAP studies (`ah-mw1r.4`).
+    case "explore-spent":
+      return `used ${n} to explore`;
     case "transported-out":
       return change.other && change.other.name === null
         ? `sent ${n} to unit ${change.other.unitId}, which your report does not show`

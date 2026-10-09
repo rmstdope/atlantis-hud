@@ -116,6 +116,21 @@ pub enum Intent {
         requested: Option<i64>,
         item: String,
     },
+    /// `EXPLORE RMAP` or `EXPLORE TMAP` (New Age), with the map word as written. Month-long, and
+    /// carried as its own intent because the map is what it consumes: `newage trident
+    /// rules/explore` consumes a resource map "when the order executes", and a treasure map only
+    /// on success or on half the failures (`ah-mw1r.4`).
+    Explore {
+        map: String,
+    },
+    /// `QUEST [tokens] [RESOURCE|EQUIPMENT] [DISCOUNT]` (New Age). A free order, carried as an
+    /// intent for the Bounty Tokens it hands in: `newage trident rules/quest` spends `tokens`, one
+    /// when omitted, capped by what the unit carries - all of them only with `DISCOUNT`, since
+    /// without it "tokens not covered by bounty owed stay with the unit" (`ah-mw1r.4`).
+    Quest {
+        tokens: i64,
+        discount: bool,
+    },
     /// An order that takes the whole month and that no check reads any further.
     ///
     /// Occupying the month is the whole of what these say, and it is enough: a unit already
@@ -881,7 +896,32 @@ pub fn read_order(
             _ => Some(Intent::MonthLong("PRODUCE")),
         },
         "CREATE" => Some(Intent::MonthLong("CREATE")),
-        "EXPLORE" => Some(Intent::MonthLong("EXPLORE")),
+        // The map word is kept as written; a missing one still spends the month, as a bare
+        // `PRODUCE` does above.
+        "EXPLORE" => Some(
+            match super::grammar::consumed_arguments(command, arguments, ruleset)
+                .unwrap_or_default()
+            {
+                [map] => Intent::Explore {
+                    map: map.text.clone(),
+                },
+                _ => Intent::MonthLong("EXPLORE"),
+            },
+        ),
+        // `newage trident rules/quest`: "If omitted, exactly 1 token is spent". Read through the
+        // grammar, whose Trident forms carry `DISCOUNT` (`ah-mw1r.4`).
+        "QUEST" => {
+            let mut tokens = 1;
+            let mut discount = false;
+            for argument in super::grammar::consumed_arguments(command, arguments, ruleset)? {
+                if argument.kind == TokenKind::Number {
+                    tokens = argument.text.parse().ok()?;
+                } else if argument.text.eq_ignore_ascii_case("DISCOUNT") {
+                    discount = true;
+                }
+            }
+            Some(Intent::Quest { tokens, discount })
+        }
         // The rules' enumerated list omits IDLE, but describes it as "do nothing for the entire
         // month" - so it spends the month, and a unit told to be idle is not a forgotten one.
         "IDLE" => Some(Intent::MonthLong("IDLE")),
@@ -1041,7 +1081,8 @@ pub fn spends_the_month(intent: &Intent) -> bool {
         | Intent::Move { .. }
         | Intent::Sail { .. }
         | Intent::Build { .. }
-        | Intent::Produce { .. } => true,
+        | Intent::Produce { .. }
+        | Intent::Explore { .. } => true,
 
         // CAST is NOT a full month order: "a mage may still MOVE, STUDY, or use any other month
         // long order". A bare CAST falls back to `MonthLong("CAST")`, so it has to be caught
@@ -1056,6 +1097,7 @@ pub fn spends_the_month(intent: &Intent) -> bool {
         | Intent::Transport { .. }
         | Intent::Take { .. }
         | Intent::Steal { .. }
+        | Intent::Quest { .. }
         | Intent::Exchange { .. }
         | Intent::Buy { .. }
         | Intent::Sell { .. }
@@ -1216,12 +1258,25 @@ mod tests {
                 .iter()
                 .map(|placed| placed.keyword)
                 .collect::<Vec<_>>(),
-            ["EXPLORE"]
+            ["EXPLORE", "QUEST"]
         );
-        assert!(arcanum
-            .intents
-            .iter()
-            .all(|placed| matches!(placed.intent, Intent::MonthLong(_))));
+        // EXPLORE keeps its map and QUEST its tokens, for what they hand in (`ah-mw1r.4`).
+        assert_eq!(
+            arcanum
+                .intents
+                .iter()
+                .map(|placed| placed.intent.clone())
+                .collect::<Vec<_>>(),
+            [
+                Intent::Explore {
+                    map: "RMAP".to_string()
+                },
+                Intent::Quest {
+                    tokens: 1,
+                    discount: false
+                }
+            ]
+        );
         assert_eq!(arcanum.unread, vec![5]);
 
         let trident = only_unit_with_ruleset(
@@ -1235,7 +1290,45 @@ mod tests {
                 .iter()
                 .map(|placed| placed.keyword)
                 .collect::<Vec<_>>(),
-            ["EXPLORE", "CREATE"]
+            ["EXPLORE", "QUEST", "CREATE"]
+        );
+    }
+
+    /// QUEST and EXPLORE are read through the grammar's consumed prefix: `newage trident
+    /// rules/quest` has a `DISCOUNT` form and `newage arcanum rules/quest` has none, and trailing
+    /// text after the map word is the engine-ignored kind (`ah-mw1r.4`).
+    #[test]
+    fn quest_and_explore_read_what_the_grammar_consumes() {
+        let source = "unit 5\nQUEST 2 RESOURCE DISCOUNT\nEXPLORE RMAP note\n";
+        let read = |ruleset: &str| -> Vec<Intent> {
+            only_unit_with_ruleset(source, ruleset)
+                .intents
+                .into_iter()
+                .map(|placed| placed.intent)
+                .collect()
+        };
+        let explore = Intent::Explore {
+            map: "RMAP".to_string(),
+        };
+        assert_eq!(
+            read(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON),
+            [
+                Intent::Quest {
+                    tokens: 2,
+                    discount: true
+                },
+                explore.clone()
+            ]
+        );
+        assert_eq!(
+            read(atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON),
+            [
+                Intent::Quest {
+                    tokens: 2,
+                    discount: false
+                },
+                explore
+            ]
         );
     }
 

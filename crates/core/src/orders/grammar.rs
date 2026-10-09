@@ -550,6 +550,25 @@ const NEW_AGE_ORDERS: &[Order] = &[
     },
 ];
 
+/// `newage trident rules/quest` adds `QUEST [tokens] [RESOURCE|EQUIPMENT] DISCOUNT` to the forms
+/// every New Age world shares; `newage arcanum rules/quest` has no DISCOUNT (`ah-mw1r.4`). Only
+/// the order the rules print it in is offered: another order leaves `DISCOUNT` as trailing text.
+const TRIDENT_QUEST: Order = Order {
+    name: "QUEST",
+    forms: &[
+        &[],
+        &[Arg::Number],
+        &[Arg::Number, Arg::OneOf(&["RESOURCE", "EQUIPMENT"])],
+        &[Arg::Kw("DISCOUNT")],
+        &[Arg::Number, Arg::Kw("DISCOUNT")],
+        &[
+            Arg::Number,
+            Arg::OneOf(&["RESOURCE", "EQUIPMENT"]),
+            Arg::Kw("DISCOUNT"),
+        ],
+    ],
+};
+
 const ORIGINS_ONLY_ORDERS: &[&str] = &["ANNIHILATE", "SACRIFICE"];
 
 /// The material words a New Age `BUILD` may name, in the order the editor offers them.
@@ -606,7 +625,14 @@ pub(super) fn selected_orders(ruleset: Option<&Ruleset>) -> Vec<&'static Order> 
         orders.extend(
             NEW_AGE_ORDERS
                 .iter()
-                .filter(|order| order.name != "CREATE" || is_trident(ruleset)),
+                .filter(|order| order.name != "CREATE" || is_trident(ruleset))
+                .map(|order| {
+                    if order.name == "QUEST" && is_trident(ruleset) {
+                        &TRIDENT_QUEST
+                    } else {
+                        order
+                    }
+                }),
         );
     }
     orders.sort_unstable_by_key(|order| order.name);

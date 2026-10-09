@@ -577,6 +577,12 @@ pub enum ItemChangeCause {
     /// Consumed in founding a village: `newage trident rules/create_village` takes 1000 people and
     /// 100 wagons from the unit whose `CREATE VILLAGE` runs (`ah-mw1r.3`).
     CreateSpent,
+    /// Handed in by a `QUEST ... DISCOUNT`: `newage trident rules/quest` accepts every token named,
+    /// capped by what the unit carries (`ah-mw1r.4`).
+    QuestSpent,
+    /// Consumed by `EXPLORE RMAP`: `newage trident rules/explore` consumes the map "when the order
+    /// executes, even if the region has nothing to chart" (`ah-mw1r.4`).
+    ExploreSpent,
     /// Sent by this unit's `TRANSPORT`/`DISTRIBUTE`.
     TransportedOut,
     /// Arrived by another unit's `TRANSPORT`/`DISTRIBUTE`.
@@ -1996,6 +2002,8 @@ impl WorkingUnit {
                     | ItemChangeCause::ProductionSpent
                     | ItemChangeCause::BuildSpent
                     | ItemChangeCause::CreateSpent
+                    | ItemChangeCause::QuestSpent
+                    | ItemChangeCause::ExploreSpent
             );
             if after_deletion {
                 add_item(&mut items, &change.name, &change.tag, -change.delta);
