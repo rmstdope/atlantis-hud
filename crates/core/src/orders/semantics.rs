@@ -7471,6 +7471,26 @@ fn apply(
         Intent::Produce { .. } => {}
         // FACTION moves no silver, goods or people (`rules/faction`).
         Intent::Faction { .. } => {}
+        // `rules/steal` attempts to steal "as much as possible" of the item from a unit the thief
+        // can see, so whether anything arrives is dice and the target's stock. Nothing is
+        // credited; the line is admitted instead, which the ITEMS cell draws as `+ ?`, and the
+        // SILVER column doubts a theft of silver for itself (`silver::forecast_unit`,
+        // `ah-mw1r.1`). The stolen tag is marked uncertain exactly as an uncertain `GIVE` marks
+        // the giver's, so a later order spending or handing it on says it cannot be counted
+        // rather than reading the pre-theft holding as the answer.
+        Intent::Steal { from, item } => {
+            mark_uncounted(ledger, who, placed.line);
+            if let Some(tag) = resolve_item(item, hex, actor, ruleset) {
+                ledger
+                    .state
+                    .uncertain
+                    .entry((who.clone(), tag.to_ascii_uppercase()))
+                    .or_insert(UncertainGive {
+                        target: party_label(from),
+                        line: placed.line,
+                    });
+            }
+        }
         // Never reached from the walk: `phases::ORDER` holds no Transport phase. TRANSPORT settles
         // report-wide in `settle_report_wide`.
         Intent::Transport { .. } => {}

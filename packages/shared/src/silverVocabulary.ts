@@ -664,6 +664,20 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       countUpkeep: true
     })
   },
+  // `rules/steal`: the order steals "as much as possible", so whether anything arrives is dice and
+  // the target's purse (`ah-mw1r.1`).
+  {
+    id: "doubt-steal-uncertain",
+    when: ({ silver }) => silver.doubt === "steal-uncertain",
+    say: () =>
+      "Whether this STEAL succeeds, and how much silver it takes, cannot be predicted, so what this unit ends the month with cannot be said.",
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({ doubt: "steal-uncertain" }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
   {
     id: "doubt-unknown-combat-ready",
     when: ({ silver }) => silver.doubt === "unknown-combat-ready",

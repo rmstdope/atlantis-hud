@@ -35,6 +35,15 @@ pub enum Intent {
         what: Selector,
         amount: Amount,
     },
+    /// `STEAL [unit] [item]`. A free order (`rules/sequenceofevents` runs it under *Subterfuge
+    /// orders*, before *Give orders*), carried as an intent because what it brings in cannot be
+    /// counted: `rules/steal` attempts to steal "as much as possible" of the item, so whether
+    /// anything arrives is dice and the target's stock. Nothing is ever credited for it; the line
+    /// is admitted as uncounted instead (`ah-mw1r.1`).
+    Steal {
+        from: Party,
+        item: String,
+    },
     /// `TAKE FROM`, which is a GIVE written from the other end.
     Take {
         from: Party,
@@ -598,8 +607,8 @@ impl<'a, 'r> FormReader<'a, 'r> {
 /// the navigator on 2026-08-19: TRANSPORT and its synonym DISTRIBUTE are free; ANNIHILATE is
 /// month-long and is given an intent below.
 ///
-/// Keywords that already yield an intent (BUY, SELL, GIVE, TAKE, ENTER, LEAVE, GUARD, AVOID, CLAIM,
-/// WITHDRAW, FORM, CAST) never reach this list at runtime. They are listed anyway so that the
+/// Keywords that already yield an intent (BUY, SELL, GIVE, TAKE, STEAL, ENTER, LEAVE, GUARD, AVOID,
+/// CLAIM, WITHDRAW, FORM, CAST) never reach this list at runtime. They are listed anyway so that the
 /// classification of every order lives in one readable place.
 const FREE_ORDERS: &[&str] = &[
     "ADDRESS",
@@ -737,6 +746,12 @@ pub fn read_order(
             let (from, rest) = forms::read_party(rest)?;
             let (what, amount) = forms::read_transfer(rest)?;
             Some(Intent::Take { from, what, amount })
+        }
+        "STEAL" => {
+            let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
+            let (from, rest) = forms::read_party(arguments)?;
+            let item = rest.first().filter(|_| rest.len() == 1)?.text.clone();
+            Some(Intent::Steal { from, item })
         }
         "BUY" | "SELL" => {
             let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
@@ -1014,6 +1029,7 @@ pub fn spends_the_month(intent: &Intent) -> bool {
         | Intent::Give { .. }
         | Intent::Transport { .. }
         | Intent::Take { .. }
+        | Intent::Steal { .. }
         | Intent::Buy { .. }
         | Intent::Sell { .. }
         | Intent::Guard(_)
@@ -1135,6 +1151,17 @@ mod tests {
     fn stealing_is_free() {
         let unit = only_unit("unit 5\nSTEAL 4021 SILV\n");
         assert!(unit.unread.is_empty(), "{unit:?}");
+        assert_eq!(
+            unit.intents
+                .iter()
+                .map(|placed| placed.intent.clone())
+                .collect::<Vec<_>>(),
+            vec![Intent::Steal {
+                from: Party::Unit("4021".to_string()),
+                item: "SILV".to_string()
+            }],
+            "read as a theft, so the preview can admit it (ah-mw1r.1)"
+        );
     }
 
     #[test]

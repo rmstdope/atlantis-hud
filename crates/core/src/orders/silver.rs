@@ -980,6 +980,10 @@ pub enum SilverDoubt {
     /// reported, or the target is a unit the report does not show - so the month has no total. The
     /// shipment may well happen, which is why it is not a refusal and not a problem (`ah-7ale.5`).
     UnpricedShipment,
+    /// `STEAL` of silver: `rules/steal` takes "as much as possible", so whether anything arrives
+    /// is dice and the target's purse, and what the unit ends the month with cannot be said
+    /// (`ah-mw1r.1`).
+    StealUncertain,
 }
 
 /// What one unit may draw from one contended regional pool, once its faction-mates in the same hex
@@ -2893,6 +2897,17 @@ pub fn forecast_unit(
                     || (*count > 0
                         && !region.withdrawals_refused
                         && withdrawal_cost(item, ruleset).is_some());
+            }
+            // `rules/steal` attempts to steal "as much as possible" of the item, so what a theft
+            // of silver brings in is dice and the target's purse. The ledger credits nothing and
+            // admits the line (`semantics::apply`); the column says it cannot add the month up
+            // rather than show a figure the theft may beat (`ah-mw1r.1`). A theft of anything
+            // else leaves the silver alone.
+            Intent::Steal { item, .. }
+                if (lookups.item_tag)(item)
+                    .is_some_and(|tag| tag.eq_ignore_ascii_case(SILVER_TAG)) =>
+            {
+                income_doubt = income_doubt.or(Some(SilverDoubt::StealUncertain));
             }
             _ => {}
         }
