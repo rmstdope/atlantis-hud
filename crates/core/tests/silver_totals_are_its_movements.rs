@@ -121,8 +121,9 @@ fn a_sharing_unit_says_where_its_loan_went() {
     //
     // $1446 until `ah-0mch`, which prices a CAST on the caster's purse plus every other sharer's
     // (spells.cpp reads `Unit::GetSharedNum`): 683's standing `@CAST CFSW` was capped at no swords
-    // by its own $44, and now makes both its level allows at $600 each (`data/CFSW`), so 3493
-    // lends $496 more and 8048 the last $104. The two beads merged minutes apart, each pinning
+    // by its own $44, and now makes the two swords `ah-ofpb.4` reads its level as allowing, priced
+    // at `data/CFSW`'s $600 per sword as `ah-ofpb.4` charges it, so 3493 lends $496 more and 8048
+    // the last $104. The two beads merged minutes apart, each pinning
     // this figure against a main without the other.
     assert_eq!(lent[0].amount, -1942, "signed out of the unit");
     assert_eq!(lent[0].line, None, "the SHARE flag lent it, not an order");
