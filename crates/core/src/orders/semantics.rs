@@ -54788,6 +54788,72 @@ BUILD
         }
     }
 
+    /// The same scene, judged: nobody in the hex holds any silver as STUDY settles, so the
+    /// shipment that reaches the sharing student afterwards pays for nothing. `rules/share` lends
+    /// only silver a unit has, and `rules/sequenceofevents` runs STUDY before TRANSPORT - so the
+    /// hex is short every fee, the purse lends nothing, and a non-sharing student is marked
+    /// short in its column rather than covered (`ah-vusi`, settled by `ah-aqqb`'s repaid-late
+    /// claim). What pins the regression is the column: nobody borrows, and no row reads covered.
+    /// The hex warning's sentence is a control - it read the same before `ah-aqqb` too.
+    #[test]
+    fn a_purse_whose_only_silver_arrives_after_study_is_judged_short() {
+        for (others, orders, spent, student) in [
+            (
+                vec![sharing(with_silver(unit("8"), 0))],
+                "unit 5\nTRANSPORT 6 100 SILV\nunit 6\nSTUDY combat\n",
+                20,
+                None,
+            ),
+            (
+                vec![
+                    sharing(with_silver(unit("8"), 0)),
+                    with_silver(unit("9"), 0),
+                ],
+                "unit 5\nTRANSPORT 6 100 SILV\nunit 6\nSTUDY combat\nunit 9\nSTUDY combat\n",
+                30,
+                Some("9"),
+            ),
+        ] {
+            let mut units = vec![sharing(with_men(with_silver(unit("6"), 0), 2))];
+            units.extend(others);
+            let (report, options) = traced(
+                report(vec![caravanserai_hex("5", 100, units)]),
+                orders,
+                &ruleset(),
+                CheckOptions::default(),
+            );
+            let review = review_turn(&report, orders, Some(&ruleset()), options);
+            let hex_finding = review
+                .findings
+                .iter()
+                .find(|f| f.code == codes::NOT_ENOUGH_SILVER && f.unit_id.is_none())
+                .unwrap_or_else(|| panic!("{orders}: {:#?}", review.findings));
+            assert_eq!(
+                hex_finding.message,
+                format!(
+                    "the units in this hex are short ${spent} between them: they can have $0 \
+                     and their orders spend ${spent}"
+                ),
+                "{orders}"
+            );
+            for row in &review.silver {
+                assert_ne!(
+                    row.shared_silver_coverage,
+                    Some(super::super::silver::SharedSilverCoverage::Covered),
+                    "{orders}: {row:?}"
+                );
+                assert_eq!(row.borrowed_for_orders, 0, "{orders}: {row:?}");
+            }
+            if let Some(student) = student {
+                assert_eq!(
+                    forecast_for(&review, student).shared_silver_coverage,
+                    Some(super::super::silver::SharedSilverCoverage::Shortfall),
+                    "{orders}"
+                );
+            }
+        }
+    }
+
     /// A sharer that walks in lends at STUDY what it holds then: silver shipped to it afterwards
     /// pays nothing that has already been studied (`rules/sequenceofevents`, `ah-qrk0` review).
     #[test]
