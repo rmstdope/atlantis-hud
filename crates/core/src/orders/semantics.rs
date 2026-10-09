@@ -5139,10 +5139,13 @@ impl PhaseState {
         let maintenance = stocks.pop().expect("three phases were asked for");
         let production = stocks.pop().expect("three phases were asked for");
         let study = stocks.pop().expect("three phases were asked for");
-        // Derived once, from the maintenance stocks, and shared: no phase after the market can move
-        // a man-tagged item (`rules/sequenceofevents` puts GIVE/TAKE, the market and WITHDRAW
-        // before Movement), so a per-phase derivation could only ever agree - at three times the
-        // cost, on a path that runs per keystroke.
+        // Derived once, from the maintenance stocks, and shared: nothing after the market moves a
+        // man-tagged item (`rules/sequenceofevents` puts GIVE/TAKE, the market and WITHDRAW
+        // before Movement) except Trident's `CREATE VILLAGE`, which consumes its founders after
+        // production (`ah-mw1r.3`). That unit's month is the founding, so it neither studies nor
+        // produces, and the study and production pictures cannot read a different answer from
+        // this one - a per-phase derivation would cost three times as much on a path that runs per
+        // keystroke.
         let men = men_from(hex, &maintenance, ruleset);
         PhaseHoldings {
             study: LateHoldings::assemble(study, &men),
@@ -5243,8 +5246,9 @@ fn men_from(hex: &Hex<'_>, stocks: &[Vec<ItemAmount>], ruleset: Option<&Ruleset>
         .map(|(ordered, items)| {
             // Not derived for a unit whose headcount is itself a guess - re-deriving from a list
             // the catalogue cannot fully read is the guess `classify_unit` refuses to make, under
-            // another name. Only `BUY`/`SELL` of a man-tagged item can move a headcount any further
-            // than the early picture already has it - `PRODUCE`, `WITHDRAW` and trading in anything
+            // another name. Only `BUY`/`SELL` of a man-tagged item, and Trident's `CREATE VILLAGE`
+            // consuming its founders (`ah-mw1r.3`), can move a headcount any further than the early
+            // picture already has it - `PRODUCE`, `WITHDRAW` and trading in anything
             // else leave a unit's own people untouched, so this compares man tags alone against the
             // early picture rather than re-deriving from every item the ledger happens to be
             // tracking.
@@ -7976,6 +7980,15 @@ fn apply(
         // Wages and takings from entertaining are paid in the last phase of the turn, after study
         // has been paid for, so they can fund nothing this month.
         Intent::Work | Intent::Entertain => {}
+        // `newage trident rules/create_village`: the founding unit "must have at least 1000 people
+        // (men or leaders) and 100 wagons; all of these are consumed". The navigator's own statement
+        // of the order, in `ah-mw1r`'s description (2026-10-09), reads it as consuming "1000 men or
+        // leaders and 100 wagons", after PRODUCE and before ENTERTAIN, which
+        // `rules/sequenceofevents` puts before maintenance - so the founders pay no upkeep
+        // (`ah-mw1r.3`). Trident only, as `grammar.rs` offers it.
+        Intent::MonthLong("CREATE") if super::grammar::is_trident(ruleset) => {
+            create_village(ledger, hex, actor, placed, ruleset);
+        }
         // `PRODUCE` naming no item: the month is spoken for and nothing can be said about what it
         // makes, so the column admits the gap rather than showing an unchanged list (`ah-ofpb.1`).
         // Deliberately not `doubted`: a bare PRODUCE costs no silver, so no sum is in question.
@@ -10716,6 +10729,99 @@ fn names_the_same_item(text: &str, tag: &str, name: &str) -> bool {
         .flatten()
         .any(|spelling| tag.eq_ignore_ascii_case(spelling) || name.eq_ignore_ascii_case(spelling));
     matched
+}
+
+/// What a founding `CREATE VILLAGE` takes (`newage trident rules/create_village`).
+const VILLAGE_FOUNDERS: i64 = 1000;
+const VILLAGE_WAGONS: i64 = 100;
+/// `newage trident data/wagon`. The magic wagon is another item, and the rule names wagons.
+const WAGON: &str = "WAGO";
+/// Where `newage trident rules/create_village` says a village may not be founded.
+const REFUSED_TERRAIN: [&str; 4] = ["ocean", "lake", "volcano", "barren"];
+
+/// Consumes the people and wagons a `CREATE VILLAGE` founds its village with, from the phase after
+/// production onward, so maintenance no longer counts the founders (`ah-mw1r.3`).
+///
+/// A unit short of either founds nothing and keeps everything, as the rule's "must have" reads, and
+/// so does one in a region the rule refuses that the report shows: one that already has a
+/// settlement, or ocean, lake, volcano or barren terrain. The rule's third requirement, three hexes
+/// from any other settlement, is not checked: this settlement sees one hex. A
+/// holding a `GIVE` left uncertain cannot say which, so nothing is consumed and the line is
+/// admitted. Which people go when a unit holds more than one kind is not stated anywhere: they are
+/// taken in the order the report lists the unit's items, the first kind first.
+fn create_village(
+    ledger: &mut Ledger<'_>,
+    hex: &Hex<'_>,
+    actor: &Ordered<'_>,
+    placed: &PlacedIntent,
+    ruleset: Option<&Ruleset>,
+) {
+    let Some(ruleset) = ruleset else {
+        return;
+    };
+    let refused = hex.region.settlement.is_some()
+        || REFUSED_TERRAIN
+            .iter()
+            .any(|terrain| hex.region.terrain.eq_ignore_ascii_case(terrain));
+    if refused {
+        return;
+    }
+    let who = &actor.unit.unit_id;
+    let phase = StatePhase::PrimaryProduction;
+    let mut people: Vec<(String, i64)> = ledger
+        .state
+        .holdings_at(phase, who)
+        .into_iter()
+        .filter(|(tag, amount)| *amount > 0 && ruleset.is_man(tag))
+        .collect();
+    let listed = |tag: &str| {
+        actor
+            .unit
+            .items
+            .iter()
+            .position(|item| item.tag.eq_ignore_ascii_case(tag))
+            .unwrap_or(usize::MAX)
+    };
+    people.sort_by_key(|(tag, _)| listed(tag));
+    let uncertain = people
+        .iter()
+        .map(|(tag, _)| tag.as_str())
+        .chain([WAGON])
+        .any(|tag| ledger.state.known_balance_at(phase, who, tag).is_err());
+    if uncertain {
+        mark_uncounted(ledger, who, placed.line);
+        return;
+    }
+    let founders: i64 = people.iter().map(|(_, amount)| amount).sum();
+    if founders < VILLAGE_FOUNDERS || ledger.state.balance_at(phase, who, WAGON) < VILLAGE_WAGONS {
+        return;
+    }
+    let mut owed = VILLAGE_FOUNDERS;
+    let mut spent: Vec<(String, i64)> = Vec::new();
+    for (tag, amount) in people {
+        if owed == 0 {
+            break;
+        }
+        let taken = amount.min(owed);
+        owed -= taken;
+        spent.push((tag, taken));
+    }
+    spent.push((WAGON.to_string(), VILLAGE_WAGONS));
+    for (tag, amount) in spent {
+        charge(ledger, phase, who, &tag, amount, placed);
+        ledger.movements.push(ItemMovement {
+            unit_id: who.clone(),
+            name: item_name(&tag, hex, Some(ruleset)),
+            tag,
+            delta: -amount,
+            cause: ItemChangeCause::CreateSpent,
+            phase,
+            line: Some(placed.line as i64),
+            unit_price: None,
+            other: None,
+            created: None,
+        });
+    }
 }
 
 /// Marks one order's line uncounted for one unit, once however many tags it names.

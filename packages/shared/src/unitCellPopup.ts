@@ -464,6 +464,9 @@ function itemCauseClause(change: ItemChange, unit: PreviewedUnit, people: boolea
       return castCreatedClause(change, unit, n);
     case "cast-spent":
       return `consumed ${n} by a spell`;
+    // `newage trident rules/create_village` consumes the founders and their wagons (`ah-mw1r.3`).
+    case "create-spent":
+      return `used ${n} to found a village`;
     case "transported-out":
       return change.other && change.other.name === null
         ? `sent ${n} to unit ${change.other.unitId}, which your report does not show`

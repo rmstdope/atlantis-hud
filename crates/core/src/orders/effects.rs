@@ -574,6 +574,9 @@ pub enum ItemChangeCause {
     CastCreated,
     /// Consumed as the material of a `CAST`.
     CastSpent,
+    /// Consumed in founding a village: `newage trident rules/create_village` takes 1000 people and
+    /// 100 wagons from the unit whose `CREATE VILLAGE` runs (`ah-mw1r.3`).
+    CreateSpent,
     /// Sent by this unit's `TRANSPORT`/`DISTRIBUTE`.
     TransportedOut,
     /// Arrived by another unit's `TRANSPORT`/`DISTRIBUTE`.
@@ -1924,6 +1927,7 @@ impl WorkingUnit {
                     | ItemChangeCause::Produced
                     | ItemChangeCause::ProductionSpent
                     | ItemChangeCause::BuildSpent
+                    | ItemChangeCause::CreateSpent
             );
             if after_deletion {
                 add_item(&mut items, &change.name, &change.tag, -change.delta);
