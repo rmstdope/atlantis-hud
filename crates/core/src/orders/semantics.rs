@@ -27516,7 +27516,11 @@ BUILD Farm COMPLETE
                 |ledger| {
                     let spend = &ledger.built.get("901").expect("the helper builds")[0];
                     assert!(!spend.founding, "the helper founds nothing either");
-                    assert!(spend.amount <= 3, "capped by the Farm's needs: {}", spend.amount);
+                    assert!(
+                        spend.amount <= 3,
+                        "capped by the Farm's needs: {}",
+                        spend.amount
+                    );
                 },
             );
         }
