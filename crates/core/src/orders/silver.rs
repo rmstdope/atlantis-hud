@@ -611,7 +611,8 @@ pub struct SettledBuyAll {
     /// contended tax pool's settlement takes off this unit's collection (`ah-ud89.2`), plus what
     /// an over-charged bounded line left it, plus what `rules/share` lends it - each sharer's own
     /// tax settled against it first, and silver in hand alone where no share of the pool is a
-    /// number (`ah-3c2t.1`).
+    /// number (`ah-3c2t.1`). Either way a sharer also lends what it sold for, since every SELL
+    /// settles before any BUY (`rules/sequenceofevents`, `ah-9n7l.1`).
     pub silver_available: i64,
     /// What `price_buy_all` decided: the count, the caps, and which one bit.
     pub plan: BuyAllPlan,
