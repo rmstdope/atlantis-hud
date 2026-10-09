@@ -5817,6 +5817,11 @@ fn ledger_for_reaching<'a>(
                 );
             }
         }
+        if phase == StatePhase::Give {
+            // "EXCHANGE orders are processed" after GIVE and TAKE (`rules/sequenceofevents`), so
+            // across the hex once every unit's Give phase has run (`ah-mw1r.2`).
+            settle_exchanges(&mut ledger, hex);
+        }
         if phase != StatePhase::Market {
             continue;
         }
@@ -7491,6 +7496,19 @@ fn apply(
                     });
             }
         }
+        // Between two of our units in this hex an exchange is settled by `settle_exchanges`, once
+        // the whole Give phase has run. With anyone else the partner's line is out of sight, so
+        // whether the goods move cannot be said: nothing moves and the line is admitted
+        // (`ah-mw1r.2`, the navigator's answer on `ah-mw1r`). A unit the report shows elsewhere
+        // is no partner at all (`rules/exchange` needs units that can see each other).
+        Intent::Exchange { with, .. } => {
+            if matches!(
+                hex.give_endpoint(with, who).reach,
+                GiveReach::Foreign | GiveReach::Unshown
+            ) {
+                mark_uncounted(ledger, who, placed.line);
+            }
+        }
         // Never reached from the walk: `phases::ORDER` holds no Transport phase. TRANSPORT settles
         // report-wide in `settle_report_wide`.
         Intent::Transport { .. } => {}
@@ -8237,6 +8255,188 @@ fn transfer(
         } else {
             credit(ledger, StatePhase::Give, &to, &tag, received);
         }
+    }
+}
+
+/// One of our units' `EXCHANGE` lines whose partner is another of our units in the same hex.
+struct ExchangeOffer<'h> {
+    unit: usize,
+    partner: usize,
+    placed: &'h PlacedIntent,
+    give_tag: String,
+    give_amount: i64,
+    expect_tag: String,
+    expect_amount: i64,
+}
+
+/// Settles every `EXCHANGE` between two of our units in `hex`, after the hex's Give phase.
+///
+/// `rules/exchange`: "The orders given by the two units must be complementary. If either unit
+/// involved does not have the items it is offering, or if the exchange orders given are not
+/// complementary, the exchange is aborted. Men may not be exchanged." Complementary is the engine's
+/// test (`runorders.cpp` `DoExchangeOrder`): each names the other, each offers the item the other
+/// expects, and each offers exactly the amount the other expects. What each side holds is its
+/// balance once every GIVE and TAKE has run. A matched pair moves both items, recorded as a gift
+/// each way on the line that hands it over; anything else moves nothing.
+fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
+    let mut offers: Vec<ExchangeOffer<'_>> = Vec::new();
+    for (unit, ordered) in hex.units.iter().enumerate() {
+        for placed in &ordered.intents {
+            let Intent::Exchange {
+                with,
+                give_amount,
+                give_item,
+                expect_amount,
+                expect_item,
+            } = &placed.intent
+            else {
+                continue;
+            };
+            let endpoint = hex.give_endpoint(with, &ordered.unit.unit_id);
+            let Some(partner) = endpoint
+                .row
+                .filter(|_| endpoint.reach == GiveReach::Ours)
+                .and_then(|id| hex.units.iter().position(|other| other.unit.unit_id == id))
+            else {
+                continue;
+            };
+            let resolved = (
+                resolve_item(give_item, hex, ordered, ledger.ruleset),
+                resolve_item(expect_item, hex, ordered, ledger.ruleset),
+            );
+            let (Some(give_tag), Some(expect_tag)) = resolved else {
+                // Goods nothing can name: the player is told by `unknown-item`, and whether the
+                // partner's line matches cannot be said.
+                mark_uncounted(ledger, &ordered.unit.unit_id, placed.line);
+                continue;
+            };
+            let is_man = |tag: &str| ledger.ruleset.is_some_and(|rules| rules.is_man(tag));
+            if is_man(&give_tag) || is_man(&expect_tag) {
+                continue;
+            }
+            offers.push(ExchangeOffer {
+                unit,
+                partner,
+                placed,
+                give_tag: give_tag.to_ascii_uppercase(),
+                give_amount: *give_amount,
+                expect_tag: expect_tag.to_ascii_uppercase(),
+                expect_amount: *expect_amount,
+            });
+        }
+    }
+    let mut settled = vec![false; offers.len()];
+    for first in 0..offers.len() {
+        if settled[first] {
+            continue;
+        }
+        let one = &offers[first];
+        let Some(second) = (first + 1..offers.len()).find(|&index| {
+            let other = &offers[index];
+            !settled[index]
+                && other.unit == one.partner
+                && other.partner == one.unit
+                && other.give_tag == one.expect_tag
+                && other.expect_tag == one.give_tag
+                && other.give_amount == one.expect_amount
+                && other.expect_amount == one.give_amount
+        }) else {
+            continue;
+        };
+        settled[first] = true;
+        settled[second] = true;
+        let other = &offers[second];
+        let holds = |offer: &ExchangeOffer<'_>| {
+            ledger.state.known_balance_at(
+                StatePhase::Give,
+                &hex.units[offer.unit].unit.unit_id,
+                &offer.give_tag,
+            )
+        };
+        match (holds(one), holds(other)) {
+            (Ok(held), Ok(other_held))
+                if held >= one.give_amount && other_held >= other.give_amount =>
+            {
+                hand_over(ledger, hex, one);
+                hand_over(ledger, hex, other);
+            }
+            (Ok(_), Ok(_)) => {}
+            // What one side holds is itself in doubt, so whether the exchange goes ahead is too.
+            (Err(uncertain), _) | (_, Err(uncertain)) => {
+                let uncertain = uncertain.clone();
+                for offer in [one, other] {
+                    let receiver = hex.units[offer.partner].unit.unit_id.clone();
+                    ledger
+                        .state
+                        .uncertain
+                        .entry((receiver, offer.give_tag.clone()))
+                        .or_insert_with(|| uncertain.clone());
+                    let giver = hex.units[offer.unit].unit.unit_id.clone();
+                    mark_uncounted(ledger, &giver, offer.placed.line);
+                }
+            }
+        }
+    }
+}
+
+/// One side of a settled exchange: `offer`'s unit hands what it offered to its partner.
+fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer<'_>) {
+    let giver = hex.units[offer.unit].unit;
+    let receiver = hex.units[offer.partner].unit;
+    let (tag, amount, placed) = (&offer.give_tag, offer.give_amount, offer.placed);
+    if amount == 0 {
+        return;
+    }
+    if tag.eq_ignore_ascii_case(SILVER) {
+        move_silver(
+            ledger,
+            StatePhase::Give,
+            &giver.unit_id,
+            -amount,
+            SilverChangeCause::GaveAway,
+            Some(placed),
+            Some(format!("{} ({})", receiver.name, receiver.unit_id)),
+        );
+        move_silver(
+            ledger,
+            StatePhase::Give,
+            &receiver.unit_id,
+            amount,
+            SilverChangeCause::WasGiven,
+            Some(placed),
+            Some(format!("{} ({})", giver.name, giver.unit_id)),
+        );
+    } else {
+        charge(
+            ledger,
+            StatePhase::Give,
+            &giver.unit_id,
+            tag,
+            amount,
+            placed,
+        );
+        credit(ledger, StatePhase::Give, &receiver.unit_id, tag, amount);
+    }
+    let name = item_name(tag, hex, ledger.ruleset);
+    for (unit, delta, cause, other) in [
+        (giver, -amount, ItemChangeCause::GivenAway, receiver),
+        (receiver, amount, ItemChangeCause::WasGiven, giver),
+    ] {
+        ledger.movements.push(ItemMovement {
+            unit_id: unit.unit_id.clone(),
+            tag: tag.clone(),
+            name: name.clone(),
+            delta,
+            cause,
+            phase: StatePhase::Give,
+            line: Some(placed.line as i64),
+            unit_price: None,
+            other: Some(ItemChangeParty {
+                unit_id: other.unit_id.clone(),
+                name: Some(other.name.clone()),
+            }),
+            created: None,
+        });
     }
 }
 

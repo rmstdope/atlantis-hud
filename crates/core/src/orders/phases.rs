@@ -107,6 +107,10 @@ pub(crate) fn phase_of(intent: &Intent) -> StatePhase {
         Intent::Claim(_) => StatePhase::Claim,
         // "Give orders. GIVE and TAKE orders are processed."
         Intent::Give { .. } | Intent::Take { .. } => StatePhase::Give,
+        // "JOIN orders are processed. EXCHANGE orders are processed." - still the Give orders, and
+        // after every GIVE and TAKE: the ledger settles them in a pass of its own once the hex's
+        // Give phase has run (`ah-mw1r.2`).
+        Intent::Exchange { .. } => StatePhase::Give,
         // "TRANSPORT orders are processed in multiple phases", after WORK and before maintenance.
         Intent::Transport { .. } => StatePhase::Transport,
         // "Tax orders. ... PILLAGE ... TAX ... are processed."
