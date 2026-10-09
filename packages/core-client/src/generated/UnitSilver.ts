@@ -55,7 +55,9 @@ atMonthEnd: number | null,
 /**
  * What this unit's orders spend that no silver reaching it *in time* can cover.
  *
- * `max(0, wanted_for_orders - (held + income + shared_silver_for_orders - late_income))`.
+ * The deepest the unit's silver falls below zero as the turn runs its orders, each spend met
+ * only by what has arrived by its phase (`rules/sequenceofevents`, `ah-9n7l.2`), less what
+ * `shared_silver_for_orders` lends it.
  * Measured against what the orders *asked* for rather than what a capped `BUY` actually
  * spends, so a purchase the unit cannot pay for is still reported as short (`ah-omn7`).
  * `Some(0)`

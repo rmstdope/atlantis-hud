@@ -59,9 +59,37 @@ fn the_committed_template_previews_exactly_its_one_real_effect() {
         .iter()
         .filter(|(_, unit)| unit.study.is_some())
         .collect();
-    // A study row is a row about next turn: it must mark nothing this month.
+    // `ah-0mch`: two of the studying mages also carry a standing `@CAST eswo`, and Four of Seven
+    // (12880) shares 30 swords in their hex. Every cast cost reads `GetSharedNum` (`spells.cpp`,
+    // `RunCreateArtifact`), so each enchants ten of 12880's swords - its level, 2, times five
+    // (`data/ESWO`) - and 12880's row records the twenty it lent.
+    let item_change = |unit_id: &str, tag: &str| -> i64 {
+        rows.iter()
+            .find(|(_, unit)| unit.unit.unit_id == unit_id)
+            .map_or(0, |(_, unit)| {
+                unit.item_changes
+                    .iter()
+                    .filter(|change| change.tag == tag)
+                    .map(|change| change.delta)
+                    .sum()
+            })
+    };
+    assert_eq!(item_change("12878", "MSWO"), 10);
+    assert_eq!(item_change("12879", "MSWO"), 10);
+    assert_eq!(item_change("12880", "SWOR"), -20);
+    // A study row is a row about next turn: it must mark nothing this month - but for the items
+    // those two casts make.
     for (_, unit) in &studying {
         assert_eq!(unit.status, UnitPreviewStatus::Present);
+        if ["12878", "12879", "12880"].contains(&unit.unit.unit_id.as_str()) {
+            assert!(
+                unit.changes.iter().all(|change| change.field == "items"),
+                "unit {} changes only its items: {:?}",
+                unit.unit.unit_id,
+                unit.changes
+            );
+            continue;
+        }
         assert!(
             unit.changes.is_empty(),
             "unit {} studies and so changes nothing this month: {:?}",
