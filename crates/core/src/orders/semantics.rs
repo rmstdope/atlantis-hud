@@ -2154,9 +2154,11 @@ fn forecast_hex(
     // question - a passenger produces where its vessel arrives - so the settlement is handed in
     // rather than computed here (`ah-256d`, `ah-k43x`).
 
-    // What this hex's `SHARE` flags lend for orders, settled once and read by both surfaces: the
-    // same function `report_shortfalls` judges against, so the column cannot call a unit short
-    // that the warning knows a faction-mate is paying for (`ah-moq3`).
+    // What this hex's `SHARE` flags lend for orders, settled once for the column on the same
+    // `Sharing` pool `report_shortfalls` judges (`ah-moq3`). Read against the settled tax where
+    // the warning reads the walk's hopeful one (`ah-m2d9`), so a contended sharing hex short only
+    // on its settled tax shows red with no pool warning - the gap `ah-ud89` already accepts for a
+    // contended taxer that does not share.
     let purse_for_orders = sharing_purse(hex, ledger);
     // Whether `report_shortfalls` can judge this hex's pool at all: where it cannot, its silence
     // is not coverage, and the popup must not read it as such (`ah-0jxx`).
@@ -27817,6 +27819,32 @@ BUILD
             for id in ["2", "3"] {
                 assert_eq!(row(id).at_month_end, Some(0), "{:?}", row(id));
             }
+        }
+
+        /// A contended sharer the ledger's hopeful tax leaves in credit and its settled tax leaves
+        /// short: it buys 30 horses for $1,500 against a settled $1,000 (hopeful $2,000). The purse
+        /// lends it the $500, and its row says shared silver covered it (`ah-m2d9` review).
+        #[test]
+        fn a_contended_taxer_short_only_on_its_settled_tax_is_covered() {
+            let review = review_turn(
+                &report(vec![settled_purse_hex()]),
+                "unit 1\nTAX\nBUY 30 horse\nunit 2\nTAX\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let buyer = review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "1")
+                .expect("the buyer is forecast");
+
+            assert_eq!(buyer.borrowed_for_orders, 500, "{buyer:?}");
+            assert_eq!(buyer.at_month_end, Some(0), "{buyer:?}");
+            assert_eq!(
+                buyer.shared_silver_coverage,
+                Some(crate::orders::silver::SharedSilverCoverage::Covered),
+                "{buyer:?}"
+            );
         }
 
         /// Whether the purse covers the hex is judged on the same settled figures it then lends
