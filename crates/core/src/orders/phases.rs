@@ -98,9 +98,10 @@ pub(crate) fn phase_of(intent: &Intent) -> StatePhase {
         Intent::Tax | Intent::Pillage => StatePhase::Tax,
         // "Instant Magic ... Spells are CAST".
         Intent::Cast { .. } => StatePhase::Cast,
-        // "Market orders. SELL orders are processed. BUY orders are processed." One phase for both:
-        // no silver answer turns on the split today, and sharing it keeps the document order these
-        // two have within the market block.
+        // "Market orders. SELL orders are processed. BUY orders are processed." One phase for both,
+        // but not settled in document order within it: the ledger's walk applies every SELL in the
+        // hex first and BUY in a market pass of its own afterwards, item by item (`ah-zus2`), so a
+        // BUY is funded by every sale whatever line it was written on (`ah-9n7l.1`).
         Intent::Sell { .. } | Intent::Buy { .. } => StatePhase::Market,
         // WITHDRAW follows BUY in the market block.
         Intent::Withdraw { .. } => StatePhase::Withdraw,

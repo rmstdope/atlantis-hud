@@ -5632,8 +5632,16 @@ fn ledger_for_reaching<'a>(
         // (`ah-zus2`). Within one item: units as the report lists them, lines as written, and a
         // unit's `BUY ALL` after every bounded line for the item - it spends what they leave.
         let buys = buys_in_market_order(hex, ruleset);
-        // Every SELL has been applied by now, so its proceeds are the seller's own silver.
+        // Every SELL has been applied by now, so its proceeds are the seller's own silver - and a
+        // sharer's are lent to the purse too (`ah-9n7l.1`).
         ledger.market_purse.sold = market_moves(&ledger, hex, SilverChangeCause::Sold);
+        // A sharer whose SELL could not be counted lends proceeds nobody can price. Between the
+        // snapshot and here only SELL settles, so a unit doubted now was doubted by its sale.
+        ledger.market_purse.sale_doubted = hex
+            .units
+            .iter()
+            .map(|ordered| ledger.doubted.contains(&ordered.unit.unit_id))
+            .collect();
         let mut start = 0;
         while start < buys.len() {
             let item = buys[start].market_line;
@@ -6230,14 +6238,13 @@ pub(crate) fn item_effects(
     //
     // A **stable** sort by phase alone, deliberately not by `(phase, line)`: the ledger's own walk
     // is already phase-ordered (`for phase in phases::ORDER`) and pushes a unit's intents in
-    // document order within a phase, so push order inside one phase already is document order, and
-    // that is what a reader gets within a phase: a block writing `BUY` above `SELL` lists the
-    // purchase first, since both settle in `StatePhase::Market`. The one thing out of place is
-    // `settle_buy_all`, which runs after the whole walk and so pushes its market movements behind
-    // the withdrawals - which is the whole of what this sort puts right. Sorting by `(phase, line)`
-    // is deliberately not attempted: `rules/sequenceofevents` gives the market one phase and does
-    // not order buying against selling within it, so a line order would be a claim this module has
-    // no lookup behind.
+    // document order within a phase, so push order inside one phase already is the turn's order.
+    // Within the market that is every SELL first and then every BUY, whatever line each was
+    // written on: `rules/sequenceofevents` runs "SELL orders ... BUY orders" in that order, and the
+    // walk defers BUY to its market pass after every SELL in the hex (`ah-zus2`, `ah-9n7l.1`). The
+    // one thing out of place is `settle_buy_all`, which pushes its market movements behind the
+    // withdrawals - which is the whole of what this sort puts right. Sorting by `(phase, line)`
+    // would undo that, listing a `BUY` written above its `SELL` before the sale that paid for it.
     for entry in result.values_mut() {
         entry.moved.sort_by_key(|movement| movement.phase as usize);
     }
@@ -8015,7 +8022,15 @@ fn buy(
     // spent is gone, though: the purse shrinks between items (`ah-zus2`). An untrusted purse
     // leaves the line uncapped, which is the behaviour before `ah-szye`.
     let overcharged = ledger.overcharged.get(who).copied().unwrap_or(0);
-    let shared = ledger.market_purse.adds_for(standing.actor_index);
+    // A neighbour's sale nobody can price leaves the line uncapped too (`ah-9n7l.1`).
+    let shared = if ledger
+        .market_purse
+        .a_neighbours_sale_is_doubted(standing.actor_index)
+    {
+        None
+    } else {
+        ledger.market_purse.adds_for(standing.actor_index)
+    };
     let funds = match (
         shared,
         ledger
@@ -11055,18 +11070,18 @@ struct MarketPurse {
     /// or a doubted unit. No bounded `BUY` in the hex is then capped at all, which is this
     /// module's accept-on-doubt policy and the behaviour before this bead.
     ///
-    /// The `doubted` half of that is narrower than it looks, and deliberately so: the snapshot is
-    /// taken as the market opens, so it sees only the doubts raised in the phases before it - the
-    /// first five of [`phases::ORDER`]: `Instant`, `Claim`, `Give`, `Tax`, `Cast`. A sharer
-    /// doubted later, by its own `SELL` of goods nothing could identify
-    /// or by a `PRODUCE` in a phase after the market, is still counted here. That is
-    /// right rather than merely convenient: those doubts are about what the unit will hold at the
-    /// *end* of the month, and what this purse lends is what it holds when the market opens, which
-    /// is a figure the ledger still knows. The `known_balance_at` half is what catches a
-    /// market-open balance that genuinely cannot be priced, whenever the doubt was raised.
+    /// The `doubted` half of that is narrower than it looks: the snapshot is taken as the market
+    /// opens, so it sees the doubts raised in the phases before it - the first five of
+    /// [`phases::ORDER`]: `Instant`, `Claim`, `Give`, `Tax`, `Cast`. A sharer doubted by its own
+    /// `SELL` is [`MarketPurse::sale_doubted`]'s, which leaves every *other* unit's bounded `BUY`
+    /// uncapped (`ah-9n7l.1`). A sharer doubted later still, by a `PRODUCE` in a phase after the
+    /// market, is still counted: that doubt is about what the unit will hold at the *end* of the
+    /// month, not what it lends at the market. The `known_balance_at` half is what catches a market-open balance that
+    /// genuinely cannot be priced, whenever the doubt was raised.
     trusted: bool,
     /// `true` when any sharer's tax was unknowable and the purse therefore lent silver in hand
-    /// alone. `ah-3c2t.3` renders it as the sentence that tells the player the quantity is a
+    /// alone - its sale proceeds included, which are in hand by the time a BUY is sized
+    /// (`ah-9n7l.1`), but no tax. `ah-3c2t.3` renders it as the sentence that tells the player the quantity is a
     /// floor. Kept on the purse rather than recomputed there because the rule that chose the
     /// fallback lives here.
     fell_back: bool,
@@ -11082,10 +11097,17 @@ struct MarketPurse {
     spent: Vec<i64>,
     /// What each unit sold for at the market. `rules/sequenceofevents` runs SELL before BUY, so
     /// the proceeds are the seller's own silver when the purse is sized, and spending them is
-    /// never a debt to the purse. Set by the market pass once every
-    /// SELL is applied; the snapshot itself is taken before them, so a SELL's doubt still does
-    /// not reach it (see `trusted`). Index-aligned with `hex.units`; empty reads as nothing sold.
+    /// never a debt to the purse; a sharer lends them onward like its market-open silver
+    /// (`ah-9n7l.1`). Set by the market pass once every SELL is applied. Index-aligned with
+    /// `hex.units`; empty reads as nothing sold.
     sold: Vec<i64>,
+    /// Which units of the hex are doubted once every SELL is applied - in practice, by a `SELL`
+    /// that could not be counted. Such a sharer's proceeds cannot be priced, so a bounded `BUY` by
+    /// any *other* unit is left uncapped ([`MarketPurse::a_neighbours_sale_is_doubted`]): the
+    /// accept-on-doubt policy of `trusted`, applied to proceeds (`ah-9n7l.1`, review finding 1).
+    /// Not for the seller itself, whose own sale is its own balance. Set by the market pass with
+    /// `sold`; index-aligned with `hex.units`; empty reads as nobody doubted.
+    sale_doubted: Vec<bool>,
     /// Which units of the hex lend to the purse. Index-aligned with `hex.units`.
     sharer: Vec<bool>,
 }
@@ -11103,6 +11125,7 @@ impl Default for MarketPurse {
             own: Vec::new(),
             spent: Vec::new(),
             sold: Vec::new(),
+            sale_doubted: Vec::new(),
             sharer: Vec::new(),
         }
     }
@@ -11183,12 +11206,14 @@ impl MarketPurse {
             own,
             spent: Vec::new(),
             sold: Vec::new(),
+            sale_doubted: Vec::new(),
             sharer,
         }
     }
 
-    /// What the purse adds to the unit at `index`: every **other** sharer's market-open silver,
-    /// less what the hex's other units have already spent of it on earlier market lines.
+    /// What the purse adds to the unit at `index`: every **other** sharer's market-open silver and
+    /// sale proceeds, less what the hex's other units have already spent of it on earlier market
+    /// lines.
     ///
     /// This unit's own silver is already in its own balance, so counting it here would let a
     /// sharer buy twice what it holds. `None` where the purse is not trusted, which the bounded
@@ -11207,20 +11232,33 @@ impl MarketPurse {
                 .iter()
                 .enumerate()
                 .filter(|(i, _)| *i != index)
-                // A sharer lends what it held, less what it has spent beyond its own sale
-                // proceeds. A non-sharer lends nothing, and drains the purse only by what it spent
-                // beyond its own silver and proceeds. Proceeds pay for the seller's own purchases
-                // but are not lent onward: the market-open snapshot never counted them, and that
-                // older gap is a bead of its own.
+                // A sharer lends what it held and what it sold for, less what it has spent:
+                // `rules/sequenceofevents` runs every SELL before any BUY, so a sharer's proceeds
+                // are in the purse by the time a neighbour's purchase is sized (`ah-9n7l.1`). A
+                // non-sharer lends nothing, and drains the purse only by what it spent beyond its
+                // own silver and proceeds.
                 .map(|(i, lent)| {
                     if self.sharer.get(i).copied().unwrap_or(false) {
-                        lent.saturating_sub(self.spent_by(i).saturating_sub(self.sold_by(i)).max(0))
+                        lent.saturating_add(self.sold_by(i))
+                            .saturating_sub(self.spent_by(i))
                     } else {
                         -self.borrowed_by(i)
                     }
                 })
                 .sum(),
         )
+    }
+
+    /// `true` when another sharer's `SELL` could not be counted, so what the purse lends the unit
+    /// at `index` has proceeds in it nobody can price ([`MarketPurse::sale_doubted`]). A bounded
+    /// `BUY` is then left uncapped, the accept-on-doubt reading of `trusted`. Deliberately not
+    /// folded into [`Self::adds_for`]: `BUY ALL` and the SILVER column read its `None` as "lends
+    /// nothing", where the certain figure - every sharer's silver, the uncounted sale lending no
+    /// proceeds - is the better floor (`ah-9n7l.1`, review finding 1 and its follow-up).
+    fn a_neighbours_sale_is_doubted(&self, index: usize) -> bool {
+        self.sale_doubted.iter().enumerate().any(|(i, doubted)| {
+            *doubted && i != index && self.sharer.get(i).copied().unwrap_or(false)
+        })
     }
 
     fn spent_by(&self, index: usize) -> i64 {
@@ -11257,8 +11295,8 @@ impl MarketPurse {
         self.also_withheld.get(index).copied().unwrap_or(0)
     }
 
-    /// `true` when this hex's purse lent silver in hand alone because no sharer's settled income
-    /// was a number. Read by `forecast_hex`, which turns it into `SharedMarket::HeldOnly` so the
+    /// `true` when this hex's purse lent silver in hand alone (sale proceeds included, tax not)
+    /// because no sharer's settled income was a number. Read by `forecast_hex`, which turns it into `SharedMarket::HeldOnly` so the
     /// column can say the counts it shows are floors (`ah-3c2t.3`).
     fn fell_back(&self) -> bool {
         self.fell_back
@@ -27533,6 +27571,183 @@ BUILD
                 );
             }
         }
+        /// `rules/sequenceofevents`: "Market orders. SELL orders are processed. BUY orders are
+        /// processed." So a bounded `BUY` written above the `SELL` that pays for it is funded all
+        /// the same, in either line order (`ah-9n7l.1`).
+        #[test]
+        fn a_buy_written_above_the_sell_that_funds_it_buys_in_full() {
+            for orders in [
+                "unit 1\nBUY 5 horses\nSELL 10 fur\n",
+                "unit 1\nSELL 10 fur\nBUY 5 horses\n",
+            ] {
+                let hex = ReportRegion {
+                    for_sale: vec![line(12, 50, "horses", "HORS")],
+                    wanted: vec![line(100, 30, "fur", "FUR")],
+                    ..region(vec![with_item(with_silver(unit("1"), 0), 10, "fur", "FUR")])
+                };
+                let hex_for_column = hex.clone();
+                with_ledger(hex, orders, |ledger| {
+                    assert_eq!(bought_of(ledger, "1", "HORS"), 5, "{orders:?}");
+                    assert_eq!(
+                        ledger.state.balance_at(StatePhase::Market, "1", SILVER),
+                        50,
+                        "{orders:?}"
+                    );
+                });
+                let review = review_turn(
+                    &report(vec![hex_for_column]),
+                    orders,
+                    Some(&ruleset()),
+                    CheckOptions::default(),
+                );
+                let column = review
+                    .silver
+                    .iter()
+                    .find(|row| row.unit_id == "1")
+                    .expect("the unit is forecast");
+                // The SILVER column agrees, and lists the sale above the purchase it paid for.
+                assert_eq!(column.short_for_orders, Some(0), "{orders:?}");
+                assert_eq!(column.at_month_end, Some(50), "{orders:?}");
+                let causes: Vec<_> = column.changes.iter().map(|change| change.cause).collect();
+                assert_eq!(
+                    causes,
+                    [SilverChangeCause::Sold, SilverChangeCause::Bought],
+                    "{orders:?}"
+                );
+            }
+        }
+
+        /// `rules/share` lends a sharer's silver to its neighbours' `BUY`, and
+        /// `rules/sequenceofevents` runs every SELL before any BUY - so what a sharer sold for is
+        /// in the purse by the time a neighbour's purchase is sized (`ah-9n7l.1`).
+        #[test]
+        fn a_sharers_sale_proceeds_fund_a_neighbours_buy() {
+            let hex = ReportRegion {
+                for_sale: vec![line(12, 50, "horses", "HORS")],
+                wanted: vec![line(100, 30, "fur", "FUR")],
+                ..region(vec![
+                    with_silver(unit("1"), 0),
+                    sharing(with_item(with_silver(unit("2"), 0), 10, "fur", "FUR")),
+                ])
+            };
+            let hex_for_column = hex.clone();
+            with_ledger(
+                hex,
+                "unit 1\nBUY 5 horses\nunit 2\nSELL 10 fur\n",
+                |ledger| {
+                    assert_eq!(bought_of(ledger, "1", "HORS"), 5);
+                },
+            );
+            let review = review_turn(
+                &report(vec![hex_for_column]),
+                "unit 1\nBUY 5 horses\nunit 2\nSELL 10 fur\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let column = |id: &str| {
+                review
+                    .silver
+                    .iter()
+                    .find(|row| row.unit_id == id)
+                    .expect("both units are forecast")
+                    .clone()
+            };
+            // The SILVER column settles the same purchase: the buyer borrows the whole 250 of the
+            // sharer's 300 proceeds, and nobody is short.
+            let buyer = column("1");
+            assert_eq!(buyer.expense, Some(250));
+            assert_eq!(buyer.borrowed_for_orders, 250);
+            assert_eq!(buyer.short_for_orders, Some(0));
+            let seller = column("2");
+            assert_eq!(seller.income, Some(300));
+            assert_eq!(seller.at_month_end, Some(50));
+        }
+
+        /// What a sharer spent at the market comes out of what it lends, proceeds included: 300
+        /// sold less 100 spent on grain - an earlier line of the market list - leaves 200, four
+        /// horses (`ah-9n7l.1`, review finding 2).
+        #[test]
+        fn a_sharer_lends_its_proceeds_less_what_it_spent() {
+            let hex = ReportRegion {
+                for_sale: vec![
+                    line(12, 10, "grain", "GRAI"),
+                    line(12, 50, "horses", "HORS"),
+                ],
+                wanted: vec![line(100, 30, "fur", "FUR")],
+                ..region(vec![
+                    with_silver(unit("1"), 0),
+                    sharing(with_item(with_silver(unit("2"), 0), 10, "fur", "FUR")),
+                ])
+            };
+            with_ledger(
+                hex,
+                "unit 1\nBUY 5 horses\nunit 2\nSELL 10 fur\nBUY 10 grain\n",
+                |ledger| {
+                    assert_eq!(bought_of(ledger, "2", "GRAI"), 10);
+                    assert_eq!(bought_of(ledger, "1", "HORS"), 4);
+                },
+            );
+        }
+
+        /// A sharer's `SELL` that cannot be counted - nothing can say what the item is - lends
+        /// proceeds nobody can price, so the purse is not trusted and a neighbour's bounded `BUY`
+        /// is not capped: the accept-on-doubt policy of `MarketPurse::trusted` (`ah-9n7l.1`,
+        /// review finding 1).
+        #[test]
+        fn a_sharers_uncounted_sale_leaves_a_neighbours_buy_uncapped() {
+            let hex = ReportRegion {
+                for_sale: vec![line(12, 50, "horses", "HORS")],
+                wanted: vec![line(100, 30, "fur", "FUR")],
+                ..region(vec![
+                    with_silver(unit("1"), 0),
+                    sharing(with_silver(unit("2"), 0)),
+                ])
+            };
+            with_ledger(
+                hex,
+                "unit 1\nBUY 5 horses\nunit 2\nSELL 10 zorblax\n",
+                |ledger| {
+                    assert!(ledger.doubted.contains("2"), "the sale is uncounted");
+                    assert_eq!(bought_of(ledger, "1", "HORS"), 5);
+                },
+            );
+        }
+
+        /// But a `BUY ALL` beside that uncounted sale still spends every sharer's certain silver:
+        /// the sale lends no proceeds, and what the sharer held is not in doubt (`ah-9n7l.1`,
+        /// follow-up review finding 1).
+        #[test]
+        fn a_buy_all_beside_a_sharers_uncounted_sale_spends_its_certain_silver() {
+            let hex = ReportRegion {
+                for_sale: vec![line(20, 50, "horses", "HORS")],
+                wanted: vec![line(100, 30, "fur", "FUR")],
+                ..region(vec![
+                    with_silver(unit("1"), 0),
+                    sharing(with_silver(unit("2"), 600)),
+                ])
+            };
+            let orders = "unit 1\nBUY ALL horses\nunit 2\nSELL 10 zorblax\n";
+            with_ledger(hex.clone(), orders, |ledger| {
+                assert!(ledger.doubted.contains("2"), "the sale is uncounted");
+                assert_eq!(bought_of(ledger, "1", "HORS"), 12);
+            });
+            // The SILVER column reads the same certain purse, not an unmeasured one.
+            let review = review_turn(
+                &report(vec![hex]),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let buyer = review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "1")
+                .expect("the buyer is forecast");
+            let shown = buyer.buy_all.first().expect("the BUY ALL line is shown");
+            assert_eq!(shown.silver_available, 600);
+            assert_eq!(shown.bought, 12);
+        }
+
         /// And a `BUY ALL` after a reduced bounded line spends what that line really left, not
         /// what it was charged (`ah-omn7`).
         #[test]

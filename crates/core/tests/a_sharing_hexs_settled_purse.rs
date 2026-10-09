@@ -32,7 +32,7 @@
 //! unit's orders (and so the hex's tax settlement) are the turn's own.
 
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions};
-use atlantis_hud_core::orders::silver::BuyAllCap;
+use atlantis_hud_core::orders::silver::{BuyAllCap, SilverChangeCause};
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
@@ -79,10 +79,26 @@ fn unit_9498_buys_against_a_settled_purse() {
         .first()
         .expect("unit 9498's BUY ALL line is shown");
 
+    // `rules/sequenceofevents` runs every SELL before any BUY, so a sharer's sale proceeds are in
+    // the purse too (`ah-9n7l.1`) - unit 8333's SELL, worth $7,604 on this turn. The constant was
+    // measured before they were, so they are added to it rather than the constant re-measured:
+    // what this test guards is the settlement, which is still the whole of the difference.
+    let sold_in_the_hex: i64 = review
+        .silver
+        .iter()
+        .filter(|other| other.region_id == row.region_id && other.unit_id != "9498")
+        .flat_map(|other| &other.changes)
+        .filter(|change| change.cause == SilverChangeCause::Sold)
+        .map(|change| change.amount)
+        .sum();
+    assert_eq!(
+        sold_in_the_hex, 7_604,
+        "unit 8333's SELL is the hex's one sale"
+    );
     assert!(
-        shown.silver_available < PURSE_BEFORE_THE_SETTLEMENT,
+        shown.silver_available < PURSE_BEFORE_THE_SETTLEMENT + sold_in_the_hex,
         "the purse is settled, not hopeful: {} is not below the {PURSE_BEFORE_THE_SETTLEMENT} \
-         this hex lent before the settlement",
+         this hex lent before the settlement, plus the {sold_in_the_hex} sold in it",
         shown.silver_available
     );
 
