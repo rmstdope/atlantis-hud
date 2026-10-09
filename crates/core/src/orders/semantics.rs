@@ -10446,6 +10446,9 @@ fn build(
                     building: founding_kind.as_deref().unwrap_or_default().to_string(),
                     reason,
                     material,
+                    landing: away
+                        .as_ref()
+                        .map(|site| hex_label(&site.terrain, site.coordinate)),
                 });
         }
         return;
@@ -15516,14 +15519,18 @@ fn check_build_site(
 
             let building = title_cased(&refusal.building);
             let article = article_for(&building);
+            // A passenger's site is where its fleet lands, so "here" and "this region" would
+            // read as the hex it leaves (`ah-lz1g`).
+            let (site, region) = match &refusal.landing {
+                Some(landing) => (format!("where the fleet lands, {landing}"), "that region"),
+                None => ("here".to_string(), "this region"),
+            };
             let mut message = match refusal.reason {
                 super::effects::BuildPlacementRefusalReason::MissingSettlement => {
-                    format!(
-                        "Cannot start {article} {building} here: this region has no settlement."
-                    )
+                    format!("Cannot start {article} {building} {site}: {region} has no settlement.")
                 }
                 super::effects::BuildPlacementRefusalReason::DuplicateInRegion => format!(
-                    "Cannot start {article} {building} here: this region already has {article} \
+                    "Cannot start {article} {building} {site}: {region} already has {article} \
                      {building}."
                 ),
             };
@@ -15759,6 +15766,8 @@ struct MonthLongReach {
 #[derive(Debug, Clone)]
 struct AwaySite {
     coordinate: Coordinate,
+    /// The region's terrain as the report spells it, so a refusal can name where it lands.
+    terrain: String,
     settled: bool,
     structures: Vec<Structure>,
     /// What that region's own `DESTROY` orders remove first ([`AfterDestroy::removed`]); empty
@@ -15930,6 +15939,7 @@ fn away_builders(
                         }
                         Some(region) => Some(AwaySite {
                             coordinate: region.coordinate,
+                            terrain: region.terrain.clone(),
                             settled: region.settlement.is_some(),
                             structures: region.structures.clone(),
                             destroyed: hexes
@@ -32641,6 +32651,7 @@ BUILD
                         building: "Palace".to_string(),
                         reason: effects::BuildPlacementRefusalReason::MissingSettlement,
                         material: Some("stone".to_string()),
+                        landing: None,
                     }])
                 );
                 assert!(
@@ -32684,6 +32695,7 @@ BUILD
                         building: "Palace".to_string(),
                         reason: effects::BuildPlacementRefusalReason::DuplicateInRegion,
                         material: Some("stone".to_string()),
+                        landing: None,
                     }]
                 );
                 assert!(ledger
@@ -32767,6 +32779,7 @@ BUILD
                             building: "Palace".to_string(),
                             reason: effects::BuildPlacementRefusalReason::DuplicateInRegion,
                             material: Some("stone".to_string()),
+                            landing: None,
                         }]
                     );
                     assert!(ledger
@@ -32876,6 +32889,7 @@ BUILD
                             building: "Palace".to_string(),
                             reason: effects::BuildPlacementRefusalReason::DuplicateInRegion,
                             material: Some("stone".to_string()),
+                            landing: None,
                         }]
                     );
                     assert_eq!(balance_of(ledger, "901", "STON"), 120);
@@ -59050,10 +59064,12 @@ BUILD
 
         let refusals = site_refusals(&report, &orders);
         assert_eq!(refusals.len(), 1, "{refusals:?}");
-        assert!(
-            refusals[0].message.contains("no settlement"),
-            "{}",
-            refusals[0].message
+        // Named where the fleet lands, never "here": the finding hangs on the passenger in the
+        // settled port it leaves, so "this region" would read as that port (`ah-lz1g`).
+        assert_eq!(
+            refusals[0].message,
+            "Cannot start a Palace where the fleet lands, ocean (7,53): that region has no \
+             settlement. No stone will be used."
         );
         let effects = item_effects(&report, &orders, Some(&trident()), &CheckOptions::default());
         let passenger = effects_for(&effects, "901").cloned().unwrap_or_default();
@@ -59087,10 +59103,10 @@ BUILD
 
         let refusals = site_refusals(&report, &orders);
         assert_eq!(refusals.len(), 1, "{refusals:?}");
-        assert!(
-            refusals[0].message.contains("already has"),
-            "{}",
-            refusals[0].message
+        assert_eq!(
+            refusals[0].message,
+            "Cannot start a Palace where the fleet lands, mountain (7,53): that region already has \
+             a Palace. No stone will be used."
         );
     }
 

@@ -554,6 +554,10 @@ pub(crate) struct BuildPlacementRefusal {
     pub reason: BuildPlacementRefusalReason,
     /// The material the existing pooled-stock resolution proves this order would use.
     pub material: Option<String>,
+    /// Where a sailing passenger's fleet lands, as the finding names it - `plain (7,53)` - since
+    /// the site judged is that region and not the hex the finding hangs on (`ah-lz1g`). `None`
+    /// for a founder building where it stands.
+    pub landing: Option<String>,
 }
 
 /// Why one item moved into or out of a unit this month (`ah-rgkk.3.1`).
