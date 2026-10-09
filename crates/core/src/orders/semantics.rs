@@ -3432,14 +3432,13 @@ struct Working {
 
 /// The units that lend `source` what it spends: every *other* unit of the hex carrying `SHARE`,
 /// in report order - the engine's `Unit::GetSharedNum` and `Unit::ConsumeShared` (`unit.cpp`),
-/// which count the spender once, as itself (`ah-0mch`). The hex holds our own units alone, so
-/// every one is of the spender's faction.
+/// which count the spender once, as itself (`ah-0mch`). Report order puts a formed sharer at the
+/// end of its former's structure, not after every unit in the hex (`ah-k1ue`). The hex holds our
+/// own units alone, so every one is of the spender's faction.
 fn lending_sharers(units: &[Ordered<'_>], source: usize) -> Vec<usize> {
-    units
-        .iter()
-        .enumerate()
-        .filter(|(index, ordered)| *index != source && ordered.shares())
-        .map(|(index, _)| index)
+    report_order(&placements(units))
+        .into_iter()
+        .filter(|&index| index != source && units[index].shares())
         .collect()
 }
 
@@ -36154,6 +36153,29 @@ BUILD
                     );
                 },
             );
+        }
+
+        /// A sharer formed outside any structure stands at the end of its former's structure
+        /// (`rules/form`), so the Give phase draws a tower unit's overdraft on it before a tower's
+        /// sharer (`ah-k1ue`). The preview's own walk is pinned by `effects::...::
+        /// a_sharer_formed_outside_any_structure_lends_before_a_towers_sharer`.
+        #[test]
+        fn a_sharer_formed_outside_any_structure_lends_first_in_the_give_phase() {
+            let hex_region = region(vec![
+                sharing(with_item(unit("2000"), 5, "swords", "SWOR")),
+                in_structure(sharing(with_item(unit("3001"), 5, "swords", "SWOR")), "4"),
+                in_structure(unit("3002"), "4"),
+                in_structure(unit("3003"), "4"),
+            ]);
+            let orders =
+                "unit 2000\nGIVE NEW 1 5 SWOR\nFORM 1\nEND\n\nunit 3002\nGIVE 3003 5 SWOR\n";
+            settled(hex_region, orders, |hex, _| {
+                assert_eq!(
+                    (early(hex, "new-1", "SWOR"), early(hex, "3001", "SWOR")),
+                    (0, 5),
+                    "the formed sharer lends the swords, the tower's keeps its own"
+                );
+            });
         }
 
         /// Review finding 2: a giver holding none of the goods still gives a sharer's.
