@@ -51,7 +51,8 @@ const SILVER_TAG: &str = "SILV";
 /// (`Game::RunEnchant`, `../Atlantis` `spells.cpp`); every other creation that costs anything is
 /// `Game::RunCreateArtifact`'s, priced once per cast (`ah-jmr8`). Hard-coded for the reason the
 /// earning spells below are: the data page words both shapes alike ("at a cost of ..."), so the
-/// ruleset carries nothing to tell them apart. Both New Age worlds price the same enchantments.
+/// ruleset carries nothing to tell them apart. New Age's arcanum prices the same three; trident has
+/// no enchantment spells at all.
 const ENCHANTED_OUTPUTS: [&str; 3] = ["MSWO", "MARM", "MSHD"];
 
 /// The two spells this ruleset describes as earning. Hard-coding them in the core is a real cost,

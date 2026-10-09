@@ -18958,7 +18958,6 @@ fn check_faction_orders(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::orders::silver::plan_cast;
     use crate::report::model::{level_for_points, Exit, Skill};
 
     #[test]
@@ -24719,9 +24718,9 @@ mod tests {
     }
 
     /// Narrowing `cast`'s cost loop and adding the shared charge is exactly the edit that charges
-    /// silver twice, and nothing else would notice (`ah-lu0f.3`). `ah-ofpb.4`: the mage is now
-    /// funded for every item its level makes, not for one - the committed ruleset's first spell in
-    /// tag order with a `SILV` cost is `CFSW`, 60 percent per level, so a level 5 mage makes 3.
+    /// silver twice, and nothing else would notice (`ah-lu0f.3`). The mage holds exactly one cast's
+    /// price, which is all a create-artifact cast is charged (`ah-jmr8`) - the committed ruleset's
+    /// first spell in tag order with a `SILV` cost is `CFSW` - so any double charge comes up short.
     #[test]
     fn a_cast_is_not_charged_twice_for_its_silver() {
         let spell = ruleset()
@@ -24743,21 +24742,9 @@ mod tests {
             .filter(|input| input.tag.eq_ignore_ascii_case(SILVER))
             .map(|input| input.amount)
             .sum();
-        let wanted = plan_cast(
-            cast_cost,
-            &Caster {
-                skills: &[],
-                held: &[],
-                silver_available: i64::MAX,
-                silver_hopeful: i64::MAX,
-                transmuting: None,
-            },
-            5,
-        )
-        .wanted;
 
         let hex_region = region(vec![with_skill(
-            with_silver(unit("683"), cost * wanted),
+            with_silver(unit("683"), cost),
             &spell.tag,
             5,
         )]);
