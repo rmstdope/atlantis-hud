@@ -247,3 +247,65 @@ fn a_neighbourhood_the_reports_do_not_show_founds_with_a_warning() {
     );
     assert_eq!(upkeep(&result), Some(50));
 }
+
+/// Settlers form a unit, hand it the founders and the wagons, and the new unit founds.
+fn form_script(text: &str) -> String {
+    let template = extract_orders_template(text)
+        .map(|template| template.text)
+        .unwrap_or_default();
+    let template = common::without_standing_month_orders(&template, &["900"]);
+    format!(
+        "{template}\nunit 900\nFORM 1\n{CREATE}\nEND\nGIVE NEW 1 1000 ORC\nGIVE NEW 1 100 WAGO\n"
+    )
+}
+
+/// A unit formed this month is a founder like any other: its own CREATE is judged against the
+/// settlement next door (review finding 1 on PR #1487).
+#[test]
+fn a_founder_formed_this_month_is_refused_next_to_a_settlement() {
+    let mut exits = all_exits(10, 10);
+    exits[2] = exit("Southeast", 11, 11, Some("Oldtown [village]"));
+    let text = report_with(&exits, &[]);
+
+    let preview = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+        &text,
+        "[]",
+        &form_script(&text),
+    )
+    .expect("the Trident ruleset loads");
+    let formed = preview
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .find(|unit| unit.formed)
+        .expect("the formed unit has a row");
+    assert_eq!(
+        common::held_before_upkeep(formed, "ORC"),
+        1000,
+        "nobody founds anything"
+    );
+    assert_eq!(common::held_before_upkeep(formed, "WAGO"), 100);
+
+    let result = validate_orders_request(
+        &mut ReportCache::new(),
+        &ValidateOrdersRequest {
+            raw_orders: form_script(&text),
+            ruleset_json: Some(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON.to_string()),
+            raw_report: Some(text.clone()),
+            disabled_codes: None,
+            map_json: None,
+            known_passages_json: None,
+            remembered_json: Some("[]".to_string()),
+        },
+    );
+    assert_eq!(
+        warnings(&result),
+        vec![
+            "CREATE VILLAGE will be refused: Oldtown [village] at (11,11) is within 2 hexes, and a \
+             village must be at least 3 hexes from any other settlement"
+                .to_string()
+        ]
+    );
+}

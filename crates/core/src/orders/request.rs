@@ -101,12 +101,26 @@ pub fn validate_orders_request(
     // the moves (`rules/sequenceofevents`, `ah-b6fz`, `ah-n3qb`), and how far the reports have
     // shown the world (`ah-hc7z`). An error is nothing known - bad config, not bad orders - and every shipment is
     // measured from the report, with a distance the map's shape leaves open staying open, as
-    // before. One build of the known map answers both.
+    // before. One build of the known map answers those two; the village sites and the walls
+    // each build their own, and only when the document needs it.
     if let (Some(rules), Some(raw), Some(remembered)) = (
         ruleset_json,
         request.raw_report.as_deref(),
         request.remembered_json.as_deref(),
     ) {
+        // Whether a founding the 3-hex rule refuses is near a settlement the known map shows. An
+        // error is nothing known - bad config, not bad orders - and every founding is unsure
+        // (`ah-m24v`). Worked out first, so the settle `shipment_measures` runs refuses the same
+        // foundings every later one does.
+        options.village_sites = super::effects::village_sites(
+            cache,
+            rules,
+            raw,
+            remembered,
+            &request.raw_orders,
+            options.geometry,
+        )
+        .unwrap_or_default();
         let measures = super::effects::shipment_measures(
             cache,
             rules,
@@ -123,18 +137,6 @@ pub fn validate_orders_request(
         // sighting shows. An error is nothing known - bad config, not bad orders - and no wall is
         // warned about (`ah-wq2e.4`).
         options.walled_moves = super::effects::walled_moves(
-            cache,
-            rules,
-            raw,
-            remembered,
-            &request.raw_orders,
-            options.geometry,
-        )
-        .unwrap_or_default();
-        // Whether a founding the 3-hex rule refuses is near a settlement the known map shows. An
-        // error is nothing known - bad config, not bad orders - and every founding is unsure
-        // (`ah-m24v`).
-        options.village_sites = super::effects::village_sites(
             cache,
             rules,
             raw,

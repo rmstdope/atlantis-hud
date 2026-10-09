@@ -11,7 +11,6 @@ use std::collections::BTreeMap;
 use crate::known_map::KnownMap;
 use crate::movement::graph::MapGeometry;
 use crate::movement::rules::Ruleset;
-use crate::orders::intents::{read_intents, Intent};
 use crate::report::model::Coordinate;
 use crate::report::ParsedReport;
 
@@ -81,10 +80,14 @@ const WITHIN_TWO: [(i32, i32); 18] = [
     (-1, -3),
 ];
 
-/// The verdict for every report region where an own unit orders a Trident `CREATE`. Empty, at the
-/// cost of one read of the orders, for a document that founds nothing: `known` is built only when
-/// some unit founds, since this runs on every keystroke and the known map is a walk of every
-/// remembered region.
+/// The verdict for every report region holding an own unit, when the document writes a Trident
+/// `CREATE` anywhere. Empty, at the cost of one scan of the orders, for a document that founds
+/// nothing: `known` is built only when something founds, since this runs on every keystroke and
+/// the known map is a walk of every remembered region.
+///
+/// Every region with an own unit rather than only those of the units writing `CREATE`, because a
+/// unit a `FORM` creates this month founds in its parent's region and has no number to look up
+/// there; the ledger judges whichever unit actually founds (review finding 1 on PR #1487).
 #[must_use]
 pub fn village_sites(
     report: &ParsedReport,
@@ -93,31 +96,14 @@ pub fn village_sites(
     ruleset: &Ruleset,
     geometry: Option<MapGeometry>,
 ) -> VillageSites {
-    if !super::grammar::is_trident(Some(ruleset)) {
-        return VillageSites::new();
-    }
-    let founders: Vec<String> = read_intents(orders_document, Some(ruleset))
-        .into_iter()
-        .filter(|unit| {
-            unit.intents
-                .iter()
-                .any(|placed| matches!(placed.intent, Intent::MonthLong("CREATE")))
-        })
-        .map(|unit| unit.unit_id)
-        .collect();
-    if founders.is_empty() {
+    if !super::grammar::is_trident(Some(ruleset)) || !writes_create(orders_document) {
         return VillageSites::new();
     }
     let known = known();
     report
         .regions
         .iter()
-        .filter(|region| {
-            region
-                .units
-                .iter()
-                .any(|unit| unit.own && founders.contains(&unit.unit_id))
-        })
+        .filter(|region| region.units.iter().any(|unit| unit.own))
         .map(|region| {
             (
                 region.region_id.clone(),
@@ -125,6 +111,20 @@ pub fn village_sites(
             )
         })
         .collect()
+}
+
+/// Whether any line of the document, `FORM` blocks included, is a `CREATE` order. Generous on
+/// purpose: a line that only looks like one costs a verdict nobody reads, while a missed one
+/// leaves a founder unsure.
+fn writes_create(orders_document: &str) -> bool {
+    orders_document.lines().any(|line| {
+        let order = line.split(';').next().unwrap_or("").trim();
+        let order = order.strip_prefix('@').unwrap_or(order);
+        order
+            .split_whitespace()
+            .next()
+            .is_some_and(|keyword| keyword.eq_ignore_ascii_case("CREATE"))
+    })
 }
 
 /// The verdict for founding at `at`.
