@@ -1109,9 +1109,12 @@ pub fn pool_wants(
                 wants.wages = late.men.saturating_mul(region.wage_centis.unwrap_or(0)) / 100;
             }
             Intent::Entertain => {
+                // ENTERTAIN is month-long, after the market (`rules/sequenceofevents`), and the
+                // engine reads a skill as days over men (`unit.cpp` `GetRealSkill`), so a recruit
+                // dilutes the level the entertainers are paid on (`ah-8n8y`).
                 wants.entertainment = late
                     .men
-                    .saturating_mul(skill_level(facts.skills, ENTERTAIN_TAG))
+                    .saturating_mul(skill_level(facts.skills_after_arrivals, ENTERTAIN_TAG))
                     .saturating_mul(ENTERTAIN_PER_MAN_PER_LEVEL);
             }
             _ => {}
@@ -1380,10 +1383,10 @@ pub struct UnitFacts<'a> {
     pub overdrawn_at_study: i64,
     /// The unit's skills once this month's gifts and recruits have merged in.
     ///
-    /// Read by the PRODUCE arm, which `rules/buy` says a `BUY` dilutes, and by the STUDY arm's
-    /// ceiling test, which asks how far this unit may go next month. Every other arm keeps
-    /// reading `skills`, the pre-market view, because `rules/sequenceofevents` prices STUDY,
-    /// ENTERTAIN and maintenance against a phase that has not seen the market yet (`ah-40c9`).
+    /// Read by the PRODUCE arm, which `rules/buy` says a `BUY` dilutes, by the STUDY arm's
+    /// ceiling test, which asks how far this unit may go next month, and by ENTERTAIN, a
+    /// month-long order `rules/sequenceofevents` runs after the market (`ah-8n8y`). The arms that
+    /// run before the market - TAX readiness and CAST - keep reading `skills`, the pre-market view.
     pub skills_after_arrivals: &'a [Skill],
     /// Set when arrivals - gifts or recruits - cannot be merged into the unit's skills, so both
     /// arms above go silent rather than judge a unit against a guess.
@@ -8807,9 +8810,12 @@ mod tests {
         let receipts = Receipts::default();
         let intents = [placed(Intent::Entertain)];
         let skills = [skill("ENTE", level)];
+        let held: &[Skill] = if level == 0 { &[] } else { &skills };
         forecast_unit(
             UnitFacts {
-                skills: if level == 0 { &[] } else { &skills },
+                skills: held,
+                // No recruit, so the settled view is the report's (`ah-8n8y`).
+                skills_after_arrivals: held,
                 ..facts(men, &intents, &receipts)
             },
             RegionWages {
