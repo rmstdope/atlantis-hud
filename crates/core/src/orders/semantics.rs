@@ -941,8 +941,11 @@ pub fn review_turn(
 enum ReportWideStep {
     /// TRANSPORT's first sub-phase: goods from non-quartermasters to quartermasters. Always free.
     ShipToQuartermasters,
-    /// TRANSPORT's later sub-phase: goods between quartermasters, priced and charged.
+    /// TRANSPORT's second sub-phase: goods between quartermasters, priced and charged.
     ShipBetweenQuartermasters,
+    /// TRANSPORT's third sub-phase: goods from a quartermaster to non-quartermasters, read from a
+    /// stock that includes what the second sub-phase delivered (`ah-o3bp`).
+    ShipFromQuartermasters,
     /// Every refused shipment's whole ask, charged once every shipment has been judged (`ah-7ale.4`).
     ChargeRefusedShipments,
     /// Maintenance steps 1 to 3: each unit's own food, the faction food where it ends the month,
@@ -960,11 +963,15 @@ enum ReportWideStep {
 
 /// The report-wide settlement, in the turn's order. Each step runs in, and reads balances at,
 /// the phase beside it. The maintenance steps read the Maintenance slot through `balance_of`.
-const REPORT_WIDE_STEPS: [(StatePhase, ReportWideStep); 7] = [
+const REPORT_WIDE_STEPS: [(StatePhase, ReportWideStep); 8] = [
     (StatePhase::Transport, ReportWideStep::ShipToQuartermasters),
     (
         StatePhase::Transport,
         ReportWideStep::ShipBetweenQuartermasters,
+    ),
+    (
+        StatePhase::Transport,
+        ReportWideStep::ShipFromQuartermasters,
     ),
     (
         StatePhase::Transport,
@@ -1016,30 +1023,41 @@ fn settle_report_wide(
     through: StatePhase,
 ) -> ReportWideSettlement {
     let mut settlement = ReportWideSettlement::default();
-    let mut received_early: BTreeMap<(String, String), i64> = BTreeMap::new();
-    let mut delivered_early = Vec::new();
+    // What every earlier transport sub-phase delivered: credited only once the last one has run,
+    // and meanwhile added to each sender's stock (`shipping_bills`).
+    let mut delivered = Vec::new();
     for (phase, step) in REPORT_WIDE_STEPS {
         if phase > through {
             continue;
         }
         match step {
             ReportWideStep::ShipToQuartermasters => {
-                delivered_early = ship_to_quartermasters(hexes, inputs, phase);
-                received_early =
-                    delivered_early
-                        .iter()
-                        .fold(BTreeMap::new(), |mut received, shipment| {
-                            *received
-                                .entry((shipment.target.clone(), shipment.tag.clone()))
-                                .or_default() += shipment.quantity;
-                            received
-                        });
+                delivered.extend(ship_in_sub_phase(
+                    hexes,
+                    inputs,
+                    phase,
+                    super::transport::ShipmentPhase::ToQuartermaster,
+                    &delivered,
+                ));
             }
             ReportWideStep::ShipBetweenQuartermasters => {
-                let delivered_late =
-                    ship_between_quartermasters(hexes, inputs, phase, &received_early);
-                credit_shipped_goods(hexes, phase, &delivered_early);
-                credit_shipped_goods(hexes, phase, &delivered_late);
+                delivered.extend(ship_in_sub_phase(
+                    hexes,
+                    inputs,
+                    phase,
+                    super::transport::ShipmentPhase::BetweenQuartermasters,
+                    &delivered,
+                ));
+            }
+            ReportWideStep::ShipFromQuartermasters => {
+                delivered.extend(ship_in_sub_phase(
+                    hexes,
+                    inputs,
+                    phase,
+                    super::transport::ShipmentPhase::FromQuartermaster,
+                    &delivered,
+                ));
+                credit_shipped_goods(hexes, phase, &delivered);
             }
             ReportWideStep::ChargeRefusedShipments => charge_refused_shipments(hexes, phase),
             // Steps 1 to 3 read holdings after every shipment, and step 4 lends what they leave.
@@ -16320,12 +16338,12 @@ impl SettledShipment {
 /// `orders::transport`. What is this pass's own is the weight, which is a fact about the goods and
 /// not about transport.
 ///
-/// `rules/sequenceofevents` runs TRANSPORT in phases: items go from non-quartermasters to
-/// quartermasters first, then from one quartermaster to another. The ledger books no transport, so
-/// a quartermaster forwarding what it was sent this month would read an empty stock. Hence two
-/// calls: `quartermaster_senders: false` walks the first phase and returns what each unit
-/// receives from it; `true` walks the second, adding `received_earlier` to each sender's stock.
-/// The first phase is always free (`Reach::Local`), so only the second call's bills are booked.
+/// `rules/sequenceofevents` runs TRANSPORT in three phases: items go from non-quartermasters to
+/// quartermasters, then from one quartermaster to another, then from a quartermaster to
+/// non-quartermasters. Receipts are credited only after the last phase, so a quartermaster
+/// forwarding what it was sent this month would read an empty stock. Hence one call per phase,
+/// each walking only the shipments of `sub_phase` and adding `received_earlier` - what every
+/// earlier phase delivered - to each sender's stock.
 #[allow(clippy::too_many_arguments)]
 fn shipping_bills(
     hex: &Hex<'_>,
@@ -16333,9 +16351,10 @@ fn shipping_bills(
     shipping: Option<&super::transport::Shipping>,
     ruleset: Option<&Ruleset>,
     settled_at: StatePhase,
-    quartermaster_senders: bool,
+    sub_phase: super::transport::ShipmentPhase,
     received_earlier: &BTreeMap<(String, String), i64>,
 ) -> Vec<SettledShipment> {
+    let quartermaster_senders = sub_phase != super::transport::ShipmentPhase::ToQuartermaster;
     let mut delivered = Vec::new();
     let (Some(shipping), Some(rules)) = (shipping, ruleset) else {
         return delivered;
@@ -16409,9 +16428,7 @@ fn shipping_bills(
             let Some(measured) = judged.measured else {
                 continue;
             };
-            let phase = judged.phase;
-            if (phase == super::transport::ShipmentPhase::ToQuartermaster) != !quartermaster_senders
-            {
+            if judged.phase != sub_phase {
                 continue;
             }
             // A shipment the game refuses for distance keeps its goods (`ah-7ale.2.1`), and a
@@ -16613,49 +16630,38 @@ fn shipment_allowance_used(shipped: &BTreeMap<String, i64>, tag: &str) -> i64 {
     }
 }
 
-/// TRANSPORT's first sub-phase, across every hex: what each quartermaster is sent, so the next
-/// sub-phase prices goods a quartermaster forwards (`rules/sequenceofevents`, `ah-7ale.3`).
-fn ship_to_quartermasters(
+/// One TRANSPORT sub-phase, across every hex (`rules/sequenceofevents`: "In each phase all units
+/// in all hexes are processed before starting the next phase"), reading each sender's stock with
+/// what the earlier sub-phases `delivered` added, so a quartermaster forwards what it was sent
+/// this month (`ah-7ale.3`, `ah-o3bp`).
+fn ship_in_sub_phase(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
     inputs: &ReportWideInputs<'_>,
     phase: StatePhase,
+    sub_phase: super::transport::ShipmentPhase,
+    delivered: &[SettledShipment],
 ) -> Vec<SettledShipment> {
-    let nothing_received = BTreeMap::new();
-    let mut delivered = Vec::new();
+    let received_earlier = delivered
+        .iter()
+        .fold(BTreeMap::new(), |mut received, shipment| {
+            *received
+                .entry((shipment.target.clone(), shipment.tag.clone()))
+                .or_default() += shipment.quantity;
+            received
+        });
+    let mut shipped = Vec::new();
     for (hex, ledger) in hexes.iter_mut() {
-        delivered.extend(shipping_bills(
+        shipped.extend(shipping_bills(
             hex,
             ledger,
             inputs.shipping,
             inputs.ruleset,
             phase,
-            false,
-            &nothing_received,
+            sub_phase,
+            &received_earlier,
         ));
     }
-    delivered
-}
-
-/// TRANSPORT's later sub-phase, across every hex: goods between quartermasters, priced and paid.
-fn ship_between_quartermasters(
-    hexes: &mut [(Hex<'_>, Ledger<'_>)],
-    inputs: &ReportWideInputs<'_>,
-    phase: StatePhase,
-    received_early: &BTreeMap<(String, String), i64>,
-) -> Vec<SettledShipment> {
-    let mut delivered = Vec::new();
-    for (hex, ledger) in hexes.iter_mut() {
-        delivered.extend(shipping_bills(
-            hex,
-            ledger,
-            inputs.shipping,
-            inputs.ruleset,
-            phase,
-            true,
-            received_early,
-        ));
-    }
-    delivered
+    shipped
 }
 
 /// Goods arriving by a settled shipment belong in the receiver's transport-phase ledger after all
@@ -47096,6 +47102,7 @@ BUILD
             vec![
                 ReportWideStep::ShipToQuartermasters,
                 ReportWideStep::ShipBetweenQuartermasters,
+                ReportWideStep::ShipFromQuartermasters,
                 ReportWideStep::ChargeRefusedShipments,
                 ReportWideStep::ChargeUpkeep,
                 ReportWideStep::ShareSilverForUpkeep,
@@ -47918,6 +47925,57 @@ BUILD
             Some(FIXTURE_MAP),
         );
         assert_eq!(moved.get("900"), Some(&vec![("FUR".to_string(), 9)]));
+    }
+
+    /// `rules/sequenceofevents` runs TRANSPORT in three sub-phases - to quartermasters, between
+    /// them, then from a quartermaster to non-quartermasters - each across all hexes before the
+    /// next, so a quartermaster forwards to an ordinary unit what another quartermaster sent it
+    /// this month. `rules/economy_transport` (via `transport::reach_for`) gives that last leg the
+    /// free local reach, so only the long leg is charged (`ah-o3bp`).
+    #[test]
+    fn a_quartermaster_forwards_what_another_quartermaster_sent_it_to_an_ordinary_unit() {
+        let regions = |goods: &[(i64, &str, &str)]| {
+            let mut regions = priced_shipping(5, goods, vec![caravanserai_owner("901", 1, 0, 6)]);
+            regions[1].units.push(unit("902"));
+            regions
+        };
+        let rules = ruleset();
+        let forecast = |regions: Vec<ReportRegion>, orders: &str, id: &str| {
+            review_turn(&report(regions), orders, Some(&rules), with_map())
+                .silver
+                .into_iter()
+                .find(|forecast| forecast.unit_id == id)
+                .expect("the unit is forecast")
+        };
+
+        // Silver, weight 0 (`data/SILV`), so the receiver's month shows what reached it.
+        let orders = "unit 900\nTRANSPORT 901 200 SILV\nunit 901\nTRANSPORT 902 ALL SILV\n";
+        let baseline = forecast(regions(&[]), "unit 900\n", "902");
+        let chained = forecast(regions(&[]), orders, "902");
+        assert_eq!(
+            chained.at_month_end,
+            baseline.at_month_end.map(|silver| silver + 200),
+            "the ordinary unit ends the month with what the chain forwarded"
+        );
+        let forwarder = forecast(regions(&[]), orders, "901");
+        let forwarder_baseline = forecast(regions(&[]), "unit 900\n", "901");
+        assert_eq!(forwarder.at_month_end, forwarder_baseline.at_month_end);
+
+        // Goods with a weight: the long leg is charged once, the local leg nothing, and the item
+        // preview moves the same goods.
+        let orders = "unit 900\nTRANSPORT 901 9 FUR\nunit 901\nTRANSPORT 902 ALL FUR\n";
+        let sender = forecast(regions(&[(9, "fur", "FUR")]), orders, "900");
+        assert_eq!(sender.shipping.len(), 1);
+        assert_eq!(sender.shipping[0].cost, 45);
+        let forwarder = forecast(regions(&[(9, "fur", "FUR")]), orders, "901");
+        assert!(forwarder.shipping.is_empty());
+        let moved = super::super::effects::transported_out(
+            &report(regions(&[(9, "fur", "FUR")])),
+            &rules,
+            orders,
+            Some(FIXTURE_MAP),
+        );
+        assert_eq!(moved.get("901"), Some(&vec![("FUR".to_string(), 9)]));
     }
 
     /// The Settings switch takes the out-of-reach sentence away and leaves every figure honest, so
