@@ -3823,6 +3823,11 @@ fn apply_transfers(
             _ => &working[&source].held,
         };
         let tags = moves(selectable, &transfer.what, &transfer.amount, ruleset);
+        // How each selectable tag is written, so goods only a sharer held arrive under their name.
+        let names: BTreeMap<String, String> = selectable
+            .iter()
+            .map(|(tag, item)| (tag.clone(), item.name.clone()))
+            .collect();
         let source_state = working
             .get_mut(&source)
             .expect("seeded above this same transfer");
@@ -3858,10 +3863,10 @@ fn apply_transfers(
                 .map_or(0, |item| item.amount);
             // Read above the `moved == 0` return so `source_state`'s borrow ends here: the block
             // below takes a second `working.entry`, which will not compile while it lives.
-            let name = source_state
-                .held
-                .get(tag.as_str())
-                .map_or_else(|| tag.clone(), |item| item.name.clone());
+            let name = source_state.held.get(tag.as_str()).map_or_else(
+                || names.get(&tag).cloned().unwrap_or_else(|| tag.clone()),
+                |item| item.name.clone(),
+            );
             let is_man = ruleset.is_man(&tag);
             let source_doubted = source_state.doubted;
             let source_skills = source_state.skills.clone();
@@ -7723,11 +7728,12 @@ fn shared_num_at(
             spender_shares = ordered.shares();
             continue;
         }
-        let balance = held(&ordered.unit.unit_id)?;
+        // A sharer whose stock is not established leaves the pool unreadable; a non-sharer whose
+        // own is not is read as having drawn nothing on it.
         others = others.saturating_add(if ordered.shares() {
-            balance
+            held(&ordered.unit.unit_id)?
         } else {
-            balance.min(0)
+            held(&ordered.unit.unit_id).map_or(0, |balance| balance.min(0))
         });
     }
     // A sharer's own stock is in the pool others drew on; a non-sharer's is its own, and only
@@ -9543,17 +9549,20 @@ fn cast(
                     .unwrap_or(0),
             )
             .max(0);
-        shared_num_at(ledger, hex, StatePhase::Cast, who, tag).map_or(0, |has| (has - own).max(0))
+        // Negative where the caster shares and an earlier borrower drew on its own stock.
+        shared_num_at(ledger, hex, StatePhase::Cast, who, tag).map_or(0, |has| has - own)
     };
     let lent_silver = lent_of(SILVER);
     let mut held = actor.unit.items.clone();
     let mut goods_lent = false;
-    // Every tag a sharer holds as the spell resolves - what it received this month included.
+    // Every tag a sharer holds as the spell resolves - what it received this month included, and
+    // the caster's own, which an earlier borrower may have drawn on.
     let lent_tags: BTreeSet<String> = Sharing::read(hex)
         .sharers
         .iter()
-        .filter(|(_, lender)| lender.unit.unit_id != *who)
-        .flat_map(|(_, lender)| {
+        .map(|(_, lender)| lender)
+        .chain(std::iter::once(&actor))
+        .flat_map(|lender| {
             ledger
                 .state
                 .holdings_at(StatePhase::Cast, &lender.unit.unit_id)
@@ -9571,7 +9580,8 @@ fn cast(
             .iter_mut()
             .find(|own| own.tag.eq_ignore_ascii_case(&tag))
         {
-            Some(own) => own.amount = own.amount.saturating_add(lends),
+            Some(own) => own.amount = own.amount.saturating_add(lends).max(0),
+            None if lends < 0 => {}
             None => held.push(ItemAmount {
                 amount: lends,
                 name: item_name(&tag, hex, ruleset),
@@ -9579,7 +9589,7 @@ fn cast(
             }),
         }
     }
-    if lent_silver > 0 || goods_lent {
+    if lent_silver != 0 || goods_lent {
         ledger
             .shared_casts
             .entry(who.clone())
@@ -9601,8 +9611,9 @@ fn cast(
         silver_available: hopeful
             .saturating_sub(standing.overstated_tax())
             .max(0)
-            .saturating_add(lent_silver),
-        silver_hopeful: hopeful.saturating_add(lent_silver),
+            .saturating_add(lent_silver)
+            .max(0),
+        silver_hopeful: hopeful.saturating_add(lent_silver).max(0),
         transmuting,
     };
 
@@ -9616,7 +9627,7 @@ fn cast(
         ledger,
         who,
         SILVER,
-        priced.spends - hopeful.saturating_add(lent_silver),
+        priced.spends - hopeful.saturating_add(lent_silver).max(0),
     );
     move_silver(
         ledger,
@@ -33293,6 +33304,102 @@ BUILD
             );
             assert_eq!(forecast(&review, "5").cast_made, 1, "the first mage casts");
             assert_eq!(forecast(&review, "7").cast_made, 0, "the second finds 100");
+        }
+
+        /// Follow-up finding 1: a sharing caster's purse is what the pool left it. Unit 5 casts
+        /// first on 200 of sharer 6's 300, so 6 finds 100 and makes nothing (`spells.cpp`).
+        #[test]
+        fn a_sharing_caster_finds_what_an_earlier_borrower_left() {
+            let review = review_turn(
+                &report(vec![region(vec![
+                    with_skill(unit("5"), "CRPA", 1),
+                    sharing(with_silver(with_skill(unit("6"), "CRPA", 1), 300)),
+                ])]),
+                "unit 5\nCAST Create_Amulet_Of_Protection\n\n\
+                 unit 6\nCAST Create_Amulet_Of_Protection\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            assert_eq!(forecast(&review, "5").cast_made, 1, "the borrower casts");
+            assert_eq!(forecast(&review, "6").cast_made, 0, "the sharer finds 100");
+        }
+
+        /// Follow-up finding 1, materials: a gift that drew on a sharer's swords leaves the
+        /// sharing caster fewer to enchant (`data/ESWO`: five per level, a sword each).
+        #[test]
+        fn a_sharing_caster_enchants_only_what_a_gift_left_it() {
+            let hex_region = region(vec![
+                unit("1"),
+                unit("2"),
+                sharing(with_item(
+                    with_skill(unit("6"), "ESWO", 1),
+                    5,
+                    "swords",
+                    "SWOR",
+                )),
+            ]);
+            settled(
+                hex_region,
+                "unit 1\nGIVE 2 3 SWOR\n\nunit 2\n\nunit 6\nCAST Enchant_Swords\n",
+                |_, ledger| {
+                    let made: i64 = ledger
+                        .movements
+                        .iter()
+                        .filter(|movement| movement.unit_id == "6" && movement.tag == "MSWO")
+                        .map(|movement| movement.delta)
+                        .sum();
+                    assert_eq!(made, 2, "the gift took three of the five");
+                },
+            );
+        }
+
+        /// Follow-up finding 2: goods only a sharer held arrive under their name.
+        #[test]
+        fn a_sharers_goods_arrive_under_their_name() {
+            let hex_region = region(vec![
+                unit("1"),
+                unit("2"),
+                sharing(with_item(unit("3"), 15, "swords", "SWOR")),
+            ]);
+            settled(
+                hex_region,
+                "unit 1\nGIVE 2 10 SWOR\n\nunit 2\n\nunit 3\n",
+                |hex, _| {
+                    let arrived = hex
+                        .find("2")
+                        .unwrap()
+                        .early_items()
+                        .iter()
+                        .find(|item| item.tag == "SWOR")
+                        .map(|item| item.name.clone());
+                    assert_eq!(arrived.as_deref(), Some("swords"));
+                },
+            );
+        }
+
+        /// Follow-up finding 3: a non-sharer whose gift to another faction cannot be settled
+        /// (`ah-66yi`) does not switch the pool's clamp off for everyone else.
+        #[test]
+        fn an_uncertain_non_sharer_does_not_unclamp_the_hex() {
+            // Unit 3 stands first, so its gift runs before unit 1's (`rules/sequenceofevents`).
+            let hex_region = region(vec![
+                with_item(unit("3"), 5, "swords", "SWOR"),
+                with_item(unit("1"), 10, "swords", "SWOR"),
+                unit("2"),
+                sharing(with_item(unit("4"), 15, "swords", "SWOR")),
+                an_ally("7001"),
+            ]);
+            settled(
+                hex_region,
+                "unit 1\nGIVE 2 50 SWOR\n\nunit 2\n\nunit 3\nGIVE 7001 5 SWOR\n\nunit 4\n",
+                |_, ledger| {
+                    assert_eq!(
+                        given_at(ledger, "2", "SWOR"),
+                        25,
+                        "own 10 and the sharer's 15"
+                    );
+                },
+            );
         }
 
         /// Case 3: a mage with no silver casts on a sharer's (`data/CRPA`: 200 silver each).

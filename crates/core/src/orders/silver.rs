@@ -650,7 +650,8 @@ pub struct SettledGift {
 pub struct SharedCast {
     /// The document line the order was written on.
     pub line: i64,
-    /// The silver the other sharers held as the spell resolved.
+    /// What the pool adds to the caster's own silver as the spell resolved - negative where the
+    /// caster shares and an earlier borrower already drew on its own.
     pub silver: i64,
     /// The caster's own goods with every other sharer's added in, men excepted: what the
     /// spell's materials are counted against.
@@ -2627,8 +2628,9 @@ pub fn forecast_unit(
                     silver_available: hopeful
                         .saturating_sub(tax_overstated)
                         .max(0)
-                        .saturating_add(lent),
-                    silver_hopeful: hopeful.saturating_add(lent),
+                        .saturating_add(lent)
+                        .max(0),
+                    silver_hopeful: hopeful.saturating_add(lent).max(0),
                     transmuting,
                 };
                 let (priced, plan) = price_cast(resolved, &caster, region);
