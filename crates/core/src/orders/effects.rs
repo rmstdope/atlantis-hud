@@ -2709,6 +2709,23 @@ impl Working {
             }
         } else if command.is("leave") && arguments.is_empty() {
             self.board(active, BoardingOrder::Leave);
+        } else if command.is("claim") {
+            // `rules/claim` gives the claimed silver to the unit issuing the order, and
+            // `rules/sequenceofevents` settles CLAIM among the first instant orders, before "Give
+            // orders" - so it is folded in now, while every GIVE and TAKE is still only queued for
+            // `apply_transfers` (`ah-ixq7`). Priced exactly as the ledger prices it, uncapped by
+            // the faction purse (`silver::price_claim`, `ah-bumi`).
+            if let Some(amount) = super::forms::read_only_number(arguments) {
+                let earns = super::silver::price_claim(amount, None).earns;
+                if earns > 0 {
+                    add_item(
+                        &mut self.units[active].unit.items,
+                        "silver",
+                        SILVER_TAG,
+                        earns,
+                    );
+                }
+            }
         } else if command.is("give") {
             self.queue_give(active, arguments, line);
         } else if command.is("take") {
@@ -6726,6 +6743,97 @@ mod tests {
             !receiver.unit.items.iter().any(|item| item.tag == "GRAI"),
             "nobody ordered grain for this unit: {:?}",
             receiver.unit.items
+        );
+    }
+
+    /// `rules/claim`: "Claim an amount of the faction's unclaimed silver, and give it to the unit
+    /// issuing the order. The claiming unit may then spend the silver or give it to another unit."
+    /// `rules/sequenceofevents` settles CLAIM among the first instant orders, before "Give
+    /// orders", so silver claimed this month is there for the month's GIVE - `rules/form`'s own
+    /// example is `CLAIM 2500` then `GIVE NEW 1 1000 silver` (`ah-ixq7`).
+    fn claims_report(for_sale: &str) -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            &format!("  For Sale: {for_sale} humans [HUMN] at $38."),
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n")
+    }
+
+    fn silver_changes(unit: &UnitPreview) -> Vec<(i64, ItemChangeCause, Option<&str>)> {
+        unit.item_changes
+            .iter()
+            .filter(|change| change.tag == "SILV")
+            .map(|change| {
+                (
+                    change.delta,
+                    change.cause,
+                    change.other.as_ref().map(|other| other.unit_id.as_str()),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn silver_claimed_this_month_can_be_given_the_same_month() {
+        let response = preview_over(
+            &claims_report("5"),
+            "unit 902\nFORM 1\nBUY 1 humans\nEND\nCLAIM 2500\nGIVE NEW 1 1000 silver\n",
+        );
+
+        assert_eq!(
+            silver_changes(previewed(&response, "902")),
+            vec![(-1000, ItemChangeCause::GivenAway, Some("new-1"))],
+            "the claimed silver leaves the giver"
+        );
+        assert_eq!(
+            silver_changes(previewed(&response, "new-1")),
+            vec![(1000, ItemChangeCause::WasGiven, Some("902"))],
+            "and reaches the formed unit"
+        );
+    }
+
+    /// `rules/form`: an empty formed unit's "silver and any other items it was given will revert
+    /// to the first unit you have in that region" - claimed silver included.
+    #[test]
+    fn claimed_silver_given_to_a_dissolving_unit_reverts() {
+        let response = preview_over(
+            &claims_report("0"),
+            "unit 902\nFORM 1\nBUY 1 humans\nEND\nCLAIM 2500\nGIVE NEW 1 1000 silver\n",
+        );
+
+        assert_eq!(
+            silver_changes(previewed(&response, "902")),
+            vec![(-1000, ItemChangeCause::GivenAway, Some("new-1"))],
+        );
+        assert_eq!(
+            silver_changes(previewed(&response, "900")),
+            vec![(1000, ItemChangeCause::GiftReverted, Some("new-1"))],
+            "the dissolve reverts the claimed silver to the first unit"
+        );
+    }
+
+    /// `rules/take` "works just like the GIVE order" in the other direction, so a sibling can
+    /// collect what its source claimed this month.
+    #[test]
+    fn silver_claimed_this_month_can_be_taken_the_same_month() {
+        let response = preview_over(
+            &claims_report("0"),
+            "unit 902\nCLAIM 2500\nunit 900\nTAKE FROM 902 1000 silver\n",
+        );
+
+        assert_eq!(
+            silver_changes(previewed(&response, "900")),
+            vec![(1000, ItemChangeCause::Took, Some("902"))],
+        );
+        assert_eq!(
+            silver_changes(previewed(&response, "902")),
+            vec![(-1000, ItemChangeCause::WasTakenFrom, Some("900"))],
         );
     }
 
