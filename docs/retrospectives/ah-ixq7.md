@@ -1,6 +1,7 @@
-# ah-ixq7 — CLAIMed silver given the same turn moves nothing in the item preview
+# ah-ixq7 — retrospective
 
-- **Bead:** ah-ixq7 (bugfix)
+- **Implementer:** Bishop
+- **Date:** 2026-10-09
 - **PR:** #1463
 
 ## A comment saying the ledger never caps a claim produced an uncapped fix
