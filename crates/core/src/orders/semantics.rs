@@ -55032,6 +55032,32 @@ BUILD
             );
         }
 
+        /// The SILVER column's half of
+        /// `effects::...::a_formers_enter_above_its_form_does_not_move_the_formed_unit_down_the_report`:
+        /// FORM settles before ENTER (`rules/sequenceofevents`), so the former's ENTER does not
+        /// move the formed unit into the tower (`ah-qzxe`).
+        #[test]
+        fn a_formers_enter_above_its_form_does_not_move_the_formed_unit_down_the_report() {
+            let in_tower = |mut unit: ReportUnit| {
+                unit.structure_id = Some("4".to_string());
+                unit
+            };
+            let review = review_turn(
+                &report(vec![region(vec![
+                    with_silver(unit("2000"), 100),
+                    in_tower(unit("3000")),
+                    in_tower(unit("3001")),
+                ])]),
+                "unit 2000\nENTER 4\nGIVE NEW 1 100 SILV\nFORM 1\nGIVE 3000 ALL SILV\nEND\n\n\
+                 unit 3000\nGIVE 3001 ALL SILV\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert_eq!(forecast(&review, "3000").at_month_end, Some(0));
+            assert_eq!(forecast(&review, "3001").at_month_end, Some(100));
+        }
+
         /// A false `give-target-not-here` here is worse than the missing goods: it tells the player
         /// to change a correct order (`ah-6f48`).
         #[test]

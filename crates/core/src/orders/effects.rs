@@ -1818,6 +1818,11 @@ struct WorkingUnit {
     /// Where this unit stood before any of its boarding orders ran: the report's answer, or for a
     /// formed unit the structure its parent stood in when the FORM was read.
     reported: Option<String>,
+    /// Where this unit stands as `FORM` settles, before any ENTER or LEAVE
+    /// (`rules/sequenceofevents`): the report's answer, or for a formed unit its former's. What
+    /// report order places a formed unit by (`ah-qzxe`); unlike `reported`, an ENTER the former
+    /// wrote above the `FORM` does not change it.
+    placed_in: Option<String>,
     /// The unit's flags as the report showed them at the start of the turn - what a `FORM` in this
     /// unit's block inherits.
     ///
@@ -2252,6 +2257,7 @@ impl Working {
                 move_origin_cause: None,
                 move_destination: None,
                 reported: unit.structure_id.clone(),
+                placed_in: unit.structure_id.clone(),
                 reported_flags: unit.flags.clone(),
                 boardings: Vec::new(),
                 uncounted: Vec::new(),
@@ -2636,6 +2642,7 @@ impl Working {
         // in this block inherits (`rules/form`), read from the report rather than the walked copy
         // because `rules/sequenceofevents` runs every FORM before this month's flag orders.
         let parent_flags = self.units[parent].reported_flags.clone();
+        let placed_in = self.units[parent].placed_in.clone();
         let parent = &self.units[parent].unit;
         let key = (parent.region_id.clone(), alias.to_string());
         if self.by_alias.contains_key(&key) {
@@ -2661,6 +2668,7 @@ impl Working {
             move_origin_cause: None,
             move_destination: None,
             reported,
+            placed_in,
             reported_flags,
             boardings: Vec::new(),
             uncounted: Vec::new(),
@@ -2855,8 +2863,7 @@ impl Working {
             .map(|working| Placement {
                 formed: working.formed,
                 region: &working.unit.region_id,
-                // As FORM settles, before this month's ENTER and LEAVE (`rules/sequenceofevents`).
-                structure: working.reported.as_deref(),
+                structure: working.placed_in.as_deref(),
             })
             .collect();
         let ranks = report_ranks(&placements);
@@ -10354,7 +10361,24 @@ mod tests {
         /// (`ah-qzxe`).
         #[test]
         fn a_unit_formed_outside_any_structure_gives_before_the_units_inside_one() {
-            let report = [
+            let report = report_with_a_former_outside_a_tower();
+            let response = preview_over(
+                &report,
+                "unit 900\nGIVE NEW 1 10 SWOR\nFORM 1\nGIVE 901 ALL SWOR\nEND\n\
+                 unit 901\nGIVE 902 ALL SWOR\n",
+            );
+
+            assert_eq!(amount_of(row_of(&response, "901"), "SWOR"), 0);
+            assert_eq!(
+                amount_of(row_of(&response, "902"), "SWOR"),
+                10,
+                "the formed unit's gift landed before the keeper gave everything on"
+            );
+        }
+
+        /// A former outside any structure above a tower holding a keeper and a recipient.
+        fn report_with_a_former_outside_a_tower() -> String {
+            [
                 "Foo (1) Report",
                 "",
                 "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
@@ -10370,19 +10394,21 @@ mod tests {
                 "  * Recipient (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
                 "",
             ]
-            .join("\n");
+            .join("\n")
+        }
+
+        /// `rules/sequenceofevents` processes FORM before LEAVE and ENTER, so an ENTER the former
+        /// wrote above its FORM does not move where the formed unit stands (`ah-qzxe`).
+        #[test]
+        fn a_formers_enter_above_its_form_does_not_move_the_formed_unit_down_the_report() {
             let response = preview_over(
-                &report,
-                "unit 900\nGIVE NEW 1 10 SWOR\nFORM 1\nGIVE 901 ALL SWOR\nEND\n\
+                &report_with_a_former_outside_a_tower(),
+                "unit 900\nENTER 4\nGIVE NEW 1 10 SWOR\nFORM 1\nGIVE 901 ALL SWOR\nEND\n\
                  unit 901\nGIVE 902 ALL SWOR\n",
             );
 
             assert_eq!(amount_of(row_of(&response, "901"), "SWOR"), 0);
-            assert_eq!(
-                amount_of(row_of(&response, "902"), "SWOR"),
-                10,
-                "the formed unit's gift landed before the keeper gave everything on"
-            );
+            assert_eq!(amount_of(row_of(&response, "902"), "SWOR"), 10);
         }
 
         /// A gift is one movement seen from two sides, so both rows carry it - `rules/give`.
