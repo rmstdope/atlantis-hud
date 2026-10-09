@@ -9905,17 +9905,13 @@ fn build(
         };
 
     // From here on the site is known: an uncounted exit leaves what it still needs unknown to
-    // every later builder of it, and one an earlier builder left unknown cannot be priced.
+    // every later builder of it.
     macro_rules! doubt_site_and_return {
         () => {{
             ledger.build_doubted.insert(site.clone());
             mark_uncounted_and_return!();
         }};
     }
-    if ledger.build_doubted.contains(&site) {
-        mark_uncounted_and_return!();
-    }
-
     let Some((cost, materials)) = ruleset.build_recipe(&kind) else {
         // A Shaft, a ship, or a misspelling: the catalogue states neither cost nor material.
         doubt_site_and_return!();
@@ -10047,6 +10043,11 @@ fn build(
         doubt_site_and_return!();
     };
     let level = i64::from(level_in(skills, skill_tag));
+    // Only the arithmetic reads what the structure still needs, so only it is stopped when an
+    // earlier builder left that unknown; a refusal above is a known zero either way.
+    if ledger.build_doubted.contains(&site) {
+        mark_uncounted_and_return!();
+    }
     let plan = plan_build(settled.men, level, remaining, &held);
     if plan.done == 0 {
         // A zero movement would reorder the item list into a phantom "items changed" row.
@@ -32299,6 +32300,52 @@ BUILD
                         Some([5].as_slice())
                     );
                     assert!(!ledger.built.contains_key("901"), "{:?}", ledger.built);
+                },
+            );
+        }
+
+        /// The doubt reaches only what a later builder lays, never a zero known without it: 901
+        /// holds neither material of a Mine, so it still gets its refusal (`ah-d60n`).
+        #[test]
+        fn a_builder_holding_no_material_is_refused_even_after_an_uncounted_one() {
+            let mine = |id: &str, wood: i64| {
+                let builder = with_skill(with_men(unit(id), 10), "MINI", 3);
+                let builder = if wood > 0 {
+                    with_item(builder, wood, "wood", "WOOD")
+                } else {
+                    builder
+                };
+                in_structure(builder, "4")
+            };
+            let mut hex_region = region(vec![mine("900", 120), mine("901", 0), an_ally("7001")]);
+            hex_region.structures = vec![Structure {
+                structure_id: "4".to_string(),
+                name: "Building".to_string(),
+                kind: "Mine".to_string(),
+                description: None,
+                needs: Some(40),
+                ..Default::default()
+            }];
+            with_ledger(
+                hex_region,
+                "unit 900\nGIVE 7001 10 wood\nBUILD\nunit 901\nBUILD\n",
+                |ledger| {
+                    assert!(
+                        ledger
+                            .uncounted
+                            .get("900")
+                            .is_some_and(|lines| lines.contains(&3)),
+                        "900's wood is in doubt: {:?}",
+                        ledger.uncounted
+                    );
+                    assert!(
+                        ledger
+                            .build_material_refusals
+                            .iter()
+                            .any(|refusal| refusal.unit_id == "901"),
+                        "901 holds neither wood nor stone"
+                    );
+                    assert!(!ledger.uncounted.contains_key("901"));
                 },
             );
         }
