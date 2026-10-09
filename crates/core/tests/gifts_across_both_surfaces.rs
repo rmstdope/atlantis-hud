@@ -390,10 +390,9 @@ fn a_claim_does_fund_the_same_months_gift() {
         "the claim is in the purse the gift empties, on top of the 100 the unit held"
     );
     assert_eq!(giver.at_month_end, Some(0));
-    // The ITEMS *preview* clamps a transfer to what the report shows the source holding, while the
-    // ledger charges in full - the documented difference between the three readers of a Give phase
-    // (`orders/transfer_agreement.rs`), and not a disagreement about this gift.
-    assert_eq!(preview_holding(&text, script, "901", "SILV"), 100);
+    // The ITEMS preview folds the claim into the giver's holdings before its Give phase too, so
+    // both surfaces hand over the same 200 (`ah-ixq7`).
+    assert_eq!(preview_holding(&text, script, "901", "SILV"), 200);
 }
 
 /// The doubt the column raises for itself still hides the gift where it should: an order it cannot

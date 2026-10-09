@@ -1085,17 +1085,13 @@ fn settle(
     // here. After the walk, because a `FORM` reads its parent's structure mid-walk and
     // `rules/sequenceofevents` creates every formed unit long before any movement (`ah-ehgy`).
     apply_movement_boardings(&mut working.units);
-    // `rules/sequenceofevents` settles GIVE and TAKE in one Give phase, before the market - and
-    // processes units in report order, which is why nothing moved while the document was being
-    // read (`ah-3mwm`).
-    working.apply_transfers();
-
     // What `BUY`, `SELL`, `WITHDRAW` and `TAKE` do to each unit's item list, read from the same
     // ledger the Silver column and the shortfall warnings settle an oversubscribed market line
     // from - so the ITEMS and SILVER cells on one row cannot disagree (`ah-agbm`). `GIVE` is not
-    // read here: the walk above already applied every gift through `Working::give`.
+    // read here: `apply_transfers` below applies every gift through `Working::give`.
     // With the geometry this settle holds, which `options.geometry` may not carry - without it
-    // nothing is priced and no unpaid shipment is ever refused (`ah-7ale.4`).
+    // nothing is priced and no unpaid shipment is ever refused (`ah-7ale.4`). Read before the
+    // Give phase, which needs the ledger's claims, and applied after it.
     let priced_with = super::semantics::CheckOptions {
         geometry,
         ..working.options.clone()
@@ -1106,6 +1102,15 @@ fn settle(
         Some(ruleset.as_ref()),
         &priced_with,
     );
+    // `rules/claim` gives the claimed silver to the unit issuing the order, and
+    // `rules/sequenceofevents` settles CLAIM among the first instant orders, before "Give
+    // orders" - so it is there for this month's GIVE and TAKE. The amount is the ledger's, capped
+    // at the faction's unclaimed silver as the SILVER column caps it (`ah-ixq7`).
+    working.apply_claims(&item_effects);
+    // `rules/sequenceofevents` settles GIVE and TAKE in one Give phase, before the market - and
+    // processes units in report order, which is why nothing moved while the document was being
+    // read (`ah-3mwm`).
+    working.apply_transfers();
     working.apply_item_effects(&item_effects);
     settle_headcounts(&mut working.units, ruleset);
     // `rules/form`, and only once the market has settled: a formed unit's own BUY is what decides
@@ -2818,6 +2823,24 @@ impl Working {
             amount: Cow::Owned(amount),
             is_give: false,
         });
+    }
+
+    /// Adds what each unit's `CLAIM` orders earn, as the ledger settled them, to its item list.
+    fn apply_claims(
+        &mut self,
+        effects: &BTreeMap<super::semantics::UnitKey, super::semantics::UnitItemEffects>,
+    ) {
+        for unit in &mut self.units {
+            let claimed = effects
+                .get(&super::semantics::unit_key(
+                    &unit.unit.region_id,
+                    &unit.unit.unit_id,
+                ))
+                .map_or(0, |effect| effect.claimed);
+            if claimed > 0 {
+                add_item(&mut unit.unit.items, "silver", SILVER_TAG, claimed);
+            }
+        }
     }
 
     /// Settles this month's Give phase.
@@ -6729,6 +6752,135 @@ mod tests {
             5,
             "the grain the dissolving unit bought is handed on with the rest: {:?}",
             receiver.unit.items
+        );
+    }
+
+    /// `rules/claim`: "Claim an amount of the faction's unclaimed silver, and give it to the unit
+    /// issuing the order. The claiming unit may then spend the silver or give it to another unit."
+    /// `rules/sequenceofevents` settles CLAIM among the first instant orders, before "Give
+    /// orders", so silver claimed this month is there for the month's GIVE - `rules/form`'s own
+    /// example is `CLAIM 2500` then `GIVE NEW 1 1000 silver` (`ah-ixq7`).
+    fn claims_report(for_sale: &str) -> String {
+        [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            &format!("  For Sale: {for_sale} humans [HUMN] at $38."),
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n")
+    }
+
+    fn silver_changes(unit: &UnitPreview) -> Vec<(i64, ItemChangeCause, Option<&str>)> {
+        unit.item_changes
+            .iter()
+            .filter(|change| change.tag == "SILV")
+            .map(|change| {
+                (
+                    change.delta,
+                    change.cause,
+                    change.other.as_ref().map(|other| other.unit_id.as_str()),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn silver_claimed_this_month_can_be_given_the_same_month() {
+        let response = preview_over(
+            &claims_report("5"),
+            "unit 902\nFORM 1\nBUY 1 humans\nEND\nCLAIM 2500\nGIVE NEW 1 1000 silver\n",
+        );
+
+        assert_eq!(
+            silver_changes(previewed(&response, "902")),
+            vec![(-1000, ItemChangeCause::GivenAway, Some("new-1"))],
+            "the claimed silver leaves the giver"
+        );
+        assert_eq!(
+            silver_changes(previewed(&response, "new-1")),
+            vec![(1000, ItemChangeCause::WasGiven, Some("902"))],
+            "and reaches the formed unit"
+        );
+    }
+
+    /// `rules/claim` claims "an amount of the faction's unclaimed silver", so a claim larger than
+    /// the purse the report states earns only what is there - and the preview hands on what the
+    /// SILVER column's ledger says was claimed, not what the order asked for (`ah-ixq7`).
+    #[test]
+    fn a_claim_beyond_the_unclaimed_silver_gives_only_what_was_there() {
+        let report = claims_report("5").replacen(
+            "Foo (1) Report\n\n",
+            "Foo (1) Report\n\nUnclaimed silver: 300.\n\n",
+            1,
+        );
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 1 humans\nEND\nCLAIM 2500\nGIVE NEW 1 1000 silver\n",
+        );
+
+        assert_eq!(
+            silver_changes(previewed(&response, "902")),
+            vec![(-300, ItemChangeCause::GivenAway, Some("new-1"))],
+            "only the 300 the faction had unclaimed can be given on"
+        );
+    }
+
+    /// A formed unit's own `CLAIM` is credited to its `new-<alias>` row, so what it gives on in
+    /// the same month moves too (`ah-ixq7`).
+    #[test]
+    fn a_formed_unit_can_give_what_it_claimed_itself() {
+        let response = preview_over(
+            &claims_report("5"),
+            "unit 902\nFORM 1\nBUY 1 humans\nCLAIM 100\nGIVE 902 50 silver\nEND\n",
+        );
+
+        assert_eq!(
+            silver_changes(previewed(&response, "902")),
+            vec![(50, ItemChangeCause::WasGiven, Some("new-1"))],
+            "the formed unit's claim is there for its own gift"
+        );
+    }
+
+    /// `rules/form`: an empty formed unit's "silver and any other items it was given will revert
+    /// to the first unit you have in that region" - claimed silver included.
+    #[test]
+    fn claimed_silver_given_to_a_dissolving_unit_reverts() {
+        let response = preview_over(
+            &claims_report("0"),
+            "unit 902\nFORM 1\nBUY 1 humans\nEND\nCLAIM 2500\nGIVE NEW 1 1000 silver\n",
+        );
+
+        assert_eq!(
+            silver_changes(previewed(&response, "902")),
+            vec![(-1000, ItemChangeCause::GivenAway, Some("new-1"))],
+        );
+        assert_eq!(
+            silver_changes(previewed(&response, "900")),
+            vec![(1000, ItemChangeCause::GiftReverted, Some("new-1"))],
+            "the dissolve reverts the claimed silver to the first unit"
+        );
+    }
+
+    /// `rules/take` "works just like the GIVE order" in the other direction, so a sibling can
+    /// collect what its source claimed this month.
+    #[test]
+    fn silver_claimed_this_month_can_be_taken_the_same_month() {
+        let response = preview_over(
+            &claims_report("0"),
+            "unit 902\nCLAIM 2500\nunit 900\nTAKE FROM 902 1000 silver\n",
+        );
+
+        assert_eq!(
+            silver_changes(previewed(&response, "900")),
+            vec![(1000, ItemChangeCause::Took, Some("902"))],
+        );
+        assert_eq!(
+            silver_changes(previewed(&response, "902")),
+            vec![(-1000, ItemChangeCause::WasTakenFrom, Some("900"))],
         );
     }
 
