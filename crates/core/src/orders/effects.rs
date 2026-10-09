@@ -592,8 +592,9 @@ pub enum ItemChangeCause {
     /// other party at all. Its own cause, because `GivenAway` with no party already means "given
     /// to somebody this core cannot number" - a `FACTION n NEW m` target, which moves silver.
     Discarded,
-    /// `rules/form` dissolves a formed unit that gains nobody and reverts what it was given to the
-    /// first own unit in the region. Recorded on the row the goods revert **to**; the dissolving
+    /// `rules/form` dissolves a formed unit that gains nobody, and the engine's `ARegion::Kill`
+    /// hands everything it holds - given, taken or bought - to the first own unit in the region
+    /// (`ah-308c`). Recorded on the row the goods revert **to**; the dissolving
     /// row's own changes are dropped with the rest of its preview.
     GiftReverted,
     /// Food maintenance eats this month, taken off the unit that held it (`ah-q490`). The same
@@ -1827,12 +1828,6 @@ struct WorkingUnit {
     /// after each one, so a FORM later in the block still inherits the structure the unit is
     /// standing in by then - `visit` is a mutating walk and other arms read `structure_id`.
     boardings: Vec<BoardingOrder>,
-    /// What this row was handed by `GIVE` this month, in the order the gifts were read.
-    ///
-    /// Only a formed unit's is read, and only to dissolve it: `rules/form` reverts "the silver and
-    /// any other items it **was given**", which is exactly this list and not whatever the row's
-    /// own month bought or took (`ah-dhga`).
-    given: Vec<crate::report::model::ItemAmount>,
     /// This unit's orders whose effect on its items could not be counted, verbatim, in document
     /// order. Written once by `apply_item_effects`, after the walk that builds every unit here has
     /// finished (`ah-agbm`).
@@ -1904,6 +1899,30 @@ struct Transfer<'a> {
 }
 
 impl WorkingUnit {
+    /// What this row holds at the moment `rules/sequenceofevents` would delete it as empty - after
+    /// `BUY` and `FORGET`, before `WITHDRAW` (`runorders.cpp` `RunOrders`) - in report-tag order.
+    ///
+    /// `apply_item_effects` has already applied the whole month to `unit.items`, so what the later
+    /// phases moved is undone here: a deleted unit never withdraws, produces or builds. A stock
+    /// that undoing would take below zero was never there and is dropped.
+    fn inventory_when_deleted(&self) -> Vec<crate::report::model::ItemAmount> {
+        let mut items = self.unit.items.clone();
+        for change in self.item_log.changes() {
+            let after_deletion = matches!(
+                change.cause,
+                ItemChangeCause::Withdrawn
+                    | ItemChangeCause::Produced
+                    | ItemChangeCause::ProductionSpent
+                    | ItemChangeCause::BuildSpent
+            );
+            if after_deletion {
+                add_item(&mut items, &change.name, &change.tag, -change.delta);
+            }
+        }
+        items.retain(|item| item.amount > 0);
+        items
+    }
+
     /// This row as the movement reader keys it, which is how `settle` finds its route in
     /// `movement::fleet::OrderedUnits` (`ah-74y9`).
     fn key(&self) -> crate::orders::blocks::OrderedUnitKey {
@@ -2230,7 +2249,6 @@ impl Working {
                 reported: unit.structure_id.clone(),
                 reported_flags: unit.flags.clone(),
                 boardings: Vec::new(),
-                given: Vec::new(),
                 uncounted: Vec::new(),
                 taken_unshown: Vec::new(),
                 produced: Vec::new(),
@@ -2353,16 +2371,17 @@ impl Working {
         }
     }
 
-    /// Dissolves every formed unit that gained nobody, returning its goods to the first own unit
-    /// the report shows in that region (`rules/form`: "If no recruits are gained at all, the empty
+    /// Dissolves every formed unit that gained nobody, handing its goods to the first own unit the
+    /// report shows in that region (`rules/form`: "If no recruits are gained at all, the empty
     /// unit will be dissolved, and the silver and any other items it was given will revert to the
-    /// first unit you have in that region").
+    /// first unit you have in that region"). The engine hands on more than the rule says: its
+    /// `ARegion::Kill` moves the whole inventory, so what the unit took or bought goes too
+    /// (`ah-308c`).
     ///
     /// Returns the indices of the dissolved rows rather than removing them: `by_id`, `by_alias`
     /// and every queued `PendingTransport` store indices into `self.units`, so the entries stay
-    /// put and the caller filters them out while rendering. What the row was not given stays on
-    /// it, unrendered - so `apply_transports` is given the same set and drops what a dissolved row
-    /// had queued.
+    /// put and the caller filters them out while rendering. `apply_transports` is given the same
+    /// set and drops what a dissolved row had queued: the engine deleted it before any TRANSPORT.
     /// Each index carries its recipient's label, as `<name> (<id>)`, or `None` where the region
     /// shows no own unit for the goods to revert to (`ah-ty3s.3`).
     fn dissolve_empty_forms(&mut self) -> BTreeMap<usize, Option<String>> {
@@ -2385,57 +2404,37 @@ impl Working {
                 dissolved.insert(index, None);
                 continue;
             };
-            // Exactly what it was *given*, which is what `rules/form` reverts - not what its own
-            // month bought, produced or took. A `BUY` the game would never have executed must not
-            // become a windfall for the unit the goods revert to.
-            //
-            // Clamped to what the row still holds, by the same case-insensitive tag match the
-            // rest of this file uses: a gift the unit then sold or gave on is not there to
-            // revert. The clamp is a bound, not a ledger - it cannot tell gifted stock from stock
-            // the row acquired itself, so a row given 100 silver, giving it on and then earning
-            // 50 reverts that 50. At this layer that is the cheaper wrong answer of the two.
-            for gift in std::mem::take(&mut self.units[index].given) {
-                let Some(at) = self.units[index]
-                    .unit
-                    .items
-                    .iter()
-                    .position(|item| item.tag.eq_ignore_ascii_case(&gift.tag))
-                else {
-                    continue;
-                };
-                let moved = gift.amount.min(self.units[index].unit.items[at].amount);
-                if moved <= 0 {
+            // Everything it holds at the point the engine deletes it, however it came by it:
+            // `runorders.cpp` `RunOrders` runs `DeleteEmptyUnits` after `BUY` and `FORGET`, and
+            // `ARegion::Kill` adds every item that is not a soldier to the first unit's stock -
+            // what it was given, what it `TAKE`s and what it `BUY`s alike (`ah-308c`).
+            for item in self.units[index].inventory_when_deleted() {
+                // Read before the push: `self.units` is indexed mutably for `recipient` while
+                // `index` is still being read. `ARegion::Kill` skips `IsSoldier` items - men and
+                // monsters - which an empty unit holds none of.
+                let is_man = self.ruleset.is_man(&item.tag);
+                if is_man {
                     continue;
                 }
-                take_item(&mut self.units[index].unit.items, at, moved);
                 add_item(
                     &mut self.units[recipient].unit.items,
-                    &gift.name,
-                    &gift.tag,
-                    moved,
+                    &item.name,
+                    &item.tag,
+                    item.amount,
                 );
-                // Both read before the push: `self.units` is indexed mutably for `recipient`
-                // while `index` is still being read.
-                //
-                // `is_man` is asked with the tag exactly as the report wrote it - `given` is
-                // written from `tags_moved`, which clones the held item's own tag - the same as
-                // every other `is_man` call in this file. If the catalogue lookup ever needs
-                // canonicalising it needs it in `Ruleset::is_man`, not here.
-                let is_man = self.ruleset.is_man(&gift.tag);
                 let dissolving = ItemChangeParty {
                     unit_id: self.units[index].unit.unit_id.clone(),
                     name: Some(self.units[index].unit.name.clone()),
                 };
-                // `moved`, not `gift.amount`: the clamp above is what actually changed hands.
                 // `Stock::Moved` keeps the row where the revert was silver alone (`ah-6m7b.5.1`).
                 self.units[recipient].item_log.record(
                     ItemChange {
-                        tag: gift.tag.clone(),
-                        name: gift.name.clone(),
-                        delta: moved,
+                        tag: item.tag.clone(),
+                        name: item.name.clone(),
+                        delta: item.amount,
                         cause: ItemChangeCause::GiftReverted,
-                        // The gift's own line is not kept on `given`, and the revert is not an order
-                        // the player wrote: `rules/form` does it because the unit gained nobody.
+                        // Not an order the player wrote: the engine does it because the unit
+                        // gained nobody.
                         line: None,
                         unit_price: None,
                         other: Some(dissolving),
@@ -2444,6 +2443,11 @@ impl Working {
                     Stock::Moved,
                 );
             }
+            let ruleset = std::sync::Arc::clone(&self.ruleset);
+            self.units[index]
+                .unit
+                .items
+                .retain(|item| ruleset.is_man(&item.tag));
             dissolved.insert(
                 index,
                 Some(format!(
@@ -2656,7 +2660,6 @@ impl Working {
             reported,
             reported_flags,
             boardings: Vec::new(),
-            given: Vec::new(),
             uncounted: Vec::new(),
             taken_unshown: Vec::new(),
             produced: Vec::new(),
@@ -3140,12 +3143,6 @@ impl Working {
                     },
                     Stock::Moved,
                 );
-                // `rules/form` reverts what a dissolving formed unit "was given", so only a GIVE
-                // is recorded here: what the row TAKES is its own doing, not a gift, and must not
-                // revert with the rest (`ah-dhga`, `ah-3mwm`).
-                if is_give {
-                    add_item(&mut self.units[receiver].given, &name, &tag, moved);
-                }
             }
 
             // A race is people, so moving one moves men as well as stock.
@@ -6685,11 +6682,13 @@ mod tests {
         assert_eq!(amount("902", "SILV"), 0);
     }
 
-    /// `rules/form` reverts "the silver and any other items it **was given**". A unit that
-    /// dissolves never existed to trade, so what its own `BUY` bought is not a windfall for the
-    /// unit it reverts to.
+    /// `rules/form` says only "the silver and any other items it was given will revert", but the
+    /// engine runs `BUY` before it deletes empty units (`runorders.cpp` `RunOrders`:
+    /// `RunBuyOrders`, then `DeleteEmptyUnits`), and `ARegion::Kill` hands everything the unit
+    /// holds to the faction's first unit in the region - what its own `BUY` bought included
+    /// (`ah-308c`).
     #[test]
-    fn a_dissolved_units_purchases_are_not_handed_on() {
+    fn a_dissolved_units_purchases_go_to_the_first_unit() {
         let report = [
             "Foo (1) Report",
             "",
@@ -6722,9 +6721,15 @@ mod tests {
             100,
             "the silver it was given reverts in full"
         );
-        assert!(
-            !receiver.unit.items.iter().any(|item| item.tag == "GRAI"),
-            "nobody ordered grain for this unit: {:?}",
+        assert_eq!(
+            receiver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "GRAI")
+                .map_or(0, |item| item.amount),
+            5,
+            "the grain the dissolving unit bought is handed on with the rest: {:?}",
             receiver.unit.items
         );
     }
@@ -6775,10 +6780,18 @@ mod tests {
             "nothing arrives from a unit that never existed: {:?}",
             receiver.transport_received
         );
-        assert!(
-            !receiver.unit.items.iter().any(|item| item.tag == "GRAI"),
-            "and no grain with it: {:?}",
-            receiver.unit.items
+        // The grain still reaches it - not by the dropped TRANSPORT but by the dissolution
+        // itself: `ARegion::Kill` hands the whole inventory to the faction's first unit (`ah-308c`).
+        assert_eq!(
+            receiver
+                .item_changes
+                .iter()
+                .filter(|change| change.tag == "GRAI")
+                .map(|change| (change.delta, change.cause))
+                .collect::<Vec<_>>(),
+            vec![(5, ItemChangeCause::GiftReverted)],
+            "{:?}",
+            receiver.item_changes
         );
     }
 
@@ -6822,11 +6835,12 @@ mod tests {
         );
     }
 
-    /// What a dissolving unit `TAKE`s from a unit the report shows is not handed on either - only
-    /// what it was given is. The source keeps the shortfall its own projected `TAKE` left it,
-    /// which is the pre-existing behaviour of that row and not dissolution's to unwind.
+    /// What a dissolving unit `TAKE`s goes to the faction's first unit in the hex, exactly like
+    /// what it was given: `ARegion::Kill` hands over the unit's whole inventory, however it came
+    /// by it, and the recipient is the first unit in region order - not the unit it was taken
+    /// from (`ah-308c`). The source keeps the shortfall its `TAKE` left it.
     #[test]
-    fn a_dissolved_units_take_is_not_handed_on() {
+    fn a_dissolved_units_take_goes_to_the_first_unit() {
         let report = [
             "Foo (1) Report",
             "",
@@ -6864,8 +6878,70 @@ mod tests {
         assert_eq!(held("900", "SWOR"), 2, "the gift reverts");
         assert_eq!(
             held("900", "STON"),
-            0,
-            "what the dissolving unit took is not a windfall for the recipient"
+            4,
+            "what the dissolving unit took goes to the first unit too"
+        );
+        assert_eq!(
+            held("902", "STON"),
+            1,
+            "and not back to the unit it came from"
+        );
+        let receiver = units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the first own unit is previewed");
+        assert!(
+            receiver
+                .item_changes
+                .iter()
+                .any(|change| change.tag == "STON"
+                    && change.delta == 4
+                    && change.cause == ItemChangeCause::GiftReverted
+                    && change.other.as_ref().map(|other| other.unit_id.as_str()) == Some("new-1")),
+            "and its ledger says where the stone came from: {:?}",
+            receiver.item_changes
+        );
+    }
+
+    /// `runorders.cpp` `RunOrders` deletes empty units before `DoWithdrawOrders`, so a dissolving
+    /// unit's `WITHDRAW` never runs and nothing it would have withdrawn reaches the first unit
+    /// (`ah-308c`). Only what it held at the point it was deleted is handed on.
+    #[test]
+    fn a_dissolved_units_withdrawal_is_not_handed_on() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 2 swords [SWOR]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nWITHDRAW 5 FUR\nEND\nGIVE NEW 1 2 SWOR\n",
+        );
+
+        let receiver = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "900")
+            .expect("the first own unit is previewed");
+        assert!(
+            receiver
+                .unit
+                .items
+                .iter()
+                .any(|item| item.tag == "SWOR" && item.amount == 2),
+            "what it held reverts: {:?}",
+            receiver.unit.items
+        );
+        assert!(
+            !receiver.unit.items.iter().any(|item| item.tag == "FUR"),
+            "what it would have withdrawn after it was deleted does not: {:?}",
+            receiver.unit.items
         );
     }
 
