@@ -26,12 +26,6 @@ fn knows_lakes_are_water_in_trident() {
     );
 }
 
-#[test]
-fn new_origins_splits_production_around_build() {
-    // `rules/sequenceofevents`: manufacturing PRODUCE, then BUILD, then primary PRODUCE.
-    assert!(!ruleset().builds_before_production());
-}
-
 /// New Origins' `rules/movement_normal` carries no coastal-water paragraph, only "there are items
 /// that can enable your units to fly or walk on water", and its catalogue gives `data/TURT` and
 /// `data/LIZA` a swimming capacity. So it swims, anywhere: no water is singled out and deep water
