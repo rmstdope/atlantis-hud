@@ -863,7 +863,7 @@ pub fn review_turn(
         check_pillage_men(hex, ruleset, &plurals, &options, &mut findings);
         check_guard(hex, ruleset, &plurals, &options, &departed, &mut findings);
         check_teaching(hex, ruleset, &plurals, &options, &departed, &mut findings);
-        check_building(hex, &options, &mut findings);
+        check_building(hex, ruleset, &options, &mut findings);
         check_building_outside(hex, &options, &mut findings);
         check_build_help(hex, &options, &mut findings);
         check_build_skill(hex, ruleset, &options, &mut findings);
@@ -9108,7 +9108,8 @@ fn founding_site_refusal(
 /// `min(laid, max(200, cost * 34 / 100), max(1, BUIL) * men)` points, refuses outright when that
 /// is none ("Can't destroy ... more"), and when points remain keeps the structure, raising its
 /// `incomplete` by what it removed (`ah-xryl`). Every other ruleset reads `INSTANT`, a removal.
-/// A New Age destroy whose cost or destroyer's skills the HUD cannot read is a removal too.
+/// A New Age destroy whose cost, or destroyer's skills or headcount, the HUD cannot read is a
+/// removal too.
 #[derive(Debug, Default)]
 struct AfterDestroy {
     /// Structures gone before BUILD.
@@ -9174,7 +9175,13 @@ fn per_skill_destroy(
         .buildings
         .get(&structure.kind.to_ascii_uppercase())?
         .cost?;
-    let level = i64::from(destroyer.skill_level("BUIL")?);
+    // DESTROY runs after GIVE and before the market (`runorders.cpp` `RunOrders`), so the men
+    // and the skill are both the post-gift, pre-recruit ones. A transfer the walk cannot follow
+    // leaves neither readable.
+    if destroyer.holdings_unknown() {
+        return None;
+    }
+    let level = i64::from(level_in(destroyer.skills_before_the_market()?, "BUIL"));
     let laid = (cost - structure.needs.unwrap_or(0)).max(0);
     let destroyable = laid.min((cost * 34 / 100).max(200));
     let destroys = destroyable.min(level.max(1) * destroyer.early_men().max(0));
@@ -13923,10 +13930,19 @@ fn carries_unfinished_ship(ordered: &Ordered<'_>) -> bool {
 /// A `BUILD` (bare, `COMPLETE`, or `HELP [unit]`) that carries on with a structure the report
 /// already shows as finished (`needs: None`) spends the unit's month for nothing. `BUILD [name]`
 /// founds something that does not exist yet and is never this case.
-fn check_building(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+///
+/// A New Age `DESTROY` that leaves points standing makes a finished structure unfinished again, so
+/// the report's `needs` is read through [`AfterDestroy`] as BUILD's pricing reads it (`ah-xryl`).
+fn check_building(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
     if !options.emits(codes::ALREADY_BUILT) {
         return;
     }
+    let after_destroy = AfterDestroy::read(hex, ruleset);
 
     for ordered in &hex.units {
         let Some(placed) = ordered
@@ -13974,7 +13990,7 @@ fn check_building(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Find
         else {
             continue;
         };
-        if structure.needs.is_some() {
+        if after_destroy.needs(structure).is_some() {
             continue;
         }
 
@@ -27694,6 +27710,75 @@ BUILD Farm COMPLETE
                     assert_eq!(spend.amount, 10);
                 },
             );
+        }
+
+        /// A finished Farm a weak destroyer damages is unfinished again: `Do1Destroy` raises its
+        /// `incomplete` by the 2 points it removed, so `BUILD Farm COMPLETE` continues it and
+        /// lays exactly those 2 (`ah-xryl`).
+        #[test]
+        fn a_trident_partial_destroy_of_a_finished_structure_is_rebuilt() {
+            let hex_region = ReportRegion {
+                structures: vec![Structure {
+                    needs: None,
+                    ..unfinished_farm("4", 0)
+                }],
+                ..region(vec![in_structure(
+                    with_item(
+                        with_skill(with_men(unit("900"), 2), "FARM", 3),
+                        40,
+                        "wood",
+                        "WOOD",
+                    ),
+                    "4",
+                )])
+            };
+            with_trident_ledger(
+                hex_region,
+                "unit 900\nDESTROY\nBUILD Farm COMPLETE\n",
+                |ledger| {
+                    let spend = &ledger.built.get("900").expect("the unit builds")[0];
+                    assert!(!spend.founding, "the damaged Farm is continued");
+                    assert_eq!(spend.amount, 2, "the 2 points destroyed");
+                },
+            );
+        }
+
+        /// `runorders.cpp` runs `RunDestroyOrders` after GIVE and before `RunBuyOrders`, so the
+        /// destroyer's BUIL is the level before this month's recruits dilute it. One man at BUIL 3
+        /// (180 days) destroys 3 of the 7 laid points; read after 2 recruits it would be 60 days a
+        /// man, BUIL 1, and one point. Read on the settled hex the validator sees, where
+        /// `apply_recruits` has run.
+        #[test]
+        fn a_trident_destroyer_s_skill_is_read_before_the_market() {
+            let hex_region = ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 5,
+                    name: "men".to_string(),
+                    tag: "HUMN".to_string(),
+                    price: 38,
+                }],
+                structures: vec![unfinished_farm("4", 3)],
+                ..region(vec![in_structure(
+                    with_skill_points(
+                        with_men(with_silver(unit("900"), 10_000), 1),
+                        "BUIL",
+                        3,
+                        180,
+                    ),
+                    "4",
+                )])
+            };
+            let ordered = OrderedUnits::read("unit 900\nDESTROY\nBUY 2 HUMN\n");
+            let hex = hex_after_orders(&hex_region, &ordered);
+            assert_eq!(
+                hex.find("900").and_then(|unit| unit.skill_level("BUIL")),
+                Some(1),
+                "the recruits do dilute the post-market level"
+            );
+            let rules = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+                .expect("the committed Trident ruleset should be usable");
+            let after = AfterDestroy::read(&hex, Some(&rules));
+            assert_eq!(after.damaged.get("4"), Some(&3), "{after:?}");
         }
 
         /// The month-long walk reads the same: a partly destroyed Farm is continued where it
@@ -42678,6 +42763,28 @@ BUILD
         assert_eq!(finding.unit_id.as_deref(), Some("4021"));
         assert_eq!(finding.line, Some(2));
         assert_eq!(finding.message, "Soggy Saw Mill is already finished");
+    }
+
+    /// A New Age DESTROY that leaves points standing makes a finished structure unfinished again
+    /// (`../atlantis-newage` `runorders.cpp` `Do1Destroy` raises `incomplete`), so a bare BUILD
+    /// after it has work to do and is not "already finished" (`ah-xryl`).
+    #[test]
+    fn a_trident_build_after_a_partial_destroy_of_a_finished_structure_does_not_warn() {
+        let trident = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+            .expect("the committed Trident ruleset should be usable");
+        let findings = check_turn(
+            &report(vec![ReportRegion {
+                structures: vec![Structure {
+                    kind: "Farm".to_string(),
+                    ..finished_mill("1")
+                }],
+                ..region(vec![in_structure(with_men(unit("4021"), 2), "1")])
+            }]),
+            "unit 4021\nDESTROY\nBUILD\n",
+            Some(&trident),
+            disabling_all(&[codes::BUILD_WITHOUT_SKILL, codes::UNIT_DOES_NOTHING]),
+        );
+        assert!(!codes(&findings).contains(&"already-built"), "{findings:?}");
     }
 
     #[test]
