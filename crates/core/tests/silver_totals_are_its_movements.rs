@@ -114,7 +114,11 @@ fn a_sharing_unit_says_where_its_loan_went() {
     // $90 until `ah-0nwd`, when only non-sharers were lent to. The hex's sharing students
     // (12222's $500, 683's $656 and the rest) are lent their fees too now, and 3493 is drained
     // first, in hex order; the hex's total month end is unchanged.
-    assert_eq!(lent[0].amount, -1042, "signed out of the unit");
+    //
+    // $1042 until `ah-9n7l.2`, when wages became silver in the balance: maintenance step 4 used to
+    // draw 3493 $404 short paying its hex-mates' fees, and 8048 lent that back. Now 8048's and
+    // 1164's wages pay those fees, and 3493 lends the whole purse.
+    assert_eq!(lent[0].amount, -1446, "signed out of the unit");
     assert_eq!(lent[0].line, None, "the SHARE flag lent it, not an order");
     assert_eq!(lent[0].other, None, "the hex's purse is not a unit");
 }
