@@ -13990,7 +13990,9 @@ fn check_building(
         else {
             continue;
         };
-        if after_destroy.needs(structure).is_some() {
+        // A structure DESTROY removes is not there to be finished; whatever BUILD does then is
+        // `build-outside-structure`'s business.
+        if after_destroy.removes(structure_id) || after_destroy.needs(structure).is_some() {
             continue;
         }
 
@@ -42783,6 +42785,20 @@ BUILD
             "unit 4021\nDESTROY\nBUILD\n",
             Some(&trident),
             disabling_all(&[codes::BUILD_WITHOUT_SKILL, codes::UNIT_DOES_NOTHING]),
+        );
+        assert!(!codes(&findings).contains(&"already-built"), "{findings:?}");
+    }
+
+    /// A DESTROY that removes the structure leaves nothing to call finished: on New Origins
+    /// every DESTROY is a removal (`INSTANT`), so a BUILD after it is not `already-built`.
+    #[test]
+    fn a_build_after_destroying_a_finished_structure_does_not_warn() {
+        let findings = check_ignoring_build_skill(
+            vec![ReportRegion {
+                structures: vec![finished_mill("1")],
+                ..region(vec![in_structure(with_men(unit("4021"), 2), "1")])
+            }],
+            "unit 4021\nDESTROY\nBUILD\n",
         );
         assert!(!codes(&findings).contains(&"already-built"), "{findings:?}");
     }
