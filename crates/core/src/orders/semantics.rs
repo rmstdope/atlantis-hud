@@ -16343,7 +16343,7 @@ impl SettledShipment {
 /// non-quartermasters. Receipts are credited only after the last phase, so a quartermaster
 /// forwarding what it was sent this month would read an empty stock. Hence one call per phase,
 /// each walking only the shipments of `sub_phase` and adding `received_earlier` - what every
-/// earlier phase delivered - to each sender's stock.
+/// earlier phase moved in or out that the ledger does not yet show - to each sender's stock.
 #[allow(clippy::too_many_arguments)]
 fn shipping_bills(
     hex: &Hex<'_>,
@@ -16632,8 +16632,8 @@ fn shipment_allowance_used(shipped: &BTreeMap<String, i64>, tag: &str) -> i64 {
 
 /// One TRANSPORT sub-phase, across every hex (`rules/sequenceofevents`: "In each phase all units
 /// in all hexes are processed before starting the next phase"), reading each sender's stock with
-/// what the earlier sub-phases `delivered` added, so a quartermaster forwards what it was sent
-/// this month (`ah-7ale.3`, `ah-o3bp`).
+/// what the earlier sub-phases `delivered` moved: a quartermaster forwards what it was sent this
+/// month, and does not ship again what it already sent (`ah-7ale.3`, `ah-o3bp`).
 fn ship_in_sub_phase(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
     inputs: &ReportWideInputs<'_>,
@@ -16641,14 +16641,20 @@ fn ship_in_sub_phase(
     sub_phase: super::transport::ShipmentPhase,
     delivered: &[SettledShipment],
 ) -> Vec<SettledShipment> {
-    let received_earlier = delivered
-        .iter()
-        .fold(BTreeMap::new(), |mut received, shipment| {
-            *received
-                .entry((shipment.target.clone(), shipment.tag.clone()))
-                .or_default() += shipment.quantity;
-            received
-        });
+    // Receipts are credited only after the last sub-phase, so every earlier one is added here.
+    // A non-silver send is booked in `transported_goods`, which `transport_holding` does not read,
+    // so it is taken off here too; a silver send already left the ledger through `move_silver`.
+    let mut received_earlier: BTreeMap<(String, String), i64> = BTreeMap::new();
+    for shipment in delivered {
+        *received_earlier
+            .entry((shipment.target.clone(), shipment.tag.clone()))
+            .or_default() += shipment.quantity;
+        if !shipment.tag.eq_ignore_ascii_case(SILVER) {
+            *received_earlier
+                .entry((shipment.sender.clone(), shipment.tag.clone()))
+                .or_default() -= shipment.quantity;
+        }
+    }
     let mut shipped = Vec::new();
     for (hex, ledger) in hexes.iter_mut() {
         shipped.extend(shipping_bills(
@@ -47976,6 +47982,51 @@ BUILD
             Some(FIXTURE_MAP),
         );
         assert_eq!(moved.get("901"), Some(&vec![("FUR".to_string(), 9)]));
+    }
+
+    /// What a quartermaster ships to another quartermaster in TRANSPORT's second sub-phase is gone
+    /// before the third (`rules/sequenceofevents`: items move "only once in each phase"), so the
+    /// same grain is not forwarded again to an ordinary unit, which still owes its upkeep
+    /// (`ah-o3bp`).
+    #[test]
+    fn goods_shipped_between_quartermasters_are_not_shipped_again_to_an_ordinary_unit() {
+        let regions = || {
+            let mut regions = priced_shipping(
+                5,
+                &[(5, "grain", "GRAI")],
+                vec![caravanserai_owner("901", 1, 0, 6)],
+            );
+            // Exactly the long leg's fee (5 GRAI weighs 25, `data/GRAI`, at 5 a weight unit), so
+            // no silver is left over to share for 902's upkeep.
+            let sender = &mut regions[0].units[0];
+            sender.items.retain(|item| item.tag != SILVER);
+            *sender = with_silver(sender.clone(), 125);
+            regions[0].units.push(starving(unit("902")));
+            regions
+        };
+        let rules = ruleset();
+        let upkeep = |orders: &str| {
+            let review = review_turn(&report(regions()), orders, Some(&rules), with_map());
+            shipment_silver(&review, "902").upkeep
+        };
+
+        let unfed = upkeep("unit 900\nTRANSPORT 901 5 GRAI\nunit 902\nCONSUME UNIT\n");
+        assert!(unfed.is_some_and(|owed| owed > 0), "{unfed:?}");
+        assert_eq!(
+            upkeep(
+                "unit 900\nTRANSPORT 901 5 GRAI\nTRANSPORT 902 5 GRAI\nunit 902\nCONSUME UNIT\n"
+            ),
+            unfed,
+            "the grain already went to 901"
+        );
+
+        let moved = super::super::effects::transported_out(
+            &report(regions()),
+            &rules,
+            "unit 900\nTRANSPORT 901 5 GRAI\nTRANSPORT 902 5 GRAI\n",
+            Some(FIXTURE_MAP),
+        );
+        assert_eq!(moved.get("900"), Some(&vec![("GRAI".to_string(), 5)]));
     }
 
     /// The Settings switch takes the out-of-reach sentence away and leaves every figure honest, so
