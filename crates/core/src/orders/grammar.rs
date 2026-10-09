@@ -578,7 +578,7 @@ fn is_new_age(ruleset: Option<&Ruleset>) -> bool {
     ruleset.is_some_and(Ruleset::is_new_age)
 }
 
-fn is_trident(ruleset: Option<&Ruleset>) -> bool {
+pub(crate) fn is_trident(ruleset: Option<&Ruleset>) -> bool {
     ruleset.is_some_and(|ruleset| ruleset.order_language == OrderLanguage::NewAgeTrident)
 }
 
