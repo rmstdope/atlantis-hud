@@ -72,7 +72,9 @@ use crate::orders::targets::{
     give_endpoint, give_outcome, mage_give_refused, mage_recruit_refused, party_label,
     party_unit_id, GiveEndpoint, GiveOutcome, GiveReach, GiveRefusal,
 };
-use crate::orders::transfers::{in_report_order, PendingTransfer};
+use crate::orders::transfers::{
+    in_report_order, report_order, report_ranks, PendingTransfer, Placement,
+};
 use crate::orders::unclaimed_silver::{
     UnclaimedSilverRejection, UnclaimedSilverRejectionReason, UnclaimedSilverUse,
     UnclaimedSilverUseEntry, UnclaimedSilverUseGroup,
@@ -3080,7 +3082,26 @@ struct Ordered<'a> {
     transfer_receipts: Receipts,
 }
 
+/// Where each of a hex's units stands for [`report_order`]: a formed unit's `unit` is minted from
+/// its former's report row (`formed_units`), so its structure is the former's as `FORM` settles.
+fn placements<'u>(units: &'u [Ordered<'_>]) -> Vec<Placement<'u>> {
+    units
+        .iter()
+        .map(|ordered| Placement {
+            formed: ordered.formed.is_some(),
+            region: &ordered.unit.region_id,
+            structure: ordered.unit.structure_id.as_deref(),
+        })
+        .collect()
+}
+
 impl<'a> Hex<'a> {
+    /// `self.units`' indices in the order `rules/sequenceofevents`' report-order tie-break reaches
+    /// them, each formed unit at the end of its former's structure (`ah-qzxe`).
+    fn report_order(&self) -> Vec<usize> {
+        report_order(&placements(&self.units))
+    }
+
     /// `formed` is every unit this month's orders create, anywhere in the document - `read` keeps
     /// only the ones standing in this region. Report units come first and keep their existing
     /// order, so `shares[index]` and every other index-parallel vector `forecast_hex` builds from
@@ -3733,7 +3754,7 @@ fn apply_transfers(
         // Nothing moves in this hex, so nothing is allocated for it.
         return;
     }
-    in_report_order(&mut transfers);
+    in_report_order(&mut transfers, &report_ranks(&placements(units)));
 
     let mut working: BTreeMap<usize, Working> = BTreeMap::new();
     // Accumulated rather than written straight onto `units[position].refused_transfers`: the loop
@@ -5894,6 +5915,9 @@ fn ledger_for_reaching<'a>(
             )
         })
         .collect();
+    // Each phase reaches the units in report order, a formed unit at the end of its former's
+    // structure rather than after every unit in the hex (`ah-qzxe`).
+    let report_order = hex.report_order();
     for phase in phases::ORDER {
         if phase == StatePhase::Market {
             // Snapshotted once, before any `BUY` is applied: the engine's sizing pass for one item
@@ -5903,7 +5927,8 @@ fn ledger_for_reaching<'a>(
             ledger.market_purse =
                 MarketPurse::read(&ledger.state, &ledger.doubted, hex, &market_tax);
         }
-        for (index, ordered) in hex.units.iter().enumerate() {
+        for &index in &report_order {
+            let ordered = &hex.units[index];
             if phase == StatePhase::Tax {
                 let facts = unit_facts(hex, ordered, &nothing, None, ruleset);
                 credit_tax(
@@ -6271,7 +6296,7 @@ fn month_long_passes() -> &'static [StatePhase] {
 /// though the engine reaches it among its new structure's units (`Unit::MoveUnit` appends it).
 fn month_long_walk(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<usize> {
     let Some(ruleset) = ruleset else {
-        return (0..hex.units.len()).collect();
+        return hex.report_order();
     };
     let destroyed_structure_ids = destroyed_structure_ids(hex);
     let founds_a_structure = |ordered: &Ordered<'_>| {
@@ -6287,8 +6312,10 @@ fn month_long_walk(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<usize> {
             _ => false,
         })
     };
-    let (founders, others): (Vec<usize>, Vec<usize>) =
-        (0..hex.units.len()).partition(|&index| founds_a_structure(&hex.units[index]));
+    let (founders, others): (Vec<usize>, Vec<usize>) = hex
+        .report_order()
+        .into_iter()
+        .partition(|&index| founds_a_structure(&hex.units[index]));
     others.into_iter().chain(founders).collect()
 }
 
@@ -11813,9 +11840,9 @@ impl<'a> Sharing<'a> {
     fn staying(hex: &'a Hex<'a>, departing: &BTreeSet<String>) -> Self {
         Self {
             sharers: hex
-                .units
-                .iter()
-                .enumerate()
+                .report_order()
+                .into_iter()
+                .map(|index| (index, &hex.units[index]))
                 .filter(|(_, o)| o.shares() && !departing.contains(&o.unit.unit_id))
                 .collect(),
             walking: None,
@@ -28368,6 +28395,48 @@ BUILD
                         ledger.uncounted
                     );
                 },
+            );
+        }
+
+        /// A formed unit stands at the end of its former's structure (`rules/form`: "in the same
+        /// structure if any"; the engine's `ProcessFormOrder` and `Unit::MoveUnit`), so one formed
+        /// outside any structure is reached before a tower's units and draws the shared stock
+        /// first - not after every unit in the hex (`ah-qzxe`).
+        #[test]
+        fn a_unit_formed_outside_any_structure_draws_shared_material_before_a_towers_units() {
+            // Days, not just a level: the men the former hands over carry their skill by days.
+            let carpenter = |id: &str| with_skill_pts(with_men(unit(id), 15), "CARP", 30);
+            let hex_region = region(vec![
+                carpenter("2000"),
+                in_structure(carpenter("3000"), "4"),
+                in_structure(sharing(with_item(unit("3001"), 20, "wood", "WOOD")), "4"),
+            ]);
+            let orders = "unit 2000\nGIVE NEW 1 15 HUMN\nFORM 1\nPRODUCE wagon\nEND\n\
+                          unit 3000\nPRODUCE wagon\n";
+            let effects = item_effects(
+                &report(vec![hex_region]),
+                orders,
+                Some(&ruleset()),
+                &CheckOptions::default(),
+            );
+
+            let made = |id: &str| {
+                effects
+                    .get(&unit_key("1:7,53", id))
+                    .map(|effect| {
+                        effect
+                            .moved
+                            .iter()
+                            .filter(|movement| movement.cause == ItemChangeCause::Produced)
+                            .map(|movement| movement.delta)
+                            .sum::<i64>()
+                    })
+                    .unwrap_or_default()
+            };
+            assert_eq!(
+                (made("new-1"), made("3000")),
+                (15, 5),
+                "the formed unit sits above the tower, so it takes fifteen of the twenty"
             );
         }
 
@@ -55360,6 +55429,69 @@ BUILD
             assert_eq!(formed.received, 500);
             assert_eq!(formed.expense, Some(200));
             assert_eq!(formed.at_month_end, Some(300));
+        }
+
+        /// `rules/form` puts a formed unit "in the same structure if any" as its former, and the
+        /// engine appends it to that structure's units (`ProcessFormOrder`, `Unit::MoveUnit`), so
+        /// in the Give phase's report order (`rules/sequenceofevents`) a unit formed outside any
+        /// structure settles before every unit inside one. Here the formed unit passes its silver
+        /// on to a tower's unit that itself gives everything on, and only that order lets the
+        /// silver reach the last unit (`ah-qzxe`).
+        #[test]
+        fn a_unit_formed_outside_any_structure_gives_before_the_units_inside_one() {
+            let in_tower = |mut unit: ReportUnit| {
+                unit.structure_id = Some("4".to_string());
+                unit
+            };
+            let review = review_turn(
+                &report(vec![region(vec![
+                    with_silver(unit("2000"), 100),
+                    in_tower(unit("3000")),
+                    in_tower(unit("3001")),
+                ])]),
+                "unit 2000\nGIVE NEW 1 100 SILV\nFORM 1\nGIVE 3000 ALL SILV\nEND\n\n\
+                 unit 3000\nGIVE 3001 ALL SILV\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert_eq!(forecast(&review, "new-1").at_month_end, Some(0));
+            assert_eq!(
+                forecast(&review, "3000").at_month_end,
+                Some(0),
+                "it gives on what the formed unit gave it"
+            );
+            assert_eq!(
+                forecast(&review, "3001").at_month_end,
+                Some(100),
+                "the formed unit's gift landed before the tower unit gave everything on"
+            );
+        }
+
+        /// The SILVER column's half of
+        /// `effects::...::a_formers_enter_above_its_form_does_not_move_the_formed_unit_down_the_report`:
+        /// FORM settles before ENTER (`rules/sequenceofevents`), so the former's ENTER does not
+        /// move the formed unit into the tower (`ah-qzxe`).
+        #[test]
+        fn a_formers_enter_above_its_form_does_not_move_the_formed_unit_down_the_report() {
+            let in_tower = |mut unit: ReportUnit| {
+                unit.structure_id = Some("4".to_string());
+                unit
+            };
+            let review = review_turn(
+                &report(vec![region(vec![
+                    with_silver(unit("2000"), 100),
+                    in_tower(unit("3000")),
+                    in_tower(unit("3001")),
+                ])]),
+                "unit 2000\nENTER 4\nGIVE NEW 1 100 SILV\nFORM 1\nGIVE 3000 ALL SILV\nEND\n\n\
+                 unit 3000\nGIVE 3001 ALL SILV\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert_eq!(forecast(&review, "3000").at_month_end, Some(0));
+            assert_eq!(forecast(&review, "3001").at_month_end, Some(100));
         }
 
         /// A false `give-target-not-here` here is worse than the missing goods: it tells the player

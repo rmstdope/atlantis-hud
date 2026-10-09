@@ -40,12 +40,65 @@ pub(crate) struct PendingTransfer<'a> {
 
 /// Sorts this hex's queued transfers into the order the Give phase settles them in.
 ///
-/// `actor` is the report order the rules quoted above call for; the line is the secondary key
-/// alone, so one actor's own transfers still settle in the order it wrote them. `sort_by_key` is
-/// stable, so equal keys - which cannot occur, one order per line - would keep document order
-/// anyway.
-pub(crate) fn in_report_order(transfers: &mut [PendingTransfer<'_>]) {
-    transfers.sort_by_key(|transfer| (transfer.actor, transfer.line));
+/// `ranks[actor]` is the report order the rules quoted above call for ([`report_ranks`]); the line
+/// is the secondary key alone, so one actor's own transfers still settle in the order it wrote
+/// them. `sort_by_key` is stable, so equal keys - which cannot occur, one order per line - would
+/// keep document order anyway.
+pub(crate) fn in_report_order(transfers: &mut [PendingTransfer<'_>], ranks: &[usize]) {
+    transfers.sort_by_key(|transfer| (ranks[transfer.actor], transfer.line));
+}
+
+/// Where one unit of a walk's own unit list stands, for [`report_order`].
+pub(crate) struct Placement<'a> {
+    /// Created by this month's `FORM`, so the report does not print it.
+    pub(crate) formed: bool,
+    pub(crate) region: &'a str,
+    /// The structure the unit stands in as `FORM` settles: the report's own for a reported unit,
+    /// its former's for a formed one.
+    pub(crate) structure: Option<&'a str>,
+}
+
+/// A walk's unit list - reported units in report order, then the formed ones in the order their
+/// `FORM`s were written - reordered into the order the engine holds them in.
+///
+/// `rules/form` puts a formed unit "in the same structure if any" as its former, and the engine
+/// does it by appending the unit to that structure's own list (`ProcessFormOrder`,
+/// `Unit::MoveUnit`), so it stands after the last unit of its former's structure - not after every
+/// unit in the hex - and several formed in one structure keep the order they were formed in. That
+/// is the order "units that appear higher on the report get precedence"
+/// (`rules/sequenceofevents`) breaks a tie with (`ah-qzxe`).
+///
+/// The list itself is never reordered: callers index other vectors by its positions.
+pub(crate) fn report_order(units: &[Placement<'_>]) -> Vec<usize> {
+    let anchor = |formed: &Placement<'_>| {
+        units
+            .iter()
+            .rposition(|unit| {
+                !unit.formed && unit.region == formed.region && unit.structure == formed.structure
+            })
+            // Nothing reported stands there - the walk moved its former before it formed -
+            // so it keeps its place after every reported unit.
+            .unwrap_or(units.len())
+    };
+    let mut order: Vec<usize> = (0..units.len()).collect();
+    order.sort_by_key(|&index| {
+        let unit = &units[index];
+        if unit.formed {
+            (anchor(unit), 1, index)
+        } else {
+            (index, 0, index)
+        }
+    });
+    order
+}
+
+/// [`report_order`] read the other way: `ranks[index]` is where that unit is reached.
+pub(crate) fn report_ranks(units: &[Placement<'_>]) -> Vec<usize> {
+    let mut ranks = vec![0; units.len()];
+    for (rank, index) in report_order(units).into_iter().enumerate() {
+        ranks[index] = rank;
+    }
+    ranks
 }
 
 /// One tag a transfer's selector names, with what the holder has of it.
@@ -232,7 +285,7 @@ mod tests {
     #[test]
     fn report_order_puts_the_higher_actor_first() {
         let mut transfers = vec![owned(2, 1), owned(0, 9), owned(1, 4)];
-        in_report_order(&mut transfers);
+        in_report_order(&mut transfers, &[0, 1, 2, 3]);
         let actors: Vec<usize> = transfers.iter().map(|transfer| transfer.actor).collect();
         assert_eq!(actors, vec![0, 1, 2]);
     }
@@ -242,12 +295,58 @@ mod tests {
         // Neither key alone orders these three: sorting on the line alone would put `(1, 2)`
         // first, and sorting on the actor alone would leave `(1, 9)` ahead of `(1, 2)`.
         let mut transfers = vec![owned(1, 9), owned(0, 4), owned(1, 2)];
-        in_report_order(&mut transfers);
+        in_report_order(&mut transfers, &[0, 1, 2, 3]);
         let keys: Vec<(usize, usize)> = transfers
             .iter()
             .map(|transfer| (transfer.actor, transfer.line))
             .collect();
         assert_eq!(keys, vec![(0, 4), (1, 2), (1, 9)]);
+    }
+
+    fn placed(formed: bool, structure: Option<&str>) -> Placement<'_> {
+        Placement {
+            formed,
+            region: "1:1,1",
+            structure,
+        }
+    }
+
+    /// `rules/form`: "in the same structure if any" as its former, appended to that structure's
+    /// units by the engine (`ah-qzxe`).
+    #[test]
+    fn a_formed_unit_stands_at_the_end_of_its_formers_structure() {
+        let units = [
+            placed(false, None),
+            placed(false, None),
+            placed(false, Some("4")),
+            placed(false, Some("4")),
+            placed(false, Some("5")),
+            placed(true, Some("4")),
+            placed(true, None),
+            placed(true, Some("4")),
+        ];
+        assert_eq!(report_order(&units), vec![0, 1, 6, 2, 3, 5, 7, 4]);
+        assert_eq!(report_ranks(&units), vec![0, 1, 3, 4, 7, 5, 2, 6]);
+    }
+
+    #[test]
+    fn a_formed_unit_with_no_reported_structure_mate_keeps_its_place_at_the_end() {
+        let units = [placed(false, None), placed(true, Some("9"))];
+        assert_eq!(report_order(&units), vec![0, 1]);
+    }
+
+    #[test]
+    fn a_formed_unit_is_placed_among_its_own_regions_units_only() {
+        let units = [
+            placed(false, None),
+            Placement {
+                formed: false,
+                region: "1:2,2",
+                structure: None,
+            },
+            placed(true, None),
+        ];
+        assert_eq!(report_order(&units), vec![0, 2, 1]);
     }
 
     #[test]
@@ -410,7 +509,7 @@ mod tests {
     #[test]
     fn one_actors_lines_settle_in_the_order_written() {
         let mut transfers = vec![owned(3, 7), owned(3, 2), owned(3, 5)];
-        in_report_order(&mut transfers);
+        in_report_order(&mut transfers, &[0, 1, 2, 3]);
         let lines: Vec<usize> = transfers.iter().map(|transfer| transfer.line).collect();
         assert_eq!(lines, vec![2, 5, 7]);
     }
