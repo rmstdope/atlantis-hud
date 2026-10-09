@@ -642,6 +642,21 @@ pub struct SettledGift {
     pub other: String,
 }
 
+/// What the hex's other `SHARE` units lend one `CAST` line, as the ledger read it when the spell
+/// resolved: `Unit::GetSharedNum` and `GetSharedMoney` (`unit.cpp`), which every cast cost reads in
+/// `spells.cpp` (`ah-0mch`). Recorded only for a line something was lent to, so the column prices
+/// the cast from the same purse the ledger charged it from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedCast {
+    /// The document line the order was written on.
+    pub line: i64,
+    /// The silver the other sharers held as the spell resolved.
+    pub silver: i64,
+    /// The caster's own goods with every other sharer's added in, men excepted: what the
+    /// spell's materials are counted against.
+    pub held: Vec<ItemAmount>,
+}
+
 /// One priced shipment, as the SILVER hover's aside and the editor's note state it (`ah-7ale.3`).
 ///
 /// A `Vec` on [`UnitSilver`] rather than flat fields, for [`BuyAllShown`]'s reason: a unit may
@@ -1543,6 +1558,9 @@ pub struct PhaseFacts<'a> {
     /// for a caller with no ledger to read them from, which is every test that builds its own
     /// `PhaseFacts`.
     pub gifts: &'a [SettledGift],
+    /// This unit's `CAST` lines that drew on another sharer, as the ledger settled them. Empty for
+    /// a caller with no ledger, which is every test that builds its own `PhaseFacts`.
+    pub casts: &'a [SharedCast],
     /// This unit's silver movements as the ledger recorded them, in settlement order: what the
     /// SILVER column's rows and totals are (`ah-xryu`). Empty for a caller with no ledger, which is
     /// every test that builds its own `PhaseFacts`.
@@ -1571,6 +1589,7 @@ impl<'a> PhaseFacts<'a> {
             silver: None,
             buy_all: &[],
             gifts: &[],
+            casts: &[],
             silver_moves: &[],
             market_withholds: 0,
         }
@@ -1617,6 +1636,13 @@ impl<'a> UnitFacts<'a> {
     #[must_use]
     pub fn settled_gifts(&self) -> &'a [SettledGift] {
         self.phases.map_or(&[][..], |phases| phases.gifts)
+    }
+
+    /// The `CAST` lines of this unit's the ledger priced on a sharer's purse. Empty where there is
+    /// no ledger.
+    #[must_use]
+    pub fn shared_casts(&self) -> &'a [SharedCast] {
+        self.phases.map_or(&[][..], |phases| phases.casts)
     }
 
     /// The ledger's record of this unit's silver. Empty where there is no ledger.
@@ -2584,15 +2610,25 @@ pub fn forecast_unit(
                     .saturating_add(moved_above(&moves, SilverChangeCause::CastEarned, line))
                     .saturating_add(moved_above(&moves, SilverChangeCause::CastSpent, line))
                     .max(0);
+                // What the hex's other sharers lend this line, as the ledger priced it
+                // (`ah-0mch`): their silver on top of the caster's own, their goods beside its.
+                let shared = facts
+                    .shared_casts()
+                    .iter()
+                    .find(|shared| shared.line == line);
+                let lent = shared.map_or(0, |shared| shared.silver);
                 let caster = Caster {
                     skills: facts.skills,
-                    held: facts.items,
+                    held: shared.map_or(facts.items, |shared| shared.held.as_slice()),
                     // The settled purse (`ah-ud89`). `PhaseSilver::as_the_cast_opens_on_share` is
                     // deliberately not used here: this site sums the accessor with `CastEarned`
                     // and `CastSpent` before clamping, and subtracting after that sum is the same
                     // arithmetic with the two adjustments left where they are.
-                    silver_available: hopeful.saturating_sub(tax_overstated).max(0),
-                    silver_hopeful: hopeful,
+                    silver_available: hopeful
+                        .saturating_sub(tax_overstated)
+                        .max(0)
+                        .saturating_add(lent),
+                    silver_hopeful: hopeful.saturating_add(lent),
                     transmuting,
                 };
                 let (priced, plan) = price_cast(resolved, &caster, region);
@@ -7598,6 +7634,7 @@ mod tests {
                 )),
                 buy_all: &[],
                 gifts: &[],
+                casts: &[],
                 silver_moves: &[],
                 market_withholds: 0,
             }),

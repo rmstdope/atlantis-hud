@@ -3065,7 +3065,18 @@ impl Working {
             (false, _) => (ItemChangeCause::WasTakenFrom, ItemChangeCause::Took),
         };
 
-        for (name, tag, moved) in self.tags_moved(source, what, amount, reach) {
+        // An exact quantity is clamped to what the source has as the engine counts it: its own
+        // stock and every other sharing unit's in the region, men excepted (`Unit::GetSharedNum`,
+        // `Game::DoGiveOrder`; `ah-0mch`). An `ALL` is still what the source itself holds.
+        let lenders = self.lending_sharers(source);
+        let moving = match amount {
+            super::forms::Amount::Exact(_) if !lenders.is_empty() => {
+                let pooled = self.pooled_items(source, &lenders);
+                self.tags_moved_from(&pooled, what, amount, reach)
+            }
+            _ => self.tags_moved(source, what, amount, reach),
+        };
+        for (name, tag, moved) in moving {
             // `rules/magic`: "mages may not GIVE men at all", whatever the target - a discard
             // included, since `GIVE 0`'s exception is about *transfer* restrictions and this is
             // not one. Asked here rather than inside `tags_moved`, which `apply_transports` also
@@ -3094,38 +3105,83 @@ impl Working {
             }
             // Re-resolved by tag rather than kept from the snapshot: an earlier tag in this same
             // loop may have removed an item ahead of this one and shifted every index after it.
-            let Some(held) = self.units[source]
+            let held = self.units[source]
                 .unit
                 .items
                 .iter()
-                .position(|item| item.tag == tag)
-            else {
+                .position(|item| item.tag == tag);
+            let own = held.map_or(0, |index| {
+                self.units[source].unit.items[index].amount.clamp(0, moved)
+            });
+            if own == 0 && lenders.is_empty() {
                 continue;
-            };
-            take_item(&mut self.units[source].unit.items, held, moved);
+            }
+            if let Some(index) = held.filter(|_| own > 0) {
+                take_item(&mut self.units[source].unit.items, index, own);
+            }
             // Read before the pushes: `self.units` is borrowed mutably below.
             let is_man = self.ruleset.is_man(&tag);
+            // What the source's own stock could not cover comes from the sharers, in report
+            // order - the engine's `Unit::ConsumeShared` - each recording what it handed over.
+            let mut remaining = moved - own;
+            for &lender in &lenders {
+                if remaining <= 0 || is_man {
+                    break;
+                }
+                let Some(index) = self.units[lender]
+                    .unit
+                    .items
+                    .iter()
+                    .position(|item| item.tag == tag)
+                else {
+                    continue;
+                };
+                let take = self.units[lender].unit.items[index]
+                    .amount
+                    .clamp(0, remaining);
+                if take == 0 {
+                    continue;
+                }
+                take_item(&mut self.units[lender].unit.items, index, take);
+                remaining -= take;
+                self.units[lender].item_log.record(
+                    ItemChange {
+                        tag: tag.clone(),
+                        name: name.clone(),
+                        delta: -take,
+                        cause: source_cause,
+                        line,
+                        unit_price: None,
+                        other: far_end.clone(),
+                        is_man,
+                    },
+                    Stock::Moved,
+                );
+            }
             // Below all three `continue`s above: a change recorded higher would be a movement that
-            // did not happen. `moved` is what `take_item` subtracts and `tags_moved` has already
-            // clamped to the stock, so the change and the item list cannot disagree.
+            // did not happen. `own` is what `take_item` subtracted from the source, the sharers
+            // having recorded their own part above, so the change and the item list cannot
+            // disagree - and a source whose sharers covered it all records nothing (`ah-0mch`).
             // The row survives on `Stock::Moved` rather than on an `items` `FieldChange`: a month whose
             // only movement was silver records no such change any more (`ah-6m7b.5.1`), and a unit
             // that gave money away must keep its row for the SILVER column to answer in.
-            self.units[source].item_log.record(
-                ItemChange {
-                    tag: tag.clone(),
-                    name: name.clone(),
-                    delta: -moved,
-                    cause: source_cause,
-                    line,
-                    // No transfer is priced: `rules/give` names no payment, and the market is a
-                    // different phase of `rules/sequenceofevents`.
-                    unit_price: None,
-                    other: far_end.clone(),
-                    is_man,
-                },
-                Stock::Moved,
-            );
+            if own > 0 {
+                self.units[source].item_log.record(
+                    ItemChange {
+                        tag: tag.clone(),
+                        name: name.clone(),
+                        delta: -own,
+                        cause: source_cause,
+                        line,
+                        // No transfer is priced: `rules/give` names no payment, and the market is a
+                        // different phase of `rules/sequenceofevents`.
+                        unit_price: None,
+                        other: far_end.clone(),
+                        is_man,
+                    },
+                    Stock::Moved,
+                );
+            }
             if let Some(receiver) = receiver {
                 add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
                 self.units[receiver].item_log.record(
@@ -3735,6 +3791,46 @@ impl Working {
     ///
     /// `give_outcome` preserves the discard exception, rejects men aimed at another faction, and
     /// holds back a tag whose permission the report cannot establish (`rules/give`, `ah-66yi`).
+    /// The units that lend `source` what it spends: every *other* unit of its faction in its
+    /// region carrying `SHARE`, in report order - the engine's `Unit::GetSharedNum` and
+    /// `Unit::ConsumeShared` (`unit.cpp`), which count the spender once, as itself (`ah-0mch`).
+    fn lending_sharers(&self, source: usize) -> Vec<usize> {
+        let spender = &self.units[source].unit;
+        self.units
+            .iter()
+            .enumerate()
+            .filter(|(index, other)| {
+                *index != source
+                    && other.unit.region_id == spender.region_id
+                    && other.unit.faction_id == spender.faction_id
+                    && other
+                        .unit
+                        .flags
+                        .iter()
+                        .any(|flag| flag.eq_ignore_ascii_case("sharing"))
+            })
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    /// The source's own items with every lender's added in, men excepted: what an exact
+    /// quantity is clamped against (`ah-0mch`).
+    fn pooled_items(
+        &self,
+        source: usize,
+        lenders: &[usize],
+    ) -> Vec<crate::report::model::ItemAmount> {
+        let mut pooled = self.units[source].unit.items.clone();
+        for &lender in lenders {
+            for item in &self.units[lender].unit.items {
+                if item.amount > 0 && !self.ruleset.is_man(&item.tag) {
+                    add_item(&mut pooled, &item.name, &item.tag, item.amount);
+                }
+            }
+        }
+        pooled
+    }
+
     fn tags_moved(
         &self,
         holder: usize,
@@ -6308,6 +6404,47 @@ mod tests {
             "",
         ]
         .join("\n")
+    }
+
+    /// `ah-0mch`: an exact GIVE is clamped to what the giver has as the engine counts it -
+    /// `Unit::GetSharedNum`, its own stock and every other sharer's - and spends its own first,
+    /// then the sharer's (`Unit::ConsumeShared`). The bystander holds 20 iron and the warden shares
+    /// 100, so a discard of 150 takes the bystander's 20 and the warden's 100.
+    #[test]
+    fn an_exact_gift_draws_on_another_sharer_in_the_preview() {
+        let report = report_with_a_flagged_former()
+            .replace(
+                "2 leaders [LEAD], 100 silver [SILV].",
+                "2 leaders [LEAD], 100 silver [SILV], 100 iron [IRON].",
+            )
+            .replace(
+                "* Bystander (901), Foo (1), leader [LEAD].",
+                "* Bystander (901), Foo (1), leader [LEAD], 20 iron [IRON].",
+            );
+        let response = preview_over(&report, "unit 901\nGIVE 0 150 IRON\n");
+        // What the Items popup reads: each unit's own change, where the goods actually were.
+        let discarded = |id: &str| -> i64 {
+            response
+                .regions
+                .iter()
+                .flat_map(|region| region.units.iter())
+                .find(|unit| unit.unit.unit_id == id)
+                .map_or(0, |unit| {
+                    unit.item_changes
+                        .iter()
+                        .filter(|change| {
+                            change.tag == "IRON" && change.cause == ItemChangeCause::Discarded
+                        })
+                        .map(|change| change.delta)
+                        .sum()
+                })
+        };
+        assert_eq!(discarded("901"), -20, "the giver's own 20 go first");
+        assert_eq!(
+            discarded("900"),
+            -100,
+            "then the sharer's 100, which is all it has"
+        );
     }
 
     #[test]
