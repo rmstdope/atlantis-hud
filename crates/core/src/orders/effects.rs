@@ -20,7 +20,9 @@ use crate::movement::rules::Ruleset;
 use crate::orders::item_change_log::Stock;
 use crate::orders::items::item_named;
 use crate::orders::standing::{standing_after, BoardingOrder};
-use crate::orders::transfers::{in_report_order, report_ranks, PendingTransfer, Placement};
+use crate::orders::transfers::{
+    in_report_order, report_order, report_ranks, PendingTransfer, Placement,
+};
 use crate::report::composition;
 use crate::report::flags::FlagChange;
 use crate::report::model::{level_for_points, ReportUnit, Skill, UnitMovementStatus};
@@ -2905,22 +2907,26 @@ impl Working {
         }
     }
 
-    /// Settles this month's Give phase.
-    ///
-    /// The order is `rules/sequenceofevents`' own, which [`in_report_order`] holds for both this
-    /// walk and `semantics`'.
-    fn apply_transfers(&mut self) {
-        let mut pending = std::mem::take(&mut self.transfers);
-        let placements: Vec<Placement<'_>> = self
-            .units
+    /// Where each unit stands for the Give phase's report order: a formed unit in its former's
+    /// structure (`ah-qzxe`).
+    fn placements(&self) -> Vec<Placement<'_>> {
+        self.units
             .iter()
             .map(|working| Placement {
                 formed: working.formed,
                 region: &working.unit.region_id,
                 structure: working.placed_in.as_deref(),
             })
-            .collect();
-        let ranks = report_ranks(&placements);
+            .collect()
+    }
+
+    /// Settles this month's Give phase.
+    ///
+    /// The order is `rules/sequenceofevents`' own, which [`in_report_order`] holds for both this
+    /// walk and `semantics`'.
+    fn apply_transfers(&mut self) {
+        let mut pending = std::mem::take(&mut self.transfers);
+        let ranks = report_ranks(&self.placements());
         in_report_order(&mut pending, &ranks);
         for transfer in pending {
             if transfer.is_give {
@@ -3871,11 +3877,13 @@ impl Working {
     /// The units that lend `source` what it spends: every *other* unit of its faction in its
     /// region carrying `SHARE`, in report order - the engine's `Unit::GetSharedNum` and
     /// `Unit::ConsumeShared` (`unit.cpp`), which count the spender once, as itself (`ah-0mch`).
+    /// Report order puts a formed sharer at the end of its former's structure, not after every
+    /// unit (`ah-k1ue`).
     fn lending_sharers(&self, source: usize) -> Vec<usize> {
         let spender = &self.units[source].unit;
-        self.units
-            .iter()
-            .enumerate()
+        report_order(&self.placements())
+            .into_iter()
+            .map(|index| (index, &self.units[index]))
             .filter(|(index, other)| {
                 *index != source
                     && other.unit.region_id == spender.region_id
@@ -10449,6 +10457,52 @@ mod tests {
                 "",
             ]
             .join("\n")
+        }
+
+        /// A formed unit inherits its former's `SHARE` flag and stands at the end of its former's
+        /// structure (`rules/form`), and `Unit::ConsumeShared` drains sharers in that order - so a
+        /// sharer formed outside any structure lends a tower unit's overdrawn GIVE before the
+        /// tower's own sharer (`ah-k1ue`).
+        #[test]
+        fn a_sharer_formed_outside_any_structure_lends_before_a_towers_sharer() {
+            let report = [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "Exits:",
+                "  Southeast : plain (2,2) in Nowhere.",
+                "",
+                "* Former (900), Foo (1), sharing, 2 leaders [LEAD], 5 swords [SWOR]. Weight: 25. \
+                 Capacity: 0/0/30/0.",
+                "",
+                "+ Tower [4] : Tower.",
+                "  * Sharer (901), Foo (1), sharing, leader [LEAD], 5 swords [SWOR]. Weight: 15. \
+                 Capacity: 0/0/15/0.",
+                "  * Giver (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                "  * Recipient (903), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                "",
+            ]
+            .join("\n");
+            let response = preview_over(
+                &report,
+                // The leader keeps the formed unit from dissolving (`rules/form`).
+                "unit 900\nGIVE NEW 1 1 LEAD\nGIVE NEW 1 5 SWOR\nFORM 1\nEND\n\
+                 unit 902\nGIVE 903 5 SWOR\n",
+            );
+
+            // A unit nothing changed is not previewed, and holds what the report gave it.
+            let sharer_left = response
+                .regions
+                .iter()
+                .flat_map(|region| region.units.iter())
+                .find(|unit| unit.unit.unit_id == "901")
+                .map_or(5, |row| amount_of(row, "SWOR"));
+            assert_eq!(
+                (amount_of(row_of(&response, "new-1"), "SWOR"), sharer_left),
+                (0, 5),
+                "the formed sharer lends the swords, the tower's keeps its own"
+            );
         }
 
         /// `rules/sequenceofevents` processes FORM before LEAVE and ENTER, so an ENTER the former

@@ -3442,14 +3442,13 @@ struct Working {
 
 /// The units that lend `source` what it spends: every *other* unit of the hex carrying `SHARE`,
 /// in report order - the engine's `Unit::GetSharedNum` and `Unit::ConsumeShared` (`unit.cpp`),
-/// which count the spender once, as itself (`ah-0mch`). The hex holds our own units alone, so
-/// every one is of the spender's faction.
+/// which count the spender once, as itself (`ah-0mch`). Report order puts a formed sharer at the
+/// end of its former's structure, not after every unit in the hex (`ah-k1ue`). The hex holds our
+/// own units alone, so every one is of the spender's faction.
 fn lending_sharers(units: &[Ordered<'_>], source: usize) -> Vec<usize> {
-    units
-        .iter()
-        .enumerate()
-        .filter(|(index, ordered)| *index != source && ordered.shares())
-        .map(|(index, _)| index)
+    report_order(&placements(units))
+        .into_iter()
+        .filter(|&index| index != source && units[index].shares())
         .collect()
 }
 
@@ -12310,7 +12309,7 @@ struct StockParty {
 ///
 /// The ledger charges a borrower the whole of what it spends and leaves its lenders' rows alone, so
 /// what a sharer still has is not a balance the ledger holds. This derives it: every party's
-/// overdraft is laid on the lenders in party order (report order, for a hex's units), the engine's
+/// overdraft is laid on the lenders in drain order (report order, for a hex's units), the engine's
 /// `Unit::ConsumeShared` (`unit.cpp`), which spends the borrower's own stock and then the sharers'
 /// in region order. A party counts once, as itself: its own `SHARE` flag lends it nothing
 /// (`Unit::GetSharedNum`; `rules/share`).
@@ -12319,11 +12318,17 @@ struct StockParty {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SharerStock {
     parties: Vec<StockParty>,
+    /// The parties' indices in the order the engine drains them: report order for a hex's
+    /// units ([`Hex::report_order`]), which puts a formed sharer at the end of its former's
+    /// structure rather than at the end of `parties` (`ah-k1ue`). Every index exactly once.
+    order: Vec<usize>,
 }
 
 impl SharerStock {
+    /// Parties drained in the order they are given.
     fn new(parties: Vec<StockParty>) -> Self {
-        Self { parties }
+        let order = (0..parties.len()).collect();
+        Self { parties, order }
     }
 
     /// The ledger's reading at `phase`, index-aligned with `hex.units`: each unit's balance with
@@ -12350,7 +12355,10 @@ impl SharerStock {
             };
             parties.push(StockParty { position, lends });
         }
-        Some(Self::new(parties))
+        Some(Self {
+            parties,
+            order: hex.report_order(),
+        })
     }
 
     /// One unit's balance as [`SharerStock::at`] reads it, or `None` where a `GIVE` left it
@@ -12385,7 +12393,9 @@ impl SharerStock {
                     position: own,
                     lends: false,
                 });
-                stock.parties.len() - 1
+                let index = stock.parties.len() - 1;
+                stock.order.push(index);
+                index
             }
         };
         Some((stock, index))
@@ -12433,7 +12443,7 @@ impl SharerStock {
     }
 
     /// What `x` spends of its own before it borrows: its stock, less whatever the overdrafts laid
-    /// on it in party order already drew - a lender listed before the others is drained first, as
+    /// on it in drain order already drew - a lender listed before the others is drained first, as
     /// `Unit::ConsumeShared` drained it for the earlier borrower. A non-lender is never drawn on.
     fn own_for(&self, x: usize) -> i64 {
         if self.lends(x) {
@@ -12443,18 +12453,19 @@ impl SharerStock {
         }
     }
 
-    /// The other lenders and what each still has for `x`, in party order, once every overdraft -
-    /// `x`'s own included - has been laid on the lenders in party order, `x` among them where it
+    /// The other lenders and what each still has for `x`, in drain order, once every overdraft -
+    /// `x`'s own included - has been laid on the lenders in drain order, `x` among them where it
     /// lends. Lenders left with nothing are omitted. Sums to `available_to(x) - own_for(x)`.
     fn lenders_to(&self, x: usize) -> Vec<(usize, i64)> {
-        self.left_after_overdrafts()
-            .into_iter()
-            .enumerate()
-            .filter(|(i, left)| *i != x && self.lends(*i) && *left > 0)
+        let left = self.left_after_overdrafts();
+        self.order
+            .iter()
+            .map(|&i| (i, left[i]))
+            .filter(|&(i, left)| i != x && self.lends(i) && left > 0)
             .collect()
     }
 
-    /// What each party still holds once every overdraft is laid on the lenders in party order: a
+    /// What each party still holds once every overdraft is laid on the lenders in drain order: a
     /// lender its stock less what it lent, a non-lender its own stock.
     fn left_after_overdrafts(&self) -> Vec<i64> {
         let (lent, _) = self.drained();
@@ -12483,7 +12494,7 @@ impl SharerStock {
             .collect()
     }
 
-    /// Every overdraft laid on the lenders in party order: what each party lent, aligned with the
+    /// Every overdraft laid on the lenders in drain order: what each party lent, aligned with the
     /// parties, and what no lender covered.
     fn drained(&self) -> (Vec<i64>, i64) {
         let mut owing: i64 = self
@@ -12491,18 +12502,15 @@ impl SharerStock {
             .iter()
             .map(|party| (-party.position).max(0))
             .sum();
-        let lent = self
-            .parties
-            .iter()
-            .map(|party| {
-                if !party.lends {
-                    return 0;
-                }
+        let mut lent = vec![0; self.parties.len()];
+        for &i in &self.order {
+            let party = self.parties[i];
+            if party.lends {
                 let drawn = party.position.max(0).min(owing);
                 owing -= drawn;
-                drawn
-            })
-            .collect();
+                lent[i] = drawn;
+            }
+        }
         (lent, owing)
     }
 }
@@ -13385,6 +13393,7 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
         };
     }
 
+    let report_order = hex.report_order();
     let mut purse = nothing;
     let mut covered = true;
     for moment in PURSE_MOMENTS {
@@ -13406,10 +13415,13 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
         }
 
         // Every unit and arriving sharer as a party to the one reading ([`SharerStock`]), each
-        // with who it is, so what the reading says it lent can be booked back on it.
+        // with who it is, so what the reading says it lent can be booked back on it. The units in
+        // report order, which drains a formed sharer at the end of its former's structure
+        // (`ah-k1ue`).
         let mut parties: Vec<StockParty> = Vec::new();
         let mut who: Vec<Option<Lender>> = Vec::new();
-        for (index, ordered) in hex.units.iter().enumerate() {
+        for &index in &report_order {
+            let ordered = &hex.units[index];
             if !judged(index) {
                 continue;
             }
@@ -13459,7 +13471,7 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
             }
         }
 
-        // In hex order and then the arrivals', rather than a proportional split: the engine
+        // In report order and then the arrivals', rather than a proportional split: the engine
         // drains its sharers in whatever order it iterates them, so no split is truer than
         // another, and a whole number needs no rounding rule.
         let (lent, short) = SharerStock::new(parties).drained();
@@ -36466,6 +36478,29 @@ BUILD
             );
         }
 
+        /// A sharer formed outside any structure stands at the end of its former's structure
+        /// (`rules/form`), so the Give phase draws a tower unit's overdraft on it before a tower's
+        /// sharer (`ah-k1ue`). The preview's own walk is pinned by `effects::...::
+        /// a_sharer_formed_outside_any_structure_lends_before_a_towers_sharer`.
+        #[test]
+        fn a_sharer_formed_outside_any_structure_lends_first_in_the_give_phase() {
+            let hex_region = region(vec![
+                sharing(with_item(unit("2000"), 5, "swords", "SWOR")),
+                in_structure(sharing(with_item(unit("3001"), 5, "swords", "SWOR")), "4"),
+                in_structure(unit("3002"), "4"),
+                in_structure(unit("3003"), "4"),
+            ]);
+            let orders =
+                "unit 2000\nGIVE NEW 1 5 SWOR\nFORM 1\nEND\n\nunit 3002\nGIVE 3003 5 SWOR\n";
+            settled(hex_region, orders, |hex, _| {
+                assert_eq!(
+                    (early(hex, "new-1", "SWOR"), early(hex, "3001", "SWOR")),
+                    (0, 5),
+                    "the formed sharer lends the swords, the tower's keeps its own"
+                );
+            });
+        }
+
         /// Review finding 2: a giver holding none of the goods still gives a sharer's.
         #[test]
         fn a_giver_holding_none_gives_a_sharers_goods_on_both_surfaces() {
@@ -57021,6 +57056,40 @@ BUILD
             );
         }
 
+        /// A formed unit stands at the end of its former's structure (`rules/form`: "in the same
+        /// structure if any") and inherits its `SHARE` flag (`rules/form`: "will inherit its
+        /// flags ... such as ... sharing"); the engine's `Unit::ConsumeShared` drains sharers in
+        /// that order. So a sharer formed outside any structure lends before a sharer inside a
+        /// tower, not after every unit in the hex (`ah-k1ue`).
+        #[test]
+        fn a_sharer_formed_outside_any_structure_lends_before_a_towers_sharer() {
+            let review = review_turn(
+                &report(vec![region(vec![
+                    sharing(with_silver(unit("2000"), 50)),
+                    in_structure(sharing(with_silver(unit("3001"), 50)), "4"),
+                    in_structure(with_men(unit("3002"), 5), "4"),
+                ])]),
+                "unit 2000\nGIVE NEW 1 50 SILV\nFORM 1\nEND\n\nunit 3002\nSTUDY combat\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let lent = |id: &str| -> i64 {
+                forecast(&review, id)
+                    .changes
+                    .iter()
+                    .filter(|change| change.cause == SilverChangeCause::Lent)
+                    .map(|change| change.amount)
+                    .sum()
+            };
+            assert_eq!(
+                (lent("new-1"), lent("3001")),
+                (-50, 0),
+                "{:#?}",
+                review.silver
+            );
+        }
+
         /// The SILVER column's half of
         /// `effects::...::a_formers_enter_above_its_form_does_not_move_the_formed_unit_down_the_report`:
         /// FORM settles before ENTER (`rules/sequenceofevents`), so the former's ENTER does not
@@ -62222,6 +62291,36 @@ BUILD
                         15,
                         "10 received, 5 lent"
                     );
+                },
+            );
+        }
+
+        /// [`SharerStock::at`] lays an overdraft on the lenders in report order, where a formed
+        /// sharer stands at the end of its former's structure (`rules/form`; `ah-qzxe`) - so one
+        /// formed outside any structure lends before a tower's sharer (`ah-k1ue`).
+        #[test]
+        fn a_sharer_formed_outside_any_structure_lends_before_a_towers_sharer() {
+            let hex_region = region(vec![
+                sharing(with_item(unit("2000"), 5, "swords", "SWOR")),
+                in_structure(sharing(with_item(unit("3001"), 5, "swords", "SWOR")), "4"),
+                in_structure(unit("3002"), "4"),
+                in_structure(unit("3003"), "4"),
+            ]);
+            super::one_sharing_rule::settled(
+                hex_region,
+                "unit 2000\nGIVE NEW 1 5 SWOR\nFORM 1\nEND\n\nunit 3002\nGIVE 3003 5 SWOR\n",
+                |hex, ledger| {
+                    let stock = SharerStock::at(ledger, hex, StatePhase::Market, "SWOR")
+                        .expect("the pool is readable");
+                    let lent = stock.drained().0;
+                    let of = |id: &str| {
+                        lent[hex
+                            .units
+                            .iter()
+                            .position(|o| o.unit.unit_id == id)
+                            .expect("the unit is in the hex")]
+                    };
+                    assert_eq!((of("new-1"), of("3001")), (5, 0), "{lent:?}");
                 },
             );
         }
