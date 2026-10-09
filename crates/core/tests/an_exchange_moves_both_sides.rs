@@ -10,7 +10,7 @@
 use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::orders::effects::preview_orders_for_remembered_report;
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions, TurnReview};
-use atlantis_hud_core::orders::silver::{SilverChangeCause, UnitSilver};
+use atlantis_hud_core::orders::silver::{SilverChangeCause, SilverDoubt, UnitSilver};
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
@@ -288,6 +288,10 @@ fn an_exchange_from_a_doubted_holding_is_uncounted_on_both_sides() {
     );
     let row = silver_row(&smith, &buyer, "2392");
     assert!(row.doubt.is_some(), "{row:?}");
+    // The smith may or may not be paid: its SILVER column cannot be added up either (follow-up
+    // review's finding 1).
+    let row = silver_row(&smith, &buyer, "2391");
+    assert_eq!(row.doubt, Some(SilverDoubt::ExchangeUncertain), "{row:?}");
 }
 
 /// The same doubt raised by a theft, which only the ledger sees: the lines are still uncounted on
@@ -304,6 +308,35 @@ fn an_exchange_after_a_theft_is_uncounted_on_both_sides() {
     assert!(
         uncounted.contains(&BUYER_ANSWERS.to_string()),
         "{uncounted:?}"
+    );
+    // Both settlements reach the same verdict, so the smith's SELL is not read off swords the
+    // projection already handed over while the ledger kept them, and its silver is doubted
+    // (follow-up review's finding 1).
+    let smith = format!("{SMITH_OFFERS}\nSELL 5 SWOR");
+    let row = silver_row(&smith, &buyer, "2391");
+    assert!(row.doubt.is_some() && row.at_month_end.is_none(), "{row:?}");
+    let short = "STEAL 7001 SILV\nEXCHANGE 2391 90 SILV 5 SWOR";
+    let smith = "EXCHANGE 2392 5 SWOR 90 SILV\nSELL 5 SWOR";
+    let row = silver_row(smith, short, "2391");
+    assert!(row.doubt.is_some() && row.at_month_end.is_none(), "{row:?}");
+}
+
+/// A mismatched exchange moved nothing, so swords another unit took are not blamed on it
+/// (follow-up review's finding 2).
+#[test]
+fn an_exchange_that_did_not_settle_is_not_blamed_for_an_empty_stock() {
+    let smith = "EXCHANGE 2392 5 SWOR 60 SILV\nSELL 5 SWOR";
+    let buyer = format!("TAKE FROM 2391 5 SWOR\n{BUYER_ANSWERS}");
+    let review = review_of(smith, &buyer);
+    let finding = review
+        .findings
+        .iter()
+        .find(|finding| finding.code.as_str() == "nothing-left-to-sell")
+        .expect("the sale finds nothing left");
+    assert!(
+        finding.message.starts_with("another unit takes"),
+        "{}",
+        finding.message
     );
 }
 

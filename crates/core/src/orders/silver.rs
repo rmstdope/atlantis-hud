@@ -984,6 +984,9 @@ pub enum SilverDoubt {
     /// is dice and the target's purse, and what the unit ends the month with cannot be said
     /// (`ah-mw1r.1`).
     StealUncertain,
+    /// An `EXCHANGE` of silver whose other side's holding is in doubt, so whether it goes ahead,
+    /// and the silver with it, cannot be said (`ah-mw1r.2`).
+    ExchangeUncertain,
 }
 
 /// What one unit may draw from one contended regional pool, once its faction-mates in the same hex
@@ -2908,6 +2911,21 @@ pub fn forecast_unit(
                     .is_some_and(|tag| tag.eq_ignore_ascii_case(SILVER_TAG)) =>
             {
                 income_doubt = income_doubt.or(Some(SilverDoubt::StealUncertain));
+            }
+            // An exchange whose holding is in doubt leaves every tag it might move uncertain on
+            // both parties (`semantics::apply_transfers`), so one moving silver cannot be added up
+            // on either side (`ah-mw1r.2`). A certain exchange is the ledger's record, as a gift
+            // each way.
+            Intent::Exchange {
+                give_item,
+                expect_item,
+                ..
+            } if [give_item, expect_item].into_iter().any(|item| {
+                (lookups.item_tag)(item).is_some_and(|tag| tag.eq_ignore_ascii_case(SILVER_TAG))
+            }) && (lookups.uncertain_after_gifts)(SILVER_TAG).is_some() =>
+            {
+                income_doubt = income_doubt.or(Some(SilverDoubt::ExchangeUncertain));
+                expense_doubt = expense_doubt.or(Some(SilverDoubt::ExchangeUncertain));
             }
             _ => {}
         }

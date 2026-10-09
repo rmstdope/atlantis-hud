@@ -4223,11 +4223,33 @@ fn apply_transfers(
     for (first, second) in complementary_pairs(offers) {
         let (one, other) = (&offers[first], &offers[second]);
         let holds = |offer: &ExchangeOffer| -> Result<i64, UncertainGive> {
-            match working
+            if let Some(uncertain) = working
                 .get(&offer.unit)
                 .and_then(|state| state.uncertain_after_gifts.get(&offer.give_tag))
             {
-                Some(uncertain) => Err(uncertain.clone()),
+                return Err(uncertain.clone());
+            }
+            // A theft of the offered goods leaves the holding in doubt, exactly as the ledger's
+            // `Steal` arm marks the stolen tag - this walk follows no STEAL otherwise, and the two
+            // settlements must reach the same verdict (`ah-mw1r.1`, `ah-mw1r.2`).
+            let stolen = units[offer.unit]
+                .intents
+                .iter()
+                .find_map(|placed| match &placed.intent {
+                    Intent::Steal { from, item }
+                        if ruleset.find_item(item).is_some_and(|entry| {
+                            entry.tag.eq_ignore_ascii_case(&offer.give_tag)
+                        }) =>
+                    {
+                        Some(UncertainGive {
+                            target: party_label(from),
+                            line: placed.line,
+                        })
+                    }
+                    _ => None,
+                });
+            match stolen {
+                Some(uncertain) => Err(uncertain),
                 None => Ok(held_by(&working, units, offer.unit, &offer.give_tag)),
             }
         };
@@ -5279,6 +5301,9 @@ struct Ledger<'a> {
     /// handling this ledger cannot express, so recording either here would double-apply it
     /// (`ah-agbm`, `ah-3mwm`).
     pub(crate) movements: Vec<ItemMovement>,
+    /// `(unit, line, tag)` of every `EXCHANGE` line that settled and handed `tag` over, so a
+    /// check naming why goods are gone blames only an exchange that went ahead (`ah-mw1r.2`).
+    pub(crate) exchanged_away: BTreeSet<(String, usize, String)>,
     /// Lines whose effect on a unit's items could not be counted at all, by unit, in document
     /// order (`ah-agbm`).
     pub(crate) uncounted: BTreeMap<String, Vec<usize>>,
@@ -5753,6 +5778,7 @@ fn ledger_for_reaching<'a>(
         faction_fed: BTreeMap::new(),
         food_claims: Vec::new(),
         movements: Vec::new(),
+        exchanged_away: BTreeSet::new(),
         uncounted: BTreeMap::new(),
         refused_recruits: Vec::new(),
         built: BTreeMap::new(),
@@ -7096,6 +7122,8 @@ fn emptied_by(
     unit_id: &str,
     tag: &str,
     ruleset: Option<&Ruleset>,
+    // `Ledger::exchanged_away`: the exchange lines that settled.
+    exchanged_away: &BTreeSet<(String, usize, String)>,
 ) -> Option<EmptiedBy> {
     let actor = hex.find(unit_id)?;
 
@@ -7109,10 +7137,11 @@ fn emptied_by(
             Selector::Class(_) | Selector::WholeUnit | Selector::UnfinishedShip(_) => true,
         },
         // What an `EXCHANGE` hands over leaves in the Give orders too (`rules/sequenceofevents`),
-        // so it is said the way a gift is (`ah-mw1r.2`). Only a line that actually moved reaches
-        // here: a dead sale is a sale the ledger found nothing left for.
-        Intent::Exchange { give_item, .. } => resolve_item(give_item, hex, actor, ruleset)
-            .is_some_and(|resolved| resolved.eq_ignore_ascii_case(tag)),
+        // so it is said the way a gift is - but only a line the ledger actually settled, never a
+        // mismatched or short one (`ah-mw1r.2`).
+        Intent::Exchange { .. } => {
+            exchanged_away.contains(&(unit_id.to_string(), placed.line, tag.to_ascii_uppercase()))
+        }
         _ => false,
     });
     if gives_it_away {
@@ -7218,7 +7247,13 @@ fn check_emptied_sales(
                 format!("earlier orders sell {goods}, so this sells nothing")
             }
         } else {
-            let Some(cause) = emptied_by(hex, &dead.unit_id, &dead.tag, ruleset) else {
+            let Some(cause) = emptied_by(
+                hex,
+                &dead.unit_id,
+                &dead.tag,
+                ruleset,
+                &ledger.exchanged_away,
+            ) else {
                 continue;
             };
             let name = if report_holding == 1 {
@@ -8615,6 +8650,9 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
         );
         credit(ledger, StatePhase::Give, &receiver.unit_id, tag, amount);
     }
+    ledger
+        .exchanged_away
+        .insert((giver.unit_id.clone(), offer.line, tag.clone()));
     let name = item_name(tag, hex, ledger.ruleset);
     for (unit, delta, cause, other) in [
         (giver, -amount, ItemChangeCause::GivenAway, receiver),

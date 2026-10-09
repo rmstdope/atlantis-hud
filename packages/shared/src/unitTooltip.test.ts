@@ -1589,7 +1589,8 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
     "silver-never-read",
     "unit-line-cut-short",
     "unpriced-shipment",
-    "steal-uncertain"
+    "steal-uncertain",
+    "exchange-uncertain"
   ];
 
   // Built with `aUnitSilver` (`ah-uhnd`) so a field added to `UnitSilver` later does not silently

@@ -678,6 +678,20 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       countUpkeep: true
     })
   },
+  // `rules/exchange`: an exchange is aborted when either side lacks what it offers, so one whose
+  // other side's holding is in doubt may or may not move the silver (`ah-mw1r.2`).
+  {
+    id: "doubt-exchange-uncertain",
+    when: ({ silver }) => silver.doubt === "exchange-uncertain",
+    say: () =>
+      "Whether this EXCHANGE goes ahead cannot be predicted, so what this unit ends the month with cannot be said.",
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({ doubt: "exchange-uncertain" }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
   {
     id: "doubt-unknown-combat-ready",
     when: ({ silver }) => silver.doubt === "unknown-combat-ready",

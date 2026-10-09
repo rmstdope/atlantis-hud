@@ -705,6 +705,8 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
       "Because this GIVE cannot be predicted, what this unit earns or spends afterwards cannot be said.",
     "doubt-steal-uncertain":
       "Whether this STEAL succeeds, and how much silver it takes, cannot be predicted, so what this unit ends the month with cannot be said.",
+    "doubt-exchange-uncertain":
+      "Whether this EXCHANGE goes ahead cannot be predicted, so what this unit ends the month with cannot be said.",
     "doubt-unknown-combat-ready":
       "The combat ready men in this region cannot be added up, so what a pillage earns cannot be said.",
     "doubt-contested-faction-food":
