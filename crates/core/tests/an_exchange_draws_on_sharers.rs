@@ -250,3 +250,22 @@ fn a_sharer_doubted_for_its_silver_still_covers_an_offer_of_goods() {
     assert_eq!(holding(orders, "2393", "SWOR", 5), 2);
     assert_eq!(silver_moved(orders, "2392", SilverChangeCause::Sold), 500);
 }
+
+/// A sharer that gives itself to another faction this month lends nothing if the gift is taken:
+/// GIVE runs before EXCHANGE (`rules/sequenceofevents`), and the engine's `GetSharedNum` lends only
+/// from the spender's own faction. Whether it is taken the report cannot say (`rules/give`), so an
+/// offer that needs that sharer is uncounted on both sides rather than forecast either way.
+#[test]
+fn a_sharer_giving_itself_away_leaves_an_offer_it_would_cover_uncounted() {
+    const SMITH: &str = "EXCHANGE 2392 5 SWOR 50 SILV";
+    const BUYER: &str = "EXCHANGE 2391 50 SILV 5 SWOR";
+    let buyer = format!("{BUYER}\nSELL 5 SWOR");
+    let orders = (SMITH, buyer.as_str(), "GIVE 7001 UNIT");
+    let (_, uncounted) = preview_of(orders, "2391", "SWOR", 2);
+    assert!(uncounted.contains(&SMITH.to_string()), "{uncounted:?}");
+    let (swords, uncounted) = preview_of(orders, "2392", "SWOR", 0);
+    assert_eq!(swords, 0, "nothing is credited as certain");
+    assert!(uncounted.contains(&BUYER.to_string()), "{uncounted:?}");
+    let row = silver_row(orders, "2392");
+    assert!(row.doubt.is_some(), "{row:?}");
+}

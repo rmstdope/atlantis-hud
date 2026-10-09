@@ -3459,6 +3459,27 @@ fn held_by(
     }
 }
 
+/// The `GIVE <party> UNIT` a unit writes, as the doubt it leaves a sharer's lending in: the gift
+/// runs before `EXCHANGE` (`rules/sequenceofevents`) and, if taken, puts the unit in another
+/// faction, which the engine's `GetSharedNum` does not lend from; whether it is taken the report
+/// cannot say (`rules/give`; `ah-80mj`).
+fn gives_itself_away(ordered: &Ordered<'_>) -> Option<UncertainGive> {
+    ordered
+        .intents
+        .iter()
+        .find_map(|placed| match &placed.intent {
+            Intent::Give {
+                to,
+                what: Selector::WholeUnit,
+                ..
+            } => Some(UncertainGive {
+                target: party_label(to),
+                line: placed.line,
+            }),
+            _ => None,
+        })
+}
+
 fn seed_working(units: &[Ordered<'_>], position: usize) -> Working {
     let unit = units[position].unit;
     Working {
@@ -4336,12 +4357,14 @@ fn apply_transfers(
                 return Ok(own);
             }
             let lenders = lending_sharers(units, offer.unit);
-            if let Some(uncertain) = lenders.iter().find_map(|lender| {
+            if let Some(uncertain) = lenders.iter().find_map(|&lender| {
                 working
-                    .get(lender)
+                    .get(&lender)
                     .and_then(|state| state.uncertain_after_gifts.get(&offer.give_tag))
+                    .cloned()
+                    .or_else(|| gives_itself_away(&units[lender]))
             }) {
-                return Err(uncertain.clone());
+                return Err(uncertain);
             }
             let lent: i64 = lenders
                 .into_iter()
@@ -8731,6 +8754,14 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
                     .known_balance_at(StatePhase::Give, lender, &offer.give_tag)
                     .map_err(Clone::clone)?;
             }
+            if let Some(uncertain) = hex
+                .units
+                .iter()
+                .filter(|other| other.shares() && other.unit.unit_id != *who)
+                .find_map(gives_itself_away)
+            {
+                return Err(uncertain);
+            }
             let (own, lenders) = exchange_draw(ledger, hex, who, &offer.give_tag, own);
             Ok(own
                 .max(0)
@@ -8777,11 +8808,9 @@ fn exchange_draw(
     tag: &str,
     own: i64,
 ) -> (i64, Vec<(usize, i64)>) {
+    // Read as the trusted path reads a party, with what a cut gift never moved added back.
     let known = |unit_id: &str| {
-        ledger
-            .state
-            .known_balance_at(StatePhase::Give, unit_id, tag)
-            .map_or(0, |known| known.max(0))
+        SharerStock::held_at(ledger, StatePhase::Give, unit_id, tag).map_or(0, |known| known.max(0))
     };
     match SharerStock::for_spender(ledger, hex, StatePhase::Give, who, tag) {
         Some((stock, x)) => (
