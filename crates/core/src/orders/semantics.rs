@@ -5233,8 +5233,9 @@ fn men_from(hex: &Hex<'_>, stocks: &[Vec<ItemAmount>], ruleset: Option<&Ruleset>
         .map(|(ordered, items)| {
             // Not derived for a unit whose headcount is itself a guess - re-deriving from a list
             // the catalogue cannot fully read is the guess `classify_unit` refuses to make, under
-            // another name. Only `BUY`/`SELL` of a man-tagged item can move a headcount any further
-            // than the early picture already has it - `PRODUCE`, `WITHDRAW` and trading in anything
+            // another name. Only `BUY`/`SELL` of a man-tagged item, and Trident's `CREATE VILLAGE`
+            // consuming its founders (`ah-mw1r.3`), can move a headcount any further than the early
+            // picture already has it - `PRODUCE`, `WITHDRAW` and trading in anything
             // else leave a unit's own people untouched, so this compares man tags alone against the
             // early picture rather than re-deriving from every item the ledger happens to be
             // tracking.
@@ -7967,10 +7968,11 @@ fn apply(
         // has been paid for, so they can fund nothing this month.
         Intent::Work | Intent::Entertain => {}
         // `newage trident rules/create_village`: the founding unit "must have at least 1000 people
-        // (men or leaders) and 100 wagons; all of these are consumed". The navigator settled that
-        // exactly 1000 men and 100 wagons go (2026-10-09, on `ah-mw1r`), and placed CREATE after
-        // PRODUCE and before ENTERTAIN, which `rules/sequenceofevents` puts before maintenance - so
-        // the founders pay no upkeep (`ah-mw1r.3`). Trident only, as `grammar.rs` offers it.
+        // (men or leaders) and 100 wagons; all of these are consumed". The navigator's own statement
+        // of the order, in `ah-mw1r`'s description (2026-10-09), reads it as consuming "1000 men or
+        // leaders and 100 wagons", after PRODUCE and before ENTERTAIN, which
+        // `rules/sequenceofevents` puts before maintenance - so the founders pay no upkeep
+        // (`ah-mw1r.3`). Trident only, as `grammar.rs` offers it.
         Intent::MonthLong("CREATE") if super::grammar::is_trident(ruleset) => {
             create_village(ledger, hex, actor, placed, ruleset);
         }
@@ -10652,20 +10654,21 @@ fn names_the_same_item(text: &str, tag: &str, name: &str) -> bool {
     matched
 }
 
-/// Marks one order's line uncounted for one unit, once however many tags it names.
-///
-/// A `GIVE ... ALL ITEMS` may leave several tags uncertain, and the hover shows the order verbatim:
-/// repeating the line would repeat the sentence (`ah-66yi`).
 /// What a founding `CREATE VILLAGE` takes (`newage trident rules/create_village`).
 const VILLAGE_FOUNDERS: i64 = 1000;
 const VILLAGE_WAGONS: i64 = 100;
 /// `newage trident data/wagon`. The magic wagon is another item, and the rule names wagons.
 const WAGON: &str = "WAGO";
+/// Where `newage trident rules/create_village` says a village may not be founded.
+const REFUSED_TERRAIN: [&str; 4] = ["ocean", "lake", "volcano", "barren"];
 
 /// Consumes the people and wagons a `CREATE VILLAGE` founds its village with, from the phase after
 /// production onward, so maintenance no longer counts the founders (`ah-mw1r.3`).
 ///
-/// A unit short of either founds nothing and keeps everything, as the rule's "must have" reads. A
+/// A unit short of either founds nothing and keeps everything, as the rule's "must have" reads, and
+/// so does one in a region the rule refuses that the report shows: one that already has a
+/// settlement, or ocean, lake, volcano or barren terrain. The rule's third requirement, three hexes
+/// from any other settlement, is not checked: this settlement sees one hex. A
 /// holding a `GIVE` left uncertain cannot say which, so nothing is consumed and the line is
 /// admitted. Which people go when a unit holds more than one kind is not stated anywhere: they are
 /// taken in the order the report lists the unit's items, the first kind first.
@@ -10679,6 +10682,13 @@ fn create_village(
     let Some(ruleset) = ruleset else {
         return;
     };
+    let refused = hex.region.settlement.is_some()
+        || REFUSED_TERRAIN
+            .iter()
+            .any(|terrain| hex.region.terrain.eq_ignore_ascii_case(terrain));
+    if refused {
+        return;
+    }
     let who = &actor.unit.unit_id;
     let phase = StatePhase::PrimaryProduction;
     let mut people: Vec<(String, i64)> = ledger
@@ -10737,6 +10747,10 @@ fn create_village(
     }
 }
 
+/// Marks one order's line uncounted for one unit, once however many tags it names.
+///
+/// A `GIVE ... ALL ITEMS` may leave several tags uncertain, and the hover shows the order verbatim:
+/// repeating the line would repeat the sentence (`ah-66yi`).
 fn mark_uncounted(ledger: &mut Ledger<'_>, unit_id: &str, line: usize) {
     let lines = ledger.uncounted.entry(unit_id.to_string()).or_default();
     if !lines.contains(&line) {

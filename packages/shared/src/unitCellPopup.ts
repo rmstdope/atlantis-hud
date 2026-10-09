@@ -7,15 +7,12 @@ import type {
   SkillMerge,
   StudyForecast,
   UnitMovementMode,
-  UnitSilver,
+  UnitSilver
 } from "@atlantis/core-client";
 import { count } from "./plural";
 import { isSilver, withoutSilver } from "./silverTag";
 import { sameLongOrder, type ReportedLongOrder } from "./ordersDocument";
-import {
-  battleSkillGroups,
-  battleSkillSource,
-} from "./battleSkillPresentation";
+import { battleSkillGroups, battleSkillSource } from "./battleSkillPresentation";
 import type { DerivedSkill } from "./battleSkills";
 import { FLAG_SETTINGS, flagState, unsettledFlags } from "./unitFlags";
 import { describeMenBriefly, whyEstimated } from "./unitComposition";
@@ -26,7 +23,7 @@ import {
   hasUncertainTransport,
   itemsTooltip,
   originalTooltip,
-  type PreviewedUnit,
+  type PreviewedUnit
 } from "./unitPreview";
 import { summariseUnit } from "./unitTooltip";
 import {
@@ -34,14 +31,14 @@ import {
   silverCauseLabel,
   silverNoteLines,
   type SilverCauseGroup,
-  type SilverFacts,
+  type SilverFacts
 } from "./silverVocabulary";
 import {
   atMost,
   monthLostToAnUnreadLine,
   NOT_KNOWN,
   shareBoundedByAnUnreadUnit,
-  silverWasNeverRead,
+  silverWasNeverRead
 } from "./unitRead";
 import {
   COLUMN_LABELS,
@@ -51,7 +48,7 @@ import {
   type ExtraColumn,
   type ShownSilver,
   type UnitColumn,
-  type UnitRowKey,
+  type UnitRowKey
 } from "./unitTable";
 
 /**
@@ -210,14 +207,11 @@ const SILENT: ReadonlySet<PopupColumn> = new Set<PopupColumn>([
   "faction",
   "hex",
   "seen",
-  "remove",
+  "remove"
 ]);
 
 /** Columns whose popup is the whole-unit summary the table has shown all along (decision **D1**). */
-const WHOLE_UNIT: ReadonlySet<PopupColumn> = new Set<PopupColumn>([
-  "name",
-  "unitId",
-]);
+const WHOLE_UNIT: ReadonlySet<PopupColumn> = new Set<PopupColumn>(["name", "unitId"]);
 
 /** Whether resting on this column opens anything at all. Column-only; no unit is needed. */
 export function columnHasPopup(column: PopupColumn): boolean {
@@ -319,29 +313,19 @@ export type ItemLine = { tag: string; line: PopupLine; moved: boolean };
  * unit produced and transferred in the same turn, while one that arrived this month starts at
  * `none`.
  */
-export function itemLines(
-  unit: PreviewedUnit,
-  reported: ReportedItems | undefined,
-): ItemLine[] {
+export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefined): ItemLine[] {
   const changes = unit.itemChanges ?? [];
   const held = new Map(unit.items.map((item) => [item.tag, item]));
   // The same arithmetic `formatItems` does (`unitPreview.ts`), because the cell under the pointer
   // is drawn from it: it says `2-5 SWOR`, so the popup must not answer `5`.
   const shortfall = new Map<string, number>();
   for (const item of unit.created ?? []) {
-    shortfall.set(
-      item.tag,
-      (shortfall.get(item.tag) ?? 0) + (item.most - item.fewest),
-    );
+    shortfall.set(item.tag, (shortfall.get(item.tag) ?? 0) + (item.most - item.fewest));
   }
   // Silver is answered for by the SILVER column and its popup alone (`ah-6m7b.5.1`), so it is
   // neither a line of its own nor a `gone` line for what the report listed and the month spent.
   const tags: string[] = [];
-  for (const tag of [
-    ...held.keys(),
-    ...(reported?.keys() ?? []),
-    ...(unit.produced ?? []).map(({ tag }) => tag),
-  ]) {
+  for (const tag of [...held.keys(), ...(reported?.keys() ?? []), ...(unit.produced ?? []).map(({ tag }) => tag)]) {
     if (!isSilver(tag) && !tags.includes(tag)) {
       tags.push(tag);
     }
@@ -360,35 +344,23 @@ export function itemLines(
     }
   }
 
-  return tags
-    .map((tag) => {
-      const item = held.get(tag);
-      const name = itemName(tag, unit);
-      const before = reported?.get(tag);
-      const amount = item?.amount;
-      const moved =
-        changes.some((change) => change.tag === tag) ||
-        (before !== undefined && before !== (amount ?? 0)) ||
-        (before === undefined && reported !== undefined);
-      const line: PopupLine = {
-        label: name === undefined ? tag : `${name} ${tag}`,
-        value:
-          amount === undefined
-            ? "gone"
-            : rangedValue(amount, shortfall.get(tag) ?? 0),
-      };
-      const change = changeOf(before, amount, reported);
-      return {
-        tag,
-        line: change ? { ...line, change } : line,
-        moved,
-        amount: amount ?? 0,
-      };
-    })
-    .sort(
-      (a, b) =>
-        rank(a, monthOrder) - rank(b, monthOrder) || b.amount - a.amount,
-    )
+  return tags.map((tag) => {
+    const item = held.get(tag);
+    const name = itemName(tag, unit);
+    const before = reported?.get(tag);
+    const amount = item?.amount;
+    const moved =
+      changes.some((change) => change.tag === tag) ||
+      (before !== undefined && before !== (amount ?? 0)) ||
+      (before === undefined && reported !== undefined);
+    const line: PopupLine = {
+      label: name === undefined ? tag : `${name} ${tag}`,
+      value: amount === undefined ? "gone" : rangedValue(amount, shortfall.get(tag) ?? 0)
+    };
+    const change = changeOf(before, amount, reported);
+    return { tag, line: change ? { ...line, change } : line, moved, amount: amount ?? 0 };
+  })
+    .sort((a, b) => rank(a, monthOrder) - rank(b, monthOrder) || b.amount - a.amount)
     .map(({ tag, line, moved }) => ({ tag, line, moved }));
 }
 
@@ -398,7 +370,7 @@ export function itemLines(
  */
 function rank(
   entry: { tag: string; moved: boolean },
-  monthOrder: ReadonlyMap<string, number>,
+  monthOrder: ReadonlyMap<string, number>
 ): number {
   const inMonth = monthOrder.get(entry.tag);
   if (inMonth !== undefined) {
@@ -426,7 +398,7 @@ function rangedValue(amount: number, gap: number): string {
 function changeOf(
   before: number | undefined,
   amount: number | undefined,
-  reported: ReportedItems | undefined,
+  reported: ReportedItems | undefined
 ): PopupChange | undefined {
   if (reported === undefined) {
     return undefined;
@@ -437,7 +409,7 @@ function changeOf(
   }
   return {
     direction: now > (before ?? 0) ? "up" : "down",
-    from: before === undefined ? "none" : before.toLocaleString(),
+    from: before === undefined ? "none" : before.toLocaleString()
   };
 }
 
@@ -460,30 +432,21 @@ export function itemCauseSentence(
    * These are people. A market purchase of men is a recruitment rather than a purchase of goods
    * (`rules/buy`, `rules/economy_recruiting`, New Origins v8.0.0), so the `bought` clause says so.
    */
-  people?: boolean,
+  people?: boolean
 ): string | undefined {
-  const clauses = changes.map((change) =>
-    itemCauseClause(change, unit, people === true),
-  );
+  const clauses = changes.map((change) => itemCauseClause(change, unit, people === true));
   return clauses.length === 0 ? undefined : `${label}: ${clauses.join(", ")}.`;
 }
 
 /** The other unit of a movement, as `ah-rgkk.2.3` settled it: `Scouts (1502)`, or `unit 1502`. */
 function party(other: ItemChangeParty): string {
-  return other.name === null
-    ? `unit ${other.unitId}`
-    : `${other.name} (${other.unitId})`;
+  return other.name === null ? `unit ${other.unitId}` : `${other.name} (${other.unitId})`;
 }
 
 /** One movement, as a fragment. The clauses are joined with `, ` and closed with one full stop. */
-function itemCauseClause(
-  change: ItemChange,
-  unit: PreviewedUnit,
-  people: boolean,
-): string {
+function itemCauseClause(change: ItemChange, unit: PreviewedUnit, people: boolean): string {
   const n = Math.abs(change.delta);
-  const each =
-    change.unitPrice === null ? "" : ` at ${change.unitPrice} silver each`;
+  const each = change.unitPrice === null ? "" : ` at ${change.unitPrice} silver each`;
   switch (change.cause) {
     case "bought":
       return `${people ? "recruited" : "bought"} ${n}${each}`;
@@ -494,9 +457,7 @@ function itemCauseClause(
     case "produced":
       return `produced ${n}`;
     case "production-spent":
-      return change.other
-        ? `used ${n} for ${party(change.other)} to produce`
-        : `used ${n} as material`;
+      return change.other ? `used ${n} for ${party(change.other)} to produce` : `used ${n} as material`;
     case "build-spent":
       return `spent ${n} ${buildSpendPlace(change, unit)}`;
     case "cast-created":
@@ -516,9 +477,7 @@ function itemCauseClause(
       return "left behind, unfinished, when the unit leaves the hex";
     case "given-away":
       // `ah-rgkk.3.2` reserves a null party for a GIVE to a foreign faction that names no unit.
-      return change.other
-        ? `gave ${n} to ${party(change.other)}`
-        : `gave ${n} to another faction`;
+      return change.other ? `gave ${n} to ${party(change.other)}` : `gave ${n} to another faction`;
     case "was-given":
       return `given ${n}${change.other ? ` by ${party(change.other)}` : ""}`;
     case "took":
@@ -547,26 +506,19 @@ function buildSpendPlace(change: ItemChange, unit: PreviewedUnit): string {
   // A New Age month may spend two materials on one build, so the spend is found by whichever of
   // its materials this change names (`crates/core/src/orders/semantics.rs`).
   const spend = (unit.built ?? []).find((entry) =>
-    entry.materials.some((material) => material.tag === change.tag),
+    entry.materials.some((material) => material.tag === change.tag)
   );
   return spend ? buildSpendTarget(spend) : "on a build";
 }
 
 /** A cast's own words, and its range where the spell's yield is not yet settled. */
-function castCreatedClause(
-  change: ItemChange,
-  unit: PreviewedUnit,
-  n: number,
-): string {
+function castCreatedClause(change: ItemChange, unit: PreviewedUnit, n: number): string {
   // Summed across every cast of the tag, because one unit may cast the same item twice and a
   // single entry would report one spell's range as the month's.
-  const casts = (unit.created ?? []).filter(
-    (entry) => entry.tag === change.tag,
-  );
+  const casts = (unit.created ?? []).filter((entry) => entry.tag === change.tag);
   const fewest = casts.reduce((total, entry) => total + entry.fewest, 0);
   const most = casts.reduce((total, entry) => total + entry.most, 0);
-  const figure =
-    casts.length > 0 && fewest !== most ? `${fewest}-${most}` : `${n}`;
+  const figure = casts.length > 0 && fewest !== most ? `${fewest}-${most}` : `${n}`;
   return casts.some((entry) => entry.summoned)
     ? `summoned ${figure}`
     : `created ${figure} by casting`;
@@ -584,14 +536,14 @@ const MOVEMENT_RANK: Record<string, number> = {
   Overloaded: 0,
   Walking: 1,
   Riding: 2,
-  Flying: 3,
+  Flying: 3
 };
 
 /** The three capacities, in the order the report prints them, and what the popup calls them. */
 const CAPACITY_LINES: readonly { mode: UnitMovementMode; label: string }[] = [
   { mode: "fly", label: "can carry flying" },
   { mode: "ride", label: "can carry riding" },
-  { mode: "walk", label: "can carry walking" },
+  { mode: "walk", label: "can carry walking" }
 ];
 
 /**
@@ -609,19 +561,16 @@ const CHANGE_FIELD: Partial<Record<PopupColumn, string>> = {
   items: "items",
   // The report's own field name, which is not the column's: a structure change is recorded
   // against `structureId` (`UnitTableDock.tsx`, `structureChange`).
-  structure: "structureId",
+  structure: "structureId"
 };
 
 /** The columns whose popup lists several things, so the no-change sentence reads as a plural. */
-const LISTS: ReadonlySet<PopupColumn> = new Set<PopupColumn>([
-  "skills",
-  "items",
-]);
+const LISTS: ReadonlySet<PopupColumn> = new Set<PopupColumn>(["skills", "items"]);
 
 export function popupForCell(
   column: PopupColumn,
   unit: PreviewedUnit,
-  facts: PopupFacts,
+  facts: PopupFacts
 ): PopupSpec {
   if (SILENT.has(column)) {
     return { kind: "silent" };
@@ -635,9 +584,7 @@ export function popupForCell(
   const change = field ? changeFor(unit, field) : undefined;
   const notes = [...body.notes];
   if (field && !change && !body.changed) {
-    notes.push(
-      `Nothing this month changes ${LISTS.has(column) ? "these" : "this"}.`,
-    );
+    notes.push(`Nothing this month changes ${LISTS.has(column) ? "these" : "this"}.`);
   }
   // A column with nothing left to show - moved out of its structure, its last flag dropped, its
   // movement no longer disclosed - has no line for the report's own figure to hang off, and
@@ -664,8 +611,8 @@ export function popupForCell(
       title: `${unit.name} (${unit.unitId}) — ${COLUMN_LABELS[column as UnitColumn]?.toLowerCase() ?? column}`,
       lines: body.lines.slice(0, MAX_LINES),
       notes,
-      warning: body.warning ?? null,
-    },
+      warning: body.warning ?? null
+    }
   };
 }
 
@@ -683,11 +630,7 @@ type Body = {
 };
 
 /** What one column has to say, before the shared capping and change sentence are applied. */
-function bodyFor(
-  column: PopupColumn,
-  unit: PreviewedUnit,
-  facts: PopupFacts,
-): Body {
+function bodyFor(column: PopupColumn, unit: PreviewedUnit, facts: PopupFacts): Body {
   switch (column) {
     case "men":
       return menBody(unit, facts);
@@ -717,10 +660,7 @@ function bodyFor(
  * the report's own mark for a count it guessed at and `""` is a figure it never recorded; neither
  * is something the pair can be drawn from, so both are quoted in the report's own words instead.
  */
-function markOrQuote(
-  change: ReturnType<typeof changeFor>,
-  now: number,
-): Partial<PopupLine> {
+function markOrQuote(change: ReturnType<typeof changeFor>, now: number): Partial<PopupLine> {
   if (!change) {
     return {};
   }
@@ -736,12 +676,7 @@ function markOrQuote(
   // Grouped the same way the figure beside it is (`describeMenBriefly`), so a four-figure pair
   // reads `4,210 → 4,255` rather than mixing two notations. Safe to re-format because the
   // guard above has already proved `before` a whole number.
-  return {
-    change: {
-      direction: now > before ? "up" : "down",
-      from: before.toLocaleString(),
-    },
-  };
+  return { change: { direction: now > before ? "up" : "down", from: before.toLocaleString() } };
 }
 
 /** A sentence the app already ships as a fragment, ended the way every popup sentence ends. */
@@ -795,10 +730,7 @@ function raceName(unit: PreviewedUnit, tag: string): string {
  * `reported` is the report's per-tag figures (`reportedFor`), or `undefined` when there is no items
  * change or its string could not be parsed - in which case no line carries a pair.
  */
-function raceLines(
-  unit: PreviewedUnit,
-  reported: ReportedItems | undefined,
-): RaceLine[] {
+function raceLines(unit: PreviewedUnit, reported: ReportedItems | undefined): RaceLine[] {
   const held = new Map(unit.menByRace.map((race) => [race.tag, race.amount]));
   const changes = manChanges(unit);
   const tags = [...held.keys()];
@@ -813,7 +745,7 @@ function raceLines(
     const before = reported?.get(tag);
     const line: PopupLine = {
       label: `${raceName(unit, tag)} ${tag}`,
-      value: amount === undefined ? "gone" : amount.toLocaleString(),
+      value: amount === undefined ? "gone" : amount.toLocaleString()
     };
     const change = changeOf(before, amount, reported);
     // Deliberately two clauses where `itemLines` has three: it also counts a tag the report never
@@ -832,7 +764,7 @@ function menBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   const total: PopupLine = {
     label: "men",
     value: describeMenBriefly(unit),
-    ...markOrQuote(changeFor(unit, CHANGE_FIELD.men!), unit.men),
+    ...markOrQuote(changeFor(unit, CHANGE_FIELD.men!), unit.men)
   };
   const moved = manChanges(unit);
   const unknown = unit.menOfUnknownSkill ?? [];
@@ -866,7 +798,7 @@ function menBody(unit: PreviewedUnit, facts: PopupFacts): Body {
       raceName(unit, tag),
       moved.filter((change) => change.tag === tag),
       unit,
-      true,
+      true
     );
     if (said !== undefined) {
       notes.push(said);
@@ -874,7 +806,7 @@ function menBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   }
   for (const taken of unknown) {
     notes.push(
-      `${count(taken.amount, "man", "men")} taken from ${unitReference(taken.from, unit.regionId, facts)}, which your report does not show.`,
+      `${count(taken.amount, "man", "men")} taken from ${unitReference(taken.from, unit.regionId, facts)}, which your report does not show.`
     );
   }
   if (why) {
@@ -888,7 +820,7 @@ function menBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     warning:
       unit.menEstimated && (touched || unit.recruitsUnmerged === true)
         ? "This unit's headcount is a guess, so what this month does to it cannot be worked out."
-        : null,
+        : null
   };
 }
 
@@ -900,17 +832,12 @@ function movementBody(unit: PreviewedUnit): Body {
   const present = presentUnitMovement(movement);
   const change = changeFor(unit, CHANGE_FIELD.movement!);
   const lines: PopupLine[] = [
-    {
-      label: "move",
-      value: present.label,
-      ...movementPair(change, present.label),
-    },
+    { label: "move", value: present.label, ...movementPair(change, present.label) },
     { label: "weight", value: movement.load.toLocaleString() },
     ...CAPACITY_LINES.map(({ mode, label }) => ({
       label,
       value: movement[mode].toLocaleString(),
-      stress:
-        mode === present.active ? ("deciding" as const) : ("aside" as const),
+      stress: mode === present.active ? ("deciding" as const) : ("aside" as const)
     })),
     // `CAPACITY_LINES` is keyed by `UnitMovementMode`, which has no `swim` member, so the fourth
     // capacity is appended separately - and omitted entirely, not blanked, in a world with no
@@ -926,9 +853,9 @@ function movementBody(unit: PreviewedUnit): Body {
                 : "not stated",
             // Never `deciding`: `capacityMode` is the mode the unit's speed rests on, and
             // swimming is not a speed.
-            stress: "aside" as const,
-          },
-        ]),
+            stress: "aside" as const
+          }
+        ])
   ];
   const causes = movementCauses(unit);
   const notes: string[] = [];
@@ -942,7 +869,7 @@ function movementBody(unit: PreviewedUnit): Body {
     changed: causes.length > 0,
     warning: movementIsStillTheReport(unit)
       ? "An order this month could not be counted, so these are the report\u2019s own figures, not this month\u2019s."
-      : null,
+      : null
   };
 }
 
@@ -954,10 +881,7 @@ function movementBody(unit: PreviewedUnit): Body {
  * app does not know can only have come from a newer core; it is quoted rather than ranked, the
  * same fallback `markOrQuote` uses for a figure it cannot pair.
  */
-function movementPair(
-  change: ReturnType<typeof changeFor>,
-  now: string,
-): Partial<PopupLine> {
+function movementPair(change: ReturnType<typeof changeFor>, now: string): Partial<PopupLine> {
   if (!change) {
     return {};
   }
@@ -966,12 +890,7 @@ function movementPair(
   if (before === undefined || after === undefined) {
     return { why: originalTooltip(change) };
   }
-  return {
-    change: {
-      direction: after > before ? "up" : "down",
-      from: change.original,
-    },
-  };
+  return { change: { direction: after > before ? "up" : "down", from: change.original } };
 }
 
 /**
@@ -992,20 +911,13 @@ function movementCauses(unit: PreviewedUnit): string[] {
   const said: string[] = [];
   for (const tag of tags.slice(0, MAX_LINES)) {
     const forTag = changes.filter((change) => change.tag === tag);
-    const text = itemCauseSentence(
-      itemLabel(tag, unit),
-      forTag,
-      unit,
-      forTag[0]!.isMan,
-    );
+    const text = itemCauseSentence(itemLabel(tag, unit), forTag, unit, forTag[0]!.isMan);
     if (text !== undefined) {
       said.push(sentence(text));
     }
   }
   if (tags.length > MAX_LINES) {
-    said.push(
-      `\u2026 and ${tags.length - MAX_LINES} more; the Items column has them all.`,
-    );
+    said.push(`\u2026 and ${tags.length - MAX_LINES} more; the Items column has them all.`);
   }
   return said;
 }
@@ -1029,14 +941,14 @@ function movementIsStillTheReport(unit: PreviewedUnit): boolean {
 const REVEAL_ORDERS: Readonly<Record<string, string | undefined>> = {
   unit: "REVEAL UNIT",
   faction: "REVEAL FACTION",
-  off: "REVEAL",
+  off: "REVEAL"
 };
 
 /** `rules/consume`: "CONSUME tells the unit to use silver before food items (this is the default)". */
 const CONSUME_ORDERS: Readonly<Record<string, string | undefined>> = {
   "unit's food": "CONSUME UNIT",
   "faction's food": "CONSUME FACTION",
-  "silver first": "CONSUME",
+  "silver first": "CONSUME"
 };
 
 /**
@@ -1051,7 +963,7 @@ const SPOILS_ORDERS: Readonly<Record<string, string | undefined>> = {
   swimming: "SPOILS SWIM",
   sailing: "SPOILS SAIL",
   weightless: "SPOILS NONE",
-  all: "SPOILS ALL",
+  all: "SPOILS ALL"
 };
 
 /**
@@ -1074,22 +986,14 @@ function flagCause(
    */
   _from: string,
   to: string,
-  moves: ReadonlyMap<string, { from: string; to: string }>,
+  moves: ReadonlyMap<string, { from: string; to: string }>
 ): string | undefined {
   const on = to === "on";
   switch (key) {
     case "guarding":
-      return on
-        ? "GUARD 1"
-        : moves.get("avoiding")?.to === "on"
-          ? "AVOID 1"
-          : "GUARD 0";
+      return on ? "GUARD 1" : moves.get("avoiding")?.to === "on" ? "AVOID 1" : "GUARD 0";
     case "avoiding":
-      return on
-        ? "AVOID 1"
-        : moves.get("guarding")?.to === "on"
-          ? "GUARD 1"
-          : "AVOID 0";
+      return on ? "AVOID 1" : moves.get("guarding")?.to === "on" ? "GUARD 1" : "AVOID 0";
     case "behind":
       return on ? "BEHIND 1" : "BEHIND 0";
     case "sharing":
@@ -1122,9 +1026,7 @@ function flagCause(
  */
 function flagNotes(unit: PreviewedUnit): string[] {
   if (unit.own === false) {
-    return [
-      "Another faction's flags, as your report printed them. Nothing you order changes them.",
-    ];
+    return ["Another faction's flags, as your report printed them. Nothing you order changes them."];
   }
   if (unit.formed) {
     // `rules/form`: a formed unit inherits its flags bar guard and autotax. It records no
@@ -1132,7 +1034,7 @@ function flagNotes(unit: PreviewedUnit): string[] {
     // reason.
     return [
       "Formed this month, so it inherits its flags from the unit forming it — every one but " +
-        "guard and autotax, which have to be set in its own orders.",
+        "guard and autotax, which have to be set in its own orders."
     ];
   }
   return [];
@@ -1174,18 +1076,15 @@ function flagsBody(unit: PreviewedUnit): Body {
       return {
         label: setting.label,
         value: to,
-        ...(QUIET_STATES.has(to) ? { stress: "aside" as const } : {}),
+        ...(QUIET_STATES.has(to) ? { stress: "aside" as const } : {})
       };
     }
     const why = flagCause(setting.key, from, to, moves);
     return {
       label: setting.label,
       value: to,
-      change: {
-        direction: to === setting.resting ? ("down" as const) : ("up" as const),
-        from,
-      },
-      ...(why ? { why } : {}),
+      change: { direction: to === setting.resting ? ("down" as const) : ("up" as const), from },
+      ...(why ? { why } : {})
     };
   });
 
@@ -1193,14 +1092,14 @@ function flagsBody(unit: PreviewedUnit): Body {
   const rest = lines.filter((line) => !line.change);
   const passengers: PopupLine[] = unsettledFlags(unit.flags).map((flag) => ({
     label: flag,
-    value: "on",
+    value: "on"
   }));
 
   return {
     // No `changed`: this column is deliberately absent from `CHANGE_FIELD`, so `popupForCell`
     // never consults it and reporting one would suggest it still drove the no-change sentence.
     lines: [...changed, ...rest, ...passengers],
-    notes: flagNotes(unit),
+    notes: flagNotes(unit)
   };
 }
 
@@ -1227,37 +1126,32 @@ function foreignSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     return {
       lines: summariseUnit(unit).skills.map((entry, index) => ({
         ...entry,
-        ...(index === 0 ? quoted : {}),
+        ...(index === 0 ? quoted : {})
       })),
-      notes: [],
+      notes: []
     };
   }
 
   const groups = battleSkillGroups(facts.derivedSkills);
   if (groups.length === 0) {
-    return {
-      lines: [],
-      notes: ["A report never shows another faction's skills."],
-    };
+    return { lines: [], notes: ["A report never shows another faction's skills."] };
   }
 
   const recovered = groups.flatMap((group) =>
     group.skills.map((skill) => ({
       label: `${skill.name} ${skill.tag}`,
-      value: String(skill.level),
-    })),
+      value: String(skill.level)
+    }))
   );
 
   return {
     // The quote goes on the first recovered line, since this body has lines and so is not reached
     // by `popupForCell`'s empty-column sentence - and the cell's `title` carried it before.
-    lines: recovered.map((line, index) =>
-      index === 0 ? { ...line, ...quoted } : line,
-    ),
+    lines: recovered.map((line, index) => (index === 0 ? { ...line, ...quoted } : line)),
     notes: [
       ...groups.map((group) => battleSkillSource(group, "read")),
-      "A report never shows another faction's skills.",
-    ],
+      "A report never shows another faction's skills."
+    ]
   };
 }
 
@@ -1287,7 +1181,7 @@ function chainFor(
    */
   hasReport: boolean,
   /** This month's forecast, when it is for this tag. */
-  study: StudyForecast | undefined,
+  study: StudyForecast | undefined
 ): PopupStep[] {
   if (!hasReport) {
     return [];
@@ -1316,7 +1210,7 @@ function chainFor(
     steps.push({
       value: `${study.levelAfter} (${study.pointsAfter})`,
       mark: "projected",
-      ...(study.doubts.length > 0 ? { uncertain: true } : {}),
+      ...(study.doubts.length > 0 ? { uncertain: true } : {})
     });
   }
   return steps.length > 1 ? steps : [];
@@ -1339,7 +1233,7 @@ const MONTHS_IN_WORDS: Record<string, string> = {
   "5/4": "one and a quarter months",
   "3/2": "one and a half months",
   "7/4": "one and three quarters months",
-  "2/1": "two months",
+  "2/1": "two months"
 };
 
 /**
@@ -1357,27 +1251,17 @@ function monthsInWords(numerator: number, denominator: number): string {
 }
 
 /** `Scouts (1502)` for a row the table holds in this hex, and `unit 1502` for one it does not. */
-function unitReference(
-  from: string,
-  regionId: string,
-  facts: PopupFacts,
-): string {
+function unitReference(from: string, regionId: string, facts: PopupFacts): string {
   const name = facts.unitNames.get(unitRowKey(regionId, from));
   return name ? `${name} (${from})` : `unit ${from}`;
 }
 
 /** Why one merge of arriving men moved - or did not move - this unit's figures. */
-function mergeSentence(
-  merge: SkillMerge,
-  regionId: string,
-  facts: PopupFacts,
-): string {
+function mergeSentence(merge: SkillMerge, regionId: string, facts: PopupFacts): string {
   if (merge.cause === "recruited") {
     const who =
       merge.menArriving.length > 0
-        ? andList(
-            merge.menArriving.map((item) => count(item.amount, item.name)),
-          )
+        ? andList(merge.menArriving.map((item) => count(item.amount, item.name)))
         : count(merge.men, "man", "men");
     return `${who} recruited, and recruits bring no skills.`;
   }
@@ -1396,17 +1280,15 @@ function studySentence(study: StudyForecast, projectionDrawn: boolean): string {
       ? `, taught by ${andList(study.teachers.map((teacher) => `${teacher.name} (${teacher.unitId})`))}`
       : "";
   const clauses = [
-    `Studying ${study.name}${taught}: worth ${monthsInWords(study.monthsNumerator, study.monthsDenominator)}.`,
+    `Studying ${study.name}${taught}: worth ${monthsInWords(study.monthsNumerator, study.monthsDenominator)}.`
   ];
   if (study.halvedOutsideABuilding) {
     clauses.push(
-      "Studying a magic skill past level 2 outside a building that houses mages, so half the month is lost.",
+      "Studying a magic skill past level 2 outside a building that houses mages, so half the month is lost."
     );
   }
   if (projectionDrawn) {
-    clauses.push(
-      "The blue figure is next turn's report; everything before it is this month.",
-    );
+    clauses.push("The blue figure is next turn's report; everything before it is this month.");
   }
   return clauses.join(" ");
 }
@@ -1431,15 +1313,12 @@ function ceilingSentence(study: StudyForecast): string {
   return sentence(
     study.limitingRaces.length > 0
       ? `No ${andList(study.limitingRaces.map((race) => race.name))} may take ${study.name} past level ${study.ceilingLevel}, and this unit is ${standing}, so studying it this month changes nothing`
-      : `${study.name} stops at level ${study.ceilingLevel} and this unit is ${standing}, so studying it this month changes nothing`,
+      : `${study.name} stops at level ${study.ceilingLevel} and this unit is ${standing}, so studying it this month changes nothing`
   );
 }
 
 /** One amber sentence per doubt the projection rests on (decision **U2**). */
-function doubtSentence(
-  doubt: StudyForecast["doubts"][number],
-  study: StudyForecast,
-): string {
+function doubtSentence(doubt: StudyForecast["doubts"][number], study: StudyForecast): string {
   switch (doubt.reason) {
     case "feeShort":
       return `Studying ${study.name} costs ${doubt.fee.toLocaleString()} silver and this unit is ${doubt.shortBy.toLocaleString()} short, so the study may not happen at all.`;
@@ -1499,7 +1378,7 @@ function ownSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
       label: `${name} ${tag}`,
       // What the cell under the pointer is drawn from, so the two cannot disagree.
       value: now ? figure(now) : before ? "gone" : "none",
-      ...(steps.length > 0 ? { steps } : {}),
+      ...(steps.length > 0 ? { steps } : {})
     };
   });
 
@@ -1509,16 +1388,12 @@ function ownSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   }
   for (const taken of unit.menOfUnknownSkill ?? []) {
     notes.push(
-      `${count(taken.amount, "man", "men")} came from ${unitReference(taken.from, unit.regionId, facts)}, whose skills the report does not show, so these figures do not count them.`,
+      `${count(taken.amount, "man", "men")} came from ${unitReference(taken.from, unit.regionId, facts)}, whose skills the report does not show, so these figures do not count them.`
     );
   }
   for (const skill of reported) {
     if (!nowByTag.has(skill.tag)) {
-      notes.push(
-        sentence(
-          `${skill.name} drops below one point per man, so the unit loses it`,
-        ),
-      );
+      notes.push(sentence(`${skill.name} drops below one point per man, so the unit loses it`));
     }
   }
   // A study that changes nothing gets no "worth one month" note: the month is not worth anything,
@@ -1533,7 +1408,7 @@ function ownSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   const warnings: string[] = [];
   if (unit.recruitsUnmerged) {
     warnings.push(
-      "This unit's headcount is a guess, so what recruiting does to these cannot be worked out.",
+      "This unit's headcount is a guess, so what recruiting does to these cannot be worked out."
     );
   }
   if (study?.cannotRaiseTheLevel) {
@@ -1547,11 +1422,7 @@ function ownSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     warnings.push(doubtSentence(doubt, study!));
   }
 
-  return {
-    lines,
-    notes,
-    warning: warnings.length > 0 ? warnings.join(" ") : null,
-  };
+  return { lines, notes, warning: warnings.length > 0 ? warnings.join(" ") : null };
 }
 
 /**
@@ -1572,12 +1443,9 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   const entries = itemLines(unit, reported);
   // The unparseable-original fallback, the same shape `foreignSkillsBody` uses: no line carries a
   // pair, and the report's own words go on the first line as `why`.
-  const quoteFirst =
-    change !== undefined && reported === undefined && entries.length > 0;
+  const quoteFirst = change !== undefined && reported === undefined && entries.length > 0;
   const lines = entries.map((entry, index) =>
-    quoteFirst && index === 0
-      ? { ...entry.line, why: originalTooltip(change) }
-      : entry.line,
+    quoteFirst && index === 0 ? { ...entry.line, why: originalTooltip(change) } : entry.line
   );
 
   // The sentences follow the changed lines, in the same order, so each is under the figure it
@@ -1592,27 +1460,18 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
       // `itemLines` marks a tag moved even when the core recorded no change for it, so `forTag`
       // can be empty here — hence `?.`, not the `!` `movementCauses` may use.
       const forTag = changes.filter((c) => c.tag === entry.tag);
-      return itemCauseSentence(
-        itemLabel(entry.tag, unit),
-        forTag,
-        unit,
-        forTag[0]?.isMan,
-      );
+      return itemCauseSentence(itemLabel(entry.tag, unit), forTag, unit, forTag[0]?.isMan);
     })
     .filter((note): note is string => note !== undefined);
 
   return {
     // Off the drawn list rather than off current stock: a unit that gave everything away still
     // has lines, its items ending at `gone`.
-    notes: [
-      ...causes,
-      ...(told ? told.split("\n") : []),
-      ...(lines.length === 0 ? ["No items."] : []),
-    ],
+    notes: [...causes, ...(told ? told.split("\n") : []), ...(lines.length === 0 ? ["No items."] : [])],
     lines,
     warning: partlyCounted
       ? "“+ ?” in the cell: this month is only partly counted, so this list may be short."
-      : null,
+      : null
   };
 }
 
@@ -1627,17 +1486,10 @@ const IN_THE_OPEN = "in the open";
  * nobody has given. Detected by comparing the label to the number rather than by matching brackets,
  * so a structure genuinely named `[329]` in the report is not accused of being missing.
  */
-function undescribedNotes(
-  drawn: readonly (readonly [string | null, string | null])[],
-): string[] {
+function undescribedNotes(drawn: readonly (readonly [string | null, string | null])[]): string[] {
   return drawn
-    .filter(
-      ([label, id]) => label !== null && id !== null && label === `[${id}]`,
-    )
-    .map(
-      ([label]) =>
-        `This region\u2019s report does not describe ${label}, so only its number is shown.`,
-    );
+    .filter(([label, id]) => label !== null && id !== null && label === `[${id}]`)
+    .map(([label]) => `This region\u2019s report does not describe ${label}, so only its number is shown.`);
 }
 
 function structureBody(unit: PreviewedUnit, facts: PopupFacts): Body {
@@ -1648,7 +1500,7 @@ function structureBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     }
     return {
       lines: [{ label: "structure", value: facts.structureLabel }],
-      notes: undescribedNotes([[facts.structureLabel, unit.structureId]]),
+      notes: undescribedNotes([[facts.structureLabel, unit.structureId]])
     };
   }
   // `Number("")` is 0, and an original the report left empty is it saying "in the open" rather
@@ -1664,27 +1516,22 @@ function structureBody(unit: PreviewedUnit, facts: PopupFacts): Body {
         // The core says which order put the unit here - an ENTER, a LEAVE or a movement step -
         // rather than this file guessing it back from the result (`ah-ehgy`). No line number is
         // recorded, so none is named, and no clause is drawn when no order is named.
-        why: change.cause ?? undefined,
-      },
+        why: change.cause ?? undefined
+      }
     ],
     notes: undescribedNotes([
       [before, beforeId],
-      [facts.structureLabel, unit.structureId],
-    ]),
+      [facts.structureLabel, unit.structureId]
+    ])
   };
 }
 
 function longOrderBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   if (!unit.own) {
-    return {
-      lines: [],
-      notes: ["Another faction's orders are not in your report."],
-    };
+    return { lines: [], notes: ["Another faction's orders are not in your report."] };
   }
   const now = facts.longOrder;
-  const line = (label: string, value: string): PopupLine[] => [
-    { label, value },
-  ];
+  const line = (label: string, value: string): PopupLine[] => [{ label, value }];
   const reported = facts.reportedLongOrder;
 
   // No baseline: say what the month holds, then say plainly that nothing was compared. Neither of
@@ -1696,8 +1543,8 @@ function longOrderBody(unit: PreviewedUnit, facts: PopupFacts): Body {
         ...(now === null ? ["No long order this month."] : []),
         reported.kind === "no-template"
           ? "Your report carries no orders template, so there is nothing to compare with."
-          : "This unit is not in your report\u2019s orders template, so there is nothing to compare with.",
-      ],
+          : "This unit is not in your report\u2019s orders template, so there is nothing to compare with."
+      ]
     };
   }
 
@@ -1707,34 +1554,28 @@ function longOrderBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     return was === null
       ? {
           lines: [],
-          notes: [
-            "No long order this month.",
-            "Your report arrived with none either.",
-          ],
+          notes: ["No long order this month.", "Your report arrived with none either."]
         }
       : { lines: line("was", was), notes: ["No long order this month."] };
   }
   if (was === null) {
     return {
       lines: line("long order", now),
-      notes: ["Your report arrived with no long order for this unit."],
+      notes: ["Your report arrived with no long order for this unit."]
     };
   }
   if (sameLongOrder(was, now)) {
     // The sentence `popupForCell` writes for every other column, written here because this column
     // has no `CHANGE_FIELD` entry to earn it and must not gain one: there is no `longOrder` field
     // in `previewChanges`, so the guard would fire on every unit.
-    return {
-      lines: line("long order", now),
-      notes: ["Nothing this month changes this."],
-    };
+    return { lines: line("long order", now), notes: ["Nothing this month changes this."] };
   }
   return {
     lines: [
       { label: "was", value: was },
-      { label: "long order", value: now },
+      { label: "long order", value: now }
     ],
-    notes: ["Changed since your report arrived."],
+    notes: ["Changed since your report arrived."]
   };
 }
 
@@ -1750,25 +1591,20 @@ function signed(amount: number): string {
  * `line` is the only thing joining the two ledgers, and both are `null` for a movement no order of
  * this unit's caused - so a `null` line matches nothing rather than matching every other `null`.
  */
-function marketClause(
-  group: SilverCauseGroup,
-  itemChanges: readonly ItemChange[],
-): string | undefined {
+function marketClause(group: SilverCauseGroup, itemChanges: readonly ItemChange[]): string | undefined {
   const priced: string[] = [];
   for (const entry of group.entries) {
     if (entry.line === null) {
       continue;
     }
     const matches = itemChanges.filter(
-      (change) => change.cause === group.cause && change.line === entry.line,
+      (change) => change.cause === group.cause && change.line === entry.line
     );
     const only = matches.length === 1 ? matches[0] : undefined;
     if (only === undefined || only.unitPrice === null) {
       continue;
     }
-    priced.push(
-      `${count(Math.abs(only.delta), only.name)} at ${only.unitPrice} each`,
-    );
+    priced.push(`${count(Math.abs(only.delta), only.name)} at ${only.unitPrice} each`);
   }
   return priced.length > 0 ? andList(priced) : undefined;
 }
@@ -1783,10 +1619,7 @@ function marketClause(
 function shippingClause(shipping: UnitSilver["shipping"]): string | undefined {
   const weightByRate = new Map<number, number>();
   for (const shipment of shipping) {
-    weightByRate.set(
-      shipment.rate,
-      (weightByRate.get(shipment.rate) ?? 0) + shipment.weight,
-    );
+    weightByRate.set(shipment.rate, (weightByRate.get(shipment.rate) ?? 0) + shipment.weight);
   }
   if (weightByRate.size === 0) {
     return undefined;
@@ -1794,30 +1627,28 @@ function shippingClause(shipping: UnitSilver["shipping"]): string | undefined {
   return andList(
     [...weightByRate.entries()]
       .sort(([left], [right]) => left - right)
-      .map(([rate, weight]) => `${weight} weight at ${rate} silver`),
+      .map(([rate, weight]) => `${weight} weight at ${rate} silver`)
   );
 }
 
 function splitShipping(
   silver: UnitSilver,
-  entries: readonly SilverChange[],
+  entries: readonly SilverChange[]
 ): { charged: UnitSilver["shipping"]; conditional: UnitSilver["shipping"] } {
   const byFlag = (silver.shipping ?? []).reduce(
     (seen, shipment) => seen || shipment.conditional,
-    false,
+    false
   );
   if (byFlag) {
     return {
-      charged: (silver.shipping ?? []).filter(
-        (shipment) => !shipment.conditional,
-      ),
-      conditional: (silver.shipping ?? []).filter(
-        (shipment) => shipment.conditional,
-      ),
+      charged: (silver.shipping ?? []).filter((shipment) => !shipment.conditional),
+      conditional: (silver.shipping ?? []).filter((shipment) => shipment.conditional)
     };
   }
   const chargedLines = new Set(
-    entries.filter((entry) => entry.line !== null).map((entry) => entry.line!),
+    entries
+      .filter((entry) => entry.line !== null)
+      .map((entry) => entry.line!)
   );
   const charged: UnitSilver["shipping"] = [];
   const conditional: UnitSilver["shipping"] = [];
@@ -1831,9 +1662,7 @@ function splitShipping(
   return { charged, conditional };
 }
 
-function conditionalShippingClause(
-  shipping: UnitSilver["shipping"],
-): string | undefined {
+function conditionalShippingClause(shipping: UnitSilver["shipping"]): string | undefined {
   if (shipping.length === 0) {
     return undefined;
   }
@@ -1842,8 +1671,8 @@ function conditionalShippingClause(
       .sort((left, right) => left.line - right.line)
       .map(
         (shipment) =>
-          `${shipment.weight} weight at ${shipment.rate} silver, if unit ${shipment.to} accepts`,
-      ),
+          `${shipment.weight} weight at ${shipment.rate} silver, if unit ${shipment.to} accepts`
+      )
   );
 }
 
@@ -1857,13 +1686,11 @@ function conditionalShippingClause(
 function silverCauseWhy(
   group: SilverCauseGroup,
   silver: UnitSilver,
-  itemChanges: readonly ItemChange[],
+  itemChanges: readonly ItemChange[]
 ): string | undefined {
   const parts: string[] = [];
   const others = (entries: readonly SilverChange[]): string[] =>
-    entries
-      .map((entry) => entry.other)
-      .filter((other): other is string => other !== null);
+    entries.map((entry) => entry.other).filter((other): other is string => other !== null);
 
   if (group.cause === "was-given") {
     const from = others(group.entries);
@@ -1871,12 +1698,8 @@ function silverCauseWhy(
       parts.push(`from ${andList(from)}`);
     }
   } else if (group.cause === "took") {
-    const shown = others(
-      group.entries.filter((entry) => entry.cause === "took"),
-    );
-    const unshown = others(
-      group.entries.filter((entry) => entry.cause === "took-unshown"),
-    );
+    const shown = others(group.entries.filter((entry) => entry.cause === "took"));
+    const unshown = others(group.entries.filter((entry) => entry.cause === "took-unshown"));
     if (shown.length > 0) {
       parts.push(`from ${andList(shown)}`);
     }
@@ -1940,7 +1763,7 @@ function silverCauseWhy(
  */
 export function silverTotalLine(
   silver: UnitSilver,
-  shown: number | null | ShownSilver,
+  shown: number | null | ShownSilver
 ): PopupLine {
   const shownObj: ShownSilver | null =
     shown && typeof shown === "object"
@@ -1968,11 +1791,7 @@ export function silverTotalLine(
         : shownObj.low;
   const bounded = shareBoundedByAnUnreadUnit(silver);
   const displayValue =
-    shownValue === null
-      ? "?"
-      : bounded && shownObj?.kind === "single"
-        ? atMost(String(shownValue))
-        : formatShown(shownObj);
+    shownValue === null ? "?" : bounded && shownObj?.kind === "single" ? atMost(String(shownValue)) : formatShown(shownObj);
 
   if (shownValue === null || shownValue === silver.held) {
     return { label: "silver", value: displayValue };
@@ -1981,10 +1800,7 @@ export function silverTotalLine(
   return {
     label: "silver",
     value: displayValue,
-    change: {
-      direction: shownValue > silver.held ? "up" : "down",
-      from: String(silver.held),
-    },
+    change: { direction: shownValue > silver.held ? "up" : "down", from: String(silver.held) }
   };
 }
 
@@ -1997,19 +1813,19 @@ export function silverTotalLine(
 function silverMarkWarning(
   silver: UnitSilver,
   shown: number | null,
-  warned: boolean,
+  warned: boolean
 ): string | null {
   const parts: string[] = [];
   if (silverIsRed(shown, silver)) {
     parts.push(
       shown !== null && shown < 0
         ? `A red figure in the cell: this unit ends the month ${-shown} short.`
-        : "A red figure in the cell: this unit cannot pay for its own orders out of silver that reaches it in time.",
+        : "A red figure in the cell: this unit cannot pay for its own orders out of silver that reaches it in time."
     );
   }
   if (warned) {
     parts.push(
-      "⚠ in the cell: a check warns about this unit's money. Select the unit to read it in the Problems panel.",
+      "⚠ in the cell: a check warns about this unit's money. Select the unit to read it in the Problems panel."
     );
   }
   return parts.length > 0 ? parts.join(" ") : null;
@@ -2020,7 +1836,7 @@ function noStudyFeeSentence(reason: NoStudyFee): string {
   return sentence(
     reason.limitingRaces.length > 0
       ? `No study fee: no ${andList(reason.limitingRaces.map((race) => race.name))} may take ${reason.skillName} past level ${reason.ceilingLevel}, so this month costs nothing`
-      : `No study fee: ${reason.skillName} stops at level ${reason.ceilingLevel} for this unit, so this month costs nothing`,
+      : `No study fee: ${reason.skillName} stops at level ${reason.ceilingLevel} for this unit, so this month costs nothing`
   );
 }
 
@@ -2036,17 +1852,12 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   if (facts.dissolving) {
     return {
       lines: [],
-      notes: [
-        "The game dissolves this unit before the month ends, so it has no month end.",
-      ],
+      notes: ["The game dissolves this unit before the month ends, so it has no month end."]
     };
   }
   const silver = facts.silver;
   if (silver === null) {
-    return {
-      lines: [],
-      notes: ["Only your own units have a silver forecast."],
-    };
+    return { lines: [], notes: ["Only your own units have a silver forecast."] };
   }
 
   if (monthLostToAnUnreadLine(silver)) {
@@ -2057,23 +1868,23 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     const lines: PopupLine[] = [
       {
         label: "silver",
-        value: silverWasNeverRead(silver) ? NOT_KNOWN : String(silver.held),
+        value: silverWasNeverRead(silver) ? NOT_KNOWN : String(silver.held)
       },
-      { label: "at month end", value: NOT_KNOWN },
+      { label: "at month end", value: NOT_KNOWN }
     ];
     const noteFacts: SilverFacts = {
       unit,
       silver,
       warned: facts.silverWarned,
       hexShort: facts.silverHexShort ?? false,
-      countUpkeep: facts.countUpkeep,
+      countUpkeep: facts.countUpkeep
     };
     // The generic "this month cannot be added up" line below is deliberately not reached: the
     // agreed note directly under it says the same thing better.
     return {
       lines,
       notes: silverNoteLines(noteFacts),
-      warning: silverMarkWarning(silver, null, facts.silverWarned),
+      warning: silverMarkWarning(silver, null, facts.silverWarned)
     };
   }
 
@@ -2092,32 +1903,25 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
       label: silverCauseLabel(group.cause),
       value: signed(group.amount),
       tone: group.amount > 0 ? "up" : "down",
-      ...(why === undefined ? {} : { why }),
+      ...(why === undefined ? {} : { why })
     });
   }
   const alreadyCharged = groups.find((group) => group.cause === "shipped");
   const { conditional } = splitShipping(silver, alreadyCharged?.entries ?? []);
-  const conditionalCost = conditional.reduce(
-    (sum, shipment) => sum + shipment.cost,
-    0,
-  );
+  const conditionalCost = conditional.reduce((sum, shipment) => sum + shipment.cost, 0);
   const conditionalWhy = conditionalShippingClause(conditional);
   if (!alreadyCharged && conditionalCost > 0) {
     lines.push({
       label: "shipped",
       value: signed(-conditionalCost),
       tone: "down",
-      ...(conditionalWhy === undefined ? {} : { why: conditionalWhy }),
+      ...(conditionalWhy === undefined ? {} : { why: conditionalWhy })
     });
   }
   // Last, where `rules/sequenceofevents` puts maintenance - and only while the column counts it,
   // since with the setting off the cell's figure excludes it (`ah-1wcw.4`).
   if (facts.countUpkeep && silver.upkeep !== null && silver.upkeep !== 0) {
-    lines.push({
-      label: "upkeep",
-      value: signed(-silver.upkeep),
-      tone: "down",
-    });
+    lines.push({ label: "upkeep", value: signed(-silver.upkeep), tone: "down" });
   }
 
   const noteFacts: SilverFacts = {
@@ -2125,25 +1929,19 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     silver,
     warned: facts.silverWarned,
     hexShort: facts.silverHexShort ?? false,
-    countUpkeep: facts.countUpkeep,
+    countUpkeep: facts.countUpkeep
   };
   const notes = silverNoteLines(noteFacts, groups);
   if (silver.doubt !== null) {
     // Above the doubt's own sentence, which says *why* it could not be added up.
-    notes.unshift(
-      "This month cannot be added up, so what moved this unit's silver is not listed.",
-    );
+    notes.unshift("This month cannot be added up, so what moved this unit's silver is not listed.");
   }
 
   if (silver.noStudyFee !== null) {
     notes.push(noStudyFeeSentence(silver.noStudyFee));
   }
 
-  return {
-    lines,
-    notes,
-    warning: silverMarkWarning(silver, shownNumeric, facts.silverWarned),
-  };
+  return { lines, notes, warning: silverMarkWarning(silver, shownNumeric, facts.silverWarned) };
 }
 
 /**
@@ -2163,11 +1961,7 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
  * it, so this is the part that lives here and is tested.
  */
 export function popupLabelInk(line: PopupLine): string {
-  return line.stress === "deciding"
-    ? "text-brass"
-    : line.stress === "aside"
-      ? "text-ink-dim"
-      : "";
+  return line.stress === "deciding" ? "text-brass" : line.stress === "aside" ? "text-ink-dim" : "";
 }
 
 export function popupAsText(popup: ColumnPopup): string {
@@ -2181,7 +1975,7 @@ export function popupAsText(popup: ColumnPopup): string {
         parts.push(
           step.mark === "projected"
             ? `${step.value} next turn${step.uncertain ? " if it happens" : ""}`
-            : `${step.mark === "up" ? "up to" : step.mark === "down" ? "down to" : "still"} ${step.value}`,
+            : `${step.mark === "up" ? "up to" : step.mark === "down" ? "down to" : "still"} ${step.value}`
         );
       }
     } else if (line.change) {

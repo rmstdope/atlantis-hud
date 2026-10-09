@@ -4,7 +4,8 @@
 //! leaders) and 100 wagons; all of these are consumed when the village is created. This is a
 //! month-long order."* `newage trident rules/sequenceofevents` runs *"CREATE orders are processed"*
 //! after PRODUCE and before ENTERTAIN, and assesses maintenance after both, so the founders pay no
-//! upkeep. The navigator settled (2026-10-09, on `ah-mw1r`) that 1000 men and 100 wagons go.
+//! upkeep. The navigator's description of `ah-mw1r` (2026-10-09) reads it as consuming "1000 men or
+//! leaders and 100 wagons".
 //! Trident only: `grammar.rs` offers CREATE under no other ruleset.
 
 use atlantis_hud_core::cache::ReportCache;
@@ -20,10 +21,15 @@ use common::trident_ruleset;
 /// Settlers (900) with 1005 orcs and 102 wagons, enough silver to pay any upkeep, and the
 /// carpenter's skill and wood to make wagons instead; Stragglers (901) one orc short of founding.
 fn report_text() -> String {
+    report_in("plain (1,1) in Nowhere, 10 peasants (orcs), $5.")
+}
+
+/// The same two units, standing in `region`.
+fn report_in(region: &str) -> String {
     [
         "Foo (1) Report",
         "",
-        "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+        region,
         "",
         "Exits:",
         "  Southeast : plain (2,2) in Nowhere.",
@@ -65,16 +71,33 @@ fn silver_row(settlers: &str, stragglers: &str, unit_id: &str) -> UnitSilver {
 /// What the ITEMS preview leaves `unit_id` holding of `tag` before upkeep, or `unchanged` when the
 /// orders change nothing the preview shows about the unit.
 fn held(settlers: &str, stragglers: &str, unit_id: &str, tag: &str, unchanged: i64) -> i64 {
-    let text = report_text();
+    held_in(
+        &report_text(),
+        settlers,
+        stragglers,
+        unit_id,
+        tag,
+        unchanged,
+    )
+}
+
+fn held_in(
+    text: &str,
+    settlers: &str,
+    stragglers: &str,
+    unit_id: &str,
+    tag: &str,
+    unchanged: i64,
+) -> i64 {
     let preview = preview_orders_for_remembered_report(
         &mut ReportCache::new(),
         atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
-        &text,
+        text,
         "[]",
         &script_for(settlers, stragglers),
     )
     .expect("the Trident ruleset loads");
-    common::preview_row(&text, &preview, unit_id)
+    common::preview_row(text, &preview, unit_id)
         .map_or(unchanged, |unit| common::held_before_upkeep(unit, tag))
 }
 
@@ -154,4 +177,27 @@ fn create_replaces_an_earlier_month_long_order() {
         1005,
         "the founding is replaced, so nobody leaves"
     );
+}
+
+/// `newage trident rules/create_village`: "the region must have no existing settlement, must not be
+/// ocean, lake, volcano, or barren terrain". Where the report shows either, nothing is founded and
+/// nobody leaves.
+#[test]
+fn a_region_the_rule_refuses_founds_nothing() {
+    for region in [
+        "plain (1,1) in Nowhere, contains Bigtown [city], 10 peasants (orcs), $5.",
+        "ocean (1,1) in Atlantis Ocean.",
+    ] {
+        let text = report_in(region);
+        assert_eq!(
+            held_in(&text, CREATE, "", "900", "ORC", 1005),
+            1005,
+            "{region}"
+        );
+        assert_eq!(
+            held_in(&text, CREATE, "", "900", "WAGO", 102),
+            102,
+            "{region}"
+        );
+    }
 }
