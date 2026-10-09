@@ -5231,8 +5231,8 @@ struct Ledger<'a> {
     /// What each unit was charged for a tag beyond what actually moved, because neither it nor
     /// any sharer could fund it: a `GIVE` the engine cuts with "Not enough.", a cast or sale the
     /// pool fell short of. The charge stays the whole ask, so the shortfall keeps its warning,
-    /// and this adds it back wherever the stock really left is wanted - [`shared_num_at`] -
-    /// the way [`Ledger::overcharged`] does for a cut `BUY` (`ah-0mch`).
+    /// and [`SharerStock::at`] adds it back wherever the stock really left is wanted, and is its
+    /// only reader - the way [`Ledger::overcharged`] does for a cut `BUY` (`ah-0mch`).
     unfunded: BTreeMap<(String, String), i64>,
     /// Every `GIVE`, `TAKE` and discard of silver this walk settled, in settlement order: who it
     /// left, who it reached (`None` for a discard, or a target this walk cannot credit), and how
@@ -7879,70 +7879,6 @@ struct SilverTransfer {
     amount: i64,
 }
 
-/// What `unit_id` has of `tag` at `phase` as the engine reads it for a spend: its own stock plus
-/// every *other* sharing unit's in the hex - the engine's `Unit::GetSharedNum` (`unit.cpp`), which
-/// counts the unit once, as itself, so its own `SHARE` flag lends it nothing, and never pools men.
-/// GIVE and TAKE (`Game::DoGiveOrder`), SELL (`Game::DoSell`, both `runorders.cpp`) and CAST
-/// (`spells.cpp`) all clamp to it (`ah-0mch`; `rules/share`).
-///
-/// Read as a pool rather than lender by lender, because this ledger charges a borrower the whole
-/// of what it spent and leaves its lenders' rows alone: what the sharers still have is their
-/// balances less every overdraft a non-sharer has already drawn on them. Each balance has its
-/// [`Ledger::unfunded`] part added back, since that silver or those goods never left anyone.
-///
-/// `None` where it cannot be read: the spender's or a sharer's balance a `GIVE` left uncertain, or
-/// a pool whose sum is not to be trusted. A non-sharer whose balance is uncertain is read as having
-/// drawn nothing on the pool. A caller given `None` keeps the reading it had before this existed,
-/// rather than inventing a clamp.
-fn shared_num_at(
-    ledger: &Ledger<'_>,
-    hex: &Hex<'_>,
-    phase: StatePhase,
-    unit_id: &str,
-    tag: &str,
-) -> Option<i64> {
-    let held = |who: &str| -> Option<i64> {
-        let known = ledger.state.known_balance_at(phase, who, tag).ok()?;
-        let unfunded = ledger
-            .unfunded
-            .get(&(who.to_string(), tag.to_ascii_uppercase()))
-            .copied()
-            .unwrap_or(0);
-        Some(known.saturating_add(unfunded))
-    };
-    let own = held(unit_id)?;
-    let sharing = Sharing::read(hex);
-    if sharing.reading(tag, ledger.ruleset) != Reading::Pooled {
-        return Some(own.max(0));
-    }
-    if !sharing.pool_trusted(ledger) {
-        return None;
-    }
-    // The other sharers' stock, less what every other non-sharer has already drawn from it.
-    let mut others = 0i64;
-    let mut spender_shares = false;
-    for ordered in &hex.units {
-        if ordered.unit.unit_id == unit_id {
-            spender_shares = ordered.shares();
-            continue;
-        }
-        // A sharer whose stock is not established leaves the pool unreadable; a non-sharer whose
-        // own is not is read as having drawn nothing on it.
-        others = others.saturating_add(if ordered.shares() {
-            held(&ordered.unit.unit_id)?
-        } else {
-            held(&ordered.unit.unit_id).map_or(0, |balance| balance.min(0))
-        });
-    }
-    // A sharer's own stock is in the pool others drew on; a non-sharer's is its own, and only
-    // what it overdrew itself came out of the pool.
-    Some(if spender_shares {
-        own.saturating_add(others).max(0)
-    } else {
-        own.max(0) + others.saturating_add(own.min(0)).max(0)
-    })
-}
-
 /// Books what a unit was charged for `tag` beyond what it could fund (`Ledger::unfunded`).
 fn record_unfunded(ledger: &mut Ledger<'_>, unit_id: &str, tag: &str, amount: i64) {
     if amount > 0 {
@@ -8144,14 +8080,14 @@ fn transfer(
         quantity
     };
     // What reaches the receiver: never more than the source has as the engine counts it - its own
-    // stock and the *other* sharers' ([`shared_num_at`]), for goods as for silver (`ah-0mch`). In
+    // stock and the *other* sharers' ([`SharerStock`]), for goods as for silver (`ah-0mch`). In
     // a hex with a sharer the source is still charged `moved`, the whole ask, so the pool goes on
     // judging the overdraft and a gift it cannot fund keeps its warning; only the credit is cut.
     let received = if from.is_empty() {
         quantity
     } else {
-        shared_num_at(ledger, hex, StatePhase::Give, &from, &tag)
-            .map_or(quantity, |has| quantity.min(has))
+        SharerStock::for_spender(ledger, hex, StatePhase::Give, &from, &tag)
+            .map_or(quantity, |(stock, x)| quantity.min(stock.available_to(x)))
     };
     // What the source is charged below beyond what it gives: the ask itself for goods, `moved`
     // for silver.
@@ -9488,12 +9424,12 @@ fn build(
         });
 }
 
-/// The other sharing units that lend `borrower` its `tag` before movement, each with what it has
-/// to lend, in report order: the engine's `Unit::GetSharedNum` and `Unit::ConsumeShared`
-/// (`unit.cpp`), which count the borrower once, as itself, and never pool men (`ah-0mch`). Empty
-/// where the tag does not pool or the pool's sum is not to be trusted, which leaves the borrower
-/// with its own stock exactly as before. `has` is what the caller reads a unit's holding as.
-fn lenders_before_movement(
+/// The other sharing units that lend `borrower` its `tag` where [`SharerStock`] cannot be read - a
+/// sharer's balance a `GIVE` left uncertain - each with what `has` reads it holding, in report
+/// order: this module's accept-on-doubt reading, which lends what the walk shows rather than
+/// inventing a clamp. Empty where the tag does not pool or the pool's sum is not to be trusted,
+/// which leaves the borrower with its own stock exactly as before.
+fn lenders_on_doubt(
     ledger: &Ledger<'_>,
     hex: &Hex<'_>,
     borrower: &str,
@@ -9620,27 +9556,22 @@ fn sell(
     // `Game::DoSell` (`runorders.cpp`) cuts a line to `GetSharedNum`: the seller's own stock and
     // every other sharer's, spent in that order (`ah-0mch`). A sharer's is read as the seller's
     // own is, so an earlier line that sold or gave it away has already taken it out.
-    let lenders = lenders_before_movement(ledger, hex, who, &tag, |lender| {
+    let has = |lender: &Ordered<'_>| {
         known_balance_of(ledger, &lender.unit.unit_id, &tag)
             .map_or(0, |known| lender.early_holding(&tag).min(known))
-    });
-    // What the sharers can still lend, read off the pool as a whole ([`shared_num_at`]) so goods an
-    // earlier GIVE or cast already drew from them are not sold again.
-    let lendable: i64 = lenders.iter().map(|(_, lends)| lends).sum();
-    let lent = shared_num_at(ledger, hex, StatePhase::Market, who, &tag).map_or(lendable, |has| {
-        let own = ledger
-            .state
-            .balance_at(StatePhase::Market, who, &tag)
-            .saturating_add(
-                ledger
-                    .unfunded
-                    .get(&(who.clone(), tag.clone()))
-                    .copied()
-                    .unwrap_or(0),
-            )
-            .max(0);
-        (has - own).clamp(0, lendable)
-    });
+    };
+    // What each sharer can still lend, off the one reading ([`SharerStock`]) so goods an earlier
+    // GIVE or cast already drew from them are not sold again - and never more than the walk shows
+    // the sharer holding.
+    let (own_holding, lenders) =
+        match SharerStock::for_spender(ledger, hex, StatePhase::Market, who, &tag) {
+            Some((stock, x)) => (
+                own_holding.min(stock.own_for(x)),
+                stock.lenders_within(x, hex, has),
+            ),
+            None => (own_holding, lenders_on_doubt(ledger, hex, who, &tag, has)),
+        };
+    let lent: i64 = lenders.iter().map(|(_, lends)| lends).sum();
     let remaining_holding = own_holding.saturating_add(lent);
     // What this hex's other own sellers left of the line, or the line itself where nothing was
     // settled (`ah-t2pn.3`), less what this unit's own earlier lines have already taken out of it.
@@ -9839,19 +9770,10 @@ fn cast(
     // sharer's, as each stands when the spell resolves (`ah-0mch`).
     // What another sharer lends, for a tag: the pool's reading less the caster's own.
     let lent_of = |tag: &str| -> i64 {
-        let own = ledger
-            .state
-            .balance_at(StatePhase::Cast, who, tag)
-            .saturating_add(
-                ledger
-                    .unfunded
-                    .get(&(who.clone(), tag.to_ascii_uppercase()))
-                    .copied()
-                    .unwrap_or(0),
-            )
-            .max(0);
         // Negative where the caster shares and an earlier borrower drew on its own stock.
-        shared_num_at(ledger, hex, StatePhase::Cast, who, tag).map_or(0, |has| has - own)
+        SharerStock::for_spender(ledger, hex, StatePhase::Cast, who, tag).map_or(0, |(stock, x)| {
+            stock.available_to(x) - stock.position(x).max(0)
+        })
     };
     let lent_silver = lent_of(SILVER);
     let mut held = actor.unit.items.clone();
@@ -9971,19 +9893,26 @@ fn cast(
     // answer C).
     for material in &plan.materials {
         // The caster's own stock first, then the other sharers' (`Unit::ConsumeShared`,
-        // `ah-0mch`), each charged where the goods were. Whatever none of them covers stays on the
-        // caster, so a cast the pool cannot fund still overdraws it.
-        let own = material.amount.min(
-            ledger
-                .state
-                .balance_at(StatePhase::Cast, who, &material.tag)
-                .max(0),
-        );
-        let lenders = lenders_before_movement(ledger, hex, who, &material.tag, |lender| {
+        // `ah-0mch`), each charged where the goods were - read off the one reading
+        // ([`SharerStock`]), so stock an earlier borrower drew on is not spent again. Whatever none
+        // of them covers stays on the caster, so a cast the pool cannot fund still overdraws it.
+        let cast_balance = |lender: &Ordered<'_>| {
             ledger
                 .state
                 .balance_at(StatePhase::Cast, &lender.unit.unit_id, &material.tag)
-        });
+        };
+        let (own, lenders) =
+            match SharerStock::for_spender(ledger, hex, StatePhase::Cast, who, &material.tag) {
+                Some((stock, x)) => (stock.own_for(x), stock.lenders_within(x, hex, cast_balance)),
+                None => (
+                    ledger
+                        .state
+                        .balance_at(StatePhase::Cast, who, &material.tag)
+                        .max(0),
+                    lenders_on_doubt(ledger, hex, who, &material.tag, cast_balance),
+                ),
+            };
+        let own = material.amount.min(own);
         let uncovered = draw_on_lenders(
             ledger,
             hex,
@@ -11129,6 +11058,218 @@ fn silver_at(ledger: &Ledger<'_>, unit_id: &str, moment: LendingMoment) -> i64 {
     }
 }
 
+/// One party to a hex's `SHARE` pool at one moment, as [`SharerStock`] reads it: what it holds of
+/// the tag - negative where its orders have overdrawn it - and whether it lends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct StockParty {
+    position: i64,
+    lends: bool,
+}
+
+/// What each sharing unit of a hex still has to lend of one tag at one moment: **the one reading**
+/// every spend that draws on a `SHARE` pool takes (`ah-lnz4`). GIVE and TAKE, SELL, CAST, the
+/// market's BUY sizing and the SILVER column's purse all build one and ask it, so a second spender
+/// can never read a sharer's stock that a first spend already drew on.
+///
+/// The ledger charges a borrower the whole of what it spends and leaves its lenders' rows alone, so
+/// what a sharer still has is not a balance the ledger holds. This derives it: every party's
+/// overdraft is laid on the lenders in party order (report order, for a hex's units), the engine's
+/// `Unit::ConsumeShared` (`unit.cpp`), which spends the borrower's own stock and then the sharers'
+/// in region order. A party counts once, as itself: its own `SHARE` flag lends it nothing
+/// (`Unit::GetSharedNum`; `rules/share`).
+///
+/// A value, built on demand from figures its caller already holds; it owns and caches nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SharerStock {
+    parties: Vec<StockParty>,
+}
+
+impl SharerStock {
+    fn new(parties: Vec<StockParty>) -> Self {
+        Self { parties }
+    }
+
+    /// The ledger's reading at `phase`, index-aligned with `hex.units`: each unit's balance with
+    /// its [`Ledger::unfunded`] part added back, since that silver or those goods never left
+    /// anyone, and the hex's sharers lending - none, where the tag does not pool (men, or a hex
+    /// nobody shares in).
+    ///
+    /// `None` where it cannot be read: a sharer's balance a `GIVE` left uncertain, or a pool whose
+    /// sum is not to be trusted. A non-sharer whose balance is uncertain is read as having drawn
+    /// nothing; [`SharerStock::for_spender`] refuses a spender whose own balance is not known.
+    fn at(ledger: &Ledger<'_>, hex: &Hex<'_>, phase: StatePhase, tag: &str) -> Option<Self> {
+        let sharing = Sharing::read(hex);
+        let pooled = sharing.reading(tag, ledger.ruleset) == Reading::Pooled;
+        if pooled && !sharing.pool_trusted(ledger) {
+            return None;
+        }
+        let mut parties = Vec::with_capacity(hex.units.len());
+        for ordered in &hex.units {
+            let lends = pooled && ordered.shares();
+            let position = match Self::held_at(ledger, phase, &ordered.unit.unit_id, tag) {
+                Some(held) => held,
+                None if lends => return None,
+                None => 0,
+            };
+            parties.push(StockParty { position, lends });
+        }
+        Some(Self::new(parties))
+    }
+
+    /// One unit's balance as [`SharerStock::at`] reads it, or `None` where a `GIVE` left it
+    /// uncertain.
+    fn held_at(ledger: &Ledger<'_>, phase: StatePhase, unit_id: &str, tag: &str) -> Option<i64> {
+        let known = ledger.state.known_balance_at(phase, unit_id, tag).ok()?;
+        let unfunded = ledger
+            .unfunded
+            .get(&(unit_id.to_string(), tag.to_ascii_uppercase()))
+            .copied()
+            .unwrap_or(0);
+        Some(known.saturating_add(unfunded))
+    }
+
+    /// [`SharerStock::at`] for one spender, with where it sits among the parties. `None` where the
+    /// spender's own balance is uncertain or the pool cannot be read, which a caller reads as
+    /// "keep the reading it had before" rather than inventing a clamp. A spender the hex does not
+    /// list is added as a party of its own that lends nothing.
+    fn for_spender(
+        ledger: &Ledger<'_>,
+        hex: &Hex<'_>,
+        phase: StatePhase,
+        unit_id: &str,
+        tag: &str,
+    ) -> Option<(Self, usize)> {
+        let own = Self::held_at(ledger, phase, unit_id, tag)?;
+        let mut stock = Self::at(ledger, hex, phase, tag)?;
+        let index = match hex.units.iter().position(|o| o.unit.unit_id == unit_id) {
+            Some(index) => index,
+            None => {
+                stock.parties.push(StockParty {
+                    position: own,
+                    lends: false,
+                });
+                stock.parties.len() - 1
+            }
+        };
+        Some((stock, index))
+    }
+
+    fn position(&self, x: usize) -> i64 {
+        self.parties.get(x).map_or(0, |party| party.position)
+    }
+
+    fn lends(&self, x: usize) -> bool {
+        self.parties.get(x).is_some_and(|party| party.lends)
+    }
+
+    /// Every other party's net: a lender's position, a non-lender's overdraft alone. Unclamped -
+    /// negative where the others have overdrawn more than the other lenders hold, i.e. drawn on
+    /// `x`'s own stock if it lends.
+    fn others_net(&self, x: usize) -> i64 {
+        self.parties
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != x)
+            .map(|(_, party)| {
+                if party.lends {
+                    party.position
+                } else {
+                    party.position.min(0)
+                }
+            })
+            .fold(0i64, i64::saturating_add)
+    }
+
+    /// What `x` has of the tag as the engine reads it for a spend, `Unit::GetSharedNum`: its own
+    /// stock and what the others still lend it. Never negative.
+    ///
+    /// A lender's own stock is in the pool the others drew on; a non-lender's is its own, and only
+    /// what it overdrew itself came out of the pool.
+    fn available_to(&self, x: usize) -> i64 {
+        let own = self.position(x);
+        let others = self.others_net(x);
+        if self.lends(x) {
+            own.saturating_add(others).max(0)
+        } else {
+            own.max(0) + others.saturating_add(own.min(0)).max(0)
+        }
+    }
+
+    /// What `x` spends of its own before it borrows: its stock, less whatever the overdrafts laid
+    /// on it in party order already drew - a lender listed before the others is drained first, as
+    /// `Unit::ConsumeShared` drained it for the earlier borrower. A non-lender is never drawn on.
+    fn own_for(&self, x: usize) -> i64 {
+        if self.lends(x) {
+            self.left_after_overdrafts().get(x).copied().unwrap_or(0)
+        } else {
+            self.position(x).max(0)
+        }
+    }
+
+    /// The other lenders and what each still has for `x`, in party order, once every overdraft -
+    /// `x`'s own included - has been laid on the lenders in party order, `x` among them where it
+    /// lends. Lenders left with nothing are omitted. Sums to `available_to(x) - own_for(x)`.
+    fn lenders_to(&self, x: usize) -> Vec<(usize, i64)> {
+        self.left_after_overdrafts()
+            .into_iter()
+            .enumerate()
+            .filter(|(i, left)| *i != x && self.lends(*i) && *left > 0)
+            .collect()
+    }
+
+    /// What each party still holds once every overdraft is laid on the lenders in party order: a
+    /// lender its stock less what it lent, a non-lender its own stock.
+    fn left_after_overdrafts(&self) -> Vec<i64> {
+        let (lent, _) = self.drained();
+        self.parties
+            .iter()
+            .zip(lent)
+            .map(|(party, lent)| party.position.max(0) - lent)
+            .collect()
+    }
+
+    /// [`SharerStock::lenders_to`], each lender capped at what `has` reads it holding - the
+    /// caller's own reading of a unit's stock, such as the transfer walk's - so a lender is never
+    /// drawn for more than it has on either reading. For a reading index-aligned with `hex.units`.
+    fn lenders_within(
+        &self,
+        x: usize,
+        hex: &Hex<'_>,
+        has: impl Fn(&Ordered<'_>) -> i64,
+    ) -> Vec<(usize, i64)> {
+        self.lenders_to(x)
+            .into_iter()
+            .filter_map(|(index, left)| {
+                let lends = left.min(hex.units.get(index).map_or(0, |o| has(o).max(0)));
+                (lends > 0).then_some((index, lends))
+            })
+            .collect()
+    }
+
+    /// Every overdraft laid on the lenders in party order: what each party lent, aligned with the
+    /// parties, and what no lender covered.
+    fn drained(&self) -> (Vec<i64>, i64) {
+        let mut owing: i64 = self
+            .parties
+            .iter()
+            .map(|party| (-party.position).max(0))
+            .sum();
+        let lent = self
+            .parties
+            .iter()
+            .map(|party| {
+                if !party.lends {
+                    return 0;
+                }
+                let drawn = party.position.max(0).min(owing);
+                owing -= drawn;
+                drawn
+            })
+            .collect();
+        (lent, owing)
+    }
+}
+
 /// The hex's sharing units, read once, and the rule for whether a tag pools in it.
 ///
 /// The single home of "does this hex pool this tag?". Four plans in a row have assumed a hex is
@@ -11626,9 +11767,11 @@ fn market_tax_for(hex: &Hex<'_>, region: RegionWages, ruleset: Option<&Ruleset>)
 /// each item cost before the next is sized, since `DoBuy` really spends it (`ah-zus2`).
 ///
 /// Not [`sharing_purse`], which settles what the hex lends for the month *after* every order has
-/// been priced and is read by the SILVER column's shortfall arithmetic. Two questions, two
-/// answers, deliberately: this one decides how many goods arrive, that one decides who is warned
-/// (`ah-szye`).
+/// been priced and is read by the SILVER column's shortfall arithmetic. Two questions,
+/// deliberately: this one decides how many goods arrive, that one decides who is warned
+/// (`ah-szye`). Both answer them off the one reading of what each unit still has,
+/// [`SharerStock`] ([`MarketPurse::stock`]); the snapshot is the only rule this purse adds on top
+/// of it (`ah-lnz4`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct MarketPurse {
     /// What each sharing unit may lend the market: its market-open balance, less the tax the
@@ -11799,28 +11942,33 @@ impl MarketPurse {
     /// negative, where another unit has borrowed more than the others' silver it is counted
     /// against; the callers' own clamps keep a purchase from going below nothing.
     fn adds_for(&self, index: usize) -> Option<i64> {
-        if !self.trusted {
-            return None;
-        }
-        Some(
-            self.lendable
-                .iter()
-                .enumerate()
-                .filter(|(i, _)| *i != index)
-                // A sharer lends what it held and what it sold for, less what it has spent:
-                // `rules/sequenceofevents` runs every SELL before any BUY, so a sharer's proceeds
-                // are in the purse by the time a neighbour's purchase is sized (`ah-9n7l.1`). A
-                // non-sharer lends nothing, and drains the purse only by what it spent beyond its
-                // own silver and proceeds.
-                .map(|(i, lent)| {
-                    if self.sharer.get(i).copied().unwrap_or(false) {
-                        lent.saturating_add(self.sold_by(i))
-                            .saturating_sub(self.spent_by(i))
+        self.trusted.then(|| self.stock().others_net(index))
+    }
+
+    /// The purse as the one reading of what each unit still has ([`SharerStock`]): a unit's
+    /// market-open silver and its sale proceeds, less what it has spent at the market so far. A
+    /// sharer lends all of it; a non-sharer draws on the purse only by what it spent beyond its
+    /// own. A non-sharer whose own silver could not be priced is read as having drawn nothing - the
+    /// doubt is its own, and a neighbour's purchase is not cut on account of it (`ah-zus2`).
+    fn stock(&self) -> SharerStock {
+        SharerStock::new(
+            (0..self.lendable.len())
+                .map(|i| {
+                    let lends = self.sharer.get(i).copied().unwrap_or(false);
+                    let held = if lends {
+                        Some(self.lendable[i])
                     } else {
-                        -self.borrowed_by(i)
+                        self.own.get(i).copied().flatten()
+                    };
+                    StockParty {
+                        position: held.map_or(0, |held| {
+                            held.saturating_add(self.sold_by(i))
+                                .saturating_sub(self.spent_by(i))
+                        }),
+                        lends,
                     }
                 })
-                .sum(),
+                .collect(),
         )
     }
 
@@ -11844,17 +11992,12 @@ impl MarketPurse {
         self.sold.get(index).copied().unwrap_or(0)
     }
 
-    /// What the unit at `index` has spent at the market beyond its own silver - the part the
-    /// sharers paid for (`ah-zus2`). `0` where its own silver could not be priced: the doubt is
-    /// this unit's, and a neighbour's purchase is not cut on account of it.
+    /// What the unit at `index` has spent at the market beyond its own silver and proceeds - the
+    /// part the purse paid for, read off [`MarketPurse::stock`] (`ah-zus2`, `ah-lnz4`). `0` where
+    /// its own silver could not be priced: the doubt is this unit's, and a neighbour's purchase is
+    /// not cut on account of it.
     fn borrowed_by(&self, index: usize) -> i64 {
-        match self.own.get(index) {
-            Some(Some(own)) => self
-                .spent_by(index)
-                .saturating_sub(own.saturating_add(self.sold_by(index)))
-                .max(0),
-            _ => 0,
-        }
+        (-self.stock().position(index)).max(0)
     }
 
     /// What the market must take off the unit at `index`'s own market-open balance **in addition
@@ -12025,19 +12168,37 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
             continue;
         }
 
-        // Each lender and what it holds to lend then.
-        let mut lenders: Vec<(Lender, i64)> = Vec::new();
+        // Every unit and arriving sharer as a party to the one reading ([`SharerStock`]), each
+        // with who it is, so what the reading says it lent can be booked back on it.
+        let mut parties: Vec<StockParty> = Vec::new();
+        let mut who: Vec<Option<Lender>> = Vec::new();
         for (index, ordered) in hex.units.iter().enumerate() {
             if !judged(index) {
                 continue;
             }
+            let at = position(&purse, index, moment);
             if sharing.pools_silver(ordered) {
-                lenders.push((Lender::Unit(index), position(&purse, index, moment).max(0)));
-            } else if moment == LendingMoment::Movement {
+                parties.push(StockParty {
+                    position: at,
+                    lends: true,
+                });
+                who.push(Some(Lender::Unit(index)));
+                continue;
+            }
+            parties.push(StockParty {
+                position: at.min(0),
+                lends: false,
+            });
+            who.push(None);
+            if moment == LendingMoment::Movement {
                 // A sharer that walks away lends here only what was drawn on it before it left.
                 if let Some(&departing) = ledger.walking_silver.departing.get(&ordered.unit.unit_id)
                 {
-                    lenders.push((Lender::Unit(index), (departing - purse.lends[index]).max(0)));
+                    parties.push(StockParty {
+                        position: (departing - purse.lends[index]).max(0),
+                        lends: true,
+                    });
+                    who.push(Some(Lender::Unit(index)));
                 }
             }
         }
@@ -12053,25 +12214,27 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
                 .zip(arrivals)
                 .enumerate()
             {
-                let can = (now.lends.min(all_month.lends) - purse.arrivals_lend[index]).max(0);
-                lenders.push((Lender::Arrival(index), can));
+                parties.push(StockParty {
+                    position: (now.lends.min(all_month.lends) - purse.arrivals_lend[index]).max(0),
+                    lends: true,
+                });
+                who.push(Some(Lender::Arrival(index)));
             }
         }
 
-        if lenders.iter().map(|(_, can)| can).sum::<i64>() < need {
-            covered = false;
-            break;
-        }
         // In hex order and then the arrivals', rather than a proportional split: the engine
         // drains its sharers in whatever order it iterates them, so no split is truer than
         // another, and a whole number needs no rounding rule.
-        let mut owing = need;
-        for (lender, can) in lenders {
-            let lent = can.min(owing);
-            owing -= lent;
+        let (lent, short) = SharerStock::new(parties).drained();
+        if short > 0 {
+            covered = false;
+            break;
+        }
+        for (lender, lent) in who.into_iter().zip(lent) {
             match lender {
-                Lender::Unit(index) => purse.lends[index] += lent,
-                Lender::Arrival(index) => purse.arrivals_lend[index] += lent,
+                Some(Lender::Unit(index)) => purse.lends[index] += lent,
+                Some(Lender::Arrival(index)) => purse.arrivals_lend[index] += lent,
+                None => {}
             }
         }
         for (borrowed, need) in purse.borrows.iter_mut().zip(needs) {
@@ -33891,7 +34054,7 @@ BUILD
         /// The hex through the transfer settlement, and its ledger: the two surfaces a transfer
         /// is read from (`apply_transfers` for the SILVER column's receipts and the projected
         /// holdings, `transfer` for the ledger's balances).
-        fn settled<R>(
+        pub(super) fn settled<R>(
             hex_region: ReportRegion,
             orders: &str,
             read: impl FnOnce(&Hex<'_>, &Ledger<'_>) -> R,
@@ -34312,6 +34475,148 @@ BUILD
                         |who: &str| ledger.state.balance_at(StatePhase::Market, who, "WOOD");
                     assert_eq!(market("3"), 0, "they leave the sharer's stock");
                     assert_eq!(market("1"), 0, "and the seller is not overdrawn");
+                },
+            );
+        }
+
+        /// Two spenders on one sharer's stock (`ah-lnz4`): a GIVE draws the sharer's ten for a
+        /// neighbour, so the sharer's own SELL later in the month finds none. `GetSharedNum`
+        /// reads the stock as it stands when the sale resolves, and "Give orders" run before
+        /// "Market orders" (`rules/sequenceofevents`); the ledger leaves a lender's row alone, so
+        /// its own balance still reads ten.
+        #[test]
+        fn a_sharers_sale_finds_none_of_what_a_neighbours_gift_drew_on() {
+            let hex_region = ReportRegion {
+                wanted: vec![MarketItem {
+                    amount: 20,
+                    name: "wood".to_string(),
+                    tag: "WOOD".to_string(),
+                    price: 3,
+                }],
+                ..region(vec![
+                    unit("1"),
+                    unit("2"),
+                    sharing(with_item(unit("3"), 10, "wood", "WOOD")),
+                ])
+            };
+            settled(
+                hex_region,
+                "unit 1\nGIVE 2 10 wood\n\nunit 2\n\nunit 3\nSELL 10 wood\n",
+                |_, ledger| {
+                    assert_eq!(
+                        ledger
+                            .sold
+                            .get(&("3".to_string(), "WOOD".to_string()))
+                            .map_or(0, |sold| sold.quantity),
+                        0,
+                        "the sharer's wood went to unit 2"
+                    );
+                },
+            );
+        }
+
+        /// The same two spenders with the seller listed **before** another sharer (`ah-lnz4`,
+        /// review finding 1): the neighbour's GIVE drained the seller's own ten first -
+        /// `Unit::ConsumeShared` takes the sharers in region order - so the seller's SELL finds
+        /// the later sharer's ten still there (`rules/share`; `rules/sequenceofevents`: "Give
+        /// orders" before "Market orders"). The answer must not depend on which way the overdraft
+        /// is laid.
+        #[test]
+        fn a_sharers_sale_finds_a_later_sharers_stock_when_a_gift_drew_its_own() {
+            let hex_region = ReportRegion {
+                wanted: vec![MarketItem {
+                    amount: 20,
+                    name: "wood".to_string(),
+                    tag: "WOOD".to_string(),
+                    price: 3,
+                }],
+                ..region(vec![
+                    sharing(with_item(unit("3"), 10, "wood", "WOOD")),
+                    sharing(with_item(unit("4"), 10, "wood", "WOOD")),
+                    unit("1"),
+                    unit("2"),
+                ])
+            };
+            settled(
+                hex_region,
+                "unit 3\nSELL 10 wood\n\nunit 4\n\nunit 1\nGIVE 2 10 wood\n\nunit 2\n",
+                |_, ledger| {
+                    assert_eq!(
+                        ledger
+                            .sold
+                            .get(&("3".to_string(), "WOOD".to_string()))
+                            .map_or(0, |sold| sold.quantity),
+                        10,
+                        "unit 4's ten are still in the pool"
+                    );
+                },
+            );
+        }
+
+        /// The cast in the same report order (`ah-lnz4`, review finding 1): the neighbour's GIVE
+        /// drained the mage's own five swords, listed first, so its Enchant Swords takes the later
+        /// sharer's five (`data/ESWO`: a sword each).
+        #[test]
+        fn a_sharing_mages_cast_finds_a_later_sharers_stock_when_a_gift_drew_its_own() {
+            let hex_region = region(vec![
+                sharing(with_item(
+                    with_skill(unit("5"), "ESWO", 1),
+                    5,
+                    "swords",
+                    "SWOR",
+                )),
+                sharing(with_item(unit("6"), 5, "swords", "SWOR")),
+                unit("1"),
+                unit("2"),
+            ]);
+            settled(
+                hex_region,
+                "unit 5\nCAST Enchant_Swords\n\nunit 6\n\nunit 1\nGIVE 2 5 SWOR\n\nunit 2\n",
+                |_, ledger| {
+                    let cast = |who: &str| ledger.state.balance_at(StatePhase::Cast, who, "SWOR");
+                    assert!(
+                        ledger
+                            .movements
+                            .iter()
+                            .any(|movement| movement.unit_id == "5"
+                                && movement.tag == "MSWO"
+                                && movement.delta == 5),
+                        "five swords are enchanted: {:?}",
+                        ledger.movements
+                    );
+                    assert_eq!(cast("6"), 0, "the later sharer's five are spent");
+                },
+            );
+        }
+
+        /// Two spenders on one sharer's stock, the second a CAST (`ah-lnz4`): a neighbour's GIVE
+        /// draws the mage's own five swords, so its Enchant Swords finds none to enchant. The
+        /// engine's `Unit::ConsumeShared` spent them at the Give phase, and "Spells are CAST"
+        /// after it (`rules/sequenceofevents`; `data/ESWO`: a sword each).
+        #[test]
+        fn a_sharing_mages_cast_finds_none_of_what_a_neighbours_gift_drew_on() {
+            let hex_region = region(vec![
+                unit("1"),
+                unit("2"),
+                sharing(with_item(
+                    with_skill(unit("5"), "ESWO", 1),
+                    5,
+                    "swords",
+                    "SWOR",
+                )),
+            ]);
+            settled(
+                hex_region,
+                "unit 1\nGIVE 2 5 SWOR\n\nunit 2\n\nunit 5\nCAST Enchant_Swords\n",
+                |_, ledger| {
+                    assert!(
+                        !ledger
+                            .movements
+                            .iter()
+                            .any(|movement| movement.tag == "MSWO" && movement.delta > 0),
+                        "no sword is left to enchant: {:?}",
+                        ledger.movements
+                    );
                 },
             );
         }
@@ -35367,6 +35672,53 @@ BUILD
             "a sharer never counts its own"
         );
         assert_eq!(purse.adds_for(2), Some(300));
+    }
+
+    /// The market's purse is the one reading too (`ah-lnz4`): what it adds to a buyer is
+    /// [`SharerStock::others_net`] over its own parties - each unit's market-open silver plus what
+    /// it sold for, less what it has spent at the market so far.
+    #[test]
+    fn a_market_purse_adds_what_the_one_reading_says_the_others_still_have() {
+        let hex_region = region(vec![
+            with_silver(unit("1"), 50),
+            sharing(with_silver(unit("2"), 300)),
+            sharing(with_silver(unit("3"), 200)),
+        ]);
+        let mut purse = market_purse_of(&hex_region, "");
+        // Unit 1 spent $120 on an earlier item, $70 past its own; sharer 2 sold for $40.
+        purse.spent = vec![120, 0, 0];
+        purse.sold = vec![0, 40, 0];
+
+        let stock = purse.stock();
+        assert_eq!(
+            stock,
+            SharerStock::new(vec![
+                StockParty {
+                    position: -70,
+                    lends: false
+                },
+                StockParty {
+                    position: 340,
+                    lends: true
+                },
+                StockParty {
+                    position: 200,
+                    lends: true
+                },
+            ])
+        );
+        for index in 0..3 {
+            assert_eq!(
+                purse.adds_for(index),
+                Some(stock.others_net(index)),
+                "unit {index}"
+            );
+        }
+        assert_eq!(
+            purse.adds_for(2),
+            Some(270),
+            "the borrower's $70 came out of the purse"
+        );
     }
 
     #[test]
@@ -58620,5 +58972,126 @@ BUILD
                     .to_string(),
             )],
         );
+    }
+
+    // --- one reading of what the sharers still have (`ah-lnz4`) -------------------------------
+    //
+    // `SharerStock` is the one answer to "what does each sharing unit of a hex still have to lend
+    // of a tag at a phase". GIVE/TAKE, SELL, CAST, the market's BUY sizing and the SILVER
+    // column's purse all read it, so the two-spender cases are pinned here, once, rather than on
+    // each order's path.
+    mod sharer_stock {
+        use super::*;
+
+        fn lender(position: i64) -> StockParty {
+            StockParty {
+                position,
+                lends: true,
+            }
+        }
+
+        fn keeper(position: i64) -> StockParty {
+            StockParty {
+                position,
+                lends: false,
+            }
+        }
+
+        /// Two spenders in one phase: the first overdrew by 10 and the sharer covered it, so the
+        /// second finds the sharer's 15 down to 5. `GetSharedNum` reads what the sharer holds as
+        /// the second spend resolves (`rules/share`; `unit.cpp`).
+        #[test]
+        fn two_spenders_in_one_phase_draw_on_one_sharer() {
+            let stock = SharerStock::new(vec![keeper(-10), keeper(0), lender(15)]);
+            assert_eq!(stock.lenders_to(1), vec![(2, 5)]);
+            assert_eq!(stock.available_to(1), 5);
+            assert_eq!(stock.own_for(1), 0);
+        }
+
+        #[test]
+        fn a_spender_spends_its_own_first_and_then_the_lenders_in_report_order() {
+            let stock = SharerStock::new(vec![keeper(4), lender(3), keeper(0), lender(6)]);
+            assert_eq!(stock.own_for(0), 4);
+            assert_eq!(stock.lenders_to(0), vec![(1, 3), (3, 6)]);
+            assert_eq!(stock.available_to(0), 13);
+        }
+
+        /// A spender's own `SHARE` flag lends it nothing: it is counted once, as itself.
+        #[test]
+        fn a_sharers_own_stock_is_counted_once() {
+            let stock = SharerStock::new(vec![lender(10), lender(5)]);
+            assert_eq!(stock.own_for(0), 10);
+            assert_eq!(stock.lenders_to(0), vec![(1, 5)]);
+            assert_eq!(stock.available_to(0), 15);
+        }
+
+        /// Overdrafts are laid on the lenders in report order, the spender among them: a sharer
+        /// listed first was drained first (`Unit::ConsumeShared`), and the later lender still has
+        /// all of its stock (`ah-lnz4`, review finding 1).
+        #[test]
+        fn a_sharer_whose_stock_others_drew_on_spends_only_what_is_left() {
+            let stock = SharerStock::new(vec![lender(10), lender(4), keeper(-9)]);
+            assert_eq!(stock.own_for(0), 1);
+            assert_eq!(stock.lenders_to(0), vec![(1, 4)]);
+            assert_eq!(stock.available_to(0), 5);
+            assert_eq!(stock.own_for(1), 4, "listed after, so not drawn on");
+            assert_eq!(stock.lenders_to(1), vec![(0, 1)]);
+            assert_eq!(stock.others_net(0), -5);
+        }
+
+        /// An overdrawn spender's own overdraft is drawn on the lenders too.
+        #[test]
+        fn an_overdrawn_spender_finds_the_lenders_net_of_its_own_overdraft() {
+            let stock = SharerStock::new(vec![keeper(-3), lender(5), lender(4)]);
+            assert_eq!(stock.own_for(0), 0);
+            assert_eq!(stock.lenders_to(0), vec![(1, 2), (2, 4)]);
+            assert_eq!(stock.available_to(0), 6);
+        }
+
+        /// A pool short of its overdrafts lends nothing more, and no figure goes negative.
+        #[test]
+        fn a_pool_short_of_its_overdrafts_lends_nothing() {
+            let stock = SharerStock::new(vec![keeper(-20), lender(5), keeper(3)]);
+            assert_eq!(stock.available_to(2), 3);
+            assert_eq!(stock.lenders_to(2), Vec::<(usize, i64)>::new());
+            assert_eq!(stock.drained(), (vec![0, 5, 0], 15));
+        }
+
+        /// Two spenders in different phases: a GIVE at `Give` draws 10 of the sharer's 15, so a
+        /// spend at `Market` reads 5 - and a reading before the Give phase still reads all 15.
+        /// `rules/sequenceofevents` runs "Give orders" before "Market orders".
+        #[test]
+        fn a_gift_then_a_market_spend_draw_on_one_sharer_in_different_phases() {
+            let hex_region = region(vec![
+                unit("1"),
+                unit("2"),
+                sharing(with_item(unit("3"), 15, "swords", "SWOR")),
+                unit("4"),
+            ]);
+            super::one_sharing_rule::settled(
+                hex_region,
+                "unit 1\nGIVE 2 10 SWOR\n\nunit 2\n\nunit 3\n\nunit 4\n",
+                |hex, ledger| {
+                    let at = |phase| {
+                        SharerStock::at(ledger, hex, phase, "SWOR").expect("the pool is readable")
+                    };
+                    assert_eq!(at(StatePhase::Claim).available_to(3), 15, "before the gift");
+                    assert_eq!(at(StatePhase::Give).lenders_to(3), vec![(2, 5)]);
+                    assert_eq!(at(StatePhase::Market).available_to(3), 5, "after the gift");
+                    assert_eq!(
+                        at(StatePhase::Market).available_to(1),
+                        15,
+                        "10 received, 5 lent"
+                    );
+                },
+            );
+        }
+
+        /// What each lender lent when every overdraft is drained in report order.
+        #[test]
+        fn drained_lays_each_overdraft_on_the_lenders_in_report_order() {
+            let stock = SharerStock::new(vec![lender(4), keeper(-6), lender(5), keeper(-1)]);
+            assert_eq!(stock.drained(), (vec![4, 0, 3, 0], 0));
+        }
     }
 }
