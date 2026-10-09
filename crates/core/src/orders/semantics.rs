@@ -4328,8 +4328,11 @@ fn apply_transfers(
             // faction-mates' in the hex (`GetSharedNum` in `Game::DoExchangeOrder`; `ah-80mj`).
             // A sharer whose stock a gift left in doubt leaves the offer in doubt too, as the
             // ledger's `SharerStock` refuses to read such a pool.
+            if let Some(uncertain) = stolen {
+                return Err(uncertain);
+            }
             let own = held_by(&working, units, offer.unit, &offer.give_tag);
-            if stolen.is_none() && own >= offer.give_amount {
+            if own >= offer.give_amount {
                 return Ok(own);
             }
             let lenders = lending_sharers(units, offer.unit);
@@ -4344,10 +4347,7 @@ fn apply_transfers(
                 .into_iter()
                 .map(|lender| held_by(&working, units, lender, &offer.give_tag).max(0))
                 .sum();
-            match stolen {
-                Some(uncertain) => Err(uncertain),
-                None => Ok(own.max(0).saturating_add(lent)),
-            }
+            Ok(own.max(0).saturating_add(lent))
         };
         let (held, other_held) = (holds(one), holds(other));
         let doubt = held.as_ref().err().or(other_held.as_ref().err()).cloned();
@@ -8731,10 +8731,10 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
                     .known_balance_at(StatePhase::Give, lender, &offer.give_tag)
                     .map_err(Clone::clone)?;
             }
-            Ok(
-                SharerStock::for_spender(ledger, hex, StatePhase::Give, who, &offer.give_tag)
-                    .map_or(own, |(stock, x)| stock.available_to(x)),
-            )
+            let (own, lenders) = exchange_draw(ledger, hex, who, &offer.give_tag, own);
+            Ok(own
+                .max(0)
+                .saturating_add(lenders.iter().map(|(_, lends)| lends).sum::<i64>()))
         };
         let (held, other_held) = (holds(one), holds(other));
         let doubt = held.as_ref().err().or(other_held.as_ref().err()).cloned();
@@ -8764,6 +8764,43 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     }
 }
 
+/// What `who` spends of its own `tag` on an exchange, and what each other sharer of the hex lends
+/// it, in report order - the engine's `Unit::ConsumeShared` (`ah-80mj`). Off the one reading every
+/// spend from the pool takes ([`SharerStock`]) where it can be read; where it cannot because the
+/// pool is not trusted (a sharer the ledger could not add up), off each sharer's known balance, as
+/// the transfer walk reads it, so both settlements reach one verdict. `own` is `who`'s known
+/// balance; a sharer whose balance is uncertain lends nothing here, its doubt being the caller's.
+fn exchange_draw(
+    ledger: &Ledger<'_>,
+    hex: &Hex<'_>,
+    who: &str,
+    tag: &str,
+    own: i64,
+) -> (i64, Vec<(usize, i64)>) {
+    let known = |unit_id: &str| {
+        ledger
+            .state
+            .known_balance_at(StatePhase::Give, unit_id, tag)
+            .map_or(0, |known| known.max(0))
+    };
+    match SharerStock::for_spender(ledger, hex, StatePhase::Give, who, tag) {
+        Some((stock, x)) => (
+            stock.own_for(x),
+            stock.lenders_within(x, hex, |lender| known(&lender.unit.unit_id)),
+        ),
+        None => (
+            own.max(0),
+            hex.units
+                .iter()
+                .enumerate()
+                .filter(|(_, other)| other.shares() && other.unit.unit_id != who)
+                .map(|(index, other)| (index, known(&other.unit.unit_id)))
+                .filter(|(_, lends)| *lends > 0)
+                .collect(),
+        ),
+    }
+}
+
 /// One side of a settled exchange: `offer`'s unit hands what it offered to its partner.
 fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
     let giver = hex.units[offer.unit].unit;
@@ -8783,19 +8820,14 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
     // `Unit::ConsumeShared`, read off the one reading every spend from the pool takes
     // ([`SharerStock`]), exactly as a SELL draws (`ah-0mch`, `ah-80mj`). Read before anything
     // below moves a balance.
-    let (own, lenders) =
-        match SharerStock::for_spender(ledger, hex, StatePhase::Give, &giver.unit_id, tag) {
-            Some((stock, x)) => (
-                stock.own_for(x),
-                stock.lenders_within(x, hex, |lender| {
-                    ledger
-                        .state
-                        .known_balance_at(StatePhase::Give, &lender.unit.unit_id, tag)
-                        .unwrap_or(0)
-                }),
-            ),
-            None => (amount, Vec::new()),
-        };
+    let (own, lenders) = match ledger
+        .state
+        .known_balance_at(StatePhase::Give, &giver.unit_id, tag)
+    {
+        Ok(own) => exchange_draw(ledger, hex, &giver.unit_id, tag, own),
+        // Unreachable: a pair moves only once both sides' holdings were read as known.
+        Err(_) => (amount, Vec::new()),
+    };
     let own_sold = amount.min(own.max(0));
     // What leaves the giver's own row; the rest is on the sharers' rows.
     let own_part;

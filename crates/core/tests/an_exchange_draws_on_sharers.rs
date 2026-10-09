@@ -27,7 +27,7 @@ fn report_text() -> String {
         "Foo (1) Report",
         "",
         "plain (1,1) in Nowhere, 1000 peasants (orcs), $0.",
-        "  Wanted: none.",
+        "  Wanted: 10 swords [SWOR] at $100.",
         "  For Sale: none.",
         "",
         "Exits:",
@@ -198,12 +198,17 @@ fn silver_a_sharer_covers_moves_on_the_silver_column() {
 fn an_exchange_a_doubted_sharer_would_cover_is_uncounted_on_both_sides() {
     const SMITH: &str = "EXCHANGE 2392 5 SWOR 50 SILV";
     const BUYER: &str = "EXCHANGE 2391 50 SILV 5 SWOR";
-    let orders = (SMITH, BUYER, "GIVE 7001 3 SWOR");
+    let buyer = format!("{BUYER}\nSELL 5 SWOR");
+    let orders = (SMITH, buyer.as_str(), "GIVE 7001 3 SWOR");
     let (_, uncounted) = preview_of(orders, "2391", "SWOR", 2);
     assert!(uncounted.contains(&SMITH.to_string()), "{uncounted:?}");
     let (swords, uncounted) = preview_of(orders, "2392", "SWOR", 0);
     assert_eq!(swords, 0, "nothing is credited as certain");
     assert!(uncounted.contains(&BUYER.to_string()), "{uncounted:?}");
+    // The transfer walk reaches the same verdict, so the buyer's SELL of swords it may never get
+    // is doubted rather than counted.
+    let row = silver_row(orders, "2392");
+    assert!(row.doubt.is_some(), "{row:?}");
 }
 
 /// A smith whose own stock covers the offer borrows nothing, so a doubted sharer leaves the
@@ -212,11 +217,36 @@ fn an_exchange_a_doubted_sharer_would_cover_is_uncounted_on_both_sides() {
 fn a_doubted_sharer_does_not_doubt_an_offer_the_giver_covers_itself() {
     let orders = (
         "EXCHANGE 2392 2 SWOR 50 SILV",
-        "EXCHANGE 2391 50 SILV 2 SWOR",
+        "EXCHANGE 2391 50 SILV 2 SWOR\nSELL 2 SWOR",
         "GIVE 7001 3 SWOR",
     );
     let (swords, uncounted) = preview_of(orders, "2392", "SWOR", 0);
-    assert_eq!(swords, 2, "{uncounted:?}");
+    assert_eq!(swords, 0, "both arrive, and both are sold: {uncounted:?}");
     assert!(uncounted.is_empty(), "{uncounted:?}");
     assert_eq!(holding(orders, "2391", "SWOR", 2), 0);
+    // The transfer walk agrees: the swords are there to sell.
+    let row = silver_row(orders, "2392");
+    assert_eq!(row.doubt, None, "{row:?}");
+    assert_eq!(silver_moved(orders, "2392", SilverChangeCause::Sold), 200);
+}
+
+/// A sharer the ledger cannot add up - here after a TAKE from a unit nowhere in the hex - still
+/// holds the swords the report shows: its silver is in doubt, not its swords, so the exchange it
+/// covers goes ahead on both settlements.
+#[test]
+fn a_sharer_doubted_for_its_silver_still_covers_an_offer_of_goods() {
+    let orders = (
+        "EXCHANGE 2392 5 SWOR 50 SILV",
+        "EXCHANGE 2391 50 SILV 5 SWOR\nSELL 5 SWOR",
+        "TAKE FROM 999 ALL SILV",
+    );
+    let (swords, uncounted) = preview_of(orders, "2392", "SWOR", 0);
+    assert_eq!(swords, 0, "all five are sold: {uncounted:?}");
+    assert!(
+        !uncounted.iter().any(|line| line.starts_with("EXCHANGE")),
+        "{uncounted:?}"
+    );
+    assert_eq!(holding(orders, "2391", "SWOR", 2), 0);
+    assert_eq!(holding(orders, "2393", "SWOR", 5), 2);
+    assert_eq!(silver_moved(orders, "2392", SilverChangeCause::Sold), 500);
 }
