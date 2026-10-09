@@ -154,6 +154,22 @@ fn site(at: Coordinate, known: &KnownMap, geometry: Option<MapGeometry>) -> Vill
     }
 }
 
+/// Whether `b` is `a` or within two hexes of it, on a map that wraps as `geometry` says: the
+/// reach of `newage trident rules/create_village`'s "at least 3 hexes away from any other
+/// settlement", used to tell which of this month's foundings refuse each other (`ah-flx2`).
+pub(crate) fn within_two(a: Coordinate, b: Coordinate, geometry: Option<MapGeometry>) -> bool {
+    if a.z != b.z {
+        return false;
+    }
+    if a == b {
+        return true;
+    }
+    let geometry = geometry.and_then(|map| map.at_level(a.z));
+    WITHIN_TWO
+        .iter()
+        .any(|(dx, dy)| on_the_map(a.x + dx, a.y + dy, a.z, geometry) == Some(b))
+}
+
 /// The hex at (`x`,`y`), brought back onto a map that wraps, or `None` past the edge of one the
 /// game recorded as not wrapping. With no shape recorded every coordinate is taken as it is.
 fn on_the_map(x: i32, y: i32, z: u32, geometry: Option<MapGeometry>) -> Option<Coordinate> {

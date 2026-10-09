@@ -805,6 +805,10 @@ pub fn review_turn(
             reach,
         )
     };
+    // Which of this month's foundings an earlier one refuses (`ah-flx2`).
+    settle_foundings(&mut hexes, ruleset, options.geometry, |index, hex| {
+        price(hex, departing_ids(&departing[index], &away, index))
+    });
     let mut hexes: Vec<(Hex<'_>, Ledger<'_>)> = hexes
         .into_iter()
         .zip(&departing)
@@ -2939,6 +2943,37 @@ struct Hex<'a> {
     /// Whether the known map lets a village be founded here (`ah-m24v`). Unsure as read: the
     /// entry points that have the options set it from `CheckOptions::village_sites`.
     village_site: VillageSite,
+    /// Each unit of this hex whose `CREATE VILLAGE` an earlier founding this month refuses, by unit
+    /// id (`ah-flx2`). Empty as read: [`settle_foundings`] writes it.
+    beaten_foundings: BTreeMap<String, EarlierFounding>,
+}
+
+/// A founding this month that the engine runs before another within two hexes of it, and so
+/// refuses it (`newage trident rules/create_village`, `ah-flx2`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EarlierFounding {
+    /// The founder as the warning names it, `Settlers (900)`.
+    founder: String,
+    /// Where it founds.
+    at: Coordinate,
+    /// Whether it certainly founds. Not when its own founding is admitted rather than counted,
+    /// so the later one may or may not be refused.
+    certain: bool,
+}
+
+impl EarlierFounding {
+    fn warning(&self) -> String {
+        let (will, founds) = if self.certain {
+            ("will", "founds")
+        } else {
+            ("may", "may found")
+        };
+        format!(
+            "CREATE VILLAGE {will} be refused: {} {founds} a village at ({},{}) first this month, \
+             within 2 hexes, and a village must be at least 3 hexes from any other settlement",
+            self.founder, self.at.x, self.at.y
+        )
+    }
 }
 
 /// A unit's skills once this month's gifts of men have run.
@@ -3232,6 +3267,7 @@ impl<'a> Hex<'a> {
             units,
             shown_anywhere,
             village_site: VillageSite::Unsure,
+            beaten_foundings: BTreeMap::new(),
         }
     }
 
@@ -6733,6 +6769,10 @@ pub(crate) fn item_effects(
             reach,
         )
     };
+    // The same refusals `review_turn` settles (`ah-flx2`).
+    settle_foundings(&mut hexes, ruleset, options.geometry, |index, hex| {
+        price(hex, departing_ids(&departing[index], &away, index))
+    });
     let mut priced: Vec<(Hex<'_>, Ledger<'_>)> = hexes
         .into_iter()
         .zip(&departing)
@@ -11281,10 +11321,20 @@ fn check_village_site(hex: &Hex<'_>, ruleset: Option<&Ruleset>, findings: &mut V
     if !super::grammar::is_trident(ruleset) || founding_refused_here(hex.region) {
         return;
     }
-    let Some(message) = hex.village_site.warning() else {
-        return;
-    };
+    let site = hex.village_site.warning();
     for ordered in &hex.units {
+        // A site the known map refuses says so whatever else founds this month; otherwise an
+        // earlier founding nearby is what refuses it (`ah-flx2`).
+        let message = match (
+            &hex.village_site,
+            hex.beaten_foundings.get(&ordered.unit.unit_id),
+        ) {
+            (VillageSite::TooClose { .. }, _) | (_, None) => site.clone(),
+            (_, Some(earlier)) => Some(earlier.warning()),
+        };
+        let Some(message) = message else {
+            continue;
+        };
         for placed in &ordered.intents {
             if matches!(placed.intent, Intent::MonthLong("CREATE")) {
                 findings.push(ordered.finding(
@@ -11293,6 +11343,118 @@ fn check_village_site(hex: &Hex<'_>, ruleset: Option<&Ruleset>, findings: &mut V
                     message.clone(),
                     Some(placed),
                 ));
+            }
+        }
+    }
+}
+
+/// Which of this month's `CREATE VILLAGE`s an earlier one refuses, written to each hex's
+/// `beaten_foundings` before the final ledgers are priced (`ah-flx2`).
+///
+/// `newage trident rules/create_village` refuses a village within two hexes of "any other
+/// settlement", the region's own included, and the engine applies it as each order runs: the
+/// first founding's village refuses every later one near it. Which runs first is the engine's
+/// (`atlantis-newage` `monthorders.cpp`): `RunMonthOrders` walks the region list, which
+/// `neworigins/map.cpp` `MakeRegions` builds row by row - `y` outer, `x` inner - and which is
+/// written and read back in that order; within a region `RunProduceOrders` reaches the units in the
+/// month-long walk's order ([`month_long_walk`]).
+///
+/// Whether an earlier founding founds at all is its own ledger's answer - it may be short of men
+/// or wagons - so each founding that could refuse a later one is priced in turn, in the engine's
+/// order, with what the foundings before it decided already written. A refused founding refuses
+/// nobody. Nothing is priced unless two foundings are within two hexes of each other, so a month
+/// that founds one village, or none, costs nothing here.
+fn settle_foundings<'a>(
+    hexes: &mut [Hex<'_>],
+    ruleset: Option<&'a Ruleset>,
+    geometry: Option<crate::movement::graph::MapGeometry>,
+    price: impl Fn(usize, &Hex<'_>) -> Ledger<'a>,
+) {
+    if !super::grammar::is_trident(ruleset) {
+        return;
+    }
+    // Every founding the report does not already refuse, as (hex, unit, line), in engine order.
+    let mut foundings: Vec<(usize, usize, usize)> = Vec::new();
+    for (index, hex) in hexes.iter().enumerate() {
+        if founding_refused_here(hex.region)
+            || matches!(hex.village_site, VillageSite::TooClose { .. })
+        {
+            continue;
+        }
+        for unit in month_long_walk(hex, ruleset) {
+            if let Some(placed) = hex.units[unit]
+                .intents
+                .iter()
+                .find(|placed| matches!(placed.intent, Intent::MonthLong("CREATE")))
+            {
+                foundings.push((index, unit, placed.line));
+            }
+        }
+    }
+    // Stable, so the units of one region keep the walk's order.
+    foundings.sort_by_key(|&(index, _, _)| {
+        let at = hexes[index].region.coordinate;
+        (at.z, at.y, at.x)
+    });
+    let coordinates: Vec<Coordinate> = hexes.iter().map(|hex| hex.region.coordinate).collect();
+    let at = |index: usize| coordinates[index];
+    let near = |a: usize, b: usize| super::village_site::within_two(at(a), at(b), geometry);
+    let contested = foundings
+        .iter()
+        .enumerate()
+        .any(|(i, &(a, _, _))| foundings[i + 1..].iter().any(|&(b, _, _)| near(a, b)));
+    if !contested {
+        return;
+    }
+    for (i, &(index, unit, line)) in foundings.iter().enumerate() {
+        let who = hexes[index].units[unit].unit.unit_id.clone();
+        if hexes[index]
+            .beaten_foundings
+            .get(&who)
+            .is_some_and(|earlier| earlier.certain)
+        {
+            continue;
+        }
+        let later: Vec<(usize, usize)> = foundings[i + 1..]
+            .iter()
+            .filter(|&&(other, _, _)| near(index, other))
+            .map(|&(other, other_unit, _)| (other, other_unit))
+            .collect();
+        if later.is_empty() {
+            continue;
+        }
+        let ledger = price(index, &hexes[index]);
+        let founds = ledger.movements.iter().any(|movement| {
+            movement.unit_id == who && movement.cause == ItemChangeCause::CreateSpent
+        });
+        let admitted = ledger
+            .uncounted
+            .get(&who)
+            .is_some_and(|lines| lines.contains(&line));
+        if !founds && !admitted {
+            continue;
+        }
+        let actor = &hexes[index].units[unit].unit;
+        // A founding on a site the known map cannot clear spends its founders (`ah-m24v`), but an
+        // unseen settlement may still refuse it, so it only may refuse the later one (review
+        // finding 2 on PR #1489).
+        let earlier = EarlierFounding {
+            founder: format!("{} ({})", actor.name, actor.unit_id),
+            at: at(index),
+            certain: founds && hexes[index].village_site == VillageSite::Clear,
+        };
+        for (other, other_unit) in later {
+            let beaten = hexes[other].units[other_unit].unit.unit_id.clone();
+            let entry = hexes[other].beaten_foundings.entry(beaten);
+            match entry {
+                std::collections::btree_map::Entry::Vacant(slot) => {
+                    slot.insert(earlier.clone());
+                }
+                std::collections::btree_map::Entry::Occupied(mut slot) => {
+                    if earlier.certain && !slot.get().certain {
+                        slot.insert(earlier.clone());
+                    }
+                }
             }
         }
     }
@@ -11313,7 +11475,8 @@ const REFUSED_TERRAIN: [&str; 4] = ["ocean", "lake", "volcano", "barren"];
 /// so does one in a region the rule refuses that the report shows: one that already has a
 /// settlement, or ocean, lake, volcano or barren terrain. So does one the known map shows within
 /// two hexes of another settlement, the rule's third requirement (`ah-m24v`); where the known map
-/// cannot rule one out, the founders are consumed and `check_village_site` warns. A
+/// cannot rule one out, the founders are consumed and `check_village_site` warns. So does one an
+/// earlier founding this month refuses ([`settle_foundings`], `ah-flx2`). A
 /// holding a `GIVE` left uncertain cannot say which, so nothing is consumed and the line is
 /// admitted. Which people go when a unit holds more than one kind is not stated anywhere: they are
 /// taken in the order the report lists the unit's items, the first kind first.
@@ -11359,6 +11522,16 @@ fn create_village(
     }
     let founders: i64 = people.iter().map(|(_, amount)| amount).sum();
     if founders < VILLAGE_FOUNDERS || ledger.state.balance_at(phase, who, WAGON) < VILLAGE_WAGONS {
+        return;
+    }
+    // An earlier founding within two hexes refuses this one; one that may not found leaves this
+    // one admitted rather than counted (`ah-flx2`). Asked only of a founder that has what it takes,
+    // so one short of people stays a founding that cannot happen, which `settle_foundings` lets
+    // refuse nobody (review finding 1 on PR #1489).
+    if let Some(earlier) = hex.beaten_foundings.get(who) {
+        if !earlier.certain {
+            mark_uncounted(ledger, who, placed.line);
+        }
         return;
     }
     let mut owed = VILLAGE_FOUNDERS;
