@@ -6654,7 +6654,11 @@ fn charge_settled_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
         );
         // What the wages did not cover, which is what the wording and the unclaimed fund read as
         // maintenance's own draw (`ah-fjty`, `ah-gjq4`). `ledger.upkeep` keeps the *full* fee.
-        let charged = (owed - late_income(facts, region, *shares, ledger.ruleset)).max(0);
+        // Only the wages still in hand once TRANSPORT has run cover it: a shipment they paid for
+        // leaves the fee to maintenance's later steps (`ah-9n7l.2`).
+        let in_hand = spendable_silver_at(ledger, &ordered.unit.unit_id, StatePhase::Transport);
+        let covered = late_income(facts, region, *shares, ledger.ruleset).min(in_hand.max(0));
+        let charged = (owed - covered).max(0);
         ledger.upkeep.insert(ordered.unit.unit_id.clone(), owed);
         // Steps 1 and 2 paid this much of the fee before silver was asked for anything - the same
         // rule `forecast_hex` names the column's food by, so the warning and the column agree.
@@ -45613,6 +45617,52 @@ BUILD
                     && finding.line == Some(3)),
             "{findings:#?}"
         );
+    }
+
+    /// A sender holding nothing and feeding itself nothing, whose 50 of wages pay the 45 bill and
+    /// leave its fee to maintenance (`ah-9n7l.2`).
+    fn wages_pay_the_bill_not_the_fee() -> Vec<ReportRegion> {
+        let mut regions = unpaid_shipping(0);
+        regions[0].units[0] = starving(regions[0].units[0].clone());
+        regions[0].wages = Some("$50.0".to_string());
+        regions
+    }
+
+    const WORK_AND_SHIP: &str = "unit 900\nWORK\nTRANSPORT 901 9 FUR\n";
+
+    fn silver_findings(report: &ParsedReport) -> Vec<Finding> {
+        review_turn(report, WORK_AND_SHIP, Some(&ruleset()), with_map())
+            .findings
+            .into_iter()
+            .filter(|finding| finding.code.as_str() == "not-enough-silver")
+            .collect()
+    }
+
+    /// Wages a shipment spent pay no fee, so what the fee still lacks is maintenance's to ask of a
+    /// faction-mate's silver (`rules/economy_maintenance`), not the shipment's fault.
+    #[test]
+    fn a_fee_the_shipment_left_unpaid_is_paid_by_a_hex_mate() {
+        let mut regions = wages_pay_the_bill_not_the_fee();
+        regions[0]
+            .units
+            .push(with_silver(starving(unit("950")), 100));
+        let findings = silver_findings(&report(regions));
+        assert!(findings.is_empty(), "{findings:#?}");
+    }
+
+    /// ... and then of the faction's unclaimed silver.
+    #[test]
+    fn a_fee_the_shipment_left_unpaid_is_paid_by_unclaimed_silver() {
+        let report = ParsedReport {
+            regions: wages_pay_the_bill_not_the_fee(),
+            header: crate::report::header::ReportHeader {
+                unclaimed_silver: Some(100),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let findings = silver_findings(&report);
+        assert!(findings.is_empty(), "{findings:#?}");
     }
 
     /// `rules/sequenceofevents`: TRANSPORT runs before "Maintenance costs are assessed", so silver
