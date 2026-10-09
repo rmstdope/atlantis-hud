@@ -5404,6 +5404,9 @@ struct Ledger<'a> {
     /// is reached, so a later builder of the same structure is priced against what is left
     /// (`ah-d60n`).
     build_laid: BTreeMap<BuildSite, i64>,
+    /// Structures an earlier builder this month worked on uncounted: what they still need is
+    /// unknown, so no later builder of them can be priced either.
+    build_doubted: BTreeSet<BuildSite>,
     /// Direct founding `BUILD`s whose selected ruleset refuses their reported site.
     pub(crate) build_placement_refusals:
         BTreeMap<String, Vec<super::effects::BuildPlacementRefusal>>,
@@ -5868,6 +5871,7 @@ fn ledger_for_reaching<'a>(
         refused_recruits: Vec::new(),
         built: BTreeMap::new(),
         build_laid: BTreeMap::new(),
+        build_doubted: BTreeSet::new(),
         build_placement_refusals: BTreeMap::new(),
         buy_all: BTreeMap::new(),
         settled_buy_all: BTreeMap::new(),
@@ -9900,9 +9904,21 @@ fn build(
             )
         };
 
+    // From here on the site is known: an uncounted exit leaves what it still needs unknown to
+    // every later builder of it, and one an earlier builder left unknown cannot be priced.
+    macro_rules! doubt_site_and_return {
+        () => {{
+            ledger.build_doubted.insert(site.clone());
+            mark_uncounted_and_return!();
+        }};
+    }
+    if ledger.build_doubted.contains(&site) {
+        mark_uncounted_and_return!();
+    }
+
     let Some((cost, materials)) = ruleset.build_recipe(&kind) else {
         // A Shaft, a ship, or a misspelling: the catalogue states neither cost nor material.
-        mark_uncounted_and_return!();
+        doubt_site_and_return!();
     };
     // What earlier builders of the same structure already laid this month is no longer needed.
     let remaining =
@@ -9912,7 +9928,7 @@ fn build(
     // `build-without-skill`'s business, and a unit below the minimum still does `men * level`
     // units of work by the rules as written.
     let Some((skill_tag, _minimum_level)) = ruleset.build_requirement(&kind) else {
-        mark_uncounted_and_return!();
+        doubt_site_and_return!();
     };
 
     // 7. The material: resolve each name the recipe offers, drop what the catalogue does not
@@ -9922,7 +9938,7 @@ fn build(
         .filter_map(|name| ruleset.find_item(name))
         .collect();
     if resolved.is_empty() {
-        mark_uncounted_and_return!();
+        doubt_site_and_return!();
     }
     // An uncertain tag cannot answer "does this hex hold any of it", so a recipe offering it
     // among its alternatives cannot be settled (`ah-66yi`). Read through the pool since
@@ -9977,11 +9993,11 @@ fn build(
         .iter()
         .any(|item| available_of(&item.tag).is_none())
     {
-        mark_uncounted_and_return!();
+        doubt_site_and_return!();
     }
     let held_of = |tag: &str| available_of(tag).unwrap_or(0);
     let Some(candidates) = build_candidates(ruleset, &resolved, order.material) else {
-        mark_uncounted_and_return!();
+        doubt_site_and_return!();
     };
     let held: Vec<(&crate::movement::rules::ItemEntry, i64)> = candidates
         .iter()
@@ -10022,13 +10038,13 @@ fn build(
     // 8. The level. `Ordered::skill_level` cannot answer `None` on this path today (see the
     // module's known traps), but the branch costs one line and is cheaper than a surprise later.
     let Some(_level) = actor.skill_level(skill_tag) else {
-        mark_uncounted_and_return!();
+        doubt_site_and_return!();
     };
 
     // 9. The arithmetic.
     let settled = actor.after_the_market();
     let Some(skills) = settled.skills else {
-        mark_uncounted_and_return!();
+        doubt_site_and_return!();
     };
     let level = i64::from(level_in(skills, skill_tag));
     let plan = plan_build(settled.men, level, remaining, &held);
@@ -32246,6 +32262,44 @@ BUILD
             assert_eq!(
                 two_builders_on_a_stockade_needing(3, "BUILD HELP 900"),
                 vec![("900".to_string(), 3), ("901".to_string(), 0)]
+            );
+        }
+
+        /// An earlier builder whose work cannot be counted leaves what the structure still needs
+        /// unknown, so a later builder of it cannot be priced either. 900's wood is in doubt once
+        /// it GIVEs some to another faction's unit (`ah-66yi`); had it built, 901 would lay only
+        /// what is left (`ah-d60n`).
+        #[test]
+        fn a_builder_after_an_uncounted_one_on_the_same_structure_cannot_be_counted() {
+            let mut hex_region = report_with_a_builder();
+            hex_region.structures[0].needs = Some(40);
+            hex_region.units.push(in_structure(
+                with_skill(
+                    with_item(with_men(unit("901"), 10), 120, "wood", "WOOD"),
+                    "BUIL",
+                    3,
+                ),
+                "4",
+            ));
+            hex_region.units.push(an_ally("7001"));
+            with_ledger(
+                hex_region,
+                "unit 900\nGIVE 7001 10 wood\nBUILD\nunit 901\nBUILD\n",
+                |ledger| {
+                    assert!(
+                        ledger
+                            .uncounted
+                            .get("900")
+                            .is_some_and(|lines| lines.contains(&3)),
+                        "900's wood is in doubt: {:?}",
+                        ledger.uncounted
+                    );
+                    assert_eq!(
+                        ledger.uncounted.get("901").map(Vec::as_slice),
+                        Some([5].as_slice())
+                    );
+                    assert!(!ledger.built.contains_key("901"), "{:?}", ledger.built);
+                },
             );
         }
 
