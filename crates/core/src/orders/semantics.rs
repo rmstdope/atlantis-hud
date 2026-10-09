@@ -4324,9 +4324,17 @@ fn apply_transfers(
                     }
                     _ => None,
                 });
+            // What the unit has as the engine counts an offer: its own stock and its `SHARE`
+            // faction-mates' in the hex (`GetSharedNum` in `Game::DoExchangeOrder`; `ah-80mj`).
+            let lent: i64 = lending_sharers(units, offer.unit)
+                .into_iter()
+                .map(|lender| held_by(&working, units, lender, &offer.give_tag).max(0))
+                .sum();
             match stolen {
                 Some(uncertain) => Err(uncertain),
-                None => Ok(held_by(&working, units, offer.unit, &offer.give_tag)),
+                None => Ok(held_by(&working, units, offer.unit, &offer.give_tag)
+                    .max(0)
+                    .saturating_add(lent)),
             }
         };
         let (held, other_held) = (holds(one), holds(other));
@@ -4368,10 +4376,32 @@ fn apply_transfers(
                 .get(&offer.unit)
                 .and_then(|state| state.held.get(&offer.give_tag))
                 .map_or_else(|| offer.give_tag.clone(), |item| item.tag.clone());
+            // The giver's own stock first, then the sharers' in report order: the engine's
+            // `Unit::ConsumeShared` (`ah-80mj`, as a GIVE draws, `ah-0mch`).
+            let own = offer
+                .give_amount
+                .min(held_by(&working, units, offer.unit, &offer.give_tag).max(0));
             let giver = working
                 .entry(offer.unit)
                 .or_insert_with(|| seed_working(units, offer.unit));
-            move_holding(giver, &offer.give_tag, &name, -offer.give_amount);
+            move_holding(giver, &offer.give_tag, &name, -own);
+            let mut remaining = offer.give_amount - own;
+            for lender in lending_sharers(units, offer.unit) {
+                if remaining <= 0 {
+                    break;
+                }
+                let lender_state = working
+                    .entry(lender)
+                    .or_insert_with(|| seed_working(units, lender));
+                let has = lender_state
+                    .held
+                    .get(offer.give_tag.as_str())
+                    .map_or(0, |item| item.amount)
+                    .max(0);
+                let take = remaining.min(has);
+                move_holding(lender_state, &offer.give_tag, &name, -take);
+                remaining -= take;
+            }
             let receiver = working
                 .entry(offer.partner)
                 .or_insert_with(|| seed_working(units, offer.partner));
@@ -8635,9 +8665,8 @@ fn exchange_verdict<E>(
 /// `rules/exchange`: "The orders given by the two units must be complementary. If either unit
 /// involved does not have the items it is offering, or if the exchange orders given are not
 /// complementary, the exchange is aborted." What each side holds is its own balance once every
-/// GIVE and TAKE has run. The engine also lets a unit offer what its `SHARE` faction-mates hold
-/// (`GetSharedNum`, `ConsumeShared`); that is not modelled here, so such an exchange is forecast as
-/// short and moving nothing. A matched pair moves both items, recorded as a gift each way on the
+/// GIVE and TAKE has run, together with what its `SHARE` faction-mates in the hex lend it - the
+/// engine's `GetSharedNum` and `ConsumeShared` (`ah-80mj`). A matched pair moves both items, recorded as a gift each way on the
 /// line that hands it over; a pair whose holding is in doubt marks both lines uncounted and every
 /// tag it might move uncertain; anything else moves nothing.
 fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
@@ -8663,15 +8692,26 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     let offers = &read.offers;
     for (first, second) in complementary_pairs(offers) {
         let (one, other) = (&offers[first], &offers[second]);
-        let holds = |offer: &ExchangeOffer| {
-            ledger
+        // What a side has as the engine counts an offer, `GetSharedNum`: its own stock and what
+        // its `SHARE` faction-mates in the hex still lend it, off the one reading every spend from
+        // the pool takes ([`SharerStock`]; `ah-80mj`).
+        let holds = |offer: &ExchangeOffer| -> Result<i64, UncertainGive> {
+            let who = &hex.units[offer.unit].unit.unit_id;
+            let own = ledger
                 .state
-                .known_balance_at(
-                    StatePhase::Give,
-                    &hex.units[offer.unit].unit.unit_id,
-                    &offer.give_tag,
-                )
-                .map_err(Clone::clone)
+                .known_balance_at(StatePhase::Give, who, &offer.give_tag)
+                .map_err(Clone::clone)?;
+            if !hex
+                .units
+                .iter()
+                .any(|other| other.shares() && other.unit.unit_id != *who)
+            {
+                return Ok(own);
+            }
+            Ok(
+                SharerStock::for_spender(ledger, hex, StatePhase::Give, who, &offer.give_tag)
+                    .map_or(own, |(stock, x)| stock.available_to(x)),
+            )
         };
         let (held, other_held) = (holds(one), holds(other));
         let doubt = held.as_ref().err().or(other_held.as_ref().err()).cloned();
@@ -8716,6 +8756,8 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
     if amount == 0 {
         return;
     }
+    // What leaves the giver's own row; the rest is on the sharers' rows.
+    let own_part;
     if tag.eq_ignore_ascii_case(SILVER) {
         move_silver(
             ledger,
@@ -8735,13 +8777,45 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
             Some(placed),
             Some(format!("{} ({})", giver.name, giver.unit_id)),
         );
+        // Silver a sharer lends is charged to the giver whole, as a GIVE's is: the SILVER
+        // column's purse lays the overdraft on the sharers (`ah-0mch`, `ah-80mj`).
+        own_part = amount;
     } else {
+        // The giver's own stock first, then the sharers' in report order, each charged and its
+        // movement recorded where the goods were - exactly as a SELL draws (`ah-0mch`, `ah-80mj`).
+        let (own, lenders) =
+            match SharerStock::for_spender(ledger, hex, StatePhase::Give, &giver.unit_id, tag) {
+                Some((stock, x)) => (
+                    stock.own_for(x),
+                    stock.lenders_within(x, hex, |lender| {
+                        ledger
+                            .state
+                            .known_balance_at(StatePhase::Give, &lender.unit.unit_id, tag)
+                            .unwrap_or(0)
+                    }),
+                ),
+                None => (amount, Vec::new()),
+            };
+        let own_sold = amount.min(own.max(0));
+        let uncovered = draw_on_lenders(
+            ledger,
+            hex,
+            StatePhase::Give,
+            &hex.units[offer.unit],
+            tag,
+            &lenders,
+            amount - own_sold,
+            placed,
+            ItemChangeCause::GivenAway,
+            None,
+        );
+        own_part = own_sold + uncovered;
         charge(
             ledger,
             StatePhase::Give,
             &giver.unit_id,
             tag,
-            amount,
+            own_part,
             placed,
         );
         credit(ledger, StatePhase::Give, &receiver.unit_id, tag, amount);
@@ -8751,7 +8825,7 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
         .insert((giver.unit_id.clone(), offer.line, tag.clone()));
     let name = item_name(tag, hex, ledger.ruleset);
     for (unit, delta, cause, other) in [
-        (giver, -amount, ItemChangeCause::GivenAway, receiver),
+        (giver, -own_part, ItemChangeCause::GivenAway, receiver),
         (receiver, amount, ItemChangeCause::WasGiven, giver),
     ] {
         ledger.movements.push(ItemMovement {
