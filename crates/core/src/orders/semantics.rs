@@ -58571,11 +58571,8 @@ BUILD
         // settled port it leaves, so "this region" would read as that port (`ah-lz1g`).
         assert_eq!(
             refusals[0].message,
-            format!(
-                "Cannot start a Palace where the fleet lands, {} (7,53): that region has no \
-                 settlement. No stone will be used.",
-                trident().movement.ocean.terrain
-            )
+            "Cannot start a Palace where the fleet lands, ocean (7,53): that region has no \
+             settlement. No stone will be used."
         );
         let effects = item_effects(&report, &orders, Some(&trident()), &CheckOptions::default());
         let passenger = effects_for(&effects, "901").cloned().unwrap_or_default();
