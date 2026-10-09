@@ -50320,6 +50320,38 @@ BUILD
         );
     }
 
+    /// `ah-x7fq`: a crew the report shows as exactly enough is diluted below it by a recruit.
+    /// `rules/sequenceofevents` runs Market orders before Movement, and the engine reads a skill as
+    /// its days over the unit's men (`../Atlantis` unit.cpp `GetRealSkill`), so two men at SAIL 1
+    /// (30 days a man) who buy a third hold 20 days a man - level 0 - and crew nothing.
+    #[test]
+    fn a_recruit_dilutes_a_full_crew_below_what_the_fleet_needs() {
+        let crew = with_silver(with_men(aboard("9508", "218", 20, 1), 2), 400);
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "men".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            structures: vec![raft("218")],
+            ..region(vec![crew])
+        };
+
+        let found = only(check_turn(
+            &report(vec![region]),
+            "unit 9508\nBUY 1 HUMN\nSAIL N\n",
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::ARRIVALS_LOWER_A_SKILL]),
+        ));
+        assert_eq!(found.code, codes::FLEET_UNDERCREWED);
+        assert_eq!(
+            found.message,
+            "Raft [218] is short of sailors: 2 sailing levels aboard and helping with SAIL, 0 once \
+             the men joining the crew this month are counted; it needs 2, so it will not sail"
+        );
+    }
+
     #[test]
     fn both_problems_are_two_findings_on_the_same_line() {
         let region = ReportRegion {
