@@ -1975,20 +1975,33 @@ struct UnclaimedSilverPlan {
     remaining_before_maintenance: i64,
 }
 
+/// Each unit's share of the faction's unclaimed silver.
+///
+/// The engine pays `CLAIM` while it parses the orders file, capping each one at what is still
+/// unclaimed at that moment (`../Atlantis/parseorders.cpp` `Game::ProcessClaimOrder`, reached
+/// from `ParseOrders`' per-line loop), so the fund is drawn in orders-file order - not hex by hex
+/// in the report's order (`ah-0v48`).
 fn claim_allowances_for(hexes: &[Hex<'_>], unclaimed: Option<i64>) -> ClaimAllowances {
     let mut remaining = unclaimed?;
     let mut allowances = BTreeMap::new();
+    let mut claims = Vec::new();
     for hex in hexes {
         for unit in &hex.units {
-            let mut grant: i64 = 0;
+            let key = unit_key(&hex.region.region_id, &unit.unit.unit_id);
             for placed in &unit.intents {
                 if let Intent::Claim(amount) = placed.intent {
-                    let priced = price_claim(amount, Some(remaining.max(0)));
-                    grant = grant.saturating_add(priced.earns);
-                    remaining = remaining.saturating_sub(priced.earns).max(0);
+                    claims.push((placed.line, key.clone(), amount));
                 }
             }
-            allowances.insert(unit_key(&hex.region.region_id, &unit.unit.unit_id), grant);
+            allowances.insert(key, 0_i64);
+        }
+    }
+    claims.sort_by_key(|(line, _, _)| *line);
+    for (_, key, amount) in claims {
+        let priced = price_claim(amount, Some(remaining.max(0)));
+        remaining = remaining.saturating_sub(priced.earns).max(0);
+        if let Some(grant) = allowances.get_mut(&key) {
+            *grant = grant.saturating_add(priced.earns);
         }
     }
     Some(allowances)
@@ -21261,8 +21274,11 @@ mod tests {
             assert_eq!(silver_of(&review, "2390").income, Some(416));
         }
 
+        /// `rules/sequenceofevents` lists CLAIM among the instant orders, which the engine applies
+        /// as it parses each line (`../Atlantis/parseorders.cpp` `Game::ProcessClaimOrder`): the
+        /// block written first is paid first, whatever the report's order (`ah-0v48`).
         #[test]
-        fn claims_are_allocated_in_report_order_even_when_blocks_are_reversed() {
+        fn claims_are_allocated_in_orders_file_order_even_when_the_report_runs_the_other_way() {
             let report = ParsedReport {
                 regions: vec![region(vec![taxer("2390", 1), taxer("2391", 1)])],
                 header: crate::report::header::ReportHeader {
@@ -21278,8 +21294,8 @@ mod tests {
                 CheckOptions::default(),
             );
 
-            assert_eq!(silver_of(&review, "2390").income, Some(4000));
-            assert_eq!(silver_of(&review, "2391").income, Some(935));
+            assert_eq!(silver_of(&review, "2391").income, Some(4000));
+            assert_eq!(silver_of(&review, "2390").income, Some(935));
         }
 
         #[test]
@@ -35764,6 +35780,31 @@ BUILD
         );
         assert_eq!(allowances.get(&unit_key("1:7,53", "new-1")), Some(&20));
         assert_eq!(allowances.get(&unit_key("1:8,54", "new-1")), Some(&20));
+    }
+
+    /// The engine pays `CLAIM` while it parses the orders file (`../Atlantis/parseorders.cpp`
+    /// `Game::ProcessClaimOrder`, reached from `ParseOrders`' per-line loop), capping each claim at
+    /// what is still unclaimed - so the unit written first is paid first, whatever the report's
+    /// order (`ah-0v48`).
+    #[test]
+    fn claims_beyond_the_fund_are_paid_in_orders_file_order_not_report_order() {
+        let orders = "unit 7\nCLAIM 300\nunit 5\nCLAIM 300\n";
+        let parsed = report(vec![
+            region_at("1:7,53", 7, 53, vec![unit("5")]),
+            region_at("1:8,54", 8, 54, vec![unit("7")]),
+        ]);
+        let ordered = OrderedUnits::read(orders);
+        let formed = formed_units(&parsed, orders, None, &study::ReportSkills::default());
+        let hexes: Vec<Hex<'_>> = parsed
+            .regions
+            .iter()
+            .map(|region| Hex::read(region, &ordered, &formed))
+            .collect();
+
+        let allowances = claim_allowances_for(&hexes, Some(300)).expect("a stated fund");
+
+        assert_eq!(allowances.get(&unit_key("1:8,54", "7")), Some(&300));
+        assert_eq!(allowances.get(&unit_key("1:7,53", "5")), Some(&0));
     }
 
     /// `rules/form` scopes a `FORM` alias to its region, so each hex holds its own `new-1` and
