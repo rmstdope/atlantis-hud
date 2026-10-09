@@ -11841,28 +11841,33 @@ impl MarketPurse {
     /// negative, where another unit has borrowed more than the others' silver it is counted
     /// against; the callers' own clamps keep a purchase from going below nothing.
     fn adds_for(&self, index: usize) -> Option<i64> {
-        if !self.trusted {
-            return None;
-        }
-        Some(
-            self.lendable
-                .iter()
-                .enumerate()
-                .filter(|(i, _)| *i != index)
-                // A sharer lends what it held and what it sold for, less what it has spent:
-                // `rules/sequenceofevents` runs every SELL before any BUY, so a sharer's proceeds
-                // are in the purse by the time a neighbour's purchase is sized (`ah-9n7l.1`). A
-                // non-sharer lends nothing, and drains the purse only by what it spent beyond its
-                // own silver and proceeds.
-                .map(|(i, lent)| {
-                    if self.sharer.get(i).copied().unwrap_or(false) {
-                        lent.saturating_add(self.sold_by(i))
-                            .saturating_sub(self.spent_by(i))
+        self.trusted.then(|| self.stock().others_net(index))
+    }
+
+    /// The purse as the one reading of what each unit still has ([`SharerStock`]): a unit's
+    /// market-open silver and its sale proceeds, less what it has spent at the market so far. A
+    /// sharer lends all of it; a non-sharer draws on the purse only by what it spent beyond its
+    /// own. A non-sharer whose own silver could not be priced is read as having drawn nothing - the
+    /// doubt is its own, and a neighbour's purchase is not cut on account of it (`ah-zus2`).
+    fn stock(&self) -> SharerStock {
+        SharerStock::new(
+            (0..self.lendable.len())
+                .map(|i| {
+                    let lends = self.sharer.get(i).copied().unwrap_or(false);
+                    let held = if lends {
+                        Some(self.lendable[i])
                     } else {
-                        -self.borrowed_by(i)
+                        self.own.get(i).copied().flatten()
+                    };
+                    StockParty {
+                        position: held.map_or(0, |held| {
+                            held.saturating_add(self.sold_by(i))
+                                .saturating_sub(self.spent_by(i))
+                        }),
+                        lends,
                     }
                 })
-                .sum(),
+                .collect(),
         )
     }
 
@@ -11886,17 +11891,12 @@ impl MarketPurse {
         self.sold.get(index).copied().unwrap_or(0)
     }
 
-    /// What the unit at `index` has spent at the market beyond its own silver - the part the
-    /// sharers paid for (`ah-zus2`). `0` where its own silver could not be priced: the doubt is
-    /// this unit's, and a neighbour's purchase is not cut on account of it.
+    /// What the unit at `index` has spent at the market beyond its own silver and proceeds - the
+    /// part the purse paid for, read off [`MarketPurse::stock`] (`ah-zus2`, `ah-lnz4`). `0` where
+    /// its own silver could not be priced: the doubt is this unit's, and a neighbour's purchase is
+    /// not cut on account of it.
     fn borrowed_by(&self, index: usize) -> i64 {
-        match self.own.get(index) {
-            Some(Some(own)) => self
-                .spent_by(index)
-                .saturating_sub(own.saturating_add(self.sold_by(index)))
-                .max(0),
-            _ => 0,
-        }
+        (-self.stock().position(index)).max(0)
     }
 
     /// What the market must take off the unit at `index`'s own market-open balance **in addition
@@ -35439,6 +35439,36 @@ BUILD
             "a sharer never counts its own"
         );
         assert_eq!(purse.adds_for(2), Some(300));
+    }
+
+    /// The market's purse is the one reading too (`ah-lnz4`): what it adds to a buyer is
+    /// [`SharerStock::others_net`] over its own parties - each unit's market-open silver plus what
+    /// it sold for, less what it has spent at the market so far.
+    #[test]
+    fn a_market_purse_adds_what_the_one_reading_says_the_others_still_have() {
+        let hex_region = region(vec![
+            with_silver(unit("1"), 50),
+            sharing(with_silver(unit("2"), 300)),
+            sharing(with_silver(unit("3"), 200)),
+        ]);
+        let mut purse = market_purse_of(&hex_region, "");
+        // Unit 1 spent $120 on an earlier item, $70 past its own; sharer 2 sold for $40.
+        purse.spent = vec![120, 0, 0];
+        purse.sold = vec![0, 40, 0];
+
+        let stock = purse.stock();
+        assert_eq!(
+            stock,
+            SharerStock::new(vec![
+                StockParty { position: -70, lends: false },
+                StockParty { position: 340, lends: true },
+                StockParty { position: 200, lends: true },
+            ])
+        );
+        for index in 0..3 {
+            assert_eq!(purse.adds_for(index), Some(stock.others_net(index)), "unit {index}");
+        }
+        assert_eq!(purse.adds_for(2), Some(270), "the borrower's $70 came out of the purse");
     }
 
     #[test]
