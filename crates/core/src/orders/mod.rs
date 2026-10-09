@@ -53,6 +53,8 @@ mod transfers;
 /// The one transport reach and shipping rate `effects`, `semantics` and `silver` read.
 pub mod transport;
 pub mod unclaimed_silver;
+/// Whether the known map lets a `CREATE VILLAGE` found its village (`ah-m24v`).
+pub mod village_site;
 pub mod vocabulary;
 pub mod walk;
 /// A MOVE that would cross a wall a report proves (`ah-wq2e.4`).

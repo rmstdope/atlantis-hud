@@ -31,6 +31,7 @@ use super::intents::{
 use super::phases::{self, StatePhase};
 use super::standing::{self, standing_after, Boarding};
 use super::transfers;
+use super::village_site::VillageSite;
 use crate::movement::fleet::OrderedUnits as FleetOrders;
 use crate::movement::graph::{Direction, MapKnowledge};
 use crate::movement::mode::{
@@ -243,6 +244,11 @@ pub mod codes {
     /// order can only be used on the surface" (`ah-mw1r.4`). Always on: the bead asks for the
     /// warning and gives it no switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
     pub const EXPLORE_BELOW_THE_SURFACE: Code = Code("explore-below-the-surface");
+    /// A `CREATE VILLAGE` with a settlement the known map shows within two hexes, which
+    /// `newage trident rules/create_village` refuses, or one whose neighbourhood the known map
+    /// cannot rule a settlement out of (`ah-m24v`). Always on: the bead asks for the warning and
+    /// gives it no switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
+    pub const VILLAGE_NEAR_A_SETTLEMENT: Code = Code("village-near-a-settlement");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -326,11 +332,12 @@ pub mod codes {
 
     /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
     /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
-    pub const ALWAYS_ON: [Code; 4] = [
+    pub const ALWAYS_ON: [Code; 5] = [
         MOVE_INTO_A_WALL,
         FACTION_ORDER_WILL_FAIL,
         UNKNOWN_SKILL,
         EXPLORE_BELOW_THE_SURFACE,
+        VILLAGE_NEAR_A_SETTLEMENT,
     ];
 }
 
@@ -364,6 +371,10 @@ pub struct CheckOptions {
     /// Each own unit whose MOVE crosses a wall a report proves, from `effects::walled_moves`.
     /// Empty by default: a caller without the remembered map warns about no wall.
     pub walled_moves: super::walls::WalledMoves,
+    /// What the known map says about founding a village in each region holding an own unit, once
+    /// the document writes a `CREATE`, from `village_site::village_sites` (`ah-m24v`). Empty by default: a caller without the
+    /// remembered map cannot rule out a settlement nearby, so every founding is unsure.
+    pub village_sites: super::village_site::VillageSites,
 }
 
 impl CheckOptions {
@@ -400,6 +411,7 @@ impl Default for CheckOptions {
             known_passages: Vec::new(),
             month_end: super::transport::MonthEndHexes::new(),
             walled_moves: super::walls::WalledMoves::new(),
+            village_sites: super::village_site::VillageSites::new(),
         }
     }
 }
@@ -720,14 +732,16 @@ pub fn review_turn(
         .regions
         .iter()
         .map(|region| {
-            hex_with_transfers(
+            let mut hex = hex_with_transfers(
                 region,
                 &ordered,
                 &formed,
                 ruleset,
                 &foreign_unit_ids,
                 &shown_anywhere,
-            )
+            );
+            hex.village_site = village_site_of(region, &options.village_sites);
+            hex
         })
         .collect();
 
@@ -901,6 +915,7 @@ pub fn review_turn(
         check_mage_arrivals(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_withdraw_in_nexus(hex, &options, &mut findings);
         check_explore_below_the_surface(hex, &mut findings);
+        check_village_site(hex, ruleset, &mut findings);
         check_withdraw_not_a_basic_item(hex, ruleset, &options, &mut findings);
         check_cast_material(hex, ruleset, &options, &mut findings);
         check_sailing(hex, ledger, ruleset, &options, &mut findings);
@@ -2921,6 +2936,9 @@ struct Hex<'a> {
     /// its own units. Borrowed rather than copied whenever the report's own set already holds this
     /// region's units, which is every real caller: a copy per hex was most of a whole-map check.
     shown_anywhere: Cow<'a, BTreeSet<String>>,
+    /// Whether the known map lets a village be founded here (`ah-m24v`). Unsure as read: the
+    /// entry points that have the options set it from `CheckOptions::village_sites`.
+    village_site: VillageSite,
 }
 
 /// A unit's skills once this month's gifts of men have run.
@@ -3213,6 +3231,7 @@ impl<'a> Hex<'a> {
             region,
             units,
             shown_anywhere,
+            village_site: VillageSite::Unsure,
         }
     }
 
@@ -6654,14 +6673,16 @@ pub(crate) fn item_effects(
         .regions
         .iter()
         .map(|region| {
-            hex_with_transfers(
+            let mut hex = hex_with_transfers(
                 region,
                 &ordered,
                 &formed,
                 ruleset,
                 &foreign_unit_ids,
                 &shown_anywhere,
-            )
+            );
+            hex.village_site = village_site_of(region, &options.village_sites);
+            hex
         })
         .collect();
 
@@ -11233,6 +11254,50 @@ fn check_explore_below_the_surface(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
     }
 }
 
+/// What the known map says about founding in `region`; see [`CheckOptions::village_sites`].
+fn village_site_of(
+    region: &ReportRegion,
+    sites: &super::village_site::VillageSites,
+) -> VillageSite {
+    sites
+        .get(&region.region_id)
+        .cloned()
+        .unwrap_or(VillageSite::Unsure)
+}
+
+/// Whether the report itself shows `region` as one `newage trident rules/create_village` refuses:
+/// it already has a settlement, or it is ocean, lake, volcano or barren terrain.
+fn founding_refused_here(region: &ReportRegion) -> bool {
+    region.settlement.is_some()
+        || REFUSED_TERRAIN
+            .iter()
+            .any(|terrain| region.terrain.eq_ignore_ascii_case(terrain))
+}
+
+/// A Trident `CREATE VILLAGE` the 3-hex rule refuses, or may refuse (`ah-m24v`). Silent where the
+/// report already shows the region refused for itself: the order is refused there whatever is
+/// nearby. Always on (`codes::ALWAYS_ON`), so no option is read.
+fn check_village_site(hex: &Hex<'_>, ruleset: Option<&Ruleset>, findings: &mut Vec<Finding>) {
+    if !super::grammar::is_trident(ruleset) || founding_refused_here(hex.region) {
+        return;
+    }
+    let Some(message) = hex.village_site.warning() else {
+        return;
+    };
+    for ordered in &hex.units {
+        for placed in &ordered.intents {
+            if matches!(placed.intent, Intent::MonthLong("CREATE")) {
+                findings.push(ordered.finding(
+                    hex,
+                    codes::VILLAGE_NEAR_A_SETTLEMENT,
+                    message.clone(),
+                    Some(placed),
+                ));
+            }
+        }
+    }
+}
+
 /// What a founding `CREATE VILLAGE` takes (`newage trident rules/create_village`).
 const VILLAGE_FOUNDERS: i64 = 1000;
 const VILLAGE_WAGONS: i64 = 100;
@@ -11246,8 +11311,9 @@ const REFUSED_TERRAIN: [&str; 4] = ["ocean", "lake", "volcano", "barren"];
 ///
 /// A unit short of either founds nothing and keeps everything, as the rule's "must have" reads, and
 /// so does one in a region the rule refuses that the report shows: one that already has a
-/// settlement, or ocean, lake, volcano or barren terrain. The rule's third requirement, three hexes
-/// from any other settlement, is not checked: this settlement sees one hex. A
+/// settlement, or ocean, lake, volcano or barren terrain. So does one the known map shows within
+/// two hexes of another settlement, the rule's third requirement (`ah-m24v`); where the known map
+/// cannot rule one out, the founders are consumed and `check_village_site` warns. A
 /// holding a `GIVE` left uncertain cannot say which, so nothing is consumed and the line is
 /// admitted. Which people go when a unit holds more than one kind is not stated anywhere: they are
 /// taken in the order the report lists the unit's items, the first kind first.
@@ -11261,11 +11327,8 @@ fn create_village(
     let Some(ruleset) = ruleset else {
         return;
     };
-    let refused = hex.region.settlement.is_some()
-        || REFUSED_TERRAIN
-            .iter()
-            .any(|terrain| hex.region.terrain.eq_ignore_ascii_case(terrain));
-    if refused {
+    if founding_refused_here(hex.region) || matches!(hex.village_site, VillageSite::TooClose { .. })
+    {
         return;
     }
     let who = &actor.unit.unit_id;
