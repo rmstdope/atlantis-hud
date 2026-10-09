@@ -5175,8 +5175,8 @@ struct Ledger<'a> {
     /// What each unit was charged for a tag beyond what actually moved, because neither it nor
     /// any sharer could fund it: a `GIVE` the engine cuts with "Not enough.", a cast or sale the
     /// pool fell short of. The charge stays the whole ask, so the shortfall keeps its warning,
-    /// and this adds it back wherever the stock really left is wanted - [`SharerStock`] -
-    /// the way [`Ledger::overcharged`] does for a cut `BUY` (`ah-0mch`).
+    /// and [`SharerStock::at`] adds it back wherever the stock really left is wanted, and is its
+    /// only reader - the way [`Ledger::overcharged`] does for a cut `BUY` (`ah-0mch`).
     unfunded: BTreeMap<(String, String), i64>,
     /// Every `GIVE`, `TAKE` and discard of silver this walk settled, in settlement order: who it
     /// left, who it reached (`None` for a discard, or a target this walk cannot credit), and how
@@ -9673,8 +9673,9 @@ fn cast(
     // What another sharer lends, for a tag: the pool's reading less the caster's own.
     let lent_of = |tag: &str| -> i64 {
         // Negative where the caster shares and an earlier borrower drew on its own stock.
-        SharerStock::for_spender(ledger, hex, StatePhase::Cast, who, tag)
-            .map_or(0, |(stock, x)| stock.available_to(x) - stock.position(x).max(0))
+        SharerStock::for_spender(ledger, hex, StatePhase::Cast, who, tag).map_or(0, |(stock, x)| {
+            stock.available_to(x) - stock.position(x).max(0)
+        })
     };
     let lent_silver = lent_of(SILVER);
     let mut held = actor.unit.items.clone();
@@ -9804,10 +9805,7 @@ fn cast(
         };
         let (own, lenders) =
             match SharerStock::for_spender(ledger, hex, StatePhase::Cast, who, &material.tag) {
-                Some((stock, x)) => (
-                    stock.own_for(x),
-                    stock.lenders_within(x, hex, cast_balance),
-                ),
+                Some((stock, x)) => (stock.own_for(x), stock.lenders_within(x, hex, cast_balance)),
                 None => (
                     ledger
                         .state
@@ -11668,9 +11666,11 @@ fn market_tax_for(hex: &Hex<'_>, region: RegionWages, ruleset: Option<&Ruleset>)
 /// each item cost before the next is sized, since `DoBuy` really spends it (`ah-zus2`).
 ///
 /// Not [`sharing_purse`], which settles what the hex lends for the month *after* every order has
-/// been priced and is read by the SILVER column's shortfall arithmetic. Two questions, two
-/// answers, deliberately: this one decides how many goods arrive, that one decides who is warned
-/// (`ah-szye`).
+/// been priced and is read by the SILVER column's shortfall arithmetic. Two questions,
+/// deliberately: this one decides how many goods arrive, that one decides who is warned
+/// (`ah-szye`). Both answer them off the one reading of what each unit still has,
+/// [`SharerStock`] ([`MarketPurse::stock`]); the snapshot is the only rule this purse adds on top
+/// of it (`ah-lnz4`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct MarketPurse {
     /// What each sharing unit may lend the market: its market-open balance, less the tax the
@@ -12067,19 +12067,37 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
             continue;
         }
 
-        // Each lender and what it holds to lend then.
-        let mut lenders: Vec<(Lender, i64)> = Vec::new();
+        // Every unit and arriving sharer as a party to the one reading ([`SharerStock`]), each
+        // with who it is, so what the reading says it lent can be booked back on it.
+        let mut parties: Vec<StockParty> = Vec::new();
+        let mut who: Vec<Option<Lender>> = Vec::new();
         for (index, ordered) in hex.units.iter().enumerate() {
             if !judged(index) {
                 continue;
             }
+            let at = position(&purse, index, moment);
             if sharing.pools_silver(ordered) {
-                lenders.push((Lender::Unit(index), position(&purse, index, moment).max(0)));
-            } else if moment == LendingMoment::Movement {
+                parties.push(StockParty {
+                    position: at,
+                    lends: true,
+                });
+                who.push(Some(Lender::Unit(index)));
+                continue;
+            }
+            parties.push(StockParty {
+                position: at.min(0),
+                lends: false,
+            });
+            who.push(None);
+            if moment == LendingMoment::Movement {
                 // A sharer that walks away lends here only what was drawn on it before it left.
                 if let Some(&departing) = ledger.walking_silver.departing.get(&ordered.unit.unit_id)
                 {
-                    lenders.push((Lender::Unit(index), (departing - purse.lends[index]).max(0)));
+                    parties.push(StockParty {
+                        position: (departing - purse.lends[index]).max(0),
+                        lends: true,
+                    });
+                    who.push(Some(Lender::Unit(index)));
                 }
             }
         }
@@ -12095,25 +12113,27 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
                 .zip(arrivals)
                 .enumerate()
             {
-                let can = (now.lends.min(all_month.lends) - purse.arrivals_lend[index]).max(0);
-                lenders.push((Lender::Arrival(index), can));
+                parties.push(StockParty {
+                    position: (now.lends.min(all_month.lends) - purse.arrivals_lend[index]).max(0),
+                    lends: true,
+                });
+                who.push(Some(Lender::Arrival(index)));
             }
         }
 
-        if lenders.iter().map(|(_, can)| can).sum::<i64>() < need {
-            covered = false;
-            break;
-        }
         // In hex order and then the arrivals', rather than a proportional split: the engine
         // drains its sharers in whatever order it iterates them, so no split is truer than
         // another, and a whole number needs no rounding rule.
-        let mut owing = need;
-        for (lender, can) in lenders {
-            let lent = can.min(owing);
-            owing -= lent;
+        let (lent, short) = SharerStock::new(parties).drained();
+        if short > 0 {
+            covered = false;
+            break;
+        }
+        for (lender, lent) in who.into_iter().zip(lent) {
             match lender {
-                Lender::Unit(index) => purse.lends[index] += lent,
-                Lender::Arrival(index) => purse.arrivals_lend[index] += lent,
+                Some(Lender::Unit(index)) => purse.lends[index] += lent,
+                Some(Lender::Arrival(index)) => purse.arrivals_lend[index] += lent,
+                None => {}
             }
         }
         for (borrowed, need) in purse.borrows.iter_mut().zip(needs) {
@@ -35460,15 +35480,32 @@ BUILD
         assert_eq!(
             stock,
             SharerStock::new(vec![
-                StockParty { position: -70, lends: false },
-                StockParty { position: 340, lends: true },
-                StockParty { position: 200, lends: true },
+                StockParty {
+                    position: -70,
+                    lends: false
+                },
+                StockParty {
+                    position: 340,
+                    lends: true
+                },
+                StockParty {
+                    position: 200,
+                    lends: true
+                },
             ])
         );
         for index in 0..3 {
-            assert_eq!(purse.adds_for(index), Some(stock.others_net(index)), "unit {index}");
+            assert_eq!(
+                purse.adds_for(index),
+                Some(stock.others_net(index)),
+                "unit {index}"
+            );
         }
-        assert_eq!(purse.adds_for(2), Some(270), "the borrower's $70 came out of the purse");
+        assert_eq!(
+            purse.adds_for(2),
+            Some(270),
+            "the borrower's $70 came out of the purse"
+        );
     }
 
     #[test]
@@ -58826,7 +58863,11 @@ BUILD
                     assert_eq!(at(StatePhase::Claim).available_to(3), 15, "before the gift");
                     assert_eq!(at(StatePhase::Give).lenders_to(3), vec![(2, 5)]);
                     assert_eq!(at(StatePhase::Market).available_to(3), 5, "after the gift");
-                    assert_eq!(at(StatePhase::Market).available_to(1), 15, "10 received, 5 lent");
+                    assert_eq!(
+                        at(StatePhase::Market).available_to(1),
+                        15,
+                        "10 received, 5 lent"
+                    );
                 },
             );
         }
