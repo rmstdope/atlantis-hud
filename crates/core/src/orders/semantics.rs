@@ -6147,7 +6147,7 @@ fn month_long_walk(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<usize> {
     let Some(ruleset) = ruleset else {
         return (0..hex.units.len()).collect();
     };
-    let destroyed_structure_ids = destroyed_structure_ids(hex);
+    let after_destroy = AfterDestroy::read(hex, Some(ruleset));
     let founds_a_structure = |ordered: &Ordered<'_>| {
         ordered.intents.iter().any(|placed| match &placed.intent {
             Intent::Build {
@@ -6156,7 +6156,7 @@ fn month_long_walk(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<usize> {
             } => {
                 ruleset.build_recipe(kind).is_some()
                     && !(ruleset.is_new_age()
-                        && stands_in_unfinished(hex, ordered, kind, &destroyed_structure_ids))
+                        && stands_in_unfinished(hex, ordered, kind, &after_destroy))
             }
             _ => false,
         })
@@ -9080,7 +9080,7 @@ fn founding_site_refusal(
     hex: &Hex<'_>,
     ruleset: &Ruleset,
     kind: &str,
-    destroyed_structure_ids: &BTreeSet<String>,
+    after_destroy: &AfterDestroy,
 ) -> Option<super::effects::BuildPlacementRefusalReason> {
     let building = ruleset.buildings.get(&kind.to_ascii_uppercase())?;
     if building.requires_settlement && hex.region.settlement.is_none() {
@@ -9088,7 +9088,7 @@ fn founding_site_refusal(
     }
     if building.unique_per_region
         && hex.region.structures.iter().any(|structure| {
-            !destroyed_structure_ids.contains(&structure.structure_id)
+            !after_destroy.removes(&structure.structure_id)
                 && super::transport::structure_kind_is(structure, kind)
         })
     {
@@ -9097,32 +9097,88 @@ fn founding_site_refusal(
     None
 }
 
-/// Existing structures that a valid, executable `DESTROY` order removes before BUILD.
+/// What this turn's valid, executable `DESTROY` orders leave of the hex's structures before BUILD.
 ///
 /// `DESTROY` is not an [`Intent`] because it is a free order, but it still changes the set of
 /// structures that `BUILD` sees. The report's first unit in a structure is its owner, and valid
-/// `PROMOTE` orders are projected before `DESTROY`; anything the report cannot establish keeps the
-/// structure present so a replacement is not charged optimistically.
-fn destroyed_structure_ids(hex: &Hex<'_>) -> BTreeSet<String> {
-    if hex.region.terrain.eq_ignore_ascii_case("ocean") {
-        return BTreeSet::new();
+/// `PROMOTE` orders are projected before `DESTROY`.
+///
+/// New Age destroys `PER_SKILL` (`../atlantis-newage` `neworigins/rules.cpp` `DESTROY_BEHAVIOR`,
+/// `MIN_DESTROY_POINTS` 200, `MAX_DESTROY_PERCENT` 34): `runorders.cpp` `Do1Destroy` removes
+/// `min(laid, max(200, cost * 34 / 100), max(1, BUIL) * men)` points, refuses outright when that
+/// is none ("Can't destroy ... more"), and when points remain keeps the structure, raising its
+/// `incomplete` by what it removed (`ah-xryl`). Every other ruleset reads `INSTANT`, a removal.
+/// A New Age destroy whose cost or destroyer's skills the HUD cannot read is a removal too.
+#[derive(Debug, Default)]
+struct AfterDestroy {
+    /// Structures gone before BUILD.
+    removed: BTreeSet<String>,
+    /// Structures still standing with this many points destroyed, which BUILD has to lay again.
+    damaged: BTreeMap<String, i64>,
+}
+
+impl AfterDestroy {
+    fn read(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Self {
+        let mut after = Self::default();
+        if hex.region.terrain.eq_ignore_ascii_case("ocean") {
+            return after;
+        }
+        for structure in &hex.region.structures {
+            let structure_id = &structure.structure_id;
+            let Some(owner) = structure_owner_after_promotes(hex, structure_id) else {
+                continue;
+            };
+            let Some(destroyer) = hex.units.iter().find(|ordered| {
+                ordered.destroys_structure
+                    && ordered.unit.unit_id == owner
+                    && structure_after_orders(ordered) == Some(structure_id.as_str())
+            }) else {
+                continue;
+            };
+            match per_skill_destroy(structure, destroyer, ruleset) {
+                Some(0) => {}
+                Some(points) => {
+                    after.damaged.insert(structure_id.clone(), points);
+                }
+                None => {
+                    after.removed.insert(structure_id.clone());
+                }
+            }
+        }
+        after
     }
 
-    let mut destroyed = BTreeSet::new();
-    for structure in &hex.region.structures {
-        let structure_id = &structure.structure_id;
-        let Some(owner) = structure_owner_after_promotes(hex, structure_id) else {
-            continue;
-        };
-        if hex.units.iter().any(|ordered| {
-            ordered.destroys_structure
-                && ordered.unit.unit_id == owner
-                && structure_after_orders(ordered) == Some(structure_id.as_str())
-        }) {
-            destroyed.insert(structure_id.clone());
+    fn removes(&self, structure_id: &str) -> bool {
+        self.removed.contains(structure_id)
+    }
+
+    /// What `structure` still needs once DESTROY has run: the report's `needs` plus the points a
+    /// partial destroy took, so a finished structure it damaged is unfinished again.
+    fn needs(&self, structure: &Structure) -> Option<i64> {
+        match self.damaged.get(&structure.structure_id) {
+            Some(points) => Some(structure.needs.unwrap_or(0) + points),
+            None => structure.needs,
         }
     }
-    destroyed
+}
+
+/// The points a New Age `Do1Destroy` takes from `structure` and leaves it standing, `Some(0)`
+/// for a refused one, or `None` for a removal (and for anything the HUD cannot read).
+fn per_skill_destroy(
+    structure: &Structure,
+    destroyer: &Ordered<'_>,
+    ruleset: Option<&Ruleset>,
+) -> Option<i64> {
+    let ruleset = ruleset.filter(|rules| rules.is_new_age())?;
+    let cost = ruleset
+        .buildings
+        .get(&structure.kind.to_ascii_uppercase())?
+        .cost?;
+    let level = i64::from(destroyer.skill_level("BUIL")?);
+    let laid = (cost - structure.needs.unwrap_or(0)).max(0);
+    let destroyable = laid.min((cost * 34 / 100).max(200));
+    let destroys = destroyable.min(level.max(1) * destroyer.early_men().max(0));
+    (destroys < laid || destroys == 0).then_some(destroys)
 }
 
 /// The owner that can execute `DESTROY` after this turn's `PROMOTE` orders, when ownership is
@@ -9175,24 +9231,26 @@ fn unit_is_in_structure(hex: &Hex<'_>, unit_id: &str, structure_id: &str) -> boo
 }
 
 /// Whether `ordered` stands, once its ENTER and LEAVE have run, in an unfinished structure of
-/// `kind` that [`destroyed_structure_ids`] does not count as destroyed first - the New Age
+/// `kind` that [`AfterDestroy`] does not remove first - the New Age
 /// engine's continuation branch in `AddNewBuildings`. One reading for both callers, the
 /// month-long walk and BUILD's pricing, so the two cannot disagree about the same unit. `kind` is
-/// the order's spelling, `_` for a space. That set reads every owner's DESTROY as a full one,
-/// though a weak destroyer can leave the structure standing, unit and all.
+/// the order's spelling, `_` for a space. A structure a partial DESTROY damaged is unfinished
+/// here even when the report shows it finished.
 fn stands_in_unfinished(
     hex: &Hex<'_>,
     ordered: &Ordered<'_>,
     kind: &str,
-    destroyed_structure_ids: &BTreeSet<String>,
+    after_destroy: &AfterDestroy,
 ) -> bool {
     let Some(structure_id) = structure_after_orders(ordered) else {
         return false;
     };
-    !destroyed_structure_ids.contains(structure_id)
+    !after_destroy.removes(structure_id)
         && hex.region.structures.iter().any(|structure| {
             structure.structure_id == structure_id
-                && structure.needs.is_some_and(|needs| needs > 0)
+                && after_destroy
+                    .needs(structure)
+                    .is_some_and(|needs| needs > 0)
                 && super::transport::structure_kind_is(structure, &kind.replace('_', " "))
         })
 }
@@ -9232,7 +9290,7 @@ fn build(
 ) {
     let hex = pool.hex;
     let who = &actor.unit.unit_id;
-    let destroyed_structure_ids = destroyed_structure_ids(hex);
+    let after_destroy = AfterDestroy::read(hex, ruleset);
 
     // 1. No ruleset, or a ruleset that knows no buildings.
     let Some(ruleset) = ruleset else { return };
@@ -9307,8 +9365,7 @@ fn build(
     // `break`, which also skips founding for every later unit in the same structure; that reads as
     // an engine bug rather than a rule, and is deliberately not mirrored here.
     let founding_kind = founding_kind.filter(|kind| {
-        !(ruleset.is_new_age()
-            && stands_in_unfinished(hex, task_owner, kind, &destroyed_structure_ids))
+        !(ruleset.is_new_age() && stands_in_unfinished(hex, task_owner, kind, &after_destroy))
     });
 
     // 4/5. The structure being worked on, and its recipe. A founding build spends against its
@@ -9330,7 +9387,7 @@ fn build(
             // An id not among the region's structures: nothing can be said.
             mark_uncounted_and_return!();
         };
-        let Some(needs) = structure.needs else {
+        let Some(needs) = after_destroy.needs(structure) else {
             // Finished: no work is possible (`already-built` is the warning for it).
             return;
         };
@@ -9377,7 +9434,7 @@ fn build(
     };
     if let Some(reason) = founding_kind
         .as_deref()
-        .and_then(|kind| founding_site_refusal(hex, ruleset, kind, &destroyed_structure_ids))
+        .and_then(|kind| founding_site_refusal(hex, ruleset, kind, &after_destroy))
     {
         let material = if resolved.len() == 1 {
             Some(resolved[0].name.clone())
@@ -27582,6 +27639,83 @@ BUILD Farm COMPLETE
                     assert_eq!(spend.amount, 10);
                 },
             );
+        }
+
+        /// A weak destroyer leaves the structure standing (`ah-xryl`). Trident destroys
+        /// `PER_SKILL` (`../atlantis-newage` `neworigins/rules.cpp` `DESTROY_BEHAVIOR`), so
+        /// `runorders.cpp` `Do1Destroy` removes at most `max(1, BUIL) * men` points, and when
+        /// points remain it raises `incomplete` by what it removed and keeps the unit inside. A
+        /// following `BUILD Farm COMPLETE` then continues that Farm (`AddNewBuildings`).
+        ///
+        /// Two men without BUIL remove 2 of the 7 laid points, so the Farm needs 3 + 2 = 5, and
+        /// FARM 3 times two men lays all 5 of them.
+        #[test]
+        fn a_trident_partial_destroy_leaves_the_structure_to_continue() {
+            let hex_region = ReportRegion {
+                structures: vec![unfinished_farm("4", 3)],
+                ..region(vec![in_structure(
+                    with_item(
+                        with_skill(with_men(unit("900"), 2), "FARM", 3),
+                        40,
+                        "wood",
+                        "WOOD",
+                    ),
+                    "4",
+                )])
+            };
+            with_trident_ledger(
+                hex_region,
+                "unit 900\nDESTROY\nBUILD Farm COMPLETE\n",
+                |ledger| {
+                    let spend = &ledger.built.get("900").expect("the unit builds")[0];
+                    assert!(!spend.founding, "the damaged Farm is continued");
+                    assert_eq!(spend.amount, 5, "its 3 needs plus the 2 points destroyed");
+                },
+            );
+        }
+
+        /// `Do1Destroy` refuses a structure with no points laid ("Can't destroy ... more"), so
+        /// the Farm stands untouched and `BUILD Farm COMPLETE` continues it (`ah-xryl`).
+        #[test]
+        fn a_trident_destroy_of_a_structure_with_no_points_is_refused() {
+            let hex_region = ReportRegion {
+                structures: vec![unfinished_farm("4", 10)],
+                ..region(vec![trident_farmer_in_farm("900")])
+            };
+            with_trident_ledger(
+                hex_region,
+                "unit 900\nDESTROY\nBUILD Farm COMPLETE\n",
+                |ledger| {
+                    let spend = &ledger.built.get("900").expect("the unit builds")[0];
+                    assert!(
+                        !spend.founding,
+                        "the refused DESTROY leaves the Farm to continue"
+                    );
+                    assert_eq!(spend.amount, 10);
+                },
+            );
+        }
+
+        /// The month-long walk reads the same: a partly destroyed Farm is continued where it
+        /// stands, so its builder is not moved behind the hex's other units as a founder would be.
+        #[test]
+        fn a_trident_partial_destroyer_is_walked_where_it_stands() {
+            let hex_region = ReportRegion {
+                structures: vec![unfinished_farm("4", 3)],
+                ..region(vec![
+                    in_structure(with_men(unit("900"), 2), "4"),
+                    with_men(unit("901"), 1),
+                ])
+            };
+            let ordered = OrderedUnits::read("unit 900\nDESTROY\nBUILD Farm COMPLETE\nunit 901\n");
+            let hex = Hex::read(&hex_region, &ordered, &[]);
+            let rules = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+                .expect("the committed Trident ruleset should be usable");
+            let walk: Vec<&str> = month_long_walk(&hex, Some(&rules))
+                .into_iter()
+                .map(|index| hex.units[index].unit.unit_id.as_str())
+                .collect();
+            assert_eq!(walk, ["900", "901"]);
         }
 
         /// The New Origins engine founds a new structure for every `BUILD [object type]`
