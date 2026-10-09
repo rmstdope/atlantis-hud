@@ -8000,18 +8000,19 @@ fn apply(
         // Wages and takings from entertaining are paid in the last phase of the turn, after study
         // has been paid for, so they can fund nothing this month.
         Intent::Work | Intent::Entertain => {}
-        // `newage trident rules/create_village`: the founding unit "must have at least 1000 people
-        // (men or leaders) and 100 wagons; all of these are consumed". The navigator's own statement
-        // of the order, in `ah-mw1r`'s description (2026-10-09), reads it as consuming "1000 men or
-        // leaders and 100 wagons", after PRODUCE and before ENTERTAIN, which
-        // `rules/sequenceofevents` puts before maintenance - so the founders pay no upkeep
-        // (`ah-mw1r.3`). Trident only, as `grammar.rs` offers it.
-        // `newage trident rules/quest`: "Without DISCOUNT, tokens not covered by bounty owed stay
-        // with the unit" - and what the mayor owes is not in the report, so only `DISCOUNT`,
-        // which "also" accepts the rest, is certain to take every token named. Arcanum's QUEST
-        // has no DISCOUNT (`newage arcanum rules/quest`), so there it is always the uncertain kind
-        // (`ah-mw1r.4`).
+        // `newage trident rules/quest`: the unit "must be in a region that has an active Town
+        // Hall", which the report shows (`data/Town Hall` is a building, one per region), so
+        // without one nothing is turned in. With one, "Without DISCOUNT, tokens not covered by
+        // bounty owed stay with the unit" - and what the mayor owes is not in the report - so
+        // only `DISCOUNT`, which "also" accepts the rest, is certain to take every token named.
+        // Arcanum's QUEST has no DISCOUNT (`newage arcanum rules/quest`), so there it is always
+        // the uncertain kind. Either way the reward is "a random item", so the line is admitted
+        // (`ah-mw1r.4`). Whether the mayor is hostile, and whether any item fits the budget, are
+        // not in the report either; the navigator settled on `ah-mw1r` that DISCOUNT's tokens go.
         Intent::Quest { tokens, discount } => {
+            if !has_a_town_hall(hex.region) {
+                return;
+            }
             if *discount && super::grammar::is_trident(ruleset) {
                 hand_in(
                     ledger,
@@ -8024,9 +8025,8 @@ fn apply(
                     ItemChangeCause::QuestSpent,
                     ruleset,
                 );
-            } else {
-                mark_uncounted(ledger, who, placed.line);
             }
+            mark_uncounted(ledger, who, placed.line);
         }
         // `newage trident rules/explore`: a resource map "is consumed when the order executes,
         // even if the region has nothing to chart"; a treasure map only "when a hideout is
@@ -8050,6 +8050,12 @@ fn apply(
                 mark_uncounted(ledger, who, placed.line);
             }
         }
+        // `newage trident rules/create_village`: the founding unit "must have at least 1000 people
+        // (men or leaders) and 100 wagons; all of these are consumed". The navigator's own statement
+        // of the order, in `ah-mw1r`'s description (2026-10-09), reads it as consuming "1000 men or
+        // leaders and 100 wagons", after PRODUCE and before ENTERTAIN, which
+        // `rules/sequenceofevents` puts before maintenance - so the founders pay no upkeep
+        // (`ah-mw1r.3`). Trident only, as `grammar.rs` offers it.
         Intent::MonthLong("CREATE") if super::grammar::is_trident(ruleset) => {
             create_village(ledger, hex, actor, placed, ruleset);
         }
@@ -10830,8 +10836,16 @@ const BOUNTY_TOKEN: &str = "BNTY";
 const RESOURCE_MAP: &str = "RMAP";
 const TREASURE_MAP: &str = "TMAP";
 
-/// Whether `EXPLORE TMAP` cannot be used here: `newage trident rules/explore` says "This order can
-/// only be used on the surface".
+/// Whether the report shows a finished Town Hall here, where `newage trident rules/quest` turns
+/// tokens in.
+fn has_a_town_hall(region: &ReportRegion) -> bool {
+    region.structures.iter().any(|structure| {
+        structure.base_kind.eq_ignore_ascii_case("Town Hall") && structure.needs.is_none()
+    })
+}
+
+/// Whether `EXPLORE TMAP` cannot be used here: `rules/explore`, in both newage trident and newage
+/// arcanum, says "This order can only be used on the surface".
 fn explore_refused(region: &ReportRegion) -> bool {
     region.coordinate.z != crate::report::level::SURFACE
 }

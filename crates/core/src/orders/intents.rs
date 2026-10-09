@@ -898,19 +898,22 @@ pub fn read_order(
         "CREATE" => Some(Intent::MonthLong("CREATE")),
         // The map word is kept as written; a missing one still spends the month, as a bare
         // `PRODUCE` does above.
-        "EXPLORE" => Some(match arguments {
-            [map] => Intent::Explore {
-                map: map.text.clone(),
+        "EXPLORE" => Some(
+            match super::grammar::consumed_arguments(command, arguments, ruleset)
+                .unwrap_or_default()
+            {
+                [map] => Intent::Explore {
+                    map: map.text.clone(),
+                },
+                _ => Intent::MonthLong("EXPLORE"),
             },
-            _ => Intent::MonthLong("EXPLORE"),
-        }),
-        // `newage trident rules/quest`: "The words after QUEST may come in any order", and "If
-        // omitted, exactly 1 token is spent". Read from the raw arguments, since the grammar's
-        // forms end before a trailing `DISCOUNT`.
+        ),
+        // `newage trident rules/quest`: "If omitted, exactly 1 token is spent". Read through the
+        // grammar, whose Trident forms carry `DISCOUNT` (`ah-mw1r.4`).
         "QUEST" => {
             let mut tokens = 1;
             let mut discount = false;
-            for argument in arguments {
+            for argument in super::grammar::consumed_arguments(command, arguments, ruleset)? {
                 if argument.kind == TokenKind::Number {
                     tokens = argument.text.parse().ok()?;
                 } else if argument.text.eq_ignore_ascii_case("DISCOUNT") {
@@ -1288,6 +1291,44 @@ mod tests {
                 .map(|placed| placed.keyword)
                 .collect::<Vec<_>>(),
             ["EXPLORE", "QUEST", "CREATE"]
+        );
+    }
+
+    /// QUEST and EXPLORE are read through the grammar's consumed prefix: `newage trident
+    /// rules/quest` has a `DISCOUNT` form and `newage arcanum rules/quest` has none, and trailing
+    /// text after the map word is the engine-ignored kind (`ah-mw1r.4`).
+    #[test]
+    fn quest_and_explore_read_what_the_grammar_consumes() {
+        let source = "unit 5\nQUEST 2 RESOURCE DISCOUNT\nEXPLORE RMAP note\n";
+        let read = |ruleset: &str| -> Vec<Intent> {
+            only_unit_with_ruleset(source, ruleset)
+                .intents
+                .into_iter()
+                .map(|placed| placed.intent)
+                .collect()
+        };
+        let explore = Intent::Explore {
+            map: "RMAP".to_string(),
+        };
+        assert_eq!(
+            read(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON),
+            [
+                Intent::Quest {
+                    tokens: 2,
+                    discount: true
+                },
+                explore.clone()
+            ]
+        );
+        assert_eq!(
+            read(atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON),
+            [
+                Intent::Quest {
+                    tokens: 2,
+                    discount: false
+                },
+                explore
+            ]
         );
     }
 
