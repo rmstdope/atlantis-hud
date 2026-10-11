@@ -16972,7 +16972,10 @@ fn uncounted_cause(unit: &ReportUnit, facts: &UnitFacts<'_>, ruleset: Option<&Ru
 /// this unit aboard by the same definition `check_sailing` uses - the report's units in the fleet,
 /// plus those that ENTER it this month, minus those that LEAVE.
 ///
-/// A SAIL that will certainly fail still counts. `check_sailing` may separately warn that the
+/// One SAIL that will certainly fail does not count: a first step with land at both ends, which
+/// the game refuses before the fleet goes anywhere (`first_sail_step_refused`, `ah-g0fk`), so
+/// everybody aboard stays and is judged here. Any other SAIL that will certainly fail still
+/// counts. `check_sailing` may separately warn that the
 /// fleet is overloaded or short of crew, in which case the boat stays put and the produce check
 /// would have been right - but the player is already being told the sail will fail, and a second
 /// finding true only *because* of the first is two warnings for one mistake, and the wrong one to

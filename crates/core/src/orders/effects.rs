@@ -1541,6 +1541,12 @@ fn decide_movement(
     // standing in those fleets.
     let mut decided: Vec<Decided> = Vec::new();
     let mut sailing: BTreeMap<(String, String), SailingFleet> = BTreeMap::new();
+    // Where a refused SAIL stops a fleet is judged on the report's own map, the one the Problems
+    // panel's sail warnings walk (`check_sail_route`): judged on the remembered map, a step this
+    // report cannot show would stop a fleet where no warning says it will (`ah-g0fk`). Built on
+    // the first fleet that sails, as `check_turn` builds its own, and never for a turn with none.
+    let report_map: std::cell::OnceCell<crate::movement::graph::MapKnowledge> =
+        std::cell::OnceCell::new();
 
     for (index, entry) in units.into_iter().enumerate() {
         let mut arrival = None;
@@ -1595,9 +1601,15 @@ fn decide_movement(
                 // the rest of a longer journey is later months' business.
                 Some(path) => {
                     mode = path.mode;
-                    let stop = sailed_hull
-                        .filter(|_| path.passage.is_none())
-                        .and_then(|(_, hull)| sail_stop(map, ruleset, hull, path.from, steps));
+                    let stop =
+                        sailed_hull
+                            .filter(|_| path.passage.is_none())
+                            .and_then(|(_, hull)| {
+                                let report_map = report_map.get_or_init(|| {
+                                    crate::movement::graph::MapKnowledge::from_report(report)
+                                });
+                                sail_stop(report_map, ruleset, hull, path.from, steps)
+                            });
                     match month_end(&path, stop) {
                         Some(month_end) if month_end.id() != entry.unit.region_id => {
                             arrival = Some(month_end.id());
@@ -1704,9 +1716,9 @@ fn decide_movement(
 ///
 /// The same [`refused_sail_steps`](crate::movement::sailing::refused_sail_steps) walk the Problems
 /// panel's `sail-between-land-hexes` and `sail-through-neck-of-land` warnings read, with the hull
-/// read the way `check_sail_route` reads it - so the preview stops a fleet exactly where those
-/// warnings say it "will not move", and never on a step the map cannot show, which that walk
-/// declines to judge. The trace's own `blocked_from` is not used: it guesses the terrain of
+/// read the way `check_sail_route` reads it, over the same report-only map the caller passes -
+/// so the preview stops a fleet exactly where those warnings say it "will not move", and never on
+/// a step the map cannot show, which that walk declines to judge. The trace's own `blocked_from` is not used: it guesses the terrain of
 /// country nobody has described, and that is doubt, not a refusal.
 fn sail_stop(
     map: &crate::movement::graph::MapKnowledge,
@@ -8726,6 +8738,43 @@ mod tests {
             RULESET,
             &report,
             "[]",
+            "unit 900\nSAIL SE SE\n",
+        )
+        .expect("the ruleset loads");
+
+        let departing = row(&response, "1:1,1", "900").expect("900 departs");
+        assert_eq!(departing.departing_to.as_deref(), Some("1:3,3"));
+    }
+
+    /// `ah-g0fk`: the preview stops a fleet on the map the Problems panel judges, the report's
+    /// own. This report names the plain (2,2) only as an exit, so Problems can judge no step out of
+    /// it and warns of nothing; a remembered turn that describes (2,2), with its exit to the
+    /// forest (3,3), must not make the preview stop the fleet where no warning says it will.
+    #[test]
+    fn a_step_only_memory_describes_does_not_stop_the_fleet() {
+        let report = fleet_report_with_a_passenger(WAVECREST)
+            .replace(
+                "\nocean (2,2) in Sea.\n\nExits:\n  Northwest : ocean (1,1) in Sea.\n",
+                "",
+            )
+            .replace(
+                "Southeast : ocean (2,2) in Sea.",
+                "Southeast : plain (2,2) in Shire.",
+            );
+        let earlier = crate::report::parse_report_full(
+            "Foo (1) Report\n\nplain (2,2) in Shire, 10 peasants (orcs), $5.\n\nExits:\n  \
+             Northwest : ocean (1,1) in Sea.\n  Southeast : forest (3,3) in Shire.\n\n",
+        );
+        let remembered = serde_json::to_string(&[crate::movement::graph::RememberedRegion {
+            region: earlier.regions[0].clone(),
+            last_seen_turn: 1,
+        }])
+        .expect("memory serialises");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            &remembered,
             "unit 900\nSAIL SE SE\n",
         )
         .expect("the ruleset loads");
