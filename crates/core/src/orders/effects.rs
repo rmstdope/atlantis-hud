@@ -9460,6 +9460,8 @@ mod tests {
         /// Helpers' work counts with the builder's, the way a building's does: 30 of 33, and the
         /// helper's 3 finish it. The ship leaves its owner, said by the helper's order
         /// (`ah-uxmh`; `rules/build`, "assist the target unit in its current building task").
+        /// Who pays what, and whose order finishes it, follow the preview's existing building
+        /// attribution (orders in report order), not the engine, which runs helpers first.
         #[test]
         fn a_helper_that_lays_the_last_work_finishes_the_owners_ship() {
             let response = preview_over(
@@ -9492,6 +9494,67 @@ mod tests {
             );
         }
 
+        /// The first builder alone finishes the ship, so the second one's work has nothing left to
+        /// do: a known zero, as for a finished building, never "cannot tell" - and the owner's row
+        /// stays clean in the month its ship is finished (`ah-uxmh`).
+        #[test]
+        fn a_build_after_the_ship_is_finished_is_a_known_zero() {
+            let helper =
+                "* Helpers (901), Foo (1), behind, 5 humans [HUMN], 20 wood [WOOD]. Weight: \
+                          600. Capacity: 0/0/75/0. Skills: shipbuilding [SHIP] 3 (180).";
+            for orders in [
+                "unit 900\nBUILD\nunit 901\nBUILD HELP 900\n",
+                "unit 901\nBUILD HELP 900\nunit 900\nBUILD\n",
+            ] {
+                let report = report_with_a_shipbuilder(" (needs 12)", helper);
+                let response = preview_over(&report, orders);
+                let owner = ship_row(&response, "900");
+
+                assert_eq!(holds(owner, "GALL"), None, "{orders}");
+                assert!(
+                    owner.uncounted.is_empty(),
+                    "{orders}: {:?}",
+                    owner.uncounted
+                );
+                if let Some(helper) = response
+                    .regions
+                    .iter()
+                    .flat_map(|region| region.units.iter())
+                    .find(|unit| unit.unit.unit_id == "901")
+                {
+                    assert!(
+                        helper.uncounted.is_empty(),
+                        "{orders}: {:?}",
+                        helper.uncounted
+                    );
+                }
+                assert_eq!(
+                    owner
+                        .item_changes
+                        .iter()
+                        .filter(|change| change.cause == ItemChangeCause::ShipFinished)
+                        .count(),
+                    1,
+                    "{orders}: {:?}",
+                    owner.item_changes
+                );
+            }
+        }
+
+        /// Men taken from a unit the report does not show leave the builder's skills unknowable,
+        /// so how much work it does cannot be told - never "none" (`ah-uxmh`).
+        #[test]
+        fn a_builder_whose_skills_cannot_be_told_cannot_be_counted() {
+            let response = preview_over(
+                &report_with_a_shipbuilder(" (needs 25)", ""),
+                "unit 900\nTAKE FROM 999 5 HUMN\nBUILD\n",
+            );
+            let unit = ship_row(&response, "900");
+
+            assert_eq!(holds(unit, "GALL"), Some(1));
+            assert!(!unit.uncounted.is_empty(), "{:?}", unit.uncounted);
+        }
+
         /// The forecast cannot tell when the report does not say what is left: the mark stays,
         /// which is today's behaviour (`ah-uxmh`).
         #[test]
@@ -9513,16 +9576,17 @@ mod tests {
                 .replace("shipbuilding [SHIP] 3 (250)", "shipbuilding [SHIP] 2 (90)");
             let response = preview_over(&report, "unit 900\nBUILD\n");
 
-            if let Some(unit) = response
-                .regions
-                .iter()
-                .flat_map(|region| region.units.iter())
-                .find(|unit| unit.unit.unit_id == "900")
-            {
-                assert_eq!(holds(unit, "GALL"), Some(1));
-                assert_eq!(holds(unit, "WOOD"), Some(120));
-                assert!(unit.uncounted.is_empty(), "{:?}", unit.uncounted);
-            }
+            // A BUILD that does nothing changes nothing, so the row is left out of the preview
+            // altogether - which is itself the claim: no wood spent, the ship held, no mark.
+            assert!(
+                !response
+                    .regions
+                    .iter()
+                    .flat_map(|region| region.units.iter())
+                    .any(|unit| unit.unit.unit_id == "900"),
+                "{:?}",
+                response.regions
+            );
         }
 
         /// `data/shipbuilding` 5: an Airship takes "60 floater hides [FLOA] and 60 wood [WOOD]",

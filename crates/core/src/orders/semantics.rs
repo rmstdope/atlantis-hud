@@ -10215,34 +10215,60 @@ struct ShipTask {
     level: i64,
 }
 
-/// The ship `owner`'s bare `BUILD` works on, when everything about it can be told: the first
-/// unfinished ship in the report's order (the engine's `ProcessBuildOrder` takes the first ship
-/// item it finds), still held when manufacturing runs, with the report's `(needs N)` and a
-/// one-material recipe in the catalogue. `None` when any of that is missing - a ship given away
-/// or discarded this month, a report that does not say what is left, a ship the catalogue states
-/// no recipe for, or an Airship's two materials (`data/shipbuilding` 5), whose split the rules do
-/// not state.
-fn ship_task(ledger: &Ledger<'_>, owner: &Ordered<'_>, ruleset: &Ruleset) -> Option<ShipTask> {
-    let item = owner
+/// What a bare `BUILD` can say about the unfinished ship it works on (`ah-uxmh`).
+enum ShipLookup {
+    /// Everything about it can be told.
+    Known(ShipTask),
+    /// Earlier builds this month already laid all it needs: nothing is left to do, a known zero
+    /// exactly as a finished building is.
+    Finished,
+    /// Something about it cannot be told, so the order cannot be counted.
+    Unknown,
+}
+
+/// The ship `owner`'s bare `BUILD` works on: the first unfinished ship in the report's order (the
+/// engine's `ProcessBuildOrder` takes the first ship item it finds), with the report's `(needs
+/// N)`, still held when manufacturing runs, and with a one-material recipe in the catalogue.
+/// [`ShipLookup::Unknown`] when any of that is missing - a report that does not say what is left,
+/// a ship given away or discarded this month, a ship the catalogue states no recipe for, or an
+/// Airship's two materials (`data/shipbuilding` 5), whose split the rules do not state.
+fn ship_task(ledger: &Ledger<'_>, owner: &Ordered<'_>, ruleset: &Ruleset) -> ShipLookup {
+    let Some(item) = owner
         .unit
         .items
         .iter()
-        .find(|item| is_unfinished_ship(item, None))?;
+        .find(|item| is_unfinished_ship(item, None))
+    else {
+        return ShipLookup::Unknown;
+    };
+    let Some(needs) = item.needs else {
+        return ShipLookup::Unknown;
+    };
     let tag = item.tag.to_ascii_uppercase();
+    let site = BuildSite::Ship {
+        owner: owner.unit.unit_id.clone(),
+        tag: tag.clone(),
+    };
+    // Checked before the holding, since finishing it is what took it out of the owner's hands.
+    if ledger.build_laid.get(&site).copied().unwrap_or(0) >= needs {
+        return ShipLookup::Finished;
+    }
     if ledger
         .state
         .balance_at(StatePhase::Manufacturing, &owner.unit.unit_id, &tag)
         <= 0
     {
-        return None;
+        return ShipLookup::Unknown;
     }
-    let build = ruleset.ship_build(&tag)?;
-    let [input] = build.inputs.as_slice() else {
-        return None;
+    let Some(build) = ruleset.ship_build(&tag) else {
+        return ShipLookup::Unknown;
     };
-    Some(ShipTask {
+    let [input] = build.inputs.as_slice() else {
+        return ShipLookup::Unknown;
+    };
+    ShipLookup::Known(ShipTask {
         name: item.name.clone(),
-        needs: item.needs?,
+        needs,
         material: input.tag.clone(),
         skill: build.skill.clone(),
         level: build.level,
@@ -10379,19 +10405,24 @@ fn build(
             // A fleet that sails discards the ship before BUILD runs (`rules/economy_ships`).
             mark_uncounted_and_return!();
         }
-        let Some(ship) = ship_task(ledger, task_owner, ruleset) else {
+        let ship = match ship_task(ledger, task_owner, ruleset) {
+            ShipLookup::Known(ship) => ship,
+            ShipLookup::Finished => return,
+            ShipLookup::Unknown => mark_uncounted_and_return!(),
+        };
+        // Skills this month's gifts leave unknowable cannot say how much work is done - nor,
+        // for any later builder, what is left.
+        let Some(skills) = actor.after_the_market().skills else {
+            ledger.build_doubted.insert(BuildSite::Ship {
+                owner: task_owner.unit.unit_id.clone(),
+                tag: ship.tag.clone(),
+            });
             mark_uncounted_and_return!();
         };
         // `data/shipbuilding`: "A unit with this skill [at this level] may BUILD" it, and the
         // engine's `ShipConstruction` refuses a unit below that level - a known zero, and the
         // ship stays.
-        if i64::from(
-            actor
-                .after_the_market()
-                .skills
-                .map_or(0, |skills| level_in(skills, &ship.skill)),
-        ) < ship.level
-        {
+        if i64::from(level_in(skills, &ship.skill)) < ship.level {
             return;
         }
         Some(ship)
