@@ -622,6 +622,10 @@ pub enum ItemChangeCause {
     /// all eat, and faction food comes out of whichever unit held it. No line: upkeep belongs to
     /// no order.
     EatenForUpkeep,
+    /// An unfinished ship this month's `BUILD`s finish (`ah-uxmh`): it leaves its owner's items,
+    /// since a finished ship is "placed in fleets" rather than carried (`rules/economy_ships`).
+    /// Recorded on the ship's owner, by the order that lays its last work.
+    ShipFinished,
 }
 
 /// The other unit an item change is between (`ah-rgkk.3.1`).
@@ -9359,6 +9363,197 @@ mod tests {
                 finishes("901"),
                 vec![Some("4".to_string())],
                 "the last twenty is"
+            );
+        }
+
+        /// A hex with a Shipbuilders unit carrying an unfinished Galleon that still needs `needs`
+        /// (`ah-uxmh`): 10 humans at `shipbuilding [SHIP] 3` do 30 units of work a month
+        /// (`rules/economy_ships`: ships "are constructed similarly to buildings").
+        fn report_with_a_shipbuilder(needs: &str, extra: &str) -> String {
+            [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "Exits:",
+                "  Southeast : plain (2,2) in Nowhere.",
+                "",
+                &format!(
+                    "* Shipbuilders (900), Foo (1), behind, 10 humans [HUMN], 120 wood [WOOD], \
+                     unfinished Galleon [GALL]{needs}. Weight: 1300. Capacity: 0/0/120/0. \
+                     Skills: shipbuilding [SHIP] 3 (250)."
+                ),
+                extra,
+                "",
+            ]
+            .join("\n")
+        }
+
+        fn ship_row<'a>(response: &'a OrdersPreviewResponse, id: &str) -> &'a UnitPreview {
+            response
+                .regions
+                .iter()
+                .flat_map(|region| region.units.iter())
+                .find(|unit| unit.unit.unit_id == id)
+                .unwrap_or_else(|| panic!("unit {id} is previewed"))
+        }
+
+        fn holds(unit: &UnitPreview, tag: &str) -> Option<i64> {
+            unit.unit
+                .items
+                .iter()
+                .find(|item| item.tag == tag)
+                .map(|item| item.amount)
+        }
+
+        /// `rules/build`: a bare BUILD "causes the unit to perform work on an unfinished ship it
+        /// possesses". Thirty units of work on a ship needing 25 finish it: the ship leaves Items
+        /// and the wood it took is spent, as a building's is (`ah-uxmh`).
+        #[test]
+        fn a_bare_build_that_meets_the_needs_finishes_the_ship() {
+            let response = preview_over(
+                &report_with_a_shipbuilder(" (needs 25)", ""),
+                "unit 900\nBUILD\n",
+            );
+            let unit = ship_row(&response, "900");
+
+            assert_eq!(holds(unit, "GALL"), None, "{:?}", unit.unit.items);
+            assert_eq!(holds(unit, "WOOD"), Some(95));
+            assert!(unit.uncounted.is_empty(), "{:?}", unit.uncounted);
+            let finished: Vec<_> = unit
+                .item_changes
+                .iter()
+                .filter(|change| change.cause == ItemChangeCause::ShipFinished)
+                .collect();
+            assert_eq!(finished.len(), 1, "{:?}", unit.item_changes);
+            assert_eq!(
+                (
+                    finished[0].tag.as_str(),
+                    finished[0].delta,
+                    finished[0].line
+                ),
+                ("GALL", -1, Some(2))
+            );
+            assert_eq!(unit.built[0].amount, 25);
+            assert_eq!(unit.built[0].place, "the unfinished Galleon");
+            assert_eq!(unit.built[0].finishes, None, "a ship is no structure");
+        }
+
+        /// The work is not enough: the wood is spent and the ship stays (`ah-uxmh`).
+        #[test]
+        fn a_bare_build_short_of_the_needs_keeps_the_ship() {
+            let response = preview_over(
+                &report_with_a_shipbuilder(" (needs 33)", ""),
+                "unit 900\nBUILD\n",
+            );
+            let unit = ship_row(&response, "900");
+
+            assert_eq!(holds(unit, "GALL"), Some(1));
+            assert_eq!(holds(unit, "WOOD"), Some(90));
+            assert!(unit.uncounted.is_empty(), "{:?}", unit.uncounted);
+            assert!(!unit
+                .item_changes
+                .iter()
+                .any(|change| change.cause == ItemChangeCause::ShipFinished));
+        }
+
+        /// Helpers' work counts with the builder's, the way a building's does: 30 of 33, and the
+        /// helper's 3 finish it. The ship leaves its owner, said by the helper's order
+        /// (`ah-uxmh`; `rules/build`, "assist the target unit in its current building task").
+        #[test]
+        fn a_helper_that_lays_the_last_work_finishes_the_owners_ship() {
+            let response = preview_over(
+                &report_with_a_shipbuilder(
+                    " (needs 33)",
+                    "* Helpers (901), Foo (1), behind, 5 humans [HUMN], 20 wood [WOOD]. Weight: \
+                     600. Capacity: 0/0/75/0. Skills: shipbuilding [SHIP] 3 (180).",
+                ),
+                "unit 900\nBUILD\nunit 901\nBUILD HELP 900\n",
+            );
+            let owner = ship_row(&response, "900");
+            let helper = ship_row(&response, "901");
+
+            assert_eq!(holds(owner, "GALL"), None, "{:?}", owner.unit.items);
+            assert_eq!(holds(owner, "WOOD"), Some(90));
+            assert_eq!(holds(helper, "WOOD"), Some(17));
+            let finished: Vec<_> = owner
+                .item_changes
+                .iter()
+                .filter(|change| change.cause == ItemChangeCause::ShipFinished)
+                .collect();
+            assert_eq!(finished.len(), 1, "{:?}", owner.item_changes);
+            assert_eq!(finished[0].line, Some(4));
+            assert_eq!(
+                finished[0]
+                    .other
+                    .as_ref()
+                    .map(|party| party.unit_id.as_str()),
+                Some("901")
+            );
+        }
+
+        /// The forecast cannot tell when the report does not say what is left: the mark stays,
+        /// which is today's behaviour (`ah-uxmh`).
+        #[test]
+        fn a_ship_whose_needs_the_report_omits_cannot_be_counted() {
+            let response = preview_over(&report_with_a_shipbuilder("", ""), "unit 900\nBUILD\n");
+            let unit = ship_row(&response, "900");
+
+            assert_eq!(holds(unit, "GALL"), Some(1));
+            assert_eq!(holds(unit, "WOOD"), Some(120));
+            assert!(!unit.uncounted.is_empty());
+        }
+
+        /// `data/shipbuilding` 3: a Galleon is built at level 3, and the engine's
+        /// `ShipConstruction` refuses a unit below that - a known zero, so the ship stays and the
+        /// row is not marked uncounted (`ah-uxmh`).
+        #[test]
+        fn a_builder_below_the_ships_level_does_no_work() {
+            let report = report_with_a_shipbuilder(" (needs 25)", "")
+                .replace("shipbuilding [SHIP] 3 (250)", "shipbuilding [SHIP] 2 (90)");
+            let response = preview_over(&report, "unit 900\nBUILD\n");
+
+            if let Some(unit) = response
+                .regions
+                .iter()
+                .flat_map(|region| region.units.iter())
+                .find(|unit| unit.unit.unit_id == "900")
+            {
+                assert_eq!(holds(unit, "GALL"), Some(1));
+                assert_eq!(holds(unit, "WOOD"), Some(120));
+                assert!(unit.uncounted.is_empty(), "{:?}", unit.uncounted);
+            }
+        }
+
+        /// `data/shipbuilding` 5: an Airship takes "60 floater hides [FLOA] and 60 wood [WOOD]",
+        /// and the rules do not say how a month's work splits over two materials - the forecast
+        /// cannot tell, and the ship keeps its mark (`ah-uxmh`).
+        #[test]
+        fn an_airship_cannot_be_counted() {
+            let report = report_with_a_shipbuilder(" (needs 25)", "")
+                .replace("unfinished Galleon [GALL]", "unfinished Airship [AIRS]")
+                .replace("shipbuilding [SHIP] 3 (250)", "shipbuilding [SHIP] 5 (900)");
+            let response = preview_over(&report, "unit 900\nBUILD\n");
+            let unit = ship_row(&response, "900");
+
+            assert_eq!(holds(unit, "AIRS"), Some(1));
+            assert!(!unit.uncounted.is_empty());
+        }
+
+        /// A ship carried with no order is no change: reading what it needs must not make the
+        /// month-end row differ from the report's (`ah-uxmh`).
+        #[test]
+        fn a_carried_ship_with_no_order_changes_nothing() {
+            let response =
+                preview_over(&report_with_a_shipbuilder(" (needs 25)", ""), "unit 900\n");
+            assert!(
+                response
+                    .regions
+                    .iter()
+                    .flat_map(|region| region.units.iter())
+                    .all(|unit| unit.changes.is_empty() && unit.item_changes.is_empty()),
+                "{:?}",
+                response.regions
             );
         }
 

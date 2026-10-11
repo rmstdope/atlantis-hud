@@ -10192,6 +10192,62 @@ fn stands_in_unfinished(
 enum BuildSite {
     Existing(String),
     FoundedBy(String),
+    /// An unfinished ship, which lives in its owner's items rather than in the region
+    /// (`rules/economy_ships`), keyed by that owner and the ship's tag (`ah-uxmh`).
+    Ship {
+        owner: String,
+        tag: String,
+    },
+}
+
+/// The unfinished ship a bare `BUILD` works on, and what building it takes (`ah-uxmh`).
+struct ShipTask {
+    /// The ship's tag, upper-cased: `GALL`.
+    tag: String,
+    /// The report's own words for it: `unfinished Galleon`.
+    name: String,
+    /// What the report says it still needs.
+    needs: i64,
+    /// Its one material, by tag.
+    material: String,
+    /// The skill that builds it, and the least level that may.
+    skill: String,
+    level: i64,
+}
+
+/// The ship `owner`'s bare `BUILD` works on, when everything about it can be told: the first
+/// unfinished ship in the report's order (the engine's `ProcessBuildOrder` takes the first ship
+/// item it finds), still held when manufacturing runs, with the report's `(needs N)` and a
+/// one-material recipe in the catalogue. `None` when any of that is missing - a ship given away
+/// or discarded this month, a report that does not say what is left, a ship the catalogue states
+/// no recipe for, or an Airship's two materials (`data/shipbuilding` 5), whose split the rules do
+/// not state.
+fn ship_task(ledger: &Ledger<'_>, owner: &Ordered<'_>, ruleset: &Ruleset) -> Option<ShipTask> {
+    let item = owner
+        .unit
+        .items
+        .iter()
+        .find(|item| is_unfinished_ship(item, None))?;
+    let tag = item.tag.to_ascii_uppercase();
+    if ledger
+        .state
+        .balance_at(StatePhase::Manufacturing, &owner.unit.unit_id, &tag)
+        <= 0
+    {
+        return None;
+    }
+    let build = ruleset.ship_build(&tag)?;
+    let [input] = build.inputs.as_slice() else {
+        return None;
+    };
+    Some(ShipTask {
+        name: item.name.clone(),
+        needs: item.needs?,
+        material: input.tag.clone(),
+        skill: build.skill.clone(),
+        level: build.level,
+        tag,
+    })
 }
 
 /// What a `BUILD` order named, straight off [`Intent::Build`].
@@ -10315,10 +10371,33 @@ fn build(
 
     // 3. An unfinished ship beats everything a bare BUILD could mean (`rules/build`) - but only
     // for the bare form; a founding BUILD falls out at step 5 instead, because no ship is in the
-    // buildings table.
-    if founding_kind.is_none() && carries_unfinished_ship(task_owner) {
-        mark_uncounted_and_return!();
-    }
+    // buildings table. Priced like a building from here on when the report says what it still
+    // needs and the catalogue says what it is built from (`ah-uxmh`); otherwise nothing can be
+    // said, as before.
+    let ship = if founding_kind.is_none() && carries_unfinished_ship(task_owner) {
+        if away.is_some() {
+            // A fleet that sails discards the ship before BUILD runs (`rules/economy_ships`).
+            mark_uncounted_and_return!();
+        }
+        let Some(ship) = ship_task(ledger, task_owner, ruleset) else {
+            mark_uncounted_and_return!();
+        };
+        // `data/shipbuilding`: "A unit with this skill [at this level] may BUILD" it, and the
+        // engine's `ShipConstruction` refuses a unit below that level - a known zero, and the
+        // ship stays.
+        if i64::from(
+            actor
+                .after_the_market()
+                .skills
+                .map_or(0, |skills| level_in(skills, &ship.skill)),
+        ) < ship.level
+        {
+            return;
+        }
+        Some(ship)
+    } else {
+        None
+    };
 
     // 3b. New Age founds nothing for a unit already inside an unfinished structure of the kind it
     // names: it keeps working on that one (`newage trident rules/build`, "the unit will remain in
@@ -10334,37 +10413,47 @@ fn build(
 
     // 4/5. The structure being worked on, and its recipe. A founding build spends against its
     // whole cost, and is named by the kind the player wrote, verbatim.
-    let (place, kind, is_founding, existing_remaining, site) =
-        if let Some(kind) = founding_kind.clone() {
-            let site = BuildSite::FoundedBy(task_owner.unit.unit_id.clone());
-            (kind.clone(), kind, true, None, site)
-        } else {
-            let Some(structure_id) = structure_after_orders(task_owner) else {
-                // No structure at all, and no unfinished ship: the order does nothing and we know it
-                // does nothing (`build-outside-structure` is the warning for it).
-                return;
-            };
-            let Some(structure) = hex
-                .region
-                .structures
-                .iter()
-                .find(|structure| structure.structure_id == structure_id)
-            else {
-                // An id not among the region's structures: nothing can be said.
-                mark_uncounted_and_return!();
-            };
-            let Some(needs) = after_destroy.needs(structure) else {
-                // Finished: no work is possible (`already-built` is the warning for it).
-                return;
-            };
-            (
-                structure_label(structure),
-                structure.kind.clone(),
-                false,
-                Some(needs),
-                BuildSite::Existing(structure_id.to_string()),
-            )
+    let (place, kind, is_founding, existing_remaining, site) = if let Some(ship) = &ship {
+        (
+            format!("the {}", ship.name),
+            ship.tag.clone(),
+            false,
+            Some(ship.needs),
+            BuildSite::Ship {
+                owner: task_owner.unit.unit_id.clone(),
+                tag: ship.tag.clone(),
+            },
+        )
+    } else if let Some(kind) = founding_kind.clone() {
+        let site = BuildSite::FoundedBy(task_owner.unit.unit_id.clone());
+        (kind.clone(), kind, true, None, site)
+    } else {
+        let Some(structure_id) = structure_after_orders(task_owner) else {
+            // No structure at all, and no unfinished ship: the order does nothing and we know it
+            // does nothing (`build-outside-structure` is the warning for it).
+            return;
         };
+        let Some(structure) = hex
+            .region
+            .structures
+            .iter()
+            .find(|structure| structure.structure_id == structure_id)
+        else {
+            // An id not among the region's structures: nothing can be said.
+            mark_uncounted_and_return!();
+        };
+        let Some(needs) = after_destroy.needs(structure) else {
+            // Finished: no work is possible (`already-built` is the warning for it).
+            return;
+        };
+        (
+            structure_label(structure),
+            structure.kind.clone(),
+            false,
+            Some(needs),
+            BuildSite::Existing(structure_id.to_string()),
+        )
+    };
 
     // From here on the site is known: an uncounted exit leaves what it still needs unknown to
     // every later builder of it.
@@ -10374,9 +10463,16 @@ fn build(
             mark_uncounted_and_return!();
         }};
     }
-    let Some((cost, materials)) = ruleset.build_recipe(&kind) else {
-        // A Shaft, a ship, or a misspelling: the catalogue states neither cost nor material.
-        doubt_site_and_return!();
+    let (cost, materials): (i64, Vec<String>) = match &ship {
+        Some(ship) => (ship.needs, vec![ship.material.clone()]),
+        None => {
+            let Some((cost, materials)) = ruleset.build_recipe(&kind) else {
+                // A Shaft, a ship founded by name, or a misspelling: the catalogue states neither
+                // cost nor material.
+                doubt_site_and_return!();
+            };
+            (cost, materials.to_vec())
+        }
     };
     // What earlier builders of the same structure already laid this month is no longer needed.
     let remaining =
@@ -10385,8 +10481,14 @@ fn build(
     // 6. The skill tag. The minimum level is not read here - whether the unit may build at all is
     // `build-without-skill`'s business, and a unit below the minimum still does `men * level`
     // units of work by the rules as written.
-    let Some((skill_tag, _minimum_level)) = ruleset.build_requirement(&kind) else {
-        doubt_site_and_return!();
+    let skill_tag: &str = match &ship {
+        Some(ship) => &ship.skill,
+        None => {
+            let Some((skill_tag, _minimum_level)) = ruleset.build_requirement(&kind) else {
+                doubt_site_and_return!();
+            };
+            skill_tag
+        }
     };
 
     // 7. The material: resolve each name the recipe offers, drop what the catalogue does not
@@ -10537,7 +10639,32 @@ fn build(
         (BuildSite::Existing(id), None) if plan.done >= remaining => Some(id.clone()),
         _ => None,
     };
+    let finishes_ship = ship.as_ref().filter(|_| plan.done >= remaining);
     *ledger.build_laid.entry(site).or_default() += plan.done;
+    // The ship this work finishes leaves its owner's items: a finished ship is "placed in
+    // fleets" (`rules/economy_ships`), and the engine's `CreateShip` takes it out of the
+    // inventory (`ah-uxmh`). Said by whichever order laid the last work, as `finishes` is.
+    if let Some(ship) = finishes_ship {
+        let owner = &task_owner.unit;
+        ledger
+            .state
+            .apply(StatePhase::Manufacturing, &owner.unit_id, &ship.tag, -1);
+        ledger.movements.push(ItemMovement {
+            unit_id: owner.unit_id.clone(),
+            tag: ship.tag.clone(),
+            name: ship.name.clone(),
+            delta: -1,
+            cause: ItemChangeCause::ShipFinished,
+            phase: StatePhase::Manufacturing,
+            line: Some(placed.line as i64),
+            unit_price: None,
+            other: (owner.unit_id != *who).then(|| ItemChangeParty {
+                unit_id: who.clone(),
+                name: Some(actor.unit.name.clone()),
+            }),
+            created: None,
+        });
+    }
 
     // 10. Record the movements and the spend, one movement per material. Every value has exactly
     // one source.
