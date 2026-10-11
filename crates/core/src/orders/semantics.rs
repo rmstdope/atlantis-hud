@@ -40,7 +40,7 @@ use crate::movement::mode::{
     hulls_named_in, is_vessel, sailing_requirement, Carrying,
 };
 use crate::movement::orders::{first_passage, MoveStep};
-use crate::movement::plan::{Hull, Journey};
+use crate::movement::plan::{refused_by_sailing_step, Hull, Journey};
 use crate::movement::rules::{item_spellings, ItemEntry, MovementMode, Ruleset, SkillEntry};
 use crate::movement::sailing::refused_sail_steps;
 use crate::orders::faction_orders::{
@@ -17018,10 +17018,16 @@ fn carried_away<'a>(
 /// which is the whole reason this returns an `Option` rather than the last region it reached.
 ///
 /// A sail with no `Go` steps ends where it started, which is the region already being checked.
+///
+/// With a ruleset and the fleet's journey, a step with land at both ends stops the fleet where it
+/// is (`ah-g0fk`): the game walks a SAIL step by step and refuses that one, so the fleet ends the
+/// month in the hex it would have left - "so it will not move", as `sail-between-land-hexes` puts
+/// it. Judged by the same [`refused_by_sailing_step`] that warning reads.
 fn sail_destination<'a>(
     from: &'a ReportRegion,
     steps: &[MoveStep],
     regions: &HashMap<Coordinate, &'a ReportRegion>,
+    sailing_rule: Option<(&Ruleset, Journey)>,
 ) -> Option<&'a ReportRegion> {
     let mut here = from;
     for step in steps {
@@ -17034,7 +17040,13 @@ fn sail_destination<'a>(
             .exits
             .iter()
             .find(|exit| Direction::parse(&exit.direction) == Some(*direction))?;
-        here = regions.get(&exit.coordinate).copied()?;
+        let next = regions.get(&exit.coordinate).copied()?;
+        if sailing_rule.is_some_and(|(rules, journey)| {
+            refused_by_sailing_step(rules, journey, &here.terrain, &next.terrain)
+        }) {
+            return Some(here);
+        }
+        here = next;
     }
     Some(here)
 }
@@ -17054,9 +17066,30 @@ fn production_region<'a>(
     ruleset: Option<&Ruleset>,
     by_coordinate: &HashMap<Coordinate, &'a ReportRegion>,
 ) -> Option<&'a ReportRegion> {
-    let sailing = ruleset.and_then(|rules| carried_away(hex, ordered, rules));
-    match sailing.map(|placed| &placed.intent) {
-        Some(Intent::Sail { steps }) => sail_destination(hex.region, steps, by_coordinate),
+    let sailing = ruleset.and_then(|rules| carried_away(hex, ordered, rules).map(|p| (rules, p)));
+    match sailing {
+        Some((
+            rules,
+            PlacedIntent {
+                intent: Intent::Sail { steps },
+                ..
+            },
+        )) => {
+            // The hull the passenger stands in, read as `check_sail_route` reads it, so a flying
+            // fleet is not held to the water here either.
+            let hull = hex
+                .region
+                .structures
+                .iter()
+                .find(|structure| {
+                    is_vessel(structure, Some(rules)) && is_aboard(ordered, &structure.structure_id)
+                })
+                .map_or(Hull::Bound, |vessel| {
+                    Hull::from_flies(fleet_flies(vessel, Some(rules)))
+                });
+            let journey = Journey::enforced(MovementMode::Sail, hull);
+            sail_destination(hex.region, steps, by_coordinate, Some((rules, journey)))
+        }
         _ => Some(hex.region),
     }
 }
@@ -29150,7 +29183,9 @@ mod tests {
 
         /// The hex above, given an exit north so the report can follow the sail, plus whatever
         /// regions the test wants beyond it. The origin yields nothing at all, so anything the
-        /// passenger is capped by came from the destination and from nowhere else.
+        /// passenger is capped by came from the destination and from nowhere else. It is open sea,
+        /// so the step north has water at one end and the fleet does move (`rules/movement_sailing`;
+        /// a step from land to land would keep it here, `ah-g0fk`).
         fn sailing_north(beyond: Vec<ReportRegion>) -> ParsedReport {
             let passenger = ReportUnit {
                 structure_id: Some("329".to_string()),
@@ -29162,6 +29197,7 @@ mod tests {
             };
             sailor.skills.push(sail(4));
             let here = ReportRegion {
+                terrain: ruleset().movement.ocean.terrain.clone(),
                 structures: vec![longship("329")],
                 exits: vec![Exit {
                     direction: "North".to_string(),
@@ -56698,7 +56734,7 @@ BUILD
         ];
         let index = by_coordinate(&regions);
 
-        let end = sail_destination(&regions[0], &[MoveStep::Go(Direction::North)], &index);
+        let end = sail_destination(&regions[0], &[MoveStep::Go(Direction::North)], &index, None);
 
         assert_eq!(end.map(|region| region.coordinate), Some(at(7, 51)));
     }
@@ -56719,6 +56755,7 @@ BUILD
                 MoveStep::Go(Direction::Northeast),
             ],
             &index,
+            None,
         );
 
         assert_eq!(end.map(|region| region.coordinate), Some(at(8, 50)));
@@ -56732,7 +56769,7 @@ BUILD
         ];
         let index = by_coordinate(&regions);
 
-        let end = sail_destination(&regions[0], &[MoveStep::Go(Direction::South)], &index);
+        let end = sail_destination(&regions[0], &[MoveStep::Go(Direction::South)], &index, None);
 
         assert_eq!(end.map(|region| region.coordinate), None);
     }
@@ -56742,7 +56779,7 @@ BUILD
         let regions = vec![region_with_exit(7, 53, "North", at(7, 51))];
         let index = by_coordinate(&regions);
 
-        let end = sail_destination(&regions[0], &[MoveStep::Go(Direction::North)], &index);
+        let end = sail_destination(&regions[0], &[MoveStep::Go(Direction::North)], &index, None);
 
         assert_eq!(end.map(|region| region.coordinate), None);
     }
@@ -56752,7 +56789,7 @@ BUILD
         let regions = vec![region_with_exit(7, 53, "North", at(7, 51))];
         let index = by_coordinate(&regions);
 
-        let end = sail_destination(&regions[0], &[], &index);
+        let end = sail_destination(&regions[0], &[], &index, None);
 
         assert_eq!(end.map(|region| region.coordinate), Some(at(7, 53)));
     }
@@ -56769,6 +56806,7 @@ BUILD
             &regions[0],
             &[MoveStep::Out, MoveStep::Go(Direction::North), MoveStep::In],
             &index,
+            None,
         );
 
         assert_eq!(end.map(|region| region.coordinate), Some(at(7, 51)));
@@ -59772,6 +59810,31 @@ BUILD
         (report, orders)
     }
 
+    /// [`passenger_palace`] for a fleet leaving a land port for land: no fleet may sail straight
+    /// from one to the other (`rules/movement_sailing`, `ah-g0fk`), so it puts to sea first -
+    /// northeast from (7,55) into the ocean at (8,54), then northwest into `destination` (7,53).
+    fn passenger_palace_via_sea(
+        origin: ReportRegion,
+        destination: ReportRegion,
+        carrying: Option<i64>,
+    ) -> (ParsedReport, String) {
+        let mut sea = ReportRegion {
+            terrain: trident().movement.ocean.terrain.clone(),
+            ..region_at("1:8,54", 8, 54, vec![])
+        };
+        sea.exits.push(Exit {
+            direction: "Northwest".to_string(),
+            coordinate: destination.coordinate,
+            ..Default::default()
+        });
+        let (mut report, orders) = passenger_palace(origin, sea, carrying);
+        for exit in &mut report.regions[1].exits {
+            exit.direction = "Northeast".to_string();
+        }
+        report.regions.push(destination);
+        (report, orders.replace("SAIL N\n", "SAIL NE NW\n"))
+    }
+
     /// The open sea at (7,55): no settlement, so no Palace can be founded *there*.
     fn open_sea(units: Vec<ReportUnit>) -> ReportRegion {
         ReportRegion {
@@ -59863,6 +59926,37 @@ BUILD
         assert!(passenger.built.is_empty(), "{passenger:?}");
     }
 
+    /// `ah-g0fk`: a SAIL the checks refuse moves nothing. The step leaves a settled plain for an
+    /// unsettled forest - land at both ends, which `rules/movement_sailing` allows no fleet ("A
+    /// fleet can move from an ocean region to another ocean region, or from a coastal region to an
+    /// ocean region, or from an ocean region to a coastal region") - so the passenger stays in the
+    /// settled port and founds its Palace there, not "where the fleet lands".
+    #[test]
+    fn a_passenger_whose_sail_is_refused_land_to_land_founds_where_it_stands() {
+        let port = ReportRegion {
+            terrain: "plain".to_string(),
+            ..settled(region_at("1:7,55", 7, 55, vec![]))
+        };
+        let forest = ReportRegion {
+            terrain: "forest".to_string(),
+            ..region_at("1:7,53", 7, 53, vec![])
+        };
+        let (report, orders) = passenger_palace(port, forest, Some(120));
+
+        let findings = check_turn(&report, &orders, Some(&trident()), CheckOptions::default());
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.code == codes::SAIL_BETWEEN_LAND_HEXES),
+            "the step is land to land: {findings:?}"
+        );
+        assert!(
+            site_refusals(&report, &orders).is_empty(),
+            "the fleet stays in the settled port: {:?}",
+            site_refusals(&report, &orders)
+        );
+    }
+
     /// A Palace already standing in the port it leaves is no bar to founding one where it lands.
     #[test]
     fn a_palace_in_the_port_left_behind_does_not_refuse_the_passenger() {
@@ -59872,7 +59966,7 @@ BUILD
         };
         port.structures.push(a_palace("4"));
         let (report, orders) =
-            passenger_palace(port, settled(region_at("1:7,53", 7, 53, vec![])), Some(120));
+            passenger_palace_via_sea(port, settled(region_at("1:7,53", 7, 53, vec![])), Some(120));
 
         assert!(
             site_refusals(&report, &orders).is_empty(),
@@ -59911,7 +60005,7 @@ BUILD
             ))
         };
         let (report, orders) =
-            passenger_palace(port, settled(region_at("1:7,53", 7, 53, vec![])), None);
+            passenger_palace_via_sea(port, settled(region_at("1:7,53", 7, 53, vec![])), None);
 
         let effects = item_effects(&report, &orders, Some(&trident()), &CheckOptions::default());
         let passenger = effects_for(&effects, "901").cloned().unwrap_or_default();
@@ -60177,7 +60271,7 @@ BUILD
             ))
         };
         let (report, orders) =
-            passenger_palace(port, settled(region_at("1:7,53", 7, 53, vec![])), Some(120));
+            passenger_palace_via_sea(port, settled(region_at("1:7,53", 7, 53, vec![])), Some(120));
         let orders = orders.replace("BUILD Palace", "BUILD HELP 903") + "unit 903\nBUILD Palace\n";
 
         let effects = item_effects(&report, &orders, Some(&trident()), &CheckOptions::default());
@@ -60209,7 +60303,7 @@ BUILD
             ))
         };
         let (report, orders) =
-            passenger_palace(port, settled(region_at("1:7,53", 7, 53, vec![])), Some(120));
+            passenger_palace_via_sea(port, settled(region_at("1:7,53", 7, 53, vec![])), Some(120));
         let orders = orders + "unit 903\nBUILD HELP 901\n";
 
         let effects = item_effects(&report, &orders, Some(&trident()), &CheckOptions::default());

@@ -1597,10 +1597,10 @@ fn decide_movement(
                 // the rest of a longer journey is later months' business.
                 Some(path) => {
                     mode = path.mode;
-                    match path.months.first() {
-                        Some(month) if month.ends_at.id() != entry.unit.region_id => {
-                            arrival = Some(month.ends_at.id());
-                            ends_at = Some(month.ends_at);
+                    match sailed_month_end(&path) {
+                        Some(month_end) if month_end.id() != entry.unit.region_id => {
+                            arrival = Some(month_end.id());
+                            ends_at = Some(month_end);
                             status = UnitPreviewStatus::Departing;
                         }
                         // A round trip is not a departure, so only the other changes count.
@@ -1697,6 +1697,51 @@ fn decide_movement(
     }
 
     (decided, sailing)
+}
+
+/// Where the coming month ends for a traced journey: the first month's end, except that a fleet
+/// goes no further than the hex before the first step the game refuses (`ah-g0fk`).
+///
+/// The game walks a SAIL one step at a time and stops the fleet at the first step it refuses -
+/// "SAIL: Can't sail inland." and "Cannot sail through land." both set `stop` in the engine's
+/// `RunSailOrders` - so the steps before it are taken and none after it. `blocked_from` is the
+/// trace's own judgement of that step, the same `judge_sail_step` the Problems panel's
+/// `sail-between-land-hexes` warning reads, so the two cannot disagree about whether it moves.
+/// Only a fleet is stopped here: the trace draws a walker's order as written, and what the game
+/// makes of a walker's refused step is not this bead's question.
+fn sailed_month_end(
+    path: &crate::movement::trace::TracedPath,
+) -> Option<crate::report::model::Coordinate> {
+    let month = path.months.first()?;
+    if path.mode != Some(crate::movement::rules::MovementMode::Sail) {
+        return Some(month.ends_at);
+    }
+    match path.blocked_from {
+        // The blocked index counts the whole journey - the steps before a passage, the crossing,
+        // then the steps beyond - which is the order the months are split over too.
+        Some(blocked) if blocked < month.steps => {
+            let exit = path
+                .passage
+                .as_ref()
+                .and_then(|passage| passage.exit.as_ref());
+            let mut arrivals = path
+                .steps
+                .iter()
+                .map(|step| step.to)
+                .chain(exit.map(|exit| exit.coordinate))
+                .chain(
+                    exit.into_iter()
+                        .flat_map(|exit| exit.steps.iter().map(|step| step.to)),
+                );
+            Some(
+                blocked
+                    .checked_sub(1)
+                    .and_then(|before| arrivals.nth(before))
+                    .unwrap_or(path.from),
+            )
+        }
+        _ => Some(month.ends_at),
+    }
 }
 
 /// Where each unit the report shows ends the month, from the passes the map is drawn from.
@@ -8588,6 +8633,75 @@ mod tests {
         assert!(
             region_of(&response, "1:2,2").is_none(),
             "nobody arrives, so the destination hex is not in the preview"
+        );
+    }
+
+    /// `ah-g0fk`: a SAIL the checks refuse moves nothing. Both hexes here are land, and
+    /// `rules/movement_sailing` gives a fleet only steps with water at one end ("A fleet can move
+    /// from an ocean region to another ocean region, or from a coastal region to an ocean region,
+    /// or from an ocean region to a coastal region") - the game stops the fleet at that step, so
+    /// neither the owner nor anybody aboard departs, and nobody arrives in the forest.
+    #[test]
+    fn a_fleet_whose_sail_is_refused_land_to_land_departs_nobody() {
+        let report = fleet_report_with_a_passenger(WAVECREST)
+            .replace("ocean (1,1) in Sea", "plain (1,1) in Shire")
+            .replace("ocean (2,2) in Sea", "forest (2,2) in Shire");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 900\nSAIL SE\n",
+        )
+        .expect("the ruleset loads");
+
+        for region in &response.regions {
+            for unit in &region.units {
+                assert_eq!(
+                    unit.status,
+                    UnitPreviewStatus::Present,
+                    "{} stays put",
+                    unit.unit.unit_id
+                );
+            }
+        }
+        assert!(
+            region_of(&response, "1:2,2").is_none(),
+            "nobody arrives, so the forest is not in the preview"
+        );
+    }
+
+    /// `ah-g0fk`, a step further on: the game takes every step up to the refused one, so a fleet
+    /// that sails from the sea onto the plain (2,2) and then on to the forest (3,3) stops on the
+    /// plain - the second step is land to land (`rules/movement_sailing`).
+    #[test]
+    fn a_fleet_refused_part_way_stops_before_the_refused_step() {
+        let report = fleet_report_with_a_passenger(WAVECREST)
+            .replace(
+                "\nocean (2,2) in Sea.\n\nExits:\n  Northwest : ocean (1,1) in Sea.\n",
+                "\nplain (2,2) in Shire.\n\nExits:\n  Northwest : ocean (1,1) in Sea.\n  \
+                 Southeast : forest (3,3) in Shire.\n\nforest (3,3) in Shire.\n\nExits:\n  \
+                 Northwest : plain (2,2) in Shire.\n",
+            )
+            .replace("Southeast : ocean (2,2) in Sea.", "Southeast : plain (2,2) in Shire.");
+        assert!(report.contains("forest (3,3)"), "the fixture was rewritten");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 900\nSAIL SE SE\n",
+        )
+        .expect("the ruleset loads");
+
+        for unit_id in ["900", "901", "902"] {
+            let departing =
+                row(&response, "1:1,1", unit_id).unwrap_or_else(|| panic!("{unit_id} departs"));
+            assert_eq!(departing.departing_to.as_deref(), Some("1:2,2"), "{unit_id}");
+        }
+        assert!(
+            region_of(&response, "1:3,3").is_none(),
+            "nobody reaches the forest"
         );
     }
 
