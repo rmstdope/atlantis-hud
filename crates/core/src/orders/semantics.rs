@@ -10523,8 +10523,10 @@ fn build(
     }
 
     // The work that leaves nothing more to do finishes a structure the report shows (`ah-2ql5`).
-    // Not where a passenger's fleet lands: that site is not the hex this row is drawn in, so the
-    // pane is left saying "unfinished" there rather than told something about the wrong hex.
+    // Never where a passenger's fleet lands. Today no such spend reaches here with an `Existing`
+    // site: a passenger's own structure is the fleet carrying it, which is finished and returned
+    // on above, and a `BUILD HELP` must share that landing. The guard keeps it so if that changes,
+    // since the landing is not the hex the row is drawn in and the pane would mark the wrong one.
     let finishes = match (&site, &away) {
         (BuildSite::Existing(id), None) if plan.done >= remaining => Some(id.clone()),
         _ => None,

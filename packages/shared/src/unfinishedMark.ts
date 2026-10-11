@@ -77,11 +77,15 @@ const UNFINISHED = "unfinished ";
  * An unfinished ship, by the report's own words: `unfinished Galleon`.
  *
  * `rules/economy_ships`: "unfinished ships appear only in their builder's inventory until they are
- * complete", and the report names one with this prefix. The prefix alone decides, as the core's
- * `is_unfinished_ship` does without a ruleset.
+ * complete", and the report names one with this prefix. The prefix, with a name after it, decides,
+ * as the core's `is_unfinished_ship` does without a ruleset.
  */
 export function isUnfinishedShipName(name: string | undefined): boolean {
-  return name !== undefined && name.slice(0, UNFINISHED.length).toLowerCase() === UNFINISHED;
+  return (
+    name !== undefined &&
+    name.length > UNFINISHED.length &&
+    name.slice(0, UNFINISHED.length).toLowerCase() === UNFINISHED
+  );
 }
 
 /** One entry of the Items cell, and whether the unfinished mark goes before it. */

@@ -92,6 +92,10 @@ describe("isUnfinishedShipName", () => {
     expect(isUnfinishedShipName("unfinishedGalleon")).toBe(false);
     expect(isUnfinishedShipName(undefined)).toBe(false);
   });
+
+  it("wants a ship after the prefix, as the core's is_unfinished_ship does", () => {
+    expect(isUnfinishedShipName("unfinished ")).toBe(false);
+  });
 });
 
 describe("itemCellParts", () => {
