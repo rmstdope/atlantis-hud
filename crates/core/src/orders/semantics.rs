@@ -249,6 +249,12 @@ pub mod codes {
     /// cannot rule a settlement out of (`ah-m24v`). Always on: the bead asks for the warning and
     /// gives it no switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
     pub const VILLAGE_NEAR_A_SETTLEMENT: Code = Code("village-near-a-settlement");
+    /// A `CREATE VILLAGE` that `newage trident rules/create_village` refuses for a reason other
+    /// than distance: the region already has a settlement, its terrain is ocean, lake, volcano or
+    /// barren, or the unit will hold fewer than 1000 people or 100 wagons (`ah-e97l`). Always on:
+    /// the bead asks for the warning and gives it no switch, so it is in [`ALWAYS_ON`] and not in
+    /// [`ALL`].
+    pub const CREATE_VILLAGE_REFUSED: Code = Code("create-village-refused");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -332,12 +338,13 @@ pub mod codes {
 
     /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
     /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
-    pub const ALWAYS_ON: [Code; 5] = [
+    pub const ALWAYS_ON: [Code; 6] = [
         MOVE_INTO_A_WALL,
         FACTION_ORDER_WILL_FAIL,
         UNKNOWN_SKILL,
         EXPLORE_BELOW_THE_SURFACE,
         VILLAGE_NEAR_A_SETTLEMENT,
+        CREATE_VILLAGE_REFUSED,
     ];
 }
 
@@ -919,7 +926,7 @@ pub fn review_turn(
         check_mage_arrivals(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_withdraw_in_nexus(hex, &options, &mut findings);
         check_explore_below_the_surface(hex, &mut findings);
-        check_village_site(hex, ruleset, &mut findings);
+        check_village_site(hex, ledger, ruleset, &mut findings);
         check_withdraw_not_a_basic_item(hex, ruleset, &options, &mut findings);
         check_cast_material(hex, ruleset, &options, &mut findings);
         check_sailing(hex, ledger, ruleset, &options, &mut findings);
@@ -11526,21 +11533,87 @@ fn village_site_of(
 /// Whether the report itself shows `region` as one `newage trident rules/create_village` refuses:
 /// it already has a settlement, or it is ocean, lake, volcano or barren terrain.
 fn founding_refused_here(region: &ReportRegion) -> bool {
-    region.settlement.is_some()
-        || REFUSED_TERRAIN
-            .iter()
-            .any(|terrain| region.terrain.eq_ignore_ascii_case(terrain))
+    founding_refused_here_because(region).is_some()
 }
 
-/// A Trident `CREATE VILLAGE` the 3-hex rule refuses, or may refuse (`ah-m24v`). Silent where the
-/// report already shows the region refused for itself: the order is refused there whatever is
-/// nearby. Always on (`codes::ALWAYS_ON`), so no option is read.
-fn check_village_site(hex: &Hex<'_>, ruleset: Option<&Ruleset>, findings: &mut Vec<Finding>) {
-    if !super::grammar::is_trident(ruleset) || founding_refused_here(hex.region) {
-        return;
+/// Why the report itself shows `region` as one `newage trident rules/create_village` refuses, as
+/// the sentence Problems shows; `None` where [`founding_refused_here`] is false.
+fn founding_refused_here_because(region: &ReportRegion) -> Option<String> {
+    if let Some(settlement) = &region.settlement {
+        return Some(format!(
+            "CREATE VILLAGE will be refused: this region already has a settlement, {} [{}]",
+            settlement.name, settlement.size
+        ));
     }
+    REFUSED_TERRAIN
+        .iter()
+        .any(|terrain| region.terrain.eq_ignore_ascii_case(terrain))
+        .then(|| {
+            format!(
+                "CREATE VILLAGE will be refused: no village can be founded in {} terrain",
+                region.terrain
+            )
+        })
+}
+
+/// A Trident `CREATE VILLAGE` that will not found a village, or may not, with the reason
+/// (`ah-m24v`, `ah-flx2`, `ah-e97l`). The region's own refusals come first, then a unit short of
+/// people or wagons, each certain and under [`codes::CREATE_VILLAGE_REFUSED`]; only a founding
+/// none of them refuses is judged on distance, under [`codes::VILLAGE_NEAR_A_SETTLEMENT`], so a
+/// founding certainly refused is never also called only possibly refused. A unit whose holding a
+/// `GIVE` left uncertain is not called short. Always on (`codes::ALWAYS_ON`), so no option is read.
+fn check_village_site(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    ruleset: Option<&Ruleset>,
+    findings: &mut Vec<Finding>,
+) {
+    let Some(ruleset) = ruleset.filter(|ruleset| super::grammar::is_trident(Some(ruleset))) else {
+        return;
+    };
+    let here = founding_refused_here_because(hex.region);
     let site = hex.village_site.warning();
     for ordered in &hex.units {
+        let creates = || {
+            ordered
+                .intents
+                .iter()
+                .filter(|placed| matches!(placed.intent, Intent::MonthLong("CREATE")))
+        };
+        if creates().next().is_none() {
+            continue;
+        }
+        // The ledger is the month's final one: a founding that went through has already spent
+        // its founders, so only one that spent nothing is judged on what it holds.
+        let founded = ledger.movements.iter().any(|movement| {
+            movement.unit_id == ordered.unit.unit_id
+                && movement.cause == ItemChangeCause::CreateSpent
+        });
+        let short = || {
+            if founded {
+                return None;
+            }
+            let (people, wagons) = founders_held(ledger, ordered, ruleset)?;
+            (people < VILLAGE_FOUNDERS || wagons < VILLAGE_WAGONS).then(|| {
+                format!(
+                    "CREATE VILLAGE will be refused: {} ({}) will have {people} people and \
+                     {wagons} wagons, and founding a village takes {VILLAGE_FOUNDERS} people and \
+                     {VILLAGE_WAGONS} wagons",
+                    ordered.unit.name, ordered.unit.unit_id
+                )
+            })
+        };
+        if let Some(message) = here.clone().or_else(short) {
+            for placed in creates() {
+                findings.push(ordered.finding(
+                    hex,
+                    codes::CREATE_VILLAGE_REFUSED,
+                    message.clone(),
+                    Some(placed),
+                ));
+            }
+            continue;
+        }
         // A site the known map refuses says so whatever else founds this month; otherwise an
         // earlier founding nearby is what refuses it (`ah-flx2`).
         let message = match (
@@ -11553,15 +11626,13 @@ fn check_village_site(hex: &Hex<'_>, ruleset: Option<&Ruleset>, findings: &mut V
         let Some(message) = message else {
             continue;
         };
-        for placed in &ordered.intents {
-            if matches!(placed.intent, Intent::MonthLong("CREATE")) {
-                findings.push(ordered.finding(
-                    hex,
-                    codes::VILLAGE_NEAR_A_SETTLEMENT,
-                    message.clone(),
-                    Some(placed),
-                ));
-            }
+        for placed in creates() {
+            findings.push(ordered.finding(
+                hex,
+                codes::VILLAGE_NEAR_A_SETTLEMENT,
+                message.clone(),
+                Some(placed),
+            ));
         }
     }
 }
@@ -11686,6 +11757,58 @@ const WAGON: &str = "WAGO";
 /// Where `newage trident rules/create_village` says a village may not be founded.
 const REFUSED_TERRAIN: [&str; 4] = ["ocean", "lake", "volcano", "barren"];
 
+/// The phase a founding is judged at: after production, as `create_village` consumes.
+const FOUNDING_PHASE: StatePhase = StatePhase::PrimaryProduction;
+
+/// The people `actor` holds when it founds, kind by kind, in the order the report lists the
+/// unit's items, the first kind first.
+fn people_held(ledger: &Ledger<'_>, actor: &Ordered<'_>, ruleset: &Ruleset) -> Vec<(String, i64)> {
+    let mut people: Vec<(String, i64)> = ledger
+        .state
+        .holdings_at(FOUNDING_PHASE, &actor.unit.unit_id)
+        .into_iter()
+        .filter(|(tag, amount)| *amount > 0 && ruleset.is_man(tag))
+        .collect();
+    let listed = |tag: &str| {
+        actor
+            .unit
+            .items
+            .iter()
+            .position(|item| item.tag.eq_ignore_ascii_case(tag))
+            .unwrap_or(usize::MAX)
+    };
+    people.sort_by_key(|(tag, _)| listed(tag));
+    people
+}
+
+/// How many people and wagons `actor` holds when it founds, or `None` where a `GIVE` left either
+/// uncertain.
+fn founders_held(
+    ledger: &Ledger<'_>,
+    actor: &Ordered<'_>,
+    ruleset: &Ruleset,
+) -> Option<(i64, i64)> {
+    let who = &actor.unit.unit_id;
+    let people = people_held(ledger, actor, ruleset);
+    let uncertain = people
+        .iter()
+        .map(|(tag, _)| tag.as_str())
+        .chain([WAGON])
+        .any(|tag| {
+            ledger
+                .state
+                .known_balance_at(FOUNDING_PHASE, who, tag)
+                .is_err()
+        });
+    if uncertain {
+        return None;
+    }
+    Some((
+        people.iter().map(|(_, amount)| amount).sum(),
+        ledger.state.balance_at(FOUNDING_PHASE, who, WAGON),
+    ))
+}
+
 /// Consumes the people and wagons a `CREATE VILLAGE` founds its village with, from the phase after
 /// production onward, so maintenance no longer counts the founders (`ah-mw1r.3`).
 ///
@@ -11713,35 +11836,15 @@ fn create_village(
         return;
     }
     let who = &actor.unit.unit_id;
-    let phase = StatePhase::PrimaryProduction;
-    let mut people: Vec<(String, i64)> = ledger
-        .state
-        .holdings_at(phase, who)
-        .into_iter()
-        .filter(|(tag, amount)| *amount > 0 && ruleset.is_man(tag))
-        .collect();
-    let listed = |tag: &str| {
-        actor
-            .unit
-            .items
-            .iter()
-            .position(|item| item.tag.eq_ignore_ascii_case(tag))
-            .unwrap_or(usize::MAX)
-    };
-    people.sort_by_key(|(tag, _)| listed(tag));
-    let uncertain = people
-        .iter()
-        .map(|(tag, _)| tag.as_str())
-        .chain([WAGON])
-        .any(|tag| ledger.state.known_balance_at(phase, who, tag).is_err());
-    if uncertain {
+    let phase = FOUNDING_PHASE;
+    let Some((founders, wagons)) = founders_held(ledger, actor, ruleset) else {
         mark_uncounted(ledger, who, placed.line);
         return;
-    }
-    let founders: i64 = people.iter().map(|(_, amount)| amount).sum();
-    if founders < VILLAGE_FOUNDERS || ledger.state.balance_at(phase, who, WAGON) < VILLAGE_WAGONS {
+    };
+    if founders < VILLAGE_FOUNDERS || wagons < VILLAGE_WAGONS {
         return;
     }
+    let people = people_held(ledger, actor, ruleset);
     // An earlier founding within two hexes refuses this one; one that may not found leaves this
     // one admitted rather than counted (`ah-flx2`). Asked only of a founder that has what it takes,
     // so one short of people stays a founding that cannot happen, which `settle_foundings` lets
