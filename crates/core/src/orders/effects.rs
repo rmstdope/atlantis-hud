@@ -2409,7 +2409,7 @@ impl Working {
                 reported_flags: unit.flags.clone(),
                 boardings: Vec::new(),
                 uncounted: Vec::new(),
-            gained_nobody_unjudged: false,
+                gained_nobody_unjudged: false,
                 taken_unshown: Vec::new(),
                 produced: Vec::new(),
                 built: Vec::new(),
