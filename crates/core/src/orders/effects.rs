@@ -1737,6 +1737,12 @@ impl Decided {
             || !self.entry.transport_target_issues.is_empty()
             || self.entry.shipment_unmeasured
             || (lives && self.entry.study.is_some())
+            // A builder working only from a sharer's stock changes none of its own items - the
+            // debit sits on the lender's row (`charge_shared_material`) - so without this its
+            // `built` spend, the one place naming what the structure took, never reached the
+            // table and the lent goods vanished without a word (`ah-8r58`,
+            // `newage trident rules/share`).
+            || (lives && !self.entry.built.is_empty())
             // A unit that buys five of a tag and sells five of the same tag ends the month holding
             // what it started with, so `changes()` records nothing - and the row would be dropped
             // along with the explanation of why nothing changed (`ah-rgkk.3.1`).
