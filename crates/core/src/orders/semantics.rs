@@ -1415,9 +1415,9 @@ fn market_shares_for(
                 Intent::Buy { item, .. } => (item, MarketSide::Buying),
                 _ => continue,
             };
-            let lines = match side {
-                MarketSide::Selling => &hex.region.wanted,
-                MarketSide::Buying => &hex.region.for_sale,
+            let (lines, text) = match side {
+                MarketSide::Selling => (&hex.region.wanted, text.as_str()),
+                MarketSide::Buying => (&hex.region.for_sale, bought_item(text, hex)),
             };
             // Through the one resolver the order-following surfaces use, market lines and all: an
             // item only the line can name is bought and sold by `buy` and `sell`, so it must be
@@ -2321,30 +2321,35 @@ fn forecast_hex(
         // The same question of the `For Sale` list, for what a BUY costs. A market with no line
         // for the goods cannot price the purchase at all, so both kinds of no collapse into one -
         // named as well as anything can name them, for the sentence the hover shows.
-        let purchase =
-            |item: &str| match market_answer(&hex.region.for_sale, item, hex, ordered, ruleset) {
-                // The buyer's own skills, as the report prints them - `actor.unit.skills` is what
-                // the ledger's `buy` reads, and the two surfaces must read the same list.
-                MarketAnswer::Offered(line)
-                    if mage_recruit_refused(
-                        &ordered.unit.skills,
-                        &line.tag.to_ascii_uppercase(),
-                        ruleset,
-                    ) =>
-                {
-                    PurchaseAnswer::RecruitsRefused
-                }
-                MarketAnswer::Offered(line) => PurchaseAnswer::ForSale {
-                    price: line.price,
-                    market_has: line.amount,
-                },
-                MarketAnswer::NotTraded(tag) => PurchaseAnswer::NotSold {
-                    name: item_name(&tag, hex, ruleset).to_lowercase(),
-                },
-                MarketAnswer::Unknown => PurchaseAnswer::NotSold {
-                    name: item.to_lowercase(),
-                },
-            };
+        let purchase = |item: &str| match market_answer(
+            &hex.region.for_sale,
+            bought_item(item, hex),
+            hex,
+            ordered,
+            ruleset,
+        ) {
+            // The buyer's own skills, as the report prints them - `actor.unit.skills` is what
+            // the ledger's `buy` reads, and the two surfaces must read the same list.
+            MarketAnswer::Offered(line)
+                if mage_recruit_refused(
+                    &ordered.unit.skills,
+                    &line.tag.to_ascii_uppercase(),
+                    ruleset,
+                ) =>
+            {
+                PurchaseAnswer::RecruitsRefused
+            }
+            MarketAnswer::Offered(line) => PurchaseAnswer::ForSale {
+                price: line.price,
+                market_has: line.amount,
+            },
+            MarketAnswer::NotTraded(tag) => PurchaseAnswer::NotSold {
+                name: item_name(&tag, hex, ruleset).to_lowercase(),
+            },
+            MarketAnswer::Unknown => PurchaseAnswer::NotSold {
+                name: item.to_lowercase(),
+            },
+        };
 
         // Resolving an item an order names is this module's business, and a gift of silver and a
         // priced withdrawal both need it.
@@ -2369,9 +2374,9 @@ fn forecast_hex(
             // here would look up no share for exactly the goods only the line can name, and the
             // column would price the whole ask while the ledger priced the settled share
             // (`ah-oymb`).
-            let lines = match side {
-                MarketSide::Selling => &hex.region.wanted,
-                MarketSide::Buying => &hex.region.for_sale,
+            let (lines, text) = match side {
+                MarketSide::Selling => (&hex.region.wanted, text),
+                MarketSide::Buying => (&hex.region.for_sale, bought_item(text, hex)),
             };
             market_item_tag(lines, text, hex, ordered, ruleset).and_then(|tag| {
                 market_shares
@@ -4582,35 +4587,23 @@ fn recruited_people(
     ruleset: &Ruleset,
 ) -> Option<Vec<ItemAmount>> {
     // `rules/buy`: "When buying people, specify the race of the people as the [item], or you may
-    // use PEASANT or PEASANTS to recruit whichever race is present in the region." That spelling
-    // names no catalogue item in any committed world, so the market lookup answers `NotSold`,
-    // nothing ever reaches `Ledger::bought`, and a recruit that really happened is invisible to
-    // the walk below. The amount does not enter into it - `BUY 5 PEASANTS` is exactly as
-    // invisible as `BUY ALL PEASANTS`, and both leave the unit unjudged.
+    // use PEASANT or PEASANTS to recruit whichever race is present in the region." Since `ah-6sx5`
+    // that spelling is read as the region's race (`bought_item`), so the recruits reach
+    // `Ledger::bought` like any `BUY n <race>`. Only where it could not be read - a region whose
+    // report names no race, or a race the market does not price - is the line left uncounted, and
+    // then a recruit that may really have happened is invisible to the walk below, so the unit is
+    // left unjudged rather than read as having recruited nobody.
     //
-    // Only those two spellings. `rules/buy` names `PEASANT` and `PEASANTS` and no other form, and
-    // the abbreviations an order may use instead are the tags the report prints
-    // (`rules/orders_abbreviations`: "All common items and skills have abbreviations that can be
-    // used when giving orders ... Any time you see the item on your report, it will be followed
-    // by the abbreviation") - `PEAS` is not one of them (`pnpm run atlantis data PEAS`: "nothing
-    // on the data page matches"). So `BUY ALL PEAS` recruits nobody in the game either, and
-    // forecasting it as a unit that recruited nobody is the right answer rather than an escaped
-    // case.
+    // Only those two spellings. `rules/buy` names `PEASANT` and `PEASANTS` and no other form.
     //
     // Every other spelling names a race or a good, and both reach `Ledger::bought`: an exact
     // amount through `buy`, an `Amount::All` through `settle_buy_all` since `ah-jown`. So the old
     // guard on the *amount* is gone (`ah-4b6n`); it silenced every `BUY ALL` of goods along with
     // the one case it was aimed at.
-    let buys_unnamed_recruits = ordered.intents().any(|intent| match intent {
+    let uncounted = ledger.uncounted.get(&ordered.unit.unit_id);
+    let buys_unnamed_recruits = ordered.intents.iter().any(|placed| match &placed.intent {
         Intent::Buy { item, .. } => {
-            let written = item.replace('_', " ");
-            // Bound rather than returned directly: `item_spellings` borrows `written`, and the
-            // iterator holding that borrow outlives the tail expression of this arm (E0597).
-            let names_peasants = item_spellings(&written)
-                .into_iter()
-                .flatten()
-                .any(|spelling| spelling.eq_ignore_ascii_case("peasant"));
-            names_peasants
+            names_peasants(item) && uncounted.is_some_and(|lines| lines.contains(&placed.line))
         }
         _ => false,
     });
@@ -7391,13 +7384,13 @@ fn check_markets(
             let (lines, item, verb, empty_message) = match &placed.intent {
                 Intent::Buy { item, .. } => (
                     &hex.region.for_sale,
-                    item,
+                    bought_item(item, hex),
                     "sell",
                     "this hex sells nothing at all",
                 ),
                 Intent::Sell { item, .. } => (
                     &hex.region.wanted,
-                    item,
+                    item.as_str(),
                     "want",
                     "this hex wants nothing at all",
                 ),
@@ -9189,7 +9182,13 @@ fn buy(
     standing: HexStanding<'_>,
 ) {
     let who = &actor.unit.unit_id;
-    let Some(offer) = market(&hex.region.for_sale, item, hex, actor, ruleset) else {
+    let Some(offer) = market(
+        &hex.region.for_sale,
+        bought_item(item, hex),
+        hex,
+        actor,
+        ruleset,
+    ) else {
         ledger.doubted.insert(who.clone());
         ledger
             .uncounted
@@ -9409,9 +9408,10 @@ fn buys_in_market_order(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<MarketB
                     Intent::Buy { item, .. } => Some(MarketBuy {
                         unit,
                         intent,
-                        market_line: market(lines, item, hex, ordered, ruleset).and_then(
-                            |offered| lines.iter().position(|line| std::ptr::eq(line, offered)),
-                        ),
+                        market_line: market(lines, bought_item(item, hex), hex, ordered, ruleset)
+                            .and_then(|offered| {
+                                lines.iter().position(|line| std::ptr::eq(line, offered))
+                            }),
                     }),
                     _ => None,
                 })
@@ -11112,6 +11112,39 @@ enum MarketAnswer<'a> {
     /// Nothing could say what item this is - not the catalogue, not the inventories in the hex,
     /// not the market lines. Saying "this hex does not sell it" would be inventing the "it".
     Unknown,
+}
+
+/// Whether an order's item argument is `rules/buy`'s PEASANT or PEASANTS: "When buying people,
+/// specify the race of the people as the [item], or you may use PEASANT or PEASANTS to recruit
+/// whichever race is present in the region."
+///
+/// Only those two spellings, as `rules/buy` names them.
+fn names_peasants(text: &str) -> bool {
+    let written = text.replace('_', " ");
+    // Bound rather than returned directly: `item_spellings` borrows `written`, and the iterator
+    // holding that borrow outlives the tail expression (E0597).
+    let named = item_spellings(&written)
+        .into_iter()
+        .flatten()
+        .any(|spelling| spelling.eq_ignore_ascii_case("peasant"));
+    named
+}
+
+/// What a `BUY` names, with PEASANT or PEASANTS read as the race of the region's peasants
+/// (`rules/buy`: "you may use PEASANT or PEASANTS to recruit whichever race is present in the
+/// region"). The engine does exactly this, keeping the number as written: `parseorders.cpp`
+/// `ProcessBuyOrder` sets the order's item to `region->race`. A region whose report names no race
+/// leaves the text as it is, and the market lookup then answers that nothing can be priced.
+///
+/// For the buying side only: `ProcessSellOrder` reads PEASANTS as an item, so a `SELL` never comes
+/// through here. Every surface that resolves a `BUY` against the `For Sale` list - the
+/// settlement, the ledger's `buy`, the SILVER column and the findings - reads it through this, so
+/// none of them can name a different good (`ah-6sx5`).
+fn bought_item<'t>(text: &'t str, hex: &'t Hex<'_>) -> &'t str {
+    match &hex.region.race {
+        Some(race) if names_peasants(text) => race,
+        _ => text,
+    }
 }
 
 /// The canonical, upper-cased tag an order's item argument names **at this market**.
@@ -20819,9 +20852,9 @@ fn check_region_pools(
                         // The same resolver the settlement used to raise this overrun. Bare
                         // `resolve_item` here would fail to anchor exactly the findings this
                         // bead makes possible (`ah-oymb`).
-                        let lines = match side {
-                            MarketSide::Selling => &hex.region.wanted,
-                            MarketSide::Buying => &hex.region.for_sale,
+                        let (lines, item) = match side {
+                            MarketSide::Selling => (&hex.region.wanted, item.as_str()),
+                            MarketSide::Buying => (&hex.region.for_sale, bought_item(item, hex)),
                         };
                         market_item_tag(lines, item, hex, ordered, ruleset)
                             .is_some_and(|resolved| resolved.eq_ignore_ascii_case(tag))
@@ -55357,29 +55390,68 @@ BUILD
     }
 
     /// `rules/buy`: "you may use PEASANT or PEASANTS to recruit whichever race is present in the
-    /// region". That spelling names no catalogue item, so nothing reaches `Ledger::bought` and a
-    /// recruit that really happened is invisible - whatever the amount. The exact form was never
-    /// covered before `ah-4b6n`, because the guard tested the amount instead of the item.
+    /// region". The engine reads it as the region's race and keeps the number as written
+    /// (`parseorders.cpp` `ProcessBuyOrder`), so the recruits reach `Ledger::bought` like any
+    /// `BUY n <race>` and the unit's skills are judged after them (`ah-6sx5`). Before that bead
+    /// the spelling named no item and every such unit was left unjudged.
     #[test]
-    fn buying_peasants_leaves_the_unit_unjudged() {
+    fn buying_peasants_recruits_the_regions_race() {
         let crew = with_silver(with_skill_pts(men_holder("900", 10), "LUMB", 30), 400);
         let region = ReportRegion {
             for_sale: vec![MarketItem {
                 amount: 20,
-                name: "men".to_string(),
+                name: "humans".to_string(),
+                tag: "HUMN".to_string(),
+                price: 38,
+            }],
+            ..region(vec![crew])
+        };
+        assert_eq!(region.race.as_deref(), Some("humans"), "the fixture's race");
+
+        for line in ["BUY 5 PEASANTS", "BUY 5 peasant", "BUY ALL PEASANTS"] {
+            let orders = format!("unit 900\n{line}\nPRODUCE WOOD\n");
+            let ordered = OrderedUnits::read(&orders);
+            let hex = hex_after_orders(&region, &ordered);
+            let skills = hex
+                .find("900")
+                .unwrap()
+                .after_the_market()
+                .skills
+                .unwrap_or_else(|| panic!("{line}: the recruits are counted, so skills are known"));
+            // `rules/economy_recruiting`: "New recruits will not have any skills or items", so
+            // the men bought dilute the unit's 30 days of LUMB.
+            let lumb = skills.iter().find(|skill| skill.tag == "LUMB");
+            assert!(
+                lumb.is_some_and(|skill| skill.points < 30),
+                "{line}: the recruits dilute the skill: {lumb:?}"
+            );
+        }
+    }
+
+    /// A region whose report names no race of peasants gives PEASANTS nothing to stand for, so the
+    /// line cannot be priced and a recruit cannot be ruled out: the unit stays unjudged rather
+    /// than being read as having recruited nobody (`ah-6sx5`).
+    #[test]
+    fn buying_peasants_where_no_race_is_shown_leaves_the_unit_unjudged() {
+        let crew = with_silver(with_skill_pts(men_holder("900", 10), "LUMB", 30), 400);
+        let region = ReportRegion {
+            race: None,
+            for_sale: vec![MarketItem {
+                amount: 20,
+                name: "humans".to_string(),
                 tag: "HUMN".to_string(),
                 price: 38,
             }],
             ..region(vec![crew])
         };
 
-        for line in ["BUY ALL PEASANTS", "BUY 5 PEASANTS", "BUY 5 peasant"] {
+        for line in ["BUY ALL PEASANTS", "BUY 5 PEASANTS"] {
             let orders = format!("unit 900\n{line}\nPRODUCE WOOD\n");
             let ordered = OrderedUnits::read(&orders);
             let hex = hex_after_orders(&region, &ordered);
             assert!(
                 hex.find("900").unwrap().after_the_market().skills.is_none(),
-                "{line}: the recruits are invisible, so the skills cannot be known"
+                "{line}: the recruits cannot be counted, so the skills cannot be known"
             );
         }
     }

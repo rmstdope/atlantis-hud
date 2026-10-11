@@ -6722,6 +6722,68 @@ mod tests {
         );
     }
 
+    /// `rules/buy`: "you may use PEASANT or PEASANTS to recruit whichever race is present in the
+    /// region. If the second form is specified, the unit will attempt to buy as many as it can
+    /// afford." A formed unit that does so with humans for sale and silver in hand recruits, and
+    /// `rules/form`: "If a new unit gains at least one recruit, the unit will form possessing any
+    /// unused silver and all the other items it was given" - so it is not dissolved, and nothing
+    /// reverts to the first unit (`ah-6sx5`).
+    #[test]
+    fn a_formed_unit_that_buys_peasants_is_not_dissolved() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (humans), $5.",
+            "  For Sale: 5 humans [HUMN] at $38.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 3 swords [SWOR], 1000 silver [SILV]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 1 PEASANTS\nEND\nGIVE NEW 1 3 SWOR\nGIVE NEW 1 1000 SILV\n",
+        );
+        let units = &response.regions[0].units;
+        let formed = units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the formed unit is on the table");
+        assert!(!formed.dissolving, "it recruits, so it forms: {formed:#?}");
+        // `parseorders.cpp` `ProcessBuyOrder` reads PEASANTS as the region's race and keeps the
+        // number as written, so `BUY 1 PEASANTS` here is `BUY 1 humans`.
+        assert_eq!(
+            formed.unit.men, 1,
+            "it previews with the men it recruits: {formed:#?}"
+        );
+        assert!(formed.uncounted.is_empty(), "{:?}", formed.uncounted);
+        assert_eq!(
+            formed
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SWOR")
+                .map_or(0, |item| item.amount),
+            3,
+            "it keeps the swords it was given: {:?}",
+            formed.unit.items
+        );
+        // A row with nothing changing is left out of the response, which is what an unreverted
+        // first unit is.
+        let reverted: Vec<_> = units
+            .iter()
+            .filter(|unit| unit.unit.unit_id == "900")
+            .flat_map(|unit| unit.item_changes.iter())
+            .filter(|change| change.cause == ItemChangeCause::GiftReverted)
+            .collect();
+        assert!(
+            reverted.is_empty(),
+            "nothing reverts to the first unit: {reverted:?}"
+        );
+    }
+
     /// `rules/form` dissolves a formed unit that gains nobody, and since `ah-ty3s.3` the row is
     /// drawn rather than skipped (decision **K2**), so it does not vanish from under a player
     /// editing its orders. It holds nothing: the goods have already reverted.
