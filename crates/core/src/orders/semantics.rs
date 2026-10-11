@@ -16990,20 +16990,62 @@ fn carried_away<'a>(
         if !is_vessel(fleet, Some(ruleset)) || !is_aboard(ordered, &fleet.structure_id) {
             return None;
         }
-        hex.units.iter().find_map(|other| {
-            could_captain(other, &fleet.structure_id)
-                .then(|| {
-                    other.intents.iter().find(|placed| {
-                        matches!(
-                            placed.intent,
-                            Intent::Sail { ref steps }
-                                if steps.iter().any(|step| matches!(step, MoveStep::Go(_)))
-                        )
+        hex.units
+            .iter()
+            .find_map(|other| {
+                could_captain(other, &fleet.structure_id)
+                    .then(|| {
+                        other.intents.iter().find(|placed| {
+                            matches!(
+                                placed.intent,
+                                Intent::Sail { ref steps }
+                                    if steps.iter().any(|step| matches!(step, MoveStep::Go(_)))
+                            )
+                        })
                     })
-                })
-                .flatten()
-        })
+                    .flatten()
+            })
+            .filter(|placed| !first_sail_step_refused(hex, fleet, placed, ruleset))
     })
+}
+
+/// Whether the game refuses this SAIL's very first step, so the fleet carries nobody anywhere
+/// (`ah-g0fk`): land at both ends, the step `sail-between-land-hexes` says "will not move". The
+/// first step is the only one that decides whether anybody leaves, and it can never be a neck of
+/// land - "Ships ending their movement in a land hex may sail out along any side connecting to
+/// water" (`rules/movement_sailing`) - so the two terrains are all it needs: this hex's, and the
+/// one its exit names. An exit the hex does not list is not judged, as `refused_sail_steps` does
+/// not judge one.
+fn first_sail_step_refused(
+    hex: &Hex<'_>,
+    fleet: &Structure,
+    placed: &PlacedIntent,
+    ruleset: &Ruleset,
+) -> bool {
+    let Intent::Sail { steps } = &placed.intent else {
+        return false;
+    };
+    let Some(direction) = steps.iter().find_map(|step| match step {
+        MoveStep::Go(direction) => Some(*direction),
+        _ => None,
+    }) else {
+        return false;
+    };
+    let Some(exit) = hex
+        .region
+        .exits
+        .iter()
+        .find(|exit| Direction::parse(&exit.direction) == Some(direction))
+    else {
+        return false;
+    };
+    let hull = Hull::from_flies(fleet_flies(fleet, Some(ruleset)));
+    refused_by_sailing_step(
+        ruleset,
+        Journey::enforced(MovementMode::Sail, hull),
+        &hex.region.terrain,
+        &exit.terrain,
+    )
 }
 
 /// Where a sail from `from` ends, as far as the report can say.
@@ -17019,16 +17061,20 @@ fn carried_away<'a>(
 ///
 /// A sail with no `Go` steps ends where it started, which is the region already being checked.
 ///
-/// With a ruleset and the fleet's journey, a step with land at both ends stops the fleet where it
-/// is (`ah-g0fk`): the game walks a SAIL step by step and refuses that one, so the fleet ends the
-/// month in the hex it would have left - "so it will not move", as `sail-between-land-hexes` puts
-/// it. Judged by the same [`refused_by_sailing_step`] that warning reads.
+/// With a ruleset and the fleet's journey, the fleet stops at the first step the game refuses
+/// (`ah-g0fk`), in the hex that step would have left: land at both ends, or a neck of land left by
+/// the wrong side - the steps `sail-between-land-hexes` and `sail-through-neck-of-land` say "will
+/// not move". Judged by the same [`refused_sail_steps`] walk those warnings read, over a map of
+/// the regions this route passes through: the neck needs the side each hex was entered by and
+/// whether a canal stands there, which only a [`MapKnowledge`] answers, and the route is all of it
+/// this question needs.
 fn sail_destination<'a>(
     from: &'a ReportRegion,
     steps: &[MoveStep],
     regions: &HashMap<Coordinate, &'a ReportRegion>,
     sailing_rule: Option<(&Ruleset, Journey)>,
 ) -> Option<&'a ReportRegion> {
+    let mut route = vec![from];
     let mut here = from;
     for step in steps {
         let MoveStep::Go(direction) = step else {
@@ -17040,15 +17086,21 @@ fn sail_destination<'a>(
             .exits
             .iter()
             .find(|exit| Direction::parse(&exit.direction) == Some(*direction))?;
-        let next = regions.get(&exit.coordinate).copied()?;
-        if sailing_rule.is_some_and(|(rules, journey)| {
-            refused_by_sailing_step(rules, journey, &here.terrain, &next.terrain)
-        }) {
-            return Some(here);
-        }
-        here = next;
+        here = regions.get(&exit.coordinate).copied()?;
+        route.push(here);
     }
-    Some(here)
+    let Some((rules, journey)) = sailing_rule else {
+        return Some(here);
+    };
+    let passed = ParsedReport {
+        regions: route.iter().map(|region| (*region).clone()).collect(),
+        ..Default::default()
+    };
+    let map = MapKnowledge::from_report(&passed);
+    match refused_sail_steps(&map, rules, journey, from.coordinate, steps).stops {
+        Some(stop) => route.get(stop.steps_taken).copied(),
+        None => Some(here),
+    }
 }
 
 /// How this check names a hex: terrain and coordinate, and no province.
@@ -59794,6 +59846,7 @@ BUILD
         origin.structures.push(longship("329"));
         origin.exits.push(Exit {
             direction: "North".to_string(),
+            terrain: destination.terrain.clone(),
             coordinate: destination.coordinate,
             ..Default::default()
         });
@@ -59824,6 +59877,7 @@ BUILD
         };
         sea.exits.push(Exit {
             direction: "Northwest".to_string(),
+            terrain: destination.terrain.clone(),
             coordinate: destination.coordinate,
             ..Default::default()
         });
@@ -59954,6 +60008,127 @@ BUILD
             site_refusals(&report, &orders).is_empty(),
             "the fleet stays in the settled port: {:?}",
             site_refusals(&report, &orders)
+        );
+    }
+
+    /// `ah-g0fk`, the same for a port nobody settled: the passenger is judged where it stands, so
+    /// the refusal names this hex rather than the forest the fleet never reaches - which also tells
+    /// "judged in the port" apart from "not judged at all".
+    #[test]
+    fn a_passenger_whose_sail_is_refused_land_to_land_is_refused_where_it_stands() {
+        let port = ReportRegion {
+            terrain: "plain".to_string(),
+            ..region_at("1:7,55", 7, 55, vec![])
+        };
+        let forest = ReportRegion {
+            terrain: "forest".to_string(),
+            ..settled(region_at("1:7,53", 7, 53, vec![]))
+        };
+        let (report, orders) = passenger_palace(port, forest, Some(120));
+
+        let refusals = site_refusals(&report, &orders);
+        assert_eq!(refusals.len(), 1, "{refusals:?}");
+        assert_eq!(
+            refusals[0].message,
+            "Cannot start a Palace here: this region has no settlement. No stone will be used."
+        );
+    }
+
+    /// `ah-g0fk`, the other refused step: from the sea at (7,57) the fleet enters the plain (7,55)
+    /// travelling north and would leave it northward, by the side opposite the one it came in by.
+    /// `rules/movement_sailing`: "Ships may not sail through single hex land masses and must leave
+    /// via the same side they entered or a side adjacent to that one." So it stops on the plain,
+    /// and the passenger is judged there - not in the sea beyond.
+    #[test]
+    fn a_passenger_whose_fleet_is_stopped_by_a_neck_of_land_is_judged_where_it_stops() {
+        let origin = ReportRegion {
+            terrain: trident().movement.ocean.terrain.clone(),
+            ..region_at("1:7,57", 7, 57, vec![])
+        };
+        let mut plain = ReportRegion {
+            terrain: "plain".to_string(),
+            ..region_at("1:7,55", 7, 55, vec![])
+        };
+        let sea = ReportRegion {
+            terrain: trident().movement.ocean.terrain.clone(),
+            ..region_at("1:7,53", 7, 53, vec![])
+        };
+        plain.exits.push(Exit {
+            direction: "North".to_string(),
+            terrain: sea.terrain.clone(),
+            coordinate: sea.coordinate,
+            ..Default::default()
+        });
+        plain.exits.push(Exit {
+            direction: "South".to_string(),
+            terrain: origin.terrain.clone(),
+            coordinate: origin.coordinate,
+            ..Default::default()
+        });
+        let (mut report, orders) = passenger_palace(origin, plain, Some(120));
+        report.regions.push(sea);
+        let orders = orders.replace("SAIL N\n", "SAIL N N\n");
+
+        let findings = check_turn(&report, &orders, Some(&trident()), CheckOptions::default());
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.code == codes::SAIL_THROUGH_NECK_OF_LAND),
+            "the second step leaves the plain by the far side: {findings:?}"
+        );
+        let refusals = site_refusals(&report, &orders);
+        assert_eq!(refusals.len(), 1, "{refusals:?}");
+        assert_eq!(
+            refusals[0].message,
+            "Cannot start a Palace where the fleet lands, plain (7,55): that region has no \
+             settlement. No stone will be used."
+        );
+    }
+
+    /// `ah-g0fk` and `rules/economy_ships`: "If the builder MOVEs ... while they have an
+    /// unfinished ship in their possession, the ship will be discarded and lost." A fleet refused
+    /// its first step takes nobody anywhere, so a passenger holding an unfinished ship keeps it;
+    /// the same passenger on a fleet that does sail loses it.
+    #[test]
+    fn a_passenger_on_a_fleet_refused_its_first_step_keeps_its_unfinished_ship() {
+        let abandoned = |origin: ReportRegion, destination: ReportRegion| {
+            let (mut report, orders) = passenger_palace(origin, destination, None);
+            let passenger = report.regions[1]
+                .units
+                .iter_mut()
+                .find(|unit| unit.unit_id == "901")
+                .expect("the passenger");
+            passenger.items.push(ItemAmount {
+                amount: 1,
+                name: "unfinished Cog".to_string(),
+                tag: "COG".to_string(),
+                needs: None,
+            });
+            let orders = orders.replace("unit 901\nBUILD Palace\n", "");
+            let effects =
+                item_effects(&report, &orders, Some(&trident()), &CheckOptions::default());
+            effects_for(&effects, "901").is_some_and(|unit| {
+                unit.moved
+                    .iter()
+                    .any(|movement| movement.cause == ItemChangeCause::Abandoned)
+            })
+        };
+        let plain = || ReportRegion {
+            terrain: "plain".to_string(),
+            ..region_at("1:7,55", 7, 55, vec![])
+        };
+        let forest = || ReportRegion {
+            terrain: "forest".to_string(),
+            ..region_at("1:7,53", 7, 53, vec![])
+        };
+
+        assert!(
+            !abandoned(plain(), forest()),
+            "the fleet stays, so nothing is left"
+        );
+        assert!(
+            abandoned(open_sea(vec![]), forest()),
+            "a fleet that does sail discards it"
         );
     }
 

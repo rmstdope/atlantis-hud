@@ -1561,11 +1561,7 @@ fn decide_movement(
         // `movement::fleet::fleet_course`, which the map trace reads too - `ah-ofra`). A `MOVE` is
         // the unit walking off and is still its own business. `Some(None)` here is a hull whose
         // owner named no course: it goes nowhere, so nobody aboard departs.
-        let hull_course: Option<Option<Vec<crate::movement::orders::MoveStep>>> = if entry
-            .move_command
-            .as_deref()
-            == Some("SAIL")
-        {
+        let sailed_hull = if entry.move_command.as_deref() == Some("SAIL") {
             report
                 .regions
                 .iter()
@@ -1577,15 +1573,17 @@ fn decide_movement(
                         ordered,
                         &entry.unit,
                     )
-                    .map(|hull| {
-                        crate::movement::fleet::fleet_course(region, ordered, &hull.structure_id)
-                            .steps
-                            .map(<[crate::movement::orders::MoveStep]>::to_vec)
-                    })
+                    .map(|hull| (region, hull))
                 })
         } else {
             None
         };
+        let hull_course: Option<Option<Vec<crate::movement::orders::MoveStep>>> =
+            sailed_hull.map(|(region, hull)| {
+                crate::movement::fleet::fleet_course(region, ordered, &hull.structure_id)
+                    .steps
+                    .map(<[crate::movement::orders::MoveStep]>::to_vec)
+            });
         let traced_steps: Option<&[crate::movement::orders::MoveStep]> = match &hull_course {
             Some(course) => course.as_deref(),
             None => entry.move_steps.as_deref(),
@@ -1597,7 +1595,10 @@ fn decide_movement(
                 // the rest of a longer journey is later months' business.
                 Some(path) => {
                     mode = path.mode;
-                    match sailed_month_end(&path) {
+                    let stop = sailed_hull
+                        .filter(|_| path.passage.is_none())
+                        .and_then(|(_, hull)| sail_stop(map, ruleset, hull, path.from, steps));
+                    match month_end(&path, stop) {
                         Some(month_end) if month_end.id() != entry.unit.region_id => {
                             arrival = Some(month_end.id());
                             ends_at = Some(month_end);
@@ -1699,47 +1700,36 @@ fn decide_movement(
     (decided, sailing)
 }
 
-/// Where the coming month ends for a traced journey: the first month's end, except that a fleet
-/// goes no further than the hex before the first step the game refuses (`ah-g0fk`).
+/// Where the game stops this fleet, when it refuses one of the SAIL's steps (`ah-g0fk`).
 ///
-/// The game walks a SAIL one step at a time and stops the fleet at the first step it refuses -
-/// "SAIL: Can't sail inland." and "Cannot sail through land." both set `stop` in the engine's
-/// `RunSailOrders` - so the steps before it are taken and none after it. `blocked_from` is the
-/// trace's own judgement of that step, the same `judge_sail_step` the Problems panel's
-/// `sail-between-land-hexes` warning reads, so the two cannot disagree about whether it moves.
-/// Only a fleet is stopped here: the trace draws a walker's order as written, and what the game
-/// makes of a walker's refused step is not this bead's question.
-fn sailed_month_end(
+/// The same [`refused_sail_steps`](crate::movement::sailing::refused_sail_steps) walk the Problems
+/// panel's `sail-between-land-hexes` and `sail-through-neck-of-land` warnings read, with the hull
+/// read the way `check_sail_route` reads it - so the preview stops a fleet exactly where those
+/// warnings say it "will not move", and never on a step the map cannot show, which that walk
+/// declines to judge. The trace's own `blocked_from` is not used: it guesses the terrain of
+/// country nobody has described, and that is doubt, not a refusal.
+fn sail_stop(
+    map: &crate::movement::graph::MapKnowledge,
+    ruleset: &crate::movement::rules::Ruleset,
+    hull: &crate::report::model::Structure,
+    from: crate::report::model::Coordinate,
+    steps: &[crate::movement::orders::MoveStep],
+) -> Option<crate::movement::sailing::SailStop> {
+    use crate::movement::plan::{Hull, Journey};
+    let hull = Hull::from_flies(crate::movement::mode::fleet_flies(hull, Some(ruleset)));
+    let journey = Journey::enforced(crate::movement::rules::MovementMode::Sail, hull);
+    crate::movement::sailing::refused_sail_steps(map, ruleset, journey, from, steps).stops
+}
+
+/// Where the coming month ends: the trace's first month, cut short where the game stops a fleet
+/// before it gets that far.
+fn month_end(
     path: &crate::movement::trace::TracedPath,
+    stop: Option<crate::movement::sailing::SailStop>,
 ) -> Option<crate::report::model::Coordinate> {
     let month = path.months.first()?;
-    if path.mode != Some(crate::movement::rules::MovementMode::Sail) {
-        return Some(month.ends_at);
-    }
-    match path.blocked_from {
-        // The blocked index counts the whole journey - the steps before a passage, the crossing,
-        // then the steps beyond - which is the order the months are split over too.
-        Some(blocked) if blocked < month.steps => {
-            let exit = path
-                .passage
-                .as_ref()
-                .and_then(|passage| passage.exit.as_ref());
-            let mut arrivals = path
-                .steps
-                .iter()
-                .map(|step| step.to)
-                .chain(exit.map(|exit| exit.coordinate))
-                .chain(
-                    exit.into_iter()
-                        .flat_map(|exit| exit.steps.iter().map(|step| step.to)),
-                );
-            Some(
-                blocked
-                    .checked_sub(1)
-                    .and_then(|before| arrivals.nth(before))
-                    .unwrap_or(path.from),
-            )
-        }
+    match stop {
+        Some(stop) if stop.steps_taken < month.steps => Some(stop.at),
         _ => Some(month.ends_at),
     }
 }
@@ -8710,6 +8700,38 @@ mod tests {
             region_of(&response, "1:3,3").is_none(),
             "nobody reaches the forest"
         );
+    }
+
+    /// `ah-g0fk`'s other half: a step only the trace's guess calls land to land is no refusal.
+    /// The plain at (2,2) is known only by name, so the trace guesses the unnamed hex beyond it is
+    /// plain too; the Problems panel judges no step it cannot see and warns of nothing, so the
+    /// preview does not stop the fleet there either.
+    #[test]
+    fn a_step_into_country_nobody_has_described_does_not_stop_the_fleet() {
+        let report = fleet_report_with_a_passenger(WAVECREST)
+            .replace(
+                "\nocean (2,2) in Sea.\n\nExits:\n  Northwest : ocean (1,1) in Sea.\n",
+                "",
+            )
+            .replace(
+                "Southeast : ocean (2,2) in Sea.",
+                "Southeast : plain (2,2) in Shire.",
+            );
+        assert!(
+            !report.contains("ocean (2,2)"),
+            "the fixture was rewritten: {report}"
+        );
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 900\nSAIL SE SE\n",
+        )
+        .expect("the ruleset loads");
+
+        let departing = row(&response, "1:1,1", "900").expect("900 departs");
+        assert_eq!(departing.departing_to.as_deref(), Some("1:3,3"));
     }
 
     /// The owner's own course still departs everyone aboard, unchanged.
