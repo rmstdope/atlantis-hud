@@ -4,6 +4,7 @@ import type { ItemKind } from "./ItemKind";
 import type { MonsterCombat } from "./MonsterCombat";
 import type { RaceSkillLimits } from "./RaceSkillLimits";
 import type { SelfMobility } from "./SelfMobility";
+import type { ShipBuild } from "./ShipBuild";
 import type { Weapon } from "./Weapon";
 
 export type ItemEntry = { tag: string, name: string, kind: ItemKind, weight: number, capacity: ItemCapacity, selfMobile: SelfMobility, moves: number, 
@@ -44,4 +45,10 @@ maintenanceValue?: number,
  * fields above already carry. `None` for an entry that is nothing but that preamble, and for
  * a ruleset cached before ah-3cj4.2, which carried no prose at all.
  */
-description?: string, };
+description?: string, 
+/**
+ * How a ship of this kind is built, from the shipbuilding skill's BUILD sentences
+ * (`data/shipbuilding`: "may BUILD Galleons [GALL] from 75 wood [WOOD]"). Ships only; `None`
+ * for everything else, for a ship no skill names, and for a ruleset scraped before `ah-uxmh`.
+ */
+shipBuild?: ShipBuild, };

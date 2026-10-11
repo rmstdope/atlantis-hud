@@ -38,6 +38,7 @@ import type { CastOutput } from "./generated/CastOutput";
 import type { ControlCap } from "./generated/ControlCap";
 import type { ItemCapacity } from "./generated/ItemCapacity";
 import type { ItemEntry } from "./generated/ItemEntry";
+import type { ShipBuild } from "./generated/ShipBuild";
 import type { ItemKind } from "./generated/ItemKind";
 import type { MonsterCombat } from "./generated/MonsterCombat";
 import type { Production } from "./generated/Production";
@@ -1047,6 +1048,44 @@ const CANAL_BYPASS =
   /This canal allows ships to sail through this coastal land region in any direction, bypassing the isthmus restriction\./i;
 /** What the pass costs, which each grade states in its own words - `stone`, `mystic`. */
 const CANAL_COST = /Passage through a [a-z ]*canal costs (\d+) movement points?\./i;
+
+/**
+ * One ship clause of a BUILD sentence: `Galleons [GALL] from 75 wood [WOOD]`. A ship's clause names
+ * its tag and carries no article, which is what tells it from a building's `a Tower from 10 stone`;
+ * it runs until the next ship's clause, so a material list joined by `and` stays with its ship.
+ */
+const SHIP_CLAUSE =
+  /([A-Z][A-Za-z ]*?) \[([A-Z0-9]{2,6})\] from (.+?)(?=,? and [A-Z][A-Za-z ]*? \[[A-Z0-9]{2,6}\] from |$)/g;
+
+/**
+ * What each ship takes to build, keyed by its tag (`ah-uxmh`): the shipbuilding skill's
+ * `A unit with this skill may BUILD Longships [LONG] from 10 wood [WOOD] and Rafts [RAFT] from 10
+ * wood [WOOD].`, with the skill and level taken from the entry's opening, as a building's are.
+ * Only a tag `items` already classifies as a ship gets one; the first level to name a ship keeps
+ * it, since the paragraphs arrive in level order.
+ */
+export function shipBuildsOf(html: string, items: ItemReference): Record<string, ShipBuild> {
+  const ships: Record<string, ShipBuild> = {};
+  for (const paragraph of entryParagraphs(html)) {
+    const skill = paragraph.match(SKILL_OPENING);
+    if (!skill) {
+      continue;
+    }
+    for (const statement of paragraph.matchAll(/A unit with this skill may BUILD ([^.]+)\./gi)) {
+      for (const [, , tag, materials] of statement[1].trim().matchAll(SHIP_CLAUSE)) {
+        if (items[tag]?.kind !== "ship" || ships[tag] !== undefined) {
+          continue;
+        }
+        const inputs = taggedAmounts(materials);
+        if (inputs.length === 0) {
+          continue;
+        }
+        ships[tag] = { inputs, skill: skill[2], level: Number.parseInt(skill[3], 10) };
+      }
+    }
+  }
+  return ships;
+}
 
 /**
  * Reads the buildings out of the data page: the object entries say what a structure is and how

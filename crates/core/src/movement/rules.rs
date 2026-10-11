@@ -408,6 +408,34 @@ pub struct ItemEntry {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub description: Option<String>,
+    /// How a ship of this kind is built, from the shipbuilding skill's BUILD sentences
+    /// (`data/shipbuilding`: "may BUILD Galleons [GALL] from 75 wood [WOOD]"). Ships only; `None`
+    /// for everything else, for a ship no skill names, and for a ruleset scraped before `ah-uxmh`.
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub ship_build: Option<ShipBuild>,
+}
+
+/// What building one ship takes (`ah-uxmh`), read off the skill entry that names it.
+///
+/// `rules/economy_ships`: "The cost is both the man-months of labor and the number of units of
+/// material required to complete the ship", so a single input's amount is also its cost. Every
+/// input is required - `data/shipbuilding` 5's Airship takes "60 floater hides [FLOA] and 60 wood
+/// [WOOD]" - which is unlike a building's alternatives.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/ShipBuild.ts")
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ShipBuild {
+    /// What it is built from, in the page's order.
+    pub inputs: Vec<ProductionInput>,
+    /// The skill tag the sentence's entry opens with - `SHIP`.
+    pub skill: String,
+    /// The level of that entry: the least that may build it.
+    pub level: i64,
 }
 
 /// Thresholds for the risk heuristic. Ours, not the game's, which is why they carry `scraped`.
@@ -1652,6 +1680,15 @@ impl Ruleset {
         Some((building.cost?, materials))
     }
 
+    /// How a ship of this tag is built, when the catalogue states it (`ah-uxmh`).
+    #[must_use]
+    pub fn ship_build(&self, tag: &str) -> Option<&ShipBuild> {
+        self.find_item(tag)
+            .filter(|item| item.kind == ItemKind::Ship)?
+            .ship_build
+            .as_ref()
+    }
+
     /// What a fleet spends passing through a structure of this kind, or `None` for anything that
     /// is not a canal.
     ///
@@ -1938,6 +1975,26 @@ mod tests {
         assert_eq!(ruleset.build_recipe("Shaft"), None);
         // Nor does a kind the catalogue has never heard of.
         assert_eq!(ruleset.build_recipe("Barn"), None);
+    }
+
+    /// `data/shipbuilding` 3: "may BUILD Galleons [GALL] from 75 wood [WOOD]" (`ah-uxmh`).
+    #[test]
+    fn a_ship_states_its_skill_and_its_material() {
+        let ruleset = ruleset();
+        let galleon = ruleset.ship_build("GALL").expect("the Galleon's recipe");
+        assert_eq!(galleon.skill, "SHIP");
+        assert_eq!(galleon.level, 3);
+        assert_eq!(
+            galleon.inputs,
+            vec![ProductionInput {
+                tag: "WOOD".to_string(),
+                amount: 75
+            }]
+        );
+        // Found by its name too, as every other item is.
+        assert_eq!(ruleset.ship_build("Galleon"), Some(galleon));
+        // Not a ship: no recipe, whatever its entry says.
+        assert_eq!(ruleset.ship_build("WOOD"), None);
     }
 
     // What a `BUILD [object type]` names (`rules/build`, ah-jyqk). "This structure cannot be built

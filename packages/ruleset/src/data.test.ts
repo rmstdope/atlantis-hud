@@ -7,6 +7,7 @@ import {
   parseItemReference,
   parseSkillReference,
   RulesetScrapeError,
+  shipBuildsOf,
   taggedAmounts,
   taggedLevels,
   ungiveableItemsOf
@@ -1949,5 +1950,58 @@ describe("taggedLevels", () => {
 
   it("passes over a clause stating no level", () => {
     expect(taggedLevels("force [FORC]")).toEqual([]);
+  });
+});
+
+/**
+ * A ship's recipe comes from the shipbuilding skill's BUILD sentences (`data/shipbuilding`), which
+ * the buildings pass skips because a ship clause carries no article (`ah-uxmh`). Every expected
+ * value is quoted from the fixture's own entry.
+ */
+describe("shipBuildsOf", () => {
+  const ships = shipBuildsOf(DATA_HTML, parseItemReference(DATA_HTML));
+
+  it("reads a Galleon as 75 wood at shipbuilding 3", () => {
+    // "shipbuilding [SHIP] 3: A unit with this skill may BUILD Galleons [GALL] from 75 wood [WOOD]"
+    expect(ships.GALL).toEqual({ inputs: [{ tag: "WOOD", amount: 75 }], skill: "SHIP", level: 3 });
+  });
+
+  it("reads both ships of one sentence", () => {
+    // "may BUILD Longships [LONG] from 10 wood [WOOD] and Rafts [RAFT] from 10 wood [WOOD]"
+    expect(ships.LONG).toEqual({ inputs: [{ tag: "WOOD", amount: 10 }], skill: "SHIP", level: 1 });
+    expect(ships.RAFT).toEqual({ inputs: [{ tag: "WOOD", amount: 10 }], skill: "SHIP", level: 1 });
+  });
+
+  it("reads a material other than wood", () => {
+    // "and Galleys [GLLY] from 50 ironwood [IRWD]"
+    expect(ships.GLLY).toEqual({ inputs: [{ tag: "IRWD", amount: 50 }], skill: "SHIP", level: 3 });
+  });
+
+  it("keeps both materials of a ship that needs two", () => {
+    // "may BUILD Airships [AIRS] from 60 floater hides [FLOA] and 60 wood [WOOD]"
+    expect(ships.AIRS).toEqual({
+      inputs: [
+        { tag: "FLOA", amount: 60 },
+        { tag: "WOOD", amount: 60 }
+      ],
+      skill: "SHIP",
+      level: 5
+    });
+  });
+
+  it("gives no recipe to a building", () => {
+    expect(Object.keys(ships).every((tag) => parseItemReference(DATA_HTML)[tag]?.kind === "ship")).toBe(
+      true
+    );
+  });
+
+  it("reads the New Age worlds the same way", () => {
+    for (const page of [TRIDENT_DATA_HTML, ARCANUM_DATA_HTML]) {
+      expect(shipBuildsOf(page, parseItemReference(page)).COG).toEqual({
+        inputs: [{ tag: "WOOD", amount: 25 }],
+        skill: "SHIP",
+        level: 2
+      });
+    }
   });
 });
