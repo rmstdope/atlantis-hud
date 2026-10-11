@@ -2712,3 +2712,115 @@ describe("the line above a units list that was not fully read", () => {
     expect(markup).not.toContain('data-testid="units-unread-line"');
   });
 });
+
+// `ah-2ql5`: a dashed brass square before an unfinished structure's label, and before an
+// unfinished ship in Items, following the month-end forecast.
+describe("the unfinished mark", () => {
+  const STOCKADE = {
+    structureId: "11",
+    name: "Building",
+    kind: "Stockade", baseKind: "Stockade", qualifiers: [], vessels: [],
+    description: null,
+    needs: 20
+  };
+  const FORT = { ...STOCKADE, structureId: "12", name: "Odds and Ends", kind: "Fort", baseKind: "Fort", needs: null };
+  const MARK = "data-unfinished-mark";
+
+  const inHex = (units: ReportUnit[]) => hex({ region: region({ structures: [STOCKADE, FORT], units }) });
+
+  /** The markup of the one cell that holds `text`, so a mark elsewhere in the row cannot pass. */
+  const cellWith = (markup: string, text: string): string => {
+    const at = markup.indexOf(text);
+    expect(at).toBeGreaterThan(-1);
+    return markup.slice(markup.lastIndexOf("<td", at), markup.indexOf("</td>", at));
+  };
+
+  const finishing = (unitId: string): RegionPreview => ({
+    regionId: "1:6,52",
+    units: [
+      {
+        unit: unit({ unitId, structureId: "11" }),
+        status: "present",
+        changes: [],
+        arrivingFrom: null,
+        departingTo: null,
+        aboard: null,
+        uncounted: [],
+        takenUnshown: [],
+        produced: [],
+        built: [
+          {
+            materials: [{ amount: 20, tag: "WOOD", name: "wood" }],
+            amount: 20,
+            place: "Building 11",
+            founding: false,
+            helping: null,
+            couldDo: 30,
+            cappedBy: "needs",
+            finishes: "11"
+          }
+        ],
+        created: [],
+        transportSent: [],
+        transportReceived: [],
+        transportTargetIssues: [],
+        shipmentUnmeasured: false,
+        itemChanges: [],
+        dissolvesInto: null,
+        formed: false,
+        dissolving: false
+      } as unknown as RegionPreview["units"][number]
+    ]
+  });
+
+  it("puts the mark before an unfinished building's label, and the hover says what it means", () => {
+    const markup = draw(inHex([unit({ unitId: "1204", structureId: "11" })]));
+    const cell = cellWith(markup, "Building [11] · Stockade");
+
+    expect(cell).toContain(MARK);
+    expect(cell.indexOf(MARK)).toBeLessThan(cell.indexOf("Building [11] · Stockade"));
+    expect(cell).toContain("Unfinished — still being built.");
+  });
+
+  it("marks nothing on a finished structure", () => {
+    const markup = draw(inHex([unit({ unitId: "1188", structureId: "12" })]));
+    expect(cellWith(markup, "Odds and Ends [12] · Fort")).not.toContain(MARK);
+  });
+
+  it("marks nothing on a structure the report never described", () => {
+    const markup = draw(inHex([unit({ unitId: "1188", structureId: "99" })]));
+    expect(cellWith(markup, "[99]")).not.toContain(MARK);
+  });
+
+  it("drops the mark when this month's building finishes it, in the coming month's italic", () => {
+    const markup = draw(
+      inHex([unit({ unitId: "1204", structureId: "11" }), unit({ unitId: "1205", structureId: "11" })]),
+      finishing("1204")
+    );
+
+    expect(markup).not.toContain(MARK);
+    const cell = cellWith(markup, "Building [11] · Stockade");
+    expect(cell).toContain("italic text-brass");
+    // Static markup escapes the apostrophe.
+    expect(cell).toContain("Unfinished in the report; this month&#x27;s building finishes it.");
+  });
+
+  it("puts the mark before an unfinished ship in Items, and only before it", () => {
+    const markup = draw(
+      inHex([
+        unit({
+          unitId: "3173",
+          items: [
+            { amount: 85, name: "wood", tag: "WOOD" },
+            { amount: 1, name: "unfinished Galleon", tag: "GALL" }
+          ]
+        })
+      ])
+    );
+    const cell = cellWith(markup, "85 WOOD");
+
+    expect(cell.split(MARK)).toHaveLength(2);
+    expect(cell.indexOf("85 WOOD")).toBeLessThan(cell.indexOf(MARK));
+    expect(cell.indexOf(MARK)).toBeLessThan(cell.indexOf("1 GALL"));
+  });
+});

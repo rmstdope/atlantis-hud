@@ -34,6 +34,14 @@ import {
   unitStructureLabelIn,
   type StructuresByRegion
 } from "../structureLabel";
+import {
+  finishingStructuresOf,
+  itemCellParts,
+  structureFinishState,
+  type FinishingStructures,
+  type StructureFinish
+} from "../unfinishedMark";
+import { UnfinishedMark } from "./UnfinishedMark";
 import { describeMenBriefly } from "../unitComposition";
 import {
   atMost,
@@ -517,6 +525,12 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   const structures = useMemo(
     () => structuresByRegion ?? structuresByRegionOf(hex?.region ? [hex.region] : []),
     [structuresByRegion, hex]
+  );
+  // Which of those structures this month's `BUILD`s finish (`ah-2ql5`), from the whole report's
+  // preview where there is one - a list spanning hexes needs every hex's - else this hex's slice.
+  const finishing = useMemo(
+    () => finishingStructuresOf(ordersPreview ?? (preview ? { regions: [preview] } : null)),
+    [ordersPreview, preview]
   );
   /** Every row's name by unit number, for a popup naming the unit men came from (`ah-rgkk.2.3`). */
   const unitNames = useMemo(
@@ -1550,6 +1564,12 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                   unit={unit}
                   structureLabel={unitStructureLabelIn(structureRegionOf(unit), unit.structureId, structures)}
                   reportedStructureLabel={reportedStructureLabelFor(unit, structures)}
+                  structureFinish={structureFinishState(
+                    structureRegionOf(unit),
+                    unit.structureId,
+                    structures,
+                    finishing
+                  )}
                   drawn={drawn}
                   index={start + offset}
                   rowHeight={rowHeight}
@@ -1601,6 +1621,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
             countUpkeep={countUpkeep}
             derivedSkills={derivedSkills}
             structures={structures}
+            finishing={finishing}
             unitNames={unitNames}
           />
         </div>
@@ -2021,6 +2042,7 @@ function HoveredPopup({
   countUpkeep,
   derivedSkills,
   structures,
+  finishing,
   unitNames
 }: {
   hovered: { unit: PreviewedUnit; column: DrawnColumnId; at: Point } | null;
@@ -2033,6 +2055,8 @@ function HoveredPopup({
   countUpkeep: boolean;
   derivedSkills: DerivedSkills;
   structures: StructuresByRegion;
+  /** The structures this month's `BUILD`s finish, by region (`ah-2ql5`). */
+  finishing: FinishingStructures;
   /** Every row's name by unit number, for a Skills popup naming a giver (`ah-rgkk.2.3`). */
   unitNames: ReadonlyMap<UnitRowKey, string>;
 }) {
@@ -2062,7 +2086,13 @@ function HoveredPopup({
     countUpkeep,
     derivedSkills: derivedSkillsFor(derivedSkills, unit),
     dissolving,
-    unitNames
+    unitNames,
+    structureFinish: structureFinishState(
+      structureRegionOf(unit),
+      unit.structureId,
+      structures,
+      finishing
+    )
   });
 
   if (spec.kind === "unit") {
@@ -2117,6 +2147,7 @@ function UnitRow({
   unit,
   structureLabel,
   reportedStructureLabel,
+  structureFinish,
   drawn,
   index,
   rowHeight,
@@ -2157,6 +2188,8 @@ function UnitRow({
   structureLabel: string | null;
   /** The structure the unit's orders moved it out of, for the Structure popup (`ah-rgkk.5.3`). */
   reportedStructureLabel: string | null;
+  /** Whether that structure is unfinished at the month's end, or finished by this month (`ah-2ql5`). */
+  structureFinish: StructureFinish;
   index: number;
   rowHeight: number;
   selected: boolean;
@@ -2236,6 +2269,8 @@ function UnitRow({
 }) {
   const skills = unitSkillsCell(unit, derivedSkills);
   const items = formatItems(unit.items, unit.created);
+  // The same entries, so the unfinished mark can sit before an unfinished ship's (`ah-2ql5`).
+  const itemParts = itemCellParts(unit.items, unit.created);
   const unread = !unitWasFullyRead(unit);
 
   // Which cells the orders changed, so each one can say so and show what the report said.
@@ -2333,7 +2368,8 @@ function UnitRow({
       countUpkeep,
       derivedSkills: derivedSkillsFor(derivedSkills, unit),
       dissolving: Boolean(dissolving),
-      unitNames
+      unitNames,
+      structureFinish
     };
     return new Map(
       EXPLAINED_COLUMNS.map((column) => [column, popupForCell(column, unit, popupFacts)])
@@ -2352,7 +2388,8 @@ function UnitRow({
     countUpkeep,
     derivedSkills,
     dissolving,
-    unitNames
+    unitNames,
+    structureFinish
   ]);
 
   const explain = (column: DrawnColumnId) => {
@@ -2603,7 +2640,13 @@ function UnitRow({
         {unread && items === "" ? (
           <span className="text-warn">could not be read</span>
         ) : (
-          items
+          itemParts.map((part, at) => (
+            <Fragment key={at}>
+              {at > 0 ? ", " : null}
+              {part.unfinished ? <UnfinishedMark /> : null}
+              {part.text}
+            </Fragment>
+          ))
         )}
         {unread && items !== "" ? (
           <span className="text-warn"> · and more that could not be read</span>
@@ -2620,7 +2663,14 @@ function UnitRow({
       </Td>
     ),
     structure: (
-      <Td className={`truncate${structureChange ? ` ${PREDICTED}` : ""}`}>
+      // The mark first, so a narrow column cuts the name and never the mark; a building this
+      // month's orders finish loses it and reads in the coming month's italic instead (`ah-2ql5`).
+      <Td
+        className={`truncate${
+          structureChange || structureFinish === "finishing" ? ` ${PREDICTED}` : ""
+        }`}
+      >
+        {structureFinish === "unfinished" ? <UnfinishedMark /> : null}
         {structureLabel ?? ""}
         {explain("structure")}
       </Td>
