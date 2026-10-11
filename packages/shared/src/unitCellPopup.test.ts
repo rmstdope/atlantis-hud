@@ -1675,6 +1675,29 @@ describe("the column popups", () => {
     });
   });
 
+  it("the silver popup of a unit that formed with nobody says where its silver reverted", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 0,
+            atMonthEnd: 0,
+            changes: [
+              { amount: 1000, cause: "was-given", line: 5, other: "Drones (3305)" },
+              { amount: -1000, cause: "gift-reverted", line: null, other: "Drones (2404)" }
+            ]
+          })
+        })
+      )
+    );
+    expect(popup.lines.find((line) => line.label === "reverted")).toMatchObject({
+      value: "-1000",
+      why: "to Drones (2404), as this unit formed with nobody"
+    });
+  });
+
   it("the silver popup names the neighbours' money that paid", () => {
     const popup = columnPopup(
       popupForCell(

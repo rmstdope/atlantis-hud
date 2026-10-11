@@ -12188,14 +12188,24 @@ fn buy_silver(ledger: &mut Ledger<'_>, who: &str, wanted: i64, spent: i64, place
 /// column, which alone answers for silver, showed the gift leave the giver and arrive nowhere.
 ///
 /// A hex with no own report unit has nobody to revert to, and moves nothing, as the ITEMS preview
-/// does (`ah-ty3s.3`).
+/// does (`ah-ty3s.3`). Silver is never left uncertain by a gift (`targets::give_outcome`: silver
+/// to a shown foreign unit moves, `rules/give`, and to an unshown one is assumed to land,
+/// `ah-jo6b`), so the balance read here is a figure, never an `UncertainGive`.
 fn revert_dissolved_forms(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     let Some(first) = hex.units.iter().find(|ordered| ordered.formed.is_none()) else {
         return;
     };
     let first_label = format!("{} ({})", first.unit.name, first.unit.unit_id);
     for ordered in &hex.units {
-        if ordered.formed.is_none() || ordered.after_the_market().men != 0 {
+        if ordered.formed.is_none() {
+            continue;
+        }
+        // Nobody gained is a fact only where the headcount is: a `BUY PEASANTS` (`rules/buy`) or
+        // a gift of men this walk cannot follow leaves `men` at the figure before it and marks
+        // the skills and races it settles unknowable. That unit is not known to dissolve, so its
+        // silver is left where it is.
+        let after = ordered.after_the_market();
+        if after.men != 0 || after.skills.is_none() || after.men_by_race.is_none() {
             continue;
         }
         let dissolved = &ordered.unit.unit_id;
@@ -12224,6 +12234,11 @@ fn revert_dissolved_forms(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
             None,
             Some(dissolved_label),
         );
+        // A figure the ledger could not vouch for on the dissolving unit is no better on the one
+        // that receives it.
+        if ledger.doubted.contains(dissolved) {
+            ledger.doubted.insert(first.unit.unit_id.clone());
+        }
     }
 }
 
@@ -33809,6 +33824,27 @@ BUILD
             );
             let ledger = ledger_for(&hex, Some(&rules));
             read(&ledger)
+        }
+
+        /// A formed unit the ledger cannot price hands the first unit a figure nobody can vouch
+        /// for, so the doubt goes with the silver when `rules/form` dissolves it (`ah-09bu`).
+        #[test]
+        fn a_doubted_formed_unit_passes_its_doubt_on_with_its_silver() {
+            with_settled_ledger(
+                region(vec![unit("900"), with_silver(unit("901"), 100)]),
+                "unit 901\nGIVE NEW 1 100 SILV\nFORM 1\nTAKE FROM 999 ALL SILV\nEND\n",
+                |ledger| {
+                    assert!(
+                        ledger.doubted.contains("new-1"),
+                        "the fixture's TAKE from a unit outside the hex should doubt the formed unit"
+                    );
+                    assert!(
+                        ledger.doubted.contains("900"),
+                        "the first unit receives the doubted silver, and the doubt: {:?}",
+                        ledger.doubted
+                    );
+                },
+            );
         }
 
         fn rows_of(ledger: &Ledger<'_>, who: &str, cause: SilverChangeCause) -> Vec<SilverMove> {
@@ -57269,6 +57305,32 @@ BUILD
             let formed = forecast(&review, "new-1");
             assert_eq!(formed.held, 0);
             assert_eq!(formed.at_month_end, Some(0));
+        }
+
+        /// `rules/buy`: PEASANT/PEASANTS recruits "whichever race is present in the region", as
+        /// many as the unit can afford - a headcount the ledger cannot settle. A unit whose
+        /// recruits cannot be counted is not known to have gained nobody, so `rules/form`'s
+        /// dissolve is not stated for it and its silver stays with it (`ah-09bu`).
+        #[test]
+        fn a_formed_unit_whose_recruits_cannot_be_counted_is_not_reverted() {
+            let review = review_turn(
+                &report(vec![region(vec![with_silver(unit("1922"), 500)])]),
+                "unit 1922\nGIVE NEW 1 500 SILV\nFORM 1\nBUY 5 PEASANTS\nEND\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let reverted = |id: &str| {
+                forecast(&review, id)
+                    .changes
+                    .iter()
+                    .any(|change| change.cause == SilverChangeCause::GiftReverted)
+            };
+            assert!(
+                !reverted("1922") && !reverted("new-1"),
+                "{:#?}",
+                review.silver
+            );
         }
 
         #[test]

@@ -780,5 +780,29 @@ fn claimed_silver_given_to_a_unit_formed_with_nobody_reverts_to_the_first_unit()
     );
     assert_eq!(first.income, Some(1000));
     assert_eq!(first.at_month_end, Some(1000));
+    let reverted_from = |row: &UnitSilver| {
+        row.changes
+            .iter()
+            .filter(|change| change.cause == SilverChangeCause::GiftReverted)
+            .map(|change| (change.amount, change.other.clone()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        reverted_from(&row_of(&review, "new-1")),
+        vec![(-1000, Some("Hands (901)".to_string()))],
+        "the dissolving unit's own row says where its silver went"
+    );
+    assert_eq!(
+        row_of(&review, "902")
+            .changes
+            .iter()
+            .map(|change| (change.amount, change.cause))
+            .collect::<Vec<_>>(),
+        vec![
+            (2500, SilverChangeCause::Claimed),
+            (-1000, SilverChangeCause::GaveAway)
+        ],
+        "the giver still shows the claim and the gift"
+    );
     assert_eq!(preview_holding(&text, script, "901", "SILV"), 1000);
 }
