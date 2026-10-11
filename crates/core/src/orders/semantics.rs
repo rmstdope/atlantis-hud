@@ -17008,7 +17008,13 @@ fn carried_away<'a>(
                     })
                     .flatten()
             })
-            .filter(|placed| !first_sail_step_refused(hex, fleet, placed, ruleset))
+            .filter(|placed| {
+                let Intent::Sail { steps } = &placed.intent else {
+                    return true;
+                };
+                let hull = Hull::from_flies(fleet_flies(fleet, Some(ruleset)));
+                !first_sail_step_refused(hex, hull, steps, ruleset)
+            })
     })
 }
 
@@ -17019,15 +17025,16 @@ fn carried_away<'a>(
 /// water" (`rules/movement_sailing`) - so the two terrains are all it needs: this hex's, and the
 /// one its exit names. An exit the hex does not list is not judged, as `refused_sail_steps` does
 /// not judge one.
+///
+/// Read for the passengers by [`carried_away`] and for the captain and sailors by
+/// [`sail_refused_before_leaving`] (`ah-nz7r`), so nobody aboard is judged as leaving a hex the
+/// fleet stays in.
 fn first_sail_step_refused(
     hex: &Hex<'_>,
-    fleet: &Structure,
-    placed: &PlacedIntent,
+    hull: Hull,
+    steps: &[MoveStep],
     ruleset: &Ruleset,
 ) -> bool {
-    let Intent::Sail { steps } = &placed.intent else {
-        return false;
-    };
     let Some(direction) = steps.iter().find_map(|step| match step {
         MoveStep::Go(direction) => Some(*direction),
         _ => None,
@@ -17042,7 +17049,6 @@ fn first_sail_step_refused(
     else {
         return false;
     };
-    let hull = Hull::from_flies(fleet_flies(fleet, Some(ruleset)));
     refused_by_sailing_step(
         ruleset,
         Journey::enforced(MovementMode::Sail, hull),
@@ -20233,35 +20239,19 @@ fn leaves_hex_after_load_check(
     })
 }
 
-/// Whether the game refuses this unit's `SAIL` at its very first step, so the fleet never leaves
-/// the hex (`ah-nz7r`). The engine stops a fleet at the first step it refuses, before taking any
-/// (`RunSailOrders`), and the only refusal a first step can meet is land at both ends: "Ships
-/// ending their movement in a land hex may sail out along any side connecting to water"
-/// (`rules/movement_sailing`), so a neck of land never stops one there. Judged as
-/// `check_sail_route` judges it - the vessel the unit could captain or stands in, else a bound
+/// Whether the game refuses this unit's own `SAIL` at its very first step, so the fleet - and the
+/// captain or sailor who wrote it - never leaves the hex (`ah-nz7r`): the engine stops a fleet at
+/// the first step it refuses, before taking any (`RunSailOrders`). The hull is read as
+/// `check_sail_route` reads it - the vessel the unit could captain or stands in, else a bound
 /// hull - so the departure agrees with the `sail-between-land-hexes` warning that says "it will
-/// not move". An exit this hex does not list is not judged, as [`refused_sail_steps`] does not
-/// judge one.
+/// not move"; the step itself is [`first_sail_step_refused`], the same judgement `carried_away`
+/// makes for the passengers.
 fn sail_refused_before_leaving(
     hex: &Hex<'_>,
     ordered: &Ordered<'_>,
     steps: &[MoveStep],
     ruleset: &Ruleset,
 ) -> bool {
-    let Some(direction) = steps.iter().find_map(|step| match step {
-        MoveStep::Go(direction) => Some(*direction),
-        _ => None,
-    }) else {
-        return false;
-    };
-    let Some(exit) = hex
-        .region
-        .exits
-        .iter()
-        .find(|exit| Direction::parse(&exit.direction) == Some(direction))
-    else {
-        return false;
-    };
     let hull = hex
         .region
         .structures
@@ -20274,12 +20264,7 @@ fn sail_refused_before_leaving(
         .map_or(Hull::Bound, |vessel| {
             Hull::from_flies(fleet_flies(vessel, Some(ruleset)))
         });
-    refused_by_sailing_step(
-        ruleset,
-        Journey::enforced(MovementMode::Sail, hull),
-        &hex.region.terrain,
-        &exit.terrain,
-    )
+    first_sail_step_refused(hex, hull, steps, ruleset)
 }
 
 /// Every unit in the hex that actually departs once `leaves_hex_after_load_check` is accounted
@@ -44537,8 +44522,9 @@ BUILD
     }
 
     /// A guard that sails away drops the guard exactly as one that marches - SAIL with a route is
-    /// an unconditional departure for `leaves_hex_after_load_check`, so it agrees with the order
-    /// tracer.
+    /// a departure for `leaves_hex_after_load_check`, so it agrees with the order tracer. The
+    /// fixture's hex lists no exit, so the first step is not judged; one refused land to land is
+    /// `a_guard_whose_sail_is_refused_land_to_land_stays_to_guard_the_hex` (`ah-nz7r`).
     #[test]
     fn a_guard_that_sails_away_drops_the_guard_like_one_that_marches() {
         let mut guarding = unit("5");
