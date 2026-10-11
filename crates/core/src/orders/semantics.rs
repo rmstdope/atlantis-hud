@@ -15582,6 +15582,10 @@ fn check_one_teacher(
         Some(true) => {}
     }
 
+    // A student named twice, on one line or on several, is one student: the engine deduplicates
+    // a teacher's targets before counting them, so it is warned about and counted once, on the
+    // first line that names it.
+    let mut seen: BTreeSet<String> = BTreeSet::new();
     let mut taught_men = 0;
     for (placed, student) in lines
         .iter()
@@ -15590,6 +15594,9 @@ fn check_one_teacher(
         let Some(id) = party_unit_id(student) else {
             continue;
         };
+        if !seen.insert(id.clone()) {
+            continue;
+        }
 
         let label = teaching_target_label(student);
         let pupil = match student_presence(hex, &id, departed) {
@@ -15844,7 +15851,11 @@ fn taught_by(teacher: &Ordered<'_>, hex: &Hex<'_>, departed: &BTreeSet<String>) 
             _ => None,
         })
         .flatten()
-        .filter_map(|student| party_unit_id(student).and_then(|id| hex.find(&id)))
+        .filter_map(party_unit_id)
+        // A student named twice holds its slots once, as `check_one_teacher` counts it (`ah-5f1d`).
+        .collect::<BTreeSet<String>>()
+        .into_iter()
+        .filter_map(|id| hex.find(&id))
         // A student that marches off is taught by nobody, so it holds no slot - the same reading
         // `could_take` and `check_one_teacher` take of a departing pupil.
         .filter(|pupil| !departed.contains(&pupil.unit.unit_id))
@@ -45609,6 +45620,38 @@ BUILD
             Some(5),
             "anchored on the TEACH that names unit 800"
         );
+    }
+
+    /// `ah-5f1d`. A student named on two TEACH lines is one student: it holds its slots once and
+    /// is warned about once, on the first line that names it. The engine deduplicates a teacher's
+    /// targets before counting them (`Do1TeachOrder` -> `DeduplicateUnitList`, New Origins
+    /// source); `newage trident rules/teach` describes later lines as adding units, not repeats.
+    #[test]
+    fn a_student_named_on_two_teach_lines_is_counted_once() {
+        let units = vec![
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+                1,
+            ),
+            with_men(with_silver(unit("700"), 1000), 6),
+            with_men(with_silver(unit("800"), 1000), 2),
+        ];
+
+        let findings = check(
+            vec![region(units)],
+            "unit 500\n@TEACH 700 800\nTEACH 700 800\nunit 700\nSTUDY combat\nunit 800\nSTUDY combat\nMOVE N\n",
+        );
+        let found = codes(&findings);
+        assert!(
+            !found.contains(&"teaching-oversubscribed"),
+            "unit 700's six men fill six of ten slots once: {findings:?}"
+        );
+        let absent: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "taught-not-here")
+            .collect();
+        assert_eq!(absent.len(), 1, "{findings:?}");
+        assert_eq!(absent[0].line, Some(2), "on the first line naming unit 800");
     }
 
     /// `ah-5f1d`. Students on every TEACH line share the teacher's slots
