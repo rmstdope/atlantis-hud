@@ -1065,8 +1065,10 @@ fn settle_report_wide(
     through: StatePhase,
 ) -> ReportWideSettlement {
     let mut settlement = ReportWideSettlement::default();
-    // What every earlier transport sub-phase delivered: credited only once the last one has run,
-    // and meanwhile added to each sender's stock (`shipping_bills`).
+    // What every earlier transport sub-phase delivered. Silver is credited as its sub-phase ends,
+    // so a quartermaster's purse holds what reached it before it forwards it (`ah-rt4p`); other
+    // goods only once the last one has run, and meanwhile are added to each sender's stock
+    // (`shipping_bills`).
     let mut delivered = Vec::new();
     for (phase, step) in REPORT_WIDE_STEPS {
         if phase > through {
@@ -1074,32 +1076,38 @@ fn settle_report_wide(
         }
         match step {
             ReportWideStep::ShipToQuartermasters => {
-                delivered.extend(ship_in_sub_phase(
+                let shipped = ship_in_sub_phase(
                     hexes,
                     inputs,
                     phase,
                     super::transport::ShipmentPhase::ToQuartermaster,
                     &delivered,
-                ));
+                );
+                credit_shipped_goods(hexes, phase, &shipped, Credit::Silver);
+                delivered.extend(shipped);
             }
             ReportWideStep::ShipBetweenQuartermasters => {
-                delivered.extend(ship_in_sub_phase(
+                let shipped = ship_in_sub_phase(
                     hexes,
                     inputs,
                     phase,
                     super::transport::ShipmentPhase::BetweenQuartermasters,
                     &delivered,
-                ));
+                );
+                credit_shipped_goods(hexes, phase, &shipped, Credit::Silver);
+                delivered.extend(shipped);
             }
             ReportWideStep::ShipFromQuartermasters => {
-                delivered.extend(ship_in_sub_phase(
+                let shipped = ship_in_sub_phase(
                     hexes,
                     inputs,
                     phase,
                     super::transport::ShipmentPhase::FromQuartermaster,
                     &delivered,
-                ));
-                credit_shipped_goods(hexes, phase, &delivered);
+                );
+                credit_shipped_goods(hexes, phase, &shipped, Credit::Silver);
+                delivered.extend(shipped);
+                credit_shipped_goods(hexes, phase, &delivered, Credit::OtherGoods);
             }
             ReportWideStep::ChargeRefusedShipments => charge_refused_shipments(hexes, phase),
             // Steps 1 to 3 read holdings after every shipment, and step 4 lends what they leave.
@@ -5958,8 +5966,18 @@ impl Ledger<'_> {
     /// The stock TRANSPORT sees after this month's production. Unconsumed production is absent
     /// from the final balance so earlier orders cannot spend it, but TRANSPORT follows both
     /// PRODUCE phases (`rules/sequenceofevents`).
+    ///
+    /// Silver the orders before TRANSPORT spent beyond what the unit had was never paid: the
+    /// ledger charges an unfunded STUDY all the same, so its overdraft is taken back out here
+    /// rather than being met by silver that only arrives in a TRANSPORT sub-phase (`ah-rt4p`).
     fn transport_holding(&self, unit_id: &str, tag: &str) -> i64 {
+        let unpaid = if tag.eq_ignore_ascii_case(SILVER) {
+            (-self.state.balance_at(StatePhase::Wages, unit_id, tag)).max(0)
+        } else {
+            0
+        };
         self.state.balance_at(StatePhase::Transport, unit_id, tag)
+            + unpaid
             + self
                 .unconsumed_production
                 .get(&(unit_id.to_string(), tag.to_ascii_uppercase()))
@@ -18703,10 +18721,11 @@ impl SettledShipment {
 ///
 /// `rules/sequenceofevents` runs TRANSPORT in three phases: items go from non-quartermasters to
 /// quartermasters, then from one quartermaster to another, then from a quartermaster to
-/// non-quartermasters. Receipts are credited only after the last phase, so a quartermaster
-/// forwarding what it was sent this month would read an empty stock. Hence one call per phase,
-/// each walking only the shipments of `sub_phase` and adding `received_earlier` - what every
-/// earlier phase moved in or out that the ledger does not yet show - to each sender's stock.
+/// non-quartermasters. Goods other than silver are credited only after the last phase, so a
+/// quartermaster forwarding what it was sent this month would read an empty stock. Hence one call
+/// per phase, each walking only the shipments of `sub_phase` and adding `received_earlier` - what
+/// every earlier phase moved in or out that the ledger does not yet show - to each sender's stock.
+/// Silver needs none of that: each phase's is credited as the phase ends (`ah-rt4p`).
 #[allow(clippy::too_many_arguments)]
 fn shipping_bills(
     hex: &Hex<'_>,
@@ -19004,19 +19023,21 @@ fn ship_in_sub_phase(
     sub_phase: super::transport::ShipmentPhase,
     delivered: &[SettledShipment],
 ) -> Vec<SettledShipment> {
-    // Receipts are credited only after the last sub-phase, so every earlier one is added here.
-    // A non-silver send is booked in `transported_goods`, which `transport_holding` does not read,
-    // so it is taken off here too; a silver send already left the ledger through `move_silver`.
+    // Goods other than silver are credited only after the last sub-phase, so every earlier receipt
+    // is added here. Their sends are booked in `transported_goods`, which `transport_holding` does
+    // not read, so they are taken off here too. Silver is already in the ledger both ways: a send
+    // left through `move_silver`, and a receipt was credited as its sub-phase ended (`ah-rt4p`).
     let mut received_earlier: BTreeMap<(String, String), i64> = BTreeMap::new();
     for shipment in delivered {
+        if shipment.tag.eq_ignore_ascii_case(SILVER) {
+            continue;
+        }
         *received_earlier
             .entry((shipment.target.clone(), shipment.tag.clone()))
             .or_default() += shipment.quantity;
-        if !shipment.tag.eq_ignore_ascii_case(SILVER) {
-            *received_earlier
-                .entry((shipment.sender.clone(), shipment.tag.clone()))
-                .or_default() -= shipment.quantity;
-        }
+        *received_earlier
+            .entry((shipment.sender.clone(), shipment.tag.clone()))
+            .or_default() -= shipment.quantity;
     }
     let mut shipped = Vec::new();
     for (hex, ledger) in hexes.iter_mut() {
@@ -19033,15 +19054,29 @@ fn ship_in_sub_phase(
     shipped
 }
 
-/// Goods arriving by a settled shipment belong in the receiver's transport-phase ledger after all
-/// three transport passes settle. Earlier delivery would make a quartermaster's forwarded goods
-/// available twice: once in its phase balance and again through `received_early`.
+/// Which shipments [`credit_shipped_goods`] credits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Credit {
+    /// Silver, as the sub-phase that moved it ends: the receiver's purse holds it for every later
+    /// sub-phase, so forwarding it is never short (`ah-rt4p`).
+    Silver,
+    /// Every other good, once all three sub-phases have run. Credited any earlier it would be
+    /// available twice to a quartermaster forwarding it: once in its phase balance and again
+    /// through `ship_in_sub_phase`'s `received_earlier`.
+    OtherGoods,
+}
+
+/// Goods arriving by a settled shipment, into the receiver's transport-phase ledger.
 fn credit_shipped_goods(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
     phase: StatePhase,
     delivered: &[SettledShipment],
+    which: Credit,
 ) {
     for shipment in delivered {
+        if shipment.tag.eq_ignore_ascii_case(SILVER) != (which == Credit::Silver) {
+            continue;
+        }
         for (hex, ledger) in hexes.iter_mut() {
             if hex.find(&shipment.target).is_some() {
                 shipment.credit_receiver(ledger, phase);
@@ -51224,6 +51259,73 @@ BUILD
             Some(FIXTURE_MAP),
         );
         assert_eq!(moved.get("901"), Some(&vec![("FUR".to_string(), 9)]));
+    }
+
+    /// `rules/sequenceofevents` processes STUDY among the month-long orders, before TRANSPORT and
+    /// its three sub-phases, so a quartermaster holding no silver of its own cannot fund its study
+    /// from silver another quartermaster ships it later in the month: the study goes unpaid, and
+    /// its `TRANSPORT ... ALL SILV` forwards everything it was sent (`ah-rt4p`).
+    #[test]
+    fn a_quartermasters_study_is_not_paid_from_silver_shipped_to_it_later() {
+        let regions = || {
+            let mut regions = priced_shipping(5, &[], vec![caravanserai_owner("901", 1, 0, 6)]);
+            regions[1].units.push(unit("902"));
+            regions
+        };
+        let rules = ruleset();
+        let forecast = |orders: &str, id: &str| {
+            review_turn(&report(regions()), orders, Some(&rules), with_map())
+                .silver
+                .into_iter()
+                .find(|forecast| forecast.unit_id == id)
+                .expect("the unit is forecast")
+        };
+
+        let baseline = forecast("unit 900\n", "902");
+        let orders = "unit 900\nTRANSPORT 901 200 SILV\n\
+                      unit 901\nSTUDY combat\nTRANSPORT 902 ALL SILV\n";
+        let receiver = forecast(orders, "902");
+        assert_eq!(
+            receiver.at_month_end,
+            baseline.at_month_end.map(|silver| silver + 200),
+            "the study took nothing out of what 901 forwards"
+        );
+        let forwarder = forecast(orders, "901");
+        assert_eq!(
+            forwarder.short_for_orders,
+            Some(10),
+            "the study shows as unfunded: combat costs 10 a month (data/COMB)"
+        );
+    }
+
+    /// Silver a quartermaster receives in an earlier TRANSPORT sub-phase is in hand when it forwards
+    /// it in a later one (`rules/sequenceofevents`), so forwarding it is not a cost its own silver
+    /// must fund - and late wages, which WORK earns before TRANSPORT, are forwarded too
+    /// (`ah-rt4p`).
+    #[test]
+    fn forwarding_silver_received_earlier_in_transport_is_not_an_unpayable_cost() {
+        let regions = || {
+            let mut regions = priced_shipping(5, &[], vec![caravanserai_owner("901", 1, 0, 6)]);
+            regions[1].units.push(unit("902"));
+            regions
+        };
+        let rules = ruleset();
+        let review = review_turn(
+            &report(regions()),
+            "unit 900\nTRANSPORT 901 200 SILV\nunit 901\nWORK\nTRANSPORT 902 ALL SILV\n",
+            Some(&rules),
+            with_map(),
+        );
+        let forwarder = shipment_silver(&review, "901");
+        assert_eq!(forwarder.short_for_orders, Some(0), "{forwarder:?}");
+        assert!(
+            review
+                .findings
+                .iter()
+                .all(|finding| finding.unit_id.as_deref() != Some("901")),
+            "{:?}",
+            review.findings
+        );
     }
 
     /// What a quartermaster ships to another quartermaster in TRANSPORT's second sub-phase is gone
