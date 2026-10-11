@@ -6636,7 +6636,7 @@ fn discard_unfinished_ships_after_movement(
     ruleset: Option<&Ruleset>,
 ) {
     for ordered in &hex.units {
-        let departs = leaves_hex_after_load_check(ordered, ledger, ruleset)
+        let departs = leaves_hex_after_load_check(hex, ordered, ledger, ruleset)
             || ruleset.is_some_and(|rules| carried_away(hex, ordered, rules).is_some());
         if !departs {
             continue;
@@ -17098,7 +17098,13 @@ fn carried_away<'a>(
                     })
                     .flatten()
             })
-            .filter(|placed| !first_sail_step_refused(hex, fleet, placed, ruleset))
+            .filter(|placed| {
+                let Intent::Sail { steps } = &placed.intent else {
+                    return true;
+                };
+                let hull = Hull::from_flies(fleet_flies(fleet, Some(ruleset)));
+                !first_sail_step_refused(hex, hull, steps, ruleset)
+            })
     })
 }
 
@@ -17109,15 +17115,16 @@ fn carried_away<'a>(
 /// water" (`rules/movement_sailing`) - so the two terrains are all it needs: this hex's, and the
 /// one its exit names. An exit the hex does not list is not judged, as `refused_sail_steps` does
 /// not judge one.
+///
+/// Read for the passengers by [`carried_away`] and for the captain and sailors by
+/// [`sail_refused_before_leaving`] (`ah-nz7r`), so nobody aboard is judged as leaving a hex the
+/// fleet stays in.
 fn first_sail_step_refused(
     hex: &Hex<'_>,
-    fleet: &Structure,
-    placed: &PlacedIntent,
+    hull: Hull,
+    steps: &[MoveStep],
     ruleset: &Ruleset,
 ) -> bool {
-    let Intent::Sail { steps } = &placed.intent else {
-        return false;
-    };
     let Some(direction) = steps.iter().find_map(|step| match step {
         MoveStep::Go(direction) => Some(*direction),
         _ => None,
@@ -17132,7 +17139,6 @@ fn first_sail_step_refused(
     else {
         return false;
     };
-    let hull = Hull::from_flies(fleet_flies(fleet, Some(ruleset)));
     refused_by_sailing_step(
         ruleset,
         Journey::enforced(MovementMode::Sail, hull),
@@ -20079,26 +20085,7 @@ fn check_sail_route(
             if !steps.iter().any(|step| matches!(step, MoveStep::Go(_))) {
                 continue; // a bare SAIL names no direction
             }
-            // The vessel this unit would be sailing, if any: the one it could captain, else the
-            // one it is standing in. What that hull means for the water is decided below.
-            let vessel = hex
-                .region
-                .structures
-                .iter()
-                .filter(|structure| is_vessel(structure, Some(ruleset)))
-                .find(|structure| {
-                    could_captain(ordered, &structure.structure_id)
-                        || is_aboard(ordered, &structure.structure_id)
-                });
-            // A fleet that may be flying is not bound by the water, and neither is one whose
-            // hulls cannot be read: `Hull::from_flies` is the one reading of that, shared with the
-            // map. A SAIL with no fleet in the hex at all is a different case and stays `Bound` -
-            // geography is judged whether or not the report shows the hull, which is what this
-            // check warned about before it shared the map's reading.
-            let hull = match vessel {
-                Some(vessel) => Hull::from_flies(fleet_flies(vessel, Some(ruleset))),
-                None => Hull::Bound,
-            };
+            let hull = sailing_hull(hex, ordered, ruleset);
             let journey = Journey::enforced(MovementMode::Sail, hull);
             let map = sail_map.get_or_init(|| MapKnowledge::from_report(report));
             let refused = refused_sail_steps(map, ruleset, journey, hex.region.coordinate, steps);
@@ -20339,12 +20326,14 @@ fn movement_overload(
 /// `Ordered::leaves_the_hex` reading everywhere it mattered to guard and teaching (`ah-0wpn`):
 /// entering or leaving a structure moves a unit within the hex, so those steps never count.
 ///
-/// A directional `SAIL` is still an unconditional departure: fleet overload and under-crewing are
-/// separate, multi-unit checks and out of scope here. A directional `MOVE` is a departure unless
+/// A directional `SAIL` is a departure unless the game refuses its very first step
+/// ([`sail_refused_before_leaving`], `ah-nz7r`); fleet overload and under-crewing are separate,
+/// multi-unit checks and out of scope here. A directional `MOVE` is a departure unless
 /// `movement_overload` proves it will fail. Unknown load or allowance preserves the existing
 /// optimistic departure behavior - lack of evidence for overload does not cancel an ordered
 /// departure.
 fn leaves_hex_after_load_check(
+    hex: &Hex<'_>,
     ordered: &Ordered<'_>,
     ledger: &Ledger<'_>,
     ruleset: Option<&Ruleset>,
@@ -20354,9 +20343,51 @@ fn leaves_hex_after_load_check(
             steps.iter().any(|step| matches!(step, MoveStep::Go(_)))
                 && movement_overload(ordered, ledger, ruleset).is_none()
         }
-        Intent::Sail { steps } => steps.iter().any(|step| matches!(step, MoveStep::Go(_))),
+        Intent::Sail { steps } => {
+            steps.iter().any(|step| matches!(step, MoveStep::Go(_)))
+                && !ruleset
+                    .is_some_and(|rules| sail_refused_before_leaving(hex, ordered, steps, rules))
+        }
         _ => false,
     })
+}
+
+/// Whether the game refuses this unit's own `SAIL` at its very first step, so the fleet - and the
+/// captain or sailor who wrote it - never leaves the hex (`ah-nz7r`): the engine stops a fleet at
+/// the first step it refuses, before taking any (`RunSailOrders`). The hull is [`sailing_hull`],
+/// the one `check_sail_route` reads, so the departure agrees with the `sail-between-land-hexes`
+/// warning that says "it will not move"; the step itself is [`first_sail_step_refused`], the same judgement `carried_away`
+/// makes for the passengers.
+fn sail_refused_before_leaving(
+    hex: &Hex<'_>,
+    ordered: &Ordered<'_>,
+    steps: &[MoveStep],
+    ruleset: &Ruleset,
+) -> bool {
+    first_sail_step_refused(hex, sailing_hull(hex, ordered, ruleset), steps, ruleset)
+}
+
+/// The hull a unit's own `SAIL` is judged by: that of the vessel it could captain, else the one it
+/// is standing in. Shared by `check_sail_route` and [`sail_refused_before_leaving`] so the
+/// `sail-between-land-hexes` warning and the departure it implies cannot disagree (`ah-nz7r`).
+///
+/// A fleet that may be flying is not bound by the water, and neither is one whose hulls cannot be
+/// read: `Hull::from_flies` is the one reading of that, shared with the map. A SAIL with no fleet
+/// in the hex at all is a different case and stays `Bound` - geography is judged whether or not
+/// the report shows the hull, which is what `check_sail_route` warned about before it shared the
+/// map's reading.
+fn sailing_hull(hex: &Hex<'_>, ordered: &Ordered<'_>, ruleset: &Ruleset) -> Hull {
+    hex.region
+        .structures
+        .iter()
+        .filter(|structure| is_vessel(structure, Some(ruleset)))
+        .find(|structure| {
+            could_captain(ordered, &structure.structure_id)
+                || is_aboard(ordered, &structure.structure_id)
+        })
+        .map_or(Hull::Bound, |vessel| {
+            Hull::from_flies(fleet_flies(vessel, Some(ruleset)))
+        })
 }
 
 /// Every unit in the hex that actually departs once `leaves_hex_after_load_check` is accounted
@@ -20372,7 +20403,7 @@ fn departures_after_load_checks(
 ) -> BTreeSet<String> {
     hex.units
         .iter()
-        .filter(|ordered| leaves_hex_after_load_check(ordered, ledger, ruleset))
+        .filter(|ordered| leaves_hex_after_load_check(hex, ordered, ledger, ruleset))
         .map(|ordered| ordered.unit.unit_id.clone())
         .collect()
 }
@@ -33887,6 +33918,32 @@ BUILD
             });
         }
 
+        /// `ah-nz7r`. A captain holding an unfinished ship whose SAIL is refused at its first
+        /// step, land at both ends (`rules/movement_sailing`), never leaves the hex, so the ship
+        /// is not discarded (`rules/economy_ships` discards it only for a builder who moves).
+        #[test]
+        fn an_unfinished_ship_is_kept_by_a_captain_whose_sail_is_refused_land_to_land() {
+            let mut captain = with_men(unit("900"), 10);
+            captain.skills.push(sail(4));
+            captain.items.push(ItemAmount {
+                amount: 1,
+                name: "unfinished Cog".to_string(),
+                tag: "COG".to_string(),
+                needs: None,
+            });
+            with_ledger(
+                landlocked_fleet(vec![captain]),
+                "unit 900\nSAIL N\n",
+                |ledger| {
+                    assert!(
+                        !ledger.movements.iter().any(|m| m.tag == "COG"),
+                        "the fleet never leaves, so the hull is not left behind: {:?}",
+                        ledger.movements
+                    );
+                },
+            );
+        }
+
         #[test]
         fn a_build_credits_the_unit_nothing() {
             with_ledger(report_with_a_builder(), "unit 900\nBUILD\n", |ledger| {
@@ -35191,6 +35248,32 @@ BUILD
             race: Some("humans".to_string()),
             units,
             ..Default::default()
+        }
+    }
+
+    /// A longship (329) lying in the mountain hex `region` builds, whose only listed exit, north,
+    /// is another mountain: a SAIL N from here has land at both ends, which no fleet may sail
+    /// (`rules/movement_sailing`: "A fleet can move from an ocean region to another ocean region,
+    /// or from a coastal region to an ocean region, or from an ocean region to a coastal region"),
+    /// so the game stops it before its first step (`ah-nz7r`). Every unit given is put aboard.
+    fn landlocked_fleet(units: Vec<ReportUnit>) -> ReportRegion {
+        let units = units
+            .into_iter()
+            .map(|unit| ReportUnit {
+                structure_id: Some("329".to_string()),
+                ..unit
+            })
+            .collect();
+        ReportRegion {
+            structures: vec![longship("329")],
+            exits: vec![Exit {
+                direction: "North".to_string(),
+                terrain: "mountain".to_string(),
+                coordinate: Coordinate { x: 7, y: 51, z: 1 },
+                province: "Inhead".to_string(),
+                settlement: None,
+            }],
+            ..region(units)
         }
     }
 
@@ -44562,8 +44645,9 @@ BUILD
     }
 
     /// A guard that sails away drops the guard exactly as one that marches - SAIL with a route is
-    /// an unconditional departure for `leaves_hex_after_load_check`, so it agrees with the order
-    /// tracer.
+    /// a departure for `leaves_hex_after_load_check`, so it agrees with the order tracer. The
+    /// fixture's hex lists no exit, so the first step is not judged; one refused land to land is
+    /// `a_guard_whose_sail_is_refused_land_to_land_stays_to_guard_the_hex` (`ah-nz7r`).
     #[test]
     fn a_guard_that_sails_away_drops_the_guard_like_one_that_marches() {
         let mut guarding = unit("5");
@@ -44571,6 +44655,40 @@ BUILD
 
         let finding = only(check(vec![region(vec![guarding])], "unit 5\nSAIL N\n"));
         assert_eq!(finding.code.as_str(), "guard-dropped");
+    }
+
+    /// `ah-nz7r`. A captain on guard whose SAIL is refused at its first step - land at both ends -
+    /// never leaves the hex (`rules/movement_sailing`), so it is still guarding at month end:
+    /// `sail-between-land-hexes` is the whole warning, with no `guard-dropped` beside it.
+    #[test]
+    fn a_guard_whose_sail_is_refused_land_to_land_stays_to_guard_the_hex() {
+        let mut captain = unit("5");
+        captain.on_guard = true;
+        captain.skills.push(sail(4));
+
+        let findings = check(vec![landlocked_fleet(vec![captain])], "unit 5\nSAIL N\n");
+        assert_eq!(
+            codes(&findings),
+            ["sail-between-land-hexes"],
+            "{findings:?}"
+        );
+    }
+
+    /// `ah-nz7r`, the other side: a fleet that may be flying is not bound by the water
+    /// (`Hull::from_flies`), so its first step from land to land is no refusal and the captain on
+    /// guard does leave - `guard-dropped` stands, and no `sail-between-land-hexes` is warned.
+    #[test]
+    fn a_guard_captaining_a_flying_fleet_over_land_still_drops_the_guard() {
+        let mut captain = unit("5");
+        captain.on_guard = true;
+        captain.skills.push(sail(4));
+        let hex = ReportRegion {
+            structures: vec![balloon("329")],
+            ..landlocked_fleet(vec![captain])
+        };
+
+        let findings = check(vec![hex], "unit 5\nSAIL N\n");
+        assert_eq!(codes(&findings), ["guard-dropped"], "{findings:?}");
     }
 
     /// `ah-0wpn`. A MOVE that `movement_overload` proves will fail does not actually take the
@@ -45402,6 +45520,30 @@ BUILD
                 "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nMOVE N\nunit 900\nSTUDY combat\n"
             )),
             ["taught-not-here"]
+        );
+    }
+
+    /// `ah-nz7r`. A student who captains a fleet whose SAIL is refused at its first step - land at
+    /// both ends (`rules/movement_sailing`) - is still in the hex to be taught, so the TEACH is
+    /// not `taught-not-here`.
+    #[test]
+    fn a_student_whose_sail_is_refused_land_to_land_is_still_taught() {
+        let mut student = with_men(with_silver(unit("700"), 1000), 2);
+        student.skills.push(sail(4));
+        let hex = landlocked_fleet(vec![student]);
+        let mut units = vec![with_leaders(
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            3,
+        )];
+        units.extend(hex.units.clone());
+
+        let findings = check(
+            vec![ReportRegion { units, ..hex }],
+            "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nSAIL N\n",
+        );
+        assert!(
+            !codes(&findings).contains(&"taught-not-here"),
+            "the student never leaves: {findings:?}"
         );
     }
 
