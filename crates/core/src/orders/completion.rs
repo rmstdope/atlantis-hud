@@ -1710,6 +1710,19 @@ mod tests {
         assert_eq!(peasants.detail, "recruits the region's hill dwarves");
     }
 
+    /// The words recruit the region's race, so a hex whose report names none is offered only its
+    /// market (`ah-lbet`).
+    #[test]
+    fn a_purchase_in_a_hex_with_no_race_offers_no_peasant_words() {
+        let ruleset = ruleset();
+        let report = inholm_report();
+        let offered =
+            order_argument_completions("BUY 5 ", Some(&ruleset), Some(&report), Some("18642"));
+
+        let tags: Vec<&str> = offered.iter().map(|entry| entry.value.as_str()).collect();
+        assert_eq!(tags, vec!["GEM", "HDWA", "LEAD", "PERF"]);
+    }
+
     #[test]
     fn without_a_report_a_purchase_still_offers_the_peasant_words() {
         let ruleset = ruleset();
