@@ -33795,9 +33795,9 @@ BUILD
             });
         }
 
-        /// `ah-nz7r`. A captain holding an unfinished ship whose SAIL is refused at its first step
-        /// - land at both ends (`rules/movement_sailing`) - never leaves the hex, so the ship is
-        /// not discarded (`rules/economy_ships` discards it only for a builder who moves).
+        /// `ah-nz7r`. A captain holding an unfinished ship whose SAIL is refused at its first
+        /// step, land at both ends (`rules/movement_sailing`), never leaves the hex, so the ship
+        /// is not discarded (`rules/economy_ships` discards it only for a builder who moves).
         #[test]
         fn an_unfinished_ship_is_kept_by_a_captain_whose_sail_is_refused_land_to_land() {
             let mut captain = with_men(unit("900"), 10);
