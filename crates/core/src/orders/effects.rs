@@ -1541,6 +1541,12 @@ fn decide_movement(
     // standing in those fleets.
     let mut decided: Vec<Decided> = Vec::new();
     let mut sailing: BTreeMap<(String, String), SailingFleet> = BTreeMap::new();
+    // Where a refused SAIL stops a fleet is judged on the report's own map, the one the Problems
+    // panel's sail warnings walk (`check_sail_route`): judged on the remembered map, a step this
+    // report cannot show would stop a fleet where no warning says it will (`ah-g0fk`). Built on
+    // the first fleet that sails, as `check_turn` builds its own, and never for a turn with none.
+    let report_map: std::cell::OnceCell<crate::movement::graph::MapKnowledge> =
+        std::cell::OnceCell::new();
 
     for (index, entry) in units.into_iter().enumerate() {
         let mut arrival = None;
@@ -1561,11 +1567,7 @@ fn decide_movement(
         // `movement::fleet::fleet_course`, which the map trace reads too - `ah-ofra`). A `MOVE` is
         // the unit walking off and is still its own business. `Some(None)` here is a hull whose
         // owner named no course: it goes nowhere, so nobody aboard departs.
-        let hull_course: Option<Option<Vec<crate::movement::orders::MoveStep>>> = if entry
-            .move_command
-            .as_deref()
-            == Some("SAIL")
-        {
+        let sailed_hull = if entry.move_command.as_deref() == Some("SAIL") {
             report
                 .regions
                 .iter()
@@ -1577,15 +1579,17 @@ fn decide_movement(
                         ordered,
                         &entry.unit,
                     )
-                    .map(|hull| {
-                        crate::movement::fleet::fleet_course(region, ordered, &hull.structure_id)
-                            .steps
-                            .map(<[crate::movement::orders::MoveStep]>::to_vec)
-                    })
+                    .map(|hull| (region, hull))
                 })
         } else {
             None
         };
+        let hull_course: Option<Option<Vec<crate::movement::orders::MoveStep>>> =
+            sailed_hull.map(|(region, hull)| {
+                crate::movement::fleet::fleet_course(region, ordered, &hull.structure_id)
+                    .steps
+                    .map(<[crate::movement::orders::MoveStep]>::to_vec)
+            });
         let traced_steps: Option<&[crate::movement::orders::MoveStep]> = match &hull_course {
             Some(course) => course.as_deref(),
             None => entry.move_steps.as_deref(),
@@ -1597,10 +1601,19 @@ fn decide_movement(
                 // the rest of a longer journey is later months' business.
                 Some(path) => {
                     mode = path.mode;
-                    match path.months.first() {
-                        Some(month) if month.ends_at.id() != entry.unit.region_id => {
-                            arrival = Some(month.ends_at.id());
-                            ends_at = Some(month.ends_at);
+                    let stop =
+                        sailed_hull
+                            .filter(|_| path.passage.is_none())
+                            .and_then(|(_, hull)| {
+                                let report_map = report_map.get_or_init(|| {
+                                    crate::movement::graph::MapKnowledge::from_report(report)
+                                });
+                                sail_stop(report_map, ruleset, hull, path.from, steps)
+                            });
+                    match month_end(&path, stop) {
+                        Some(month_end) if month_end.id() != entry.unit.region_id => {
+                            arrival = Some(month_end.id());
+                            ends_at = Some(month_end);
                             status = UnitPreviewStatus::Departing;
                         }
                         // A round trip is not a departure, so only the other changes count.
@@ -1697,6 +1710,40 @@ fn decide_movement(
     }
 
     (decided, sailing)
+}
+
+/// Where the game stops this fleet, when it refuses one of the SAIL's steps (`ah-g0fk`).
+///
+/// The same [`refused_sail_steps`](crate::movement::sailing::refused_sail_steps) walk the Problems
+/// panel's `sail-between-land-hexes` and `sail-through-neck-of-land` warnings read, with the hull
+/// read the way `check_sail_route` reads it, over the same report-only map the caller passes -
+/// so the preview stops a fleet exactly where those warnings say it "will not move", and never on
+/// a step the map cannot show, which that walk declines to judge. The trace's own `blocked_from` is not used: it guesses the terrain of
+/// country nobody has described, and that is doubt, not a refusal.
+fn sail_stop(
+    map: &crate::movement::graph::MapKnowledge,
+    ruleset: &crate::movement::rules::Ruleset,
+    hull: &crate::report::model::Structure,
+    from: crate::report::model::Coordinate,
+    steps: &[crate::movement::orders::MoveStep],
+) -> Option<crate::movement::sailing::SailStop> {
+    use crate::movement::plan::{Hull, Journey};
+    let hull = Hull::from_flies(crate::movement::mode::fleet_flies(hull, Some(ruleset)));
+    let journey = Journey::enforced(crate::movement::rules::MovementMode::Sail, hull);
+    crate::movement::sailing::refused_sail_steps(map, ruleset, journey, from, steps).stops
+}
+
+/// Where the coming month ends: the trace's first month, cut short where the game stops a fleet
+/// before it gets that far.
+fn month_end(
+    path: &crate::movement::trace::TracedPath,
+    stop: Option<crate::movement::sailing::SailStop>,
+) -> Option<crate::report::model::Coordinate> {
+    let month = path.months.first()?;
+    match stop {
+        Some(stop) if stop.steps_taken < month.steps => Some(stop.at),
+        _ => Some(month.ends_at),
+    }
 }
 
 /// Where each unit the report shows ends the month, from the passes the map is drawn from.
@@ -8589,6 +8636,151 @@ mod tests {
             region_of(&response, "1:2,2").is_none(),
             "nobody arrives, so the destination hex is not in the preview"
         );
+    }
+
+    /// `ah-g0fk`: a SAIL the checks refuse moves nothing. Both hexes here are land, and
+    /// `rules/movement_sailing` gives a fleet only steps with water at one end ("A fleet can move
+    /// from an ocean region to another ocean region, or from a coastal region to an ocean region,
+    /// or from an ocean region to a coastal region") - the game stops the fleet at that step, so
+    /// neither the owner nor anybody aboard departs, and nobody arrives in the forest.
+    #[test]
+    fn a_fleet_whose_sail_is_refused_land_to_land_departs_nobody() {
+        let report = fleet_report_with_a_passenger(WAVECREST)
+            .replace("ocean (1,1) in Sea", "plain (1,1) in Shire")
+            .replace("ocean (2,2) in Sea", "forest (2,2) in Shire");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 900\nSAIL SE\n",
+        )
+        .expect("the ruleset loads");
+
+        for region in &response.regions {
+            for unit in &region.units {
+                assert_eq!(
+                    unit.status,
+                    UnitPreviewStatus::Present,
+                    "{} stays put",
+                    unit.unit.unit_id
+                );
+            }
+        }
+        assert!(
+            region_of(&response, "1:2,2").is_none(),
+            "nobody arrives, so the forest is not in the preview"
+        );
+    }
+
+    /// `ah-g0fk`, a step further on: the game takes every step up to the refused one, so a fleet
+    /// that sails from the sea onto the plain (2,2) and then on to the forest (3,3) stops on the
+    /// plain - the second step is land to land (`rules/movement_sailing`).
+    #[test]
+    fn a_fleet_refused_part_way_stops_before_the_refused_step() {
+        let report = fleet_report_with_a_passenger(WAVECREST)
+            .replace(
+                "\nocean (2,2) in Sea.\n\nExits:\n  Northwest : ocean (1,1) in Sea.\n",
+                "\nplain (2,2) in Shire.\n\nExits:\n  Northwest : ocean (1,1) in Sea.\n  \
+                 Southeast : forest (3,3) in Shire.\n\nforest (3,3) in Shire.\n\nExits:\n  \
+                 Northwest : plain (2,2) in Shire.\n",
+            )
+            .replace(
+                "Southeast : ocean (2,2) in Sea.",
+                "Southeast : plain (2,2) in Shire.",
+            );
+        assert!(report.contains("forest (3,3)"), "the fixture was rewritten");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 900\nSAIL SE SE\n",
+        )
+        .expect("the ruleset loads");
+
+        for unit_id in ["900", "901", "902"] {
+            let departing =
+                row(&response, "1:1,1", unit_id).unwrap_or_else(|| panic!("{unit_id} departs"));
+            assert_eq!(
+                departing.departing_to.as_deref(),
+                Some("1:2,2"),
+                "{unit_id}"
+            );
+        }
+        assert!(
+            region_of(&response, "1:3,3").is_none(),
+            "nobody reaches the forest"
+        );
+    }
+
+    /// `ah-g0fk`'s other half: a step only the trace's guess calls land to land is no refusal.
+    /// The plain at (2,2) is known only by name, so the trace guesses the unnamed hex beyond it is
+    /// plain too; the Problems panel judges no step it cannot see and warns of nothing, so the
+    /// preview does not stop the fleet there either.
+    #[test]
+    fn a_step_into_country_nobody_has_described_does_not_stop_the_fleet() {
+        let report = fleet_report_with_a_passenger(WAVECREST)
+            .replace(
+                "\nocean (2,2) in Sea.\n\nExits:\n  Northwest : ocean (1,1) in Sea.\n",
+                "",
+            )
+            .replace(
+                "Southeast : ocean (2,2) in Sea.",
+                "Southeast : plain (2,2) in Shire.",
+            );
+        assert!(
+            !report.contains("ocean (2,2)"),
+            "the fixture was rewritten: {report}"
+        );
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 900\nSAIL SE SE\n",
+        )
+        .expect("the ruleset loads");
+
+        let departing = row(&response, "1:1,1", "900").expect("900 departs");
+        assert_eq!(departing.departing_to.as_deref(), Some("1:3,3"));
+    }
+
+    /// `ah-g0fk`: the preview stops a fleet on the map the Problems panel judges, the report's
+    /// own. This report names the plain (2,2) only as an exit, so Problems can judge no step out of
+    /// it and warns of nothing; a remembered turn that describes (2,2), with its exit to the
+    /// forest (3,3), must not make the preview stop the fleet where no warning says it will.
+    #[test]
+    fn a_step_only_memory_describes_does_not_stop_the_fleet() {
+        let report = fleet_report_with_a_passenger(WAVECREST)
+            .replace(
+                "\nocean (2,2) in Sea.\n\nExits:\n  Northwest : ocean (1,1) in Sea.\n",
+                "",
+            )
+            .replace(
+                "Southeast : ocean (2,2) in Sea.",
+                "Southeast : plain (2,2) in Shire.",
+            );
+        let earlier = crate::report::parse_report_full(
+            "Foo (1) Report\n\nplain (2,2) in Shire, 10 peasants (orcs), $5.\n\nExits:\n  \
+             Northwest : ocean (1,1) in Sea.\n  Southeast : forest (3,3) in Shire.\n\n",
+        );
+        let remembered = serde_json::to_string(&[crate::movement::graph::RememberedRegion {
+            region: earlier.regions[0].clone(),
+            last_seen_turn: 1,
+        }])
+        .expect("memory serialises");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            &remembered,
+            "unit 900\nSAIL SE SE\n",
+        )
+        .expect("the ruleset loads");
+
+        let departing = row(&response, "1:1,1", "900").expect("900 departs");
+        assert_eq!(departing.departing_to.as_deref(), Some("1:3,3"));
     }
 
     /// The owner's own course still departs everyone aboard, unchanged.

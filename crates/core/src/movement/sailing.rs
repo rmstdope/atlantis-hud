@@ -103,11 +103,28 @@ pub(crate) struct NeckOfLandStep {
     pub(crate) terrain: String,
 }
 
+/// Where the game stops a fleet: at the first refused step, in the hex that step would have left.
+///
+/// The engine walks a SAIL one step at a time and sets `stop` at the first it refuses ("Can't sail
+/// inland.", "Cannot sail through land." - `RunSailOrders`), so the steps before it are taken and
+/// none after it (`ah-g0fk`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SailStop {
+    /// How many directional steps the fleet takes before the refused one.
+    pub(crate) steps_taken: usize,
+    /// The hex it stays in.
+    pub(crate) at: Coordinate,
+}
+
 /// The first step of each kind the map can show a written SAIL is refused.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct RefusedSailSteps {
     pub(crate) land_to_land: Option<LandToLandStep>,
     pub(crate) neck_of_land: Option<NeckOfLandStep>,
+    /// Where the first refusal of either kind stops the fleet, read by the orders preview and by
+    /// the checks that place a passenger's month-long orders, so neither moves a fleet the
+    /// Problems panel says will not move.
+    pub(crate) stops: Option<SailStop>,
 }
 
 /// Walks a written SAIL from `from` along the exits the map states, and never guesses.
@@ -136,6 +153,7 @@ pub(crate) fn refused_sail_steps(
     let mut position = from;
     let mut here_terrain = origin.terrain.clone();
     let mut entered: Option<Direction> = None;
+    let mut taken = 0;
 
     for step in steps {
         let MoveStep::Go(direction) = step else {
@@ -162,6 +180,12 @@ pub(crate) fn refused_sail_steps(
                 into_terrain: &into_hex.terrain,
             },
         );
+        if judgement.refused() && refused.stops.is_none() {
+            refused.stops = Some(SailStop {
+                steps_taken: taken,
+                at: position,
+            });
+        }
         if judgement.land_to_land {
             refused.land_to_land = Some(LandToLandStep {
                 direction: *direction,
@@ -186,6 +210,7 @@ pub(crate) fn refused_sail_steps(
         entered = entered_by(ruleset, journey, &into_hex.terrain, *direction);
         position = into;
         here_terrain = into_hex.terrain.clone();
+        taken += 1;
     }
     refused
 }
@@ -356,6 +381,40 @@ mod tests {
             refused.land_to_land.map(|step| step.from),
             Some(at(4, 4)),
             "the land-to-land step is the fourth"
+        );
+    }
+
+    /// `ah-g0fk`: the fleet stops at the first refusal of either kind, in the hex that step would
+    /// have left - the neck at (2,2) here, after one step, though a land-to-land step lies further
+    /// on.
+    #[test]
+    fn the_fleet_stops_at_the_first_refused_step() {
+        let map = corridor(&["ocean", "plain", "ocean", "plain", "plain"], "");
+
+        let refused = refused_sail_steps(&map, &ruleset(), enforced(), at(1, 1), &southeast(4));
+
+        assert_eq!(
+            refused.stops,
+            Some(SailStop {
+                steps_taken: 1,
+                at: at(2, 2)
+            })
+        );
+    }
+
+    /// A first step refused land to land leaves the fleet where it stands, having taken none.
+    #[test]
+    fn a_refused_first_step_stops_the_fleet_where_it_stands() {
+        let map = corridor(&["plain", "forest", "ocean"], "");
+
+        let refused = refused_sail_steps(&map, &ruleset(), enforced(), at(1, 1), &southeast(2));
+
+        assert_eq!(
+            refused.stops,
+            Some(SailStop {
+                steps_taken: 0,
+                at: at(1, 1)
+            })
         );
     }
 
