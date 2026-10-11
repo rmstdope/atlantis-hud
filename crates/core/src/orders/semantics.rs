@@ -4594,7 +4594,7 @@ fn recruited_people(
     // then a recruit that may really have happened is invisible to the walk below, so the unit is
     // left unjudged rather than read as having recruited nobody.
     //
-    // Only those two spellings. `rules/buy` names `PEASANT` and `PEASANTS` and no other form.
+    // The spellings are `names_peasants`' - the engine's, which add `PEAS` to the rules' two.
     //
     // Every other spelling names a race or a good, and both reach `Ledger::bought`: an exact
     // amount through `buy`, an `Amount::All` through `settle_buy_all` since `ah-jown`. So the old
@@ -11118,16 +11118,14 @@ enum MarketAnswer<'a> {
 /// specify the race of the people as the [item], or you may use PEASANT or PEASANTS to recruit
 /// whichever race is present in the region."
 ///
-/// Only those two spellings, as `rules/buy` names them.
+/// The engine accepts one spelling more than the rules page names: `parseorders.cpp`
+/// `ProcessBuyOrder` tests `peasant`, `peasants` and `peas`, case-insensitively, and reads all
+/// three as the region's race. The navigator chose to follow the engine here (`ah-6sx5`), so
+/// `PEAS` is read the same way.
 fn names_peasants(text: &str) -> bool {
-    let written = text.replace('_', " ");
-    // Bound rather than returned directly: `item_spellings` borrows `written`, and the iterator
-    // holding that borrow outlives the tail expression (E0597).
-    let named = item_spellings(&written)
-        .into_iter()
-        .flatten()
-        .any(|spelling| spelling.eq_ignore_ascii_case("peasant"));
-    named
+    ["peasant", "peasants", "peas"]
+        .iter()
+        .any(|spelling| text.eq_ignore_ascii_case(spelling))
 }
 
 /// What a `BUY` names, with PEASANT or PEASANTS read as the race of the region's peasants
@@ -55408,7 +55406,12 @@ BUILD
         };
         assert_eq!(region.race.as_deref(), Some("humans"), "the fixture's race");
 
-        for line in ["BUY 5 PEASANTS", "BUY 5 peasant", "BUY ALL PEASANTS"] {
+        for line in [
+            "BUY 5 PEASANTS",
+            "BUY 5 peasant",
+            "BUY ALL PEASANTS",
+            "BUY 5 PEAS",
+        ] {
             let orders = format!("unit 900\n{line}\nPRODUCE WOOD\n");
             let ordered = OrderedUnits::read(&orders);
             let hex = hex_after_orders(&region, &ordered);
@@ -55434,6 +55437,8 @@ BUILD
     #[test]
     fn buying_peasants_where_no_race_is_shown_leaves_the_unit_unjudged() {
         let crew = with_silver(with_skill_pts(men_holder("900", 10), "LUMB", 30), 400);
+        // Deliberately impossible: a report that names no race of peasants sells no people. The
+        // HUMN line is kept so the only thing missing is the race PEASANTS would stand for.
         let region = ReportRegion {
             race: None,
             for_sale: vec![MarketItem {
