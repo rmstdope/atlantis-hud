@@ -535,6 +535,10 @@ pub struct BuildSpend {
     /// What this unit's men alone could have done.
     pub could_do: i64,
     pub capped_by: Option<BuildCap>,
+    /// The id of the structure this spend lays the last work into, so the coming month shows it
+    /// finished (`ah-2ql5`). Only for a structure the report already shows, built in the hex the
+    /// unit stands in; `None` for every other spend, which is also what "cannot tell" reads as.
+    pub finishes: Option<String>,
 }
 
 /// Why a direct founding `BUILD` cannot start in this region.
@@ -9287,7 +9291,65 @@ mod tests {
                     helping: None,
                     could_do: 30,
                     capped_by: None,
+                    finishes: None,
                 }]
+            );
+            assert_eq!(
+                unit.built[0].finishes, None,
+                "thirty of the forty-five the Stockade needs leaves it unfinished"
+            );
+        }
+
+        /// `ah-2ql5`: the spend that lays a structure's last work names it, so the units pane can
+        /// drop its unfinished mark for the coming month.
+        #[test]
+        fn a_build_that_lays_the_last_work_names_the_structure() {
+            let hex_region = report_with_a_builder().replace("needs 45", "needs 30");
+            let response = preview_over(&hex_region, "unit 900\nBUILD\n");
+            let unit = only_unit(&response);
+
+            assert_eq!(unit.built.len(), 1, "{:?}", unit.built);
+            assert_eq!(unit.built[0].finishes.as_deref(), Some("4"));
+        }
+
+        /// `ah-2ql5`: of two builders, only the one whose work completes the structure says so -
+        /// the later one is priced against what the earlier left (`ah-d60n`).
+        #[test]
+        fn of_two_builders_only_the_one_that_completes_it_finishes() {
+            let hex_region = [
+                report_with_a_builder()
+                    .replace("needs 45", "needs 50")
+                    .trim_end()
+                    .to_string(),
+                "  * Masons (901), Foo (1), behind, 10 humans [HUMN], 120 wood [WOOD]. Weight: \
+                 1300. Capacity: 0/0/120/0. Skills: building [BUIL] 3 (250)."
+                    .to_string(),
+                String::new(),
+            ]
+            .join("\n");
+            let response = preview_over(&hex_region, "unit 900\nBUILD\nunit 901\nBUILD\n");
+            let finishes = |id: &str| {
+                response
+                    .regions
+                    .iter()
+                    .flat_map(|region| region.units.iter())
+                    .find(|unit| unit.unit.unit_id == id)
+                    .expect("the builder is previewed")
+                    .built
+                    .iter()
+                    .map(|spend| spend.finishes.clone())
+                    .collect::<Vec<_>>()
+            };
+
+            assert_eq!(
+                finishes("900"),
+                vec![None],
+                "thirty of fifty is not the end"
+            );
+            assert_eq!(
+                finishes("901"),
+                vec![Some("4".to_string())],
+                "the last twenty is"
             );
         }
 

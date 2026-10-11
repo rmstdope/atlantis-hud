@@ -10522,6 +10522,13 @@ fn build(
         return;
     }
 
+    // The work that leaves nothing more to do finishes a structure the report shows (`ah-2ql5`).
+    // Not where a passenger's fleet lands: that site is not the hex this row is drawn in, so the
+    // pane is left saying "unfinished" there rather than told something about the wrong hex.
+    let finishes = match (&site, &away) {
+        (BuildSite::Existing(id), None) if plan.done >= remaining => Some(id.clone()),
+        _ => None,
+    };
     *ledger.build_laid.entry(site).or_default() += plan.done;
 
     // 10. Record the movements and the spend, one movement per material. Every value has exactly
@@ -10559,6 +10566,7 @@ fn build(
             helping: helped_id,
             could_do: plan.could_do,
             capped_by: plan.capped_by,
+            finishes,
         });
 }
 
@@ -32986,6 +32994,7 @@ BUILD
                         helping: None,
                         could_do: 30,
                         capped_by: None,
+                        finishes: None,
                     }])
                 );
             });
@@ -33453,6 +33462,7 @@ BUILD
                         helping: None,
                         could_do: 30,
                         capped_by: Some(effects::BuildCap::Needs),
+                        finishes: None,
                     }])
                 );
             });
@@ -45422,6 +45432,7 @@ BUILD
                 helping: Some("new-1".to_string()),
                 could_do: 30,
                 capped_by: Some(effects::BuildCap::Needs),
+                finishes: None,
             }],
             "{helper:?}"
         );
