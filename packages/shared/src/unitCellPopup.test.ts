@@ -3470,4 +3470,39 @@ describe("the unfinished mark in the popups", () => {
     const ship = popup.lines.find((line) => line.label === "unfinished Galleon GALL");
     expect(ship).toMatchObject({ value: "gone", unfinished: "label" });
   });
+
+  // `ah-uxmh`, the words agreed for `ah-2ql5` (mockup 6a): a ship this month's BUILD finishes
+  // leaves Items, its line reads `1 -> gone` under the mark, and the note says why.
+  it("says a ship this month's building finishes becomes a ship", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [{ amount: 60, name: "wood", tag: "WOOD" }],
+          previewChanges: [{ field: "items", original: "85 WOOD, 1 GALL" }],
+          itemChanges: [
+            {
+              tag: "GALL",
+              name: "unfinished Galleon",
+              delta: -1,
+              cause: "ship-finished",
+              line: 2,
+              unitPrice: null,
+              other: null,
+              isMan: false
+            }
+          ]
+        }),
+        facts()
+      )
+    );
+    const ship = popup.lines.find((line) => line.label === "unfinished Galleon GALL");
+    expect(ship).toMatchObject({
+      value: "gone",
+      unfinished: "label",
+      change: { direction: "down", from: "1" }
+    });
+    expect(popup.notes).toContain("Finished this month: becomes a ship.");
+    expect(popup.notes.some((note) => note.startsWith("unfinished Galleon:"))).toBe(false);
+  });
 });
