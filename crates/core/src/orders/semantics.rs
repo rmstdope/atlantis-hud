@@ -6607,7 +6607,7 @@ fn discard_unfinished_ships_after_movement(
     ruleset: Option<&Ruleset>,
 ) {
     for ordered in &hex.units {
-        let departs = leaves_hex_after_load_check(ordered, ledger, ruleset)
+        let departs = leaves_hex_after_load_check(hex, ordered, ledger, ruleset)
             || ruleset.is_some_and(|rules| carried_away(hex, ordered, rules).is_some());
         if !departs {
             continue;
@@ -20207,12 +20207,14 @@ fn movement_overload(
 /// `Ordered::leaves_the_hex` reading everywhere it mattered to guard and teaching (`ah-0wpn`):
 /// entering or leaving a structure moves a unit within the hex, so those steps never count.
 ///
-/// A directional `SAIL` is still an unconditional departure: fleet overload and under-crewing are
-/// separate, multi-unit checks and out of scope here. A directional `MOVE` is a departure unless
+/// A directional `SAIL` is a departure unless the game refuses its very first step
+/// ([`sail_refused_before_leaving`], `ah-nz7r`); fleet overload and under-crewing are separate,
+/// multi-unit checks and out of scope here. A directional `MOVE` is a departure unless
 /// `movement_overload` proves it will fail. Unknown load or allowance preserves the existing
 /// optimistic departure behavior - lack of evidence for overload does not cancel an ordered
 /// departure.
 fn leaves_hex_after_load_check(
+    hex: &Hex<'_>,
     ordered: &Ordered<'_>,
     ledger: &Ledger<'_>,
     ruleset: Option<&Ruleset>,
@@ -20222,9 +20224,62 @@ fn leaves_hex_after_load_check(
             steps.iter().any(|step| matches!(step, MoveStep::Go(_)))
                 && movement_overload(ordered, ledger, ruleset).is_none()
         }
-        Intent::Sail { steps } => steps.iter().any(|step| matches!(step, MoveStep::Go(_))),
+        Intent::Sail { steps } => {
+            steps.iter().any(|step| matches!(step, MoveStep::Go(_)))
+                && !ruleset
+                    .is_some_and(|rules| sail_refused_before_leaving(hex, ordered, steps, rules))
+        }
         _ => false,
     })
+}
+
+/// Whether the game refuses this unit's `SAIL` at its very first step, so the fleet never leaves
+/// the hex (`ah-nz7r`). The engine stops a fleet at the first step it refuses, before taking any
+/// (`RunSailOrders`), and the only refusal a first step can meet is land at both ends: "Ships
+/// ending their movement in a land hex may sail out along any side connecting to water"
+/// (`rules/movement_sailing`), so a neck of land never stops one there. Judged as
+/// `check_sail_route` judges it - the vessel the unit could captain or stands in, else a bound
+/// hull - so the departure agrees with the `sail-between-land-hexes` warning that says "it will
+/// not move". An exit this hex does not list is not judged, as [`refused_sail_steps`] does not
+/// judge one.
+fn sail_refused_before_leaving(
+    hex: &Hex<'_>,
+    ordered: &Ordered<'_>,
+    steps: &[MoveStep],
+    ruleset: &Ruleset,
+) -> bool {
+    let Some(direction) = steps.iter().find_map(|step| match step {
+        MoveStep::Go(direction) => Some(*direction),
+        _ => None,
+    }) else {
+        return false;
+    };
+    let Some(exit) = hex
+        .region
+        .exits
+        .iter()
+        .find(|exit| Direction::parse(&exit.direction) == Some(direction))
+    else {
+        return false;
+    };
+    let hull = hex
+        .region
+        .structures
+        .iter()
+        .filter(|structure| is_vessel(structure, Some(ruleset)))
+        .find(|structure| {
+            could_captain(ordered, &structure.structure_id)
+                || is_aboard(ordered, &structure.structure_id)
+        })
+        .map_or(Hull::Bound, |vessel| {
+            Hull::from_flies(fleet_flies(vessel, Some(ruleset)))
+        });
+    refused_by_sailing_step(
+        ruleset,
+        Journey::enforced(MovementMode::Sail, hull),
+        &hex.region.terrain,
+        &exit.terrain,
+    )
 }
 
 /// Every unit in the hex that actually departs once `leaves_hex_after_load_check` is accounted
@@ -20240,7 +20295,7 @@ fn departures_after_load_checks(
 ) -> BTreeSet<String> {
     hex.units
         .iter()
-        .filter(|ordered| leaves_hex_after_load_check(ordered, ledger, ruleset))
+        .filter(|ordered| leaves_hex_after_load_check(hex, ordered, ledger, ruleset))
         .map(|ordered| ordered.unit.unit_id.clone())
         .collect()
 }
