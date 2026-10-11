@@ -1,0 +1,44 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Finishing This Month</title><style>
+:root{--ground:#10151c;--panel:#171d26;--edge:#26303d;--edge-soft:#1e2733;--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--select:#4a9fd8;--ok:#4fb783;--danger:#d97070}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:28px 16px 60px}
+main{max-width:1200px;margin:0 auto}
+h1{font-size:24px}h1 span{color:var(--brass)}
+p.lead{color:var(--ink-soft);font-size:14px;max-width:90ch;margin:10px 0 20px}
+h3{margin:26px 0 8px;font-size:12px;letter-spacing:1.6px;text-transform:uppercase;color:var(--brass)}
+.pane{background:var(--panel);border:1px solid var(--edge);border-radius:8px;padding:8px;overflow-x:auto;position:relative}
+.lbl{font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px}
+table{width:100%;min-width:760px;table-layout:fixed;border-collapse:separate;border-spacing:0;font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif}
+th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);font-weight:400;padding:2px 8px;border-bottom:1px solid var(--edge)}
+td{padding:3px 8px;border-bottom:1px solid var(--edge-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.uid{color:var(--select)}.own{color:var(--ok)}.dim{color:var(--ink-dim)}
+.colhi{outline:1px solid var(--brass);outline-offset:-1px}
+.unf-word{color:var(--brass);font-style:italic}
+.unf-glyph{display:inline-block;width:11px;height:11px;border:1.5px dashed var(--brass);border-radius:2px;margin-right:5px;vertical-align:-1px}
+.unf-dash{text-decoration:underline dashed var(--brass);text-underline-offset:3px;color:var(--ink-soft)}
+.pop{position:relative;margin-top:14px;display:inline-block;background:#1c232e;border:1px solid var(--edge);border-radius:6px;padding:8px 12px;font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif;min-width:300px}
+.pop .k{color:var(--ink-dim);display:inline-block;width:80px}
+.pop .note{color:var(--ink-soft);margin-top:4px}
+ul{font-size:13px;color:var(--ink-soft);margin:12px 0 0 18px}
+.narrow table{min-width:0}.narrow{max-width:420px}
+.sel td{background:rgba(74,159,216,.18)}.pred{font-style:italic;color:var(--brass)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--edge);border-radius:8px;padding:12px}
+.card h4{font-size:14px;margin-bottom:6px}.card h4 em{color:var(--brass);font-style:normal;font-size:11px;letter-spacing:1.4px;margin-right:6px}
+.legend{font:11.5px 'Helvetica Neue',Arial,sans-serif;color:var(--ink-dim);padding:6px 8px 0}
+.pop{margin-top:4px}</style></head><body><main>
+<h1>Units in hex — <span>finishing this month</span></h1>
+<p class="lead">You chose to drop the mark when this month's orders finish the building. Two details follow from that.</p>
+<h3>Q5 · What the Structure hover says then</h3><div class="grid">
+<div class="card"><h4><em>5a</em>The change, from report to month end</h4><div class="pop"><div><span class="k">structure</span><span class="pred">Building [11] · Stockade</span></div><div class="note">Unfinished in the report; this month's building finishes it.</div></div></div>
+<div class="card"><h4><em>5b</em>Only the outcome</h4><div class="pop"><div><span class="k">structure</span><span class="pred">Building [11] · Stockade</span></div><div class="note">Finished this month.</div></div></div>
+</div>
+<h3>Q6 · The same for an unfinished ship</h3>
+<p class="lead">The Shipbuilders' BUILD will put in the Galleon's last work this month. When a ship is finished, the game takes it out of the builder's hands and puts it in a fleet.</p><div class="grid">
+<div class="card"><h4><em>6a</em>Same rule: the ship leaves Items in the month-end view</h4><div class="pane"><table style="min-width:0"><colgroup><col style="width:3.5rem"><col style="width:7rem"><col style="width:8rem"><col></colgroup><thead><tr><th>Id</th><th>Unit</th><th>Items</th><th>Structure</th></tr></thead><tbody><tr class=""><td class="uid">3173</td><td>Shipbuilders</td><td><span class="pred">85 WOOD</span></td><td>Northern Fleet [104] · Fleet</td></tr></tbody></table></div><div class="pop"><div><span class="k">wood</span>85</div><div><span class="k" style="width:auto;margin-right:12px">unfinished Galleon</span>1 → gone</div><div class="note">Finished this month: becomes a ship.</div></div></div>
+<div class="card"><h4><em>6b</em>Ships keep the mark until the report shows them finished</h4><div class="pane"><table style="min-width:0"><colgroup><col style="width:3.5rem"><col style="width:7rem"><col style="width:8rem"><col></colgroup><thead><tr><th>Id</th><th>Unit</th><th>Items</th><th>Structure</th></tr></thead><tbody><tr class=""><td class="uid">3173</td><td>Shipbuilders</td><td>85 WOOD, <span class="unf-glyph"></span>1 GALL</td><td>Northern Fleet [104] · Fleet</td></tr></tbody></table></div></div>
+</div>
+<h3>Decided — no question needed</h3><ul>
+<li>When it cannot be told whether this month's work is enough (for example, the amount built depends on something uncounted), the mark stays.</li>
+<li>A unit whose orders move it <i>into</i> an unfinished building shows the mark on its forecast (italic) label.</li>
+</ul></main></body></html>
