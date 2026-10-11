@@ -19953,26 +19953,7 @@ fn check_sail_route(
             if !steps.iter().any(|step| matches!(step, MoveStep::Go(_))) {
                 continue; // a bare SAIL names no direction
             }
-            // The vessel this unit would be sailing, if any: the one it could captain, else the
-            // one it is standing in. What that hull means for the water is decided below.
-            let vessel = hex
-                .region
-                .structures
-                .iter()
-                .filter(|structure| is_vessel(structure, Some(ruleset)))
-                .find(|structure| {
-                    could_captain(ordered, &structure.structure_id)
-                        || is_aboard(ordered, &structure.structure_id)
-                });
-            // A fleet that may be flying is not bound by the water, and neither is one whose
-            // hulls cannot be read: `Hull::from_flies` is the one reading of that, shared with the
-            // map. A SAIL with no fleet in the hex at all is a different case and stays `Bound` -
-            // geography is judged whether or not the report shows the hull, which is what this
-            // check warned about before it shared the map's reading.
-            let hull = match vessel {
-                Some(vessel) => Hull::from_flies(fleet_flies(vessel, Some(ruleset))),
-                None => Hull::Bound,
-            };
+            let hull = sailing_hull(hex, ordered, ruleset);
             let journey = Journey::enforced(MovementMode::Sail, hull);
             let map = sail_map.get_or_init(|| MapKnowledge::from_report(report));
             let refused = refused_sail_steps(map, ruleset, journey, hex.region.coordinate, steps);
@@ -20241,10 +20222,9 @@ fn leaves_hex_after_load_check(
 
 /// Whether the game refuses this unit's own `SAIL` at its very first step, so the fleet - and the
 /// captain or sailor who wrote it - never leaves the hex (`ah-nz7r`): the engine stops a fleet at
-/// the first step it refuses, before taking any (`RunSailOrders`). The hull is read as
-/// `check_sail_route` reads it - the vessel the unit could captain or stands in, else a bound
-/// hull - so the departure agrees with the `sail-between-land-hexes` warning that says "it will
-/// not move"; the step itself is [`first_sail_step_refused`], the same judgement `carried_away`
+/// the first step it refuses, before taking any (`RunSailOrders`). The hull is [`sailing_hull`],
+/// the one `check_sail_route` reads, so the departure agrees with the `sail-between-land-hexes`
+/// warning that says "it will not move"; the step itself is [`first_sail_step_refused`], the same judgement `carried_away`
 /// makes for the passengers.
 fn sail_refused_before_leaving(
     hex: &Hex<'_>,
@@ -20252,8 +20232,20 @@ fn sail_refused_before_leaving(
     steps: &[MoveStep],
     ruleset: &Ruleset,
 ) -> bool {
-    let hull = hex
-        .region
+    first_sail_step_refused(hex, sailing_hull(hex, ordered, ruleset), steps, ruleset)
+}
+
+/// The hull a unit's own `SAIL` is judged by: that of the vessel it could captain, else the one it
+/// is standing in. Shared by `check_sail_route` and [`sail_refused_before_leaving`] so the
+/// `sail-between-land-hexes` warning and the departure it implies cannot disagree (`ah-nz7r`).
+///
+/// A fleet that may be flying is not bound by the water, and neither is one whose hulls cannot be
+/// read: `Hull::from_flies` is the one reading of that, shared with the map. A SAIL with no fleet
+/// in the hex at all is a different case and stays `Bound` - geography is judged whether or not
+/// the report shows the hull, which is what `check_sail_route` warned about before it shared the
+/// map's reading.
+fn sailing_hull(hex: &Hex<'_>, ordered: &Ordered<'_>, ruleset: &Ruleset) -> Hull {
+    hex.region
         .structures
         .iter()
         .filter(|structure| is_vessel(structure, Some(ruleset)))
@@ -20263,8 +20255,7 @@ fn sail_refused_before_leaving(
         })
         .map_or(Hull::Bound, |vessel| {
             Hull::from_flies(fleet_flies(vessel, Some(ruleset)))
-        });
-    first_sail_step_refused(hex, hull, steps, ruleset)
+        })
 }
 
 /// Every unit in the hex that actually departs once `leaves_hex_after_load_check` is accounted
@@ -44549,6 +44540,23 @@ BUILD
             ["sail-between-land-hexes"],
             "{findings:?}"
         );
+    }
+
+    /// `ah-nz7r`, the other side: a fleet that may be flying is not bound by the water
+    /// (`Hull::from_flies`), so its first step from land to land is no refusal and the captain on
+    /// guard does leave - `guard-dropped` stands, and no `sail-between-land-hexes` is warned.
+    #[test]
+    fn a_guard_captaining_a_flying_fleet_over_land_still_drops_the_guard() {
+        let mut captain = unit("5");
+        captain.on_guard = true;
+        captain.skills.push(sail(4));
+        let hex = ReportRegion {
+            structures: vec![balloon("329")],
+            ..landlocked_fleet(vec![captain])
+        };
+
+        let findings = check(vec![hex], "unit 5\nSAIL N\n");
+        assert_eq!(codes(&findings), ["guard-dropped"], "{findings:?}");
     }
 
     /// `ah-0wpn`. A MOVE that `movement_overload` proves will fail does not actually take the
