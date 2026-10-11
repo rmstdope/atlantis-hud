@@ -12999,7 +12999,14 @@ impl<'a> Sharing<'a> {
                             who,
                             LendingMoment::MonthEnd,
                         ));
-                    (-held).max(0).min(at_month_end)
+                    (-held)
+                        .max(0)
+                        .max(claimant_cast_overdraft(
+                            ledger,
+                            who,
+                            LendingMoment::Movement,
+                        ))
+                        .min(at_month_end)
                 }
             })
             .sum::<i64>()
@@ -13138,7 +13145,13 @@ fn lend_walking_sharers_silver(
             } else if ordered.shares() {
                 staying += held;
             } else {
-                need += (-held).max(0);
+                // A cast a later SELL paid off was still the pool's to pay, walkers included:
+                // spells are cast before anyone moves (`rules/sequenceofevents`, `ah-9n7l.2`).
+                need += (-held).max(0).max(claimant_cast_overdraft(
+                    ledger,
+                    who,
+                    LendingMoment::Movement,
+                ));
             }
         }
         let mut need = (need - staying).max(0);
@@ -60378,12 +60391,19 @@ BUILD
         student_orders: &str,
     ) -> TurnReview {
         let sharer = sharing(with_silver(unit("7"), 500));
+        // Grain is wanted at 10, for a sale that comes after a cast (`ah-9n7l.2`).
         let swords = |region: ReportRegion| ReportRegion {
             for_sale: vec![MarketItem {
                 amount: 10,
                 name: "swords".to_string(),
                 tag: "SWOR".to_string(),
                 price: 100,
+            }],
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 10,
             }],
             ..region
         };
@@ -60453,6 +60473,64 @@ BUILD
             Some(300),
             "the $200 it lent before leaving is spent from its own row"
         );
+    }
+
+    /// Spells are cast before anyone moves (`rules/sequenceofevents`), so a sharer that walks
+    /// away pays a cast a later sale would have repaid, and nothing is short (`ah-9n7l.2` review).
+    #[test]
+    fn a_sharer_that_walks_away_still_pays_for_a_cast_a_later_sale_repays() {
+        let review = walking_sharer_review_of(
+            grain_seller_who_casts(),
+            ("1:7,53", 7, 53),
+            ("1:7,53", 7, 53),
+            Some((7, 55)),
+            "SELL 30 grain\nCAST Create_Amulet_Of_Protection",
+        );
+        let short: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    || finding.code == codes::PART_OF_HEX_SHORTFALL
+            })
+            .collect();
+        assert_eq!(short, Vec::<&Finding>::new());
+        assert_eq!(forecast_for(&review, "5").short_for_orders, Some(0));
+        assert_eq!(
+            forecast_for(&review, "7").at_month_end,
+            Some(300),
+            "the $200 it lent the cast before leaving is spent from its own row"
+        );
+    }
+
+    /// The mirror: a sharer that walks in arrives after the cast, so it lends the cast nothing and
+    /// the caster is short on its own (`ah-9n7l.2` review).
+    #[test]
+    fn a_sharer_that_walks_in_does_not_pay_for_a_cast_made_before_it_arrived() {
+        let review = walking_sharer_review_of(
+            grain_seller_who_casts(),
+            ("1:7,53", 7, 53),
+            ("1:7,51", 7, 51),
+            Some((7, 53)),
+            "SELL 30 grain\nCAST Create_Amulet_Of_Protection",
+        );
+        let short: Vec<(Option<&str>, &str)> = review
+            .findings
+            .iter()
+            .filter(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    || finding.code == codes::PART_OF_HEX_SHORTFALL
+            })
+            .map(|finding| (finding.unit_id.as_deref(), finding.message.as_str()))
+            .collect();
+        assert_eq!(
+            short,
+            vec![(
+                Some("5"),
+                "short $200: this unit can have $0 and its orders spend $200"
+            )]
+        );
+        assert_eq!(forecast_for(&review, "5").short_for_orders, Some(200));
     }
 
     /// The mirror: a sharer that walks in arrives after `BUY` (`rules/sequenceofevents`), so it
