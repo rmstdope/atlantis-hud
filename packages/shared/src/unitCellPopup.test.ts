@@ -3235,7 +3235,8 @@ describe("the items popup's cause sentences", () => {
             founding: false,
             helping: null,
             couldDo: 10,
-            cappedBy: null
+            cappedBy: null,
+            finishes: null
           }
         ]
       })[0]
@@ -3265,7 +3266,8 @@ describe("the items popup's cause sentences", () => {
           founding: true,
           helping: null,
           couldDo: 30,
-          cappedBy: null
+          cappedBy: null,
+          finishes: null
         }
       ]
     });

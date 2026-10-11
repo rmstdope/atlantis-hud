@@ -1098,7 +1098,8 @@ describe("the items column", () => {
               founding: false,
               helping: null,
               couldDo: 30,
-              cappedBy: null
+              cappedBy: null,
+              finishes: null
             }
           ]
         }
