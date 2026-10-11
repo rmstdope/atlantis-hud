@@ -1005,6 +1005,12 @@ pub(super) fn match_order(
     }
 
     let mut matched = best.ok_or_else(|| merge(furthest))?;
+    // `BUY`'s PEASANT words are not items, so the catalogue not knowing them is no doubt (`ah-lbet`).
+    if order.name == "BUY" {
+        matched
+            .unknown_items
+            .retain(|item| !names_peasants(&item.text));
+    }
     if order.name == "CAST" {
         if let Some(ruleset) = ruleset {
             matched
@@ -1013,6 +1019,23 @@ pub(super) fn match_order(
         }
     }
     Ok(matched)
+}
+
+/// The words `BUY` reads as the region's race rather than as an item, in the order the completion
+/// offers them. `rules/buy`: "When buying people, specify the race of the people as the [item], or
+/// you may use PEASANT or PEASANTS to recruit whichever race is present in the region."
+///
+/// The engine accepts one spelling more than the rules page names: `parseorders.cpp`
+/// `ProcessBuyOrder` tests `peasant`, `peasants` and `peas`, case-insensitively, and reads all
+/// three as the region's race. The navigator chose to follow the engine here (`ah-6sx5`), so
+/// `PEAS` is read the same way.
+pub(super) const PEASANT_WORDS: [&str; 3] = ["PEASANT", "PEASANTS", "PEAS"];
+
+/// Whether an order's item argument is one of [`PEASANT_WORDS`], in any case.
+pub(super) fn names_peasants(text: &str) -> bool {
+    PEASANT_WORDS
+        .iter()
+        .any(|spelling| text.eq_ignore_ascii_case(spelling))
 }
 
 /// The material a transmuting `CAST` names, when the catalogue has never heard of the word.

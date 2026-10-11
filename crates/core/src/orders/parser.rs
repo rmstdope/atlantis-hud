@@ -1040,6 +1040,41 @@ mod tests {
         assert_eq!(result.diagnostics, vec![], "{:?}", result.diagnostics);
     }
 
+    /// `rules/buy`: "you may use PEASANT or PEASANTS to recruit whichever race is present in the
+    /// region", and the engine's `ProcessBuyOrder` reads `PEAS` the same way (`ah-6sx5`). None of
+    /// the three is an item, and none is doubted - inside a FORM block or outside one (`ah-lbet`).
+    #[test]
+    fn buying_peasants_by_any_of_the_three_words_is_not_doubted() {
+        let result = validate_orders(
+            concat!(
+                "BUY 1 PEASANT\n",
+                "BUY 2 peasants\n",
+                "BUY ALL Peas\n",
+                "FORM 1\n",
+                "BUY 1 PEASANTS\n",
+                "BUY 1 PEAS\n",
+                "END\n",
+            ),
+            Some(RULESET),
+        );
+
+        assert_eq!(result.diagnostics, vec![], "{:?}", result.diagnostics);
+    }
+
+    /// PEASANTS is a word of `BUY` only: `SELL` and `GIVE` still name an item, so there it is
+    /// doubted as before.
+    #[test]
+    fn the_peasant_words_are_doubted_outside_buy() {
+        assert_eq!(
+            validate_orders("SELL 1 PEASANTS\nGIVE 45 1 PEAS", Some(RULESET))
+                .diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.code.as_str())
+                .collect::<Vec<_>>(),
+            ["unknown-item", "unknown-item"]
+        );
+    }
+
     #[test]
     fn without_a_ruleset_the_shape_is_still_checked_but_no_item_is_doubted() {
         assert_eq!(codes("GIVE 45 10 swordz"), Vec::<String>::new());
