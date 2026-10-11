@@ -12742,7 +12742,7 @@ enum Reading {
 }
 
 /// The moments a hex's `SHARE` silver pool is read at, in the order `rules/sequenceofevents` runs
-/// them: BUY and WITHDRAW under "Market orders", then movement; STUDY among "Month long orders";
+/// them: CAST under "Instant Magic", BUY and WITHDRAW under "Market orders", then movement; STUDY among "Month long orders";
 /// TRANSPORT after WORK; maintenance last. `rules/share` lends silver "for buying or studying", so
 /// the first two are when it lends; TRANSPORT is when a shipment is paid from the pool
 /// (`ah-7ale.4`), and the month's end is what the pool is netted at.
@@ -12751,6 +12751,10 @@ enum Reading {
 /// [`Sharing::silver_held_at`] at one of these rather than deriving its own figure (`ah-4oz9`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LendingMoment {
+    /// As the spells are CAST, before the market opens (`rules/sequenceofevents`): a cast that
+    /// costs silver asks the shared purse then (`spells.cpp`, `GetSharedMoney`), so nothing a
+    /// SELL brings in pays for it (`ah-9n7l.2`). An arrival is not here yet.
+    Cast,
     /// After BUY, and as movement begins: nothing between WITHDRAW and movement moves silver
     /// (`rules/sequenceofevents`). An arrival is not here yet.
     Movement,
@@ -12767,6 +12771,7 @@ impl LendingMoment {
 
     fn phase(self) -> StatePhase {
         match self {
+            LendingMoment::Cast => StatePhase::Cast,
             LendingMoment::Movement => StatePhase::Movement,
             LendingMoment::Study => StatePhase::Study,
             LendingMoment::Transport => StatePhase::Transport,
@@ -12776,12 +12781,26 @@ impl LendingMoment {
 }
 
 /// One unit's silver as the pool reads it at `moment`: [`spendable_silver_at`], and at the month's
-/// end [`relieved_balance`], which has maintenance and its relief settled.
+/// end [`relieved_balance`], which has maintenance and its relief settled. At the cast the plain
+/// balance: the market has not charged a `BUY` yet, so there is nothing for `overcharged` to give
+/// back.
 fn silver_at(ledger: &Ledger<'_>, unit_id: &str, moment: LendingMoment) -> i64 {
     match moment {
         LendingMoment::MonthEnd => relieved_balance(ledger, unit_id, SILVER),
+        LendingMoment::Cast => ledger.state.balance_at(StatePhase::Cast, unit_id, SILVER),
         _ => spendable_silver_at(ledger, unit_id, moment.phase()),
     }
+}
+
+/// What a unit that does not pool its silver overdrew as the spells were cast, counted at every
+/// later `moment` as well: the shared purse paid it then (`spells.cpp`, `GetSharedMoney`), and
+/// nothing the unit receives later - a SELL above all, which `rules/sequenceofevents` runs after
+/// the casts - is lent back (`ah-9n7l.2`). `0` at the cast itself, which reads the balance anyway.
+fn claimant_cast_overdraft(ledger: &Ledger<'_>, unit_id: &str, moment: LendingMoment) -> i64 {
+    if moment == LendingMoment::Cast {
+        return 0;
+    }
+    (-silver_at(ledger, unit_id, LendingMoment::Cast)).max(0)
 }
 
 /// One party to a hex's `SHARE` pool at one moment, as [`SharerStock`] reads it: what it holds of
@@ -13152,6 +13171,10 @@ impl<'a> Sharing<'a> {
     /// Silver a unit receives after STUDY - wages, a shipment - is not lent back to the sharer
     /// that already paid, so the month's end alone cannot see a study the pool had already been
     /// drained of; [`LendingMoment::Study`] can (`ah-qrk0`).
+    ///
+    /// A claimant's overdraft at any later moment is at least what it overdrew as the spells were
+    /// cast ([`claimant_cast_overdraft`]): the pool paid that before the market opened, and what
+    /// the claimant sells afterwards is its own (`ah-9n7l.2`).
     fn silver_short_at(&self, hex: &Hex<'_>, ledger: &Ledger<'_>, moment: LendingMoment) -> i64 {
         self.silver_short_reading(hex, ledger, moment, |index| {
             silver_at(ledger, &hex.units[index].unit.unit_id, moment)
@@ -13178,7 +13201,11 @@ impl<'a> Sharing<'a> {
                 if self.pools_silver(ordered) {
                     -held
                 } else {
-                    (-held).max(0)
+                    (-held).max(0).max(claimant_cast_overdraft(
+                        ledger,
+                        &ordered.unit.unit_id,
+                        moment,
+                    ))
                 }
             })
             .sum::<i64>()
@@ -13207,8 +13234,23 @@ impl<'a> Sharing<'a> {
                 if self.pools_silver(ordered) {
                     -held
                 } else {
-                    let at_month_end = silver_at(ledger, who, LendingMoment::MonthEnd);
-                    (-held).max(0).min((-at_month_end).max(0))
+                    // What it overdrew at the cast is still owed at the month's end however much
+                    // it sold since, exactly as the month-end reading counts it (`ah-9n7l.2`).
+                    let at_month_end = (-silver_at(ledger, who, LendingMoment::MonthEnd))
+                        .max(0)
+                        .max(claimant_cast_overdraft(
+                            ledger,
+                            who,
+                            LendingMoment::MonthEnd,
+                        ));
+                    (-held)
+                        .max(0)
+                        .max(claimant_cast_overdraft(
+                            ledger,
+                            who,
+                            LendingMoment::Movement,
+                        ))
+                        .min(at_month_end)
                 }
             })
             .sum::<i64>()
@@ -13238,7 +13280,7 @@ struct WalkingSilver {
     /// [`LendingMoment`]: its [`silver_at`] then, less what it lent before it left. Indexed by
     /// the moment; read through [`WalkingSilver::arrivals_at`].
     ///
-    /// - `Movement` is always empty: an arrival is not there for a `BUY`.
+    /// - `Cast` and `Movement` are always empty: an arrival is not there for a cast or a `BUY`.
     /// - `Study` is uncapped: silver a walker receives after STUDY pays for nothing studied
     ///   (`ah-qrk0`).
     /// - `Transport` is read before shipping settles, for [`shipping_purse`].
@@ -13347,7 +13389,13 @@ fn lend_walking_sharers_silver(
             } else if ordered.shares() {
                 staying += held;
             } else {
-                need += (-held).max(0);
+                // A cast a later SELL paid off was still the pool's to pay, walkers included:
+                // spells are cast before anyone moves (`rules/sequenceofevents`, `ah-9n7l.2`).
+                need += (-held).max(0).max(claimant_cast_overdraft(
+                    ledger,
+                    who,
+                    LendingMoment::Movement,
+                ));
             }
         }
         let mut need = (need - staying).max(0);
@@ -13384,7 +13432,7 @@ fn lend_walking_sharers_silver(
     }
 
     for (index, (hex, ledger)) in hexes.iter_mut().enumerate() {
-        let [_, at_study, at_transport, mut at_month_end] = std::mem::take(&mut arrivals[index]);
+        let [_, _, at_study, at_transport, mut at_month_end] = std::mem::take(&mut arrivals[index]);
         // Not at `Transport`: a shipment's bill is not in the ledger until shipping settles, and
         // `shipping_purse` sets the pool against that bill alone.
         if phase == StatePhase::Maintenance {
@@ -13791,9 +13839,11 @@ struct SharingPurse {
 }
 
 /// The moments `SHARE` lends silver for orders at, in the order `rules/sequenceofevents` runs
-/// them: BUY under "Market orders" (read as movement begins), STUDY among "Month long orders",
-/// and the month's end, where what is still owed is netted.
-const PURSE_MOMENTS: [LendingMoment; 3] = [
+/// them: CAST under "Instant Magic" (`ah-9n7l.2`), BUY under "Market orders" (read as movement
+/// begins), STUDY among "Month long orders", and the month's end, where what is still owed is
+/// netted.
+const PURSE_MOMENTS: [LendingMoment; 4] = [
+    LendingMoment::Cast,
     LendingMoment::Movement,
     LendingMoment::Study,
     LendingMoment::MonthEnd,
@@ -13929,7 +13979,7 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
                 lends: false,
             });
             who.push(None);
-            if moment == LendingMoment::Movement {
+            if matches!(moment, LendingMoment::Cast | LendingMoment::Movement) {
                 // A sharer that walks away lends here only what was drawn on it before it left.
                 if let Some(&departing) = ledger.walking_silver.departing.get(&ordered.unit.unit_id)
                 {
@@ -13945,7 +13995,7 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
         // figure, which `lend_walking_sharers_silver` capped at what the hex needs of it. Defensive
         // at STUDY: a market the purse covered leaves STUDY needing no more than that cap already
         // allows for, so no input is known that reaches it.
-        if moment != LendingMoment::Movement {
+        if !matches!(moment, LendingMoment::Cast | LendingMoment::Movement) {
             for (index, (now, all_month)) in ledger
                 .walking_silver
                 .arrivals_at(moment)
@@ -14014,6 +14064,19 @@ fn silver_short_at_study(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
     }
 }
 
+/// What a unit's own silver is short as the spells are cast, the moment `rules/sequenceofevents`
+/// charges a CAST - before the market, so no SELL pays for it (`ah-9n7l.2`). Zero unless the
+/// casts are what overdrew it: an overdraft already there after TAX is not theirs.
+fn silver_short_at_cast(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    let at_cast = silver_at(ledger, unit_id, LendingMoment::Cast);
+    let before = ledger.state.balance_at(StatePhase::Tax, unit_id, SILVER);
+    if at_cast < before.min(0) {
+        -at_cast
+    } else {
+        0
+    }
+}
+
 /// What a unit's own GIVEs of silver (its discards too: `ah-759k`) asked beyond what it held as
 /// each ran, under "Give orders" in
 /// `rules/sequenceofevents`, long before WORK, TRANSPORT and maintenance: nothing received in them,
@@ -14045,11 +14108,12 @@ fn silver_short_at_market(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
     (-ledger.state.balance_at(StatePhase::Market, unit_id, SILVER)).max(0)
 }
 
-/// The deepest of [`silver_short_at_give`], [`silver_short_at_market`] and
-/// [`silver_short_at_study`]: what a unit's own orders overdrew it by before a later receipt could
+/// The deepest of [`silver_short_at_give`], [`silver_short_at_cast`], [`silver_short_at_market`]
+/// and [`silver_short_at_study`]: what a unit's own orders overdrew it by before a later receipt could
 /// net it out.
 fn silver_short_mid_month(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
     silver_short_at_give(ledger, unit_id)
+        .max(silver_short_at_cast(ledger, unit_id))
         .max(silver_short_at_market(ledger, unit_id))
         .max(silver_short_at_study(ledger, unit_id))
         .max(silver_short_before_wages(ledger, unit_id))
@@ -14064,11 +14128,12 @@ fn silver_short_before_wages(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
 }
 
 /// When a not-enough-silver sentence reads its figures, in `rules/sequenceofevents` order: GIVE
-/// under "Give orders", BUY under "Market orders", STUDY under "Month long orders", and the
-/// month's end after maintenance (`ah-w2ou`).
+/// under "Give orders", CAST under "Instant Magic" (`ah-9n7l.2`), BUY under "Market orders", STUDY
+/// under "Month long orders", and the month's end after maintenance (`ah-w2ou`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ShortfallMoment {
     Give,
+    Cast,
     Market,
     Study,
     MonthEnd,
@@ -14079,12 +14144,15 @@ enum ShortfallMoment {
 /// a tie, since it runs first (`ah-4k84`).
 fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> ShortfallMoment {
     let at_give = silver_short_at_give(ledger, unit_id);
+    let at_cast = silver_short_at_cast(ledger, unit_id);
     let at_market = silver_short_at_market(ledger, unit_id);
     let at_study = silver_short_at_study(ledger, unit_id);
     if at_give >= short && at_give >= at_study {
         ShortfallMoment::Give
-    } else if at_give.max(at_market).max(at_study) < short {
+    } else if at_give.max(at_cast).max(at_market).max(at_study) < short {
         ShortfallMoment::MonthEnd
+    } else if at_cast >= at_market.max(at_study) {
+        ShortfallMoment::Cast
     } else if at_study >= at_market {
         ShortfallMoment::Study
     } else {
@@ -14171,7 +14239,7 @@ fn silver_can_have(
     let arrivals_lend = match moment {
         ShortfallMoment::Study => Some(LendingMoment::Study),
         ShortfallMoment::MonthEnd => Some(LendingMoment::MonthEnd),
-        ShortfallMoment::Give | ShortfallMoment::Market => None,
+        ShortfallMoment::Give | ShortfallMoment::Cast | ShortfallMoment::Market => None,
     }
     .and_then(|lending| walking.map(|walking| walking.lends_at(lending)))
     .unwrap_or(0);
@@ -14378,7 +14446,11 @@ fn pool_shortfalls(
         let (short, moment) = if silver_by_moment && tag == SILVER {
             let at_month_end = sharing.silver_short_at(hex, ledger, LendingMoment::MonthEnd);
             let at_study = sharing.silver_short_at(hex, ledger, LendingMoment::Study);
-            if at_study > at_month_end {
+            // ... and as the spells are cast, before any SELL has paid in (`ah-9n7l.2`).
+            let at_cast = sharing.silver_short_at(hex, ledger, LendingMoment::Cast);
+            if at_cast > at_month_end.max(at_study) {
+                (at_cast, ShortfallMoment::Cast)
+            } else if at_study > at_month_end {
                 (at_study, ShortfallMoment::Study)
             } else {
                 (at_month_end, ShortfallMoment::MonthEnd)
@@ -14410,7 +14482,9 @@ fn pool_shortfalls(
                     || (!ledger.doubted.contains(&o.unit.unit_id)
                         && (relieved_balance(ledger, &o.unit.unit_id, &tag) < 0
                             || (tag == SILVER
-                                && (silver_at(ledger, &o.unit.unit_id, LendingMoment::Study) < 0
+                                && (silver_at(ledger, &o.unit.unit_id, LendingMoment::Cast) < 0
+                                    || silver_at(ledger, &o.unit.unit_id, LendingMoment::Study)
+                                        < 0
                                     || (short_counting_cuts > 0
                                         && ledger
                                             .reduced_buys
@@ -14784,7 +14858,8 @@ fn report_shortfalls(
                 ));
             }
             // A claimant overdrawn as STUDY settles and paid back later - a shipment, wages - has
-            // no month-end verdict, but its line drew on the pool all the same (`ah-qrk0`).
+            // no month-end verdict, but its line drew on the pool all the same (`ah-qrk0`); so
+            // does one overdrawn as the spells are cast and paid back by a sale (`ah-9n7l.2`).
             if tag == SILVER {
                 for ordered in &hex.units {
                     let who = &ordered.unit.unit_id;
@@ -14792,7 +14867,8 @@ fn report_shortfalls(
                         || ledger.doubted.contains(who)
                         // Only a draw made after movement: an overdraft carried from `BUY` was
                         // funded while the sharers still held their silver.
-                        || silver_short_at_study(ledger, who) <= 0
+                        || (silver_short_at_study(ledger, who) <= 0
+                            && claimant_cast_overdraft(ledger, who, LendingMoment::MonthEnd) <= 0)
                         || cut.iter().any(|reduced| &reduced.unit_id == who)
                         || refused.iter().any(|refused| &refused.unit_id == who)
                         || verdicts.iter().any(|verdict| {
@@ -40737,6 +40813,153 @@ BUILD
         assert_eq!(forecast.short_for_orders, Some(200), "{forecast:#?}");
     }
 
+    /// A hex wanting grain at 10, holding `units`: the market a sale-funded cast is set in.
+    fn grain_market(units: Vec<ReportUnit>) -> Vec<ReportRegion> {
+        vec![ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 10,
+            }],
+            ..region(units)
+        }]
+    }
+
+    /// Unit 5: no silver, 101 grain to sell, and Create Amulet of Protection (`data/CRPA`, 200).
+    fn grain_seller_who_casts() -> ReportUnit {
+        with_skill(with_item(unit("5"), 101, "grain", "GRAI"), "CRPA", 1)
+    }
+
+    const SELL_THEN_CAST: &str = "unit 5\nSELL 30 grain\nCAST Create_Amulet_Of_Protection\n";
+
+    /// `rules/sequenceofevents` casts spells before the market opens, so a sale cannot pay for
+    /// a cast the same month. The Problems list says so, as the SILVER column already does
+    /// (`ah-9n7l.2`, failed verification of 2026-10-11).
+    #[test]
+    fn a_cast_funded_only_by_a_later_sale_is_warned() {
+        let findings = review_turn(
+            &report(grain_market(vec![grain_seller_who_casts()])),
+            SELL_THEN_CAST,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        )
+        .findings;
+
+        let warned: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .collect();
+        assert_eq!(warned.len(), 1, "{findings:#?}");
+        assert_eq!(warned[0].unit_id.as_deref(), Some("5"));
+        assert_eq!(warned[0].line, Some(3), "on the CAST line: {findings:#?}");
+        assert!(
+            warned[0]
+                .message
+                .starts_with("short $200: this unit can have $0"),
+            "{}",
+            warned[0].message
+        );
+    }
+
+    /// The same in a sharing hex whose sharer has nothing to lend: the engine's cast asks
+    /// `GetSharedMoney` (`spells.cpp`), which is empty then, so the hex is short the cast and the
+    /// CAST line is marked - the later sale lends nobody anything back (`ah-9n7l.2`).
+    #[test]
+    fn a_sale_funded_cast_beside_an_empty_sharer_leaves_the_hex_short() {
+        let review = review_turn(
+            &report(grain_market(vec![
+                grain_seller_who_casts(),
+                sharing(unit("6")),
+            ])),
+            SELL_THEN_CAST,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let findings = &review.findings;
+
+        let hex: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .collect();
+        assert_eq!(hex.len(), 1, "{findings:#?}");
+        assert_eq!(hex[0].unit_id, None, "{findings:#?}");
+        assert!(
+            hex[0]
+                .message
+                .starts_with("the units in this hex are short $200 between them"),
+            "{}",
+            hex[0].message
+        );
+        let marked: Vec<(Option<&str>, Option<usize>)> = findings
+            .iter()
+            .filter(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL)
+            .map(|finding| (finding.unit_id.as_deref(), finding.line))
+            .collect();
+        assert_eq!(marked, vec![(Some("5"), Some(3))], "{findings:#?}");
+        let caster = review
+            .silver
+            .iter()
+            .find(|silver| silver.unit_id == "5")
+            .unwrap();
+        assert_eq!(caster.short_for_orders, Some(200), "{caster:#?}");
+    }
+
+    /// A sharer with the silver lends it to the cast, so nothing is short on either surface.
+    #[test]
+    fn a_sale_funded_cast_beside_a_sharer_with_silver_is_lent_it() {
+        let review = review_turn(
+            &report(grain_market(vec![
+                grain_seller_who_casts(),
+                sharing(with_silver(unit("6"), 1000)),
+            ])),
+            SELL_THEN_CAST,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let codes = codes(&review.findings);
+        assert!(!codes.contains(&"not-enough-silver"), "{codes:?}");
+        assert!(!codes.contains(&"part-of-hex-shortfall"), "{codes:?}");
+        let caster = review
+            .silver
+            .iter()
+            .find(|silver| silver.unit_id == "5")
+            .unwrap();
+        assert_eq!(caster.short_for_orders, Some(0), "{caster:#?}");
+    }
+
+    /// What the pool lent the cast is gone however much the caster sells afterwards, so a second
+    /// claimant's shortfall adds to it rather than hiding behind the sale (`ah-9n7l.2`).
+    #[test]
+    fn a_sale_funded_casts_shortfall_adds_to_the_hexs_other_claims() {
+        let review = review_turn(
+            &report(grain_market(vec![
+                grain_seller_who_casts(),
+                sharing(unit("6")),
+                with_skill(unit("7"), "CRPA", 1),
+            ])),
+            "unit 5\nSELL 30 grain\nCAST Create_Amulet_Of_Protection\n\
+             unit 7\nCAST Create_Amulet_Of_Protection\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let hex: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .collect();
+        assert_eq!(hex.len(), 1, "{:#?}", review.findings);
+        assert!(
+            hex[0]
+                .message
+                .starts_with("the units in this hex are short $400 between them"),
+            "{}",
+            hex[0].message
+        );
+    }
+
     /// Wages are in the balance from the Wages phase on (`ah-9n7l.2`), and that phase follows every
     /// CAST (`rules/sequenceofevents`), so a month's wages that more than pay for a 200-silver cast
     /// (`data/CRPA`) still leave the cast unpaid on both surfaces.
@@ -60490,12 +60713,19 @@ BUILD
         student_orders: &str,
     ) -> TurnReview {
         let sharer = sharing(with_silver(unit("7"), 500));
+        // Grain is wanted at 10, for a sale that comes after a cast (`ah-9n7l.2`).
         let swords = |region: ReportRegion| ReportRegion {
             for_sale: vec![MarketItem {
                 amount: 10,
                 name: "swords".to_string(),
                 tag: "SWOR".to_string(),
                 price: 100,
+            }],
+            wanted: vec![MarketItem {
+                amount: 100,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 10,
             }],
             ..region
         };
@@ -60565,6 +60795,64 @@ BUILD
             Some(300),
             "the $200 it lent before leaving is spent from its own row"
         );
+    }
+
+    /// Spells are cast before anyone moves (`rules/sequenceofevents`), so a sharer that walks
+    /// away pays a cast a later sale would have repaid, and nothing is short (`ah-9n7l.2` review).
+    #[test]
+    fn a_sharer_that_walks_away_still_pays_for_a_cast_a_later_sale_repays() {
+        let review = walking_sharer_review_of(
+            grain_seller_who_casts(),
+            ("1:7,53", 7, 53),
+            ("1:7,53", 7, 53),
+            Some((7, 55)),
+            "SELL 30 grain\nCAST Create_Amulet_Of_Protection",
+        );
+        let short: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    || finding.code == codes::PART_OF_HEX_SHORTFALL
+            })
+            .collect();
+        assert_eq!(short, Vec::<&Finding>::new());
+        assert_eq!(forecast_for(&review, "5").short_for_orders, Some(0));
+        assert_eq!(
+            forecast_for(&review, "7").at_month_end,
+            Some(300),
+            "the $200 it lent the cast before leaving is spent from its own row"
+        );
+    }
+
+    /// The mirror: a sharer that walks in arrives after the cast, so it lends the cast nothing and
+    /// the caster is short on its own (`ah-9n7l.2` review).
+    #[test]
+    fn a_sharer_that_walks_in_does_not_pay_for_a_cast_made_before_it_arrived() {
+        let review = walking_sharer_review_of(
+            grain_seller_who_casts(),
+            ("1:7,53", 7, 53),
+            ("1:7,51", 7, 51),
+            Some((7, 53)),
+            "SELL 30 grain\nCAST Create_Amulet_Of_Protection",
+        );
+        let short: Vec<(Option<&str>, &str)> = review
+            .findings
+            .iter()
+            .filter(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    || finding.code == codes::PART_OF_HEX_SHORTFALL
+            })
+            .map(|finding| (finding.unit_id.as_deref(), finding.message.as_str()))
+            .collect();
+        assert_eq!(
+            short,
+            vec![(
+                Some("5"),
+                "short $200: this unit can have $0 and its orders spend $200"
+            )]
+        );
+        assert_eq!(forecast_for(&review, "5").short_for_orders, Some(200));
     }
 
     /// The mirror: a sharer that walks in arrives after `BUY` (`rules/sequenceofevents`), so it
