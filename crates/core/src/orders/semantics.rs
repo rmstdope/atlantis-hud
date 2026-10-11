@@ -30,7 +30,7 @@ use super::intents::{
     read_formed, read_intents, spends_the_month, FormedBlock, Intent, PlacedIntent, UnitIntents,
 };
 use super::phases::{self, StatePhase};
-use super::standing::{self, standing_after, Boarding};
+use super::standing::{self, Boarding};
 use super::transfers;
 use super::village_site::VillageSite;
 use crate::movement::fleet::OrderedUnits as FleetOrders;
@@ -256,6 +256,11 @@ pub mod codes {
     /// the bead asks for the warning and gives it no switch, so it is in [`ALWAYS_ON`] and not in
     /// [`ALL`].
     pub const CREATE_VILLAGE_REFUSED: Code = Code("create-village-refused");
+    /// An `ENTER` of a structure the report does not show in the hex. The engine refuses it
+    /// ("ENTER: Can't enter that.") and the unit stays where it was (`ah-5maa`;
+    /// `newage trident rules/enter`). Always on: the bead asks for the warning and gives it no
+    /// switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
+    pub const ENTER_NOT_HERE: Code = Code("enter-not-here");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -339,13 +344,14 @@ pub mod codes {
 
     /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
     /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
-    pub const ALWAYS_ON: [Code; 6] = [
+    pub const ALWAYS_ON: [Code; 7] = [
         MOVE_INTO_A_WALL,
         FACTION_ORDER_WILL_FAIL,
         UNKNOWN_SKILL,
         EXPLORE_BELOW_THE_SURFACE,
         VILLAGE_NEAR_A_SETTLEMENT,
         CREATE_VILLAGE_REFUSED,
+        ENTER_NOT_HERE,
     ];
 }
 
@@ -927,6 +933,7 @@ pub fn review_turn(
         check_mage_arrivals(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_withdraw_in_nexus(hex, &options, &mut findings);
         check_explore_below_the_surface(hex, &mut findings);
+        check_enter_not_here(hex, &mut findings);
         check_village_site(hex, ledger, ruleset, &mut findings);
         check_withdraw_not_a_basic_item(hex, ruleset, &options, &mut findings);
         check_cast_material(hex, ruleset, &options, &mut findings);
@@ -3104,6 +3111,9 @@ impl AfterTheMarket<'_> {
 /// One of our units, and its orders.
 struct Ordered<'a> {
     unit: &'a ReportUnit,
+    /// The structures the report shows in this unit's hex, which an ENTER must name to be obeyed
+    /// (`ah-5maa`, [`structure_after_orders`]).
+    structures_here: &'a [Structure],
     /// The unit as the movement reader keys it: its number when the report shows it, the line of
     /// its `FORM` when this month creates it (`ah-74y9`).
     key: OrderedUnitKey,
@@ -3236,6 +3246,7 @@ impl<'a> Hex<'a> {
                 let orders = ordered.get(&unit.unit_id);
                 Ordered {
                     unit,
+                    structures_here: &region.structures,
                     key: OrderedUnitKey::shown(&unit.unit_id),
                     flags: flags_after_orders(
                         &unit.flags,
@@ -3271,6 +3282,7 @@ impl<'a> Hex<'a> {
                 .filter(|formed| formed.unit.region_id == region.region_id)
                 .map(|formed| Ordered {
                     unit: &formed.unit,
+                    structures_here: &region.structures,
                     key: formed.block.key(),
                     flags: flags_after_orders(&formed.unit.flags, &formed.block.flag_changes),
                     destroys_structure: formed.block.destroys_structure,
@@ -6591,8 +6603,7 @@ fn walk_after_boarding(hex: &Hex<'_>) -> Vec<usize> {
             .intents
             .iter()
             .any(|placed| boarding_of(placed).is_some())
-            && structure_after_orders(ordered)
-                .is_none_or(|id| structures.iter().any(|listed| listed.structure_id == id))
+            && !boarding_refused(ordered)
     };
     // Where each unit stands once the boarding orders have run: a mover where it went, any
     // other unit where the report puts it.
@@ -11550,6 +11561,40 @@ fn hand_in(
         other: None,
         created: None,
     });
+}
+
+/// The `ENTER` that decides where a unit ends up, when it names a structure the report does not
+/// show in this hex (`ah-5maa`). The engine keeps only a block's last ENTER (`parseorders.cpp`
+/// `ProcessEnterOrder` overwrites `u->enter`), and its `Do1EnterOrder` finds no such object and
+/// refuses it ("ENTER: Can't enter that."), so the unit stays where it was; an earlier ENTER the
+/// last one replaces never runs and is not warned. `rules/sequenceofevents` runs ENTER before any
+/// movement, so nothing arriving later that month can be entered by one. Always on
+/// (`codes::ALWAYS_ON`), so no option is read.
+fn check_enter_not_here(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
+    for ordered in &hex.units {
+        if !boarding_refused(ordered) {
+            continue;
+        }
+        let deciding = ordered
+            .intents
+            .iter()
+            .rev()
+            .find_map(|placed| match &placed.intent {
+                Intent::Enter { structure } => Some((placed, structure)),
+                _ => None,
+            });
+        if let Some((placed, structure)) = deciding {
+            findings.push(ordered.finding(
+                hex,
+                codes::ENTER_NOT_HERE,
+                format!(
+                    "ENTER {structure} will be refused: the report shows no structure \
+                     [{structure}] in this hex, so the unit stays where it is"
+                ),
+                Some(placed),
+            ));
+        }
+    }
 }
 
 /// Always on (`codes::ALWAYS_ON`), so no option is read.
@@ -18385,18 +18430,43 @@ fn is_aboard(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 /// ends the month in nothing.
 ///
 /// The rule itself lives in [`super::standing`], which is the one place it is stated; this is the
-/// adapter that reads it out of parsed intents.
+/// adapter that reads it out of parsed intents. An ENTER of a structure the hex does not have is
+/// refused and moves nothing (`ah-5maa`).
 fn structure_after_orders<'a>(ordered: &'a Ordered<'_>) -> Option<&'a str> {
-    structure_after_intents(ordered.unit.structure_id.as_deref(), &ordered.intents)
+    structure_after_intents(
+        ordered.unit.structure_id.as_deref(),
+        &ordered.intents,
+        ordered.structures_here,
+    )
 }
 
-/// [`structure_after_orders`] over the two things it actually reads, so the agreement test can
+/// [`structure_after_orders`] over the three things it actually reads, so the agreement test can
 /// drive this reader without building a whole [`Ordered`].
 pub(crate) fn structure_after_intents<'a>(
     reported: Option<&'a str>,
     intents: &'a [PlacedIntent],
+    structures_here: &[Structure],
 ) -> Option<&'a str> {
-    standing_after(reported, intents.iter().filter_map(boarding_of))
+    standing::standing_after_in(reported, intents.iter().filter_map(boarding_of), |id| {
+        structures_here
+            .iter()
+            .any(|listed| listed.structure_id == id)
+    })
+}
+
+/// Whether the unit's ENTER and LEAVE orders are refused outright, so they move it nowhere
+/// ([`standing::enter_refused`], `ah-5maa`).
+fn boarding_refused(ordered: &Ordered<'_>) -> bool {
+    standing::enter_refused(
+        ordered.unit.structure_id.as_deref(),
+        ordered.intents.iter().filter_map(boarding_of),
+        |id| {
+            ordered
+                .structures_here
+                .iter()
+                .any(|listed| listed.structure_id == id)
+        },
+    )
 }
 
 /// One parsed intent as [`super::standing`] reads it; anything that is not a boarding order is not
@@ -47708,16 +47778,22 @@ BUILD
         );
     }
 
-    /// Accept-on-doubt reaches the new input too: a structure entered but not listed is the same
-    /// doubt as one stood in but not listed.
+    /// An ENTER of a structure the report does not show in the hex is refused and moves nothing
+    /// (`ah-5maa`: the engine's `Do1EnterOrder` answers "ENTER: Can't enter that."), so the mage
+    /// studies where it stood - outside - and the ENTER line says why. This test previously
+    /// expected no finding, taking the unlisted structure as a doubt rather than a refusal.
     #[test]
-    fn a_mage_entering_a_structure_the_report_does_not_list_is_not_judged() {
+    fn a_mage_entering_a_structure_the_report_does_not_list_studies_outside() {
+        let codes: Vec<Code> = check(
+            vec![region(vec![mage(2)])],
+            "unit 5\nENTER 999\nSTUDY FORC\n",
+        )
+        .into_iter()
+        .map(|finding| finding.code)
+        .collect();
         assert_eq!(
-            check(
-                vec![region(vec![mage(2)])],
-                "unit 5\nENTER 999\nSTUDY FORC\n"
-            ),
-            vec![]
+            codes,
+            vec![codes::ENTER_NOT_HERE, codes::MAGIC_STUDY_OUTSIDE_BUILDING]
         );
     }
 

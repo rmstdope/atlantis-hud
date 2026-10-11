@@ -75,6 +75,43 @@ pub fn standing_after<'a>(
     }
 }
 
+/// [`standing_after`] in a hex whose structures are known, where `has` says whether the hex has a
+/// structure by that number.
+///
+/// An ENTER of a structure the hex does not have is refused, and the refusal moves nothing: the
+/// engine's `Do1EnterOrder` finds no object, reports "ENTER: Can't enter that." and returns before
+/// `MoveUnit`, so the unit stays where the report found it - not even out of the structure it was
+/// in (`ah-5maa`; `newage trident rules/enter`, which only lets a unit into an object that is
+/// there to enter). `rules/sequenceofevents` runs ENTER orders before any movement, so a fleet
+/// sailing in later that month is not there yet either.
+pub fn standing_after_in<'a>(
+    reported: Option<&'a str>,
+    boardings: impl IntoIterator<Item = Boarding<'a>>,
+    has: impl Fn(&str) -> bool,
+) -> Option<&'a str> {
+    let standing = standing_after(reported, boardings);
+    if refused(reported, standing, has) {
+        reported
+    } else {
+        standing
+    }
+}
+
+/// Whether the block's boarding orders are refused outright, for the reason
+/// [`standing_after_in`] gives: they would end the unit in a structure the hex does not have. A
+/// refused block moves the unit nowhere, so it is not walked as a move either (`ah-5maa`).
+pub fn enter_refused<'a>(
+    reported: Option<&'a str>,
+    boardings: impl IntoIterator<Item = Boarding<'a>>,
+    has: impl Fn(&str) -> bool,
+) -> bool {
+    refused(reported, standing_after(reported, boardings), has)
+}
+
+fn refused(reported: Option<&str>, standing: Option<&str>, has: impl Fn(&str) -> bool) -> bool {
+    standing.is_some_and(|structure| Some(structure) != reported && !has(structure))
+}
+
 /// Whether this unit could be the one giving `structure_id` its SAIL order: standing in it per the
 /// report, or boarding it this month.
 ///

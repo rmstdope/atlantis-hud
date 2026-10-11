@@ -13,7 +13,7 @@ use crate::movement::orders::MoveStep;
 use crate::movement::rules::Ruleset;
 use crate::orders::blocks::OrderedUnitKey;
 use crate::orders::intents::Intent;
-use crate::orders::standing::{self, standing_after, Boarding, BoardingOrder};
+use crate::orders::standing::{self, Boarding, BoardingOrder};
 use crate::report::model::{ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
 
@@ -53,6 +53,10 @@ pub struct WrittenMovement {
     /// ([`RouteChain::closed_by_teach`]): whether their route runs turns on the settled month,
     /// which this reader cannot see, so [`Self::settle`] decides it (`ah-0x6x`, `ah-r3rv`).
     closed_by_teach: BTreeSet<OrderedUnitKey>,
+    /// Every structure number the report shows in each region, filled by [`Self::settle`]: an
+    /// ENTER of one its region does not have is refused and moves nobody (`ah-5maa`). A region
+    /// the report does not describe has no entry, and every ENTER there is taken as written.
+    structures_by_region: BTreeMap<String, BTreeSet<String>>,
 }
 
 /// This month's movement once it is settled: which route each unit walks or sails, whose `SAIL`
@@ -234,6 +238,8 @@ impl WrittenMovement {
             boardings_by_unit,
             promotes_by_unit,
             closed_by_teach,
+            // Only a report says which structures a region has; `settle` fills this from one.
+            structures_by_region: BTreeMap::new(),
         }
     }
 
@@ -272,6 +278,18 @@ impl WrittenMovement {
                 }
             }
         }
+        self.structures_by_region = report
+            .regions
+            .iter()
+            .map(|region| {
+                let numbers = region
+                    .structures
+                    .iter()
+                    .map(|structure| structure.structure_id.clone())
+                    .collect();
+                (region.region_id.clone(), numbers)
+            })
+            .collect();
         OrderedUnits(self)
     }
 }
@@ -342,16 +360,19 @@ impl OrderedUnits {
     ///
     /// ENTER and LEAVE both run before anything moves, so every reader that asks "what is this
     /// unit standing in when its orders happen" wants this rather than `unit.structure_id`, which
-    /// is only where the report found it. The rule is [`crate::orders::standing::standing_after`]'s
-    /// and is stated only there; this is the adapter that reads it out of an orders document.
+    /// is only where the report found it. The rule is [`crate::orders::standing::standing_after_in`]'s
+    /// and is stated only there - an ENTER of a structure the hex does not have moves nobody
+    /// (`ah-5maa`); this is the adapter that reads it out of an orders document.
     ///
     /// This is where a unit *ends up*. For "could this unit be the one sailing the hull" the
     /// question is different and [`Self::could_captain`] answers it.
     #[must_use]
     pub fn structure_of<'a>(&'a self, unit: &'a ReportUnit) -> Option<&'a str> {
-        standing_after(
+        let structures = self.0.structures_by_region.get(&unit.region_id);
+        standing::standing_after_in(
             unit.structure_id.as_deref(),
             self.boardings_of(&unit.unit_id),
+            |structure| structures.is_none_or(|known| known.contains(structure)),
         )
     }
 
