@@ -130,3 +130,30 @@ fn an_enter_of_a_structure_the_hex_has_still_boards_it() {
 
     assert_eq!(structure_of(&response, "901", None).as_deref(), Some("12"));
 }
+
+/// The engine keeps only a block's last ENTER (`parseorders.cpp` `ProcessEnterOrder` overwrites
+/// `u->enter` on each line), so an earlier ENTER of a real structure does not rescue a refused last
+/// one: the unit stays where it stood.
+#[test]
+fn a_refused_last_enter_is_not_rescued_by_an_earlier_one() {
+    let orders = "#atlantis 1\nunit 901\nENTER 12\nENTER 99\n#end\n";
+
+    assert_eq!(structure_of(&preview(orders), "901", None), None);
+    let found = findings(&validate(orders));
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].1, Some(4), "on the ENTER 99 line");
+}
+
+/// An ENTER a later one replaces never runs, so it is not refused either: the unit boards the
+/// structure the last ENTER names, and nothing is warned.
+#[test]
+fn an_enter_replaced_by_a_later_one_is_not_warned() {
+    let orders = "#atlantis 1\nunit 901\nENTER 99\nENTER 12\n#end\n";
+
+    assert_eq!(
+        structure_of(&preview(orders), "901", None).as_deref(),
+        Some("12")
+    );
+    let result = validate(orders);
+    assert!(findings(&result).is_empty(), "{:?}", result.diagnostics);
+}

@@ -11545,38 +11545,41 @@ fn hand_in(
     });
 }
 
-/// Always on (`codes::ALWAYS_ON`), so no option is read.
-/// An `ENTER` naming a structure the report does not show in this hex (`ah-5maa`). The engine's
-/// `Do1EnterOrder` finds no such object and refuses the order ("ENTER: Can't enter that."), so the
-/// unit stays where it was; `rules/sequenceofevents` runs ENTER before any movement, so nothing
-/// arriving later that month can be entered by one. Always on (`codes::ALWAYS_ON`), so no option
-/// is read.
+/// The `ENTER` that decides where a unit ends up, when it names a structure the report does not
+/// show in this hex (`ah-5maa`). The engine keeps only a block's last ENTER (`parseorders.cpp`
+/// `ProcessEnterOrder` overwrites `u->enter`), and its `Do1EnterOrder` finds no such object and
+/// refuses it ("ENTER: Can't enter that."), so the unit stays where it was; an earlier ENTER the
+/// last one replaces never runs and is not warned. `rules/sequenceofevents` runs ENTER before any
+/// movement, so nothing arriving later that month can be entered by one. Always on
+/// (`codes::ALWAYS_ON`), so no option is read.
 fn check_enter_not_here(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
     for ordered in &hex.units {
-        for placed in &ordered.intents {
-            let Intent::Enter { structure } = &placed.intent else {
-                continue;
-            };
-            let here = hex
-                .region
-                .structures
-                .iter()
-                .any(|listed| listed.structure_id == *structure);
-            if !here {
-                findings.push(ordered.finding(
-                    hex,
-                    codes::ENTER_NOT_HERE,
-                    format!(
-                        "ENTER {structure} will be refused: the report shows no structure \
-                         [{structure}] in this hex, so the unit stays where it is"
-                    ),
-                    Some(placed),
-                ));
-            }
+        if !boarding_refused(ordered) {
+            continue;
+        }
+        let deciding = ordered
+            .intents
+            .iter()
+            .rev()
+            .find_map(|placed| match &placed.intent {
+                Intent::Enter { structure } => Some((placed, structure)),
+                _ => None,
+            });
+        if let Some((placed, structure)) = deciding {
+            findings.push(ordered.finding(
+                hex,
+                codes::ENTER_NOT_HERE,
+                format!(
+                    "ENTER {structure} will be refused: the report shows no structure \
+                     [{structure}] in this hex, so the unit stays where it is"
+                ),
+                Some(placed),
+            ));
         }
     }
 }
 
+/// Always on (`codes::ALWAYS_ON`), so no option is read.
 fn check_explore_below_the_surface(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
     if !explore_refused(hex.region) {
         return;
