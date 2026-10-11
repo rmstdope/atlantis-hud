@@ -1025,7 +1025,8 @@ describe("formatItems and itemsTooltip", () => {
           founding: false,
           helping: null,
           couldDo: 30,
-          cappedBy: "materials"
+          cappedBy: "materials",
+          finishes: null
         }
       ]
     });
@@ -1048,7 +1049,8 @@ describe("formatItems and itemsTooltip", () => {
           founding: false,
           helping: null,
           couldDo: 30,
-          cappedBy: null
+          cappedBy: null,
+          finishes: null
         }
       ]
     });
@@ -1079,7 +1081,8 @@ describe("formatItems and itemsTooltip", () => {
           founding: false,
           helping: null,
           couldDo: 30,
-          cappedBy: null
+          cappedBy: null,
+          finishes: null
         }
       ]
     });
@@ -1112,7 +1115,8 @@ describe("formatItems and itemsTooltip", () => {
           founding: false,
           helping: null,
           couldDo: 30,
-          cappedBy: null
+          cappedBy: null,
+          finishes: null
         }
       ]
     });
@@ -1145,7 +1149,8 @@ describe("formatItems and itemsTooltip", () => {
           founding: false,
           helping: null,
           couldDo: 30,
-          cappedBy: null
+          cappedBy: null,
+          finishes: null
         }
       ]
     });
@@ -1170,7 +1175,8 @@ describe("formatItems and itemsTooltip", () => {
           founding: true,
           helping: null,
           couldDo: 30,
-          cappedBy: null
+          cappedBy: null,
+          finishes: null
         }
       ]
     });
@@ -1192,7 +1198,8 @@ describe("formatItems and itemsTooltip", () => {
           founding: true,
           helping: null,
           couldDo: 30,
-          cappedBy: null
+          cappedBy: null,
+          finishes: null
         }
       ]
     });
@@ -1217,7 +1224,8 @@ describe("formatItems and itemsTooltip", () => {
           founding: true,
           helping: null,
           couldDo: 30,
-          cappedBy: "materials"
+          cappedBy: "materials",
+          finishes: null
         }
       ]
     });
@@ -1502,7 +1510,8 @@ describe("formatItems and itemsTooltip", () => {
           founding: false,
           helping: null,
           couldDo: 30,
-          cappedBy: null
+          cappedBy: null,
+          finishes: null
         }
       ]
     });
@@ -1521,7 +1530,8 @@ describe("formatItems and itemsTooltip", () => {
           founding: false,
           helping: null,
           couldDo: 30,
-          cappedBy: "materials"
+          cappedBy: "materials",
+          finishes: null
         }
       ]
     });
@@ -1543,7 +1553,8 @@ describe("formatItems and itemsTooltip", () => {
           founding: false,
           helping: null,
           couldDo: 30,
-          cappedBy: "needs"
+          cappedBy: "needs",
+          finishes: null
         }
       ]
     });
@@ -1565,7 +1576,8 @@ describe("formatItems and itemsTooltip", () => {
           founding: true,
           helping: null,
           couldDo: 30,
-          cappedBy: null
+          cappedBy: null,
+          finishes: null
         }
       ]
     });
@@ -1584,7 +1596,8 @@ describe("formatItems and itemsTooltip", () => {
           founding: true,
           helping: null,
           couldDo: 30,
-          cappedBy: "needs"
+          cappedBy: "needs",
+          finishes: null
         }
       ]
     });
@@ -1606,7 +1619,8 @@ describe("formatItems and itemsTooltip", () => {
           founding: false,
           helping: "5541",
           couldDo: 30,
-          cappedBy: null
+          cappedBy: null,
+          finishes: null
         }
       ]
     });
@@ -1625,7 +1639,8 @@ describe("formatItems and itemsTooltip", () => {
           founding: true,
           helping: "5541",
           couldDo: 30,
-          cappedBy: null
+          cappedBy: null,
+          finishes: null
         }
       ]
     });
@@ -1644,7 +1659,8 @@ describe("formatItems and itemsTooltip", () => {
           founding: true,
           helping: "new-1",
           couldDo: 30,
-          cappedBy: null
+          cappedBy: null,
+          finishes: null
         }
       ]
     });
@@ -1668,7 +1684,8 @@ describe("formatItems and itemsTooltip", () => {
           founding: false,
           helping: null,
           couldDo: 30,
-          cappedBy: "materials"
+          cappedBy: "materials",
+          finishes: null
         }
       ]
     });
@@ -1798,7 +1815,8 @@ describe("formatItems and itemsTooltip", () => {
           founding: false,
           helping: null,
           couldDo: 30,
-          cappedBy: "materials"
+          cappedBy: "materials",
+          finishes: null
         }
       ],
       transportReceived: [{ amount: 30, tag: "STON", from: "6857" }],

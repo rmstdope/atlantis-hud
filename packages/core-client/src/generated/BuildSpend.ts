@@ -32,4 +32,10 @@ helping: string | null,
 /**
  * What this unit's men alone could have done.
  */
-couldDo: number, cappedBy: BuildCap | null, };
+couldDo: number, cappedBy: BuildCap | null, 
+/**
+ * The id of the structure this spend lays the last work into, so the coming month shows it
+ * finished (`ah-2ql5`). Only for a structure the report already shows, built in the hex the
+ * unit stands in; `None` for every other spend, which is also what "cannot tell" reads as.
+ */
+finishes: string | null, };

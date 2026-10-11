@@ -1,6 +1,7 @@
 import type { ColumnPopup, PopupLine, PopupStep } from "../unitCellPopup";
 import { popupLabelInk } from "../unitCellPopup";
 import type { Point } from "../unitTooltip";
+import { UnfinishedMark } from "./UnfinishedMark";
 import { TooltipPortal } from "./TooltipPortal";
 
 /**
@@ -36,7 +37,7 @@ export function UnitCellPopup({
 
       {popup.lines.map((line, index) => (
         <div key={`${line.label}-${index}`} className="flex justify-between gap-3">
-          <span className={popupLabelInk(line)}>{line.label}</span>
+          <PopupLineLabel line={line} />
           <PopupLineValue line={line} />
         </div>
       ))}
@@ -53,6 +54,19 @@ export function UnitCellPopup({
 }
 
 /**
+ * What one line of a popup is, on the left - with the unfinished mark before an unfinished ship's
+ * own name (`ah-2ql5`). Exported for the same reason `PopupLineValue` is.
+ */
+export function PopupLineLabel({ line }: { line: PopupLine }) {
+  return (
+    <span className={popupLabelInk(line)}>
+      {line.unfinished === "label" ? <UnfinishedMark /> : null}
+      {line.label}
+    </span>
+  );
+}
+
+/**
  * What one line of a popup stands at, and what it stood at before this month (decision **R1**).
  *
  * The pair is drawn `before → after`, the before in the line's own soft ink and the arrow dimmer
@@ -65,6 +79,7 @@ export function UnitCellPopup({
 export function PopupLineValue({ line }: { line: PopupLine }) {
   return (
     <span className={`tabular-nums ${line.stress === "aside" ? "text-ink-dim" : "text-ink-soft"}`}>
+      {line.unfinished === "value" ? <UnfinishedMark /> : null}
       {line.steps ? (
         line.steps.map((step, index) => (
           <span key={index}>

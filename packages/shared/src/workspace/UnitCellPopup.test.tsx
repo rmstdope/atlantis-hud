@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { PopupLine } from "../unitCellPopup";
-import { PopupLineValue } from "./UnitCellPopup";
+import { PopupLineLabel, PopupLineValue } from "./UnitCellPopup";
 
 const draw = (line: PopupLine) => renderToStaticMarkup(<PopupLineValue line={line} />);
 
@@ -80,5 +80,29 @@ describe("PopupLineValue", () => {
     const html = draw({ label: "can carry flying", value: "0", stress: "aside" });
     expect(html).toContain("text-ink-dim");
     expect(html).not.toContain("text-ink-soft");
+  });
+});
+
+// `ah-2ql5`: the unfinished mark goes before whichever side of the line names the unfinished thing.
+describe("the unfinished mark on a popup line", () => {
+  const MARK = "data-unfinished-mark";
+
+  it("goes before an unfinished building on the value side", () => {
+    const markup = draw({ label: "structure", value: "Building [11] · Stockade", unfinished: "value" });
+    expect(markup.indexOf(MARK)).toBeGreaterThan(-1);
+    expect(markup.indexOf(MARK)).toBeLessThan(markup.indexOf("Building [11]"));
+  });
+
+  it("goes before an unfinished ship's own name on the label side", () => {
+    const line: PopupLine = { label: "unfinished Galleon GALL", value: "1", unfinished: "label" };
+    const label = renderToStaticMarkup(<PopupLineLabel line={line} />);
+    expect(label.indexOf(MARK)).toBeLessThan(label.indexOf("unfinished Galleon"));
+    expect(draw(line)).not.toContain(MARK);
+  });
+
+  it("is absent from every other line", () => {
+    const line: PopupLine = { label: "wood WOOD", value: "85" };
+    expect(draw(line)).not.toContain(MARK);
+    expect(renderToStaticMarkup(<PopupLineLabel line={line} />)).not.toContain(MARK);
   });
 });

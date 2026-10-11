@@ -27,6 +27,7 @@ import {
 } from "./silverVocabulary";
 import { rowKeyOf } from "./unitTable";
 import { withoutSilver } from "./silverTag";
+import { itemCellParts } from "./unfinishedMark";
 import { previewPairs, type PreviewPair } from "./unitPreviewRows";
 
 /**
@@ -347,15 +348,8 @@ export function formatItems(
   items: readonly ItemAmount[],
   created: readonly CreatedItem[] = []
 ): string {
-  const shortfall = new Map<string, number>();
-  for (const item of created) {
-    shortfall.set(item.tag, (shortfall.get(item.tag) ?? 0) + (item.most - item.fewest));
-  }
-  return withoutSilver(items)
-    .map((item) => {
-      const gap = shortfall.get(item.tag) ?? 0;
-      return gap > 0 ? `${item.amount - gap}-${item.amount} ${item.tag}` : `${item.amount} ${item.tag}`;
-    })
+  return itemCellParts(items, created)
+    .map((part) => part.text)
     .join(", ");
 }
 

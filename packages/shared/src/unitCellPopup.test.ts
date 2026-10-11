@@ -35,6 +35,7 @@ const facts = (overrides: Partial<PopupFacts> = {}): PopupFacts => ({
   derivedSkills: [],
   dissolving: false,
   unitNames: new Map(),
+  structureFinish: null,
   ...overrides
 });
 
@@ -3235,7 +3236,8 @@ describe("the items popup's cause sentences", () => {
             founding: false,
             helping: null,
             couldDo: 10,
-            cappedBy: null
+            cappedBy: null,
+            finishes: null
           }
         ]
       })[0]
@@ -3265,7 +3267,8 @@ describe("the items popup's cause sentences", () => {
           founding: true,
           helping: null,
           couldDo: 30,
-          cappedBy: null
+          cappedBy: null,
+          finishes: null
         }
       ]
     });
@@ -3364,5 +3367,107 @@ describe("the items popup's cause sentences", () => {
       previewChanges: [{ field: "items", original: "8 GRAI" }]
     });
     expect(notes.filter((note) => note.startsWith("grain:"))).toEqual([]);
+  });
+});
+
+// `ah-2ql5`: the unfinished mark, and what the hover says about it.
+describe("the unfinished mark in the popups", () => {
+  const STOCKADE = "Building [11] · Stockade";
+
+  it("marks an unfinished building's line and says it is still being built", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "structure",
+        unit({ structureId: "11" }),
+        facts({ structureLabel: STOCKADE, structureFinish: "unfinished" })
+      )
+    );
+    expect(popup.lines).toEqual([{ label: "structure", value: STOCKADE, unfinished: "value" }]);
+    expect(popup.notes[0]).toBe("Unfinished — still being built.");
+  });
+
+  it("drops the mark for a building this month's work finishes, and says why", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "structure",
+        unit({ structureId: "11" }),
+        facts({ structureLabel: STOCKADE, structureFinish: "finishing" })
+      )
+    );
+    expect(popup.lines).toEqual([{ label: "structure", value: STOCKADE }]);
+    expect(popup.notes).toEqual(["Unfinished in the report; this month's building finishes it."]);
+  });
+
+  it("marks the month-end line of a unit that moves into an unfinished building", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "structure",
+        unit({
+          structureId: "11",
+          previewChanges: [{ field: "structureId", original: "", cause: "ENTER 11" }]
+        }),
+        facts({ structureLabel: STOCKADE, structureFinish: "unfinished" })
+      )
+    );
+    expect(popup.lines).toEqual([
+      { label: "was", value: "in the open" },
+      { label: "structure", value: STOCKADE, why: "ENTER 11", unfinished: "value" }
+    ]);
+    expect(popup.notes).toContain("Unfinished — still being built.");
+  });
+
+  it("leaves a finished structure's popup as it was", () => {
+    const popup = columnPopup(
+      popupForCell("structure", unit({ structureId: "12" }), facts({ structureLabel: "Odds and Ends [12] · Fort" }))
+    );
+    expect(popup.lines).toEqual([{ label: "structure", value: "Odds and Ends [12] · Fort" }]);
+    expect(popup.notes.join(" ")).not.toContain("Unfinished");
+  });
+
+  it("marks an unfinished ship's item line, in the report's own words", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [
+            { amount: 85, name: "wood", tag: "WOOD" },
+            { amount: 1, name: "unfinished Galleon", tag: "GALL" }
+          ]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines).toEqual([
+      { label: "wood WOOD", value: "85" },
+      { label: "unfinished Galleon GALL", value: "1", unfinished: "label" }
+    ]);
+    expect(popupAsText(popup)).toContain("unfinished Galleon GALL 1.");
+  });
+
+  it("keeps the mark on an unfinished ship the month takes out of Items", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [{ amount: 85, name: "wood", tag: "WOOD" }],
+          previewChanges: [{ field: "items", original: "85 WOOD, 1 GALL" }],
+          itemChanges: [
+            {
+              tag: "GALL",
+              name: "unfinished Galleon",
+              delta: -1,
+              cause: "abandoned",
+              line: null,
+              unitPrice: null,
+              other: null,
+              isMan: false
+            }
+          ]
+        }),
+        facts()
+      )
+    );
+    const ship = popup.lines.find((line) => line.label === "unfinished Galleon GALL");
+    expect(ship).toMatchObject({ value: "gone", unfinished: "label" });
   });
 });

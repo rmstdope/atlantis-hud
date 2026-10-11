@@ -26,6 +26,7 @@ import {
   type PreviewedUnit
 } from "./unitPreview";
 import { summariseUnit } from "./unitTooltip";
+import { isUnfinishedShipName, type StructureFinish } from "./unfinishedMark";
 import {
   silverCauseGroups,
   silverCauseLabel,
@@ -125,6 +126,13 @@ export type PopupLine = {
    * already says the direction, so this is decoration, and `popupAsText` says nothing about it.
    */
   tone?: "up" | "down";
+  /**
+   * Which side of the line the unfinished mark is drawn before (`ah-2ql5`): an unfinished ship's
+   * own name on the left, or the unfinished building a unit stands in on the right. Absent on
+   * every other line. Decoration: the words beside it already say "unfinished", so
+   * `popupAsText` reads nothing for it.
+   */
+  unfinished?: "label" | "value";
 };
 
 /** What one column's popup shows. */
@@ -190,6 +198,12 @@ export type PopupFacts = {
    * a working the cell itself refuses to show.
    */
   dissolving: boolean;
+  /**
+   * Whether the structure this row stands in at the month's end is unfinished, or unfinished in
+   * the report and finished by this month's `BUILD`s (`ah-2ql5`). `structureFinishState`'s
+   * answer, which the table's cell is drawn from too.
+   */
+  structureFinish: StructureFinish;
   /**
    * Every row the table is drawing, by `unitRowKey` - the hex *and* the number - for naming a
    * giver or a taker (`ah-rgkk.2.3`). By hex as well, because a `FORM` alias is unique to a hex
@@ -355,7 +369,10 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
       (before === undefined && reported !== undefined);
     const line: PopupLine = {
       label: name === undefined ? tag : `${name} ${tag}`,
-      value: amount === undefined ? "gone" : rangedValue(amount, shortfall.get(tag) ?? 0)
+      value: amount === undefined ? "gone" : rangedValue(amount, shortfall.get(tag) ?? 0),
+      // An unfinished ship keeps its mark on every line naming it, a `gone` one included
+      // (`ah-2ql5`): the report's own words lead the line, and the mark goes before them.
+      ...(isUnfinishedShipName(name) ? { unfinished: "label" as const } : {})
     };
     const change = changeOf(before, amount, reported);
     return { tag, line: change ? { ...line, change } : line, moved, amount: amount ?? 0 };
@@ -1498,15 +1515,28 @@ function undescribedNotes(drawn: readonly (readonly [string | null, string | nul
     .map(([label]) => `This region\u2019s report does not describe ${label}, so only its number is shown.`);
 }
 
+/** The Structure hover's sentence for an unfinished building (`ah-2ql5`, the agreed words). */
+const UNFINISHED_NOTE = "Unfinished \u2014 still being built.";
+/** The same, for one this month's building finishes (`ah-2ql5`, decision 5a). */
+const FINISHING_NOTE = "Unfinished in the report; this month's building finishes it.";
+
 function structureBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   const change = changeFor(unit, CHANGE_FIELD.structure!);
+  // The month-end line carries the mark; the note under the lines says what it means. A building
+  // this month finishes drops the mark, and is a change the month makes, so the shared "Nothing
+  // this month changes this." must not be written beside it.
+  const finish = facts.structureFinish;
+  const marked = finish === "unfinished" ? { unfinished: "value" as const } : {};
+  const finishNotes =
+    finish === "unfinished" ? [UNFINISHED_NOTE] : finish === "finishing" ? [FINISHING_NOTE] : [];
   if (!change) {
     if (facts.structureLabel === null) {
       return { lines: [], notes: ["In no structure."] };
     }
     return {
-      lines: [{ label: "structure", value: facts.structureLabel }],
-      notes: undescribedNotes([[facts.structureLabel, unit.structureId]])
+      lines: [{ label: "structure", value: facts.structureLabel, ...marked }],
+      notes: [...finishNotes, ...undescribedNotes([[facts.structureLabel, unit.structureId]])],
+      changed: finish === "finishing" || undefined
     };
   }
   // `Number("")` is 0, and an original the report left empty is it saying "in the open" rather
@@ -1522,13 +1552,17 @@ function structureBody(unit: PreviewedUnit, facts: PopupFacts): Body {
         // The core says which order put the unit here - an ENTER, a LEAVE or a movement step -
         // rather than this file guessing it back from the result (`ah-ehgy`). No line number is
         // recorded, so none is named, and no clause is drawn when no order is named.
-        why: change.cause ?? undefined
+        why: change.cause ?? undefined,
+        ...marked
       }
     ],
-    notes: undescribedNotes([
-      [before, beforeId],
-      [facts.structureLabel, unit.structureId]
-    ])
+    notes: [
+      ...finishNotes,
+      ...undescribedNotes([
+        [before, beforeId],
+        [facts.structureLabel, unit.structureId]
+      ])
+    ]
   };
 }
 
