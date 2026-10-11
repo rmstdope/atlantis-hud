@@ -8683,7 +8683,10 @@ mod tests {
                  Southeast : forest (3,3) in Shire.\n\nforest (3,3) in Shire.\n\nExits:\n  \
                  Northwest : plain (2,2) in Shire.\n",
             )
-            .replace("Southeast : ocean (2,2) in Sea.", "Southeast : plain (2,2) in Shire.");
+            .replace(
+                "Southeast : ocean (2,2) in Sea.",
+                "Southeast : plain (2,2) in Shire.",
+            );
         assert!(report.contains("forest (3,3)"), "the fixture was rewritten");
         let response = preview_orders_for_remembered_report(
             &mut ReportCache::new(),
@@ -8697,7 +8700,11 @@ mod tests {
         for unit_id in ["900", "901", "902"] {
             let departing =
                 row(&response, "1:1,1", unit_id).unwrap_or_else(|| panic!("{unit_id} departs"));
-            assert_eq!(departing.departing_to.as_deref(), Some("1:2,2"), "{unit_id}");
+            assert_eq!(
+                departing.departing_to.as_deref(),
+                Some("1:2,2"),
+                "{unit_id}"
+            );
         }
         assert!(
             region_of(&response, "1:3,3").is_none(),
