@@ -33755,6 +33755,32 @@ BUILD
             });
         }
 
+        /// `ah-nz7r`. A captain holding an unfinished ship whose SAIL is refused at its first step
+        /// - land at both ends (`rules/movement_sailing`) - never leaves the hex, so the ship is
+        /// not discarded (`rules/economy_ships` discards it only for a builder who moves).
+        #[test]
+        fn an_unfinished_ship_is_kept_by_a_captain_whose_sail_is_refused_land_to_land() {
+            let mut captain = with_men(unit("900"), 10);
+            captain.skills.push(sail(4));
+            captain.items.push(ItemAmount {
+                amount: 1,
+                name: "unfinished Cog".to_string(),
+                tag: "COG".to_string(),
+                needs: None,
+            });
+            with_ledger(
+                landlocked_fleet(vec![captain]),
+                "unit 900\nSAIL N\n",
+                |ledger| {
+                    assert!(
+                        !ledger.movements.iter().any(|m| m.tag == "COG"),
+                        "the fleet never leaves, so the hull is not left behind: {:?}",
+                        ledger.movements
+                    );
+                },
+            );
+        }
+
         #[test]
         fn a_build_credits_the_unit_nothing() {
             with_ledger(report_with_a_builder(), "unit 900\nBUILD\n", |ledger| {
@@ -35059,6 +35085,32 @@ BUILD
             race: Some("humans".to_string()),
             units,
             ..Default::default()
+        }
+    }
+
+    /// A longship (329) lying in the mountain hex `region` builds, whose only listed exit, north,
+    /// is another mountain: a SAIL N from here has land at both ends, which no fleet may sail
+    /// (`rules/movement_sailing`: "A fleet can move from an ocean region to another ocean region,
+    /// or from a coastal region to an ocean region, or from an ocean region to a coastal region"),
+    /// so the game stops it before its first step (`ah-nz7r`). Every unit given is put aboard.
+    fn landlocked_fleet(units: Vec<ReportUnit>) -> ReportRegion {
+        let units = units
+            .into_iter()
+            .map(|unit| ReportUnit {
+                structure_id: Some("329".to_string()),
+                ..unit
+            })
+            .collect();
+        ReportRegion {
+            structures: vec![longship("329")],
+            exits: vec![Exit {
+                direction: "North".to_string(),
+                terrain: "mountain".to_string(),
+                coordinate: Coordinate { x: 7, y: 51, z: 1 },
+                province: "Inhead".to_string(),
+                settlement: None,
+            }],
+            ..region(units)
         }
     }
 
@@ -44441,6 +44493,23 @@ BUILD
         assert_eq!(finding.code.as_str(), "guard-dropped");
     }
 
+    /// `ah-nz7r`. A captain on guard whose SAIL is refused at its first step - land at both ends -
+    /// never leaves the hex (`rules/movement_sailing`), so it is still guarding at month end:
+    /// `sail-between-land-hexes` is the whole warning, with no `guard-dropped` beside it.
+    #[test]
+    fn a_guard_whose_sail_is_refused_land_to_land_stays_to_guard_the_hex() {
+        let mut captain = unit("5");
+        captain.on_guard = true;
+        captain.skills.push(sail(4));
+
+        let findings = check(vec![landlocked_fleet(vec![captain])], "unit 5\nSAIL N\n");
+        assert_eq!(
+            codes(&findings),
+            ["sail-between-land-hexes"],
+            "{findings:?}"
+        );
+    }
+
     /// `ah-0wpn`. A MOVE that `movement_overload` proves will fail does not actually take the
     /// unit anywhere, so a guard that orders one keeps guarding - `unit-overloaded` is the whole
     /// warning here, and a `guard-dropped` alongside it would tell the player about a departure
@@ -45270,6 +45339,30 @@ BUILD
                 "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nMOVE N\nunit 900\nSTUDY combat\n"
             )),
             ["taught-not-here"]
+        );
+    }
+
+    /// `ah-nz7r`. A student who captains a fleet whose SAIL is refused at its first step - land at
+    /// both ends (`rules/movement_sailing`) - is still in the hex to be taught, so the TEACH is
+    /// not `taught-not-here`.
+    #[test]
+    fn a_student_whose_sail_is_refused_land_to_land_is_still_taught() {
+        let mut student = with_men(with_silver(unit("700"), 1000), 2);
+        student.skills.push(sail(4));
+        let hex = landlocked_fleet(vec![student]);
+        let mut units = vec![with_leaders(
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            3,
+        )];
+        units.extend(hex.units.clone());
+
+        let findings = check(
+            vec![ReportRegion { units, ..hex }],
+            "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nSAIL N\n",
+        );
+        assert!(
+            !codes(&findings).contains(&"taught-not-here"),
+            "the student never leaves: {findings:?}"
         );
     }
 
