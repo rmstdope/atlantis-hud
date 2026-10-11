@@ -6259,6 +6259,8 @@ fn ledger_for_reaching<'a>(
         // Whatever each unit spent at the market, for the SILVER column's later reading of the
         // purse.
         ledger.market_purse.spent = market_spent(&ledger, hex);
+        // BUY and FORGET have run, so a formed unit that gained nobody is dissolved now.
+        revert_dissolved_forms(&mut ledger, hex);
     }
 
     discard_unfinished_ships_after_movement(&mut ledger, hex, ruleset);
@@ -12181,6 +12183,73 @@ fn buy_silver(ledger: &mut Ledger<'_>, who: &str, wanted: i64, spent: i64, place
         None,
     );
     apply_silver(ledger, StatePhase::Market, who, -wanted, Some(placed));
+}
+
+/// Hands the silver of every formed unit that ends the market with nobody to the first own unit
+/// the report shows in this hex: `rules/form` - "If no recruits are gained at all, the empty unit
+/// will be dissolved, and the silver and any other items it was given will revert to the first
+/// unit you have in that region" (`ah-09bu`).
+///
+/// At the end of the Market phase, because that is where the engine deletes it: `runorders.cpp`
+/// `RunOrders` runs `DeleteEmptyUnits` after BUY and FORGET (`ah-308c`), so its silver is what the
+/// Give phase and the market left it, and it can pay for the first unit's month-long orders and
+/// maintenance but not for anything at the market. The ITEMS preview moves the same silver as
+/// `ItemChangeCause::GiftReverted` (`effects.rs` `dissolve_empty_forms`); without this the SILVER
+/// column, which alone answers for silver, showed the gift leave the giver and arrive nowhere.
+///
+/// A hex with no own report unit has nobody to revert to, and moves nothing, as the ITEMS preview
+/// does (`ah-ty3s.3`). Silver is never left uncertain by a gift (`targets::give_outcome`: silver
+/// to a shown foreign unit moves, `rules/give`, and to an unshown one is assumed to land,
+/// `ah-jo6b`), so the balance read here is a figure, never an `UncertainGive`.
+fn revert_dissolved_forms(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
+    let Some(first) = hex.units.iter().find(|ordered| ordered.formed.is_none()) else {
+        return;
+    };
+    let first_label = format!("{} ({})", first.unit.name, first.unit.unit_id);
+    for ordered in &hex.units {
+        if ordered.formed.is_none() {
+            continue;
+        }
+        // Nobody gained is a fact only where the headcount is: a `BUY PEASANTS` (`rules/buy`) or
+        // a gift of men this walk cannot follow leaves `men` at the figure before it and marks
+        // the skills and races it settles unknowable. That unit is not known to dissolve, so its
+        // silver is left where it is.
+        let after = ordered.after_the_market();
+        if after.men != 0 || after.skills.is_none() || after.men_by_race.is_none() {
+            continue;
+        }
+        let dissolved = &ordered.unit.unit_id;
+        let held = ledger
+            .state
+            .balance_at(StatePhase::Market, dissolved, SILVER);
+        if held <= 0 {
+            continue;
+        }
+        let dissolved_label = format!("{} ({})", ordered.unit.name, dissolved);
+        move_silver(
+            ledger,
+            StatePhase::Market,
+            dissolved,
+            -held,
+            SilverChangeCause::GiftReverted,
+            None,
+            Some(first_label.clone()),
+        );
+        move_silver(
+            ledger,
+            StatePhase::Market,
+            &first.unit.unit_id,
+            held,
+            SilverChangeCause::GiftReverted,
+            None,
+            Some(dissolved_label),
+        );
+        // A figure the ledger could not vouch for on the dissolving unit is no better on the one
+        // that receives it.
+        if ledger.doubted.contains(dissolved) {
+            ledger.doubted.insert(first.unit.unit_id.clone());
+        }
+    }
 }
 
 /// Records a silver movement without applying it. Split from [`apply_silver`] for the two callers
@@ -33767,6 +33836,27 @@ BUILD
             );
             let ledger = ledger_for(&hex, Some(&rules));
             read(&ledger)
+        }
+
+        /// A formed unit the ledger cannot price hands the first unit a figure nobody can vouch
+        /// for, so the doubt goes with the silver when `rules/form` dissolves it (`ah-09bu`).
+        #[test]
+        fn a_doubted_formed_unit_passes_its_doubt_on_with_its_silver() {
+            with_settled_ledger(
+                region(vec![unit("900"), with_silver(unit("901"), 100)]),
+                "unit 901\nGIVE NEW 1 100 SILV\nFORM 1\nTAKE FROM 999 ALL SILV\nEND\n",
+                |ledger| {
+                    assert!(
+                        ledger.doubted.contains("new-1"),
+                        "the fixture's TAKE from a unit outside the hex should doubt the formed unit"
+                    );
+                    assert!(
+                        ledger.doubted.contains("900"),
+                        "the first unit receives the doubted silver, and the doubt: {:?}",
+                        ledger.doubted
+                    );
+                },
+            );
         }
 
         fn rows_of(ledger: &Ledger<'_>, who: &str, cause: SilverChangeCause) -> Vec<SilverMove> {
@@ -57230,13 +57320,39 @@ BUILD
             assert_eq!(formed.at_month_end, Some(0));
         }
 
+        /// `rules/buy`: PEASANT/PEASANTS recruits "whichever race is present in the region", as
+        /// many as the unit can afford - a headcount the ledger cannot settle. A unit whose
+        /// recruits cannot be counted is not known to have gained nobody, so `rules/form`'s
+        /// dissolve is not stated for it and its silver stays with it (`ah-09bu`).
+        #[test]
+        fn a_formed_unit_whose_recruits_cannot_be_counted_is_not_reverted() {
+            let review = review_turn(
+                &report(vec![region(vec![with_silver(unit("1922"), 500)])]),
+                "unit 1922\nGIVE NEW 1 500 SILV\nFORM 1\nBUY 5 PEASANTS\nEND\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let reverted = |id: &str| {
+                forecast(&review, id)
+                    .changes
+                    .iter()
+                    .any(|change| change.cause == SilverChangeCause::GiftReverted)
+            };
+            assert!(
+                !reverted("1922") && !reverted("new-1"),
+                "{:#?}",
+                review.silver
+            );
+        }
+
         #[test]
         fn silver_given_to_a_formed_unit_is_credited_to_it() {
             let hex_region = ReportRegion {
                 for_sale: vec![MarketItem {
                     amount: 100,
-                    name: "plainsmen".to_string(),
-                    tag: "PLAI".to_string(),
+                    name: "humans".to_string(),
+                    tag: "HUMN".to_string(),
                     price: 40,
                 }],
                 ..region(vec![with_silver(unit("1922"), 500)])
@@ -57244,7 +57360,7 @@ BUILD
 
             let review = review_turn(
                 &report(vec![hex_region]),
-                "unit 1922\nGIVE NEW 1 500 SILV\nFORM 1\nBUY 5 PLAI\nEND\n@TAX\n",
+                "unit 1922\nGIVE NEW 1 500 SILV\nFORM 1\nBUY 5 HUMN\nEND\n@TAX\n",
                 Some(&ruleset()),
                 CheckOptions::default(),
             );
@@ -57270,8 +57386,8 @@ BUILD
             let hex_region = ReportRegion {
                 for_sale: vec![MarketItem {
                     amount: 100,
-                    name: "plainsmen".to_string(),
-                    tag: "PLAI".to_string(),
+                    name: "humans".to_string(),
+                    tag: "HUMN".to_string(),
                     price: 40,
                 }],
                 ..region(vec![with_silver(unit("2000"), 500), unit("1922")])
@@ -57279,7 +57395,7 @@ BUILD
 
             let review = review_turn(
                 &report(vec![hex_region]),
-                "unit 2000\nGIVE NEW 1 500 SILV\n\nunit 1922\nFORM 1\nBUY 5 PLAI\nEND\n",
+                "unit 2000\nGIVE NEW 1 500 SILV\n\nunit 1922\nFORM 1\nBUY 5 HUMN\nEND\n",
                 Some(&ruleset()),
                 CheckOptions::default(),
             );
@@ -57336,11 +57452,15 @@ BUILD
         fn a_sharer_formed_outside_any_structure_lends_before_a_towers_sharer() {
             let review = review_turn(
                 &report(vec![region(vec![
-                    sharing(with_silver(unit("2000"), 50)),
+                    sharing(with_silver(with_men(unit("2000"), 2), 60)),
                     in_structure(sharing(with_silver(unit("3001"), 50)), "4"),
                     in_structure(with_men(unit("3002"), 5), "4"),
                 ])]),
-                "unit 2000\nGIVE NEW 1 50 SILV\nFORM 1\nEND\n\nunit 3002\nSTUDY combat\n",
+                // The formed unit is given a man, so it forms rather than being dissolved before
+                // the STUDY it lends to (`rules/form`, `ah-09bu`), and 10 silver more than it
+                // lends, for that man's own maintenance.
+                "unit 2000\nGIVE NEW 1 60 SILV\nGIVE NEW 1 1 HUMN\nFORM 1\nEND\n\n\
+                 unit 3002\nSTUDY combat\n",
                 Some(&ruleset()),
                 CheckOptions::default(),
             );

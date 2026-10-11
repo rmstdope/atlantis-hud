@@ -769,6 +769,11 @@ pub enum SilverChangeCause {
     Entertained,
     /// Silver another unit hands this one by `GIVE` or `TRANSPORT`.
     WasGiven,
+    /// Silver given to a unit this month's `FORM` creates, handed to this one because the formed
+    /// unit gained nobody: `rules/form` - "the empty unit will be dissolved, and the silver and any
+    /// other items it was given will revert to the first unit you have in that region"
+    /// (`ah-09bu`). The ITEMS ledger books the same move as `ItemChangeCause::GiftReverted`.
+    GiftReverted,
     /// Silver this unit's `TAKE` pulls from a unit the report shows.
     Took,
     /// Silver this unit's `TAKE` pulls from a unit the report does not show (`ah-awcm`).
