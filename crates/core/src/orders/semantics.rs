@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use super::blocks::OrderedUnitKey;
 use super::effects::{self, ItemChangeCause, ItemChangeParty};
 use super::forms::{Amount, Party, Selector};
+use super::grammar::names_peasants;
 use super::intents::{
     read_formed, read_intents, spends_the_month, FormedBlock, Intent, PlacedIntent, UnitIntents,
 };
@@ -11344,20 +11345,6 @@ enum MarketAnswer<'a> {
     /// Nothing could say what item this is - not the catalogue, not the inventories in the hex,
     /// not the market lines. Saying "this hex does not sell it" would be inventing the "it".
     Unknown,
-}
-
-/// Whether an order's item argument is `rules/buy`'s PEASANT or PEASANTS: "When buying people,
-/// specify the race of the people as the [item], or you may use PEASANT or PEASANTS to recruit
-/// whichever race is present in the region."
-///
-/// The engine accepts one spelling more than the rules page names: `parseorders.cpp`
-/// `ProcessBuyOrder` tests `peasant`, `peasants` and `peas`, case-insensitively, and reads all
-/// three as the region's race. The navigator chose to follow the engine here (`ah-6sx5`), so
-/// `PEAS` is read the same way.
-fn names_peasants(text: &str) -> bool {
-    ["peasant", "peasants", "peas"]
-        .iter()
-        .any(|spelling| text.eq_ignore_ascii_case(spelling))
 }
 
 /// What a `BUY` names, with PEASANT or PEASANTS read as the race of the region's peasants

@@ -250,7 +250,14 @@ fn item_completions(
     if matches!(order.name, "BUY" | "SELL" | "PRODUCE" | "GIVE") {
         if let Some((region, unit)) = located(report, unit_id) {
             return match order.name {
-                "BUY" => market_completions(&region.for_sale, MarketSide::Sale),
+                "BUY" => {
+                    let mut offered = market_completions(&region.for_sale, MarketSide::Sale);
+                    // A region whose report names no race has nobody the words could recruit.
+                    if let Some(race) = &region.race {
+                        offered.extend(peasant_completions(&format!("the region's {race}")));
+                    }
+                    offered
+                }
                 "SELL" => market_completions(&region.wanted, MarketSide::Wanted),
                 "PRODUCE" => produce_completions(region, unit, ruleset),
                 "GIVE" => holdings_completions(unit),
@@ -261,7 +268,26 @@ fn item_completions(
         // there is nothing to narrow by and the catalogue stands in (Q9).
     }
 
-    ruleset.map(catalogue_completions).unwrap_or_default()
+    let mut offered = ruleset.map(catalogue_completions).unwrap_or_default();
+    if order.name == "BUY" && ruleset.is_some() {
+        offered.extend(peasant_completions("the region's race"));
+    }
+    offered
+}
+
+/// `BUY`'s PEASANT, PEASANTS and PEAS, which recruit whatever race the region's peasants are
+/// (`rules/buy`; `PEAS` from the engine, `ah-6sx5`). `whom` names who they would recruit.
+fn peasant_completions(whom: &str) -> Vec<OrderCompletion> {
+    super::grammar::PEASANT_WORDS
+        .iter()
+        .map(|word| OrderCompletion {
+            ends_order: false,
+            value: (*word).to_string(),
+            name: word.to_ascii_lowercase(),
+            label: String::new(),
+            detail: format!("recruits {whom}"),
+        })
+        .collect()
 }
 
 /// The unit's own hex, and the unit itself - two lookups, since a unit carries its own region id.
@@ -1661,6 +1687,63 @@ mod tests {
         assert_eq!(tags, vec!["GRAI", "IRON", "STON"]);
     }
 
+    /// `rules/buy`'s PEASANT or PEASANTS, and the engine's PEAS (`ah-6sx5`), recruit the region's
+    /// race, so a BUY offers them beside what the hex sells (`ah-lbet`).
+    #[test]
+    fn a_purchase_offers_the_peasant_words_beside_the_market() {
+        let ruleset = ruleset();
+        let mut region = inholm_region();
+        region.race = Some("hill dwarves".to_string());
+        let report = report(vec![region]);
+        let offered =
+            order_argument_completions("BUY 5 ", Some(&ruleset), Some(&report), Some("18642"));
+
+        let tags: Vec<&str> = offered.iter().map(|entry| entry.value.as_str()).collect();
+        assert_eq!(
+            tags,
+            vec!["GEM", "HDWA", "LEAD", "PERF", "PEASANT", "PEASANTS", "PEAS"]
+        );
+        let peasants = offered
+            .iter()
+            .find(|entry| entry.value == "PEASANTS")
+            .unwrap();
+        assert_eq!(peasants.detail, "recruits the region's hill dwarves");
+    }
+
+    /// The words recruit the region's race, so a hex whose report names none is offered only its
+    /// market (`ah-lbet`).
+    #[test]
+    fn a_purchase_in_a_hex_with_no_race_offers_no_peasant_words() {
+        let ruleset = ruleset();
+        let report = inholm_report();
+        let offered =
+            order_argument_completions("BUY 5 ", Some(&ruleset), Some(&report), Some("18642"));
+
+        let tags: Vec<&str> = offered.iter().map(|entry| entry.value.as_str()).collect();
+        assert_eq!(tags, vec!["GEM", "HDWA", "LEAD", "PERF"]);
+    }
+
+    #[test]
+    fn without_a_report_a_purchase_still_offers_the_peasant_words() {
+        let ruleset = ruleset();
+        let offered = order_argument_completions("BUY 5 ", Some(&ruleset), None, None);
+        for word in ["PEASANT", "PEASANTS", "PEAS"] {
+            let entry = offered
+                .iter()
+                .find(|entry| entry.value == word)
+                .unwrap_or_else(|| panic!("{word} is offered"));
+            assert_eq!(entry.detail, "recruits the region's race");
+        }
+        assert_eq!(offered.len(), ruleset.items.len() + 3);
+    }
+
+    #[test]
+    fn a_sale_does_not_offer_the_peasant_words() {
+        let ruleset = ruleset();
+        let offered = order_argument_completions("SELL 5 ", Some(&ruleset), None, None);
+        assert!(offered.iter().all(|entry| !entry.value.starts_with("PEAS")));
+    }
+
     // --- increment 5: silence and fallback ---------------------------------------------------
 
     #[test]
@@ -1679,7 +1762,8 @@ mod tests {
     fn without_a_report_the_catalogue_stands_in() {
         let ruleset = ruleset();
         let offered = order_argument_completions("BUY 5 ", Some(&ruleset), None, None);
-        assert_eq!(offered.len(), ruleset.items.len());
+        // The catalogue, and BUY's three peasant words beside it (`ah-lbet`).
+        assert_eq!(offered.len(), ruleset.items.len() + 3);
     }
 
     #[test]
@@ -1696,7 +1780,7 @@ mod tests {
         let report = inholm_report();
         let offered =
             order_argument_completions("BUY 5 ", Some(&ruleset), Some(&report), Some("99999"));
-        assert_eq!(offered.len(), ruleset.items.len());
+        assert_eq!(offered.len(), ruleset.items.len() + 3);
     }
 
     // --- increment 6: GIVE narrows to what the unit holds (ah-84w) ---------------------------
