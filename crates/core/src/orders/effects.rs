@@ -6871,6 +6871,53 @@ mod tests {
         );
     }
 
+    /// The same for a race named outright. `rules/take`: a unit "may only TAKE from another unit
+    /// in the same faction", so silver taken from a unit this hex does not show cannot be priced,
+    /// the ledger doubts the taker, and a `BUY ALL` of men is left uncounted (`settle_buy_all`).
+    /// Whether it recruits is not known, so it is not shown dissolving (`ah-waes`).
+    #[test]
+    fn a_formed_unit_whose_buy_all_of_a_named_race_is_uncounted_is_not_dissolved() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (humans), $5.",
+            "  For Sale: 5 humans [HUMN] at $38.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 3 swords [SWOR]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nTAKE FROM 999 ALL SILV\nBUY ALL HUMN\nEND\nGIVE NEW 1 3 SWOR\n",
+        );
+        let units = &response.regions[0].units;
+        let formed = units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the formed unit is on the table");
+        assert!(
+            formed.uncounted.iter().any(|line| line == "BUY ALL HUMN"),
+            "the precondition: the ledger could not count the recruits: {formed:#?}"
+        );
+        assert!(
+            !formed.dissolving,
+            "whether it recruits is not known, so it is not shown dissolving: {formed:#?}"
+        );
+        let reverted: Vec<_> = units
+            .iter()
+            .filter(|unit| unit.unit.unit_id == "900")
+            .flat_map(|unit| unit.item_changes.iter())
+            .filter(|change| change.cause == ItemChangeCause::GiftReverted)
+            .collect();
+        assert!(
+            reverted.is_empty(),
+            "nothing reverts to the first unit: {reverted:?}"
+        );
+    }
+
     /// `rules/form` dissolves a formed unit that gains nobody, and since `ah-ty3s.3` the row is
     /// drawn rather than skipped (decision **K2**), so it does not vanish from under a player
     /// editing its orders. It holds nothing: the goods have already reverted.

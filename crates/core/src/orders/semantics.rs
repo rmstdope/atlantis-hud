@@ -4621,14 +4621,22 @@ fn recruited_people(
     // amount through `buy`, an `Amount::All` through `settle_buy_all` since `ah-jown`. So the old
     // guard on the *amount* is gone (`ah-4b6n`); it silenced every `BUY ALL` of goods along with
     // the one case it was aimed at.
+    //
+    // A race named outright is no different once its line is uncounted: a `BUY ALL` of men by a
+    // unit the ledger doubts is left uncounted by `settle_buy_all`, and the recruits it may really
+    // have bought are just as invisible (`ah-waes`).
     let uncounted = ledger.uncounted.get(&ordered.unit.unit_id);
-    let buys_unnamed_recruits = ordered.intents.iter().any(|placed| match &placed.intent {
+    let buys_uncounted_recruits = ordered.intents.iter().any(|placed| match &placed.intent {
         Intent::Buy { item, .. } => {
-            names_peasants(item) && uncounted.is_some_and(|lines| lines.contains(&placed.line))
+            (names_peasants(item)
+                || ruleset
+                    .find_item(item)
+                    .is_some_and(|entry| ruleset.is_man(&entry.tag)))
+                && uncounted.is_some_and(|lines| lines.contains(&placed.line))
         }
         _ => false,
     });
-    if buys_unnamed_recruits {
+    if buys_uncounted_recruits {
         return None;
     }
 
@@ -6871,9 +6879,8 @@ pub(crate) fn item_effects(
                 .push(refused.line);
         }
 
-        // Read before any of the ledger's fields are consumed below: the preview's exact
-        // recruits are the same settled `Ledger::bought` reading Problems uses, so the two
-        // surfaces cannot disagree about which arrivals were a recruit (`ah-40c9`).
+        // Whether a formed unit's headcount of nothing means it gained nobody - the SILVER
+        // column's own predicate, so the two cannot disagree about a dissolving unit (`ah-waes`).
         for ordered in &hex.units {
             if ordered.formed.is_some() && ordered.after_the_market().recruits_unjudged() {
                 result
@@ -6882,6 +6889,9 @@ pub(crate) fn item_effects(
                     .gained_nobody_unjudged = true;
             }
         }
+        // Read before any of the ledger's fields are consumed below: the preview's exact
+        // recruits are the same settled `Ledger::bought` reading Problems uses, so the two
+        // surfaces cannot disagree about which arrivals were a recruit (`ah-40c9`).
         if let Some(ruleset) = ruleset {
             for ordered in &hex.units {
                 if let Some(people) = recruited_people(ordered, &ledger, ruleset) {
