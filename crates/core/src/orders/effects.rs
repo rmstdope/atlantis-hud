@@ -1982,6 +1982,10 @@ struct WorkingUnit {
     /// order. Written once by `apply_item_effects`, after the walk that builds every unit here has
     /// finished (`ah-agbm`).
     uncounted: Vec<String>,
+    /// Whether men may have reached this unit by a route the ledger could not follow, so a
+    /// headcount of nothing does not mean it gained nobody (`ah-waes`). Written once by
+    /// `apply_item_effects`, from [`super::semantics::UnitItemEffects::gained_nobody_unjudged`].
+    gained_nobody_unjudged: bool,
     /// Silver or goods taken from a unit the report does not show in this hex. Written once by
     /// `apply_item_effects` (`ah-agbm`).
     taken_unshown: Vec<TakenUnshown>,
@@ -2405,6 +2409,7 @@ impl Working {
                 reported_flags: unit.flags.clone(),
                 boardings: Vec::new(),
                 uncounted: Vec::new(),
+                gained_nobody_unjudged: false,
                 taken_unshown: Vec::new(),
                 produced: Vec::new(),
                 built: Vec::new(),
@@ -2543,6 +2548,14 @@ impl Working {
         let mut dissolved = BTreeMap::new();
         for index in 0..self.units.len() {
             if !self.units[index].formed || self.units[index].unit.men != 0 {
+                continue;
+            }
+            // `rules/form` dissolves a unit only when "no recruits are gained at all", which a
+            // headcount of nothing does not establish where men may have arrived by a route the
+            // ledger could not follow - an uncounted `BUY PEASANTS` above all. The SILVER column
+            // leaves that unit unjudged and its silver where it is (`revert_dissolved_forms`), so
+            // this leaves it formed and its goods with it (`ah-waes`).
+            if self.units[index].gained_nobody_unjudged {
                 continue;
             }
             let region_id = self.units[index].unit.region_id.clone();
@@ -2715,6 +2728,7 @@ impl Working {
                 apply_item_movement(unit, movement, &ruleset);
             }
             unit.uncounted = effect.uncounted.clone();
+            unit.gained_nobody_unjudged = effect.gained_nobody_unjudged;
             unit.recruited = effect.recruited.clone();
             unit.study = effect.study.clone();
             unit.produced = effect
@@ -2790,6 +2804,7 @@ impl Working {
             reported_flags,
             boardings: Vec::new(),
             uncounted: Vec::new(),
+            gained_nobody_unjudged: false,
             taken_unshown: Vec::new(),
             produced: Vec::new(),
             built: Vec::new(),
@@ -6791,6 +6806,185 @@ mod tests {
         assert!(
             reverted.is_empty(),
             "nothing reverts to the first unit: {reverted:?}"
+        );
+    }
+
+    /// `rules/form`: "If no recruits are gained at all, the empty unit will be dissolved". Where the
+    /// region names no race, `rules/buy`'s "PEASANT or PEASANTS to recruit whichever race is
+    /// present in the region" cannot be read, so the ledger leaves the `BUY` uncounted and nobody
+    /// gained is not established. The SILVER column already leaves that unit unjudged
+    /// (`semantics.rs` `revert_dissolved_forms`, `ah-09bu`); the ITEMS preview must agree, so the
+    /// unit is not shown dissolving and nothing reverts from it (`ah-waes`).
+    #[test]
+    fn a_formed_unit_whose_buy_of_men_is_uncounted_is_not_dissolved() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, $5.",
+            "  For Sale: 5 humans [HUMN] at $38.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 3 swords [SWOR], 1000 silver [SILV]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 1 PEASANTS\nEND\nGIVE NEW 1 3 SWOR\nGIVE NEW 1 1000 SILV\n",
+        );
+        let units = &response.regions[0].units;
+        let formed = units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the formed unit is on the table");
+        // The precondition: the ledger could not count the recruits.
+        assert_eq!(
+            formed.uncounted,
+            vec!["BUY 1 PEASANTS".to_string()],
+            "{formed:#?}"
+        );
+        assert!(
+            !formed.dissolving,
+            "whether it recruits is not known, so it is not shown dissolving: {formed:#?}"
+        );
+        assert_eq!(
+            formed
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SWOR")
+                .map_or(0, |item| item.amount),
+            3,
+            "it keeps the swords it was given: {:?}",
+            formed.unit.items
+        );
+        let reverted: Vec<_> = units
+            .iter()
+            .filter(|unit| unit.unit.unit_id == "900")
+            .flat_map(|unit| unit.item_changes.iter())
+            .filter(|change| change.cause == ItemChangeCause::GiftReverted)
+            .collect();
+        assert!(
+            reverted.is_empty(),
+            "nothing reverts to the first unit: {reverted:?}"
+        );
+    }
+
+    /// The same for a race named outright. `rules/take`: a unit "may only TAKE from another unit
+    /// in the same faction", so silver taken from a unit this hex does not show cannot be priced,
+    /// the ledger doubts the taker, and a `BUY ALL` of men is left uncounted (`settle_buy_all`).
+    /// Whether it recruits is not known, so it is not shown dissolving (`ah-waes`).
+    #[test]
+    fn a_formed_unit_whose_buy_all_of_a_named_race_is_uncounted_is_not_dissolved() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (humans), $5.",
+            "  For Sale: 5 humans [HUMN] at $38.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 3 swords [SWOR]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nTAKE FROM 999 ALL SILV\nBUY ALL HUMN\nEND\nGIVE NEW 1 3 SWOR\n",
+        );
+        let units = &response.regions[0].units;
+        let formed = units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the formed unit is on the table");
+        assert!(
+            formed.uncounted.iter().any(|line| line == "BUY ALL HUMN"),
+            "the precondition: the ledger could not count the recruits: {formed:#?}"
+        );
+        assert!(
+            !formed.dissolving,
+            "whether it recruits is not known, so it is not shown dissolving: {formed:#?}"
+        );
+        let reverted: Vec<_> = units
+            .iter()
+            .filter(|unit| unit.unit.unit_id == "900")
+            .flat_map(|unit| unit.item_changes.iter())
+            .filter(|change| change.cause == ItemChangeCause::GiftReverted)
+            .collect();
+        assert!(
+            reverted.is_empty(),
+            "nothing reverts to the first unit: {reverted:?}"
+        );
+    }
+
+    /// The boundary of the two above. `rules/buy`: people are bought "in any region where people
+    /// are available for recruiting", so a `BUY` of a race this market does not sell recruits
+    /// nobody for certain - the ledger leaves the line uncounted, but nothing is unknown about it,
+    /// and `rules/form`'s "no recruits are gained at all" holds: the unit dissolves (`ah-waes`).
+    #[test]
+    fn a_formed_unit_buying_a_race_the_market_does_not_sell_still_dissolves() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (humans), $5.",
+            "  For Sale: 5 humans [HUMN] at $38.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 3 swords [SWOR], 1000 silver [SILV]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 5 WELF\nEND\nGIVE NEW 1 3 SWOR\nGIVE NEW 1 500 SILV\n",
+        );
+        let formed = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the formed unit is on the table");
+        assert!(
+            formed.dissolving,
+            "nobody can be recruited here, so it dissolves: {formed:#?}"
+        );
+    }
+
+    /// The same boundary for `rules/buy`'s "PEASANT or PEASANTS to recruit whichever race is
+    /// present in the region": where the region names its race and the market does not sell it,
+    /// nobody is "available for recruiting", so nobody is recruited for certain and the unit
+    /// dissolves. Only a region that names no race leaves the recruits unknown (`ah-waes`).
+    #[test]
+    fn a_formed_unit_buying_peasants_the_market_does_not_sell_still_dissolves() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "forest (1,1) in Nowhere, 10 peasants (wood elves), $5.",
+            "  For Sale: 5 humans [HUMN] at $38.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 3 swords [SWOR], 1000 silver [SILV]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 5 PEASANTS\nEND\nGIVE NEW 1 3 SWOR\nGIVE NEW 1 500 SILV\n",
+        );
+        let formed = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the formed unit is on the table");
+        assert!(
+            formed.uncounted.iter().any(|line| line == "BUY 5 PEASANTS"),
+            "the precondition: the line reaches no market: {formed:#?}"
+        );
+        assert!(
+            formed.dissolving,
+            "nobody can be recruited here, so it dissolves: {formed:#?}"
         );
     }
 
