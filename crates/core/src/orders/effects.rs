@@ -6918,6 +6918,39 @@ mod tests {
         );
     }
 
+    /// The boundary of the two above. `rules/buy`: people are bought "in any region where people
+    /// are available for recruiting", so a `BUY` of a race this market does not sell recruits
+    /// nobody for certain - the ledger leaves the line uncounted, but nothing is unknown about it,
+    /// and `rules/form`'s "no recruits are gained at all" holds: the unit dissolves (`ah-waes`).
+    #[test]
+    fn a_formed_unit_buying_a_race_the_market_does_not_sell_still_dissolves() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (humans), $5.",
+            "  For Sale: 5 humans [HUMN] at $38.",
+            "",
+            "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "* Former (902), Foo (1), leader [LEAD], 3 swords [SWOR], 1000 silver [SILV]. \
+             Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = preview_over(
+            &report,
+            "unit 902\nFORM 1\nBUY 5 WELF\nEND\nGIVE NEW 1 3 SWOR\nGIVE NEW 1 500 SILV\n",
+        );
+        let formed = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("the formed unit is on the table");
+        assert!(
+            formed.dissolving,
+            "nobody can be recruited here, so it dissolves: {formed:#?}"
+        );
+    }
+
     /// `rules/form` dissolves a formed unit that gains nobody, and since `ah-ty3s.3` the row is
     /// drawn rather than skipped (decision **K2**), so it does not vanish from under a player
     /// editing its orders. It holds nothing: the goods have already reverted.
