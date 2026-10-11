@@ -15,7 +15,12 @@ use crate::report::parse_report_full;
 
 const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
+/// The empty structures every fixture hex also has, so the blocks below have something to ENTER.
+/// 77 is deliberately not among them: it is the structure the hex does not have (`ah-5maa`).
+const ALSO_HERE: [&str; 3] = ["4", "5", "9"];
+
 /// A one-region report whose unit 900 stands where `reported` says: in a structure, or in nothing.
+/// The hex also has the empty structures of [`ALSO_HERE`].
 fn report(reported: Option<&str>) -> String {
     let mut lines = vec![
         "Foo (1) Report".to_string(),
@@ -23,6 +28,11 @@ fn report(reported: Option<&str>) -> String {
         "plain (1,1) in Nowhere, 10 peasants (orcs), $5.".to_string(),
         String::new(),
     ];
+    for structure_id in ALSO_HERE {
+        if reported != Some(structure_id) {
+            lines.push(format!("+ Building [{structure_id}] : Stockade."));
+        }
+    }
     if let Some(structure_id) = reported {
         lines.push(format!("+ Building [{structure_id}] : Stockade."));
         lines.push(
@@ -37,15 +47,17 @@ fn report(reported: Option<&str>) -> String {
     lines.join("\n")
 }
 
-/// What `orders::semantics` makes of the block, over parsed intents.
-fn by_intents(reported: Option<&str>, orders: &str) -> Option<String> {
+/// What `orders::semantics` makes of the block, over parsed intents and the hex's structures.
+fn by_intents(reported: Option<&str>, report_text: &str, orders: &str) -> Option<String> {
+    let parsed = parse_report_full(report_text);
+    let structures = &parsed.regions[0].structures;
     let read = read_intents(orders, None);
     let intents = read
         .iter()
         .filter(|block| block.unit_id == "900")
         .flat_map(|block| block.intents.iter().cloned())
         .collect::<Vec<_>>();
-    structure_after_intents(reported, &intents).map(str::to_string)
+    structure_after_intents(reported, &intents, structures).map(str::to_string)
 }
 
 /// What `movement::fleet` makes of it, over the raw document and the report's unit.
@@ -91,7 +103,7 @@ fn agreed(reported: Option<&str>, block: &str) -> Option<String> {
     let report_text = report(reported);
     let orders = format!("unit 900\n{block}");
 
-    let intents = by_intents(reported, &orders);
+    let intents = by_intents(reported, &report_text, &orders);
     let document = by_document(&report_text, &orders);
     let preview = by_preview(reported, &report_text, &orders);
 
@@ -148,9 +160,15 @@ fn no_boarding_orders_leaves_the_reports_answer() {
     assert_eq!(agreed(None, "BEHIND 1\n"), None);
 }
 
+/// The engine's `Do1EnterOrder` refuses an ENTER of an object the region does not have ("ENTER:
+/// Can't enter that.") and returns before `MoveUnit`, so the unit stays where it was - in the
+/// structure it already stood in, LEAVE or no LEAVE (`ah-5maa`). This assertion previously
+/// expected 77 and so encoded the defect.
 #[test]
-fn entering_a_structure_the_report_does_not_list_is_still_where_it_stands() {
-    assert_eq!(agreed(Some("4"), "ENTER 77\n"), some("77"));
+fn entering_a_structure_the_report_does_not_list_leaves_the_unit_where_it_stood() {
+    assert_eq!(agreed(Some("4"), "ENTER 77\n"), some("4"));
+    assert_eq!(agreed(None, "ENTER 77\n"), None);
+    assert_eq!(agreed(Some("4"), "LEAVE\nENTER 77\n"), some("4"));
 }
 
 /// `ah-86vk` let the validator ignore trailing text on an otherwise valid line, and the preview

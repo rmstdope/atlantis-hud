@@ -19,7 +19,7 @@ use crate::cache::ReportCache;
 use crate::movement::rules::Ruleset;
 use crate::orders::item_change_log::Stock;
 use crate::orders::items::item_named;
-use crate::orders::standing::{standing_after, BoardingOrder};
+use crate::orders::standing::{standing_after_in, BoardingOrder};
 use crate::orders::transfers::{
     in_report_order, report_order, report_ranks, PendingTransfer, Placement,
 };
@@ -2331,6 +2331,10 @@ struct Working {
     /// before anything moves in phase 9 - so the test a target needs is per-region, and the two
     /// must not be confused (`ah-vcp8.2`).
     shown_in_region: BTreeMap<String, std::collections::BTreeSet<String>>,
+    /// Every structure number the report shows in each region, keyed by region id: an ENTER of
+    /// one the region does not have is refused and moves nobody (`ah-5maa`). A region the report
+    /// does not describe has no entry, and every ENTER there is taken as written.
+    structures_in_region: BTreeMap<String, std::collections::BTreeSet<String>>,
     /// Every unit id the report shows that is not ours. A `TAKE` naming one of these is refused
     /// outright - `rules/take` confines a TAKE to "another unit in the same faction" - and must
     /// not be mistaken for the bounded optimism a take from a unit the report never shows gets.
@@ -2444,7 +2448,17 @@ impl Working {
         let mut shown_in_region: BTreeMap<String, std::collections::BTreeSet<String>> =
             BTreeMap::new();
         let mut hex_of_region: BTreeMap<String, crate::report::model::Coordinate> = BTreeMap::new();
+        let mut structures_in_region: BTreeMap<String, std::collections::BTreeSet<String>> =
+            BTreeMap::new();
         for region in &report.regions {
+            structures_in_region.insert(
+                region.region_id.clone(),
+                region
+                    .structures
+                    .iter()
+                    .map(|structure| structure.structure_id.clone())
+                    .collect(),
+            );
             hex_of_region.insert(region.region_id.clone(), region.coordinate);
             let shown = shown_in_region.entry(region.region_id.clone()).or_default();
             for unit in &region.units {
@@ -2463,6 +2477,7 @@ impl Working {
             shipping,
             known_units,
             shown_in_region,
+            structures_in_region,
             foreign_units: report
                 .units()
                 .filter(|unit| !unit.own)
@@ -2872,13 +2887,17 @@ impl Working {
     ///
     /// Recomputed from every boarding seen rather than applied in isolation, because a LEAVE after
     /// an ENTER does not put the unit ashore: every LEAVE runs before any ENTER whatever order the
-    /// lines were typed in. That rule is [`super::standing::standing_after`]'s, stated only there.
+    /// lines were typed in. That rule is [`super::standing::standing_after`]'s, stated only there,
+    /// and an ENTER of a structure the hex does not have moves nothing
+    /// ([`super::standing::standing_after_in`], `ah-5maa`).
     fn board(&mut self, active: usize, boarding: BoardingOrder) {
         self.units[active].boardings.push(boarding);
         let working = &self.units[active];
-        let standing = standing_after(
+        let structures = self.structures_in_region.get(&working.unit.region_id);
+        let standing = standing_after_in(
             working.reported.as_deref(),
             working.boardings.iter().map(BoardingOrder::as_boarding),
+            |structure| structures.is_none_or(|known| known.contains(structure)),
         )
         .map(str::to_string);
         self.units[active].unit.structure_id = standing;
@@ -4371,6 +4390,10 @@ mod tests {
             "",
             "* Walker (900), Foo (1), behind, leader [LEAD], 3 swords [SWOR]. Weight: 10. Capacity: 0/0/15/0.",
             "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+            // Empty, so a test can ENTER something the hex has: an ENTER of a structure the hex
+            // does not have is refused and moves nobody (`ah-5maa`).
+            "+ Tower [4] : Tower.",
             "",
         ]
         .join("\n")
