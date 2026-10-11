@@ -5967,17 +5967,17 @@ impl Ledger<'_> {
     /// from the final balance so earlier orders cannot spend it, but TRANSPORT follows both
     /// PRODUCE phases (`rules/sequenceofevents`).
     ///
-    /// Silver the orders before TRANSPORT spent beyond what the unit had was never paid: the
-    /// ledger charges an unfunded STUDY all the same, so its overdraft is taken back out here
-    /// rather than being met by silver that only arrives in a TRANSPORT sub-phase (`ah-rt4p`).
-    fn transport_holding(&self, unit_id: &str, tag: &str) -> i64 {
-        let unpaid = if tag.eq_ignore_ascii_case(SILVER) {
-            (-self.state.balance_at(StatePhase::Wages, unit_id, tag)).max(0)
+    /// Silver also carries back a STUDY the unit could not pay for ([`refused_study`]): the ledger
+    /// charges it all the same, and silver that only arrives in a TRANSPORT sub-phase must not
+    /// meet it (`ah-rt4p`).
+    fn transport_holding(&self, hex: &Hex<'_>, unit_id: &str, tag: &str) -> i64 {
+        let refused = if tag.eq_ignore_ascii_case(SILVER) {
+            refused_study(self, hex, unit_id)
         } else {
             0
         };
         self.state.balance_at(StatePhase::Transport, unit_id, tag)
-            + unpaid
+            + refused
             + self
                 .unconsumed_production
                 .get(&(unit_id.to_string(), tag.to_ascii_uppercase()))
@@ -14248,6 +14248,33 @@ fn silver_short_at_study(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
     }
 }
 
+/// What the ledger charged a unit for a STUDY the game refuses, and so never took from it.
+///
+/// `rules/sequenceofevents` runs STUDY before TRANSPORT, so silver shipped to the unit later
+/// cannot pay for it. The engine refuses a study outright when its cost is more than the unit can
+/// draw on (`monthorders.cpp`: "STUDY: Not enough funds."), and takes nothing: the whole fee is
+/// handed back. In a hex whose `SHARE` purse lends silver "for buying or studying"
+/// (`rules/share`), the unit's own coins went on the study and the purse paid the rest, so only
+/// the overdraft is handed back (`ah-rt4p`).
+fn refused_study(ledger: &Ledger<'_>, hex: &Hex<'_>, unit_id: &str) -> i64 {
+    let overdrawn = silver_short_at_study(ledger, unit_id);
+    if overdrawn <= 0 {
+        return 0;
+    }
+    if Sharing::for_silver(hex, ledger).reading(SILVER, ledger.ruleset) == Reading::Pooled {
+        return overdrawn;
+    }
+    ledger
+        .silver_moves
+        .get(unit_id)
+        .into_iter()
+        .flatten()
+        .filter(|moved| moved.cause == SilverChangeCause::Studied)
+        .map(|moved| -moved.amount)
+        .sum::<i64>()
+        .max(overdrawn)
+}
+
 /// What a unit's own silver is short as the spells are cast, the moment `rules/sequenceofevents`
 /// charges a CAST - before the market, so no SELL pays for it (`ah-9n7l.2`). Zero unless the
 /// casts are what overdrew it: an overdraft already there after TAX is not theirs.
@@ -18780,7 +18807,7 @@ fn shipping_bills(
                         .is_some_and(|entry| {
                             let tag = entry.tag.to_ascii_uppercase();
                             let already_shipped = shipment_allowance_used(&shipped, &tag);
-                            let held = (ledger.transport_holding(sender, &tag)
+                            let held = (ledger.transport_holding(hex, sender, &tag)
                                 + received_earlier
                                     .get(&(sender.to_string(), tag.clone()))
                                     .copied()
@@ -18843,7 +18870,7 @@ fn shipping_bills(
                 .get(&(sender.to_string(), tag.clone()))
                 .copied()
                 .unwrap_or_default();
-            let held = (ledger.transport_holding(sender, &tag) + arrived - already).max(0);
+            let held = (ledger.transport_holding(hex, sender, &tag) + arrived - already).max(0);
             let quantity = super::transfers::quantity_moved(amount, held);
             if quantity <= 0 {
                 continue;
@@ -51296,6 +51323,24 @@ BUILD
             Some(10),
             "the study shows as unfunded: combat costs 10 a month (data/COMB)"
         );
+
+        // Some silver, but not the study's 10: the game refuses the study whole and takes none
+        // of it (`monthorders.cpp`: "STUDY: Not enough funds."), so all 205 are forwarded.
+        let some_silver = || {
+            let mut regions = regions();
+            regions[1].units[0] = with_silver(regions[1].units[0].clone(), 5);
+            regions
+        };
+        let receiver = review_turn(&report(some_silver()), orders, Some(&rules), with_map())
+            .silver
+            .into_iter()
+            .find(|forecast| forecast.unit_id == "902")
+            .expect("the receiver is forecast");
+        assert_eq!(
+            receiver.at_month_end,
+            baseline.at_month_end.map(|silver| silver + 205),
+            "901's own 5 were not spent on a study it could not pay for"
+        );
     }
 
     /// Silver a quartermaster receives in an earlier TRANSPORT sub-phase is in hand when it forwards
@@ -51307,6 +51352,9 @@ BUILD
         let regions = || {
             let mut regions = priced_shipping(5, &[], vec![caravanserai_owner("901", 1, 0, 6)]);
             regions[1].units.push(unit("902"));
+            // Wages in 901's hex, so WORK earns before TRANSPORT forwards.
+            regions[1].wages = Some("13.5".to_string());
+            regions[1].max_wages = Some(100);
             regions
         };
         let rules = ruleset();
@@ -51318,6 +51366,16 @@ BUILD
         );
         let forwarder = shipment_silver(&review, "901");
         assert_eq!(forwarder.short_for_orders, Some(0), "{forwarder:?}");
+        let wages = forwarder.late_income.expect("901's wages are priced");
+        assert!(wages > 0, "{forwarder:?}");
+        let baseline = review_turn(&report(regions()), "unit 900\n", Some(&rules), with_map());
+        assert_eq!(
+            shipment_silver(&review, "902").at_month_end,
+            shipment_silver(&baseline, "902")
+                .at_month_end
+                .map(|silver| silver + 200 + wages),
+            "901 forwards what it was sent and what it earned"
+        );
         assert!(
             review
                 .findings
