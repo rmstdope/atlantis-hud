@@ -3064,6 +3064,24 @@ struct AfterTheMarket<'a> {
     men_by_race: Option<&'a [ItemAmount]>,
 }
 
+impl AfterTheMarket<'_> {
+    /// Whether "no recruits are gained at all" (`rules/form`) is established for this unit: its
+    /// headcount is nothing **and** every route men could have arrived by was followed. A
+    /// `BUY PEASANTS` the ledger leaves uncounted (`rules/buy`) or a gift of men this walk cannot
+    /// follow leaves `men` at the figure before it and the skills and races unknowable, and that
+    /// unit is not known to dissolve. The one predicate the SILVER column
+    /// (`revert_dissolved_forms`) and the ITEMS preview (`effects.rs` `dissolve_empty_forms`, via
+    /// [`UnitItemEffects::gained_nobody_unjudged`]) both read, so they cannot disagree (`ah-waes`).
+    fn gained_nobody(&self) -> bool {
+        self.men == 0 && !self.recruits_unjudged()
+    }
+
+    /// Whether men may have arrived by a route this walk could not follow (`ah-waes`).
+    fn recruits_unjudged(&self) -> bool {
+        self.skills.is_none() || self.men_by_race.is_none()
+    }
+}
+
 /// One of our units, and its orders.
 struct Ordered<'a> {
     unit: &'a ReportUnit,
@@ -6856,6 +6874,14 @@ pub(crate) fn item_effects(
         // Read before any of the ledger's fields are consumed below: the preview's exact
         // recruits are the same settled `Ledger::bought` reading Problems uses, so the two
         // surfaces cannot disagree about which arrivals were a recruit (`ah-40c9`).
+        for ordered in &hex.units {
+            if ordered.formed.is_some() && ordered.after_the_market().recruits_unjudged() {
+                result
+                    .entry(unit_key(&hex.region.region_id, &ordered.unit.unit_id))
+                    .or_default()
+                    .gained_nobody_unjudged = true;
+            }
+        }
         if let Some(ruleset) = ruleset {
             for ordered in &hex.units {
                 if let Some(people) = recruited_people(ordered, &ledger, ruleset) {
@@ -6961,6 +6987,11 @@ pub(crate) struct UnitItemEffects {
     /// `rules/sequenceofevents` settles CLAIM before "Give orders", so the item preview folds it
     /// in before its own Give phase (`ah-ixq7`).
     pub claimed: i64,
+    /// Whether men may have reached this unit by a route the ledger could not follow - an
+    /// uncounted `BUY PEASANTS`, or a gift of men it cannot follow - so that a headcount of nothing
+    /// does not establish "no recruits are gained at all" (`rules/form`). The item preview leaves
+    /// such a formed unit undissolved, as the SILVER column does (`ah-waes`).
+    pub gained_nobody_unjudged: bool,
 }
 
 /// What each unit in a hex holds once its whole month has run, in `hex.units` order.
@@ -12406,12 +12437,9 @@ fn revert_dissolved_forms(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
         if ordered.formed.is_none() {
             continue;
         }
-        // Nobody gained is a fact only where the headcount is: a `BUY PEASANTS` (`rules/buy`) or
-        // a gift of men this walk cannot follow leaves `men` at the figure before it and marks
-        // the skills and races it settles unknowable. That unit is not known to dissolve, so its
-        // silver is left where it is.
-        let after = ordered.after_the_market();
-        if after.men != 0 || after.skills.is_none() || after.men_by_race.is_none() {
+        // Nobody gained is a fact only where the headcount is (`AfterTheMarket::gained_nobody`):
+        // a unit not known to dissolve keeps its silver where it is.
+        if !ordered.after_the_market().gained_nobody() {
             continue;
         }
         let dissolved = &ordered.unit.unit_id;
