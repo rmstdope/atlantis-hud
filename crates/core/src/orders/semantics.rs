@@ -3067,12 +3067,14 @@ struct AfterTheMarket<'a> {
 impl AfterTheMarket<'_> {
     /// Whether "no recruits are gained at all" (`rules/form`) is established for this unit: its
     /// headcount is nothing **and** every route men could have arrived by was followed. A
-    /// `BUY PEASANTS` the ledger leaves uncounted (`rules/buy`), a doubted unit's `BUY ALL` of a
-    /// race the market sells, or a gift of men this walk cannot follow leaves `men` at the figure
-    /// before it and the skills and races unknowable, and that unit is not known to dissolve. A
-    /// `BUY` of a race the market does not sell recruits nobody, and leaves them known. The one predicate the SILVER column
-    /// (`revert_dissolved_forms`) and the ITEMS preview (`effects.rs` `dissolve_empty_forms`, via
-    /// [`UnitItemEffects::gained_nobody_unjudged`]) both read, so they cannot disagree (`ah-waes`).
+    /// `BUY PEASANTS` where the report names no race (`rules/buy`), a doubted unit's `BUY ALL`
+    /// of a race the market sells, or a gift of men this walk cannot follow leaves `men` at the
+    /// figure before it and the skills and races unknowable, and that unit is not known to
+    /// dissolve. A `BUY` of a race the market does not sell recruits nobody, which is known.
+    ///
+    /// The one predicate the SILVER column (`revert_dissolved_forms`) and the ITEMS preview
+    /// (`effects.rs` `dissolve_empty_forms`, via [`UnitItemEffects::gained_nobody_unjudged`])
+    /// both read, so they cannot disagree (`ah-waes`).
     fn gained_nobody(&self) -> bool {
         self.men == 0 && !self.recruits_unjudged()
     }
@@ -4608,33 +4610,19 @@ fn recruited_people(
     ledger: &Ledger<'_>,
     ruleset: &Ruleset,
 ) -> Option<Vec<ItemAmount>> {
-    // `rules/buy`: "When buying people, specify the race of the people as the [item], or you may
-    // use PEASANT or PEASANTS to recruit whichever race is present in the region." Since `ah-6sx5`
-    // that spelling is read as the region's race (`bought_item`), so the recruits reach
-    // `Ledger::bought` like any `BUY n <race>`. Only where it could not be read - a region whose
-    // report names no race, or a race the market does not price - is the line left uncounted, and
-    // then a recruit that may really have happened is invisible to the walk below, so the unit is
-    // left unjudged rather than read as having recruited nobody.
+    // Recruits the walk below cannot see, because the ledger could not count the `BUY` that may
+    // have bought them: a `BUY PEASANTS` in a region whose report names no race (`buy`), or a
+    // doubted unit's `BUY ALL` of a race the market sells (`settle_buy_all`). Such a unit is left
+    // unjudged rather than read as having recruited nobody. An uncounted `BUY` of a race the
+    // market does not sell - named outright, or as the region's own through `rules/buy`'s
+    // PEASANTS - is not among them: nobody is "available for recruiting" there, so nobody was
+    // recruited, which is known (`ah-waes`).
     //
-    // The spellings are `names_peasants`' - the engine's, which add `PEAS` to the rules' two.
-    //
-    // Every other spelling names a race or a good, and both reach `Ledger::bought`: an exact
-    // amount through `buy`, an `Amount::All` through `settle_buy_all` since `ah-jown`. So the old
-    // guard on the *amount* is gone (`ah-4b6n`); it silenced every `BUY ALL` of goods along with
-    // the one case it was aimed at.
-    let uncounted = ledger.uncounted.get(&ordered.unit.unit_id);
-    let buys_unnamed_recruits = ordered.intents.iter().any(|placed| match &placed.intent {
-        Intent::Buy { item, .. } => {
-            names_peasants(item) && uncounted.is_some_and(|lines| lines.contains(&placed.line))
-        }
-        _ => false,
-    });
-    // A race named outright is no different where the market sells it and the ledger doubts the
-    // buyer: `settle_buy_all` leaves its `BUY ALL` uncounted, and the recruits it may really have
-    // bought are just as invisible. Not every uncounted `BUY` of a race, though: one the market
-    // does not sell recruits nobody (`rules/buy`: "in any region where people are available for
-    // recruiting"), which is known (`ah-waes`).
-    if buys_unnamed_recruits || ledger.unfollowed_recruits.contains(&ordered.unit.unit_id) {
+    // Every other `BUY` of people reaches `Ledger::bought`: an exact amount through `buy`, an
+    // `Amount::All` through `settle_buy_all` since `ah-jown`. So the old guard on the *amount* is
+    // gone (`ah-4b6n`); it silenced every `BUY ALL` of goods along with the one case it was aimed
+    // at.
+    if ledger.unfollowed_recruits.contains(&ordered.unit.unit_id) {
         return None;
     }
 
@@ -5545,10 +5533,11 @@ struct Ledger<'a> {
     /// Lines whose effect on a unit's items could not be counted at all, by unit, in document
     /// order (`ah-agbm`).
     pub(crate) uncounted: BTreeMap<String, Vec<usize>>,
-    /// Units whose `BUY ALL` of people `settle_buy_all` left uncounted because their silver is
-    /// doubted: recruits that may really have been bought and that `Ledger::bought` cannot show.
-    /// Kept apart from `uncounted` because a `BUY` of a race the market does not sell is uncounted
-    /// too, and that one recruits nobody for certain (`rules/buy`, `ah-waes`).
+    /// Units with recruits `Ledger::bought` cannot show: a `BUY PEASANTS` where the report names
+    /// no race (`buy`), or a doubted unit's `BUY ALL` of a race the market sells
+    /// (`settle_buy_all`). Kept apart from `uncounted` because a `BUY` of a race the market does
+    /// not sell is uncounted too, and that one recruits nobody for certain (`rules/buy`,
+    /// `ah-waes`).
     pub(crate) unfollowed_recruits: BTreeSet<String>,
     /// `BUY`s of people by a unit that has already begun magic: refused, and warned about
     /// (`ah-ndp9`). One entry per refused line; no tag and no count, because the sentence the
@@ -7001,11 +6990,11 @@ pub(crate) struct UnitItemEffects {
     /// `rules/sequenceofevents` settles CLAIM before "Give orders", so the item preview folds it
     /// in before its own Give phase (`ah-ixq7`).
     pub claimed: i64,
-    /// Whether men may have reached this unit by a route the ledger could not follow - an
-    /// uncounted `BUY PEASANTS`, a doubted unit's `BUY ALL` of a race the market sells, or a gift
-    /// of men it cannot follow - so that a headcount of nothing
-    /// does not establish "no recruits are gained at all" (`rules/form`). The item preview leaves
-    /// such a formed unit undissolved, as the SILVER column does (`ah-waes`).
+    /// Whether men may have reached this unit by a route the ledger could not follow - a
+    /// `BUY PEASANTS` where the report names no race, a doubted unit's `BUY ALL` of a race the
+    /// market sells, or a gift of men it cannot follow - so that a headcount of nothing does not
+    /// establish "no recruits are gained at all" (`rules/form`). The item preview leaves such a
+    /// formed unit undissolved, as the SILVER column does (`ah-waes`).
     pub gained_nobody_unjudged: bool,
 }
 
@@ -9248,6 +9237,13 @@ fn buy(
             .entry(who.clone())
             .or_default()
             .push(placed.line);
+        // `rules/buy`'s PEASANT or PEASANTS recruits "whichever race is present in the region",
+        // and a report that names no race leaves that unknown - so whether anybody was recruited
+        // is unknown too. Where the race is named, `bought_item` already read it, and a market
+        // that does not sell it recruits nobody (`ah-6sx5`, `ah-waes`).
+        if names_peasants(item) && hex.region.race.is_none() {
+            ledger.unfollowed_recruits.insert(who.clone());
+        }
         return;
     };
 
@@ -57882,14 +57878,20 @@ BUILD
             assert_eq!(formed.at_month_end, Some(0));
         }
 
-        /// `rules/buy`: PEASANT/PEASANTS recruits "whichever race is present in the region", as
-        /// many as the unit can afford - a headcount the ledger cannot settle. A unit whose
-        /// recruits cannot be counted is not known to have gained nobody, so `rules/form`'s
-        /// dissolve is not stated for it and its silver stays with it (`ah-09bu`).
+        /// `rules/buy`: PEASANT/PEASANTS recruits "whichever race is present in the region", and
+        /// a region whose report names no race leaves that a headcount the ledger cannot settle.
+        /// A unit whose recruits cannot be counted is not known to have gained nobody, so
+        /// `rules/form`'s dissolve is not stated for it and its silver stays with it (`ah-09bu`).
+        /// The region names no race since `ah-waes`: where it names one the market does not sell,
+        /// nobody is recruited, which is known.
         #[test]
         fn a_formed_unit_whose_recruits_cannot_be_counted_is_not_reverted() {
+            let no_race = ReportRegion {
+                race: None,
+                ..region(vec![with_silver(unit("1922"), 500)])
+            };
             let review = review_turn(
-                &report(vec![region(vec![with_silver(unit("1922"), 500)])]),
+                &report(vec![no_race]),
                 "unit 1922\nGIVE NEW 1 500 SILV\nFORM 1\nBUY 5 PEASANTS\nEND\n",
                 Some(&ruleset()),
                 CheckOptions::default(),
