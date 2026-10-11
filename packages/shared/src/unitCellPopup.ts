@@ -1726,6 +1726,18 @@ function silverCauseWhy(
     if (by.length > 0) {
       parts.push(`by ${andList(by)}`);
     }
+  } else if (group.cause === "gift-reverted") {
+    // `rules/form`: an empty formed unit is dissolved and its silver reverts to the first unit in
+    // the region - the same move the ITEMS popup words as "reverted from a unit that formed with
+    // nobody" (`ah-09bu`).
+    const from = others(group.entries.filter((entry) => entry.amount > 0));
+    const to = others(group.entries.filter((entry) => entry.amount < 0));
+    if (from.length > 0) {
+      parts.push(`from ${andList(from)}, which formed with nobody`);
+    }
+    if (to.length > 0) {
+      parts.push(`to ${andList(to)}, as this unit formed with nobody`);
+    }
   }
 
   if (group.cause === "bought" || group.cause === "sold") {

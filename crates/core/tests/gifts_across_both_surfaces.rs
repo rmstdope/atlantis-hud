@@ -748,3 +748,37 @@ fn a_cut_take_does_not_hide_the_takers_own_shortfall() {
         "the BUY's own $30 shortfall is still said: {warned:?}"
     );
 }
+
+/// `rules/form`: "If no recruits are gained at all, the empty unit will be dissolved, and the
+/// silver and any other items it was given will revert to the first unit you have in that
+/// region." Silver is answered for by the SILVER column alone, so a gift to a unit that forms with
+/// nobody must turn up there, on the first unit, rather than vanish with the dissolved row
+/// (`ah-09bu`). The ITEMS preview already reverts it (`ah-ixq7`); both surfaces now agree.
+#[test]
+fn claimed_silver_given_to_a_unit_formed_with_nobody_reverts_to_the_first_unit() {
+    let text = report(
+        QUIET,
+        &[],
+        &[
+            &hands("901"),
+            "* Former (902), Foo (1), orc [ORC]. Weight: 10. Capacity: 0/0/15/0.",
+        ],
+    );
+    let script = "unit 902\nFORM 1\nEND\nCLAIM 2500\nGIVE NEW 1 1000 SILV\n";
+    let review = review_of(&text, script);
+
+    let first = row_of(&review, "901");
+    assert_eq!(
+        first
+            .changes
+            .iter()
+            .map(|change| (change.amount, change.cause))
+            .collect::<Vec<_>>(),
+        vec![(1000, SilverChangeCause::GiftReverted)],
+        "the dissolve reverts the gift to the first unit: {:?}",
+        first.changes
+    );
+    assert_eq!(first.income, Some(1000));
+    assert_eq!(first.at_month_end, Some(1000));
+    assert_eq!(preview_holding(&text, script, "901", "SILV"), 1000);
+}

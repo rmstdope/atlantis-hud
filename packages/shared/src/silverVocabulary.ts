@@ -1194,7 +1194,8 @@ export const SILVER_CAUSE_LABELS: Readonly<Record<Exclude<SilverChangeCause, "to
   lent: "lent",
   "was-taken": "was taken",
   "was-lent": "was lent",
-  shipped: "shipped"
+  shipped: "shipped",
+  "gift-reverted": "reverted"
 };
 
 /**

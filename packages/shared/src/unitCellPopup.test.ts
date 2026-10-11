@@ -1653,6 +1653,28 @@ describe("the column popups", () => {
     });
   });
 
+  // `rules/form`: an empty formed unit's silver "will revert to the first unit you have in that
+  // region" (`ah-09bu`).
+  it("the silver popup says silver reverted from a unit that formed with nobody", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 0,
+            atMonthEnd: 1000,
+            changes: [{ amount: 1000, cause: "gift-reverted", line: null, other: "Unit (new 1) (new-1)" }]
+          })
+        })
+      )
+    );
+    expect(popup.lines.find((line) => line.label === "reverted")).toMatchObject({
+      value: "+1000",
+      why: "from Unit (new 1) (new-1), which formed with nobody"
+    });
+  });
+
   it("the silver popup names the neighbours' money that paid", () => {
     const popup = columnPopup(
       popupForCell(
