@@ -1,0 +1,60 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Unfinished Mark Details</title><style>
+:root{--ground:#10151c;--panel:#171d26;--edge:#26303d;--edge-soft:#1e2733;--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--select:#4a9fd8;--ok:#4fb783;--danger:#d97070}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:28px 16px 60px}
+main{max-width:1200px;margin:0 auto}
+h1{font-size:24px}h1 span{color:var(--brass)}
+p.lead{color:var(--ink-soft);font-size:14px;max-width:90ch;margin:10px 0 20px}
+h3{margin:26px 0 8px;font-size:12px;letter-spacing:1.6px;text-transform:uppercase;color:var(--brass)}
+.pane{background:var(--panel);border:1px solid var(--edge);border-radius:8px;padding:8px;overflow-x:auto;position:relative}
+.lbl{font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px}
+table{width:100%;min-width:760px;table-layout:fixed;border-collapse:separate;border-spacing:0;font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif}
+th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);font-weight:400;padding:2px 8px;border-bottom:1px solid var(--edge)}
+td{padding:3px 8px;border-bottom:1px solid var(--edge-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.uid{color:var(--select)}.own{color:var(--ok)}.dim{color:var(--ink-dim)}
+.colhi{outline:1px solid var(--brass);outline-offset:-1px}
+.unf-word{color:var(--brass);font-style:italic}
+.unf-glyph{display:inline-block;width:11px;height:11px;border:1.5px dashed var(--brass);border-radius:2px;margin-right:5px;vertical-align:-1px}
+.unf-dash{text-decoration:underline dashed var(--brass);text-underline-offset:3px;color:var(--ink-soft)}
+.pop{position:relative;margin-top:14px;display:inline-block;background:#1c232e;border:1px solid var(--edge);border-radius:6px;padding:8px 12px;font:12.5px/1.5 'Helvetica Neue',Arial,sans-serif;min-width:300px}
+.pop .k{color:var(--ink-dim);display:inline-block;width:80px}
+.pop .note{color:var(--ink-soft);margin-top:4px}
+ul{font-size:13px;color:var(--ink-soft);margin:12px 0 0 18px}
+.narrow table{min-width:0}.narrow{max-width:420px}
+.sel td{background:rgba(74,159,216,.18)}.pred{font-style:italic;color:var(--brass)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--edge);border-radius:8px;padding:12px}
+.card h4{font-size:14px;margin-bottom:6px}.card h4 em{color:var(--brass);font-style:normal;font-size:11px;letter-spacing:1.4px;margin-right:6px}
+.legend{font:11.5px 'Helvetica Neue',Arial,sans-serif;color:var(--ink-dim);padding:6px 8px 0}
+.pop{margin-top:4px}</style></head><body><main>
+<h1>Units in hex — <span>the small mark, in detail</span></h1>
+<p class="lead">Option B is chosen. These are the details around it. The selected row (blue) shows that the brass mark still reads against the highlight.</p>
+
+<h3>Q1 · What the hover says on the Structure cell</h3><div class="grid">
+<div class="card"><h4><em>1a</em>A short sentence</h4><div class="pop"><div><span class="k">structure</span><span class="unf-glyph"></span>Building [11] · Stockade</div><div class="note">Unfinished — still being built.</div></div></div>
+<div class="card"><h4><em>1b</em>One word</h4><div class="pop"><div><span class="k">structure</span><span class="unf-glyph"></span>Building [11] · Stockade</div><div class="note">Unfinished.</div></div></div>
+</div>
+
+<h3>Q2 · What the hover says on the Items cell for an unfinished ship</h3><div class="grid">
+<div class="card"><h4><em>2a</em>The report's own words on the line</h4><div class="pop"><div><span class="k">wood</span>85</div><div><span class="k" style="width:auto;margin-right:12px"><span class="unf-glyph"></span>unfinished Galleon</span>1</div></div></div>
+<div class="card"><h4><em>2b</em>The mark only, plus a sentence</h4><div class="pop"><div><span class="k">wood</span>85</div><div><span class="k"><span class="unf-glyph"></span>Galleon</span>1</div><div class="note">The Galleon is unfinished — it stays in the builder's hands until it is complete.</div></div></div>
+</div>
+
+<h3>Q3 · Does the pane explain the mark?</h3><div class="grid">
+<div class="card"><h4><em>3a</em>No — the hover explains it</h4><div class="pane"><table style="min-width:0"><colgroup><col style="width:3.5rem"><col style="width:7rem"><col style="width:8rem"><col></colgroup><thead><tr><th>Id</th><th>Unit</th><th>Items</th><th>Structure</th></tr></thead><tbody><tr class=""><td class="uid">1204</td><td>Masons</td><td>40 STON</td><td><span class="unf-glyph"></span>Building [11] · Stockade</td></tr><tr class="sel"><td class="uid">1205</td><td>Quarry hands</td><td>22 STON</td><td><span class="unf-glyph"></span>Building [11] · Stockade</td></tr><tr class=""><td class="uid">3173</td><td>Shipbuilders</td><td>85 WOOD, <span class="unf-glyph"></span>1 GALL</td><td>Northern Fleet [104] · Fleet</td></tr><tr class=""><td class="uid">1188</td><td>Garrison</td><td>20 SWOR</td><td>Odds and Ends [12] · Fort</td></tr></tbody></table></div></div>
+<div class="card"><h4><em>3b</em>A one-line key under the table, only when a mark is on screen</h4><div class="pane"><table style="min-width:0"><colgroup><col style="width:3.5rem"><col style="width:7rem"><col style="width:8rem"><col></colgroup><thead><tr><th>Id</th><th>Unit</th><th>Items</th><th>Structure</th></tr></thead><tbody><tr class=""><td class="uid">1204</td><td>Masons</td><td>40 STON</td><td><span class="unf-glyph"></span>Building [11] · Stockade</td></tr><tr class="sel"><td class="uid">1205</td><td>Quarry hands</td><td>22 STON</td><td><span class="unf-glyph"></span>Building [11] · Stockade</td></tr><tr class=""><td class="uid">3173</td><td>Shipbuilders</td><td>85 WOOD, <span class="unf-glyph"></span>1 GALL</td><td>Northern Fleet [104] · Fleet</td></tr><tr class=""><td class="uid">1188</td><td>Garrison</td><td>20 SWOR</td><td>Odds and Ends [12] · Fort</td></tr></tbody></table><div class="legend"><span class="unf-glyph"></span>unfinished</div></div></div>
+</div>
+
+<h3>Q4 · When this month's orders will finish the building</h3>
+<p class="lead">For example, the Masons' BUILD will put in the Stockade's last 20 this month.</p><div class="grid">
+<div class="card"><h4><em>4a</em>Mark follows the report: still unfinished</h4><div class="pane"><table style="min-width:0"><colgroup><col style="width:3.5rem"><col style="width:7rem"><col style="width:8rem"><col></colgroup><thead><tr><th>Id</th><th>Unit</th><th>Items</th><th>Structure</th></tr></thead><tbody><tr class=""><td class="uid">1204</td><td>Masons</td><td>40 STON</td><td><span class="unf-glyph"></span>Building [11] · Stockade</td></tr><tr class="sel"><td class="uid">1205</td><td>Quarry hands</td><td>22 STON</td><td><span class="unf-glyph"></span>Building [11] · Stockade</td></tr></tbody></table></div></div>
+<div class="card"><h4><em>4b</em>Mark is dropped, in the "coming month" italic like other forecasts</h4><div class="pane"><table style="min-width:0"><colgroup><col style="width:3.5rem"><col style="width:7rem"><col style="width:8rem"><col></colgroup><thead><tr><th>Id</th><th>Unit</th><th>Items</th><th>Structure</th></tr></thead><tbody><tr class=""><td class="uid">1204</td><td>Masons</td><td>40 STON</td><td><span class="pred">Building [11] · Stockade</span></td></tr><tr class="sel"><td class="uid">1205</td><td>Quarry hands</td><td>22 STON</td><td><span class="pred">Building [11] · Stockade</span></td></tr></tbody></table></div></div>
+</div>
+
+<h3>Decided — no question needed</h3><ul>
+<li>A structure the report never described (shown as a bare <i>[11]</i>) gets no mark: nothing is known about it.</li>
+<li>A remembered hex from an older report marks what that report said.</li>
+<li>Sorting and filtering are unchanged; the mark is not a separate column.</li>
+<li>The mark is decoration on the existing cell: nothing new to tab to, no shortcut.</li>
+</ul>
+</main></body></html>
