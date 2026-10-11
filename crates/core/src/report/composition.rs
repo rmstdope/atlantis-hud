@@ -110,11 +110,13 @@ mod tests {
                 amount: 10,
                 name: "orcs".to_string(),
                 tag: "ORC".to_string(),
+                needs: None,
             },
             ItemAmount {
                 amount: 3,
                 name: "swords".to_string(),
                 tag: "SWOR".to_string(),
+                needs: None,
             },
         ];
 
@@ -126,6 +128,7 @@ mod tests {
                 amount: 10,
                 name: "orcs".to_string(),
                 tag: "ORC".to_string(),
+                needs: None,
             }]
         );
         assert_eq!(total, 10);

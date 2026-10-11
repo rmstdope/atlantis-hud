@@ -3580,6 +3580,7 @@ fn move_holding(state: &mut Working, tag: &str, name: &str, delta: i64) {
                     amount: delta,
                     name: name.to_string(),
                     tag: tag.to_string(),
+                    needs: None,
                 },
             );
             state.arrived.push(tag.to_string());
@@ -3721,6 +3722,7 @@ fn holding_items(unit: &ReportUnit, state: &Working) -> Vec<ItemAmount> {
                     amount: entry.amount,
                     name: item.name.clone(),
                     tag: item.tag.clone(),
+                    needs: None,
                 })
         })
         .collect();
@@ -4516,6 +4518,7 @@ fn apply_transfers(
                             amount: offer.give_amount,
                             name,
                             tag,
+                            needs: None,
                         },
                     );
                     receiver.arrived.push(offer.give_tag.clone());
@@ -4637,6 +4640,7 @@ fn recruited_people(
             amount: *amount,
             name: entry.name.clone(),
             tag: entry.tag.clone(),
+            needs: None,
         });
     }
     Some(people)
@@ -5233,6 +5237,7 @@ impl PhaseState {
                         amount,
                         name,
                         tag: tag.clone(),
+                        needs: None,
                     });
             }
         }
@@ -9765,6 +9770,7 @@ fn produce(
                 amount: available,
                 name: item_name(&tag, hex, ruleset),
                 tag,
+                needs: None,
             });
         }
         ledger
@@ -10945,6 +10951,7 @@ fn cast(
                 amount: lends,
                 name: item_name(&tag, hex, ruleset),
                 tag,
+                needs: None,
             }),
         }
     }
@@ -21470,6 +21477,7 @@ mod tests {
                 amount: 5,
                 name: "wood elves".to_string(),
                 tag: "WELF".to_string(),
+                needs: None,
             },
         )]
         .into_iter()
@@ -28469,6 +28477,7 @@ mod tests {
                 amount,
                 name: name.to_string(),
                 tag: tag.to_string(),
+                needs: None,
             }
         }
 
@@ -29232,6 +29241,7 @@ BUILD
                     amount: 100,
                     name: "wood".to_string(),
                     tag: "WOOD".to_string(),
+                    needs: None,
                 }],
                 ..region(vec![with_skill(
                     with_skill(with_men(unit("900"), 10), "LUMB", 1),
@@ -29588,6 +29598,7 @@ BUILD Stockade
                     amount: 100,
                     name: "wood".to_string(),
                     tag: "WOOD".to_string(),
+                    needs: None,
                 }],
                 ..region(vec![
                     sharing(with_skill(with_men(unit("900"), 10), "LUMB", 1)),
@@ -29879,6 +29890,7 @@ BUILD
                     amount: 100,
                     name: "wood".to_string(),
                     tag: "WOOD".to_string(),
+                    needs: None,
                 }],
                 ..region(vec![
                     sharing(with_item(
@@ -33169,6 +33181,7 @@ BUILD
                 amount: 1,
                 name: "unfinished Cog".to_string(),
                 tag: "COG".to_string(),
+                needs: None,
             });
             with_ledger(hex_region, "unit 900\nMOVE N\n", |ledger| {
                 let left = ledger
@@ -33408,6 +33421,7 @@ BUILD
                 amount: 1,
                 name: "unfinished Cog".to_string(),
                 tag: "COG".to_string(),
+                needs: None,
             });
             with_ledger(hex_region, "unit 900\nBUILD\n", |ledger| {
                 assert_eq!(
@@ -34509,6 +34523,7 @@ BUILD
                     amount: 1,
                     name: "grain".to_string(),
                     tag: "GRAI".to_string(),
+                    needs: None,
                 }],
                 ..Default::default()
             },
@@ -34537,6 +34552,7 @@ BUILD
             amount,
             name: "silver".to_string(),
             tag: SILVER.to_string(),
+            needs: None,
         });
         unit
     }
@@ -34558,6 +34574,7 @@ BUILD
             amount,
             name: name.to_string(),
             tag: tag.to_string(),
+            needs: None,
         });
         unit
     }
@@ -34601,6 +34618,7 @@ BUILD
                     amount: men,
                     name: "human".to_string(),
                     tag: "HUMN".to_string(),
+                    needs: None,
                 }]
             },
         );
@@ -34625,6 +34643,7 @@ BUILD
                     amount: men,
                     name: name.to_string(),
                     tag: tag.to_string(),
+                    needs: None,
                 }]
             },
         );
@@ -41909,11 +41928,13 @@ BUILD
                             amount: 1,
                             name: "leader".to_string(),
                             tag: "LEAD".to_string(),
+                            needs: None,
                         },
                         ItemAmount {
                             amount: 5,
                             name: "human".to_string(),
                             tag: "HUMN".to_string(),
+                            needs: None,
                         },
                     ],
                 ),
@@ -42434,6 +42455,7 @@ BUILD
                 amount: count,
                 name: "leader".to_string(),
                 tag: "LEAD".to_string(),
+                needs: None,
             }],
         )
     }
@@ -45772,6 +45794,7 @@ BUILD
                 amount,
                 name: name.to_string(),
                 tag: race.to_string(),
+                needs: None,
             })
             .collect();
         with_men_grain(with_people(studying_unit(id, tag, level), people), men)
@@ -45877,6 +45900,7 @@ BUILD
                     amount: *amount,
                     name: (*name).to_string(),
                     tag: (*tag).to_string(),
+                    needs: None,
                 })
                 .collect();
             let subject = with_silver(
@@ -51766,6 +51790,7 @@ BUILD
                         amount: 1,
                         name: race.0.to_string(),
                         tag: race.1.to_string(),
+                        needs: None,
                     }],
                 )
             };
@@ -53185,6 +53210,7 @@ BUILD
                     amount: 3,
                     name: "humans".to_string(),
                     tag: "HUMN".to_string(),
+                    needs: None,
                 }],
             ))
         };
@@ -53359,16 +53385,19 @@ BUILD
                     amount: 40,
                     name: "grain".to_string(),
                     tag: "GRAI".to_string(),
+                    needs: None,
                 },
                 ItemAmount {
                     amount: 20,
                     name: "wood".to_string(),
                     tag: "WOOD".to_string(),
+                    needs: None,
                 },
                 ItemAmount {
                     amount: 10,
                     name: "furs".to_string(),
                     tag: "FUR".to_string(),
+                    needs: None,
                 },
             ],
             ..region(units)
@@ -55853,6 +55882,7 @@ BUILD
             amount,
             name: name.to_string(),
             tag: tag.to_string(),
+            needs: None,
         }]
     }
 
@@ -59365,6 +59395,7 @@ BUILD
             amount: 100,
             name: "stone".to_string(),
             tag: "STON".to_string(),
+            needs: None,
         }];
         let (report, mut orders) = passenger_palace(open_sea(vec![]), harbour, None);
         orders.push_str("unit 902\nPRODUCE stone\n");

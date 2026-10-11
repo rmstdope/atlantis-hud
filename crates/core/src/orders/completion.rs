@@ -1008,6 +1008,7 @@ mod tests {
             amount: men,
             name: String::new(),
             tag: tag.to_string(),
+            needs: None,
         }]
     }
 
@@ -1285,11 +1286,13 @@ mod tests {
                 amount: 4,
                 name: String::new(),
                 tag: "HUMN".to_string(),
+                needs: None,
             },
             ItemAmount {
                 amount: 2,
                 name: String::new(),
                 tag: "WELF".to_string(),
+                needs: None,
             },
         ];
 
@@ -1455,16 +1458,19 @@ mod tests {
                     amount: 57,
                     name: "grain".to_string(),
                     tag: "GRAI".to_string(),
+                    needs: None,
                 },
                 ItemAmount {
                     amount: 37,
                     name: "iron".to_string(),
                     tag: "IRON".to_string(),
+                    needs: None,
                 },
                 ItemAmount {
                     amount: 17,
                     name: "stone".to_string(),
                     tag: "STON".to_string(),
+                    needs: None,
                 },
             ],
             units: vec![unit_18642()],
@@ -1704,16 +1710,19 @@ mod tests {
                 amount: 1,
                 name: "sword".to_string(),
                 tag: "SWOR".to_string(),
+                needs: None,
             },
             ItemAmount {
                 amount: 150,
                 name: "silver".to_string(),
                 tag: "SILV".to_string(),
+                needs: None,
             },
             ItemAmount {
                 amount: 3,
                 name: "herbs".to_string(),
                 tag: "HERB".to_string(),
+                needs: None,
             },
         ];
         region.units = vec![unit];

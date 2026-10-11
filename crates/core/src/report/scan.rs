@@ -292,10 +292,21 @@ pub fn parse_settlement(input: &str) -> Option<Settlement> {
 
 /// Splits `230 crossbows [XBOW]` into its amount, name and tag.
 ///
-/// A bare `leader [LEAD]` means one.
+/// A bare `leader [LEAD]` means one. An unfinished ship's trailing `(needs 33)` - the engine's
+/// `Item::Report` form for one, giving the work still to do - is read into `needs` (`ah-uxmh`).
 #[must_use]
 pub fn parse_item_amount(input: &str) -> Option<ItemAmount> {
     let text = input.trim().trim_end_matches('.');
+    let (text, needs) = match text
+        .strip_suffix(')')
+        .and_then(|rest| rest.rsplit_once(" (needs "))
+    {
+        Some((item, needs)) => match needs.trim().parse::<i64>() {
+            Ok(needs) => (item.trim_end(), Some(needs)),
+            Err(_) => (text, None),
+        },
+        None => (text, None),
+    };
     let open = text.rfind('[')?;
     let close = text.rfind(']')?;
     if close < open {
@@ -315,7 +326,12 @@ pub fn parse_item_amount(input: &str) -> Option<ItemAmount> {
         return None;
     }
 
-    Some(ItemAmount { amount, name, tag })
+    Some(ItemAmount {
+        amount,
+        name,
+        tag,
+        needs,
+    })
 }
 
 /// Splits `138 grain [GRAI] at $24` into an item and its price.
@@ -574,6 +590,28 @@ mod tests {
 
         let many = parse_item_amount("230 crossbows [XBOW]").expect("item");
         assert_eq!((many.amount, many.name.as_str()), (230, "crossbows"));
+    }
+
+    /// The engine's `Item::Report` writes an unfinished ship as `unfinished <name> [<tag>] (needs
+    /// <num>)`, the work still to do (`ah-uxmh`). One ship, with what it still needs.
+    #[test]
+    fn reads_what_an_unfinished_ship_still_needs() {
+        let ship = parse_item_amount("unfinished Galleon [GALL] (needs 33)").expect("item");
+        assert_eq!(
+            ship,
+            ItemAmount {
+                amount: 1,
+                name: "unfinished Galleon".to_string(),
+                tag: "GALL".to_string(),
+                needs: Some(33),
+            }
+        );
+        assert_eq!(
+            parse_item_amount("230 crossbows [XBOW]")
+                .expect("item")
+                .needs,
+            None
+        );
     }
 
     #[test]

@@ -331,7 +331,14 @@ fn unit_line(unit: &ReportUnit) -> String {
         head.push_str(&format!(", {flag}"));
     }
     for item in &unit.items {
-        head.push_str(&format!(", {} {} [{}]", item.amount, item.name, item.tag));
+        match item.needs {
+            // The engine's `Item::Report` form for an unfinished ship, which `parse_item_amount`
+            // reads back (`ah-uxmh`).
+            Some(needs) => {
+                head.push_str(&format!(", {} [{}] (needs {needs})", item.name, item.tag));
+            }
+            None => head.push_str(&format!(", {} {} [{}]", item.amount, item.name, item.tag)),
+        }
     }
     head.push('.');
 
@@ -590,6 +597,37 @@ mod tests {
             })
             .contains("Combat spell"),
             "a unit with no spell writes no section at all"
+        );
+    }
+
+    /// An unfinished ship is written in the engine's own form, `unfinished Galleon [GALL] (needs
+    /// 33)`, so a reparse keeps what it still needs (`ah-uxmh`).
+    #[test]
+    fn writes_what_an_unfinished_ship_still_needs_so_a_reparse_reads_it_back() {
+        let ship = ItemAmount {
+            amount: 1,
+            name: "unfinished Galleon".to_string(),
+            tag: "GALL".to_string(),
+            needs: Some(33),
+        };
+        let unit = ReportUnit {
+            unit_id: "3173".to_string(),
+            name: "Shipbuilders".to_string(),
+            items: vec![ship.clone()],
+            ..ReportUnit::default()
+        };
+
+        let line = unit_line(&unit);
+
+        assert!(
+            line.contains(", unfinished Galleon [GALL] (needs 33)."),
+            "{line}"
+        );
+        assert_eq!(
+            parse_unit(&line, true, "1:7,53", None)
+                .expect("the written line parses")
+                .items,
+            vec![ship]
         );
     }
 

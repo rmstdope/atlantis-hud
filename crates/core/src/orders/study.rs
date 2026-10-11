@@ -210,6 +210,7 @@ mod tests {
             amount,
             name: String::new(),
             tag: tag.to_string(),
+            needs: None,
         }
     }
 

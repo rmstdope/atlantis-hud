@@ -3393,6 +3393,7 @@ impl Working {
                             name: name.clone(),
                             tag: tag.clone(),
                             amount: moved,
+                            needs: None,
                         }],
                         count_inferred: false,
                         arriving_skills: arriving,
@@ -4297,6 +4298,7 @@ fn add_item(items: &mut Vec<crate::report::model::ItemAmount>, name: &str, tag: 
             amount,
             name: name.to_string(),
             tag: tag.to_string(),
+            needs: None,
         });
     }
 }
