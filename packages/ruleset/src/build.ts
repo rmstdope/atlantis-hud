@@ -19,6 +19,7 @@ import {
   parseBuildingReference,
   parseItemReference,
   parseSkillReference,
+  shipBuildsOf,
   ungiveableItemsOf
 } from "./data";
 import {
@@ -176,6 +177,12 @@ export function buildRuleset(input: BuildInput): Ruleset {
   }
 
   applyFoodMaintenance(items, maintenance);
+
+  // A ship's recipe lives in the shipbuilding skill's BUILD sentences, not in its own entry
+  // (`ah-uxmh`), so it is written onto the ship once the items are known.
+  for (const [tag, build] of Object.entries(shipBuildsOf(input.dataHtml, items))) {
+    items[tag].shipBuild = build;
+  }
 
   // A world without the coastal-water paragraph still swims when its catalogue says something
   // can carry in the water - New Origins' giant turtles and lizardmen (ah-on09). The scraped

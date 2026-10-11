@@ -80,6 +80,7 @@ mod tests {
             amount,
             name: tag.to_lowercase(),
             tag: tag.to_string(),
+            needs: None,
         }
     }
 

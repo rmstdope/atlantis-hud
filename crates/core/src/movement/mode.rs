@@ -976,6 +976,7 @@ mod tests {
                 amount: 1,
                 name: "horse".to_string(),
                 tag: "HORS".to_string(),
+                needs: None,
             }],
             ..Default::default()
         };
@@ -986,6 +987,7 @@ mod tests {
                 amount: 1,
                 name: "unknown".to_string(),
                 tag: "ZZZZ".to_string(),
+                needs: None,
             }],
             ..Default::default()
         };
@@ -999,6 +1001,7 @@ mod tests {
                 amount: *amount,
                 name: tag.to_lowercase(),
                 tag: (*tag).to_string(),
+                needs: None,
             })
             .collect()
     }
@@ -1074,11 +1077,13 @@ mod tests {
                     amount: 50,
                     name: "lizardmen".to_string(),
                     tag: "LIZA".to_string(),
+                    needs: None,
                 },
                 crate::report::model::ItemAmount {
                     amount: 7500,
                     name: "silver".to_string(),
                     tag: "SILV".to_string(),
+                    needs: None,
                 },
             ],
             ..Default::default()
@@ -1103,11 +1108,13 @@ mod tests {
                     amount: men,
                     name: "lizardmen".to_string(),
                     tag: "LIZA".to_string(),
+                    needs: None,
                 },
                 crate::report::model::ItemAmount {
                     amount: 1,
                     name: "giant turtle".to_string(),
                     tag: "TURT".to_string(),
+                    needs: None,
                 },
             ],
             ..Default::default()
@@ -1138,6 +1145,7 @@ mod tests {
                 amount: 1,
                 name: "leader".to_string(),
                 tag: "LEAD".to_string(),
+                needs: None,
             }],
             ..Default::default()
         };
@@ -1153,6 +1161,7 @@ mod tests {
                 amount: 1,
                 name: "lizardman".to_string(),
                 tag: "LIZA".to_string(),
+                needs: None,
             }],
             ..Default::default()
         };
@@ -1178,16 +1187,19 @@ mod tests {
                     amount: 1,
                     name: "leader".to_string(),
                     tag: "LEAD".to_string(),
+                    needs: None,
                 },
                 crate::report::model::ItemAmount {
                     amount: 1,
                     name: "giant turtle".to_string(),
                     tag: "TURT".to_string(),
+                    needs: None,
                 },
                 crate::report::model::ItemAmount {
                     amount: 4,
                     name: "wood".to_string(),
                     tag: "WOOD".to_string(),
+                    needs: None,
                 },
             ],
             ..Default::default()
@@ -1211,11 +1223,13 @@ mod tests {
                     amount: 1,
                     name: "lizardman".to_string(),
                     tag: "LIZA".to_string(),
+                    needs: None,
                 },
                 crate::report::model::ItemAmount {
                     amount: 1,
                     name: "unknown".to_string(),
                     tag: "ZZZZ".to_string(),
+                    needs: None,
                 },
             ],
             ..Default::default()
@@ -1983,6 +1997,7 @@ mod tests {
             amount,
             name: tag.to_ascii_lowercase(),
             tag: tag.to_string(),
+            needs: None,
         }
     }
 

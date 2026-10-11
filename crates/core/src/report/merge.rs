@@ -387,6 +387,7 @@ mod tests {
             amount: 1,
             name: name.to_owned(),
             tag: name.to_uppercase(),
+            needs: None,
         }
     }
 

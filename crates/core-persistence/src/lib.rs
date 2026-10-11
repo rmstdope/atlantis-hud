@@ -3381,6 +3381,7 @@ mod tests {
                 amount: 57,
                 name: "grain".to_string(),
                 tag: "GRAI".to_string(),
+                needs: None,
             }],
             skills: vec![Skill {
                 name: "combat".to_string(),
@@ -3553,6 +3554,7 @@ mod tests {
                     amount: 1,
                     name: "leader".to_string(),
                     tag: "LEAD".to_string(),
+                    needs: None,
                 }],
                 skills: vec![Skill {
                     name: "force".to_string(),

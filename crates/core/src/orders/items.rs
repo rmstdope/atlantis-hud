@@ -112,6 +112,7 @@ mod tests {
                 amount: *amount,
                 name: (*name).to_string(),
                 tag: (*tag).to_string(),
+                needs: None,
             })
             .collect()
     }

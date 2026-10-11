@@ -2798,7 +2798,21 @@
       "sailingSkill": 10,
       "mages": 2,
       "description": "This is a flying 'ship' with a capacity of 800 and a speed of 4 hexes per month. This ship requires a total of 10 levels of sailing skill to sail. This ship will allow up to 2 mages to study above level 2.",
-      "moves": 4
+      "moves": 4,
+      "shipBuild": {
+        "inputs": [
+          {
+            "tag": "FLOA",
+            "amount": 60
+          },
+          {
+            "tag": "WOOD",
+            "amount": 60
+          }
+        ],
+        "skill": "SHIP",
+        "level": 5
+      }
     },
     "BALL": {
       "tag": "BALL",
@@ -2821,7 +2835,17 @@
       "sailingSkill": 3,
       "mages": 1,
       "description": "This is a flying 'ship' with a capacity of 100 and a speed of 4 hexes per month. This ship requires a total of 3 levels of sailing skill to sail. This ship will allow one mage to study above level 2.",
-      "moves": 4
+      "moves": 4,
+      "shipBuild": {
+        "inputs": [
+          {
+            "tag": "FLOA",
+            "amount": 20
+          }
+        ],
+        "skill": "SHIP",
+        "level": 4
+      }
     },
     "CLOU": {
       "tag": "CLOU",
@@ -2867,7 +2891,17 @@
       "sailingSkill": 6,
       "mages": 0,
       "description": "This is a ship with a capacity of 750 and a speed of 4 hexes per month. This ship requires a total of 6 levels of sailing skill to sail.",
-      "moves": 4
+      "moves": 4,
+      "shipBuild": {
+        "inputs": [
+          {
+            "tag": "WOOD",
+            "amount": 25
+          }
+        ],
+        "skill": "SHIP",
+        "level": 2
+      }
     },
     "CORS": {
       "tag": "CORS",
@@ -2890,7 +2924,17 @@
       "sailingSkill": 15,
       "mages": 0,
       "description": "This is a ship with a capacity of 1500 and a speed of 5 hexes per month. This ship requires a total of 15 levels of sailing skill to sail.",
-      "moves": 5
+      "moves": 5,
+      "shipBuild": {
+        "inputs": [
+          {
+            "tag": "WOOD",
+            "amount": 50
+          }
+        ],
+        "skill": "SHIP",
+        "level": 4
+      }
     },
     "GALL": {
       "tag": "GALL",
@@ -2913,7 +2957,17 @@
       "sailingSkill": 15,
       "mages": 1,
       "description": "This is a ship with a capacity of 2700 and a speed of 4 hexes per month. This ship requires a total of 15 levels of sailing skill to sail. This ship will allow one mage to study above level 2.",
-      "moves": 4
+      "moves": 4,
+      "shipBuild": {
+        "inputs": [
+          {
+            "tag": "WOOD",
+            "amount": 75
+          }
+        ],
+        "skill": "SHIP",
+        "level": 3
+      }
     },
     "GLLY": {
       "tag": "GLLY",
@@ -2936,7 +2990,17 @@
       "sailingSkill": 12,
       "mages": 2,
       "description": "This is a ship with a capacity of 1200 and a speed of 4 hexes per month. This ship requires a total of 12 levels of sailing skill to sail. This ship provides defense to the first 120 men inside it, giving a defensive bonus of 2 against melee attacks, 2 against energy attacks, 2 against spirit attacks, 2 against weather attacks, 2 against riding attacks and 2 against ranged attacks. This ship will allow up to 2 mages to study above level 2.",
-      "moves": 4
+      "moves": 4,
+      "shipBuild": {
+        "inputs": [
+          {
+            "tag": "IRWD",
+            "amount": 50
+          }
+        ],
+        "skill": "SHIP",
+        "level": 3
+      }
     },
     "LONG": {
       "tag": "LONG",
@@ -2959,7 +3023,17 @@
       "sailingSkill": 4,
       "mages": 0,
       "description": "This is a ship with a capacity of 150 and a speed of 4 hexes per month. This ship requires a total of 4 levels of sailing skill to sail.",
-      "moves": 4
+      "moves": 4,
+      "shipBuild": {
+        "inputs": [
+          {
+            "tag": "WOOD",
+            "amount": 10
+          }
+        ],
+        "skill": "SHIP",
+        "level": 1
+      }
     },
     "RAFT": {
       "tag": "RAFT",
@@ -2982,7 +3056,17 @@
       "sailingSkill": 2,
       "mages": 0,
       "description": "This is a ship with a capacity of 450 and a speed of 2 hexes per month. This ship requires a total of 2 levels of sailing skill to sail.",
-      "moves": 2
+      "moves": 2,
+      "shipBuild": {
+        "inputs": [
+          {
+            "tag": "WOOD",
+            "amount": 10
+          }
+        ],
+        "skill": "SHIP",
+        "level": 1
+      }
     },
     "ANAC": {
       "tag": "ANAC",

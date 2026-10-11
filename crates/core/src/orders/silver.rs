@@ -5036,6 +5036,7 @@ fn pooled_materials(
                 amount: material.amount,
                 name: name_of(&material.tag),
                 tag: material.tag.to_ascii_uppercase(),
+                needs: None,
             }),
         }
     }
@@ -5569,6 +5570,7 @@ pub fn plan_production(
                 amount: made * input.amount,
                 name: input.tag.clone(),
                 tag: input.tag.clone(),
+                needs: None,
             })
             .collect(),
         capped_by,
@@ -5593,6 +5595,7 @@ fn subtract_running(
             amount: -amount,
             name: name_of(tag),
             tag: tag.to_ascii_uppercase(),
+            needs: None,
         }),
     }
 }
@@ -5893,6 +5896,7 @@ pub fn plan_cast(cost: &CastCost, caster: &Caster<'_>, level: i64) -> CastPlan {
                     amount: charged * amount,
                     name: tag.clone(),
                     tag: tag.clone(),
+                    needs: None,
                 })
                 .collect()
         } else {
@@ -5922,6 +5926,7 @@ mod production_tests {
                 amount: *amount,
                 name: tag.to_lowercase(),
                 tag: (*tag).to_string(),
+                needs: None,
             })
             .collect()
     }
@@ -6725,6 +6730,7 @@ mod cast_tests {
                 amount: *amount,
                 name: tag.to_lowercase(),
                 tag: (*tag).to_string(),
+                needs: None,
             })
             .collect()
     }
@@ -7085,6 +7091,7 @@ mod tests {
                 amount,
                 name: tag.to_ascii_lowercase(),
                 tag: tag.to_string(),
+                needs: None,
             }
         }
 
@@ -7116,6 +7123,7 @@ mod tests {
                         amount: 20,
                         name: "a iron".to_string(),
                         tag: "IRON".to_string(),
+                        needs: None,
                     }
                 ],
                 "a smith carrying no iron of its own may still forge from the hex's"
@@ -7130,6 +7138,7 @@ mod tests {
                     amount: 20,
                     name: "iron".to_string(),
                     tag: "iron".to_string(),
+                    needs: None,
                 }],
                 "one entry, raised - not a second one beside it"
             );
@@ -7820,6 +7829,7 @@ mod tests {
             amount: 20,
             name: "iron".into(),
             tag: "IRON".into(),
+            needs: None,
         }];
         let smith = [skill("WEAP", 1)];
         let unit = forecast_unit(
@@ -7871,6 +7881,7 @@ mod tests {
             amount: 20,
             name: "iron".into(),
             tag: "IRON".into(),
+            needs: None,
         }];
         let smith = [skill("WEAP", 1)];
         let rules = ruleset();
@@ -8116,6 +8127,7 @@ mod tests {
             amount: 20,
             name: "iron".into(),
             tag: "IRON".into(),
+            needs: None,
         }];
         let smith = [skill("WEAP", 1)];
         let unit = forecast_unit(
@@ -8155,6 +8167,7 @@ mod tests {
             amount: 20,
             name: "iron".into(),
             tag: "IRON".into(),
+            needs: None,
         }];
         let unit = forecast_unit(
             UnitFacts {
@@ -9701,6 +9714,7 @@ mod tests {
             amount,
             name: tag.to_lowercase(),
             tag: tag.to_string(),
+            needs: None,
         }
     }
 
@@ -10045,6 +10059,7 @@ mod tests {
             amount: 60,
             name: "gnoll".to_string(),
             tag: "GNOL".to_string(),
+            needs: None,
         }];
         let at_the_top = [skill("COMB", 5)];
         let below = [skill("COMB", 4)];
@@ -10104,6 +10119,7 @@ mod tests {
             amount: 60,
             name: "gnoll".to_string(),
             tag: "GNOL".to_string(),
+            needs: None,
         }];
         // At combat's ceiling, and below observation's: one study is free, the other is not.
         let skills = [skill("COMB", 5), skill("OBSE", 1)];
@@ -10153,6 +10169,7 @@ mod tests {
             amount: 60,
             name: "gnoll".to_string(),
             tag: "GNOL".to_string(),
+            needs: None,
         }];
         let skills = [skill("COMB", 5)];
         let intents = [
@@ -10585,6 +10602,7 @@ mod combat_ready_tests {
             amount,
             name: tag.to_lowercase(),
             tag: tag.to_string(),
+            needs: None,
         }
     }
 

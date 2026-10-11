@@ -451,9 +451,17 @@ export function itemCauseSentence(
    */
   people?: boolean
 ): string | undefined {
+  // A ship this month's building finishes has its own agreed words, which are a sentence of their
+  // own rather than a clause after the item's name (`ah-2ql5` mockup 6a, `ah-uxmh`).
+  if (changes.length > 0 && changes.every((change) => change.cause === "ship-finished")) {
+    return SHIP_FINISHED_NOTE;
+  }
   const clauses = changes.map((change) => itemCauseClause(change, unit, people === true));
   return clauses.length === 0 ? undefined : `${label}: ${clauses.join(", ")}.`;
 }
+
+/** The Items hover's note for a ship this month's building finishes (`ah-2ql5`, the agreed words). */
+const SHIP_FINISHED_NOTE = "Finished this month: becomes a ship.";
 
 /** The other unit of a movement, as `ah-rgkk.2.3` settled it: `Scouts (1502)`, or `unit 1502`. */
 function party(other: ItemChangeParty): string {
@@ -498,6 +506,9 @@ function itemCauseClause(change: ItemChange, unit: PreviewedUnit, people: boolea
       return `received ${n}${change.other ? ` from ${party(change.other)}` : ""}`;
     case "abandoned":
       return "left behind, unfinished, when the unit leaves the hex";
+    // Alone, a finished ship reads `SHIP_FINISHED_NOTE` instead; this is its part of a longer list.
+    case "ship-finished":
+      return "finished this month";
     case "given-away":
       // `ah-rgkk.3.2` reserves a null party for a GIVE to a foreign faction that names no unit.
       return change.other ? `gave ${n} to ${party(change.other)}` : `gave ${n} to another faction`;

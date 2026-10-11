@@ -36,6 +36,12 @@ pub struct ItemAmount {
     pub amount: i64,
     pub name: String,
     pub tag: String,
+    /// The work an unfinished ship still needs, as the report prints it after the tag -
+    /// `unfinished Galleon [GALL] (needs 33)` (`ah-uxmh`). `None` for every other item, and for a
+    /// payload persisted before the field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub needs: Option<i64>,
 }
 
 /// An item offered or sought in a market, as in `138 grain [GRAI] at $24`.

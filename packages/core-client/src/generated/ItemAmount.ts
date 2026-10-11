@@ -3,4 +3,10 @@
 /**
  * A quantity of one item, as in `57 grain [GRAI]`.
  */
-export type ItemAmount = { amount: number, name: string, tag: string, };
+export type ItemAmount = { amount: number, name: string, tag: string, 
+/**
+ * The work an unfinished ship still needs, as the report prints it after the tag -
+ * `unfinished Galleon [GALL] (needs 33)` (`ah-uxmh`). `None` for every other item, and for a
+ * payload persisted before the field existed.
+ */
+needs?: number, };
