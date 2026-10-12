@@ -249,6 +249,67 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   await expect(page.getByTestId(`study-schedule-cell-${MAGE}-73`)).toContainText("—");
 });
 
+// ah-9qdz.2: the cast half under a turn - reached with ↓, opened with ↵, chosen from its own list,
+// and kept across a reload. Six of Seven knows fire (`data/FIRE`: combat) and bird lore, so every
+// one of his turns has a half. Focus and the walk are what `packages/shared` cannot reach.
+test("a cast is planned under a turn from the keyboard, and survives a reload", async ({ page }) => {
+  await loadReport(page);
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  const half = page.getByTestId(`study-schedule-cast-${MAGE}-72`);
+  await expect(half).toHaveText("✦ no cast");
+
+  await cell.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(half).toBeFocused();
+  await page.keyboard.press("Enter");
+
+  const popover = page.getByTestId("study-schedule-cast-popover");
+  await expect(popover).toContainText("Six of Seven casts");
+  await expect(popover.getByText("Turn 72", { exact: true })).toBeVisible();
+  // Nothing is planned, so `— no cast` is the ticked row and focus opens on it.
+  await expect(page.getByTestId("study-schedule-cast-choice-none")).toBeFocused();
+  // Automatic spells and the foundations are never offered.
+  await expect(page.getByTestId("study-schedule-cast-choice-FORC")).toHaveCount(0);
+
+  const fire = page.getByTestId("study-schedule-cast-choice-FIRE");
+  await expect(fire).toContainText("· combat");
+  const rows = await popover.locator("[data-row]").count();
+  for (let step = 0; step < rows; step += 1) {
+    if (await fire.evaluate((node) => node === document.activeElement)) {
+      break;
+    }
+    await page.keyboard.press("ArrowDown");
+  }
+  await expect(fire).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(popover).toHaveCount(0);
+  await expect(half).toHaveText("⚔ FIRE");
+  // Focus comes back to the half the list hung off.
+  await expect(half).toBeFocused();
+
+  // Reopened, it ticks what is stored; Escape closes it with nothing changed.
+  await page.keyboard.press("Enter");
+  await expect(fire).toHaveAttribute("aria-pressed", "true");
+  await expect(fire).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(popover).toHaveCount(0);
+  await expect(half).toHaveText("⚔ FIRE");
+  await expect(half).toBeFocused();
+  // ↑ from the half goes back to the study above it.
+  await page.keyboard.press("ArrowUp");
+  await expect(cell).toBeFocused();
+
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+  await expect(page.getByTestId(`study-schedule-cast-${MAGE}-72`)).toHaveText("⚔ FIRE");
+  await expect(page.getByTestId(`study-schedule-cast-${MAGE}-73`)).toHaveText("✦ no cast");
+});
+
 test("a dropdown moved to a second cell keeps focus inside itself", async ({ page }) => {
   await loadReport(page);
 
@@ -262,7 +323,9 @@ test("a dropdown moved to a second cell keeps focus inside itself", async ({ pag
   // Shift+Tab walks backwards through the dropdown's own rows before it leaves them, so it is
   // pressed until focus is on a grid cell rather than exactly once. There is no focus trap -
   // `dismissLayer.ts` handles Escape alone - which is what makes this route reachable at all.
-  const focused = page.locator("[data-cell]:focus");
+  // A study cell, not a cast half (ah-9qdz.2): the last button of the grid can be a cast half,
+  // and Enter there opens the cast list - a different dropdown from the one this follows.
+  const focused = page.locator('[data-cell]:not([data-cell$=":cast"]):focus');
   const rows = await page.locator("[data-row]").count();
   for (let step = 0; step < rows + 2; step += 1) {
     if ((await focused.count()) === 1) {
