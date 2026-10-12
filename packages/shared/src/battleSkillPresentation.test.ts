@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { aReportUnit, type StudyForecast } from "@atlantis/core-client";
+import { aReportUnit, type ReportUnit, type StudyForecast } from "@atlantis/core-client";
 
 import { battleSkillGroups, battleSkillSource, unitSkillsCell, type BattleSkillGroup } from "./battleSkillPresentation";
 import { NO_DERIVED_SKILLS, withRosterSkills, type DerivedSkill } from "./battleSkills";
+import { filterUnits } from "./unitTable";
 
 const OCEAN = { x: 25, y: 55, z: 1 };
 
@@ -75,6 +76,18 @@ describe("unitSkillsCell", () => {
     };
 
     expect(unitSkillsCell(unit, NO_DERIVED_SKILLS)).toBe("COMB 3 (180), RIDI 1 (30)");
+  });
+
+  it("the table filter finds a studying unit by next month's figures (ah-uxlh)", () => {
+    const unit = {
+      ...aReportUnit({ skills: [{ name: "combat", tag: "COMB", level: 2, points: 150 }] }),
+      study: aStudy({ tag: "COMB", name: "combat", levelBefore: 2, pointsBefore: 150, levelAfter: 3, pointsAfter: 180 })
+    };
+    // As the table calls it: typed as a report unit, carrying the preview's `study` at run time.
+    const cell = (shown: ReportUnit) => unitSkillsCell(shown, NO_DERIVED_SKILLS);
+
+    expect(filterUnits([unit], "COMB 3", new Map(), cell)).toEqual([unit]);
+    expect(filterUnits([unit], "COMB 2", new Map(), cell)).toEqual([]);
   });
 
   it("an own unit with no skills that studies its first prints that skill (ah-uxlh)", () => {

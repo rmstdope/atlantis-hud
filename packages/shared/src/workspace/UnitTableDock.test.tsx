@@ -1283,7 +1283,7 @@ describe("what the skills column marks (ah-z73s.1, ah-qig3)", () => {
     });
 
     it("lays the study on top of figures a GIVE of men already merged", () => {
-      const merged = [{ name: "combat", tag: "COMB", level: 2, points: 120 }];
+      const merged = [{ name: "combat", tag: "COMB", level: 2, points: 100 }];
       const markup = draw(
         hex({ region: region({ units: [unit({ unitId: "1", skills: merged })] }) }),
         previewOf(
@@ -1291,12 +1291,13 @@ describe("what the skills column marks (ah-z73s.1, ah-qig3)", () => {
           {
             changes: [{ field: "skills", original: "COMB 2 (150)" }],
             reportedSkills: [{ name: "combat", tag: "COMB", level: 2, points: 150 }],
-            study: { ...STUDYING_COMBAT, levelBefore: 2, pointsBefore: 120, levelAfter: 2, pointsAfter: 150 }
+            study: { ...STUDYING_COMBAT, levelBefore: 2, pointsBefore: 100, levelAfter: 2, pointsAfter: 130 }
           }
         )
       );
 
-      expect(markup).toContain(">COMB 2 (150)<");
+      // Neither the report's 150 nor the merged 100: the merged figures with the study on top.
+      expect(markup).toContain(">COMB 2 (130)<");
       expect(markup).toContain("italic text-brass");
     });
   });

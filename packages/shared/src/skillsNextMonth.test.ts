@@ -85,6 +85,34 @@ describe("skillsNextMonth (ah-uxlh)", () => {
     expect(skillsNextMonth(held, taughtInDoubt)).toEqual([skill("COMB", 3, 180), skill("RIDI", 1, 30)]);
   });
 
+  it.each(["feeUnpriced", "headcountEstimated", "shelterUnknown"] as const)(
+    "applies the forecast's figures under a %s doubt, as the popup's blue figure does",
+    (reason) => {
+      const doubted = study({
+        levelBefore: 2,
+        pointsBefore: 150,
+        levelAfter: 3,
+        pointsAfter: 180,
+        doubts: [{ reason, fee: 0, shortBy: 0, teacher: "" }]
+      });
+      expect(skillsNextMonth(held, doubted)).toEqual([skill("COMB", 3, 180), skill("RIDI", 1, 30)]);
+    }
+  );
+
+  it("keeps today's figures when a fee shortfall comes alongside another doubt (D2)", () => {
+    const doubted = study({
+      levelBefore: 2,
+      pointsBefore: 150,
+      levelAfter: 3,
+      pointsAfter: 180,
+      doubts: [
+        { reason: "teacherUnsettled", fee: 0, shortBy: 0, teacher: "Masters (12)" },
+        { reason: "feeShort", fee: 100, shortBy: 40, teacher: "" }
+      ]
+    });
+    expect(skillsNextMonth(held, doubted)).toBe(held);
+  });
+
   it("changes nothing for a study already at its ceiling", () => {
     expect(
       skillsNextMonth(
