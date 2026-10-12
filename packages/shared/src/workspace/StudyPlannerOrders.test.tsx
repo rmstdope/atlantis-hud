@@ -17,7 +17,9 @@ const orders: StudyOrders = {
       text: "; Borg TNG (95) — study orders for turn 72, from Atlantis HUD",
       fileName: "study-orders-Borg-TNG-(95)-turn-72.txt",
       source: "own",
-      entries: []
+      entries: [],
+      hasCast: false,
+      withheld: null
     },
     {
       factionId: "17",
@@ -25,7 +27,9 @@ const orders: StudyOrders = {
       text: "; Creeping Death (17) — study orders for turn 72, from Atlantis HUD",
       fileName: "study-orders-Creeping-Death-(17)-turn-72.txt",
       source: "sheet",
-      entries: []
+      entries: [],
+      hasCast: false,
+      withheld: null
     }
   ],
   summary: "Orders for turn 72 — 2 mages studying",
@@ -142,11 +146,13 @@ describe("StudyPlannerOrders", () => {
 
 const writePlan: StudyWritePlan = {
   rows: [
-    { unitId: "1234", who: "Ereb (1234)", detail: "STUDY FORC 4", writes: true }
+    { unitId: "1234", who: "Ereb (1234)", detail: "STUDY FORC 4", writes: true, cast: null }
   ],
   next: "next",
   changed: 1,
   replaced: 0,
+  casts: 0,
+  warning: null,
   lead: "1 unit changes. Nothing else in the document is touched, and you can undo it afterwards.",
   resultText: "Wrote study orders for 1 mage."
 };
@@ -208,5 +214,90 @@ describe("StudyPlannerOrders — put into my orders", () => {
     });
     expect(spent).toContain('data-testid="study-planner-write-notice"');
     expect(spent).not.toContain("study-planner-write-undo");
+  });
+});
+
+/** ah-9qdz.4: the one "Also write the casts" tick, on every heading whose section has a cast. */
+describe("StudyPlannerOrders — also write the casts", () => {
+  const withCast = {
+    ...orders,
+    sections: orders.sections.map((section) =>
+      section.factionId === "17" ? { ...section, hasCast: true } : section
+    )
+  };
+  const box = (html: string, factionId: string) => {
+    const at = html.indexOf(`data-testid="study-planner-write-casts-${factionId}"`);
+    return at < 0 ? null : html.slice(html.lastIndexOf("<input", at), html.indexOf(">", at) + 1);
+  };
+
+  it("only_a_section_with_a_cast_has_the_box", () => {
+    const html = drawWith({ orders: withCast });
+    expect(box(html, "95")).toBeNull();
+    expect(box(html, "17")).not.toBeNull();
+    expect(html).toContain("Also write the casts");
+    expect(drawWith()).not.toContain("Also write the casts");
+  });
+
+  it("the_box_is_ticked_from_the_prop", () => {
+    expect(box(drawWith({ orders: withCast, writeCasts: true }), "17")).toContain("checked=\"\"");
+    expect(box(drawWith({ orders: withCast, writeCasts: false }), "17")).not.toContain("checked=\"\"");
+  });
+
+  it("the_box_is_disabled_while_the_confirmation_stands", () => {
+    expect(box(drawWith({ orders: withCast, asking: true }), "17")).toContain("disabled=\"\"");
+    expect(box(drawWith({ orders: withCast, asking: false }), "17")).not.toContain("disabled=\"\"");
+  });
+
+  it("the_box_comes_before_put_into_my_orders", () => {
+    const own = {
+      ...orders,
+      sections: orders.sections.map((section) => ({ ...section, hasCast: true }))
+    };
+    const html = drawWith({ orders: own });
+    const section = html.slice(html.indexOf('data-testid="study-planner-orders-95"'));
+    expect(section.indexOf("study-planner-write-casts-95")).toBeLessThan(
+      section.indexOf('data-testid="study-planner-write"')
+    );
+  });
+});
+
+/** ah-9qdz.4, mockup section 6: unticked, a section with casts but no study or teach. */
+describe("StudyPlannerOrders — a withheld section", () => {
+  const line = "No mage studies or teaches on turn 72. Tick Also write the casts to write the 2 planned casts.";
+  const withheld = {
+    ...orders,
+    sections: orders.sections.map((section) =>
+      section.factionId === "95" ? { ...section, hasCast: true, withheld: { casts: 2 }, text: line } : section
+    )
+  };
+  const own = (html: string) =>
+    html.slice(html.indexOf('data-testid="study-planner-orders-95"'), html.indexOf('data-testid="study-planner-orders-17"'));
+
+  it("draws_the_line_in_place_of_the_text_with_the_box_name_in_ink", () => {
+    const section = own(drawWith({ orders: withheld, writePlan: null, writeCasts: false }));
+    expect(section).toContain('data-testid="study-planner-orders-withheld-95"');
+    expect(section).not.toContain("<pre");
+    expect(section).toContain(
+      'No mage studies or teaches on turn 72. Tick <span class="text-ink">Also write the casts</span> to write the 2 planned casts.'
+    );
+    expect(section).toContain("study-planner-write-casts-95");
+  });
+
+  it("greys_copy_save_and_put", () => {
+    const section = own(drawWith({ orders: withheld, writePlan: null, writeCasts: false }));
+    expect(section).toMatch(/data-testid="study-planner-write"[^>]*disabled/);
+    expect(section).toMatch(/study-planner-copy-95"[^>]*disabled|disabled[^>]*study-planner-copy-95"/);
+    expect(section).toMatch(/study-planner-save-95"[^>]*disabled|disabled[^>]*study-planner-save-95"/);
+  });
+
+  it("leaves_a_withheld_sheet_section_without_put", () => {
+    const sheet = {
+      ...orders,
+      sections: orders.sections.map((section) =>
+        section.factionId === "17" ? { ...section, hasCast: true, withheld: { casts: 1 }, text: line } : section
+      )
+    };
+    const html = drawWith({ orders: sheet, writePlan: null, writeCasts: false });
+    expect(html.split('data-testid="study-planner-orders-17"')[1]).not.toContain("study-planner-write\"");
   });
 });

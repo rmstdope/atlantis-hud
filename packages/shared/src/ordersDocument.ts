@@ -1081,6 +1081,33 @@ export function longOrderOf(
 }
 
 /**
+ * Every one of the unit's own lines that issues one of `keywords`, in order - `longOrderOf` for
+ * any set of commands. A nested `FORM` or `TURN` block's lines are never among them ({@link atTopLevel}).
+ */
+export function ownOrders(
+  orders: string,
+  keywords: readonly string[],
+  syntax: OrderCommentSyntax
+): string[] {
+  const own = atTopLevel(orders, syntax);
+  return orders
+    .split("\n")
+    .filter((line, index) => own[index] === true && isCommand(line, keywords, syntax));
+}
+
+/**
+ * The orders with every one of the unit's own lines that issues one of `keywords` removed -
+ * `stripLongOrderLines` for any set of commands, nested blocks left exactly as they were.
+ */
+export function stripOwnOrders(
+  orders: string,
+  keywords: readonly string[],
+  syntax: OrderCommentSyntax
+): string {
+  return stripOwnOrderLines(orders, keywords, syntax);
+}
+
+/**
  * What the report's own orders template said this unit would spend the month on.
  *
  * Three answers rather than a nullable string, because "the report had no long order for this

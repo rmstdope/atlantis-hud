@@ -22,7 +22,9 @@ export function StudyPlannerOrders({
   onAskWrite,
   onConfirmWrite,
   onCancelWrite,
-  onUndoWrite
+  onUndoWrite,
+  writeCasts = true,
+  onWriteCastsChange = () => {}
 }: {
   orders: StudyOrders;
   /**
@@ -45,6 +47,9 @@ export function StudyPlannerOrders({
   onConfirmWrite: () => void;
   onCancelWrite: () => void;
   onUndoWrite: () => void;
+  /** "Also write the casts" (ah-9qdz.4): one tick for the whole tab, drawn on every heading whose section has a cast. */
+  writeCasts?: boolean;
+  onWriteCastsChange?: (writeCasts: boolean) => void;
 }) {
   return (
     <div data-testid="study-planner-orders" className="min-h-0 overflow-auto p-3">
@@ -101,22 +106,42 @@ export function StudyPlannerOrders({
           )}
         </div>
       ) : (
-        orders.sections.map((section, index) => (
+        orders.sections.map((section, index) => {
+          // Unticked with casts but no study or teach (ah-9qdz.4, mockup section 6): nothing here
+          // is orders, so Copy, Save… and Put are greyed rather than offering a file of comments.
+          const greyed = asking || section.withheld !== null;
+          return (
           <section
             key={section.factionId}
             data-testid={`study-planner-orders-${section.factionId}`}
             className={`${index === 0 ? "" : "mt-3"} rounded border border-brass/60 bg-panel-raised`}
           >
-            <div className="flex items-center gap-2 border-b border-brass/60 bg-brass/10 px-2 py-1">
+            <div className="flex flex-wrap items-center gap-2 border-b border-brass/60 bg-brass/10 px-2 py-1">
               <span className="text-brass">{section.heading}</span>
-              <span className="flex-1" />
+              {/* One group, pushed right, so on a narrow window the controls wrap onto a second
+                  line together rather than one at a time. */}
+              <span className="ml-auto flex items-center gap-2">
+              {/* Absent, not greyed, with no cast planned in this section (ah-9qdz.4). */}
+              {section.hasCast ? (
+                <label className="flex items-center gap-1 text-ink-soft">
+                  <input
+                    type="checkbox"
+                    data-testid={`study-planner-write-casts-${section.factionId}`}
+                    checked={writeCasts}
+                    disabled={asking}
+                    onChange={(event) => onWriteCastsChange(event.target.checked)}
+                    className="accent-brass disabled:opacity-50"
+                  />
+                  Also write the casts
+                </label>
+              ) : null}
               {/* Absent, not greyed, when nothing of yours can be written: a heading button that
                   exists in one condition only, beside a body that already says why. */}
-              {section.source === "own" && writePlan !== null ? (
+              {section.source === "own" && (writePlan !== null || section.withheld !== null) ? (
                 <button
                   type="button"
                   data-testid="study-planner-write"
-                  disabled={asking}
+                  disabled={greyed}
                   onClick={onAskWrite}
                   className="rounded border border-brass px-1.5 text-brass hover:bg-brass/10 disabled:border-edge disabled:text-ink-dim disabled:opacity-50"
                 >
@@ -127,29 +152,57 @@ export function StudyPlannerOrders({
                 text={section.text}
                 label="Copy"
                 testId={`study-planner-copy-${section.factionId}`}
-                disabled={asking}
+                disabled={greyed}
                 className="rounded border border-select px-1.5 text-select hover:bg-select/15 disabled:border-edge disabled:text-ink-dim disabled:opacity-50"
               />
               <button
                 type="button"
                 data-testid={`study-planner-save-${section.factionId}`}
-                disabled={asking}
+                disabled={greyed}
                 onClick={() => onSaveText(section.fileName, section.text)}
                 className="rounded border border-brass px-1.5 text-brass hover:bg-brass/10 disabled:border-edge disabled:text-ink-dim disabled:opacity-50"
               >
                 Save…
               </button>
+              </span>
             </div>
             {/* `whitespace-pre` and a sideways scroller, not wrapping: the comment column is the
                 whole point of the chosen format, and a wrapped order line reads as two orders. */}
-            <div className="p-2">
-              <pre className="m-0 overflow-x-auto rounded border border-edge bg-panel p-2 whitespace-pre font-mono text-ink">
-                {section.text}
-              </pre>
-            </div>
+            {section.withheld !== null ? (
+              <p
+                data-testid={`study-planner-orders-withheld-${section.factionId}`}
+                className="m-0 p-2 text-ink-dim"
+              >
+                {withheldLine(section.text)}
+              </p>
+            ) : (
+              <div className="p-2">
+                <pre className="m-0 overflow-x-auto rounded border border-edge bg-panel p-2 whitespace-pre font-mono text-ink">
+                  {section.text}
+                </pre>
+              </div>
+            )}
           </section>
-        ))
+          );
+        })
       )}
     </div>
+  );
+}
+
+/** The box's name, in the ink colour, inside a withheld section's line (ah-9qdz.4, mockup section 6). */
+const BOX_NAME = "Also write the casts";
+
+function withheldLine(text: string) {
+  const at = text.indexOf(BOX_NAME);
+  if (at < 0) {
+    return text;
+  }
+  return (
+    <>
+      {text.slice(0, at)}
+      <span className="text-ink">{BOX_NAME}</span>
+      {text.slice(at + BOX_NAME.length)}
+    </>
   );
 }

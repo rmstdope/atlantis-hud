@@ -26,6 +26,7 @@ import { STUDY_NOTE_MAX_CHARS, noteCountText } from "../studyNote";
 import { createNoteAutosave, type NoteAutosave } from "./studyNoteAutosave";
 import { StudySchedule } from "./StudySchedule";
 import { StudyPlannerOrders } from "./StudyPlannerOrders";
+import { useStudyCastsWriteStore } from "../studyCastsWriteStore";
 import { reduce as reduceCell, type CellMode } from "./studyCellState";
 
 /**
@@ -165,9 +166,13 @@ export function StudyPlannerDialog({
 
   // Memoised beside `rows` and for the same reason: without it every keystroke in a cell popover
   // rebuilds every faction's text.
+  // "Also write the casts" (ah-9qdz.4) lives in a module store, so the tick outlives this dialog:
+  // closing the planner, switching game and a new report all keep it, as agreed.
+  const writeCasts = useStudyCastsWriteStore((state) => state.writeCasts);
+  const setWriteCasts = useStudyCastsWriteStore((state) => state.setWriteCasts);
   const orders = useMemo(
-    () => studyOrders({ groups, rows, turns, notices }),
-    [groups, rows, turns, notices]
+    () => studyOrders({ groups, rows, turns, notices, casts: { tree, write: writeCasts } }),
+    [groups, rows, turns, notices, tree, writeCasts]
   );
 
   /**
@@ -186,7 +191,7 @@ export function StudyPlannerDialog({
   );
   const writePlan = useMemo(
     () =>
-      ownEntries.some((entry) => entry.order !== null)
+      ownEntries.some((entry) => entry.order !== null || entry.cast?.kind === "write")
         ? orderProcessing.studyWritePlan({
             document: ordersDocument,
             entries: ownEntries,
@@ -330,8 +335,11 @@ export function StudyPlannerDialog({
             <button
               type="button"
               data-testid="study-planner-save-all"
+              // Every section withheld for want of the casts (ah-9qdz.4): a file of only comments
+              // is never offered.
+              disabled={orders.allText === ""}
               onClick={() => onSaveText(orders.allFileName, orders.allText)}
-              className="rounded border border-brass px-1.5 text-brass hover:bg-brass/10"
+              className="rounded border border-brass px-1.5 text-brass hover:bg-brass/10 disabled:border-edge disabled:text-ink-dim disabled:opacity-50"
             >
               Save all…
             </button>
@@ -405,6 +413,8 @@ export function StudyPlannerDialog({
           onSaveText={onSaveText}
           writePlan={writePlan}
           asking={asking}
+          writeCasts={writeCasts}
+          onWriteCastsChange={setWriteCasts}
           notice={
             writeNotice === null
               ? null

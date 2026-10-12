@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import type { StudyWritePlan } from "../studyOrdersWrite";
 import { useEscapeToDismiss } from "./dismissLayer";
 
@@ -54,18 +54,33 @@ export function StudyOrdersWritePrompt({
       <p className="m-0 text-ink-dim">{plan.lead}</p>
       <div className="my-1.5">
         {plan.rows.map((row) => (
-          <div
-            key={row.unitId}
-            data-testid={`study-orders-write-row-${row.unitId}`}
-            className="flex gap-2"
-          >
-            <span className={row.writes ? "text-ink" : "text-ink-dim"}>{row.who}</span>
-            <span className={`font-mono ${row.writes ? "text-ink-soft" : "text-ink-dim"}`}>
-              {row.detail}
-            </span>
-          </div>
+          <Fragment key={row.unitId}>
+            <div data-testid={`study-orders-write-row-${row.unitId}`} className="flex gap-2">
+              <span className={row.writes || row.cast?.writes === true ? "text-ink" : "text-ink-dim"}>{row.who}</span>
+              <span className={`font-mono ${row.writes ? "text-ink-soft" : "text-ink-dim"}`}>
+                {row.detail}
+              </span>
+            </div>
+            {/* The cast on a row of its own under his study row (ah-9qdz.4): the name cell is
+                left empty, and its width kept, so the cast lines up under the study. */}
+            {row.cast === null ? null : (
+              <div data-testid={`study-orders-write-cast-${row.unitId}`} className="flex gap-2">
+                <span aria-hidden="true" className="invisible">
+                  {row.who}
+                </span>
+                <span className={`font-mono ${row.cast.writes ? "text-magic-ink" : "text-ink-dim"}`}>
+                  {row.cast.detail}
+                </span>
+              </div>
+            )}
+          </Fragment>
         ))}
       </div>
+      {plan.warning === null ? null : (
+        <p data-testid="study-orders-write-warning" className="m-0 mb-1.5 text-warn">
+          {plan.warning}
+        </p>
+      )}
       <div className="flex gap-1.5">
         <button
           ref={confirm}
