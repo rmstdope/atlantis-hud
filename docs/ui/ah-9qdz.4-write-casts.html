@@ -1,0 +1,84 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>writing the planned casts</title><style>
+:root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--edge-soft:#1e2733;--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--brass-bright:#eebe63;--select:#4a9fd8;--ok:#4fb783;--danger:#e89494;--warn:#e0a84a;--magic:#b48ce8}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:28px 16px 64px}
+header,main{max-width:1000px;margin:0 auto}
+h1{font-size:23px}h1 span{color:var(--brass)}
+header p{color:var(--ink-soft);margin-top:8px;font-size:14px;max-width:90ch}
+.notes{list-style:none;font-size:13px;color:var(--ink-soft);display:grid;gap:4px;margin:14px 0 0}
+.notes li::before{content:"+ ";color:var(--ok);font-weight:bold}
+.notes li.con::before{content:"\2212 ";color:var(--danger)}
+.notes li.n::before{content:"\00b7 ";color:var(--ink-dim)}
+.stage{background:#0b0f14;border:1px solid var(--edge-soft);border-radius:8px;padding:16px;margin-top:16px;overflow:auto}
+.pane{width:900px;max-width:100%;background:var(--raised);border:1px solid var(--edge);border-radius:6px;font:13px/1.5 'Helvetica Neue',Arial,sans-serif;overflow:hidden}
+.top{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--edge)}
+.top .name{color:var(--ink-soft)}.tabs{display:flex;gap:4px}.tab{border-radius:4px;padding:2px 7px;color:var(--ink-soft)}
+.tab.on{background:#1b2735;color:var(--ink);box-shadow:inset 0 -2px 0 var(--select)}.sp{margin-left:auto}
+.sub{padding:6px 12px;border-bottom:1px solid var(--edge-soft);color:var(--ink-dim);font-size:11.5px}
+.btn{background:var(--ground);border:1px solid var(--edge);color:var(--ink-soft);border-radius:4px;padding:2px 8px;font-size:12px;display:inline-block;white-space:nowrap}
+.btn.b{color:var(--brass);border-color:var(--brass)}.btn.s{color:var(--select);border-color:var(--select)}.btn.dim{opacity:.4}
+.body{padding:12px;display:grid;gap:12px}
+.grp{border:1px solid #6b5426;border-radius:5px;overflow:hidden}
+.hd{display:flex;align-items:center;gap:8px;padding:5px 10px;background:#211d14;color:var(--brass);font-size:12px;flex-wrap:wrap}
+.chk{display:inline-flex;align-items:center;gap:5px;color:var(--ink);font-size:12.5px;white-space:nowrap}
+.chk i{width:13px;height:13px;border:1px solid var(--select);border-radius:3px;background:var(--select);display:inline-flex;align-items:center;justify-content:center;color:#0b0f14;font-style:normal;font-size:10px;font-weight:bold}
+.chk i.off{background:transparent}
+pre{font-family:'SF Mono',Menlo,Consolas,monospace;font-size:12px;line-height:1.55;color:var(--ink);padding:10px;margin:8px;white-space:pre;overflow:auto;background:var(--panel);border:1px solid var(--edge);border-radius:4px}
+pre .c{color:var(--ink-dim)}pre .k{color:var(--brass-bright)}pre .m{color:var(--magic)}pre .w{color:var(--warn)}
+.prompt{border:1px solid #3b5064;background:#141d28;border-radius:5px}
+.ph{padding:7px 11px;color:var(--ink);font-size:13.5px}
+.pp{padding:0 11px 6px;color:var(--ink-soft);font-size:12.5px}
+.pc{padding:4px 11px 6px}
+.dl{padding:2px 11px 8px;display:grid;gap:3px}
+.row{display:grid;grid-template-columns:130px 1fr;gap:8px;font-size:12.5px;align-items:baseline}
+.who{color:var(--ink)}.what{font-family:'SF Mono',Menlo,monospace;font-size:11.5px;color:var(--ink-soft)}
+.what.cast{color:var(--magic)}.what.skip{color:var(--ink-dim);font-family:inherit;font-style:italic;font-size:12px}
+.what.warn{color:var(--warn);font-family:inherit;font-size:12px}
+.pf{padding:7px 11px;border-top:1px solid var(--edge-soft);display:flex;gap:8px}
+.hint{padding:0 11px 6px;color:var(--warn);font-size:12px}
+.lbl{font:11px 'Helvetica Neue',Arial,sans-serif;letter-spacing:1.5px;text-transform:uppercase;color:var(--brass);margin:22px 0 6px}
+@media (max-width:640px){.row{grid-template-columns:1fr}}
+</style></head><body><header><h1>ah-9qdz.4 — <span>writing the planned casts</span></h1><p>Chosen: the box <b>Also write the casts</b> on every section heading that has a cast planned, one tick for the whole tab, ticked when the app starts and kept while it runs. Ticked, the text, Copy, Save… and Put into my orders all carry a cast line under each mage who casts. Casts are written without targets, with one warning; a cast of the same spell already in the orders is kept; a cast with no study is still written; a spell not known yet is left out.</p></header><main><div class="lbl">1 · The Orders tab as it opens — box ticked</div><div class="stage"><div class="pane"><div class="top"><span class="name">Study planner</span><span class="tabs"><span class="tab">All mages</span><span class="tab">Schedule</span><span class="tab on">Orders</span></span><span class="sp"></span><span class="btn">Save all…</span><span class="btn">Close</span></div><div class="sub">Orders for turn 72 — 3 mages studying, 1 teaching, 4 casting</div><div class="body"><div class="grp"><div class="hd"><span>Borg TNG (95) — your faction, turn 72</span><span class="sp"></span><span class="chk"><i class="">✓</i>Also write the casts</span><span class="btn b">Put into my orders</span><span class="btn s">Copy</span><span class="btn b">Save…</span></div><pre><span class="c">; Borg TNG (95) — study orders for turn 72, from Atlantis HUD</span>
+<span class="k">UNIT</span> 1234              <span class="c">; Ereb</span>
+  <span class="k">STUDY</span> FORC 4          <span class="c">; force 3 -&gt; 4, taught by Sable</span>
+  <span class="m">CAST</span> FARS            <span class="c">; practises farsight</span>
+<span class="k">UNIT</span> 1250              <span class="c">; Sable</span>
+  <span class="k">TEACH</span> 1234           <span class="c">; teaches Ereb</span>
+  <span class="c">; CAST FARS — she won't know farsight yet, left out</span>
+<span class="k">UNIT</span> 1301              <span class="c">; Thane</span>
+  <span class="c">; nothing planned</span>
+  <span class="m">COMBAT</span> FIRE          <span class="c">; readies fire for battle</span>
+<span class="k">UNIT</span> 1288              <span class="c">; Rell</span>
+  <span class="k">STUDY</span> PATT           <span class="c">; pattern 1 -&gt; 2</span>
+  <span class="m">CAST</span> FARS            <span class="c">; practises pattern (farsight can't rise past it)</span></pre></div><div class="grp"><div class="hd"><span>Kith Ward (41) — from a shared mage sheet</span><span class="sp"></span><span class="chk"><i class="">✓</i>Also write the casts</span><span class="btn s">Copy</span><span class="btn b">Save…</span></div><pre><span class="c">; Kith Ward (41) — study orders for turn 72, from Atlantis HUD</span>
+<span class="k">UNIT</span> 2210              <span class="c">; Mirel</span>
+  <span class="k">STUDY</span> SPIR           <span class="c">; spirit 2 -&gt; 3</span>
+  <span class="m">CAST</span> CLEA            <span class="c">; clear skies is at its maximum — no practice</span></pre></div><div class="grp"><div class="hd"><span>Iron Hand (77) — from a shared mage sheet</span><span class="sp"></span><span class="btn s">Copy</span><span class="btn b">Save…</span></div><pre><span class="c">; Iron Hand (77) — study orders for turn 72, from Atlantis HUD</span>
+<span class="k">UNIT</span> 3001              <span class="c">; Doran</span>
+  <span class="k">STUDY</span> EART           <span class="c">; earth lore 1 -&gt; 2</span></pre></div></div></div></div><div class="lbl">2 · Unticked (either heading) — every section is exactly as before this change</div><div class="stage"><div class="pane"><div class="top"><span class="name">Study planner</span><span class="tabs"><span class="tab">All mages</span><span class="tab">Schedule</span><span class="tab on">Orders</span></span><span class="sp"></span><span class="btn">Save all…</span><span class="btn">Close</span></div><div class="sub">Orders for turn 72 — 3 mages studying, 1 teaching</div><div class="body"><div class="grp"><div class="hd"><span>Borg TNG (95) — your faction, turn 72</span><span class="sp"></span><span class="chk"><i class="off"></i>Also write the casts</span><span class="btn b">Put into my orders</span><span class="btn s">Copy</span><span class="btn b">Save…</span></div><pre><span class="c">; Borg TNG (95) — study orders for turn 72, from Atlantis HUD</span>
+<span class="k">UNIT</span> 1234              <span class="c">; Ereb</span>
+  <span class="k">STUDY</span> FORC 4          <span class="c">; force 3 -&gt; 4, taught by Sable</span>
+<span class="k">UNIT</span> 1250              <span class="c">; Sable</span>
+  <span class="k">TEACH</span> 1234           <span class="c">; teaches Ereb</span>
+<span class="k">UNIT</span> 1288              <span class="c">; Rell</span>
+  <span class="k">STUDY</span> PATT           <span class="c">; pattern 1 -&gt; 2</span></pre></div><div class="grp"><div class="hd"><span>Kith Ward (41) — from a shared mage sheet</span><span class="sp"></span><span class="chk"><i class="off"></i>Also write the casts</span><span class="btn s">Copy</span><span class="btn b">Save…</span></div><pre><span class="c">; Kith Ward (41) — study orders for turn 72, from Atlantis HUD</span>
+<span class="k">UNIT</span> 2210              <span class="c">; Mirel</span>
+  <span class="k">STUDY</span> SPIR           <span class="c">; spirit 2 -&gt; 3</span></pre></div></div></div></div><div class="lbl">3 · After pressing Put into my orders (ticked)</div><div class="stage"><div class="pane"><div class="top"><span class="name">Study planner</span><span class="tabs"><span class="tab">All mages</span><span class="tab">Schedule</span><span class="tab on">Orders</span></span><span class="sp"></span><span class="btn">Save all…</span><span class="btn">Close</span></div><div class="sub">Orders for turn 72 — 3 mages studying, 1 teaching, 4 casting</div><div class="body"><div class="prompt"><div class="ph">Put these orders into your own orders?</div><div class="pp">4 units change. Nothing else in the document is touched, and you can undo it afterwards.</div><div class="dl"><div class="row"><span class="who">Ereb (1234)</span><span class="what">STUDY FORC 4 replaces BUILD Tower</span></div>
+<div class="row"><span class="who"></span><span class="what cast">CAST FARS</span></div>
+<div class="row"><span class="who">Sable (1250)</span><span class="what">TEACH 1234</span></div>
+<div class="row"><span class="who"></span><span class="what skip">CAST FARS — she won't know farsight yet, left out</span></div>
+<div class="row"><span class="who">Thane (1301)</span><span class="what skip">nothing planned — left alone</span></div>
+<div class="row"><span class="who"></span><span class="what cast">COMBAT FIRE replaces COMBAT "Clear Skies"</span></div>
+<div class="row"><span class="who">Rell (1288)</span><span class="what">STUDY PATT</span></div>
+<div class="row"><span class="who"></span><span class="what skip">CAST FARS — already there, kept</span></div></div><div class="hint">Casts are written without a target. Add one by hand where the spell needs it.</div><div class="pf"><span class="btn b">Write orders</span><span class="btn">Cancel</span></div></div><div class="grp"><div class="hd"><span>Borg TNG (95) — your faction, turn 72</span><span class="sp"></span><span class="chk" style="opacity:.4"><i>✓</i>Also write the casts</span><span class="btn b dim">Put into my orders</span><span class="btn s dim">Copy</span><span class="btn b dim">Save…</span></div><pre><span class="c">; Borg TNG (95) — study orders for turn 72, from Atlantis HUD</span>
+…</pre></div></div></div></div><div class="lbl">4 · After writing</div><div class="stage"><div style="font:12px Helvetica Neue,Arial,sans-serif;color:var(--ok);display:flex;gap:12px;padding:5px 10px;background:#141f1a;border:1px solid #2c4a3e;border-radius:4px">Wrote study orders and 3 casts for 4 mages; 1 other order replaced. <span style="color:var(--select);text-decoration:underline">Undo</span></div></div><div class="lbl">5 · The words, exactly</div><div class="stage"><pre><span class="c">box                       </span>Also write the casts
+<span class="c">cast line comment         </span>CAST FARS            ; practises farsight
+<span class="c">  practice goes elsewhere </span>CAST FARS            ; practises pattern (farsight can't rise past it)
+<span class="c">  at maximum              </span>CAST CLEA            ; clear skies is at its maximum — no practice
+<span class="c">combat line comment       </span>COMBAT FIRE          ; readies fire for battle
+<span class="c">  not known, in the text  </span>; CAST FARS — she won't know farsight yet, left out
+<span class="c">summary line              </span>Orders for turn 72 — 3 mages studying, 1 teaching, 4 casting
+<span class="c">confirmation, kept        </span>CAST FARS — already there, kept
+<span class="c">confirmation, not known   </span>CAST FARS — she won't know farsight yet, left out
+<span class="c">confirmation, warning     </span>Casts are written without a target. Add one by hand where the spell needs it.
+<span class="c">after writing             </span>Wrote study orders and 3 casts for 4 mages; 1 other order replaced.</pre></div><ul class="notes"><li class="n">A heading with no cast planned (Iron Hand) shows no box.</li><li class="n">CAST replaces only a CAST line; COMBAT replaces only a COMBAT line; a different spell is replaced, the same spell is kept.</li><li class="n">While the confirmation stands, the box is disabled with the other heading buttons.</li><li class="n">On a narrow window the heading's controls wrap together onto a second line.</li></ul></main></body></html>
