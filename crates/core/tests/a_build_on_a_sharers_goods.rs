@@ -211,3 +211,45 @@ fn a_sharer_given_wood_and_arriving_lends_it_to_a_producer() {
         "unit 900\nPRODUCE wagon\nunit 2874\nGIVE 3526 10 WOOD\nunit 3526\nMOVE NW\n",
     ));
 }
+
+/// `ah-dqvi`: the sharer given wood and lending it on arrival starts and ends the month with
+/// none, so its ITEMS hover can only show the wood from its movements - both of them, in the
+/// month's order, each naming the other unit.
+#[test]
+fn a_sharer_given_wood_and_lending_it_carries_both_movements() {
+    let text = report(
+        "* Bystander (2875), Foo (1), orc [ORC]. Weight: 10. Capacity: 0/0/15/0.",
+        "* Lumbers (2874), Foo (1), orc [ORC], 10 wood [WOOD]. Weight: 110. \
+         Capacity: 0/0/15/0.\n\
+         * Soldier (3526), Foo (1), sharing, 20 orcs [ORC]. Weight: 200. Capacity: 0/0/300/0.",
+    );
+    let response = preview(
+        &text,
+        "unit 902\nBUILD\nunit 2874\nGIVE 3526 10 WOOD\nunit 3526\nMOVE NW\n",
+    );
+    let sharer = rows(&response, SHARER);
+    assert!(!sharer.is_empty(), "the lending sharer has a preview row");
+    for row in sharer {
+        let wood: Vec<(i64, ItemChangeCause, Option<&str>)> = row
+            .item_changes
+            .iter()
+            .filter(|change| change.tag == "WOOD")
+            .map(|change| {
+                (
+                    change.delta,
+                    change.cause,
+                    change.other.as_ref().map(|party| party.unit_id.as_str()),
+                )
+            })
+            .collect();
+        assert_eq!(
+            wood,
+            vec![
+                (10, ItemChangeCause::WasGiven, Some("2874")),
+                (-10, ItemChangeCause::BuildSpent, Some(BUILDER)),
+            ],
+            "the sharer's {:?} row shows the wood arriving and leaving",
+            row.status
+        );
+    }
+}
