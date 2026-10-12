@@ -215,6 +215,77 @@ pub(crate) fn refused_sail_steps(
     refused
 }
 
+/// **The one answer to where a sailing fleet is when the month's sailing is done** (`ah-8zqq`),
+/// and so where everybody aboard it ends the month. The orders preview reads it, and so do the
+/// Problems panel's checks - the passengers carried away, where they build and produce, and
+/// whether the captain and sailors leave at all - rather than each learning it from its own bug
+/// (`ah-i6d0`, `ah-jda3`, `ah-lz1g`, `ah-g0fk`, `ah-nz7r`).
+///
+/// Built by [`fleet_month_end`] from one walk of one map: the [`refused_sail_steps`] walk the
+/// `sail-between-land-hexes` and `sail-through-neck-of-land` warnings read, so no reader can move
+/// a fleet a warning says "will not move".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FleetMonthEnd {
+    /// Whether the course has a step across the map at all. `IN` and `OUT` move a unit within its
+    /// hex.
+    sails: bool,
+    /// The first step the game refuses, when the map shows one.
+    pub(crate) stop: Option<SailStop>,
+    /// Where the fleet ends: the hex a refused step would have left, else the end of the course.
+    /// `None` when the map cannot follow the course before anything refuses it - **"cannot say",
+    /// never "did not move"**, so a reader stays silent for it.
+    pub(crate) lands: Option<Coordinate>,
+}
+
+impl FleetMonthEnd {
+    /// Whether anybody aboard leaves the hex: the course steps across the map and the game does
+    /// not refuse its very first step. A round trip leaves too; it simply lands where it started.
+    pub(crate) fn leaves(&self) -> bool {
+        self.sails && self.stop.is_none_or(|stop| stop.steps_taken > 0)
+    }
+
+    /// Where a month's movement ends for a trace that reached `traced_end` after `traced_steps`
+    /// directional steps: the game's refusal can only cut it shorter. The trace knows how far one
+    /// month's movement points go; this answer knows where the game stops the fleet.
+    pub(crate) fn within_month(&self, traced_steps: usize, traced_end: Coordinate) -> Coordinate {
+        match self.stop {
+            Some(stop) if stop.steps_taken < traced_steps => stop.at,
+            _ => traced_end,
+        }
+    }
+}
+
+/// Where a fleet sailing `steps` out of `from` ends the month; see [`FleetMonthEnd`].
+///
+/// `map` is the report's own map, or the part of it the course passes through - never the
+/// remembered one, on which a step this report cannot show would stop a fleet where no warning
+/// says it will (`ah-g0fk`). `journey` carries the hull: a fleet that may be flying is bound by
+/// neither sailing rule.
+pub(crate) fn fleet_month_end(
+    map: &MapKnowledge,
+    ruleset: &Ruleset,
+    journey: Journey,
+    from: Coordinate,
+    steps: &[MoveStep],
+) -> FleetMonthEnd {
+    let sails = steps.iter().any(|step| matches!(step, MoveStep::Go(_)));
+    let stop = refused_sail_steps(map, ruleset, journey, from, steps).stops;
+    let lands = match stop {
+        Some(stop) => Some(stop.at),
+        // The refusal walk stops silently where the map runs out, so a stop it found always lies
+        // before that point; with none, the course is followed to its end or not at all.
+        None => steps.iter().try_fold(from, |here, step| match step {
+            MoveStep::Go(direction) => map
+                .neighbours(here)
+                .find(|(heading, _)| heading == direction)
+                .map(|(_, into)| into)
+                .filter(|into| map.hex(*into).is_some()),
+            _ => Some(here),
+        }),
+    };
+    FleetMonthEnd { sails, stop, lands }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -513,5 +584,112 @@ mod tests {
                 to_terrain: "mountain".to_string(),
             })
         );
+    }
+
+    // --- where the fleet ends the month (`ah-8zqq`) ---------------------------------------------
+
+    fn month_end(map: &MapKnowledge, steps: &[MoveStep]) -> FleetMonthEnd {
+        fleet_month_end(map, &ruleset(), enforced(), at(1, 1), steps)
+    }
+
+    /// A course with no `Go` step takes nobody anywhere: it ends where it started.
+    #[test]
+    fn a_course_with_no_step_across_the_map_stays() {
+        let map = corridor(&["ocean", "ocean"], "");
+
+        let end = month_end(&map, &[MoveStep::In]);
+
+        assert!(!end.leaves());
+        assert_eq!(end.lands, Some(at(1, 1)));
+    }
+
+    /// `rules/movement_sailing`: "A fleet can move from an ocean region to another ocean region,
+    /// or from a coastal region to an ocean region, or from an ocean region to a coastal region" -
+    /// so a first step with land at both ends keeps everybody aboard where they stand.
+    #[test]
+    fn a_first_step_refused_land_to_land_leaves_nobody() {
+        let map = corridor(&["plain", "forest", "ocean"], "");
+
+        let end = month_end(&map, &southeast(2));
+
+        assert!(!end.leaves());
+        assert_eq!(end.lands, Some(at(1, 1)));
+    }
+
+    /// The step into a hex known only by an exit is still judged: the exit names its terrain.
+    #[test]
+    fn a_first_step_into_a_hex_known_only_by_name_is_judged() {
+        let map = MapKnowledge::from_report(&parse_report_full(
+            "Foo (1) Report\n\nplain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\nExits:\n  \
+             Southeast : forest (2,2) in Nowhere.\n\n",
+        ));
+
+        assert!(!month_end(&map, &southeast(1)).leaves());
+    }
+
+    /// A refusal further on: the steps before it are taken, so the fleet leaves and lands in the
+    /// hex the refused step would have left.
+    #[test]
+    fn a_later_refusal_lands_the_fleet_before_it() {
+        let map = corridor(&["ocean", "plain", "forest"], "");
+
+        let end = month_end(&map, &southeast(2));
+
+        assert!(end.leaves());
+        assert_eq!(end.lands, Some(at(2, 2)));
+    }
+
+    #[test]
+    fn a_course_nothing_refuses_lands_at_its_end() {
+        let map = corridor(&["ocean", "ocean", "plain"], "");
+
+        let end = month_end(&map, &southeast(2));
+
+        assert!(end.leaves());
+        assert_eq!(end.lands, Some(at(3, 3)));
+        assert_eq!(end.stop, None);
+    }
+
+    /// The map cannot follow the course - an exit the hex does not list - before anything refuses
+    /// it: the fleet still leaves, but where it lands is "cannot say", never "did not move".
+    #[test]
+    fn a_course_the_map_cannot_follow_leaves_for_nowhere_nameable() {
+        let map = corridor(&["ocean", "ocean"], "");
+
+        let end = month_end(
+            &map,
+            &[
+                MoveStep::Go(Direction::Southeast),
+                MoveStep::Go(Direction::North),
+            ],
+        );
+
+        assert!(end.leaves());
+        assert_eq!(end.lands, None);
+    }
+
+    /// A refusal the map shows before the part it cannot follow still stops the fleet there.
+    #[test]
+    fn a_refusal_before_the_map_runs_out_still_lands_the_fleet() {
+        let map = corridor(&["ocean", "plain", "forest"], "");
+        let mut steps = southeast(2);
+        steps.push(MoveStep::Go(Direction::North));
+
+        assert_eq!(month_end(&map, &steps).lands, Some(at(2, 2)));
+    }
+
+    /// The preview's trace knows how far a month's movement goes; the game's refusal can only cut
+    /// it shorter.
+    #[test]
+    fn within_month_cuts_a_trace_that_went_past_the_stop() {
+        let map = corridor(&["ocean", "plain", "forest"], "");
+        let end = month_end(&map, &southeast(2));
+
+        assert_eq!(end.within_month(2, at(3, 3)), at(2, 2));
+        assert_eq!(end.within_month(1, at(2, 2)), at(2, 2));
+        assert_eq!(end.within_month(0, at(1, 1)), at(1, 1));
+
+        let free = month_end(&corridor(&["ocean", "ocean", "ocean"], ""), &southeast(2));
+        assert_eq!(free.within_month(1, at(2, 2)), at(2, 2));
     }
 }
