@@ -111,7 +111,7 @@ describe("magePane on a turn", () => {
   });
 
   it("says where its figures come from", () => {
-    expect(pane(2).foot).toBe("Projected from turn 23's report at 30 points a studied month.");
+    expect(pane(2).foot).toBe("Projected from turn 23's report at 30 points a studied month and 5 for a month of practice.");
   });
 });
 

@@ -30,6 +30,8 @@ export type MagePaneLine = {
   right: string;
   /** True for the skill this turn's plan studies: the marked line. */
   studying: boolean;
+  /** True for the skill this turn's planned cast practised (ah-9qdz.3): drawn magic purple. */
+  practised: boolean;
 };
 
 /** One skill a month would buy something in. */
@@ -187,7 +189,8 @@ function knownNow(
       tag,
       name: node.name,
       right: skillWords(held),
-      studying: false
+      studying: false,
+      practised: false
     });
   }
   return lines.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));

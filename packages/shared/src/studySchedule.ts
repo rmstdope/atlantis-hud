@@ -878,7 +878,7 @@ export function hoverCard(
 ): {
   heading: string;
   sub: string;
-  lines: { tag: string; name: string; right: string; studying: boolean }[];
+  lines: { tag: string; name: string; right: string; studying: boolean; practised: boolean }[];
   foot: string;
 } {
   const turn = turns[turnIndex];
@@ -886,8 +886,12 @@ export function hoverCard(
   const before = row.standings[turnIndex] ?? new Map();
   const after = row.standings[turnIndex + 1] ?? before;
   const studying = cell?.kind === "study" ? cell.skill : null;
+  // ah-9qdz.3: the turn's planned cast, whose title says where its practice went.
+  const half = row.castHalves[turnIndex] ?? null;
+  const practised = half?.kind === "planned" ? half.practised : null;
 
-  const lines: { tag: string; name: string; right: string; studying: boolean }[] = [];
+  const lines: { tag: string; name: string; right: string; studying: boolean; practised: boolean }[] =
+    [];
   // Both ends, not merely `before`: the turn a mage *begins* a skill from nothing, that skill is
   // absent from `before` entirely, and a card whose sub-line says "studying pattern" with no
   // pattern line in it is the card telling the player two different things.
@@ -898,7 +902,7 @@ export function hoverCard(
     }
     const held = before.get(tag) ?? { level: 0, points: 0 };
     const ends = after.get(tag) ?? held;
-    if (held.level <= 0 && ends.level <= 0 && tag !== studying) {
+    if (held.level <= 0 && ends.level <= 0 && tag !== studying && tag !== practised) {
       continue;
     }
     // `4(390) → 4(420)`: a level with its points in brackets at each end of the month, the way a
@@ -910,7 +914,8 @@ export function hoverCard(
       tag,
       name: node.name,
       right: skillWords(held, ends),
-      studying: tag === studying
+      studying: tag === studying,
+      practised: tag === practised
     });
   }
   lines.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
@@ -920,6 +925,11 @@ export function hoverCard(
   // month is `worth` with the shelter half divided back out, so a taught but unsheltered month
   // still reports the doubling it got.
   const extra: string[] = [];
+  // The practice sentence comes straight after the projection line (ah-9qdz.3), before anything
+  // about teaching or shelter.
+  if (half?.kind === "planned") {
+    extra.push(half.title);
+  }
   if (cell?.kind === "study" && cell.crossFaction !== null) {
     // The agreed sentences (ah-g9sf.12), in place of the same-faction `Taught by ...` one below.
     // Every name is a slot: a fixed pronoun would assert a sex no report states.
@@ -957,7 +967,7 @@ export function hoverCard(
         ? `From a mage sheet of turn ${row.sheetTurn}. Nothing is assumed about the ${
             row.monthsUnreported
           } turn${row.monthsUnreported === 1 ? "" : "s"} since.`
-        : `Projected from turn ${turns[0] - 1}'s report at ${STUDY_POINTS_PER_MONTH} points a studied month.`
+        : `Projected from turn ${turns[0] - 1}'s report at ${STUDY_POINTS_PER_MONTH} points a studied month and ${PRACTICE_POINTS_PER_MONTH} for a month of practice.`
   };
   return extra.length === 0 ? card : { ...card, foot: [card.foot, ...extra].join(" ") };
 }

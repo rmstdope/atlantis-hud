@@ -278,7 +278,7 @@ describe("projectAll with a planned cast", () => {
   it("practises on an idle turn and on a teach turn alike", () => {
     const { standings } = project(
       at({ FORC: [2, 90], FIRE: [1, 30] }),
-      [{ kind: "teach", turn: 25, students: [] }],
+      [{ kind: "teach", turn: 25, students: [], live: false }],
       TURNS,
       casting("FIRE", 24, 25)
     );
@@ -575,6 +575,93 @@ describe("hoverCard", () => {
     })[0];
   }
 
+  // ah-9qdz.3: the skill a planned cast practised gets its before → after in purple, and the foot
+  // says where the 5 days went, straight after the projection line.
+  function casting(spell: string, goals: StudyGoal[] = []): ScheduleRow {
+    return scheduleRows({
+      groups: groupOf({
+        skills: [
+          { tag: "FORC", level: 1, points: 60 },
+          { tag: "FIRE", level: 1, points: 30 },
+          { tag: "FARS", level: 5, points: 450 },
+          { tag: "PATT", level: 5, points: 450 },
+          { tag: "SPIR", level: 5, points: 450 }
+        ]
+      }),
+      plans: [
+        {
+          factionId: "21",
+          unitId: "2431",
+          goals,
+          casts: [{ turn: turns[0], spell }],
+          comment: "",
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      tree,
+      turns,
+      seats: new Map(),
+      assumeSheltered: true,
+      after: new Map(),
+      rule: NO_TEACHING_RULE
+    })[0];
+  }
+
+  it("marks the skill a cast practised, and says where the days went after the projection line", () => {
+    const card = hoverCard(casting("FIRE"), 0, turns, tree, "x");
+    const force = card.lines.find((line) => line.name === "force");
+
+    expect(force).toMatchObject({ right: "1(60) → 1(65)", studying: false, practised: true });
+    expect(card.lines.find((line) => line.name === "fire")).toMatchObject({ practised: false });
+    expect(card.foot).toBe(
+      "Projected from turn 23's report at 30 points a studied month and 5 for a month of practice. Ereb readies fire for battle on turn 24. Force isn't above fire yet, so the 5 days of practice go to force — if he fights."
+    );
+  });
+
+  it("says a cast at its highest adds no practice, and marks nothing", () => {
+    const card = hoverCard(casting("FARS"), 0, turns, tree, "x");
+
+    expect(card.lines.some((line) => line.practised)).toBe(false);
+    expect(card.foot).toBe(
+      "Projected from turn 23's report at 30 points a studied month and 5 for a month of practice. Ereb casts farsight on turn 24. Farsight is already at 5, the highest there is, so it adds no practice."
+    );
+  });
+
+  it("puts the practice sentence before the shelter one", () => {
+    const sheltered = scheduleRows({
+      groups: groupOf({
+        skills: [
+          { tag: "FORC", level: 3, points: 180 },
+          { tag: "FIRE", level: 3, points: 180 }
+        ]
+      }).map((group) => ({
+        ...group,
+        mages: group.mages.map((mage) => ({ ...mage, structureId: null }))
+      })) as ReturnType<typeof groupOf>,
+      plans: [
+        {
+          factionId: "21",
+          unitId: "2431",
+          goals: [{ kind: "study" as const, turn: turns[0], skill: "FORC" }],
+          casts: [{ turn: turns[0], spell: "FIRE" }],
+          comment: "",
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      tree,
+      turns,
+      seats: new Map(),
+      after: new Map(),
+      rule: NO_TEACHING_RULE
+    })[0];
+    const foot = hoverCard(sheltered, 0, turns, tree, "x").foot;
+
+    expect(foot.indexOf("so the 5 days of practice go to force")).toBeGreaterThan(
+      foot.indexOf("5 for a month of practice.")
+    );
+    expect(foot.indexOf("No mage seat here")).toBeGreaterThan(foot.indexOf("go to force"));
+  });
+
   it("names the mage, the turn, his faction and what he studies", () => {
     const card = hoverCard(row(), 2, turns, tree, "Wardens of the North (12)");
 
@@ -654,7 +741,7 @@ describe("hoverCard", () => {
 
   it("says what it was projected from", () => {
     expect(hoverCard(row(), 0, turns, tree, "x").foot).toBe(
-      "Projected from turn 23's report at 30 points a studied month."
+      "Projected from turn 23's report at 30 points a studied month and 5 for a month of practice."
     );
   });
 

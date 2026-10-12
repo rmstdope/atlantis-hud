@@ -758,7 +758,14 @@ function FactionRows({
                       }
                       className={`mt-0.5 block w-full truncate rounded border px-1 text-left transition-colors hover:border-select hover:bg-select/10 hover:text-ink ${castTint(half)}`}
                     >
-                      {half.label}
+                      {half.kind === "planned" && half.known && half.practice === "none" ? (
+                        // ah-9qdz.3: a cast that gains nothing strikes its tag through.
+                        <>
+                          {half.glyph} <s>{half.spell}</s>
+                        </>
+                      ) : (
+                        half.label
+                      )}
                     </button>
                   )}
                 </td>
@@ -840,7 +847,9 @@ export function MagePaneView({ pane }: { pane: MagePane | null }) {
             className={
               line.studying
                 ? `flex items-center gap-1 rounded px-1 ${STANDING_CHIP.known}`
-                : "flex items-center gap-1 px-1 text-ink"
+                : line.practised
+                  ? "flex items-center gap-1 px-1 text-magic-ink"
+                  : "flex items-center gap-1 px-1 text-ink"
             }
           >
             <span
@@ -1110,9 +1119,14 @@ function castTint(half: CastHalf): string {
   if (half.kind === "empty") {
     return "border-dashed border-edge bg-transparent text-ink-dim";
   }
-  return half.known
-    ? "border-magic-edge bg-magic-fill text-magic-ink"
-    : STANDING_CHIP.ceiling;
+  if (!half.known) {
+    return STANDING_CHIP.ceiling;
+  }
+  // ah-9qdz.3: a cast that gains nothing is dim purple with a purple edge and no fill - amber stays
+  // for a cast he cannot make.
+  return half.practice === "none"
+    ? "border-magic-edge bg-transparent text-magic-dim"
+    : "border-magic-edge bg-magic-fill text-magic-ink";
 }
 
 /**
