@@ -6,6 +6,7 @@ import {
   parseBuildingReference,
   parseItemReference,
   parseSkillReference,
+  readSkillUse,
   RulesetScrapeError,
   shipBuildsOf,
   taggedAmounts,
@@ -2003,5 +2004,58 @@ describe("shipBuildsOf", () => {
         level: 2
       });
     }
+  });
+});
+
+/**
+ * `rules/magic_usingmagic`: a spell takes effect automatically, is set for combat with the COMBAT
+ * order, or is cast with the CAST order - and its own description says which.
+ */
+describe("readSkillUse", () => {
+  const level = (description: string) => ({ level: 1, description });
+
+  it("reads CAST <Spell_Name> as cast", () => {
+    expect(readSkillUse([level("To use this spell, CAST Earth_Lore.")], true)).toBe("cast");
+  });
+
+  it("reads 'using the CAST order' as cast", () => {
+    expect(readSkillUse([level("A mage may conjure it using the CAST order.")], true)).toBe("cast");
+  });
+
+  it("reads 'COMBAT order' as combat", () => {
+    expect(readSkillUse([level("Set it with the COMBAT order to use it in battle.")], true)).toBe(
+      "combat"
+    );
+  });
+
+  it("reads both across levels as both", () => {
+    expect(
+      readSkillUse(
+        [level("CAST Clear_Skies; no arguments."), { level: 2, description: "Use the COMBAT order." }],
+        true
+      )
+    ).toBe("both");
+  });
+
+  it("reads a magic skill naming neither as automatic", () => {
+    expect(readSkillUse([level("While apprentices cannot cast spells directly, ...")], true)).toBe(
+      "automatic"
+    );
+  });
+
+  it("gives a skill that is not magic no use", () => {
+    expect(readSkillUse([level("CAST Something")], false)).toBeNull();
+  });
+});
+
+describe("parseSkillReference - how each spell is used", () => {
+  it.each([
+    ["FIRE", "combat"],
+    ["EART", "cast"],
+    ["CLEA", "both"],
+    ["FORC", "automatic"],
+    ["MINI", null]
+  ] as const)("New Origins %s is %s", (tag, use) => {
+    expect(parseSkillReference(DATA_HTML)[tag].use).toBe(use);
   });
 });

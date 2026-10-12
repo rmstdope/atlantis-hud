@@ -17,6 +17,7 @@ export type { CastOutput } from "./generated/CastOutput";
 export type { ControlCap } from "./generated/ControlCap";
 export type { SkillEntry } from "./generated/SkillEntry";
 export type { SkillLevel } from "./generated/SkillLevel";
+export type { SkillUse } from "./generated/SkillUse";
 export type { SkillRequirement } from "./generated/SkillRequirement";
 export type { ItemCapacity } from "./generated/ItemCapacity";
 export type { ItemEntry } from "./generated/ItemEntry";
@@ -32,6 +33,7 @@ import type { BuildingEntry } from "./generated/BuildingEntry";
 import type { SkillEntry } from "./generated/SkillEntry";
 import type { SkillLevel } from "./generated/SkillLevel";
 import type { SkillRequirement } from "./generated/SkillRequirement";
+import type { SkillUse } from "./generated/SkillUse";
 import type { CastCost } from "./generated/CastCost";
 import type { CastInput } from "./generated/CastInput";
 import type { CastOutput } from "./generated/CastOutput";
@@ -959,6 +961,33 @@ function appendLevel(
   return [...kept, { level, description }];
 }
 
+/**
+ * A spell cast with the CAST order names it: `CAST Earth_Lore`, or `using the CAST order`. Upper
+ * case only, so the prose verb "cast" - "apprentices cannot cast spells directly" (data/MANI) -
+ * does not count.
+ */
+const CAST_USE = /\bCAST [A-Z][A-Za-z_]*|using the CAST order/;
+/** A spell set for battle says so: "the mage should use the COMBAT order" (data/CLEA). */
+const COMBAT_USE = /\bCOMBAT order/;
+
+/**
+ * How a skill is used, read from what its levels say (`rules/magic_usingmagic`: "The description
+ * that a mage receives when he first learns a spell specifies the manner in which the spell is
+ * used (automatic, in combat, or by casting)"). A magic skill naming neither order takes effect
+ * automatically; a skill that is not magic is no spell at all, and has no use.
+ */
+export function readSkillUse(levels: readonly SkillLevel[], magic: boolean): SkillUse | null {
+  if (!magic) {
+    return null;
+  }
+  const cast = levels.some((level) => CAST_USE.test(level.description));
+  const combat = levels.some((level) => COMBAT_USE.test(level.description));
+  if (cast && combat) {
+    return "both";
+  }
+  return cast ? "cast" : combat ? "combat" : "automatic";
+}
+
 export function parseSkillReference(html: string): SkillReference {
   const skills: SkillReference = {};
 
@@ -975,6 +1004,13 @@ export function parseSkillReference(html: string): SkillReference {
     // one entry per skill, so writing rather than appending would leave each skill with only what
     // its last paragraph said - which still looks like a description.
     const levels = appendLevel(existing?.levels, Number.parseInt(level, 10), paragraph);
+    // Only the level-1 paragraph is consulted. Higher levels describe what the skill does at that
+    // level and mention magic incidentally often enough to matter; level 1 is where a skill says
+    // what it is. The `||` is what makes the order the paragraphs arrive in irrelevant: once
+    // `magic` is true from an earlier entry, a later, non-level-1 paragraph cannot unset it.
+    const magic =
+      (existing?.magic ?? false) ||
+      (Number.parseInt(level, 10) === 1 && MAGIC_WORDS.test(paragraph));
 
     skills[tag] = {
       tag,
@@ -988,23 +1024,20 @@ export function parseSkillReference(html: string): SkillReference {
         existing?.produces,
         readProduction(tag, paragraph, Number.parseInt(level, 10))
       ),
-      // Only the level-1 paragraph is consulted. Higher levels describe what the skill does at
-      // that level and mention magic incidentally often enough to matter; level 1 is where a skill
-      // says what it is. The `||` is what makes the order the paragraphs arrive in irrelevant: once
-      // `magic` is true from an earlier entry, a later, non-level-1 paragraph cannot unset it.
       // Stated on the level-1 entry, so - as with `cost` - whichever entry states them is kept and
       // a later, silent level cannot empty them again.
       requires:
         existing?.requires && existing.requires.length > 0
           ? existing.requires
           : readRequirements(paragraph),
-      magic:
-        (existing?.magic ?? false) ||
-        (Number.parseInt(level, 10) === 1 && MAGIC_WORDS.test(paragraph)),
+      magic,
       // Level-1 only and `||`-accumulated, for the same reasons `magic` is.
       damagesEnemies:
         (existing?.damagesEnemies ?? false) ||
         (Number.parseInt(level, 10) === 1 && DAMAGES_ENEMIES.test(paragraph)),
+      // Recomputed on every paragraph from everything folded so far, so the last paragraph of a
+      // skill leaves the answer for all of its levels.
+      use: readSkillUse(levels, magic),
       ...(levels.length > 0 ? { levels } : {})
     };
   }
