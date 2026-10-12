@@ -513,8 +513,11 @@ describe("studyOrders — casts", () => {
   const planned = (spell: string, known = true): CastHalf => ({
     kind: "planned",
     spell,
+    glyph: "✦",
     label: `✦ ${spell}`,
     known,
+    practice: "self",
+    practised: spell,
     title: ""
   });
   const casting = (spell: string, levels: Record<string, number>, over: Partial<ScheduleRow> = {}) =>
@@ -622,6 +625,57 @@ describe("studyOrders — casts", () => {
     ];
     const orders = studyOrders({ groups: [ownGroup], rows, turns: [72], notices: [], casts: { tree, write: true } });
     expect(orders.summary).toBe("Orders for turn 72 — 2 mages studying, 1 with no order this turn, 2 casting");
+  });
+
+  // The UX stage settled this when the work came back (acceptance, mockup section 6): unticked,
+  // a section with casts but no study or teach keeps its heading and box, and its text is one line.
+  describe("unticked, a section with casts but no study or teach", () => {
+    const idle = (spell: string, over: Partial<ScheduleRow> = {}) =>
+      casting(spell, { FARS: 2, PATT: 3, FIRE: 1 }, { cells: [{ kind: "idle" }], ...over });
+    const unticked = (rows: ScheduleRow[], groups: PlannerGroup[] = [ownGroup]) =>
+      studyOrders({ groups, rows, turns: [72], notices: [], casts: { tree, write: false } });
+
+    it("is_withheld_with_one_line_naming_the_planned_casts", () => {
+      const orders = unticked([idle("FARS"), idle("FIRE", { unitId: "881", key: "95/881", name: "Sable" })]);
+      expect(orders.sections).toHaveLength(1);
+      expect(orders.sections[0].withheld).toEqual({ casts: 2 });
+      expect(orders.sections[0].text).toBe(
+        "No mage studies or teaches on turn 72. Tick Also write the casts to write the 2 planned casts."
+      );
+      expect(orders.summary).toBe("Orders for turn 72 — nothing to write without the casts");
+      expect(orders.allText).toBe("");
+    });
+
+    it("says_cast_for_one", () => {
+      expect(unticked([idle("FARS")]).sections[0].text).toBe(
+        "No mage studies or teaches on turn 72. Tick Also write the casts to write the 1 planned cast."
+      );
+    });
+
+    it("counts_a_spell_he_will_not_know_yet_as_planned", () => {
+      const orders = unticked([idle("FARS", { castHalves: [planned("FARS", false)] })]);
+      expect(orders.sections[0].withheld).toEqual({ casts: 1 });
+    });
+
+    it("drops_a_section_with_neither_study_nor_cast_when_nothing_is_studied", () => {
+      const ghost = aRow({ factionId: "17", unitId: "300", key: "17/300", name: "Ghost", cells: [{ kind: "idle" }] });
+      const orders = unticked([idle("FARS"), ghost], [ownGroup, allyGroup]);
+      expect(orders.sections.map((section) => section.factionId)).toEqual(["95"]);
+    });
+
+    it("beside_a_studying_section_keeps_today's_summary_and_stays_out_of_save_all", () => {
+      const scholar = aRow({ factionId: "17", unitId: "300", key: "17/300", name: "Ghost", cells: [aStudyCell()] });
+      const orders = unticked([idle("FARS"), scholar], [ownGroup, allyGroup]);
+      const today = studyOrders({ groups: [ownGroup, allyGroup], rows: [idle("FARS"), scholar], turns: [72], notices: [] });
+      expect(orders.summary).toBe(today.summary);
+      expect(orders.sections.map((section) => section.withheld)).toEqual([{ casts: 1 }, null]);
+      expect(orders.allText).toBe(today.sections[1].text);
+    });
+
+    it("is_not_withheld_when_ticked", () => {
+      const orders = studyOrders({ groups: [ownGroup], rows: [idle("FARS")], turns: [72], notices: [], casts: { tree, write: true } });
+      expect(orders.sections[0].withheld).toBeNull();
+    });
   });
 
   it("the_entry_carries_the_cast_the_write_needs", () => {

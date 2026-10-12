@@ -335,8 +335,11 @@ export function StudyPlannerDialog({
             <button
               type="button"
               data-testid="study-planner-save-all"
+              // Every section withheld for want of the casts (ah-9qdz.4): a file of only comments
+              // is never offered.
+              disabled={orders.allText === ""}
               onClick={() => onSaveText(orders.allFileName, orders.allText)}
-              className="rounded border border-brass px-1.5 text-brass hover:bg-brass/10"
+              className="rounded border border-brass px-1.5 text-brass hover:bg-brass/10 disabled:border-edge disabled:text-ink-dim disabled:opacity-50"
             >
               Save all…
             </button>

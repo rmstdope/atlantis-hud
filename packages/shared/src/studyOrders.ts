@@ -103,6 +103,12 @@ export type OrdersSection = {
    * it is what decides whether the box is there at all (ah-9qdz.4).
    */
   hasCast: boolean;
+  /**
+   * Set when the box is unticked and this section has casts planned but no mage who studies or
+   * teaches (ah-9qdz.4, mockup section 6): `text` is then one line saying so, not orders, and
+   * Copy, Save… and Put are greyed. `casts` counts the planned casts, a spell not known yet included.
+   */
+  withheld: { casts: number } | null;
 };
 
 /** Next turn's orders for every faction the planner knows about. */
@@ -111,7 +117,7 @@ export type StudyOrders = {
   sections: OrdersSection[];
   /** `Orders for turn 72 — 3 mages studying, 1 teaching`; null when `sections` is empty. */
   summary: string | null;
-  /** Every section's `text`, separated by one blank line. `""` when `sections` is empty. */
+  /** Every section's `text` but a withheld one's, separated by one blank line. `""` when there is none. */
   allText: string;
   /** `study-orders-turn-72.txt`. `study-orders.txt` when there is no turn. */
   allFileName: string;
@@ -164,7 +170,7 @@ function castOf(row: ScheduleRow, tree: MagicTree): OrdersCast | null {
   const level = standing.get(spell)?.level ?? 0;
   const annotation =
     practice.kind === "prerequisite"
-      ? `practises ${tree.byTag.get(practice.tag)?.name ?? practice.tag} (${name} can't rise past it)`
+      ? `practises ${tree.byTag.get(practice.tag ?? "")?.name ?? practice.tag} (${name} can't rise past it)`
       : practice.kind === "none"
         ? level >= (node?.maxLevel ?? Infinity)
           ? `${name} is at its maximum — no practice`
@@ -297,12 +303,12 @@ export function studyOrders(input: {
   const castFor = (row: ScheduleRow): OrdersCast | null =>
     input.casts?.write === true ? castOf(row, input.casts.tree) : null;
   const turn = turns[0];
+  const studies = (row: ScheduleRow) => (row.cells[0]?.kind ?? "idle") !== "idle";
+  const casts = (row: ScheduleRow) => input.casts !== undefined && plannedHalf(row) !== null;
+  const anyStudy = rows.some(studies);
   // A planned cast counts as a plan whatever the box says: without a section there is no heading
   // to carry the box, and a player who unticked it could never tick it back (ah-9qdz.4).
-  const planned = rows.some(
-    (row) =>
-      (row.cells[0]?.kind ?? "idle") !== "idle" || (input.casts !== undefined && plannedHalf(row) !== null)
-  );
+  const planned = anyStudy || rows.some(casts);
 
   if (turn === undefined || !planned) {
     // A file of nothing but "nothing planned" comments is not orders. A plan whose every order is
@@ -313,7 +319,27 @@ export function studyOrders(input: {
   const sections: OrdersSection[] = [];
   for (const group of groups) {
     const mine = rows.filter((row) => row.factionId === group.factionId);
-    if (mine.length === 0) {
+    const hasCast = mine.some(casts);
+    // With no study anywhere, only the casts make a plan: a section with neither would be a file
+    // of nothing but "nothing planned" comments, which is never offered (ah-9qdz.4).
+    if (mine.length === 0 || (!anyStudy && !hasCast)) {
+      continue;
+    }
+    const fileName = `study-orders-${safeFileNamePart(group.factionLabel) ?? group.factionId}-turn-${turn}.txt`;
+    if (input.casts?.write === false && hasCast && !mine.some(studies)) {
+      const count = mine.filter(casts).length;
+      sections.push({
+        factionId: group.factionId,
+        heading: group.heading,
+        source: group.source,
+        entries: mine.map((row) => contributionOf(row, rows, notices, null).entry),
+        hasCast,
+        withheld: { casts: count },
+        text: `No mage studies or teaches on turn ${turn}. Tick Also write the casts to write the ${count} planned cast${
+          count === 1 ? "" : "s"
+        }.`,
+        fileName
+      });
       continue;
     }
     const lines = [`; ${group.factionLabel} — study orders for turn ${turn}, from Atlantis HUD`];
@@ -341,9 +367,10 @@ export function studyOrders(input: {
       heading: group.heading,
       source: group.source,
       entries,
-      hasCast: mine.some((row) => plannedHalf(row) !== null),
+      hasCast,
+      withheld: null,
       text: lines.join("\n"),
-      fileName: `study-orders-${safeFileNamePart(group.factionLabel) ?? group.factionId}-turn-${turn}.txt`
+      fileName
     });
   }
 
@@ -365,10 +392,14 @@ export function studyOrders(input: {
     casting === 0 ? null : `${casting} casting`
   ].filter((part): part is string => part !== null);
 
+  const written = sections.filter((section) => section.withheld === null);
   return {
     sections,
-    summary: `Orders for turn ${turn} — ${parts.join(", ")}`,
-    allText: sections.map((section) => section.text).join("\n\n"),
+    summary:
+      written.length === 0
+        ? `Orders for turn ${turn} — nothing to write without the casts`
+        : `Orders for turn ${turn} — ${parts.join(", ")}`,
+    allText: written.map((section) => section.text).join("\n\n"),
     allFileName: `study-orders-turn-${turn}.txt`
   };
 }
