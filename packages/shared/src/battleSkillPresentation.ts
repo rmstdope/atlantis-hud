@@ -6,8 +6,9 @@
  * `battleSkills.ts` beside it: no React, no store, no client, no clock.
  */
 
-import type { Coordinate } from "@atlantis/core-client";
+import type { Coordinate, StudyForecast } from "@atlantis/core-client";
 import { derivedSkillsFor, type DerivedSkill, type DerivedSkills, type SkillBearingUnit } from "./battleSkills";
+import { skillsNextMonth } from "./skillsNextMonth";
 
 /** Every skill recovered from one battle, kept together for the hover and the Unit panel. */
 export type BattleSkillGroup = {
@@ -57,15 +58,21 @@ function sourceKey(skill: DerivedSkill): string {
  *
  * - A unit with report-native skills prints them exactly as it always has, comma-separated -
  *   including an own unit with none, which is `""`, never a battle notice.
+ * - A unit with a study forecast prints them as they will stand next month (`ah-uxlh`): the
+ *   forecast's figures, which are the Skills popup's blue ones, laid on by `skillsNextMonth`.
  * - A foreign unit with no skills of its own prints whatever `derivedSkillsFor` recovered, grouped
  *   by turn alone (not by hex): every skill sharing the table's one turn collapses into a single
  *   `(turn N)` suffix, and skills from different turns each keep their own.
  * - Nothing recovered prints `""`; `UnitTableDock` alone decides when that becomes the italic
  *   `not disclosed`.
  */
-export function unitSkillsCell(unit: SkillBearingUnit, derived: DerivedSkills): string {
-  if (unit.skills.length > 0) {
-    return unit.skills.map((skill) => `${skill.tag} ${skill.level} (${skill.points})`).join(", ");
+export function unitSkillsCell(
+  unit: SkillBearingUnit & { study?: StudyForecast | null },
+  derived: DerivedSkills
+): string {
+  const skills = skillsNextMonth(unit.skills, unit.study);
+  if (skills.length > 0) {
+    return skills.map((skill) => `${skill.tag} ${skill.level} (${skill.points})`).join(", ");
   }
 
   const recovered = derivedSkillsFor(derived, unit);
