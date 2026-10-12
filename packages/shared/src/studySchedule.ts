@@ -31,11 +31,7 @@ import {
 import { standingsFrom, type SkillStanding } from "./magicStanding";
 import type { MagicTree } from "./magicTree";
 import { plannedCasts, plannedGoals } from "./studyPlans";
-import {
-  PRACTICE_POINTS_PER_MONTH,
-  STUDY_POINTS_PER_MONTH,
-  levelForPoints
-} from "./studyProgress";
+import { PRACTICE_POINTS_PER_MONTH, STUDY_POINTS_PER_MONTH, monthEnd } from "./studyProgress";
 import type { PlannerGroup } from "./studyPlanner";
 import type { StandingAfterOrders } from "./studyStanding";
 import { teachingDoubles, teachingPermission, type TeachingPermission, type TeachingRule } from "./teachingPermission";
@@ -640,8 +636,11 @@ export function projectAll(input: {
       // Points stay fractional and are never rounded: `taughtWorth(20)` is 1.5 and a halved month
       // is 0.5, so a month can be worth 22.5 points. The 30-points-a-month rate is itself an
       // inference (`studyProgress.ts:21`); rounding here would be a second guess on top of it.
-      const points = intent.before.points + STUDY_POINTS_PER_MONTH * worth;
-      const level = Math.min(intent.maxLevel, levelForPoints(points));
+      const { level, points } = monthEnd(
+        intent.before,
+        { studied: worth, practised: false },
+        intent.maxLevel
+      );
       const next = copy(held.get(mage.key) ?? new Map());
       next.set(intent.skill, { level, points });
       held.set(mage.key, next);
@@ -684,10 +683,10 @@ export function projectAll(input: {
       }
       const next = copy(held.get(mage.key) ?? new Map());
       const was = next.get(gains) ?? { level: 0, points: 0 };
-      const points = was.points + PRACTICE_POINTS_PER_MONTH;
-      const level = Math.min(
-        input.tree.byTag.get(gains)?.maxLevel ?? Infinity,
-        Math.max(was.level, levelForPoints(points))
+      const { level, points } = monthEnd(
+        was,
+        { studied: 0, practised: true },
+        input.tree.byTag.get(gains)?.maxLevel ?? Infinity
       );
       next.set(gains, { level, points });
       held.set(mage.key, next);

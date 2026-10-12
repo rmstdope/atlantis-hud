@@ -5,7 +5,8 @@ import { parseGameData, type GameDataIndex } from "./gameData";
 import { buildMagicTree } from "./magicTree";
 import { cellMenu, goalsAfterChoice, seededStudents, teachClick, teachWarning } from "./studyCell";
 import type { TeachChoice } from "./studyCell";
-import { blockedBecause, projectAll, type ScheduleRow, type SkillPoints } from "./studySchedule";
+import { blockedBecause, projectAll, scheduleRows, type ScheduleRow, type SkillPoints } from "./studySchedule";
+import { skillWords } from "./skillReading";
 import { standingsFrom } from "./magicStanding";
 import { NO_TEACHING_RULE, type TeachingRule } from "./teachingPermission";
 
@@ -600,6 +601,179 @@ describe("a student a cross-faction teacher has already claimed", () => {
     for (const permission of ["refused", "unknown"] as const) {
       expect(sable(permission)?.detail).toBe("taught by 21/3012");
       expect(sable(permission)?.blocked).toBe("taught by 21/3012");
+    }
+  });
+});
+
+// ah-2k4z: the dropdown previews a month the grid then draws, so for every skill it offers, the
+// preview must read exactly what the projection gives once that skill is chosen. One net for every
+// input a month has - study, a teacher's doubling, the turn's practice - in place of a pair of
+// agreement tests per feature.
+describe("the Can study preview equals the projection", () => {
+  type Skill = { tag: string; level: number; points: number };
+  type Mage = {
+    unitId: string;
+    name: string;
+    skills: Skill[];
+    goals: StudyGoal[];
+    casts?: { turn: number; spell: string }[];
+  };
+
+  function project(mages: readonly Mage[]): ScheduleRow[] {
+    const groups = [
+      {
+        factionId: "21",
+        factionLabel: "Wardens of the North (12)",
+        source: "sheet" as const,
+        heading: "Wardens of the North (12) — turn 23",
+        stale: false,
+        mages: mages.map((mage) => ({
+          key: `21/${mage.unitId}`,
+          factionId: "21",
+          factionLabel: "Wardens of the North (12)",
+          unitId: mage.unitId,
+          name: mage.name,
+          regionId: "1:7,53",
+          structureId: "1",
+          sheetTurn: null,
+          monthsUnreported: 0,
+          skills: mage.skills
+        }))
+      }
+    ] as unknown as Parameters<typeof scheduleRows>[0]["groups"];
+    return scheduleRows({
+      groups,
+      plans: mages.map((mage) => ({
+        factionId: "21",
+        unitId: mage.unitId,
+        goals: mage.goals,
+        casts: mage.casts ?? [],
+        comment: "",
+        updatedAt: "2026-01-01T00:00:00.000Z"
+      })),
+      tree,
+      turns: TURNS,
+      seats: new Map(),
+      // Shelter is the one input the preview leaves to the grid's own cell (see `cellMenu`).
+      assumeSheltered: true,
+      after: new Map(),
+      rule: NO_TEACHING_RULE
+    });
+  }
+
+  /** Every choice the dropdown offers `who` on turn index 0, against the cell that choice draws. */
+  function agreement(mages: readonly Mage[], who: string) {
+    const rows = project(mages);
+    const row = rows.find((one) => one.unitId === who);
+    if (row === undefined) {
+      throw new Error(`no row for ${who}`);
+    }
+    const shown = cellMenu({
+      mageName: row.name,
+      turn: TURNS[0],
+      standing: row.standings[0],
+      tree,
+      rows,
+      turnIndex: 0,
+      rowKey: row.key,
+      rule: NO_TEACHING_RULE
+    });
+    expect(shown.choices.length).toBeGreaterThan(0);
+    return shown.choices.map((choice) => {
+      const chosen = project(
+        mages.map((mage) =>
+          mage.unitId === who
+            ? { ...mage, goals: goalsAfterChoice(mage.goals, TURNS[0], { kind: "study", skill: choice.skill }) }
+            : mage
+        )
+      );
+      const after = chosen.find((one) => one.unitId === who);
+      const cell = after?.cells[0];
+      if (after === undefined || cell?.kind !== "study") {
+        throw new Error(`no study cell for ${choice.skill}`);
+      }
+      const held = row.standings[0].get(choice.skill) ?? { level: 0, points: 0 };
+      const teacher = chosen.find((one) => one.key === cell.taughtBy)?.name ?? null;
+      return {
+        skill: choice.skill,
+        preview: { to: choice.to, detail: choice.detail, taughtBy: choice.taughtBy },
+        projection: {
+          to: cell.level,
+          detail: skillWords(held, cell) + (teacher === null ? "" : ` · taught by ${teacher}`),
+          taughtBy: teacher
+        }
+      };
+    });
+  }
+
+  function expectAgreement(mages: readonly Mage[], who: string) {
+    for (const one of agreement(mages, who)) {
+      expect({ skill: one.skill, ...one.preview }).toEqual({ skill: one.skill, ...one.projection });
+    }
+  }
+
+  it("agrees on a month of plain study", () => {
+    expectAgreement(
+      [
+        {
+          unitId: "2431",
+          name: "Ereb",
+          skills: [
+            { tag: "FORC", level: 2, points: 100 },
+            { tag: "PATT", level: 1, points: 45 }
+          ],
+          goals: [{ kind: "study", turn: TURNS[0], skill: "FORC" }]
+        }
+      ],
+      "2431"
+    );
+  });
+
+  it("agrees on a month a live teacher doubles", () => {
+    const rows = agreement(
+      [
+        {
+          unitId: "2431",
+          name: "Ereb",
+          skills: [{ tag: "FORC", level: 3, points: 270 }],
+          goals: [{ kind: "teach", turn: TURNS[0], students: [], live: true }]
+        },
+        {
+          unitId: "2517",
+          name: "Sable",
+          skills: [{ tag: "FORC", level: 1, points: 30 }],
+          goals: [{ kind: "study", turn: TURNS[0], skill: "FORC" }]
+        }
+      ],
+      "2517"
+    );
+    // The scenario has to reach the case it is about: one of the rows is in fact doubled.
+    expect(rows.some((one) => one.projection.taughtBy === "Ereb")).toBe(true);
+    for (const one of rows) {
+      expect({ skill: one.skill, ...one.preview }).toEqual({ skill: one.skill, ...one.projection });
+    }
+  });
+
+  it("agrees on a month the turn's planned cast practises", () => {
+    const rows = agreement(
+      [
+        {
+          unitId: "2431",
+          name: "Ereb",
+          skills: [
+            { tag: "FORC", level: 1, points: 60 },
+            { tag: "FIRE", level: 1, points: 30 }
+          ],
+          goals: [],
+          casts: [{ turn: TURNS[0], spell: "FIRE" }]
+        }
+      ],
+      "2431"
+    );
+    // PR #1518, finding 1: force 1(60) is previewed with the 5 days of practice in it.
+    expect(rows.find((one) => one.skill === "FORC")?.preview.detail).toBe("1(60) → 2(95)");
+    for (const one of rows) {
+      expect({ skill: one.skill, ...one.preview }).toEqual({ skill: one.skill, ...one.projection });
     }
   });
 });

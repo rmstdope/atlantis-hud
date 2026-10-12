@@ -15,7 +15,7 @@ import type { StudyGoal } from "@atlantis/core-client";
 import type { MagicTree } from "./magicTree";
 import { standingsFrom } from "./magicStanding";
 import { skillWords } from "./skillReading";
-import { PRACTICE_POINTS_PER_MONTH, STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
+import { monthEnd } from "./studyProgress";
 import { blockedBecause, type ScheduleRow, type SkillPoints } from "./studySchedule";
 import { TEACHING_SLOTS, claimedTeacher, doublingTeacher } from "./studyTeaching";
 import type { TeachingRule } from "./teachingPermission";
@@ -133,27 +133,29 @@ export function cellMenu(input: {
           });
     // Two whole months, never `taughtWorth(...)`: `doublingTeacher` admits only a teacher still
     // within his ten slots, and a taught month is undiluted up to those (`rules/skills_teaching`).
-    const months = taughtBy === null ? 1 : 2;
-    const points =
-      held.points +
-      months * STUDY_POINTS_PER_MONTH +
-      (tag === practised ? PRACTICE_POINTS_PER_MONTH : 0);
-    const to = Math.min(node.maxLevel, levelForPoints(points));
+    // `monthEnd` is the projection's own arithmetic (ah-2k4z), so the row reads what the grid
+    // draws once this skill is chosen; the practice is in it as one call, which ends where the
+    // projection's study-then-practice ends.
+    const ends = monthEnd(
+      held,
+      { studied: taughtBy === null ? 1 : 2, practised: tag === practised },
+      node.maxLevel
+    );
     // `3(270) → 4(300)`: a level with its points in brackets is how a report prints a skill and
     // how a player says one out loud (navigator, 2026-09-07), so the row is that, twice - where he
     // stands and where the month leaves him.
     //
     // `skillWords` collapses an arrow whose two ends read the same; it cannot fire here, because a
-    // month is worth 30 or 60 points (`STUDY_POINTS_PER_MONTH`) and the projected reading is
-    // therefore always above the held one. A rule that ever made a month worth nothing would take
+    // studied month is worth 30 or 60 points (`monthEnd`) and the projected reading is therefore
+    // always above the held one. A rule that ever made a month worth nothing would take
     // this row's arrow away with it.
     choices.push({
       skill: tag,
       name: node.name,
       from: held.level,
-      to,
+      to: ends.level,
       detail:
-        skillWords(held, { level: to, points }) +
+        skillWords(held, ends) +
         (taughtBy === null ? "" : ` · taught by ${taughtBy}`),
       taughtBy
     });
