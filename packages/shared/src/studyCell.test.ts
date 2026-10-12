@@ -138,6 +138,8 @@ function rowOf(start: SkillPoints, goals: StudyGoal[]): ScheduleRow {
     note: "",
     hasNote: false,
     goals,
+    casts: [],
+    castHalves: [],
     cells,
     standings,
     monthsUnreported: 0,
@@ -417,6 +419,8 @@ describe("the doubled month a declaration rule withholds", () => {
       note: "",
       hasNote: false,
       goals: [],
+      casts: [],
+      castHalves: [],
       cells: [
         {
           kind: "teach",
@@ -440,6 +444,8 @@ describe("the doubled month a declaration rule withholds", () => {
       note: "",
       hasNote: false,
       goals: [],
+      casts: [],
+      castHalves: [],
       cells: [],
       standings: [standing(3), standing(3)],
       monthsUnreported: 0,
@@ -495,6 +501,8 @@ describe("a student a cross-faction teacher has already claimed", () => {
         note: "",
         hasNote: false,
         goals: [],
+        casts: [],
+        castHalves: [],
         cells: [],
         standings: [standing(5), standing(5)],
         monthsUnreported: 0,
@@ -510,6 +518,8 @@ describe("a student a cross-faction teacher has already claimed", () => {
         note: "",
         hasNote: false,
         goals: [],
+        casts: [],
+        castHalves: [],
         cells: [
           {
             kind: "study" as const,

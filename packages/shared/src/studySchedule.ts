@@ -16,7 +16,8 @@
  * fleet rather than a mage at a time: `projectAll`.
  */
 
-import type { StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
+import type { PlannedCast, StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
+import { castHalf, type CastHalf } from "./studyCast";
 import { skillWords } from "./skillReading";
 import { shelterKey, type ShelterSeats } from "./studyShelter";
 import {
@@ -28,7 +29,7 @@ import {
 } from "./studyTeaching";
 import { standingsFrom, type SkillStanding } from "./magicStanding";
 import type { MagicTree } from "./magicTree";
-import { plannedGoals } from "./studyPlans";
+import { plannedCasts, plannedGoals } from "./studyPlans";
 import { STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
 import type { PlannerGroup } from "./studyPlanner";
 import type { StandingAfterOrders } from "./studyStanding";
@@ -139,6 +140,10 @@ export type ScheduleRow = {
    * goal on a turn outside the six columns.
    */
   goals: readonly StudyGoal[];
+  /** The planned casts as stored, sanitized by `plannedCasts` (ah-9qdz.2). */
+  casts: readonly PlannedCast[];
+  /** One per turn: the cast half that turn draws, or null where he knows no castable spell. */
+  castHalves: (CastHalf | null)[];
   /** One per turn, `SCHEDULE_TURNS` long, in turn order. */
   cells: ScheduleCell[];
   /**
@@ -787,6 +792,16 @@ export function scheduleRows(input: {
       const goals = plannedGoals(plan?.goals ?? [], input.tree);
       const start = startOf(mage.skills);
       const { cells, standings } = projected.get(mage.key) ?? { cells: [], standings: [start] };
+      const casts = plannedCasts(plan?.casts);
+      const castHalves = input.turns.map((turn, index) =>
+        castHalf({
+          mageName: mage.name,
+          turn,
+          standing: standings[index] ?? new Map(),
+          tree: input.tree,
+          cast: casts.find((cast) => cast.turn === turn)?.spell ?? null
+        })
+      );
       rows.push({
         key: mage.key,
         factionId: mage.factionId,
@@ -797,6 +812,8 @@ export function scheduleRows(input: {
         note: plan?.comment ?? "",
         hasNote: (plan?.comment ?? "") !== "",
         goals,
+        casts,
+        castHalves,
         cells,
         standings,
         monthsUnreported: mage.monthsUnreported,

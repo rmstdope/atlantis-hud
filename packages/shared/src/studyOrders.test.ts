@@ -26,6 +26,8 @@ const aRow = (over: Partial<ScheduleRow> & { cells: ScheduleCell[] }): ScheduleR
   note: "",
   hasNote: false,
   goals: [],
+  casts: [],
+  castHalves: [],
   standings: [standing({})],
   monthsUnreported: 0,
   sheetTurn: null,
