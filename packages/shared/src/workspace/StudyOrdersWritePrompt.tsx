@@ -56,7 +56,7 @@ export function StudyOrdersWritePrompt({
         {plan.rows.map((row) => (
           <Fragment key={row.unitId}>
             <div data-testid={`study-orders-write-row-${row.unitId}`} className="flex gap-2">
-              <span className={row.writes ? "text-ink" : "text-ink-dim"}>{row.who}</span>
+              <span className={row.writes || row.cast?.writes === true ? "text-ink" : "text-ink-dim"}>{row.who}</span>
               <span className={`font-mono ${row.writes ? "text-ink-soft" : "text-ink-dim"}`}>
                 {row.detail}
               </span>

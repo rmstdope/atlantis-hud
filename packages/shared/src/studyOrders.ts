@@ -305,10 +305,12 @@ export function studyOrders(input: {
   const turn = turns[0];
   const studies = (row: ScheduleRow) => (row.cells[0]?.kind ?? "idle") !== "idle";
   const casts = (row: ScheduleRow) => input.casts !== undefined && plannedHalf(row) !== null;
+  // A cast he won't know yet is never written, so it makes no plan and is no promise (review finding 4).
+  const writable = (row: ScheduleRow) => casts(row) && plannedHalf(row)?.known === true;
   const anyStudy = rows.some(studies);
   // A planned cast counts as a plan whatever the box says: without a section there is no heading
   // to carry the box, and a player who unticked it could never tick it back (ah-9qdz.4).
-  const planned = anyStudy || rows.some(casts);
+  const planned = anyStudy || rows.some(writable);
 
   if (turn === undefined || !planned) {
     // A file of nothing but "nothing planned" comments is not orders. A plan whose every order is
@@ -322,12 +324,12 @@ export function studyOrders(input: {
     const hasCast = mine.some(casts);
     // With no study anywhere, only the casts make a plan: a section with neither would be a file
     // of nothing but "nothing planned" comments, which is never offered (ah-9qdz.4).
-    if (mine.length === 0 || (!anyStudy && !hasCast)) {
+    if (mine.length === 0 || (!anyStudy && !mine.some(writable))) {
       continue;
     }
     const fileName = `study-orders-${safeFileNamePart(group.factionLabel) ?? group.factionId}-turn-${turn}.txt`;
-    if (input.casts?.write === false && hasCast && !mine.some(studies)) {
-      const count = mine.filter(casts).length;
+    const count = mine.filter(writable).length;
+    if (input.casts?.write === false && count > 0 && !mine.some(studies)) {
       sections.push({
         factionId: group.factionId,
         heading: group.heading,

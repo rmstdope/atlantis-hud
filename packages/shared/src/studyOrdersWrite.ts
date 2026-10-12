@@ -54,7 +54,7 @@ export type StudyWritePlan = {
   changed: number;
   /** Of those, how many carried a month-long order that was neither STUDY nor TEACH. */
   replaced: number;
-  /** How many mages' planned casts stand in their orders after the write: written, or kept as already there. */
+  /** Casts that stand in the orders of a mage who changes: written, or kept as already there. */
   casts: number;
   /** The targets warning, shown only when at least one cast line is written. */
   warning: string | null;
@@ -158,8 +158,10 @@ export function studyWritePlan(input: {
   let casts = 0;
   let castsWritten = 0;
   let studyWritten = 0;
-  // Mages with an order or a cast to write that the write could not reach (no block, no banner).
-  let unreached = 0;
+  // Rows that leave something planned out: a mage the write cannot reach (no block, no banner), a
+  // blocked study, a cast he won't know yet. Any of them means not everything planned is there.
+  let leftOutRows = 0;
+  let castsKept = 0;
 
   for (const entry of input.entries) {
     const who = `${entry.name} (${entry.unitId})`;
@@ -169,6 +171,9 @@ export function studyWritePlan(input: {
     const leftOut =
       cast === null ? null : { detail: cast.kind === "write" ? `${cast.order} — left alone` : cast.text, writes: false };
 
+    if (cast?.kind === "unknown" || (entry.order === null && (entry.skipReason ?? "nothing planned") !== "nothing planned")) {
+      leftOutRows += 1;
+    }
     if (entry.order === null && castWrites === null) {
       rows.push({ unitId: entry.unitId, who, detail: skipDetail, writes: false, cast: leftOut });
       continue;
@@ -179,7 +184,7 @@ export function studyWritePlan(input: {
     if (!hadBlock && banner === null) {
       // `writeUnitOrders` silently does nothing for a unit with no block, and inventing a banner
       // would put the block under a region heading naming the wrong hex.
-      unreached += 1;
+      leftOutRows += 1;
       rows.push({
         unitId: entry.unitId,
         who,
@@ -221,9 +226,14 @@ export function studyWritePlan(input: {
       const step = withCast(orders, castWrites, syntax);
       orders = step.orders;
       castRow = { detail: step.detail, writes: step.writes };
-      casts += 1;
       if (step.writes) {
         castsWritten += 1;
+      } else {
+        castsKept += 1;
+      }
+      // A kept cast counts in the result line only for a mage the line counts (review finding 3).
+      if (studyWrites || step.writes) {
+        casts += 1;
       }
     }
 
@@ -240,7 +250,7 @@ export function studyWritePlan(input: {
   // section 7): Put was offered, so the confirmation says why Write is greyed.
   const lead =
     changed === 0
-      ? casts > 0 && unreached === 0
+      ? castsKept > 0 && leftOutRows === 0
         ? "Everything planned here is already in your orders — nothing to write."
         : "None of these mages can be written into your orders."
       : `${changed} unit${changed === 1 ? " changes" : "s change"}. Nothing else in the document is touched, and you can undo it afterwards.`;

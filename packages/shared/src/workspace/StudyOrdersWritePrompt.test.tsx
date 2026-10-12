@@ -85,6 +85,24 @@ describe("StudyOrdersWritePrompt — casts", () => {
     expect(row).toContain("CAST FARS — already there, kept");
   });
 
+  // Review finding 1: a mage who changes only by his cast is not "left alone" - the mockup's Thane row.
+  it("a_mage_written_only_for_his_cast_is_named_in_ink", () => {
+    const markup = draw(
+      aPlan({
+        rows: [
+          {
+            unitId: "1301",
+            who: "Thane (1301)",
+            detail: "nothing planned — left alone",
+            writes: false,
+            cast: { detail: "COMBAT FIRE", writes: true }
+          }
+        ]
+      })
+    );
+    expect(markup).toContain('<span class="text-ink">Thane (1301)</span>');
+  });
+
   it("the_warning_shows_only_when_the_plan_carries_one", () => {
     expect(draw(withCasts)).toContain(
       "Casts are written without a target. Add one by hand where the spell needs it."

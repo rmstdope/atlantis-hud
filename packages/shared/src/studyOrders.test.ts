@@ -652,9 +652,33 @@ describe("studyOrders — casts", () => {
       );
     });
 
-    it("counts_a_spell_he_will_not_know_yet_as_planned", () => {
-      const orders = unticked([idle("FARS", { castHalves: [planned("FARS", false)] })]);
+    // Review finding 4: a cast he won't know yet is never written, so it is no promise to make.
+    it("counts_only_the_casts_ticking_would_write", () => {
+      const orders = unticked([
+        idle("FARS"),
+        idle("FIRE", { unitId: "881", key: "95/881", name: "Sable", castHalves: [planned("FIRE", false)] })
+      ]);
       expect(orders.sections[0].withheld).toEqual({ casts: 1 });
+    });
+
+    it("only_casts_he_won't_know_yet_are_nothing_to_write_ticked_or_not", () => {
+      for (const write of [true, false]) {
+        const orders = studyOrders({
+          groups: [ownGroup],
+          rows: [idle("FARS", { castHalves: [planned("FARS", false)] })],
+          turns: [72],
+          notices: [],
+          casts: { tree, write }
+        });
+        expect(orders.sections).toEqual([]);
+      }
+    });
+
+    it("a_section_with_only_a_cast_he_won't_know_is_not_withheld", () => {
+      const scholar = aRow({ factionId: "17", unitId: "300", key: "17/300", name: "Ghost", cells: [aStudyCell()] });
+      const orders = unticked([idle("FARS", { castHalves: [planned("FARS", false)] }), scholar], [ownGroup, allyGroup]);
+      expect(orders.sections.map((section) => section.withheld)).toEqual([null, null]);
+      expect(orders.sections[0].hasCast).toBe(true);
     });
 
     it("drops_a_section_with_neither_study_nor_cast_when_nothing_is_studied", () => {

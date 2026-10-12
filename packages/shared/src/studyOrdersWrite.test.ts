@@ -392,6 +392,28 @@ describe("studyWritePlan — casts", () => {
     expect(result.lead).toBe("None of these mages can be written into your orders.");
   });
 
+  // Review finding 2: not everything planned is there when another row is left out.
+  it("a_kept_cast_beside_a_left_out_row_keeps_the_old_lead", () => {
+    const document = ["#atlantis 95", "", BANNER, "", "unit 1234", "CAST Farsight REGION 12 40 1", "", "unit 881", "", "#end"].join("\n");
+    const sable = { key: "95/881", unitId: "881", name: "Sable" };
+    for (const other of [
+      castOnly(unknown, sable),
+      anEntry({ ...sable, order: null, annotation: null, skipReason: "no teacher in reach", cast: null })
+    ]) {
+      const result = plan(document, [castOnly(farsight), other]);
+      expect(result.changed).toBe(0);
+      expect(result.lead).toBe("None of these mages can be written into your orders.");
+    }
+  });
+
+  // Review finding 3: a kept cast is counted only for a mage the line counts.
+  it("a_kept_cast_of_a_mage_that_does_not_change_is_not_counted", () => {
+    const document = ["#atlantis 95", "", BANNER, "", "unit 1234", "@work", "", "unit 881", "CAST Farsight", "", "#end"].join("\n");
+    expect(
+      plan(document, [anEntry(), castOnly(farsight, { key: "95/881", unitId: "881", name: "Sable" })]).resultText
+    ).toBe("Wrote study orders for 1 mage; 1 other order replaced.");
+  });
+
   it("no_casts_leaves_the_plan_as_it_was", () => {
     const result = plan(aDocument("@work"), [anEntry()]);
     expect(result.casts).toBe(0);
