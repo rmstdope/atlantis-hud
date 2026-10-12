@@ -20,7 +20,7 @@ import { studyOrders } from "../studyOrders";
 import type { StandingAfterOrders } from "../studyStanding";
 import { mageShelters, type ShelterSeats } from "../studyShelter";
 import { planFor, plannedGoals, type PlanChange, type ScheduleChange } from "../studyPlans";
-import { castsToPrune } from "../studyCast";
+import { castsLostToEdit, type CastHalf } from "../studyCast";
 import type { TeachingRule } from "../teachingPermission";
 import { STUDY_NOTE_MAX_CHARS, noteCountText } from "../studyNote";
 import { createNoteAutosave, type NoteAutosave } from "./studyNoteAutosave";
@@ -154,25 +154,41 @@ export function StudyPlannerDialog({
     () => scheduleRows({ groups, plans, tree, turns, seats, assumeSheltered, after, rule }),
     [groups, plans, tree, turns, seats, assumeSheltered, after, rule]
   );
-  // ah-9qdz.2: a cast planned on a turn where he would know no castable spell at all - an earlier
-  // study was changed - is taken out of the plan rather than kept amber (agreed), and does not
-  // come back if that study is changed back. The rule is `castsToPrune`; this only writes it.
-  // The signature keeps a re-render while the write is in flight from queueing it twice.
-  const prune = useMemo(() => castsToPrune(rows, turns), [rows, turns]);
-  const pruned = useRef("");
+  // ah-9qdz.2: a cast planned on a turn where he would know no castable spell at all - because
+  // an earlier study was changed - is taken out of the plan rather than kept amber (agreed), and
+  // does not come back if that study is changed back. Only the edit's own loss counts: a half lost
+  // to the shelter forecast, this month's orders or an old ruleset keeps its cast
+  // (`castsLostToEdit`, review of PR #1516). Each committed study or teach records the mage's
+  // goals and halves as they were; once his goals read differently, the halves he lost are pruned.
+  const castEdits = useRef(
+    new Map<string, { goals: string; before: readonly (CastHalf | null)[] }>()
+  );
   useEffect(() => {
-    const signature = JSON.stringify(prune);
-    if (signature === pruned.current) {
-      return;
-    }
-    pruned.current = signature;
-    for (const { rowKey, turns: dropped } of prune) {
-      const [factionId, unitId] = rowKey.split("/");
-      onSavePlan(factionId, unitId, {
-        casts: (casts) => casts.filter((cast) => !dropped.includes(cast.turn))
+    for (const [rowKey, edit] of castEdits.current) {
+      const row = rows.find((one) => one.key === rowKey);
+      if (row === undefined) {
+        castEdits.current.delete(rowKey);
+        continue;
+      }
+      if (JSON.stringify(row.goals) === edit.goals) {
+        // The write has not landed yet; this render is something else.
+        continue;
+      }
+      castEdits.current.delete(rowKey);
+      const lost = castsLostToEdit({
+        casts: row.casts,
+        before: edit.before,
+        after: row.castHalves,
+        turns
       });
+      if (lost.length > 0) {
+        const [factionId, unitId] = rowKey.split("/");
+        onSavePlan(factionId, unitId, {
+          casts: (casts) => casts.filter((cast) => !lost.includes(cast.turn))
+        });
+      }
     }
-  }, [prune, onSavePlan]);
+  }, [rows, turns, onSavePlan]);
   const shelters = useMemo(
     () => mageShelters({ groups, seats, names: structureNames, after }),
     [groups, seats, structureNames, after]
@@ -469,6 +485,13 @@ export function StudyPlannerDialog({
           mode={cellMode}
           onEvent={(event) => setCellMode((mode) => reduceCell(mode, event))}
           onCommit={(rowKey, change) => {
+            const row = rows.find((one) => one.key === rowKey);
+            if (change.goals !== undefined && row !== undefined) {
+              castEdits.current.set(rowKey, {
+                goals: JSON.stringify(row.goals),
+                before: row.castHalves
+              });
+            }
             const [factionId, unitId] = rowKey.split("/");
             onSavePlan(factionId, unitId, change);
           }}

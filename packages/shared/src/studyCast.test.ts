@@ -6,7 +6,7 @@ import {
   castMenu,
   castableAt,
   castsAfterChoice,
-  castsToPrune
+  castsLostToEdit
 } from "./studyCast";
 import type { SkillPoints } from "./studySchedule";
 
@@ -176,26 +176,32 @@ describe("castsAfterChoice", () => {
   });
 });
 
-describe("castsToPrune", () => {
+describe("castsLostToEdit", () => {
   const empty = { kind: "empty" as const, label: "✦ no cast" as const, title: null };
+  const lost = (before: (typeof empty | null)[], after: (typeof empty | null)[]) =>
+    castsLostToEdit({
+      casts: [
+        { turn: 26, spell: "BIRD" },
+        { turn: 27, spell: "BIRD" },
+        { turn: 28, spell: "BIRD" },
+        { turn: 40, spell: "BIRD" }
+      ],
+      before,
+      after,
+      turns: [26, 27, 28]
+    });
 
-  it("names every visible turn holding a cast where he would know no castable spell", () => {
-    expect(
-      castsToPrune(
-        [
-          {
-            key: "21/2588",
-            casts: [
-              { turn: 26, spell: "BIRD" },
-              { turn: 27, spell: "BIRD" },
-              { turn: 40, spell: "BIRD" }
-            ],
-            castHalves: [empty, null, null]
-          },
-          { key: "21/2517", casts: [{ turn: 26, spell: "FARS" }], castHalves: [empty, empty, empty] }
-        ],
-        [26, 27, 28]
-      )
-    ).toEqual([{ rowKey: "21/2588", turns: [27] }]);
+  it("names a turn whose half the edit took away", () => {
+    expect(lost([empty, empty, empty], [empty, null, empty])).toEqual([27]);
+  });
+
+  // Review finding 1: a half missing before the edit was lost to something else - the shelter
+  // toggle, this month's orders, a ruleset that says nothing about uses - and is never pruned.
+  it("keeps a cast whose half was already missing before the edit", () => {
+    expect(lost([empty, null, null], [empty, null, null])).toEqual([]);
+  });
+
+  it("never names a turn outside the columns", () => {
+    expect(lost([empty, empty, empty], [null, null, null])).toEqual([26, 27, 28]);
   });
 });

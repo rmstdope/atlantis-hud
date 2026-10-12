@@ -210,29 +210,30 @@ export function castsAfterChoice(
 }
 
 /**
- * Every visible turn holding a cast where he would know no castable spell at all - which the
- * agreed experience takes out of the plan rather than keeping amber. A turn outside the columns is
- * never named: nothing projects it.
+ * The turns whose cast one study or teach edit took out of reach: a half drawn before the edit and
+ * gone after it, which the agreed experience removes from the plan rather than keeping amber.
+ *
+ * Only an edit's own loss counts. A half that was already missing before it was taken away by
+ * something else - the all-sheltered forecast switched off, this month's orders, a ruleset that
+ * says nothing about uses - and the cast is kept for when that comes back (review of PR #1516).
+ * A turn outside the columns is never named: nothing projects it.
  */
-export function castsToPrune(
-  rows: readonly {
-    key: string;
-    casts: readonly PlannedCast[];
-    castHalves: readonly (CastHalf | null)[];
-  }[],
-  turns: readonly number[]
-): { rowKey: string; turns: number[] }[] {
-  const out: { rowKey: string; turns: number[] }[] = [];
-  for (const row of rows) {
-    const dropped = row.casts
-      .map((cast) => cast.turn)
-      .filter((turn) => {
-        const index = turns.indexOf(turn);
-        return index >= 0 && row.castHalves[index] === null;
-      });
-    if (dropped.length > 0) {
-      out.push({ rowKey: row.key, turns: dropped });
-    }
-  }
-  return out;
+export function castsLostToEdit(input: {
+  casts: readonly PlannedCast[];
+  /** The mage's halves as the edit was made, one per column. */
+  before: readonly (CastHalf | null)[];
+  /** His halves once the edit is in the plan. */
+  after: readonly (CastHalf | null)[];
+  turns: readonly number[];
+}): number[] {
+  return input.casts
+    .map((cast) => cast.turn)
+    .filter((turn) => {
+      const index = input.turns.indexOf(turn);
+      return (
+        index >= 0 &&
+        (input.before[index] ?? null) !== null &&
+        (input.after[index] ?? null) === null
+      );
+    });
 }

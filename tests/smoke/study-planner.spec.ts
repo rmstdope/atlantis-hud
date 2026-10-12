@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readReport } from "@atlantis/fixtures";
 import { loadReport } from "./gameSetup";
 
 /**
@@ -307,6 +308,55 @@ test("a cast is planned under a turn from the keyboard, and survives a reload", 
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
   await expect(page.getByTestId(`study-schedule-cast-${MAGE}-72`)).toHaveText("⚔ FIRE");
+  await expect(page.getByTestId(`study-schedule-cast-${MAGE}-73`)).toHaveText("✦ no cast");
+});
+
+// ah-9qdz.2, review of PR #1516: a cast on a turn an earlier study change leaves him no castable
+// spell for is taken out of the plan, and changing the study back does not bring it back. The
+// fixture's Six of Seven already knows fire, so this walk loads him knowing only the three
+// foundations (`data/FORC`, `data/PATT`, `data/SPIR`: automatic), which no cast half offers.
+test("a cast left without a spell by an earlier study change is taken out of the plan", async ({
+  page
+}) => {
+  const foundationsOnly = readReport("g7f95t71").replace(
+    /(\* Six of Seven \(881\)[\s\S]*?Skills: )[^.]*\./,
+    "$1force [FORC] 4 (325), pattern\n  [PATT] 3 (250), spirit [SPIR] 3 (185)."
+  );
+  await loadReport(page, "Smoke game", foundationsOnly);
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
+
+  const study = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  const half = page.getByTestId(`study-schedule-cast-${MAGE}-73`);
+  const popover = page.getByTestId("study-schedule-popover");
+  const castPopover = page.getByTestId("study-schedule-cast-popover");
+  // He knows no castable spell, so no turn has a half.
+  await expect(page.locator(`[data-testid^="study-schedule-cast-${MAGE}-"]`)).toHaveCount(0);
+
+  // A month of fire (`data/FIRE`: combat) on turn 72 gives him a half from turn 73.
+  const chooseStudy = async (skill: string) => {
+    await study.click();
+    await page.getByTestId(`study-schedule-choice-${skill}`).click();
+    await expect(popover).toHaveCount(0);
+  };
+  await chooseStudy("FIRE");
+  await expect(half).toHaveText("✦ no cast");
+  await half.click();
+  await page.getByTestId("study-schedule-cast-choice-FIRE").click();
+  await expect(castPopover).toHaveCount(0);
+  await expect(half).toHaveText("⚔ FIRE");
+
+  // Force instead: on turn 73 he knows no castable spell, so the half and the cast both go.
+  await chooseStudy("FORC");
+  await expect(half).toHaveCount(0);
+  // Fire again: the half is back, and the cast is not.
+  await chooseStudy("FIRE");
+  await expect(half).toHaveText("✦ no cast");
+
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-schedule").click();
   await expect(page.getByTestId(`study-schedule-cast-${MAGE}-73`)).toHaveText("✦ no cast");
 });
 
