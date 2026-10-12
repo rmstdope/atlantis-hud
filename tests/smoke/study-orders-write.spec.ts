@@ -87,3 +87,44 @@ test("Escape closes the write prompt and leaves the planner open", async ({ page
   await expect(page.getByTestId("study-orders-write-prompt")).toHaveCount(0);
   await expect(page.getByTestId("study-planner-dialog")).toBeVisible();
 });
+
+// ah-9qdz.4: a planned cast reaches the orders behind "Also write the casts", ticked as it opens.
+// Six of Seven knows fire (`data/FIRE`: combat), so his line is `COMBAT FIRE` (`rules/combat`).
+// The tick, the click and the write into the editor are what `packages/shared` cannot reach.
+test("a planned cast is written beside the study, and unticking the box leaves it out", async ({
+  page
+}) => {
+  await openPlannerWithHandWrittenOrders(page);
+  await page.getByTestId("study-planner-view-schedule").click();
+  await page.getByTestId(`study-schedule-cast-${MAGE}-72`).click();
+  await page.getByTestId("study-schedule-cast-choice-FIRE").click();
+  await expect(page.getByTestId("study-schedule-cast-popover")).toHaveCount(0);
+  await page.getByTestId("study-planner-view-orders").click();
+
+  const box = page.getByTestId("study-planner-write-casts-95");
+  const summary = page.getByTestId("study-planner-summary");
+  await expect(box).toBeChecked();
+  await expect(summary).toContainText(", 1 casting");
+
+  await box.uncheck();
+  await expect(summary).not.toContainText("casting");
+  await box.check();
+  await expect(summary).toContainText(", 1 casting");
+
+  await page.getByTestId("study-planner-write").click();
+  const prompt = page.getByTestId("study-orders-write-prompt");
+  await expect(page.getByTestId(`study-orders-write-cast-${MAGE}`)).toContainText("COMBAT FIRE");
+  await expect(prompt).toContainText(
+    "Casts are written without a target. Add one by hand where the spell needs it."
+  );
+  await expect(box).toBeDisabled();
+
+  await page.getByTestId("study-orders-write-confirm").click();
+  await expect(page.getByTestId("study-planner-write-notice")).toContainText(
+    "Wrote study orders and 1 cast for 1 mage; 1 other order replaced."
+  );
+  await page.keyboard.press("Escape");
+  await expectOrders(page, /STUDY FORC/u);
+  await expectOrders(page, /COMBAT FIRE/u);
+  await expectOrders(page, /claim 200/u);
+});
