@@ -11,6 +11,7 @@
 //! boardings in the order they were written, and the rule lives here alone.
 
 use crate::movement::orders::MoveStep;
+use crate::report::model::{SwimCapacity, UnitMovement};
 
 /// A unit's ENTER and LEAVE orders, in the order they were written.
 ///
@@ -76,7 +77,8 @@ pub fn standing_after<'a>(
 }
 
 /// [`standing_after`] in a hex whose structures are known, where `has` says whether the hex has a
-/// structure by that number.
+/// structure by that number, and `leave_refused` whether the game refuses this unit's LEAVE where
+/// it stands ([`leave_refused_at_sea`]).
 ///
 /// An ENTER of a structure the hex does not have is refused, and the refusal moves nothing: the
 /// engine's `Do1EnterOrder` finds no object, reports "ENTER: Can't enter that." and returns before
@@ -84,12 +86,17 @@ pub fn standing_after<'a>(
 /// in (`ah-5maa`; `newage trident rules/enter`, which only lets a unit into an object that is
 /// there to enter). `rules/sequenceofevents` runs ENTER orders before any movement, so a fleet
 /// sailing in later that month is not there yet either.
+///
+/// A refused LEAVE moves nothing either: the same `Do1EnterOrder` reports "LEAVE: Can't leave a
+/// ship in the ocean." and returns before `MoveUnit`, so the unit stays aboard (`ah-djst`). An
+/// ENTER in the same block still runs.
 pub fn standing_after_in<'a>(
     reported: Option<&'a str>,
     boardings: impl IntoIterator<Item = Boarding<'a>>,
     has: impl Fn(&str) -> bool,
+    leave_refused: bool,
 ) -> Option<&'a str> {
-    let standing = standing_after(reported, boardings);
+    let standing = standing_after(reported, that_run(boardings, leave_refused));
     if refused(reported, standing, has) {
         reported
     } else {
@@ -108,6 +115,62 @@ pub fn enter_refused<'a>(
     refused(reported, standing_after(reported, boardings), has)
 }
 
+/// Whether any of the block's boarding orders moves the unit at all: one that runs, in a block
+/// [`enter_refused`] does not refuse. A LEAVE refused at sea is not one (`ah-djst`); an ENTER or
+/// LEAVE landing the unit where it started still is, since the engine's `Unit::MoveUnit` always
+/// removes and appends.
+pub fn boarding_moves<'a>(
+    reported: Option<&'a str>,
+    boardings: impl IntoIterator<Item = Boarding<'a>>,
+    has: impl Fn(&str) -> bool,
+    leave_refused: bool,
+) -> bool {
+    let running: Vec<Boarding<'a>> = that_run(boardings, leave_refused).collect();
+    !running.is_empty() && !enter_refused(reported, running, has)
+}
+
+/// Whether the game refuses a LEAVE from this unit where it stands.
+///
+/// `Do1EnterOrder` refuses one in an ocean region when the unit cannot swim **or** won't cross
+/// water ("LEAVE: Can't leave a ship in the ocean."; `rules/leave`: "If a unit is capable of
+/// swimming or flying then this order is usable to leave a boat while at sea"; `rules/nocross`),
+/// and `Unit::CanSwim` also admits a unit that can fly. `rules/sequenceofevents` runs NOCROSS
+/// before LEAVE, so `wont_cross_water` is the flag once this month's NOCROSS has run. A unit whose
+/// movement nothing states is taken as unable: the engine keeps it aboard unless it can carry its
+/// weight swimming or flying, and nothing in hand says it can.
+#[must_use]
+pub fn leave_refused_at_sea(
+    at_sea: bool,
+    wont_cross_water: bool,
+    movement: Option<&UnitMovement>,
+) -> bool {
+    if !at_sea {
+        return false;
+    }
+    if wont_cross_water {
+        return true;
+    }
+    let Some(movement) = movement else {
+        return true;
+    };
+    let swims = matches!(
+        movement.swim,
+        SwimCapacity::Stated { capacity } if capacity > 0 && capacity >= movement.load
+    );
+    let flies = movement.fly > 0 && movement.fly >= movement.load;
+    !(swims || flies)
+}
+
+/// The block's boardings less any LEAVE the game refuses.
+fn that_run<'a>(
+    boardings: impl IntoIterator<Item = Boarding<'a>>,
+    leave_refused: bool,
+) -> impl Iterator<Item = Boarding<'a>> {
+    boardings
+        .into_iter()
+        .filter(move |boarding| !(leave_refused && *boarding == Boarding::Leave))
+}
+
 fn refused(reported: Option<&str>, standing: Option<&str>, has: impl Fn(&str) -> bool) -> bool {
     standing.is_some_and(|structure| Some(structure) != reported && !has(structure))
 }
@@ -122,7 +185,8 @@ fn refused(reported: Option<&str>, standing: Option<&str>, has: impl Fn(&str) ->
 /// different question, answered by who is aboard when it moves: every LEAVE that runs does so
 /// before movement (`Game::RunEnterOrders` ahead of `RunMovementOrders`), so a captain that leaves
 /// carries nobody - unless the LEAVE is refused at sea, where it keeps its hull
-/// (`movement::fleet::fleet_owner`, `ah-877p`).
+/// ([`leave_refused_at_sea`], applied by `movement::fleet::OrderedUnits::structure_of`; `ah-877p`,
+/// `ah-djst`).
 pub fn could_captain<'a>(
     reported: Option<&str>,
     structure_id: &str,
@@ -351,5 +415,63 @@ mod move_tests {
         assert_eq!(standing.origin_cause, None);
         assert_eq!(standing.destination, None);
         assert_eq!(standing.destination_cause, None);
+    }
+
+    fn movement(fly: i64, swim: SwimCapacity, load: i64) -> UnitMovement {
+        UnitMovement {
+            status: crate::report::model::UnitMovementStatus::Walk,
+            load,
+            fly,
+            ride: 0,
+            walk: 0,
+            capacity_mode: crate::report::model::UnitMovementMode::Walk,
+            swim,
+        }
+    }
+
+    /// `rules/leave`: a unit "capable of swimming or flying" may leave a boat at sea; the engine's
+    /// `Do1EnterOrder` also refuses one that won't cross water (`rules/nocross`), and one whose
+    /// movement nothing states is taken as unable (`ah-djst`).
+    #[test]
+    fn a_leave_is_refused_at_sea_unless_the_unit_can_swim_or_fly_and_will_cross_water() {
+        let walker = movement(0, SwimCapacity::Stated { capacity: 0 }, 50);
+        let swimmer = movement(0, SwimCapacity::Stated { capacity: 60 }, 50);
+        let flier = movement(70, SwimCapacity::Absent, 50);
+        let overloaded = movement(0, SwimCapacity::Stated { capacity: 40 }, 50);
+
+        assert!(
+            !leave_refused_at_sea(false, true, None),
+            "ashore nothing refuses it"
+        );
+        assert!(leave_refused_at_sea(true, false, Some(&walker)));
+        assert!(leave_refused_at_sea(true, false, Some(&overloaded)));
+        assert!(leave_refused_at_sea(true, false, None));
+        assert!(!leave_refused_at_sea(true, false, Some(&swimmer)));
+        assert!(!leave_refused_at_sea(true, false, Some(&flier)));
+        assert!(leave_refused_at_sea(true, true, Some(&swimmer)));
+    }
+
+    #[test]
+    fn a_refused_leave_keeps_the_unit_where_it_stood_and_moves_nobody() {
+        let has = |_: &str| true;
+        assert_eq!(
+            standing_after_in(Some("4"), [Boarding::Leave], has, true),
+            Some("4")
+        );
+        assert!(!boarding_moves(Some("4"), [Boarding::Leave], has, true));
+        assert_eq!(
+            standing_after_in(Some("4"), [Boarding::Leave], has, false),
+            None
+        );
+        assert!(boarding_moves(Some("4"), [Boarding::Leave], has, false));
+    }
+
+    /// The refusal is the LEAVE's alone: an ENTER in the same block still runs.
+    #[test]
+    fn an_enter_beside_a_refused_leave_still_runs() {
+        let has = |_: &str| true;
+        let block = [Boarding::Leave, Boarding::Enter("5")];
+        assert_eq!(standing_after_in(Some("4"), block, has, true), Some("5"));
+        assert!(boarding_moves(Some("4"), block, has, true));
     }
 }
