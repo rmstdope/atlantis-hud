@@ -19,7 +19,7 @@ use crate::cache::ReportCache;
 use crate::movement::rules::Ruleset;
 use crate::orders::item_change_log::Stock;
 use crate::orders::items::item_named;
-use crate::orders::standing::{standing_after_in, BoardingOrder};
+use crate::orders::standing::{BoardingOrder, HexStandings, Leaver};
 use crate::orders::transfers::{
     in_report_order, report_order, report_ranks, PendingTransfer, Placement,
 };
@@ -2439,13 +2439,9 @@ struct Working {
     /// before anything moves in phase 9 - so the test a target needs is per-region, and the two
     /// must not be confused (`ah-vcp8.2`).
     shown_in_region: BTreeMap<String, std::collections::BTreeSet<String>>,
-    /// Every structure number the report shows in each region, keyed by region id: an ENTER of
-    /// one the region does not have is refused and moves nobody (`ah-5maa`). A region the report
-    /// does not describe has no entry, and every ENTER there is taken as written.
-    structures_in_region: BTreeMap<String, std::collections::BTreeSet<String>>,
-    /// The regions the report shows whose terrain is water in this world: a LEAVE there can be
-    /// refused and move nobody (`ah-djst`).
-    water_regions: std::collections::BTreeSet<String>,
+    /// What the standing rule knows about each hex the report shows ([`HexStandings`],
+    /// `ah-6udn`): which structures an ENTER can name, and where a LEAVE can be refused at sea.
+    hexes: HexStandings,
     /// Every unit id the report shows that is not ours. A `TAKE` naming one of these is refused
     /// outright - `rules/take` confines a TAKE to "another unit in the same faction" - and must
     /// not be mistaken for the bounded optimism a take from a unit the report never shows gets.
@@ -2559,22 +2555,9 @@ impl Working {
         let mut shown_in_region: BTreeMap<String, std::collections::BTreeSet<String>> =
             BTreeMap::new();
         let mut hex_of_region: BTreeMap<String, crate::report::model::Coordinate> = BTreeMap::new();
-        let mut structures_in_region: BTreeMap<String, std::collections::BTreeSet<String>> =
-            BTreeMap::new();
-        let mut water_regions = std::collections::BTreeSet::new();
+        let hexes = HexStandings::of(report, Some(&ruleset));
         for region in &report.regions {
-            structures_in_region.insert(
-                region.region_id.clone(),
-                region
-                    .structures
-                    .iter()
-                    .map(|structure| structure.structure_id.clone())
-                    .collect(),
-            );
             hex_of_region.insert(region.region_id.clone(), region.coordinate);
-            if ruleset.is_water(&region.terrain) {
-                water_regions.insert(region.region_id.clone());
-            }
             let shown = shown_in_region.entry(region.region_id.clone()).or_default();
             for unit in &region.units {
                 shown.insert(unit.unit_id.clone());
@@ -2592,8 +2575,7 @@ impl Working {
             shipping,
             known_units,
             shown_in_region,
-            structures_in_region,
-            water_regions,
+            hexes,
             foreign_units: report
                 .units()
                 .filter(|unit| !unit.own)
@@ -3017,27 +2999,27 @@ impl Working {
     /// states, since LEAVE runs before anything this month could change what the unit carries.
     fn restand(&mut self, active: usize) {
         let working = &self.units[active];
-        let structures = self.structures_in_region.get(&working.unit.region_id);
-        let leave_refused = super::standing::leave_refused_at_sea(
-            self.water_regions.contains(&working.unit.region_id),
-            crate::report::flags::holds(
+        let leaver = Leaver {
+            wont_cross_water: crate::report::flags::holds(
                 &working.unit.flags,
                 crate::report::flags::Setting::NoCross,
             ),
-            working
+            movement: working
                 .original
                 .as_ref()
                 .unwrap_or(&working.unit)
                 .movement
                 .as_ref(),
-        );
-        let standing = standing_after_in(
-            working.reported.as_deref(),
-            working.boardings.iter().map(BoardingOrder::as_boarding),
-            |structure| structures.is_none_or(|known| known.contains(structure)),
-            leave_refused,
-        )
-        .map(str::to_string);
+        };
+        let standing = self
+            .hexes
+            .of_region(&working.unit.region_id)
+            .standing_after(
+                working.reported.as_deref(),
+                working.boardings.iter().map(BoardingOrder::as_boarding),
+                leaver,
+            )
+            .map(str::to_string);
         self.units[active].unit.structure_id = standing;
     }
 

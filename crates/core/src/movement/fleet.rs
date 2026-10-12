@@ -13,7 +13,7 @@ use crate::movement::orders::MoveStep;
 use crate::movement::rules::Ruleset;
 use crate::orders::blocks::OrderedUnitKey;
 use crate::orders::intents::Intent;
-use crate::orders::standing::{self, Boarding, BoardingOrder};
+use crate::orders::standing::{self, Boarding, BoardingOrder, HexStandings, Leaver};
 use crate::report::model::{ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
 
@@ -57,14 +57,9 @@ pub struct WrittenMovement {
     /// ([`RouteChain::closed_by_teach`]): whether their route runs turns on the settled month,
     /// which this reader cannot see, so [`Self::settle`] decides it (`ah-0x6x`, `ah-r3rv`).
     closed_by_teach: BTreeSet<OrderedUnitKey>,
-    /// Every structure number the report shows in each region, filled by [`Self::settle`]: an
-    /// ENTER of one its region does not have is refused and moves nobody (`ah-5maa`). A region
-    /// the report does not describe has no entry, and every ENTER there is taken as written.
-    structures_by_region: BTreeMap<String, BTreeSet<String>>,
-    /// The regions the report shows whose terrain is water in this world, filled by
-    /// [`Self::settle`] when it has a ruleset to say so: a LEAVE there can be refused and move
-    /// nobody (`ah-djst`). Without a ruleset no region is known to be water, and every LEAVE runs.
-    water_regions: BTreeSet<String>,
+    /// What the standing rule knows about each hex the report shows, filled by [`Self::settle`]
+    /// ([`HexStandings`], `ah-6udn`). Empty until then, when every hex is undescribed.
+    hexes: HexStandings,
 }
 
 /// This month's movement once it is settled: which route each unit walks or sails, whose `SAIL`
@@ -255,9 +250,8 @@ impl WrittenMovement {
             promotes_by_unit,
             nocross_by_unit,
             closed_by_teach,
-            // Only a report says which structures a region has; `settle` fills this from one.
-            structures_by_region: BTreeMap::new(),
-            water_regions: BTreeSet::new(),
+            // Only a report says what a hex holds; `settle` fills this from one.
+            hexes: HexStandings::default(),
         }
     }
 
@@ -296,26 +290,7 @@ impl WrittenMovement {
                 }
             }
         }
-        self.structures_by_region = report
-            .regions
-            .iter()
-            .map(|region| {
-                let numbers = region
-                    .structures
-                    .iter()
-                    .map(|structure| structure.structure_id.clone())
-                    .collect();
-                (region.region_id.clone(), numbers)
-            })
-            .collect();
-        self.water_regions = ruleset.map_or_else(BTreeSet::new, |rules| {
-            report
-                .regions
-                .iter()
-                .filter(|region| rules.is_water(&region.terrain))
-                .map(|region| region.region_id.clone())
-                .collect()
-        });
+        self.hexes = HexStandings::of(report, ruleset);
         OrderedUnits(self)
     }
 }
@@ -408,16 +383,13 @@ impl OrderedUnits {
     /// question is different and [`Self::could_captain`] answers it.
     #[must_use]
     pub fn structure_of<'a>(&'a self, unit: &'a ReportUnit) -> Option<&'a str> {
-        let structures = self.0.structures_by_region.get(&unit.region_id);
-        standing::standing_after_in(
+        self.0.hexes.of_region(&unit.region_id).standing_after(
             unit.structure_id.as_deref(),
             self.boardings_of(&unit.unit_id),
-            |structure| structures.is_none_or(|known| known.contains(structure)),
-            standing::leave_refused_at_sea(
-                self.0.water_regions.contains(&unit.region_id),
-                self.wont_cross_water(unit),
-                unit.movement.as_ref(),
-            ),
+            Leaver {
+                wont_cross_water: self.wont_cross_water(unit),
+                movement: unit.movement.as_ref(),
+            },
         )
     }
 
