@@ -1152,9 +1152,10 @@ fn settle(
     // (`ah-i6d0`). The month-long movements follow once it has been weighed.
     working.apply_item_effects(&item_effects, MonthPart::ThroughMovement);
     settle_headcounts(&mut working.units, ruleset);
-    // `rules/form`, and only once the market has settled: a formed unit's own BUY is what decides
-    // whether it gained anybody, so nothing can be dissolved before `item_effects` has been
-    // applied and the headcounts derived from it (`ah-dhga`).
+    // `rules/form`, and only once the market has settled: whether a formed unit dissolves is
+    // `semantics.rs`'s judgement, copied onto each row by `apply_item_effects` above, and what
+    // reverts from it includes whatever its own BUY brought it - so nothing can be dissolved
+    // before `item_effects` has been applied (`ah-dhga`, `ah-l9d9`).
     let dissolved = working.dissolve_empty_forms();
     // `rules/sequenceofevents` processes ADVANCE, MOVE and SAIL before any TRANSPORT, so a unit that
     // moves steps off with what it holds now; goods shipped to it arrive after it has gone, and goods

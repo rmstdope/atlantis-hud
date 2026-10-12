@@ -12582,7 +12582,8 @@ fn buy_silver(ledger: &mut Ledger<'_>, who: &str, wanted: i64, spent: i64, place
 /// it holds. `rules/form`: "If no recruits are gained at all, the empty unit will be dissolved, and
 /// the silver and any other items it was given will revert to the first unit you have in that
 /// region."
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+// No `Default`: an empty one would read as "dissolves, with nobody to revert to", a real state.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Dissolution {
     /// The unit id of the first own unit the report shows in this hex, or `None` when it shows
     /// none and there is nobody to revert to (`ah-ty3s.3`).
