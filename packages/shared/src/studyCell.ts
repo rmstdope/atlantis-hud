@@ -15,7 +15,7 @@ import type { StudyGoal } from "@atlantis/core-client";
 import type { MagicTree } from "./magicTree";
 import { standingsFrom } from "./magicStanding";
 import { skillWords } from "./skillReading";
-import { STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
+import { PRACTICE_POINTS_PER_MONTH, STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
 import { blockedBecause, type ScheduleRow, type SkillPoints } from "./studySchedule";
 import { TEACHING_SLOTS, claimedTeacher, doublingTeacher } from "./studyTeaching";
 import type { TeachingRule } from "./teachingPermission";
@@ -94,6 +94,14 @@ export function cellMenu(input: {
     [...input.standing].map(([tag, held]) => [tag, held.level] as const)
   );
   const { byTag } = standingsFrom(levels, input.tree);
+  // The skill this turn's planned cast practises, whose month is previewed with the 5 days in it,
+  // as the grid draws it (ah-9qdz.3). Chosen on the turn's opening standing, so whatever he
+  // studies does not move it.
+  const half =
+    input.rows === undefined || input.turnIndex === undefined || input.rowKey === undefined
+      ? null
+      : (input.rows.find((row) => row.key === input.rowKey)?.castHalves[input.turnIndex] ?? null);
+  const practised = half?.kind === "planned" ? half.practised : null;
 
   const choices: CellChoice[] = [];
   // The tree's own order, so the dropdown and the magic tree list the same skills the same way.
@@ -126,7 +134,10 @@ export function cellMenu(input: {
     // Two whole months, never `taughtWorth(...)`: `doublingTeacher` admits only a teacher still
     // within his ten slots, and a taught month is undiluted up to those (`rules/skills_teaching`).
     const months = taughtBy === null ? 1 : 2;
-    const points = held.points + months * STUDY_POINTS_PER_MONTH;
+    const points =
+      held.points +
+      months * STUDY_POINTS_PER_MONTH +
+      (tag === practised ? PRACTICE_POINTS_PER_MONTH : 0);
     const to = Math.min(node.maxLevel, levelForPoints(points));
     // `3(270) → 4(300)`: a level with its points in brackets is how a report prints a skill and
     // how a player says one out loud (navigator, 2026-09-07), so the row is that, twice - where he

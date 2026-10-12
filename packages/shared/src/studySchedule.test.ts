@@ -627,6 +627,39 @@ describe("hoverCard", () => {
     );
   });
 
+  it("follows a stale ally sheet's foot with the practice sentence", () => {
+    const stale = scheduleRows({
+      groups: groupOf({
+        skills: [
+          { tag: "FORC", level: 1, points: 60 },
+          { tag: "FIRE", level: 1, points: 30 }
+        ],
+        monthsUnreported: 3,
+        sheetTurn: 20
+      }),
+      plans: [
+        {
+          factionId: "21",
+          unitId: "2431",
+          goals: [],
+          casts: [{ turn: turns[0], spell: "FIRE" }],
+          comment: "",
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      tree,
+      turns,
+      seats: new Map(),
+      assumeSheltered: true,
+      after: new Map(),
+      rule: NO_TEACHING_RULE
+    })[0];
+
+    expect(hoverCard(stale, 0, turns, tree, "x").foot).toBe(
+      "From a mage sheet of turn 20. Nothing is assumed about the 3 turns since. Ereb readies fire for battle on turn 24. Force isn't above fire yet, so the 5 days of practice go to force — if he fights."
+    );
+  });
+
   it("puts the practice sentence before the shelter one", () => {
     const sheltered = scheduleRows({
       groups: groupOf({
@@ -779,6 +812,7 @@ describe("projectAll across the whole fleet", () => {
   ) {
     return projectAll({
       mages: mages.map((mage) => ({
+        casts: [],
         factionId: "21",
         regionId: "1:7",
         structureId: null,

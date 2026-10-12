@@ -245,8 +245,11 @@ export type ProjectedMage = {
   leftBy: "move" | "leave" | null;
   start: SkillPoints;
   goals: readonly StudyGoal[];
-  /** The planned casts, sanitized by `plannedCasts`; absent means none (ah-9qdz.3). */
-  casts?: readonly PlannedCast[];
+  /**
+   * The planned casts, sanitized by `plannedCasts` (ah-9qdz.3). Required, so a caller cannot
+   * forget them and silently project no practice.
+   */
+  casts: readonly PlannedCast[];
 };
 
 /**
@@ -667,7 +670,7 @@ export function projectAll(input: {
     // Age: Trident) casts spells and fights before the month's study - and added after the study
     // points. A study cell of the same skill then reads the month's end, practice included.
     for (const mage of input.mages) {
-      const cast = mage.casts?.find((one) => one.turn === planned);
+      const cast = mage.casts.find((one) => one.turn === planned);
       const opening = standing.get(mage.key) ?? new Map();
       if (
         cast === undefined ||

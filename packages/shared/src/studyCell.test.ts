@@ -50,6 +50,45 @@ describe("cellMenu", () => {
     expect(maxed.choices.some((choice) => choice.skill === "FORC")).toBe(false);
   });
 
+  // ah-9qdz.3, review finding 1: the turn's planned cast practises a skill, and a month of that
+  // skill is previewed with the practice in it, as the grid will draw it.
+  it("adds the turn's practice to the skill the planned cast practises", () => {
+    const standing = at({ FORC: [1, 60], FIRE: [1, 30] });
+    const half = (practised: string | null) => ({
+      kind: "planned" as const,
+      spell: "FIRE",
+      glyph: "⚔" as const,
+      label: "⚔ FIRE",
+      known: true,
+      practice: practised === null ? ("none" as const) : ("prerequisite" as const),
+      practised,
+      title: ""
+    });
+    const rows = (practised: string | null) =>
+      [
+        {
+          key: "21/2431",
+          cells: TURNS.map(() => ({ kind: "idle" as const })),
+          castHalves: TURNS.map(() => half(practised))
+        }
+      ] as unknown as ScheduleRow[];
+    const detail = (practised: string | null, skill: string) =>
+      cellMenu({
+        mageName: "Ereb",
+        turn: 26,
+        standing,
+        tree,
+        rows: rows(practised),
+        turnIndex: 2,
+        rowKey: "21/2431",
+        rule: NO_TEACHING_RULE
+      }).choices.find((choice) => choice.skill === skill)?.detail;
+
+    expect(detail("FORC", "FORC")).toBe("1(60) → 2(95)");
+    expect(detail("FORC", "PATT")).toBe("0(0) → 1(30)");
+    expect(detail(null, "FORC")).toBe("1(60) → 2(90)");
+  });
+
   it("lists the choices in the tree's own order", () => {
     const order = [...tree.byTag.keys()];
     const positions = menu().choices.map((choice) => order.indexOf(choice.skill));
@@ -120,7 +159,8 @@ function rowOf(start: SkillPoints, goals: StudyGoal[]): ScheduleRow {
         leftBuilding: null,
         leftBy: null,
         start,
-        goals
+        goals,
+        casts: []
       }
     ],
     tree,
