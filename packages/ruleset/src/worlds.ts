@@ -6,7 +6,8 @@
  * and in the scrape commands.
  */
 
-import { newAgeDataPage, parseNewAgeDatabase } from "./newage";
+import { newAgeDataPage, newAgeSkillUses, parseNewAgeDatabase } from "./newage";
+import type { SkillUse } from "./generated/SkillUse";
 import type { OrderLanguage } from "./generated/OrderLanguage";
 
 /** Where a world's catalogue comes from: an HTML data page, or a JSON database. */
@@ -72,6 +73,23 @@ export const WORLDS: readonly ScrapedWorld[] = [
  */
 export function catalogueDataPage(source: CatalogueSource, catalogue: string): string {
   return source === "database" ? newAgeDataPage(parseNewAgeDatabase(catalogue)) : catalogue;
+}
+
+/**
+ * What `buildRuleset` reads from a world's catalogue: the data page, and - for a world serving a
+ * JSON database - how each spell is used, from the database's own flags. Spread into the build by
+ * the CLI, `atlantis verify` and the committed-ruleset test alike, so none of them can drop the
+ * flags the others use.
+ */
+export function catalogueInput(
+  source: CatalogueSource,
+  catalogue: string
+): { dataHtml: string; skillUses?: Record<string, SkillUse> } {
+  if (source !== "database") {
+    return { dataHtml: catalogue };
+  }
+  const database = parseNewAgeDatabase(catalogue);
+  return { dataHtml: newAgeDataPage(database), skillUses: newAgeSkillUses(database) };
 }
 
 /** The world with this id, or `null`. */
