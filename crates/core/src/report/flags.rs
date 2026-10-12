@@ -131,7 +131,7 @@ fn clear(flags: &mut Vec<String>, setting: Setting) {
 }
 
 /// Whether this flag list already says `setting`, in any of its spellings.
-fn holds(flags: &[String], setting: Setting) -> bool {
+pub(crate) fn holds(flags: &[String], setting: Setting) -> bool {
     flags.iter().any(|existing| {
         setting
             .spellings()

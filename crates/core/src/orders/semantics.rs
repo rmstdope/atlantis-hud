@@ -19760,6 +19760,24 @@ fn check_fleet_course(
         return;
     };
 
+    // A formed unit known to gain nobody is deleted before anything moves, so it neither owns a
+    // hull nor has a course to be overruled (`ah-877p`, `crate::movement::fleet::FormedCrew`).
+    let survives = |ordered: &&Ordered<'_>| {
+        ordered.formed.is_none() || !ordered.after_the_market().gained_nobody()
+    };
+    let formed: Vec<crate::movement::fleet::FormedCrew> = hex
+        .units
+        .iter()
+        .filter(|ordered| ordered.formed.is_some())
+        .filter(survives)
+        .map(|ordered| crate::movement::fleet::FormedCrew {
+            unit_id: ordered.unit.unit_id.clone(),
+            region_id: hex.region.region_id.clone(),
+            key: ordered.key.clone(),
+            structure_id: structure_after_orders(ordered).map(str::to_string),
+        })
+        .collect();
+
     for fleet in &hex.region.structures {
         // The same predicate the map applies, so the pane can never warn about a hull the map
         // still draws, nor stay silent about one it refuses.
@@ -19768,8 +19786,13 @@ fn check_fleet_course(
         }
         // An owner that cannot be named says nothing: the player has made no mistake, and the
         // line would fire every turn a half-seen fleet sits in a hex (the agreed record).
-        let course =
-            crate::movement::fleet::fleet_course(hex.region, fleet_orders, &fleet.structure_id);
+        let course = crate::movement::fleet::fleet_course(
+            hex.region,
+            ruleset,
+            fleet_orders,
+            &formed,
+            &fleet.structure_id,
+        );
         let Some(owner_id) = course.owner_id else {
             continue;
         };
@@ -19780,6 +19803,7 @@ fn check_fleet_course(
         let offender = hex
             .units
             .iter()
+            .filter(survives)
             .filter(|ordered| {
                 could_captain(ordered, &fleet.structure_id) && ordered.unit.unit_id != owner_id
             })
@@ -19800,11 +19824,18 @@ fn check_fleet_course(
         };
 
         // `fleet_course` answers an id; the name comes from the region's own list, which carries
-        // the entered or promoted owner as surely as the reported one.
+        // the entered or promoted owner as surely as the reported one, or from the hex's formed
+        // rows for an owner this month creates.
         let Some(owner) = hex
             .region
             .units
             .iter()
+            .chain(
+                hex.units
+                    .iter()
+                    .filter(|ordered| ordered.formed.is_some())
+                    .map(|ordered| ordered.unit),
+            )
             .find(|unit| unit.unit_id == owner_id)
         else {
             continue;
@@ -53034,6 +53065,86 @@ BUILD
         assert_eq!(
             said(led(("human", "HUMN"))),
             vec![format!("{opening}NE, so the ship sails NE.")]
+        );
+    }
+
+    /// `ah-877p` (gh-1491): the builder LEAVEs a finished hull, and a unit formed ashore this
+    /// month ENTERs it and sails. LEAVE and ENTER both run before movement
+    /// (`rules/sequenceofevents`), and the engine's owner is simply the first unit in the object
+    /// when the fleet moves (`Object::GetOwner`), so the builder no longer owns it - the new unit
+    /// does, and its course stands.
+    #[test]
+    fn a_formed_unit_that_boards_a_hull_its_builder_left_sets_its_course() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                crew("900", "Sea Rovers", "329", 0),
+                ReportUnit {
+                    name: "Ashore".to_string(),
+                    ..with_men(unit("903"), 4)
+                },
+            ])
+        };
+        let findings = check(
+            vec![region],
+            "unit 900\nLEAVE\nunit 903\nFORM 1\nENTER 329\nSAIL SE\nEND\nGIVE NEW 1 2 HUMN\n",
+        );
+        assert!(
+            findings
+                .iter()
+                .all(|finding| finding.code != codes::SAIL_NOT_BY_OWNER),
+            "{findings:?}"
+        );
+    }
+
+    /// The engine deletes a unit with no men before movement (`Game::DeleteEmptyUnits`, run just
+    /// ahead of `RunMovementOrders`; `rules/world_structures`: "newly created units cannot own a
+    /// structure until they contain men"). New 1 is given nobody, so it is gone before the fleet
+    /// moves: new 2, given men, owns the hull and sets its course, and new 1's SAIL overrules
+    /// nothing and is not warned about as a non-owner's.
+    #[test]
+    fn a_formed_unit_with_no_men_neither_owns_nor_is_overruled() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                crew("900", "Sea Rovers", "329", 0),
+                ReportUnit {
+                    name: "Ashore".to_string(),
+                    ..with_men(unit("903"), 4)
+                },
+            ])
+        };
+        let findings = check(
+            vec![region],
+            "unit 900\nLEAVE\nunit 903\nFORM 1\nENTER 329\nSAIL SE\nEND\n\
+             FORM 2\nENTER 329\nSAIL NE\nEND\nGIVE NEW 2 2 HUMN\n",
+        );
+        assert!(
+            findings
+                .iter()
+                .all(|finding| finding.code != codes::SAIL_NOT_BY_OWNER),
+            "{findings:?}"
+        );
+    }
+
+    /// When the owner LEAVEs, the next unit still listed under the hull owns it: the engine
+    /// removes the leaver from the object's list and appends every entrant to its end
+    /// (`Unit::MoveUnit`), so `Object::GetOwner`'s first unit is the first one who stayed.
+    #[test]
+    fn the_next_unit_aboard_owns_a_hull_its_owner_left() {
+        let all = check(
+            vec![owned_longship(vec![])],
+            "unit 900\nLEAVE\nunit 902\nSAIL SE\n",
+        );
+        let mine: Vec<&Finding> = all
+            .iter()
+            .filter(|finding| finding.code == codes::SAIL_NOT_BY_OWNER)
+            .collect();
+        assert_eq!(mine.len(), 1, "{all:?}");
+        assert_eq!(
+            mine[0].message,
+            "Only Longship [329]'s owner, Deckhands (901), can set its course: Marines (902) \
+             ordered SAIL SE, and the owner ordered no course, so the ship will not sail."
         );
     }
 
