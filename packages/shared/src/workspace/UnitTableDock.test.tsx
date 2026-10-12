@@ -1245,6 +1245,62 @@ describe("what the skills column marks (ah-z73s.1, ah-qig3)", () => {
     ]
   });
 
+  describe("the cell shows next month's figures for a study (ah-uxlh)", () => {
+    const COMB_RIDI = [
+      { name: "combat", tag: "COMB", level: 2, points: 150 },
+      { name: "riding", tag: "RIDI", level: 1, points: 30 }
+    ];
+    const COMB_TO_3 = { ...STUDYING_COMBAT, levelBefore: 2, pointsBefore: 150, levelAfter: 3, pointsAfter: 180 };
+    const studying = (study: StudyForecast, skills = COMB_RIDI) =>
+      draw(
+        hex({ region: region({ units: [unit({ unitId: "1", skills })] }) }),
+        previewOf({ unitId: "1", skills }, { changes: [], reportedSkills: skills, study })
+      );
+
+    it("draws a level gained in place, the whole cell brass", () => {
+      const markup = studying(COMB_TO_3);
+
+      expect(markup).toContain(">COMB 3 (180), RIDI 1 (30)<");
+      expect(markup).toContain('data-predicted="true"');
+      expect(markup).toContain("italic text-brass");
+    });
+
+    it("draws a skill studied for the first time last", () => {
+      const fighting = [
+        { name: "combat", tag: "COMB", level: 1, points: 30 },
+        { name: "riding", tag: "RIDI", level: 1, points: 30 }
+      ];
+      const markup = studying({ ...STUDYING_COMBAT, tag: "FORC", name: "force" }, fighting);
+
+      expect(markup).toContain(">COMB 1 (30), RIDI 1 (30), FORC 1 (30)<");
+    });
+
+    it("keeps today's figures, still brass, for a study that may not happen at all (D2)", () => {
+      const markup = studying({ ...COMB_TO_3, doubts: [{ reason: "feeShort", fee: 100, shortBy: 40, teacher: "" }] });
+
+      expect(markup).toContain(">COMB 2 (150), RIDI 1 (30)<");
+      expect(markup).toContain('data-predicted="true"');
+    });
+
+    it("lays the study on top of figures a GIVE of men already merged", () => {
+      const merged = [{ name: "combat", tag: "COMB", level: 2, points: 120 }];
+      const markup = draw(
+        hex({ region: region({ units: [unit({ unitId: "1", skills: merged })] }) }),
+        previewOf(
+          { unitId: "1", skills: merged },
+          {
+            changes: [{ field: "skills", original: "COMB 2 (150)" }],
+            reportedSkills: [{ name: "combat", tag: "COMB", level: 2, points: 150 }],
+            study: { ...STUDYING_COMBAT, levelBefore: 2, pointsBefore: 120, levelAfter: 2, pointsAfter: 150 }
+          }
+        )
+      );
+
+      expect(markup).toContain(">COMB 2 (150)<");
+      expect(markup).toContain("italic text-brass");
+    });
+  });
+
   it("marks the cell predicted and names what the report said when skills changed", () => {
     const markup = draw(
       hex({

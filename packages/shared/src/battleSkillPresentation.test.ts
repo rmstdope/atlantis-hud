@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aReportUnit } from "@atlantis/core-client";
+import { aReportUnit, type StudyForecast } from "@atlantis/core-client";
 
 import { battleSkillGroups, battleSkillSource, unitSkillsCell, type BattleSkillGroup } from "./battleSkillPresentation";
 import { NO_DERIVED_SKILLS, withRosterSkills, type DerivedSkill } from "./battleSkills";
@@ -30,6 +30,27 @@ const aGroup = (overrides: Partial<BattleSkillGroup> = {}): BattleSkillGroup => 
 const foreignUnit = (overrides: Parameters<typeof aReportUnit>[0] = {}) =>
   aReportUnit({ own: false, skills: [], ...overrides });
 
+/** A study forecast with nothing doubted, for the cells a STUDY moves (`ah-uxlh`). */
+function aStudy(overrides: Partial<StudyForecast>): StudyForecast {
+  return {
+    tag: "COMB",
+    name: "combat",
+    levelBefore: 0,
+    pointsBefore: 0,
+    monthsNumerator: 1,
+    monthsDenominator: 1,
+    teachers: [],
+    halvedOutsideABuilding: false,
+    pointsAfter: 30,
+    levelAfter: 1,
+    ceilingLevel: 5,
+    limitingRaces: [],
+    cannotRaiseTheLevel: false,
+    doubts: [],
+    ...overrides
+  };
+}
+
 describe("unitSkillsCell", () => {
   it("a report-native skill list prints exactly as the table always has", () => {
     const unit = aReportUnit({
@@ -40,6 +61,29 @@ describe("unitSkillsCell", () => {
     });
 
     expect(unitSkillsCell(unit, NO_DERIVED_SKILLS)).toBe("LUMB 2 (90), COMB 1 (30)");
+  });
+
+  it("a studying unit prints its skills as they will be next month (ah-uxlh)", () => {
+    const unit = {
+      ...aReportUnit({
+        skills: [
+          { name: "combat", tag: "COMB", level: 2, points: 150 },
+          { name: "riding", tag: "RIDI", level: 1, points: 30 }
+        ]
+      }),
+      study: aStudy({ tag: "COMB", name: "combat", levelBefore: 2, pointsBefore: 150, levelAfter: 3, pointsAfter: 180 })
+    };
+
+    expect(unitSkillsCell(unit, NO_DERIVED_SKILLS)).toBe("COMB 3 (180), RIDI 1 (30)");
+  });
+
+  it("an own unit with no skills that studies its first prints that skill (ah-uxlh)", () => {
+    const unit = {
+      ...aReportUnit({ own: true, skills: [] }),
+      study: aStudy({ tag: "FORC", name: "force", levelAfter: 1, pointsAfter: 30 })
+    };
+
+    expect(unitSkillsCell(unit, NO_DERIVED_SKILLS)).toBe("FORC 1 (30)");
   });
 
   it("an own unit with no skills prints the empty cell, never a battle notice", () => {

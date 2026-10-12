@@ -2287,6 +2287,9 @@ function UnitRow({
    *
    * A forecast that cannot raise the level marks nothing (`ah-dpvh`): the mark means "this figure
    * will be different next turn", and for such a unit it will not be.
+   *
+   * The cell itself prints next month's figures (`unitSkillsCell`, `ah-uxlh`), except for a study
+   * that may not happen at all, which keeps today's figures under the same mark (decision **D2**).
    */
   const skillsMarked =
     Boolean(skillsChange) || (unit.study != null && !unit.study.cannotRaiseTheLevel);
