@@ -64725,3 +64725,88 @@ BUILD
         }
     }
 }
+
+/// The semantics reader's production path - [`hex_with_transfers`], [`Ordered::hex`],
+/// [`structure_after_orders`] - against the fleet reader, on land and at sea. The agreement test in
+/// `orders::standing_agreement` drives this reader through its test adapters rather than through
+/// an [`Ordered`], so this is what fails if the hex a unit is read in stops carrying what the
+/// standing rule needs (`ah-6udn`).
+#[cfg(test)]
+mod standing_reader_tests {
+    use super::*;
+
+    const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
+
+    fn report(terrain_line: &str, unit_line: &str) -> String {
+        [
+            "Foo (1) Report",
+            "",
+            terrain_line,
+            "",
+            "+ Building [5] : Stockade.",
+            "+ Longship [4] : Longship; Load: 10/150; Sailors: 0/4; MaxSpeed: 4.",
+            &format!("  * {unit_line}"),
+            "",
+        ]
+        .join("\n")
+    }
+
+    /// Where the semantics reader and the fleet reader put unit 900 after `block`, which must agree.
+    #[track_caller]
+    fn agreed(report_text: &str, block: &str) -> Option<String> {
+        let rules = Ruleset::from_json(RULESET).expect("the ruleset loads");
+        let classified = crate::cache::ReportCache::new().classified(report_text, RULESET);
+        let orders = format!("unit 900\n{block}");
+        let region = &classified.regions[0];
+        let ordered =
+            OrderedUnits::read_with_ruleset(&orders, Some(&rules), &study::ReportSkills::default());
+        let hex = hex_with_transfers(
+            region,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &NO_UNITS_SHOWN,
+        );
+        let unit = hex
+            .units
+            .iter()
+            .find(|ordered| ordered.unit.unit_id == "900")
+            .expect("unit 900 is ours");
+        let by_semantics = structure_after_orders(unit).map(str::to_string);
+        let by_fleet =
+            crate::movement::fleet::OrderedUnits::of_month(&classified, &orders, Some(&rules))
+                .structure_of(&region.units[0])
+                .map(str::to_string);
+        assert_eq!(
+            by_semantics, by_fleet,
+            "semantics and movement disagree about {block:?}"
+        );
+        by_semantics
+    }
+
+    const WALKER: &str = "Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.";
+    const SWIMMER: &str =
+        "Swimmer (900), Foo (1), merfolk [MERF]. Weight: 10. Capacity: 0/0/15/15.";
+
+    #[test]
+    fn on_land_the_hex_carries_its_structures() {
+        let land = report("plain (1,1) in Nowhere, 10 peasants (orcs), $5.", WALKER);
+        assert_eq!(agreed(&land, "ENTER 5\n").as_deref(), Some("5"));
+        assert_eq!(agreed(&land, "ENTER 77\n").as_deref(), Some("4"));
+        assert_eq!(agreed(&land, "LEAVE\n"), None);
+    }
+
+    /// `rules/leave`: only a unit "capable of swimming or flying" may leave a boat at sea, and
+    /// `rules/nocross`, run before LEAVE (`rules/sequenceofevents`), keeps a swimmer aboard too.
+    #[test]
+    fn at_sea_the_hex_carries_its_water() {
+        let sea = |unit: &str| report("ocean (1,1) in Sea.", unit);
+        assert_eq!(agreed(&sea(WALKER), "LEAVE\n").as_deref(), Some("4"));
+        assert_eq!(agreed(&sea(SWIMMER), "LEAVE\n"), None);
+        assert_eq!(
+            agreed(&sea(SWIMMER), "LEAVE\nNOCROSS 1\n").as_deref(),
+            Some("4")
+        );
+    }
+}
