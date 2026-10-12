@@ -9,13 +9,20 @@ import {
   sortStudyPlans,
   type CoreClient,
   type OpenedGame,
+  type PlannedCast,
   type StudyGoal,
   type StudyPlanKey,
   type StudyPlanRecord
 } from "@atlantis/core-client";
 import type { MagicTree } from "./magicTree";
 
-export { sortStudyPlans, type StudyGoal, type StudyPlanKey, type StudyPlanRecord };
+export {
+  sortStudyPlans,
+  type PlannedCast,
+  type StudyGoal,
+  type StudyPlanKey,
+  type StudyPlanRecord
+};
 
 /** A game's stored study plans, in the client's own order (`sortStudyPlans`). */
 export async function loadStudyPlans(
@@ -118,4 +125,39 @@ export function reshapeStudyGoals(
   return planned
     .filter((goal) => goal.turn !== change.turn)
     .map((goal) => (goal.turn > change.turn ? { ...goal, turn: goal.turn - 1 } : goal));
+}
+
+/**
+ * The casts a plan actually holds (ah-9qdz.2): ascending by turn, at most one per turn, every
+ * spell upper-cased - `plannedGoals`' rules, for the list beside the goals.
+ *
+ * Takes `undefined` because a browser row stored before casts existed has no such field, and reads
+ * as no cast on any turn; `webCoreAdapter`'s read path and the desktop's 0014 migration already
+ * answer `[]` for it, so this is the last line rather than the only one.
+ */
+export function plannedCasts(casts: readonly PlannedCast[] | undefined): PlannedCast[] {
+  const byTurn = new Map<number, PlannedCast>();
+  for (const cast of casts ?? []) {
+    if (!Number.isInteger(cast.turn) || cast.turn <= 0) {
+      continue;
+    }
+    byTurn.set(cast.turn, { turn: cast.turn, spell: cast.spell.toUpperCase() });
+  }
+  return [...byTurn.values()].sort((left, right) => left.turn - right.turn);
+}
+
+/** `reshapeStudyGoals` for the casts: the same insert and remove, so a turn's cast moves with it. */
+export function reshapeCasts(
+  casts: readonly PlannedCast[] | undefined,
+  change: ScheduleChange
+): PlannedCast[] {
+  const planned = plannedCasts(casts);
+  if (change.kind === "insert") {
+    return planned.map((cast) =>
+      cast.turn >= change.turn ? { ...cast, turn: cast.turn + 1 } : cast
+    );
+  }
+  return planned
+    .filter((cast) => cast.turn !== change.turn)
+    .map((cast) => (cast.turn > change.turn ? { ...cast, turn: cast.turn - 1 } : cast));
 }

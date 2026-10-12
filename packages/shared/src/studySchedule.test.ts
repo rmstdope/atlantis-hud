@@ -266,6 +266,7 @@ describe("scheduleRows", () => {
           factionId: "21",
           unitId: "2431",
           goals: [{ kind: "study" as const, turn: 24, skill: "FORC" }],
+          casts: [],
           comment: "heading for Gate Lore",
           updatedAt: "2026-01-01T00:00:00.000Z"
         }
@@ -298,6 +299,7 @@ describe("scheduleRows", () => {
             factionId: "21",
             unitId: "2431",
             goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+            casts: [],
             comment: "",
             updatedAt: "2026-01-01T00:00:00.000Z"
           }
@@ -342,6 +344,7 @@ describe("scheduleRows", () => {
           factionId: "21",
           unitId: "2431",
           goals: [{ kind: "study", turn: 24, skill: "FORC" }],
+          casts: [],
           comment: "",
           updatedAt: "2026-01-01T00:00:00.000Z"
         }
@@ -394,6 +397,7 @@ describe("hoverCard", () => {
           factionId: "21",
           unitId: "2431",
           goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+          casts: [],
           comment: "",
           updatedAt: "2026-01-01T00:00:00.000Z"
         }
@@ -447,6 +451,7 @@ describe("hoverCard", () => {
           factionId: "21",
           unitId: "2431",
           goals: [{ kind: "study" as const, turn: turns[0], skill: "PATT" }],
+          casts: [],
           comment: "",
           updatedAt: "2026-01-01T00:00:00.000Z"
         }
@@ -1004,6 +1009,7 @@ describe("cross-faction teaching under a declaration rule", () => {
           factionId: "12",
           unitId: "2517",
           goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+          casts: [],
           comment: "",
           updatedAt: "2026-01-01T00:00:00.000Z"
         },
@@ -1016,6 +1022,7 @@ describe("cross-faction teaching under a declaration rule", () => {
             students: ["2517"],
             live: false
           })),
+          casts: [],
           comment: "",
           updatedAt: "2026-01-01T00:00:00.000Z"
         }

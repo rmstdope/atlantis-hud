@@ -1064,6 +1064,25 @@ describe("web core adapter", () => {
     expect(listed[0].goals[0]).toMatchObject({ fieldAddedLater: "kept" });
   });
 
+  // ah-9qdz.2: IndexedDB has no migration step, so a plan stored before casts existed is given
+  // the empty list on read - the desktop's 0014 migration does the same in SQL.
+  it("lists a plan stored before casts as planning no cast, and one with casts whole", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    const { casts: _casts, ...before } = aStudyPlan("9001");
+    const withCast: StudyPlanRecord = {
+      ...aStudyPlan("9002"),
+      casts: [{ turn: 25, spell: "FARS" }]
+    };
+
+    await adapter.saveStudyPlans(DB, "p", [before as StudyPlanRecord, withCast], []);
+
+    const listed = (await adapter.listStudyPlans(DB, "p")) as StudyPlanRecord[];
+    expect(listed.find((plan) => plan.unitId === "9001")?.casts).toEqual([]);
+    expect(listed.find((plan) => plan.unitId === "9002")?.casts).toEqual([
+      { turn: 25, spell: "FARS" }
+    ]);
+  });
+
   it("lists back a plan field it does not name", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     const stored = {
@@ -1998,6 +2017,7 @@ function aStudyPlan(unitId: string, factionId = "21"): StudyPlanRecord {
     factionId,
     unitId,
     goals: [{ kind: "study", turn: 24, skill: "FORC" }],
+    casts: [],
     comment: "heading for Gate Lore",
     updatedAt: "2026-08-07T12:00:00Z"
   };

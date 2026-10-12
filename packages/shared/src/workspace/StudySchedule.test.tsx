@@ -61,6 +61,7 @@ const rows = scheduleRows({
       factionId: "12",
       unitId: "2431",
       goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+      casts: [],
       comment: "heading for Gate Lore",
       updatedAt: "2026-01-01T00:00:00.000Z"
     }
@@ -319,6 +320,7 @@ describe("CellPopover", () => {
       factionId: "12",
       unitId,
       goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+      casts: [],
       comment: "",
       updatedAt: "2026-01-01T00:00:00.000Z"
     })),
@@ -582,6 +584,7 @@ describe("a teaching month in the grid", () => {
           { kind: "teach", turn: turns[0], students: ["2432"], live: false },
           ...turns.slice(1).map((turn) => ({ kind: "study" as const, turn, skill: "FORC" }))
         ],
+        casts: [],
         comment: "",
         updatedAt: "2026-01-01T00:00:00.000Z"
       },
@@ -591,6 +594,7 @@ describe("a teaching month in the grid", () => {
         // Force, not pattern: `rules/skills_teaching` needs the teacher to outrank the student in
         // the skill being studied, and Ereb holds no pattern at all.
         goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+        casts: [],
         comment: "",
         updatedAt: "2026-01-01T00:00:00.000Z"
       }
@@ -718,6 +722,7 @@ describe("a month somebody would double is drawn green", () => {
         factionId: "12",
         unitId,
         goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+        casts: [],
         comment: "",
         updatedAt: "2026-01-01T00:00:00.000Z"
       })),
@@ -824,6 +829,7 @@ describe("a mage whose orders take him into a building", () => {
       factionId: "12",
       unitId: "2431",
       goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+      casts: [],
       comment: "",
       updatedAt: "2026-01-01T00:00:00.000Z"
     }
@@ -1026,6 +1032,7 @@ describe("a cross-faction teaching month in the grid", () => {
       factionId: "12",
       unitId: "2517",
       goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+      casts: [],
       comment: "",
       updatedAt: "2026-01-01T00:00:00.000Z"
     },
@@ -1033,6 +1040,7 @@ describe("a cross-faction teaching month in the grid", () => {
       factionId: "21",
       unitId: "3012",
       goals: turns.map((turn) => ({ kind: "teach" as const, turn, students: ["2517"], live: false })),
+      casts: [],
       comment: "",
       updatedAt: "2026-01-01T00:00:00.000Z"
     }

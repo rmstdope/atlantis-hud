@@ -44,6 +44,7 @@ function row(skills?: { tag: string; level: number; points: number }[]): Schedul
         factionId: "21",
         unitId: "2431",
         goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+        casts: [],
         comment: "",
         updatedAt: "2026-01-01T00:00:00.000Z"
       }

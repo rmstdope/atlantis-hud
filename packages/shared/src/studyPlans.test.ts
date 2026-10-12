@@ -1,10 +1,18 @@
-import type { CoreClient, OpenedGame, StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
+import type {
+  CoreClient,
+  OpenedGame,
+  PlannedCast,
+  StudyGoal,
+  StudyPlanRecord
+} from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import {
   keyOf,
   loadStudyPlans,
   planFor,
+  plannedCasts,
   plannedGoals,
+  reshapeCasts,
   reshapeStudyGoals,
   saveStudyPlans,
   type ScheduleChange
@@ -33,6 +41,7 @@ function plan(unitId = "1204", factionId = "21"): StudyPlanRecord {
     factionId,
     unitId,
     goals: [{ kind: "study" as const, turn: 24, skill: "FORC" }],
+    casts: [],
     comment: "heading for Gate Lore",
     updatedAt: "2026-01-01T00:00:00.000Z"
   };
@@ -215,5 +224,49 @@ describe("reshapeStudyGoals", () => {
   it("answers an empty list for an empty plan", () => {
     expect(reshapeStudyGoals([], change("insert", 25))).toEqual([]);
     expect(reshapeStudyGoals([], change("remove", 25))).toEqual([]);
+  });
+});
+
+// ah-9qdz.2: a plan's casts, read and reshaped the way its goals are.
+describe("plannedCasts", () => {
+  const cast = (turn: number, spell: string): PlannedCast => ({ turn, spell });
+
+  it("reads a plan stored before casts existed as no cast on any turn", () => {
+    expect(plannedCasts(undefined)).toEqual([]);
+  });
+
+  it("answers ascending by turn, one per turn, the last entry winning", () => {
+    expect(plannedCasts([cast(27, "FIRE"), cast(25, "FARS"), cast(27, "CLEA")])).toEqual([
+      cast(25, "FARS"),
+      cast(27, "CLEA")
+    ]);
+  });
+
+  it("upper-cases the spell and drops a turn that is not a positive whole number", () => {
+    expect(plannedCasts([cast(0, "FARS"), cast(2.5, "FARS"), cast(26, "fars")])).toEqual([
+      cast(26, "FARS")
+    ]);
+  });
+});
+
+describe("reshapeCasts", () => {
+  const cast = (turn: number, spell: string): PlannedCast => ({ turn, spell });
+
+  it("moves the target and every later cast one turn later on insert", () => {
+    expect(
+      reshapeCasts([cast(25, "FARS"), cast(26, "FIRE"), cast(27, "CLEA")], {
+        kind: "insert",
+        turn: 26
+      })
+    ).toEqual([cast(25, "FARS"), cast(27, "FIRE"), cast(28, "CLEA")]);
+  });
+
+  it("drops the target and moves every later cast one turn earlier on remove", () => {
+    expect(
+      reshapeCasts([cast(25, "FARS"), cast(26, "FIRE"), cast(27, "CLEA")], {
+        kind: "remove",
+        turn: 26
+      })
+    ).toEqual([cast(25, "FARS"), cast(26, "CLEA")]);
   });
 });

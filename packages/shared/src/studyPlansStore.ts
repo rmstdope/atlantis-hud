@@ -11,6 +11,7 @@ import { create } from "zustand";
 import type { CoreClient, OpenedGame } from "@atlantis/core-client";
 import {
   loadStudyPlans,
+  reshapeCasts,
   reshapeStudyGoals,
   saveStudyPlans,
   sortStudyPlans,
@@ -148,6 +149,7 @@ export const useStudyPlansStore = create<StudyPlansState>()((set, get) => ({
       const next = plans.map((plan) => ({
         ...plan,
         goals: reshapeStudyGoals(plan.goals, change, tree),
+        casts: reshapeCasts(plan.casts, change),
         updatedAt: new Date().toISOString()
       }));
       await saveStudyPlans(client, game, next, []);

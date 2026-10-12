@@ -22,6 +22,7 @@ function plan(unitId = "1204", skill: string | null = "FORC"): StudyPlanRecord {
     factionId: "21",
     unitId,
     goals: skill ? [{ kind: "study" as const, turn: 24, skill }] : [],
+    casts: [],
     comment: "",
     updatedAt: "2026-01-01T00:00:00.000Z"
   };
@@ -168,6 +169,7 @@ describe("reshapeSchedule", () => {
     factionId: "21",
     unitId,
     goals,
+    casts: [],
     comment: "",
     updatedAt: "2026-01-01T00:00:00.000Z"
   });
@@ -224,6 +226,16 @@ describe("reshapeSchedule", () => {
       [expect.objectContaining({ unitId: "1204", goals: [goal(25, "PATT")], updatedAt: expect.any(String) })],
       []
     );
+  });
+
+  // ah-9qdz.2: a turn's cast moves with the turn, or an insert would leave it on the wrong month.
+  it("moves each plan's casts with its goals", async () => {
+    const core = client();
+    seed([{ ...row("1204", [goal(24, "FORC")]), casts: [{ turn: 24, spell: "FARS" }] }]);
+
+    await reshaped(useStudyPlansStore.getState(), core, 24);
+
+    expect(useStudyPlansStore.getState().plans[0].casts).toEqual([{ turn: 25, spell: "FARS" }]);
   });
 
   it("leaves the cache alone and rethrows when the write fails", async () => {
@@ -307,6 +319,7 @@ describe("two writes at once", () => {
       factionId: key.factionId,
       unitId: key.unitId,
       goals: [...(current?.goals ?? []), goal(turn, skill)],
+      casts: [],
       comment: current?.comment ?? "",
       updatedAt: "2026-01-01T00:00:00.000Z"
     });

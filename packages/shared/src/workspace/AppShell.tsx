@@ -148,7 +148,7 @@ import { useArmiesStore } from "../armiesStore";
 import { useAlliedMagesStore } from "../alliedMagesStore";
 import { useStudyPlansStore } from "../studyPlansStore";
 import type { StudyGoal } from "@atlantis/core-client";
-import { plannedGoals, type ScheduleChange } from "../studyPlans";
+import { plannedCasts, plannedGoals, type PlannedCast, type ScheduleChange } from "../studyPlans";
 import {
   forgetFailedText,
   forgottenStatusText,
@@ -927,7 +927,11 @@ export function AppShell({
       // `goals` is an *edit* rather than a list: the store applies it against the row it holds at
       // the moment the write runs, so two choices made in quick succession cannot each be built
       // from the same pre-first-write row (`studyPlansStore.save`).
-      change: { goals?: (current: readonly StudyGoal[]) => StudyGoal[]; comment?: string },
+      change: {
+        goals?: (current: readonly StudyGoal[]) => StudyGoal[];
+        casts?: (current: readonly PlannedCast[]) => PlannedCast[];
+        comment?: string;
+      },
       failure: string
     ) => {
       if (!game) {
@@ -943,6 +947,9 @@ export function AppShell({
             goals: plannedGoals(
               change.goals ? change.goals(current?.goals ?? []) : (current?.goals ?? []),
               magicTree ?? undefined
+            ),
+            casts: plannedCasts(
+              change.casts ? change.casts(plannedCasts(current?.casts)) : current?.casts
             ),
             comment: change.comment ?? current?.comment ?? "",
             updatedAt: new Date().toISOString()
