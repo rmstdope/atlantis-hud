@@ -5701,31 +5701,27 @@ struct Ledger<'a> {
     /// `report_shortfalls` is the only reader - because the charge is the whole ask, so a reduced
     /// line always drives the balance below zero. Change the charge and that stops holding.
     reduced_buys: Vec<ReducedBuy>,
-    /// Every `GIVE` of silver beyond what the giver held as it ran, in the order they were applied
-    /// (`ah-4k84`) - a discard (`GIVE 0`) beyond what the unit held too, which the same engine
-    /// function cuts the same way (`ah-759k`). The engine's `Game::DoGiveOrder`
-    /// (Atlantis-PBEM/Atlantis, `runorders.cpp`) errors "Not enough." and gives what the unit has;
-    /// `rules/give` does not say. Recorded per
-    /// line because the walk settles units in report order, so silver a later unit gives back
+    /// Every `GIVE`, discard (`GIVE 0`) or `TAKE` that moved less than it asked as the Give phase
+    /// reached it, silver and goods alike, in settlement order (`ah-hiva`). The engine's
+    /// `Game::DoGiveOrder` (Atlantis-PBEM/Atlantis, `runorders.cpp`) errors "Not enough." and gives
+    /// what the source has; `rules/give` does not say, and `rules/take` says a TAKE "works just
+    /// like the GIVE order", the engine swapping in the source before the same check. Recorded
+    /// per line because the walk settles units in report order, so what a later unit gives back
     /// within the same phase is not there when this line runs - a phase-end balance cannot see it.
     ///
-    /// In an unpooled hex `transfer` moves only what was given, so the giver keeps the remainder
-    /// for its later lines and the recipient is credited only the gift (`ah-1c8p`). "What the
-    /// unit has" is the engine's `GetSharedNum`, which counts the faction's `SHARE` units in the
-    /// region too, so only an unpooled hex reads these (`judge_shortfalls`, `report_shortfalls`);
-    /// a pooled one moves the whole ask and is judged through its pool.
-    reduced_gives: Vec<ReducedGive>,
-    /// Every `GIVE` or `TAKE` of goods that moves less than it asks, in settlement order (`ah-5p8y`):
-    /// the engine's `Game::DoGiveOrder` (`runorders.cpp`) errors "Not enough." and gives what the
-    /// giver has as the Give phase reaches it. The charge stays the whole ask (see
-    /// [`Ledger::unfunded`]), so the unit's month-end verdict nets in goods that arrived after the
-    /// line ran; this tells the line itself - a unit the report lists before the unit that gives
-    /// it the goods ends the phase holding them, yet its own GIVE moved nothing.
-    reduced_item_gives: Vec<ReducedItemGive>,
-    /// Every `TAKE` of silver beyond what its source held as it ran, in an unpooled hex
-    /// (`ah-759k`). Reported on the taker by `report_shortfalls`, each on its own line and never
-    /// folded into the taker's own shortfall: the silver that ran short was the source's.
-    reduced_takes: Vec<ReducedTake>,
+    /// Silver (`ah-4k84`, `ah-759k`): a GIVE or discard is recorded wherever it asks beyond the
+    /// unit's own holding, but "what the unit has" is the engine's `GetSharedNum`, which counts
+    /// the faction's `SHARE` units in the region too, so only an unpooled hex reads those
+    /// (`judge_shortfalls`, `report_shortfalls`); a pooled one moves the whole ask and is judged
+    /// through its pool. A cut silver `TAKE` - unpooled only, since only there does `transfer`
+    /// cut it - is said to the taker on its own line and never folded into the taker's own
+    /// shortfall: the silver that ran short was the source's.
+    ///
+    /// Goods (`ah-5p8y`): the charge stays the whole ask (see [`Ledger::unfunded`]), so the unit's
+    /// month-end verdict nets in goods that arrived after the line ran; this tells the line
+    /// itself. A unit the report lists before the unit that gives it the goods ends the phase
+    /// holding them, yet its own GIVE moved nothing.
+    cut_transfers: Vec<CutTransfer>,
     /// What each unit's `GIVE` and discard lines of silver asked, cut or not: the
     /// "spend" of a not-enough-silver sentence about a GIVE, whose "can have" is this less the cut
     /// (`ah-4k84`, `ah-759k`).
@@ -5783,52 +5779,57 @@ struct ReducedBuy {
     placed: PlacedIntent,
 }
 
-/// A `TAKE` of silver its source could not cover in full as it ran (`ah-759k`).
-struct ReducedTake {
-    /// The taker: the engine's "TAKE: Not enough." is `u->error`, on the unit that wrote it.
-    unit_id: String,
-    /// What the line asked to take, as written.
-    ordered: i64,
-    /// What the engine takes: what the source held then.
-    taken: i64,
-    /// The `TAKE` line, where the warning is anchored.
-    placed: PlacedIntent,
+/// Which transfer order a [`CutTransfer`] was.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TransferVerb {
+    Give,
+    /// A `GIVE 0`.
+    Discard,
+    Take,
 }
 
-/// A `GIVE` of silver its giver could not fund in full as it ran (`ah-4k84`), or a discard its
-/// unit could not (`ah-759k`).
-struct ReducedGive {
-    /// The giver or the discarder.
-    unit_id: String,
-    /// How the not-enough-silver sentence says what the unit did: "gives" or "discards".
-    verb: &'static str,
-    /// What the line asked to give, as written.
-    ordered: i64,
-    /// What the engine gives: what the unit held then.
-    given: i64,
+impl TransferVerb {
+    /// How a sentence says what the unit did.
+    fn word(self) -> &'static str {
+        match self {
+            TransferVerb::Give => "gives",
+            TransferVerb::Discard => "discards",
+            TransferVerb::Take => "takes",
+        }
+    }
 }
 
-/// A `GIVE` or `TAKE` of goods its source could not cover in full as the Give phase reached it
-/// (`ah-5p8y`).
-struct ReducedItemGive {
-    /// The source: the giver or the discarder, or the unit a `TAKE` takes from.
-    unit_id: String,
-    /// The unit that wrote a `TAKE`, which is the one told: the engine's "TAKE: Not enough." is
-    /// `u->Error`, on the taker, as for silver (`ReducedTake`). `None` for a `GIVE`.
-    taker: Option<String>,
+/// A `GIVE`, discard or `TAKE`, of silver or goods, that moved less than it asked as the Give
+/// phase reached it (`ah-4k84`, `ah-759k`, `ah-5p8y`; one record since `ah-hiva`).
+struct CutTransfer {
+    /// Whose holding ran short: the giver or the discarder, or the unit a `TAKE` takes from.
+    source: String,
+    /// The unit told: the source for a `GIVE` or discard, the taker for a `TAKE` - the engine's
+    /// "TAKE: Not enough." is `u->Error`, on the unit that wrote the order (`ah-759k`).
+    teller: String,
     /// Upper-cased canonical tag.
     tag: String,
-    /// "gives", "discards" or "takes".
-    verb: &'static str,
-    /// What the line asked to give, as written.
+    verb: TransferVerb,
+    /// What the line asked to move, as written.
     ordered: i64,
     /// What the engine moves: what the source could draw on then.
-    given: i64,
+    moved: i64,
     /// The source's Give-phase balance of the tag straight after this line was charged. A higher
     /// balance at the phase's end means the goods reached it only after this line ran.
     left_after: i64,
-    /// The order's line, where the warning is anchored.
+    /// The order's line, where an on-the-line warning is anchored.
     placed: PlacedIntent,
+}
+
+impl CutTransfer {
+    fn is_silver(&self) -> bool {
+        self.tag.eq_ignore_ascii_case(SILVER)
+    }
+
+    /// A silver `GIVE` or discard of `unit_id`'s own: what its not-enough-silver sentence folds in.
+    fn is_silver_given_by(&self, unit_id: &str) -> bool {
+        self.is_silver() && self.verb != TransferVerb::Take && self.source == unit_id
+    }
 }
 
 /// A `BUY` line with nothing left to buy, and the limit its own earlier lines had emptied.
@@ -6141,9 +6142,7 @@ fn ledger_for_reaching<'a>(
         dead_buys: Vec::new(),
         claimed: BTreeMap::new(),
         reduced_buys: Vec::new(),
-        reduced_gives: Vec::new(),
-        reduced_item_gives: Vec::new(),
-        reduced_takes: Vec::new(),
+        cut_transfers: Vec::new(),
         silver_given: BTreeMap::new(),
         overcharged: BTreeMap::new(),
         // `trusted: true` - see `MarketPurse`'s hand-written `Default`.
@@ -8792,16 +8791,6 @@ fn transfer(
             if is_give {
                 *ledger.silver_given.entry(from.clone()).or_default() += quantity;
                 if quantity > known_source.max(0) {
-                    ledger.reduced_gives.push(ReducedGive {
-                        unit_id: from.clone(),
-                        verb: if reach == GiveReach::Discard {
-                            "discards"
-                        } else {
-                            "gives"
-                        },
-                        ordered: quantity,
-                        given: known_source.max(0),
-                    });
                     // The cut line is what overdrew the unit, so its finding points here even
                     // where it moves nothing and so draws nothing down (`ah-1c8p`).
                     ledger
@@ -8809,17 +8798,6 @@ fn transfer(
                         .entry((from.clone(), SILVER.to_ascii_uppercase()))
                         .or_insert_with(|| placed.clone());
                 }
-            } else if moved < quantity {
-                // A cut TAKE is the taker's to be told of - the engine's "TAKE: Not enough." is
-                // `u->error`, on the unit that wrote the order (`ah-759k`, the navigator's answer)
-                // - but it is the source's silver that ran short, not the taker's, so it is kept
-                // out of the taker's own shortfall and said on its own line.
-                ledger.reduced_takes.push(ReducedTake {
-                    unit_id: actor.unit.unit_id.clone(),
-                    ordered: quantity,
-                    taken: moved,
-                    placed: placed.clone(),
-                });
             }
             if reach == GiveReach::Discard {
                 move_silver(
@@ -8857,25 +8835,42 @@ fn transfer(
             });
         } else {
             charge(ledger, StatePhase::Give, &from, &tag, quantity, placed);
-            if received < quantity {
-                let left_after = ledger.state.balance_at(StatePhase::Give, &from, &tag);
-                ledger.reduced_item_gives.push(ReducedItemGive {
-                    unit_id: from.clone(),
-                    taker: (!is_give).then(|| actor.unit.unit_id.clone()),
-                    tag: tag.to_ascii_uppercase(),
-                    verb: if !is_give {
-                        "takes"
-                    } else if reach == GiveReach::Discard {
-                        "discards"
-                    } else {
-                        "gives"
-                    },
-                    ordered: quantity,
-                    given: received.max(0),
-                    left_after,
-                    placed: placed.clone(),
-                });
-            }
+        }
+        // A line the engine cut, recorded once whatever moves (`ah-hiva`), after the charge so
+        // `left_after` is the source's balance once this line has run. What the source could
+        // cover is judged per kind: a silver GIVE or discard against the unit's own holding
+        // (`ah-4k84`, `ah-759k`), a silver TAKE by the cut `moved` already made (`ah-759k`), and
+        // goods by what the source and the other sharers could draw on (`ah-5p8y`).
+        let verb = if !is_give {
+            TransferVerb::Take
+        } else if reach == GiveReach::Discard {
+            TransferVerb::Discard
+        } else {
+            TransferVerb::Give
+        };
+        let (cut, could_move) = if !tag.eq_ignore_ascii_case(SILVER) {
+            (received < quantity, received.max(0))
+        } else if is_give {
+            (quantity > known_source.max(0), known_source.max(0))
+        } else {
+            (moved < quantity, moved)
+        };
+        if cut {
+            let left_after = ledger.state.balance_at(StatePhase::Give, &from, &tag);
+            ledger.cut_transfers.push(CutTransfer {
+                source: from.clone(),
+                teller: if is_give {
+                    from.clone()
+                } else {
+                    actor.unit.unit_id.clone()
+                },
+                tag: tag.to_ascii_uppercase(),
+                verb,
+                ordered: quantity,
+                moved: could_move,
+                left_after,
+                placed: placed.clone(),
+            });
         }
         // What the column has to be told, because it cannot work it out: an `ALL` resolves against
         // a balance only this walk holds. Recorded after the charge, so what is stored is what was
@@ -14533,13 +14528,13 @@ fn silver_short_at_cast(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
 /// each ran, under "Give orders" in
 /// `rules/sequenceofevents`, long before WORK, TRANSPORT and maintenance: nothing received in them,
 /// nor a gift that reaches it later in the Give phase, funds the gift (`ah-4k84`). Read from
-/// [`Ledger::reduced_gives`] rather than the phase's balance, which nets those later gifts in.
+/// [`Ledger::cut_transfers`] rather than the phase's balance, which nets those later gifts in.
 fn silver_short_at_give(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
     ledger
-        .reduced_gives
+        .cut_transfers
         .iter()
-        .filter(|reduced| reduced.unit_id == unit_id)
-        .map(|reduced| reduced.ordered - reduced.given)
+        .filter(|cut| cut.is_silver_given_by(unit_id))
+        .map(|cut| cut.ordered - cut.moved)
         .sum()
 }
 
@@ -15034,8 +15029,12 @@ fn report_shortfalls(
     // A `TAKE` its source could not cover, said to the taker at its own line (`ah-759k`). Its
     // figures are the line's: what the source had and what was asked.
     if options.emits(codes::NOT_ENOUGH_SILVER) {
-        for reduced in &ledger.reduced_takes {
-            let Some(ordered) = hex.find(&reduced.unit_id) else {
+        for reduced in ledger
+            .cut_transfers
+            .iter()
+            .filter(|cut| cut.is_silver() && cut.verb == TransferVerb::Take)
+        {
+            let Some(ordered) = hex.find(&reduced.teller) else {
                 continue;
             };
             findings.push(ordered.finding(
@@ -15044,13 +15043,13 @@ fn report_shortfalls(
                 format!(
                     "short ${}: this unit can have ${} and its orders spend ${}, so it takes {} of \
                      the {} ordered",
-                    reduced.ordered - reduced.taken,
-                    reduced.taken,
+                    reduced.ordered - reduced.moved,
+                    reduced.moved,
                     reduced.ordered,
-                    if reduced.taken == 0 {
+                    if reduced.moved == 0 {
                         "none".to_string()
                     } else {
-                        reduced.taken.to_string()
+                        reduced.moved.to_string()
                     },
                     counted_item(reduced.ordered, SILVER, hex, ruleset, plurals),
                 ),
@@ -15095,17 +15094,17 @@ fn report_shortfalls(
             // A GIVE the unit could not fund gives what it has (the engine's
             // `Game::DoGiveOrder`; `rules/give` does not say), and it runs first (`ah-4k84`).
             let mut cut: Vec<String> = ledger
-                .reduced_gives
+                .cut_transfers
                 .iter()
-                .filter(|reduced| &reduced.unit_id == unit_id)
+                .filter(|reduced| reduced.is_silver_given_by(unit_id))
                 .map(|reduced| {
                     format!(
                         "{} {} of the {} ordered",
-                        reduced.verb,
-                        if reduced.given == 0 {
+                        reduced.verb.word(),
+                        if reduced.moved == 0 {
                             "none".to_string()
                         } else {
-                            reduced.given.to_string()
+                            reduced.moved.to_string()
                         },
                         counted_item(reduced.ordered, SILVER, hex, ruleset, plurals),
                     )
@@ -15385,20 +15384,21 @@ fn report_shortfalls(
 
     // A GIVE or TAKE of goods the engine cut, said on its own line (`ah-5p8y`). Only where nothing
     // above already marks that line, so a unit short at month end still meets one sentence there.
-    if options.emits(codes::NOT_ENOUGH_ITEMS) && !ledger.reduced_item_gives.is_empty() {
+    if options.emits(codes::NOT_ENOUGH_ITEMS)
+        && ledger.cut_transfers.iter().any(|cut| !cut.is_silver())
+    {
         let pool_short: BTreeSet<String> = pool_shortfalls(hex, ledger, &sharing, &verdicts)
             .into_iter()
             .map(|shortfall| shortfall.tag)
             .collect();
-        for reduced in &ledger.reduced_item_gives {
-            let told = reduced.taker.as_deref().unwrap_or(&reduced.unit_id);
-            let Some(ordered) = hex.find(told) else {
+        for reduced in ledger.cut_transfers.iter().filter(|cut| !cut.is_silver()) {
+            let Some(ordered) = hex.find(&reduced.teller) else {
                 continue;
             };
             let tag = &reduced.tag;
             // A withdrawal funds the goods it brings in, by the navigator's choice (`ah-728m.3`,
             // `an_order_funded_by_a_withdrawal_is_not_called_short`).
-            if withdrawn_this_month(ledger, &reduced.unit_id, tag) > 0 {
+            if withdrawn_this_month(ledger, &reduced.source, tag) > 0 {
                 continue;
             }
             // A sharer this walk cannot follow leaves what the GIVE could draw on unknown, and a
@@ -15416,13 +15416,15 @@ fn report_shortfalls(
             // phase ended. The charge is the whole ask, so what was not given is added back.
             let later = ledger
                 .state
-                .balance_at(StatePhase::Give, &reduced.unit_id, tag)
+                .balance_at(StatePhase::Give, &reduced.source, tag)
                 > reduced.left_after;
             // Who held too little: the unit itself for a GIVE, its source for a TAKE.
-            let (holder, mover, receiver) = match reduced.taker {
-                None => ("this unit".to_string(), "it", "it".to_string()),
-                Some(_) => {
-                    let source = format!("unit {}", reduced.unit_id);
+            let (holder, mover, receiver) = match reduced.verb {
+                TransferVerb::Give | TransferVerb::Discard => {
+                    ("this unit".to_string(), "it", "it".to_string())
+                }
+                TransferVerb::Take => {
+                    let source = format!("unit {}", reduced.source);
                     (source.clone(), "this unit", source)
                 }
             };
@@ -15432,13 +15434,13 @@ fn report_shortfalls(
                 format!(
                     "short {} when this order runs: {holder} can have {} then, so {mover} {} {} \
                      of the {} ordered{}",
-                    counted_item(reduced.ordered - reduced.given, tag, hex, ruleset, plurals),
-                    reduced.given,
-                    reduced.verb,
-                    if reduced.given == 0 {
+                    counted_item(reduced.ordered - reduced.moved, tag, hex, ruleset, plurals),
+                    reduced.moved,
+                    reduced.verb.word(),
+                    if reduced.moved == 0 {
                         "none".to_string()
                     } else {
-                        reduced.given.to_string()
+                        reduced.moved.to_string()
                     },
                     counted_item(reduced.ordered, tag, hex, ruleset, plurals),
                     if later {
@@ -55496,7 +55498,7 @@ BUILD
 
     /// Review finding 2: a `TAKE` the engine cuts the same way (`Game::DoGiveOrder` swaps in the
     /// source before the same "Not enough." check) is told to the taker, on its line, as
-    /// `reduced_takes` already does for silver.
+    /// a cut `TAKE` of silver already is.
     #[test]
     fn a_take_from_a_unit_given_the_goods_only_later_is_warned_on_its_line() {
         let hex = region(vec![
@@ -55520,6 +55522,56 @@ BUILD
             "short 14 iron when this order runs: unit 4686 can have 0 then, so this unit takes \
              none of the 14 iron ordered - the iron unit 4686 is given later in the Give phase \
              comes too late"
+        );
+    }
+
+    /// `ah-hiva`: a GIVE, discard or TAKE the engine cuts as the Give phase reaches it is one
+    /// record whatever moves, so a new verb or item kind needs no record of its own.
+    #[test]
+    fn cut_transfers_record_silver_and_goods_alike() {
+        let hex = region(vec![
+            with_silver(unit("1000"), 50),
+            with_item(unit("2000"), 3, "iron", "IRON"),
+            with_silver(unit("3000"), 20),
+            unit("4000"),
+        ]);
+        let ordered = OrderedUnits::read(
+            "unit 1000\nGIVE 4000 80 SILV\nunit 2000\nGIVE 0 5 IRON\nunit 4000\nTAKE FROM 3000 30 SILV\n",
+        );
+        let rules = ruleset();
+        let hex_with_transfers = hex_with_transfers(
+            &hex,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &NO_UNITS_SHOWN,
+        );
+        let ledger = ledger_for(&hex_with_transfers, Some(&rules));
+
+        let mut cuts: Vec<(&str, &str, &str, TransferVerb, i64, i64, usize)> = ledger
+            .cut_transfers
+            .iter()
+            .map(|cut| {
+                (
+                    cut.source.as_str(),
+                    cut.teller.as_str(),
+                    cut.tag.as_str(),
+                    cut.verb,
+                    cut.ordered,
+                    cut.moved,
+                    cut.placed.line,
+                )
+            })
+            .collect();
+        cuts.sort_by_key(|cut| cut.6);
+        assert_eq!(
+            cuts,
+            vec![
+                ("1000", "1000", "SILV", TransferVerb::Give, 80, 50, 2),
+                ("2000", "2000", "IRON", TransferVerb::Discard, 5, 3, 4),
+                ("3000", "4000", "SILV", TransferVerb::Take, 30, 20, 6),
+            ]
         );
     }
 
