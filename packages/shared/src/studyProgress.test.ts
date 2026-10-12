@@ -66,6 +66,13 @@ describe("monthEnd", () => {
   });
 
   it("keeps a halved month's points fractional", () => {
+    expect(monthEnd({ level: 3, points: 180 }, { studied: 0.5, practised: false }, 5)).toEqual({
+      level: 3,
+      points: 195
+    });
+  });
+
+  it("keeps a diluted, halved month's points fractional", () => {
     expect(monthEnd({ level: 3, points: 180 }, { studied: 0.75, practised: false }, 5)).toEqual({
       level: 3,
       points: 202.5
