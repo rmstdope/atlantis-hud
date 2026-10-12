@@ -9,13 +9,20 @@ import {
   sortStudyPlans,
   type CoreClient,
   type OpenedGame,
+  type PlannedCast,
   type StudyGoal,
   type StudyPlanKey,
   type StudyPlanRecord
 } from "@atlantis/core-client";
 import type { MagicTree } from "./magicTree";
 
-export { sortStudyPlans, type StudyGoal, type StudyPlanKey, type StudyPlanRecord };
+export {
+  sortStudyPlans,
+  type PlannedCast,
+  type StudyGoal,
+  type StudyPlanKey,
+  type StudyPlanRecord
+};
 
 /** A game's stored study plans, in the client's own order (`sortStudyPlans`). */
 export async function loadStudyPlans(
@@ -119,3 +126,61 @@ export function reshapeStudyGoals(
     .filter((goal) => goal.turn !== change.turn)
     .map((goal) => (goal.turn > change.turn ? { ...goal, turn: goal.turn - 1 } : goal));
 }
+
+/**
+ * The casts a plan actually holds (ah-9qdz.2): ascending by turn, at most one per turn, every
+ * spell upper-cased - `plannedGoals`' rules, for the list beside the goals.
+ *
+ * Takes `undefined` because a browser row stored before casts existed has no such field, and reads
+ * as no cast on any turn; `webCoreAdapter`'s read path and the desktop's 0014 migration already
+ * answer `[]` for it, so this is the last line rather than the only one.
+ */
+export function plannedCasts(casts: readonly PlannedCast[] | undefined): PlannedCast[] {
+  const byTurn = new Map<number, PlannedCast>();
+  for (const cast of casts ?? []) {
+    if (!Number.isInteger(cast.turn) || cast.turn <= 0) {
+      continue;
+    }
+    byTurn.set(cast.turn, { turn: cast.turn, spell: cast.spell.toUpperCase() });
+  }
+  return [...byTurn.values()].sort((left, right) => left.turn - right.turn);
+}
+
+/** `reshapeStudyGoals` for the casts: the same insert and remove, so a turn's cast moves with it. */
+export function reshapeCasts(
+  casts: readonly PlannedCast[] | undefined,
+  change: ScheduleChange
+): PlannedCast[] {
+  const planned = plannedCasts(casts);
+  if (change.kind === "insert") {
+    return planned.map((cast) =>
+      cast.turn >= change.turn ? { ...cast, turn: cast.turn + 1 } : cast
+    );
+  }
+  return planned
+    .filter((cast) => cast.turn !== change.turn)
+    .map((cast) => (cast.turn > change.turn ? { ...cast, turn: cast.turn - 1 } : cast));
+}
+
+/**
+ * One edit to one mage's plan, applied against the stored row when the write runs
+ * (`studyPlansStore.save`): its goals, its casts, or both. Each is an edit rather than a result
+ * for the reason `save` gives - two choices in quick succession must each see the other.
+ */
+export type PlanChange = {
+  goals?: (current: readonly StudyGoal[]) => StudyGoal[];
+  casts?: (current: readonly PlannedCast[]) => PlannedCast[];
+  /** What the edit takes from other rows, run inside its own write (`studyPlansStore.save`). */
+  settle?: PlanSettle;
+};
+
+/**
+ * What an edit takes from other rows, decided inside its own queued write (ah-9qdz.2): given every
+ * plan just before the edit and just after it, the further records to write with it. Inside the
+ * write, so it reads exactly the plans its edit changed - never a snapshot a later render or an
+ * earlier failure left behind (review of PR #1516).
+ */
+export type PlanSettle = (
+  before: readonly StudyPlanRecord[],
+  after: readonly StudyPlanRecord[]
+) => readonly StudyPlanRecord[];

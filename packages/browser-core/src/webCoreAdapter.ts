@@ -291,7 +291,10 @@ function withGoals({
             live: rest.live === true
           }
         : { ...rest, kind: "study" as const, turn: rest.turn ?? 0, skill: rest.skill ?? "" };
-    })
+    }),
+    // ah-9qdz.2: a row stored before casts existed plans none - the desktop's 0014 migration gives
+    // its rows the same empty list. Typed as present, so the `??` is for those old rows only.
+    casts: (carried.casts as StudyPlanRecord["casts"] | undefined) ?? []
   };
 }
 

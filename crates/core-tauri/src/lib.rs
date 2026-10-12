@@ -2577,6 +2577,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
                     skill: "PATT".to_string(),
                 },
             ],
+            casts: vec![],
             comment: "heading for Gate Lore".to_string(),
             updated_at: "2026-08-07T12:00:00Z".to_string(),
         };

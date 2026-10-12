@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { keyToAction, pressDismisses, reduce, type CellMode } from "./studyCellState";
+import {
+  cellAddress,
+  gridStep,
+  keyToAction,
+  parseCellAddress,
+  pressDismisses,
+  reduce,
+  type CellMode,
+  type GridAddress
+} from "./studyCellState";
 
 const idle: CellMode = { kind: "idle" };
 const choosing: CellMode = { kind: "choosing", rowKey: "21/2431", turnIndex: 2 };
@@ -131,5 +140,74 @@ describe("a live teach step", () => {
     const after = reduce(teaching, { kind: "teach-toggled", unitId: "b" });
 
     expect(after).toEqual({ ...choosing, kind: "teaching", students: ["a", "b"], live: false });
+  });
+});
+
+// ah-9qdz.2: the cast half is a dropdown of its own on the same turn.
+describe("the cast half's mode", () => {
+  const casting: CellMode = { kind: "casting", rowKey: "21/2431", turnIndex: 2 };
+
+  it("opening a cast half puts the mode in casting", () => {
+    expect(reduce(idle, { kind: "cast-opened", rowKey: "21/2431", turnIndex: 2 })).toEqual(casting);
+  });
+
+  it("the open half pressed again closes it; the study half of the same turn opens instead", () => {
+    expect(reduce(casting, { kind: "cast-opened", rowKey: "21/2431", turnIndex: 2 })).toEqual(idle);
+    expect(reduce(casting, { kind: "cell-opened", rowKey: "21/2431", turnIndex: 2 })).toEqual(
+      choosing
+    );
+    expect(reduce(choosing, { kind: "cast-opened", rowKey: "21/2431", turnIndex: 2 })).toEqual(
+      casting
+    );
+  });
+
+  it("Escape closes it with nothing changed", () => {
+    expect(reduce(casting, { kind: "cancelled" })).toEqual(idle);
+  });
+});
+
+describe("cell addresses", () => {
+  it("writes a study half as `r:c` and a cast half as `r:c:cast`, and reads both back", () => {
+    const study: GridAddress = { row: 1, turn: 3, half: "study" };
+    const cast: GridAddress = { row: 1, turn: 3, half: "cast" };
+
+    expect([cellAddress(study), cellAddress(cast)]).toEqual(["1:3", "1:3:cast"]);
+    expect([parseCellAddress("1:3"), parseCellAddress("1:3:cast")]).toEqual([study, cast]);
+    expect(parseCellAddress("nonsense")).toBeNull();
+  });
+});
+
+describe("gridStep", () => {
+  // Three rows, four turns; row 0 has halves on turns 1-3, row 1 on none, row 2 on turn 0 only.
+  const halves = new Set(["0:1", "0:2", "0:3", "2:0"]);
+  const step = (from: GridAddress, key: string) =>
+    gridStep(from, key, { rows: 3, turns: 4 }, (row, turn) => halves.has(`${row}:${turn}`));
+  const study = (row: number, turn: number): GridAddress => ({ row, turn, half: "study" });
+  const cast = (row: number, turn: number): GridAddress => ({ row, turn, half: "cast" });
+
+  it("↓ goes from a study to its cast half when it has one, else to the next mage's study", () => {
+    expect(step(study(0, 1), "ArrowDown")).toEqual(cast(0, 1));
+    expect(step(study(0, 0), "ArrowDown")).toEqual(study(1, 0));
+    expect(step(cast(0, 1), "ArrowDown")).toEqual(study(1, 1));
+  });
+
+  it("↑ is the reverse", () => {
+    expect(step(cast(0, 1), "ArrowUp")).toEqual(study(0, 1));
+    expect(step(study(1, 1), "ArrowUp")).toEqual(cast(0, 1));
+    expect(step(study(1, 0), "ArrowUp")).toEqual(study(0, 0));
+  });
+
+  it("← → keep to the cast half, and land on the study where the next turn has none", () => {
+    expect(step(cast(0, 1), "ArrowRight")).toEqual(cast(0, 2));
+    expect(step(cast(0, 1), "ArrowLeft")).toEqual(study(0, 0));
+    expect(step(study(0, 1), "ArrowRight")).toEqual(study(0, 2));
+  });
+
+  it("stops at the grid's edges and ignores other keys", () => {
+    expect(step(cast(0, 3), "ArrowRight")).toBeNull();
+    expect(step(study(0, 0), "ArrowUp")).toBeNull();
+    expect(step(study(2, 1), "ArrowDown")).toBeNull();
+    expect(step(cast(2, 0), "ArrowDown")).toBeNull();
+    expect(step(study(0, 0), "Enter")).toBeNull();
   });
 });

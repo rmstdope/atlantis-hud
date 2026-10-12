@@ -12,14 +12,15 @@ import {
 import type { OrderProcessing } from "../orderProcessing";
 import { DialogFrame } from "./DialogFrame";
 import { STANDING_CHIP, standingLimit } from "./standingChip";
-import type { StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
+import type { StudyPlanRecord } from "@atlantis/core-client";
 import type { MagicTree } from "../magicTree";
 import { planLine, scheduleRows, scheduleTurns } from "../studySchedule";
 import { plannerNotices } from "../studyTeaching";
 import { studyOrders } from "../studyOrders";
 import type { StandingAfterOrders } from "../studyStanding";
 import { mageShelters, type ShelterSeats } from "../studyShelter";
-import { planFor, plannedGoals, type ScheduleChange } from "../studyPlans";
+import { planFor, plannedGoals, type PlanChange, type ScheduleChange } from "../studyPlans";
+import { castsPrunedBy } from "../studyCast";
 import type { TeachingRule } from "../teachingPermission";
 import { STUDY_NOTE_MAX_CHARS, noteCountText } from "../studyNote";
 import { createNoteAutosave, type NoteAutosave } from "./studyNoteAutosave";
@@ -124,7 +125,7 @@ export function StudyPlannerDialog({
   onSavePlan: (
     factionId: string,
     unitId: string,
-    edit: (current: readonly StudyGoal[]) => StudyGoal[]
+    change: PlanChange
   ) => void;
   /** Reshapes the schedule for every mage once its dialog is confirmed (`ah-j9wn`). */
   onScheduleChange: (change: ScheduleChange) => void;
@@ -448,9 +449,30 @@ export function StudyPlannerDialog({
           tree={tree}
           mode={cellMode}
           onEvent={(event) => setCellMode((mode) => reduceCell(mode, event))}
-          onCommit={(rowKey, edit) => {
+          onCommit={(rowKey, change) => {
             const [factionId, unitId] = rowKey.split("/");
-            onSavePlan(factionId, unitId, edit);
+            // ah-9qdz.2: a cast a study or teach edit leaves without a castable spell - his own,
+            // or his student's - is taken out of the plan rather than kept amber (agreed), and
+            // does not come back if the cell is changed back. Decided inside the edit's own write,
+            // from the grid projected just before and just after it under the same settings, so a
+            // half lost to the shelter forecast, this month's orders or an old ruleset is never a
+            // reason (review of PR #1516).
+            const project = (from: readonly StudyPlanRecord[]) =>
+              scheduleRows({ groups, plans: from, tree, turns, seats, assumeSheltered, after, rule });
+            const settled =
+              change.goals === undefined
+                ? change
+                : {
+                    ...change,
+                    settle: (before: readonly StudyPlanRecord[], next: readonly StudyPlanRecord[]) =>
+                      castsPrunedBy({
+                        before: project(before),
+                        after: project(next),
+                        plans: next,
+                        turns
+                      })
+                  };
+            onSavePlan(factionId, unitId, settled);
           }}
           saveError={saveError}
           notices={notices}

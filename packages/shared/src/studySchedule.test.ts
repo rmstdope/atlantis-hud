@@ -266,6 +266,7 @@ describe("scheduleRows", () => {
           factionId: "21",
           unitId: "2431",
           goals: [{ kind: "study" as const, turn: 24, skill: "FORC" }],
+          casts: [],
           comment: "heading for Gate Lore",
           updatedAt: "2026-01-01T00:00:00.000Z"
         }
@@ -283,6 +284,41 @@ describe("scheduleRows", () => {
     expect(rows[0].cells).toHaveLength(SCHEDULE_TURNS);
   });
 
+  // ah-9qdz.2: a half from the turn after he learns his first castable spell (`data/FIRE`: combat),
+  // none before it, and the stored casts sanitized onto the row.
+  it("gives a turn a cast half only once he knows a spell he can cast", () => {
+    const rows = scheduleRows({
+      groups: groupOf(),
+      plans: [
+        {
+          factionId: "21",
+          unitId: "2431",
+          goals: [{ kind: "study" as const, turn: 24, skill: "FIRE" }],
+          casts: [
+            { turn: 25, spell: "fire" },
+            { turn: 24, spell: "FIRE" }
+          ],
+          comment: "",
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      tree,
+      turns,
+      seats: new Map(),
+      assumeSheltered: true,
+      after: new Map(),
+      rule: NO_TEACHING_RULE
+    });
+
+    expect(rows[0].casts).toEqual([
+      { turn: 24, spell: "FIRE" },
+      { turn: 25, spell: "FIRE" }
+    ]);
+    expect(rows[0].castHalves[0]).toBeNull();
+    expect(rows[0].castHalves[1]).toMatchObject({ kind: "planned", label: "⚔ FIRE", known: true });
+    expect(rows[0].castHalves[2]).toMatchObject({ kind: "empty", label: "✦ no cast" });
+  });
+
   // ah-zpq3: the report found him in the open, his ENTER seats him, and the schedule reads the
   // second rather than the first. This is the bug, so it goes through `scheduleRows` and `after`.
   it("does not halve a mage whose orders put him in a seated building", () => {
@@ -298,6 +334,7 @@ describe("scheduleRows", () => {
             factionId: "21",
             unitId: "2431",
             goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+            casts: [],
             comment: "",
             updatedAt: "2026-01-01T00:00:00.000Z"
           }
@@ -342,6 +379,7 @@ describe("scheduleRows", () => {
           factionId: "21",
           unitId: "2431",
           goals: [{ kind: "study", turn: 24, skill: "FORC" }],
+          casts: [],
           comment: "",
           updatedAt: "2026-01-01T00:00:00.000Z"
         }
@@ -394,6 +432,7 @@ describe("hoverCard", () => {
           factionId: "21",
           unitId: "2431",
           goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+          casts: [],
           comment: "",
           updatedAt: "2026-01-01T00:00:00.000Z"
         }
@@ -447,6 +486,7 @@ describe("hoverCard", () => {
           factionId: "21",
           unitId: "2431",
           goals: [{ kind: "study" as const, turn: turns[0], skill: "PATT" }],
+          casts: [],
           comment: "",
           updatedAt: "2026-01-01T00:00:00.000Z"
         }
@@ -1004,6 +1044,7 @@ describe("cross-faction teaching under a declaration rule", () => {
           factionId: "12",
           unitId: "2517",
           goals: turns.map((turn) => ({ kind: "study" as const, turn, skill: "FORC" })),
+          casts: [],
           comment: "",
           updatedAt: "2026-01-01T00:00:00.000Z"
         },
@@ -1016,6 +1057,7 @@ describe("cross-faction teaching under a declaration rule", () => {
             students: ["2517"],
             live: false
           })),
+          casts: [],
           comment: "",
           updatedAt: "2026-01-01T00:00:00.000Z"
         }

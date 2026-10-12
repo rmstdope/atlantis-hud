@@ -47,6 +47,24 @@ const RULESET = JSON.stringify({
 const index = parseGameData(RULESET) as GameDataIndex;
 
 describe("buildMagicTree", () => {
+  // ah-9qdz.2: the planner offers a cast only for a spell the ruleset says is cast, set for combat
+  // or both (ah-9qdz.1 scraped it; `data/FARS`, `data/FIRE`, `data/CLEA`, `data/FORC`).
+  it("carries each spell's use from the ruleset", () => {
+    const trident = buildMagicTree(parseGameData(readTridentRuleset()) as GameDataIndex);
+    const useOf = (tag: string) => trident.byTag.get(tag)?.use;
+
+    expect([useOf("FARS"), useOf("FIRE"), useOf("CLEA"), useOf("FORC")]).toEqual([
+      "cast",
+      "combat",
+      "both",
+      "automatic"
+    ]);
+  });
+
+  it("answers no use for a ruleset scraped before uses were", () => {
+    expect(buildMagicTree(index).byTag.get("FIRE")?.use).toBeNull();
+  });
+
   it("files Trident's item-granted Call Pirates separately from studyable magic", () => {
     const trident = buildMagicTree(parseGameData(readTridentRuleset()) as GameDataIndex);
     const cpir = trident.byTag.get("CPIR");

@@ -68,6 +68,7 @@ export type { OrdersTemplate } from "./OrdersTemplate";
 export type { ParseWarning } from "./ParseWarning";
 export type { ParsedReport } from "./ParsedReport";
 export type { PassageClaim } from "./PassageClaim";
+export type { PlannedCast } from "./PlannedCast";
 export type { PreviewOrdersRequest } from "./PreviewOrdersRequest";
 export type { ProducedItem } from "./ProducedItem";
 export type { ProductionCap } from "./ProductionCap";

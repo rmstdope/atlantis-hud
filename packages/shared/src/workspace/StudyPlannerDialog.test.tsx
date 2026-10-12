@@ -180,6 +180,7 @@ describe("StudyPlannerDetail", () => {
           factionId: "95",
           unitId: "881",
           goals: [{ kind: "study", turn: 72, skill: "FORC" }],
+          casts: [],
           comment: "",
           updatedAt: "2026-01-01T00:00:00.000Z"
         }}
@@ -218,7 +219,7 @@ describe("the mage note", () => {
       turn={72}
       label={label}
       tree={tree}
-      plan={{ factionId: "95", unitId: "881", goals: [], comment: "heading for Gate Lore", updatedAt: "" }}
+      plan={{ factionId: "95", unitId: "881", goals: [], casts: [], comment: "heading for Gate Lore", updatedAt: "" }}
       saveError={null}
       onSaveNote={() => {}}
     />

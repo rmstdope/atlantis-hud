@@ -4,7 +4,6 @@ import { placeUnderAnchor, type Placement } from "../unitTooltip";
 import { STANDING_CHIP } from "./standingChip";
 import { useEscapeToDismiss } from "./dismissLayer";
 import type { MagicTree } from "../magicTree";
-import type { StudyGoal } from "@atlantis/core-client";
 import {
   cellMenu,
   goalsAfterChoice,
@@ -12,14 +11,21 @@ import {
   teachWarning,
   type CellMenu
 } from "../studyCell";
-import { plannedGoals, type ScheduleChange } from "../studyPlans";
+import { plannedGoals, type PlanChange, type ScheduleChange } from "../studyPlans";
+import { castMenu, castsAfterChoice, type CastHalf, type CastMenu } from "../studyCast";
 import { cellLabel, type ScheduleRow } from "../studySchedule";
 import { magePane, type MagePane } from "../studyMagePane";
 import { noticeSummary, type PlannerNotice } from "../studyTeaching";
 import type { TeachingRule } from "../teachingPermission";
 import type { PlannerGroup } from "../studyPlanner";
 import type { CellEvent, CellMode, CellPick } from "./studyCellState";
-import { keyToAction, pressDismisses } from "./studyCellState";
+import {
+  cellAddress,
+  gridStep,
+  keyToAction,
+  parseCellAddress,
+  pressDismisses
+} from "./studyCellState";
 
 /**
  * The Schedule view (`ah-lyg6.2.3`): every mage a row, the next six turns the columns.
@@ -75,7 +81,7 @@ export function StudySchedule({
    * first write is still in flight would otherwise be built from a row that does not hold the
    * first choice yet, and would overwrite it.
    */
-  onCommit: (rowKey: string, edit: (current: readonly StudyGoal[]) => StudyGoal[]) => void;
+  onCommit: (rowKey: string, change: PlanChange) => void;
   /** `Could not save this plan.`, or null. */
   saveError: string | null;
   /** Everything the planner has to say about this plan, for the strip and the cell tints. */
@@ -146,6 +152,19 @@ export function StudySchedule({
           rowKey: editing.rowKey,
           label,
           rule
+        });
+
+  const casting = mode.kind === "casting" ? mode : null;
+  const castRow = casting === null ? null : rows.find((row) => row.key === casting.rowKey) ?? null;
+  const castOpen =
+    casting === null || castRow === null
+      ? null
+      : castMenu({
+          mageName: castRow.name,
+          turn: turns[casting.turnIndex],
+          standing: castRow.standings[casting.turnIndex] ?? new Map(),
+          tree,
+          current: castRow.casts.find((cast) => cast.turn === turns[casting.turnIndex])?.spell ?? null
         });
 
   if (empty) {
@@ -254,24 +273,56 @@ export function StudySchedule({
         />
       )}
       {menu === null || open === null || editing === null ? null : (
-        <CellPopoverLayer
-          menu={menu}
-          mode={editing}
-          mageName={open.name}
-          turn={turns[editing.turnIndex]}
-          current={pickOf(open, turns[editing.turnIndex])}
-          rowIndex={rows.findIndex((row) => row.key === editing.rowKey)}
+        <PopoverLayer
+          cell={cellAddress({
+            row: rows.findIndex((row) => row.key === editing.rowKey),
+            turn: editing.turnIndex,
+            half: "study"
+          })}
+          step={editing.kind}
           onEvent={onEvent}
-          onChoose={(choice) => {
-            // `plannedGoals` because the edit is applied against the *stored* row rather than
-            // against the sanitized one the grid drew: a row written before goals named turns
-            // would otherwise be carried forward by a write instead of dropped by it.
-            onCommit(open.key, (goals) =>
-              goalsAfterChoice(plannedGoals(goals, tree), turns[editing.turnIndex], choice)
-            );
-            onEvent({ kind: "closed" });
-          }}
-        />
+        >
+          <CellPopover
+            menu={menu}
+            mode={editing}
+            mageName={open.name}
+            turn={turns[editing.turnIndex]}
+            current={pickOf(open, turns[editing.turnIndex])}
+            onEvent={onEvent}
+            onChoose={(choice) => {
+              // `plannedGoals` because the edit is applied against the *stored* row rather than
+              // against the sanitized one the grid drew: a row written before goals named turns
+              // would otherwise be carried forward by a write instead of dropped by it.
+              onCommit(open.key, {
+                goals: (goals) =>
+                  goalsAfterChoice(plannedGoals(goals, tree), turns[editing.turnIndex], choice)
+              });
+              onEvent({ kind: "closed" });
+            }}
+          />
+        </PopoverLayer>
+      )}
+      {castOpen === null || castRow === null || casting === null ? null : (
+        <PopoverLayer
+          cell={cellAddress({
+            row: rows.findIndex((row) => row.key === casting.rowKey),
+            turn: casting.turnIndex,
+            half: "cast"
+          })}
+          step="casting"
+          onEvent={onEvent}
+        >
+          <CastPopover
+            menu={castOpen}
+            onChoose={(spell) => {
+              // Choosing writes and closes, as a study does (agreed): one choice is one press.
+              onCommit(castRow.key, {
+                casts: (casts) => castsAfterChoice(casts, turns[casting.turnIndex], spell)
+              });
+              onEvent({ kind: "closed" });
+            }}
+          />
+        </PopoverLayer>
       )}
     </div>
   );
@@ -284,7 +335,14 @@ export function StudySchedule({
  * gives the topmost surface the key, which is exactly what is wanted here. Kept apart from
  * `CellPopover` so that component stays hook-free and `renderToStaticMarkup` can walk it.
  */
-function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
+function PopoverLayer(props: {
+  /** The `data-cell` address of the half the card hangs off, and gives focus back to. */
+  cell: string;
+  /** Which list is showing, so focus lands on a row again when the teach step comes and goes. */
+  step: string;
+  onEvent: (event: CellEvent) => void;
+  children: ReactNode;
+}) {
   useEscapeToDismiss(() => props.onEvent({ kind: "cancelled" }));
   // A press anywhere outside the card closes it with nothing chosen (ah-9wzn); which presses
   // count is `pressDismisses`. On `pointerdown` and in the capture phase, so it is seen before
@@ -313,8 +371,7 @@ function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
     return () => document.removeEventListener("pointerdown", onPress, true);
   }, []);
   const box = useRef<HTMLDivElement | null>(null);
-  const cell = `${props.rowIndex}:${props.mode.turnIndex}`;
-  const step = props.mode.kind;
+  const { cell, step } = props;
   // Focus lands on a *row*, not on the wrapper. The arrow-key walk reads `data-row` off the
   // focused element, so focusing the wrapper would leave the `↑↓ to move` the foot promises doing
   // nothing at all until the player found a row with Tab. Keyed on **both** the cell and the
@@ -359,7 +416,7 @@ function CellPopoverLayer(props: Parameters<typeof CellPopover>[0]) {
   return (
     <FloatingAtCell cell={cell}>
       <div ref={box} tabIndex={-1} data-cell-popover="">
-        <CellPopover {...props} />
+        {props.children}
       </div>
     </FloatingAtCell>
   );
@@ -500,25 +557,26 @@ export function ScheduleGrid({
     currentTarget: EventTarget | null;
     preventDefault: () => void;
   }) => {
-    const step = GRID_STEPS[event.key];
-    if (step === undefined) {
+    const text = (event.target as HTMLElement | null)?.dataset?.cell;
+    const from = text === undefined ? null : parseCellAddress(text);
+    if (from === null) {
       return;
     }
-    const from = (event.target as HTMLElement | null)?.dataset?.cell;
-    if (from === undefined) {
-      return;
-    }
-    const [rowIndex, turnIndex] = from.split(":").map(Number);
-    if (rows[rowIndex + step.row] === undefined || turns[turnIndex + step.turn] === undefined) {
+    // The cast half under a turn is a stop of its own (ah-9qdz.2); `gridStep` is the agreed walk.
+    const next = gridStep(
+      from,
+      event.key,
+      { rows: rows.length, turns: turns.length },
+      (row, turn) => (rows[row]?.castHalves[turn] ?? null) !== null
+    );
+    if (next === null) {
       return;
     }
     event.preventDefault();
     // Scoped to this table rather than the document: a second grid on the page would otherwise
     // steal the focus.
     (event.currentTarget as HTMLElement | null)
-      ?.querySelector<HTMLButtonElement>(
-        `[data-cell="${rowIndex + step.row}:${turnIndex + step.turn}"]`
-      )
+      ?.querySelector<HTMLButtonElement>(`[data-cell="${cellAddress(next)}"]`)
       ?.focus();
   };
   return (
@@ -583,14 +641,6 @@ export function ScheduleGrid({
   );
 }
 
-/** Which way each arrow key moves, in rows and in turns. */
-const GRID_STEPS: Record<string, { row: number; turn: number }> = {
-  ArrowUp: { row: -1, turn: 0 },
-  ArrowDown: { row: 1, turn: 0 },
-  ArrowLeft: { row: 0, turn: -1 },
-  ArrowRight: { row: 0, turn: 1 }
-};
-
 function FactionRows({
   group,
   byKey,
@@ -650,7 +700,13 @@ function FactionRows({
             {turns.map((turn, index) => {
               const cell = row.cells[index];
               const open =
-                mode.kind !== "idle" && mode.rowKey === row.key && mode.turnIndex === index;
+                (mode.kind === "choosing" || mode.kind === "teaching") &&
+                mode.rowKey === row.key &&
+                mode.turnIndex === index;
+              const castOpen =
+                mode.kind === "casting" && mode.rowKey === row.key && mode.turnIndex === index;
+              const half = row.castHalves[index] ?? null;
+              const rowIndex = indexOfRow.get(row.key) ?? -1;
               const cellNotices = (notices ?? []).filter(
                 (notice) => notice.rowKey === row.key && notice.turnIndex === index
               );
@@ -670,7 +726,7 @@ function FactionRows({
                   <button
                     type="button"
                     data-testid={`study-schedule-cell-${row.unitId}-${turn}`}
-                    data-cell={`${indexOfRow.get(row.key) ?? -1}:${index}`}
+                    data-cell={cellAddress({ row: rowIndex, turn: index, half: "study" })}
                     aria-expanded={open}
                     onMouseEnter={() => onAt?.({ rowKey: row.key, turnIndex: index })}
                     onFocus={() => onAt?.({ rowKey: row.key, turnIndex: index })}
@@ -688,6 +744,23 @@ function FactionRows({
                   >
                     {cellLabel(cell)}
                   </button>
+                  {half === null ? null : (
+                    <button
+                      type="button"
+                      data-testid={`study-schedule-cast-${row.unitId}-${turn}`}
+                      data-cell={cellAddress({ row: rowIndex, turn: index, half: "cast" })}
+                      aria-expanded={castOpen}
+                      onMouseEnter={() => onAt?.({ rowKey: row.key, turnIndex: index })}
+                      onFocus={() => onAt?.({ rowKey: row.key, turnIndex: index })}
+                      title={half.title ?? undefined}
+                      onClick={() =>
+                        onEvent({ kind: "cast-opened", rowKey: row.key, turnIndex: index })
+                      }
+                      className={`mt-0.5 block w-full truncate rounded border px-1 text-left transition-colors hover:border-select hover:bg-select/10 hover:text-ink ${castTint(half)}`}
+                    >
+                      {half.label}
+                    </button>
+                  )}
                 </td>
               );
             })}
@@ -850,8 +923,6 @@ export function CellPopover({
   turn: number;
   /** What the cell already holds, read by the caller from the row's stored plan. */
   current: CellPick | null;
-  /** Which row of the grid this cell is in, for returning focus to it on close. */
-  rowIndex: number;
   onEvent: (event: CellEvent) => void;
   onChoose: (choice: CellPick | null) => void;
 }) {
@@ -958,24 +1029,7 @@ export function CellPopover({
         // reach. The cap is on the list rather than on the panel so the heading, the warning and
         // the buttons are on screen whatever the list holds.
         className="m-0 max-h-[45vh] list-none overflow-y-auto p-0"
-        // `↑↓` move between the rows, wrapping at both ends; `↵` activates the focused button
-        // natively, so nothing handles it. Scoped to this list, as `ScheduleGrid`'s own walk is.
-        onKeyDown={(event) => {
-          if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
-            return;
-          }
-          const rows = event.currentTarget.querySelectorAll<HTMLElement>("[data-row]");
-          const from = (event.target as HTMLElement | null)?.dataset?.row;
-          if (from === undefined || rows.length === 0) {
-            return;
-          }
-          event.preventDefault();
-          const step = event.key === "ArrowDown" ? 1 : -1;
-          const next = (Number(from) + step + rows.length) % rows.length;
-          event.currentTarget
-            .querySelector<HTMLElement>(`[data-row="${next}"]`)
-            ?.focus();
-        }}
+        onKeyDown={walkRows}
       >
         {rowsOf(menu, current).map((row, index) => (
           <li key={row.key}>
@@ -1042,6 +1096,113 @@ export function CellPopover({
           {menu.empty}
         </p>
       )}
+      <p className="m-0 mt-2 text-ink-dim">↑↓ to move · ↵ to choose · Esc to close</p>
+    </div>
+  );
+}
+
+/**
+ * How a cast half is tinted (ah-9qdz.2): magic purple for a planned spell, the amber a study he
+ * cannot make already wears for one he will not know by then, and faint and dashed when empty.
+ * Whole literal strings, for Tailwind's scanner (`standingChip.ts`).
+ */
+function castTint(half: CastHalf): string {
+  if (half.kind === "empty") {
+    return "border-dashed border-edge bg-transparent text-ink-dim";
+  }
+  return half.known
+    ? "border-magic-edge bg-magic-fill text-magic-ink"
+    : STANDING_CHIP.ceiling;
+}
+
+/**
+ * The `↑↓` walk between a dropdown's rows, wrapping at both ends; `↵` activates the focused button
+ * natively, so nothing handles it. Scoped to the list it is bound on, as `ScheduleGrid`'s own
+ * walk is.
+ */
+function walkRows(event: React.KeyboardEvent<HTMLElement>) {
+  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+    return;
+  }
+  const rows = event.currentTarget.querySelectorAll<HTMLElement>("[data-row]");
+  const from = (event.target as HTMLElement | null)?.dataset?.row;
+  if (from === undefined || rows.length === 0) {
+    return;
+  }
+  event.preventDefault();
+  const step = event.key === "ArrowDown" ? 1 : -1;
+  const next = (Number(from) + step + rows.length) % rows.length;
+  event.currentTarget.querySelector<HTMLElement>(`[data-row="${next}"]`)?.focus();
+}
+
+/**
+ * The cast half's dropdown (ah-9qdz.2), hook-free so the markup can be tested without a DOM: the
+ * mage and the turn, `— no cast`, every spell he will know then, and - last, ticked - a planned
+ * spell he will not. Choosing a row writes it and closes, as a study does.
+ */
+export function CastPopover({
+  menu,
+  onChoose
+}: {
+  menu: CastMenu;
+  /** The spell's tag, or null for `— no cast`. */
+  onChoose: (spell: string | null) => void;
+}) {
+  return (
+    <div
+      data-testid="study-schedule-cast-popover"
+      role="dialog"
+      aria-label={`${menu.heading}, ${menu.chip}`}
+      className="rounded border border-brass/60 bg-panel-raised p-2 shadow-xl"
+    >
+      <p className="m-0 mb-1 flex items-center gap-2 rounded border border-brass/60 bg-brass/10 px-2 py-1 text-brass">
+        <span className="flex-1">{menu.heading}</span>
+        <span className="rounded border border-brass/60 px-1 text-pane-xs">{menu.chip}</span>
+      </p>
+      {/* The study dropdown's height cap, so a long list scrolls rather than leaves the screen. */}
+      <ul className="m-0 max-h-[45vh] list-none overflow-y-auto p-0" onKeyDown={walkRows}>
+        {menu.rows.map((row, index) => (
+          <li key={row.key}>
+            <button
+              type="button"
+              data-testid={`study-schedule-cast-choice-${row.spell ?? "none"}`}
+              data-row={index}
+              aria-pressed={row.pressed}
+              onPointerMove={(event) => event.currentTarget.focus({ preventScroll: true })}
+              onClick={() => onChoose(row.spell)}
+              className={`w-full rounded border-l-2 px-1 text-left ${
+                row.pressed ? "border-brass bg-brass/10" : "border-transparent"
+              } ${row.pressed ? "hover:bg-brass/15 focus:bg-brass/15" : ROW_HIGHLIGHT}`}
+            >
+              <ChoiceMark on={row.pressed} />
+              {row.spell === null ? (
+                <span aria-hidden="true" className="invisible inline-block w-10 rounded border px-1 text-pane-xs" />
+              ) : (
+                <span
+                  className={`inline-block w-10 rounded border px-1 text-center text-pane-xs ${
+                    row.known ? "border-magic-edge bg-magic-fill text-magic-ink" : STANDING_CHIP.ceiling
+                  }`}
+                >
+                  {row.spell}
+                </span>
+              )}{" "}
+              <span className={row.spell === null ? "text-ink-dim" : "text-ink"}>{row.name}</span>
+              {row.level === null ? null : (
+                <>
+                  {" "}
+                  <span className="font-medium text-ink">{row.level}</span>
+                </>
+              )}
+              {row.detail === null ? null : (
+                <>
+                  {" "}
+                  <span className="text-ink-dim">{row.detail}</span>
+                </>
+              )}
+            </button>
+          </li>
+        ))}
+      </ul>
       <p className="m-0 mt-2 text-ink-dim">↑↓ to move · ↵ to choose · Esc to close</p>
     </div>
   );

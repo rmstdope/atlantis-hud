@@ -147,8 +147,7 @@ import { useHexNotesStore } from "../hexNotesStore";
 import { useArmiesStore } from "../armiesStore";
 import { useAlliedMagesStore } from "../alliedMagesStore";
 import { useStudyPlansStore } from "../studyPlansStore";
-import type { StudyGoal } from "@atlantis/core-client";
-import { plannedGoals, type ScheduleChange } from "../studyPlans";
+import { plannedCasts, plannedGoals, type PlanChange, type ScheduleChange } from "../studyPlans";
 import {
   forgetFailedText,
   forgottenStatusText,
@@ -927,7 +926,7 @@ export function AppShell({
       // `goals` is an *edit* rather than a list: the store applies it against the row it holds at
       // the moment the write runs, so two choices made in quick succession cannot each be built
       // from the same pre-first-write row (`studyPlansStore.save`).
-      change: { goals?: (current: readonly StudyGoal[]) => StudyGoal[]; comment?: string },
+      change: PlanChange & { comment?: string },
       failure: string
     ) => {
       if (!game) {
@@ -944,9 +943,12 @@ export function AppShell({
               change.goals ? change.goals(current?.goals ?? []) : (current?.goals ?? []),
               magicTree ?? undefined
             ),
+            casts: plannedCasts(
+              change.casts ? change.casts(plannedCasts(current?.casts)) : current?.casts
+            ),
             comment: change.comment ?? current?.comment ?? "",
             updatedAt: new Date().toISOString()
-          }));
+          }), change.settle);
       } catch {
         setStudyPlanError(failure);
       }
@@ -5550,8 +5552,8 @@ export function AppShell({
           assumeSheltered={assumeMagesSheltered}
           onAssumeShelteredChange={setAssumeMagesSheltered}
           saveError={studyPlanError}
-          onSavePlan={(factionId, unitId, edit) =>
-            void saveStudyPlan(factionId, unitId, { goals: edit }, "Could not save this plan.")
+          onSavePlan={(factionId, unitId, change) =>
+            void saveStudyPlan(factionId, unitId, change, "Could not save this plan.")
           }
           onSaveNote={(factionId, unitId, comment) =>
             void saveStudyPlan(factionId, unitId, { comment }, "Could not save this note. It is still here — keep typing and it will try again.")

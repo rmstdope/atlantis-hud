@@ -430,6 +430,23 @@ pub enum StudyGoal {
     },
 }
 
+/// One planned cast: the spell a mage casts (`rules/cast`) or sets for combat (`rules/combat`) on
+/// one turn. Which of the two orders it stands for is the spell's `use` in the ruleset, not stored
+/// here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "PlannedCast", export_to = "PlannedCast.ts")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannedCast {
+    /// The game turn, as the report numbers turns.
+    pub turn: u32,
+    /// The spell's skill tag, upper-cased (`"FARS"`).
+    pub spell: String,
+}
+
 /// One mage's study plan: one goal per planned turn, and what the player wants to remember.
 ///
 /// There is no `game_id`: every call that reads or writes these rows is scoped to one game and
@@ -449,6 +466,14 @@ pub struct StudyPlan {
     /// One entry per planned turn, ascending by `turn`. Empty when the row is a note with nothing planned.
     #[serde(default)]
     pub goals: Vec<StudyGoal>,
+    /// The spell he casts or readies for battle, one per planned turn, ascending by `turn`.
+    ///
+    /// A list of its own rather than a field of `StudyGoal`: `rules/magic_usingmagic` (New Age:
+    /// Trident) says a CAST "is not a full month order", so a cast sits beside the month's study or
+    /// teach - and on a turn that has neither, which a goal-borne cast could not.
+    /// `#[serde(default)]` for every row written before ah-9qdz.2, which reads as no cast.
+    #[serde(default)]
+    pub casts: Vec<PlannedCast>,
     /// The player's free text. Never `None`: an absent note is the empty string.
     pub comment: String,
     /// When the row was last written, ISO 8601, from the caller's clock.
@@ -1523,6 +1548,7 @@ mod tests {
                     skill: "PATT".to_string(),
                 },
             ],
+            casts: vec![],
             comment: "heading for Gate Lore".to_string(),
             updated_at: "2026-01-05T00:00:00Z".to_string(),
         };
@@ -1530,6 +1556,7 @@ mod tests {
             faction_id: "21".to_string(),
             unit_id: "9002".to_string(),
             goals: vec![],
+            casts: vec![],
             comment: String::new(),
             updated_at: "2026-01-05T00:00:00Z".to_string(),
         };
@@ -1562,6 +1589,7 @@ mod tests {
                     skill: "FORC".to_string(),
                 },
             ],
+            casts: vec![],
             comment: String::new(),
             updated_at: "2026-01-05T00:00:00Z".to_string(),
         };
@@ -1576,6 +1604,54 @@ mod tests {
             vec![plan],
             "a month spent teaching comes back naming the same students, in order"
         );
+    }
+
+    /// ah-9qdz.2: a planned cast rides beside the goals, on a turn of its own, and a backup
+    /// carries it as it carries the goals.
+    #[test]
+    fn a_planned_cast_survives_encode_and_decode() {
+        let plan = StudyPlan {
+            faction_id: "21".to_string(),
+            unit_id: "9001".to_string(),
+            goals: vec![StudyGoal::Study {
+                turn: 26,
+                skill: "FORC".to_string(),
+            }],
+            casts: vec![
+                PlannedCast {
+                    turn: 26,
+                    spell: "FARS".to_string(),
+                },
+                PlannedCast {
+                    turn: 27,
+                    spell: "FIRE".to_string(),
+                },
+            ],
+            comment: String::new(),
+            updated_at: "2026-01-05T00:00:00Z".to_string(),
+        };
+        let mut content = content_with(vec![], vec![], vec![], vec![], vec![]);
+        content.collections.study_plans = vec![plan.clone()];
+        let encoded = encode_game_backup(content, "2026-01-06T00:00:00Z").expect("encodes");
+
+        let decoded = decode_game_backup(&encoded, "2026-02-01T00:00:00Z").expect("decodes");
+
+        assert_eq!(
+            decoded.collections.study_plans,
+            vec![plan],
+            "every planned cast comes back on its own turn"
+        );
+    }
+
+    /// Every plan stored before ah-9qdz.2 has no `casts` key, and reads as no cast on any turn.
+    #[test]
+    fn a_plan_without_casts_reads_as_no_cast() {
+        let plan: StudyPlan = serde_json::from_str(
+            r#"{"factionId":"21","unitId":"9001","goals":[],"comment":"","updatedAt":"2026-01-05T00:00:00Z"}"#,
+        )
+        .expect("deserializes");
+
+        assert_eq!(plan.casts, Vec::<PlannedCast>::new());
     }
 
     /// ah-af7i: `live` says a teach cell means "teach whoever is eligible this turn". Every row
@@ -1620,6 +1696,7 @@ mod tests {
                 turn: 25,
                 skill: "FORC".to_string(),
             }],
+            casts: vec![],
             comment: "heading for Gate Lore".to_string(),
             updated_at: "2026-01-05T00:00:00Z".to_string(),
         };

@@ -313,6 +313,7 @@ function aStudyPlan(): StoredStudyPlan {
     factionId: "21",
     unitId: "9001",
     goals: [{ kind: "study", turn: 24, skill: "FORC" }],
+    casts: [],
     comment: "heading for Gate Lore",
     updatedAt: "2026-08-07T12:00:00Z"
   };
