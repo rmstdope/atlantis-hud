@@ -40,9 +40,9 @@ use crate::movement::mode::{
     hulls_named_in, is_vessel, sailing_requirement, Carrying,
 };
 use crate::movement::orders::{first_passage, MoveStep};
-use crate::movement::plan::{refused_by_sailing_step, Hull, Journey};
+use crate::movement::plan::{Hull, Journey};
 use crate::movement::rules::{item_spellings, ItemEntry, MovementMode, Ruleset, SkillEntry};
-use crate::movement::sailing::refused_sail_steps;
+use crate::movement::sailing::{fleet_month_end, refused_sail_steps, FleetMonthEnd};
 use crate::orders::faction_orders::{
     orders_warning, settle, FactionFailure, FactionLimits, FactionOrders, FactionSplit, Held,
 };
@@ -17081,7 +17081,7 @@ fn uncounted_cause(unit: &ReportUnit, facts: &UnitFacts<'_>, ruleset: Option<&Ru
 /// plus those that ENTER it this month, minus those that LEAVE.
 ///
 /// One SAIL that will certainly fail does not count: a first step with land at both ends, which
-/// the game refuses before the fleet goes anywhere (`first_sail_step_refused`, `ah-g0fk`), so
+/// the game refuses before the fleet goes anywhere ([`sail_month_end`], `ah-g0fk`), so
 /// everybody aboard stays and is judged here. Any other SAIL that will certainly fail still
 /// counts. `check_sailing` may separately warn that the
 /// fleet is overloaded or short of crew, in which case the boat stays put and the produce check
@@ -17097,10 +17097,23 @@ fn carried_away<'a>(
     ordered: &Ordered<'_>,
     ruleset: &Ruleset,
 ) -> Option<&'a PlacedIntent> {
+    fleet_carrying(hex, ordered, ruleset).map(|(course, _)| course)
+}
+
+/// The fleet carrying `ordered` out of the hex, as [`carried_away`] defines it: its captain's
+/// course and its hull, the hull read as `check_sail_route` reads it, so a flying fleet is not held
+/// to the water here either. Read by [`carried_away`] and [`production_region`] alike, so the two
+/// cannot disagree about which fleet carries a unit or whether it leaves.
+fn fleet_carrying<'a>(
+    hex: &'a Hex<'a>,
+    ordered: &Ordered<'_>,
+    ruleset: &Ruleset,
+) -> Option<(&'a PlacedIntent, Hull)> {
     hex.region.structures.iter().find_map(|fleet| {
         if !is_vessel(fleet, Some(ruleset)) || !is_aboard(ordered, &fleet.structure_id) {
             return None;
         }
+        let hull = Hull::from_flies(fleet_flies(fleet, Some(ruleset)));
         hex.units
             .iter()
             .find_map(|other| {
@@ -17120,77 +17133,32 @@ fn carried_away<'a>(
                 let Intent::Sail { steps } = &placed.intent else {
                     return true;
                 };
-                let hull = Hull::from_flies(fleet_flies(fleet, Some(ruleset)));
-                !first_sail_step_refused(hex, hull, steps, ruleset)
+                sail_month_end(hex.region, steps, &HashMap::new(), ruleset, hull).leaves()
             })
+            .map(|placed| (placed, hull))
     })
 }
 
-/// Whether the game refuses this SAIL's very first step, so the fleet carries nobody anywhere
-/// (`ah-g0fk`): land at both ends, the step `sail-between-land-hexes` says "will not move". The
-/// first step is the only one that decides whether anybody leaves, and it can never be a neck of
-/// land - "Ships ending their movement in a land hex may sail out along any side connecting to
-/// water" (`rules/movement_sailing`) - so the two terrains are all it needs: this hex's, and the
-/// one its exit names. An exit the hex does not list is not judged, as `refused_sail_steps` does
-/// not judge one.
+/// **Where a fleet sailing `steps` out of `from` ends the month** - the one answer the preview
+/// reads too ([`fleet_month_end`], `ah-8zqq`), over the report's own map as far as this course
+/// passes through it: the regions `regions` holds along the route, followed through each one's
+/// own `exits`. Every question the checks ask of a sailing fleet is a reading of it - whether
+/// anybody aboard leaves ([`carried_away`], [`sail_refused_before_leaving`]) and where they land
+/// ([`sail_destination`]).
 ///
-/// Read for the passengers by [`carried_away`] and for the captain and sailors by
-/// [`sail_refused_before_leaving`] (`ah-nz7r`), so nobody aboard is judged as leaving a hex the
-/// fleet stays in.
-fn first_sail_step_refused(
-    hex: &Hex<'_>,
-    hull: Hull,
+/// Only the regions this route passes through are mapped: `MapKnowledge::from_report` clones every
+/// region it is given, and this runs on every keystroke. Given no `regions` at all the map is
+/// `from` alone, which still answers whether anybody leaves: the hex its first exit names is on
+/// that map, terrain and all, and the first step is never a neck of land - "Ships ending their
+/// movement in a land hex may sail out along any side connecting to water"
+/// (`rules/movement_sailing`).
+fn sail_month_end(
+    from: &ReportRegion,
     steps: &[MoveStep],
+    regions: &HashMap<Coordinate, &ReportRegion>,
     ruleset: &Ruleset,
-) -> bool {
-    let Some(direction) = steps.iter().find_map(|step| match step {
-        MoveStep::Go(direction) => Some(*direction),
-        _ => None,
-    }) else {
-        return false;
-    };
-    let Some(exit) = hex
-        .region
-        .exits
-        .iter()
-        .find(|exit| Direction::parse(&exit.direction) == Some(direction))
-    else {
-        return false;
-    };
-    refused_by_sailing_step(
-        ruleset,
-        Journey::enforced(MovementMode::Sail, hull),
-        &hex.region.terrain,
-        &exit.terrain,
-    )
-}
-
-/// Where a sail from `from` ends, as far as the report can say.
-///
-/// Walks the `Go` steps through each region's own `exits`, looking the neighbour up by coordinate
-/// in `regions`. `In` and `Out` steps move a unit within a hex, not across the map, so they are
-/// skipped.
-///
-/// `None` the moment the report cannot follow: an exit the region does not list (the coast the
-/// player is sailing off), or a neighbour the report does not carry (beyond what the faction can
-/// see). **`None` is "cannot say", never "did not move"** - the caller must stay silent for it,
-/// which is the whole reason this returns an `Option` rather than the last region it reached.
-///
-/// A sail with no `Go` steps ends where it started, which is the region already being checked.
-///
-/// With a ruleset and the fleet's journey, the fleet stops at the first step the game refuses
-/// (`ah-g0fk`), in the hex that step would have left: land at both ends, or a neck of land left by
-/// the wrong side - the steps `sail-between-land-hexes` and `sail-through-neck-of-land` say "will
-/// not move". Judged by the same [`refused_sail_steps`] walk those warnings read, over a map of
-/// the regions this route passes through: the neck needs the side each hex was entered by and
-/// whether a canal stands there, which only a [`MapKnowledge`] answers, and the route is all of it
-/// this question needs.
-fn sail_destination<'a>(
-    from: &'a ReportRegion,
-    steps: &[MoveStep],
-    regions: &HashMap<Coordinate, &'a ReportRegion>,
-    sailing_rule: Option<(&Ruleset, Journey)>,
-) -> Option<&'a ReportRegion> {
+    hull: Hull,
+) -> FleetMonthEnd {
     let mut route = vec![from];
     let mut here = from;
     for step in steps {
@@ -17199,25 +17167,51 @@ fn sail_destination<'a>(
         };
         // `Direction::parse` is how an exit's text becomes a direction everywhere else that reads
         // exits (`movement::graph`); the report's own spelling is not matched on here.
-        let exit = here
+        let Some(next) = here
             .exits
             .iter()
-            .find(|exit| Direction::parse(&exit.direction) == Some(*direction))?;
-        here = regions.get(&exit.coordinate).copied()?;
+            .find(|exit| Direction::parse(&exit.direction) == Some(*direction))
+            .and_then(|exit| regions.get(&exit.coordinate).copied())
+        else {
+            break;
+        };
+        here = next;
         route.push(here);
     }
-    let Some((rules, journey)) = sailing_rule else {
-        return Some(here);
-    };
     let passed = ParsedReport {
         regions: route.iter().map(|region| (*region).clone()).collect(),
         ..Default::default()
     };
-    let map = MapKnowledge::from_report(&passed);
-    match refused_sail_steps(&map, rules, journey, from.coordinate, steps).stops {
-        Some(stop) => route.get(stop.steps_taken).copied(),
-        None => Some(here),
+    fleet_month_end(
+        &MapKnowledge::from_report(&passed),
+        ruleset,
+        Journey::enforced(MovementMode::Sail, hull),
+        from.coordinate,
+        steps,
+    )
+}
+
+/// Where a sail from `from` ends, as far as the report can say: [`sail_month_end`]'s landing,
+/// looked up among the report's regions.
+///
+/// `None` the moment the report cannot follow: an exit the region does not list (the coast the
+/// player is sailing off), or a neighbour the report does not carry (beyond what the faction can
+/// see). **`None` is "cannot say", never "did not move"** - the caller must stay silent for it,
+/// which is the whole reason this returns an `Option` rather than the last region it reached. A
+/// step the game refuses stops the fleet before any of that (`ah-g0fk`), in the hex that step
+/// would have left, wherever the report would have run out further on (`ah-8zqq`).
+fn sail_destination<'a>(
+    from: &'a ReportRegion,
+    steps: &[MoveStep],
+    regions: &HashMap<Coordinate, &'a ReportRegion>,
+    ruleset: &Ruleset,
+    hull: Hull,
+) -> Option<&'a ReportRegion> {
+    let lands = sail_month_end(from, steps, regions, ruleset, hull).lands?;
+    if lands == from.coordinate {
+        return Some(from);
     }
+    regions.get(&lands).copied()
 }
 
 /// How this check names a hex: terrain and coordinate, and no province.
@@ -17235,30 +17229,17 @@ fn production_region<'a>(
     ruleset: Option<&Ruleset>,
     by_coordinate: &HashMap<Coordinate, &'a ReportRegion>,
 ) -> Option<&'a ReportRegion> {
-    let sailing = ruleset.and_then(|rules| carried_away(hex, ordered, rules).map(|p| (rules, p)));
-    match sailing {
+    let Some(rules) = ruleset else {
+        return Some(hex.region);
+    };
+    match fleet_carrying(hex, ordered, rules) {
         Some((
-            rules,
             PlacedIntent {
                 intent: Intent::Sail { steps },
                 ..
             },
-        )) => {
-            // The hull the passenger stands in, read as `check_sail_route` reads it, so a flying
-            // fleet is not held to the water here either.
-            let hull = hex
-                .region
-                .structures
-                .iter()
-                .find(|structure| {
-                    is_vessel(structure, Some(rules)) && is_aboard(ordered, &structure.structure_id)
-                })
-                .map_or(Hull::Bound, |vessel| {
-                    Hull::from_flies(fleet_flies(vessel, Some(rules)))
-                });
-            let journey = Journey::enforced(MovementMode::Sail, hull);
-            sail_destination(hex.region, steps, by_coordinate, Some((rules, journey)))
-        }
+            hull,
+        )) => sail_destination(hex.region, steps, by_coordinate, rules, hull),
         _ => Some(hex.region),
     }
 }
@@ -20374,15 +20355,23 @@ fn leaves_hex_after_load_check(
 /// captain or sailor who wrote it - never leaves the hex (`ah-nz7r`): the engine stops a fleet at
 /// the first step it refuses, before taking any (`RunSailOrders`). The hull is [`sailing_hull`],
 /// the one `check_sail_route` reads, so the departure agrees with the `sail-between-land-hexes`
-/// warning that says "it will not move"; the step itself is [`first_sail_step_refused`], the same judgement `carried_away`
-/// makes for the passengers.
+/// warning that says "it will not move"; whether it leaves is [`sail_month_end`]'s answer, the
+/// one `carried_away` reads for the passengers (`ah-8zqq`). Only ever asked of a `SAIL` with a
+/// step across the map: one with none goes nowhere and is not "refused".
 fn sail_refused_before_leaving(
     hex: &Hex<'_>,
     ordered: &Ordered<'_>,
     steps: &[MoveStep],
     ruleset: &Ruleset,
 ) -> bool {
-    first_sail_step_refused(hex, sailing_hull(hex, ordered, ruleset), steps, ruleset)
+    !sail_month_end(
+        hex.region,
+        steps,
+        &HashMap::new(),
+        ruleset,
+        sailing_hull(hex, ordered, ruleset),
+    )
+    .leaves()
 }
 
 /// The hull a unit's own `SAIL` is judged by: that of the vessel it could captain, else the one it
@@ -57246,6 +57235,35 @@ BUILD
         assert_eq!(produce_codes(&findings), Vec::<&str>::new(), "{findings:?}");
     }
 
+    /// `ah-8zqq`: the game stops a fleet at the first step it refuses, so where the report runs
+    /// out further on does not matter - the passenger is judged where the fleet stops, as the
+    /// preview already draws it. From the sea at (7,53) the fleet enters the plain (7,51), and its
+    /// next step, into the forest (7,49), has land at both ends (`rules/movement_sailing`: "A fleet
+    /// can move from an ocean region to another ocean region, or from a coastal region to an ocean
+    /// region, or from an ocean region to a coastal region"); the third step, through an exit the
+    /// forest does not list, is never taken.
+    #[test]
+    fn a_passenger_is_judged_where_a_refused_step_stops_the_fleet_before_the_map_runs_out() {
+        let mut regions = fleet_sailing_north(one_product(20, "wood", "WOOD"));
+        regions[0].terrain = ruleset().movement.ocean.terrain.clone();
+        regions[0].exits[0].terrain = "plain".to_string();
+        regions[1].terrain = "plain".to_string();
+        regions[1].exits = vec![Exit {
+            direction: "North".to_string(),
+            terrain: "forest".to_string(),
+            coordinate: Coordinate { x: 7, y: 49, z: 1 },
+            ..Default::default()
+        }];
+        regions.push(ReportRegion {
+            terrain: "forest".to_string(),
+            ..region_at("1:7,49", 7, 49, Vec::new())
+        });
+
+        let findings = check(regions, "unit 4021\nPRODUCE fish\nunit 4022\nSAIL N N N\n");
+
+        assert_eq!(produce_codes(&findings), ["produce-not-here"], "{findings:?}");
+    }
+
     // --- following a SAIL through the report's own regions (`ah-8myf`) -------------------------
 
     /// A region at `(x, y)` with an exit in `direction` leading to `to`.
@@ -57280,7 +57298,7 @@ BUILD
         ];
         let index = by_coordinate(&regions);
 
-        let end = sail_destination(&regions[0], &[MoveStep::Go(Direction::North)], &index, None);
+        let end = sail_destination(&regions[0], &[MoveStep::Go(Direction::North)], &index, &ruleset(), Hull::Unbound);
 
         assert_eq!(end.map(|region| region.coordinate), Some(at(7, 51)));
     }
@@ -57301,7 +57319,8 @@ BUILD
                 MoveStep::Go(Direction::Northeast),
             ],
             &index,
-            None,
+            &ruleset(),
+            Hull::Unbound,
         );
 
         assert_eq!(end.map(|region| region.coordinate), Some(at(8, 50)));
@@ -57315,7 +57334,7 @@ BUILD
         ];
         let index = by_coordinate(&regions);
 
-        let end = sail_destination(&regions[0], &[MoveStep::Go(Direction::South)], &index, None);
+        let end = sail_destination(&regions[0], &[MoveStep::Go(Direction::South)], &index, &ruleset(), Hull::Unbound);
 
         assert_eq!(end.map(|region| region.coordinate), None);
     }
@@ -57325,7 +57344,7 @@ BUILD
         let regions = vec![region_with_exit(7, 53, "North", at(7, 51))];
         let index = by_coordinate(&regions);
 
-        let end = sail_destination(&regions[0], &[MoveStep::Go(Direction::North)], &index, None);
+        let end = sail_destination(&regions[0], &[MoveStep::Go(Direction::North)], &index, &ruleset(), Hull::Unbound);
 
         assert_eq!(end.map(|region| region.coordinate), None);
     }
@@ -57335,7 +57354,7 @@ BUILD
         let regions = vec![region_with_exit(7, 53, "North", at(7, 51))];
         let index = by_coordinate(&regions);
 
-        let end = sail_destination(&regions[0], &[], &index, None);
+        let end = sail_destination(&regions[0], &[], &index, &ruleset(), Hull::Unbound);
 
         assert_eq!(end.map(|region| region.coordinate), Some(at(7, 53)));
     }
@@ -57352,7 +57371,8 @@ BUILD
             &regions[0],
             &[MoveStep::Out, MoveStep::Go(Direction::North), MoveStep::In],
             &index,
-            None,
+            &ruleset(),
+            Hull::Unbound,
         );
 
         assert_eq!(end.map(|region| region.coordinate), Some(at(7, 51)));
