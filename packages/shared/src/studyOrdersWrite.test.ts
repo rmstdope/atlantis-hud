@@ -12,6 +12,7 @@ const anEntry = (over: Partial<OrdersEntry> = {}): OrdersEntry => ({
   order: "STUDY FORC 4",
   annotation: "force 3 -> 4",
   skipReason: null,
+  cast: null,
   ...over
 });
 

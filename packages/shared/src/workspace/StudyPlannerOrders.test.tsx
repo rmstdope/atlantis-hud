@@ -17,7 +17,8 @@ const orders: StudyOrders = {
       text: "; Borg TNG (95) — study orders for turn 72, from Atlantis HUD",
       fileName: "study-orders-Borg-TNG-(95)-turn-72.txt",
       source: "own",
-      entries: []
+      entries: [],
+      hasCast: false
     },
     {
       factionId: "17",
@@ -25,7 +26,8 @@ const orders: StudyOrders = {
       text: "; Creeping Death (17) — study orders for turn 72, from Atlantis HUD",
       fileName: "study-orders-Creeping-Death-(17)-turn-72.txt",
       source: "sheet",
-      entries: []
+      entries: [],
+      hasCast: false
     }
   ],
   summary: "Orders for turn 72 — 2 mages studying",

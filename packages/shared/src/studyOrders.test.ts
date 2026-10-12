@@ -3,6 +3,9 @@ import type { PlannerGroup } from "./studyPlanner";
 import type { PlannerNotice } from "./studyTeaching";
 import type { ScheduleCell, ScheduleRow, SkillPoints } from "./studySchedule";
 import { studyOrders } from "./studyOrders";
+import type { CastHalf } from "./studyCast";
+import { parseGameData, type GameDataIndex } from "./gameData";
+import { buildMagicTree } from "./magicTree";
 
 const ownGroup: PlannerGroup = {
   factionId: "95",
@@ -473,5 +476,169 @@ describe("studyOrders entries", () => {
         }
       }
     }
+  });
+});
+
+/**
+ * ah-9qdz.4: next turn's planned cast, written under the study line when the box is ticked.
+ * `rules/cast` / `rules/combat` (New Age: Trident) are the two orders; which one a spell takes is
+ * its ruleset use (ah-9qdz.1), and a spell used both ways is written as CAST.
+ */
+describe("studyOrders — casts", () => {
+  const magic = (tag: string, name: string, use: string, requires: { tag: string; level: number }[] = []) => ({
+    tag,
+    name,
+    cost: 100,
+    maxLevel: 5,
+    produces: [],
+    requires,
+    magic: true,
+    use
+  });
+  const tree = buildMagicTree(
+    parseGameData(
+      JSON.stringify({
+        skills: {
+          PATT: magic("PATT", "pattern", "automatic"),
+          FORC: magic("FORC", "force", "automatic"),
+          FARS: magic("FARS", "farsight", "cast", [{ tag: "PATT", level: 1 }]),
+          FIRE: magic("FIRE", "fire", "combat", [{ tag: "FORC", level: 1 }]),
+          CLEA: magic("CLEA", "clear skies", "both")
+        },
+        items: {},
+        buildings: {}
+      })
+    ) as GameDataIndex
+  );
+  const planned = (spell: string, known = true): CastHalf => ({
+    kind: "planned",
+    spell,
+    label: `✦ ${spell}`,
+    known,
+    title: ""
+  });
+  const casting = (spell: string, levels: Record<string, number>, over: Partial<ScheduleRow> = {}) =>
+    aRow({
+      cells: [aStudyCell({ skill: "FORC", name: "force", level: 4 })],
+      standings: [standing({ FORC: 4, ...levels })],
+      castHalves: [planned(spell)],
+      casts: [{ turn: 72, spell }],
+      ...over
+    });
+  const text = (rows: ScheduleRow[], write = true) =>
+    studyOrders({ groups: [ownGroup], rows, turns: [72], notices: [], casts: { tree, write } })
+      .sections[0].text.split("\n");
+
+  it("a_cast_spell_is_written_as_cast_under_the_study_line", () => {
+    expect(text([casting("FARS", { FARS: 2, PATT: 3 })]).slice(1)).toEqual([
+      "UNIT 1234           ; Ereb",
+      "  STUDY FORC        ; force 4",
+      "  CAST FARS         ; practises farsight"
+    ]);
+  });
+
+  it("a_combat_spell_is_written_as_combat", () => {
+    expect(text([casting("FIRE", { FIRE: 1, FORC: 4 })]).at(-1)).toBe(
+      "  COMBAT FIRE       ; readies fire for battle"
+    );
+  });
+
+  it("a_spell_used_both_ways_is_written_as_cast", () => {
+    expect(text([casting("CLEA", { CLEA: 2 })]).at(-1)).toBe("  CAST CLEA         ; practises clear skies");
+  });
+
+  it("practice_sent_to_a_prerequisite_names_it", () => {
+    expect(text([casting("FARS", { FARS: 2, PATT: 1 })]).at(-1)).toBe(
+      "  CAST FARS         ; practises pattern (farsight can't rise past it)"
+    );
+  });
+
+  it("a_combat_spell_whose_practice_goes_elsewhere_names_where", () => {
+    expect(text([casting("FIRE", { FIRE: 1, FORC: 1 })]).at(-1)).toBe(
+      "  COMBAT FIRE       ; practises force (fire can't rise past it)"
+    );
+  });
+
+  it("a_spell_at_its_maximum_says_no_practice", () => {
+    expect(text([casting("CLEA", { CLEA: 5 })]).at(-1)).toBe(
+      "  CAST CLEA         ; clear skies is at its maximum — no practice"
+    );
+  });
+
+  it("a_spell_he_will_not_know_is_left_out_as_a_comment", () => {
+    const row = casting("FARS", { PATT: 1 }, { castHalves: [planned("FARS", false)] });
+    expect(text([row]).at(-1)).toBe("  ; CAST FARS — he won't know farsight yet, left out");
+  });
+
+  it("a_mage_with_no_study_still_gets_his_cast", () => {
+    const row = casting("FIRE", { FIRE: 1, FORC: 4 }, { cells: [{ kind: "idle" }] });
+    expect(text([row]).slice(1)).toEqual([
+      "UNIT 1234           ; Ereb",
+      "  ; nothing planned",
+      "  COMBAT FIRE       ; readies fire for battle"
+    ]);
+  });
+
+  it("unticked_the_text_is_exactly_today's", () => {
+    const rows = [
+      casting("FARS", { FARS: 2, PATT: 3 }),
+      casting("FIRE", { FIRE: 1 }, { unitId: "881", key: "95/881", name: "Sable", cells: [{ kind: "idle" }] })
+    ];
+    const without = studyOrders({ groups: [ownGroup], rows, turns: [72], notices: [] });
+    const unticked = studyOrders({
+      groups: [ownGroup],
+      rows,
+      turns: [72],
+      notices: [],
+      casts: { tree, write: false }
+    });
+    expect(unticked.sections[0].text).toBe(without.sections[0].text);
+    expect(unticked.summary).toBe(without.summary);
+    expect(unticked.sections[0].entries.every((entry) => entry.cast === null)).toBe(true);
+  });
+
+  it("a_section_knows_whether_it_has_a_cast_whatever_the_tick", () => {
+    const rows = [
+      casting("FARS", { FARS: 2, PATT: 3 }),
+      aRow({ factionId: "17", unitId: "300", key: "17/300", name: "Ghost", cells: [aStudyCell()] })
+    ];
+    for (const write of [true, false]) {
+      const orders = studyOrders({
+        groups: [ownGroup, allyGroup],
+        rows,
+        turns: [72],
+        notices: [],
+        casts: { tree, write }
+      });
+      expect(orders.sections.map((section) => section.hasCast)).toEqual([true, false]);
+    }
+  });
+
+  it("the_summary_counts_the_mages_casting_when_ticked", () => {
+    const rows = [
+      casting("FARS", { FARS: 2, PATT: 3 }),
+      casting("FIRE", { FIRE: 1 }, { unitId: "881", key: "95/881", name: "Sable", cells: [{ kind: "idle" }] }),
+      casting("FARS", {}, { unitId: "1263", key: "95/1263", name: "Vess", castHalves: [planned("FARS", false)] })
+    ];
+    const orders = studyOrders({ groups: [ownGroup], rows, turns: [72], notices: [], casts: { tree, write: true } });
+    expect(orders.summary).toBe("Orders for turn 72 — 2 mages studying, 1 with no order this turn, 2 casting");
+  });
+
+  it("the_entry_carries_the_cast_the_write_needs", () => {
+    const orders = studyOrders({
+      groups: [ownGroup],
+      rows: [casting("FARS", { FARS: 2, PATT: 3 })],
+      turns: [72],
+      notices: [],
+      casts: { tree, write: true }
+    });
+    expect(orders.sections[0].entries[0].cast).toEqual({
+      kind: "write",
+      verb: "CAST",
+      spell: "FARS",
+      name: "farsight",
+      order: "CAST FARS",
+      annotation: "practises farsight"
+    });
   });
 });

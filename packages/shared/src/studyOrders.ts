@@ -16,7 +16,9 @@
  * spent tests avoiding.
  */
 
+import { practisedBy } from "./castPractice";
 import { safeFileNamePart } from "./mageSheet";
+import type { MagicTree } from "./magicTree";
 import type { PlannerGroup } from "./studyPlanner";
 import type { ScheduleRow } from "./studySchedule";
 import type { PlannerNotice } from "./studyTeaching";
@@ -49,7 +51,39 @@ export type OrdersEntry = {
   annotation: string | null;
   /** Why there is no order, in the planner's own words. Null when `order` is non-null. */
   skipReason: string | null;
+  /** Next turn's planned cast, when "Also write the casts" is ticked (ah-9qdz.4); null otherwise. */
+  cast: OrdersCast | null;
 };
+
+/**
+ * A planned cast as the tab and the write both read it (ah-9qdz.4).
+ *
+ * `write` is a line that goes into the orders: `CAST <TAG>` for a spell used by casting or both
+ * ways (`rules/cast`), `COMBAT <TAG>` for a combat-only spell (`rules/combat`). `unknown` is a
+ * spell he will not know as the turn begins, which is left out and only said.
+ */
+export type OrdersCast =
+  | {
+      kind: "write";
+      verb: "CAST" | "COMBAT";
+      /** Upper-cased tag. */
+      spell: string;
+      /** Lower case, verbatim from the tree. */
+      name: string;
+      /** `CAST FARS`. */
+      order: string;
+      /** `practises farsight`, `readies fire for battle`. */
+      annotation: string;
+    }
+  | {
+      kind: "unknown";
+      spell: string;
+      name: string;
+      /** `CAST FARS`. */
+      order: string;
+      /** `CAST FARS — he won't know farsight yet, left out`. */
+      text: string;
+    };
 
 /** One faction's block, as the tab draws it and as Copy and Save… deliver it. */
 export type OrdersSection = {
@@ -64,6 +98,11 @@ export type OrdersSection = {
   source: "own" | "sheet";
   /** One per mage of this faction, in the same order as the rows the section draws. */
   entries: OrdersEntry[];
+  /**
+   * Whether any mage of this faction has a cast planned for next turn, whatever the box says -
+   * it is what decides whether the box is there at all (ah-9qdz.4).
+   */
+  hasCast: boolean;
 };
 
 /** Next turn's orders for every faction the planner knows about. */
@@ -94,6 +133,53 @@ function unitOf(key: string): string {
   return key.slice(key.indexOf("/") + 1);
 }
 
+/** Next turn's planned cast half, or null. */
+function plannedHalf(row: ScheduleRow) {
+  const half = row.castHalves[0] ?? null;
+  return half !== null && half.kind === "planned" ? half : null;
+}
+
+/**
+ * Next turn's cast as an entry carries it, or null when none is planned.
+ *
+ * Practice is judged from where he stands as the turn begins: spells are CAST, and combat fought,
+ * before STUDY orders are processed (`rules/sequenceofevents`). The planner has no he/she rule, so
+ * the not-known line says `he`, as ah-9qdz.2's cast half does.
+ */
+function castOf(row: ScheduleRow, tree: MagicTree): OrdersCast | null {
+  const half = plannedHalf(row);
+  if (half === null) {
+    return null;
+  }
+  const spell = half.spell.toUpperCase();
+  const node = tree.byTag.get(spell);
+  const name = node?.name ?? spell;
+  const verb = node?.use === "combat" ? "COMBAT" : "CAST";
+  const order = `${verb} ${spell}`;
+  if (!half.known) {
+    return { kind: "unknown", spell, name, order, text: `${order} — he won't know ${name} yet, left out` };
+  }
+  const standing = row.standings[0] ?? new Map();
+  const practice = practisedBy(spell, standing, tree);
+  const level = standing.get(spell)?.level ?? 0;
+  const annotation =
+    practice.kind === "prerequisite"
+      ? `practises ${tree.byTag.get(practice.tag)?.name ?? practice.tag} (${name} can't rise past it)`
+      : practice.kind === "none"
+        ? level >= (node?.maxLevel ?? Infinity)
+          ? `${name} is at its maximum — no practice`
+          : "no practice"
+        : verb === "COMBAT"
+          ? `readies ${name} for battle`
+          : `practises ${name}`;
+  return { kind: "write", verb, spell, name, order, annotation };
+}
+
+/** The line a cast adds to the section's text. */
+function castLine(cast: OrdersCast): string {
+  return cast.kind === "write" ? annotated(`  ${cast.order}`, cast.annotation) : `  ; ${cast.text}`;
+}
+
 /**
  * What one row contributes: the entry `ah-lyg6.4.2` writes from, and the lines the section draws.
  *
@@ -103,20 +189,29 @@ function unitOf(key: string): string {
 function contributionOf(
   row: ScheduleRow,
   rows: readonly ScheduleRow[],
-  notices: readonly PlannerNotice[]
+  notices: readonly PlannerNotice[],
+  cast: OrdersCast | null
 ): { entry: OrdersEntry; lines: string[] } {
   const base = {
     key: row.key,
     unitId: row.unitId,
     name: row.name,
-    regionId: row.regionId
+    regionId: row.regionId,
+    cast
   };
   const cell = row.cells[0];
 
   if (cell === undefined || cell.kind === "idle") {
+    const entry: OrdersEntry = { ...base, order: null, annotation: null, skipReason: "nothing planned" };
+    if (cast !== null) {
+      // A cast needs his UNIT line to belong to, so the idle comment moves under it (ah-9qdz.4).
+      return {
+        entry,
+        lines: [annotated(`UNIT ${row.unitId}`, row.name), "  ; nothing planned", castLine(cast)]
+      };
+    }
     // Named rather than left out, so a mage you forgot is not indistinguishable from one you
     // meant to idle - the navigator's choice.
-    const entry: OrdersEntry = { ...base, order: null, annotation: null, skipReason: "nothing planned" };
     return { entry, lines: [`; ${row.name} (${row.unitId}) — nothing planned for this turn`] };
   }
 
@@ -164,6 +259,9 @@ function contributionOf(
   }
 
   const lines = [annotated(`UNIT ${row.unitId}`, row.name), orderLine];
+  if (cast !== null) {
+    lines.push(castLine(cast));
+  }
   for (const notice of notices) {
     if (notice.rowKey === row.key && notice.turnIndex === 0 && notice.level === "warning") {
       lines.push(`  ; ${notice.text}`);
@@ -189,10 +287,22 @@ export function studyOrders(input: {
   turns: readonly number[];
   /** `plannerNotices(...)`, over the same rows and turns. */
   notices: readonly PlannerNotice[];
+  /**
+   * The magic tree, and whether "Also write the casts" is ticked (ah-9qdz.4). Absent or unticked,
+   * nothing about casts is written - the text is exactly what it was before casts existed.
+   */
+  casts?: { tree: MagicTree; write: boolean };
 }): StudyOrders {
   const { groups, rows, turns, notices } = input;
+  const castFor = (row: ScheduleRow): OrdersCast | null =>
+    input.casts?.write === true ? castOf(row, input.casts.tree) : null;
   const turn = turns[0];
-  const planned = rows.some((row) => (row.cells[0]?.kind ?? "idle") !== "idle");
+  // A planned cast counts as a plan whatever the box says: without a section there is no heading
+  // to carry the box, and a player who unticked it could never tick it back (ah-9qdz.4).
+  const planned = rows.some(
+    (row) =>
+      (row.cells[0]?.kind ?? "idle") !== "idle" || (input.casts !== undefined && plannedHalf(row) !== null)
+  );
 
   if (turn === undefined || !planned) {
     // A file of nothing but "nothing planned" comments is not orders. A plan whose every order is
@@ -222,7 +332,7 @@ export function studyOrders(input: {
     }
     const entries: OrdersEntry[] = [];
     for (const row of mine) {
-      const contribution = contributionOf(row, rows, notices);
+      const contribution = contributionOf(row, rows, notices, castFor(row));
       entries.push(contribution.entry);
       lines.push(...contribution.lines);
     }
@@ -231,6 +341,7 @@ export function studyOrders(input: {
       heading: group.heading,
       source: group.source,
       entries,
+      hasCast: mine.some((row) => plannedHalf(row) !== null),
       text: lines.join("\n"),
       fileName: `study-orders-${safeFileNamePart(group.factionLabel) ?? group.factionId}-turn-${turn}.txt`
     });
@@ -244,10 +355,14 @@ export function studyOrders(input: {
     (row) => row.cells[0]?.kind === "teach" && row.cells[0].outcome.taught.length > 0
   ).length;
   const none = counted.length - studying - teaching;
+  const casting = sections
+    .flatMap((section) => section.entries)
+    .filter((entry) => entry.cast?.kind === "write").length;
   const parts = [
     studying === 0 ? null : `${plural(studying, "mage studying", "mages studying")}`,
     teaching === 0 ? null : `${teaching} teaching`,
-    none === 0 ? null : `${none} with no order this turn`
+    none === 0 ? null : `${none} with no order this turn`,
+    casting === 0 ? null : `${casting} casting`
   ].filter((part): part is string => part !== null);
 
   return {
