@@ -3095,9 +3095,7 @@ impl AfterTheMarket<'_> {
     /// figure before it and the skills and races unknowable, and that unit is not known to
     /// dissolve. A `BUY` of a race the market does not sell recruits nobody, which is known.
     ///
-    /// The one predicate the SILVER column (`revert_dissolved_forms`) and the ITEMS preview
-    /// (`effects.rs` `dissolve_empty_forms`, via [`UnitItemEffects::gained_nobody_unjudged`])
-    /// both read, so they cannot disagree (`ah-waes`).
+    /// Read only by [`dissolution`], whose answer both surfaces take (`ah-waes`, `ah-l9d9`).
     fn gained_nobody(&self) -> bool {
         self.men == 0 && !self.recruits_unjudged()
     }
@@ -6909,14 +6907,13 @@ pub(crate) fn item_effects(
                 .push(refused.line);
         }
 
-        // Whether a formed unit's headcount of nothing means it gained nobody - the SILVER
-        // column's own predicate, so the two cannot disagree about a dissolving unit (`ah-waes`).
+        // Which formed units dissolve, judged once for both surfaces (`ah-l9d9`).
         for ordered in &hex.units {
-            if ordered.formed.is_some() && ordered.after_the_market().recruits_unjudged() {
+            if let Some(dissolution) = dissolution(hex, ordered) {
                 result
                     .entry(unit_key(&hex.region.region_id, &ordered.unit.unit_id))
                     .or_default()
-                    .gained_nobody_unjudged = true;
+                    .dissolution = Some(dissolution);
             }
         }
         // Read before any of the ledger's fields are consumed below: the preview's exact
@@ -7027,12 +7024,11 @@ pub(crate) struct UnitItemEffects {
     /// `rules/sequenceofevents` settles CLAIM before "Give orders", so the item preview folds it
     /// in before its own Give phase (`ah-ixq7`).
     pub claimed: i64,
-    /// Whether men may have reached this unit by a route the ledger could not follow - a
-    /// `BUY PEASANTS` where the report names no race, a doubted unit's `BUY ALL` of a race the
-    /// market sells, or a gift of men it cannot follow - so that a headcount of nothing does not
-    /// establish "no recruits are gained at all" (`rules/form`). The item preview leaves such a
-    /// formed unit undissolved, as the SILVER column does (`ah-waes`).
-    pub gained_nobody_unjudged: bool,
+    /// Whether this month's `FORM` created this unit only for it to be dissolved, and who its
+    /// goods revert to - [`dissolution`]'s answer, the one the SILVER column's
+    /// `revert_dissolved_forms` reads too, so the ITEMS preview never judges it on its own
+    /// (`ah-l9d9`). `None` for every unit that stays, and for one whose recruits are unjudged.
+    pub dissolution: Option<Dissolution>,
 }
 
 /// What each unit in a hex holds once its whole month has run, in `hex.units` order.
@@ -12582,6 +12578,41 @@ fn buy_silver(ledger: &mut Ledger<'_>, who: &str, wanted: i64, spent: i64, place
     apply_silver(ledger, StatePhase::Market, who, -wanted, Some(placed));
 }
 
+/// That a unit this month's `FORM` created is dissolved once the market has run, and who gets what
+/// it holds. `rules/form`: "If no recruits are gained at all, the empty unit will be dissolved, and
+/// the silver and any other items it was given will revert to the first unit you have in that
+/// region."
+// No `Default`: an empty one would read as "dissolves, with nobody to revert to", a real state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Dissolution {
+    /// The unit id of the first own unit the report shows in this hex, or `None` when it shows
+    /// none and there is nobody to revert to (`ah-ty3s.3`).
+    pub reverts_to: Option<String>,
+}
+
+/// Whether `ordered` is dissolved once the market has run - **the** answer to `rules/form`'s "no
+/// recruits are gained at all", read by both the SILVER column (`revert_dissolved_forms`) and the
+/// ITEMS preview (`effects.rs` `dissolve_empty_forms`, through
+/// [`UnitItemEffects::dissolution`]). Each rule about it used to be fixed once per surface
+/// (`ah-09bu`, `ah-waes`, `ah-6sx5`); now a change here moves both (`ah-l9d9`).
+///
+/// Only a formed unit, and only one known to have gained nobody
+/// ([`AfterTheMarket::gained_nobody`]): a unit whose men may have arrived by a route the walk could
+/// not follow is not judged to dissolve. Its goods revert to the first unit the report shows in
+/// the hex: `hex.units` keeps report order, so that is its first unit not created by a `FORM`.
+fn dissolution(hex: &Hex<'_>, ordered: &Ordered<'_>) -> Option<Dissolution> {
+    if ordered.formed.is_none() || !ordered.after_the_market().gained_nobody() {
+        return None;
+    }
+    Some(Dissolution {
+        reverts_to: hex
+            .units
+            .iter()
+            .find(|unit| unit.formed.is_none())
+            .map(|first| first.unit.unit_id.clone()),
+    })
+}
+
 /// Hands the silver of every formed unit that ends the market with nobody to the first own unit
 /// the report shows in this hex: `rules/form` - "If no recruits are gained at all, the empty unit
 /// will be dissolved, and the silver and any other items it was given will revert to the first
@@ -12599,19 +12630,19 @@ fn buy_silver(ledger: &mut Ledger<'_>, who: &str, wanted: i64, spent: i64, place
 /// to a shown foreign unit moves, `rules/give`, and to an unshown one is assumed to land,
 /// `ah-jo6b`), so the balance read here is a figure, never an `UncertainGive`.
 fn revert_dissolved_forms(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
-    let Some(first) = hex.units.iter().find(|ordered| ordered.formed.is_none()) else {
-        return;
-    };
-    let first_label = format!("{} ({})", first.unit.name, first.unit.unit_id);
     for ordered in &hex.units {
-        if ordered.formed.is_none() {
+        // A unit not known to dissolve keeps its silver where it is, and one with nobody to
+        // revert to moves nothing.
+        let Some(Dissolution {
+            reverts_to: Some(first_id),
+        }) = dissolution(hex, ordered)
+        else {
             continue;
-        }
-        // Nobody gained is a fact only where the headcount is (`AfterTheMarket::gained_nobody`):
-        // a unit not known to dissolve keeps its silver where it is.
-        if !ordered.after_the_market().gained_nobody() {
+        };
+        let Some(first) = hex.find(&first_id) else {
             continue;
-        }
+        };
+        let first_label = format!("{} ({})", first.unit.name, first.unit.unit_id);
         let dissolved = &ordered.unit.unit_id;
         let held = ledger
             .state
@@ -12627,7 +12658,7 @@ fn revert_dissolved_forms(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
             -held,
             SilverChangeCause::GiftReverted,
             None,
-            Some(first_label.clone()),
+            Some(first_label),
         );
         move_silver(
             ledger,
@@ -58520,6 +58551,75 @@ BUILD
 
         assert_eq!(withdrawn_by("2000"), 1);
         assert_eq!(withdrawn_by("2001"), 0);
+    }
+
+    /// `rules/form`: "If no recruits are gained at all, the empty unit will be dissolved, and the
+    /// silver and any other items it was given will revert to the first unit you have in that
+    /// region." One judgement per formed unit, made here and handed to the ITEMS preview through
+    /// `UnitItemEffects::dissolution`, which the SILVER column's own revert reads too (`ah-l9d9`).
+    /// A `BUY PEASANTS` where the region names no race cannot be read (`rules/buy`), so nobody
+    /// gained is not established and the unit is not judged to dissolve (`ah-waes`).
+    #[test]
+    fn dissolution_is_judged_once_for_a_formed_unit() {
+        let text = |region: &str| {
+            [
+                "Foo (1) Report",
+                "",
+                region,
+                "  For Sale: 5 humans [HUMN] at $38.",
+                "",
+                "* Receiver (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                "* Former (902), Foo (1), leader [LEAD], 100 silver [SILV]. Weight: 10. \
+                 Capacity: 0/0/15/0.",
+                "",
+            ]
+            .join("\n")
+        };
+        let rules = ruleset();
+        let judged = |region: &str, block: &str| {
+            let mut report = crate::report::parse_report_full(&text(region));
+            crate::report::classify_units(&mut report, &rules);
+            let effects = item_effects(
+                &report,
+                // The silver it needs for a recruit, given in the Give phase before the market.
+                &format!("unit 902\n{block}GIVE NEW 1 100 SILV\n"),
+                Some(&rules),
+                &CheckOptions::default(),
+            );
+            let of = |unit_id: &str| {
+                effects
+                    .iter()
+                    .find(|(key, _)| key.unit_id == unit_id)
+                    .and_then(|(_, effect)| effect.dissolution.clone())
+            };
+            (of("new-1"), of("900"), of("902"))
+        };
+
+        let named = "plain (1,1) in Nowhere, 1000 peasants (humans), $0.";
+        assert_eq!(
+            judged(named, "FORM 1\nEND\n"),
+            (
+                Some(Dissolution {
+                    reverts_to: Some("900".to_string())
+                }),
+                None,
+                None
+            ),
+            "a formed unit that gains nobody dissolves into the first unit; a report unit never does"
+        );
+        assert_eq!(
+            judged(
+                "plain (1,1) in Nowhere, $0.",
+                "FORM 1\nBUY 1 PEASANTS\nEND\n"
+            ),
+            (None, None, None),
+            "an uncounted BUY of men leaves the dissolve unjudged"
+        );
+        assert_eq!(
+            judged(named, "FORM 1\nBUY 1 PEASANTS\nEND\n"),
+            (None, None, None),
+            "a formed unit that recruits stays"
+        );
     }
 
     #[test]
