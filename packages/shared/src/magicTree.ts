@@ -34,6 +34,12 @@ export type MagicSkillNode = {
   within: readonly MagicPrerequisite[];
   /** Prerequisites from another branch. Rendered as the crossing chips. */
   crossing: readonly MagicPrerequisite[];
+  /**
+   * `within` and `crossing` together, in the order the ruleset declares them - the order the
+   * engine's `Unit::Practice` walks them in when it decides which skill a cast practises
+   * (ah-9qdz.3). The split above loses it.
+   */
+  prerequisites: readonly MagicPrerequisite[];
 };
 
 export type MagicBranch = {
@@ -264,6 +270,7 @@ export function buildMagicTree(index: GameDataIndex): MagicTree {
     const branch = filedUnder(skill.tag);
     const within: MagicPrerequisite[] = [];
     const crossing: MagicPrerequisite[] = [];
+    const prerequisites: MagicPrerequisite[] = [];
     for (const requirement of magicRequires(skill, skills)) {
       const required = skills.get(requirement.tag);
       const prerequisite: MagicPrerequisite = {
@@ -278,6 +285,7 @@ export function buildMagicTree(index: GameDataIndex): MagicTree {
       // one-step skill *is*, so none of it crosses anywhere.
       const crosses = depth > 1 && filedUnder(requirement.tag) !== branch;
       (crosses ? crossing : within).push(prerequisite);
+      prerequisites.push(prerequisite);
     }
     byTag.set(skill.tag, {
       id: skill.id,
@@ -290,7 +298,8 @@ export function buildMagicTree(index: GameDataIndex): MagicTree {
       depth,
       branch,
       within,
-      crossing
+      crossing,
+      prerequisites
     });
   }
 
