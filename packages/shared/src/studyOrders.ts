@@ -106,7 +106,7 @@ export type OrdersSection = {
   /**
    * Set when the box is unticked and this section has casts planned but no mage who studies or
    * teaches (ah-9qdz.4, mockup section 6): `text` is then one line saying so, not orders, and
-   * Copy, Save… and Put are greyed. `casts` counts the planned casts, a spell not known yet included.
+   * Copy, Save… and Put are greyed. `casts` counts only the casts ticking would write (none he won't know yet).
    */
   withheld: { casts: number } | null;
 };
