@@ -1,0 +1,53 @@
+<!doctype html><meta charset="utf-8"><title>Skills cell &mdash; option A</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#5aa9de; --ok:#4fb783; --danger:#e89494; --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1200px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:105ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:105ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+  table.units { width:100%; border-collapse:collapse; font:12px/1.5 'Helvetica Neue',Arial,sans-serif;
+                font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-weight:600; color:var(--brass); font-size:10.5px; letter-spacing:.1em;
+                   text-transform:uppercase; border-bottom:1px solid var(--edge); padding:3px 8px; }
+  table.units td { border-bottom:1px solid var(--edge-soft); padding:2px 8px; vertical-align:top; }
+  table.units.narrow { width:560px; }
+  table.units.narrow td.sk, table.units.narrow th.sk { max-width:150px; overflow:hidden;
+     text-overflow:ellipsis; white-space:nowrap; }
+  .own { color:var(--ok); } .pred { font-style:italic; color:var(--brass); }
+  .fut { color:var(--select); } .futi { font-style:italic; color:var(--select); }
+  .dim { color:var(--ink-dim); } .sel { color:var(--select); }
+  .badge { font-size:10.5px; margin-left:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:5px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         width:max-content; max-width:384px; box-shadow:0 6px 18px rgba(0,0,0,.5); margin-top:12px; }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .line { display:flex; justify-content:space-between; gap:12px; font-variant-numeric:tabular-nums; }
+  .pop .note { color:var(--ink-dim); font-style:italic; margin-top:6px; }
+  .arrow { color:var(--ink-dim); padding:0 3px; }
+  .flat { color:var(--ink-soft); } .down { color:var(--danger); } .up { color:var(--ok); }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:105ch; }
+  .scene { font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); margin:16px 0 6px; max-width:110ch; }
+  .scene b { color:var(--brass); font-weight:600; }
+</style><style>.old{color:var(--ink-dim);text-decoration:line-through} .newsk{font-style:italic;color:var(--brass)} .plain{font-style:normal;color:var(--ink)}
+.q{color:var(--warn)} .wrap td.sk{white-space:normal}</style>
+<header><h1>Option A <span>&mdash; The cell simply shows next month</span></h1><p>Every skill reads as it will stand after this month, the whole cell italic brass &mdash; exactly how the Items and Silver cells already show a GIVE: the coming figures in the cell, the report&rsquo;s figures one hover away in the popup. <b>Recommended</b>: it is the pattern every other forecast cell in the table already follows.</p>
+<p class="scene"><b>The scene.</b> Six of your units in one hex. Units are drawn with the figures as a cell would show them; the line under the table says what each one is doing. Open options A, B and C before choosing.</p></header>
+<main><h3 class="sec">A full-width table</h3><div class="card"><table class="units "><tr><th>Unit</th><th>Men</th><th>Orders</th><th class="sk">Skills</th></tr><tr><td class="own">Braves (1487)</td><td>10</td><td class="dim">STUDY COMB</td><td class="sk"><span class="pred">COMB 3 (180), RIDI 1 (30)</span></td></tr><tr><td class="own">Scouts (1502)</td><td>6</td><td class="dim">STUDY OBSE</td><td class="sk"><span class="pred">OBSE 1 (60), STEA 1 (30)</span></td></tr><tr><td class="own">Recruits (1655)</td><td>20</td><td class="dim">STUDY FORC</td><td class="sk"><span class="pred">COMB 1 (30), FORC 1 (30)</span></td></tr><tr><td class="own">Trappers (1774)</td><td>4</td><td class="dim">(receives 2 men by GIVE)</td><td class="sk"><span class="pred">HUNT 1 (60)</span></td></tr><tr><td class="own">Elder (1810)</td><td>1</td><td class="dim">STUDY TACT</td><td class="sk">TACT 5 (450)</td></tr><tr><td class="own">Watch (1620)</td><td>8</td><td class="dim">&mdash;</td><td class="sk">COMB 1 (30)</td></tr></table><ul class="notes"><li>One rule for the whole table: brass cell = next month&rsquo;s figures.</li><li>No wider than today; truncates no sooner.</li><li class="con">Today&rsquo;s figures for that skill leave the cell; they are in the popup.</li></ul></div>
+<h3 class="sec">A narrow window</h3><p>The Skills column cut off at the same width it is today.</p><div class="card"><table class="units narrow"><tr><th>Unit</th><th>Men</th><th>Orders</th><th class="sk">Skills</th></tr><tr><td class="own">Braves (1487)</td><td>10</td><td class="dim">STUDY COMB</td><td class="sk"><span class="pred">COMB 3 (180), RIDI 1 (30)</span></td></tr><tr><td class="own">Scouts (1502)</td><td>6</td><td class="dim">STUDY OBSE</td><td class="sk"><span class="pred">OBSE 1 (60), STEA 1 (30)</span></td></tr><tr><td class="own">Recruits (1655)</td><td>20</td><td class="dim">STUDY FORC</td><td class="sk"><span class="pred">COMB 1 (30), FORC 1 (30)</span></td></tr><tr><td class="own">Trappers (1774)</td><td>4</td><td class="dim">(receives 2 men by GIVE)</td><td class="sk"><span class="pred">HUNT 1 (60)</span></td></tr><tr><td class="own">Elder (1810)</td><td>1</td><td class="dim">STUDY TACT</td><td class="sk">TACT 5 (450)</td></tr><tr><td class="own">Watch (1620)</td><td>8</td><td class="dim">&mdash;</td><td class="sk">COMB 1 (30)</td></tr></table></div>
+<h3 class="sec">Who is doing what</h3><div class="card"><ul class="notes"><li class="n"><b>Braves</b> &mdash; level gained. Today the report says <code>COMB 2 (150), RIDI 1 (30)</code>.</li><li class="n"><b>Scouts</b> &mdash; days only, no new level. Today the report says <code>OBSE 1 (30), STEA 1 (30)</code>.</li><li class="n"><b>Recruits</b> &mdash; a skill it does not yet have, added at the end. Today the report says <code>COMB 1 (30)</code>.</li><li class="n"><b>Trappers</b> &mdash; no study: today&rsquo;s merge mark, unchanged. Today the report says <code>HUNT 2 (90)</code>.</li><li class="n"><b>Elder</b> &mdash; already at its ceiling: nothing will change, nothing marked. Today the report says <code>TACT 5 (450)</code>.</li><li class="n"><b>Watch</b> &mdash; does nothing. Today the report says <code>COMB 1 (30)</code>.</li></ul></div>
+<h3 class="sec">Hovering the cell</h3><p>Unchanged by this piece of work: the popup still shows the report&rsquo;s figure, this month&rsquo;s, and next month&rsquo;s in blue.</p>
+<div class="pop"><div class="head">Braves (1487) &mdash; skills</div><div class="line"><span>COMB</span><span>2 (150) <span class="arrow">&rarr;</span> 2 (150) <span class="arrow">&rarr;</span> <span class="fut">3 (180)</span></span></div><div class="line"><span>RIDI</span><span>1 (30)</span></div><div class="note">A month of study is worth 30 days.</div></div>
+</main>

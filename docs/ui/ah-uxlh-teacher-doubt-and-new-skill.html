@@ -1,0 +1,60 @@
+<!doctype html><meta charset="utf-8"><title>Skills cell &mdash; a study that may not happen</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#5aa9de; --ok:#4fb783; --danger:#e89494; --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1200px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:105ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:105ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .hexlab { font:10.5px/1 'Helvetica Neue',Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 8px; }
+  table.units { width:100%; border-collapse:collapse; font:12px/1.5 'Helvetica Neue',Arial,sans-serif;
+                font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-weight:600; color:var(--brass); font-size:10.5px; letter-spacing:.1em;
+                   text-transform:uppercase; border-bottom:1px solid var(--edge); padding:3px 8px; }
+  table.units td { border-bottom:1px solid var(--edge-soft); padding:2px 8px; vertical-align:top; }
+  table.units.narrow { width:560px; }
+  table.units.narrow td.sk, table.units.narrow th.sk { max-width:150px; overflow:hidden;
+     text-overflow:ellipsis; white-space:nowrap; }
+  .own { color:var(--ok); } .pred { font-style:italic; color:var(--brass); }
+  .fut { color:var(--select); } .futi { font-style:italic; color:var(--select); }
+  .dim { color:var(--ink-dim); } .sel { color:var(--select); }
+  .badge { font-size:10.5px; margin-left:6px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:5px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  .pop { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font:11.5px/1.55 'Helvetica Neue',Arial,sans-serif; color:var(--ink); display:inline-block;
+         width:max-content; max-width:384px; box-shadow:0 6px 18px rgba(0,0,0,.5); margin-top:12px; }
+  .pop .head { color:var(--brass-bright); font-weight:600; margin-bottom:6px; }
+  .pop .line { display:flex; justify-content:space-between; gap:12px; font-variant-numeric:tabular-nums; }
+  .pop .note { color:var(--ink-dim); font-style:italic; margin-top:6px; }
+  .arrow { color:var(--ink-dim); padding:0 3px; }
+  .flat { color:var(--ink-soft); } .down { color:var(--danger); } .up { color:var(--ok); }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:105ch; }
+  .scene { font:12.5px/1.7 'Helvetica Neue',Arial,sans-serif; color:var(--ink-soft); margin:16px 0 6px; max-width:110ch; }
+  .scene b { color:var(--brass); font-weight:600; }
+</style><style>.old{color:var(--ink-dim);text-decoration:line-through} .newsk{font-style:italic;color:var(--brass)} .plain{font-style:normal;color:var(--ink)}
+.q{color:var(--warn)} .wrap td.sk{white-space:normal}</style>
+<header><h1>Round 2 <span>&mdash; two smaller questions, in option A&rsquo;s style</span></h1></header><main>
+<h3 class="sec">1 &middot; A doubt about the teacher, not about the study</h3>
+<p>Not every doubt means the study may not happen. <b>Pupils (1930)</b> studies <code>COMB</code> and is sure to get its own month; only whether <b>Master (1931)</b>&rsquo;s teaching is allowed can&rsquo;t be settled from the report, so the popup counts the month untaught and says so in amber.</p>
+<div class="pop"><div class="head">Pupils (1930) &mdash; skills</div><div class="line"><span>COMB</span><span>1 (30) <span class="arrow">&rarr;</span> 1 (30) <span class="arrow">&rarr;</span> <span class="fut">1 (60)</span></span></div><div class="note" style="color:var(--warn)">Whether Master (1931) may teach cannot be settled from this report, so its month is not counted here.</div></div>
+<h3 class="sec">T1 &mdash; next month, counting only what is sure <span class="dim">(recommended)</span></h3><div class="card"><table class="units"><tr><th>Unit</th><th>Orders</th><th class="sk">Skills</th></tr><tr><td class="own">Pupils (1930)</td><td class="dim">STUDY COMB</td><td class="sk"><span class="pred">COMB 1 (60)</span></td></tr><tr><td class="own">Hunters (1901)</td><td class="dim">STUDY OBSE (120 short)</td><td class="sk"><span class="pred">OBSE 1 (30), HUNT 1 (30)</span></td></tr></table>
+<ul class="notes"><li>Only &ldquo;the study may not happen at all&rdquo; keeps today&rsquo;s figures (Hunters). A doubt about a teacher still shows the month the unit is sure of &mdash; the same figure the popup shows in blue.</li></ul></div>
+<h3 class="sec">T2 &mdash; any doubt keeps today&rsquo;s figures</h3><div class="card"><table class="units"><tr><th>Unit</th><th>Orders</th><th class="sk">Skills</th></tr><tr><td class="own">Pupils (1930)</td><td class="dim">STUDY COMB</td><td class="sk"><span class="pred">COMB 1 (30)</span></td></tr><tr><td class="own">Hunters (1901)</td><td class="dim">STUDY OBSE (120 short)</td><td class="sk"><span class="pred">OBSE 1 (30), HUNT 1 (30)</span></td></tr></table>
+<ul class="notes"><li>One rule: if the popup has an amber sentence, the cell shows today.</li><li class="con">Pupils is certain to gain 30 days, yet the cell doesn&rsquo;t show it, and it disagrees with the popup&rsquo;s blue figure.</li></ul></div>
+<h3 class="sec">2 &middot; Where a skill the unit does not have yet appears</h3>
+<p><b>Recruits (1655)</b> knows <code>COMB</code> and <code>RIDI</code> and studies <code>FORC</code> for the first time.</p>
+<h3 class="sec">N1 &mdash; added at the end <span class="dim">(recommended)</span></h3><div class="card"><table class="units"><tr><th>Unit</th><th>Orders</th><th class="sk">Skills</th></tr><tr><td class="own">Recruits (1655)</td><td class="dim">STUDY FORC</td><td class="sk"><span class="pred">COMB 1 (30), RIDI 1 (30), FORC 1 (30)</span></td></tr></table>
+<ul class="notes"><li>The skills already held keep their places, so the cell reads the same as today with one entry added.</li><li class="con">In a narrow table the new skill is the first to be cut off.</li></ul></div>
+<h3 class="sec">N2 &mdash; added at the front</h3><div class="card"><table class="units"><tr><th>Unit</th><th>Orders</th><th class="sk">Skills</th></tr><tr><td class="own">Recruits (1655)</td><td class="dim">STUDY FORC</td><td class="sk"><span class="pred">FORC 1 (30), COMB 1 (30), RIDI 1 (30)</span></td></tr></table>
+<ul class="notes"><li>The new skill is always visible, even in a narrow table.</li><li class="con">Everything already held shifts right, and the order differs from the report&rsquo;s.</li></ul></div>
+</main>
