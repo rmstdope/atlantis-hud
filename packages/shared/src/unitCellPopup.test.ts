@@ -2954,6 +2954,62 @@ describe("the items popup's pairs", () => {
     );
   });
 
+  // `ah-jm7c`: the other side of `ah-dqvi`. A producer holding no iron draws it from a sharing
+  // faction-mate, and its own row carries what it drew - naming whose it was - and then the
+  // whole spend, which net to nothing.
+  it("names the sharer a producer drew its material from", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [
+            { name: "orcs", tag: "ORC", amount: 5 },
+            { name: "swords", tag: "SWOR", amount: 5 }
+          ],
+          produced: [{ tag: "SWOR", amount: 5 }],
+          itemChanges: [
+            {
+              tag: "IRON",
+              name: "iron",
+              delta: 10,
+              cause: "drawn-from-sharer",
+              line: 7,
+              unitPrice: null,
+              other: { unitId: "4008", name: "Unit" },
+              isMan: false
+            },
+            {
+              tag: "IRON",
+              name: "iron",
+              delta: -10,
+              cause: "production-spent",
+              line: 7,
+              unitPrice: null,
+              other: null,
+              isMan: false
+            },
+            {
+              tag: "SWOR",
+              name: "swords",
+              delta: 5,
+              cause: "produced",
+              line: 7,
+              unitPrice: null,
+              other: null,
+              isMan: false
+            }
+          ]
+        }),
+        facts()
+      )
+    );
+
+    expect(popup.lines).toContainEqual({ label: "iron IRON", value: "gone" });
+    expect(popup.notes).toContain(
+      "iron: drew 10 from Unit (4008)'s shared stock, used 10 as material."
+    );
+  });
+
   it("draws no silver line in the items popup", () => {
     const popup = columnPopup(
       popupForCell(

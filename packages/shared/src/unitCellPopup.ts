@@ -492,6 +492,12 @@ function itemCauseClause(change: ItemChange, unit: PreviewedUnit, people: boolea
       return change.other ? `used ${n} for ${party(change.other)} to produce` : `used ${n} as material`;
     case "build-spent":
       return `spent ${n} ${buildSpendPlace(change, unit)}`;
+    // `newage trident rules/share`: a sharing unit supplies another unit's production; the
+    // spend that follows on this row says what it went into (`ah-jm7c`).
+    case "drawn-from-sharer":
+      return change.other
+        ? `drew ${n} from ${party(change.other)}'s shared stock`
+        : `drew ${n} from a sharer's stock`;
     case "cast-created":
       return castCreatedClause(change, unit, n);
     case "cast-spent":

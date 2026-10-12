@@ -445,9 +445,10 @@ export function itemsTooltip(
   if (capSentence !== undefined) {
     lines.push(capSentence);
   }
-  // What this unit's own clause will account for, per tag: `charge_shared_material` debits the
-  // actor only for what it holds (`crates/core/src/orders/semantics.rs`), so a builder funded
-  // wholly or partly by a hex neighbour is debited less than the structure takes - or not at all.
+  // What this unit's own clause will account for, per tag. Since `ah-jm7c` the core's
+  // `charge_shared_material` (`crates/core/src/orders/semantics.rs`) writes the actor one spend of
+  // the whole amount, its own stock and what sharers supplied alike, so the sentence below is only
+  // for a spend no clause covers in full.
   const ownDebit = new Map<string, number>();
   for (const change of unit.itemChanges ?? []) {
     // `other === null` is the actor's own row: `charge_shared_material` writes a `build-spent`

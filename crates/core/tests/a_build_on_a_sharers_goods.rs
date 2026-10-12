@@ -253,3 +253,133 @@ fn a_sharer_given_wood_and_lending_it_carries_both_movements() {
         );
     }
 }
+
+/// `ah-jm7c`: the wood `unit_id`'s own row moved this month, as (delta, the other unit named).
+/// Every row of the unit is asked, since a moving unit has a departing and an arriving one.
+fn own_wood(response: &OrdersPreviewResponse, unit_id: &str) -> Vec<Vec<(i64, Option<String>)>> {
+    rows(response, unit_id)
+        .into_iter()
+        .map(|row| {
+            row.item_changes
+                .iter()
+                .filter(|change| change.tag == "WOOD")
+                .map(|change| {
+                    (
+                        change.delta,
+                        change.other.as_ref().map(|party| party.unit_id.clone()),
+                    )
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// `ah-jm7c`: the other side of `ah-dqvi`. A producer or builder holding none of the material
+/// draws it from the sharer, and its own row says so - drawn from the sharer, then spent - so
+/// its ITEMS hover can name what it used and whose it was. The two net to nothing, as its
+/// holdings do.
+fn assert_drawn_from_sharer(response: &OrdersPreviewResponse, unit_id: &str, amount: i64) {
+    let rows = own_wood(response, unit_id);
+    assert!(!rows.is_empty(), "unit {unit_id} has a preview row");
+    for wood in rows {
+        assert_eq!(
+            wood,
+            vec![(amount, Some(SHARER.to_owned())), (-amount, None)],
+            "unit {unit_id}'s row draws the wood from the sharer and then spends it"
+        );
+    }
+}
+
+#[test]
+fn a_producer_names_the_sharer_beside_it_whose_wood_it_used() {
+    let text = report(
+        &format!(
+            "{WAINWRIGHTS}\n* Soldier (3526), Foo (1), sharing, orc [ORC], 10 wood [WOOD]. \
+             Weight: 110. Capacity: 0/0/15/0."
+        ),
+        "* Lumbers (2874), Foo (1), orc [ORC]. Weight: 10. Capacity: 0/0/15/0.",
+    );
+    assert_drawn_from_sharer(&preview(&text, "unit 900\nPRODUCE wagon\n"), PRODUCER, 5);
+}
+
+#[test]
+fn a_producer_names_the_arriving_sharer_whose_wood_it_used() {
+    let text = report(
+        WAINWRIGHTS,
+        "* Lumbers (2874), Foo (1), orc [ORC], 10 wood [WOOD]. Weight: 110. \
+         Capacity: 0/0/15/0.\n\
+         * Soldier (3526), Foo (1), sharing, 20 orcs [ORC]. Weight: 200. Capacity: 0/0/300/0.",
+    );
+    assert_drawn_from_sharer(
+        &preview(
+            &text,
+            "unit 900\nPRODUCE wagon\nunit 2874\nGIVE 3526 10 WOOD\nunit 3526\nMOVE NW\n",
+        ),
+        PRODUCER,
+        5,
+    );
+}
+
+#[test]
+fn a_builder_names_the_sharer_beside_it_whose_wood_it_used() {
+    let text = report(
+        "* Soldier (3526), Foo (1), sharing, orc [ORC], 10 wood [WOOD]. Weight: 110. \
+         Capacity: 0/0/15/0.",
+        "* Lumbers (2874), Foo (1), orc [ORC]. Weight: 10. Capacity: 0/0/15/0.",
+    );
+    assert_drawn_from_sharer(&preview(&text, "unit 902\nBUILD\n"), BUILDER, 10);
+}
+
+#[test]
+fn a_builder_names_the_arriving_sharer_whose_wood_it_used() {
+    let text = report(
+        "* Bystander (2875), Foo (1), orc [ORC]. Weight: 10. Capacity: 0/0/15/0.",
+        "* Lumbers (2874), Foo (1), orc [ORC], 10 wood [WOOD]. Weight: 110. \
+         Capacity: 0/0/15/0.\n\
+         * Soldier (3526), Foo (1), sharing, 20 orcs [ORC]. Weight: 200. Capacity: 0/0/300/0.",
+    );
+    assert_drawn_from_sharer(
+        &preview(
+            &text,
+            "unit 902\nBUILD\nunit 2874\nGIVE 3526 10 WOOD\nunit 3526\nMOVE NW\n",
+        ),
+        BUILDER,
+        10,
+    );
+}
+
+/// `ah-jm7c`, as the navigator met it: Trident, desert (41,35) of `newage-arcanum-f5-t84.rep`.
+/// 4686 gives its iron to the sharer 4008, and the weaponsmith 4840, holding none, produces five
+/// swords from it. The weaponsmith's own row names the iron and whose it was.
+#[test]
+fn the_weaponsmith_names_the_sharer_whose_iron_it_forged() {
+    let text = atlantis_hud_fixtures::NEWAGE_ARCANUM_F5_T84.text;
+    let response = preview(
+        text,
+        "unit 4686\nGIVE 4008 10 IRON\nunit 4840\nPRODUCE 5 SWOR\n",
+    );
+    let smith = rows(&response, "4840");
+    assert!(!smith.is_empty(), "the weaponsmith has a preview row");
+    for row in smith {
+        let iron: Vec<(i64, ItemChangeCause, Option<&str>)> = row
+            .item_changes
+            .iter()
+            .filter(|change| change.tag == "IRON")
+            .map(|change| {
+                (
+                    change.delta,
+                    change.cause,
+                    change.other.as_ref().map(|party| party.unit_id.as_str()),
+                )
+            })
+            .collect();
+        assert_eq!(
+            iron,
+            vec![
+                (10, ItemChangeCause::DrawnFromSharer, Some("4008")),
+                (-10, ItemChangeCause::ProductionSpent, None),
+            ],
+            "the weaponsmith's row draws the iron from 4008 and uses it"
+        );
+    }
+}

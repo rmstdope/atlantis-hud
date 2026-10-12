@@ -12955,6 +12955,10 @@ fn arriving_suppliers(ledger: &Ledger<'_>, pool: &Pool<'_>, tag: &str) -> Vec<us
 /// that is what keeps every projected inventory free of goods already consumed, which is the
 /// attribution the navigator chose (`docs/ui/ah-728m.2.2-attribution.html`). What the acting unit
 /// made or built is recorded by its caller, on the actor, where the hover types expect it.
+///
+/// The actor's own row still says what it used and whose it was (`ah-jm7c`): one
+/// [`ItemChangeCause::DrawnFromSharer`] per supplier, naming it, then a single spend of the whole
+/// amount. The two net to what its own stock gave, so its holdings are untouched by the lending.
 fn charge_shared_material(
     ledger: &mut Ledger<'_>,
     phase: StatePhase,
@@ -12989,6 +12993,22 @@ fn charge_shared_material(
     // report of this hex, so the hex's own rows go first (`ah-7r9p`). Their rows are in another
     // hex's ledger, so the debit is recorded here and moved there by `lend_to_month_end_hexes`.
     let actor = &pool.hex.units[actor_index].unit;
+    // What the actor drew from each sharer, in the order it drew it: listed sharers first, then
+    // arriving ones, as the debits are taken.
+    let mut drawn: Vec<(i64, ItemChangeParty)> = debits
+        .iter()
+        .filter(|debit| debit.supplier_index != actor_index)
+        .map(|debit| {
+            let supplier = &pool.hex.units[debit.supplier_index].unit;
+            (
+                debit.amount,
+                ItemChangeParty {
+                    unit_id: supplier.unit_id.clone(),
+                    name: Some(supplier.name.clone()),
+                },
+            )
+        })
+        .collect();
     for index in arriving_suppliers(ledger, pool, tag) {
         if remaining == 0 {
             break;
@@ -12998,6 +13018,13 @@ fn charge_shared_material(
         if take > 0 {
             arrival.spend(tag, take);
             remaining -= take;
+            drawn.push((
+                take,
+                ItemChangeParty {
+                    unit_id: arrival.unit_id.clone(),
+                    name: Some(arrival.name.clone()),
+                },
+            ));
             ledger.arrival_debits.push(ArrivalDebit {
                 origin: arrival.origin,
                 unit_id: arrival.unit_id.clone(),
@@ -13027,6 +13054,23 @@ fn charge_shared_material(
     }
 
     let name = item_name(tag, pool.hex, ledger.ruleset);
+    let movement = |unit_id: String, delta: i64, cause: ItemChangeCause, other| ItemMovement {
+        unit_id,
+        tag: tag.to_ascii_uppercase(),
+        name: name.clone(),
+        delta,
+        cause,
+        phase,
+        line: Some(placed.line as i64),
+        unit_price: None,
+        other,
+        created: None,
+    };
+    let actor_party = ItemChangeParty {
+        unit_id: actor.unit_id.clone(),
+        name: Some(actor.name.clone()),
+    };
+    let mut spent = 0;
     for debit in &debits {
         let unit_id = pool.hex.units[debit.supplier_index].unit.unit_id.clone();
         charge(ledger, phase, &unit_id, tag, debit.amount, placed);
@@ -13034,21 +13078,31 @@ fn charge_shared_material(
             .spent_after_production
             .entry((unit_id.clone(), tag.to_ascii_uppercase()))
             .or_insert([0; StatePhase::COUNT])[phase as usize] += debit.amount;
-        ledger.movements.push(ItemMovement {
-            unit_id,
-            tag: tag.to_ascii_uppercase(),
-            name: name.clone(),
-            delta: -debit.amount,
-            cause,
-            phase,
-            line: Some(placed.line as i64),
-            unit_price: None,
-            other: (debit.supplier_index != actor_index).then(|| ItemChangeParty {
-                unit_id: pool.hex.units[actor_index].unit.unit_id.clone(),
-                name: Some(pool.hex.units[actor_index].unit.name.clone()),
-            }),
-            created: None,
-        });
+        if debit.supplier_index == actor_index {
+            spent += debit.amount;
+        } else {
+            ledger.movements.push(movement(
+                unit_id,
+                -debit.amount,
+                cause,
+                Some(actor_party.clone()),
+            ));
+        }
+    }
+    // The actor's own row: what each sharer supplied, then the whole spend (`ah-jm7c`).
+    for (amount, supplier) in drawn {
+        spent += amount;
+        ledger.movements.push(movement(
+            actor.unit_id.clone(),
+            amount,
+            ItemChangeCause::DrawnFromSharer,
+            Some(supplier),
+        ));
+    }
+    if spent > 0 {
+        ledger
+            .movements
+            .push(movement(actor.unit_id.clone(), -spent, cause, None));
     }
     debits
 }
@@ -16472,6 +16526,8 @@ struct ArrivingSupply {
     /// Where the unit is listed: its index in the entry point's hexes, whose ledger holds its row.
     origin: usize,
     unit_id: String,
+    /// Its name as the report gives it, so the unit it lends to can name it (`ah-jm7c`).
+    name: String,
     faction: Option<String>,
     /// Upper-cased tag to what is still to lend. `None` where a `GIVE` this walk could not follow
     /// left the holding uncertain, which the pool reads as a question it cannot answer.
@@ -16850,6 +16906,7 @@ fn supplies_where_builders_land(
             supplies.push(ArrivingSupply {
                 origin: at,
                 unit_id: ordered.unit.unit_id.clone(),
+                name: ordered.unit.name.clone(),
                 faction: ordered.unit.faction_id.clone(),
                 stock,
                 lends_to: Some(lends_to.clone()),
@@ -16941,6 +16998,7 @@ fn lend_to_month_end_hexes<'a>(
                 .push(ArrivingSupply {
                     origin,
                     unit_id: unit_id.clone(),
+                    name: ordered.unit.name.clone(),
                     faction: ordered.unit.faction_id.clone(),
                     stock,
                     lends_to: None,
@@ -29980,8 +30038,9 @@ mod tests {
                         .iter()
                         .map(|movement| (movement.unit_id.as_str(), movement.delta))
                         .collect::<Vec<_>>(),
-                    vec![("1", -3), ("2", -10), ("3", -5)],
-                    "every supplying row is debited for what it actually gave"
+                    vec![("2", -10), ("3", -5), ("1", 10), ("1", 5), ("1", -18)],
+                    "every supplying row is debited for what it actually gave, and the actor's \
+                     own row draws from each sharer before spending the whole (`ah-jm7c`)"
                 );
             });
         }
@@ -30125,7 +30184,12 @@ BUILD
                         ledger
                             .movements
                             .iter()
-                            .filter(|movement| movement.tag == "WOOD")
+                            // The suppliers' debits: the actor's own row nets to nothing (`ah-jm7c`).
+                            .filter(|movement| {
+                                movement.tag == "WOOD"
+                                    && movement.delta < 0
+                                    && movement.other.is_some()
+                            })
                             .map(|movement| (movement.unit_id.as_str(), movement.delta))
                             .collect::<Vec<_>>(),
                         vec![("901", -15), ("901", -25)],
@@ -30571,7 +30635,10 @@ PRODUCE wagon
                 ledger
                     .movements
                     .iter()
-                    .filter(|movement| movement.tag == "WOOD" && movement.delta < 0)
+                    // The suppliers' debits: the actor's own row nets to nothing (`ah-jm7c`).
+                    .filter(|movement| {
+                        movement.tag == "WOOD" && movement.delta < 0 && movement.other.is_some()
+                    })
                     .map(|movement| movement.delta)
                     .collect::<Vec<_>>()
             };
@@ -30622,7 +30689,10 @@ PRODUCE wagon
                     let debits: Vec<i64> = ledger
                         .movements
                         .iter()
-                        .filter(|movement| movement.tag == "WOOD" && movement.delta < 0)
+                        // The suppliers' debits: the actor's own row nets to nothing (`ah-jm7c`).
+                        .filter(|movement| {
+                            movement.tag == "WOOD" && movement.delta < 0 && movement.other.is_some()
+                        })
                         .map(|movement| movement.delta)
                         .collect();
                     assert_eq!(
@@ -30779,7 +30849,12 @@ BUILD
                         ledger
                             .movements
                             .iter()
-                            .filter(|movement| movement.tag == "WOOD")
+                            // The suppliers' debits: the actor's own row nets to nothing (`ah-jm7c`).
+                            .filter(|movement| {
+                                movement.tag == "WOOD"
+                                    && movement.delta < 0
+                                    && movement.other.is_some()
+                            })
                             .map(|movement| (movement.unit_id.as_str(), movement.delta))
                             .collect::<Vec<_>>(),
                         vec![("901", -15), ("901", -5)],
@@ -30948,7 +31023,12 @@ BUILD
                         ledger
                             .movements
                             .iter()
-                            .filter(|movement| movement.tag == "WOOD")
+                            // The suppliers' debits: the actor's own row nets to nothing (`ah-jm7c`).
+                            .filter(|movement| {
+                                movement.tag == "WOOD"
+                                    && movement.delta < 0
+                                    && movement.other.is_some()
+                            })
                             .map(|movement| (movement.unit_id.as_str(), movement.delta))
                             .collect::<Vec<_>>(),
                         vec![("901", -15), ("901", -5)],
