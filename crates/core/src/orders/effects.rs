@@ -1601,16 +1601,15 @@ fn decide_movement(
                 // the rest of a longer journey is later months' business.
                 Some(path) => {
                     mode = path.mode;
-                    let stop =
-                        sailed_hull
-                            .filter(|_| path.passage.is_none())
-                            .and_then(|(_, hull)| {
-                                let report_map = report_map.get_or_init(|| {
-                                    crate::movement::graph::MapKnowledge::from_report(report)
-                                });
-                                sail_stop(report_map, ruleset, hull, path.from, steps)
+                    let sailed = sailed_hull
+                        .filter(|_| path.passage.is_none())
+                        .map(|(_, hull)| {
+                            let report_map = report_map.get_or_init(|| {
+                                crate::movement::graph::MapKnowledge::from_report(report)
                             });
-                    match month_end(&path, stop) {
+                            sail_month_end(report_map, ruleset, hull, path.from, steps)
+                        });
+                    match month_end(&path, sailed) {
                         Some(month_end) if month_end.id() != entry.unit.region_id => {
                             arrival = Some(month_end.id());
                             ends_at = Some(month_end);
@@ -1712,38 +1711,37 @@ fn decide_movement(
     (decided, sailing)
 }
 
-/// Where the game stops this fleet, when it refuses one of the SAIL's steps (`ah-g0fk`).
-///
-/// The same [`refused_sail_steps`](crate::movement::sailing::refused_sail_steps) walk the Problems
-/// panel's `sail-between-land-hexes` and `sail-through-neck-of-land` warnings read, with the hull
-/// read the way `check_sail_route` reads it, over the same report-only map the caller passes -
-/// so the preview stops a fleet exactly where those warnings say it "will not move", and never on
-/// a step the map cannot show, which that walk declines to judge. The trace's own `blocked_from` is not used: it guesses the terrain of
-/// country nobody has described, and that is doubt, not a refusal.
-fn sail_stop(
+/// Where this fleet ends the month as the game sees it: the one answer the Problems panel's checks
+/// read too ([`fleet_month_end`](crate::movement::sailing::fleet_month_end), `ah-8zqq`), with the
+/// hull read the way `check_sail_route` reads it, over the same report-only map the caller passes -
+/// so the preview stops a fleet exactly where `sail-between-land-hexes` and
+/// `sail-through-neck-of-land` say it "will not move" (`ah-g0fk`), and never on a step the map
+/// cannot show. The trace's own `blocked_from` is not used: it guesses the terrain of country
+/// nobody has described, and that is doubt, not a refusal.
+fn sail_month_end(
     map: &crate::movement::graph::MapKnowledge,
     ruleset: &crate::movement::rules::Ruleset,
     hull: &crate::report::model::Structure,
     from: crate::report::model::Coordinate,
     steps: &[crate::movement::orders::MoveStep],
-) -> Option<crate::movement::sailing::SailStop> {
+) -> crate::movement::sailing::FleetMonthEnd {
     use crate::movement::plan::{Hull, Journey};
     let hull = Hull::from_flies(crate::movement::mode::fleet_flies(hull, Some(ruleset)));
     let journey = Journey::enforced(crate::movement::rules::MovementMode::Sail, hull);
-    crate::movement::sailing::refused_sail_steps(map, ruleset, journey, from, steps).stops
+    crate::movement::sailing::fleet_month_end(map, ruleset, journey, from, steps)
 }
 
 /// Where the coming month ends: the trace's first month, cut short where the game stops a fleet
 /// before it gets that far.
 fn month_end(
     path: &crate::movement::trace::TracedPath,
-    stop: Option<crate::movement::sailing::SailStop>,
+    sailed: Option<crate::movement::sailing::FleetMonthEnd>,
 ) -> Option<crate::report::model::Coordinate> {
     let month = path.months.first()?;
-    match stop {
-        Some(stop) if stop.steps_taken < month.steps => Some(stop.at),
-        _ => Some(month.ends_at),
-    }
+    Some(match sailed {
+        Some(sailed) => sailed.within_month(month.steps, month.ends_at),
+        None => month.ends_at,
+    })
 }
 
 /// Where each unit the report shows ends the month, from the passes the map is drawn from.
