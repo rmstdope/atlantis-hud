@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readRuleset } from "@atlantis/fixtures";
-import type { StudyGoal } from "@atlantis/core-client";
+import type { PlannedCast, StudyGoal } from "@atlantis/core-client";
 import { parseGameData, type GameDataIndex } from "./gameData";
 import { buildMagicTree } from "./magicTree";
 import {
@@ -39,7 +39,12 @@ function studies(skill: string, ...turns: number[]): StudyGoal[] {
 }
 
 /** One mage, projected alone: what `projectMage` used to answer. */
-function project(start: SkillPoints, goals: readonly StudyGoal[], turns: readonly number[] = TURNS) {
+function project(
+  start: SkillPoints,
+  goals: readonly StudyGoal[],
+  turns: readonly number[] = TURNS,
+  casts: readonly PlannedCast[] = []
+) {
   const projected = projectAll({
     mages: [
       {
@@ -54,7 +59,8 @@ function project(start: SkillPoints, goals: readonly StudyGoal[], turns: readonl
         leftBuilding: null,
         leftBy: null,
         start,
-        goals
+        goals,
+        casts
       }
     ],
     tree,
@@ -164,6 +170,127 @@ describe("projectAll", () => {
     expect(standings).toHaveLength(SCHEDULE_TURNS + 1);
     expect(standings[0].get("FORC")).toEqual({ level: 3, points: 270 });
     expect(standings[SCHEDULE_TURNS].get("FORC")).toEqual({ level: 5, points: 450 });
+  });
+});
+
+/**
+ * ah-9qdz.3: a planned cast's 5 days of practice. Which skill they go to is `practisedBy`
+ * (castPractice.ts, after the engine's `Unit::Practice`); here, that the projection adds them. The
+ * shipped ruleset: fire needs force 1, farsight needs pattern 1 and spirit 1, all at most 5.
+ * `rules/sequenceofevents` (New Age: Trident): spells are cast, and combat fought, before the
+ * month's study - so the skill is chosen on the turn's opening standing.
+ */
+describe("projectAll with a planned cast", () => {
+  const casting = (spell: string, ...turns: number[]): PlannedCast[] =>
+    turns.map((turn) => ({ turn, spell }));
+  const points = (standing: SkillPoints | undefined, tag: string) => standing?.get(tag);
+
+  it("gives the 5 days to force while force is not above fire, and later turns start from them", () => {
+    const { standings } = project(at({ FORC: [1, 60], FIRE: [1, 30] }), [], TURNS, casting("FIRE", 24));
+
+    expect(points(standings[1], "FORC")).toEqual({ level: 1, points: 65 });
+    expect(points(standings[1], "FIRE")).toEqual({ level: 1, points: 30 });
+    expect(points(standings[6], "FORC")).toEqual({ level: 1, points: 65 });
+  });
+
+  it("gives the 5 days to fire itself once force is above it", () => {
+    const { standings } = project(at({ FORC: [2, 90], FIRE: [1, 30] }), [], TURNS, casting("FIRE", 24));
+
+    expect(points(standings[1], "FIRE")).toEqual({ level: 1, points: 35 });
+    expect(points(standings[1], "FORC")).toEqual({ level: 2, points: 90 });
+  });
+
+  it("adds nothing at fire 5, the highest there is", () => {
+    const { standings } = project(at({ FORC: [5, 450], FIRE: [5, 450] }), [], TURNS, casting("FIRE", 24));
+
+    expect(standings[1]).toEqual(at({ FORC: [5, 450], FIRE: [5, 450] }));
+  });
+
+  it("adds nothing for a cast of a spell not yet studied", () => {
+    const { standings } = project(at({ FORC: [2, 90], FIRE: [0, 25] }), [], TURNS, casting("FIRE", 24));
+
+    expect(standings[1]).toEqual(at({ FORC: [2, 90], FIRE: [0, 25] }));
+  });
+
+  it("reaches a level a month earlier with a cast than without", () => {
+    // Level 2 is 90 points. Force at 1(85) stays at 1 through an idle month; with the cast, 85 + 5
+    // is 90, and he holds level 2 a month earlier than his next study would give it.
+    const without = project(at({ FORC: [1, 85], FIRE: [1, 30], PATT: [2, 90] }), [], TURNS);
+    const withCast = project(
+      at({ FORC: [1, 85], FIRE: [1, 30], PATT: [2, 90] }),
+      [],
+      TURNS,
+      casting("FIRE", 24)
+    );
+
+    expect(points(without.standings[1], "FORC")).toEqual({ level: 1, points: 85 });
+    expect(points(withCast.standings[1], "FORC")).toEqual({ level: 2, points: 90 });
+  });
+
+  it("reads the month's end, practice included, in the study cell of the same skill", () => {
+    const { cells } = project(
+      at({ FORC: [2, 90], FIRE: [1, 30] }),
+      studies("FIRE", 24),
+      TURNS,
+      casting("FIRE", 24)
+    );
+
+    expect(cellLabel(cells[0])).toBe("FIRE 1(65)");
+    expect(cells[0].kind === "study" && cells[0].gained).toBe(false);
+  });
+
+  it("turns the study cell gained when practice carries the month over a level", () => {
+    const { cells } = project(
+      at({ FORC: [3, 180], FIRE: [1, 55] }),
+      studies("FIRE", 24),
+      TURNS,
+      casting("FIRE", 24)
+    );
+
+    expect(cellLabel(cells[0])).toBe("FIRE 2(90)");
+    expect(cells[0].kind === "study" && cells[0].gained).toBe(true);
+  });
+
+  it("starts a later study of the practised skill from the practised points", () => {
+    const { cells } = project(
+      at({ FORC: [1, 60], FIRE: [1, 30] }),
+      studies("FORC", 25),
+      TURNS,
+      casting("FIRE", 24)
+    );
+
+    expect(cellLabel(cells[1])).toBe("FORC 2(95)");
+  });
+
+  it("chooses the skill on the turn's opening standing, though the same month's study raises force", () => {
+    // Force 1 as the turn opens, so the cast practises force; the study then lifts it to 2.
+    const { standings } = project(
+      at({ FORC: [1, 60], FIRE: [1, 30] }),
+      studies("FORC", 24),
+      TURNS,
+      casting("FIRE", 24)
+    );
+
+    expect(points(standings[1], "FORC")).toEqual({ level: 2, points: 95 });
+    expect(points(standings[1], "FIRE")).toEqual({ level: 1, points: 30 });
+  });
+
+  it("practises on an idle turn and on a teach turn alike", () => {
+    const { standings } = project(
+      at({ FORC: [2, 90], FIRE: [1, 30] }),
+      [{ kind: "teach", turn: 25, students: [] }],
+      TURNS,
+      casting("FIRE", 24, 25)
+    );
+
+    expect(points(standings[2], "FIRE")).toEqual({ level: 1, points: 40 });
+  });
+
+  it("adds nothing for a planned spell of no castable use", () => {
+    // Force is automatic: never offered as a cast, so a stored one practises nothing.
+    const { standings } = project(at({ FORC: [2, 90] }), [], TURNS, casting("FORC", 24));
+
+    expect(standings[1]).toEqual(at({ FORC: [2, 90] }));
   });
 });
 
@@ -317,6 +444,9 @@ describe("scheduleRows", () => {
     expect(rows[0].castHalves[0]).toBeNull();
     expect(rows[0].castHalves[1]).toMatchObject({ kind: "planned", label: "⚔ FIRE", known: true });
     expect(rows[0].castHalves[2]).toMatchObject({ kind: "empty", label: "✦ no cast" });
+    // ah-9qdz.3: the stored cast on turn 25 reaches the projection - force 3 is above fire 1, so
+    // fire practises itself.
+    expect(rows[0].standings[2]?.get("FIRE")).toEqual({ level: 1, points: 35 });
   });
 
   // ah-zpq3: the report found him in the open, his ENTER seats him, and the schedule reads the

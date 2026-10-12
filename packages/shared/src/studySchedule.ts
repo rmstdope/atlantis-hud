@@ -17,7 +17,8 @@
  */
 
 import type { PlannedCast, StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
-import { castHalf, type CastHalf } from "./studyCast";
+import { practisedBy } from "./castPractice";
+import { castHalf, castableAt, type CastHalf } from "./studyCast";
 import { skillWords } from "./skillReading";
 import { shelterKey, type ShelterSeats } from "./studyShelter";
 import {
@@ -30,7 +31,11 @@ import {
 import { standingsFrom, type SkillStanding } from "./magicStanding";
 import type { MagicTree } from "./magicTree";
 import { plannedCasts, plannedGoals } from "./studyPlans";
-import { STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
+import {
+  PRACTICE_POINTS_PER_MONTH,
+  STUDY_POINTS_PER_MONTH,
+  levelForPoints
+} from "./studyProgress";
 import type { PlannerGroup } from "./studyPlanner";
 import type { StandingAfterOrders } from "./studyStanding";
 import { teachingDoubles, teachingPermission, type TeachingPermission, type TeachingRule } from "./teachingPermission";
@@ -240,6 +245,8 @@ export type ProjectedMage = {
   leftBy: "move" | "leave" | null;
   start: SkillPoints;
   goals: readonly StudyGoal[];
+  /** The planned casts, sanitized by `plannedCasts`; absent means none (ah-9qdz.3). */
+  casts?: readonly PlannedCast[];
 };
 
 /**
@@ -654,6 +661,40 @@ export function projectAll(input: {
         crossFaction
       });
     }
+
+    // 6. Practice (ah-9qdz.3): a planned cast of a spell he can cast gives 5 days to the skill
+    // `practisedBy` names. Chosen on the turn's opening standing - `rules/sequenceofevents` (New
+    // Age: Trident) casts spells and fights before the month's study - and added after the study
+    // points. A study cell of the same skill then reads the month's end, practice included.
+    for (const mage of input.mages) {
+      const cast = mage.casts?.find((one) => one.turn === planned);
+      const opening = standing.get(mage.key) ?? new Map();
+      if (
+        cast === undefined ||
+        !castableAt(opening, input.tree).some((choice) => choice.spell === cast.spell.toUpperCase())
+      ) {
+        continue;
+      }
+      const gains = practisedBy(cast.spell, opening, input.tree).tag;
+      if (gains === null) {
+        continue;
+      }
+      const next = copy(held.get(mage.key) ?? new Map());
+      const was = next.get(gains) ?? { level: 0, points: 0 };
+      const points = was.points + PRACTICE_POINTS_PER_MONTH;
+      const level = Math.min(
+        input.tree.byTag.get(gains)?.maxLevel ?? Infinity,
+        Math.max(was.level, levelForPoints(points))
+      );
+      next.set(gains, { level, points });
+      held.set(mage.key, next);
+      const cells = out.get(mage.key)?.cells;
+      const cell = cells?.[cells.length - 1];
+      if (cells !== undefined && cell?.kind === "study" && cell.skill === gains) {
+        const began = opening.get(gains)?.level ?? 0;
+        cells[cells.length - 1] = { ...cell, level, points, gained: level > began };
+      }
+    }
   }
 
   for (const mage of input.mages) {
@@ -770,7 +811,8 @@ export function scheduleRows(input: {
         leftBuilding: stood?.leftBuilding ?? null,
         leftBy: stood?.leftBy ?? null,
         start: startOf(mage.skills),
-        goals: plannedGoals(byKey.get(mage.key)?.goals ?? [], input.tree)
+        goals: plannedGoals(byKey.get(mage.key)?.goals ?? [], input.tree),
+        casts: plannedCasts(byKey.get(mage.key)?.casts)
       });
       names.set(mage.unitId, mage.name);
     }

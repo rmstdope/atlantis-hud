@@ -20,6 +20,13 @@ import type { SkillInfo } from "@atlantis/core-client";
  */
 export const STUDY_POINTS_PER_MONTH = 30;
 
+/**
+ * What a month of practice adds: the 5 days a planned cast gives the skill it practises
+ * (ah-9qdz.3, confirmed by the navigator for New Age, 2026-10-12). `rules/skills_studying` (New
+ * Age: Trident): practice "is much slower than studying", and only one skill improves a month.
+ */
+export const PRACTICE_POINTS_PER_MONTH = 5;
+
 /** The points a unit must hold to be at `level`. Level 0 is 0; level 5 is 450. */
 export function pointsForLevel(level: number): number {
   const steps = Math.max(0, Math.floor(level));
