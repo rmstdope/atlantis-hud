@@ -262,6 +262,11 @@ pub mod codes {
     /// `newage trident rules/enter`). Always on: the bead asks for the warning and gives it no
     /// switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
     pub const ENTER_NOT_HERE: Code = Code("enter-not-here");
+    /// A `LEAVE` aboard a ship at sea by a unit that cannot swim or fly its load, or won't cross
+    /// water. The engine refuses it ("LEAVE: Can't leave a ship in the ocean.") and the unit stays
+    /// aboard (`ah-z6zt`, `ah-djst`; `rules/leave`, `rules/nocross`). Always on: the bead asks for
+    /// the warning and gives it no switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
+    pub const LEAVE_REFUSED_AT_SEA: Code = Code("leave-refused-at-sea");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -345,7 +350,7 @@ pub mod codes {
 
     /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
     /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
-    pub const ALWAYS_ON: [Code; 7] = [
+    pub const ALWAYS_ON: [Code; 8] = [
         MOVE_INTO_A_WALL,
         FACTION_ORDER_WILL_FAIL,
         UNKNOWN_SKILL,
@@ -353,6 +358,7 @@ pub mod codes {
         VILLAGE_NEAR_A_SETTLEMENT,
         CREATE_VILLAGE_REFUSED,
         ENTER_NOT_HERE,
+        LEAVE_REFUSED_AT_SEA,
     ];
 }
 
@@ -935,6 +941,7 @@ pub fn review_turn(
         check_withdraw_in_nexus(hex, &options, &mut findings);
         check_explore_below_the_surface(hex, &mut findings);
         check_enter_not_here(hex, &mut findings);
+        check_leave_refused_at_sea(hex, &mut findings);
         check_village_site(hex, ledger, ruleset, &mut findings);
         check_withdraw_not_a_basic_item(hex, ruleset, &options, &mut findings);
         check_cast_material(hex, ruleset, &options, &mut findings);
@@ -11599,6 +11606,39 @@ fn check_enter_not_here(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
                 Some(placed),
             ));
         }
+    }
+}
+
+/// The `LEAVE` the game refuses at sea ([`standing::leave_refused_at_sea`]), warned on its line with
+/// why (`ah-z6zt`). `rules/leave`: "If a unit is capable of swimming or flying then this order is
+/// usable to leave a boat while at sea"; `rules/nocross` makes a unit "not cross" water whatever it
+/// could otherwise do, and `rules/sequenceofevents` runs NOCROSS before LEAVE, so the flag is read
+/// once this month's NOCROSS has run ([`leaver`]). The engine sets one leave per unit, so only the
+/// block's first LEAVE is warned. Always on (`codes::ALWAYS_ON`), so no option is read.
+fn check_leave_refused_at_sea(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
+    for ordered in &hex.units {
+        let leaver = leaver(ordered);
+        if !ordered.hex.leave_refused(leaver) {
+            continue;
+        }
+        let Some(placed) = ordered
+            .intents
+            .iter()
+            .find(|placed| matches!(placed.intent, Intent::Leave))
+        else {
+            continue;
+        };
+        let why = if leaver.wont_cross_water {
+            "the unit won't cross water (NOCROSS)"
+        } else {
+            "the unit cannot swim or fly its load"
+        };
+        findings.push(ordered.finding(
+            hex,
+            codes::LEAVE_REFUSED_AT_SEA,
+            format!("LEAVE will be refused at sea: {why}, so it stays aboard"),
+            Some(placed),
+        ));
     }
 }
 

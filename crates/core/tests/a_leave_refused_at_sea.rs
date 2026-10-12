@@ -194,3 +194,71 @@ fn a_swimmer_that_wont_cross_water_stays_aboard() {
         );
     }
 }
+
+// `ah-z6zt`. The refused LEAVE is warned on its own line, so the player learns it from the order
+// rather than from the turn report.
+
+const REFUSED: &str = "leave-refused-at-sea";
+
+/// `(message, 1-based line)` of each finding under [`REFUSED`].
+fn refusals(result: &OrderValidationResult) -> Vec<(String, Option<usize>)> {
+    result
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code == REFUSED)
+        .map(|diagnostic| (diagnostic.message.clone(), diagnostic.line_start))
+        .collect()
+}
+
+/// The verification's case: a centaur that can neither swim nor fly writes SAIL SE and LEAVE.
+#[test]
+fn a_leave_by_a_unit_that_cannot_swim_or_fly_is_warned_on_its_line() {
+    let result = validate(&at_sea(), OWNER_LEAVES_AT_SEA);
+
+    let found = refusals(&result);
+    assert_eq!(found.len(), 1, "{:#?}", result.diagnostics);
+    let (message, line) = &found[0];
+    assert_eq!(*line, Some(4), "on the LEAVE line");
+    assert!(
+        message.contains("cannot swim or fly"),
+        "names why: {message}"
+    );
+}
+
+#[test]
+fn a_leave_by_a_unit_that_wont_cross_water_is_warned_naming_that() {
+    let swimmer = "  * Swimmer (903), Foo (1), sharing, merfolk [MERF]. Weight: 10. \
+                   Capacity: 0/0/15/15.";
+    let result = validate(
+        &report("ocean", &[swimmer]),
+        "#atlantis 1\nunit 903\nNOCROSS 1\nLEAVE\n#end\n",
+    );
+
+    let found = refusals(&result);
+    assert_eq!(found.len(), 1, "{:#?}", result.diagnostics);
+    let (message, line) = &found[0];
+    assert_eq!(*line, Some(4), "on the LEAVE line");
+    assert!(
+        message.contains("won't cross water"),
+        "names why: {message}"
+    );
+}
+
+#[test]
+fn a_leave_on_a_coast_is_not_warned() {
+    let result = validate(&report("plain", &[]), OWNER_LEAVES_AT_SEA);
+
+    assert!(refusals(&result).is_empty(), "{:#?}", result.diagnostics);
+}
+
+#[test]
+fn a_leave_by_a_swimmer_at_sea_is_not_warned() {
+    let swimmer = "  * Swimmer (903), Foo (1), sharing, merfolk [MERF]. Weight: 10. \
+                   Capacity: 0/0/15/15.";
+    let result = validate(
+        &report("ocean", &[swimmer]),
+        "#atlantis 1\nunit 903\nLEAVE\n#end\n",
+    );
+
+    assert!(refusals(&result).is_empty(), "{:#?}", result.diagnostics);
+}
