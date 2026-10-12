@@ -109,6 +109,8 @@ export type GameDataDetail =
       cost: number | null;
       maxLevel: number;
       magic: boolean;
+      /** Null for a skill that is not magic, and for a ruleset scraped before uses were. */
+      use: SkillUse | null;
       description: string | null;
       levels: readonly GameDataLevel[];
       produces: readonly GameDataLink[];
@@ -202,7 +204,15 @@ export type GameDataIndex = {
 /* --- the scraped shapes, mirroring packages/ruleset/src/data.ts --- */
 
 type RawProduction = { tag: string; level: number; revealsRegion?: boolean };
+/**
+ * How a magic skill is used, as the ruleset's `use` says (ah-9qdz.1): cast with `CAST`
+ * (`rules/cast`), set for combat with `COMBAT` (`rules/combat`), both (`data/CLEA`), or
+ * automatic. Spelled out here rather than imported, for the reason the note above gives.
+ */
+export type SkillUse = "cast" | "combat" | "both" | "automatic";
+
 type RawSkill = {
+  use?: SkillUse | null;
   tag: string;
   name: string;
   cost: number | null;
@@ -630,6 +640,7 @@ export function parseGameData(rulesetText: string): GameDataIndex | null {
         cost: skill.cost ?? null,
         maxLevel: skill.maxLevel ?? 0,
         magic: skill.magic === true,
+        use: skill.use ?? null,
         description: skill.description ?? null,
         levels: skill.levels ?? [],
         produces: (skill.produces ?? []).map((production) => {

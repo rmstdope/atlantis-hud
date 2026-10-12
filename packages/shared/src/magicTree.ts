@@ -1,5 +1,5 @@
 import type { SkillInfo } from "@atlantis/core-client";
-import type { GameDataIndex, GameDataLink } from "./gameData";
+import type { GameDataIndex, GameDataLink, SkillUse } from "./gameData";
 
 /** A skill a unit must already have, at a level, before it may begin another. */
 export type MagicPrerequisite = {
@@ -21,6 +21,11 @@ export type MagicSkillNode = {
   learnable: boolean;
   /** The item named by the skill description when it is granted by an item, or null. */
   itemGrant: string | null;
+  /**
+   * How the spell is used - cast, set for combat, both or automatic - or null for a ruleset
+   * scraped before uses were (ah-9qdz.1). The planner offers a cast only for the first three.
+   */
+  use: SkillUse | null;
   /** Longest path to a root. 0 for FORC, PATT, SPIR and MANI. Drives indentation. */
   depth: number;
   /** The key of the branch this skill is filed under. */
@@ -86,6 +91,7 @@ type RawMagicSkill = {
   cost: number | null;
   itemGrant: string | null;
   requires: readonly GameDataLink[];
+  use: SkillUse | null;
 };
 
 /**
@@ -116,7 +122,8 @@ function magicSkillsOf(index: GameDataIndex): Map<string, RawMagicSkill> {
       maxLevel: detail.maxLevel,
       cost: detail.cost,
       itemGrant,
-      requires: detail.requires
+      requires: detail.requires,
+      use: detail.use
     });
   }
   return skills;
@@ -279,6 +286,7 @@ export function buildMagicTree(index: GameDataIndex): MagicTree {
       maxLevel: skill.maxLevel,
       learnable: skill.cost !== null,
       itemGrant: skill.itemGrant,
+      use: skill.use,
       depth,
       branch,
       within,
