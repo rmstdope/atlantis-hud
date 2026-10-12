@@ -85,34 +85,107 @@ describe("castHalf", () => {
     });
   });
 
-  it("marks a cast spell ✦ and says he casts it", () => {
-    expect(half(knows({ FORC: 1, FARS: 1 }), "FARS")).toEqual({
+  it("marks a cast spell ✦ and says he casts it and practises it", () => {
+    expect(half(knows({ FORC: 2, FARS: 1 }), "FARS", 27)).toEqual({
       kind: "planned",
       spell: "FARS",
+      glyph: "✦",
       label: "✦ FARS",
       known: true,
-      title: "Ereb casts farsight on turn 26."
+      practice: "self",
+      practised: "FARS",
+      title: "Ereb casts farsight on turn 27 and gets 5 days of practice in it."
     });
   });
 
-  it("marks a combat-only spell ⚔ and says he readies it for battle", () => {
-    expect(half(knows({ FORC: 1, FIRE: 2 }), "FIRE", 28)).toMatchObject({
+  it("marks a combat-only spell ⚔ and counts its practice as if he fights", () => {
+    expect(half(knows({ FORC: 3, FIRE: 2 }), "FIRE", 28)).toMatchObject({
       label: "⚔ FIRE",
-      title: "Ereb readies fire for battle on turn 28."
+      practice: "self",
+      title: "Ereb readies fire for battle on turn 28 and gets 5 days of practice in it — if he fights."
     });
   });
 
   it("marks clear skies, which is both, ✦", () => {
-    expect(half(knows({ FORC: 1, CLEA: 1 }), "CLEA")?.label).toBe("✦ CLEA");
+    expect(half(knows({ FORC: 2, CLEA: 1 }), "CLEA")?.label).toBe("✦ CLEA");
   });
 
-  it("keeps a spell he will not know yet, marked unknown, while he knows another", () => {
+  // ah-9qdz.3: the days go to a prerequisite that is not above the spell (`practisedBy`).
+  it("names the prerequisite that gains after an arrow, for a battle spell", () => {
+    expect(half(knows({ FORC: 1, FIRE: 1 }), "FIRE", 26)).toEqual({
+      kind: "planned",
+      spell: "FIRE",
+      glyph: "⚔",
+      label: "⚔ FIRE → FORC",
+      known: true,
+      practice: "prerequisite",
+      practised: "FORC",
+      title:
+        "Ereb readies fire for battle on turn 26. Force isn't above fire yet, so the 5 days of practice go to force — if he fights."
+    });
+  });
+
+  it("names the prerequisite that gains after an arrow, for a cast", () => {
+    expect(half(knows({ FORC: 1, FARS: 1 }), "FARS", 27)).toMatchObject({
+      label: "✦ FARS → FORC",
+      practice: "prerequisite",
+      practised: "FORC",
+      title:
+        "Ereb casts farsight on turn 27. Force isn't above farsight yet, so the 5 days of practice go to force."
+    });
+  });
+
+  it("says a spell at its highest adds no practice", () => {
+    expect(half(knows({ FORC: 5, FARS: 5 }), "FARS", 26, "Sable")).toEqual({
+      kind: "planned",
+      spell: "FARS",
+      glyph: "✦",
+      label: "✦ FARS",
+      known: true,
+      practice: "none",
+      practised: null,
+      title: "Sable casts farsight on turn 26. Farsight is already at 5, the highest there is, so it adds no practice."
+    });
+  });
+
+  it("keeps a spell he will not know yet, marked unknown and adding no practice, while he knows another", () => {
     expect(half(knows({ FORC: 1, BIRD: 1 }), "FARS", 28, "Sable")).toEqual({
       kind: "planned",
       spell: "FARS",
+      glyph: "✦",
       label: "✦ FARS",
       known: false,
-      title: "Sable won't know farsight by turn 28 — it's still planned, but he can't cast it."
+      practice: "none",
+      practised: null,
+      title:
+        "Sable won't know farsight by turn 28 — it's still planned, but he can't cast it, so it adds no practice."
+    });
+  });
+});
+
+describe("castHalf below the spell's highest, with nothing able to gain", () => {
+  // Unreachable with the shipped ruleset's maximum of 5 everywhere; a foundation capped at 2 here.
+  const capped = buildMagicTree(
+    parseGameData(
+      JSON.stringify({
+        skills: {
+          CAPD: { ...spell("CAPD", "capped", "automatic", []), maxLevel: 2 },
+          ODDS: spell("ODDS", "odd spell", "combat", [{ tag: "CAPD", level: 1 }])
+        },
+        items: {},
+        buildings: {}
+      })
+    ) as GameDataIndex
+  );
+
+  it("names the prerequisite that cannot gain either", () => {
+    expect(
+      castHalf({ mageName: "Ereb", turn: 26, standing: knows({ CAPD: 2, ODDS: 2 }), tree: capped, cast: "ODDS" })
+    ).toMatchObject({
+      label: "⚔ ODDS",
+      practice: "none",
+      title:
+        "Ereb readies odd spell for battle on turn 26. Capped isn't above odd spell yet and can't gain practice either, so it adds no practice."
     });
   });
 });

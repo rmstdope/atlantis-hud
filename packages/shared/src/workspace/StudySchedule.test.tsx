@@ -271,6 +271,26 @@ describe("MagePaneView", () => {
     expect(line.slice(0, 300)).toContain('data-testid="study-schedule-knows-tag-FORC"');
   });
 
+  it("draws the skill a cast practised in magic purple", () => {
+    const markup = renderToStaticMarkup(
+      <MagePaneView
+        pane={{
+          ...magePane({ row: rows[0], turnIndex: 0, turns, tree, factionLabel: "x", rule: NO_TEACHING_RULE }),
+          knows: [
+            { tag: "FORC", name: "force", right: "1(60) → 1(65)", studying: false, practised: true },
+            { tag: "PATT", name: "pattern", right: "1(30)", studying: false, practised: false }
+          ]
+        }}
+      />
+    );
+    const line = markup.slice(markup.indexOf("study-schedule-knows-force"));
+
+    expect(line.slice(0, 200)).toContain("text-magic-ink");
+    expect(markup.slice(markup.indexOf("study-schedule-knows-pattern")).slice(0, 200)).not.toContain(
+      "text-magic-ink"
+    );
+  });
+
   it("draws what he could study then, under a heading that counts them", () => {
     const markup = shown(0);
 
@@ -1131,7 +1151,9 @@ describe("the cast half", () => {
 
     expect(half).toContain(`data-cell="0:1:cast"`);
     expect(half).toContain(">⚔ FIRE<");
-    expect(half).toContain(`title="Ereb readies fire for battle on turn ${turns[1]}."`);
+    expect(half).toContain(
+      `title="Ereb readies fire for battle on turn ${turns[1]} and gets 5 days of practice in it — if he fights."`
+    );
     expect(half).toContain("text-magic-ink");
   });
 
@@ -1141,8 +1163,49 @@ describe("the cast half", () => {
     expect(half).toContain(">✦ FARS<");
     expect(half).toContain(STANDING_CHIP.ceiling);
     expect(half).toContain(
-      `title="Ereb won&#x27;t know farsight by turn ${turns[2]} — it&#x27;s still planned, but he can&#x27;t cast it."`
+      `title="Ereb won&#x27;t know farsight by turn ${turns[2]} — it&#x27;s still planned, but he can&#x27;t cast it, so it adds no practice."`
     );
+  });
+
+  // ah-9qdz.3: a cast whose days go to a prerequisite names it after an arrow, still purple; one
+  // that gains nothing strikes its tag through, dim purple with a purple edge and no fill.
+  const withHalf = (half: NonNullable<ScheduleRow["castHalves"][number]>) =>
+    castRows.map((row, index) =>
+      index === 0 ? { ...row, castHalves: row.castHalves.map((one, at) => (at === 1 ? half : one)) } : row
+    );
+  const cast = (rest: Partial<Extract<NonNullable<ScheduleRow["castHalves"][number]>, { kind: "planned" }>>) => ({
+    kind: "planned" as const,
+    spell: "FIRE",
+    glyph: "⚔" as const,
+    label: "⚔ FIRE",
+    known: true,
+    practice: "self" as const,
+    practised: "FIRE",
+    title: "t",
+    ...rest
+  });
+  const castButton = (markup: string, testId: string) =>
+    new RegExp(`<button[^>]*data-testid="${testId}"[^>]*>.*?</button>`).exec(markup)?.[0] ?? "";
+
+  it("names the prerequisite a cast practises after an arrow, in magic purple", () => {
+    const half = castButton(
+      grid({ kind: "idle" }, withHalf(cast({ label: "⚔ FIRE → FORC", practice: "prerequisite", practised: "FORC" }))),
+      `study-schedule-cast-2431-${turns[1]}`
+    );
+
+    expect(half).toContain(">⚔ FIRE → FORC<");
+    expect(half).toContain("bg-magic-fill text-magic-ink");
+  });
+
+  it("strikes the tag through, dim and unfilled, for a cast that gains nothing", () => {
+    const half = castButton(
+      grid({ kind: "idle" }, withHalf(cast({ glyph: "✦", spell: "FARS", label: "✦ FARS", practice: "none", practised: null }))),
+      `study-schedule-cast-2431-${turns[1]}`
+    );
+
+    expect(half).toContain("✦ <s>FARS</s>");
+    expect(half).toContain("border-magic-edge bg-transparent text-magic-dim");
+    expect(half).not.toContain("bg-magic-fill");
   });
 
   it("draws an empty half faint and dashed", () => {

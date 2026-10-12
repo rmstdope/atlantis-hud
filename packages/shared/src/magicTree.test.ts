@@ -198,6 +198,31 @@ describe("prerequisites", () => {
     expect(illu?.crossing).toEqual([]);
   });
 
+  it("keeps every prerequisite in the order the ruleset declares them, across the split", () => {
+    // Unit::Practice walks a spell's prerequisites in declaration order (ah-9qdz.3), which the
+    // within/crossing split loses for a skill whose crossing prerequisite is declared first.
+    const ordered = buildMagicTree(
+      parseGameData(
+        JSON.stringify({
+          ...JSON.parse(RULESET),
+          skills: {
+            ...JSON.parse(RULESET).skills,
+            CRRO: skill("CRRO", "create rod of invisibility", [
+              { tag: "INVI", level: 2 },
+              { tag: "ARTI", level: 1 }
+            ])
+          }
+        })
+      ) as GameDataIndex
+    );
+
+    expect(ordered.byTag.get("CRRO")?.prerequisites.map((need) => `${need.tag} ${need.level}`)).toEqual([
+      "INVI 2",
+      "ARTI 1"
+    ]);
+    expect(ordered.byTag.get("FORC")?.prerequisites).toEqual([]);
+  });
+
   it("gives a root no prerequisites at all", () => {
     const tree = buildMagicTree(index);
 

@@ -111,7 +111,46 @@ describe("magePane on a turn", () => {
   });
 
   it("says where its figures come from", () => {
-    expect(pane(2).foot).toBe("Projected from turn 23's report at 30 points a studied month.");
+    expect(pane(2).foot).toBe("Projected from turn 23's report at 30 points a studied month and 5 for a month of practice.");
+  });
+});
+
+// ah-9qdz.3, review finding 4: the line a planned cast practised reaches the pane marked.
+describe("magePane on a turn with a planned cast", () => {
+  it("marks the skill the cast practised, and only that one", () => {
+    const casting = scheduleRows({
+      groups: groups([
+        { tag: "FORC", level: 1, points: 60 },
+        { tag: "FIRE", level: 1, points: 30 }
+      ]),
+      plans: [
+        {
+          factionId: "21",
+          unitId: "2431",
+          goals: [],
+          casts: [{ turn: turns[0], spell: "FIRE" }],
+          comment: "",
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      tree,
+      turns,
+      seats: new Map([["1:7,53/1", 1]]),
+      after: new Map(),
+      rule: NO_TEACHING_RULE
+    })[0];
+    const knows = magePane({
+      row: casting,
+      turnIndex: 0,
+      turns,
+      tree,
+      factionLabel: "x",
+      rule: NO_TEACHING_RULE
+    }).knows;
+
+    expect(knows.filter((line) => line.practised).map((line) => `${line.tag} ${line.right}`)).toEqual([
+      "FORC 1(60) → 1(65)"
+    ]);
   });
 });
 

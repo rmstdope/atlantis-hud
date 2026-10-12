@@ -175,6 +175,8 @@
   --color-magic-fill: #241d33;
   --color-magic-ink: #b48ce0;
   --color-magic-edge: #4a3b66;
+  /* A planned cast that adds no practice (ah-9qdz.3): the mockup's dim purple, no fill. */
+  --color-magic-dim: #8a7aa3;
 
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
@@ -314,6 +316,7 @@
   --color-magic-fill: #efe6f8;
   --color-magic-ink: #5a3488;
   --color-magic-edge: #b99ad6;
+  --color-magic-dim: #7a5fa0;
 }
 
 /*

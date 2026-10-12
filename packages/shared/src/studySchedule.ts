@@ -17,7 +17,8 @@
  */
 
 import type { PlannedCast, StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
-import { castHalf, type CastHalf } from "./studyCast";
+import { practisedBy } from "./castPractice";
+import { castHalf, castableAt, type CastHalf } from "./studyCast";
 import { skillWords } from "./skillReading";
 import { shelterKey, type ShelterSeats } from "./studyShelter";
 import {
@@ -30,7 +31,11 @@ import {
 import { standingsFrom, type SkillStanding } from "./magicStanding";
 import type { MagicTree } from "./magicTree";
 import { plannedCasts, plannedGoals } from "./studyPlans";
-import { STUDY_POINTS_PER_MONTH, levelForPoints } from "./studyProgress";
+import {
+  PRACTICE_POINTS_PER_MONTH,
+  STUDY_POINTS_PER_MONTH,
+  levelForPoints
+} from "./studyProgress";
 import type { PlannerGroup } from "./studyPlanner";
 import type { StandingAfterOrders } from "./studyStanding";
 import { teachingDoubles, teachingPermission, type TeachingPermission, type TeachingRule } from "./teachingPermission";
@@ -240,6 +245,11 @@ export type ProjectedMage = {
   leftBy: "move" | "leave" | null;
   start: SkillPoints;
   goals: readonly StudyGoal[];
+  /**
+   * The planned casts, sanitized by `plannedCasts` (ah-9qdz.3). Required, so a caller cannot
+   * forget them and silently project no practice.
+   */
+  casts: readonly PlannedCast[];
 };
 
 /**
@@ -654,6 +664,40 @@ export function projectAll(input: {
         crossFaction
       });
     }
+
+    // 6. Practice (ah-9qdz.3): a planned cast of a spell he can cast gives 5 days to the skill
+    // `practisedBy` names. Chosen on the turn's opening standing - `rules/sequenceofevents` (New
+    // Age: Trident) casts spells and fights before the month's study - and added after the study
+    // points. A study cell of the same skill then reads the month's end, practice included.
+    for (const mage of input.mages) {
+      const cast = mage.casts.find((one) => one.turn === planned);
+      const opening = standing.get(mage.key) ?? new Map();
+      if (
+        cast === undefined ||
+        !castableAt(opening, input.tree).some((choice) => choice.spell === cast.spell.toUpperCase())
+      ) {
+        continue;
+      }
+      const gains = practisedBy(cast.spell, opening, input.tree).tag;
+      if (gains === null) {
+        continue;
+      }
+      const next = copy(held.get(mage.key) ?? new Map());
+      const was = next.get(gains) ?? { level: 0, points: 0 };
+      const points = was.points + PRACTICE_POINTS_PER_MONTH;
+      const level = Math.min(
+        input.tree.byTag.get(gains)?.maxLevel ?? Infinity,
+        Math.max(was.level, levelForPoints(points))
+      );
+      next.set(gains, { level, points });
+      held.set(mage.key, next);
+      const cells = out.get(mage.key)?.cells;
+      const cell = cells?.[cells.length - 1];
+      if (cells !== undefined && cell?.kind === "study" && cell.skill === gains) {
+        const began = opening.get(gains)?.level ?? 0;
+        cells[cells.length - 1] = { ...cell, level, points, gained: level > began };
+      }
+    }
   }
 
   for (const mage of input.mages) {
@@ -770,7 +814,8 @@ export function scheduleRows(input: {
         leftBuilding: stood?.leftBuilding ?? null,
         leftBy: stood?.leftBy ?? null,
         start: startOf(mage.skills),
-        goals: plannedGoals(byKey.get(mage.key)?.goals ?? [], input.tree)
+        goals: plannedGoals(byKey.get(mage.key)?.goals ?? [], input.tree),
+        casts: plannedCasts(byKey.get(mage.key)?.casts)
       });
       names.set(mage.unitId, mage.name);
     }
@@ -836,7 +881,7 @@ export function hoverCard(
 ): {
   heading: string;
   sub: string;
-  lines: { tag: string; name: string; right: string; studying: boolean }[];
+  lines: { tag: string; name: string; right: string; studying: boolean; practised: boolean }[];
   foot: string;
 } {
   const turn = turns[turnIndex];
@@ -844,8 +889,12 @@ export function hoverCard(
   const before = row.standings[turnIndex] ?? new Map();
   const after = row.standings[turnIndex + 1] ?? before;
   const studying = cell?.kind === "study" ? cell.skill : null;
+  // ah-9qdz.3: the turn's planned cast, whose title says where its practice went.
+  const half = row.castHalves[turnIndex] ?? null;
+  const practised = half?.kind === "planned" ? half.practised : null;
 
-  const lines: { tag: string; name: string; right: string; studying: boolean }[] = [];
+  const lines: { tag: string; name: string; right: string; studying: boolean; practised: boolean }[] =
+    [];
   // Both ends, not merely `before`: the turn a mage *begins* a skill from nothing, that skill is
   // absent from `before` entirely, and a card whose sub-line says "studying pattern" with no
   // pattern line in it is the card telling the player two different things.
@@ -856,7 +905,7 @@ export function hoverCard(
     }
     const held = before.get(tag) ?? { level: 0, points: 0 };
     const ends = after.get(tag) ?? held;
-    if (held.level <= 0 && ends.level <= 0 && tag !== studying) {
+    if (held.level <= 0 && ends.level <= 0 && tag !== studying && tag !== practised) {
       continue;
     }
     // `4(390) → 4(420)`: a level with its points in brackets at each end of the month, the way a
@@ -868,7 +917,8 @@ export function hoverCard(
       tag,
       name: node.name,
       right: skillWords(held, ends),
-      studying: tag === studying
+      studying: tag === studying,
+      practised: tag === practised
     });
   }
   lines.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
@@ -878,6 +928,11 @@ export function hoverCard(
   // month is `worth` with the shelter half divided back out, so a taught but unsheltered month
   // still reports the doubling it got.
   const extra: string[] = [];
+  // The practice sentence comes straight after the projection line (ah-9qdz.3), before anything
+  // about teaching or shelter.
+  if (half?.kind === "planned") {
+    extra.push(half.title);
+  }
   if (cell?.kind === "study" && cell.crossFaction !== null) {
     // The agreed sentences (ah-g9sf.12), in place of the same-faction `Taught by ...` one below.
     // Every name is a slot: a fixed pronoun would assert a sex no report states.
@@ -915,7 +970,7 @@ export function hoverCard(
         ? `From a mage sheet of turn ${row.sheetTurn}. Nothing is assumed about the ${
             row.monthsUnreported
           } turn${row.monthsUnreported === 1 ? "" : "s"} since.`
-        : `Projected from turn ${turns[0] - 1}'s report at ${STUDY_POINTS_PER_MONTH} points a studied month.`
+        : `Projected from turn ${turns[0] - 1}'s report at ${STUDY_POINTS_PER_MONTH} points a studied month and ${PRACTICE_POINTS_PER_MONTH} for a month of practice.`
   };
   return extra.length === 0 ? card : { ...card, foot: [card.foot, ...extra].join(" ") };
 }

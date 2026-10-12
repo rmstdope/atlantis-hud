@@ -12,8 +12,10 @@
  */
 
 import type { PlannedCast, StudyPlanRecord } from "@atlantis/core-client";
+import { practisedBy } from "./castPractice";
 import type { MagicTree } from "./magicTree";
 import type { SkillPoints } from "./studySchedule";
+import { PRACTICE_POINTS_PER_MONTH } from "./studyProgress";
 
 /** The uses a planned cast can stand for: everything but `automatic`. */
 export type CastUse = "cast" | "combat" | "both";
@@ -65,11 +67,24 @@ export type CastHalf =
   | {
       kind: "planned";
       spell: string;
-      /** `✦ FARS` for a cast or both-ways spell, `⚔ FIRE` for a combat-only one. */
+      /** `⚔` for a combat-only spell, `✦` for a cast or both-ways one. */
+      glyph: "✦" | "⚔";
+      /**
+       * `✦ FARS`, `⚔ FIRE`, or `⚔ FIRE → FORC` when the practice goes to a prerequisite
+       * (ah-9qdz.3). The struck-through tag of a cast that gains nothing is drawn from `glyph` and
+       * `spell`, so the label stays plain text.
+       */
       label: string;
       /** False when he will not know the spell by that turn: the half is drawn amber. */
       known: boolean;
-      /** The hover sentence. */
+      /**
+       * Where the cast's 5 days of practice go (ah-9qdz.3, `practisedBy`): the spell, a
+       * prerequisite, or nowhere - always `none` for a spell he will not know.
+       */
+      practice: "self" | "prerequisite" | "none";
+      /** The upper-cased tag that gains, or null for `none`. */
+      practised: string | null;
+      /** The hover sentence, which says where the practice goes. */
       title: string;
     };
 
@@ -78,11 +93,16 @@ function nameOf(spell: string, tree: MagicTree): string {
   return tree.byTag.get(spell)?.name ?? spell;
 }
 
+/** `Force`, to open a sentence with a name the tree keeps in lower case. */
+function capitalised(name: string): string {
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
 /**
  * The half on one turn, or null when he knows no castable spell then - the agreed rule that a half
  * appears only on turns where it can be used.
  *
- * The planner has no he/she rule, so the not-known sentence says `he`, the acceptance's fallback.
+ * The planner has no he/she rule, so the sentences say `he`, the acceptance's fallback.
  */
 export function castHalf(input: {
   mageName: string;
@@ -103,26 +123,66 @@ export function castHalf(input: {
   const spell = input.cast.toUpperCase();
   const choice = castable.find((one) => one.spell === spell);
   const use = choice?.use ?? castUse(input.tree.byTag.get(spell)?.use);
-  const label = `${use === "combat" ? "⚔" : "✦"} ${spell}`;
+  const glyph: "✦" | "⚔" = use === "combat" ? "⚔" : "✦";
   const name = nameOf(spell, input.tree);
   if (choice === undefined) {
     return {
       kind: "planned",
       spell,
-      label,
+      glyph,
+      label: `${glyph} ${spell}`,
       known: false,
-      title: `${input.mageName} won't know ${name} by turn ${input.turn} — it's still planned, but he can't cast it.`
+      practice: "none",
+      practised: null,
+      title: `${input.mageName} won't know ${name} by turn ${input.turn} — it's still planned, but he can't cast it, so it adds no practice.`
     };
   }
+  // The agreed sentences (ah-9qdz.3). A battle spell is counted as if he fights, and only the words
+  // say so; the planner has no he/she rule, so they say `he` as the rest of it does.
+  const battle = choice.use === "combat";
+  const opening = battle
+    ? `${input.mageName} readies ${name} for battle on turn ${input.turn}`
+    : `${input.mageName} casts ${name} on turn ${input.turn}`;
+  const ifFights = battle ? " — if he fights" : "";
+  const days = `${PRACTICE_POINTS_PER_MONTH} days of practice`;
+  const practice = practisedBy(spell, input.standing, input.tree);
+  const planned = { kind: "planned" as const, spell, glyph, known: true };
+  if (practice.kind === "self") {
+    return {
+      ...planned,
+      label: `${glyph} ${spell}`,
+      practice: "self",
+      practised: spell,
+      title: `${opening} and gets ${days} in it${ifFights}.`
+    };
+  }
+  if (practice.kind === "prerequisite" && practice.tag !== null) {
+    // For a chain the skill that actually gains fills both slots: its level is at or below the
+    // spell's, so "isn't above" stays true of it.
+    const gainer = nameOf(practice.tag, input.tree);
+    return {
+      ...planned,
+      label: `${glyph} ${spell} → ${practice.tag}`,
+      practice: "prerequisite",
+      practised: practice.tag,
+      title: `${opening}. ${capitalised(gainer)} isn't above ${name} yet, so the ${days} go to ${gainer}${ifFights}.`
+    };
+  }
+  const level = choice.level;
+  const node = input.tree.byTag.get(spell);
+  const stuck =
+    node !== undefined && level < node.maxLevel
+      ? node.prerequisites.find((need) => (input.standing.get(need.tag)?.level ?? 0) <= level)
+      : undefined;
   return {
-    kind: "planned",
-    spell,
-    label,
-    known: true,
+    ...planned,
+    label: `${glyph} ${spell}`,
+    practice: "none",
+    practised: null,
     title:
-      choice.use === "combat"
-        ? `${input.mageName} readies ${name} for battle on turn ${input.turn}.`
-        : `${input.mageName} casts ${name} on turn ${input.turn}.`
+      stuck === undefined
+        ? `${opening}. ${capitalised(name)} is already at ${level}, the highest there is, so it adds no practice.`
+        : `${opening}. ${capitalised(stuck.name)} isn't above ${name} yet and can't gain practice either, so it adds no practice.`
   };
 }
 
