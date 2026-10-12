@@ -12,14 +12,15 @@ import {
 import type { OrderProcessing } from "../orderProcessing";
 import { DialogFrame } from "./DialogFrame";
 import { STANDING_CHIP, standingLimit } from "./standingChip";
-import type { StudyGoal, StudyPlanRecord } from "@atlantis/core-client";
+import type { StudyPlanRecord } from "@atlantis/core-client";
 import type { MagicTree } from "../magicTree";
 import { planLine, scheduleRows, scheduleTurns } from "../studySchedule";
 import { plannerNotices } from "../studyTeaching";
 import { studyOrders } from "../studyOrders";
 import type { StandingAfterOrders } from "../studyStanding";
 import { mageShelters, type ShelterSeats } from "../studyShelter";
-import { planFor, plannedGoals, type ScheduleChange } from "../studyPlans";
+import { planFor, plannedGoals, type PlanChange, type ScheduleChange } from "../studyPlans";
+import { castsToPrune } from "../studyCast";
 import type { TeachingRule } from "../teachingPermission";
 import { STUDY_NOTE_MAX_CHARS, noteCountText } from "../studyNote";
 import { createNoteAutosave, type NoteAutosave } from "./studyNoteAutosave";
@@ -124,7 +125,7 @@ export function StudyPlannerDialog({
   onSavePlan: (
     factionId: string,
     unitId: string,
-    edit: (current: readonly StudyGoal[]) => StudyGoal[]
+    change: PlanChange
   ) => void;
   /** Reshapes the schedule for every mage once its dialog is confirmed (`ah-j9wn`). */
   onScheduleChange: (change: ScheduleChange) => void;
@@ -153,6 +154,25 @@ export function StudyPlannerDialog({
     () => scheduleRows({ groups, plans, tree, turns, seats, assumeSheltered, after, rule }),
     [groups, plans, tree, turns, seats, assumeSheltered, after, rule]
   );
+  // ah-9qdz.2: a cast planned on a turn where he would know no castable spell at all - an earlier
+  // study was changed - is taken out of the plan rather than kept amber (agreed), and does not
+  // come back if that study is changed back. The rule is `castsToPrune`; this only writes it.
+  // The signature keeps a re-render while the write is in flight from queueing it twice.
+  const prune = useMemo(() => castsToPrune(rows, turns), [rows, turns]);
+  const pruned = useRef("");
+  useEffect(() => {
+    const signature = JSON.stringify(prune);
+    if (signature === pruned.current) {
+      return;
+    }
+    pruned.current = signature;
+    for (const { rowKey, turns: dropped } of prune) {
+      const [factionId, unitId] = rowKey.split("/");
+      onSavePlan(factionId, unitId, {
+        casts: (casts) => casts.filter((cast) => !dropped.includes(cast.turn))
+      });
+    }
+  }, [prune, onSavePlan]);
   const shelters = useMemo(
     () => mageShelters({ groups, seats, names: structureNames, after }),
     [groups, seats, structureNames, after]
@@ -448,9 +468,9 @@ export function StudyPlannerDialog({
           tree={tree}
           mode={cellMode}
           onEvent={(event) => setCellMode((mode) => reduceCell(mode, event))}
-          onCommit={(rowKey, edit) => {
+          onCommit={(rowKey, change) => {
             const [factionId, unitId] = rowKey.split("/");
-            onSavePlan(factionId, unitId, edit);
+            onSavePlan(factionId, unitId, change);
           }}
           saveError={saveError}
           notices={notices}

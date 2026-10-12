@@ -170,6 +170,12 @@
   --color-crossing-ink: #a98cc4;
   --color-crossing-edge: #4a3a63;
 
+  /* A planned cast in the study planner's Schedule (ah-9qdz.2): the mockup's magic purple, a
+     shade apart from the crossing pill's violet so a cast half never reads as a prerequisite. */
+  --color-magic-fill: #241d33;
+  --color-magic-ink: #b48ce0;
+  --color-magic-edge: #4a3b66;
+
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   /* The panes' type scale. Three steps, in rem so both the reader's own font-size preference and
@@ -305,6 +311,9 @@
   --color-crossing-fill: #ece4f4;
   --color-crossing-ink: #5f3f86;
   --color-crossing-edge: #b49ccb;
+  --color-magic-fill: #efe6f8;
+  --color-magic-ink: #5a3488;
+  --color-magic-edge: #b99ad6;
 }
 
 /*

@@ -12,7 +12,15 @@ import type { PlannerGroup } from "../studyPlanner";
 import { plannerNotices } from "../studyTeaching";
 import type { StandingAfterOrders } from "../studyStanding";
 import { STANDING_CHIP } from "./standingChip";
-import { CellPopover, MagePaneView, ScheduleConfirmDialog, ScheduleGrid, StudySchedule } from "./StudySchedule";
+import {
+  CastPopover,
+  CellPopover,
+  MagePaneView,
+  ScheduleConfirmDialog,
+  ScheduleGrid,
+  StudySchedule
+} from "./StudySchedule";
+import { castMenu } from "../studyCast";
 import type { ScheduleChange } from "../studyPlans";
 import type { CellMode, CellPick } from "./studyCellState";
 
@@ -350,7 +358,6 @@ describe("CellPopover", () => {
         mageName="Ereb"
         turn={26}
         current={current}
-        rowIndex={0}
         onEvent={() => {}}
         onChoose={() => {}}
       />
@@ -378,7 +385,6 @@ describe("CellPopover", () => {
         mageName="Ereb"
         turn={26}
         current={null}
-        rowIndex={0}
         onEvent={() => {}}
         onChoose={() => {}}
       />
@@ -494,7 +500,6 @@ describe("CellPopover", () => {
           mageName="Ereb"
           turn={26}
           current={null}
-          rowIndex={0}
           onEvent={() => {}}
           onChoose={() => {}}
         />
@@ -519,7 +524,6 @@ describe("CellPopover", () => {
         mageName="Ereb"
         turn={26}
         current={null}
-        rowIndex={0}
         onEvent={() => {}}
         onChoose={() => {}}
       />
@@ -538,7 +542,6 @@ describe("CellPopover", () => {
         mageName="Ereb"
         turn={26}
         current={null}
-        rowIndex={0}
         onEvent={() => {}}
         onChoose={() => {}}
       />
@@ -556,7 +559,6 @@ describe("CellPopover", () => {
         mageName="Ereb"
         turn={26}
         current={null}
-        rowIndex={0}
         onEvent={() => {}}
         onChoose={() => {}}
       />
@@ -774,7 +776,6 @@ describe("a month somebody would double is drawn green", () => {
         mageName="Ilna"
         turn={26}
         current={null}
-        rowIndex={1}
         onEvent={() => {}}
         onChoose={() => {}}
       />
@@ -1085,5 +1086,125 @@ describe("a cross-faction teaching month in the grid", () => {
     expect(schedule(rule({}))).not.toContain("teaching uncertain");
     expect(cellText(schedule(rule({ "21": "friendly" })))).toContain("force 2 - teaching bonus");
     expect(cellText(schedule(rule({ "21": "neutral" })))).toContain("force 1 - studies normally");
+  });
+});
+
+// ah-9qdz.2: the cast half under a turn, and its dropdown. `docs/ui/ah-9qdz.2-planned-cast.html`.
+describe("the cast half", () => {
+  // Ereb learns fire (`data/FIRE`: combat) on turn 24, so he can cast from turn 25. Farsight is
+  // planned on 26, which he will not know: kept, amber. Ilna knows no castable spell at all.
+  const castRows = scheduleRows({
+    groups,
+    plans: [
+      {
+        factionId: "12",
+        unitId: "2431",
+        goals: [{ kind: "study" as const, turn: 24, skill: "FIRE" }],
+        casts: [
+          { turn: 25, spell: "FIRE" },
+          { turn: 26, spell: "FARS" }
+        ],
+        comment: "",
+        updatedAt: "2026-01-01T00:00:00.000Z"
+      }
+    ],
+    tree,
+    turns,
+    seats: new Map([["1:7,53/1", 1]]),
+    assumeSheltered: true,
+    after: new Map(),
+    rule: NO_TEACHING_RULE
+  });
+  const button = (markup: string, testId: string) =>
+    new RegExp(`<button[^>]*data-testid="${testId}"[^>]*>[^<]*</button>`).exec(markup)?.[0] ?? "";
+
+  it("is drawn on no turn of a mage who can cast nothing, and not before the first spell", () => {
+    const markup = grid({ kind: "idle" }, castRows);
+
+    expect(markup).not.toContain("study-schedule-cast-2432-");
+    expect(markup).not.toContain(`study-schedule-cast-2431-${turns[0]}"`);
+    expect(markup).toContain(`study-schedule-cast-2431-${turns[1]}"`);
+  });
+
+  it("names a planned combat spell with ⚔, under its own address, and says so on hover", () => {
+    const half = button(grid({ kind: "idle" }, castRows), `study-schedule-cast-2431-${turns[1]}`);
+
+    expect(half).toContain(`data-cell="0:1:cast"`);
+    expect(half).toContain(">⚔ FIRE<");
+    expect(half).toContain(`title="Ereb readies fire for battle on turn ${turns[1]}."`);
+    expect(half).toContain("text-magic-ink");
+  });
+
+  it("draws a spell he will not know by then amber, and says why on hover", () => {
+    const half = button(grid({ kind: "idle" }, castRows), `study-schedule-cast-2431-${turns[2]}`);
+
+    expect(half).toContain(">✦ FARS<");
+    expect(half).toContain(STANDING_CHIP.ceiling);
+    expect(half).toContain(
+      `title="Ereb won&#x27;t know farsight by turn ${turns[2]} — it&#x27;s still planned, but he can&#x27;t cast it."`
+    );
+  });
+
+  it("draws an empty half faint and dashed", () => {
+    const half = button(grid({ kind: "idle" }, castRows), `study-schedule-cast-2431-${turns[3]}`);
+
+    expect(half).toContain(">✦ no cast<");
+    expect(half).toContain("border-dashed");
+    expect(half).not.toContain("title=");
+  });
+
+  it("says which half is open", () => {
+    const markup = grid({ kind: "casting", rowKey: "12/2431", turnIndex: 1 }, castRows);
+
+    expect(button(markup, `study-schedule-cast-2431-${turns[1]}`)).toContain(`aria-expanded="true"`);
+    expect(button(markup, `study-schedule-cell-2431-${turns[1]}`)).toContain(`aria-expanded="false"`);
+  });
+});
+
+describe("CastPopover", () => {
+  const knows = new Map([
+    ["FORC", { level: 1, points: 30 }],
+    ["FIRE", { level: 2, points: 90 }]
+  ]);
+  const popover = (current: string | null) =>
+    renderToStaticMarkup(
+      <CastPopover
+        menu={castMenu({ mageName: "Ereb", turn: 28, standing: knows, tree, current })}
+        onChoose={() => {}}
+      />
+    );
+
+  it("heads the list with the mage and the turn", () => {
+    const markup = popover(null);
+
+    expect(markup).toContain(">Ereb casts<");
+    expect(markup).toContain(">Turn 28<");
+  });
+
+  it("offers — no cast and then each spell with its level and use", () => {
+    const markup = popover(null);
+
+    expect(markup).toContain(`data-testid="study-schedule-cast-choice-none"`);
+    expect(markup).toContain(">— no cast<");
+    expect(markup).toMatch(/data-testid="study-schedule-cast-choice-FIRE"[\s\S]*>FIRE<[\s\S]*>fire<[\s\S]*>2<[\s\S]*>· combat</);
+    expect(markup.indexOf("cast-choice-none")).toBeLessThan(markup.indexOf("cast-choice-FIRE"));
+  });
+
+  it("ticks the planned spell, and nothing else", () => {
+    const markup = popover("FIRE");
+
+    expect(markup).toMatch(/data-testid="study-schedule-cast-choice-FIRE"[^>]*aria-pressed="true"/);
+    expect(markup).toMatch(/data-testid="study-schedule-cast-choice-none"[^>]*aria-pressed="false"/);
+  });
+
+  it("lists a planned spell he will not know, ticked, as not known by then", () => {
+    const markup = popover("FARS");
+
+    expect(markup).toMatch(/data-testid="study-schedule-cast-choice-FARS"[^>]*aria-pressed="true"/);
+    expect(markup).toContain(">· not known by then<");
+  });
+
+  it("says how the list is worked", () => {
+    expect(popover(null)).toContain("↑↓ to move · ↵ to choose · Esc to close");
   });
 });

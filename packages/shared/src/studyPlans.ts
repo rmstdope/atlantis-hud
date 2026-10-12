@@ -161,3 +161,13 @@ export function reshapeCasts(
     .filter((cast) => cast.turn !== change.turn)
     .map((cast) => (cast.turn > change.turn ? { ...cast, turn: cast.turn - 1 } : cast));
 }
+
+/**
+ * One edit to one mage's plan, applied against the stored row when the write runs
+ * (`studyPlansStore.save`): its goals, its casts, or both. Each is an edit rather than a result
+ * for the reason `save` gives - two choices in quick succession must each see the other.
+ */
+export type PlanChange = {
+  goals?: (current: readonly StudyGoal[]) => StudyGoal[];
+  casts?: (current: readonly PlannedCast[]) => PlannedCast[];
+};

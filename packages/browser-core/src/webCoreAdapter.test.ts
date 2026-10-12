@@ -1068,7 +1068,8 @@ describe("web core adapter", () => {
   // the empty list on read - the desktop's 0014 migration does the same in SQL.
   it("lists a plan stored before casts as planning no cast, and one with casts whole", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    const { casts: _casts, ...before } = aStudyPlan("9001");
+    const before: Partial<StudyPlanRecord> = aStudyPlan("9001");
+    delete before.casts;
     const withCast: StudyPlanRecord = {
       ...aStudyPlan("9002"),
       casts: [{ turn: 25, spell: "FARS" }]
