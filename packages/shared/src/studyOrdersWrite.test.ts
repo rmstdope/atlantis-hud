@@ -358,6 +358,40 @@ describe("studyWritePlan — casts", () => {
     );
   });
 
+  // Settled when the work came back (acceptance; mockup sections 7 and 8).
+  const castOnly = (cast: OrdersCast, over: Partial<OrdersEntry> = {}) =>
+    anEntry({ order: null, annotation: null, skipReason: "nothing planned", cast, ...over });
+
+  it("only_casts_written_name_only_the_casts", () => {
+    const document = ["#atlantis 95", "", BANNER, "", "unit 1234", "", "unit 881", "", "#end"].join("\n");
+    expect(
+      plan(document, [castOnly(farsight), castOnly(fire, { key: "95/881", unitId: "881", name: "Sable" })]).resultText
+    ).toBe("Wrote 2 casts for 2 mages.");
+    expect(plan(aDocument("@work"), [castOnly(fire)]).resultText).toBe("Wrote 1 cast for 1 mage.");
+  });
+
+  it("everything_already_there_says_so_and_writes_nothing", () => {
+    const document = aDocument("CAST Farsight REGION 12 40 1");
+    const result = plan(document, [castOnly(farsight)]);
+    expect(result.changed).toBe(0);
+    expect(result.next).toBe(document);
+    expect(result.warning).toBeNull();
+    expect(result.lead).toBe("Everything planned here is already in your orders — nothing to write.");
+    expect(result.rows[0].detail).toBe("nothing planned — left alone");
+    expect(result.rows[0].cast).toEqual({ detail: "CAST FARS — already there, kept", writes: false });
+  });
+
+  it("a_kept_cast_beside_a_mage_left_alone_keeps_the_old_lead", () => {
+    const document = aDocument("CAST Farsight REGION 12 40 1");
+    const result = plan(
+      document,
+      [castOnly(farsight), castOnly(fire, { key: "95/881", unitId: "881", name: "Sable" })],
+      null
+    );
+    expect(result.changed).toBe(0);
+    expect(result.lead).toBe("None of these mages can be written into your orders.");
+  });
+
   it("no_casts_leaves_the_plan_as_it_was", () => {
     const result = plan(aDocument("@work"), [anEntry()]);
     expect(result.casts).toBe(0);

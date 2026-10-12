@@ -157,6 +157,9 @@ export function studyWritePlan(input: {
 
   let casts = 0;
   let castsWritten = 0;
+  let studyWritten = 0;
+  // Mages with an order or a cast to write that the write could not reach (no block, no banner).
+  let unreached = 0;
 
   for (const entry of input.entries) {
     const who = `${entry.name} (${entry.unitId})`;
@@ -176,6 +179,7 @@ export function studyWritePlan(input: {
     if (!hadBlock && banner === null) {
       // `writeUnitOrders` silently does nothing for a unit with no block, and inventing a banner
       // would put the block under a region heading naming the wrong hex.
+      unreached += 1;
       rows.push({
         unitId: entry.unitId,
         who,
@@ -201,6 +205,7 @@ export function studyWritePlan(input: {
       // the written line would land under one.
       orders = kept.trim() === "" ? line : `${kept}\n${line}`;
       studyWrites = true;
+      studyWritten += 1;
       if (previous !== null && !OWN_KIND.test(previous)) {
         replaced += 1;
       }
@@ -231,13 +236,23 @@ export function studyWritePlan(input: {
     rows.push({ unitId: entry.unitId, who, detail, writes: studyWrites, cast: castRow });
   }
 
+  // Every planned cast kept as already there and nothing else to write (ah-9qdz.4, mockup
+  // section 7): Put was offered, so the confirmation says why Write is greyed.
   const lead =
     changed === 0
-      ? "None of these mages can be written into your orders."
+      ? casts > 0 && unreached === 0
+        ? "Everything planned here is already in your orders — nothing to write."
+        : "None of these mages can be written into your orders."
       : `${changed} unit${changed === 1 ? " changes" : "s change"}. Nothing else in the document is touched, and you can undo it afterwards.`;
 
+  const forMages = ` for ${changed} mage${changed === 1 ? "" : "s"}`;
   const castWords = casts === 0 ? "" : ` and ${casts} cast${casts === 1 ? "" : "s"}`;
-  const mages = `Wrote study orders${castWords} for ${changed} mage${changed === 1 ? "" : "s"}`;
+  // With no STUDY or TEACH written, the line names only the casts written (mockup section 8); no
+  // month-long order was displaced, so no "replaced" part can follow.
+  const mages =
+    studyWritten === 0
+      ? `Wrote ${castsWritten} cast${castsWritten === 1 ? "" : "s"}${forMages}`
+      : `Wrote study orders${castWords}${forMages}`;
   const resultText =
     replaced === 0
       ? `${mages}.`
