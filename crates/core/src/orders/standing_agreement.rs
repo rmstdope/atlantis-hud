@@ -57,7 +57,8 @@ fn by_intents(reported: Option<&str>, report_text: &str, orders: &str) -> Option
         .filter(|block| block.unit_id == "900")
         .flat_map(|block| block.intents.iter().cloned())
         .collect::<Vec<_>>();
-    structure_after_intents(reported, &intents, structures).map(str::to_string)
+    // The fixture hex is a plain, where nothing refuses a LEAVE.
+    structure_after_intents(reported, &intents, structures, false).map(str::to_string)
 }
 
 /// What `movement::fleet` makes of it, over the raw document and the report's unit.

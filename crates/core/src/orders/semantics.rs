@@ -3114,6 +3114,10 @@ struct Ordered<'a> {
     /// The structures the report shows in this unit's hex, which an ENTER must name to be obeyed
     /// (`ah-5maa`, [`structure_after_orders`]).
     structures_here: &'a [Structure],
+    /// Whether this unit's hex is water in this world, where a LEAVE can be refused and move
+    /// nobody (`ah-djst`, [`structure_after_orders`]). Set by [`hex_with_transfers`], the one
+    /// place with a ruleset to say so; `false` until then, when every LEAVE runs.
+    at_sea: bool,
     /// The unit as the movement reader keys it: its number when the report shows it, the line of
     /// its `FORM` when this month creates it (`ah-74y9`).
     key: OrderedUnitKey,
@@ -3247,6 +3251,7 @@ impl<'a> Hex<'a> {
                 Ordered {
                     unit,
                     structures_here: &region.structures,
+                    at_sea: false,
                     key: OrderedUnitKey::shown(&unit.unit_id),
                     flags: flags_after_orders(
                         &unit.flags,
@@ -3283,6 +3288,7 @@ impl<'a> Hex<'a> {
                 .map(|formed| Ordered {
                     unit: &formed.unit,
                     structures_here: &region.structures,
+                    at_sea: false,
                     key: formed.block.key(),
                     flags: flags_after_orders(&formed.unit.flags, &formed.block.flag_changes),
                     destroys_structure: formed.block.destroys_structure,
@@ -3380,6 +3386,10 @@ fn hex_with_transfers<'a>(
     shown_anywhere: &'a BTreeSet<String>,
 ) -> Hex<'a> {
     let mut hex = Hex::read(region, ordered, formed);
+    let at_sea = ruleset.is_some_and(|rules| rules.is_water(&region.terrain));
+    for unit in &mut hex.units {
+        unit.at_sea = at_sea;
+    }
     if hex
         .shown_anywhere
         .iter()
@@ -6583,8 +6593,8 @@ fn month_long_walk(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<usize> {
 /// Known gap: PROMOTE (`Do1PromoteOrder` puts the promoted unit first in its structure) and EVICT
 /// (`Do1EvictOrder` appends the evicted unit to the units outside) also reorder units before the
 /// walk, and neither is modelled here; nor is an ENTER the engine refuses into a structure the hex
-/// does have (`CanEnter`, `ForbiddenBy`), or a LEAVE it refuses at sea, each of which moves
-/// nothing but is walked here as a move.
+/// does have (`CanEnter`, `ForbiddenBy`), which moves nothing but is walked here as a move. A LEAVE
+/// it refuses at sea is not walked as one (`ah-djst`).
 fn walk_after_boarding(hex: &Hex<'_>) -> Vec<usize> {
     let structures = &hex.region.structures;
     let rank = |structure: Option<&str>| match structure {
@@ -6597,14 +6607,7 @@ fn walk_after_boarding(hex: &Hex<'_>) -> Vec<usize> {
     // Moved by any ENTER or LEAVE that runs, even one landing where the unit started:
     // `Do1EnterOrder` does not ask, and `Unit::MoveUnit` always removes and appends. An ENTER of a
     // structure the hex does not have fails ("ENTER: Can't enter that.") and moves nothing.
-    let moved = |index: usize| {
-        let ordered = &hex.units[index];
-        ordered
-            .intents
-            .iter()
-            .any(|placed| boarding_of(placed).is_some())
-            && !boarding_refused(ordered)
-    };
+    let moved = |index: usize| boarding_moves(&hex.units[index]);
     // Where each unit stands once the boarding orders have run: a mover where it went, any
     // other unit where the report puts it.
     let standing = |index: usize| {
@@ -18455,27 +18458,45 @@ fn is_aboard(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 ///
 /// The rule itself lives in [`super::standing`], which is the one place it is stated; this is the
 /// adapter that reads it out of parsed intents. An ENTER of a structure the hex does not have is
-/// refused and moves nothing (`ah-5maa`).
+/// refused and moves nothing (`ah-5maa`), and so is a LEAVE the game refuses at sea (`ah-djst`).
 fn structure_after_orders<'a>(ordered: &'a Ordered<'_>) -> Option<&'a str> {
     structure_after_intents(
         ordered.unit.structure_id.as_deref(),
         &ordered.intents,
         ordered.structures_here,
+        leave_refused(ordered),
     )
 }
 
-/// [`structure_after_orders`] over the three things it actually reads, so the agreement test can
+/// [`structure_after_orders`] over the four things it actually reads, so the agreement test can
 /// drive this reader without building a whole [`Ordered`].
 pub(crate) fn structure_after_intents<'a>(
     reported: Option<&'a str>,
     intents: &'a [PlacedIntent],
     structures_here: &[Structure],
+    leave_refused: bool,
 ) -> Option<&'a str> {
-    standing::standing_after_in(reported, intents.iter().filter_map(boarding_of), |id| {
-        structures_here
-            .iter()
-            .any(|listed| listed.structure_id == id)
-    })
+    standing::standing_after_in(
+        reported,
+        intents.iter().filter_map(boarding_of),
+        |id| {
+            structures_here
+                .iter()
+                .any(|listed| listed.structure_id == id)
+        },
+        leave_refused,
+    )
+}
+
+/// Whether the game refuses this unit's LEAVE where it stands ([`standing::leave_refused_at_sea`],
+/// `ah-djst`), read from its flags once this month's NOCROSS has run - `rules/sequenceofevents`
+/// runs NOCROSS before LEAVE - and the movement the report states.
+fn leave_refused(ordered: &Ordered<'_>) -> bool {
+    standing::leave_refused_at_sea(
+        ordered.at_sea,
+        crate::report::flags::holds(&ordered.flags, crate::report::flags::Setting::NoCross),
+        ordered.unit.movement.as_ref(),
+    )
 }
 
 /// Whether the unit's ENTER and LEAVE orders are refused outright, so they move it nowhere
@@ -18490,6 +18511,23 @@ fn boarding_refused(ordered: &Ordered<'_>) -> bool {
                 .iter()
                 .any(|listed| listed.structure_id == id)
         },
+    )
+}
+
+/// Whether the unit's ENTER and LEAVE orders move it at all ([`standing::boarding_moves`]): not
+/// when they are refused outright (`ah-5maa`), nor when the only one is a LEAVE refused at sea
+/// (`ah-djst`).
+fn boarding_moves(ordered: &Ordered<'_>) -> bool {
+    standing::boarding_moves(
+        ordered.unit.structure_id.as_deref(),
+        ordered.intents.iter().filter_map(boarding_of),
+        |id| {
+            ordered
+                .structures_here
+                .iter()
+                .any(|listed| listed.structure_id == id)
+        },
+        leave_refused(ordered),
     )
 }
 
@@ -19788,7 +19826,6 @@ fn check_fleet_course(
         // line would fire every turn a half-seen fleet sits in a hex (the agreed record).
         let course = crate::movement::fleet::fleet_course(
             hex.region,
-            ruleset,
             fleet_orders,
             &formed,
             &fleet.structure_id,

@@ -1647,15 +1647,9 @@ fn decide_movement(
         };
         let hull_course: Option<Option<Vec<crate::movement::orders::MoveStep>>> =
             sailed_hull.map(|(region, hull)| {
-                crate::movement::fleet::fleet_course(
-                    region,
-                    ruleset,
-                    ordered,
-                    &formed,
-                    &hull.structure_id,
-                )
-                .steps
-                .map(<[crate::movement::orders::MoveStep]>::to_vec)
+                crate::movement::fleet::fleet_course(region, ordered, &formed, &hull.structure_id)
+                    .steps
+                    .map(<[crate::movement::orders::MoveStep]>::to_vec)
             });
         let traced_steps: Option<&[crate::movement::orders::MoveStep]> = match &hull_course {
             Some(course) => course.as_deref(),
@@ -2449,6 +2443,9 @@ struct Working {
     /// one the region does not have is refused and moves nobody (`ah-5maa`). A region the report
     /// does not describe has no entry, and every ENTER there is taken as written.
     structures_in_region: BTreeMap<String, std::collections::BTreeSet<String>>,
+    /// The regions the report shows whose terrain is water in this world: a LEAVE there can be
+    /// refused and move nobody (`ah-djst`).
+    water_regions: std::collections::BTreeSet<String>,
     /// Every unit id the report shows that is not ours. A `TAKE` naming one of these is refused
     /// outright - `rules/take` confines a TAKE to "another unit in the same faction" - and must
     /// not be mistaken for the bounded optimism a take from a unit the report never shows gets.
@@ -2564,6 +2561,7 @@ impl Working {
         let mut hex_of_region: BTreeMap<String, crate::report::model::Coordinate> = BTreeMap::new();
         let mut structures_in_region: BTreeMap<String, std::collections::BTreeSet<String>> =
             BTreeMap::new();
+        let mut water_regions = std::collections::BTreeSet::new();
         for region in &report.regions {
             structures_in_region.insert(
                 region.region_id.clone(),
@@ -2574,6 +2572,9 @@ impl Working {
                     .collect(),
             );
             hex_of_region.insert(region.region_id.clone(), region.coordinate);
+            if ruleset.is_water(&region.terrain) {
+                water_regions.insert(region.region_id.clone());
+            }
             let shown = shown_in_region.entry(region.region_id.clone()).or_default();
             for unit in &region.units {
                 shown.insert(unit.unit_id.clone());
@@ -2592,6 +2593,7 @@ impl Working {
             known_units,
             shown_in_region,
             structures_in_region,
+            water_regions,
             foreign_units: report
                 .units()
                 .filter(|unit| !unit.own)
@@ -2979,6 +2981,11 @@ impl Working {
             // Derived rather than maintained: keeping `on_guard` and the flag list in step by hand
             // is exactly the defect this replaces.
             unit.on_guard = crate::report::flags::is_guarding(&unit.flags);
+            // NOCROSS runs before LEAVE whatever line it is written on (`rules/sequenceofevents`),
+            // so a LEAVE above it meets the flag it sets (`ah-djst`).
+            if !self.units[active].boardings.is_empty() {
+                self.restand(active);
+            }
         } else if command.is("enter") {
             if let Some(structure) = super::forms::read_only_number(arguments) {
                 self.board(active, BoardingOrder::Enter(structure.to_string()));
@@ -3006,12 +3013,34 @@ impl Working {
     /// ([`super::standing::standing_after_in`], `ah-5maa`).
     fn board(&mut self, active: usize, boarding: BoardingOrder) {
         self.units[active].boardings.push(boarding);
+        self.restand(active);
+    }
+
+    /// Puts the unit where its boarding orders so far leave it. A LEAVE the game refuses at sea
+    /// moves nothing ([`super::standing::leave_refused_at_sea`], `ah-djst`): whether it is refused
+    /// reads the flags as this month's flag orders have left them, and the movement the report
+    /// states, since LEAVE runs before anything this month could change what the unit carries.
+    fn restand(&mut self, active: usize) {
         let working = &self.units[active];
         let structures = self.structures_in_region.get(&working.unit.region_id);
+        let leave_refused = super::standing::leave_refused_at_sea(
+            self.water_regions.contains(&working.unit.region_id),
+            crate::report::flags::holds(
+                &working.unit.flags,
+                crate::report::flags::Setting::NoCross,
+            ),
+            working
+                .original
+                .as_ref()
+                .unwrap_or(&working.unit)
+                .movement
+                .as_ref(),
+        );
         let standing = standing_after_in(
             working.reported.as_deref(),
             working.boardings.iter().map(BoardingOrder::as_boarding),
             |structure| structures.is_none_or(|known| known.contains(structure)),
+            leave_refused,
         )
         .map(str::to_string);
         self.units[active].unit.structure_id = standing;
@@ -9082,8 +9111,20 @@ mod tests {
 
     #[test]
     fn a_unit_that_left_the_ship_before_moving_arrives_outside() {
-        // `LEAVE` runs before movement is resolved, so there is no hull to carry.
-        let response = fleet_preview(WAVECREST, "unit 900\nLEAVE\nSAIL SE\n");
+        // `LEAVE` runs before movement is resolved, so there is no hull to carry. On a coast: at
+        // sea a centaur's LEAVE is refused and it stays aboard (`rules/leave`, `ah-djst`).
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &fleet_report(WAVECREST).replace("ocean (1,1) in Sea", "plain (1,1) in Sea"),
+            "[]",
+            "unit 900\nLEAVE\nSAIL SE\n",
+        )
+        .expect("the ruleset loads");
+        assert!(
+            row(&response, "1:1,1", "900").is_some() || row(&response, "1:2,2", "900").is_some(),
+            "900 has a row"
+        );
 
         for region_id in ["1:1,1", "1:2,2"] {
             if let Some(unit) = row(&response, region_id, "900") {
