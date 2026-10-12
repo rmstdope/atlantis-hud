@@ -962,11 +962,11 @@ function appendLevel(
 }
 
 /**
- * A spell cast with the CAST order names it: `CAST Earth_Lore`, or `using the CAST order`. Upper
- * case only, so the prose verb "cast" - "apprentices cannot cast spells directly" (data/MANI) -
- * does not count.
+ * A spell cast with the CAST order names it: `CAST Earth_Lore`, or the order itself - "using the
+ * CAST order", or any other wording of "the CAST order". Upper case only, so the prose verb "cast" -
+ * "apprentices cannot cast spells directly" (data/MANI) - does not count.
  */
-const CAST_USE = /\bCAST [A-Z][A-Za-z_]*|using the CAST order/;
+const CAST_USE = /\bCAST [A-Z][A-Za-z_]*|\bCAST order\b/;
 /** A spell set for battle says so: "the mage should use the COMBAT order" (data/CLEA). */
 const COMBAT_USE = /\bCOMBAT order/;
 

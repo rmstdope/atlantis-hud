@@ -351,7 +351,7 @@ describe("run — verify", () => {
     expect(printed).toContain("2");
   });
 
-  it("names the spell whose use disagrees with the database flags", async () => {
+  it("names the spell whose committed use disagrees with its sources", async () => {
     const committed = JSON.parse(TRIDENT_RULESET_JSON);
     expect(committed.skills.FIRE.use).toBe("combat");
     committed.skills.FIRE.use = "cast";

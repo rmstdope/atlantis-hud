@@ -2022,6 +2022,10 @@ describe("readSkillUse", () => {
     expect(readSkillUse([level("A mage may conjure it using the CAST order.")], true)).toBe("cast");
   });
 
+  it.each(["use the CAST order", "with the CAST order"])("reads '%s' as cast", (phrase) => {
+    expect(readSkillUse([level(`A mage may ${phrase} to conjure it.`)], true)).toBe("cast");
+  });
+
   it("reads 'COMBAT order' as combat", () => {
     expect(readSkillUse([level("Set it with the COMBAT order to use it in battle.")], true)).toBe(
       "combat"
