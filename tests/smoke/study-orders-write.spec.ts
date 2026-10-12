@@ -106,8 +106,13 @@ test("a planned cast is written beside the study, and unticking the box leaves i
   await expect(box).toBeChecked();
   await expect(summary).toContainText(", 1 casting");
 
+  // The section's text is exactly what Copy and Save… carry. Only its absence is asserted there:
+  // WebKit's driver answers "" for text it considers clipped (see the file note), so a presence
+  // check on the scrolling `<pre>` would not hold in every browser; the summary stands in for it.
+  const section = page.getByTestId("study-planner-orders-95");
   await box.uncheck();
   await expect(summary).not.toContainText("casting");
+  await expect(section).not.toContainText("COMBAT FIRE");
   await box.check();
   await expect(summary).toContainText(", 1 casting");
 

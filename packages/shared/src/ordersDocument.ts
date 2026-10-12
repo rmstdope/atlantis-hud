@@ -1081,21 +1081,18 @@ export function longOrderOf(
 }
 
 /**
- * The first of the unit's own lines that issues one of `keywords`, or null - `longOrderOf` for any
- * set of commands. A nested `FORM` or `TURN` block's lines are never it ({@link atTopLevel}).
+ * Every one of the unit's own lines that issues one of `keywords`, in order - `longOrderOf` for
+ * any set of commands. A nested `FORM` or `TURN` block's lines are never among them ({@link atTopLevel}).
  */
-export function firstOwnOrder(
+export function ownOrders(
   orders: string,
   keywords: readonly string[],
   syntax: OrderCommentSyntax
-): string | null {
+): string[] {
   const own = atTopLevel(orders, syntax);
-  return (
-    orders
-      .split("\n")
-      .filter((_line, index) => own[index] === true)
-      .find((line) => isCommand(line, keywords, syntax)) ?? null
-  );
+  return orders
+    .split("\n")
+    .filter((line, index) => own[index] === true && isCommand(line, keywords, syntax));
 }
 
 /**

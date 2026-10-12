@@ -16,8 +16,8 @@ import { lexOrderLine } from "./orderLine";
 import {
   ensureUnitBlock,
   findUnitBlocks,
-  firstOwnOrder,
   longOrderOf,
+  ownOrders,
   readUnitOrders,
   stripLongOrderLines,
   stripOwnOrders,
@@ -98,15 +98,17 @@ function withCast(
   cast: Extract<OrdersCast, { kind: "write" }>,
   syntax: OrderCommentSyntax
 ): { orders: string; detail: string; writes: boolean } {
-  const existing = firstOwnOrder(orders, [cast.verb], syntax);
-  if (existing !== null && castsSameSpell(existing, cast, syntax)) {
+  // Any of his lines of this verb, not only the first: the strip below removes every one, and a
+  // same-spell line is kept so a hand-typed target survives a second write.
+  const lines = ownOrders(orders, [cast.verb], syntax);
+  if (lines.some((line) => castsSameSpell(line, cast, syntax))) {
     return { orders, detail: `${cast.order} — already there, kept`, writes: false };
   }
   const kept = stripOwnOrders(orders, [cast.verb], syntax);
   const line = annotatedLine(cast.order, cast.annotation);
   return {
     orders: kept.trim() === "" ? line : `${kept}\n${line}`,
-    detail: existing === null ? cast.order : `${cast.order} replaces ${shortened(existing)}`,
+    detail: lines[0] === undefined ? cast.order : `${cast.order} replaces ${shortened(lines[0])}`,
     writes: true
   };
 }

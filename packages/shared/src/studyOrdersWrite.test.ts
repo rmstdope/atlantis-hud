@@ -288,6 +288,13 @@ describe("studyWritePlan — casts", () => {
     }
   });
 
+  it("a_same_spell_cast_after_another_cast_is_still_kept", () => {
+    const existing = ['CAST "Clear Skies"', "CAST Farsight REGION 12 40 1"];
+    const result = plan(aDocument(...existing), [anEntry({ annotation: null, cast: farsight })]);
+    expect(blockOf(result.next)).toEqual([...existing, "STUDY FORC 4"]);
+    expect(result.rows[0].cast).toEqual({ detail: "CAST FARS — already there, kept", writes: false });
+  });
+
   it("a_cast_spelled_with_underscores_is_the_same_spell", () => {
     const result = plan(aDocument("CAST Clear_Skies"), [
       anEntry({
