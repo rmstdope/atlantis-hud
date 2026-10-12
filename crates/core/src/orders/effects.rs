@@ -1647,9 +1647,15 @@ fn decide_movement(
         };
         let hull_course: Option<Option<Vec<crate::movement::orders::MoveStep>>> =
             sailed_hull.map(|(region, hull)| {
-                crate::movement::fleet::fleet_course(region, ordered, &formed, &hull.structure_id)
-                    .steps
-                    .map(<[crate::movement::orders::MoveStep]>::to_vec)
+                crate::movement::fleet::fleet_course(
+                    region,
+                    ruleset,
+                    ordered,
+                    &formed,
+                    &hull.structure_id,
+                )
+                .steps
+                .map(<[crate::movement::orders::MoveStep]>::to_vec)
             });
         let traced_steps: Option<&[crate::movement::orders::MoveStep]> = match &hull_course {
             Some(course) => course.as_deref(),
@@ -8751,6 +8757,32 @@ mod tests {
                 "{unit_id} stepped ashore and stays"
             );
         }
+    }
+
+    /// `ah-877p`: new 1 is given nobody, so `rules/form` dissolves it and the engine deletes it
+    /// before anything moves (`Game::DeleteEmptyUnits`). New 2, given a leader, owns the hull and
+    /// writes a bare SAIL, which sets no course - so nobody sails, new 1's SE included.
+    #[test]
+    fn a_formed_unit_given_nobody_does_not_sail_the_hull() {
+        let report = fleet_report_with_a_passenger(WAVECREST)
+            .replace("ocean (1,1) in Sea", "plain (1,1) in Shire");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 900\nLEAVE\nunit 901\nLEAVE\nunit 902\nLEAVE\n\
+             unit 903\nFORM 1\nENTER 329\nSAIL SE\nEND\nFORM 2\nENTER 329\nSAIL\nEND\n\
+             GIVE NEW 2 1 LEAD\n",
+        )
+        .expect("the ruleset loads");
+
+        let owner = row(&response, "1:1,1", "new-2").expect("new 2 has a row");
+        assert_eq!(owner.status, UnitPreviewStatus::Present, "{owner:?}");
+        assert!(
+            region_of(&response, "1:2,2").is_none(),
+            "nobody arrives, so the destination hex is not in the preview"
+        );
     }
 
     /// `ah-g0fk`: a SAIL the checks refuse moves nothing. Both hexes here are land, and

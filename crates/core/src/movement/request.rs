@@ -318,14 +318,16 @@ fn trace_orders(
                 None => return Ok(MoveOrderTraceResponse { path: None }),
             },
         };
-    // A formed unit aboard can own the hull the traced unit follows (`ah-877p`).
-    let formed_crews =
-        crate::orders::effects::formed_crews_of_month(&report, &ruleset, orders_document, &ordered);
+    // A formed unit aboard can own the hull the traced unit follows (`ah-877p`); settled only
+    // when the trace reaches a hull.
+    let formed_crews = || {
+        crate::orders::effects::formed_crews_of_month(&report, &ruleset, orders_document, &ordered)
+    };
     let Some(steps) = course_followed(
         &report,
         &ruleset,
         &ordered,
-        &formed_crews,
+        formed_crews,
         &unit,
         own,
         own_is_sail,
@@ -441,23 +443,32 @@ mod tests {
              Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
         );
         report.push_str("\nocean (2,2) in Sea.\n\nExits:\n  Northwest : plain (1,1) in Shire.\n");
+        let trace = |orders: &str, unit_id: &str| {
+            trace_orders_for_remembered_report(
+                &mut ReportCache::new(),
+                RULESET,
+                &report,
+                "[]",
+                unit_id,
+                orders,
+            )
+            .expect("the ruleset loads")
+            .path
+        };
         let orders = "unit 900\nLEAVE\n\
                       unit 903\nFORM 1\nENTER 329\nSAIL SE\nEND\nGIVE NEW 1 1 LEAD\n";
-        let voyage = trace_orders_for_remembered_report(
-            &mut ReportCache::new(),
-            RULESET,
-            &report,
-            "[]",
-            "new-1",
-            orders,
-        )
-        .expect("the ruleset loads")
-        .path
-        .expect("the new unit owns the hull and sails it");
+        let voyage = trace(orders, "new-1").expect("the new unit owns the hull and sails it");
         assert_eq!(
             voyage.steps.last().map(|step| step.to.id()),
             Some("1:2,2".to_string())
         );
+
+        // Given nobody, new 1 is deleted before the fleet moves (`Game::DeleteEmptyUnits`): new 2,
+        // given the leader, owns the hull and its bare SAIL sets no course, so nothing is drawn.
+        let orders = "unit 900\nLEAVE\n\
+                      unit 903\nFORM 1\nENTER 329\nSAIL SE\nEND\n\
+                      FORM 2\nENTER 329\nSAIL\nEND\nGIVE NEW 2 1 LEAD\n";
+        assert_eq!(trace(orders, "new-2"), None);
     }
 
     const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;

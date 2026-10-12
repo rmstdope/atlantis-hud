@@ -117,8 +117,11 @@ fn refused(reported: Option<&str>, standing: Option<&str>, has: impl Fn(&str) ->
 ///
 /// Deliberately *not* `standing_after(..) == Some(structure_id)`, and it lives here so the
 /// difference is read as a pair rather than discovered. A unit that also LEAVEs is not excluded:
-/// the server would still read its SAIL line before running the LEAVE, and asking where the captain
-/// *ends up* would quietly strand every passenger aboard.
+/// it still wrote a SAIL for this hull, and the checks that judge a written SAIL - the crew it
+/// lends, a course only the owner may set - must see it. Where the hull actually goes is a
+/// different question, answered by who is aboard when it moves: every LEAVE runs before movement
+/// (`Game::RunEnterOrders` ahead of `RunMovementOrders`), so a captain that leaves carries nobody
+/// (`movement::fleet::fleet_owner`, `ah-877p`).
 pub fn could_captain<'a>(
     reported: Option<&str>,
     structure_id: &str,

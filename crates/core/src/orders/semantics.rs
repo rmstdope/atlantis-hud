@@ -19788,6 +19788,7 @@ fn check_fleet_course(
         // line would fire every turn a half-seen fleet sits in a hex (the agreed record).
         let course = crate::movement::fleet::fleet_course(
             hex.region,
+            ruleset,
             fleet_orders,
             &formed,
             &fleet.structure_id,
@@ -53098,11 +53099,11 @@ BUILD
 
     /// The engine deletes a unit with no men before movement (`Game::DeleteEmptyUnits`, run just
     /// ahead of `RunMovementOrders`; `rules/world_structures`: "newly created units cannot own a
-    /// structure until they contain men"). A formed unit given nobody is never the hull's owner,
-    /// and the builder who left is not either: the hull has no owner, and nobody's course is
-    /// overruled by one.
+    /// structure until they contain men"). New 1 is given nobody, so it is gone before the fleet
+    /// moves: new 2, given men, owns the hull and sets its course, and new 1's SAIL overrules
+    /// nothing and is not warned about as a non-owner's.
     #[test]
-    fn a_formed_unit_with_no_men_does_not_inherit_the_builders_ownership() {
+    fn a_formed_unit_with_no_men_neither_owns_nor_is_overruled() {
         let region = ReportRegion {
             structures: vec![longship("329")],
             ..region(vec![
@@ -53115,12 +53116,13 @@ BUILD
         };
         let findings = check(
             vec![region],
-            "unit 900\nLEAVE\nunit 903\nFORM 1\nENTER 329\nSAIL SE\nEND\n",
+            "unit 900\nLEAVE\nunit 903\nFORM 1\nENTER 329\nSAIL SE\nEND\n\
+             FORM 2\nENTER 329\nSAIL NE\nEND\nGIVE NEW 2 2 HUMN\n",
         );
         assert!(
-            findings.iter().all(|finding| !finding
-                .message
-                .contains("Sea Rovers (900), can set its course")),
+            findings
+                .iter()
+                .all(|finding| finding.code != codes::SAIL_NOT_BY_OWNER),
             "{findings:?}"
         );
     }
