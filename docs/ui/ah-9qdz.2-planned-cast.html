@@ -1,0 +1,64 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planning a cast in the study planner</title><style>
+:root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--edge-soft:#1e2733;
+--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--brass-bright:#eebe63;--select:#4a9fd8;
+--ok:#4fb783;--danger:#e89494;--known-fill:#1b2c26;--known-ink:#7fcaa5;--known-edge:#2c4a3e;
+--ceil-fill:#2e2718;--ceil-ink:#d9a441;--ceil-edge:#4a3d21;--maxed-fill:#232a38;--maxed-ink:#8fb4e0;--maxed-edge:#33455f;
+--magic:#b48ce0;--magic-fill:#241d33;--magic-edge:#4a3b66}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:28px 16px 64px}
+header,main{max-width:1180px;margin:0 auto}
+h1{font-size:23px}h1 span{color:var(--brass)}
+header p{color:var(--ink-soft);max-width:96ch;margin-top:8px;font-size:14px}
+h3.sec{margin:30px 0 6px;font-size:13px;letter-spacing:1.6px;text-transform:uppercase;color:var(--brass)}
+h3.sec+p{color:var(--ink-soft);font-size:13px;margin-bottom:12px;max-width:96ch}
+.stage{background:#0b0f14;border:1px solid var(--edge-soft);border-radius:8px;padding:18px;overflow:auto;position:relative}
+.notes{list-style:none;font-size:13px;color:var(--ink-soft);display:grid;gap:4px;margin-top:12px;max-width:96ch}
+.notes li::before{content:"+ ";color:var(--ok);font-weight:bold}
+.notes li.con::before{content:"\2212 ";color:var(--danger)}
+.notes li.n::before{content:"\00b7 ";color:var(--ink-dim)}
+.ui{font:12px/1.45 'Helvetica Neue',Arial,sans-serif}
+table.sched{border-collapse:separate;border-spacing:0;background:var(--raised);border:1px solid var(--edge);border-radius:6px}
+table.sched th{color:var(--ink-dim);font-weight:400;font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;text-align:left;padding:6px 8px;border-bottom:1px solid var(--edge);white-space:nowrap}
+table.sched th.next{color:var(--brass)}
+table.sched td{padding:4px 4px;border-bottom:1px solid var(--edge-soft);vertical-align:top;white-space:nowrap}
+td.who{min-width:12rem;border-right:1px solid var(--edge);padding:5px 8px!important}
+td.who .s{display:block;color:var(--ink-dim)}
+.cell{display:block;width:9.5rem;border:1px solid var(--edge);border-radius:4px;background:#1f2733;color:var(--ink-soft);padding:1px 5px;text-align:left;font:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cell.known{background:var(--known-fill);border-color:var(--known-edge);color:var(--known-ink)}
+.cell.teach{background:var(--maxed-fill);border-color:var(--maxed-edge);color:var(--maxed-ink)}
+.cell.warn{background:var(--ceil-fill);border-color:var(--ceil-edge);color:var(--ceil-ink)}
+.cell.open{outline:2px solid var(--select);outline-offset:1px}
+.cell .c2{display:block;color:var(--magic)}
+.cell.warn .c2.bad{color:var(--ceil-ink)}
+.cast{color:var(--magic)}
+.pop{position:absolute;width:23rem;background:var(--raised);border:1px solid #d9a44199;border-radius:5px;padding:8px;box-shadow:0 14px 40px #000c}
+.ph{display:flex;align-items:center;gap:8px;border:1px solid #d9a44199;background:#d9a4411a;color:var(--brass);border-radius:4px;padding:3px 8px;margin-bottom:4px}
+.ph .f{flex:1}.ph .t{border:1px solid #d9a44199;border-radius:3px;padding:0 4px;font-size:10.5px}
+.sh{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--brass);margin:6px 0 2px 4px}
+.r{display:block;padding:1px 4px;border-left:2px solid transparent;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.r.on{border-left-color:var(--brass);background:#d9a4411a}
+.r.hi{background:#4a9fd840}
+.r .m{display:inline-block;width:1rem;color:var(--select)}
+.tag{display:inline-block;width:2.6rem;text-align:center;border:1px solid #4a9fd899;background:#4a9fd81a;color:var(--select);border-radius:3px;font-size:10.5px}
+.tag.sp{border-color:var(--magic-edge);background:var(--magic-fill);color:var(--magic)}
+.d{color:var(--ink-dim)}.o{color:var(--ink);font-weight:500}.teachr{color:var(--select)}
+.foot{color:var(--ink-dim);margin-top:6px}
+.kind{font-size:10.5px;border:1px solid var(--edge);border-radius:3px;padding:0 4px;color:var(--ink-soft)}
+.btns{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
+.b{border:1px solid var(--edge);border-radius:4px;padding:1px 8px;color:var(--ink-soft)}.b.p{border-color:var(--brass);color:var(--brass)}
+.tip{position:absolute;background:#0b0f14;border:1px solid var(--edge);border-radius:4px;padding:3px 7px;color:var(--ink-soft);max-width:22rem;white-space:normal}
+.lbl{font:600 10.5px/1.4 'Helvetica Neue',Arial,sans-serif;letter-spacing:1.3px;text-transform:uppercase;color:var(--ink-dim);margin:0 0 8px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+</style></head><body><header><h1>Planning a cast in the study planner</h1><p>Everything agreed so far: the split cell, its own line, only on turns he knows a spell, ⚔ for battle, his level in the list, amber with a hover note when he won't know it, and a cast taken out of the plan when he would know no spell at all by that turn.</p></header><main><h3 class="sec">1 · The grid</h3><p>Ereb learns fire on turn 27, so a battle spell is offered from turn 28. Sable's turn-28 cast names farsight, which she won't know by then: it is kept, amber. Orrin was going to learn bird lore on turn 26 and had a bird lore cast planned on turn 27; that study was changed to force, so he knows no spell by turn 27 — the half went away and the cast was taken out of the plan (it does not come back if the study is changed back). Mirel has no spell on any turn, so his row has no halves.</p>
+<div class="stage"><table class="sched ui"><tr><th>Mage</th><th class="next">Turn 26</th><th class="">Turn 27</th><th class="">Turn 28</th><th class="">Turn 29</th></tr><tr><td class="who">Ereb (2517)<span class="s">force 2, farsight 1 · fire from turn 28</span></td><td><span class="cell known ">FORC 2(140)</span><span class="cell " style="margin-top:2px;color:var(--magic);border-color:var(--magic-edge);background:var(--magic-fill)">✦ FARS</span></td><td><span class="cell known ">FIRE 1(30)</span><span class="cell " style="margin-top:2px;color:#5b6674;border-style:dashed;background:transparent">✦ no cast</span></td><td><span class="cell known ">FIRE 2(90)</span><span class="cell open" style="margin-top:2px;color:var(--magic);border-color:var(--magic-edge);background:var(--magic-fill)">⚔ FIRE</span></td><td><span class="cell  ">—</span><span class="cell " style="margin-top:2px;color:#5b6674;border-style:dashed;background:transparent">✦ no cast</span></td></tr><tr><td class="who">Orrin (2588)<span class="s">force 1 · bird lore was planned for turn 26</span></td><td><span class="cell known ">FORC 2(60)</span></td><td><span class="cell known ">PATT 1(30)</span></td><td><span class="cell  ">—</span></td><td><span class="cell  ">—</span></td></tr><tr><td class="who">Sable (2601)<span class="s">spirit 1, pattern 1, bird lore 1</span></td><td><span class="cell known ">SPIR 2(90)</span><span class="cell " style="margin-top:2px;color:#5b6674;border-style:dashed;background:transparent">✦ no cast</span></td><td><span class="cell teach ">Teaches Ereb</span><span class="cell " style="margin-top:2px;color:var(--magic);border-color:var(--magic-edge);background:var(--magic-fill)">✦ BIRD</span></td><td><span class="cell known ">PATT 2(60)</span><span class="cell " style="margin-top:2px;color:var(--ceil-ink);border-color:var(--ceil-edge);background:var(--ceil-fill)">✦ FARS</span></td><td><span class="cell  ">—</span><span class="cell " style="margin-top:2px;color:#5b6674;border-style:dashed;background:transparent">✦ no cast</span></td></tr><tr><td class="who">Mirel (2630)<span class="s">new apprentice — no spells yet</span></td><td><span class="cell known ">FORC 1(30)</span></td><td><span class="cell known ">PATT 1(30)</span></td><td><span class="cell known ">SPIR 1(30)</span></td><td><span class="cell  ">—</span></td></tr></table></div>
+<h3 class="sec">2 · Clicking a cast half — Ereb, turn 28</h3><p>The spells he will know by that turn that he can cast or ready for battle, in the same order as the study list, at the level he'll have then. Clicking one writes it and closes the list; <i>— no cast</i> clears it. Spells that work on their own (no order needed) are not listed.</p>
+<div class="stage ui"><div class="pop" style="position:relative"><div class="ph"><span class="f">Ereb casts</span><span class="t">Turn 28</span></div><span class="r"><span class="m"></span><span class="tag sp" style="visibility:hidden">x</span> <span class="d">— no cast</span></span><span class="r "><span class="m"></span><span class="tag sp">BIRD</span> bird lore <span class="o">1</span> <span class="d">· cast</span></span><span class="r "><span class="m"></span><span class="tag sp">CLEA</span> clear skies <span class="o">1</span> <span class="d">· cast or combat</span></span><span class="r "><span class="m"></span><span class="tag sp">FARS</span> farsight <span class="o">1</span> <span class="d">· cast</span></span><span class="r on hi"><span class="m">✓</span><span class="tag sp">FIRE</span> fire <span class="o">2</span> <span class="d">· combat</span></span><div class="foot">↑↓ to move · ↵ to choose · Esc to close</div></div></div>
+<h3 class="sec">3 · Clicking Sable's amber half — a spell she won't know</h3><p>The planned spell is still listed, ticked and marked <i>not known by then</i>, after the spells she will know; picking another or <i>— no cast</i> replaces it.</p>
+<div class="stage ui"><div class="pop" style="position:relative"><div class="ph"><span class="f">Sable casts</span><span class="t">Turn 28</span></div><span class="r"><span class="m"></span><span class="tag sp" style="visibility:hidden">x</span> <span class="d">— no cast</span></span><span class="r hi"><span class="m"></span><span class="tag sp">BIRD</span> bird lore <span class="o">1</span> <span class="d">· cast</span></span><span class="r on"><span class="m">✓</span><span class="tag sp" style="border-color:var(--ceil-edge);background:var(--ceil-fill);color:var(--ceil-ink)">FARS</span> farsight <span class="d">· not known by then</span></span><div class="foot">↑↓ to move · ↵ to choose · Esc to close</div></div></div>
+<h3 class="sec">4 · Pointing at a half</h3><div class="stage ui" style="display:grid;gap:8px;justify-items:start"><div class="tip ui" style="position:relative;display:inline-block">Ereb casts farsight on turn 26.</div><div class="tip ui" style="position:relative;display:inline-block">Ereb readies fire for battle on turn 28.</div><div class="tip ui" style="position:relative;display:inline-block">Sable won't know farsight by turn 28 — it's still planned, but she can't cast it.</div></div>
+<h3 class="sec">5 · Keyboard, closing, and saving</h3>
+<ul class="notes"><li class="n">↓ from a turn's study moves to its cast half when it has one, else to the next mage's study; ↑ the reverse. ← → move along the same half; when the neighbouring turn has no cast half, they land on its study.</li>
+<li class="n">↵ or a click opens the list; focus starts on what is ticked; Esc or a click outside closes it with nothing changed, and focus returns to the half.</li>
+<li class="n">A pick is saved with the plan straight away, like a study, and comes back after a reload, a switch of game, a backup restore and when a new turn's report arrives.</li>
+<li class="n">In a narrow window the grid scrolls sideways as it does today; the cells keep their width.</li></ul></main></body></html>
