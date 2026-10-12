@@ -5715,6 +5715,13 @@ struct Ledger<'a> {
     /// region too, so only an unpooled hex reads these (`judge_shortfalls`, `report_shortfalls`);
     /// a pooled one moves the whole ask and is judged through its pool.
     reduced_gives: Vec<ReducedGive>,
+    /// Every `GIVE` or `TAKE` of goods that moves less than it asks, in settlement order (`ah-5p8y`):
+    /// the engine's `Game::DoGiveOrder` (`runorders.cpp`) errors "Not enough." and gives what the
+    /// giver has as the Give phase reaches it. The charge stays the whole ask (see
+    /// [`Ledger::unfunded`]), so the unit's month-end verdict nets in goods that arrived after the
+    /// line ran; this tells the line itself - a unit the report lists before the unit that gives
+    /// it the goods ends the phase holding them, yet its own GIVE moved nothing.
+    reduced_item_gives: Vec<ReducedItemGive>,
     /// Every `TAKE` of silver beyond what its source held as it ran, in an unpooled hex
     /// (`ah-759k`). Reported on the taker by `report_shortfalls`, each on its own line and never
     /// folded into the taker's own shortfall: the silver that ran short was the source's.
@@ -5799,6 +5806,29 @@ struct ReducedGive {
     ordered: i64,
     /// What the engine gives: what the unit held then.
     given: i64,
+}
+
+/// A `GIVE` or `TAKE` of goods its source could not cover in full as the Give phase reached it
+/// (`ah-5p8y`).
+struct ReducedItemGive {
+    /// The source: the giver or the discarder, or the unit a `TAKE` takes from.
+    unit_id: String,
+    /// The unit that wrote a `TAKE`, which is the one told: the engine's "TAKE: Not enough." is
+    /// `u->Error`, on the taker, as for silver (`ReducedTake`). `None` for a `GIVE`.
+    taker: Option<String>,
+    /// Upper-cased canonical tag.
+    tag: String,
+    /// "gives", "discards" or "takes".
+    verb: &'static str,
+    /// What the line asked to give, as written.
+    ordered: i64,
+    /// What the engine moves: what the source could draw on then.
+    given: i64,
+    /// The source's Give-phase balance of the tag straight after this line was charged. A higher
+    /// balance at the phase's end means the goods reached it only after this line ran.
+    left_after: i64,
+    /// The order's line, where the warning is anchored.
+    placed: PlacedIntent,
 }
 
 /// A `BUY` line with nothing left to buy, and the limit its own earlier lines had emptied.
@@ -6112,6 +6142,7 @@ fn ledger_for_reaching<'a>(
         claimed: BTreeMap::new(),
         reduced_buys: Vec::new(),
         reduced_gives: Vec::new(),
+        reduced_item_gives: Vec::new(),
         reduced_takes: Vec::new(),
         silver_given: BTreeMap::new(),
         overcharged: BTreeMap::new(),
@@ -8826,6 +8857,25 @@ fn transfer(
             });
         } else {
             charge(ledger, StatePhase::Give, &from, &tag, quantity, placed);
+            if received < quantity {
+                let left_after = ledger.state.balance_at(StatePhase::Give, &from, &tag);
+                ledger.reduced_item_gives.push(ReducedItemGive {
+                    unit_id: from.clone(),
+                    taker: (!is_give).then(|| actor.unit.unit_id.clone()),
+                    tag: tag.to_ascii_uppercase(),
+                    verb: if !is_give {
+                        "takes"
+                    } else if reach == GiveReach::Discard {
+                        "discards"
+                    } else {
+                        "gives"
+                    },
+                    ordered: quantity,
+                    given: received.max(0),
+                    left_after,
+                    placed: placed.clone(),
+                });
+            }
         }
         // What the column has to be told, because it cannot work it out: an `ALL` resolves against
         // a balance only this walk holds. Recorded after the charge, so what is stored is what was
@@ -15331,6 +15381,91 @@ fn report_shortfalls(
             )
         };
         findings.push(hex.finding(code, message));
+    }
+
+    // A GIVE or TAKE of goods the engine cut, said on its own line (`ah-5p8y`). Only where nothing
+    // above already marks that line, so a unit short at month end still meets one sentence there.
+    if options.emits(codes::NOT_ENOUGH_ITEMS) && !ledger.reduced_item_gives.is_empty() {
+        let pool_short: BTreeSet<String> = pool_shortfalls(hex, ledger, &sharing, &verdicts)
+            .into_iter()
+            .map(|shortfall| shortfall.tag)
+            .collect();
+        for reduced in &ledger.reduced_item_gives {
+            let told = reduced.taker.as_deref().unwrap_or(&reduced.unit_id);
+            let Some(ordered) = hex.find(told) else {
+                continue;
+            };
+            let tag = &reduced.tag;
+            // A withdrawal funds the goods it brings in, by the navigator's choice (`ah-728m.3`,
+            // `an_order_funded_by_a_withdrawal_is_not_called_short`).
+            if withdrawn_this_month(ledger, &reduced.unit_id, tag) > 0 {
+                continue;
+            }
+            // A sharer this walk cannot follow leaves what the GIVE could draw on unknown, and a
+            // doubted sharer silences the stock it shares (`a_doubted_sharer_silences_the_stock_it_shares`).
+            let unknowable = hex
+                .units
+                .iter()
+                .any(|other| other.shares() && ledger.doubted.contains(&other.unit.unit_id));
+            // A hex short of the tag between its units is told so against the hex, and its pool
+            // already counts this line's whole ask (`ah-0mch`).
+            if unknowable || pool_short.contains(tag) {
+                continue;
+            }
+            // The goods reached it after this line ran: its balance rose again before the Give
+            // phase ended. The charge is the whole ask, so what was not given is added back.
+            let later = ledger
+                .state
+                .balance_at(StatePhase::Give, &reduced.unit_id, tag)
+                > reduced.left_after;
+            // Who held too little: the unit itself for a GIVE, its source for a TAKE.
+            let (holder, mover, receiver) = match reduced.taker {
+                None => ("this unit".to_string(), "it", "it".to_string()),
+                Some(_) => {
+                    let source = format!("unit {}", reduced.unit_id);
+                    (source.clone(), "this unit", source)
+                }
+            };
+            let finding = ordered.finding(
+                hex,
+                codes::NOT_ENOUGH_ITEMS,
+                format!(
+                    "short {} when this order runs: {holder} can have {} then, so {mover} {} {} \
+                     of the {} ordered{}",
+                    counted_item(reduced.ordered - reduced.given, tag, hex, ruleset, plurals),
+                    reduced.given,
+                    reduced.verb,
+                    if reduced.given == 0 {
+                        "none".to_string()
+                    } else {
+                        reduced.given.to_string()
+                    },
+                    counted_item(reduced.ordered, tag, hex, ruleset, plurals),
+                    if later {
+                        format!(
+                            " - the {} {receiver} is given later in the Give phase comes too late",
+                            plurals
+                                .get(tag)
+                                .cloned()
+                                .unwrap_or_else(|| item_name(tag, hex, ruleset)),
+                        )
+                    } else {
+                        String::new()
+                    },
+                ),
+                Some(&reduced.placed),
+            );
+            let marked = findings.iter().any(|already| {
+                (already.code == codes::NOT_ENOUGH_ITEMS
+                    || already.code == codes::PART_OF_HEX_SHORTFALL)
+                    && already.region_id == finding.region_id
+                    && already.unit_id == finding.unit_id
+                    && already.line == finding.line
+            });
+            if !marked {
+                findings.push(finding);
+            }
+        }
     }
 
     // One mark for the hex, and only for its maintenance: an unflagged hex pools nothing else, so
@@ -55303,6 +55438,112 @@ BUILD
             assert_eq!(told.len(), 1, "{label}: {:?}", codes(&review.findings));
             assert_eq!(told[0].unit_id.as_deref(), Some("3300"), "{label}");
         }
+    }
+
+    /// `ah-5p8y`: the engine's `Game::DoGiveOrders` (`runorders.cpp`) settles the Give phase unit
+    /// by unit in the order the region's objects hold them - the report's order - and
+    /// `Game::DoGiveOrder` errors "Not enough." and gives what the giver holds. So a unit the
+    /// report lists first cannot pass on goods a later unit only gives it during the same phase:
+    /// its GIVE moves nothing, and that line must say so even though the unit ends the phase
+    /// holding exactly what it ordered away.
+    #[test]
+    fn a_give_of_goods_the_giver_only_receives_later_in_the_give_phase_is_warned_on_its_line() {
+        let hex = region(vec![
+            unit("4008"),
+            with_item(unit("4686"), 14, "iron", "IRON"),
+            unit("4840"),
+        ]);
+        let orders = "unit 4686\nGIVE 4008 14 IRON\nunit 4008\nGIVE 4840 14 IRON\n";
+
+        let findings = check(vec![hex], orders);
+
+        let warned: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_ITEMS)
+            .collect();
+        assert_eq!(warned.len(), 1, "{findings:?}");
+        assert_eq!(warned[0].unit_id.as_deref(), Some("4008"));
+        assert_eq!(warned[0].line, Some(4), "on the GIVE that moves nothing");
+        assert_eq!(
+            warned[0].message,
+            "short 14 iron when this order runs: this unit can have 0 then, so it gives none of \
+             the 14 iron ordered - the iron it is given later in the Give phase comes too late",
+            "says why"
+        );
+    }
+
+    /// Review finding 1: a unit also short at month end is told so at the first line that drew on
+    /// the tag, which may be a GIVE that moved in full - so the line the engine cut still needs
+    /// its own warning.
+    #[test]
+    fn a_cut_give_is_warned_on_its_line_beside_a_month_end_shortfall_anchored_elsewhere() {
+        let hex = region(vec![
+            with_item(unit("4008"), 10, "iron", "IRON"),
+            unit("4686"),
+            unit("4840"),
+        ]);
+        let orders = "unit 4008\nGIVE 4840 10 IRON\nGIVE 4686 5 IRON\n";
+
+        let findings = check(vec![hex], orders);
+
+        let lines: Vec<Option<usize>> = findings
+            .iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_ITEMS)
+            .map(|finding| finding.line)
+            .collect();
+        assert!(lines.contains(&Some(3)), "the cut GIVE: {findings:?}");
+    }
+
+    /// Review finding 2: a `TAKE` the engine cuts the same way (`Game::DoGiveOrder` swaps in the
+    /// source before the same "Not enough." check) is told to the taker, on its line, as
+    /// `reduced_takes` already does for silver.
+    #[test]
+    fn a_take_from_a_unit_given_the_goods_only_later_is_warned_on_its_line() {
+        let hex = region(vec![
+            unit("4008"),
+            unit("4686"),
+            with_item(unit("4840"), 14, "iron", "IRON"),
+        ]);
+        let orders = "unit 4008\nTAKE FROM 4686 14 IRON\nunit 4840\nGIVE 4686 14 IRON\n";
+
+        let findings = check(vec![hex], orders);
+
+        let warned: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_ITEMS)
+            .collect();
+        assert_eq!(warned.len(), 1, "{findings:?}");
+        assert_eq!(warned[0].unit_id.as_deref(), Some("4008"));
+        assert_eq!(warned[0].line, Some(2));
+        assert_eq!(
+            warned[0].message,
+            "short 14 iron when this order runs: unit 4686 can have 0 then, so this unit takes \
+             none of the 14 iron ordered - the iron unit 4686 is given later in the Give phase \
+             comes too late"
+        );
+    }
+
+    /// The same, in a hex where something shares but nothing that shares holds the goods: the
+    /// engine's `Unit::GetSharedNum` (`unit.cpp`) counts only sharing faction-mates, so the iron
+    /// the unselfish 4686 holds funds nobody's GIVE but its own.
+    #[test]
+    fn a_give_no_sharer_can_fund_is_warned_on_its_line_in_a_sharing_hex() {
+        let hex = region(vec![
+            sharing(unit("4008")),
+            with_item(unit("4686"), 14, "iron", "IRON"),
+            sharing(unit("4840")),
+        ]);
+        let orders = "unit 4686\nGIVE 4008 14 IRON\nunit 4008\nGIVE 4840 14 IRON\n";
+
+        let findings = check(vec![hex], orders);
+
+        let warned: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_ITEMS)
+            .collect();
+        assert_eq!(warned.len(), 1, "{findings:?}");
+        assert_eq!(warned[0].unit_id.as_deref(), Some("4008"));
+        assert_eq!(warned[0].line, Some(4), "on the GIVE that moves nothing");
     }
 
     /// The SILVER column's receipts come from the same settlement, so it agrees with the report
