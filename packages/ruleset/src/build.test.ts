@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildRuleset } from "./build";
-import { newAgeDataPage, parseNewAgeDatabase } from "./newage";
-import { openSwimmingRule } from "./rules";
+import { newAgeDataPage, newAgeSkillUses, parseNewAgeDatabase } from "./newage";
+import { openSwimmingRule, RulesetScrapeError } from "./rules";
 
 const fixture = (name: string) =>
   readFileSync(fileURLToPath(new URL(`../../../tests/fixtures/ruleset/${name}`, import.meta.url)), "utf8");
@@ -360,5 +360,46 @@ describe("openSwimmingRule", () => {
 
   it("leaves a world with nothing that swims without a swimming rule", () => {
     expect(openSwimmingRule({ HORS: item(0), SWOR: item(0) })).toBeNull();
+  });
+});
+
+/**
+ * A New Age world's spells are read from the database's own flags (`newAgeSkillUses`), which
+ * `buildRuleset` takes beside the rendered data page and lays over the prose reading.
+ */
+describe("buildRuleset and how each spell is used", () => {
+  const trident = (skillUses?: Record<string, "cast" | "combat" | "both" | "automatic">) =>
+    buildRuleset({
+      rulesHtml: fixture("newage-trident-rules.html"),
+      dataHtml: newAgeDataPage(parseNewAgeDatabase(fixture("newage-trident-database.json"))),
+      rulesUrl: "https://atlantis-newage.com/api/worlds/trident/game/rules",
+      dataUrl: "https://atlantis-newage.com/api/worlds/trident/game/database",
+      orderLanguage: "new-age-trident",
+      fetchedAt: "2026-08-08T00:00:00.000Z",
+      ...(skillUses ? { skillUses } : {})
+    });
+  const flags = () => newAgeSkillUses(parseNewAgeDatabase(fixture("newage-trident-database.json")));
+
+  it("takes each spell's use from the flags it is given", () => {
+    const ruleset = trident({ ...flags(), EART: "combat" });
+    expect(ruleset.skills.EART.use).toBe("combat");
+    expect(ruleset.skills.CLEA.use).toBe("both");
+    expect(ruleset.skills.MINI.use).toBeNull();
+  });
+
+  it("refuses flags that call a skill a spell when the catalogue does not", () => {
+    expect(() => trident({ ...flags(), MINI: "cast" })).toThrow(RulesetScrapeError);
+    expect(() => trident({ ...flags(), MINI: "cast" })).toThrow("MINI");
+  });
+
+  it("refuses flags that leave a spell out", () => {
+    const rest = flags();
+    delete rest.FIRE;
+    expect(() => trident(rest)).toThrow(RulesetScrapeError);
+    expect(() => trident(rest)).toThrow("FIRE");
+  });
+
+  it("reads the prose when no flags are given", () => {
+    expect(trident().skills.FIRE.use).toBe("combat");
   });
 });

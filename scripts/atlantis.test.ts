@@ -351,6 +351,21 @@ describe("run — verify", () => {
     expect(printed).toContain("2");
   });
 
+  it("names the spell whose committed use disagrees with its sources", async () => {
+    const committed = JSON.parse(TRIDENT_RULESET_JSON);
+    expect(committed.skills.FIRE.use).toBe("combat");
+    committed.skills.FIRE.use = "cast";
+    const { io, out } = fakeIo();
+    io.writeFile(TRIDENT_RULESET_PATH, JSON.stringify(committed));
+
+    const code = await run(["verify"], io);
+
+    expect(code).toBe(1);
+    const printed = out.join("\n");
+    expect(printed).toContain("skills.FIRE");
+    expect(printed).toContain('"use":"combat"');
+  });
+
   it("names the class when itemClasses disagrees", async () => {
     const committed = JSON.parse(RULESET_JSON);
     committed.itemClasses.ARMOR = ["NOTREAL"];

@@ -32,7 +32,7 @@ import { isAbsolute, resolve } from "node:path";
 import { argv, exit, pid } from "node:process";
 import { pathToFileURL } from "node:url";
 import { buildRuleset } from "./build";
-import { catalogueDataPage } from "./worlds";
+import { catalogueInput } from "./worlds";
 import type { OrderLanguage } from "./generated/OrderLanguage";
 import { RulesetScrapeError } from "./rules";
 
@@ -154,11 +154,11 @@ export async function main(): Promise<void> {
     : { rulesUrl, dataUrl: catalogueUrl, fetchedAt: new Date().toISOString() };
 
   const [rulesHtml, catalogueText] = await Promise.all([load(rulesUrl), load(catalogueUrl)]);
-  const dataHtml = catalogueDataPage(databaseUrl ? "database" : "data-page", catalogueText);
+  const catalogue = catalogueInput(databaseUrl ? "database" : "data-page", catalogueText);
 
   const ruleset = buildRuleset({
     rulesHtml,
-    dataHtml,
+    ...catalogue,
     ...source,
     orderLanguage: orderLanguage as OrderLanguage
   });

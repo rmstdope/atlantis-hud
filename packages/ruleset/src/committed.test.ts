@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildRuleset, type Ruleset } from "./build";
-import { catalogueDataPage, regenerateArguments, WORLDS, worldById } from "./worlds";
+import { catalogueInput, regenerateArguments, WORLDS, worldById } from "./worlds";
 
 const read = (relative: string) =>
   readFileSync(fileURLToPath(new URL(`../../../${relative}`, import.meta.url)), "utf8");
@@ -19,12 +19,12 @@ describe("the committed rulesets", () => {
   it.each([...WORLDS])(
     "$id is exactly what the scraper produces from its committed fixtures",
     (world) => {
-      const dataHtml = catalogueDataPage(world.catalogueSource, read(world.catalogueFixture));
+      const catalogue = catalogueInput(world.catalogueSource, read(world.catalogueFixture));
       const committed = JSON.parse(read(world.rulesetPath)) as Ruleset;
 
       const built = buildRuleset({
         rulesHtml: read(world.rulesFixture),
-        dataHtml,
+        ...catalogue,
         rulesUrl: committed.source.rulesUrl,
         dataUrl: committed.source.dataUrl,
         orderLanguage: world.orderLanguage,

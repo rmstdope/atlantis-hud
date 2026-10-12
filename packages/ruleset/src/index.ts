@@ -8,6 +8,7 @@ export {
   type ItemReference,
   type MonsterCombat,
   type RaceSkillLimits,
+  type SkillUse,
   type SelfMobility,
   type Weapon
 } from "./data";
@@ -22,6 +23,7 @@ export {
 } from "./rules";
 export {
   newAgeDataPage,
+  newAgeSkillUses,
   parseNewAgeDatabase,
   type NewAgeDatabase,
   type NewAgeItem,
@@ -29,4 +31,4 @@ export {
   type NewAgeSkill,
   type NewAgeSkillLevel
 } from "./newage";
-export { catalogueDataPage, WORLDS, worldById, type CatalogueSource, type ScrapedWorld } from "./worlds";
+export { catalogueDataPage, catalogueInput, WORLDS, worldById, type CatalogueSource, type ScrapedWorld } from "./worlds";

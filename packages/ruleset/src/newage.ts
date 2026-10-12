@@ -5,20 +5,30 @@
  * a data page and lets `data.ts` read it unchanged.
  */
 
+import type { SkillUse } from "./generated/SkillUse";
 import { RulesetScrapeError } from "./rules";
 
 /** One level of one skill, as the database serves it. */
 export type NewAgeSkillLevel = { level: number; description: string };
 
 /** A skill, an item and an object, narrowed to the fields this adapter reads. */
-export type NewAgeSkill = { name: string; tag: string; levels: NewAgeSkillLevel[] };
+export type NewAgeSkill = {
+  name: string;
+  tag: string;
+  levels: NewAgeSkillLevel[];
+  /** `magic` for a spell; absent in the served entry is read as `""`. */
+  category: string;
+  /** The engine's own markers - `cast`, `combat`, `foundation`, ...; absent is read as none. */
+  flags: string[];
+};
 export type NewAgeItem = { name: string; tag: string; description: string };
 export type NewAgeObject = { name: string; description: string };
 
 /**
- * One world's catalogue. The served JSON carries more per entry (`category`, `flags`, `weight`,
- * `build`, `defense`, ...); this type names only what `newAgeDataPage` renders, and the rest is
- * ignored rather than refused, so a database that grows a field does not stop the scrape.
+ * One world's catalogue. The served JSON carries more per entry (`weight`, `build`, `defense`,
+ * ...); this type names only what `newAgeDataPage` renders and a skill's `category` and `flags`,
+ * which `newAgeSkillUses` reads. The rest is ignored rather than refused, so a database that grows
+ * a field does not stop the scrape.
  */
 export type NewAgeDatabase = {
   world: string;
@@ -87,7 +97,34 @@ function readSkill(raw: unknown, world: string, index: number): NewAgeSkill {
     }
     return { level: level.level, description: level.description };
   });
-  return { name: entry.name, tag: entry.tag, levels };
+  const flags = entry.flags ?? [];
+  if (!Array.isArray(flags) || !flags.every((flag) => typeof flag === "string")) {
+    throw new RulesetScrapeError(`the ${world} database has a skill ${entry.tag} whose flags are not a list of words`);
+  }
+  const category = entry.category ?? "";
+  if (typeof category !== "string") {
+    throw new RulesetScrapeError(`the ${world} database has a skill ${entry.tag} whose category is not a word`);
+  }
+  return { name: entry.name, tag: entry.tag, levels, category, flags };
+}
+
+/**
+ * How each spell in the database is used, from the engine's own flags rather than the prose: `cast`
+ * and `combat` together are both (Clear Skies), either alone is that one, and a magic skill with
+ * neither takes effect automatically (`rules/magic_usingmagic`). Keyed by tag, for the skills whose
+ * `category` is `magic` only; any other skill is no spell and is absent.
+ */
+export function newAgeSkillUses(database: NewAgeDatabase): Record<string, SkillUse> {
+  const uses: Record<string, SkillUse> = {};
+  for (const skill of database.skills) {
+    if (skill.category !== "magic") {
+      continue;
+    }
+    const cast = skill.flags.includes("cast");
+    const combat = skill.flags.includes("combat");
+    uses[skill.tag] = cast && combat ? "both" : cast ? "cast" : combat ? "combat" : "automatic";
+  }
+  return uses;
 }
 
 function readItem(raw: unknown, world: string, index: number): NewAgeItem {
