@@ -322,10 +322,10 @@ export type ItemLine = { tag: string; line: PopupLine; moved: boolean };
 /**
  * The `items` popup's lines, in the order they are drawn.
  *
- * The tags are the union of what the unit holds now, what the report listed, and this month's
- * production. An item given away in full still has a line ending at `gone`, including one the
- * unit produced and transferred in the same turn, while one that arrived this month starts at
- * `none`.
+ * The tags are the union of what the unit holds now, what the report listed, this month's
+ * production, and every item this month's movements name. An item given away in full still has a
+ * line ending at `gone`, including one the unit produced, or was given, and passed on in the same
+ * turn (`ah-dqvi`), while one that arrived this month starts at `none`.
  */
 export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefined): ItemLine[] {
   const changes = unit.itemChanges ?? [];
