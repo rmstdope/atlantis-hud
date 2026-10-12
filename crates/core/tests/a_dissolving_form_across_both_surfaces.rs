@@ -118,7 +118,10 @@ fn a_form_whose_buy_of_men_is_uncounted_dissolves_on_neither_surface() {
     let both = both_surfaces(&report(UNNAMED), "FORM 1\nBUY 1 PEASANTS\nEND\n");
     assert_eq!(both.silver_reverted, 0, "SILVER keeps the gift where it is");
     assert!(!both.items_dissolving, "ITEMS does not draw it dissolving");
-    assert_eq!(both.swords_on_first, 0, "ITEMS keeps the swords where they are");
+    assert_eq!(
+        both.swords_on_first, 0,
+        "ITEMS keeps the swords where they are"
+    );
 }
 
 /// `BUY PEASANTS` recruits the region's race where the report names it (`rules/buy`, `ah-6sx5`):
@@ -128,5 +131,8 @@ fn a_form_that_recruits_dissolves_on_neither_surface() {
     let both = both_surfaces(&report(NAMED), "FORM 1\nBUY 1 PEASANTS\nEND\n");
     assert_eq!(both.silver_reverted, 0, "SILVER keeps the gift where it is");
     assert!(!both.items_dissolving, "ITEMS does not draw it dissolving");
-    assert_eq!(both.swords_on_first, 0, "ITEMS keeps the swords where they are");
+    assert_eq!(
+        both.swords_on_first, 0,
+        "ITEMS keeps the swords where they are"
+    );
 }

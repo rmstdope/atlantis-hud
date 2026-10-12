@@ -58496,7 +58496,10 @@ BUILD
             "a formed unit that gains nobody dissolves into the first unit; a report unit never does"
         );
         assert_eq!(
-            judged("plain (1,1) in Nowhere, $0.", "FORM 1\nBUY 1 PEASANTS\nEND\n"),
+            judged(
+                "plain (1,1) in Nowhere, $0.",
+                "FORM 1\nBUY 1 PEASANTS\nEND\n"
+            ),
             (None, None, None),
             "an uncounted BUY of men leaves the dissolve unjudged"
         );
