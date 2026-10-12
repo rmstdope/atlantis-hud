@@ -17178,8 +17178,23 @@ fn sail_month_end(
         here = next;
         route.push(here);
     }
+    // Only what a sailing step is judged by - where a hex is, its terrain, its exits and the
+    // structures that may make a canal of it. Never its units or its market: this runs for every
+    // unit aboard a sailing fleet, on every keystroke, and a hex's units are most of its size.
     let passed = ParsedReport {
-        regions: route.iter().map(|region| (*region).clone()).collect(),
+        regions: route
+            .iter()
+            .map(|region| ReportRegion {
+                region_id: region.region_id.clone(),
+                coordinate: region.coordinate,
+                terrain: region.terrain.clone(),
+                province: region.province.clone(),
+                settlement: region.settlement.clone(),
+                exits: region.exits.clone(),
+                structures: region.structures.clone(),
+                ..Default::default()
+            })
+            .collect(),
         ..Default::default()
     };
     fleet_month_end(
@@ -20356,22 +20371,22 @@ fn leaves_hex_after_load_check(
 /// the first step it refuses, before taking any (`RunSailOrders`). The hull is [`sailing_hull`],
 /// the one `check_sail_route` reads, so the departure agrees with the `sail-between-land-hexes`
 /// warning that says "it will not move"; whether it leaves is [`sail_month_end`]'s answer, the
-/// one `carried_away` reads for the passengers (`ah-8zqq`). Only ever asked of a `SAIL` with a
-/// step across the map: one with none goes nowhere and is not "refused".
+/// one `carried_away` reads for the passengers (`ah-8zqq`). A `SAIL` with no step across the map
+/// goes nowhere and is not "refused".
 fn sail_refused_before_leaving(
     hex: &Hex<'_>,
     ordered: &Ordered<'_>,
     steps: &[MoveStep],
     ruleset: &Ruleset,
 ) -> bool {
-    !sail_month_end(
+    sail_month_end(
         hex.region,
         steps,
         &HashMap::new(),
         ruleset,
         sailing_hull(hex, ordered, ruleset),
     )
-    .leaves()
+    .refused_before_leaving()
 }
 
 /// The hull a unit's own `SAIL` is judged by: that of the vessel it could captain, else the one it
@@ -57245,6 +57260,9 @@ BUILD
     #[test]
     fn a_passenger_is_judged_where_a_refused_step_stops_the_fleet_before_the_map_runs_out() {
         let mut regions = fleet_sailing_north(one_product(20, "wood", "WOOD"));
+        // Fish where the fleet starts, and nowhere else: judged here, or not judged at all, the
+        // passenger hears nothing - only judged at the stop does it hear `produce-not-here`.
+        regions[0].products = one_product(50, "fish", "FISH");
         regions[0].terrain = ruleset().movement.ocean.terrain.clone();
         regions[0].exits[0].terrain = "plain".to_string();
         regions[1].terrain = "plain".to_string();

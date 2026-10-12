@@ -244,6 +244,13 @@ impl FleetMonthEnd {
         self.sails && self.stop.is_none_or(|stop| stop.steps_taken > 0)
     }
 
+    /// Whether the game refuses the course at its very first step, so a fleet that was told to sail
+    /// goes nowhere. False for a course with no step across the map: that is not a refusal, and
+    /// nobody was going anywhere.
+    pub(crate) fn refused_before_leaving(&self) -> bool {
+        self.sails && !self.leaves()
+    }
+
     /// Where a month's movement ends for a trace that reached `traced_end` after `traced_steps`
     /// directional steps: the game's refusal can only cut it shorter. The trace knows how far one
     /// month's movement points go; this answer knows where the game stops the fleet.
@@ -600,6 +607,7 @@ mod tests {
         let end = month_end(&map, &[MoveStep::In]);
 
         assert!(!end.leaves());
+        assert!(!end.refused_before_leaving(), "nothing was refused");
         assert_eq!(end.lands, Some(at(1, 1)));
     }
 
@@ -613,6 +621,7 @@ mod tests {
         let end = month_end(&map, &southeast(2));
 
         assert!(!end.leaves());
+        assert!(end.refused_before_leaving());
         assert_eq!(end.lands, Some(at(1, 1)));
     }
 
