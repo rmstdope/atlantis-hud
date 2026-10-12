@@ -425,14 +425,42 @@ pub fn reported_owner<'r>(
         .find(|unit| unit.structure_id.as_deref() == Some(structure_id))
 }
 
+/// A unit this month's `FORM` creates that is still there when the fleets move: it was given men,
+/// or may have been, so `rules/form` does not dissolve it.
+///
+/// [`fleet_owner`] cannot find these in the report, which does not carry them, so a caller that
+/// has the month's formed rows hands them in. A formed unit known to gain nobody is left out by the
+/// caller: the engine deletes a unit with no men before anything moves (`Game::DeleteEmptyUnits`,
+/// run just ahead of `RunMovementOrders`), which is how `rules/world_structures`' "newly created
+/// units cannot own a structure until they contain men" comes about.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FormedCrew {
+    /// `new-<alias>`, unique only inside its hex (`rules/form`).
+    pub unit_id: String,
+    /// The hex it was formed in.
+    pub region_id: String,
+    /// How [`OrderedUnits`] keys its route: the line of its `FORM`.
+    pub key: OrderedUnitKey,
+    /// The structure it stands in once its ENTER and LEAVE have run.
+    pub structure_id: Option<String>,
+}
+
 /// Who owns a hull once this month's boardings and `PROMOTE`s have run, as a unit id.
 ///
-/// The report's owner remains in charge unless it LEAVEs and another unit ENTERs that hull. The
-/// first such entrant takes ownership ("The first unit to enter an object is considered to be the
-/// owner", `rules/world_structures`; `rules/sequenceofevents` runs ENTER and LEAVE before PROMOTE
-/// and movement); then each valid `PROMOTE` written by the owner to a unit aboard the same hull.
+/// The engine's owner is the first unit in the object's list (`Object::GetOwner`), and LEAVE and
+/// ENTER run in one pass before PROMOTE and movement (`Game::RunEnterOrders`;
+/// `rules/sequenceofevents`). A unit that leaves is taken off the list and one that enters is
+/// appended to its end (`Unit::MoveUnit`), so the list the fleet moves with is: the report's
+/// occupants who stayed, in report order ("the first unit listed under the object",
+/// `rules/world_structures`), then everyone who boarded. A reported occupant whose last boarding
+/// order re-enters the hull it stands in is moved to the end like any other entrant. Formed units
+/// aboard (`formed`) come after every reported unit: the engine appends a formed unit to its
+/// parent's object as it is formed, so one formed aboard would really stand ahead of a reported
+/// entrant, but a month where both a reported and a formed unit board a hull every reported
+/// occupant has left is not modelled. Nobody aboard at all is no owner (`ah-877p`).
 ///
-/// Among several `PROMOTE`s from one owner the **first valid one written** takes the hull, not the
+/// Then each valid `PROMOTE` written by the owner to a reported unit aboard the same hull. Among
+/// several `PROMOTE`s from one owner the **first valid one written** takes the hull, not the
 /// last: `rules/promote` promotes a unit "to owner of the object of which you are currently the
 /// owner", so once one has run that unit owns the object no longer and its later `PROMOTE`s hand
 /// on nothing. One naming a unit that is not aboard promotes nobody and leaves the next to run.
@@ -442,22 +470,32 @@ pub fn reported_owner<'r>(
 pub fn fleet_owner(
     region: &ReportRegion,
     ordered: &OrderedUnits,
+    formed: &[FormedCrew],
     structure_id: &str,
 ) -> Option<String> {
-    let mut owner = match reported_owner(&region.units, structure_id) {
-        Some(owner) if ordered.structure_of(owner) == Some(structure_id) => owner,
-        Some(owner) => region
+    let aboard = |unit: &&ReportUnit| ordered.structure_of(unit) == Some(structure_id);
+    let listed_under = |unit: &ReportUnit| unit.structure_id.as_deref() == Some(structure_id);
+    let stayed = region
+        .units
+        .iter()
+        .filter(aboard)
+        .find(|unit| listed_under(unit) && !ordered.enters(unit, structure_id));
+    let boarded = || {
+        region
             .units
             .iter()
-            .find(|unit| ordered.enters(unit, structure_id))
-            .unwrap_or(owner),
-        None => region
-            .units
-            .iter()
-            .find(|unit| ordered.structure_of(unit) == Some(structure_id))?,
-    }
-    .unit_id
-    .clone();
+            .filter(aboard)
+            .find(|unit| !listed_under(unit) || ordered.enters(unit, structure_id))
+    };
+    let formed_aboard = || {
+        formed.iter().find(|crew| {
+            crew.region_id == region.region_id && crew.structure_id.as_deref() == Some(structure_id)
+        })
+    };
+    let mut owner = match stayed.or_else(boarded) {
+        Some(unit) => unit.unit_id.clone(),
+        None => formed_aboard()?.unit_id.clone(),
+    };
 
     // Each promotion is followed in turn, so a hull handed on twice in one month ends with the
     // unit actually holding it. `seen` bounds the walk: a document can name a cycle.
@@ -490,20 +528,27 @@ pub struct FleetCourse<'o> {
     pub steps: Option<&'o [MoveStep]>,
 }
 
+/// [`fleet_owner`], and the course its route sets. A formed owner's route is keyed by its `FORM`
+/// line, as every formed unit's is.
 #[must_use]
 pub fn fleet_course<'o>(
     region: &ReportRegion,
     ordered: &'o OrderedUnits,
+    formed: &[FormedCrew],
     structure_id: &str,
 ) -> FleetCourse<'o> {
-    let Some(owner_id) = fleet_owner(region, ordered, structure_id) else {
+    let Some(owner_id) = fleet_owner(region, ordered, formed, structure_id) else {
         return FleetCourse {
             owner_id: None,
             steps: None,
         };
     };
-    let steps = if ordered.sails_a_course(&OrderedUnitKey::shown(&owner_id)) {
-        ordered.steps_for(&OrderedUnitKey::shown(&owner_id))
+    let key = formed
+        .iter()
+        .find(|crew| crew.region_id == region.region_id && crew.unit_id == owner_id)
+        .map_or_else(|| OrderedUnitKey::shown(&owner_id), |crew| crew.key.clone());
+    let steps = if ordered.sails_a_course(&key) {
+        ordered.steps_for(&key)
     } else {
         None
     };
@@ -553,6 +598,9 @@ pub fn priceable_fleet_of<'r>(
 /// the ruleset. [`crate::movement::mode::hulls_named_in`] is not that test - it is syntactic and
 /// reads any single-word kind, `Fort` included, as a hull - and using it here would have every
 /// garrison follow whoever in the building wrote a MOVE.
+///
+/// It weighs no formed unit as a hull's owner; [`course_followed`] takes them for a caller that has
+/// the month's formed rows (`ah-877p`).
 #[must_use]
 pub fn steps_followed_by<'a>(
     report: &ParsedReport,
@@ -564,6 +612,7 @@ pub fn steps_followed_by<'a>(
         report,
         ruleset,
         ordered,
+        &[],
         unit,
         ordered.steps_for(&OrderedUnitKey::shown(&unit.unit_id)),
         ordered.sails_a_course(&OrderedUnitKey::shown(&unit.unit_id)),
@@ -573,12 +622,14 @@ pub fn steps_followed_by<'a>(
 /// The steps `unit` travels by, given its own movement: its own `MOVE` wins, and otherwise it
 /// goes where a priceable hull it stands in is sailed. `own` and `own_is_sail` are the unit's
 /// own order, however the caller found it - a formed unit's come from its settled row
-/// (`ah-5nqc`).
+/// (`ah-5nqc`). `formed` is the month's formed units that survive to move, which can own the hull
+/// ([`fleet_owner`]).
 #[must_use]
 pub fn course_followed<'a>(
     report: &ParsedReport,
     ruleset: &crate::movement::rules::Ruleset,
     ordered: &'a OrderedUnits,
+    formed: &[FormedCrew],
     unit: &ReportUnit,
     own: Option<&'a [MoveStep]>,
     own_is_sail: bool,
@@ -599,7 +650,7 @@ pub fn course_followed<'a>(
     let Some(hull) = priceable_fleet_of(region, ruleset, ordered, unit) else {
         return own;
     };
-    fleet_course(region, ordered, &hull.structure_id).steps
+    fleet_course(region, ordered, formed, &hull.structure_id).steps
 }
 
 #[cfg(test)]
@@ -742,7 +793,7 @@ mod tests {
             .find(|region| region.region_id == "1:1,1")
             .expect("the scene's ocean hex");
         let ordered = OrderedUnits::unreported(orders, None);
-        fleet_owner(region, &ordered, structure_id)
+        fleet_owner(region, &ordered, &[], structure_id)
     }
 
     fn scene_course(orders: &str, structure_id: &str) -> Option<Vec<MoveStep>> {
@@ -754,7 +805,7 @@ mod tests {
             .find(|region| region.region_id == "1:1,1")
             .expect("the scene's ocean hex");
         let ordered = OrderedUnits::unreported(orders, None);
-        fleet_course(region, &ordered, structure_id)
+        fleet_course(region, &ordered, &[], structure_id)
             .steps
             .map(<[MoveStep]>::to_vec)
     }
@@ -815,25 +866,80 @@ mod tests {
         );
     }
 
+    /// The engine's owner is the first unit in the object's list when the fleet moves
+    /// (`Object::GetOwner`); a leaver is taken off that list and an entrant appended to its end
+    /// (`Unit::MoveUnit`). So when the builder leaves, the first occupant who **stayed** owns the
+    /// hull, ahead of any entrant, and an entrant's PROMOTE is not the owner's and hands on nothing
+    /// (`Game::RunPromoteOrders` runs only the owner's) - `ah-877p`, which corrected the first
+    /// entrant this test once named.
     #[test]
-    fn a_builder_who_leaves_cannot_keep_or_promote_the_hull() {
+    fn a_builder_who_leaves_hands_the_hull_to_the_next_unit_aboard() {
+        let orders = "unit 900\nLEAVE\nunit 903\nENTER 329\nPROMOTE 902\nunit 902\nSAIL SE\n";
         assert_eq!(
-            scene_owner(
-                "unit 900\nLEAVE\nunit 903\nENTER 329\nPROMOTE 902\nunit 902\nSAIL SE\n",
-                "329"
-            ),
-            Some("902".to_string()),
-            "after the builder leaves, the first entrant promotes the sailor"
+            scene_owner(orders, "329"),
+            Some("901".to_string()),
+            "901 stayed aboard, so it owns the hull ahead of the entrant 903"
         );
         assert_eq!(
-            scene_course(
-                "unit 900\nLEAVE\nunit 903\nENTER 329\nPROMOTE 902\nunit 902\nSAIL SE\n",
+            scene_course(orders, "329"),
+            None,
+            "901 set no course, so 902's SAIL sails nowhere"
+        );
+        assert_eq!(
+            scene_owner(
+                "unit 900\nLEAVE\nunit 901\nLEAVE\nunit 902\nLEAVE\nunit 903\nENTER 329\n\
+                 PROMOTE 902\n",
                 "329"
             ),
-            Some(vec![MoveStep::Go(
-                crate::movement::graph::Direction::Southeast
-            )]),
-            "the promoted sailor owns the hull and its course"
+            Some("903".to_string()),
+            "with every occupant gone, the entrant owns the hull"
+        );
+        assert_eq!(
+            scene_owner("unit 900\nLEAVE\nunit 901\nLEAVE\nunit 902\nLEAVE\n", "329"),
+            None,
+            "a hull everyone left has no owner, not the builder who left it"
+        );
+    }
+
+    /// `ah-877p` (gh-1491): a unit formed this month that boards a hull every reported occupant
+    /// left owns it, and its course is the one its `FORM` block wrote.
+    #[test]
+    fn a_formed_unit_aboard_owns_a_hull_its_occupants_left() {
+        let mut cache = ReportCache::new();
+        let report = cache.classified(&owner_scene(), RULESET);
+        let region = report
+            .regions
+            .iter()
+            .find(|region| region.region_id == "1:1,1")
+            .expect("the scene's ocean hex");
+        let orders = "unit 900\nLEAVE\nunit 901\nLEAVE\nunit 902\nLEAVE\n\
+                      unit 903\nFORM 1\nENTER 329\nSAIL SE\nEND\n";
+        let ordered = OrderedUnits::unreported(orders, None);
+        let crew = FormedCrew {
+            unit_id: "new-1".to_string(),
+            region_id: "1:1,1".to_string(),
+            key: OrderedUnitKey::Formed(8),
+            structure_id: Some("329".to_string()),
+        };
+        let course = fleet_course(region, &ordered, std::slice::from_ref(&crew), "329");
+        assert_eq!(course.owner_id, Some("new-1".to_string()));
+        assert_eq!(
+            course.steps,
+            Some(&[MoveStep::Go(crate::movement::graph::Direction::Southeast)][..])
+        );
+        assert_eq!(
+            fleet_owner(region, &ordered, &[], "329"),
+            None,
+            "left out by the caller - a formed unit given nobody - it owns nothing"
+        );
+        let elsewhere = FormedCrew {
+            region_id: "1:2,0".to_string(),
+            ..crew
+        };
+        assert_eq!(
+            fleet_owner(region, &ordered, &[elsewhere], "329"),
+            None,
+            "a formed unit of another hex is not aboard this one"
         );
     }
 
@@ -1318,17 +1424,14 @@ mod tests {
         );
     }
 
-    /// A unit that writes SAIL and then LEAVE still gave the order - the server reads the SAIL
-    /// line before running the LEAVE - so its passengers must still be carried. Asking where the
-    /// captain *ends up* would strand them, which is why `could_captain` is a second predicate.
+    /// A unit that writes SAIL and then LEAVE is ashore when the fleets move: the engine runs every
+    /// LEAVE before movement (`Game::RunEnterOrders` ahead of `RunMovementOrders`), which then asks
+    /// the hull for its owner as it stands (`Object::GetOwner`). 10594 is the one left aboard, it
+    /// set no course, and the raft carries nobody (`ah-877p`, which corrected the voyage this test
+    /// once expected).
     #[test]
-    fn a_captain_that_also_leaves_still_carries_its_passengers() {
-        assert_eq!(
-            followed("unit 10575\nsail se\nLEAVE\n", "10594"),
-            Some(vec![MoveStep::Go(
-                crate::movement::graph::Direction::Southeast
-            )])
-        );
+    fn a_captain_that_also_leaves_carries_nobody() {
+        assert_eq!(followed("unit 10575\nsail se\nLEAVE\n", "10594"), None);
     }
 
     /// `rules/move`: "Multiple MOVE orders given by one unit will chain together."

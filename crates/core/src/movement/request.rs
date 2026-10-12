@@ -318,7 +318,18 @@ fn trace_orders(
                 None => return Ok(MoveOrderTraceResponse { path: None }),
             },
         };
-    let Some(steps) = course_followed(&report, &ruleset, &ordered, &unit, own, own_is_sail) else {
+    // A formed unit aboard can own the hull the traced unit follows (`ah-877p`).
+    let formed_crews =
+        crate::orders::effects::formed_crews_of_month(&report, &ruleset, orders_document, &ordered);
+    let Some(steps) = course_followed(
+        &report,
+        &ruleset,
+        &ordered,
+        &formed_crews,
+        &unit,
+        own,
+        own_is_sail,
+    ) else {
         return Ok(MoveOrderTraceResponse { path: None });
     };
     // A unit the report prints is timed at the speed it has when it moves, after this month's
@@ -411,6 +422,41 @@ mod tests {
                 map_json: "m".into(),
                 passages_json: "s".into(),
             }
+        );
+    }
+
+    /// `ah-877p` (gh-1491): the builder LEAVEs Wavecrest [329] on the coast and a unit formed
+    /// ashore this month ENTERs it and sails. The engine's owner is the first unit aboard when the
+    /// fleet moves (`Object::GetOwner`), after every LEAVE and ENTER (`rules/sequenceofevents`), so
+    /// the map draws the new unit's voyage.
+    #[test]
+    fn the_map_draws_a_formed_unit_sailing_a_hull_its_builder_left() {
+        let mut report = String::from("Foo (1) Report\n\nplain (1,1) in Shire.\n\n");
+        report.push_str("Exits:\n  Southeast : ocean (2,2) in Sea.\n\n");
+        report
+            .push_str("* Ashore (903), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n");
+        report.push_str("+ Wavecrest [329] : Longship; Load: 50/150; Sailors: 4/4; MaxSpeed: 4.\n");
+        report.push_str(
+            "  * Builders (900), Foo (1), leader [LEAD], sharing, centaur [CTAU]. Weight: 50. \
+             Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
+        );
+        report.push_str("\nocean (2,2) in Sea.\n\nExits:\n  Northwest : plain (1,1) in Shire.\n");
+        let orders = "unit 900\nLEAVE\n\
+                      unit 903\nFORM 1\nENTER 329\nSAIL SE\nEND\nGIVE NEW 1 1 LEAD\n";
+        let voyage = trace_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "new-1",
+            orders,
+        )
+        .expect("the ruleset loads")
+        .path
+        .expect("the new unit owns the hull and sails it");
+        assert_eq!(
+            voyage.steps.last().map(|step| step.to.id()),
+            Some("1:2,2".to_string())
         );
     }
 

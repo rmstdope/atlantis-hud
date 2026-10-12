@@ -1185,6 +1185,64 @@ fn settle(
     (working.units, dissolved)
 }
 
+/// The settled month's formed units that survive to move, as [`crate::movement::fleet::fleet_owner`]
+/// weighs them: a row `rules/form` dissolves (`dissolved`, by index) has no men and is deleted
+/// before anything moves, so it owns nothing (`Game::DeleteEmptyUnits`, `ah-877p`).
+fn formed_crews(
+    units: &[WorkingUnit],
+    dissolved: &BTreeMap<usize, Option<String>>,
+) -> Vec<crate::movement::fleet::FormedCrew> {
+    units
+        .iter()
+        .enumerate()
+        .filter(|(index, entry)| entry.formed && !dissolved.contains_key(index))
+        .map(|(_, entry)| crate::movement::fleet::FormedCrew {
+            unit_id: entry.unit.unit_id.clone(),
+            region_id: entry.unit.region_id.clone(),
+            key: entry.key(),
+            structure_id: entry.unit.structure_id.clone(),
+        })
+        .collect()
+}
+
+/// [`formed_crews`] for a caller holding only the document: the map trace, which follows a hull's
+/// owner as the preview does. Empty, and no settle run, when the document forms nobody.
+pub(crate) fn formed_crews_of_month(
+    report: &crate::report::ParsedReport,
+    ruleset: &std::sync::Arc<crate::movement::rules::Ruleset>,
+    orders_document: &str,
+    ordered: &crate::movement::fleet::OrderedUnits,
+) -> Vec<crate::movement::fleet::FormedCrew> {
+    if !forms_anybody(orders_document, ruleset) {
+        return Vec::new();
+    }
+    let (units, dissolved) = settle(
+        report,
+        ruleset,
+        orders_document,
+        ordered,
+        None,
+        super::semantics::CheckOptions::default(),
+    );
+    formed_crews(&units, &dissolved)
+}
+
+/// Whether the document opens any `FORM` block this month.
+fn forms_anybody(orders_document: &str, ruleset: &Ruleset) -> bool {
+    let mut forms = false;
+    super::walk::walk(orders_document, Some(ruleset), |event| {
+        if let super::walk::Event::Open {
+            kind: super::walk::BlockKind::Form,
+            depth,
+            ..
+        } = event
+        {
+            forms |= depth.turn == 0;
+        }
+    });
+    forms
+}
+
 /// Folds each unit's movement order over the answer its ENTER and LEAVE orders gave, recording
 /// where it stands on each side of the hex it started the month in and which order put it there.
 fn apply_movement_boardings(units: &mut [WorkingUnit]) {
@@ -1536,6 +1594,9 @@ fn decide_movement(
 ) -> (Vec<Decided>, BTreeMap<(String, String), SailingFleet>) {
     use crate::movement::trace::trace_move;
 
+    // A formed unit aboard can own a hull its reported occupants left (`ah-877p`).
+    let formed = formed_crews(&units, dissolved);
+
     // Two passes, because a passenger's status depends on another unit's trace: the first decides
     // every unit on its own orders and notes which fleets leave, the second carries the units
     // standing in those fleets.
@@ -1586,7 +1647,7 @@ fn decide_movement(
         };
         let hull_course: Option<Option<Vec<crate::movement::orders::MoveStep>>> =
             sailed_hull.map(|(region, hull)| {
-                crate::movement::fleet::fleet_course(region, ordered, &hull.structure_id)
+                crate::movement::fleet::fleet_course(region, ordered, &formed, &hull.structure_id)
                     .steps
                     .map(<[crate::movement::orders::MoveStep]>::to_vec)
             });
@@ -8659,6 +8720,37 @@ mod tests {
             region_of(&response, "1:2,2").is_none(),
             "nobody arrives, so the destination hex is not in the preview"
         );
+    }
+
+    /// `ah-877p` (gh-1491): every unit listed under Wavecrest [329] LEAVEs on the coast, and a
+    /// unit formed ashore this month ENTERs it and sails. LEAVE and ENTER run before movement
+    /// (`rules/sequenceofevents`) and the engine's owner is the first unit aboard when the fleet
+    /// moves (`Object::GetOwner`), so the new unit owns the hull and departs on its own course -
+    /// while the units that stepped ashore stay behind.
+    #[test]
+    fn a_formed_unit_that_boards_a_hull_its_crew_left_sails_it() {
+        let report = fleet_report_with_a_passenger(WAVECREST)
+            .replace("ocean (1,1) in Sea", "plain (1,1) in Shire");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 900\nLEAVE\nunit 901\nLEAVE\nunit 902\nLEAVE\n\
+             unit 903\nFORM 1\nENTER 329\nSAIL SE\nEND\nGIVE NEW 1 1 LEAD\n",
+        )
+        .expect("the ruleset loads");
+
+        let sailor = row(&response, "1:1,1", "new-1").expect("the formed unit has a row");
+        assert_eq!(sailor.status, UnitPreviewStatus::Departing, "{sailor:?}");
+        assert_eq!(sailor.departing_to.as_deref(), Some("1:2,2"));
+        for unit_id in ["900", "901", "902"] {
+            assert_eq!(
+                row(&response, "1:1,1", unit_id).map(|unit| unit.status),
+                Some(UnitPreviewStatus::Present),
+                "{unit_id} stepped ashore and stays"
+            );
+        }
     }
 
     /// `ah-g0fk`: a SAIL the checks refuse moves nothing. Both hexes here are land, and
