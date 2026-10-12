@@ -645,7 +645,10 @@ mod hex_tests {
         let land = HexStanding::of(&region("2", "plain", &["4"]), Some(&rules));
 
         // An ENTER of a structure the hex does not have moves nobody (`ah-5maa`).
-        assert_eq!(sea.standing_after(None, [Boarding::Enter("77")], WALKER), None);
+        assert_eq!(
+            sea.standing_after(None, [Boarding::Enter("77")], WALKER),
+            None
+        );
         assert_eq!(
             land.standing_after(None, [Boarding::Enter("4")], WALKER),
             Some("4")
@@ -657,7 +660,10 @@ mod hex_tests {
             Some("4")
         );
         assert!(!sea.boarding_moves(Some("4"), [Boarding::Leave], WALKER));
-        assert_eq!(land.standing_after(Some("4"), [Boarding::Leave], WALKER), None);
+        assert_eq!(
+            land.standing_after(Some("4"), [Boarding::Leave], WALKER),
+            None
+        );
         assert!(land.boarding_moves(Some("4"), [Boarding::Leave], WALKER));
     }
 

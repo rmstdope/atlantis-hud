@@ -3019,7 +3019,7 @@ impl Working {
                 working.boardings.iter().map(BoardingOrder::as_boarding),
                 leaver,
             )
-        .map(str::to_string);
+            .map(str::to_string);
         self.units[active].unit.structure_id = standing;
     }
 

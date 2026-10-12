@@ -19,6 +19,7 @@
 use std::borrow::Cow;
 use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
@@ -3109,13 +3110,10 @@ impl AfterTheMarket<'_> {
 /// One of our units, and its orders.
 struct Ordered<'a> {
     unit: &'a ReportUnit,
-    /// The structures the report shows in this unit's hex, which an ENTER must name to be obeyed
-    /// (`ah-5maa`, [`structure_after_orders`]).
-    structures_here: &'a [Structure],
-    /// Whether this unit's hex is water in this world, where a LEAVE can be refused and move
-    /// nobody (`ah-djst`, [`structure_after_orders`]). Set by [`hex_with_transfers`], the one
-    /// place with a ruleset to say so; `false` until then, when every LEAVE runs.
-    at_sea: bool,
+    /// What the standing rule knows about this unit's hex - the structures an ENTER must name to
+    /// be obeyed (`ah-5maa`), whether a LEAVE can be refused at sea (`ah-djst`) - shared by every
+    /// unit of the hex ([`standing::HexStanding`], `ah-6udn`; [`structure_after_orders`]).
+    hex: Arc<standing::HexStanding>,
     /// The unit as the movement reader keys it: its number when the report shows it, the line of
     /// its `FORM` when this month creates it (`ah-74y9`).
     key: OrderedUnitKey,
@@ -3239,7 +3237,21 @@ impl<'a> Hex<'a> {
     /// only the ones standing in this region. Report units come first and keep their existing
     /// order, so `shares[index]` and every other index-parallel vector `forecast_hex` builds from
     /// `hex.units` keeps lining up with it.
+    ///
+    /// No ruleset says whether the hex is water, so every LEAVE runs; [`Self::read_in`] has one.
+    #[cfg(test)]
     fn read(region: &'a ReportRegion, ordered: &'a OrderedUnits, formed: &'a [Formed]) -> Self {
+        Self::read_in(region, ordered, formed, None)
+    }
+
+    /// [`Self::read`], with `ruleset` to say whether the hex is water (`ah-djst`).
+    fn read_in(
+        region: &'a ReportRegion,
+        ordered: &'a OrderedUnits,
+        formed: &'a [Formed],
+        ruleset: Option<&Ruleset>,
+    ) -> Self {
+        let standing = Arc::new(standing::HexStanding::of(region, ruleset));
         let mut units: Vec<Ordered<'a>> = region
             .units
             .iter()
@@ -3248,8 +3260,7 @@ impl<'a> Hex<'a> {
                 let orders = ordered.get(&unit.unit_id);
                 Ordered {
                     unit,
-                    structures_here: &region.structures,
-                    at_sea: false,
+                    hex: Arc::clone(&standing),
                     key: OrderedUnitKey::shown(&unit.unit_id),
                     flags: flags_after_orders(
                         &unit.flags,
@@ -3285,8 +3296,7 @@ impl<'a> Hex<'a> {
                 .filter(|formed| formed.unit.region_id == region.region_id)
                 .map(|formed| Ordered {
                     unit: &formed.unit,
-                    structures_here: &region.structures,
-                    at_sea: false,
+                    hex: Arc::clone(&standing),
                     key: formed.block.key(),
                     flags: flags_after_orders(&formed.unit.flags, &formed.block.flag_changes),
                     destroys_structure: formed.block.destroys_structure,
@@ -3383,11 +3393,7 @@ fn hex_with_transfers<'a>(
     // region's own, so a caller with only one region to hand may pass an empty set.
     shown_anywhere: &'a BTreeSet<String>,
 ) -> Hex<'a> {
-    let mut hex = Hex::read(region, ordered, formed);
-    let at_sea = ruleset.is_some_and(|rules| rules.is_water(&region.terrain));
-    for unit in &mut hex.units {
-        unit.at_sea = at_sea;
-    }
+    let mut hex = Hex::read_in(region, ordered, formed, ruleset);
     if hex
         .shown_anywhere
         .iter()
@@ -18487,16 +18493,17 @@ fn is_aboard(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 /// adapter that reads it out of parsed intents. An ENTER of a structure the hex does not have is
 /// refused and moves nothing (`ah-5maa`), and so is a LEAVE the game refuses at sea (`ah-djst`).
 fn structure_after_orders<'a>(ordered: &'a Ordered<'_>) -> Option<&'a str> {
-    structure_after_intents(
+    ordered.hex.standing_after(
         ordered.unit.structure_id.as_deref(),
-        &ordered.intents,
-        ordered.structures_here,
-        leave_refused(ordered),
+        ordered.intents.iter().filter_map(boarding_of),
+        leaver(ordered),
     )
 }
 
-/// [`structure_after_orders`] over the four things it actually reads, so the agreement test can
-/// drive this reader without building a whole [`Ordered`].
+/// [`structure_after_orders`] over the four things it actually reads, for
+/// `orders::standing_agreement` alone, which drives this reader without building a whole
+/// [`Ordered`]. Production reads [`Ordered::hex`] instead.
+#[cfg(test)]
 pub(crate) fn structure_after_intents<'a>(
     reported: Option<&'a str>,
     intents: &'a [PlacedIntent],
@@ -18515,20 +18522,24 @@ pub(crate) fn structure_after_intents<'a>(
     )
 }
 
-/// Whether the game refuses this unit's LEAVE where it stands ([`standing::leave_refused_at_sea`],
-/// `ah-djst`), read from its flags once this month's NOCROSS has run - `rules/sequenceofevents`
-/// runs NOCROSS before LEAVE - and the movement the report states.
-fn leave_refused(ordered: &Ordered<'_>) -> bool {
-    leave_refused_with(
-        ordered.at_sea,
-        &ordered.flags,
-        ordered.unit.movement.as_ref(),
-    )
+/// What this unit brings to whether its LEAVE runs where it stands ([`standing::Leaver`],
+/// `ah-djst`): its flags once this month's NOCROSS has run - `rules/sequenceofevents` runs NOCROSS
+/// before LEAVE - and the movement the report states.
+fn leaver<'a>(ordered: &'a Ordered<'_>) -> standing::Leaver<'a> {
+    standing::Leaver {
+        wont_cross_water: crate::report::flags::holds(
+            &ordered.flags,
+            crate::report::flags::Setting::NoCross,
+        ),
+        movement: ordered.unit.movement.as_ref(),
+    }
 }
 
-/// [`leave_refused`] over the three things it actually reads, so the agreement test can drive this
-/// reader without building a whole [`Ordered`]. `flags` is the list once this month's flag orders
-/// have run ([`flags_after_orders`]).
+/// Whether the game refuses a LEAVE ([`standing::leave_refused_at_sea`]) over the three things
+/// [`leaver`] and [`Ordered::hex`] supply, for `orders::standing_agreement` alone, which drives
+/// this reader without building a whole [`Ordered`]. `flags` is the list once this month's flag
+/// orders have run ([`flags_after_orders`]).
+#[cfg(test)]
 pub(crate) fn leave_refused_with(
     at_sea: bool,
     flags: &[String],
@@ -18544,15 +18555,9 @@ pub(crate) fn leave_refused_with(
 /// Whether the unit's ENTER and LEAVE orders are refused outright, so they move it nowhere
 /// ([`standing::enter_refused`], `ah-5maa`).
 fn boarding_refused(ordered: &Ordered<'_>) -> bool {
-    standing::enter_refused(
+    ordered.hex.enter_refused(
         ordered.unit.structure_id.as_deref(),
         ordered.intents.iter().filter_map(boarding_of),
-        |id| {
-            ordered
-                .structures_here
-                .iter()
-                .any(|listed| listed.structure_id == id)
-        },
     )
 }
 
@@ -18560,16 +18565,10 @@ fn boarding_refused(ordered: &Ordered<'_>) -> bool {
 /// when they are refused outright (`ah-5maa`), nor when the only one is a LEAVE refused at sea
 /// (`ah-djst`).
 fn boarding_moves(ordered: &Ordered<'_>) -> bool {
-    standing::boarding_moves(
+    ordered.hex.boarding_moves(
         ordered.unit.structure_id.as_deref(),
         ordered.intents.iter().filter_map(boarding_of),
-        |id| {
-            ordered
-                .structures_here
-                .iter()
-                .any(|listed| listed.structure_id == id)
-        },
-        leave_refused(ordered),
+        leaver(ordered),
     )
 }
 
@@ -30634,11 +30633,17 @@ PRODUCE wagon
             let rules = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
                 .expect("the committed Trident ruleset should be usable");
             let walk_where = |at_sea: bool| -> Vec<String> {
-                let mut hex = Hex::read(&hex_region, &ordered, &[]);
-                // What `hex_with_transfers` sets from the region's terrain.
-                for unit in &mut hex.units {
-                    unit.at_sea = at_sea;
-                }
+                let terrain = if at_sea { "ocean" } else { "plain" };
+                assert_eq!(
+                    rules.is_water(terrain),
+                    at_sea,
+                    "{terrain} in the Trident ruleset"
+                );
+                let region = ReportRegion {
+                    terrain: terrain.to_string(),
+                    ..hex_region.clone()
+                };
+                let hex = Hex::read_in(&region, &ordered, &[], Some(&rules));
                 month_long_walk(&hex, Some(&rules))
                     .into_iter()
                     .map(|index| hex.units[index].unit.unit_id.clone())
