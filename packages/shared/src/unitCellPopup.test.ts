@@ -2912,6 +2912,48 @@ describe("the items popup's pairs", () => {
     expect(popup.notes).toContain("grain: produced 6, gave 6 to Scouts (1502).");
   });
 
+  // `ah-dqvi`: a sharer given wood that it then lends to a faction-mate's BUILD starts and ends
+  // the month with none, its item list unchanged - so the only trace of the wood is the two
+  // movements, and the hover drew no line for them at all.
+  it("keeps goods a sharer was given and then lent away visible with both movements", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [{ name: "orcs", tag: "ORC", amount: 20 }],
+          itemChanges: [
+            {
+              tag: "WOOD",
+              name: "wood",
+              delta: 10,
+              cause: "was-given",
+              line: 6,
+              unitPrice: null,
+              other: { unitId: "2874", name: "Lumbers" },
+              isMan: false
+            },
+            {
+              tag: "WOOD",
+              name: "wood",
+              delta: -10,
+              cause: "build-spent",
+              line: null,
+              unitPrice: null,
+              other: { unitId: "902", name: "Fieldhands" },
+              isMan: false
+            }
+          ]
+        }),
+        facts()
+      )
+    );
+
+    expect(popup.lines).toContainEqual({ label: "wood WOOD", value: "gone" });
+    expect(popup.notes).toContain(
+      "wood: given 10 by Lumbers (2874), spent 10 for Fieldhands (902) to build."
+    );
+  });
+
   it("draws no silver line in the items popup", () => {
     const popup = columnPopup(
       popupForCell(

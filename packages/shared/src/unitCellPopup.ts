@@ -338,8 +338,15 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
   }
   // Silver is answered for by the SILVER column and its popup alone (`ah-6m7b.5.1`), so it is
   // neither a line of its own nor a `gone` line for what the report listed and the month spent.
+  // A tag the month only passed through - given to a sharer and lent on to a faction-mate's
+  // BUILD - is neither held, reported nor produced, so its movements name it too (`ah-dqvi`).
   const tags: string[] = [];
-  for (const tag of [...held.keys(), ...(reported?.keys() ?? []), ...(unit.produced ?? []).map(({ tag }) => tag)]) {
+  for (const tag of [
+    ...held.keys(),
+    ...(reported?.keys() ?? []),
+    ...(unit.produced ?? []).map(({ tag }) => tag),
+    ...changes.map(({ tag }) => tag)
+  ]) {
     if (!isSilver(tag) && !tags.includes(tag)) {
       tags.push(tag);
     }
