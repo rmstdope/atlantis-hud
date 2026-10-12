@@ -20,7 +20,7 @@ import { studyOrders } from "../studyOrders";
 import type { StandingAfterOrders } from "../studyStanding";
 import { mageShelters, type ShelterSeats } from "../studyShelter";
 import { planFor, plannedGoals, type PlanChange, type ScheduleChange } from "../studyPlans";
-import { castsLostToEdit, type CastHalf } from "../studyCast";
+import { castsLostAcross, type CastHalf } from "../studyCast";
 import type { TeachingRule } from "../teachingPermission";
 import { STUDY_NOTE_MAX_CHARS, noteCountText } from "../studyNote";
 import { createNoteAutosave, type NoteAutosave } from "./studyNoteAutosave";
@@ -155,40 +155,41 @@ export function StudyPlannerDialog({
     [groups, plans, tree, turns, seats, assumeSheltered, after, rule]
   );
   // ah-9qdz.2: a cast planned on a turn where he would know no castable spell at all - because
-  // an earlier study was changed - is taken out of the plan rather than kept amber (agreed), and
-  // does not come back if that study is changed back. Only the edit's own loss counts: a half lost
-  // to the shelter forecast, this month's orders or an old ruleset keeps its cast
-  // (`castsLostToEdit`, review of PR #1516). Each committed study or teach records the mage's
-  // goals and halves as they were; once his goals read differently, the halves he lost are pruned.
+  // an earlier study or teach was changed - is taken out of the plan rather than kept amber
+  // (agreed), and does not come back if that cell is changed back. Only the edit's own loss
+  // counts: a half lost to the shelter forecast, this month's orders or an old ruleset keeps its
+  // cast (review of PR #1516).
+  //
+  // Each committed study or teach snapshots every mage's halves - a teacher's edit can take his
+  // student's away - and the stored record of the mage it edits. The edit has settled once that
+  // record is replaced (every successful save replaces it, a re-pick of the same skill included);
+  // then whatever the snapshot had and the grid no longer has is pruned, and the entry is gone.
+  // A reshape of the schedule drops every pending snapshot: its columns no longer line up.
   const castEdits = useRef(
-    new Map<string, { goals: string; before: readonly (CastHalf | null)[] }>()
+    new Map<
+      string,
+      {
+        record: StudyPlanRecord | null;
+        before: ReadonlyMap<string, readonly (CastHalf | null)[]>;
+      }
+    >()
   );
   useEffect(() => {
     for (const [rowKey, edit] of castEdits.current) {
-      const row = rows.find((one) => one.key === rowKey);
-      if (row === undefined) {
-        castEdits.current.delete(rowKey);
-        continue;
-      }
-      if (JSON.stringify(row.goals) === edit.goals) {
-        // The write has not landed yet; this render is something else.
+      const [factionId, unitId] = rowKey.split("/");
+      if (planFor(plans, factionId, unitId) === edit.record) {
+        // Its write has not landed yet; this render is something else.
         continue;
       }
       castEdits.current.delete(rowKey);
-      const lost = castsLostToEdit({
-        casts: row.casts,
-        before: edit.before,
-        after: row.castHalves,
-        turns
-      });
-      if (lost.length > 0) {
-        const [factionId, unitId] = rowKey.split("/");
-        onSavePlan(factionId, unitId, {
-          casts: (casts) => casts.filter((cast) => !lost.includes(cast.turn))
+      for (const lost of castsLostAcross({ rows, before: edit.before, turns })) {
+        const [lostFaction, lostUnit] = lost.rowKey.split("/");
+        onSavePlan(lostFaction, lostUnit, {
+          casts: (casts) => casts.filter((cast) => !lost.turns.includes(cast.turn))
         });
       }
     }
-  }, [rows, turns, onSavePlan]);
+  }, [plans, rows, turns, onSavePlan]);
   const shelters = useMemo(
     () => mageShelters({ groups, seats, names: structureNames, after }),
     [groups, seats, structureNames, after]
@@ -485,14 +486,13 @@ export function StudyPlannerDialog({
           mode={cellMode}
           onEvent={(event) => setCellMode((mode) => reduceCell(mode, event))}
           onCommit={(rowKey, change) => {
-            const row = rows.find((one) => one.key === rowKey);
-            if (change.goals !== undefined && row !== undefined) {
+            const [factionId, unitId] = rowKey.split("/");
+            if (change.goals !== undefined) {
               castEdits.current.set(rowKey, {
-                goals: JSON.stringify(row.goals),
-                before: row.castHalves
+                record: planFor(plans, factionId, unitId),
+                before: new Map(rows.map((row) => [row.key, row.castHalves] as const))
               });
             }
-            const [factionId, unitId] = rowKey.split("/");
             onSavePlan(factionId, unitId, change);
           }}
           saveError={saveError}
@@ -503,7 +503,10 @@ export function StudyPlannerDialog({
               : null
           }
           label={label}
-          onScheduleChange={onScheduleChange}
+          onScheduleChange={(change) => {
+            castEdits.current.clear();
+            onScheduleChange(change);
+          }}
           rule={rule}
         />
       ) : picked === null ? (

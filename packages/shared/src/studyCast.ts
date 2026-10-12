@@ -237,3 +237,37 @@ export function castsLostToEdit(input: {
       );
     });
 }
+
+/**
+ * `castsLostToEdit` for every mage at once: an edit to one cell can take another mage's half away
+ * - a teacher changed to a study leaves his student's later months short - so the whole grid is
+ * compared against a snapshot taken as the edit was committed. A mage the snapshot does not hold
+ * is left alone.
+ */
+export function castsLostAcross(input: {
+  rows: readonly {
+    key: string;
+    casts: readonly PlannedCast[];
+    castHalves: readonly (CastHalf | null)[];
+  }[];
+  before: ReadonlyMap<string, readonly (CastHalf | null)[]>;
+  turns: readonly number[];
+}): { rowKey: string; turns: number[] }[] {
+  const out: { rowKey: string; turns: number[] }[] = [];
+  for (const row of input.rows) {
+    const before = input.before.get(row.key);
+    if (before === undefined) {
+      continue;
+    }
+    const lost = castsLostToEdit({
+      casts: row.casts,
+      before,
+      after: row.castHalves,
+      turns: input.turns
+    });
+    if (lost.length > 0) {
+      out.push({ rowKey: row.key, turns: lost });
+    }
+  }
+  return out;
+}

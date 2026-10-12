@@ -6,6 +6,7 @@ import {
   castMenu,
   castableAt,
   castsAfterChoice,
+  castsLostAcross,
   castsLostToEdit
 } from "./studyCast";
 import type { SkillPoints } from "./studySchedule";
@@ -203,5 +204,39 @@ describe("castsLostToEdit", () => {
 
   it("never names a turn outside the columns", () => {
     expect(lost([empty, empty, empty], [null, null, null])).toEqual([26, 27, 28]);
+  });
+});
+
+// Review of PR #1516, round two: a teacher's edit can take a student's half away, so every mage's
+// halves are compared, not only the edited one's.
+describe("castsLostAcross", () => {
+  const empty = { kind: "empty" as const, label: "✦ no cast" as const, title: null };
+
+  it("names every mage whose half the edit took away, the student included", () => {
+    expect(
+      castsLostAcross({
+        rows: [
+          { key: "t", casts: [], castHalves: [empty, empty] },
+          { key: "s", casts: [{ turn: 73, spell: "FIRE" }], castHalves: [empty, null] },
+          { key: "u", casts: [{ turn: 73, spell: "BIRD" }], castHalves: [empty, null] }
+        ],
+        before: new Map([
+          ["t", [empty, empty]],
+          ["s", [empty, empty]],
+          ["u", [empty, null]]
+        ]),
+        turns: [72, 73]
+      })
+    ).toEqual([{ rowKey: "s", turns: [73] }]);
+  });
+
+  it("leaves a mage the snapshot does not hold alone", () => {
+    expect(
+      castsLostAcross({
+        rows: [{ key: "n", casts: [{ turn: 73, spell: "FIRE" }], castHalves: [empty, null] }],
+        before: new Map(),
+        turns: [72, 73]
+      })
+    ).toEqual([]);
   });
 });
