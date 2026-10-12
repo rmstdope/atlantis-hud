@@ -11614,11 +11614,21 @@ fn check_enter_not_here(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
 /// usable to leave a boat while at sea"; `rules/nocross` makes a unit "not cross" water whatever it
 /// could otherwise do, and `rules/sequenceofevents` runs NOCROSS before LEAVE, so the flag is read
 /// once this month's NOCROSS has run ([`leaver`]). The engine sets one leave per unit, so only the
-/// block's first LEAVE is warned. Always on (`codes::ALWAYS_ON`), so no option is read.
+/// block's first LEAVE is warned. An ENTER anywhere in the block replaces the LEAVE - the engine's
+/// `ProcessLeaveOrder` sets the leave only when no ENTER is pending and `ProcessEnterOrder` always
+/// overwrites it - so `Do1EnterOrder` never refuses it, and nothing is warned. Always on
+/// (`codes::ALWAYS_ON`), so no option is read.
 fn check_leave_refused_at_sea(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
     for ordered in &hex.units {
         let leaver = leaver(ordered);
         if !ordered.hex.leave_refused(leaver) {
+            continue;
+        }
+        if ordered
+            .intents
+            .iter()
+            .any(|placed| matches!(placed.intent, Intent::Enter { .. }))
+        {
             continue;
         }
         let Some(placed) = ordered
@@ -11630,6 +11640,8 @@ fn check_leave_refused_at_sea(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
         };
         let why = if leaver.wont_cross_water {
             "the unit won't cross water (NOCROSS)"
+        } else if leaver.movement.is_none() {
+            "nothing on the report shows the unit can swim or fly"
         } else {
             "the unit cannot swim or fly its load"
         };
