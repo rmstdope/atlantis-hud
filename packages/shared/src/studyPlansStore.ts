@@ -24,7 +24,6 @@ import type { MagicTree } from "./magicTree";
 
 export type StudyPlansStatus = "idle" | "loading" | "ready" | "error";
 
-
 export type StudyPlansState = {
   /** The game the rows belong to; rows for another game are stale and are not read. */
   gameId: string | null;
