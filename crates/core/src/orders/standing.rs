@@ -10,8 +10,12 @@
 //! the preview walker's working state - so the seam is the *input*: each supplies the block's
 //! boardings in the order they were written, and the rule lives here alone.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use crate::movement::orders::MoveStep;
-use crate::report::model::{SwimCapacity, UnitMovement};
+use crate::movement::rules::Ruleset;
+use crate::report::model::{ReportRegion, SwimCapacity, UnitMovement};
+use crate::report::ParsedReport;
 
 /// A unit's ENTER and LEAVE orders, in the order they were written.
 ///
@@ -159,6 +163,133 @@ pub fn leave_refused_at_sea(
     );
     let flies = movement.fly > 0 && movement.fly >= movement.load;
     !(swims || flies)
+}
+
+/// What the standing rule knows about one hex, read once from the report and the ruleset.
+///
+/// The one place a per-hex fact the rule needs is gathered (`ah-6udn`): ah-5maa needed the hex's
+/// structures and ah-djst whether it is water, and each was threaded by hand through all three
+/// readers of where a unit stands. Each reader now holds this value and supplies only what is its
+/// own - the unit's boardings, and its [`Leaver`] - so the next fact is a field here, read in
+/// [`Self::of`] and used by the methods below, and no reader changes.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HexStanding {
+    /// Every structure number the report shows in the hex; `None` for a hex the report does not
+    /// describe, where every ENTER is taken as written.
+    structures: Option<BTreeSet<String>>,
+    /// Whether the hex's terrain is water in this world, where a LEAVE can be refused
+    /// ([`leave_refused_at_sea`]). `false` without a ruleset to say so: then every LEAVE runs.
+    water: bool,
+}
+
+/// What the unit itself brings to whether its LEAVE runs where it stands
+/// ([`leave_refused_at_sea`]).
+#[derive(Debug, Clone, Copy)]
+pub struct Leaver<'a> {
+    /// The unit's NOCROSS flag once this month's NOCROSS orders have run: `rules/sequenceofevents`
+    /// runs NOCROSS before LEAVE.
+    pub wont_cross_water: bool,
+    /// The movement the report states for the unit; `None` when nothing states it.
+    pub movement: Option<&'a UnitMovement>,
+}
+
+impl HexStanding {
+    /// A hex the report does not describe: every ENTER is taken as written, and no LEAVE refused.
+    pub const UNDESCRIBED: HexStanding = HexStanding {
+        structures: None,
+        water: false,
+    };
+
+    /// What the rule knows about `region`, with `ruleset` to say whether its terrain is water.
+    #[must_use]
+    pub fn of(region: &ReportRegion, ruleset: Option<&Ruleset>) -> Self {
+        Self {
+            structures: Some(
+                region
+                    .structures
+                    .iter()
+                    .map(|structure| structure.structure_id.clone())
+                    .collect(),
+            ),
+            water: ruleset.is_some_and(|rules| rules.is_water(&region.terrain)),
+        }
+    }
+
+    fn has(&self, structure: &str) -> bool {
+        self.structures
+            .as_ref()
+            .is_none_or(|known| known.contains(structure))
+    }
+
+    /// Whether the game refuses this unit's LEAVE in this hex ([`leave_refused_at_sea`]).
+    #[must_use]
+    pub fn leave_refused(&self, leaver: Leaver<'_>) -> bool {
+        leave_refused_at_sea(self.water, leaver.wont_cross_water, leaver.movement)
+    }
+
+    /// [`standing_after_in`] in this hex.
+    pub fn standing_after<'a>(
+        &self,
+        reported: Option<&'a str>,
+        boardings: impl IntoIterator<Item = Boarding<'a>>,
+        leaver: Leaver<'_>,
+    ) -> Option<&'a str> {
+        standing_after_in(
+            reported,
+            boardings,
+            |structure| self.has(structure),
+            self.leave_refused(leaver),
+        )
+    }
+
+    /// [`enter_refused`] in this hex.
+    pub fn enter_refused<'a>(
+        &self,
+        reported: Option<&'a str>,
+        boardings: impl IntoIterator<Item = Boarding<'a>>,
+    ) -> bool {
+        enter_refused(reported, boardings, |structure| self.has(structure))
+    }
+
+    /// [`boarding_moves`] in this hex.
+    pub fn boarding_moves<'a>(
+        &self,
+        reported: Option<&'a str>,
+        boardings: impl IntoIterator<Item = Boarding<'a>>,
+        leaver: Leaver<'_>,
+    ) -> bool {
+        boarding_moves(
+            reported,
+            boardings,
+            |structure| self.has(structure),
+            self.leave_refused(leaver),
+        )
+    }
+}
+
+/// Every region's [`HexStanding`], read once from the report, keyed by region id.
+#[derive(Debug, Clone, Default)]
+pub struct HexStandings(BTreeMap<String, HexStanding>);
+
+impl HexStandings {
+    /// Every region the report shows, with `ruleset` to say which are water.
+    #[must_use]
+    pub fn of(report: &ParsedReport, ruleset: Option<&Ruleset>) -> Self {
+        Self(
+            report
+                .regions
+                .iter()
+                .map(|region| (region.region_id.clone(), HexStanding::of(region, ruleset)))
+                .collect(),
+        )
+    }
+
+    /// The hex a unit in `region_id` stands in; [`HexStanding::UNDESCRIBED`] for a region the
+    /// report does not show.
+    #[must_use]
+    pub fn of_region(&self, region_id: &str) -> &HexStanding {
+        self.0.get(region_id).unwrap_or(&HexStanding::UNDESCRIBED)
+    }
 }
 
 /// The block's boardings less any LEAVE the game refuses.
@@ -473,5 +604,108 @@ mod move_tests {
         let block = [Boarding::Leave, Boarding::Enter("5")];
         assert_eq!(standing_after_in(Some("4"), block, has, true), Some("5"));
         assert!(boarding_moves(Some("4"), block, has, true));
+    }
+}
+
+#[cfg(test)]
+mod hex_tests {
+    use super::*;
+    use crate::movement::rules::Ruleset;
+    use crate::report::model::{ReportRegion, Structure, UnitMovementMode, UnitMovementStatus};
+    use crate::report::ParsedReport;
+
+    fn ruleset() -> Ruleset {
+        Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON).expect("the ruleset loads")
+    }
+
+    fn region(region_id: &str, terrain: &str, structures: &[&str]) -> ReportRegion {
+        ReportRegion {
+            region_id: region_id.to_string(),
+            terrain: terrain.to_string(),
+            structures: structures
+                .iter()
+                .map(|id| Structure {
+                    structure_id: (*id).to_string(),
+                    ..Structure::default()
+                })
+                .collect(),
+            ..ReportRegion::default()
+        }
+    }
+
+    const WALKER: Leaver<'static> = Leaver {
+        wont_cross_water: false,
+        movement: None,
+    };
+
+    #[test]
+    fn hex_standing_reads_structures_and_water_from_the_region() {
+        let rules = ruleset();
+        let sea = HexStanding::of(&region("1", "ocean", &["4"]), Some(&rules));
+        let land = HexStanding::of(&region("2", "plain", &["4"]), Some(&rules));
+
+        // An ENTER of a structure the hex does not have moves nobody (`ah-5maa`).
+        assert_eq!(sea.standing_after(None, [Boarding::Enter("77")], WALKER), None);
+        assert_eq!(
+            land.standing_after(None, [Boarding::Enter("4")], WALKER),
+            Some("4")
+        );
+        assert!(sea.enter_refused(None, [Boarding::Enter("77")]));
+        // A LEAVE at sea is refused for a unit nothing shows can swim or fly (`ah-djst`).
+        assert_eq!(
+            sea.standing_after(Some("4"), [Boarding::Leave], WALKER),
+            Some("4")
+        );
+        assert!(!sea.boarding_moves(Some("4"), [Boarding::Leave], WALKER));
+        assert_eq!(land.standing_after(Some("4"), [Boarding::Leave], WALKER), None);
+        assert!(land.boarding_moves(Some("4"), [Boarding::Leave], WALKER));
+    }
+
+    #[test]
+    fn without_a_ruleset_no_hex_is_known_to_be_water() {
+        let sea = HexStanding::of(&region("1", "ocean", &["4"]), None);
+        assert!(!sea.leave_refused(WALKER));
+    }
+
+    #[test]
+    fn a_hex_refuses_a_leave_only_to_a_unit_that_cannot_swim_fly_or_will_not_cross() {
+        let sea = HexStanding::of(&region("1", "ocean", &[]), Some(&ruleset()));
+        let flier = UnitMovement {
+            status: UnitMovementStatus::Walk,
+            load: 10,
+            fly: 20,
+            ride: 0,
+            walk: 0,
+            capacity_mode: UnitMovementMode::Walk,
+            swim: SwimCapacity::Absent,
+        };
+        let flies = Leaver {
+            wont_cross_water: false,
+            movement: Some(&flier),
+        };
+        assert!(sea.leave_refused(WALKER));
+        assert!(!sea.leave_refused(flies));
+        assert!(sea.leave_refused(Leaver {
+            wont_cross_water: true,
+            ..flies
+        }));
+    }
+
+    #[test]
+    fn an_undescribed_region_takes_every_enter_as_written_and_refuses_no_leave() {
+        let report = ParsedReport {
+            regions: vec![region("1", "ocean", &["4"])],
+            ..ParsedReport::default()
+        };
+        let hexes = HexStandings::of(&report, Some(&ruleset()));
+
+        assert!(hexes.of_region("1").leave_refused(WALKER));
+        let elsewhere = hexes.of_region("not in the report");
+        assert_eq!(elsewhere, &HexStanding::UNDESCRIBED);
+        assert_eq!(
+            elsewhere.standing_after(None, [Boarding::Enter("77")], WALKER),
+            Some("77")
+        );
+        assert!(!elsewhere.leave_refused(WALKER));
     }
 }
