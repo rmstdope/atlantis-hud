@@ -49,6 +49,10 @@ pub struct WrittenMovement {
     boardings_by_unit: BTreeMap<String, Vec<BoardingOrder>>,
     /// Each unit's syntactically valid `PROMOTE` targets this month, in the order written.
     promotes_by_unit: BTreeMap<String, Vec<String>>,
+    /// The last `NOCROSS` each unit's own block writes this month. `rules/sequenceofevents` runs
+    /// NOCROSS among the first instant orders, before LEAVE, so this is the flag a LEAVE at sea
+    /// meets ([`leave_refused_at_sea`]).
+    nocross_by_unit: BTreeMap<String, bool>,
     /// The units, shown or formed, whose block ends its movement with a TEACH
     /// ([`RouteChain::closed_by_teach`]): whether their route runs turns on the settled month,
     /// which this reader cannot see, so [`Self::settle`] decides it (`ah-0x6x`, `ah-r3rv`).
@@ -81,6 +85,7 @@ impl WrittenMovement {
         let mut chains: BTreeMap<OrderedUnitKey, RouteChain> = BTreeMap::new();
         let mut promotes_by_unit: BTreeMap<String, Vec<String>> = BTreeMap::new();
         let mut boardings_by_unit: BTreeMap<String, Vec<BoardingOrder>> = BTreeMap::new();
+        let mut nocross_by_unit: BTreeMap<String, bool> = BTreeMap::new();
         let mut sailers = BTreeSet::new();
         let mut current: Option<String> = None;
         // The `FORM` blocks currently open, innermost last, each holding the line of the `FORM`
@@ -142,6 +147,13 @@ impl WrittenMovement {
                             .entry(unit_id.clone())
                             .or_default()
                             .push(target);
+                    }
+                    if let Some(crate::report::flags::FlagChange::Toggle {
+                        setting: crate::report::flags::Setting::NoCross,
+                        on,
+                    }) = crate::orders::effects::read_flag_order(line.command, line.arguments)
+                    {
+                        nocross_by_unit.insert(unit_id.clone(), on);
                     }
                 }
                 let Some(intent) =
@@ -237,6 +249,7 @@ impl WrittenMovement {
             sailers,
             boardings_by_unit,
             promotes_by_unit,
+            nocross_by_unit,
             closed_by_teach,
             // Only a report says which structures a region has; `settle` fills this from one.
             structures_by_region: BTreeMap::new(),
@@ -349,6 +362,19 @@ impl OrderedUnits {
             .promotes_by_unit
             .get(unit_id)
             .map_or(&[][..], Vec::as_slice)
+    }
+
+    /// Whether the unit won't cross water when its LEAVE runs: this month's own `NOCROSS` if its
+    /// block writes one, otherwise the report's "won't cross water" (`rules/nocross`).
+    #[must_use]
+    pub fn wont_cross_water(&self, unit: &ReportUnit) -> bool {
+        self.0
+            .nocross_by_unit
+            .get(&unit.unit_id)
+            .copied()
+            .unwrap_or_else(|| {
+                crate::report::flags::holds(&unit.flags, crate::report::flags::Setting::NoCross)
+            })
     }
 
     #[must_use]
@@ -487,7 +513,7 @@ pub fn fleet_owner(
     let listed_under = |unit: &ReportUnit| unit.structure_id.as_deref() == Some(structure_id);
     let aboard = |unit: &&ReportUnit| match ordered.structure_of(unit) {
         Some(standing) => standing == structure_id,
-        None => listed_under(unit) && leave_refused_at_sea(region, ruleset, unit),
+        None => listed_under(unit) && leave_refused_at_sea(region, ruleset, ordered, unit),
     };
     let stayed = region
         .units
@@ -519,9 +545,10 @@ pub fn fleet_owner(
             .promotes_of(&owner)
             .iter()
             .find(|target| {
-                region.units.iter().any(|unit| {
-                    &unit.unit_id == *target && ordered.structure_of(unit) == Some(structure_id)
-                })
+                region
+                    .units
+                    .iter()
+                    .any(|unit| &unit.unit_id == *target && aboard(&unit))
             })
             .cloned()
         else {
@@ -532,13 +559,27 @@ pub fn fleet_owner(
     Some(owner)
 }
 
-/// Whether the engine refuses this unit's LEAVE because the region is water and the unit can
-/// neither swim nor fly (`rules/leave`; `Unit::CanSwim`, which also admits a unit that can fly).
+/// Whether the engine refuses this unit's LEAVE at sea. `Do1EnterOrder` refuses it in a water
+/// region when the unit cannot swim **or** won't cross water ("LEAVE: Can't leave a ship in the
+/// ocean."; `rules/leave`, `rules/nocross`), and `Unit::CanSwim` also admits a unit that can fly.
+/// Every unit starts with "won't cross water" set (`Unit` constructor, `FLAG_NOCROSS_WATER`).
 /// A unit whose movement the report does not state is taken as unable: the engine keeps it aboard
 /// unless it can carry its weight swimming or flying, and nothing in hand says it can.
-fn leave_refused_at_sea(region: &ReportRegion, ruleset: &Ruleset, unit: &ReportUnit) -> bool {
+///
+/// Known gap, filed as `ah-djst`: only the owner walk applies this.
+/// [`OrderedUnits::structure_of`], and so the units-in-hex preview and the checks that ask where
+/// a unit stands, still put a refused leaver ashore.
+fn leave_refused_at_sea(
+    region: &ReportRegion,
+    ruleset: &Ruleset,
+    ordered: &OrderedUnits,
+    unit: &ReportUnit,
+) -> bool {
     if !ruleset.is_water(&region.terrain) {
         return false;
+    }
+    if ordered.wont_cross_water(unit) {
+        return true;
     }
     let Some(movement) = unit.movement.as_ref() else {
         return true;
@@ -998,6 +1039,63 @@ mod tests {
         assert_eq!(
             scene_course("unit 900\nSAIL SE\nLEAVE\n", "329"),
             go(crate::movement::graph::Direction::Southeast)
+        );
+    }
+
+    /// [`owner_scene`] with Sea Rovers (900) able to fly its load - which `Unit::CanSwim` admits as
+    /// leaving a ship at sea (`rules/leave`) - and, when `nocross`, showing "won't cross water".
+    fn flying_owner_scene(nocross: bool) -> String {
+        let flag = if nocross { ", won't cross water" } else { "" };
+        owner_scene().replace(
+            "  * Sea Rovers (900), Foo (1), leader [LEAD], sharing, centaur [CTAU]. Weight: 50. \
+             Capacity: 0/70/70/0.",
+            &format!(
+                "  * Sea Rovers (900), Foo (1), leader [LEAD], sharing{flag}, centaur [CTAU]. \
+                 Weight: 50. Capacity: 70/70/70/0."
+            ),
+        )
+    }
+
+    /// At sea a unit that can fly its load may LEAVE (`rules/leave`), so the hull passes on; one
+    /// that won't cross water may not (`Do1EnterOrder` refuses it for `FLAG_NOCROSS_WATER`,
+    /// `rules/nocross`) - unless this month's own `NOCROSS 0` clears the flag first, among the
+    /// instant orders that run before LEAVE (`rules/sequenceofevents`).
+    #[test]
+    fn a_leave_at_sea_runs_only_for_a_unit_that_can_fly_and_will_cross_water() {
+        let owner = |scene: String, orders: &str| course_in(&scene, orders, &[], "329").0;
+        assert!(
+            flying_owner_scene(false).contains("Capacity: 70/70/70/0"),
+            "the fixture was rewritten"
+        );
+        assert_eq!(
+            owner(flying_owner_scene(false), "unit 900\nLEAVE\n"),
+            Some("901".to_string()),
+            "a flyer leaves, and the next unit aboard owns the hull"
+        );
+        assert_eq!(
+            owner(flying_owner_scene(true), "unit 900\nLEAVE\n"),
+            Some("900".to_string()),
+            "won't cross water: the LEAVE is refused"
+        );
+        assert_eq!(
+            owner(flying_owner_scene(true), "unit 900\nNOCROSS 0\nLEAVE\n"),
+            Some("901".to_string()),
+            "NOCROSS 0 clears the flag before the LEAVE runs"
+        );
+        assert_eq!(
+            owner(flying_owner_scene(false), "unit 900\nNOCROSS 1\nLEAVE\n"),
+            Some("900".to_string()),
+            "NOCROSS 1 set this month refuses it too"
+        );
+    }
+
+    /// A unit whose LEAVE is refused at sea is still aboard, so the owner can promote it
+    /// (`Do1PromoteOrder` takes any unit in the object).
+    #[test]
+    fn a_unit_whose_leave_is_refused_at_sea_can_be_promoted() {
+        assert_eq!(
+            scene_owner("unit 900\nPROMOTE 901\nunit 901\nLEAVE\n", "329"),
+            Some("901".to_string())
         );
     }
 

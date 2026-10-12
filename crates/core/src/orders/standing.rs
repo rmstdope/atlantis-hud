@@ -119,8 +119,9 @@ fn refused(reported: Option<&str>, standing: Option<&str>, has: impl Fn(&str) ->
 /// difference is read as a pair rather than discovered. A unit that also LEAVEs is not excluded:
 /// it still wrote a SAIL for this hull, and the checks that judge a written SAIL - the crew it
 /// lends, a course only the owner may set - must see it. Where the hull actually goes is a
-/// different question, answered by who is aboard when it moves: every LEAVE runs before movement
-/// (`Game::RunEnterOrders` ahead of `RunMovementOrders`), so a captain that leaves carries nobody
+/// different question, answered by who is aboard when it moves: every LEAVE that runs does so
+/// before movement (`Game::RunEnterOrders` ahead of `RunMovementOrders`), so a captain that leaves
+/// carries nobody - unless the LEAVE is refused at sea, where it keeps its hull
 /// (`movement::fleet::fleet_owner`, `ah-877p`).
 pub fn could_captain<'a>(
     reported: Option<&str>,
