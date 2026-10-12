@@ -57261,7 +57261,11 @@ BUILD
 
         let findings = check(regions, "unit 4021\nPRODUCE fish\nunit 4022\nSAIL N N N\n");
 
-        assert_eq!(produce_codes(&findings), ["produce-not-here"], "{findings:?}");
+        assert_eq!(
+            produce_codes(&findings),
+            ["produce-not-here"],
+            "{findings:?}"
+        );
     }
 
     // --- following a SAIL through the report's own regions (`ah-8myf`) -------------------------
@@ -57298,7 +57302,13 @@ BUILD
         ];
         let index = by_coordinate(&regions);
 
-        let end = sail_destination(&regions[0], &[MoveStep::Go(Direction::North)], &index, &ruleset(), Hull::Unbound);
+        let end = sail_destination(
+            &regions[0],
+            &[MoveStep::Go(Direction::North)],
+            &index,
+            &ruleset(),
+            Hull::Unbound,
+        );
 
         assert_eq!(end.map(|region| region.coordinate), Some(at(7, 51)));
     }
@@ -57334,7 +57344,13 @@ BUILD
         ];
         let index = by_coordinate(&regions);
 
-        let end = sail_destination(&regions[0], &[MoveStep::Go(Direction::South)], &index, &ruleset(), Hull::Unbound);
+        let end = sail_destination(
+            &regions[0],
+            &[MoveStep::Go(Direction::South)],
+            &index,
+            &ruleset(),
+            Hull::Unbound,
+        );
 
         assert_eq!(end.map(|region| region.coordinate), None);
     }
@@ -57344,7 +57360,13 @@ BUILD
         let regions = vec![region_with_exit(7, 53, "North", at(7, 51))];
         let index = by_coordinate(&regions);
 
-        let end = sail_destination(&regions[0], &[MoveStep::Go(Direction::North)], &index, &ruleset(), Hull::Unbound);
+        let end = sail_destination(
+            &regions[0],
+            &[MoveStep::Go(Direction::North)],
+            &index,
+            &ruleset(),
+            Hull::Unbound,
+        );
 
         assert_eq!(end.map(|region| region.coordinate), None);
     }

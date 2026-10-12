@@ -79,7 +79,11 @@ fn the_panel_warns_of_the_refused_step() {
 /// `guard-dropped` is said of the hex - "guarded by nobody next turn" - so the captain and the
 /// sailor are asked one at a time: `report` with only `unit` on guard.
 fn guarded_by_only(report: &str, unit: &str) -> String {
-    let other = if unit == "900" { "Sailor (901)" } else { "Captain (900)" };
+    let other = if unit == "900" {
+        "Sailor (901)"
+    } else {
+        "Captain (900)"
+    };
     report.replace(&format!("{other}, on guard,"), &format!("{other},"))
 }
 
@@ -155,19 +159,25 @@ fn the_preview_moves_nobody() {
 #[test]
 fn the_same_fleet_sailing_to_sea_carries_everybody_away() {
     let at_sea = REPORT
-        .replace("forest (2,2) in Shire, 100 peasants (humans), $50.", "ocean (2,2) in Sea.")
-        .replace("Southeast : forest (2,2) in Shire.", "Southeast : ocean (2,2) in Sea.")
+        .replace(
+            "forest (2,2) in Shire, 100 peasants (humans), $50.",
+            "ocean (2,2) in Sea.",
+        )
+        .replace(
+            "Southeast : forest (2,2) in Shire.",
+            "Southeast : ocean (2,2) in Sea.",
+        )
         .replace("\x20\x20Products: 20 wood [WOOD].\n\n", "");
     let review = review_of(&at_sea);
     let codes = codes(&review);
 
     for unit in ["900", "901"] {
-        assert!(guard_dropped(&guarded_by_only(&at_sea, unit)), "{unit} leaves");
+        assert!(
+            guard_dropped(&guarded_by_only(&at_sea, unit)),
+            "{unit} leaves"
+        );
     }
-    for expected in [
-        "build-site-refused",
-        "produce-not-here",
-    ] {
+    for expected in ["build-site-refused", "produce-not-here"] {
         assert!(codes.contains(&expected), "{expected}: {codes:?}");
     }
     assert!(!codes.contains(&"sail-between-land-hexes"), "{codes:?}");
