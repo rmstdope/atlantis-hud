@@ -8220,6 +8220,7 @@ mod tests {
             magic: true,
             damages_enemies: false,
             requires: Vec::new(),
+            usage: Some(crate::movement::rules::SkillUse::Cast),
             levels: Vec::new(),
         }
     }

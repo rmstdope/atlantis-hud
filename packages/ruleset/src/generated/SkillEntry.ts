@@ -3,6 +3,7 @@ import type { CastCost } from "./CastCost";
 import type { Production } from "./Production";
 import type { SkillLevel } from "./SkillLevel";
 import type { SkillRequirement } from "./SkillRequirement";
+import type { SkillUse } from "./SkillUse";
 
 /**
  * A skill, and what a month of studying it costs.
@@ -52,6 +53,12 @@ damagesEnemies: boolean,
  * prerequisites, and for a ruleset cached before they were scraped.
  */
 requires: Array<SkillRequirement>, 
+/**
+ * How this skill is used if it is a spell - cast, set for combat, both, or automatic - and
+ * `None` for a skill that is not magic. Spelled `use` in the ruleset (a keyword here). `None`
+ * too for a ruleset scraped before this was added, which says nothing rather than guessing.
+ */
+use: SkillUse | null, 
 /**
  * What the page says at each level, in level order, with the levels it fills with `No skill
  * report.` left out. Empty for a ruleset cached before ah-3cj4.2.

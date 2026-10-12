@@ -775,6 +775,23 @@ pub struct SkillRequirement {
     pub level: u32,
 }
 
+/// How a magic skill is used, as `rules/magic_usingmagic` names the three ways a spell can be: it
+/// takes effect automatically, it is set for combat with `COMBAT`, or it is cast with `CAST` - and
+/// Clear Skies (`data/CLEA`) is both of the last two.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/SkillUse.ts")
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum SkillUse {
+    Cast,
+    Combat,
+    Both,
+    Automatic,
+}
+
 /// A skill, and what a month of studying it costs.
 ///
 /// Separate from the item catalogue rather than merged into it, because ten tags mean one thing as
@@ -821,6 +838,11 @@ pub struct SkillEntry {
     /// prerequisites, and for a ruleset cached before they were scraped.
     #[serde(default)]
     pub requires: Vec<SkillRequirement>,
+    /// How this skill is used if it is a spell - cast, set for combat, both, or automatic - and
+    /// `None` for a skill that is not magic. Spelled `use` in the ruleset (a keyword here). `None`
+    /// too for a ruleset scraped before this was added, which says nothing rather than guessing.
+    #[serde(default, rename = "use")]
+    pub usage: Option<SkillUse>,
     /// What the page says at each level, in level order, with the levels it fills with `No skill
     /// report.` left out. Empty for a ruleset cached before ah-3cj4.2.
     #[serde(default)]
@@ -2423,6 +2445,34 @@ mod tests {
         let entry: SkillEntry =
             serde_json::from_str(json).expect("a skill entry missing magic should still parse");
         assert!(!entry.magic);
+        assert_eq!(entry.usage, None);
+    }
+
+    /// How a spell is used (`rules/magic_usingmagic`: automatic, in combat, or by casting) is
+    /// spelled `use` in the ruleset, with kebab-case values, and round-trips under that name.
+    #[test]
+    fn skill_use_reads_and_round_trips_as_use() {
+        let json = r#"{
+            "tag": "CLEA",
+            "name": "clear skies",
+            "cost": 100,
+            "maxLevel": 5,
+            "magic": true,
+            "use": "both"
+        }"#;
+        let entry: SkillEntry = serde_json::from_str(json).expect("a skill entry with a use");
+        assert_eq!(entry.usage, Some(SkillUse::Both));
+        let written = serde_json::to_value(&entry).expect("serialises");
+        assert_eq!(written["use"], "both");
+        for (value, expected) in [
+            ("cast", SkillUse::Cast),
+            ("combat", SkillUse::Combat),
+            ("automatic", SkillUse::Automatic),
+        ] {
+            let parsed: SkillUse =
+                serde_json::from_value(serde_json::Value::from(value)).expect("a known use");
+            assert_eq!(parsed, expected);
+        }
     }
 
     /// The spellings come back in the order they must be tried, and an empty text names nothing.
