@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { parseBuildingReference, parseItemReference, parseSkillReference } from "./data";
 import { preformattedText } from "./html";
-import { newAgeDataPage, parseNewAgeDatabase } from "./newage";
+import { newAgeDataPage, newAgeSkillUses, parseNewAgeDatabase } from "./newage";
 import { RulesetScrapeError } from "./rules";
 
 const fixture = (name: string) =>
@@ -159,5 +159,61 @@ describe("newAgeDataPage layout, over a constructed catalogue", () => {
       "Item reports:",
       "Object reports:"
     ]);
+  });
+});
+
+/**
+ * The database marks how each spell is used in its `flags` - `cast`, `combat`, both, or neither on a
+ * magic skill (`rules/magic_usingmagic`: automatic, in combat, or by casting).
+ */
+describe("newAgeSkillUses", () => {
+  it.each([
+    ["arcanum", ARCANUM],
+    ["trident", TRIDENT]
+  ])("reads FIRE, EART, CLEA, FORC and MANI out of the %s flags", (_world, json) => {
+    const uses = newAgeSkillUses(parseNewAgeDatabase(json));
+    expect(uses.FIRE).toBe("combat");
+    expect(uses.EART).toBe("cast");
+    expect(uses.CLEA).toBe("both");
+    expect(uses.FORC).toBe("automatic");
+    expect(uses.MANI).toBe("automatic");
+    expect(uses).not.toHaveProperty("MINI");
+  });
+
+  it("reads a skill with no flags or category as no spell", () => {
+    const database = parseNewAgeDatabase(
+      JSON.stringify({
+        world: "x",
+        skills: [{ name: "mining", tag: "MINI", levels: [{ level: 1, description: "Digs." }] }],
+        items: [],
+        objects: []
+      })
+    );
+    expect(newAgeSkillUses(database)).toEqual({});
+  });
+
+  it("refuses flags that are not a list of words", () => {
+    const json = JSON.stringify({
+      world: "x",
+      skills: [
+        { name: "fire", tag: "FIRE", category: "magic", flags: "cast", levels: [{ level: 1, description: "Burns." }] }
+      ],
+      items: [],
+      objects: []
+    });
+    expect(() => parseNewAgeDatabase(json)).toThrow(RulesetScrapeError);
+    expect(() => parseNewAgeDatabase(json)).toThrow("FIRE");
+  });
+
+  it.each([
+    ["arcanum", ARCANUM],
+    ["trident", TRIDENT]
+  ])("agrees with the prose rule New Origins is read by, for every %s spell", (_world, json) => {
+    const database = parseNewAgeDatabase(json);
+    const fromProse = parseSkillReference(newAgeDataPage(database));
+    const fromFlags = newAgeSkillUses(database);
+    for (const [tag, entry] of Object.entries(fromProse)) {
+      expect(entry.use, tag).toBe(fromFlags[tag] ?? null);
+    }
   });
 });

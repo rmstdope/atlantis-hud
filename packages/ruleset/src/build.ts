@@ -14,6 +14,7 @@ export type { Ruleset } from "./generated/Ruleset";
 import type { RiskThresholds } from "./generated/RiskThresholds";
 import type { OrderLanguage } from "./generated/OrderLanguage";
 import type { Ruleset } from "./generated/Ruleset";
+import type { SkillUse } from "./generated/SkillUse";
 import {
   itemClassesOf,
   parseBuildingReference,
@@ -34,7 +35,7 @@ import {
   RulesetScrapeError
 } from "./rules";
 import type { FoodMaintenance, RegionResources } from "./rules";
-import type { ItemReference } from "./data";
+import type { ItemReference, SkillReference } from "./data";
 
 export type BuildInput = {
   rulesHtml: string;
@@ -43,6 +44,11 @@ export type BuildInput = {
   dataUrl: string;
   orderLanguage: OrderLanguage;
   fetchedAt: string;
+  /**
+   * How each spell is used, keyed by tag, when the catalogue states it outright - a New Age
+   * database's flags (`newAgeSkillUses`). Absent for a data page, whose prose is read instead.
+   */
+  skillUses?: Record<string, SkillUse>;
 };
 
 const DEFAULT_RISK: RiskThresholds = {
@@ -148,6 +154,34 @@ function resolveRegionResources(
   return { terrainResources: resolved, terrainResourceChances: chances };
 }
 
+/**
+ * Lays a catalogue's own statement of how each spell is used over what the prose said. The two
+ * readings of which skills are spells must agree: a flag on a skill the catalogue does not call
+ * magic, or a spell with no flag, would leave a spell with no use or a mundane skill with one -
+ * a silent wrong answer, so it is refused naming the tag.
+ */
+function applySkillUses(skills: SkillReference, uses: Record<string, SkillUse>): void {
+  for (const tag of Object.keys(uses)) {
+    if (!skills[tag]?.magic) {
+      throw new RulesetScrapeError(
+        `the catalogue says how skill ${tag} is used as a spell, but its description reads as no magic skill`
+      );
+    }
+  }
+  for (const [tag, entry] of Object.entries(skills)) {
+    if (!entry.magic) {
+      continue;
+    }
+    const use = uses[tag];
+    if (use === undefined) {
+      throw new RulesetScrapeError(
+        `skill ${tag} reads as a magic skill, but the catalogue does not say how it is used`
+      );
+    }
+    entry.use = use;
+  }
+}
+
 export function buildRuleset(input: BuildInput): Ruleset {
   // Movement first: it is the part that stops the run, and there is no point reading a catalogue
   // for a ruleset we are going to refuse anyway.
@@ -199,6 +233,9 @@ export function buildRuleset(input: BuildInput): Ruleset {
   // After the race check, so a page that is unreadable in both ways is refused for the more
   // fundamental reason first.
   const skills = parseSkillReference(input.dataHtml);
+  if (input.skillUses) {
+    applySkillUses(skills, input.skillUses);
+  }
 
   // The skill parser objects only when it finds nothing at all, and a catalogue where nothing
   // carries a price is the same thing as no catalogue for the one consumer it has - order
