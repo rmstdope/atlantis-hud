@@ -12,7 +12,7 @@ use atlantis_hud_core::backup::{
 };
 /// The stored row and its key. The core owns both because the backup carries them too.
 pub use atlantis_hud_core::backup::{
-    AlliedMage, AlliedMageKey, Army, HexNote, StudyGoal, StudyPlan, StudyPlanKey,
+    AlliedMage, AlliedMageKey, Army, HexNote, PlannedCast, StudyGoal, StudyPlan, StudyPlanKey,
 };
 // The row and the order it is listed in are the core's, so both platforms answer alike
 // (`ah-8z4y.3.2`). Re-exported here because this is where every caller already reaches for it.
@@ -23,7 +23,7 @@ use rusqlite::{params, Connection, ErrorCode, OptionalExtension, Transaction};
 use thiserror::Error;
 
 /// Current schema version expected by the persistence layer.
-pub const CURRENT_SCHEMA_VERSION: u32 = 13;
+pub const CURRENT_SCHEMA_VERSION: u32 = 14;
 /// The manifest file inside a game's directory. The directory is named after the game's id, so the
 /// file itself does not have to be, and a game can be found without parsing any filename.
 pub const GAME_MANIFEST_FILE_NAME: &str = "game.json";
@@ -44,13 +44,15 @@ const MIGRATION_0011_STUDY_PLANS: &str = include_str!("../migrations/0011_study_
 const MIGRATION_0012_STUDY_PLAN_GOALS: &str =
     include_str!("../migrations/0012_study_plan_goals.sql");
 const MIGRATION_0013_STUDY_GOAL_KIND: &str = include_str!("../migrations/0013_study_goal_kind.sql");
+const MIGRATION_0014_STUDY_PLAN_CASTS: &str =
+    include_str!("../migrations/0014_study_plan_casts.sql");
 
 struct Migration {
     version: u32,
     sql: &'static str,
 }
 
-const MIGRATIONS: [Migration; 13] = [
+const MIGRATIONS: [Migration; 14] = [
     Migration {
         version: 1,
         sql: MIGRATION_0001_INITIAL,
@@ -102,6 +104,10 @@ const MIGRATIONS: [Migration; 13] = [
     Migration {
         version: 13,
         sql: MIGRATION_0013_STUDY_GOAL_KIND,
+    },
+    Migration {
+        version: 14,
+        sql: MIGRATION_0014_STUDY_PLAN_CASTS,
     },
 ];
 
@@ -2110,18 +2116,21 @@ impl GameScopedRows for StudyPlan {
         "faction_id",
         "unit_id",
         "goals_json",
+        "casts_json",
         "comment",
         "updated_at",
     ];
 
     fn read_row(row: &rusqlite::Row<'_>) -> Result<Self, PersistenceError> {
         let goals_json = row.get::<_, String>(2)?;
+        let casts_json = row.get::<_, String>(3)?;
         Ok(StudyPlan {
             faction_id: row.get(0)?,
             unit_id: row.get(1)?,
             goals: serde_json::from_str(&goals_json)?,
-            comment: row.get(3)?,
-            updated_at: row.get(4)?,
+            casts: serde_json::from_str(&casts_json)?,
+            comment: row.get(4)?,
+            updated_at: row.get(5)?,
         })
     }
 }
@@ -2129,7 +2138,8 @@ impl GameScopedRows for StudyPlan {
 impl UnitKeyedCollection for StudyPlan {
     type Key = StudyPlanKey;
 
-    const VALUE_COLUMNS: &'static [&'static str] = &["goals_json", "comment", "updated_at"];
+    const VALUE_COLUMNS: &'static [&'static str] =
+        &["goals_json", "casts_json", "comment", "updated_at"];
 
     fn key(&self) -> (&str, &str) {
         (&self.faction_id, &self.unit_id)
@@ -2138,6 +2148,7 @@ impl UnitKeyedCollection for StudyPlan {
     fn write_params(&self) -> Result<Vec<Box<dyn rusqlite::ToSql>>, PersistenceError> {
         Ok(vec![
             Box::new(serde_json::to_string(&self.goals)?),
+            Box::new(serde_json::to_string(&self.casts)?),
             Box::new(self.comment.clone()),
             Box::new(self.updated_at.clone()),
         ])
@@ -2282,7 +2293,7 @@ mod tests {
         let sql = unit_keyed_upsert_sql::<StudyPlan>();
         assert!(
             sql.contains(
-                "INSERT INTO study_plans (game_id, faction_id, unit_id, goals_json, comment, updated_at)"
+                "INSERT INTO study_plans (game_id, faction_id, unit_id, goals_json, casts_json, comment, updated_at)"
             ),
             "{sql}"
         );
@@ -3259,8 +3270,8 @@ mod tests {
 
         assert_eq!(created.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(
-            created.schema_version, 13,
-            "a goal becoming a tagged union added migration 13"
+            created.schema_version, 14,
+            "a plan's casts added migration 14"
         );
     }
 
@@ -3802,6 +3813,7 @@ mod tests {
                     }]
                 })
                 .unwrap_or_default(),
+            casts: vec![],
             comment: "heading for Gate Lore".to_string(),
             updated_at: "2026-08-01T09:00:00Z".to_string(),
         }
@@ -3826,6 +3838,7 @@ mod tests {
                     live: false,
                 },
             ],
+            casts: vec![],
             comment: String::new(),
             updated_at: "2026-08-01T09:00:00Z".to_string(),
         };
@@ -3881,6 +3894,87 @@ mod tests {
         );
     }
 
+    #[test]
+    fn study_plan_casts_round_trip() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let plan = StudyPlan {
+            casts: vec![
+                PlannedCast {
+                    turn: 25,
+                    spell: "FARS".to_string(),
+                },
+                PlannedCast {
+                    turn: 27,
+                    spell: "FIRE".to_string(),
+                },
+            ],
+            ..a_plan("9001", Some("FORC"), 25)
+        };
+
+        save_study_plans(
+            &created.database_path,
+            GAME_ID,
+            std::slice::from_ref(&plan),
+            &[],
+        )
+        .expect("save should succeed");
+
+        let listed =
+            list_study_plans(&created.database_path, GAME_ID).expect("list should succeed");
+        assert_eq!(
+            listed,
+            vec![plan],
+            "every planned cast survives the round trip"
+        );
+    }
+
+    /// ah-9qdz.2: migration 0014 gives every row stored before it an empty cast list.
+    #[test]
+    fn study_plans_written_before_casts_read_as_no_cast() {
+        let dir = tempdir().expect("tempdir");
+        let manifest = fixture_manifest();
+        let created = create_game(dir.path(), &manifest).expect("game creation should succeed");
+
+        // Put the database back at schema 13, with a row in the shape 0013 left.
+        let connection = Connection::open(&created.database_path).expect("open");
+        connection
+            .execute_batch(
+                "DROP TABLE study_plans;
+                 CREATE TABLE study_plans (
+                     game_id TEXT NOT NULL,
+                     faction_id TEXT NOT NULL,
+                     unit_id TEXT NOT NULL,
+                     goals_json TEXT NOT NULL,
+                     comment TEXT NOT NULL,
+                     updated_at TEXT NOT NULL,
+                     PRIMARY KEY (game_id, faction_id, unit_id)
+                 );
+                 DELETE FROM schema_migrations WHERE version >= 14;
+                 INSERT INTO study_plans
+                        (game_id, faction_id, unit_id, goals_json, comment, updated_at)
+                 VALUES ('faction-12', '21', '9001',
+                         '[{\"kind\":\"study\",\"turn\":25,\"skill\":\"FORC\"}]', '',
+                         '2026-08-01T09:00:00Z');",
+            )
+            .expect("rewind and seed");
+        drop(connection);
+
+        open_game(dir.path(), &manifest.metadata.game_id, CREATED_AT).expect("reopen migrates");
+
+        let listed =
+            list_study_plans(&created.database_path, GAME_ID).expect("list should succeed");
+        assert_eq!(
+            listed
+                .into_iter()
+                .map(|plan| (plan.goals.len(), plan.casts))
+                .collect::<Vec<_>>(),
+            vec![(1, vec![])],
+            "a row from before casts keeps its goal and plans no cast"
+        );
+    }
+
     /// A queue written before ah-lyg6.3 carries no `kind`, and serde's tagged enum refuses it.
     /// Migration 0013 stamps the tag in; without it every stored plan would fail to deserialise.
     #[test]
@@ -3889,11 +3983,14 @@ mod tests {
         let manifest = fixture_manifest();
         let created = create_game(dir.path(), &manifest).expect("game creation should succeed");
 
-        // Put the database back at schema 12, with a row in the shape 0012 wrote.
+        // Put the database back at schema 12, with a row in the shape 0012 wrote. 0014's column
+        // goes too, or replaying it would add the column twice. `DROP COLUMN` is safe here: the
+        // SQLite is rusqlite's bundled one.
         let connection = Connection::open(&created.database_path).expect("open");
         connection
             .execute_batch(
-                "DELETE FROM schema_migrations WHERE version >= 13;
+                "ALTER TABLE study_plans DROP COLUMN casts_json;
+                 DELETE FROM schema_migrations WHERE version >= 13;
                  INSERT INTO study_plans
                         (game_id, faction_id, unit_id, goals_json, comment, updated_at)
                  VALUES ('faction-12', '21', '9001',
@@ -4176,6 +4273,7 @@ mod tests {
                     skill: "SPIR".to_string(),
                 },
             ],
+            casts: vec![],
             comment: String::new(),
             updated_at: "2026-08-01T09:00:00Z".to_string(),
         };
@@ -4216,6 +4314,7 @@ mod tests {
                     live: false,
                 },
             ],
+            casts: vec![],
             comment: "finish force, then teach pattern".to_string(),
             updated_at: "2026-08-01T09:00:00Z".to_string(),
         };
