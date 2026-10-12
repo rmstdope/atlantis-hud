@@ -11,7 +11,7 @@
  * that the unit will cast in combat". Which one a spell takes is its ruleset `use` (ah-9qdz.1).
  */
 
-import type { PlannedCast } from "@atlantis/core-client";
+import type { PlannedCast, StudyPlanRecord } from "@atlantis/core-client";
 import type { MagicTree } from "./magicTree";
 import type { SkillPoints } from "./studySchedule";
 
@@ -267,6 +267,43 @@ export function castsLostAcross(input: {
     });
     if (lost.length > 0) {
       out.push({ rowKey: row.key, turns: lost });
+    }
+  }
+  return out;
+}
+
+/** A projected row, as far as the prune reads it. */
+type CastRow = {
+  key: string;
+  casts: readonly PlannedCast[];
+  castHalves: readonly (CastHalf | null)[];
+};
+
+/**
+ * The records an edit's own write has to carry as well: every mage whose cast the edit left
+ * without a castable spell, with that cast taken out (agreed: removed, not kept amber).
+ *
+ * `before` and `after` are the grid projected from the plans just before and just after the edit,
+ * inside the same queued write and under the same view settings - so a half lost to the shelter
+ * forecast, this month's orders or an old ruleset is missing from both and is never pruned, and a
+ * student loses what his teacher's edit took (review of PR #1516). `plans` is the list after it.
+ */
+export function castsPrunedBy(input: {
+  before: readonly CastRow[];
+  after: readonly CastRow[];
+  plans: readonly StudyPlanRecord[];
+  turns: readonly number[];
+}): StudyPlanRecord[] {
+  const lost = castsLostAcross({
+    rows: input.after,
+    before: new Map(input.before.map((row) => [row.key, row.castHalves] as const)),
+    turns: input.turns
+  });
+  const out: StudyPlanRecord[] = [];
+  for (const { rowKey, turns } of lost) {
+    const plan = input.plans.find((one) => `${one.factionId}/${one.unitId}` === rowKey);
+    if (plan !== undefined) {
+      out.push({ ...plan, casts: plan.casts.filter((cast) => !turns.includes(cast.turn)) });
     }
   }
   return out;

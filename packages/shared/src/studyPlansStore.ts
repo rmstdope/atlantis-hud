@@ -15,6 +15,7 @@ import {
   reshapeStudyGoals,
   saveStudyPlans,
   sortStudyPlans,
+  type PlanSettle,
   type ScheduleChange,
   type StudyPlanKey,
   type StudyPlanRecord
@@ -22,6 +23,7 @@ import {
 import type { MagicTree } from "./magicTree";
 
 export type StudyPlansStatus = "idle" | "loading" | "ready" | "error";
+
 
 export type StudyPlansState = {
   /** The game the rows belong to; rows for another game are stale and are not read. */
@@ -47,7 +49,8 @@ export type StudyPlansState = {
     client: CoreClient,
     game: OpenedGame,
     key: StudyPlanKey,
-    update: (current: StudyPlanRecord | null) => StudyPlanRecord
+    update: (current: StudyPlanRecord | null) => StudyPlanRecord,
+    settle?: PlanSettle
   ) => Promise<void>;
   /** Drops rows, then removes them from the cache. Rethrows. */
   remove: (client: CoreClient, game: OpenedGame, keys: readonly StudyPlanKey[]) => Promise<void>;
@@ -115,19 +118,33 @@ export const useStudyPlansStore = create<StudyPlansState>()((set, get) => ({
     }
   },
 
-  save: async (client, game, key, update) =>
+  save: async (client, game, key, update, settle) =>
     queued(async () => {
       const replaced = keyText(key.factionId, key.unitId);
       // Read *here*, not when the call was made: the row may have been written by an edit that
       // was queued ahead of this one, and a plan's goals are written whole.
+      const before = get().plans;
       const current =
-        get().plans.find((row) => keyText(row.factionId, row.unitId) === replaced) ?? null;
+        before.find((row) => keyText(row.factionId, row.unitId) === replaced) ?? null;
       const plan = update(current);
-      await saveStudyPlans(client, game, [plan], []);
+      const after = sortStudyPlans([
+        ...before.filter((row) => keyText(row.factionId, row.unitId) !== replaced),
+        plan
+      ]);
+      // A settle may answer the edited row too - his own edit can take one of his casts - and
+      // then its record is the one written; every other row it answers is written beside it.
+      const settled = settle?.(before, after) ?? [];
+      const own = settled.find((row) => keyText(row.factionId, row.unitId) === replaced);
+      const written = [
+        own ?? plan,
+        ...settled.filter((row) => keyText(row.factionId, row.unitId) !== replaced)
+      ];
+      await saveStudyPlans(client, game, written, []);
+      const changed = new Set(written.map((row) => keyText(row.factionId, row.unitId)));
       set((state) => ({
         plans: sortStudyPlans([
-          ...state.plans.filter((row) => keyText(row.factionId, row.unitId) !== replaced),
-          plan
+          ...state.plans.filter((row) => !changed.has(keyText(row.factionId, row.unitId))),
+          ...written
         ])
       }));
     }),

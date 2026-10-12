@@ -7,6 +7,7 @@ import {
   castableAt,
   castsAfterChoice,
   castsLostAcross,
+  castsPrunedBy,
   castsLostToEdit
 } from "./studyCast";
 import type { SkillPoints } from "./studySchedule";
@@ -238,5 +239,51 @@ describe("castsLostAcross", () => {
         turns: [72, 73]
       })
     ).toEqual([]);
+  });
+});
+
+// Review of PR #1516, round three: the prune runs inside the edit's own queued write, from the
+// plans just before it and just after it, and answers the records to write alongside it.
+describe("castsPrunedBy", () => {
+  const empty = { kind: "empty" as const, label: "✦ no cast" as const, title: null };
+  const record = (unitId: string, casts: { turn: number; spell: string }[]) => ({
+    factionId: "21",
+    unitId,
+    goals: [],
+    casts,
+    comment: "",
+    updatedAt: "2026-01-01T00:00:00.000Z"
+  });
+
+  it("answers each mage whose cast the edit left without a spell, with that cast taken out", () => {
+    const plans = [
+      record("1", []),
+      record("2", [
+        { turn: 72, spell: "FIRE" },
+        { turn: 73, spell: "FIRE" }
+      ])
+    ];
+
+    expect(
+      castsPrunedBy({
+        before: [
+          { key: "21/1", casts: [], castHalves: [empty, empty] },
+          { key: "21/2", casts: plans[1].casts, castHalves: [empty, empty] }
+        ],
+        after: [
+          { key: "21/1", casts: [], castHalves: [empty, null] },
+          { key: "21/2", casts: plans[1].casts, castHalves: [empty, null] }
+        ],
+        plans,
+        turns: [72, 73]
+      })
+    ).toEqual([record("2", [{ turn: 72, spell: "FIRE" }])]);
+  });
+
+  it("answers nothing when no half was lost", () => {
+    const plans = [record("2", [{ turn: 73, spell: "FIRE" }])];
+    const rows = [{ key: "21/2", casts: plans[0].casts, castHalves: [empty, null] }];
+
+    expect(castsPrunedBy({ before: rows, after: rows, plans, turns: [72, 73] })).toEqual([]);
   });
 });

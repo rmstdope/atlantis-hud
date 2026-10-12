@@ -948,7 +948,7 @@ export function AppShell({
             ),
             comment: change.comment ?? current?.comment ?? "",
             updatedAt: new Date().toISOString()
-          }));
+          }), change.settle);
       } catch {
         setStudyPlanError(failure);
       }

@@ -133,6 +133,58 @@ describe("save", () => {
   });
 });
 
+// ah-9qdz.2, review of PR #1516: what an edit takes from other rows - a cast left without a spell -
+// is decided and written inside the edit's own queued write, from the plans just before and just
+// after it, so no later render can read a stale snapshot.
+describe("save with a settle", () => {
+  const withCast = { ...plan("1205", null), casts: [{ turn: 25, spell: "FIRE" }] };
+
+  it("hands the settle the rows before and after the edit, and writes what it answers with it", async () => {
+    const core = client();
+    useStudyPlansStore.setState({ gameId: "aug-2026", status: "ready", plans: [withCast] });
+    const edited = plan("1204", "FORC");
+    const pruned = { ...withCast, casts: [] };
+    const settle = vi.fn().mockReturnValue([pruned]);
+
+    await useStudyPlansStore
+      .getState()
+      .save(core, game(), { factionId: "21", unitId: "1204" }, () => edited, settle);
+
+    expect(settle).toHaveBeenCalledWith([withCast], [edited, withCast]);
+    expect(core.saveStudyPlans).toHaveBeenCalledTimes(1);
+    expect(core.saveStudyPlans).toHaveBeenCalledWith("g.sqlite", "aug-2026", [edited, pruned], []);
+    expect(useStudyPlansStore.getState().plans).toEqual([edited, pruned]);
+  });
+
+  it("lets the settle take a cast from the edited mage himself", async () => {
+    const core = client();
+    useStudyPlansStore.setState({ gameId: "aug-2026", status: "ready", plans: [] });
+    const edited = { ...plan("1204", "FORC"), casts: [{ turn: 25, spell: "FIRE" }] };
+    const pruned = { ...edited, casts: [] };
+
+    await useStudyPlansStore
+      .getState()
+      .save(core, game(), { factionId: "21", unitId: "1204" }, () => edited, () => [pruned]);
+
+    expect(core.saveStudyPlans).toHaveBeenCalledWith("g.sqlite", "aug-2026", [pruned], []);
+    expect(useStudyPlansStore.getState().plans).toEqual([pruned]);
+  });
+
+  it("writes and caches nothing when the write fails", async () => {
+    const core = client({ saveStudyPlans: vi.fn().mockRejectedValue(new Error("disk")) });
+    useStudyPlansStore.setState({ gameId: "aug-2026", status: "ready", plans: [withCast] });
+
+    await expect(
+      useStudyPlansStore
+        .getState()
+        .save(core, game(), { factionId: "21", unitId: "1204" }, () => plan("1204"), () => [
+          { ...withCast, casts: [] }
+        ])
+    ).rejects.toThrow("disk");
+    expect(useStudyPlansStore.getState().plans).toEqual([withCast]);
+  });
+});
+
 describe("remove", () => {
   it("drops the named rows, and only those", async () => {
     const core = client();

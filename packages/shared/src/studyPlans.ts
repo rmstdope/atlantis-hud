@@ -170,4 +170,17 @@ export function reshapeCasts(
 export type PlanChange = {
   goals?: (current: readonly StudyGoal[]) => StudyGoal[];
   casts?: (current: readonly PlannedCast[]) => PlannedCast[];
+  /** What the edit takes from other rows, run inside its own write (`studyPlansStore.save`). */
+  settle?: PlanSettle;
 };
+
+/**
+ * What an edit takes from other rows, decided inside its own queued write (ah-9qdz.2): given every
+ * plan just before the edit and just after it, the further records to write with it. Inside the
+ * write, so it reads exactly the plans its edit changed - never a snapshot a later render or an
+ * earlier failure left behind (review of PR #1516).
+ */
+export type PlanSettle = (
+  before: readonly StudyPlanRecord[],
+  after: readonly StudyPlanRecord[]
+) => readonly StudyPlanRecord[];
