@@ -393,7 +393,8 @@ describe("buildRuleset and how each spell is used", () => {
   });
 
   it("refuses flags that leave a spell out", () => {
-    const { FIRE: _fire, ...rest } = flags();
+    const rest = flags();
+    delete rest.FIRE;
     expect(() => trident(rest)).toThrow(RulesetScrapeError);
     expect(() => trident(rest)).toThrow("FIRE");
   });

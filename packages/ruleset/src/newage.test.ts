@@ -128,6 +128,8 @@ describe("newAgeDataPage layout, over a constructed catalogue", () => {
       {
         name: "combat",
         tag: "COMB",
+        category: "other",
+        flags: [],
         levels: [{ level: 1, description: `short. ${"Create_Cloak_Of_Invulnerability_And_Then_Some_More_Words_Beyond_The_Limit."}` }]
       }
     ],
