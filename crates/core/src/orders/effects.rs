@@ -2029,10 +2029,11 @@ struct WorkingUnit {
     /// order. Written once by `apply_item_effects`, after the walk that builds every unit here has
     /// finished (`ah-agbm`).
     uncounted: Vec<String>,
-    /// Whether men may have reached this unit by a route the ledger could not follow, so a
-    /// headcount of nothing does not mean it gained nobody (`ah-waes`). Written once by
-    /// `apply_item_effects`, from [`super::semantics::UnitItemEffects::gained_nobody_unjudged`].
-    gained_nobody_unjudged: bool,
+    /// Whether `rules/form` dissolves this unit once the market has run, and who its goods revert
+    /// to - judged by `semantics.rs` alone, for this preview and the SILVER column both
+    /// (`ah-l9d9`). Written once by `apply_item_effects`, from
+    /// [`super::semantics::UnitItemEffects::dissolution`].
+    dissolution: Option<super::semantics::Dissolution>,
     /// Silver or goods taken from a unit the report does not show in this hex. Written once by
     /// `apply_item_effects` (`ah-agbm`).
     taken_unshown: Vec<TakenUnshown>,
@@ -2460,7 +2461,7 @@ impl Working {
                 reported_flags: unit.flags.clone(),
                 boardings: Vec::new(),
                 uncounted: Vec::new(),
-                gained_nobody_unjudged: false,
+                dissolution: None,
                 taken_unshown: Vec::new(),
                 produced: Vec::new(),
                 built: Vec::new(),
@@ -2609,28 +2610,23 @@ impl Working {
     fn dissolve_empty_forms(&mut self) -> BTreeMap<usize, Option<String>> {
         let mut dissolved = BTreeMap::new();
         for index in 0..self.units.len() {
-            if !self.units[index].formed || self.units[index].unit.men != 0 {
+            // Whether it dissolves, and into whom, is `semantics.rs`'s judgement, which the SILVER
+            // column reads too - never re-derived here from this walk's own headcount, so the two
+            // surfaces cannot disagree about a dissolving unit (`ah-l9d9`).
+            let Some(dissolution) = self.units[index].dissolution.clone() else {
                 continue;
-            }
-            // `rules/form` dissolves a unit only when "no recruits are gained at all", which a
-            // headcount of nothing does not establish where men may have arrived by a route the
-            // ledger could not follow - an uncounted `BUY PEASANTS` above all. The SILVER column
-            // leaves that unit unjudged and its silver where it is (`revert_dissolved_forms`), so
-            // this leaves it formed and its goods with it (`ah-waes`).
-            if self.units[index].gained_nobody_unjudged {
-                continue;
-            }
+            };
             let region_id = self.units[index].unit.region_id.clone();
-            // `over_own_units` preserves report order, so `position` finds the first unit the
-            // report shows in that region - not the unit that formed this one. A region with no
-            // own report unit has nobody to revert to, and then nothing is taken from the
-            // dissolving row either: taking first and discarding what could not be handed over
-            // would destroy the goods.
-            let Some(recipient) = self
-                .units
-                .iter()
-                .position(|unit| unit.unit.region_id == region_id && unit.original.is_some())
-            else {
+            // A region with no own report unit has nobody to revert to, and then nothing is taken
+            // from the dissolving row either: taking first and discarding what could not be
+            // handed over would destroy the goods.
+            let Some(recipient) = dissolution.reverts_to.and_then(|first_id| {
+                self.units.iter().position(|unit| {
+                    unit.unit.region_id == region_id
+                        && unit.original.is_some()
+                        && unit.unit.unit_id == first_id
+                })
+            }) else {
                 dissolved.insert(index, None);
                 continue;
             };
@@ -2790,7 +2786,7 @@ impl Working {
                 apply_item_movement(unit, movement, &ruleset);
             }
             unit.uncounted = effect.uncounted.clone();
-            unit.gained_nobody_unjudged = effect.gained_nobody_unjudged;
+            unit.dissolution = effect.dissolution.clone();
             unit.recruited = effect.recruited.clone();
             unit.study = effect.study.clone();
             unit.produced = effect
@@ -2866,7 +2862,7 @@ impl Working {
             reported_flags,
             boardings: Vec::new(),
             uncounted: Vec::new(),
-            gained_nobody_unjudged: false,
+            dissolution: None,
             taken_unshown: Vec::new(),
             produced: Vec::new(),
             built: Vec::new(),
