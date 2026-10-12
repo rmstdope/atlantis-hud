@@ -48,6 +48,40 @@ export function levelForPoints(points: number): number {
   return level;
 }
 
+/** One month in one skill, as far as what it adds is concerned. */
+export type MonthOfSkill = {
+  /**
+   * Months' worth of study it carries: 1 ordinarily, 2 taught, 1/2 unsheltered, 0 when he studies
+   * something else - what `ScheduleCell.worth` holds.
+   */
+  studied: number;
+  /** Whether the turn's practice lands on this skill (ah-9qdz.3). */
+  practised: boolean;
+};
+
+/**
+ * Where one month leaves a skill he holds at `held`: the studied months at
+ * `STUDY_POINTS_PER_MONTH`, plus `PRACTICE_POINTS_PER_MONTH` when the practice lands on it, never
+ * below the level he held and capped at `maxLevel`.
+ *
+ * The one place a month's points are added (ah-2k4z): the Schedule's projection and the "Can study"
+ * preview both ask this, so a new input to a month is written once and the two cannot disagree.
+ * Points stay fractional and are never rounded - a halved or diluted month is worth a fraction of
+ * thirty, and the rate is itself an inference (see `STUDY_POINTS_PER_MONTH`). Applying study and
+ * then practice in two calls ends where one call with both does, since `levelForPoints` is monotone.
+ */
+export function monthEnd(
+  held: { level: number; points: number },
+  month: MonthOfSkill,
+  maxLevel: number
+): { level: number; points: number } {
+  const points =
+    held.points +
+    STUDY_POINTS_PER_MONTH * month.studied +
+    (month.practised ? PRACTICE_POINTS_PER_MONTH : 0);
+  return { level: Math.min(maxLevel, Math.max(held.level, levelForPoints(points))), points };
+}
+
 /**
  * The highest level `months` more months of study in this one skill could have reached, capped at
  * `maxLevel`. Returns `skill.level` itself when nothing could have moved, so a caller compares.

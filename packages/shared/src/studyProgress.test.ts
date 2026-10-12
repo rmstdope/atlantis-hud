@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { levelForPoints, pointsForLevel, projectedLevel, STUDY_POINTS_PER_MONTH } from "./studyProgress";
+import { levelForPoints, monthEnd, pointsForLevel, projectedLevel, STUDY_POINTS_PER_MONTH } from "./studyProgress";
 
 describe("pointsForLevel", () => {
   it("follows the rules' month structure at thirty points a month", () => {
@@ -46,5 +46,64 @@ describe("projectedLevel", () => {
 
   it("never falls below the reported level, whatever the points say", () => {
     expect(projectedLevel({ level: 3, points: 0 }, 0, 5)).toBe(3);
+  });
+});
+
+// ah-2k4z: the one place a month's points are added, for the projection and the dropdown alike.
+describe("monthEnd", () => {
+  it("adds a studied month of thirty points", () => {
+    expect(monthEnd({ level: 1, points: 30 }, { studied: 1, practised: false }, 5)).toEqual({
+      level: 1,
+      points: 60
+    });
+  });
+
+  it("adds two months for a taught month", () => {
+    expect(monthEnd({ level: 1, points: 30 }, { studied: 2, practised: false }, 5)).toEqual({
+      level: 2,
+      points: 90
+    });
+  });
+
+  it("keeps a halved month's points fractional", () => {
+    expect(monthEnd({ level: 3, points: 180 }, { studied: 0.5, practised: false }, 5)).toEqual({
+      level: 3,
+      points: 195
+    });
+  });
+
+  it("keeps a diluted, halved month's points fractional", () => {
+    expect(monthEnd({ level: 3, points: 180 }, { studied: 0.75, practised: false }, 5)).toEqual({
+      level: 3,
+      points: 202.5
+    });
+  });
+
+  it("adds five points of practice with no study", () => {
+    expect(monthEnd({ level: 1, points: 85 }, { studied: 0, practised: true }, 5)).toEqual({
+      level: 2,
+      points: 90
+    });
+  });
+
+  it("adds practice on top of a studied month", () => {
+    expect(monthEnd({ level: 1, points: 60 }, { studied: 1, practised: true }, 5)).toEqual({
+      level: 2,
+      points: 95
+    });
+  });
+
+  it("caps the level at the skill's maximum and keeps the points", () => {
+    expect(monthEnd({ level: 2, points: 150 }, { studied: 2, practised: false }, 2)).toEqual({
+      level: 2,
+      points: 210
+    });
+  });
+
+  it("never reads below the level he already holds", () => {
+    expect(monthEnd({ level: 3, points: 0 }, { studied: 1, practised: false }, 5)).toEqual({
+      level: 3,
+      points: 30
+    });
   });
 });
