@@ -580,6 +580,12 @@ pub enum ItemChangeCause {
     ProductionSpent,
     /// Consumed as the material of a `BUILD`.
     BuildSpent,
+    /// Supplied to this unit's own `PRODUCE` or `BUILD` by a sharing unit of its faction
+    /// (`newage trident rules/share`: a sharing unit "will automatically supply" the resources
+    /// another unit's production needs). `other` names the sharer; the same order's
+    /// [`ItemChangeCause::ProductionSpent`] or [`ItemChangeCause::BuildSpent`] follows it on this
+    /// row, so the two net to nothing (`ah-jm7c`).
+    DrawnFromSharer,
     /// Created or summoned by a `CAST`; the [`CreatedItem`] beside it says which and by how much.
     CastCreated,
     /// Consumed as the material of a `CAST`.
@@ -2177,6 +2183,7 @@ impl WorkingUnit {
                     | ItemChangeCause::Produced
                     | ItemChangeCause::ProductionSpent
                     | ItemChangeCause::BuildSpent
+                    | ItemChangeCause::DrawnFromSharer
                     | ItemChangeCause::CreateSpent
                     | ItemChangeCause::QuestSpent
                     | ItemChangeCause::ExploreSpent

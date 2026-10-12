@@ -1035,9 +1035,9 @@ describe("formatItems and itemsTooltip", () => {
   });
 
   it("still says what a build spends when the builder holds none of the material", () => {
-    // `charge_shared_material` debits the actor only for what it holds
-    // (`crates/core/src/orders/semantics.rs`), so a builder funded entirely by a hex neighbour has
-    // no `build-spent` movement of its own and no clause can name the spend.
+    // The fallback for a spend no clause names: since `ah-jm7c` the core writes a builder funded
+    // by a sharer a `drawn-from-sharer` change and a full `build-spent` of its own (case below),
+    // but a row carrying neither must still say what the structure takes.
     const row = previewedUnit({
       items: [],
       itemChanges: [],
@@ -1091,8 +1091,10 @@ describe("formatItems and itemsTooltip", () => {
   });
 
   it("still says the whole of a build the unit only part-funded", () => {
-    // The clause names this unit's own debit (10), and no `cappedBy` fires when the material was
-    // there - so without this line the 30 the structure actually takes appears nowhere.
+    // The fallback for a spend its clause names only in part: here the clause says 10, and no
+    // `cappedBy` fires when the material was there - so without this line the 30 the structure
+    // actually takes appears nowhere. Since `ah-jm7c` the core writes the full spend on the
+    // builder's own row, so this guards the shape rather than today's sharing.
     const row = previewedUnit({
       items: [{ amount: 10, name: "wood", tag: "WOOD" }],
       itemChanges: [
@@ -1122,6 +1124,50 @@ describe("formatItems and itemsTooltip", () => {
     });
 
     expect(itemsTooltip(row)).toBe("Spends 30 WOOD on Building 4 this month.");
+  });
+
+  it("leaves the spend line out when a sharer supplied it and the clause names the whole", () => {
+    // `ah-jm7c`: `charge_shared_material` writes the builder what a sharer supplied and then the
+    // whole spend, so the clause "drew 30 from ..., spent 30 on Building 4" already says it all.
+    const row = previewedUnit({
+      items: [],
+      itemChanges: [
+        {
+          tag: "WOOD",
+          name: "wood",
+          delta: 30,
+          cause: "drawn-from-sharer",
+          line: 4,
+          unitPrice: null,
+          other: { unitId: "3526", name: "Soldier" },
+          isMan: false
+        },
+        {
+          tag: "WOOD",
+          name: "wood",
+          delta: -30,
+          cause: "build-spent",
+          line: 4,
+          unitPrice: null,
+          other: null,
+          isMan: false
+        }
+      ],
+      built: [
+        {
+          materials: [{ amount: 30, tag: "WOOD", name: "wood" }],
+          amount: 30,
+          place: "Building 4",
+          founding: false,
+          helping: null,
+          couldDo: 30,
+          cappedBy: null,
+          finishes: null
+        }
+      ]
+    });
+
+    expect(itemsTooltip(row)).toBeUndefined();
   });
 
   it("does not let material given to a neighbour's build hide its own", () => {
