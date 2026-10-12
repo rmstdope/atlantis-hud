@@ -15525,14 +15525,18 @@ fn check_one_teacher(
     departed: &BTreeSet<String>,
     findings: &mut Vec<Finding>,
 ) {
-    let Some(placed) = teacher
+    // `newage trident rules/teach`: "Subsequent TEACH orders can be used to add units to be
+    // taught." Every TEACH line adds students, so every one is read; each student's finding sits
+    // on the line that names it, and what concerns the teacher as a whole on the first (`ah-5f1d`).
+    let lines: Vec<(&PlacedIntent, &Vec<Party>)> = teacher
         .intents
         .iter()
-        .find(|placed| matches!(placed.intent, Intent::Teach { .. }))
-    else {
-        return;
-    };
-    let Intent::Teach { students } = &placed.intent else {
+        .filter_map(|placed| match &placed.intent {
+            Intent::Teach { students } => Some((placed, students)),
+            _ => None,
+        })
+        .collect();
+    let Some(&(placed, _)) = lines.first() else {
         return;
     };
     match teacher.teaching_eligibility() {
@@ -15578,11 +15582,21 @@ fn check_one_teacher(
         Some(true) => {}
     }
 
+    // A student named twice, on one line or on several, is one student: the engine deduplicates
+    // a teacher's targets before counting them, so it is warned about and counted once, on the
+    // first line that names it.
+    let mut seen: BTreeSet<String> = BTreeSet::new();
     let mut taught_men = 0;
-    for student in students {
+    for (placed, student) in lines
+        .iter()
+        .flat_map(|&(placed, students)| students.iter().map(move |student| (placed, student)))
+    {
         let Some(id) = party_unit_id(student) else {
             continue;
         };
+        if !seen.insert(id.clone()) {
+            continue;
+        }
 
         let label = teaching_target_label(student);
         let pupil = match student_presence(hex, &id, departed) {
@@ -15837,7 +15851,11 @@ fn taught_by(teacher: &Ordered<'_>, hex: &Hex<'_>, departed: &BTreeSet<String>) 
             _ => None,
         })
         .flatten()
-        .filter_map(|student| party_unit_id(student).and_then(|id| hex.find(&id)))
+        .filter_map(party_unit_id)
+        // A student named twice holds its slots once, as `check_one_teacher` counts it (`ah-5f1d`).
+        .collect::<BTreeSet<String>>()
+        .into_iter()
+        .filter_map(|id| hex.find(&id))
         // A student that marches off is taught by nobody, so it holds no slot - the same reading
         // `could_take` and `check_one_teacher` take of a departing pupil.
         .filter(|pupil| !departed.contains(&pupil.unit.unit_id))
@@ -45567,6 +45585,101 @@ BUILD
         let mut found = codes(&findings);
         found.sort_unstable();
         assert_eq!(found, ["taught-not-here", "teacher-has-free-slots"]);
+    }
+
+    /// `ah-5f1d`. `newage trident rules/teach`: "Subsequent TEACH orders can be used to add units
+    /// to be taught." A student named on a second TEACH line - here behind a repeating `@TEACH`,
+    /// a comment and a blank line - is checked like one on a lone TEACH, and the finding sits on
+    /// the line that names it.
+    #[test]
+    fn a_student_added_by_a_second_teach_line_is_checked_like_the_first() {
+        let units = vec![
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+                1,
+            ),
+            with_men(with_silver(unit("700"), 1000), 2),
+            with_men(with_silver(unit("800"), 1000), 2),
+        ];
+
+        let findings = check(
+            vec![region(units)],
+            "unit 500\n@;needs 50 silver\n@TEACH 700\n\nTEACH 800\nunit 700\nSTUDY combat\nunit 800\nSTUDY combat\nMOVE N\n",
+        );
+        let absent: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "taught-not-here")
+            .collect();
+        assert_eq!(absent.len(), 1, "{findings:?}");
+        assert_eq!(
+            absent[0].message,
+            "unit 800 is not in this hex to be taught"
+        );
+        assert_eq!(
+            absent[0].line,
+            Some(5),
+            "anchored on the TEACH that names unit 800"
+        );
+    }
+
+    /// `ah-5f1d`. A student named on two TEACH lines is one student: it holds its slots once and
+    /// is warned about once, on the first line that names it. The engine deduplicates a teacher's
+    /// targets before counting them (`Do1TeachOrder` -> `DeduplicateUnitList`, New Origins
+    /// source); `newage trident rules/teach` describes later lines as adding units, not repeats.
+    #[test]
+    fn a_student_named_on_two_teach_lines_is_counted_once() {
+        let units = vec![
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+                1,
+            ),
+            with_men(with_silver(unit("700"), 1000), 6),
+            with_men(with_silver(unit("800"), 1000), 2),
+        ];
+
+        let findings = check(
+            vec![region(units)],
+            "unit 500\n@TEACH 700 800\nTEACH 700 800\nunit 700\nSTUDY combat\nunit 800\nSTUDY combat\nMOVE N\n",
+        );
+        let found = codes(&findings);
+        assert!(
+            !found.contains(&"teaching-oversubscribed"),
+            "unit 700's six men fill six of ten slots once: {findings:?}"
+        );
+        let absent: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "taught-not-here")
+            .collect();
+        assert_eq!(absent.len(), 1, "{findings:?}");
+        assert_eq!(absent[0].line, Some(2), "on the first line naming unit 800");
+    }
+
+    /// `ah-5f1d`. Students on every TEACH line share the teacher's slots
+    /// (`newage trident rules/teach`; `rules/skills_teaching`: ten students per teacher).
+    #[test]
+    fn students_on_several_teach_lines_share_the_teachers_slots() {
+        let units = vec![
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+                1,
+            ),
+            with_men(with_silver(unit("700"), 1000), 6),
+            with_men(with_silver(unit("800"), 1000), 6),
+        ];
+
+        let findings = check(
+            vec![region(units)],
+            "unit 500\nTEACH 700\nTEACH 800\nunit 700\nSTUDY combat\nunit 800\nSTUDY combat\n",
+        );
+        let over: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "teaching-oversubscribed")
+            .collect();
+        assert_eq!(over.len(), 1, "{findings:?}");
+        assert_eq!(
+            over[0].message,
+            "12 students on 10 slots, so the teaching bonus is diluted"
+        );
     }
 
     /// A unit formed this month resolves through the same identity as a numbered student.
