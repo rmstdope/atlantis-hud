@@ -10,7 +10,7 @@ use crate::cache::ReportCache;
 use crate::movement::fleet::OrderedUnits;
 use crate::orders::effects::preview_orders_for_remembered_report;
 use crate::orders::intents::read_intents;
-use crate::orders::semantics::structure_after_intents;
+use crate::orders::semantics::{flags_after_orders, leave_refused_with, structure_after_intents};
 use crate::report::parse_report_full;
 
 const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
@@ -183,4 +183,91 @@ fn an_enter_with_trailing_text_still_enters() {
 #[test]
 fn a_leave_with_trailing_text_still_leaves() {
     assert_eq!(agreed(Some("4"), "LEAVE junk\n"), None);
+}
+
+/// An ocean hex with a Longship [4] holding unit 900 as `walker` describes it, for the LEAVE the
+/// game refuses at sea (`ah-djst`).
+fn sea_report(walker: &str) -> String {
+    [
+        "Foo (1) Report",
+        "",
+        "ocean (1,1) in Sea.",
+        "",
+        "+ Longship [4] : Longship; Load: 10/150; Sailors: 0/4; MaxSpeed: 4.",
+        &format!("  * {walker}"),
+        "",
+    ]
+    .join("\n")
+}
+
+/// [`agreed`] at sea: every reader is given the ruleset that says the hex is water, and the
+/// semantics reader folds the block's flag orders exactly as its `Ordered` does.
+#[track_caller]
+fn agreed_at_sea(walker: &str, block: &str) -> Option<String> {
+    let report_text = sea_report(walker);
+    let orders = format!("unit 900\n{block}");
+    let ruleset = crate::movement::rules::Ruleset::from_json(RULESET).expect("the ruleset loads");
+    // Classified, as every production reader sees it: the swimming capacity is the ruleset's.
+    let classified = ReportCache::new().classified(&report_text, RULESET);
+    let region = &classified.regions[0];
+    let unit = &region.units[0];
+
+    let read = read_intents(&orders, Some(&ruleset));
+    let block900 = read
+        .iter()
+        .find(|block| block.unit_id == "900")
+        .expect("the block for 900");
+    let flags = flags_after_orders(&unit.flags, &block900.flag_changes);
+    let refused = leave_refused_with(
+        ruleset.is_water(&region.terrain),
+        &flags,
+        unit.movement.as_ref(),
+    );
+    let intents =
+        structure_after_intents(Some("4"), &block900.intents, &region.structures, refused)
+            .map(str::to_string);
+    let document = OrderedUnits::of_month(&classified, &orders, Some(&ruleset))
+        .structure_of(unit)
+        .map(str::to_string);
+    let preview = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        &report_text,
+        "[]",
+        &orders,
+    )
+    .expect("the ruleset loads")
+    .regions
+    .iter()
+    .flat_map(|region| region.units.iter())
+    .find(|row| row.unit.unit_id == "900")
+    .map_or_else(|| some("4"), |row| row.unit.structure_id.clone());
+
+    assert_eq!(
+        intents, document,
+        "semantics and movement disagree about {block:?} at sea"
+    );
+    assert_eq!(
+        intents, preview,
+        "semantics and the preview walker disagree about {block:?} at sea"
+    );
+    intents
+}
+
+const SEA_WALKER: &str = "Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.";
+const SEA_SWIMMER: &str =
+    "Swimmer (900), Foo (1), merfolk [MERF]. Weight: 10. Capacity: 0/0/15/15.";
+
+/// `rules/leave`: only a unit "capable of swimming or flying" may leave a boat at sea, and
+/// `rules/nocross` - run before LEAVE, `rules/sequenceofevents` - keeps a swimmer aboard too,
+/// whichever line it is written on.
+#[test]
+fn a_leave_at_sea_is_refused_alike_by_every_reader() {
+    assert_eq!(agreed_at_sea(SEA_WALKER, "LEAVE\n"), some("4"));
+    assert_eq!(agreed_at_sea(SEA_SWIMMER, "LEAVE\n"), None);
+    assert_eq!(agreed_at_sea(SEA_SWIMMER, "LEAVE\nNOCROSS 1\n"), some("4"));
+    assert_eq!(
+        agreed_at_sea(SEA_SWIMMER, "NOCROSS 1\nLEAVE\nNOCROSS 0\n"),
+        None
+    );
 }

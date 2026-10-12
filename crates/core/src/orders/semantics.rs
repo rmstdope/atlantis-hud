@@ -2880,7 +2880,7 @@ fn take_unknown_studies(
 ///
 /// The whole of the flag rules lives in [`crate::report::flags::apply`], including the
 /// guard/avoid cancellation and the group members; this only sequences them.
-fn flags_after_orders(reported: &[String], changes: &[FlagChange]) -> Vec<String> {
+pub(crate) fn flags_after_orders(reported: &[String], changes: &[FlagChange]) -> Vec<String> {
     let mut flags = reported.to_vec();
     for change in changes {
         crate::report::flags::apply(&mut flags, *change);
@@ -18492,10 +18492,25 @@ pub(crate) fn structure_after_intents<'a>(
 /// `ah-djst`), read from its flags once this month's NOCROSS has run - `rules/sequenceofevents`
 /// runs NOCROSS before LEAVE - and the movement the report states.
 fn leave_refused(ordered: &Ordered<'_>) -> bool {
-    standing::leave_refused_at_sea(
+    leave_refused_with(
         ordered.at_sea,
-        crate::report::flags::holds(&ordered.flags, crate::report::flags::Setting::NoCross),
+        &ordered.flags,
         ordered.unit.movement.as_ref(),
+    )
+}
+
+/// [`leave_refused`] over the three things it actually reads, so the agreement test can drive this
+/// reader without building a whole [`Ordered`]. `flags` is the list once this month's flag orders
+/// have run ([`flags_after_orders`]).
+pub(crate) fn leave_refused_with(
+    at_sea: bool,
+    flags: &[String],
+    movement: Option<&crate::report::model::UnitMovement>,
+) -> bool {
+    standing::leave_refused_at_sea(
+        at_sea,
+        crate::report::flags::holds(flags, crate::report::flags::Setting::NoCross),
+        movement,
     )
 }
 
@@ -30564,6 +30579,46 @@ PRODUCE wagon
                 .map(|index| hex.units[index].unit.unit_id.as_str())
                 .collect();
             assert_eq!(walk, ["901", "902", "903", "904", "900"]);
+        }
+
+        /// A LEAVE the game refuses at sea (`Do1EnterOrder`: "LEAVE: Can't leave a ship in the
+        /// ocean.", returned before `Unit::MoveUnit`; `rules/leave`) moves nobody, so the unit keeps
+        /// its report-order place rather than going to the end of the units outside (`ah-djst`).
+        /// None of these units' movement is stated, so none can be shown to swim or fly.
+        #[test]
+        fn a_leave_refused_at_sea_keeps_the_unit_where_the_report_walks_it() {
+            let hex_region = ReportRegion {
+                structures: vec![unfinished_building("4")],
+                ..region(vec![
+                    with_men(unit("900"), 1),
+                    in_structure(with_men(unit("902"), 1), "4"),
+                    in_structure(with_men(unit("903"), 1), "4"),
+                ])
+            };
+            let ordered = OrderedUnits::read("unit 902\nunit 903\nLEAVE\n");
+            let rules = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+                .expect("the committed Trident ruleset should be usable");
+            let walk_where = |at_sea: bool| -> Vec<String> {
+                let mut hex = Hex::read(&hex_region, &ordered, &[]);
+                // What `hex_with_transfers` sets from the region's terrain.
+                for unit in &mut hex.units {
+                    unit.at_sea = at_sea;
+                }
+                month_long_walk(&hex, Some(&rules))
+                    .into_iter()
+                    .map(|index| hex.units[index].unit.unit_id.clone())
+                    .collect()
+            };
+            assert_eq!(
+                walk_where(true),
+                ["900", "902", "903"],
+                "refused: nobody moved"
+            );
+            assert_eq!(
+                walk_where(false),
+                ["900", "903", "902"],
+                "ashore the leaver is walked at the end of the units outside"
+            );
         }
 
         /// `Do1EnterOrder` never asks whether the unit is already where it is going, and

@@ -185,7 +185,8 @@ fn refused(reported: Option<&str>, standing: Option<&str>, has: impl Fn(&str) ->
 /// different question, answered by who is aboard when it moves: every LEAVE that runs does so
 /// before movement (`Game::RunEnterOrders` ahead of `RunMovementOrders`), so a captain that leaves
 /// carries nobody - unless the LEAVE is refused at sea, where it keeps its hull
-/// (`movement::fleet::fleet_owner`, `ah-877p`).
+/// ([`leave_refused_at_sea`], applied by `movement::fleet::OrderedUnits::structure_of`; `ah-877p`,
+/// `ah-djst`).
 pub fn could_captain<'a>(
     reported: Option<&str>,
     structure_id: &str,
