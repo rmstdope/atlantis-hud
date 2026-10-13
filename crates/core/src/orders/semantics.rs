@@ -60749,9 +60749,11 @@ BUILD
         assert_eq!(study.points_after, 30);
     }
 
-    /// `ah-41yw`: a purse that covers only part of the fee leaves the rest short.
+    /// `ah-41yw`: a purse that cannot cover the whole fee lends nothing toward it - the purse's
+    /// all-or-nothing rule (`ah-e66j`) - so the student stays short by all it lacks on its own,
+    /// and a sharer's silver is never credited merely because the sharer holds it.
     #[test]
-    fn a_study_a_sharer_pays_only_part_of_is_short_by_the_rest() {
+    fn a_purse_that_cannot_cover_the_fee_lends_nothing_toward_it() {
         // Tactics costs $200 a man (`rules/skills_studying`).
         let student = with_men(with_silver(unit("900"), 40), 1);
         let sharer = sharing(with_silver(unit("901"), 100));
