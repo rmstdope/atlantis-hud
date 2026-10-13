@@ -13443,7 +13443,9 @@ impl SharerStock {
                         // So does an overdraft from before the casts - a GIVE beyond what the
                         // unit and its sharers held, which the ledger adds back in part: the fold
                         // claims it whole at the cast, where it is either lent or handed back, so
-                        // that add-back is not wanted as well either (`ah-mrs0`).
+                        // that add-back is not wanted as well either (`ah-mrs0`). Where the fold
+                        // lent it rather than handing it back, this goes negative, taking off the
+                        // add-back the borrow already covers.
                         let judged = !ledger.doubted.contains(unit_id);
                         lending.refused(index)
                             - if judged {
@@ -14570,13 +14572,19 @@ struct Lending {
     /// The cost of each unit's CAST the pool could not pay, and so the engine refused and took
     /// nothing for - the unit's own coins included ([`refused_cast_cost`], `ah-szu0`). `0` for a
     /// unit whose cast was paid or that does not overdraw at it. Handed back to the unit at every
-    /// later moment, with a refused STUDY's fee: [`Lending::refused`].
+    /// later moment, with a refused STUDY's fee: [`Lending::refused`]. It also carries an
+    /// overdraft from before the casts - a GIVE beyond what the unit and its sharers held - that
+    /// the pool could not pay in full at the cast moment, handed back whole there since that
+    /// moment pays each claim in full or not at all ([`SharerStock::paid_one_by_one`]; the
+    /// engine part-funds such a GIVE instead, `ah-hreo`), and [`SharerStock::at`] nets the
+    /// ledger's own add-back of it off again ([`unfunded_before_casts`], `ah-mrs0`).
     refused_cast: Vec<i64>,
     /// How each unit's STUDY went, judged one student at a time as the engine pays them - **the
     /// one reading of whether the purse paid a study** (`ah-2f77`). [`StudyOutcome::NoStudy`]
     /// throughout where the moments read stop before STUDY.
     study: Vec<StudyOutcome>,
-    /// Whether each unit's CAST is among what `refused` hands back: [`SharerStock::at`] then takes
+    /// Whether each unit's claim at the cast moment is among what `refused` hands back - its CAST,
+    /// or an earlier overdraft for a unit with no cast (`ah-mrs0`): [`SharerStock::at`] then takes
     /// off what the ledger already added back as [`Ledger::unfunded_casts`] (`ah-szu0`).
     refused_casts: Vec<bool>,
     /// The first moment the pool could not cover in full - the market or the month's end - from
@@ -14826,8 +14834,10 @@ impl Lending {
                         if moment == LendingMoment::Cast && purse.refused_casts[index] {
                             // Its cast was refused and handed back above, so what it still
                             // claims is an overdraft from before the casts - a GIVE beyond what
-                            // it and its sharers held - and that comes back as it would with no
-                            // cast at all, not the cast's cost a second time (`ah-mrs0`).
+                            // it and its sharers held - and that comes back as the model hands it
+                            // back with no cast at all, not the cast's cost a second time
+                            // (`ah-mrs0`). The engine part-funds such a GIVE instead, which the
+                            // model does not yet (`ah-hreo`).
                             purse.refused_cast[index] += needs[index];
                         } else if moment == LendingMoment::Cast {
                             purse.refused_casts[index] = true;
@@ -15259,8 +15269,9 @@ fn studied_fee(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
 /// What the ledger charged a unit for a CAST the game refuses, and so never took from it: the
 /// spell's whole silver cost, since `RunCreateArtifact` (`spells.cpp`) checks `GetSharedNum`
 /// against every input before it calls `ConsumeShared`, so a refused spell takes nothing, own
-/// coins included - and never less than the overdraft itself (`ah-szu0`). Net of what the spell
-/// would have earned, which a refused spell earns nothing of either.
+/// coins included - and never less than `overdrawn`, the claim the caller judged refused, which
+/// is `0` where the caller wants the spell's own cost alone (`ah-szu0`, `ah-mrs0`). Net of what
+/// the spell would have earned, which a refused spell earns nothing of either.
 fn refused_cast_cost(ledger: &Ledger<'_>, unit_id: &str, overdrawn: i64) -> i64 {
     (-ledger
         .silver_moves
@@ -54268,6 +54279,18 @@ BUILD
             .map(|moved| -moved.amount)
             .sum();
         assert_eq!(shipped, 0, "{caster:?}");
+        // The hex is short the refused amulet's $200 alone: 902's $150 paid the gift and ships
+        // the $50 left, so it is not counted shipping the $100 it gave as well.
+        assert!(
+            review
+                .findings
+                .iter()
+                .any(|f| f.code.as_str() == "not-enough-silver"
+                    && f.message.contains("short $200")
+                    && f.message.contains("can have $150")),
+            "the refused cast keeps its warning: {:?}",
+            review.findings
+        );
         assert_eq!(
             silver_shipped(&review, "902"),
             50,
@@ -54306,7 +54329,10 @@ BUILD
             .sum();
         assert_eq!(shipped, 0, "{caster:?}");
         assert!(
-            review.findings.iter().any(|f| f.line == Some(2)),
+            review
+                .findings
+                .iter()
+                .any(|f| f.line == Some(2) && f.code.as_str() == "part-of-hex-shortfall"),
             "the cut GIVE keeps its warning: {:?}",
             review.findings
         );
