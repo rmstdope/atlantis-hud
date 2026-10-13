@@ -1430,8 +1430,9 @@ function ownSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   const reportedByTag = new Map(reported.map((skill) => [skill.tag, skill]));
   const nowByTag = new Map(unit.skills.map((skill) => [skill.tag, skill]));
 
-  // The report's order, then whatever the month added. `merge_skills` sorts its output by tag
-  // (`crates/core/src/orders/effects.rs`), so `unit.skills` is only ever a source of newcomers.
+  // The report's order, then whatever the month added. `merge_skills` keeps the receiver's order
+  // and appends what arriving men bring (`crates/core/src/orders/effects.rs`, `ah-isae`), so
+  // `unit.skills` only ever adds newcomers after the report's own skills.
   const tags: string[] = [];
   for (const skill of [...reported, ...unit.skills]) {
     if (!tags.includes(skill.tag)) {

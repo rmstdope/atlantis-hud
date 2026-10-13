@@ -4345,16 +4345,17 @@ pub(crate) fn merge_skills(
         return into.to_vec();
     }
 
-    let mut tags: Vec<&str> = into
-        .iter()
-        .chain(arriving.iter())
-        .map(|skill| skill.tag.as_str())
-        .collect();
-    tags.sort_unstable();
-    tags.dedup();
+    // The receiver's own order first, then whatever only the men bring, in their order - never
+    // sorted, so the units table lists a unit's skills as its report and the Skills popup do
+    // (`ah-isae`).
+    let mut tags: Vec<&str> = Vec::new();
+    for skill in into.iter().chain(arriving.iter()) {
+        if !tags.contains(&skill.tag.as_str()) {
+            tags.push(skill.tag.as_str());
+        }
+    }
 
-    let mut merged: Vec<Skill> = tags
-        .into_iter()
+    tags.into_iter()
         .filter_map(|tag| {
             let held = into.iter().find(|skill| skill.tag == tag);
             let coming = arriving.iter().find(|skill| skill.tag == tag);
@@ -4376,10 +4377,7 @@ pub(crate) fn merge_skills(
                 points,
             })
         })
-        .collect();
-
-    merged.sort_by(|left, right| left.tag.cmp(&right.tag));
-    merged
+        .collect()
 }
 
 /// The flag order this line is, if it is one.
@@ -8208,6 +8206,47 @@ mod tests {
         assert_eq!(receiver.unit.skills, vec![lumberjack(9)]);
     }
 
+    /// `ah-isae`: a GIVE of men must not reshuffle the receiver's skills alphabetically. The
+    /// receiver keeps its own report order and the skills only the men bring follow it, so the
+    /// units table's SKILLS cell reads as the Skills popup does (`ah-uxlh` N1).
+    #[test]
+    fn a_gift_of_men_keeps_the_receivers_skills_in_report_order() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "* Giver (1234), Foo (1), 1 humans [HUMN]. Weight: 10. Capacity: 0/0/15/0. Skills: quarrying [QUAR] 1 (30).",
+            "* Receiver (2200), Foo (1), 1 humans [HUMN]. Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 2 (90), riding [RIDI] 2 (90), entertainment [ENTE] 1 (85).",
+            "",
+        ]
+        .join("\n");
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            "unit 1234\nGIVE 2200 1 HUMN\n",
+        )
+        .expect("the ruleset loads");
+
+        let receiver = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "2200")
+            .expect("the receiver changed");
+
+        assert_eq!(
+            receiver
+                .unit
+                .skills
+                .iter()
+                .map(|skill| skill.tag.as_str())
+                .collect::<Vec<_>>(),
+            vec!["OBSE", "RIDI", "ENTE", "QUAR"]
+        );
+    }
+
     fn skill(tag: &str, points: u32) -> Skill {
         Skill {
             name: tag.to_lowercase(),
@@ -8270,11 +8309,13 @@ mod tests {
     }
 
     #[test]
-    fn the_result_is_ordered_by_tag() {
+    fn the_receivers_skills_keep_their_order_and_new_ones_follow_in_arrival_order() {
+        // LUMB is held by both sides: it keeps the receiver's place and takes no newcomer's slot.
+        // FORC and ARMO arrive out of alphabetical order and must stay that way.
         let merged = merge_skills(
             &[skill("STEA", 30), skill("LUMB", 30)],
             5,
-            &[skill("FORC", 30)],
+            &[skill("FORC", 30), skill("LUMB", 30), skill("ARMO", 30)],
             5,
         );
 
@@ -8283,8 +8324,20 @@ mod tests {
                 .iter()
                 .map(|skill| skill.tag.clone())
                 .collect::<Vec<_>>(),
-            vec!["FORC", "LUMB", "STEA"]
+            vec!["STEA", "LUMB", "FORC", "ARMO"]
         );
+    }
+
+    /// The old tag sort made a merge that moved no figure still read as a change whenever the
+    /// receiver's report order was not alphabetical (`ah-isae`). Men arriving at the receiver's own
+    /// points leave its skills exactly as they were, order included.
+    #[test]
+    fn men_arriving_at_the_receivers_own_points_change_nothing() {
+        let held = [skill("STEA", 90), skill("LUMB", 30)];
+
+        let merged = merge_skills(&held, 5, &held, 3);
+
+        assert_eq!(merged, held.to_vec());
     }
 
     #[test]
