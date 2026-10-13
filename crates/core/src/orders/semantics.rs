@@ -14674,9 +14674,13 @@ impl Lending {
     /// borrows. The caller has already checked that the hex pools silver and that the pool is
     /// trusted.
     ///
-    /// The positions are the ones the warning judges - the whole of what each order asked, with no
-    /// [`Ledger::unfunded`] add-back - so a gift or cast no sharer could fund keeps the pool short
-    /// and its warning (`ah-0mch`).
+    /// The positions are the whole of what each order asked, with no [`Ledger::unfunded`] add-back
+    /// for a cast, so a cast no sharer could fund keeps the pool short (`ah-0mch`) - with one
+    /// exception: the part of a GIVE or TAKE nobody could fund as it ran
+    /// ([`unfunded_before_casts`]) is added back, since the engine judged it then and the purse
+    /// lends nothing for it (`ah-2fn5`). The warning's own readings ([`Sharing::silver_short_at`],
+    /// [`sharing_purse_over`]) keep that part as owed on purpose: it is what the cut line was
+    /// short, and the line keeps its warning.
     fn settle(
         hex: &Hex<'_>,
         ledger: &Ledger<'_>,
@@ -54490,6 +54494,69 @@ BUILD
         assert_eq!(
             silver_shipped(&review, "902"),
             0,
+            "{:?}",
+            shipment_silver(&review, "902")
+        );
+    }
+
+    /// A TAKE beyond its source's silver is judged the same way: `rules/take` "works just like the
+    /// GIVE order", and the engine cuts it to the source's `GetSharedNum` as it runs
+    /// (`runorders.cpp`: `DoGiveOrder`). 904's TAKE of $100 from 901, who holds nothing, drains
+    /// sharer 902's $50; where 903, later in region order, then refills 902 with $100, 902 ships
+    /// that $100, and where nothing does, 902 ships nothing (`ah-2fn5`).
+    #[test]
+    fn a_take_beyond_its_source_is_lent_for_as_it_runs() {
+        let rules = trident_rules();
+        for (refill, ships) in [(false, 0), (true, 100)] {
+            let mut region = caravanserai_owner("900", 1, 0, 0);
+            region.units.extend([
+                unit("901"),
+                sharing(with_silver(unit("902"), 50)),
+                // Ahead of 903 in region order, so its TAKE runs before 903's GIVE
+                // (`runorders.cpp`: `DoGiveOrders` walks the units in order).
+                unit("904"),
+                with_silver(unit("903"), 100),
+            ]);
+            let orders = format!(
+                "unit 904\nTAKE FROM 901 100 SILV\nTRANSPORT 900 ALL SILV\n\
+                 unit 902\nTRANSPORT 900 ALL SILV\nunit 903\n{}",
+                if refill { "GIVE 902 100 SILV\n" } else { "" }
+            );
+            let review = review_turn(&report(vec![region]), &orders, Some(&rules), with_map());
+            assert_eq!(
+                silver_shipped(&review, "902"),
+                ships,
+                "refilled: {refill}: {:?}",
+                shipment_silver(&review, "902")
+            );
+        }
+    }
+
+    /// A paid cast after a cut GIVE draws on the sharer for its own cost alone: 901's GIVE of
+    /// $100 drains sharer 902's $50 as it runs (`runorders.cpp`: `DoGiveOrder`), 903 then gives
+    /// 902 $300, and 901's $200 amulet (`data/CRPA`) takes $200 of that at the cast (`spells.cpp`:
+    /// `RunCreateArtifact`), so 902 ships the $100 left (`ah-2fn5`).
+    #[test]
+    fn a_paid_cast_after_a_cut_gift_leaves_the_sharer_what_the_cast_did_not_take() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            with_skill(unit("901"), "CRPA", 1),
+            sharing(with_silver(unit("902"), 50)),
+            with_silver(unit("903"), 300),
+        ]);
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nGIVE 900 100 SILV\nCAST Create_Amulet_Of_Protection\n\
+             TRANSPORT 900 ALL SILV\n\
+             unit 902\nTRANSPORT 900 ALL SILV\n\
+             unit 903\nGIVE 902 300 SILV\n",
+            Some(&rules),
+            with_map(),
+        );
+        assert_eq!(
+            silver_shipped(&review, "902"),
+            100,
             "{:?}",
             shipment_silver(&review, "902")
         );
