@@ -970,6 +970,7 @@ pub fn decode_game_backup(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
 
     /// The wire contract the generated TypeScript mirrors (ah-8z4y.2): an unstated map leaves *no*
     /// key, so "never said" cannot be read back as "said nothing", while an unstated active faction
@@ -2058,8 +2059,82 @@ mod tests {
     /// ah-m6pw: a version-1 backup numbered every turn one low (February of Year 1 was turn 1), so
     /// restoring it moves every turn it names up by one - the same move migration 15 makes to a
     /// stored game - and a backup written today says version 2, whose turns are already right.
+    /// Every integer a record holds under a key naming a turn, as a path: `key`, or `list[].key`
+    /// inside a list of objects. JSON-string payloads are not opened.
+    fn turn_paths(value: &serde_json::Value, prefix: &str, found: &mut BTreeSet<String>) {
+        match value {
+            serde_json::Value::Object(map) => {
+                for (key, child) in map {
+                    let path = format!("{prefix}{key}");
+                    if child.is_u64() && key.to_lowercase().contains("turn") {
+                        found.insert(path);
+                    } else {
+                        turn_paths(child, &format!("{path}."), found);
+                    }
+                }
+            }
+            serde_json::Value::Array(entries) => {
+                let list = prefix.trim_end_matches('.');
+                for entry in entries {
+                    turn_paths(entry, &format!("{list}[]."), found);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// ah-aguu: the stored-turn list is written once, in `stored_turns`, so it is pinned here
+    /// against what the backup collections actually hold. A record that gains a turn field fails
+    /// this until the list says how the field moves; a listed field no record holds fails it too.
     #[test]
-    fn a_version_one_backup_is_restored_at_the_engines_turn_numbers() {
+    fn every_turn_a_backup_collection_names_is_in_the_list() {
+        use crate::stored_turns::{turn_fields, TurnField, COLLECTIONS_NAMING_A_TURN};
+
+        let document =
+            serde_json::to_value(every_collection_on_the_old_count()).expect("serialises");
+        let collections: Vec<(&String, &Vec<serde_json::Value>)> = document
+            .as_object()
+            .expect("an object")
+            .iter()
+            .filter_map(|(name, value)| value.as_array().map(|records| (name, records)))
+            .collect();
+        assert_eq!(collections.len(), 8, "the fixture holds every collection");
+
+        for (name, records) in collections {
+            assert!(!records.is_empty(), "{name} has a record to read");
+            let mut found = BTreeSet::new();
+            for record in records {
+                turn_paths(record, "", &mut found);
+            }
+            let mut declared = BTreeSet::new();
+            for field in turn_fields(name) {
+                match *field {
+                    TurnField::Field(key) => {
+                        declared.insert(key.to_string());
+                    }
+                    TurnField::EachEntry { list, field, .. } => {
+                        declared.insert(format!("{list}[].{field}"));
+                    }
+                    TurnField::PayloadHeader(key) => {
+                        assert!(
+                            records.iter().all(|record| record[key].is_string()),
+                            "{name}.{key} is a payload string"
+                        );
+                    }
+                }
+            }
+            assert_eq!(found, declared, "the turns {name} names");
+        }
+        for (name, _) in COLLECTIONS_NAMING_A_TURN {
+            assert!(
+                document.get(*name).is_some(),
+                "{name} is a backup collection"
+            );
+        }
+    }
+
+    /// One record in every collection, each naming its turns as version 1 counted them.
+    fn every_collection_on_the_old_count() -> GameBackupContent {
         let unit = crate::report::parse_report_full(
             "plain (7,53) in Inhead.\n\n- Sweep Mage (9001), Borg (21), 1 leader [LEAD].\n",
         )
@@ -2172,6 +2247,12 @@ mod tests {
             comment: String::new(),
             updated_at: "2026-01-05T00:00:00Z".to_string(),
         }];
+        content
+    }
+
+    #[test]
+    fn a_version_one_backup_is_restored_at_the_engines_turn_numbers() {
+        let content = every_collection_on_the_old_count();
         let encoded = encode_game_backup(content, "2026-01-06T00:00:00Z").expect("encodes");
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&encoded).expect("json")["version"],
