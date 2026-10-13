@@ -85,7 +85,7 @@ async function withArcanumGame(page: Page) {
   await expect(gameData).not.toBeVisible();
 }
 
-/** An Arcanum game with turn 71 fetched through the browser. */
+/** An Arcanum game with turn 72 fetched through the browser. */
 async function withTurnLoaded(page: Page) {
   await withArcanumGame(page);
   await expect(page.getByTestId("fetch-control")).toHaveText("Fetch");
@@ -117,7 +117,7 @@ test("sends orders from the web and says what the world answered", async ({ page
   await page.getByTestId("newage-send-confirm").click();
 
   await expect(page.getByTestId("newage-send-outcome")).toHaveText(
-    "Orders for turn 71 were saved. The world found nothing wrong with them."
+    "Orders for turn 72 were saved. The world found nothing wrong with them."
   );
   const upload = world.calls.find((call) => call[1].endsWith("/files/orders"));
   expect(upload?.[0]).toBe("POST");

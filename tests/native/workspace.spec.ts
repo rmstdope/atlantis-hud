@@ -31,7 +31,7 @@ describe("native desktop workspace", () => {
     await clearGamesNative();
   });
 
-  it("imports the turn 71 report and persists it to the sidecar database", async () => {
+  it("imports the turn 72 report and persists it to the sidecar database", async () => {
     await $('[data-testid="game-gate"]').waitForDisplayed();
     await createGameUi("Native game");
     await loadReportUi(REPORT);
@@ -42,7 +42,7 @@ describe("native desktop workspace", () => {
     await expect($('[data-testid="app-header"]')).toHaveText(
       expect.stringContaining("Borg TNG (95)")
     );
-    await expect($('[data-testid="app-header"]')).toHaveText(expect.stringContaining("71"));
+    await expect($('[data-testid="app-header"]')).toHaveText(expect.stringContaining("72"));
 
     // The half the browser suites cannot see: the turn is a row in a file on disk, not an
     // IndexedDB entry, and it is readable from outside the application. Polled, because the
@@ -55,13 +55,13 @@ describe("native desktop workspace", () => {
             .prepare("SELECT faction_id, turn_number FROM imported_turns ORDER BY turn_number")
             .all();
           return (
-            rows.length === 1 && rows[0].faction_id === "95" && rows[0].turn_number === 71
+            rows.length === 1 && rows[0].faction_id === "95" && rows[0].turn_number === 72
           );
         } finally {
           db.close();
         }
       },
-      { timeoutMsg: "imported_turns never held exactly the row (95, 71)" }
+      { timeoutMsg: "imported_turns never held exactly the row (95, 72)" }
     );
   });
 

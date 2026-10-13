@@ -132,7 +132,7 @@ test("fetches this turn's report into an empty game", async ({ page }) => {
   await expect(page.getByTestId("fetch-control")).toHaveText("Fetch");
   await fetchWith(page);
 
-  await expect(page.getByTestId("import-status")).toContainText("turn 70 loaded —");
+  await expect(page.getByTestId("import-status")).toContainText("turn 71 loaded —");
   await expect(page.getByTestId("neworigins-fetch-panel")).toHaveCount(0);
 
   const calls = await httpCalls(page);
@@ -148,43 +148,43 @@ test("asks before a newer turn replaces what is on screen, and files it when kep
   await clearGames(page);
   await newOriginsGame(page);
   await fetchWith(page);
-  await expect(page.getByTestId("import-status")).toContainText("turn 70 loaded —");
+  await expect(page.getByTestId("import-status")).toContainText("turn 71 loaded —");
 
   await replyWith(page, { status: 200, body: TURN_71 });
   await fetchWith(page);
 
   await expect(page.getByTestId("neworigins-fetch-question")).toContainText(
-    "Turn 71 has arrived. Opening it replaces turn 70 on screen"
+    "Turn 72 has arrived. Opening it replaces turn 71 on screen"
   );
-  await expect(page.getByTestId("neworigins-fetch-keep")).toHaveText("Keep turn 70");
+  await expect(page.getByTestId("neworigins-fetch-keep")).toHaveText("Keep turn 71");
   await page.getByTestId("neworigins-fetch-keep").click();
 
   await expect(page.getByTestId("import-status")).toContainText(
-    "turn 71 stored for history; still showing turn 70."
+    "turn 72 stored for history; still showing turn 71."
   );
-  await expect(page.getByTestId("turn-chip")).toContainText("70");
+  await expect(page.getByTestId("turn-chip")).toContainText("71");
 });
 
 test("opens a newer turn when asked to", async ({ page }) => {
   await clearGames(page);
   await newOriginsGame(page);
   await fetchWith(page);
-  await expect(page.getByTestId("import-status")).toContainText("turn 70 loaded —");
+  await expect(page.getByTestId("import-status")).toContainText("turn 71 loaded —");
 
   await replyWith(page, { status: 200, body: TURN_71 });
   await fetchWith(page);
-  await expect(page.getByTestId("neworigins-fetch-open")).toHaveText("Open turn 71");
+  await expect(page.getByTestId("neworigins-fetch-open")).toHaveText("Open turn 72");
   await page.getByTestId("neworigins-fetch-open").click();
 
-  await expect(page.getByTestId("import-status")).toContainText("turn 71 loaded —");
-  await expect(page.getByTestId("turn-chip")).toContainText("71");
+  await expect(page.getByTestId("import-status")).toContainText("turn 72 loaded —");
+  await expect(page.getByTestId("turn-chip")).toContainText("72");
 });
 
 test("offers a reload when the same turn comes back", async ({ page }) => {
   await clearGames(page);
   await newOriginsGame(page);
   await fetchWith(page);
-  await expect(page.getByTestId("import-status")).toContainText("turn 70 loaded —");
+  await expect(page.getByTestId("import-status")).toContainText("turn 71 loaded —");
 
   await fetchWith(page);
   await expect(page.getByTestId("neworigins-fetch-question")).toContainText(
@@ -193,7 +193,7 @@ test("offers a reload when the same turn comes back", async ({ page }) => {
   await expect(page.getByTestId("neworigins-fetch-keep")).toHaveText("Keep what I have");
   await page.getByTestId("neworigins-fetch-keep").click();
 
-  await expect(page.getByTestId("import-status")).toHaveText("still showing turn 70.");
+  await expect(page.getByTestId("import-status")).toHaveText("still showing turn 71.");
 });
 
 test("files an older turn without asking", async ({ page }) => {
@@ -201,13 +201,13 @@ test("files an older turn without asking", async ({ page }) => {
   await newOriginsGame(page);
   await replyWith(page, { status: 200, body: TURN_71 });
   await fetchWith(page);
-  await expect(page.getByTestId("import-status")).toContainText("turn 71 loaded —");
+  await expect(page.getByTestId("import-status")).toContainText("turn 72 loaded —");
 
   await replyWith(page, { status: 200, body: TURN_70 });
   await fetchWith(page);
 
   await expect(page.getByTestId("import-status")).toContainText(
-    "turn 70 stored for history; still showing turn 71."
+    "turn 71 stored for history; still showing turn 72."
   );
   await expect(page.getByTestId("neworigins-fetch-panel")).toHaveCount(0);
 });

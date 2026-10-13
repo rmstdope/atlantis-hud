@@ -36,7 +36,7 @@ test("F4 opens the planner, arrows walk it, and Escape closes it", async ({ page
   await page.getByTestId("study-planner-view-all").click();
   await expect(page.getByTestId(`study-planner-mage-95/${MAGE}`)).toBeVisible();
   await expect(page.getByTestId("study-planner-group-95")).toContainText(
-    "Borg TNG (95) — your faction, turn 71"
+    "Borg TNG (95) — your faction, turn 72"
   );
 
   // Overview is walked with the arrows, so its list takes focus as it is shown.
@@ -152,10 +152,10 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
   await expect(page.getByTestId("study-schedule")).toBeVisible();
-  await expect(page.getByTestId("study-schedule-turn-72")).toContainText("72 · next");
+  await expect(page.getByTestId("study-schedule-turn-73")).toContainText("73 · next");
 
-  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
-  const neighbour = page.getByTestId(`study-schedule-cell-${MAGE}-73`);
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-73`);
+  const neighbour = page.getByTestId(`study-schedule-cell-${MAGE}-74`);
   await expect(cell).toContainText("—");
   await cell.click();
   const popover = page.getByTestId("study-schedule-popover");
@@ -163,7 +163,7 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   // The heading is the mage's name with the turn badged beside it (`style: badge study popup
   // turn`), so the two are asserted apart rather than as one inline phrase.
   await expect(popover).toContainText("Six of Seven");
-  await expect(popover.getByText("Turn 72", { exact: true })).toBeVisible();
+  await expect(popover.getByText("Turn 73", { exact: true })).toBeVisible();
 
   // Every row says both ends of the month, level and points, so the choice is made against how far
   // he has actually got rather than against a level alone.
@@ -227,7 +227,7 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   await cell.click();
   await page.getByTestId("study-schedule-choice-FORC").click();
   await expect(popover).toHaveCount(0);
-  await page.getByTestId(`study-schedule-cell-${MAGE}-74`).click();
+  await page.getByTestId(`study-schedule-cell-${MAGE}-75`).click();
   await page.getByTestId("study-schedule-choice-FORC").click();
   await expect(popover).toHaveCount(0);
   await expect(neighbour).toContainText("—");
@@ -237,17 +237,17 @@ test("the Schedule plans a mage's studies, and the plan survives a reload", asyn
   // It does not hide the case above - the two clicks are still not gated on each other, which is
   // the window - and `studyPlansStore.test.ts` pins the payload rule directly.
   await expect(cell).toContainText("FORC");
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-75`)).toContainText("FORC");
 
   // The reload has to finish restoring the game before F4 means anything: the shortcut is
   // ignored while there is no report, exactly as `persistence.spec.ts` waits for this line.
   await page.reload();
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("FORC");
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("FORC");
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-73`)).toContainText("—");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-73`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-75`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("—");
 });
 
 // ah-9qdz.2: the cast half under a turn - reached with ↓, opened with ↵, chosen from its own list,
@@ -258,8 +258,8 @@ test("a cast is planned under a turn from the keyboard, and survives a reload", 
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
 
-  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
-  const half = page.getByTestId(`study-schedule-cast-${MAGE}-72`);
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-73`);
+  const half = page.getByTestId(`study-schedule-cast-${MAGE}-73`);
   await expect(half).toHaveText("✦ no cast");
 
   await cell.focus();
@@ -269,7 +269,7 @@ test("a cast is planned under a turn from the keyboard, and survives a reload", 
 
   const popover = page.getByTestId("study-schedule-cast-popover");
   await expect(popover).toContainText("Six of Seven casts");
-  await expect(popover.getByText("Turn 72", { exact: true })).toBeVisible();
+  await expect(popover.getByText("Turn 73", { exact: true })).toBeVisible();
   // Nothing is planned, so `— no cast` is the ticked row and focus opens on it.
   await expect(page.getByTestId("study-schedule-cast-choice-none")).toBeFocused();
   // Automatic spells and the foundations are never offered.
@@ -304,11 +304,11 @@ test("a cast is planned under a turn from the keyboard, and survives a reload", 
   await expect(cell).toBeFocused();
 
   await page.reload();
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
-  await expect(page.getByTestId(`study-schedule-cast-${MAGE}-72`)).toHaveText("⚔ FIRE");
-  await expect(page.getByTestId(`study-schedule-cast-${MAGE}-73`)).toHaveText("✦ no cast");
+  await expect(page.getByTestId(`study-schedule-cast-${MAGE}-73`)).toHaveText("⚔ FIRE");
+  await expect(page.getByTestId(`study-schedule-cast-${MAGE}-74`)).toHaveText("✦ no cast");
 });
 
 // ah-9qdz.2, review of PR #1516: a cast on a turn an earlier study change leaves him no castable
@@ -326,14 +326,14 @@ test("a cast left without a spell by an earlier study change is taken out of the
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
 
-  const study = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
-  const half = page.getByTestId(`study-schedule-cast-${MAGE}-73`);
+  const study = page.getByTestId(`study-schedule-cell-${MAGE}-73`);
+  const half = page.getByTestId(`study-schedule-cast-${MAGE}-74`);
   const popover = page.getByTestId("study-schedule-popover");
   const castPopover = page.getByTestId("study-schedule-cast-popover");
   // He knows no castable spell, so no turn has a half.
   await expect(page.locator(`[data-testid^="study-schedule-cast-${MAGE}-"]`)).toHaveCount(0);
 
-  // A month of fire (`data/FIRE`: combat) on turn 72 gives him a half from turn 73.
+  // A month of fire (`data/FIRE`: combat) on turn 73 gives him a half from turn 73.
   const chooseStudy = async (skill: string) => {
     await study.click();
     await page.getByTestId(`study-schedule-choice-${skill}`).click();
@@ -346,7 +346,7 @@ test("a cast left without a spell by an earlier study change is taken out of the
   await expect(castPopover).toHaveCount(0);
   await expect(half).toHaveText("⚔ FIRE");
 
-  // Force instead: on turn 73 he knows no castable spell, so the half and the cast both go.
+  // Force instead: on turn 74 he knows no castable spell, so the half and the cast both go.
   await chooseStudy("FORC");
   await expect(half).toHaveCount(0);
   // Fire again: the half is back, and the cast is not.
@@ -354,10 +354,10 @@ test("a cast left without a spell by an earlier study change is taken out of the
   await expect(half).toHaveText("✦ no cast");
 
   await page.reload();
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
-  await expect(page.getByTestId(`study-schedule-cast-${MAGE}-73`)).toHaveText("✦ no cast");
+  await expect(page.getByTestId(`study-schedule-cast-${MAGE}-74`)).toHaveText("✦ no cast");
 });
 
 test("a dropdown moved to a second cell keeps focus inside itself", async ({ page }) => {
@@ -367,7 +367,7 @@ test("a dropdown moved to a second cell keeps focus inside itself", async ({ pag
   await page.getByTestId("study-planner-view-schedule").click();
 
   const popover = page.getByTestId("study-schedule-popover");
-  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).click();
+  await page.getByTestId(`study-schedule-cell-${MAGE}-73`).click();
   await expect(popover).toBeVisible();
 
   // Shift+Tab walks backwards through the dropdown's own rows before it leaves them, so it is
@@ -411,7 +411,7 @@ test("the dropdown fills the row the arrows and the pointer land on", async ({ p
 
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
-  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).click();
+  await page.getByTestId(`study-schedule-cell-${MAGE}-73`).click();
   await expect(page.getByTestId("study-schedule-popover")).toBeVisible();
 
   const row = (at: number) => page.locator(`[data-testid="study-schedule-popover"] [data-row="${at}"]`);
@@ -441,7 +441,7 @@ test("no row of the dropdown wraps onto a second line", async ({ page }) => {
 
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
-  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).click();
+  await page.getByTestId(`study-schedule-cell-${MAGE}-73`).click();
   await expect(page.getByTestId("study-schedule-popover")).toBeVisible();
 
   // Measured rather than pinned to a width: a wrapped row is two lines tall, whatever the font,
@@ -468,7 +468,7 @@ test("a note written in All mages shows as a pencil and in the mage pane", async
   await expect(page.getByTestId("study-schedule-note-881")).toBeVisible();
 
   // And it is readable where the month is chosen, above what he knows rather than a tab away.
-  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).hover();
+  await page.getByTestId(`study-schedule-cell-${MAGE}-73`).hover();
   const pane = page.getByTestId("study-schedule-mage-pane");
   await expect(pane.getByTestId("study-schedule-note")).toContainText("heading for Gate Lore");
   const shown = await pane.getByTestId("study-schedule-note").boundingBox();
@@ -476,7 +476,7 @@ test("a note written in All mages shows as a pencil and in the mage pane", async
   expect(shown?.y ?? 0).toBeLessThan(knows?.y ?? 0);
 
   // A mage nobody has written about carries nothing in its place.
-  await page.getByTestId("study-schedule-cell-12878-72").hover();
+  await page.getByTestId("study-schedule-cell-12878-73").hover();
   await expect(pane.getByTestId("study-schedule-note")).toHaveCount(0);
 });
 
@@ -556,7 +556,7 @@ test("the mage pane shows every skill a deep mage knows", async ({ page }) => {
   await loadReport(page);
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
-  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).hover();
+  await page.getByTestId(`study-schedule-cell-${MAGE}-73`).hover();
 
   const pane = page.getByTestId("study-schedule-mage-pane");
   const rows = pane.getByTestId(/^study-schedule-knows-/);
@@ -594,13 +594,13 @@ test("the mage pane follows the pointer and the focus, and keeps what it last sh
   await expect(pane).toBeVisible();
   await expect(pane).toContainText("Point at a mage");
 
-  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).hover();
+  await page.getByTestId(`study-schedule-cell-${MAGE}-73`).hover();
   // The pane's heading is the mage's name with the turn badged beside it, so name and turn are
   // asserted apart.
   await expect(pane.getByText("Six of Seven (881)", { exact: true })).toBeVisible();
-  await expect(pane.getByText("Turn 72", { exact: true })).toBeVisible();
+  await expect(pane.getByText("Turn 73", { exact: true })).toBeVisible();
   await expect(pane).toContainText("Knows");
-  await expect(pane).toContainText("Can study on turn 72 —");
+  await expect(pane).toContainText("Can study on turn 73 —");
 
   // The name reads him as he stands now, which no column can show: every column is a month that
   // has already happened.
@@ -609,15 +609,15 @@ test("the mage pane follows the pointer and the focus, and keeps what it last sh
   await expect(pane).toContainText("Can study now —");
 
   // Reachable without a mouse: the arrow keys walk the grid and the pane follows the focus.
-  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).focus();
+  await page.getByTestId(`study-schedule-cell-${MAGE}-73`).focus();
   await page.keyboard.press("ArrowRight");
-  await expect(pane.getByText("Turn 73", { exact: true })).toBeVisible();
+  await expect(pane.getByText("Turn 74", { exact: true })).toBeVisible();
 
   // And it keeps its mage when the pointer leaves the table, so the pane can be read without
   // holding the mouse still on a row.
   await page.getByTestId("study-planner-view-schedule").hover();
   await expect(pane.getByText("Six of Seven (881)", { exact: true })).toBeVisible();
-  await expect(pane.getByText("Turn 73", { exact: true })).toBeVisible();
+  await expect(pane.getByText("Turn 74", { exact: true })).toBeVisible();
 });
 
 test("Escape closes the cell popover and leaves the pane open", async ({ page }) => {
@@ -625,7 +625,7 @@ test("Escape closes the cell popover and leaves the pane open", async ({ page })
 
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
-  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-73`);
   await cell.click();
   await expect(page.getByTestId("study-schedule-popover")).toBeVisible();
 
@@ -648,7 +648,7 @@ test("clicking the open cell again closes its dropdown and changes nothing", asy
 
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
-  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-73`);
   const popover = page.getByTestId("study-schedule-popover");
   await cell.click();
   await expect(popover).toBeVisible();
@@ -670,7 +670,7 @@ test("a click outside the dropdown closes it and changes nothing", async ({ page
 
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
-  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-73`);
   const popover = page.getByTestId("study-schedule-popover");
   await cell.click();
   await expect(popover).toBeVisible();
@@ -683,10 +683,10 @@ test("a click outside the dropdown closes it and changes nothing", async ({ page
   // Focus is not thrown back onto the turn just dismissed: a pointer dismissal leaves focus to the
   // press, as `popover.tsx` does by the navigator's decision. The browser's own mousedown would
   // take that focus away again, but not before the cell's `onFocus` had moved the mage pane back
-  // to turn 72 from under the pointer - so it is the pane that shows it.
+  // to turn 73 from under the pointer - so it is the pane that shows it.
   const pane = page.getByTestId("study-schedule-mage-pane");
   await expect(pane.getByText("Now", { exact: true })).toBeVisible();
-  await expect(pane.getByText("Turn 72", { exact: true })).toHaveCount(0);
+  await expect(pane.getByText("Turn 73", { exact: true })).toHaveCount(0);
 
   // Inside the dropdown, a press is the dropdown's own and closes nothing.
   await cell.click();
@@ -713,13 +713,13 @@ test("a teach month is planned in the popover, warned about in the strip, and su
   // The student first: `rules/skills_teaching` teaches "whatever skill they are studying that
   // month", so a mage with nothing planned is nobody's student - and the teacher must hold that
   // skill at a strictly greater level, which is why the student studies gate lore.
-  const studentCell = page.getByTestId(`study-schedule-cell-${STUDENT}-72`);
+  const studentCell = page.getByTestId(`study-schedule-cell-${STUDENT}-73`);
   await studentCell.click();
   await page.getByTestId("study-schedule-choice-GATE").click();
   await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
   await expect(studentCell).toContainText("GATE");
 
-  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-73`);
   await cell.click();
   const popover = page.getByTestId("study-schedule-popover");
   await expect(popover).toBeVisible();
@@ -727,10 +727,10 @@ test("a teach month is planned in the popover, warned about in the strip, and su
   // `Teaches…` is one row of the dropdown, and it opens the student list; Escape from that step
   // goes back to the dropdown rather than out.
   await page.getByTestId("study-schedule-choice-teach").click();
-  await expect(popover).toContainText("Six of Seven teaches on turn 72");
+  await expect(popover).toContainText("Six of Seven teaches on turn 73");
   await page.keyboard.press("Escape");
   await expect(popover).toContainText("Six of Seven");
-  await expect(popover.getByText("Turn 72", { exact: true })).toBeVisible();
+  await expect(popover.getByText("Turn 73", { exact: true })).toBeVisible();
 
   // The pupil arrives ticked (ah-af7i), so Set alone is the whole of planning this month.
   await page.getByTestId("study-schedule-choice-teach").click();
@@ -751,10 +751,10 @@ test("a teach month is planned in the popover, warned about in the strip, and su
   );
 
   await page.reload();
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("TEACH");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-73`)).toContainText("TEACH");
 });
 
 /**
@@ -780,12 +780,12 @@ test("the strip counts a warning, opens on a click, and focuses the cell it name
 
   const popover = page.getByTestId("study-schedule-popover");
   for (const pupil of [STUDENT, SECOND_STUDENT]) {
-    await page.getByTestId(`study-schedule-cell-${pupil}-72`).click();
+    await page.getByTestId(`study-schedule-cell-${pupil}-73`).click();
     await page.getByTestId("study-schedule-choice-GATE").click();
     await expect(popover).toHaveCount(0);
   }
 
-  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-73`);
   await cell.click();
   await page.getByTestId("study-schedule-choice-teach").click();
   await page.getByTestId(`study-schedule-teach-${SECOND_STUDENT}`).click();
@@ -794,7 +794,7 @@ test("the strip counts a warning, opens on a click, and focuses the cell it name
   await expect(cell).toContainText("TEACH");
   await expect(cell).not.toContainText("everyone");
 
-  await page.getByTestId(`study-schedule-cell-${STUDENT}-72`).click();
+  await page.getByTestId(`study-schedule-cell-${STUDENT}-73`).click();
   await page.getByTestId("study-schedule-choice-nothing").click();
   await expect(popover).toHaveCount(0);
 
@@ -803,7 +803,7 @@ test("the strip counts a warning, opens on a click, and focuses the cell it name
   await toggle.click();
   await expect(page.getByTestId("study-planner-warnings")).toBeVisible();
   await expect(page.getByTestId("study-planner-warning-0")).toContainText(
-    "Two of Seven (12878) has nothing planned for turn 72"
+    "Two of Seven (12878) has nothing planned for turn 73"
   );
   await page.getByTestId("study-planner-warning-0").click();
   await expect(page.locator("[data-cell]:focus")).toHaveCount(1);
@@ -822,12 +822,12 @@ test("teaching arrives with its pupils chosen and follows the plan", async ({ pa
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
 
-  const firstCell = page.getByTestId(`study-schedule-cell-${STUDENT}-72`);
+  const firstCell = page.getByTestId(`study-schedule-cell-${STUDENT}-73`);
   await firstCell.click();
   await page.getByTestId("study-schedule-choice-GATE").click();
   await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
 
-  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-73`);
   await cell.click();
   const popover = page.getByTestId("study-schedule-popover");
   await page.getByTestId("study-schedule-choice-teach").click();
@@ -837,7 +837,7 @@ test("teaching arrives with its pupils chosen and follows the plan", async ({ pa
     "aria-checked",
     "true"
   );
-  await expect(popover).toContainText("Six of Seven teaches on turn 72 — everyone eligible");
+  await expect(popover).toContainText("Six of Seven teaches on turn 73 — everyone eligible");
 
   await page.getByTestId("study-schedule-set").click();
   await expect(popover).toHaveCount(0);
@@ -845,7 +845,7 @@ test("teaching arrives with its pupils chosen and follows the plan", async ({ pa
 
   // A second pupil made eligible elsewhere in the grid is picked up with no further interaction
   // with the teacher's cell at all.
-  const secondCell = page.getByTestId(`study-schedule-cell-${SECOND_STUDENT}-72`);
+  const secondCell = page.getByTestId(`study-schedule-cell-${SECOND_STUDENT}-73`);
   await secondCell.click();
   await page.getByTestId("study-schedule-choice-GATE").click();
   await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
@@ -874,7 +874,7 @@ test("a teacher is set up before any pupil exists", async ({ page }) => {
   await page.getByTestId("study-planner-view-schedule").click();
 
   // Nothing planned for anybody, so nobody in the hex is teachable yet.
-  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-73`);
   await cell.click();
   const teachRow = page.getByTestId("study-schedule-choice-teach");
   await expect(teachRow).toContainText("nobody eligible yet");
@@ -884,7 +884,7 @@ test("a teacher is set up before any pupil exists", async ({ page }) => {
   await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
   await expect(cell).toContainText("TEACH nobody");
 
-  const studentCell = page.getByTestId(`study-schedule-cell-${STUDENT}-72`);
+  const studentCell = page.getByTestId(`study-schedule-cell-${STUDENT}-73`);
   await studentCell.click();
   await page.getByTestId("study-schedule-choice-GATE").click();
   await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
@@ -926,14 +926,14 @@ test("a skill somebody would teach shows its month doubled", async ({ page }) =>
   await page.getByTestId("study-planner-view-schedule").click();
 
   // Before: nobody is teaching, so the row is the plain month.
-  const studentCell = page.getByTestId(`study-schedule-cell-${SECOND_STUDENT}-72`);
+  const studentCell = page.getByTestId(`study-schedule-cell-${SECOND_STUDENT}-73`);
   await studentCell.click();
   await expect(page.getByTestId("study-schedule-choice-GATE")).not.toContainText("taught by");
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
 
   // With nobody yet eligible the Teaches… row commits a live teach cell outright and closes.
-  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).click();
+  await page.getByTestId(`study-schedule-cell-${MAGE}-73`).click();
   await page.getByTestId("study-schedule-choice-teach").click();
   await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
 
@@ -959,80 +959,80 @@ test("inserting and removing a turn reshapes every mage's plan, behind its dialo
   await page.getByTestId("study-planner-view-schedule").click();
 
   // One month planned for two mages, so a reshape can be seen moving rows together.
-  await page.getByTestId(`study-schedule-cell-${MAGE}-72`).click();
+  await page.getByTestId(`study-schedule-cell-${MAGE}-73`).click();
   await page.getByTestId("study-schedule-choice-FORC").click();
   await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
-  await page.getByTestId(`study-schedule-cell-${STUDENT}-72`).click();
+  await page.getByTestId(`study-schedule-cell-${STUDENT}-73`).click();
   await page.getByTestId("study-schedule-choice-GATE").click();
   await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("FORC");
-  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-72`)).toContainText("GATE");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-73`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-73`)).toContainText("GATE");
 
   // A second month for Six of Seven, two turns later, so a shift has somewhere visible to go.
-  await page.getByTestId(`study-schedule-cell-${MAGE}-74`).click();
+  await page.getByTestId(`study-schedule-cell-${MAGE}-75`).click();
   await page.getByTestId("study-schedule-choice-FORC").click();
   await expect(page.getByTestId("study-schedule-popover")).toHaveCount(0);
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-75`)).toContainText("FORC");
 
   // Cancel writes nothing and returns focus to the control that opened the dialog.
-  await page.getByTestId("study-schedule-remove-73").click();
+  await page.getByTestId("study-schedule-remove-74").click();
   const confirm = page.getByTestId("study-schedule-confirm");
   await expect(confirm).toBeVisible();
   await expect(page.getByTestId("study-schedule-confirm-heading")).toContainText(
-    "Remove turn 73 for every mage?"
+    "Remove turn 74 for every mage?"
   );
   await expect(page.getByTestId("study-schedule-confirm-action")).toBeFocused();
   await page.getByTestId("study-schedule-confirm-cancel").click();
   await expect(confirm).toHaveCount(0);
-  await expect(page.getByTestId("study-schedule-remove-73")).toBeFocused();
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("FORC");
-  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-72`)).toContainText("GATE");
+  await expect(page.getByTestId("study-schedule-remove-74")).toBeFocused();
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-73`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-73`)).toContainText("GATE");
 
   // Escape is the same no-write path, with the same focus return.
-  await page.getByTestId("study-schedule-remove-73").click();
+  await page.getByTestId("study-schedule-remove-74").click();
   await expect(confirm).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(confirm).toHaveCount(0);
-  await expect(page.getByTestId("study-schedule-remove-73")).toBeFocused();
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-72`)).toContainText("FORC");
+  await expect(page.getByTestId("study-schedule-remove-74")).toBeFocused();
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-73`)).toContainText("FORC");
 
   // Removing an empty turn shifts every later goal one turn earlier, for every mage.
-  await page.getByTestId("study-schedule-remove-73").click();
+  await page.getByTestId("study-schedule-remove-74").click();
   await page.getByTestId("study-schedule-confirm-action").click();
   await expect(confirm).toHaveCount(0);
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-73`)).toContainText("FORC");
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("—");
-  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-72`)).toContainText("GATE");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-75`)).toContainText("—");
+  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-73`)).toContainText("GATE");
 
   // Inserting before a turn shifts every later goal one turn later, and the visible horizon
-  // stays six turns: 72..77 before and after, with nothing at 78. Inserting before 73 moves the
-  // FORC goal the removal above pulled from 74 to 73 back out to 74, leaving 73 empty.
-  await page.getByTestId("study-schedule-insert-73").click();
+  // stays six turns: 73..78 before and after, with nothing at 79. Inserting before 74 moves the
+  // FORC goal the removal above pulled from 75 to 74 back out to 75, leaving 74 empty.
+  await page.getByTestId("study-schedule-insert-74").click();
   await expect(page.getByTestId("study-schedule-confirm-heading")).toContainText(
-    "Insert an empty turn before 73 for every mage?"
+    "Insert an empty turn before 74 for every mage?"
   );
   await expect(page.getByTestId("study-schedule-confirm-detail")).toContainText(
-    "Turn 73 and every later planned turn will move one turn later for every mage."
+    "Turn 74 and every later planned turn will move one turn later for every mage."
   );
   await page.getByTestId("study-schedule-confirm-action").click();
   await expect(confirm).toHaveCount(0);
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-73`)).toContainText("—");
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("FORC");
-  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-72`)).toContainText("GATE");
-  await expect(page.getByTestId("study-schedule-turn-77")).toBeVisible();
-  await expect(page.getByTestId("study-schedule-turn-78")).toHaveCount(0);
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("—");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-75`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-73`)).toContainText("GATE");
+  await expect(page.getByTestId("study-schedule-turn-78")).toBeVisible();
+  await expect(page.getByTestId("study-schedule-turn-79")).toHaveCount(0);
 
   // The reshape is one persisted write, so it survives a reload.
   await page.reload();
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
-  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-74`)).toContainText("FORC");
-  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-72`)).toContainText("GATE");
+  await expect(page.getByTestId(`study-schedule-cell-${MAGE}-75`)).toContainText("FORC");
+  await expect(page.getByTestId(`study-schedule-cell-${STUDENT}-73`)).toContainText("GATE");
 
   // At a narrow width the header controls stay reachable through the schedule's own scroller.
   await page.setViewportSize({ width: 480, height: 800 });
-  const insert = page.getByTestId("study-schedule-insert-77");
+  const insert = page.getByTestId("study-schedule-insert-78");
   await insert.scrollIntoViewIfNeeded();
   await expect(insert).toBeVisible();
   await insert.click();

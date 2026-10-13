@@ -196,7 +196,7 @@ export const SWEEP: SweepEntry[] = [
       database_path: context.databasePath,
       game_id: GAME_ID,
       faction_id: "95",
-      turn_number: 71
+      turn_number: 72
     })
   },
   {
@@ -213,7 +213,7 @@ export const SWEEP: SweepEntry[] = [
       database_path: context.databasePath,
       game_id: GAME_ID,
       faction_id: "95",
-      turn_number: 71,
+      turn_number: 72,
       order_text: "@work",
       updated_at: ISO
     })
@@ -224,7 +224,7 @@ export const SWEEP: SweepEntry[] = [
       database_path: context.databasePath,
       game_id: GAME_ID,
       faction_id: "95",
-      turn_number: 71
+      turn_number: 72
     })
   },
   {
@@ -237,7 +237,7 @@ export const SWEEP: SweepEntry[] = [
       database_path: context.databasePath,
       game_id: GAME_ID,
       viewer_faction_id: "95",
-      viewer_turn_number: 71,
+      viewer_turn_number: 72,
       raw_report: ALLY_REPORT,
       merged_at: ISO
     })
@@ -248,7 +248,7 @@ export const SWEEP: SweepEntry[] = [
       database_path: context.databasePath,
       game_id: GAME_ID,
       faction_id: "95",
-      turn_number: 71
+      turn_number: 72
     })
   },
   {
@@ -265,7 +265,7 @@ export const SWEEP: SweepEntry[] = [
         regionId: "1:7,53",
         text: "binding sweep",
         onMap: true,
-        turn: 71,
+        turn: 72,
         createdAt: ISO,
         updatedAt: ISO
       }
@@ -303,7 +303,7 @@ export const SWEEP: SweepEntry[] = [
             items: [],
             skills: [],
             men: 1,
-            seenTurn: 71,
+            seenTurn: 72,
             seenAt: ISO
           }
         ],
