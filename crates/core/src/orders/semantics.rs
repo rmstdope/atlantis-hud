@@ -5553,8 +5553,9 @@ struct Ledger<'a> {
     upkeep: BTreeMap<String, i64>,
     /// The part of each unit's fee its own wages do not cover - the fee less the silver that
     /// arrives in time to pay it. The balance is charged the whole fee, since the wages are in it
-    /// (`pay_wages`, `ah-9n7l.2`); this is what the wording and the unclaimed fund read as
-    /// maintenance's own draw. Different from `upkeep` for any unit that works or
+    /// (`pay_wages`, `ah-9n7l.2`); this is what the unclaimed fund reads as maintenance's own
+    /// draw. The not-enough-silver wording does not: it names the whole fee and counts the wages
+    /// as income (`unpaid_upkeep`, `ah-6xb2`). Different from `upkeep` for any unit that works or
     /// entertains, and it is this figure, not the fee, that the faction's unclaimed fund can be
     /// asked to settle (`ah-fjty`). Present for every unit that owes a fee at all, including one
     /// whose wages cover the whole of it, so an absent key means "no fee" rather than "covered".
@@ -15082,8 +15083,9 @@ fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> Shor
 /// back from [`Ledger::silver_transfers`]. Moves between members cancel in the sum, once each
 /// one's unfunded remainder (charged less received) is added back.
 ///
-/// `Market`, `Study` and `MonthEnd` read the same figure: everything counted settles in the Give
-/// phase, before BUY and STUDY. `Give` reads the members' `GIVE` lines as they ran instead - what
+/// `Cast`, `Market`, `Study` and `MonthEnd` start from that same figure - everything above settles
+/// in the Give phase, before CAST, BUY and STUDY - and differ only by what was earned or received
+/// by then (below). `Give` reads the members' `GIVE` lines as they ran instead - what
 /// they gave, less what they asked beyond it - since a gift reaching a member later in the Give
 /// phase funds none of them (`ah-4k84`).
 ///
@@ -15092,7 +15094,8 @@ fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> Shor
 /// It also adds what sharers arriving from elsewhere lend here at `moment` (`ah-asdp`).
 ///
 /// Last, what the members earned after the Give phase and by `moment` ([`silver_earned_by`]): a
-/// TAX, a SELL, wages. Income is silver they can have, so the sentence's "spend" - this plus the
+/// TAX, a SELL, wages; and what reached them in that time from a unit outside the set - a
+/// dissolved FORM's silver reverting, a TRANSPORT. Income is silver they can have, so the sentence's "spend" - this plus the
 /// shortfall - is what the orders and upkeep cost rather than that cost net of the income
 /// (`ah-6xb2`).
 fn silver_can_have(
@@ -15167,12 +15170,45 @@ fn silver_can_have(
     // the orders and upkeep cost rather than that cost less the income (`ah-6xb2`). A walker's
     // earnings are not: what it earned before leaving is carried away (above), and what it earns
     // after is earned elsewhere.
-    let earned: i64 = ids
-        .iter()
-        .filter(|&&who| !walking.is_some_and(|walking| walking.departing.contains_key(who)))
-        .map(|&who| silver_earned_by(hex, ledger, who, moment.phase()))
+    let staying = || {
+        ids.iter()
+            .copied()
+            .filter(|&who| !walking.is_some_and(|walking| walking.departing.contains_key(who)))
+    };
+    let earned: i64 = staying()
+        .map(|who| silver_earned_by(hex, ledger, who, moment.phase()))
         .sum();
-    held + sent_out + unfunded_within + arrivals_lend + earned
+    // ... and what reached them after the Give phase and by `moment` from a unit outside the set:
+    // a dissolved FORM's silver reverting, a TRANSPORT of silver. One between two members is
+    // already counted, in what its sender held.
+    let received: i64 = staying()
+        .flat_map(|who| ledger.silver_moves.get(who).into_iter().flatten())
+        .filter(|moved| {
+            moved.amount > 0
+                && moved.phase > StatePhase::Give
+                && moved.phase <= moment.phase()
+                && matches!(
+                    moved.cause,
+                    SilverChangeCause::WasGiven | SilverChangeCause::GiftReverted
+                )
+                && !moved
+                    .other
+                    .as_deref()
+                    .is_some_and(|other| ids.contains(labelled_unit_id(other)))
+        })
+        .map(|moved| moved.amount)
+        .sum();
+    held + sent_out + unfunded_within + arrivals_lend + earned + received
+}
+
+/// The unit id inside a [`SilverMove::other`] label: `<name> (<id>)`, or `unit <id>` for a unit
+/// the report does not show.
+fn labelled_unit_id(label: &str) -> &str {
+    if let Some(open) = label.strip_suffix(')').and_then(|rest| rest.rfind('(')) {
+        &label[open + 1..label.len() - 1]
+    } else {
+        label.strip_prefix("unit ").unwrap_or(label)
+    }
 }
 
 /// What `who` earned of silver after the Give phase and by the end of `through`: TAX, PILLAGE, a
@@ -41536,6 +41572,105 @@ BUILD
             only(findings).message,
             "the units in this hex are short $104 between them: they can have $406 and their \
              orders and upkeep spend $510"
+        );
+    }
+
+    /// `ah-6xb2`, review finding 1: silver that reaches a unit after the Give phase from outside
+    /// what the sentence counts is silver it can have too, not a smaller spend. Unit 8 gives a
+    /// unit it forms $300 and the formed unit gains nobody, so the silver reverts to unit 9, the
+    /// first unit in the hex, as the market closes (`rules/form`; `revert_dissolved_forms`). Unit 9
+    /// is 50 starving men owing $500 (`a_unit_that_cannot_pay_its_upkeep_is_warned_about`).
+    #[test]
+    fn a_gift_reverted_from_a_dissolved_form_is_silver_the_unit_can_have() {
+        let regions = vec![region(vec![
+            with_men(with_silver(starving(unit("9")), 0), 50),
+            with_silver(unit("8"), 300),
+        ])];
+
+        let findings = check(
+            regions,
+            "unit 9\nunit 8\nGIVE NEW 1 300 SILV\nFORM 1\nEND\n",
+        );
+        let sentence = findings
+            .iter()
+            .find(|f| f.code == codes::NOT_ENOUGH_SILVER && f.unit_id.as_deref() == Some("9"))
+            .unwrap_or_else(|| panic!("{findings:#?}"));
+        assert_eq!(
+            sentence.message,
+            "short $200: this unit can have $300 and its orders and upkeep spend $500"
+        );
+    }
+
+    /// `ah-6xb2`, review finding 2a: income before a mid-month moment is on the "can have" side
+    /// too. `rules/sequenceofevents` processes TAX under "Tax orders", before "Spells are CAST":
+    /// two combat-ready men collect $100 (`$50` a man, under the region's $1000), and Create Amulet
+    /// of Protection costs $200 (`data/CRPA`), so the cast is short $100 of $200.
+    #[test]
+    fn tax_collected_before_a_cast_is_silver_the_caster_can_have() {
+        let caster = with_skill(with_skill(with_men(unit("5"), 2), "COMB", 1), "CRPA", 1);
+        let regions = vec![ReportRegion {
+            tax_base: Some(1000),
+            ..region(vec![caster])
+        }];
+
+        let finding = only(check(
+            regions,
+            "unit 5\nTAX\nCAST Create_Amulet_Of_Protection\n",
+        ));
+        assert_eq!(
+            finding.message,
+            "short $100: this unit can have $100 and its orders spend $200"
+        );
+    }
+
+    /// `ah-6xb2`, review finding 2b: a contended tax pool. Two own taxers of two men each ask $100
+    /// apiece of a region whose tax base is $100. The ledger credits each the hopeful $100 - a
+    /// shortfall is reported only when the unit is short even in the best case (`ah-ud89`) - and
+    /// the SILVER column books the settled $50. The sentence reads the balances, so it counts the
+    /// hopeful $100: counting the settled $50 would read "spend $150" of a $200 cast.
+    #[test]
+    fn a_contended_tax_is_counted_as_the_shortfall_counts_it() {
+        let caster = with_skill(with_skill(with_men(unit("5"), 2), "COMB", 1), "CRPA", 1);
+        let other = with_skill(with_men(unit("6"), 2), "COMB", 1);
+        let regions = vec![ReportRegion {
+            tax_base: Some(100),
+            ..region(vec![caster, other])
+        }];
+
+        let findings = check(
+            regions,
+            "unit 5\nTAX\nCAST Create_Amulet_Of_Protection\nunit 6\nTAX\n",
+        );
+        let sentence = findings
+            .iter()
+            .find(|f| f.code == codes::NOT_ENOUGH_SILVER && f.unit_id.as_deref() == Some("5"))
+            .unwrap_or_else(|| panic!("{findings:#?}"));
+        assert_eq!(
+            sentence.message,
+            "short $100: this unit can have $100 and its orders spend $200"
+        );
+    }
+
+    /// `ah-6xb2`, review finding 2c: the hex sentence names upkeep only when a unit it counts pays
+    /// one. Unit 9 is no part of the shortfall - it pays its own $100 fee out of its own $1000 -
+    /// so the fee is in neither figure, and "orders and upkeep" would send the reader looking for
+    /// it. Sharer 5 and borrower 7 feed themselves.
+    #[test]
+    fn a_hex_sentence_names_no_upkeep_a_unit_outside_it_pays() {
+        let regions = vec![region(vec![
+            sharing(with_silver(unit("5"), 100)),
+            unit("7"),
+            with_men(with_silver(starving(unit("9")), 1000), 10),
+        ])];
+
+        let findings: Vec<Finding> = check(regions, "unit 5\nunit 7\nGIVE 0 150 SILV\nunit 9\n")
+            .into_iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .collect();
+        assert_eq!(
+            only(findings).message,
+            "the units in this hex are short $50 between them: they can have $100 and their \
+             orders spend $150"
         );
     }
 
