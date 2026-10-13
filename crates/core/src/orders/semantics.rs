@@ -2504,6 +2504,7 @@ fn forecast_hex(
         facts.transport_warning = transport_warning;
         facts.overdrawn_at_study =
             (-spendable_silver_at(ledger, &ordered.unit.unit_id, StatePhase::Study)).max(0);
+        facts.drawn_at_give = gift_drawn_by(ledger, &ordered.unit.unit_id);
         claims.push(food_claim(&facts, ruleset));
 
         into.push(forecast_unit(
@@ -7359,6 +7360,7 @@ fn unit_facts<'a>(
         shipping_unmeasured: super::transport::UnmeasuredShipments::default(),
         transport_warning: true,
         overdrawn_at_study: 0,
+        drawn_at_give: 0,
         phases,
     }
 }
@@ -8668,6 +8670,33 @@ struct GiftDraw {
     /// The sharer drawn on.
     lender: String,
     amount: i64,
+}
+
+/// What the Give phase drew on the `SHARE` pool for `unit_id` as each of its transfers ran
+/// ([`Ledger::gift_draws`]), between two units neither of which is doubted. Gone from the sharers
+/// for good (`unit.cpp`: `ConsumeShared`), so a reader of the unit's silver from the Give phase on
+/// must not let a receipt later in that phase net it away (`ah-9udi`).
+fn gift_drawn_by(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    gift_draws_where(ledger, |draw| draw.borrower == unit_id)
+}
+
+/// What the Give phase drew on `unit_id` as a sharer ([`Ledger::gift_draws`]): the other side of
+/// [`gift_drawn_by`], which its own ledger row never shows (`ah-9udi`).
+fn gift_lent_by(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    gift_draws_where(ledger, |draw| draw.lender == unit_id)
+}
+
+fn gift_draws_where(ledger: &Ledger<'_>, keep: impl Fn(&GiftDraw) -> bool) -> i64 {
+    ledger
+        .gift_draws
+        .iter()
+        .filter(|draw| {
+            keep(draw)
+                && !ledger.doubted.contains(&draw.borrower)
+                && !ledger.doubted.contains(&draw.lender)
+        })
+        .map(|draw| draw.amount)
+        .sum()
 }
 
 /// Lays the part of a silver transfer from `from` that its own silver does not cover on the hex's
@@ -13729,10 +13758,22 @@ impl SharerStock {
                     let study = own_studies
                         .as_ref()
                         .map_or(0, |studies| studies[index].handed_back());
+                    // What the Give phase drew and lent through the pool as each line ran
+                    // ([`Ledger::gift_draws`]), which the netted balance loses once a drawer
+                    // receives silver; from the cast on the purse carries it (`ah-9udi`).
+                    let given = if silver
+                        && pooled
+                        && (StatePhase::Give..=StatePhase::Cast).contains(&phase)
+                    {
+                        gift_drawn_by(ledger, unit_id) - gift_lent_by(ledger, unit_id)
+                    } else {
+                        0
+                    };
                     known
                         .saturating_add(carried)
                         .saturating_add(overdraft)
                         .saturating_add(study)
+                        .saturating_add(given)
                 }
                 None if lends => return None,
                 None => 0,
@@ -14144,12 +14185,16 @@ impl<'a> Sharing<'a> {
             .filter(|(_, ordered)| !ledger.doubted.contains(&ordered.unit.unit_id))
             .map(|(index, ordered)| {
                 let held = held(index);
+                // What its GIVEs drew on the pool as they ran is owed however much reached it
+                // later in the Give phase (`unit.cpp`: `ConsumeShared`; `ah-9udi`). A sharer's own
+                // row already nets that draw against what it holds, so only a claimant needs it.
+                let drawn = gift_drawn_by(ledger, &ordered.unit.unit_id);
                 if self.pools_silver(ordered) {
                     -held
                 } else if cast_refused(index) {
-                    (-held).max(0)
+                    (-held).max(0).max(drawn)
                 } else {
-                    (-held).max(0).max(claimant_cast_overdraft(
+                    (-held).max(0).max(drawn).max(claimant_cast_overdraft(
                         ledger,
                         &ordered.unit.unit_id,
                         moment,
@@ -14182,10 +14227,14 @@ impl<'a> Sharing<'a> {
                 if self.pools_silver(ordered) {
                     -held
                 } else {
+                    // What its GIVEs drew on the pool is owed at both readings however much
+                    // reached it later, as [`Sharing::silver_short_reading`] counts it (`ah-9udi`).
+                    let drawn = gift_drawn_by(ledger, who);
                     // What it overdrew at the cast is still owed at the month's end however much
                     // it sold since, exactly as the month-end reading counts it (`ah-9n7l.2`).
                     let at_month_end = (-silver_at(ledger, who, LendingMoment::MonthEnd))
                         .max(0)
+                        .max(drawn)
                         .max(claimant_cast_overdraft(
                             ledger,
                             who,
@@ -14193,6 +14242,7 @@ impl<'a> Sharing<'a> {
                         ));
                     (-held)
                         .max(0)
+                        .max(drawn)
                         .max(claimant_cast_overdraft(
                             ledger,
                             who,
@@ -14311,6 +14361,13 @@ fn lend_walking_sharers_silver(
                 .of(index, &ordered.unit.unit_id)
                 .map_or(here, |neighbourhood| neighbourhood.at)
         };
+        // A unit's silver at `moment` with what the Give phase drew for it and on it as each line
+        // ran ([`Ledger::gift_draws`]), which its ledger row nets away once it receives silver
+        // (`ah-9udi`): a sharer drained then has nothing left to lend before it walks or where it
+        // arrives, and a drawer refilled since owes the pool nothing more for its draw.
+        let held_at = |who: &str, moment: LendingMoment| {
+            silver_at(ledger, who, moment) + gift_drawn_by(ledger, who) - gift_lent_by(ledger, who)
+        };
         let walkers: Vec<&Ordered<'_>> = hex
             .units
             .iter()
@@ -14331,7 +14388,7 @@ fn lend_walking_sharers_silver(
             if ledger.doubted.contains(who) {
                 continue;
             }
-            let held = silver_at(ledger, who, LendingMoment::Movement);
+            let held = held_at(who, LendingMoment::Movement);
             if walkers.iter().any(|w| w.unit.unit_id == *who) {
                 need += (-held).max(0);
             } else if ordered.shares() {
@@ -14346,33 +14403,16 @@ fn lend_walking_sharers_silver(
                 ));
             }
         }
-        // What the GIVEs and TAKEs drew on each walker as they ran, before anyone moved
-        // ([`Ledger::gift_draws`]; `rules/sequenceofevents`): lent before it left whatever the
-        // sharers that stay hold, and already part of `need` through its borrower's overdraft.
-        let gift_drawn = |who: &str| -> i64 {
-            ledger
-                .gift_draws
-                .iter()
-                .filter(|draw| {
-                    draw.lender == who
-                        && !ledger.doubted.contains(&draw.borrower)
-                        && !ledger.doubted.contains(&draw.lender)
-                })
-                .map(|draw| draw.amount)
-                .sum()
-        };
-        let drawn_on_walkers: i64 = walkers.iter().map(|w| gift_drawn(&w.unit.unit_id)).sum();
-        let mut need = (need - drawn_on_walkers - staying).max(0);
+        let mut need = (need - staying).max(0);
 
         for walker in walkers {
             let who = &walker.unit.unit_id;
-            let drawn = gift_drawn(who);
-            let more = (silver_at(ledger, who, LendingMoment::Movement) - drawn)
-                .max(0)
-                .min(need);
+            let more = held_at(who, LendingMoment::Movement).max(0).min(need);
             need -= more;
-            let lent = drawn + more;
-            departing[index].insert(who.clone(), lent);
+            // All it lent here before it left, what the Give phase drew on it included: every
+            // reader of `departing` sets it against the drawers' rows, which still carry those
+            // draws.
+            departing[index].insert(who.clone(), gift_lent_by(ledger, who) + more);
 
             let Some(&arrives) = by_place.get(&ends_at(walker)) else {
                 continue;
@@ -14380,7 +14420,7 @@ fn lend_walking_sharers_silver(
             doubted[arrives] |= ledger.doubted.contains(who);
             let lends_at = |moment: LendingMoment| ArrivingSilver {
                 unit: unit_key(&hex.region.region_id, who),
-                lends: (silver_at(ledger, who, moment) - lent).max(0),
+                lends: (held_at(who, moment) - more).max(0),
             };
             let slots = &mut arrivals[arrives];
             slots[LendingMoment::Study as usize].push(lends_at(LendingMoment::Study));
@@ -55329,6 +55369,199 @@ BUILD
         );
     }
 
+    /// A gift drawn on the pool stays lent when its giver receives silver later in the Give phase:
+    /// 901 holds nothing, so its GIVE of $50 runs on sharer 902's $50 (`runorders.cpp`:
+    /// `DoGiveOrder`, `GetSharedNum`; `unit.cpp`: `ConsumeShared`) before 903's later GIVE of $100
+    /// reaches it. 902 lends its $50 and its `TRANSPORT ... ALL SILV` ships nothing, and 901 ends
+    /// holding the $100 it received (`ah-9udi`).
+    #[test]
+    fn a_gift_drawn_on_the_pool_stays_lent_when_its_giver_later_receives_silver() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            unit("901"),
+            sharing(with_silver(unit("902"), 50)),
+            with_silver(unit("903"), 100),
+        ]);
+        let orders = "unit 901\nGIVE 900 50 SILV\nunit 902\nTRANSPORT 900 ALL SILV\n\
+             unit 903\nGIVE 901 100 SILV\n";
+        let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
+        assert_eq!(
+            silver_booked(&review, "902", SilverChangeCause::Lent),
+            -50,
+            "{:?}",
+            shipment_silver(&review, "902")
+        );
+        assert_eq!(
+            silver_shipped(&review, orders, "902"),
+            0,
+            "{:?}",
+            shipment_silver(&review, "902")
+        );
+        assert_eq!(
+            shipment_silver(&review, "901").at_month_end,
+            Some(100),
+            "{:?}",
+            shipment_silver(&review, "901")
+        );
+    }
+
+    /// The same for a gift the pool funds in part: 901's $30 and sharer 902's $50 make the $80
+    /// its GIVE of $100 is cut to (`runorders.cpp`: `DoGiveOrder`, `amt = GetSharedNum`), drawing
+    /// 902 dry, and 903's later GIVE of $100 to 901 repays none of it (`ah-9udi`). 901's own row
+    /// keeps the cut line's $20 as owed, as it does with no receipt (`ah-2fn5`).
+    #[test]
+    fn a_gift_the_pool_funds_in_part_stays_lent_when_its_giver_later_receives_silver() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            with_silver(unit("901"), 30),
+            sharing(with_silver(unit("902"), 50)),
+            with_silver(unit("903"), 100),
+        ]);
+        let orders = "unit 901\nGIVE 900 100 SILV\nunit 902\nTRANSPORT 900 ALL SILV\n\
+             unit 903\nGIVE 901 100 SILV\n";
+        let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
+        assert_eq!(
+            silver_booked(&review, "900", SilverChangeCause::WasGiven),
+            80
+        );
+        assert_eq!(silver_booked(&review, "902", SilverChangeCause::Lent), -50);
+        assert_eq!(
+            silver_shipped(&review, orders, "902"),
+            0,
+            "{:?}",
+            shipment_silver(&review, "902")
+        );
+    }
+
+    /// A later GIVE in the Give phase finds the sharer as the earlier draw left it, whatever the
+    /// drawer received since: 901's GIVE of $50 drains sharer 902, 903 then gives 901 $100, and
+    /// 902's own GIVE of $50 finds `GetSharedNum` at 0 and gives nothing (`runorders.cpp`:
+    /// `DoGiveOrder`, "Not enough."; `unit.cpp`: `ConsumeShared`), so 900 receives $50 in all;
+    /// so does a GIVE by 904, which holds nothing (`ah-9udi` review, finding 1).
+    #[test]
+    fn a_later_gift_finds_the_sharer_drained_by_an_earlier_draw() {
+        let rules = trident_rules();
+        for (later, lends) in [("902", -50), ("904", -50)] {
+            let mut region = caravanserai_owner("900", 1, 0, 0);
+            region.units.extend([
+                unit("901"),
+                with_silver(unit("903"), 100),
+                sharing(with_silver(unit("902"), 50)),
+                unit("904"),
+            ]);
+            let orders = format!(
+                "unit 901\nGIVE 900 50 SILV\nunit 903\nGIVE 901 100 SILV\n\
+                 unit {later}\nGIVE 900 50 SILV\n"
+            );
+            let review = review_turn(&report(vec![region]), &orders, Some(&rules), with_map());
+            assert_eq!(
+                silver_booked(&review, "900", SilverChangeCause::WasGiven),
+                50,
+                "later giver {later}: {:?}",
+                shipment_silver(&review, "900")
+            );
+            assert_eq!(
+                silver_booked(&review, "902", SilverChangeCause::Lent),
+                lends,
+                "later giver {later}: {:?}",
+                shipment_silver(&review, "902")
+            );
+            assert_eq!(
+                shipment_silver(&review, "901").at_month_end,
+                Some(100),
+                "later giver {later}: {:?}",
+                shipment_silver(&review, "901")
+            );
+        }
+    }
+
+    /// The purse charges a Give-phase draw to the sharer that paid it as the line ran, not to one
+    /// that only had silver by the cast: 901's GIVE of $50 skips sharer 905, empty then, and
+    /// drains sharer 902 (`unit.cpp`: `ConsumeShared`); 903's later GIVE to 905 leaves 905 with
+    /// $100 to keep, and 902 nothing to ship (`ah-9udi` follow-up review, finding 1).
+    #[test]
+    fn a_draw_stays_on_the_sharer_that_paid_it_when_another_is_refilled() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            unit("901"),
+            sharing(unit("905")),
+            sharing(with_silver(unit("902"), 50)),
+            with_silver(unit("903"), 100),
+        ]);
+        let orders = "unit 901\nGIVE 900 50 SILV\nunit 902\nTRANSPORT 900 ALL SILV\n\
+             unit 903\nGIVE 905 100 SILV\n";
+        let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
+        assert_eq!(
+            silver_shipped(&review, orders, "902"),
+            0,
+            "{:?}",
+            shipment_silver(&review, "902")
+        );
+        assert_eq!(silver_booked(&review, "902", SilverChangeCause::Lent), -50);
+        assert_eq!(silver_booked(&review, "905", SilverChangeCause::Lent), 0);
+        assert_eq!(
+            shipment_silver(&review, "905").at_month_end,
+            Some(100),
+            "{:?}",
+            shipment_silver(&review, "905")
+        );
+    }
+
+    /// A TAKE draws on its source's sharers the same way (`rules/take`: "works just like the GIVE
+    /// order"; `runorders.cpp`: `DoGiveOrder`), and a receipt later in the Give phase repays none
+    /// of it: 904's TAKE of $50 from 901, who holds nothing, drains sharer 902, and 903's later
+    /// GIVE of $100 to 901 leaves 902 with nothing to ship (`ah-9udi` review, finding 2).
+    #[test]
+    fn a_take_drawn_on_the_pool_stays_lent_when_its_source_later_receives_silver() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            unit("901"),
+            sharing(with_silver(unit("902"), 50)),
+            unit("904"),
+            with_silver(unit("903"), 100),
+        ]);
+        let orders = "unit 904\nTAKE FROM 901 50 SILV\nunit 902\nTRANSPORT 900 ALL SILV\n\
+             unit 903\nGIVE 901 100 SILV\n";
+        let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
+        assert_eq!(
+            silver_shipped(&review, orders, "902"),
+            0,
+            "{:?}",
+            shipment_silver(&review, "902")
+        );
+    }
+
+    /// A draw, a later receipt and a paid cast by the same unit: 901's GIVE of $50 draws on
+    /// sharer 902's $300 (`runorders.cpp`: `DoGiveOrder`), 903 then gives 901 $100, and 901's
+    /// $200 amulet (`data/CRPA`) spends that $100 and draws the other $100 on 902 at the cast
+    /// (`spells.cpp`: `RunCreateArtifact`; `unit.cpp`: `ConsumeShared`). 902 lends $150 and ships
+    /// the $150 left (`ah-9udi` review, finding 3).
+    #[test]
+    fn a_draw_then_a_receipt_then_a_cast_lends_the_draw_and_the_casts_shortfall() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            with_skill(unit("901"), "CRPA", 1),
+            sharing(with_silver(unit("902"), 300)),
+            with_silver(unit("903"), 100),
+        ]);
+        let orders = "unit 901\nGIVE 900 50 SILV\nCAST Create_Amulet_Of_Protection\n\
+             unit 902\nTRANSPORT 900 ALL SILV\n\
+             unit 903\nGIVE 901 100 SILV\n";
+        let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
+        assert_eq!(silver_booked(&review, "902", SilverChangeCause::Lent), -150);
+        assert_eq!(
+            silver_shipped(&review, orders, "902"),
+            150,
+            "{:?}",
+            shipment_silver(&review, "902")
+        );
+    }
+
     /// A TAKE beyond its source's silver is judged the same way: `rules/take` "works just like the
     /// GIVE order", and the engine cuts it to the source's `GetSharedNum` as it runs
     /// (`runorders.cpp`: `DoGiveOrder`). 904's TAKE of $100 from 901, who holds nothing, drains
@@ -67435,6 +67668,222 @@ BUILD
             Some(480),
             "the arrival pays: {lender:?}"
         );
+    }
+
+    /// A sharer the Give phase drained walks away with nothing to lend: 901's GIVE of $50 drains
+    /// sharer 7, first in region order (`unit.cpp`: `ConsumeShared`), before 7 moves south
+    /// (`rules/sequenceofevents`: give orders, then movement), so it arrives with nothing for
+    /// student 5's fee and ends its month at nothing, not short (`ah-9udi` review, round 3).
+    #[test]
+    fn a_sharer_drained_by_a_give_arrives_with_nothing_to_lend() {
+        let regions = vec![
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![
+                    unit("900"),
+                    with_silver(unit("901"), 0),
+                    sharing(with_silver(unit("7"), 50)),
+                    sharing(with_silver(unit("8"), 50)),
+                ],
+            ),
+            region_at(
+                "1:7,55",
+                7,
+                55,
+                vec![with_men(with_silver(unit("5"), 0), 2)],
+            ),
+        ];
+        let orders = "unit 901\nGIVE 900 50 SILV\nunit 7\nMOVE S\nunit 5\nSTUDY combat\n";
+        let (report, options) =
+            traced(report(regions), orders, &ruleset(), CheckOptions::default());
+        let review = review_turn(&report, orders, Some(&ruleset()), options);
+        let walker = forecast_for(&review, "7");
+        assert_eq!(walker.at_month_end, Some(0), "{walker:?}");
+        let student = forecast_for(&review, "5");
+        assert_eq!(student.borrowed_for_orders, 0, "{student:?}");
+        let stayer = forecast_for(&review, "8");
+        assert_eq!(stayer.at_month_end, Some(50), "{stayer:?}");
+    }
+
+    /// A sharer that pays a GIVE in the Give phase and then walks away has still paid it: 901's
+    /// GIVE of $50 drains sharer 7 before 7 moves south (`rules/sequenceofevents`: give orders,
+    /// then movement; `unit.cpp`: `ConsumeShared`), so 901 is not short and nothing is said;
+    /// and a STUDY that staying sharer 8 pays leaves the hex short of nothing either (`ah-9udi`
+    /// review, round 4).
+    #[test]
+    fn a_give_a_walking_sharer_paid_leaves_nobody_short() {
+        for (student, eight_ends) in [(false, 50), (true, 40)] {
+            let mut units = vec![
+                unit("900"),
+                with_silver(unit("901"), 0),
+                sharing(with_silver(unit("7"), 50)),
+            ];
+            if student {
+                units.extend([
+                    sharing(with_silver(unit("8"), 50)),
+                    with_silver(unit("902"), 0),
+                ]);
+            }
+            let regions = vec![
+                region_at("1:7,53", 7, 53, units),
+                region_at("1:7,55", 7, 55, vec![]),
+            ];
+            let orders = format!(
+                "unit 901\nGIVE 900 50 SILV\nunit 7\nMOVE S\n{}",
+                if student {
+                    "unit 902\nSTUDY combat\n"
+                } else {
+                    ""
+                }
+            );
+            let (report, options) = traced(
+                report(regions),
+                &orders,
+                &ruleset(),
+                CheckOptions::default(),
+            );
+            let review = review_turn(&report, &orders, Some(&ruleset()), options);
+            let silver_trouble: Vec<_> = review
+                .findings
+                .iter()
+                .filter(|f| {
+                    f.code == codes::NOT_ENOUGH_SILVER || f.code == codes::PART_OF_HEX_SHORTFALL
+                })
+                .collect();
+            assert!(
+                silver_trouble.is_empty(),
+                "student {student}: {silver_trouble:?}"
+            );
+            let drawer = forecast_for(&review, "901");
+            assert_eq!(
+                drawer.at_month_end,
+                Some(0),
+                "student {student}: {drawer:?}"
+            );
+            let walker = forecast_for(&review, "7");
+            assert_eq!(
+                walker.at_month_end,
+                Some(0),
+                "student {student}: {walker:?}"
+            );
+            if student {
+                let stayer = forecast_for(&review, "8");
+                assert_eq!(stayer.at_month_end, Some(eight_ends), "{stayer:?}");
+            }
+        }
+    }
+
+    /// The hex's warning sees a Give-phase draw as owed however its drawer is refilled: 901's
+    /// GIVE of $50 drains sharer 7 (`unit.cpp`: `ConsumeShared`), 903 then gives 901 $50, and
+    /// 904's `BUY` finds `GetSharedMoney` at 0 and is cut (`runorders.cpp`: "BUY: Unit attempted
+    /// to buy more than it could afford."), whether 7 stays or walks away, and though sharer 8
+    /// arrives after the market (`rules/sequenceofevents`) (`ah-9udi` review, rounds 5 and 6).
+    #[test]
+    fn a_buy_after_a_refilled_draw_is_warned_short() {
+        let swords = |region: ReportRegion| ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 50,
+            }],
+            ..region
+        };
+        for (walks, arrives) in [(false, false), (true, false), (false, true)] {
+            let arriving = if arrives {
+                vec![sharing(with_silver(unit("8"), 100))]
+            } else {
+                vec![]
+            };
+            let regions = vec![
+                swords(region_at(
+                    "1:7,53",
+                    7,
+                    53,
+                    vec![
+                        unit("900"),
+                        with_silver(unit("901"), 0),
+                        sharing(with_silver(unit("7"), 50)),
+                        with_silver(unit("903"), 50),
+                        with_silver(unit("904"), 0),
+                    ],
+                )),
+                region_at("1:7,55", 7, 55, arriving),
+            ];
+            let orders = format!(
+                "unit 901\nGIVE 900 50 SILV\nunit 903\nGIVE 901 50 SILV\n\
+                 unit 904\nBUY 1 swords\n{}{}",
+                if walks { "unit 7\nMOVE S\n" } else { "" },
+                if arrives { "unit 8\nMOVE N\n" } else { "" }
+            );
+            let (report, options) = traced(
+                report(regions),
+                &orders,
+                &ruleset(),
+                CheckOptions::default(),
+            );
+            let review = review_turn(&report, &orders, Some(&ruleset()), options);
+            assert!(
+                review
+                    .findings
+                    .iter()
+                    .any(|f| f.code == codes::NOT_ENOUGH_SILVER),
+                "walks {walks}, arrives {arrives}: {:?}",
+                review.findings
+            );
+            let buyer = forecast_for(&review, "904");
+            assert_eq!(
+                buyer.short_for_orders,
+                Some(50),
+                "walks {walks}, arrives {arrives}: {buyer:?}"
+            );
+        }
+    }
+
+    /// A sharer the Give phase did not draw on pays a `BUY` before it walks away, though the
+    /// sharer that was drained still shows its silver on its ledger row: 901's GIVE of $50 drains
+    /// 8 (`unit.cpp`: `ConsumeShared`), and 7, still here under "Market orders"
+    /// (`rules/sequenceofevents`), pays 904's $100 sword (`ah-9udi` review, round 3).
+    #[test]
+    fn a_walker_pays_a_buy_the_sharer_a_give_drained_cannot() {
+        let swords = |region: ReportRegion| ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            ..region
+        };
+        let regions = vec![
+            swords(region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![
+                    unit("900"),
+                    with_silver(unit("901"), 0),
+                    sharing(with_silver(unit("8"), 50)),
+                    sharing(with_silver(unit("7"), 100)),
+                    with_silver(unit("903"), 100),
+                    with_silver(unit("904"), 0),
+                ],
+            )),
+            region_at("1:7,55", 7, 55, vec![]),
+        ];
+        let orders = "unit 901\nGIVE 900 50 SILV\nunit 903\nGIVE 901 100 SILV\n\
+             unit 904\nBUY 1 swords\nunit 7\nMOVE S\n";
+        let (report, options) =
+            traced(report(regions), orders, &ruleset(), CheckOptions::default());
+        let review = review_turn(&report, orders, Some(&ruleset()), options);
+        let buyer = forecast_for(&review, "904");
+        assert_eq!(buyer.borrowed_for_orders, 100, "{buyer:?}");
+        let walker = forecast_for(&review, "7");
+        assert_eq!(walker.at_month_end, Some(0), "{walker:?}");
+        let drained = forecast_for(&review, "8");
+        assert_eq!(drained.at_month_end, Some(0), "{drained:?}");
     }
 
     /// The same student with the sharer already beside it: not specific to arriving sharers.

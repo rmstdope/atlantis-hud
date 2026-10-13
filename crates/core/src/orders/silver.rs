@@ -1442,6 +1442,12 @@ pub struct UnitFacts<'a> {
     /// afterwards - a shipment, wages - makes its month look paid for: that silver comes too late
     /// for a `BUY` or a `STUDY` (`rules/sequenceofevents`, `ah-aqqb`).
     pub overdrawn_at_study: i64,
+    /// What this unit's silver `GIVE`s and the `TAKE`s from it drew on its `SHARE` faction-mates
+    /// as they ran, from `Ledger::gift_draws`; `0` where they drew nothing. The purse lends it
+    /// this much even where silver it receives later in the Give phase makes its month look paid
+    /// for: the engine drew it from the sharers as the line ran (`runorders.cpp`: `DoGiveOrder`;
+    /// `unit.cpp`: `ConsumeShared`; `ah-9udi`).
+    pub drawn_at_give: i64,
     /// The unit's skills once this month's gifts and recruits have merged in.
     ///
     /// Read by the PRODUCE arm, which `rules/buy` says a `BUY` dilutes, by the STUDY arm's
@@ -3135,9 +3141,11 @@ pub fn forecast_unit(
     };
     // ... or than the ledger has it overdrawn as STUDY settles, which a receipt that comes after
     // STUDY hides from `short_before_sharing` but does not repay (`ah-aqqb`).
+    // ... or than its GIVEs drew on the pool as they ran, which a receipt later in the Give phase
+    // hides from both but does not repay (`ah-9udi`).
     let overdrawn_at_study = facts.overdrawn_at_study;
     let shared = short_before_sharing.map_or(0, |short| {
-        shared_for_orders.clamp(0, short.max(overdrawn_at_study))
+        shared_for_orders.clamp(0, short.max(overdrawn_at_study).max(facts.drawn_at_give))
     });
     let at_month_end = match (income, expense) {
         (Some(income), Some(expense)) => Some(
@@ -7606,6 +7614,7 @@ mod tests {
             shipping_unmeasured: Default::default(),
             transport_warning: true,
             overdrawn_at_study: 0,
+            drawn_at_give: 0,
             skills_before_market_unknown: false,
             skills_after_arrivals: &[],
             skills_after_arrivals_unknown: false,
@@ -9786,6 +9795,7 @@ mod tests {
             shipping_unmeasured: Default::default(),
             transport_warning: true,
             overdrawn_at_study: 0,
+            drawn_at_give: 0,
             skills_before_market_unknown: false,
             skills_after_arrivals: &[],
             skills_after_arrivals_unknown: false,
@@ -10695,6 +10705,7 @@ mod combat_ready_tests {
             shipping_unmeasured: Default::default(),
             transport_warning: true,
             overdrawn_at_study: 0,
+            drawn_at_give: 0,
             skills_before_market_unknown: false,
             skills_after_arrivals: skills,
             skills_after_arrivals_unknown: false,
