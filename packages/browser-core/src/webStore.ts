@@ -24,12 +24,8 @@ import type {
   StudyPlanRecord
 } from "@atlantis/core-client";
 import { STOP_SAVE_BUDGET_MS, deleteWithin, openWithin, stopCauseOf } from "./databaseOpen";
-import {
-  STORES_NAMING_A_TURN,
-  atlaClientCaps,
-  capAtlaClientSighting,
-  moveRowToEngineTurns
-} from "./engineTurns";
+import { atlaClientCaps, capAtlaClientSighting } from "./engineTurns";
+import type { CoreWasmModule } from "./webCoreAdapter";
 
 const REGISTRY_DATABASE_NAME = "atlantis-hud";
 const REGISTRY_DATABASE_VERSION = 4;
@@ -37,15 +33,41 @@ const REGISTRY_DATABASE_VERSION = 4;
  * 8 since `ah-vtgk` capped the sightings an AtlaClient map was merged into, 7 since `ah-m6pw` moved
  * every stored turn to the engine's count, 6 since `ah-lyg6.2.1` added the
  * study-plans store, 5 since `ah-lyg6.1.2.1` added the allied-mages store. See `openGameDatabase`
- * for what a bump costs.
+ * for what a bump costs. A bump moves the newer-build refusal test in `tests/smoke/engine-turns.spec.ts`
+ * too: it seeds a database at this version + 1.
  */
 const GAME_DATABASE_VERSION = 8;
-/** The first game database version whose turns are the engine's; see `engineTurns.ts`. */
+/** The first game database version whose turns are the engine's; see `rowOnEngineTurns`. */
 const ENGINE_TURNS_VERSION = 7;
 /** The first game database version whose AtlaClient sightings are capped; see `engineTurns.ts`. */
 const ATLACLIENT_CAP_VERSION = 8;
 
 const GAME_STORE = "games";
+
+/**
+ * What the game database's upgrade asks the core: which stores name a turn, and how one row moves.
+ * The list is `atlantis_hud_core::stored_turns`', the same one a backup restore uses (ah-aguu), so it
+ * is written once rather than re-listed here.
+ */
+export type EngineTurnUpgrade = Pick<
+  CoreWasmModule,
+  "collections_naming_a_turn_state" | "move_row_to_engine_turns_state"
+>;
+
+/**
+ * One row of a game database below version 7 with every turn it names one higher (ah-m6pw).
+ *
+ * Those rows were written while the core called February of Year 1 turn 1; the engine's own
+ * `Game::TurnNumber` (game.cpp) makes January of Year 1 turn 1, so every stored turn is one low. The
+ * move is the core's, synchronous, which the upgrade's transaction requires.
+ */
+export function rowOnEngineTurns<T extends Record<string, unknown>>(
+  core: EngineTurnUpgrade,
+  storeName: string,
+  row: T
+): T {
+  return JSON.parse(core.move_row_to_engine_turns_state(storeName, JSON.stringify(row))) as T;
+}
 const IMPORTED_TURN_STORE = "importedTurns";
 const ORDER_DRAFT_STORE = "orderDrafts";
 const REGION_SIGHTING_STORE = "regionSightings";
@@ -301,7 +323,7 @@ function openRegistryDatabase(): Promise<IDBDatabase> {
   );
 }
 
-function openGameDatabase(databasePath: string): Promise<IDBDatabase> {
+function openGameDatabase(databasePath: string, core: EngineTurnUpgrade): Promise<IDBDatabase> {
   return openWithin(
     indexedDB.open(gameDatabaseName(databasePath), GAME_DATABASE_VERSION),
     "game",
@@ -325,7 +347,7 @@ function openGameDatabase(databasePath: string): Promise<IDBDatabase> {
 
       // A fresh database (oldVersion 0) holds nothing to move or cap.
       if (oldVersion > 0 && oldVersion < ATLACLIENT_CAP_VERSION) {
-        upgradeStoredTurns(transaction, oldVersion < ENGINE_TURNS_VERSION);
+        upgradeStoredTurns(core, transaction, oldVersion < ENGINE_TURNS_VERSION);
       }
     }
   );
@@ -342,7 +364,11 @@ function openGameDatabase(databasePath: string): Promise<IDBDatabase> {
  * a sighting is capped before it is moved, on the same count. The sightings are walked only once
  * the cap is known; their key holds no turn, so the other stores' moves cannot reach them.
  */
-function upgradeStoredTurns(transaction: IDBTransaction, moveTurns: boolean): void {
+function upgradeStoredTurns(
+  core: EngineTurnUpgrade,
+  transaction: IDBTransaction,
+  moveTurns: boolean
+): void {
   const merges = transaction.objectStore(MERGED_REPORT_STORE).getAll();
   const turnKeys = transaction.objectStore(IMPORTED_TURN_STORE).getAllKeys();
   turnKeys.onsuccess = () => {
@@ -350,14 +376,14 @@ function upgradeStoredTurns(transaction: IDBTransaction, moveTurns: boolean): vo
     const sightings = transaction.objectStore(REGION_SIGHTING_STORE);
     rewriteStore(sightings, (row) => {
       const capped = capAtlaClientSighting(row, caps);
-      return moveTurns ? moveRowToEngineTurns(sightings.name, capped) : capped;
+      return moveTurns ? rowOnEngineTurns(core, sightings.name, capped) : capped;
     });
   };
   if (moveTurns) {
-    for (const name of STORES_NAMING_A_TURN) {
+    for (const name of core.collections_naming_a_turn_state()) {
       if (name !== REGION_SIGHTING_STORE) {
         const store = transaction.objectStore(name);
-        rewriteStore(store, (row) => moveRowToEngineTurns(store.name, row));
+        rewriteStore(store, (row) => rowOnEngineTurns(core, store.name, row));
       }
     }
   }
@@ -397,7 +423,7 @@ function rewriteStore(
  * The registry handle is opened once and shared; each game's handle is opened on first use and
  * cached, so switching back and forth between two games does not reopen a database every call.
  */
-export function createIndexedDbWebStore(): WebStore {
+export function createIndexedDbWebStore(core: EngineTurnUpgrade): WebStore {
   let registryHandle: Promise<IDBDatabase> | null = null;
   const gameHandles = new Map<string, Promise<IDBDatabase>>();
   const stopListeners = new Set<StorageStopListener>();
@@ -465,7 +491,7 @@ export function createIndexedDbWebStore(): WebStore {
     if (stopped) {
       return letGo();
     }
-    const handle = openGameDatabase(databasePath).then(watch);
+    const handle = openGameDatabase(databasePath, core).then(watch);
     gameHandles.set(databasePath, handle);
     handle.catch(() => {
       if (gameHandles.get(databasePath) === handle) {
@@ -855,9 +881,9 @@ export function createMemoryWebStore(): WebStore {
 }
 
 /** Returns the IndexedDB store when the browser provides one, and an in-memory store otherwise. */
-export function createWebStore(): WebStore {
+export function createWebStore(core: EngineTurnUpgrade): WebStore {
   if (typeof indexedDB === "undefined") {
     return createMemoryWebStore();
   }
-  return createIndexedDbWebStore();
+  return createIndexedDbWebStore(core);
 }

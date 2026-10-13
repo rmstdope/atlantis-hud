@@ -446,6 +446,27 @@ pub fn decode_game_backup_state(
     to_js(&decoded)
 }
 
+/// Every browser store whose rows name a turn, in the core's order
+/// (`atlantis_hud_core::stored_turns`): the stores an upgrade that changes what a turn means walks.
+#[wasm_bindgen]
+pub fn collections_naming_a_turn_state() -> Vec<String> {
+    atlantis_hud_core::stored_turns::COLLECTIONS_NAMING_A_TURN
+        .iter()
+        .map(|(name, _)| (*name).to_string())
+        .collect()
+}
+
+/// One stored row, as JSON, with every turn it names one higher - the move from the count that
+/// called February of Year 1 turn 1 to the engine's (ah-m6pw). Keys the core does not list are
+/// kept as they are. Synchronous, because the browser makes it inside an upgrade transaction.
+#[wasm_bindgen]
+pub fn move_row_to_engine_turns_state(collection: &str, row_json: &str) -> Result<String, JsValue> {
+    let mut row: serde_json::Value =
+        serde_json::from_str(row_json).map_err(|error| JsValue::from_str(&error.to_string()))?;
+    atlantis_hud_core::stored_turns::move_record_to_engine_turns(collection, &mut row);
+    Ok(row.to_string())
+}
+
 /// Plans a route for one unit against a ruleset the caller supplies.
 ///
 /// Available on every target: planning needs no native backing, unlike the persistence entry

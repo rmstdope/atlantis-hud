@@ -120,6 +120,10 @@ export type CoreWasmModule = {
   latest_turn_state(turnsJson: string, activeFactionId: string | null): TurnRef | null;
   encode_game_backup_state(contentJson: string, exportedAt: string): string;
   decode_game_backup_state(backupJson: string, openedAt: string): DecodedGameBackup;
+  /** The stores whose rows name a turn - `atlantis_hud_core::stored_turns`' one list. */
+  collections_naming_a_turn_state(): string[];
+  /** One row, as JSON, with every turn it names moved to the engine's count (ah-m6pw). */
+  move_row_to_engine_turns_state(collection: string, rowJson: string): string;
 };
 
 /** One region as the core serialized it, ready to be written as a row. */
@@ -300,7 +304,7 @@ function withGoals({
 
 export function createWebCoreAdapter(
   wasm: CoreWasmModule,
-  store: WebStore = createWebStore()
+  store: WebStore = createWebStore(wasm)
 ): CoreAdapter {
   const prepare = (
     rawReport: string,
