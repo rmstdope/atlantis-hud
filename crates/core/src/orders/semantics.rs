@@ -13361,9 +13361,12 @@ impl SharerStock {
             Lending::nothing(hex, ledger)
         };
         let mut parties = Vec::with_capacity(hex.units.len());
-        // STUDY is the last moment `rules/share` lends silver at, so a reading after it lends
-        // nothing more: an overdraft the purse did not cover - a cast or a study it refused -
-        // stays its borrower's and is never laid on a sharer (cold-read review finding 1).
+        // STUDY is the purse's last lending moment ([`PURSE_MOMENTS`]: `rules/share` lends silver
+        // "for buying or studying"), so a reading after it lends nothing more through the stock:
+        // an overdraft the purse did not cover - a cast or a study it refused - stays its
+        // borrower's and is never laid on a sharer (cold-read review finding 1). A shipment's
+        // fee, which the engine also draws on the pool for at TRANSPORT, is [`shipping_purse`]'s
+        // and not read here.
         let lending_over = silver && phase > StatePhase::Study;
         for (index, ordered) in hex.units.iter().enumerate() {
             let lends = pooled
@@ -13392,6 +13395,13 @@ impl SharerStock {
                         // back. Read off the unit's own row alone, a lender's study would look
                         // paid for out of silver it had already lent (cold-read review findings
                         // 2 and 3).
+                        //
+                        // A limitation, inherited from the purse's all-or-nothing rule (`ah-e66j`):
+                        // once the fold has stopped, every short study is read as refused, though
+                        // the engine pays students one by one in region order out of what the pool
+                        // still holds and refuses only those that no longer fit - so beside a cast
+                        // the pool refused, or two students sharing too small a pool, a sharer's
+                        // `ALL SILV` can read more than it will ship (follow-up review finding 1).
                         let at_study =
                             silver_at(ledger, &ordered.unit.unit_id, LendingMoment::Study)
                                 .saturating_sub(
