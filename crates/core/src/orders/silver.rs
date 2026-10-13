@@ -342,7 +342,9 @@ pub struct UnitSilver {
     pub short_for_orders: Option<i64>,
     /// Which kind of order the shortfall bites on, for the sentence the hover shows - the first
     /// order in the unit's block that actually moves silver out. A `GIVE` of items and a costless
-    /// `CAST` are not spending orders and are never named. `None` when `short_for_orders` is
+    /// `CAST` are not spending orders and are never named, and neither is a silver `GIVE` the
+    /// ledger paid in full, by the unit or by the hex's `SHARE` purse, since the game refuses it
+    /// nothing (`ah-ub3y`). `None` when `short_for_orders` is
     /// `Some(0)` or `None`.
     ///
     /// A tag rather than a word: how it is said is the interface's business, and the core has no
@@ -1636,6 +1638,11 @@ pub struct PhaseFacts<'a> {
     /// This unit's `CAST` lines that drew on another sharer, as the ledger settled them. Empty for
     /// a caller with no ledger, which is every test that builds its own `PhaseFacts`.
     pub casts: &'a [SharedCast],
+    /// The document lines of this unit's exact silver `GIVE`s that the game pays in full - out of
+    /// the unit's own silver or, beyond it, its `SHARE` faction-mates' (`runorders.cpp`:
+    /// `DoGiveOrder` checks `GetSharedNum`) - so it refuses them nothing (`ah-ub3y`). Empty for a
+    /// caller with no ledger, which is every test that builds its own `PhaseFacts`.
+    pub paid_gifts: &'a [i64],
     /// This unit's silver movements as the ledger recorded them, in settlement order: what the
     /// SILVER column's rows and totals are (`ah-xryu`). Empty for a caller with no ledger, which is
     /// every test that builds its own `PhaseFacts`.
@@ -1665,6 +1672,7 @@ impl<'a> PhaseFacts<'a> {
             buy_all: &[],
             gifts: &[],
             casts: &[],
+            paid_gifts: &[],
             silver_moves: &[],
             market_withholds: 0,
         }
@@ -1718,6 +1726,13 @@ impl<'a> UnitFacts<'a> {
     #[must_use]
     pub fn shared_casts(&self) -> &'a [SharedCast] {
         self.phases.map_or(&[][..], |phases| phases.casts)
+    }
+
+    /// The exact silver `GIVE` lines of this unit's that were paid in full, by the unit or by the
+    /// hex's `SHARE` purse. Empty where there is no ledger.
+    #[must_use]
+    pub fn paid_gifts(&self) -> &'a [i64] {
+        self.phases.map_or(&[][..], |phases| phases.paid_gifts)
     }
 
     /// The ledger's record of this unit's silver. Empty where there is no ledger.
@@ -2888,7 +2903,12 @@ pub fn forecast_unit(
                 match shape {
                     TransferShape::Unpriceable => {}
                     TransferShape::Exact(count) => {
-                        if count > 0 {
+                        // A gift paid in full - by this unit or by the `SHARE` purse - is refused
+                        // nothing, so the shortfall bites on a later order and that is the one
+                        // named, as `ah-m7su` already has it for `GIVE ALL` (`ah-ub3y`). Without
+                        // a ledger nothing is known to be paid, and the gift is named as before.
+                        let paid = facts.paid_gifts().contains(&(placed.line as i64));
+                        if count > 0 && !paid {
                             spent_on = spent_on.or(Some(SilverSpender::Give));
                         }
                         if to_nobody {
@@ -7927,6 +7947,7 @@ mod tests {
                 buy_all: &[],
                 gifts: &[],
                 casts: &[],
+                paid_gifts: &[],
                 silver_moves: &[],
                 market_withholds: 0,
             }),
