@@ -6071,14 +6071,16 @@ impl Ledger<'_> {
     /// arriving only in a TRANSPORT sub-phase must not meet ([`refused_study`], `ah-rt4p`); and
     /// keeps what a cut `BUY` never spent ([`Ledger::overcharged`]). Where the stock cannot be
     /// read - the unit's own balance or the pool is in doubt - the plain balance, silver with the
-    /// refused study handed back, lending nothing, as the purse itself lends nothing there.
+    /// refused study handed back, lending nothing, as the purse itself lends nothing there. A
+    /// refused CAST is not handed back there: which cast the engine refuses cannot be told
+    /// without the pool, so the reading stays pessimistic (`ah-szu0` follow-up review, finding 3).
     fn transport_holding(&self, hex: &Hex<'_>, unit_id: &str, tag: &str) -> i64 {
         let held = SharerStock::for_spender(self, hex, StatePhase::Transport, unit_id, tag)
             .map_or_else(
                 || {
                     self.state.balance_at(StatePhase::Transport, unit_id, tag)
                         + if tag.eq_ignore_ascii_case(SILVER) {
-                            refused_study(self, hex, unit_id)
+                            refused_study(self, hex, unit_id, 0)
                         } else {
                             0
                         }
@@ -13407,26 +13409,39 @@ impl SharerStock {
                     // to `held` (`ah-szu0`).
                     let unit_id = &ordered.unit.unit_id;
                     let unfunded_cast = ledger.unfunded_casts.get(unit_id).copied().unwrap_or(0);
-                    let refused = if !silver {
-                        0
-                    } else if pooled {
-                        lending.refused[index]
-                            - if lending.refused_casts[index] {
-                                unfunded_cast
-                            } else {
-                                0
-                            }
+                    // A cast the ledger could not fund out of what the pool held as it was
+                    // priced - in region order, each earlier refused cast handed back as here -
+                    // is a cast the engine refused: its whole cost, as the ledger charged it.
+                    let cast_back = if unfunded_cast > 0 {
+                        refused_cast_cost(ledger, unit_id, 0)
                     } else {
+                        0
+                    };
+                    let refused = if !silver || phase < StatePhase::Cast {
+                        0
+                    } else if pooled && phase == StatePhase::Cast {
+                        // Read while the casts are priced: a caster priced earlier whose cast
+                        // nobody could fund leaves the pool what it would have drawn.
+                        cast_back - unfunded_cast
+                    } else if pooled {
+                        // The fold either paid a judged caster's cast - a borrow that already
+                        // covers the unfunded part - or refused it and hands back its whole cost
+                        // in `refused`; either way the ledger's add-back is not wanted as well
+                        // (`ah-szu0` follow-up review, finding 1). A doubted unit is not judged,
+                        // so it keeps the add-back.
+                        let judged = !ledger.doubted.contains(unit_id);
+                        lending.refused[index] - if judged { unfunded_cast } else { 0 }
+                    } else {
+                        // Where nothing pools, the caster's own silver is all the spell could
+                        // draw on, and STUDY is judged on what the refused cast handed back
+                        // (`ah-szu0` follow-up review, finding 2).
                         let study = if phase > StatePhase::Study {
-                            refused_study(ledger, hex, unit_id)
+                            refused_study(ledger, hex, unit_id, cast_back)
                         } else {
                             0
                         };
-                        // Where nothing pools, the caster's own silver is all the spell could
-                        // draw on, so a cast the ledger could not fund is a cast the engine
-                        // refused.
-                        let cast = if phase > StatePhase::Cast && unfunded_cast > 0 {
-                            refused_cast_cost(ledger, unit_id, 0) - unfunded_cast
+                        let cast = if phase > StatePhase::Cast {
+                            cast_back - unfunded_cast
                         } else {
                             0
                         };
@@ -14985,8 +15000,14 @@ fn sharing_purse_over(
 /// ended is not STUDY's, and nothing between the two phases moves silver but STUDY. An earlier
 /// overdraft - a GIVE of more silver than the unit holds - is [`silver_short_at_give`]'s.
 fn silver_short_at_study(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
-    let at_study = silver_at(ledger, unit_id, LendingMoment::Study);
-    let before = silver_at(ledger, unit_id, LendingMoment::Movement);
+    silver_short_at_study_after(ledger, unit_id, 0)
+}
+
+/// [`silver_short_at_study`] with `handed_back` silver added to both readings: what a refused
+/// CAST never took (`ah-szu0`).
+fn silver_short_at_study_after(ledger: &Ledger<'_>, unit_id: &str, handed_back: i64) -> i64 {
+    let at_study = silver_at(ledger, unit_id, LendingMoment::Study).saturating_add(handed_back);
+    let before = silver_at(ledger, unit_id, LendingMoment::Movement).saturating_add(handed_back);
     if at_study < before.min(0) {
         -at_study
     } else {
@@ -15005,8 +15026,12 @@ fn silver_short_at_study(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
 /// ([`Lending::refused`], `ah-li7l`), and this is reached only from
 /// [`Ledger::transport_holding`]'s fallback, where the pool cannot be read: it hands back the
 /// overdraft alone, the case where the purse paid the rest (`ah-rt4p`).
-fn refused_study(ledger: &Ledger<'_>, hex: &Hex<'_>, unit_id: &str) -> i64 {
-    let overdrawn = silver_short_at_study(ledger, unit_id);
+///
+/// `cast_back` is silver a refused CAST hands back to the unit's own balance before STUDY
+/// (`spells.cpp`: `RunCreateArtifact` takes nothing for it), so the study is judged on what the
+/// unit really holds then (`ah-szu0`).
+fn refused_study(ledger: &Ledger<'_>, hex: &Hex<'_>, unit_id: &str, cast_back: i64) -> i64 {
+    let overdrawn = silver_short_at_study_after(ledger, unit_id, cast_back);
     if overdrawn <= 0 {
         return 0;
     }
@@ -53428,6 +53453,71 @@ BUILD
         assert_eq!(
             silver_shipped(&review, "901"),
             150,
+            "{:?}",
+            shipment_silver(&review, "901")
+        );
+    }
+
+    /// Two casters and one pool: the engine casts in region order (`runorders.cpp`:
+    /// `RunCastOrders`), refuses 901's $200 amulet (`data/CRPA`) against sharer 902's $150, and
+    /// pays 903's out of its own $100 and $100 of 902's (`spells.cpp`: `RunCreateArtifact`). So
+    /// 903 ships nothing and 902 ships the $50 left (`ah-szu0` follow-up review, finding 1).
+    #[test]
+    fn a_refused_caster_leaves_the_pool_to_pay_the_next_cast() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            sharing(with_silver(unit("902"), 150)),
+            with_skill(unit("901"), "CRPA", 1),
+            with_silver(with_skill(unit("903"), "CRPA", 1), 100),
+        ]);
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 902\nTRANSPORT 900 ALL SILV\n\
+             unit 901\nCAST Create_Amulet_Of_Protection\n\
+             unit 903\nCAST Create_Amulet_Of_Protection\nTRANSPORT 900 ALL SILV\n",
+            Some(&rules),
+            with_map(),
+        );
+        assert_eq!(
+            silver_shipped(&review, "903"),
+            0,
+            "{:?}",
+            shipment_silver(&review, "903")
+        );
+        assert_eq!(
+            silver_shipped(&review, "902"),
+            50,
+            "{:?}",
+            shipment_silver(&review, "902")
+        );
+        let caster = shipment_silver(&review, "903");
+        assert_eq!(
+            caster.short_for_orders,
+            Some(0),
+            "903's cast is paid: {caster:?}"
+        );
+    }
+
+    /// Where nothing pools, a refused cast hands its coins back before STUDY is judged: 901's $150
+    /// cannot pay a $200 amulet (`data/CRPA`; `spells.cpp`: `RunCreateArtifact`), so it pays its
+    /// own $10 study (`data/COMB`) and ships the $140 left (`ah-szu0` follow-up review, finding 2).
+    #[test]
+    fn a_refused_cast_where_nothing_pools_leaves_the_caster_its_study() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region
+            .units
+            .push(with_silver(with_skill(unit("901"), "CRPA", 1), 150));
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nCAST Create_Amulet_Of_Protection\nSTUDY COMB\nTRANSPORT 900 ALL SILV\n",
+            Some(&rules),
+            with_map(),
+        );
+        assert_eq!(
+            silver_shipped(&review, "901"),
+            140,
             "{:?}",
             shipment_silver(&review, "901")
         );
