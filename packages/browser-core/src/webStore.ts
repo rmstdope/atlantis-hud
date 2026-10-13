@@ -99,6 +99,7 @@ export function rowCapped<T extends Record<string, unknown>>(
 ): T {
   return JSON.parse(core.cap_atlaclient_sighting_state(capsJson, JSON.stringify(row))) as T;
 }
+
 const IMPORTED_TURN_STORE = "importedTurns";
 const ORDER_DRAFT_STORE = "orderDrafts";
 const REGION_SIGHTING_STORE = "regionSightings";
