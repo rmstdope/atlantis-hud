@@ -55036,9 +55036,11 @@ BUILD
         assert!(lending.covered());
     }
 
-    /// The silver stock at TRANSPORT, read off ledger and hex: what each unit has of its own once
-    /// the purse's lending is carried ([`SharerStock::own_for`]), by id, and what a drain at
-    /// TRANSPORT itself would still lay on each.
+    /// The silver stock at TRANSPORT, read off ledger and hex: each unit's position once the
+    /// purse's lending is carried, by id, and what a drain at TRANSPORT itself would still lay on
+    /// each. The raw position, unclamped - not [`SharerStock::own_for`], which reads a non-lender
+    /// at no less than 0 - so a coin counted too few times shows as well as one counted twice
+    /// (`ah-8sg2`).
     fn silver_stock_at_transport(
         hex: &Hex<'_>,
         ledger: &Ledger<'_>,
@@ -55049,7 +55051,7 @@ BUILD
             .units
             .iter()
             .enumerate()
-            .map(|(x, o)| (o.unit.unit_id.clone(), stock.own_for(x)))
+            .map(|(x, o)| (o.unit.unit_id.clone(), stock.position(x)))
             .collect();
         (held, stock.drained().0)
     }
