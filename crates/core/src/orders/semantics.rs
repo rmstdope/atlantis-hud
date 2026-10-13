@@ -8945,6 +8945,11 @@ fn transfer(
     {
         record_gift_draws(ledger, hex, &from, received);
     }
+    // A silver GIVE beyond the giver's own holding that sharers whose stock was read covered in
+    // full: the engine refuses it nothing (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`),
+    // so it is neither a cut line nor where the unit's shortfall is anchored (`ah-ub3y`,
+    // `ah-f7md`). A pool this walk could not read is no evidence that it paid.
+    let pool_paid = quantity > known_source.max(0) && pool_read && received >= quantity;
     // What the source is charged below beyond what it gives: the ask itself for goods, `moved`
     // for silver.
     if !from.is_empty() {
@@ -8976,7 +8981,7 @@ fn transfer(
             // orders, they already agree with the column, and the settlement books neither.
             if is_give {
                 *ledger.silver_given.entry(from.clone()).or_default() += quantity;
-                if quantity > known_source.max(0) {
+                if quantity > known_source.max(0) && !pool_paid {
                     // The cut line is what overdrew the unit, so its finding points here even
                     // where it moves nothing and so draws nothing down (`ah-1c8p`).
                     ledger
@@ -8995,6 +9000,20 @@ fn transfer(
                     Some(placed),
                     target_label.map(str::to_string),
                 );
+            } else if is_give && pool_paid {
+                // Booked as `move_silver` books it, but without its `charged_at` mark: the game
+                // refused this line nothing, so the shortfall marker belongs on the order it does
+                // refuse, which the SILVER column names too (`ah-f7md`).
+                record_silver(
+                    ledger,
+                    StatePhase::Give,
+                    &from,
+                    -moved,
+                    SilverChangeCause::GaveAway,
+                    Some(placed.line as i64),
+                    target_label.map(str::to_string),
+                );
+                apply_silver(ledger, StatePhase::Give, &from, -moved, None);
             } else if is_give {
                 move_silver(
                     ledger,
@@ -9039,7 +9058,10 @@ fn transfer(
         let (cut, could_move) = if !tag.eq_ignore_ascii_case(SILVER) {
             (received < quantity, received.max(0))
         } else if is_give {
-            (quantity > known_source.max(0), known_source.max(0))
+            (
+                quantity > known_source.max(0) && !pool_paid,
+                known_source.max(0),
+            )
         } else {
             (moved < quantity, moved)
         };
@@ -9070,7 +9092,7 @@ fn transfer(
             // evidence that it paid (`ah-ub3y`).
             if matches!(shape, TransferShape::Exact(_))
                 && moved >= quantity
-                && (quantity <= known_source.max(0) || (pool_read && received >= quantity))
+                && (quantity <= known_source.max(0) || pool_paid)
             {
                 ledger
                     .paid_gifts
@@ -54869,6 +54891,34 @@ BUILD
             Some(crate::orders::silver::SilverSpender::Cast),
             "{caster:?}"
         );
+    }
+
+    /// The editor's marker agrees with the column: the same pool-paid GIVE of $100 and refused
+    /// $200 amulet (`data/CRPA`; `runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`), and the
+    /// hex's `part-of-hex-shortfall` sits on the refused CAST, not on the GIVE the game refused
+    /// nothing (`ah-f7md`).
+    #[test]
+    fn a_gift_the_pool_paid_does_not_carry_the_hex_shortfall_marker() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            with_skill(unit("901"), "CRPA", 1),
+            sharing(with_silver(unit("902"), 150)),
+        ]);
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nGIVE 900 100 SILV\nCAST Create_Amulet_Of_Protection\nunit 902\n",
+            Some(&rules),
+            with_map(),
+        );
+        let markers: Vec<_> = review
+            .findings
+            .iter()
+            .filter(|f| f.code.as_str() == "part-of-hex-shortfall")
+            .map(|f| f.line)
+            .collect();
+        assert!(!markers.contains(&Some(2)), "{:?}", review.findings);
+        assert!(markers.contains(&Some(3)), "{:?}", review.findings);
     }
 
     /// Nor is a GIVE the unit paid out of its own silver, with no `SHARE` anywhere: 901's $100
