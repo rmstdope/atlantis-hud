@@ -264,7 +264,10 @@ test("a game stored under the old turn numbers opens on the engine's", async ({ 
  * changed what the stored values mean (as version 7 did to turns). The desktop store and a backup
  * ask the core's `stored_version::refuse_newer`; IndexedDB refuses an open below the stored version
  * itself, with a `VersionError`. This pins that the browser's game database is that third case:
- * not downgraded, not rewritten, and not shown as open.
+ * not downgraded, not rewritten, and no turn of it restored.
+ *
+ * The seed's version is `GAME_DATABASE_VERSION` + 1 (`packages/browser-core/src/webStore.ts`), and
+ * moves with that constant.
  */
 test("a game stored by a newer build is refused, and left as it was", async ({ page }) => {
   await clearGames(page);
@@ -272,7 +275,7 @@ test("a game stored by a newer build is refused, and left as it was", async ({ p
   await page.evaluate(async () => {
     const stamp = "2026-08-01T09:00:00Z";
     await new Promise<void>((resolve, reject) => {
-      // One above what this build opens game databases at.
+      // One above what this build opens game databases at: GAME_DATABASE_VERSION (7) + 1.
       const request = indexedDB.open("atlantis-hud-game-newer", 8);
       request.onupgradeneeded = () => {
         request.result.createObjectStore("importedTurns", { keyPath: ["factionId", "turnNumber"] });
@@ -333,9 +336,13 @@ test("a game stored by a newer build is refused, and left as it was", async ({ p
   });
 
   await page.reload();
-  await expect(page.getByTestId("app-header")).toBeVisible();
+  // The game is still listed and selected; what is refused is opening its database, so its last
+  // turn is never restored. The status carries IndexedDB's own VersionError text, which names the
+  // two versions - so a seed that stopped being newer than this build would not produce it.
+  await expect(page.getByTestId("game-indicator")).toContainText("Newer build's game");
+  await expect(page.getByTestId("import-status")).toContainText("the last turn could not be restored");
+  await expect(page.getByTestId("import-status")).toContainText("version");
   await expect(page.getByTestId("app-header")).not.toContainText("Turn 72");
-  await expect(page.getByTestId("app-header")).not.toContainText("Turn 73");
 
   const stored = await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {

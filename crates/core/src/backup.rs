@@ -1994,9 +1994,6 @@ mod tests {
         assert_eq!(decoded.collections.hex_notes[0], note);
     }
 
-    /// ah-m6pw: a version-1 backup numbered every turn one low (February of Year 1 was turn 1), so
-    /// restoring it moves every turn it names up by one - the same move migration 15 makes to a
-    /// stored game - and a backup written today says version 2, whose turns are already right.
     /// Every integer a record holds under a key naming a turn, as a path: `key`, or `list[].key`
     /// inside a list of objects. JSON-string payloads are not opened.
     fn turn_paths(value: &serde_json::Value, prefix: &str, found: &mut BTreeSet<String>) {
@@ -2213,6 +2210,9 @@ mod tests {
         content
     }
 
+    /// ah-m6pw: a version-1 backup numbered every turn one low (February of Year 1 was turn 1), so
+    /// restoring it moves every turn it names up by one - the same move migration 15 makes to a
+    /// stored game - and a backup written today says version 2, whose turns are already right.
     #[test]
     fn a_version_one_backup_is_restored_at_the_engines_turn_numbers() {
         let content = every_collection_on_the_old_count();

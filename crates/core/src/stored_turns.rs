@@ -104,8 +104,11 @@ fn payload_later(payload: &mut Value) {
             }
         }
     }
-    // Otherwise as plain JSON, under either spelling. A payload that does not read at all is left
-    // alone: it is only ever consulted for its season and to compare against a re-import.
+    // Otherwise as plain JSON, under either spelling. This path writes the keys back in sorted
+    // order, so such a payload no longer matches its old text - harmless, since a payload that no
+    // longer reads as the typed result could not match a fresh import's text either. A payload
+    // that does not read at all is left alone: it is only ever consulted for its season and to
+    // compare against a re-import.
     let Ok(mut parsed) = serde_json::from_str::<Value>(text) else {
         return;
     };

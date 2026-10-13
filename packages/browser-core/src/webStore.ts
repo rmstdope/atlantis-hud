@@ -33,7 +33,8 @@ const REGISTRY_DATABASE_VERSION = 4;
  * 8 since `ah-vtgk` capped the sightings an AtlaClient map was merged into, 7 since `ah-m6pw` moved
  * every stored turn to the engine's count, 6 since `ah-lyg6.2.1` added the
  * study-plans store, 5 since `ah-lyg6.1.2.1` added the allied-mages store. See `openGameDatabase`
- * for what a bump costs.
+ * for what a bump costs. A bump moves the newer-build refusal test in `tests/smoke/engine-turns.spec.ts`
+ * too: it seeds a database at this version + 1.
  */
 const GAME_DATABASE_VERSION = 8;
 /** The first game database version whose turns are the engine's; see `rowOnEngineTurns`. */
