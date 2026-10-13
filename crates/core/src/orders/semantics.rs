@@ -6069,7 +6069,7 @@ impl Ledger<'_> {
     /// sharer. For silver that carries what the purse lent at CAST, the market and STUDY
     /// ([`Lending`]), so a sharer's `TRANSPORT ... ALL SILV` ships only what its faction-mates'
     /// orders left it (`ah-su1x`); hands back a STUDY the unit could not pay for, which silver
-    /// arriving only in a TRANSPORT sub-phase must not meet ([`refused_study`], `ah-rt4p`); and
+    /// arriving only in a TRANSPORT sub-phase must not meet ([`study_settlement`], `ah-rt4p`, `ah-2f77`); and
     /// keeps what a cut `BUY` never spent ([`Ledger::overcharged`]). Where the stock cannot be
     /// read - the unit's own balance or the pool is in doubt - the plain balance, silver with the
     /// refused study handed back, lending nothing, as the purse itself lends nothing there. A
@@ -6081,7 +6081,7 @@ impl Ledger<'_> {
                 || {
                     self.state.balance_at(StatePhase::Transport, unit_id, tag)
                         + if tag.eq_ignore_ascii_case(SILVER) {
-                            refused_study(self, hex, unit_id, 0)
+                            study_outcome(hex, self, unit_id).handed_back()
                         } else {
                             0
                         }
@@ -13357,7 +13357,7 @@ impl SharerStock {
     /// twice (`ah-su1x`, `ah-pf7t`). From STUDY on only the sharers that stay lend
     /// ([`Sharing::for_silver`]), and a STUDY the engine refused hands its whole fee back: in a
     /// pool, as the fold judged each student ([`Lending::refused`], `ah-li7l`); where nothing
-    /// pools, off the unit's own row ([`refused_study`]). Before the market - every GIVE, TAKE and
+    /// pools, off the unit's own row ([`study_settlement`], `ah-2f77`). Before the market - every GIVE, TAKE and
     /// CAST - there is nothing to carry.
     fn at(ledger: &Ledger<'_>, hex: &Hex<'_>, phase: StatePhase, tag: &str) -> Option<Self> {
         let silver = tag.eq_ignore_ascii_case(SILVER);
@@ -13384,6 +13384,10 @@ impl SharerStock {
         // fee, which the engine also draws on the pool for at TRANSPORT, is [`shipping_purse`]'s
         // and not read here.
         let lending_over = silver && phase > StatePhase::Study;
+        // Where nothing pools, how each unit's own STUDY went ([`study_settlement`], `ah-2f77`);
+        // in a pool the fold's judgment is already in [`Lending::refused`].
+        let own_studies =
+            (silver && !pooled && lending_over).then(|| study_settlement(hex, ledger));
         for (index, ordered) in hex.units.iter().enumerate() {
             let lends = pooled
                 && !lending_over
@@ -13435,16 +13439,14 @@ impl SharerStock {
                         // (`ah-szu0` follow-up review, finding 1). A doubted unit is not judged,
                         // so it keeps the add-back.
                         let judged = !ledger.doubted.contains(unit_id);
-                        lending.refused[index] - if judged { unfunded_cast } else { 0 }
+                        lending.refused(index) - if judged { unfunded_cast } else { 0 }
                     } else {
                         // Where nothing pools, the caster's own silver is all the spell could
                         // draw on, and STUDY is judged on what the refused cast handed back
                         // (`ah-szu0` follow-up review, finding 2).
-                        let study = if phase > StatePhase::Study {
-                            refused_study(ledger, hex, unit_id, cast_back)
-                        } else {
-                            0
-                        };
+                        let study = own_studies
+                            .as_ref()
+                            .map_or(0, |studies| studies[index].handed_back());
                         let cast = if phase > StatePhase::Cast {
                             cast_back - unfunded_cast
                         } else {
@@ -14506,9 +14508,8 @@ struct SharingPurse {
     /// [`refused_fee`]; `ah-szu0`, `ah-li7l`). `0` for a unit whose orders were paid or that does
     /// not overdraw at either. Handed back to the unit at every later moment.
     refused: Vec<i64>,
-    /// [`Lending::short_after_pool`]: what each refused STUDY still lacked after the pool
-    /// (`ah-3uuf`).
-    short_after_pool: Vec<i64>,
+    /// [`Lending::study`]: how each unit's STUDY went (`ah-2f77`).
+    study: Vec<StudyOutcome>,
     /// The result of judging each known shortfall against this pool, aligned with `hex.units`.
     coverage: Vec<Option<super::silver::SharedSilverCoverage>>,
 }
@@ -14555,15 +14556,15 @@ struct Lending {
     /// What each unit's orders drew out of its faction-mates' pockets: its own overdraft, sharer
     /// or not, at each moment the pool covered.
     borrows: Vec<i64>,
-    /// The cost of each unit's CAST and STUDY the pool could not pay, and so the engine refused
-    /// and took nothing for - the unit's own coins included ([`refused_cast_cost`],
-    /// [`refused_fee`]; `ah-szu0`, `ah-li7l`). `0` for a unit whose orders were paid or that
-    /// does not overdraw at either. Handed back to the unit at every later moment.
-    refused: Vec<i64>,
-    /// What each refused STUDY still lacked once the pool had lent it all it had left at STUDY:
-    /// the figure the study popup calls the student short by (`ah-3uuf`). `0` wherever
-    /// [`Lending::refused`] is.
-    short_after_pool: Vec<i64>,
+    /// The cost of each unit's CAST the pool could not pay, and so the engine refused and took
+    /// nothing for - the unit's own coins included ([`refused_cast_cost`], `ah-szu0`). `0` for a
+    /// unit whose cast was paid or that does not overdraw at it. Handed back to the unit at every
+    /// later moment, with a refused STUDY's fee: [`Lending::refused`].
+    refused_cast: Vec<i64>,
+    /// How each unit's STUDY went, judged one student at a time as the engine pays them - **the
+    /// one reading of whether the purse paid a study** (`ah-2f77`). [`StudyOutcome::NoStudy`]
+    /// throughout where the moments read stop before STUDY.
+    study: Vec<StudyOutcome>,
     /// Whether each unit's CAST is among what `refused` hands back: [`SharerStock::at`] then takes
     /// off what the ledger already added back as [`Ledger::unfunded_casts`] (`ah-szu0`).
     refused_casts: Vec<bool>,
@@ -14588,8 +14589,8 @@ impl Lending {
                     .len()
             ],
             borrows: vec![0; hex.units.len()],
-            refused: vec![0; hex.units.len()],
-            short_after_pool: vec![0; hex.units.len()],
+            refused_cast: vec![0; hex.units.len()],
+            study: vec![StudyOutcome::NoStudy; hex.units.len()],
             refused_casts: vec![false; hex.units.len()],
             stopped_at: None,
         }
@@ -14613,6 +14614,20 @@ impl Lending {
             return Self::nothing(hex, ledger);
         }
         Self::settle(hex, ledger, &sharing, &moments)
+    }
+
+    /// What the engine never took from a unit, and so hands back at every later moment: the cost
+    /// of a CAST and the fee of a STUDY it refused (`ah-szu0`, `ah-li7l`). `0` for a unit whose
+    /// orders were paid.
+    fn refused(&self, index: usize) -> i64 {
+        self.refused_cast[index] + self.study[index].refused_fee()
+    }
+
+    /// [`Lending::refused`] for every unit of the hex.
+    fn refused_all(&self) -> Vec<i64> {
+        (0..self.study.len())
+            .map(|index| self.refused(index))
+            .collect()
     }
 
     /// `true` where every moment read was covered in full.
@@ -14684,7 +14699,7 @@ impl Lending {
                     let unit_id = &hex.units[index].unit.unit_id;
                     if judged(index) && ledger.unfunded_casts.get(unit_id).is_some_and(|&u| u > 0) {
                         let overdrawn = (-own(index, moment)).max(0);
-                        purse.refused[index] += refused_cast_cost(ledger, unit_id, overdrawn);
+                        purse.refused_cast[index] += refused_cast_cost(ledger, unit_id, overdrawn);
                         purse.refused_casts[index] = true;
                     }
                 }
@@ -14692,7 +14707,7 @@ impl Lending {
             let position = |purse: &Lending, index: usize, at: LendingMoment| {
                 own(index, at) - purse.lends[index]
                     + purse.borrows[index]
-                    + purse.refused[index]
+                    + purse.refused(index)
                     + unpaid[index]
             };
             let needs: Vec<i64> = (0..hex.units.len())
@@ -14791,18 +14806,27 @@ impl Lending {
                 }
                 for (claim, missing) in claims.into_iter().zip(refused) {
                     let Some(index) = claim else { continue };
+                    let unit_id = &hex.units[index].unit.unit_id;
                     if missing > 0 {
-                        let unit_id = &hex.units[index].unit.unit_id;
                         if moment == LendingMoment::Cast {
                             purse.refused_casts[index] = true;
-                            purse.refused[index] +=
+                            purse.refused_cast[index] +=
                                 refused_cast_cost(ledger, unit_id, needs[index]);
                         } else {
-                            purse.refused[index] += refused_fee(ledger, unit_id, needs[index]);
-                            purse.short_after_pool[index] += missing;
+                            purse.study[index] = StudyOutcome::Refused {
+                                fee: refused_fee(ledger, unit_id, needs[index]),
+                                short: missing,
+                            };
                         }
                     } else {
                         purse.borrows[index] += needs[index];
+                        if moment == LendingMoment::Study && needs[index] > 0 {
+                            let fee = studied_fee(ledger, unit_id);
+                            purse.study[index] = StudyOutcome::Paid {
+                                own: (fee - needs[index]).max(0),
+                                lent: needs[index],
+                            };
+                        }
                     }
                 }
                 continue;
@@ -14835,7 +14859,172 @@ impl Lending {
             }
         }
 
+        // A judged student the purse lent nothing to paid its whole fee from its own silver.
+        if moments.contains(&LendingMoment::Study) {
+            for (index, outcome) in purse.study.iter_mut().enumerate() {
+                let fee = studied_fee(ledger, &hex.units[index].unit.unit_id);
+                if judged(index) && *outcome == StudyOutcome::NoStudy && fee > 0 {
+                    *outcome = StudyOutcome::Paid { own: fee, lent: 0 };
+                }
+            }
+        }
+
         purse
+    }
+}
+
+/// How one unit's STUDY went this month - **the one reading every surface takes it from**: the
+/// study popup and SKILLS cell, the SILVER column, the hex warnings and a sharer's
+/// `TRANSPORT ... ALL SILV` (`ah-2f77`). Built by [`study_settlement`]; in a pool, by the fold
+/// that pays students one by one ([`Lending::settle`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum StudyOutcome {
+    /// No STUDY charged this month.
+    #[default]
+    NoStudy,
+    /// The study went ahead: `own` from the unit's own silver, `lent` by the `SHARE` purse.
+    Paid { own: i64, lent: i64 },
+    /// The engine refused it (`monthorders.cpp`: `Do1StudyOrder`, "STUDY: Not enough funds.") and
+    /// took nothing: `fee` is handed back at every later moment, and `short` is what the shared
+    /// money still lacked once it had lent all it had left (`ah-li7l`, `ah-3uuf`).
+    Refused { fee: i64, short: i64 },
+    /// The purse could not judge this student - its pool cannot be trusted, or the unit itself is
+    /// doubted - so only its own row's overdraft at STUDY is known, and that alone is handed back
+    /// (`ah-rt4p`).
+    Unjudged { overdrawn: i64 },
+}
+
+impl StudyOutcome {
+    /// The fee a refused study hands back; `0` otherwise.
+    fn refused_fee(self) -> i64 {
+        match self {
+            StudyOutcome::Refused { fee, .. } => fee,
+            _ => 0,
+        }
+    }
+
+    /// What a reading after STUDY adds back to the unit's own row: the whole fee of a refused
+    /// study, the overdraft of one the purse could not judge.
+    fn handed_back(self) -> i64 {
+        match self {
+            StudyOutcome::Refused { fee, .. } => fee,
+            StudyOutcome::Unjudged { overdrawn } => overdrawn,
+            _ => 0,
+        }
+    }
+
+    /// What the student still lacks for its fee, as the study popup says it: `0` for a study that
+    /// went ahead.
+    fn short_by(self) -> i64 {
+        match self {
+            StudyOutcome::Refused { short, .. } => short,
+            StudyOutcome::Unjudged { overdrawn } => overdrawn,
+            _ => 0,
+        }
+    }
+
+    /// Whether the study drew on the hex's purse: lent to, refused for want of it, or overdrawn
+    /// where the purse could not judge it.
+    fn drew_on_pool(self) -> bool {
+        match self {
+            StudyOutcome::Paid { lent, .. } => lent > 0,
+            StudyOutcome::Refused { .. } => true,
+            StudyOutcome::Unjudged { overdrawn } => overdrawn > 0,
+            StudyOutcome::NoStudy => false,
+        }
+    }
+}
+
+/// How each unit's STUDY went this month, index-aligned with `hex.units` (`ah-2f77`).
+///
+/// In a hex whose `SHARE` purse lends silver "for buying or studying" (`rules/share`) and can be
+/// trusted, the fold's own judgment through STUDY ([`Lending::settle`]), a doubted unit unjudged.
+/// Where the pool cannot be trusted, every student is [`StudyOutcome::Unjudged`]. Where nothing
+/// pools, each unit's own row ([`own_study_outcome`]).
+fn study_settlement(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<StudyOutcome> {
+    let sharing = Sharing::for_silver(hex, ledger);
+    if sharing.reading(SILVER, None) == Reading::PerUnit {
+        return hex
+            .units
+            .iter()
+            .map(|ordered| own_study_outcome(ledger, &ordered.unit.unit_id))
+            .collect();
+    }
+    if !sharing.pool_trusted(ledger) {
+        return hex
+            .units
+            .iter()
+            .map(|ordered| unjudged_study(ledger, &ordered.unit.unit_id))
+            .collect();
+    }
+    let lending = Lending::settle(
+        hex,
+        ledger,
+        &sharing,
+        &[
+            LendingMoment::Cast,
+            LendingMoment::Movement,
+            LendingMoment::Study,
+        ],
+    );
+    hex.units
+        .iter()
+        .zip(lending.study)
+        .map(|(ordered, outcome)| {
+            if ledger.doubted.contains(&ordered.unit.unit_id) {
+                unjudged_study(ledger, &ordered.unit.unit_id)
+            } else {
+                outcome
+            }
+        })
+        .collect()
+}
+
+/// [`study_settlement`] for one unit, which may be one the hex does not list: the purse judges
+/// only the units it lists, so an unlisted unit in a pooled hex is unjudged.
+fn study_outcome(hex: &Hex<'_>, ledger: &Ledger<'_>, unit_id: &str) -> StudyOutcome {
+    match hex.units.iter().position(|o| o.unit.unit_id == unit_id) {
+        Some(index) => study_settlement(hex, ledger)[index],
+        None if Sharing::for_silver(hex, ledger).reading(SILVER, None) == Reading::Pooled => {
+            unjudged_study(ledger, unit_id)
+        }
+        None => own_study_outcome(ledger, unit_id),
+    }
+}
+
+/// A study the purse could not judge: its own row's overdraft at STUDY, or no study at all.
+fn unjudged_study(ledger: &Ledger<'_>, unit_id: &str) -> StudyOutcome {
+    let overdrawn = silver_short_at_study(ledger, unit_id);
+    if overdrawn <= 0 && studied_fee(ledger, unit_id) == 0 {
+        StudyOutcome::NoStudy
+    } else {
+        StudyOutcome::Unjudged { overdrawn }
+    }
+}
+
+/// A study where nothing pools: the unit's own silver is all it can draw on, judged on what a
+/// refused CAST of its own handed back first (`spells.cpp`: `RunCreateArtifact` takes nothing for
+/// it; `ah-szu0` follow-up review, finding 2). Short of its fee, the engine refuses it outright and
+/// takes nothing, so the whole fee comes back (`monthorders.cpp`: "STUDY: Not enough funds.";
+/// `ah-rt4p`). STUDY runs before TRANSPORT (`rules/sequenceofevents`), so silver shipped later
+/// cannot pay for it.
+fn own_study_outcome(ledger: &Ledger<'_>, unit_id: &str) -> StudyOutcome {
+    let cast_back = if ledger.unfunded_casts.get(unit_id).is_some_and(|&u| u > 0) {
+        refused_cast_cost(ledger, unit_id, 0)
+    } else {
+        0
+    };
+    let overdrawn = silver_short_at_study_after(ledger, unit_id, cast_back);
+    let fee = studied_fee(ledger, unit_id);
+    if overdrawn > 0 {
+        StudyOutcome::Refused {
+            fee: refused_fee(ledger, unit_id, overdrawn),
+            short: overdrawn,
+        }
+    } else if fee > 0 {
+        StudyOutcome::Paid { own: fee, lent: 0 }
+    } else {
+        StudyOutcome::NoStudy
     }
 }
 
@@ -14873,22 +15062,6 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
     sharing_purse_over(hex, ledger, &PURSE_MOMENTS)
 }
 
-/// [`sharing_purse`], settled only over the moments `rules/sequenceofevents` runs up to and
-/// including STUDY - what the purse has lent each unit by the time its fee is charged
-/// (`ah-41yw`). The same gates, so a hex whose purse the column says lends nothing lends nothing
-/// here either, and the study popup and the sharer's SILVER cell agree about who paid.
-fn sharing_purse_by_study(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
-    sharing_purse_over(
-        hex,
-        ledger,
-        &[
-            LendingMoment::Cast,
-            LendingMoment::Movement,
-            LendingMoment::Study,
-        ],
-    )
-}
-
 fn sharing_purse_over(
     hex: &Hex<'_>,
     ledger: &Ledger<'_>,
@@ -14900,7 +15073,7 @@ fn sharing_purse_over(
         arrivals_lend: vec![0; arrivals.len()],
         borrows: vec![0; hex.units.len()],
         refused: vec![0; hex.units.len()],
-        short_after_pool: vec![0; hex.units.len()],
+        study: vec![StudyOutcome::NoStudy; hex.units.len()],
         coverage: vec![None; hex.units.len()],
     };
 
@@ -14943,7 +15116,7 @@ fn sharing_purse_over(
         hex,
         ledger,
         LendingMoment::MonthEnd,
-        |index| own(index, LendingMoment::MonthEnd) + lending.refused[index],
+        |index| own(index, LendingMoment::MonthEnd) + lending.refused(index),
         |index| lending.refused_casts[index],
     ) > 0
     {
@@ -14962,10 +15135,10 @@ fn sharing_purse_over(
             .map(|index| {
                 let position = own(index, LendingMoment::MonthEnd) - paid.lends[index]
                     + paid.borrows[index]
-                    + paid.refused[index];
+                    + paid.refused(index);
                 if !judged(index) {
                     None
-                } else if position < 0 || paid.refused[index] > 0 {
+                } else if position < 0 || paid.refused(index) > 0 {
                     Some(super::silver::SharedSilverCoverage::Shortfall)
                 } else if own(index, LendingMoment::MonthEnd) < 0 {
                     // The rule the covered hex below applies too: an earlier moment the purse
@@ -14981,13 +15154,14 @@ fn sharing_purse_over(
             })
             .collect();
         let paid = paid.netted();
+        let refused = paid.refused_all();
         return SharingPurse {
             coverage,
             lends: paid.lends,
             arrivals_lend: paid.arrivals_lend,
             borrows: paid.borrows,
-            refused: paid.refused,
-            short_after_pool: paid.short_after_pool,
+            refused,
+            study: paid.study,
         };
     }
 
@@ -14995,10 +15169,11 @@ fn sharing_purse_over(
     // silver it lent earlier leaves at zero (`ah-li7l`).
     let covered = lending.covered();
     let lending = lending.netted();
+    let refused = lending.refused_all();
     SharingPurse {
         coverage: coverage_for(super::silver::SharedSilverCoverage::Covered)
             .into_iter()
-            .zip(&lending.refused)
+            .zip(&refused)
             .map(|(coverage, &refused)| {
                 if refused > 0 {
                     Some(super::silver::SharedSilverCoverage::Shortfall)
@@ -15012,8 +15187,8 @@ fn sharing_purse_over(
         lends: lending.lends,
         arrivals_lend: lending.arrivals_lend,
         borrows: lending.borrows,
-        refused: lending.refused,
-        short_after_pool: lending.short_after_pool,
+        refused,
+        study: lending.study,
     }
 }
 
@@ -15038,37 +15213,16 @@ fn silver_short_at_study_after(ledger: &Ledger<'_>, unit_id: &str, handed_back: 
     }
 }
 
-/// What the ledger charged a unit for a STUDY the game refuses, and so never took from it.
-///
-/// `rules/sequenceofevents` runs STUDY before TRANSPORT, so silver shipped to the unit later
-/// cannot pay for it. The engine refuses a study outright when its cost is more than the unit can
-/// draw on (`monthorders.cpp`: "STUDY: Not enough funds."), and takes nothing: the whole fee is
-/// handed back. That is the whole answer where nothing pools, and [`SharerStock::at`] reads it
-/// there. In a hex whose `SHARE` purse lends silver "for buying or studying" (`rules/share`),
-/// [`SharerStock::at`] reads the purse's own judgment of each student instead
-/// ([`Lending::refused`], `ah-li7l`), and this is reached only from
-/// [`Ledger::transport_holding`]'s fallback, where the pool cannot be read: it hands back the
-/// overdraft alone, the case where the purse paid the rest (`ah-rt4p`).
-///
-/// `cast_back` is silver a refused CAST hands back to the unit's own balance before STUDY
-/// (`spells.cpp`: `RunCreateArtifact` takes nothing for it), so the study is judged on what the
-/// unit really holds then (`ah-szu0`).
-fn refused_study(ledger: &Ledger<'_>, hex: &Hex<'_>, unit_id: &str, cast_back: i64) -> i64 {
-    let overdrawn = silver_short_at_study_after(ledger, unit_id, cast_back);
-    if overdrawn <= 0 {
-        return 0;
-    }
-    if Sharing::for_silver(hex, ledger).reading(SILVER, ledger.ruleset) == Reading::Pooled {
-        return overdrawn;
-    }
-    refused_fee(ledger, unit_id, overdrawn)
-}
-
 /// What a STUDY the engine refuses hands back to a unit the ledger has `overdrawn`: its whole
 /// fee, since `Do1StudyOrder` (`monthorders.cpp`) calls `ConsumeSharedMoney` only once the study
 /// goes ahead, so a refused one takes nothing, own coins included - and never less than the
 /// overdraft itself.
 fn refused_fee(ledger: &Ledger<'_>, unit_id: &str, overdrawn: i64) -> i64 {
+    studied_fee(ledger, unit_id).max(overdrawn)
+}
+
+/// What the ledger charged a unit for its STUDY this month: `0` for a unit that does not study.
+fn studied_fee(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
     ledger
         .silver_moves
         .get(unit_id)
@@ -15077,7 +15231,6 @@ fn refused_fee(ledger: &Ledger<'_>, unit_id: &str, overdrawn: i64) -> i64 {
         .filter(|moved| moved.cause == SilverChangeCause::Studied)
         .map(|moved| -moved.amount)
         .sum::<i64>()
-        .max(overdrawn)
 }
 
 /// What the ledger charged a unit for a CAST the game refuses, and so never took from it: the
@@ -16084,13 +16237,15 @@ fn report_shortfalls(
             // no month-end verdict, but its line drew on the pool all the same (`ah-qrk0`); so
             // does one overdrawn as the spells are cast and paid back by a sale (`ah-9n7l.2`).
             if tag == SILVER {
-                for ordered in &hex.units {
+                let studies = study_settlement(hex, ledger);
+                for (ordered, study) in hex.units.iter().zip(studies) {
                     let who = &ordered.unit.unit_id;
                     if sharing.pools_silver(ordered)
                         || ledger.doubted.contains(who)
                         // Only a draw made after movement: an overdraft carried from `BUY` was
-                        // funded while the sharers still held their silver.
-                        || (silver_short_at_study(ledger, who) <= 0
+                        // funded while the sharers still held their silver. Whether its STUDY drew
+                        // on the purse is the one reading every surface takes (`ah-2f77`).
+                        || (!study.drew_on_pool()
                             && claimant_cast_overdraft(ledger, who, LendingMoment::MonthEnd) <= 0)
                         || cut.iter().any(|reduced| &reduced.unit_id == who)
                         || refused.iter().any(|refused| &refused.unit_id == who)
@@ -18930,12 +19085,19 @@ fn study_forecasts(
     let men = ledger.state.men_after_the_market(hex, Some(ruleset));
     let departed = departures_after_load_checks(hex, ledger, Some(ruleset));
     let halved = magic_study_halved(hex, ruleset);
-    let purse = sharing_purse_by_study(hex, ledger);
+    let study = study_settlement(hex, ledger);
 
     let mut forecasts = Vec::with_capacity(hex.units.len());
     for (index, ordered) in hex.units.iter().enumerate() {
         forecasts.push(one_study_forecast(
-            hex, ledger, ruleset, &men, &departed, &halved, &purse, index, ordered,
+            hex,
+            ruleset,
+            &men,
+            &departed,
+            &halved,
+            study[index],
+            index,
+            ordered,
         ));
     }
     forecasts
@@ -18956,12 +19118,11 @@ fn study_fee(unit: AfterTheMarket<'_>, cost: Option<i64>) -> super::silver::Pric
 #[allow(clippy::too_many_arguments)]
 fn one_study_forecast(
     hex: &Hex<'_>,
-    ledger: &Ledger<'_>,
     ruleset: &Ruleset,
     men: &[LateMen],
     departed: &BTreeSet<String>,
     halved: &[Option<bool>],
-    purse: &SharingPurse,
+    study: StudyOutcome,
     index: usize,
     ordered: &Ordered<'_>,
 ) -> Option<super::effects::StudyForecast> {
@@ -19000,30 +19161,17 @@ fn one_study_forecast(
     if skill.cost.is_none() {
         doubts.push(doubt(StudyDoubtReason::FeeUnpriced));
     } else {
-        // What the unit can draw on as the month-long phase opens, before its own fee: its own
-        // silver, less what it lent its faction-mates and plus what a sharer's purse lent it by
-        // STUDY - `rules/share` lends silver "for buying or studying" (`ah-41yw`). Lends and
-        // borrows are netted, so their difference is the unit's whole movement through the purse.
-        let through_purse = purse.borrows.get(index).copied().unwrap_or(0)
-            - purse.lends.get(index).copied().unwrap_or(0);
-        let balance = ledger
-            .state
-            .balance_at(StatePhase::Movement, &ordered.unit.unit_id, SILVER)
-            + through_purse;
-        if priced.spends > balance {
-            // A study the purse refused is short what it still lacked once the pool had lent it
-            // all it had left - the engine weighs the fee against the shared money, own and
-            // sharers' together (`monthorders.cpp`: `Do1StudyOrder`) - not what the unit lacks on
-            // its own (`ah-3uuf`).
-            let short_after_pool = purse.short_after_pool.get(index).copied().unwrap_or(0);
+        // Whether the fee was paid is the one reading every surface takes it from
+        // ([`study_settlement`], `ah-2f77`): a study the purse refused is short what it still
+        // lacked once the pool had lent it all it had left - the engine weighs the fee against the
+        // shared money, own and sharers' together (`monthorders.cpp`: `Do1StudyOrder`) - and one
+        // where nothing pools is short what the unit lacks on its own.
+        let short_by = study.short_by();
+        if short_by > 0 {
             doubts.push(StudyDoubt {
                 reason: StudyDoubtReason::FeeShort,
                 fee: priced.spends,
-                short_by: if short_after_pool > 0 {
-                    short_after_pool
-                } else {
-                    priced.spends - balance
-                },
+                short_by,
                 teacher: String::new(),
             });
         }
@@ -40083,7 +40231,14 @@ BUILD
 
         assert_eq!(purse.borrows, vec![10, 0, 0, 0]);
         assert_eq!(purse.lends, vec![0, 0, 10, 0]);
-        assert_eq!(purse.short_after_pool, vec![0, 5, 0, 0]);
+        assert_eq!(
+            purse
+                .study
+                .iter()
+                .map(|study| study.short_by())
+                .collect::<Vec<_>>(),
+            vec![0, 5, 0, 0]
+        );
         assert_eq!(
             purse.coverage,
             vec![
@@ -40123,6 +40278,181 @@ BUILD
                 Some(crate::orders::silver::SharedSilverCoverage::Shortfall),
             ]
         );
+    }
+
+    /// `ah-2f77`: whether each STUDY went ahead and what it paid, read once for every surface.
+    mod study_settlement {
+        use super::*;
+
+        /// The record one hex settles, with the hex and ledger it was read from.
+        fn settled(hex_region: &ReportRegion, orders: &str) -> Vec<StudyOutcome> {
+            let ordered = OrderedUnits::read(orders);
+            let hex = Hex::read(hex_region, &ordered, &[]);
+            let rules = ruleset();
+            let ledger = ledger_for(&hex, Some(&rules));
+            super::super::study_settlement(&hex, &ledger)
+        }
+
+        /// Sharer 7's $15 and three penniless students of Combat at $10 a man
+        /// (`rules/skills_studying`), in region order 5, 9, 6. The engine pays STUDY one student at
+        /// a time and refuses a study whose cost is more than the shared money left, taking
+        /// nothing for it (`monthorders.cpp`: `RunStudyOrders`, `Do1StudyOrder`).
+        fn mixed_hex() -> ReportRegion {
+            region(vec![
+                with_silver(unit("5"), 0),
+                with_silver(unit("9"), 0),
+                with_silver(unit("6"), 0),
+                sharing(with_silver(unit("7"), 15)),
+            ])
+        }
+
+        const MIXED_ORDERS: &str =
+            "unit 5\nSTUDY Combat\nunit 9\nSTUDY Combat\nunit 6\nSTUDY Combat\n";
+
+        #[test]
+        fn a_purse_that_pays_some_students_and_refuses_others() {
+            assert_eq!(
+                settled(&mixed_hex(), MIXED_ORDERS),
+                vec![
+                    StudyOutcome::Paid { own: 0, lent: 10 },
+                    StudyOutcome::Refused { fee: 10, short: 5 },
+                    StudyOutcome::Refused { fee: 10, short: 5 },
+                    StudyOutcome::NoStudy,
+                ]
+            );
+        }
+
+        /// Where nothing pools, a unit short of its fee is refused it whole: the engine takes
+        /// nothing for a study it refuses (`monthorders.cpp`: "STUDY: Not enough funds."), and
+        /// Combat costs $10 a man (`rules/skills_studying`).
+        #[test]
+        fn a_lone_student_short_of_its_fee_is_refused_whole() {
+            let hex_region = region(vec![with_silver(unit("5"), 4)]);
+
+            assert_eq!(
+                settled(&hex_region, "unit 5\nSTUDY Combat\n"),
+                vec![StudyOutcome::Refused { fee: 10, short: 6 }]
+            );
+        }
+
+        /// A doubted unit is judged nowhere in this module, so the purse does not judge its study
+        /// either: only its own row's overdraft is known.
+        #[test]
+        fn a_doubted_student_in_a_pool_is_unjudged() {
+            let hex_region = region(vec![
+                with_silver(unit("5"), 0),
+                sharing(with_silver(unit("7"), 500)),
+            ]);
+            let ordered = OrderedUnits::read("unit 5\nSTUDY Combat\n");
+            let hex = Hex::read(&hex_region, &ordered, &[]);
+            let rules = ruleset();
+            let mut ledger = ledger_for(&hex, Some(&rules));
+            ledger.doubted.insert("5".to_string());
+
+            assert_eq!(
+                super::super::study_settlement(&hex, &ledger),
+                vec![
+                    StudyOutcome::Unjudged { overdrawn: 10 },
+                    StudyOutcome::NoStudy
+                ]
+            );
+        }
+
+        /// The acceptance of `ah-2f77`: in one hex where the purse pays one student and refuses
+        /// two, the study popup and SKILLS cell, the SILVER column, the hex warnings and the
+        /// sharer's `TRANSPORT ... ALL SILV` all say for each student what the record says.
+        #[test]
+        fn every_surface_agrees_on_each_student() {
+            let hex_region = mixed_hex();
+            let outcomes = settled(&hex_region, MIXED_ORDERS);
+            let purse = purse_of(&hex_region, MIXED_ORDERS);
+            let review = review_turn(
+                &report(vec![hex_region.clone()]),
+                MIXED_ORDERS,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let ordered = OrderedUnits::read(MIXED_ORDERS);
+            let hex = Hex::read(&hex_region, &ordered, &[]);
+            let rules = ruleset();
+            let ledger = ledger_for(&hex, Some(&rules));
+
+            for (index, id) in ["5", "9", "6"].into_iter().enumerate() {
+                let outcome = outcomes[index];
+
+                // The study popup and the SKILLS cell, which read the same forecast.
+                let study = study_of(vec![hex_region.clone()], MIXED_ORDERS, id)
+                    .expect("every student is forecast");
+                let fee_short: Vec<i64> = study
+                    .doubts
+                    .iter()
+                    .filter(|doubt| doubt.reason == effects::StudyDoubtReason::FeeShort)
+                    .map(|doubt| doubt.short_by)
+                    .collect();
+                let expected: Vec<i64> = match outcome {
+                    StudyOutcome::Refused { short, .. } => vec![short],
+                    _ => vec![],
+                };
+                assert_eq!(fee_short, expected, "{id}: the popup, against {outcome:?}");
+
+                // The SILVER column: what the purse lent it, what it hands back, and whether the
+                // shared silver covered it.
+                let (lent, refused) = match outcome {
+                    StudyOutcome::Paid { lent, .. } => (lent, 0),
+                    StudyOutcome::Refused { fee, .. } => (0, fee),
+                    other => panic!("{id}: no student here is {other:?}"),
+                };
+                assert_eq!(purse.borrows[index], lent, "{id}: the column's loan");
+                assert_eq!(
+                    purse.refused[index], refused,
+                    "{id}: the column's hand-back"
+                );
+                let column = review
+                    .silver
+                    .iter()
+                    .find(|silver| silver.unit_id == id)
+                    .unwrap_or_else(|| panic!("{id} has a forecast"));
+                assert_eq!(column.borrowed_for_orders, lent, "{id}: {column:?}");
+                assert_eq!(
+                    column.shared_silver_coverage,
+                    Some(if refused > 0 {
+                        crate::orders::silver::SharedSilverCoverage::Shortfall
+                    } else {
+                        crate::orders::silver::SharedSilverCoverage::Covered
+                    }),
+                    "{id}: {column:?}"
+                );
+
+                // The hex warnings: a student that drew on the pool is marked on its line.
+                let marked = review.findings.iter().any(|finding| {
+                    finding.code == codes::PART_OF_HEX_SHORTFALL
+                        && finding.unit_id.as_deref() == Some(id)
+                });
+                assert_eq!(
+                    marked,
+                    outcome.drew_on_pool(),
+                    "{id}: the warnings, against {outcome:?}: {:?}",
+                    review.findings
+                );
+
+                // TRANSPORT: a refused study's fee comes back, a paid one's is gone.
+                assert_eq!(
+                    ledger.transport_holding(&hex, id, SILVER),
+                    0,
+                    "{id}: every student had nothing of its own, paid or refused"
+                );
+            }
+
+            // And the sharer ships what it did not lend: $15 less the one fee the purse paid.
+            let lent: i64 = outcomes
+                .iter()
+                .map(|outcome| match outcome {
+                    StudyOutcome::Paid { lent, .. } => *lent,
+                    _ => 0,
+                })
+                .sum();
+            assert_eq!(ledger.transport_holding(&hex, "7", SILVER), 15 - lent);
+        }
     }
 
     #[test]
@@ -53517,7 +53847,7 @@ BUILD
         );
     }
 
-    /// A STUDY the pool cannot pay for is refused outright and takes nothing (`refused_study`):
+    /// A STUDY the pool cannot pay for is refused outright and takes nothing (`study_settlement`):
     /// sharer 903's $5 cannot cover combat's $10 (`data/COMB`), so its `ALL SILV` still ships
     /// the $5 (`ah-su1x` follow-up review, finding 1).
     #[test]
@@ -53990,7 +54320,7 @@ BUILD
         }
     }
 
-    /// A STUDY the pool cannot cover is refused and takes nothing (`refused_study`): a reading
+    /// A STUDY the pool cannot cover is refused and takes nothing (`study_settlement`): a reading
     /// after STUDY leaves the sharer's $5 its own, where a flat drain laid the student's $10
     /// overdraft on it (`ah-su1x` follow-up review, finding 1; `data/COMB` costs 10 in Trident).
     #[test]
