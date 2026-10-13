@@ -67,7 +67,7 @@ use crate::orders::silver::{
     MoneyRead, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
     PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages, SaleAnswer, SettledBuyAll,
     SettledGift, SharedCast, SharedMarket, ShipmentPriced, SilverChange, SilverChangeCause,
-    SilverDoubt, SilverMove, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
+    SilverDoubt, SilverDraw, SilverFunding, SilverMove, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
     UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
@@ -5705,6 +5705,11 @@ struct Ledger<'a> {
     /// before the cast moment ([`Lending::settle`]), so a sharer a later `GIVE` refilled is not
     /// read as the one that paid (`ah-msds`).
     gift_draws: Vec<GiftDraw>,
+    /// How each unit's silver `GIVE`s, `TAKE`s from it and discards were funded as they ran, keyed
+    /// by the transfer's source, in settlement order: the one record of what the `SHARE` pool paid
+    /// of a transfer and which sharer paid it ([`SilverFunding`], `ah-rou9`). Written by
+    /// [`transfer`] for every silver transfer with a source in this hex.
+    pub(crate) silver_fundings: BTreeMap<String, Vec<SilverFunding>>,
     /// Every `GIVE`, `TAKE` and discard of silver this walk settled, in settlement order: who it
     /// left, who it reached (`None` for a discard, or a target this walk cannot credit), and how
     /// much - the amount the balances actually moved. What [`silver_can_have`] reads to add back
@@ -6210,6 +6215,7 @@ fn ledger_for_reaching<'a>(
         unfunded: BTreeMap::new(),
         unfunded_casts: BTreeMap::new(),
         gift_draws: Vec::new(),
+        silver_fundings: BTreeMap::new(),
         silver_transfers: Vec::new(),
         silver_moves: BTreeMap::new(),
         shipping_paid: BTreeMap::new(),
@@ -8968,11 +8974,34 @@ fn transfer(
     };
     // Which sharers made up the part of a silver transfer its source could not, read before this
     // line is charged or its unfunded part booked (`ah-msds`).
+    let drawn_from = ledger.gift_draws.len();
     if !from.is_empty()
         && tag.eq_ignore_ascii_case(SILVER)
         && hex.units.iter().any(|ordered| ordered.shares())
     {
         record_gift_draws(ledger, hex, &from, received);
+    }
+    if !from.is_empty() && tag.eq_ignore_ascii_case(SILVER) {
+        let draws = ledger.gift_draws[drawn_from..]
+            .iter()
+            .map(|draw| SilverDraw {
+                lender: draw.lender.clone(),
+                amount: draw.amount,
+            })
+            .collect();
+        ledger
+            .silver_fundings
+            .entry(from.clone())
+            .or_default()
+            .push(SilverFunding {
+                line: placed.line as i64,
+                exact_give: is_give && matches!(shape, TransferShape::Exact(_)),
+                asked: quantity,
+                own: known_source.max(0),
+                received,
+                pool_read,
+                draws,
+            });
     }
     // A silver GIVE beyond the giver's own holding that sharers whose stock was read covered in
     // full: the engine refuses it nothing (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`),
@@ -56768,6 +56797,66 @@ BUILD
                     0,
                     "reversed: {reversed}"
                 );
+            }
+        }
+        // --- one record of how each silver transfer was funded, read alike (`ah-rou9`) --------
+        //
+        // One hex: 901 holds nothing and gives quartermaster 900 $100, which the pool pays out of
+        // sharer 905 (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`; `unit.cpp`:
+        // `ConsumeShared` drains the sharers in region order; `rules/share`). Then 903 refills
+        // sharer 902 with $50 and gives 901 $100, so a later GIVE refills a sharer and the giver
+        // later receives silver; 901's $200 amulet (`data/CRPA`) is refused against what is left,
+        // and 906 exchanges $50 for 908's sword. Every reader of what the pool paid of 901's GIVE
+        // must read it off the one record in [`Ledger::silver_fundings`].
+        mod gift_funding {
+            use super::*;
+
+            const ORDERS: &str = "unit 901\nGIVE 900 100 SILV\nCAST Create_Amulet_Of_Protection\n\
+                                  unit 902\n\
+                                  unit 903\nGIVE 902 50 SILV\nGIVE 901 100 SILV\n\
+                                  unit 906\nEXCHANGE 908 50 SILV 1 SWOR\n\
+                                  unit 908\nEXCHANGE 906 1 SWOR 50 SILV\n";
+
+            fn region() -> ReportRegion {
+                let mut region = caravanserai_owner("900", 1, 0, 0);
+                region.units.extend([
+                    with_skill(unit("901"), "CRPA", 1),
+                    sharing(unit("902")),
+                    sharing(with_silver(unit("905"), 100)),
+                    with_silver(unit("903"), 200),
+                    unit("906"),
+                    with_item(unit("908"), 1, "sword", "SWOR"),
+                ]);
+                region
+            }
+
+            /// The record holds what the GIVE asked, what its giver held as it ran, and which
+            /// sharer made up the rest - 905, whatever 901 and 902 receive afterwards.
+            #[test]
+            fn the_record_holds_the_gift_as_it_ran() {
+                let rules = trident_rules();
+                let region = region();
+                let ordered = OrderedUnits::read(ORDERS);
+                let hex = Hex::read(&region, &ordered, &[]);
+                let ledger = ledger_for(&hex, Some(&rules));
+                let fundings = &ledger.silver_fundings["901"];
+                assert_eq!(fundings.len(), 1, "{fundings:?}");
+                let gift = &fundings[0];
+                assert_eq!(
+                    (gift.line, gift.exact_give, gift.asked, gift.own, gift.received),
+                    (2, true, 100, 0, 100),
+                    "{gift:?}"
+                );
+                assert!(gift.pool_read, "{gift:?}");
+                assert_eq!(
+                    gift.draws,
+                    vec![SilverDraw {
+                        lender: "905".to_string(),
+                        amount: 100
+                    }],
+                    "{gift:?}"
+                );
+                assert!(gift.pool_paid() && gift.paid_in_full() && !gift.refused_short());
             }
         }
     }

@@ -676,6 +676,72 @@ pub struct SettledGift {
     pub other: String,
 }
 
+/// How one silver `GIVE`, `TAKE` or discard was funded as it ran - **the one record of what the
+/// `SHARE` pool paid of a transfer** (`ah-rou9`). The engine runs the gives unit by unit, cuts each
+/// to `GetSharedNum` with "Not enough." and draws what the source's own silver does not cover on
+/// the other sharers through `ConsumeShared`, in region order, against what each holds then
+/// (`runorders.cpp`: `DoGiveOrders`, `DoGiveOrder`; `unit.cpp`; `rules/share`). `semantics`
+/// writes one as each transfer runs; every reader of who paid for it - the SILVER column's
+/// `short_on`, the editor's shortfall marker and cut lines, the purse's lending and the pool's
+/// stock - reads it here rather than working it out again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SilverFunding {
+    /// The document line the order was written on.
+    pub line: i64,
+    /// A `GIVE` (or `GIVE 0` discard) of a stated quantity: not `ALL`, and not a `TAKE`.
+    pub exact_give: bool,
+    /// What the line moves.
+    pub asked: i64,
+    /// The source's own silver as the line ran, never negative.
+    pub own: i64,
+    /// What the source had to give as the engine counts it - its own silver and the other
+    /// sharers' - and so what reaches the receiver.
+    pub received: i64,
+    /// Whether the pool's stock could be read for the source. A pool this walk could not read is
+    /// no evidence that it paid.
+    pub pool_read: bool,
+    /// Which sharer made up each part of `received` beyond `own`, in the order they were drained.
+    pub draws: Vec<SilverDraw>,
+}
+
+impl SilverFunding {
+    /// Asked beyond the source's own silver, and the sharers whose stock was read covered every
+    /// coin of it: the engine refuses it nothing (`runorders.cpp`: `DoGiveOrder` checks
+    /// `GetSharedNum`; `ah-ub3y`, `ah-f7md`).
+    #[must_use]
+    pub fn pool_paid(&self) -> bool {
+        self.asked > self.own && self.pool_read && self.received >= self.asked
+    }
+
+    /// Asked beyond the source's own silver, and not paid by the pool: the line the engine cut,
+    /// and so where the source's shortfall is anchored (`ah-1c8p`, `ah-4k84`).
+    #[must_use]
+    pub fn refused_short(&self) -> bool {
+        self.asked > self.own && !self.pool_paid()
+    }
+
+    /// An exact silver `GIVE` the game pays in full, out of the giver's own silver or beyond it
+    /// by the pool: it is not the order the unit is short on (`ah-ub3y`).
+    #[must_use]
+    pub fn paid_in_full(&self) -> bool {
+        self.exact_give && (self.asked <= self.own || self.pool_paid())
+    }
+
+    /// What the pool drew for this transfer, on every sharer together.
+    #[must_use]
+    pub fn drawn(&self) -> i64 {
+        self.draws.iter().map(|draw| draw.amount).sum()
+    }
+}
+
+/// One sharer's part in funding a [`SilverFunding`]: who was drawn on, and for how much.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SilverDraw {
+    /// The sharer drawn on.
+    pub lender: String,
+    pub amount: i64,
+}
+
 /// What the hex's other `SHARE` units lend one `CAST` line, as the ledger read it when the spell
 /// resolved: `Unit::GetSharedNum` and `GetSharedMoney` (`unit.cpp`), which every cast cost reads in
 /// `spells.cpp` (`ah-0mch`). Recorded only for a line something was lent to, so the column prices
