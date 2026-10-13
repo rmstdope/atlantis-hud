@@ -80,8 +80,13 @@ fn figures(review: &TurnReview) -> (i64, i64, i64) {
     (amount("short $"), amount("can have $"), amount("spend $"))
 }
 
+/// The silver the hex's sharers hold between them - every unit there shares - all of which the
+/// gift reaches 4840 as: what they can have, however far beyond it the gift asks.
+const POOL: i64 = 544_165;
+
 fn assert_readable(review: &TurnReview) {
     let (short, held, spend) = figures(review);
+    assert_eq!(held, POOL, "they can have the pool");
     assert!(short > 0, "short ${short}");
     assert!(held >= 0, "can have ${held}");
     assert!(spend >= 0, "spend ${spend}");

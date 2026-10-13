@@ -14756,13 +14756,16 @@ fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> Shor
 /// Rule R: the silver the members held in the report, plus what their `CLAIM`s brought in
 /// (`ah-6ak4`), plus every `GIVE` or `TAKE` of silver into them from a unit outside the set
 /// (`ah-jw85`, `ah-w9dn`; `rules/take`: "The TAKE order works just like the GIVE order, except
-/// that the direction of transfer is reversed"). Silver moved between two members counts once.
-/// Nothing that leaves the set is taken off: a `GIVE` out, a discard, or a `TAKE` by an outsider
+/// that the direction of transfer is reversed"). Silver moved between two members counts once;
+/// what such a move asked beyond what the receiver was credited - in a sharing hex the source is
+/// charged the whole ask - was never the members' silver, and is part of what they spend
+/// (`ah-j5s1`). Nothing that leaves the set is taken off: a `GIVE` out, a discard, or a `TAKE` by an outsider
 /// is part of what the orders spend.
 ///
 /// Read as the ledger's own Give-phase balance - which has every receipt in, at the amount the
 /// ledger moved, including a gift its giver funded by a `CLAIM` - with what left the set added
-/// back from [`Ledger::silver_transfers`]. Moves between members cancel in the sum.
+/// back from [`Ledger::silver_transfers`]. Moves between members cancel in the sum, once each
+/// one's unfunded remainder (charged less received) is added back.
 ///
 /// `Market`, `Study` and `MonthEnd` read the same figure: everything counted settles in the Give
 /// phase, before BUY and STUDY. `Give` reads the members' `GIVE` lines as they ran instead - what
@@ -65000,6 +65003,39 @@ BUILD
         assert_eq!(
             silver_can_have(&ledger, &[buyer], ShortfallMoment::Market, None),
             90
+        );
+    }
+
+    /// Sharers 7 ($100) and 8 ($50): 7 gives 8 $1000. The ledger charges 7 the whole ask, so the
+    /// pool judges the overdraft, and credits 8 what the pool can fund, $150. What nobody funded
+    /// was never the hex's silver: it is part of what the orders spend, so the hex can have its
+    /// $150 - not $-700 - and the two figures differ by the shortfall (`ah-j5s1`). The shortfall
+    /// itself is the pool's month-end netting, which this does not change.
+    #[test]
+    fn a_gift_between_sharers_beyond_the_pool_never_takes_can_have_below_the_pool() {
+        let findings = check_turn(
+            &report(vec![region(vec![
+                sharing(with_silver(unit("7"), 100)),
+                sharing(with_silver(unit("8"), 50)),
+            ])]),
+            "unit 7\nGIVE 8 1000 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let sentence = hex_silver_sentence(&findings).expect("the hex is short");
+        let figure = |after: &str| -> i64 {
+            let rest = &sentence[sentence.find(after).expect(after) + after.len()..];
+            rest.chars()
+                .take_while(|c| *c == '-' || c.is_ascii_digit())
+                .collect::<String>()
+                .parse()
+                .expect(after)
+        };
+        assert_eq!(figure("can have $"), 150, "{sentence}");
+        assert_eq!(
+            figure("spend $") - figure("can have $"),
+            figure("short $"),
+            "{sentence}"
         );
     }
 
