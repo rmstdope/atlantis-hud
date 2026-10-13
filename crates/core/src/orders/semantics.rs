@@ -6074,7 +6074,7 @@ impl Ledger<'_> {
                 || {
                     self.state.balance_at(StatePhase::Transport, unit_id, tag)
                         + if tag.eq_ignore_ascii_case(SILVER) {
-                            refused_study(self, hex, unit_id)
+                            refused_study(self, unit_id)
                         } else {
                             0
                         }
@@ -13361,8 +13361,13 @@ impl SharerStock {
             Lending::nothing(hex, ledger)
         };
         let mut parties = Vec::with_capacity(hex.units.len());
+        // STUDY is the last moment `rules/share` lends silver at, so a reading after it lends
+        // nothing more: an overdraft the purse did not cover - a cast or a study it refused -
+        // stays its borrower's and is never laid on a sharer (cold-read review finding 1).
+        let lending_over = silver && phase > StatePhase::Study;
         for (index, ordered) in hex.units.iter().enumerate() {
             let lends = pooled
+                && !lending_over
                 && if staying {
                     sharing.pools_silver(ordered)
                 } else {
@@ -13371,20 +13376,33 @@ impl SharerStock {
             let position = match Self::held_at(ledger, phase, &ordered.unit.unit_id, tag) {
                 Some(held) => {
                     let carried = lending.borrows[index] - lending.lends[index];
-                    let refused = if silver && phase > StatePhase::Study {
-                        let refused = refused_study(ledger, hex, &ordered.unit.unit_id);
-                        if !pooled {
-                            refused
-                        } else if lending.covered() {
-                            // The purse paid the study, and `borrows` already says so.
-                            0
-                        } else {
-                            // What the purse lent before it stopped already covers part of the
-                            // overdraft `refused_study` reads off the unit's own row.
-                            (refused - lending.borrows[index]).max(0)
-                        }
-                    } else {
+                    let refused = if !(silver && phase > StatePhase::Study) {
                         0
+                    } else if !pooled {
+                        refused_study(ledger, &ordered.unit.unit_id)
+                    } else if lending.covered() {
+                        // The purse paid every study, and `borrows` already says so.
+                        0
+                    } else {
+                        // The purse stopped before it paid this study. A study its unit cannot
+                        // fund out of its own and the shared silver is refused and takes nothing
+                        // (`monthorders.cpp`: `cost > GetSharedMoney()`, "STUDY: Not enough
+                        // funds."), so where the study left the unit's position short as the
+                        // fold judges it - its own row less what it lent - the whole fee comes
+                        // back. Read off the unit's own row alone, a lender's study would look
+                        // paid for out of silver it had already lent (cold-read review findings
+                        // 2 and 3).
+                        let at_study =
+                            silver_at(ledger, &ordered.unit.unit_id, LendingMoment::Study)
+                                .saturating_sub(
+                                    ledger.tax_overstated.get(index).copied().unwrap_or(0),
+                                )
+                                + carried;
+                        if at_study < 0 {
+                            study_charged(ledger, &ordered.unit.unit_id)
+                        } else {
+                            0
+                        }
                     };
                     held.saturating_add(carried).saturating_add(refused)
                 }
@@ -14735,18 +14753,22 @@ fn silver_short_at_study(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
 ///
 /// `rules/sequenceofevents` runs STUDY before TRANSPORT, so silver shipped to the unit later
 /// cannot pay for it. The engine refuses a study outright when its cost is more than the unit can
-/// draw on (`monthorders.cpp`: "STUDY: Not enough funds."), and takes nothing: the whole fee is
-/// handed back. In a hex whose `SHARE` purse lends silver "for buying or studying"
-/// (`rules/share`), the unit's own coins went on the study and the purse paid the rest, so only
-/// the overdraft is handed back (`ah-rt4p`).
-fn refused_study(ledger: &Ledger<'_>, hex: &Hex<'_>, unit_id: &str) -> i64 {
+/// draw on (`monthorders.cpp`: `cost > GetSharedMoney()`, "STUDY: Not enough funds."), and takes
+/// nothing: the whole fee is handed back. Read off the unit's own row, which is the whole answer
+/// where nothing pools; in a hex whose `SHARE` purse lends silver "for buying or studying"
+/// (`rules/share`), [`SharerStock::at`] judges the study on the unit's position net of what it
+/// lent instead, and this is only its fallback where the pool cannot be read (`ah-pf7t`, cold-read
+/// review finding 3).
+fn refused_study(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
     let overdrawn = silver_short_at_study(ledger, unit_id);
     if overdrawn <= 0 {
         return 0;
     }
-    if Sharing::for_silver(hex, ledger).reading(SILVER, ledger.ruleset) == Reading::Pooled {
-        return overdrawn;
-    }
+    study_charged(ledger, unit_id).max(overdrawn)
+}
+
+/// What the ledger charged a unit for its STUDY orders this month.
+fn study_charged(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
     ledger
         .silver_moves
         .get(unit_id)
@@ -14754,8 +14776,7 @@ fn refused_study(ledger: &Ledger<'_>, hex: &Hex<'_>, unit_id: &str) -> i64 {
         .flatten()
         .filter(|moved| moved.cause == SilverChangeCause::Studied)
         .map(|moved| -moved.amount)
-        .sum::<i64>()
-        .max(overdrawn)
+        .sum()
 }
 
 /// What a unit's own silver is short as the spells are cast, the moment `rules/sequenceofevents`
@@ -53000,6 +53021,33 @@ BUILD
                     walker: false,
                 },
                 Case {
+                    name: "TAKE: a GIVE written from the other end draws the same purse",
+                    orders: "unit 3\nTAKE FROM 1 100 SILV\n",
+                    drew: |review| silver(review, "3").taken,
+                    lent: 100,
+                    short_at_month_end: false,
+                    walker: false,
+                },
+                Case {
+                    name: "SELL beside a BUY: a sale of the sharer's wood, a buy on its silver",
+                    orders: "unit 3\nSELL 15 wood\nunit 1\nBUY 2 grain\n",
+                    // The seller sells all 15 of the sharer's wood at $3 (its proceeds are its
+                    // own, `rules/sell`), and the buyer's $40 is the sharer's silver.
+                    drew: |review| {
+                        let sold: i64 = silver(review, "3")
+                            .changes
+                            .iter()
+                            .filter(|moved| moved.cause == SilverChangeCause::Sold)
+                            .map(|moved| moved.amount)
+                            .sum();
+                        assert_eq!(sold, 45, "the sale");
+                        spent_on(review, "1", SilverChangeCause::Bought)
+                    },
+                    lent: 40,
+                    short_at_month_end: false,
+                    walker: false,
+                },
+                Case {
                     name: "CAST: a mage with no silver casts on the sharer's",
                     orders: "unit 1\nCAST Create_Amulet_Of_Protection\n",
                     // `data/CRPA` (Trident): 200 silver a cast.
@@ -53158,6 +53206,113 @@ BUILD
                     };
                     assert_eq!(purse_lent, expected, "{label}: the month-end purse");
                 }
+            }
+        }
+
+        /// What `units` in one Trident hex (grain at $20, quartermaster 900) ship when `orders`
+        /// run, in both report orders, with what [`Lending`] says each lent before TRANSPORT.
+        fn shipped_and_lent(
+            units: Vec<ReportUnit>,
+            orders: &str,
+            ids: &[&str],
+        ) -> Vec<(&'static str, Vec<(i64, i64)>)> {
+            let rules = trident_rules();
+            super::both_orders(units)
+                .into_iter()
+                .map(|(order, units)| {
+                    let mut region = caravanserai_owner("900", 1, 0, 0);
+                    region.for_sale = vec![MarketItem {
+                        amount: 100,
+                        name: "grain".to_string(),
+                        tag: "GRAI".to_string(),
+                        price: 20,
+                    }];
+                    region.units.extend(units);
+                    let review = review_turn(
+                        &report(vec![region.clone()]),
+                        orders,
+                        Some(&rules),
+                        with_map(),
+                    );
+                    let ordered = OrderedUnits::read(orders);
+                    let hex = Hex::read(&region, &ordered, &[]);
+                    let ledger = ledger_for(&hex, Some(&rules));
+                    let lending = Lending::before(&hex, &ledger, StatePhase::Transport).netted();
+                    let at =
+                        |id: &str| hex.units.iter().position(|o| o.unit.unit_id == id).unwrap();
+                    let figures = ids
+                        .iter()
+                        .map(|id| (silver_shipped(&review, id), lending.lends[at(id)]))
+                        .collect();
+                    (order, figures)
+                })
+                .collect()
+        }
+
+        /// A cast the pool cannot fund is not cast and takes nothing (`data/CRPA`: 200; the purse
+        /// stops at the cast, all or nothing), so the sharer lent nothing and ships all its $150
+        /// (cold-read review finding 1).
+        #[test]
+        fn a_cast_the_pool_cannot_fund_leaves_the_sharer_its_silver() {
+            for (order, figures) in shipped_and_lent(
+                vec![
+                    with_skill(unit("1"), "CRPA", 1),
+                    sharing(with_silver(unit("2"), 150)),
+                ],
+                "unit 1\nCAST Create_Amulet_Of_Protection\nunit 2\nTRANSPORT 900 ALL SILV\n",
+                &["2"],
+            ) {
+                assert_eq!(figures, vec![(150, 0)], "{order}: (shipped, lent)");
+            }
+        }
+
+        /// The sharers' $25 pay 902's $20 BUY, so 903's own STUDY (`data/COMB`: 10) finds $5 at
+        /// most and is refused, taking nothing: each sharer ships what it did not lend the BUY,
+        /// whichever is drained first (cold-read review finding 2; `rules/share`).
+        #[test]
+        fn a_lenders_refused_study_takes_nothing_from_another_sharer() {
+            for (order, figures) in shipped_and_lent(
+                vec![
+                    sharing(with_silver(unit("903"), 20)),
+                    unit("902"),
+                    sharing(with_silver(unit("901"), 5)),
+                ],
+                "unit 902\nBUY 1 grain\nunit 903\nSTUDY COMB\nTRANSPORT 900 ALL SILV\n\
+                 unit 901\nTRANSPORT 900 ALL SILV\n",
+                &["903", "901"],
+            ) {
+                let [(shipped_903, lent_903), (shipped_901, lent_901)] = figures[..] else {
+                    unreachable!()
+                };
+                assert_eq!(
+                    lent_903 + lent_901,
+                    20,
+                    "{order}: only the BUY was lent for"
+                );
+                assert_eq!(
+                    shipped_903,
+                    20 - lent_903,
+                    "{order}: 903's study took nothing"
+                );
+                assert_eq!(shipped_901, 5 - lent_901, "{order}: 901");
+            }
+        }
+
+        /// A STUDY the pool cannot fund is refused and takes nothing - the whole fee, not only the
+        /// overdraft (`monthorders.cpp`: `cost > GetSharedMoney()`): student 902's own $5 is still
+        /// its own to ship, and sharer 903 lent nothing (cold-read review finding 3; `data/COMB`
+        /// in Trident: 10).
+        #[test]
+        fn a_refused_study_leaves_the_student_its_own_silver() {
+            for (order, figures) in shipped_and_lent(
+                vec![
+                    sharing(with_silver(unit("903"), 0)),
+                    with_silver(unit("902"), 5),
+                ],
+                "unit 902\nSTUDY COMB\nTRANSPORT 900 ALL SILV\n",
+                &["902", "903"],
+            ) {
+                assert_eq!(figures, vec![(5, 0), (0, 0)], "{order}: (shipped, lent)");
             }
         }
 
