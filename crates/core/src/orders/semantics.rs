@@ -54662,6 +54662,76 @@ BUILD
         );
     }
 
+    /// What `id`'s SILVER column books as `cause`, summed, signs as the column shows them.
+    fn silver_booked(review: &TurnReview, id: &str, cause: SilverChangeCause) -> i64 {
+        shipment_silver(review, id)
+            .changes
+            .iter()
+            .filter(|moved| moved.cause == cause)
+            .map(|moved| moved.amount)
+            .sum()
+    }
+
+    /// A giver that holds part of a GIVE draws only the rest on its sharers (`unit.cpp`:
+    /// `ConsumeShared` spends the unit's own stock first): 901's $30 and sharer 902's $50 make
+    /// the $80 its GIVE of $100 is cut to (`runorders.cpp`: `DoGiveOrder`, `amt = GetSharedNum`),
+    /// so 900 receives $80, 902 lends its $50 and ships nothing (`ah-hreo` review, finding 3).
+    #[test]
+    fn a_gift_its_giver_holds_in_part_draws_the_rest_on_the_sharer() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            with_silver(unit("901"), 30),
+            sharing(with_silver(unit("902"), 50)),
+        ]);
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nGIVE 900 100 SILV\nunit 902\nTRANSPORT 900 ALL SILV\n",
+            Some(&rules),
+            with_map(),
+        );
+        assert_eq!(
+            silver_booked(&review, "900", SilverChangeCause::WasGiven),
+            80
+        );
+        assert_eq!(silver_booked(&review, "902", SilverChangeCause::Lent), -50);
+        assert_eq!(
+            silver_booked(&review, "902", SilverChangeCause::GaveAway),
+            0
+        );
+    }
+
+    /// Two gifts drawing on one sharer are funded in the order they run: 901's GIVE of $100 takes
+    /// sharer 902's whole $50, so 903's GIVE of $100 finds nothing left (`runorders.cpp`:
+    /// `DoGiveOrder`, `amt = GetSharedNum`) and 900 receives $50 in all (`ah-hreo` review,
+    /// finding 3).
+    #[test]
+    fn two_gifts_on_one_sharer_take_only_what_it_holds() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            unit("901"),
+            sharing(with_silver(unit("902"), 50)),
+            unit("903"),
+        ]);
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nGIVE 900 100 SILV\nunit 902\nTRANSPORT 900 ALL SILV\n\
+             unit 903\nGIVE 900 100 SILV\n",
+            Some(&rules),
+            with_map(),
+        );
+        assert_eq!(
+            silver_booked(&review, "900", SilverChangeCause::WasGiven),
+            50
+        );
+        assert_eq!(silver_booked(&review, "902", SilverChangeCause::Lent), -50);
+        assert_eq!(
+            silver_booked(&review, "902", SilverChangeCause::GaveAway),
+            0
+        );
+    }
+
     /// A TAKE beyond its source's silver is judged the same way: `rules/take` "works just like the
     /// GIVE order", and the engine cuts it to the source's `GetSharedNum` as it runs
     /// (`runorders.cpp`: `DoGiveOrder`). 904's TAKE of $100 from 901, who holds nothing, drains
