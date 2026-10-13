@@ -5252,6 +5252,15 @@ impl PhaseState {
         )
     }
 
+    /// A unit's balance of `tag` as the ledger booked it by `phase`.
+    ///
+    /// **Not what a `SHARE` sharer still holds.** The ledger charges a borrower the whole of what
+    /// it spends and leaves its lenders' rows alone - silver the purse lent, and goods a gift drew
+    /// on (`ah-0mch`) - so a lender's balance still counts what it lent. A reader sizing anything on
+    /// a unit's stock in a hex that shares asks [`SharerStock::at`] (what is held, with the purse's
+    /// lending carried) or [`Lending`] (what was lent by a moment), and never re-derives the
+    /// lending: three beads paid a review round or more each for doing so (`ah-0mch`, `ah-lnz4`,
+    /// `ah-su1x`; `ah-pf7t`).
     fn balance_at(&self, phase: StatePhase, unit_id: &str, tag: &str) -> i64 {
         self.balances
             .get(&(unit_id.to_owned(), tag.to_ascii_uppercase()))
@@ -6049,82 +6058,34 @@ impl Ledger<'_> {
     /// from the final balance so earlier orders cannot spend it, but TRANSPORT follows both
     /// PRODUCE phases (`rules/sequenceofevents`).
     ///
-    /// Silver also carries back a STUDY the unit could not pay for ([`refused_study`]): the ledger
-    /// charges it all the same, and silver that only arrives in a TRANSPORT sub-phase must not
-    /// meet it (`ah-rt4p`).
-    ///
-    /// Silver also leaves out what a sharer lent its faction-mates' orders before TRANSPORT
-    /// ([`Ledger::lent_before_transport`]), so a sharer's `TRANSPORT ... ALL SILV` ships only what
-    /// the hex's casts, purchases and studies left it (`ah-su1x`). Where that same settlement
-    /// refused the unit's STUDY, its whole fee is carried back rather than [`refused_study`]'s
-    /// overdraft: a refused study takes nothing, own coins included (`ah-li7l` review).
+    /// Every tag is what the unit has of its own as the one reading of a `SHARE` sharer's stock
+    /// reads it ([`SharerStock::own_for`], `ah-pf7t`): a lender's balance less what its
+    /// faction-mates' orders drew on it, so a gift of a sharer's goods is not shipped again by the
+    /// sharer. For silver that carries what the purse lent at CAST, the market and STUDY
+    /// ([`Lending`]), so a sharer's `TRANSPORT ... ALL SILV` ships only what its faction-mates'
+    /// orders left it (`ah-su1x`); hands back a STUDY the unit could not pay for, which silver
+    /// arriving only in a TRANSPORT sub-phase must not meet ([`refused_study`], `ah-rt4p`); and
+    /// keeps what a cut `BUY` never spent ([`Ledger::overcharged`]). Where the stock cannot be
+    /// read - the unit's own balance or the pool is in doubt - the plain balance, silver with the
+    /// refused study handed back, lending nothing, as the purse itself lends nothing there.
     fn transport_holding(&self, hex: &Hex<'_>, unit_id: &str, tag: &str) -> i64 {
-        let (refused, lent) = if tag.eq_ignore_ascii_case(SILVER) {
-            let (lent, refused_by_purse) = self.lent_before_transport(hex, unit_id);
-            let refused = if refused_by_purse > 0 {
-                refused_by_purse
-            } else {
-                refused_study(self, hex, unit_id)
-            };
-            (refused, lent)
-        } else {
-            (0, 0)
-        };
-        self.state.balance_at(StatePhase::Transport, unit_id, tag) + refused - lent
-            + self
-                .unconsumed_production
-                .get(&(unit_id.to_string(), tag.to_ascii_uppercase()))
-                .copied()
-                .unwrap_or_default()
-    }
-
-    /// What the sharer `unit_id` lent its faction-mates' orders before TRANSPORT: the `SHARE`
-    /// purse's own settlement ([`lend_at_moments`]) over the moments `rules/sequenceofevents`
-    /// (New Age: Trident) runs before it - CAST, the market and STUDY. `rules/share` lends silver
-    /// "for buying or studying".
-    ///
-    /// The ledger charges a borrower the whole of what it spends and leaves its lenders' rows
-    /// alone, so this silver is still in the lender's balance though the purse took it: a
-    /// `TRANSPORT ... ALL SILV` sized on that balance would ship it again, and the purse would then
-    /// have nothing to cover the borrower with at the month's end (`ah-su1x`). The same reading the
-    /// month-end purse settles, so the two cannot disagree about who lent: from STUDY on only the
-    /// sharers that stay lend, a walker no more than was drawn on it before it left; a moment
-    /// before STUDY the pool cannot cover in full lends nothing at all (`ah-e66j`); and at STUDY
-    /// the students are paid one by one in region order, as the engine pays them, so only the
-    /// ones that no longer fit lend nothing (`ah-li7l`).
-    ///
-    /// Paired with the fee of the unit's STUDY that settlement refused ([`SharingPurse::refused`]),
-    /// `0` where it paid or there was none.
-    ///
-    /// `(0, 0)` for a unit the hex does not list, a hex that does not pool silver, and a pool that
-    /// cannot be trusted - accept-on-doubt, as the purse itself lends nothing there.
-    fn lent_before_transport(&self, hex: &Hex<'_>, unit_id: &str) -> (i64, i64) {
-        let Some(index) = hex
-            .units
-            .iter()
-            .position(|ordered| ordered.unit.unit_id == unit_id)
-        else {
-            return (0, 0);
-        };
-        let sharing = Sharing::for_silver(hex, self);
-        if sharing.reading(SILVER, None) == Reading::PerUnit || !sharing.pool_trusted(self) {
-            return (0, 0);
-        }
-        let (mut purse, _) = lend_at_moments(
-            hex,
-            self,
-            &sharing,
-            &[
-                LendingMoment::Cast,
-                LendingMoment::Movement,
-                LendingMoment::Study,
-            ],
-        );
-        // Net, as the month-end purse is: a sharer whose own STUDY the purse paid after it lent at
-        // the market has that overdraft handed back by `refused_study` already, so only what it
-        // lent beyond what it borrowed left it (`ah-su1x` review).
-        purse.net_passed_on();
-        (purse.lends[index], purse.refused[index])
+        let held = SharerStock::for_spender(self, hex, StatePhase::Transport, unit_id, tag)
+            .map_or_else(
+                || {
+                    self.state.balance_at(StatePhase::Transport, unit_id, tag)
+                        + if tag.eq_ignore_ascii_case(SILVER) {
+                            refused_study(self, hex, unit_id)
+                        } else {
+                            0
+                        }
+                },
+                |(stock, x)| stock.own_for(x),
+            );
+        held + self
+            .unconsumed_production
+            .get(&(unit_id.to_string(), tag.to_ascii_uppercase()))
+            .copied()
+            .unwrap_or_default()
     }
 
     /// The item pictures maintenance reads, including the report-wide shipment phase that the
@@ -13336,8 +13297,11 @@ struct StockParty {
 
 /// What each sharing unit of a hex still has to lend of one tag at one moment: **the one reading**
 /// every spend that draws on a `SHARE` pool takes (`ah-lnz4`). GIVE and TAKE, SELL, CAST, the
-/// market's BUY sizing and the SILVER column's purse all build one and ask it, so a second spender
-/// can never read a sharer's stock that a first spend already drew on.
+/// market's BUY sizing, TRANSPORT and the SILVER column's purse all build one and ask it, so a
+/// second spender can never read a sharer's stock that a first spend already drew on. What the
+/// purse lent at its moments comes from [`Lending`], the one home of that figure, and is carried
+/// into every silver reading after the cast (`ah-pf7t`); `share_pool_agreement` holds every
+/// consumer to the same answer.
 ///
 /// The ledger charges a borrower the whole of what it spends and leaves its lenders' rows alone, so
 /// what a sharer still has is not a balance the ledger holds. This derives it: every party's
@@ -13371,17 +13335,72 @@ impl SharerStock {
     /// `None` where it cannot be read: a sharer's balance a `GIVE` left uncertain, or a pool whose
     /// sum is not to be trusted. A non-sharer whose balance is uncertain is read as having drawn
     /// nothing; [`SharerStock::for_spender`] refuses a spender whose own balance is not known.
+    ///
+    /// Silver read after a moment the purse lends at ([`PURSE_MOMENTS`]) carries what it lent
+    /// there ([`Lending::before`]): a lender's position is less what it lent and a borrower's is
+    /// plus what it was lent, so a drain at `phase` lays only what is new and nothing is lent
+    /// twice (`ah-su1x`, `ah-pf7t`). From STUDY on only the sharers that stay lend
+    /// ([`Sharing::for_silver`]), and a STUDY the engine refused hands its whole fee back: in a
+    /// pool, as the fold judged each student ([`Lending::refused`], `ah-li7l`); where nothing
+    /// pools, off the unit's own row ([`refused_study`]). Before the market - every GIVE, TAKE and
+    /// CAST - there is nothing to carry.
     fn at(ledger: &Ledger<'_>, hex: &Hex<'_>, phase: StatePhase, tag: &str) -> Option<Self> {
-        let sharing = Sharing::read(hex);
+        let silver = tag.eq_ignore_ascii_case(SILVER);
+        let staying = silver && phase > StatePhase::Movement;
+        let sharing = if staying {
+            Sharing::for_silver(hex, ledger)
+        } else {
+            Sharing::read(hex)
+        };
         let pooled = sharing.reading(tag, ledger.ruleset) == Reading::Pooled;
         if pooled && !sharing.pool_trusted(ledger) {
             return None;
         }
+        let lending = if silver && pooled {
+            Lending::before(hex, ledger, phase)
+        } else {
+            Lending::nothing(hex, ledger)
+        };
         let mut parties = Vec::with_capacity(hex.units.len());
-        for ordered in &hex.units {
-            let lends = pooled && ordered.shares();
+        // STUDY is the purse's last lending moment ([`PURSE_MOMENTS`]: `rules/share` lends silver
+        // "for buying or studying"), so a reading after it lends nothing more through the stock:
+        // an overdraft the purse did not cover - a cast or a study it refused - stays its
+        // borrower's and is never laid on a sharer (cold-read review finding 1). A shipment's
+        // fee, which the engine also draws on the pool for at TRANSPORT, is [`shipping_purse`]'s
+        // and not read here.
+        let lending_over = silver && phase > StatePhase::Study;
+        for (index, ordered) in hex.units.iter().enumerate() {
+            let lends = pooled
+                && !lending_over
+                && if staying {
+                    sharing.pools_silver(ordered)
+                } else {
+                    ordered.shares()
+                };
             let position = match Self::held_at(ledger, phase, &ordered.unit.unit_id, tag) {
-                Some(held) => held,
+                Some(held) => {
+                    let carried = lending.borrows[index] - lending.lends[index];
+                    // A STUDY the engine refused took nothing (`monthorders.cpp`: `cost >
+                    // GetSharedMoney()`, "STUDY: Not enough funds."), so its fee comes back. In a
+                    // pool the fold judged each student as the engine pays them, one by one on
+                    // its position net of what it lent ([`Lending::refused`], `ah-li7l`); read off
+                    // a lender's own row alone, its study would look paid for out of silver it had
+                    // already lent (cold-read review findings 2 and 3).
+                    //
+                    // A limitation, inherited from the purse's all-or-nothing rule (`ah-e66j`):
+                    // where the fold stopped at the cast or the market, STUDY is never judged, so
+                    // a study the pool could still have paid hands nothing back and lends nothing
+                    // - a sharer's `ALL SILV` beside a cast the pool refused reads more than it will
+                    // ship (follow-up review finding 1, case A; `ah-szu0`).
+                    let refused = if !(silver && phase > StatePhase::Study) {
+                        0
+                    } else if !pooled {
+                        refused_study(ledger, hex, &ordered.unit.unit_id)
+                    } else {
+                        lending.refused[index]
+                    };
+                    held.saturating_add(carried).saturating_add(refused)
+                }
                 None if lends => return None,
                 None => 0,
             };
@@ -13393,8 +13412,11 @@ impl SharerStock {
         })
     }
 
-    /// One unit's balance as [`SharerStock::at`] reads it, or `None` where a `GIVE` left it
-    /// uncertain.
+    /// One unit's balance as [`SharerStock::at`] reads it, before any lending is carried, or
+    /// `None` where a `GIVE` left it uncertain: the ledger's balance with what it charged but
+    /// never took added back - [`Ledger::unfunded`], and for silver after the market
+    /// [`Ledger::overcharged`], the part of a cut `BUY`'s ask the market left in the unit's hands
+    /// (`rules/buy`: "it will attempt to buy as many as it can").
     fn held_at(ledger: &Ledger<'_>, phase: StatePhase, unit_id: &str, tag: &str) -> Option<i64> {
         let known = ledger.state.known_balance_at(phase, unit_id, tag).ok()?;
         let unfunded = ledger
@@ -13402,7 +13424,12 @@ impl SharerStock {
             .get(&(unit_id.to_string(), tag.to_ascii_uppercase()))
             .copied()
             .unwrap_or(0);
-        Some(known.saturating_add(unfunded))
+        let overcharged = if tag.eq_ignore_ascii_case(SILVER) && phase > StatePhase::Market {
+            ledger.overcharged.get(unit_id).copied().unwrap_or(0)
+        } else {
+            0
+        };
+        Some(known.saturating_add(unfunded).saturating_add(overcharged))
     }
 
     /// [`SharerStock::at`] for one spender, with where it sits among the parties. `None` where the
@@ -14433,177 +14460,252 @@ enum Lender {
     Arrival(usize),
 }
 
-impl SharingPurse {
+/// What each unit of a hex has lent and borrowed through its `SHARE` silver pool's moments
+/// ([`PURSE_MOMENTS`]), and what each sharer arriving from another hex lent: **the one home of
+/// "what has a sharer lent by moment M"** (`ah-pf7t`).
+///
+/// The ledger charges a borrower the whole of what it spends and leaves its lenders' rows alone
+/// (`ah-0mch`), so what a sharer lent is not a figure the ledger keeps, and three beads in a row
+/// paid a review round or more for re-deriving it (`ah-0mch`, `ah-lnz4`, `ah-su1x`). Every reader
+/// takes it from here instead: the month-end purse ([`sharing_purse`]) and every reading of what a
+/// sharer still holds ([`SharerStock::at`], which `TRANSPORT ... ALL SILV` reads). Built only by
+/// the moment fold below, on demand; it owns and caches nothing.
+///
+/// Every vector but `arrivals_lend` is index-aligned with `hex.units`; `arrivals_lend` is aligned
+/// with [`WalkingSilver::arrivals_at`] at [`LendingMoment::MonthEnd`] (`ah-wyj8`).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct Lending {
+    /// What each unit lent its faction-mates' orders.
+    lends: Vec<i64>,
+    /// What each arriving sharer lent here.
+    arrivals_lend: Vec<i64>,
+    /// What each unit's orders drew out of its faction-mates' pockets: its own overdraft, sharer
+    /// or not, at each moment the pool covered.
+    borrows: Vec<i64>,
+    /// The fee of each unit's STUDY the pool could not pay, and so the engine refused and took
+    /// nothing for - the student's own coins included ([`refused_fee`], `ah-li7l`). `0` for a
+    /// unit whose study was paid or that does not study short. Handed back to the unit at every
+    /// later moment.
+    refused: Vec<i64>,
+    /// The first moment but STUDY the pool could not cover in full, from which nothing more was
+    /// lent - the all-or-nothing rule (`ah-e66j`, `ah-aqqb`). `None` where every moment read was
+    /// covered. STUDY never stops it: it pays its students one by one and refuses only those that
+    /// no longer fit (`ah-li7l`).
+    stopped_at: Option<LendingMoment>,
+}
+
+impl Lending {
+    /// Nothing lent by anyone: a hex that does not pool silver, or a pool that cannot be trusted.
+    fn nothing(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Self {
+        Self {
+            lends: vec![0; hex.units.len()],
+            arrivals_lend: vec![
+                0;
+                ledger
+                    .walking_silver
+                    .arrivals_at(LendingMoment::MonthEnd)
+                    .len()
+            ],
+            borrows: vec![0; hex.units.len()],
+            refused: vec![0; hex.units.len()],
+            stopped_at: None,
+        }
+    }
+
+    /// What the pool lent through the moments whose phase comes before `phase`: what a reading of
+    /// the hex's silver at `phase` must carry. Nothing before [`StatePhase::Market`], since the
+    /// first moment is the cast.
+    fn before(hex: &Hex<'_>, ledger: &Ledger<'_>, phase: StatePhase) -> Self {
+        Self::over(hex, ledger, |moment| moment.phase() < phase)
+    }
+
+    fn over(hex: &Hex<'_>, ledger: &Ledger<'_>, take: impl Fn(LendingMoment) -> bool) -> Self {
+        let moments: Vec<LendingMoment> =
+            PURSE_MOMENTS.iter().copied().filter(|&m| take(m)).collect();
+        if moments.is_empty() {
+            return Self::nothing(hex, ledger);
+        }
+        let sharing = Sharing::for_silver(hex, ledger);
+        if sharing.reading(SILVER, None) == Reading::PerUnit || !sharing.pool_trusted(ledger) {
+            return Self::nothing(hex, ledger);
+        }
+        Self::settle(hex, ledger, &sharing, &moments)
+    }
+
+    /// `true` where every moment read was covered in full.
+    fn covered(&self) -> bool {
+        self.stopped_at.is_none()
+    }
+
     /// A unit that lent at one moment and was lent at a later one only passed its faction-mates'
     /// silver on: a sharer that paid for a `BUY` and then had its own STUDY paid for lent the
     /// difference, and its column shows that, not both halves (`ah-49j0`). So no unit both lends
-    /// and borrows, and what a borrower is credited is what its own orders overdrew it.
-    fn net_passed_on(&mut self) {
+    /// and borrows, and what a borrower is credited is what its own orders overdrew it. What a
+    /// unit holds once its lending is carried - its balance less `lends` plus `borrows` - is the
+    /// same netted or not.
+    fn netted(mut self) -> Self {
         for (lent, borrowed) in self.lends.iter_mut().zip(self.borrows.iter_mut()) {
             let passed_on = (*lent).min(*borrowed);
             *lent -= passed_on;
             *borrowed -= passed_on;
         }
+        self
     }
-}
 
-/// [`sharing_purse`]'s settlement, moment by moment through `moments`: each unit's position - its
-/// own [`silver_at`] then, less the tax its settlement will not collect, less what it has lent and
-/// plus what it has been lent so far, plus a refused study handed back - and every negative one
-/// filled from the lenders' positive ones in drain order, or, where they cannot cover them all,
-/// nothing lent from that moment on. At STUDY the claimants are paid one by one in drain order
-/// instead, each in full or not at all, as the engine pays them (`ah-li7l`). Returns the purse,
-/// before any netting of lends against borrows, and whether every moment but STUDY was covered;
-/// a refused study is in [`SharingPurse::refused`]. The caller has already checked that the hex pools silver and that the pool is trusted.
-///
-/// Also read before TRANSPORT ([`Ledger::lent_before_transport`]), over the moments that come
-/// before it, so a sharer's `TRANSPORT ... ALL SILV` and the month-end purse read one settlement
-/// (`ah-su1x`).
-fn lend_at_moments(
-    hex: &Hex<'_>,
-    ledger: &Ledger<'_>,
-    sharing: &Sharing<'_>,
-    moments: &[LendingMoment],
-) -> (SharingPurse, bool) {
-    let arrivals = ledger.walking_silver.arrivals_at(LendingMoment::MonthEnd);
-    let judged = |index: usize| !ledger.doubted.contains(&hex.units[index].unit.unit_id);
-    let own = |index: usize, at: LendingMoment| {
-        silver_at(ledger, &hex.units[index].unit.unit_id, at)
-            .saturating_sub(ledger.tax_overstated.get(index).copied().unwrap_or(0))
-    };
-    let report_order = hex.report_order();
-    let mut purse = SharingPurse {
-        lends: vec![0; hex.units.len()],
-        arrivals_lend: vec![0; arrivals.len()],
-        borrows: vec![0; hex.units.len()],
-        refused: vec![0; hex.units.len()],
-        coverage: vec![None; hex.units.len()],
-    };
-    let mut covered = true;
-    for &moment in moments {
-        let position = |purse: &SharingPurse, index: usize, at: LendingMoment| {
-            own(index, at) - purse.lends[index] + purse.borrows[index] + purse.refused[index]
+    /// The settlement, moment by moment through `moments`: each unit's position - its own
+    /// [`silver_at`] then, less the tax its settlement will not collect, less what it has lent and
+    /// plus what it has been lent so far, plus a refused study handed back - and every negative
+    /// one filled from the lenders' positive ones in drain order ([`SharerStock::drained`]), or,
+    /// where they cannot cover them all, nothing lent from that moment on. At STUDY the claimants
+    /// are paid one by one in drain order instead, each in full or not at all, as the engine pays
+    /// them ([`SharerStock::paid_one_by_one`], `ah-li7l`). Before any netting of lends against
+    /// borrows. The caller has already checked that the hex pools silver and that the pool is
+    /// trusted.
+    ///
+    /// The positions are the ones the warning judges - the whole of what each order asked, with no
+    /// [`Ledger::unfunded`] add-back - so a gift or cast no sharer could fund keeps the pool short
+    /// and its warning (`ah-0mch`).
+    fn settle(
+        hex: &Hex<'_>,
+        ledger: &Ledger<'_>,
+        sharing: &Sharing<'_>,
+        moments: &[LendingMoment],
+    ) -> Self {
+        let arrivals = ledger.walking_silver.arrivals_at(LendingMoment::MonthEnd);
+        let judged = |index: usize| !ledger.doubted.contains(&hex.units[index].unit.unit_id);
+        let own = |index: usize, at: LendingMoment| {
+            silver_at(ledger, &hex.units[index].unit.unit_id, at)
+                .saturating_sub(ledger.tax_overstated.get(index).copied().unwrap_or(0))
         };
-        let needs: Vec<i64> = (0..hex.units.len())
-            .map(|index| {
-                if judged(index) {
-                    (-position(&purse, index, moment)).max(0)
-                } else {
-                    0
-                }
-            })
-            .collect();
-        let need: i64 = needs.iter().sum();
-        if need == 0 {
-            continue;
-        }
+        let report_order = hex.report_order();
+        let mut purse = Self::nothing(hex, ledger);
+        for &moment in moments {
+            let position = |purse: &Lending, index: usize, at: LendingMoment| {
+                own(index, at) - purse.lends[index] + purse.borrows[index] + purse.refused[index]
+            };
+            let needs: Vec<i64> = (0..hex.units.len())
+                .map(|index| {
+                    if judged(index) {
+                        (-position(&purse, index, moment)).max(0)
+                    } else {
+                        0
+                    }
+                })
+                .collect();
+            let need: i64 = needs.iter().sum();
+            if need == 0 {
+                continue;
+            }
 
-        // Every unit and arriving sharer as a party to the one reading ([`SharerStock`]), each
-        // with who it is, so what the reading says it lent can be booked back on it. The units in
-        // report order, which drains a formed sharer at the end of its former's structure
-        // (`ah-k1ue`).
-        let mut parties: Vec<StockParty> = Vec::new();
-        let mut who: Vec<Option<Lender>> = Vec::new();
-        // The unit each party claims for, where it is a unit's own entry: STUDY pays them one by
-        // one, so it needs to know whose overdraft each negative position is.
-        let mut claims: Vec<Option<usize>> = Vec::new();
-        for &index in &report_order {
-            let ordered = &hex.units[index];
-            if !judged(index) {
-                continue;
-            }
-            let at = position(&purse, index, moment);
-            if sharing.pools_silver(ordered) {
-                parties.push(StockParty {
-                    position: at,
-                    lends: true,
-                });
-                who.push(Some(Lender::Unit(index)));
-                claims.push(Some(index));
-                continue;
-            }
-            parties.push(StockParty {
-                position: at.min(0),
-                lends: false,
-            });
-            who.push(None);
-            claims.push(Some(index));
-            if matches!(moment, LendingMoment::Cast | LendingMoment::Movement) {
-                // A sharer that walks away lends here only what was drawn on it before it left.
-                if let Some(&departing) = ledger.walking_silver.departing.get(&ordered.unit.unit_id)
-                {
+            // Every unit and arriving sharer as a party to the one reading ([`SharerStock`]), each
+            // with who it is, so what the reading says it lent can be booked back on it. The units in
+            // report order, which drains a formed sharer at the end of its former's structure
+            // (`ah-k1ue`).
+            let mut parties: Vec<StockParty> = Vec::new();
+            let mut who: Vec<Option<Lender>> = Vec::new();
+            // The unit each party claims for, where it is a unit's own entry: STUDY pays them one
+            // by one, so it needs to know whose overdraft each negative position is.
+            let mut claims: Vec<Option<usize>> = Vec::new();
+            for &index in &report_order {
+                let ordered = &hex.units[index];
+                if !judged(index) {
+                    continue;
+                }
+                let at = position(&purse, index, moment);
+                if sharing.pools_silver(ordered) {
                     parties.push(StockParty {
-                        position: (departing - purse.lends[index]).max(0),
+                        position: at,
                         lends: true,
                     });
                     who.push(Some(Lender::Unit(index)));
+                    claims.push(Some(index));
+                    continue;
+                }
+                parties.push(StockParty {
+                    position: at.min(0),
+                    lends: false,
+                });
+                who.push(None);
+                claims.push(Some(index));
+                if matches!(moment, LendingMoment::Cast | LendingMoment::Movement) {
+                    // A sharer that walks away lends here only what was drawn on it before it left.
+                    if let Some(&departing) =
+                        ledger.walking_silver.departing.get(&ordered.unit.unit_id)
+                    {
+                        parties.push(StockParty {
+                            position: (departing - purse.lends[index]).max(0),
+                            lends: true,
+                        });
+                        who.push(Some(Lender::Unit(index)));
+                        claims.push(None);
+                    }
+                }
+            }
+            // An arrival is not here for the market, and lends in all no more than its month-end
+            // figure, which `lend_walking_sharers_silver` capped at what the hex needs of it. Defensive
+            // at STUDY: a market the purse covered leaves STUDY needing no more than that cap already
+            // allows for, so no input is known that reaches it.
+            if !matches!(moment, LendingMoment::Cast | LendingMoment::Movement) {
+                for (index, (now, all_month)) in ledger
+                    .walking_silver
+                    .arrivals_at(moment)
+                    .iter()
+                    .zip(arrivals)
+                    .enumerate()
+                {
+                    parties.push(StockParty {
+                        position: (now.lends.min(all_month.lends) - purse.arrivals_lend[index])
+                            .max(0),
+                        lends: true,
+                    });
+                    who.push(Some(Lender::Arrival(index)));
                     claims.push(None);
                 }
             }
-        }
-        // An arrival is not here for the market, and lends in all no more than its month-end
-        // figure, which `lend_walking_sharers_silver` capped at what the hex needs of it. Defensive
-        // at STUDY: a market the purse covered leaves STUDY needing no more than that cap already
-        // allows for, so no input is known that reaches it.
-        if !matches!(moment, LendingMoment::Cast | LendingMoment::Movement) {
-            for (index, (now, all_month)) in ledger
-                .walking_silver
-                .arrivals_at(moment)
-                .iter()
-                .zip(arrivals)
-                .enumerate()
-            {
-                parties.push(StockParty {
-                    position: (now.lends.min(all_month.lends) - purse.arrivals_lend[index]).max(0),
-                    lends: true,
-                });
-                who.push(Some(Lender::Arrival(index)));
-                claims.push(None);
-            }
-        }
 
-        if moment == LendingMoment::Study {
-            let (lent, refused) = SharerStock::new(parties).paid_one_by_one();
-            for (lender, lent) in who.iter().zip(lent) {
+            if moment == LendingMoment::Study {
+                let (lent, refused) = SharerStock::new(parties).paid_one_by_one();
+                for (lender, lent) in who.iter().zip(lent) {
+                    match lender {
+                        Some(Lender::Unit(index)) => purse.lends[*index] += lent,
+                        Some(Lender::Arrival(index)) => purse.arrivals_lend[*index] += lent,
+                        None => {}
+                    }
+                }
+                for (claim, refused) in claims.into_iter().zip(refused) {
+                    let Some(index) = claim else { continue };
+                    if refused {
+                        purse.refused[index] +=
+                            refused_fee(ledger, &hex.units[index].unit.unit_id, needs[index]);
+                    } else {
+                        purse.borrows[index] += needs[index];
+                    }
+                }
+                continue;
+            }
+
+            // In report order and then the arrivals', rather than a proportional split: the engine
+            // drains its sharers in whatever order it iterates them, so no split is truer than
+            // another, and a whole number needs no rounding rule.
+            let (lent, short) = SharerStock::new(parties).drained();
+            if short > 0 {
+                purse.stopped_at = Some(moment);
+                break;
+            }
+            for (lender, lent) in who.into_iter().zip(lent) {
                 match lender {
-                    Some(Lender::Unit(index)) => purse.lends[*index] += lent,
-                    Some(Lender::Arrival(index)) => purse.arrivals_lend[*index] += lent,
+                    Some(Lender::Unit(index)) => purse.lends[index] += lent,
+                    Some(Lender::Arrival(index)) => purse.arrivals_lend[index] += lent,
                     None => {}
                 }
             }
-            for (claim, refused) in claims.into_iter().zip(refused) {
-                let Some(index) = claim else { continue };
-                if refused {
-                    purse.refused[index] +=
-                        refused_fee(ledger, &hex.units[index].unit.unit_id, needs[index]);
-                } else {
-                    purse.borrows[index] += needs[index];
-                }
+            for (borrowed, need) in purse.borrows.iter_mut().zip(needs) {
+                *borrowed += need;
             }
-            continue;
         }
 
-        // In report order and then the arrivals', rather than a proportional split: the engine
-        // drains its sharers in whatever order it iterates them, so no split is truer than
-        // another, and a whole number needs no rounding rule.
-        let (lent, short) = SharerStock::new(parties).drained();
-        if short > 0 {
-            covered = false;
-            break;
-        }
-        for (lender, lent) in who.into_iter().zip(lent) {
-            match lender {
-                Some(Lender::Unit(index)) => purse.lends[index] += lent,
-                Some(Lender::Arrival(index)) => purse.arrivals_lend[index] += lent,
-                None => {}
-            }
-        }
-        for (borrowed, need) in purse.borrows.iter_mut().zip(needs) {
-            *borrowed += need;
-        }
+        purse
     }
-
-    (purse, covered)
 }
 
 /// The purse this hex's `SHARE` flags open for orders, settled between the units that claim it.
@@ -14697,12 +14799,12 @@ fn sharing_purse_over(
             ..nothing
         };
     }
-    let (mut purse, covered) = lend_at_moments(hex, ledger, &sharing, moments);
+    let lending = Lending::settle(hex, ledger, &sharing, moments);
 
     // The warning's month-end reading, on the column's figures - less the studies the engine
     // refuses, which take nothing (`ah-li7l`).
     if sharing.silver_short_reading(hex, ledger, LendingMoment::MonthEnd, |index| {
-        own(index, LendingMoment::MonthEnd) + purse.refused[index]
+        own(index, LendingMoment::MonthEnd) + lending.refused[index]
     }) > 0
     {
         return SharingPurse {
@@ -14711,24 +14813,29 @@ fn sharing_purse_over(
         };
     }
 
-    purse.net_passed_on();
-
     // A refused study is a known shortfall of its own, even for a sharer whose column the
     // silver it lent earlier leaves at zero (`ah-li7l`).
-    purse.coverage = coverage_for(super::silver::SharedSilverCoverage::Covered)
-        .into_iter()
-        .zip(&purse.refused)
-        .map(|(coverage, &refused)| {
-            if refused > 0 {
-                Some(super::silver::SharedSilverCoverage::Shortfall)
-            } else if covered {
-                coverage
-            } else {
-                coverage.map(|_| super::silver::SharedSilverCoverage::Shortfall)
-            }
-        })
-        .collect();
-    purse
+    let covered = lending.covered();
+    let lending = lending.netted();
+    SharingPurse {
+        coverage: coverage_for(super::silver::SharedSilverCoverage::Covered)
+            .into_iter()
+            .zip(&lending.refused)
+            .map(|(coverage, &refused)| {
+                if refused > 0 {
+                    Some(super::silver::SharedSilverCoverage::Shortfall)
+                } else if covered {
+                    coverage
+                } else {
+                    coverage.map(|_| super::silver::SharedSilverCoverage::Shortfall)
+                }
+            })
+            .collect(),
+        lends: lending.lends,
+        arrivals_lend: lending.arrivals_lend,
+        borrows: lending.borrows,
+        refused: lending.refused,
+    }
 }
 
 /// What a unit's own silver is short as STUDY settles, the moment `rules/sequenceofevents` charges
@@ -14751,11 +14858,12 @@ fn silver_short_at_study(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
 /// `rules/sequenceofevents` runs STUDY before TRANSPORT, so silver shipped to the unit later
 /// cannot pay for it. The engine refuses a study outright when its cost is more than the unit can
 /// draw on (`monthorders.cpp`: "STUDY: Not enough funds."), and takes nothing: the whole fee is
-/// handed back. In a hex whose `SHARE` purse lends silver "for buying or studying"
-/// (`rules/share`), this is the case where the purse paid: the unit's own coins went on the
-/// study and the purse paid the rest, so only the overdraft is handed back (`ah-rt4p`). A study
-/// the purse refused hands back its whole fee instead, which [`Ledger::transport_holding`] reads
-/// from the purse's own settlement (`ah-li7l`).
+/// handed back. That is the whole answer where nothing pools, and [`SharerStock::at`] reads it
+/// there. In a hex whose `SHARE` purse lends silver "for buying or studying" (`rules/share`),
+/// [`SharerStock::at`] reads the purse's own judgment of each student instead
+/// ([`Lending::refused`], `ah-li7l`), and this is reached only from
+/// [`Ledger::transport_holding`]'s fallback, where the pool cannot be read: it hands back the
+/// overdraft alone, the case where the purse paid the rest (`ah-rt4p`).
 fn refused_study(ledger: &Ledger<'_>, hex: &Hex<'_>, unit_id: &str) -> i64 {
     let overdrawn = silver_short_at_study(ledger, unit_id);
     if overdrawn <= 0 {
@@ -52779,6 +52887,35 @@ BUILD
             .sum()
     }
 
+    /// A `BUY` the unit cannot afford in full buys "as many as it can" (`rules/buy`), so the part
+    /// of its ask it never spent is still in its hands when TRANSPORT runs, after the market
+    /// (`rules/sequenceofevents`): 903's $50 buys two grain at $20 and its `ALL SILV` ships the $10
+    /// left ([`Ledger::overcharged`]; `ah-pf7t`).
+    #[test]
+    fn a_cut_buys_unspent_silver_still_ships_at_transport() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.for_sale = vec![MarketItem {
+            amount: 100,
+            name: "grain".to_string(),
+            tag: "GRAI".to_string(),
+            price: 20,
+        }];
+        region.units.push(with_silver(unit("903"), 50));
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 903\nBUY 5 grain\nTRANSPORT 900 ALL SILV\n",
+            Some(&rules),
+            with_map(),
+        );
+        assert_eq!(
+            silver_shipped(&review, "903"),
+            10,
+            "{:?}",
+            shipment_silver(&review, "903")
+        );
+    }
+
     /// A STUDY the pool cannot pay for is refused outright and takes nothing (`refused_study`):
     /// sharer 903's $5 cannot cover combat's $10 (`data/COMB`), so its `ALL SILV` still ships
     /// the $5 (`ah-su1x` follow-up review, finding 1).
@@ -52906,13 +53043,13 @@ BUILD
         );
     }
 
-    /// A sharer that lent at the market and then had its own STUDY paid for passed its
-    /// faction-mates' silver on, as the month-end purse nets it (`ah-49j0`): 903, listed first, pays
-    /// 902's $15 BUY out of its $20, then its own $10 study (`data/COMB`) takes its last $5 and $5
-    /// of 901's. It lent the hex $10 net, which is what leaves it before TRANSPORT; `refused_study`
-    /// already hands back its own $5 overdraft (`ah-su1x` second follow-up review, finding 1).
+    /// [`Lending`] is the one home of "what a sharer has lent by a moment" (`ah-pf7t`): read
+    /// before TRANSPORT and netted, it is what the purse lent through CAST, the market and STUDY.
+    /// 903, listed first, pays 902's $15 BUY out of its $20, then its own $10 study (`data/COMB`)
+    /// takes its last $5 and $5 of 901's: it passed its faction-mates' silver on, as the month-end
+    /// purse nets it (`ah-49j0`), and lent the hex $10 net (`ah-su1x` second follow-up review).
     #[test]
-    fn a_sharer_that_lent_and_then_borrowed_lent_only_the_difference_before_transport() {
+    fn lending_before_transport_is_what_the_purse_lent_by_study() {
         let hex_region = ReportRegion {
             for_sale: vec![MarketItem {
                 amount: 100,
@@ -52930,17 +53067,506 @@ BUILD
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = trident_rules();
         let ledger = ledger_for(&hex, Some(&rules));
-        assert_eq!(ledger.lent_before_transport(&hex, "903").0, 10);
-        assert_eq!(
-            ledger.lent_before_transport(&hex, "901").0,
-            5,
-            "901 paid the rest of 903's study"
-        );
-        assert_eq!(
-            ledger.lent_before_transport(&hex, "902").0,
-            0,
-            "a borrower lends nothing"
-        );
+        let lending = Lending::before(&hex, &ledger, StatePhase::Transport).netted();
+        assert_eq!(lending.lends, vec![10, 0, 5]);
+        assert_eq!(lending.borrows, vec![0, 15, 0]);
+        assert!(lending.covered());
+    }
+
+    /// The silver stock at TRANSPORT, read off ledger and hex: what each unit has of its own once
+    /// the purse's lending is carried ([`SharerStock::own_for`]), by id, and what a drain at
+    /// TRANSPORT itself would still lay on each.
+    fn silver_stock_at_transport(
+        hex: &Hex<'_>,
+        ledger: &Ledger<'_>,
+    ) -> (BTreeMap<String, i64>, Vec<i64>) {
+        let stock = SharerStock::at(ledger, hex, StatePhase::Transport, SILVER)
+            .expect("the pool is readable");
+        let held = hex
+            .units
+            .iter()
+            .enumerate()
+            .map(|(x, o)| (o.unit.unit_id.clone(), stock.own_for(x)))
+            .collect();
+        (held, stock.drained().0)
+    }
+
+    /// `units` in report order, then reversed: every two-spender case in both orders (`ah-lnz4`).
+    fn both_orders<'a>(units: Vec<ReportUnit>) -> [(&'a str, Vec<ReportUnit>); 2] {
+        let mut reversed = units.clone();
+        reversed.reverse();
+        [("as listed", units), ("reversed", reversed)]
+    }
+
+    /// A reading of a sharer's silver after STUDY carries what the purse lent through CAST, the
+    /// market and STUDY ([`Lending`]), so nothing is laid on the lenders a second time - the
+    /// mistake a flat drain at TRANSPORT made (`ah-su1x`, second fix; `ah-pf7t`). 902's $15 BUY
+    /// and 903's $10 study (`data/COMB` in Trident) are paid out of the sharers' $120.
+    #[test]
+    fn a_silver_stock_read_after_study_carries_what_the_purse_lent() {
+        for (order, units) in both_orders(vec![
+            sharing(with_silver(unit("903"), 20)),
+            unit("902"),
+            sharing(with_silver(unit("901"), 100)),
+        ]) {
+            let hex_region = ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 100,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 15,
+                }],
+                ..region(units)
+            };
+            let ordered = OrderedUnits::read("unit 903\nSTUDY COMB\nunit 902\nBUY 1 grain\n");
+            let hex = Hex::read(&hex_region, &ordered, &[]);
+            let rules = trident_rules();
+            let ledger = ledger_for(&hex, Some(&rules));
+            let (held, drained) = silver_stock_at_transport(&hex, &ledger);
+            assert_eq!(
+                drained,
+                vec![0, 0, 0],
+                "{order}: nothing new to lend at TRANSPORT"
+            );
+            assert_eq!(held["902"], 0, "{order}: the borrower's BUY was paid for");
+            assert_eq!(
+                held["903"] + held["901"],
+                120 - 15 - 10,
+                "{order}: {held:?}"
+            );
+            let lending = Lending::before(&hex, &ledger, StatePhase::Transport).netted();
+            let at = |id: &str| hex.units.iter().position(|o| o.unit.unit_id == id).unwrap();
+            assert_eq!(held["901"], 100 - lending.lends[at("901")], "{order}");
+        }
+    }
+
+    /// A STUDY the pool cannot cover is refused and takes nothing (`refused_study`): a reading
+    /// after STUDY leaves the sharer's $5 its own, where a flat drain laid the student's $10
+    /// overdraft on it (`ah-su1x` follow-up review, finding 1; `data/COMB` costs 10 in Trident).
+    #[test]
+    fn a_silver_stock_read_after_a_refused_study_lends_it_nothing() {
+        for (order, units) in both_orders(vec![sharing(with_silver(unit("903"), 5)), unit("902")]) {
+            let hex_region = region(units);
+            let ordered = OrderedUnits::read("unit 902\nSTUDY COMB\n");
+            let hex = Hex::read(&hex_region, &ordered, &[]);
+            let rules = trident_rules();
+            let ledger = ledger_for(&hex, Some(&rules));
+            let (held, drained) = silver_stock_at_transport(&hex, &ledger);
+            assert_eq!(drained, vec![0, 0], "{order}");
+            assert_eq!(held["903"], 5, "{order}");
+            assert_eq!(held["902"], 0, "{order}: the fee was handed back");
+        }
+    }
+
+    /// From STUDY on only the sharers that stay lend (`ah-wyj8`): a sharer that walked away is
+    /// never drained for a study after it left, in either report order.
+    #[test]
+    fn a_silver_stock_read_after_movement_does_not_drain_a_walker() {
+        for (order, units) in both_orders(vec![
+            sharing(with_silver(unit("903"), 150)),
+            unit("902"),
+            sharing(with_silver(unit("901"), 100)),
+        ]) {
+            let hex_region = region(units);
+            let ordered = OrderedUnits::read("unit 903\nMOVE S\nunit 902\nSTUDY COMB\n");
+            let hex = Hex::read(&hex_region, &ordered, &[]);
+            let rules = trident_rules();
+            let mut ledger = ledger_for(&hex, Some(&rules));
+            ledger.walking_silver.departing.insert("903".to_string(), 0);
+            let (held, drained) = silver_stock_at_transport(&hex, &ledger);
+            assert_eq!(drained, vec![0, 0, 0], "{order}");
+            assert_eq!(held["903"], 150, "{order}: the walker lent nothing");
+            assert_eq!(
+                held["901"], 90,
+                "{order}: the sharer that stayed paid the study"
+            );
+            assert_eq!(held["902"], 0, "{order}");
+        }
+    }
+
+    // --- every consumer of a SHARE pool agrees on what each sharer lent (`ah-pf7t`) -----------
+    //
+    // One hex, sharer 2 holding $300 and 15 wood between spender 1, listed before it, and spender
+    // 3, listed after it (and the same hex reversed, `ah-lnz4`); quartermaster 900 to ship to.
+    // Each case drives one consumer, or two on the same sharer, in a turn of its own, and sharer 2
+    // ships `ALL SILV` (and `ALL WOOD`) to 900. Every reader of the pool must then tell one story:
+    // what the consumer drew, what [`Lending`] says sharer 2 lent before TRANSPORT, what TRANSPORT
+    // ships, and what the month-end purse books as `Lent` on its SILVER row. A new reader that
+    // re-derives the lending instead of asking [`SharerStock::at`] or [`Lending`] fails here.
+    mod share_pool_agreement {
+        use super::*;
+
+        const LENDER: &str = "2";
+
+        /// One consumer's turn and what it should cost sharer 2.
+        struct Case {
+            name: &'static str,
+            /// Orders for spenders 1 and 3 (and walker 4); sharer 2's shipment is added.
+            orders: &'static str,
+            /// What the consumer drew out of the pool, as the consumer itself reports it.
+            drew: fn(&TurnReview) -> i64,
+            /// Silver sharer 2 lent before TRANSPORT.
+            lent: i64,
+            /// Whether a sharer walks out of the hex as movement begins (`ah-wyj8`).
+            walker: bool,
+        }
+
+        fn silver(review: &TurnReview, id: &str) -> UnitSilver {
+            shipment_silver(review, id)
+        }
+
+        fn spent_on(review: &TurnReview, id: &str, cause: SilverChangeCause) -> i64 {
+            silver(review, id)
+                .changes
+                .iter()
+                .filter(|moved| moved.cause == cause)
+                .map(|moved| -moved.amount)
+                .sum()
+        }
+
+        fn cases() -> Vec<Case> {
+            vec![
+                Case {
+                    name: "GIVE: a giver with no silver gives the sharer's",
+                    orders: "unit 1\nGIVE 3 100 SILV\n",
+                    drew: |review| silver(review, "3").received,
+                    lent: 100,
+                    walker: false,
+                },
+                Case {
+                    name: "TAKE: a GIVE written from the other end draws the same purse",
+                    orders: "unit 3\nTAKE FROM 1 100 SILV\n",
+                    drew: |review| silver(review, "3").taken,
+                    lent: 100,
+                    walker: false,
+                },
+                Case {
+                    name: "SELL beside a BUY: a sale of the sharer's wood, a buy on its silver",
+                    orders: "unit 3\nSELL 15 wood\nunit 1\nBUY 2 grain\n",
+                    // The seller sells all 15 of the sharer's wood at $3 (its proceeds are its
+                    // own, `rules/sell`), and the buyer's $40 is the sharer's silver.
+                    drew: |review| {
+                        let sold: i64 = silver(review, "3")
+                            .changes
+                            .iter()
+                            .filter(|moved| moved.cause == SilverChangeCause::Sold)
+                            .map(|moved| moved.amount)
+                            .sum();
+                        assert_eq!(sold, 45, "the sale");
+                        spent_on(review, "1", SilverChangeCause::Bought)
+                    },
+                    lent: 40,
+                    walker: false,
+                },
+                Case {
+                    name: "CAST: a mage with no silver casts on the sharer's",
+                    orders: "unit 1\nCAST Create_Amulet_Of_Protection\n",
+                    // `data/CRPA` (Trident): 200 silver a cast.
+                    drew: |review| silver(review, "1").cast_made * 200,
+                    lent: 200,
+                    walker: false,
+                },
+                Case {
+                    name: "BUY: a buyer with no silver buys on the sharer's",
+                    orders: "unit 3\nBUY 2 grain\n",
+                    drew: |review| spent_on(review, "3", SilverChangeCause::Bought),
+                    lent: 40,
+                    walker: false,
+                },
+                Case {
+                    name: "STUDY: a student with no silver studies on the sharer's",
+                    orders: "unit 3\nSTUDY COMB\n",
+                    // `data/COMB` (Trident): 10 silver a month.
+                    drew: |review| spent_on(review, "3", SilverChangeCause::Studied),
+                    lent: 10,
+                    walker: false,
+                },
+                Case {
+                    name: "two spenders: a cast and a BUY empty the sharer between them",
+                    orders: "unit 1\nCAST Create_Amulet_Of_Protection\nunit 3\nBUY 5 grain\n",
+                    drew: |review| {
+                        silver(review, "1").cast_made * 200
+                            + spent_on(review, "3", SilverChangeCause::Bought)
+                    },
+                    lent: 300,
+                    walker: false,
+                },
+                Case {
+                    // The refused study takes nothing and is handed back, so the month still
+                    // closes covered and the purse books what the cast and the BUY drew
+                    // (`ah-li7l`).
+                    name: "a STUDY the emptied pool refuses lends nothing more",
+                    orders: "unit 1\nCAST Create_Amulet_Of_Protection\nSTUDY COMB\n\
+                             unit 3\nBUY 5 grain\n",
+                    drew: |review| {
+                        silver(review, "1").cast_made * 200
+                            + spent_on(review, "3", SilverChangeCause::Bought)
+                    },
+                    lent: 300,
+                    walker: false,
+                },
+                Case {
+                    name: "a sharer that walked away lends a STUDY nothing",
+                    orders: "unit 4\nMOVE S\nunit 3\nSTUDY COMB\n",
+                    drew: |review| spent_on(review, "3", SilverChangeCause::Studied),
+                    lent: 10,
+                    walker: true,
+                },
+            ]
+        }
+
+        /// The hex, its spenders in `reversed` order or as listed, and the walker's destination.
+        fn regions(reversed: bool, walker: bool) -> Vec<ReportRegion> {
+            let mut region = caravanserai_owner("900", 1, 0, 0);
+            region.for_sale = vec![MarketItem {
+                amount: 100,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 20,
+            }];
+            region.wanted = vec![MarketItem {
+                amount: 100,
+                name: "wood".to_string(),
+                tag: "WOOD".to_string(),
+                price: 3,
+            }];
+            let mut units = vec![
+                with_skill(unit("1"), "CRPA", 1),
+                sharing(with_item(
+                    with_silver(unit(LENDER), 300),
+                    15,
+                    "wood",
+                    "WOOD",
+                )),
+                with_skill(unit("3"), "CRPA", 1),
+            ];
+            if walker {
+                // Listed first, so a flat drain would lay a later study on it.
+                units.insert(0, sharing(with_silver(unit("4"), 500)));
+            }
+            if reversed {
+                units.reverse();
+            }
+            region.units.extend(units);
+            vec![region, region_at("1:0,2", 0, 2, Vec::new())]
+        }
+
+        fn options(walker: bool) -> CheckOptions {
+            let mut options = with_map();
+            if walker {
+                options
+                    .month_end
+                    .insert("4".to_string(), Coordinate { x: 0, y: 2, z: 1 });
+            }
+            options
+        }
+
+        /// What [`Lending`] says sharer 2 lent before TRANSPORT, off the hex's own ledger.
+        fn lending_before_transport(regions: &[ReportRegion], orders: &str, walker: bool) -> i64 {
+            let ordered = OrderedUnits::read(orders);
+            let hex = Hex::read(&regions[0], &ordered, &[]);
+            let rules = trident_rules();
+            let mut ledger = ledger_for(&hex, Some(&rules));
+            if walker {
+                ledger.walking_silver.departing.insert("4".to_string(), 0);
+            }
+            let index = hex
+                .units
+                .iter()
+                .position(|o| o.unit.unit_id == LENDER)
+                .expect("the sharer is in the hex");
+            Lending::before(&hex, &ledger, StatePhase::Transport)
+                .netted()
+                .lends[index]
+        }
+
+        #[test]
+        fn every_silver_consumer_agrees_on_what_the_sharer_lent() {
+            let rules = trident_rules();
+            for case in cases() {
+                for reversed in [false, true] {
+                    let label = format!("{} (reversed: {reversed})", case.name);
+                    let regions = regions(reversed, case.walker);
+                    let orders = format!("{}unit {LENDER}\nTRANSPORT 900 ALL SILV\n", case.orders);
+                    let review = review_turn(
+                        &report(regions.clone()),
+                        &orders,
+                        Some(&rules),
+                        options(case.walker),
+                    );
+                    assert_eq!((case.drew)(&review), case.lent, "{label}: the consumer");
+                    assert_eq!(
+                        lending_before_transport(&regions, &orders, case.walker),
+                        case.lent,
+                        "{label}: Lending"
+                    );
+                    assert_eq!(
+                        silver_shipped(&review, LENDER),
+                        300 - case.lent,
+                        "{label}: TRANSPORT {:?}",
+                        silver(&review, LENDER)
+                    );
+                    assert_eq!(
+                        spent_on(&review, LENDER, SilverChangeCause::Lent),
+                        case.lent,
+                        "{label}: the month-end purse"
+                    );
+                }
+            }
+        }
+
+        /// What `units` in one Trident hex (grain at $20, quartermaster 900) ship when `orders`
+        /// run, in both report orders, with what [`Lending`] says each lent before TRANSPORT.
+        fn shipped_and_lent(
+            units: Vec<ReportUnit>,
+            orders: &str,
+            ids: &[&str],
+        ) -> Vec<(&'static str, Vec<(i64, i64)>)> {
+            let rules = trident_rules();
+            super::both_orders(units)
+                .into_iter()
+                .map(|(order, units)| {
+                    let mut region = caravanserai_owner("900", 1, 0, 0);
+                    region.for_sale = vec![MarketItem {
+                        amount: 100,
+                        name: "grain".to_string(),
+                        tag: "GRAI".to_string(),
+                        price: 20,
+                    }];
+                    region.units.extend(units);
+                    let review = review_turn(
+                        &report(vec![region.clone()]),
+                        orders,
+                        Some(&rules),
+                        with_map(),
+                    );
+                    let ordered = OrderedUnits::read(orders);
+                    let hex = Hex::read(&region, &ordered, &[]);
+                    let ledger = ledger_for(&hex, Some(&rules));
+                    let lending = Lending::before(&hex, &ledger, StatePhase::Transport).netted();
+                    let at =
+                        |id: &str| hex.units.iter().position(|o| o.unit.unit_id == id).unwrap();
+                    let figures = ids
+                        .iter()
+                        .map(|id| (silver_shipped(&review, id), lending.lends[at(id)]))
+                        .collect();
+                    (order, figures)
+                })
+                .collect()
+        }
+
+        /// A cast the pool cannot fund is not cast and takes nothing (`data/CRPA`: 200; the purse
+        /// stops at the cast, all or nothing), so the sharer lent nothing and ships all its $150
+        /// (cold-read review finding 1).
+        #[test]
+        fn a_cast_the_pool_cannot_fund_leaves_the_sharer_its_silver() {
+            for (order, figures) in shipped_and_lent(
+                vec![
+                    with_skill(unit("1"), "CRPA", 1),
+                    sharing(with_silver(unit("2"), 150)),
+                ],
+                "unit 1\nCAST Create_Amulet_Of_Protection\nunit 2\nTRANSPORT 900 ALL SILV\n",
+                &["2"],
+            ) {
+                assert_eq!(figures, vec![(150, 0)], "{order}: (shipped, lent)");
+            }
+        }
+
+        /// The sharers' $25 pay 902's $20 BUY, so 903's own STUDY (`data/COMB`: 10) finds $5 at
+        /// most and is refused, taking nothing: each sharer ships what it did not lend the BUY,
+        /// whichever is drained first (cold-read review finding 2; `rules/share`).
+        #[test]
+        fn a_lenders_refused_study_takes_nothing_from_another_sharer() {
+            for (order, figures) in shipped_and_lent(
+                vec![
+                    sharing(with_silver(unit("903"), 20)),
+                    unit("902"),
+                    sharing(with_silver(unit("901"), 5)),
+                ],
+                "unit 902\nBUY 1 grain\nunit 903\nSTUDY COMB\nTRANSPORT 900 ALL SILV\n\
+                 unit 901\nTRANSPORT 900 ALL SILV\n",
+                &["903", "901"],
+            ) {
+                let [(shipped_903, lent_903), (shipped_901, lent_901)] = figures[..] else {
+                    unreachable!()
+                };
+                assert_eq!(
+                    lent_903 + lent_901,
+                    20,
+                    "{order}: only the BUY was lent for"
+                );
+                assert_eq!(
+                    shipped_903,
+                    20 - lent_903,
+                    "{order}: 903's study took nothing"
+                );
+                assert_eq!(shipped_901, 5 - lent_901, "{order}: 901");
+            }
+        }
+
+        /// A STUDY the pool cannot fund is refused and takes nothing - the whole fee, not only the
+        /// overdraft (`monthorders.cpp`: `cost > GetSharedMoney()`): student 902's own $5 is still
+        /// its own to ship, and sharer 903 lent nothing (cold-read review finding 3; `data/COMB`
+        /// in Trident: 10).
+        #[test]
+        fn a_refused_study_leaves_the_student_its_own_silver() {
+            for (order, figures) in shipped_and_lent(
+                vec![
+                    sharing(with_silver(unit("903"), 0)),
+                    with_silver(unit("902"), 5),
+                ],
+                "unit 902\nSTUDY COMB\nTRANSPORT 900 ALL SILV\n",
+                &["902", "903"],
+            ) {
+                assert_eq!(figures, vec![(5, 0), (0, 0)], "{order}: (shipped, lent)");
+            }
+        }
+
+        /// Goods draw on the sharer's own row as they are spent (`draw_on_lenders`), so the one
+        /// reading of its stock ([`SharerStock::at`]) is what a later spend and TRANSPORT both
+        /// read: spender 1's GIVE of 10 of the sharer's wood and spender 3's SELL of 15 leave the
+        /// sharer none to ship, in either order (`rules/sequenceofevents`: "Give orders" before
+        /// "Market orders").
+        #[test]
+        fn a_gift_and_a_sale_of_a_sharers_goods_agree_with_what_it_ships() {
+            let rules = trident_rules();
+            for reversed in [false, true] {
+                let orders = format!(
+                    "unit 1\nGIVE 3 10 WOOD\nunit 3\nSELL 15 wood\n\
+                     unit {LENDER}\nTRANSPORT 900 ALL WOOD\n"
+                );
+                let regions = regions(reversed, false);
+                let review =
+                    review_turn(&report(regions.clone()), &orders, Some(&rules), with_map());
+                let sold = silver(&review, "3")
+                    .changes
+                    .iter()
+                    .filter(|moved| moved.cause == SilverChangeCause::Sold)
+                    .map(|moved| moved.amount)
+                    .sum::<i64>();
+                assert_eq!(sold, 15 * 3, "reversed: {reversed}: 3 sells all 15");
+                let ordered = OrderedUnits::read(&orders);
+                let hex = Hex::read(&regions[0], &ordered, &[]);
+                let ledger = ledger_for(&hex, Some(&rules));
+                let x = hex
+                    .units
+                    .iter()
+                    .position(|o| o.unit.unit_id == LENDER)
+                    .expect("the sharer is in the hex");
+                let stock = SharerStock::at(&ledger, &hex, StatePhase::Transport, "WOOD")
+                    .expect("the pool is readable");
+                assert_eq!(
+                    stock.own_for(x),
+                    0,
+                    "reversed: {reversed}: none left to ship"
+                );
+                assert_eq!(
+                    ledger.transport_holding(&hex, LENDER, "WOOD"),
+                    0,
+                    "reversed: {reversed}"
+                );
+            }
+        }
     }
 
     /// What a quartermaster ships to another quartermaster in TRANSPORT's second sub-phase is gone
