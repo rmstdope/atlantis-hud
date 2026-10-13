@@ -29,6 +29,11 @@ line: number | null,
  */
 unitPrice: number | null, other: ItemChangeParty | null, 
 /**
+ * The unit whose order this unit's goods paid for: `Some` only on
+ * [`ItemChangeCause::LentForGive`], where `other` is that order's receiver (`ah-49is`).
+ */
+borrower?: ItemChangeParty, 
+/**
  * Whether this tag names people rather than equipment, as `Ruleset::is_man` settles it
  * (`crates/core/src/movement/rules.rs`). A centaur counts, being both a race and a mount;
  * the catalogue takes that view when it is scraped and nothing here re-decides it

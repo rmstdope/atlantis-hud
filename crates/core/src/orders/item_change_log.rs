@@ -66,6 +66,7 @@ mod tests {
             line: None,
             unit_price: None,
             other: None,
+            borrower: None,
             is_man: false,
         }
     }

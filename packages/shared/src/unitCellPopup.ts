@@ -523,6 +523,10 @@ function itemCauseClause(change: ItemChange, unit: PreviewedUnit, people: boolea
     case "given-away":
       // `ah-rgkk.3.2` reserves a null party for a GIVE to a foreign faction that names no unit.
       return change.other ? `gave ${n} to ${party(change.other)}` : `gave ${n} to another faction`;
+    // A sharer's goods paid for another unit's GIVE (newage trident `rules/share`): the sharer
+    // lent them for that GIVE and gave nothing itself (`ah-49is`, the agreed words).
+    case "lent-for-give":
+      return `lent ${n}${change.borrower ? ` for ${party(change.borrower)}` : ""} to give to ${lentReceiver(change.other)}`;
     case "was-given":
       return `given ${n}${change.other ? ` by ${party(change.other)}` : ""}`;
     case "took":
@@ -541,6 +545,17 @@ function itemCauseClause(change: ItemChange, unit: PreviewedUnit, people: boolea
     default:
       return change.delta > 0 ? `gained ${n}` : `lost ${n}`;
   }
+}
+
+/**
+ * The receiver of a GIVE a sharer lent for (`ah-49is`): the party, a number the report does not
+ * show, or - with no party, as the core leaves another faction's unit - another faction.
+ */
+function lentReceiver(other: ItemChangeParty | null): string {
+  if (other === null) {
+    return "another faction";
+  }
+  return other.name === null ? `unit ${other.unitId}, which your report does not show` : party(other);
 }
 
 /** What a BUILD spend went into, named from the unit's own `built` list where one matches. */

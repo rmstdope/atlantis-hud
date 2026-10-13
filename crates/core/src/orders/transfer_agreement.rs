@@ -105,7 +105,8 @@ fn the_seam_reads_the_give_phase_of_a_hand_built_hex() {
 
 /// Every item this month's transfers move into or out of one unit, netted per upper-case tag.
 ///
-/// The five transfer causes and no others. `GiftReverted` is deliberately excluded: it is
+/// The six transfer causes and no others - `LentForGive` among them, a sharer's part of another
+/// unit's GIVE (`ah-49is`). `GiftReverted` is deliberately excluded: it is
 /// `rules/form`'s dissolution reverting goods to another unit, not a Give-phase transfer, and
 /// neither of the other two surfaces records it as one.
 ///
@@ -133,6 +134,7 @@ fn preview_transfers(report_text: &str, orders: &str) -> BTreeMap<String, BTreeM
                 if !matches!(
                     change.cause,
                     ItemChangeCause::GivenAway
+                        | ItemChangeCause::LentForGive
                         | ItemChangeCause::WasGiven
                         | ItemChangeCause::Took
                         | ItemChangeCause::WasTakenFrom
@@ -164,7 +166,7 @@ struct Compared {
     formed: bool,
     men_estimated: bool,
     reported_men: i64,
-    /// The preview: `UnitPreview::item_changes` whose cause is one of the five transfer causes,
+    /// The preview: `UnitPreview::item_changes` whose cause is one of the six transfer causes,
     /// netted per tag.
     preview: BTreeMap<String, i64>,
     /// The walk: `walked_items` minus `reported_items`, per tag. `None` where the walk answered

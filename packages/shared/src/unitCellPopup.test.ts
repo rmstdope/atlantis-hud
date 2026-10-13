@@ -3223,6 +3223,7 @@ describe("the items popup's cause sentences", () => {
       line: number | null;
       unitPrice: number | null;
       other: { unitId: string; name: string | null } | null;
+      borrower: { unitId: string; name: string | null };
       isMan: boolean;
     }> = {}
   ) =>
@@ -3297,6 +3298,53 @@ describe("the items popup's cause sentences", () => {
     expect(notes).not.toContain("Nothing this month changes these.");
   });
 
+  it("says a sharer lent the goods for another unit's GIVE rather than giving to its receiver", () => {
+    const notes = notesFor({
+      items: [{ name: "iron", tag: "IRON", amount: 32 }],
+      itemChanges: [
+        moved({
+          tag: "IRON",
+          name: "iron",
+          cause: "lent-for-give",
+          delta: -14,
+          other: { unitId: "4840", name: "Unit" },
+          borrower: { unitId: "4008", name: "Unit" }
+        }),
+        moved({ tag: "IRON", name: "iron", cause: "given-away", delta: -14, other: { unitId: "4008", name: "Unit" } })
+      ]
+    });
+    expect(notes[0]).toBe("iron: lent 14 for Unit (4008) to give to Unit (4840), gave 14 to Unit (4008).");
+    expect(notes.join(" ")).not.toContain("gave 14 to Unit (4840)");
+  });
+
+  it("names each loan in one month, in the order they run", () => {
+    expect(
+      notesFor({
+        items: [{ name: "iron", tag: "IRON", amount: 9 }],
+        itemChanges: [
+          moved({
+            tag: "IRON",
+            name: "iron",
+            cause: "lent-for-give",
+            delta: -14,
+            other: { unitId: "4840", name: "Unit" },
+            borrower: { unitId: "4008", name: "Unit" }
+          }),
+          moved({
+            tag: "IRON",
+            name: "iron",
+            cause: "lent-for-give",
+            delta: -7,
+            other: { unitId: "1604", name: "Watch" },
+            borrower: { unitId: "4012", name: "Scouts" }
+          })
+        ]
+      })[0]
+    ).toBe(
+      "iron: lent 14 for Unit (4008) to give to Unit (4840), lent 7 for Scouts (4012) to give to Watch (1604)."
+    );
+  });
+
   it("still says nothing changes when it lists no movement", () => {
     expect(notesFor({ items: [{ name: "grain", tag: "GRAI", amount: 8 }] })).toContain(
       "Nothing this month changes these."
@@ -3361,6 +3409,46 @@ describe("the items popup's cause sentences", () => {
       "gave 2 to Scouts (1502)"
     ],
     ["given to a foreign faction", { cause: "given-away", delta: -2 }, "gave 2 to another faction"],
+    [
+      "lent for another unit's give",
+      {
+        cause: "lent-for-give",
+        delta: -14,
+        other: { unitId: "4840", name: "Unit" },
+        borrower: { unitId: "4008", name: "Unit" }
+      },
+      "lent 14 for Unit (4008) to give to Unit (4840)"
+    ],
+    [
+      "lent for a give to a unit the report does not show",
+      {
+        cause: "lent-for-give",
+        delta: -14,
+        other: { unitId: "4840", name: null },
+        borrower: { unitId: "4008", name: "Unit" }
+      },
+      "lent 14 for Unit (4008) to give to unit 4840, which your report does not show"
+    ],
+    [
+      "lent for a give to another faction",
+      { cause: "lent-for-give", delta: -14, other: null, borrower: { unitId: "4008", name: "Unit" } },
+      "lent 14 for Unit (4008) to give to another faction"
+    ],
+    [
+      "lent with no borrower named",
+      { cause: "lent-for-give", delta: -14, other: { unitId: "4840", name: "Unit" } },
+      "lent 14 to give to Unit (4840)"
+    ],
+    [
+      "lent for a give by a unit known only by number",
+      {
+        cause: "lent-for-give",
+        delta: -14,
+        other: { unitId: "4840", name: "Unit" },
+        borrower: { unitId: "4008", name: null }
+      },
+      "lent 14 for unit 4008 to give to Unit (4840)"
+    ],
     [
       "given to it",
       { cause: "was-given", delta: 30, other: { unitId: "1774", name: "Elders" } },
