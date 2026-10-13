@@ -23,3 +23,15 @@
 **Prevent by.** A check when a refactoring bead is planned (`produce-bead` step 2, or Forge's filing) that lists the open and in-progress beads naming the same functions (`bd search` on the `Where` section's symbols), so a dependency edge orders them.
 
 **Seen before.** ah-0ial (a concurrent merge broke a new test's call site), in a different area of the code.
+
+## Main stopped compiling its tests: two PRs, each green alone, merged one after the other
+
+**What happened.** This bead's docs-only retrospective commit went red in `rust` (clippy). The cause was on main, not in the PR: #1555 (ah-nd0e) gave the test helper `silver_shipped` an `orders` argument, and #1559 (ah-479u) then merged four calls without it. Both were green on their own heads. Every open PR touching the crate goes red until someone fixes main. This one fixed the four call sites itself.
+
+**Why.** `main` has no branch protection (`branches/main/protection` answers 404), so nothing requires a PR to be up to date with main before it merges. Two PRs that each pass alone can merge into a main that does not build.
+
+**Cost.** About fifteen minutes: reading the failure, a rebase, the fix, a gate run and a CI cycle. It also spent one of this bead's three fix attempts on someone else's break.
+
+**Prevent by.** Requiring branches to be up to date before merging (`required_status_checks.strict`, or a merge queue) on `main`. Alternatively, a step in `produce-bead`'s *Merging* that runs the fast gate on the PR merged with the latest `origin/main` immediately before `gh pr merge`.
+
+**Seen before.** ah-0ial ("a signature change broke a concurrent PR's call sites", same mechanism).
