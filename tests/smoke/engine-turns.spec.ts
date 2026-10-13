@@ -275,8 +275,8 @@ test("a game stored by a newer build is refused, and left as it was", async ({ p
   await page.evaluate(async () => {
     const stamp = "2026-08-01T09:00:00Z";
     await new Promise<void>((resolve, reject) => {
-      // One above what this build opens game databases at: GAME_DATABASE_VERSION (7) + 1.
-      const request = indexedDB.open("atlantis-hud-game-newer", 8);
+      // One above what this build opens game databases at: GAME_DATABASE_VERSION (8) + 1.
+      const request = indexedDB.open("atlantis-hud-game-newer", 9);
       request.onupgradeneeded = () => {
         request.result.createObjectStore("importedTurns", { keyPath: ["factionId", "turnNumber"] });
       };
@@ -364,5 +364,5 @@ test("a game stored by a newer build is refused, and left as it was", async ({ p
     return result;
   });
 
-  expect(stored).toEqual({ version: 8, stores: ["importedTurns"], turns: [72] });
+  expect(stored).toEqual({ version: 9, stores: ["importedTurns"], turns: [72] });
 });
