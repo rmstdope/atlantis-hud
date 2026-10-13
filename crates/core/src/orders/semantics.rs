@@ -14541,6 +14541,30 @@ fn lend_at_moments(
 /// Silver only. Items pool too (`Sharing::reading`), but the silver column is what a player reads
 /// and what this bead was filed from.
 fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
+    sharing_purse_over(hex, ledger, &PURSE_MOMENTS)
+}
+
+/// [`sharing_purse`], settled only over the moments `rules/sequenceofevents` runs up to and
+/// including STUDY - what the purse has lent each unit by the time its fee is charged
+/// (`ah-41yw`). The same gates, so a hex whose purse the column says lends nothing lends nothing
+/// here either, and the study popup and the sharer's SILVER cell agree about who paid.
+fn sharing_purse_by_study(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
+    sharing_purse_over(
+        hex,
+        ledger,
+        &[
+            LendingMoment::Cast,
+            LendingMoment::Movement,
+            LendingMoment::Study,
+        ],
+    )
+}
+
+fn sharing_purse_over(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    moments: &[LendingMoment],
+) -> SharingPurse {
     let arrivals = ledger.walking_silver.arrivals_at(LendingMoment::MonthEnd);
     let nothing = SharingPurse {
         lends: vec![0; hex.units.len()],
@@ -14591,7 +14615,7 @@ fn sharing_purse(hex: &Hex<'_>, ledger: &Ledger<'_>) -> SharingPurse {
         };
     }
 
-    let (mut purse, covered) = lend_at_moments(hex, ledger, &sharing, &PURSE_MOMENTS);
+    let (mut purse, covered) = lend_at_moments(hex, ledger, &sharing, moments);
 
     purse.net_passed_on();
 
@@ -18326,11 +18350,12 @@ fn study_forecasts(
     let men = ledger.state.men_after_the_market(hex, Some(ruleset));
     let departed = departures_after_load_checks(hex, ledger, Some(ruleset));
     let halved = magic_study_halved(hex, ruleset);
+    let purse = sharing_purse_by_study(hex, ledger);
 
     let mut forecasts = Vec::with_capacity(hex.units.len());
     for (index, ordered) in hex.units.iter().enumerate() {
         forecasts.push(one_study_forecast(
-            hex, ledger, ruleset, &men, &departed, &halved, index, ordered,
+            hex, ledger, ruleset, &men, &departed, &halved, &purse, index, ordered,
         ));
     }
     forecasts
@@ -18356,6 +18381,7 @@ fn one_study_forecast(
     men: &[LateMen],
     departed: &BTreeSet<String>,
     halved: &[Option<bool>],
+    purse: &SharingPurse,
     index: usize,
     ordered: &Ordered<'_>,
 ) -> Option<super::effects::StudyForecast> {
@@ -18394,10 +18420,16 @@ fn one_study_forecast(
     if skill.cost.is_none() {
         doubts.push(doubt(StudyDoubtReason::FeeUnpriced));
     } else {
-        // What the unit holds as the month-long phase opens, before its own fee.
+        // What the unit can draw on as the month-long phase opens, before its own fee: its own
+        // silver, less what it lent its faction-mates and plus what a sharer's purse lent it by
+        // STUDY - `rules/share` lends silver "for buying or studying" (`ah-41yw`). Lends and
+        // borrows are netted, so their difference is the unit's whole movement through the purse.
+        let through_purse = purse.borrows.get(index).copied().unwrap_or(0)
+            - purse.lends.get(index).copied().unwrap_or(0);
         let balance = ledger
             .state
-            .balance_at(StatePhase::Movement, &ordered.unit.unit_id, SILVER);
+            .balance_at(StatePhase::Movement, &ordered.unit.unit_id, SILVER)
+            + through_purse;
         if priced.spends > balance {
             doubts.push(StudyDoubt {
                 reason: StudyDoubtReason::FeeShort,
@@ -60696,6 +60728,43 @@ BUILD
         assert_eq!(study.doubts[0].fee, 200);
         assert_eq!(study.doubts[0].short_by, 160);
         assert_eq!(study.points_after, 30);
+    }
+
+    /// `ah-41yw`. `rules/share` (New Age: Trident): a sharing unit "will provide silver for buying
+    /// or studying", so a penniless student beside a sharing faction-mate is not short - the purse
+    /// that drops the sharer's SILVER cell by the fee is the one that pays it.
+    #[test]
+    fn a_study_a_sharing_faction_mate_pays_for_is_not_doubted() {
+        // Combat costs $10 a man (`rules/skills_studying`).
+        let student = with_men(with_silver(unit("6017"), 0), 1);
+        let sharer = sharing(with_silver(unit("4931"), 2119));
+        let study = study_of(
+            vec![region(vec![student, sharer])],
+            "unit 6017\nSTUDY Combat\n",
+            "6017",
+        )
+        .expect("a studying unit is forecast");
+
+        assert!(study.doubts.is_empty(), "{study:?}");
+        assert_eq!(study.points_after, 30);
+    }
+
+    /// `ah-41yw`: a purse that covers only part of the fee leaves the rest short.
+    #[test]
+    fn a_study_a_sharer_pays_only_part_of_is_short_by_the_rest() {
+        // Tactics costs $200 a man (`rules/skills_studying`).
+        let student = with_men(with_silver(unit("900"), 40), 1);
+        let sharer = sharing(with_silver(unit("901"), 100));
+        let study = study_of(
+            vec![region(vec![student, sharer])],
+            "unit 900\nSTUDY Tactics\n",
+            "900",
+        )
+        .expect("a studying unit is forecast");
+
+        assert_eq!(study.doubts.len(), 1, "{study:?}");
+        assert_eq!(study.doubts[0].reason, effects::StudyDoubtReason::FeeShort);
+        assert_eq!(study.doubts[0].short_by, 160);
     }
 
     /// `ah-8n8y`. `rules/sequenceofevents` settles BUY before STUDY and `rules/skills_studying`
