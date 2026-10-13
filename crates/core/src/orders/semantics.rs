@@ -11498,6 +11498,12 @@ fn cast(
         .flat_map(|plan| &plan.materials)
         .zip(&sources)
         .map(|(material, (own, lenders))| {
+            // `SharerStock::own_for` and the fallback above never read negative, so this is
+            // the clamped `own + lent < amount` test `RunCreateArtifact` makes.
+            debug_assert!(
+                *own >= 0,
+                "a caster's own stock toward a material is never negative"
+            );
             let lent: i64 = lenders.iter().map(|(_, lends)| lends).sum();
             (material.amount - material.amount.min(*own) - lent).max(0)
         })
@@ -11552,9 +11558,7 @@ fn cast(
         // overdraws it. A refused cast draws on no sharer, since it takes nothing (`ah-h7xy`); what
         // the sharers could have lent it is still not the caster's shortfall.
         let own = material.amount.min(own);
-        let uncovered = if !outcome.draws_on_sharers() {
-            shortfall
-        } else {
+        let uncovered = if outcome.draws_on_sharers() {
             draw_on_lenders(
                 ledger,
                 hex,
@@ -11567,6 +11571,8 @@ fn cast(
                 ItemChangeCause::CastSpent,
                 None,
             )
+        } else {
+            shortfall
         };
         let from_caster = outcome.caster_charge(own, uncovered);
         record_unfunded(ledger, who, &material.tag, uncovered);
