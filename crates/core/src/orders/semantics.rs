@@ -54609,14 +54609,10 @@ BUILD
             sharing(with_silver(unit("902"), 50)),
             with_silver(unit("903"), 100),
         ]);
-        let review = review_turn(
-            &report(vec![region]),
-            "unit 901\nGIVE 900 100 SILV\nTRANSPORT 900 ALL SILV\n\
+        let orders = "unit 901\nGIVE 900 100 SILV\nTRANSPORT 900 ALL SILV\n\
              unit 902\nTRANSPORT 900 ALL SILV\n\
-             unit 903\nGIVE 902 100 SILV\n",
-            Some(&rules),
-            with_map(),
-        );
+             unit 903\nGIVE 902 100 SILV\n";
+        let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         let receiver = shipment_silver(&review, "900");
         let received: i64 = receiver
             .changes
@@ -54637,7 +54633,7 @@ BUILD
             review.findings
         );
         assert_eq!(
-            silver_shipped(&review, "902"),
+            silver_shipped(&review, orders, "902"),
             100,
             "{:?}",
             shipment_silver(&review, "902")
@@ -54655,15 +54651,11 @@ BUILD
         region
             .units
             .extend([unit("901"), sharing(with_silver(unit("902"), 50))]);
-        let review = review_turn(
-            &report(vec![region]),
-            "unit 901\nGIVE 900 100 SILV\nTRANSPORT 900 ALL SILV\n\
-             unit 902\nTRANSPORT 900 ALL SILV\n",
-            Some(&rules),
-            with_map(),
-        );
+        let orders = "unit 901\nGIVE 900 100 SILV\nTRANSPORT 900 ALL SILV\n\
+             unit 902\nTRANSPORT 900 ALL SILV\n";
+        let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, "902"),
+            silver_shipped(&review, orders, "902"),
             0,
             "{:?}",
             shipment_silver(&review, "902")
@@ -54695,7 +54687,7 @@ BUILD
             );
             let review = review_turn(&report(vec![region]), &orders, Some(&rules), with_map());
             assert_eq!(
-                silver_shipped(&review, "902"),
+                silver_shipped(&review, &orders, "902"),
                 ships,
                 "refilled: {refill}: {:?}",
                 shipment_silver(&review, "902")
@@ -54716,17 +54708,13 @@ BUILD
             sharing(with_silver(unit("902"), 50)),
             with_silver(unit("903"), 300),
         ]);
-        let review = review_turn(
-            &report(vec![region]),
-            "unit 901\nGIVE 900 100 SILV\nCAST Create_Amulet_Of_Protection\n\
+        let orders = "unit 901\nGIVE 900 100 SILV\nCAST Create_Amulet_Of_Protection\n\
              TRANSPORT 900 ALL SILV\n\
              unit 902\nTRANSPORT 900 ALL SILV\n\
-             unit 903\nGIVE 902 300 SILV\n",
-            Some(&rules),
-            with_map(),
-        );
+             unit 903\nGIVE 902 300 SILV\n";
+        let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, "902"),
+            silver_shipped(&review, orders, "902"),
             100,
             "{:?}",
             shipment_silver(&review, "902")
