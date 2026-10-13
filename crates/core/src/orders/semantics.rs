@@ -6058,14 +6058,16 @@ impl Ledger<'_> {
     /// from the final balance so earlier orders cannot spend it, but TRANSPORT follows both
     /// PRODUCE phases (`rules/sequenceofevents`).
     ///
-    /// Silver is what the unit still holds as [`SharerStock::held`] reads it - the one reading of
-    /// a `SHARE` sharer's stock (`ah-pf7t`). That carries what the purse lent at CAST, the market
-    /// and STUDY ([`Lending`]), so a sharer's `TRANSPORT ... ALL SILV` ships only what its
-    /// faction-mates' orders left it (`ah-su1x`); hands back a STUDY the unit could not pay for,
-    /// which silver arriving only in a TRANSPORT sub-phase must not meet ([`refused_study`],
-    /// `ah-rt4p`); and keeps what a cut `BUY` never spent ([`Ledger::overcharged`]). Where the
-    /// stock cannot be read - the unit's own balance or the pool is in doubt - the plain balance
-    /// with the refused study handed back, lending nothing, as the purse itself lends nothing there.
+    /// Every tag is what the unit has of its own as the one reading of a `SHARE` sharer's stock
+    /// reads it ([`SharerStock::own_for`], `ah-pf7t`): a lender's balance less what its
+    /// faction-mates' orders drew on it, so a gift of a sharer's goods is not shipped again by the
+    /// sharer. For silver that carries what the purse lent at CAST, the market and STUDY
+    /// ([`Lending`]), so a sharer's `TRANSPORT ... ALL SILV` ships only what its faction-mates'
+    /// orders left it (`ah-su1x`); hands back a STUDY the unit could not pay for, which silver
+    /// arriving only in a TRANSPORT sub-phase must not meet ([`refused_study`], `ah-rt4p`); and
+    /// keeps what a cut `BUY` never spent ([`Ledger::overcharged`]). Where the stock cannot be
+    /// read - the unit's own balance or the pool is in doubt - the plain balance, silver with the
+    /// refused study handed back, lending nothing, as the purse itself lends nothing there.
     fn transport_holding(&self, hex: &Hex<'_>, unit_id: &str, tag: &str) -> i64 {
         let held = SharerStock::for_spender(self, hex, StatePhase::Transport, unit_id, tag)
             .map_or_else(
