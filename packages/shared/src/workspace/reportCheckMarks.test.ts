@@ -23,7 +23,7 @@ describe("the checked-report marks", () => {
     expect([...checkedKeys(storage, "game-1")].sort()).toEqual(["95:71", "95:72", "95:73", "95:?"]);
   });
 
-  it("does not move marks written under the engine's count", () => {
+  it("moves old marks once, and not again after the first write", () => {
     const storage = memoryStorage();
     storage.items.set("atlantis-hud-ruleset-checked-game-1", JSON.stringify(["95:70"]));
 

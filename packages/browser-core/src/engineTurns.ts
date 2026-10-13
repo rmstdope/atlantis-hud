@@ -9,7 +9,7 @@
  * stored rows already made (which sighting is newer, how stale a hex is) comes out as before.
  *
  * Pure, and kept apart from the store, because vitest has no IndexedDB: the upgrade in
- * `webStore.ts` only reads every row, clears the store and writes back what this returns.
+ * `webStore.ts` only walks each store and writes back what this returns (`moveStoreToEngineTurns`).
  */
 
 type Row = Record<string, unknown>;
