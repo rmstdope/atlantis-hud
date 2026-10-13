@@ -15420,13 +15420,14 @@ fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> Shor
 /// that the direction of transfer is reversed"). Silver moved between two members counts once;
 /// what such a move asked beyond what the receiver was credited - in a sharing hex the source is
 /// charged the whole ask - was never the members' silver, and is part of what they spend
-/// (`ah-j5s1`). Nothing that leaves the set is taken off: a `GIVE` out, a discard, or a `TAKE` by an outsider
+/// (`ah-j5s1`); that remainder is added by [`pool_silver_figures`], the one place a gift beyond
+/// the pool is counted (`ah-9bac`), and is always `0` for one unit. Nothing that leaves the set is taken off: a `GIVE` out, a discard, or a `TAKE` by an outsider
 /// is part of what the orders spend.
 ///
 /// Read as the ledger's own Give-phase balance - which has every receipt in, at the amount the
 /// ledger moved, including a gift its giver funded by a `CLAIM` - with what left the set added
 /// back from [`Ledger::silver_transfers`]. Moves between members cancel in the sum, once each
-/// one's unfunded remainder (charged less received) is added back.
+/// one's unfunded remainder (charged less received) is added back by [`pool_silver_figures`].
 ///
 /// `Cast`, `Market`, `Study` and `MonthEnd` start from that same figure - everything above settles
 /// in the Give phase, before CAST, BUY and STUDY - and differ only by what was earned or received
@@ -15494,13 +15495,6 @@ fn silver_can_have(
         })
         .map(|moved| moved.amount)
         .sum();
-    // A move between two members is counted once, which is only so when the receiver was credited
-    // what the giver was charged. In a sharing hex the giver is charged the whole ask and the
-    // receiver credited only what could be drawn on (`ah-1c8p`, `ah-0mch`): the remainder was
-    // never silver the members had - it is what the orders ask beyond it, part of what they spend
-    // - so it is added back here, or a gift far beyond the pool reads as a negative figure
-    // (`ah-j5s1`).
-    let unfunded_within = silver_unfunded_between(ledger, &ids);
     // ... and what sharers arriving from other hexes lend here: `rules/share` lends within "the
     // same region", where their month ends, and `rules/sequenceofevents` runs movement after the
     // market, so they lend nothing to a reading taken there (`ah-asdp`).
@@ -15543,7 +15537,7 @@ fn silver_can_have(
         })
         .map(|moved| moved.amount)
         .sum();
-    held + sent_out + unfunded_within + arrivals_lend + earned + received
+    held + sent_out + arrivals_lend + earned + received
 }
 
 /// The unit id inside a [`SilverMove::other`] label: `<name> (<id>)`, or `unit <id>` for a unit
@@ -15743,17 +15737,31 @@ fn judge_shortfalls(
     verdicts
 }
 
+/// The figures a not-enough sentence states: what is short and what can be had. What the orders
+/// spend is never worked out on its own: it is [`ShortfallFigures::spend`], so the three figures
+/// cannot drift apart however either one is fixed (`ah-9bac`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ShortfallFigures {
+    short: i64,
+    can_have: i64,
+}
+
+impl ShortfallFigures {
+    /// What the orders (and upkeep) spend: what can be had plus what is short.
+    fn spend(self) -> i64 {
+        self.can_have + self.short
+    }
+}
+
 /// What a pooled tag owes once its claims are netted against its pool, or nothing at all when the
-/// pool covers them. `held` is what the pool's members and its borrowers can have, for the message:
-/// for silver, [`silver_can_have`] - the per-unit sentence's own answer (`ah-w2ou`). `upkeep` is
-/// the fee those same units pay out of their own silver and wages, which the message names as
-/// part of what they spend - its whole, as the unit sentence names it, since their wages are in
-/// `held` (`ah-6xb2`). Always `0` for an item.
+/// pool covers them. `figures.can_have` is what the pool's members and its borrowers can have: for
+/// silver, [`pool_silver_figures`]' answer. `upkeep` is the fee those same units pay out of their
+/// own silver and wages, which the message names as part of what they spend - its whole, as the
+/// unit sentence names it, since their wages are in `can_have` (`ah-6xb2`). Always `0` for an item.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PoolShortfall {
     tag: String,
-    short: i64,
-    held: i64,
+    figures: ShortfallFigures,
     upkeep: i64,
 }
 
@@ -15815,95 +15823,131 @@ fn pool_shortfalls(
         pooled_tags.insert(SILVER.to_string());
     }
     for tag in pooled_tags {
-        // The moment the sentence is read at is the one whose reading set `short` (`ah-w2ou`).
-        let (short, moment) = if silver_by_moment && tag == SILVER {
-            let at_month_end = sharing.silver_short_at(hex, ledger, LendingMoment::MonthEnd);
-            let at_study = sharing.silver_short_at(hex, ledger, LendingMoment::Study);
-            // ... and as the spells are cast, before any SELL has paid in (`ah-9n7l.2`).
-            let at_cast = sharing.silver_short_at(hex, ledger, LendingMoment::Cast);
-            if at_cast > at_month_end.max(at_study) {
-                (at_cast, ShortfallMoment::Cast)
-            } else if at_study > at_month_end {
-                (at_study, ShortfallMoment::Study)
-            } else {
-                (at_month_end, ShortfallMoment::MonthEnd)
-            }
+        let claimed = claims.get(&tag).copied().unwrap_or(0);
+        let (figures, upkeep) = if tag == SILVER {
+            pool_silver_figures(hex, ledger, sharing, claimed, short_counting_cuts)
         } else {
-            (
-                claims.get(&tag).copied().unwrap_or(0) - sharing.pool(ledger, &tag),
-                ShortfallMoment::MonthEnd,
-            )
-        };
-        let (short, moment) = if tag == SILVER && short_counting_cuts > short {
-            (short_counting_cuts, ShortfallMoment::Market)
-        } else {
-            (short, moment)
-        };
-        // ... and never less than what a gift between its units asked beyond the pool. The engine
-        // cuts such a gift to what the pool holds as it runs (`runorders.cpp` `DoGiveOrder`,
-        // `GetSharedNum`), so the silver its receiver gets is the pool's own and pays none of the
-        // remainder; a month-end netting lets it, and reads the hex short by less - or not at all
-        // (`ah-uyon`). The moment stays the one read above: what the hex can have is the same.
-        let short = if tag == SILVER {
-            let ids: BTreeSet<&str> = hex
+            let short = claimed - sharing.pool(ledger, &tag);
+            // What the pool's members and its borrowers hold of it, so the message can say "they
+            // can have X and their orders spend Y" the way the per-unit one does.
+            let can_have = hex
                 .units
                 .iter()
-                .map(|ordered| ordered.unit.unit_id.as_str())
-                .collect();
-            short.max(silver_unfunded_between(ledger, &ids))
-        } else {
-            short
+                .filter(|o| {
+                    o.shares()
+                        || (!ledger.doubted.contains(&o.unit.unit_id)
+                            && relieved_balance(ledger, &o.unit.unit_id, &tag) < 0)
+                })
+                .map(|o| o.holding(&tag))
+                .sum();
+            (ShortfallFigures { short, can_have }, 0)
         };
-        if short <= 0 {
+        if figures.short <= 0 {
             continue;
         }
-
-        // What the pool's members and its borrowers can have, so the message can say "they can
-        // have X and their orders spend Y" the way the per-unit one does - and, for silver, by the
-        // per-unit sentence's own rule, so a receipt counted for one is counted for the other
-        // (`ah-w2ou`).
-        let counted: Vec<&Ordered<'_>> = hex
-            .units
-            .iter()
-            .filter(|o| {
-                o.shares()
-                    || (!ledger.doubted.contains(&o.unit.unit_id)
-                        && (relieved_balance(ledger, &o.unit.unit_id, &tag) < 0
-                            || (tag == SILVER
-                                && (silver_at(ledger, &o.unit.unit_id, LendingMoment::Cast) < 0
-                                    || silver_at(ledger, &o.unit.unit_id, LendingMoment::Study)
-                                        < 0
-                                    || (short_counting_cuts > 0
-                                        && ledger
-                                            .reduced_buys
-                                            .iter()
-                                            .any(|reduced| reduced.unit_id == o.unit.unit_id))))))
-            })
-            .collect();
-        let (held, upkeep) = if tag == SILVER {
-            (
-                silver_can_have(hex, ledger, &counted, moment, sharing.walking),
-                if moment == ShortfallMoment::MonthEnd {
-                    counted
-                        .iter()
-                        .map(|o| unpaid_upkeep(ledger, &o.unit.unit_id))
-                        .sum()
-                } else {
-                    0
-                },
-            )
-        } else {
-            (counted.iter().map(|o| o.holding(&tag)).sum(), 0)
-        };
-
         shortfalls.push(PoolShortfall {
             tag,
-            short,
-            held,
+            figures,
             upkeep,
         });
     }
     shortfalls
+}
+
+/// A sharing hex's silver figures, from this one function (`ah-9bac`): what it is short, what its
+/// counted units can have, and the month-end upkeep the sentence names. `claimed` is the overdraft
+/// of the units that borrow from the pool; `short_counting_cuts` is
+/// [`silver_short_counting_cuts`]. A fix to any of the three figures - and above all to how a gift
+/// beyond the pool is counted - belongs here, where both sides of the sentence are worked out.
+fn pool_silver_figures(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    sharing: &Sharing<'_>,
+    claimed: i64,
+    short_counting_cuts: i64,
+) -> (ShortfallFigures, i64) {
+    let silver_by_moment =
+        sharing.walking.is_some() && sharing.reading(SILVER, None) == Reading::Pooled;
+    // The moment the sentence is read at is the one whose reading set `short` (`ah-w2ou`).
+    let (short, moment) = if silver_by_moment {
+        let at_month_end = sharing.silver_short_at(hex, ledger, LendingMoment::MonthEnd);
+        let at_study = sharing.silver_short_at(hex, ledger, LendingMoment::Study);
+        // ... and as the spells are cast, before any SELL has paid in (`ah-9n7l.2`).
+        let at_cast = sharing.silver_short_at(hex, ledger, LendingMoment::Cast);
+        if at_cast > at_month_end.max(at_study) {
+            (at_cast, ShortfallMoment::Cast)
+        } else if at_study > at_month_end {
+            (at_study, ShortfallMoment::Study)
+        } else {
+            (at_month_end, ShortfallMoment::MonthEnd)
+        }
+    } else {
+        (
+            claimed - sharing.pool(ledger, SILVER),
+            ShortfallMoment::MonthEnd,
+        )
+    };
+    let (short, moment) = if short_counting_cuts > short {
+        (short_counting_cuts, ShortfallMoment::Market)
+    } else {
+        (short, moment)
+    };
+
+    // What the pool's members and its borrowers can have, so the message can say "they can have X
+    // and their orders spend Y" the way the per-unit one does - by the per-unit sentence's own
+    // rule, so a receipt counted for one is counted for the other (`ah-w2ou`).
+    let counted: Vec<&Ordered<'_>> = hex
+        .units
+        .iter()
+        .filter(|o| {
+            o.shares()
+                || (!ledger.doubted.contains(&o.unit.unit_id)
+                    && (relieved_balance(ledger, &o.unit.unit_id, SILVER) < 0
+                        || silver_at(ledger, &o.unit.unit_id, LendingMoment::Cast) < 0
+                        || silver_at(ledger, &o.unit.unit_id, LendingMoment::Study) < 0
+                        || (short_counting_cuts > 0
+                            && ledger
+                                .reduced_buys
+                                .iter()
+                                .any(|reduced| reduced.unit_id == o.unit.unit_id))))
+        })
+        .collect();
+    let can_have = silver_can_have(hex, ledger, &counted, moment, sharing.walking);
+
+    // A gift between the hex's units beyond the pool, counted on both sides of the sentence here
+    // and nowhere else. The engine cuts such a gift to what the pool holds as it runs
+    // (`runorders.cpp` `DoGiveOrder`, `GetSharedNum`): the giver is charged the whole ask and the
+    // receiver credited only the pool's own silver (`ah-1c8p`, `ah-0mch`).
+    //
+    // - What it asked beyond the pool was never silver the members had: it is part of what their
+    //   orders spend, so it is added to what they can have between the counted units, or a gift
+    //   far beyond the pool reads as a negative figure (`ah-j5s1`). A move from a counted unit to
+    //   one not counted is already whole in `silver_can_have`'s silver sent out.
+    // - And the hex is never short less than what such gifts asked beyond the pool, between any
+    //   of its units: the receiver's silver is the pool's own and pays none of the remainder,
+    //   which a month-end netting lets it, reading the hex short by less - or not at all
+    //   (`ah-uyon`). The moment stays the one read above.
+    let between_counted: BTreeSet<&str> = counted
+        .iter()
+        .map(|ordered| ordered.unit.unit_id.as_str())
+        .collect();
+    let between_everyone: BTreeSet<&str> = hex
+        .units
+        .iter()
+        .map(|ordered| ordered.unit.unit_id.as_str())
+        .collect();
+    let can_have = can_have + silver_unfunded_between(ledger, &between_counted);
+    let short = short.max(silver_unfunded_between(ledger, &between_everyone));
+
+    let upkeep = if moment == ShortfallMoment::MonthEnd {
+        counted
+            .iter()
+            .map(|o| unpaid_upkeep(ledger, &o.unit.unit_id))
+            .sum()
+    } else {
+        0
+    };
+    (ShortfallFigures { short, can_have }, upkeep)
 }
 
 /// What a hex whose `SHARE` purse cut a `BUY` is short of silver, read where the cut happened
@@ -16152,14 +16196,18 @@ fn report_shortfalls(
             // through the ledger's own `apply` (M2, `ah-jw85`), and so does what it claimed
             // (`ah-6ak4`). The food is not silver it can have: it is the part of the fee food
             // paid, counted on both sides so the sentence states the whole fee.
-            let can_have = silver_can_have(hex, ledger, &[ordered], moment, None) + food;
+            let figures = ShortfallFigures {
+                short,
+                can_have: silver_can_have(hex, ledger, &[ordered], moment, None) + food,
+            };
             let mut finding = ordered.finding(
                 hex,
                 codes::NOT_ENOUGH_SILVER,
                 format!(
-                    "short ${short}: this unit can have ${can_have} and its {} spend ${}{bought}",
+                    "short ${short}: this unit can have ${} and its {} spend ${}{bought}",
+                    figures.can_have,
                     spenders(upkeep),
-                    can_have + short,
+                    figures.spend(),
                 ),
                 at,
             );
@@ -16193,8 +16241,7 @@ fn report_shortfalls(
 
     for PoolShortfall {
         tag,
-        short,
-        held,
+        figures,
         upkeep,
     } in pool_shortfalls(hex, ledger, &sharing, &verdicts)
     {
@@ -16375,23 +16422,24 @@ fn report_shortfalls(
             continue;
         }
 
+        let ShortfallFigures { short, can_have } = figures;
         let message = if tag == SILVER {
             format!(
-                "the units in this hex are short ${short} between them: they can have ${held} \
+                "the units in this hex are short ${short} between them: they can have ${can_have} \
                  and their {} spend ${}",
                 if upkeep > 0 {
                     "orders and upkeep"
                 } else {
                     "orders"
                 },
-                held + short,
+                figures.spend(),
             )
         } else {
             let short_of = counted_item(short, &tag, hex, ruleset, plurals);
             format!(
                 "the units in this hex are short {short_of} between them: they can have \
-                 {held} and their orders spend {}",
-                held + short,
+                 {can_have} and their orders spend {}",
+                figures.spend(),
             )
         };
         findings.push(hex.finding(code, message));
@@ -67633,6 +67681,51 @@ BUILD
             CheckOptions::default(),
         );
         assert_eq!(hex_silver_figures(&findings), (1000, 1000, 2000));
+    }
+
+    /// The case above, read from the one function that works out a sharing hex's silver figures:
+    /// the gift's $850 beyond the pool is both what the hex is short and part of what its orders
+    /// spend, applied to both sides in that one place, so spend is can-have plus short by
+    /// construction (`ah-9bac`).
+    #[test]
+    fn pool_silver_figures_carries_the_gift_beyond_the_pool_on_both_sides() {
+        let place = region(vec![
+            sharing(with_silver(unit("7"), 100)),
+            sharing(with_silver(unit("8"), 50)),
+        ]);
+        let ordered = OrderedUnits::read("unit 7\nGIVE 8 1000 SILV\n");
+        let rules = ruleset();
+        let hex = hex_with_transfers(
+            &place,
+            &ordered,
+            &[],
+            Some(&rules),
+            &BTreeSet::new(),
+            &NO_UNITS_SHOWN,
+        );
+        let ledger = ledger_for(&hex, Some(&rules));
+        let sharing = Sharing::for_silver(&hex, &ledger);
+        let cuts = silver_short_counting_cuts(&hex, &ledger, &sharing);
+        let (figures, upkeep) = pool_silver_figures(&hex, &ledger, &sharing, 0, cuts);
+        assert_eq!(
+            figures,
+            ShortfallFigures {
+                short: 850,
+                can_have: 150
+            }
+        );
+        assert_eq!(figures.spend(), 1000);
+        assert_eq!(upkeep, 0);
+    }
+
+    /// What a shortfall sentence says the orders spend is what can be had plus what is short,
+    /// whatever either is (`ah-9bac`).
+    #[test]
+    fn shortfall_figures_spend_is_can_have_plus_short() {
+        let figures = |short, can_have| ShortfallFigures { short, can_have };
+        assert_eq!(figures(850, 150).spend(), 1000);
+        assert_eq!(figures(0, 40).spend(), 40);
+        assert_eq!(figures(30, 0).spend(), 30);
     }
 
     /// Sharers 7 ($100) and 8 ($50) fund unit 5's two swords at $125; sharer 7 gives $60 to unit
