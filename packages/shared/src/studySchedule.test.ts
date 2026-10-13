@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { readRuleset } from "@atlantis/fixtures";
 import type { PlannedCast, StudyGoal } from "@atlantis/core-client";
 import { parseGameData, type GameDataIndex } from "./gameData";
-import { buildMagicTree } from "./magicTree";
+import { buildMagicTree, studyPlannerTree } from "./magicTree";
 import {
+  MANIPULATION_NOT_PLANNED,
   SCHEDULE_TURNS,
   cellLabel,
   hoverCard,
@@ -148,6 +149,36 @@ describe("projectAll", () => {
     expect(cell.kind === "study" && cell.blocked).toBe(
       "force is already at 5, the highest there is."
     );
+  });
+
+  // ah-xy2g: a manipulation goal saved before the planner stopped planning it says why it is idle.
+  it("says a saved manipulation goal is not the planner's to plan", () => {
+    const projected = projectAll({
+      mages: [
+        {
+          key: "21/2431",
+          factionId: "21",
+          unitId: "2431",
+          name: "Ereb",
+          regionId: "1:7",
+          studyRegionId: "1:7",
+          structureId: null,
+          offMap: false,
+          leftBuilding: null,
+          leftBy: null,
+          start: at({ FORC: [1, 30], MANI: [2, 90] }),
+          goals: studies("MANI", 24),
+          casts: []
+        }
+      ],
+      tree: studyPlannerTree(tree),
+      turns: TURNS,
+      seats: new Map(),
+      rule: NO_TEACHING_RULE
+    });
+    const cell = projected.get("21/2431")?.cells[0];
+
+    expect(cell?.kind === "study" && cell.blocked).toBe(MANIPULATION_NOT_PLANNED);
   });
 
   it("warns about an impossible month and still plans the turns around it", () => {

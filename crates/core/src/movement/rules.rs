@@ -1841,6 +1841,32 @@ mod tests {
     // `ItemEntry` carries `deny_unknown_fields`, so a new field must be optional in both
     // directions: absent from a ruleset cached before it existed, and present in one scraped
     // after (`ah-1ad6.1`).
+    /// `data/MANI` says continued study gives no further advantages at level 3 in New Origins and
+    /// at level 5 in both New Age worlds (`newage arcanum data MANI`, `newage trident data MANI`),
+    /// so the warning starts past 2 there and past 4 here (`ah-xy2g`). No other skill says it.
+    #[test]
+    fn useful_up_to_reads_each_worlds_own_manipulation_page() {
+        for (json, mani) in [
+            (atlantis_hud_fixtures::RULESET_JSON, Some(2)),
+            (atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON, Some(4)),
+            (atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON, Some(4)),
+        ] {
+            let ruleset = Ruleset::from_json(json).expect("a committed ruleset should be usable");
+            assert_eq!(
+                ruleset
+                    .find_skill("MANI")
+                    .and_then(SkillEntry::useful_up_to),
+                mani
+            );
+            assert_eq!(
+                ruleset
+                    .find_skill("FORC")
+                    .and_then(SkillEntry::useful_up_to),
+                None
+            );
+        }
+    }
+
     #[test]
     fn a_ruleset_without_weapons_still_loads() {
         let json = r#"{

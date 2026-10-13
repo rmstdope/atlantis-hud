@@ -65,7 +65,9 @@ export type MagicTree = {
 /** The three branches whose title and blurb are written rather than taken from a skill. */
 const FOUNDATIONS = "FOUND";
 const DIRECT = "DIRECT";
-const APPRENTICESHIP = "MANI";
+/** Manipulation's tag, which is also its branch's key: `rules/magic_apprentices`. */
+export const APPRENTICE_SKILL = "MANI";
+const APPRENTICESHIP = APPRENTICE_SKILL;
 const ITEM_GRANTED = "ITEM_GRANTED";
 
 const NAMED_BRANCHES: Readonly<Record<string, { title: string; blurb: string }>> = {

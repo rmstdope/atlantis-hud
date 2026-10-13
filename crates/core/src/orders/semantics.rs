@@ -181,6 +181,10 @@ pub mod codes {
     pub const TOO_MANY_QUARTERMASTERS: Code = Code("too-many-quartermasters");
     pub const STUDY_AT_MAXIMUM: Code = Code("study-at-maximum");
     pub const STUDY_UNLEARNABLE: Code = Code("study-unlearnable");
+    /// A STUDY past the level the skill's own page says is worth having (`data/MANI` level 3,
+    /// "Continued study of this skill gives no further advantages."; `ah-xy2g`). Its own code
+    /// rather than `study-at-maximum`'s, whose contract is the ceiling the forecast also reads.
+    pub const STUDY_GAINS_NOTHING: Code = Code("study-gains-nothing");
     pub const MAGIC_STUDY_CAPPED_BY_PREREQUISITES: Code =
         Code("magic-study-capped-by-prerequisites");
     pub const ALREADY_BUILT: Code = Code("already-built");
@@ -275,7 +279,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 56] = [
+    pub const ALL: [Code; 57] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -332,6 +336,7 @@ pub mod codes {
         SAIL_THROUGH_NECK_OF_LAND,
         TRANSPORT_OUT_OF_REACH,
         SAIL_NOT_BY_OWNER,
+        STUDY_GAINS_NOTHING,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -18893,7 +18898,10 @@ fn check_studying(
 ) {
     // No ruleset, no stated ceiling: there is nothing to compare the unit's level against.
     let Some(ruleset) = ruleset else { return };
-    if !options.emits(codes::STUDY_AT_MAXIMUM) && !options.emits(codes::STUDY_UNLEARNABLE) {
+    if !options.emits(codes::STUDY_AT_MAXIMUM)
+        && !options.emits(codes::STUDY_UNLEARNABLE)
+        && !options.emits(codes::STUDY_GAINS_NOTHING)
+    {
         return;
     }
 
@@ -18944,7 +18952,7 @@ fn check_studying(
             ));
         } else if let Some(useful) = skill
             .useful_up_to()
-            .filter(|useful| options.emits(codes::STUDY_AT_MAXIMUM) && level >= *useful)
+            .filter(|useful| options.emits(codes::STUDY_GAINS_NOTHING) && level >= *useful)
         {
             // Below the ceiling, but past what the skill's own page says is worth having:
             // `data/MANI` level 3, "Continued study of this skill gives no further advantages."
@@ -18955,7 +18963,7 @@ fn check_studying(
             };
             findings.push(ordered.finding(
                 hex,
-                codes::STUDY_AT_MAXIMUM,
+                codes::STUDY_GAINS_NOTHING,
                 format!(
                     "{} gives no further advantages past level {useful} and this unit is {standing}",
                     skill.name
@@ -50124,7 +50132,7 @@ BUILD
             vec![region(vec![apprentice(2)])],
             "unit 5\nSTUDY MANI\n",
         ));
-        assert_eq!(at_two.code, codes::STUDY_AT_MAXIMUM);
+        assert_eq!(at_two.code, codes::STUDY_GAINS_NOTHING);
         assert_eq!(
             at_two.message,
             "manipulation gives no further advantages past level 2 and this unit is already there"
@@ -50138,6 +50146,27 @@ BUILD
             at_three.message,
             "manipulation gives no further advantages past level 2 and this unit is already at level 3"
         );
+    }
+
+    /// The other side of the same ruling (`ah-xy2g`): an apprentice studying manipulation takes
+    /// no mage seat, so a one-seat building still shelters the mage listed after him.
+    #[test]
+    fn an_apprentice_takes_no_mage_seat() {
+        let findings = check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("2", "Fort")],
+                ..region(vec![
+                    in_structure(
+                        with_race(studying_unit("4", "MANI", 1), 1, "leader", "LEAD"),
+                        "2",
+                    ),
+                    in_structure(mage_with_id("5", 2), "2"),
+                ])
+            }],
+            "unit 4\nSTUDY MANI\nunit 5\nSTUDY FORC\n",
+        );
+
+        assert_eq!(findings, vec![]);
     }
 
     /// Level 1 to 2 is still worth studying as far as this check can say: silent.
@@ -56612,6 +56641,18 @@ BUILD
                     "WOOD",
                 )])],
                 orders: "unit 900\nBUILD Caravanserai\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::STUDY_GAINS_NOTHING,
+                regions: vec![region(vec![with_race(
+                    studying_unit("900", "MANI", 2),
+                    1,
+                    "leader",
+                    "LEAD",
+                )])],
+                orders: "unit 900\nSTUDY MANI\n",
                 allowance: None,
                 unclaimed: None,
             },

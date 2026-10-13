@@ -524,6 +524,12 @@ export const WARNING_GROUPS: readonly {
           "A unit ordered to study a skill that at least one of its races cannot learn any further."
       },
       {
+        code: "study-gains-nothing",
+        title: "Study past what a skill gives",
+        description:
+          "A unit ordered to study a skill past the level its own description says gives anything more, such as manipulation past level 2."
+      },
+      {
         code: "study-unlearnable",
         title: "Study of an unlearnable skill",
         description:
