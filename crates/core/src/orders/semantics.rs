@@ -6055,13 +6055,18 @@ impl Ledger<'_> {
     ///
     /// Silver also leaves out what a sharer lent its faction-mates' orders before TRANSPORT
     /// ([`Ledger::lent_before_transport`]), so a sharer's `TRANSPORT ... ALL SILV` ships only what
-    /// the hex's casts, purchases and studies left it (`ah-su1x`).
+    /// the hex's casts, purchases and studies left it (`ah-su1x`). Where that same settlement
+    /// refused the unit's STUDY, its whole fee is carried back rather than [`refused_study`]'s
+    /// overdraft: a refused study takes nothing, own coins included (`ah-li7l` review).
     fn transport_holding(&self, hex: &Hex<'_>, unit_id: &str, tag: &str) -> i64 {
         let (refused, lent) = if tag.eq_ignore_ascii_case(SILVER) {
-            (
-                refused_study(self, hex, unit_id),
-                self.lent_before_transport(hex, unit_id),
-            )
+            let (lent, refused_by_purse) = self.lent_before_transport(hex, unit_id);
+            let refused = if refused_by_purse > 0 {
+                refused_by_purse
+            } else {
+                refused_study(self, hex, unit_id)
+            };
+            (refused, lent)
         } else {
             (0, 0)
         };
@@ -6088,19 +6093,22 @@ impl Ledger<'_> {
     /// the students are paid one by one in region order, as the engine pays them, so only the
     /// ones that no longer fit lend nothing (`ah-li7l`).
     ///
-    /// `0` for a unit the hex does not list, a hex that does not pool silver, and a pool that
+    /// Paired with the fee of the unit's STUDY that settlement refused ([`SharingPurse::refused`]),
+    /// `0` where it paid or there was none.
+    ///
+    /// `(0, 0)` for a unit the hex does not list, a hex that does not pool silver, and a pool that
     /// cannot be trusted - accept-on-doubt, as the purse itself lends nothing there.
-    fn lent_before_transport(&self, hex: &Hex<'_>, unit_id: &str) -> i64 {
+    fn lent_before_transport(&self, hex: &Hex<'_>, unit_id: &str) -> (i64, i64) {
         let Some(index) = hex
             .units
             .iter()
             .position(|ordered| ordered.unit.unit_id == unit_id)
         else {
-            return 0;
+            return (0, 0);
         };
         let sharing = Sharing::for_silver(hex, self);
         if sharing.reading(SILVER, None) == Reading::PerUnit || !sharing.pool_trusted(self) {
-            return 0;
+            return (0, 0);
         }
         let (mut purse, _) = lend_at_moments(
             hex,
@@ -6116,7 +6124,7 @@ impl Ledger<'_> {
         // the market has that overdraft handed back by `refused_study` already, so only what it
         // lent beyond what it borrowed left it (`ah-su1x` review).
         purse.net_passed_on();
-        purse.lends.get(index).copied().unwrap_or(0)
+        (purse.lends[index], purse.refused[index])
     }
 
     /// The item pictures maintenance reads, including the report-wide shipment phase that the
@@ -14396,9 +14404,10 @@ struct SharingPurse {
     /// A sharer that borrows is lent the money as surely as a non-sharer is, and counts it in its
     /// own column (`ah-0nwd`).
     borrows: Vec<i64>,
-    /// What each unit's STUDY overdraft came to where the purse could not pay it, and so the
-    /// engine refused the study and took nothing for it (`ah-li7l`). `0` for a unit whose study
-    /// was paid or that does not study short. Handed back to the unit at every later moment.
+    /// The fee of each unit's STUDY the purse could not pay, and so the engine refused and took
+    /// nothing for - the student's own coins included ([`refused_fee`], `ah-li7l`). `0` for a
+    /// unit whose study was paid or that does not study short. Handed back to the unit at every
+    /// later moment.
     refused: Vec<i64>,
     /// The result of judging each known shortfall against this pool, aligned with `hex.units`.
     coverage: Vec<Option<super::silver::SharedSilverCoverage>>,
@@ -14565,7 +14574,8 @@ fn lend_at_moments(
             for (claim, refused) in claims.into_iter().zip(refused) {
                 let Some(index) = claim else { continue };
                 if refused {
-                    purse.refused[index] += needs[index];
+                    purse.refused[index] +=
+                        refused_fee(ledger, &hex.units[index].unit.unit_id, needs[index]);
                 } else {
                     purse.borrows[index] += needs[index];
                 }
@@ -14742,8 +14752,10 @@ fn silver_short_at_study(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
 /// cannot pay for it. The engine refuses a study outright when its cost is more than the unit can
 /// draw on (`monthorders.cpp`: "STUDY: Not enough funds."), and takes nothing: the whole fee is
 /// handed back. In a hex whose `SHARE` purse lends silver "for buying or studying"
-/// (`rules/share`), the unit's own coins went on the study and the purse paid the rest, so only
-/// the overdraft is handed back (`ah-rt4p`).
+/// (`rules/share`), this is the case where the purse paid: the unit's own coins went on the
+/// study and the purse paid the rest, so only the overdraft is handed back (`ah-rt4p`). A study
+/// the purse refused hands back its whole fee instead, which [`Ledger::transport_holding`] reads
+/// from the purse's own settlement (`ah-li7l`).
 fn refused_study(ledger: &Ledger<'_>, hex: &Hex<'_>, unit_id: &str) -> i64 {
     let overdrawn = silver_short_at_study(ledger, unit_id);
     if overdrawn <= 0 {
@@ -14752,6 +14764,14 @@ fn refused_study(ledger: &Ledger<'_>, hex: &Hex<'_>, unit_id: &str) -> i64 {
     if Sharing::for_silver(hex, ledger).reading(SILVER, ledger.ruleset) == Reading::Pooled {
         return overdrawn;
     }
+    refused_fee(ledger, unit_id, overdrawn)
+}
+
+/// What a STUDY the engine refuses hands back to a unit the ledger has `overdrawn`: its whole
+/// fee, since `Do1StudyOrder` (`monthorders.cpp`) calls `ConsumeSharedMoney` only once the study
+/// goes ahead, so a refused one takes nothing, own coins included - and never less than the
+/// overdraft itself.
+fn refused_fee(ledger: &Ledger<'_>, unit_id: &str, overdrawn: i64) -> i64 {
     ledger
         .silver_moves
         .get(unit_id)
@@ -52846,6 +52866,46 @@ BUILD
         );
     }
 
+    /// A refused study takes nothing, the student's own coins included: `Do1StudyOrder`
+    /// (`monthorders.cpp`) calls `ConsumeSharedMoney` only once the study goes ahead. Sharer 903's
+    /// $12 pays 902's $10 combat (`data/COMB`), leaving $2; sharer 904's own study then needs $10
+    /// against the $7 it can reach and is refused, so 904 still holds its $5 and its `ALL SILV`
+    /// ships them, while 903 ships its last $2 (`ah-li7l` review, finding 1).
+    #[test]
+    fn a_refused_student_keeps_its_own_silver_for_its_shipment() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            unit("902"),
+            sharing(with_silver(unit("903"), 12)),
+            sharing(with_silver(unit("904"), 5)),
+        ]);
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 902\nSTUDY COMB\nunit 903\nTRANSPORT 900 ALL SILV\n\
+             unit 904\nSTUDY COMB\nTRANSPORT 900 ALL SILV\n",
+            Some(&rules),
+            with_map(),
+        );
+        assert_eq!(
+            silver_shipped(&review, "903"),
+            2,
+            "{:?}",
+            shipment_silver(&review, "903")
+        );
+        assert_eq!(
+            silver_shipped(&review, "904"),
+            5,
+            "{:?}",
+            shipment_silver(&review, "904")
+        );
+        assert_eq!(
+            shipment_silver(&review, "902").short_for_orders,
+            Some(0),
+            "902's study is paid"
+        );
+    }
+
     /// A sharer that lent at the market and then had its own STUDY paid for passed its
     /// faction-mates' silver on, as the month-end purse nets it (`ah-49j0`): 903, listed first, pays
     /// 902's $15 BUY out of its $20, then its own $10 study (`data/COMB`) takes its last $5 and $5
@@ -52870,14 +52930,14 @@ BUILD
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = trident_rules();
         let ledger = ledger_for(&hex, Some(&rules));
-        assert_eq!(ledger.lent_before_transport(&hex, "903"), 10);
+        assert_eq!(ledger.lent_before_transport(&hex, "903").0, 10);
         assert_eq!(
-            ledger.lent_before_transport(&hex, "901"),
+            ledger.lent_before_transport(&hex, "901").0,
             5,
             "901 paid the rest of 903's study"
         );
         assert_eq!(
-            ledger.lent_before_transport(&hex, "902"),
+            ledger.lent_before_transport(&hex, "902").0,
             0,
             "a borrower lends nothing"
         );
