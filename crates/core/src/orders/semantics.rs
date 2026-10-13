@@ -11272,6 +11272,59 @@ fn study(
 /// ruleset does not know, or knows no cost for, charges nothing and doubts nothing: most spells
 /// cost nothing to cast, and a unit's other sums are still good.
 #[allow(clippy::too_many_arguments)]
+/// What a CAST takes, settled once before anything is charged (`ah-1v3z`).
+///
+/// `RunCreateArtifact` (`spells.cpp`) checks `GetSharedNum` against every input before it calls
+/// `ConsumeShared` for any, so a spell short of one input is refused and takes none of them
+/// (`ah-h7xy`). Every charge [`cast`] books - its silver, what the sharers lend, the caster's own
+/// goods - reads this one value rather than deciding for itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CastOutcome {
+    /// Every input is there: the silver is booked and the goods are drawn, sharers' included.
+    Paid,
+    /// The purse could not pay. The silver stays charged, keeping its `not-enough-silver`
+    /// warning, and every later reading hands it back ([`Ledger::unfunded_casts`], `ah-szu0`).
+    RefusedForSilver,
+    /// The silver was there and a good was short: it was never spent, so none is booked.
+    RefusedForGoods,
+}
+
+impl CastOutcome {
+    /// From what the purse leaves unfunded and each material's shortfall - what neither the
+    /// caster nor its sharers cover. A cast short of both is refused for its silver.
+    fn settle(unfunded_silver: i64, shortfalls: &[i64]) -> Self {
+        if unfunded_silver > 0 {
+            Self::RefusedForSilver
+        } else if shortfalls.iter().any(|short| *short > 0) {
+            Self::RefusedForGoods
+        } else {
+            Self::Paid
+        }
+    }
+
+    /// Whether the cast's silver, earned and spent, is booked.
+    fn books_silver(self) -> bool {
+        self != Self::RefusedForGoods
+    }
+
+    /// Whether the sharers are drawn on: a refused cast takes nothing from them.
+    fn draws_on_sharers(self) -> bool {
+        self == Self::Paid
+    }
+
+    /// What the caster's own stock is charged for one material, given what it holds toward it
+    /// and what nobody covered. A refused cast leaves a material it was covered for where it is
+    /// (`ah-479u`); only the short one keeps its ceiling charge, so `not-enough-items` still reads
+    /// one number (`ah-ofpb.5`, round 1 Q4).
+    fn from_caster(self, own: i64, uncovered: i64) -> i64 {
+        if self != Self::Paid && uncovered == 0 {
+            0
+        } else {
+            own + uncovered
+        }
+    }
+}
+
 fn cast(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
@@ -11438,25 +11491,19 @@ fn cast(
             }
         })
         .collect();
-    // `RunCreateArtifact` (`spells.cpp`) checks `GetSharedNum` against every input before it
-    // calls `ConsumeShared` for any, so a spell short of one input is refused and takes none of
-    // them (`ah-h7xy`).
-    let short_of_goods = plan
+    // What neither the caster nor its sharers cover of each material, and from that and the purse
+    // the one decision every charge below reads ([`CastOutcome`]).
+    let shortfalls: Vec<i64> = plan
         .iter()
         .flat_map(|plan| &plan.materials)
         .zip(&sources)
-        .any(|(material, (own, lenders))| {
-            (*own)
-                .max(0)
-                .saturating_add(lenders.iter().map(|(_, lends)| lends).sum::<i64>())
-                < material.amount
-        });
-    let refused = unfunded_cast > 0 || short_of_goods;
-    // A cast refused for its silver keeps its silver charged, and its warning, and every later
-    // reading hands it back ([`Ledger::unfunded_casts`], `ah-szu0`). One refused for its goods
-    // alone had the silver and never spent it, so nothing is charged and there is nothing to hand
-    // back (`ah-h7xy`).
-    if unfunded_cast > 0 || !short_of_goods {
+        .map(|(material, (own, lenders))| {
+            let lent: i64 = lenders.iter().map(|(_, lends)| lends).sum();
+            (material.amount - material.amount.min(*own) - lent).max(0)
+        })
+        .collect();
+    let outcome = CastOutcome::settle(unfunded_cast, &shortfalls);
+    if outcome.books_silver() {
         move_silver(
             ledger,
             StatePhase::Cast,
@@ -11497,15 +11544,16 @@ fn cast(
     // `ItemMovement`s so the ITEMS column can show them exactly as `produce()`'s do. Nothing is
     // credited - `cast()` has never called `credit` for an item and must not start (round 2, Q5,
     // answer C).
-    for (material, (own, lenders)) in plan.materials.iter().zip(sources) {
+    for ((material, (own, lenders)), shortfall) in
+        plan.materials.iter().zip(sources).zip(shortfalls)
+    {
         // Each charged where the goods were: the caster's own, then the sharers' read above.
         // Whatever none of them covers stays on the caster, so a cast the pool cannot fund still
         // overdraws it. A refused cast draws on no sharer, since it takes nothing (`ah-h7xy`); what
         // the sharers could have lent it is still not the caster's shortfall.
         let own = material.amount.min(own);
-        let uncovered = if refused {
-            let lent: i64 = lenders.iter().map(|(_, lends)| lends).sum();
-            (material.amount - own - lent).max(0)
+        let uncovered = if !outcome.draws_on_sharers() {
+            shortfall
         } else {
             draw_on_lenders(
                 ledger,
@@ -11520,15 +11568,7 @@ fn cast(
                 None,
             )
         };
-        // A refused cast takes nothing (`RunCreateArtifact`, `spells.cpp`), so a material the
-        // caster and its sharers cover in full stays where it is (`ah-479u`). Only the short
-        // material keeps its ceiling charge, so `not-enough-items` still reads one number
-        // (`ah-ofpb.5`, round 1 Q4).
-        let from_caster = if refused && uncovered == 0 {
-            0
-        } else {
-            own + uncovered
-        };
+        let from_caster = outcome.from_caster(own, uncovered);
         record_unfunded(ledger, who, &material.tag, uncovered);
         charge(
             ledger,
@@ -55273,6 +55313,70 @@ BUILD
                 "{order}: the sharer that stayed paid the study"
             );
             assert_eq!(held["902"], 0, "{order}");
+        }
+    }
+
+    // --- what a CAST takes, settled once (`ah-1v3z`) -----------------------------------------
+    //
+    // `RunCreateArtifact` (`spells.cpp`) checks every input before it consumes any, so whether a
+    // cast is paid or refused is one decision, and each charge reads it.
+    mod cast_outcome {
+        use super::super::CastOutcome;
+
+        #[test]
+        fn a_cast_with_every_input_is_paid() {
+            assert_eq!(CastOutcome::settle(0, &[0, 0]), CastOutcome::Paid);
+            assert_eq!(CastOutcome::settle(-50, &[]), CastOutcome::Paid);
+        }
+
+        #[test]
+        fn a_cast_short_of_silver_is_refused_for_silver() {
+            assert_eq!(CastOutcome::settle(1, &[0]), CastOutcome::RefusedForSilver);
+        }
+
+        #[test]
+        fn a_cast_short_of_a_good_alone_is_refused_for_goods() {
+            assert_eq!(
+                CastOutcome::settle(0, &[0, 3]),
+                CastOutcome::RefusedForGoods
+            );
+        }
+
+        /// Short of both, the purse's shortfall wins: its silver stays charged, keeping its
+        /// `not-enough-silver` warning (`ah-szu0`).
+        #[test]
+        fn a_cast_short_of_both_is_refused_for_silver() {
+            let outcome = CastOutcome::settle(10, &[3]);
+            assert_eq!(outcome, CastOutcome::RefusedForSilver);
+            assert!(outcome.books_silver());
+        }
+
+        #[test]
+        fn only_a_cast_refused_for_goods_books_no_silver() {
+            assert!(CastOutcome::Paid.books_silver());
+            assert!(CastOutcome::RefusedForSilver.books_silver());
+            assert!(!CastOutcome::RefusedForGoods.books_silver());
+        }
+
+        #[test]
+        fn only_a_paid_cast_draws_on_sharers() {
+            assert!(CastOutcome::Paid.draws_on_sharers());
+            assert!(!CastOutcome::RefusedForSilver.draws_on_sharers());
+            assert!(!CastOutcome::RefusedForGoods.draws_on_sharers());
+        }
+
+        /// A refused cast leaves a material it was covered for where it is (`ah-479u`), and
+        /// charges the short one at its ceiling (`ah-ofpb.5`): the caster's own plus what nobody
+        /// covered.
+        #[test]
+        fn a_refused_cast_charges_only_the_short_material() {
+            for refused in [CastOutcome::RefusedForSilver, CastOutcome::RefusedForGoods] {
+                assert_eq!(refused.from_caster(40, 0), 0, "{refused:?}: covered");
+                assert_eq!(refused.from_caster(40, 35), 75, "{refused:?}: short");
+                assert_eq!(refused.from_caster(0, 75), 75, "{refused:?}: none held");
+            }
+            assert_eq!(CastOutcome::Paid.from_caster(40, 0), 40);
+            assert_eq!(CastOutcome::Paid.from_caster(40, 5), 45);
         }
     }
 
