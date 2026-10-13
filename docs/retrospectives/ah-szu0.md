@@ -25,6 +25,6 @@ rebase conflict with ah-3uuf, which changed the same fold the same afternoon.
 **Prevent by.** A doc paragraph on `Lending` (semantics.rs) naming `cast()`'s per-caster verdict
 (`Ledger::unfunded_casts`) as the one answer to "was this cast paid", with a test per spender kind
 (study, cast, BUY) in which a later spender in region order is refused after an earlier one
-borrows. A similar question for BUY sizing against the purse is still answered twice.
+borrows.
 
 **Seen before.** ah-0mch (a sharer's stock lent twice through `unfunded`).
