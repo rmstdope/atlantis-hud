@@ -3435,6 +3435,11 @@ describe("the items popup's cause sentences", () => {
       "lent 14 for Unit (4008) to give to another faction"
     ],
     [
+      "lent with no borrower named",
+      { cause: "lent-for-give", delta: -14, other: { unitId: "4840", name: "Unit" } },
+      "lent 14 to give to Unit (4840)"
+    ],
+    [
       "lent for a give by a unit known only by number",
       {
         cause: "lent-for-give",
