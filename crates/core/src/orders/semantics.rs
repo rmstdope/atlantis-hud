@@ -2479,9 +2479,10 @@ fn forecast_hex(
                     .shared_casts
                     .get(&ordered.unit.unit_id)
                     .map_or(&[][..], Vec::as_slice),
-                // The exact silver GIVEs the hex's sharers paid in full (`ah-ub3y`).
-                paid_gifts: ledger
-                    .paid_gifts
+                // How the unit's silver transfers were funded as they ran: the exact GIVEs paid
+                // in full among them (`ah-ub3y`, `ah-rou9`).
+                fundings: ledger
+                    .silver_fundings
                     .get(&ordered.unit.unit_id)
                     .map_or(&[][..], Vec::as_slice),
                 ..phases.of_with(
@@ -5427,7 +5428,7 @@ impl PhaseHoldings {
             buy_all: &[],
             gifts: &[],
             casts: &[],
-            paid_gifts: &[],
+            fundings: &[],
             silver_moves: &[],
             market_withholds: 0,
         }
@@ -5457,7 +5458,7 @@ impl PhaseHoldings {
             buy_all,
             gifts,
             casts: &[],
-            paid_gifts: &[],
+            fundings: &[],
             silver_moves,
             market_withholds,
         }
@@ -5678,12 +5679,6 @@ struct Ledger<'a> {
     /// column through [`PhaseFacts::casts`] so it prices the spell from the same purse
     /// (`ah-0mch`).
     pub(crate) shared_casts: BTreeMap<String, Vec<SharedCast>>,
-    /// The document lines of each unit's exact silver `GIVE`s the game pays in full - out of the
-    /// unit's own silver or, beyond it, the other sharers' (`runorders.cpp`: `DoGiveOrder` checks
-    /// `GetSharedNum`): handed to the SILVER column through [`PhaseFacts::paid_gifts`] so it does
-    /// not name a gift the game refused nothing as the order the unit is short on (`ah-ub3y`).
-    /// Written by [`transfer`].
-    pub(crate) paid_gifts: BTreeMap<String, Vec<i64>>,
     /// What each unit was charged for a tag beyond what actually moved, because neither it nor
     /// any sharer could fund it: a `GIVE` the engine cuts with "Not enough.", a cast's materials
     /// or a sale the pool fell short of - every overdraft but a cast's silver, which is
@@ -6204,7 +6199,6 @@ fn ledger_for_reaching<'a>(
         settled_buy_all: BTreeMap::new(),
         settled_gifts: BTreeMap::new(),
         shared_casts: BTreeMap::new(),
-        paid_gifts: BTreeMap::new(),
         unfunded: BTreeMap::new(),
         unfunded_casts: BTreeMap::new(),
         silver_fundings: BTreeMap::new(),
@@ -9131,19 +9125,6 @@ fn transfer(
         // actually taken. A `TAKE` is not recorded - the column never deferred one, and its taker
         // side is `Receipts`' business (`ah-awcm`).
         if is_give && tag.eq_ignore_ascii_case(SILVER) {
-            // Paid in full: out of what the giver held, or beyond it by sharers whose stock was
-            // actually read and covered every coin - a pool this walk could not read is no
-            // evidence that it paid (`ah-ub3y`).
-            if matches!(shape, TransferShape::Exact(_))
-                && moved >= quantity
-                && (quantity <= known_source.max(0) || pool_paid)
-            {
-                ledger
-                    .paid_gifts
-                    .entry(from.clone())
-                    .or_default()
-                    .push(placed.line as i64);
-            }
             if let TransferShape::All { except } = shape {
                 ledger
                     .settled_gifts

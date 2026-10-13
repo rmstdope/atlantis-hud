@@ -1710,11 +1710,13 @@ pub struct PhaseFacts<'a> {
     /// This unit's `CAST` lines that drew on another sharer, as the ledger settled them. Empty for
     /// a caller with no ledger, which is every test that builds its own `PhaseFacts`.
     pub casts: &'a [SharedCast],
-    /// The document lines of this unit's exact silver `GIVE`s that the game pays in full - out of
-    /// the unit's own silver or, beyond it, its `SHARE` faction-mates' (`runorders.cpp`:
-    /// `DoGiveOrder` checks `GetSharedNum`) - so it refuses them nothing (`ah-ub3y`). Empty for a
-    /// caller with no ledger, which is every test that builds its own `PhaseFacts`.
-    pub paid_gifts: &'a [i64],
+    /// How this unit's silver `GIVE`s, discards and the `TAKE`s from it were funded as they ran,
+    /// as the ledger recorded them ([`SilverFunding`], `ah-rou9`): which exact `GIVE`s the game
+    /// pays in full - out of the unit's own silver or, beyond it, its `SHARE` faction-mates'
+    /// (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`) - and so refuses nothing
+    /// (`ah-ub3y`). Empty for a caller with no ledger, which is every test that builds its own
+    /// `PhaseFacts`.
+    pub fundings: &'a [SilverFunding],
     /// This unit's silver movements as the ledger recorded them, in settlement order: what the
     /// SILVER column's rows and totals are (`ah-xryu`). Empty for a caller with no ledger, which is
     /// every test that builds its own `PhaseFacts`.
@@ -1744,7 +1746,7 @@ impl<'a> PhaseFacts<'a> {
             buy_all: &[],
             gifts: &[],
             casts: &[],
-            paid_gifts: &[],
+            fundings: &[],
             silver_moves: &[],
             market_withholds: 0,
         }
@@ -1800,11 +1802,17 @@ impl<'a> UnitFacts<'a> {
         self.phases.map_or(&[][..], |phases| phases.casts)
     }
 
-    /// The exact silver `GIVE` lines of this unit's that were paid in full, by the unit or by the
-    /// hex's `SHARE` purse. Empty where there is no ledger.
+    /// Whether this unit's exact silver `GIVE` on document line `line` was paid in full, by the
+    /// unit or by the hex's `SHARE` purse ([`SilverFunding::paid_in_full`]). `false` where there is
+    /// no ledger.
     #[must_use]
-    pub fn paid_gifts(&self) -> &'a [i64] {
-        self.phases.map_or(&[][..], |phases| phases.paid_gifts)
+    pub fn paid_in_full(&self, line: i64) -> bool {
+        self.phases.is_some_and(|phases| {
+            phases
+                .fundings
+                .iter()
+                .any(|funding| funding.line == line && funding.paid_in_full())
+        })
     }
 
     /// The ledger's record of this unit's silver. Empty where there is no ledger.
@@ -2979,7 +2987,7 @@ pub fn forecast_unit(
                         // nothing, so the shortfall bites on a later order and that is the one
                         // named, as `ah-m7su` already has it for `GIVE ALL` (`ah-ub3y`). Without
                         // a ledger nothing is known to be paid, and the gift is named as before.
-                        let paid = facts.paid_gifts().contains(&(placed.line as i64));
+                        let paid = facts.paid_in_full(placed.line as i64);
                         if count > 0 && !paid {
                             spent_on = spent_on.or(Some(SilverSpender::Give));
                         }
@@ -8022,7 +8030,7 @@ mod tests {
                 buy_all: &[],
                 gifts: &[],
                 casts: &[],
-                paid_gifts: &[],
+                fundings: &[],
                 silver_moves: &[],
                 market_withholds: 0,
             }),
