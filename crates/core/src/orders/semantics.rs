@@ -14439,11 +14439,6 @@ impl Lending {
         }
     }
 
-    /// What the pool lent through every moment of [`PURSE_MOMENTS`] up to and including `last`.
-    fn through(hex: &Hex<'_>, ledger: &Ledger<'_>, last: LendingMoment) -> Self {
-        Self::over(hex, ledger, |moment| moment as usize <= last as usize)
-    }
-
     /// What the pool lent through the moments whose phase comes before `phase`: what a reading of
     /// the hex's silver at `phase` must carry. Nothing before [`StatePhase::Market`], since the
     /// first moment is the cast.
@@ -52838,11 +52833,6 @@ BUILD
         assert_eq!(lending.lends, vec![10, 0, 5]);
         assert_eq!(lending.borrows, vec![0, 15, 0]);
         assert!(lending.covered());
-        let through_study = Lending::through(&hex, &ledger, LendingMoment::Study).netted();
-        assert_eq!(
-            through_study.lends, lending.lends,
-            "STUDY is the last moment before TRANSPORT"
-        );
     }
 
     /// The silver stock at TRANSPORT, read off ledger and hex: what each unit has of its own once
