@@ -54570,12 +54570,47 @@ BUILD
                 "{:?}",
                 shipment_silver(&review, "901")
             );
+            // The SILVER row reads the same: a refused cast spent nothing.
+            let mage = shipment_silver(&review, "901");
+            assert!(
+                mage.changes
+                    .iter()
+                    .all(|change| change.cause != SilverChangeCause::CastSpent),
+                "{mage:?}"
+            );
             let effects = item_effects(&report, orders, Some(&rules), &CheckOptions::default());
             assert_eq!(
                 moved(&effects, "902", "FLOA"),
                 0,
                 "{:?}",
                 effects_for(&effects, "902")
+            );
+        }
+
+        /// A cast refused for its goods spends no silver, so it is not what leaves the mage short:
+        /// 901's $200 cannot pay for 20 grain at $20 (`rules/buy`), and the SILVER column names
+        /// the BUY rather than the refused cast (`ah-h7xy` review, finding 1).
+        #[test]
+        fn a_cast_refused_for_its_goods_is_not_what_leaves_the_mage_short() {
+            let rules = wind_for_silver_and_goods();
+            let mut region = region(vec![with_silver(with_skill(unit("901"), "SWIN", 3), 200)]);
+            region.for_sale = vec![MarketItem {
+                amount: 100,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 20,
+            }];
+            let review = review_turn(
+                &report(vec![region]),
+                "unit 901\nCAST Summon_Wind\nBUY 20 grain\n",
+                Some(&rules),
+                CheckOptions::default(),
+            );
+            let mage = shipment_silver(&review, "901");
+            assert_eq!(
+                mage.short_on,
+                Some(crate::orders::silver::SilverSpender::Buy),
+                "{mage:?}"
             );
         }
     }

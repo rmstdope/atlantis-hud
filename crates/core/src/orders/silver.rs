@@ -2753,7 +2753,13 @@ pub fn forecast_unit(
                     transmuting,
                 };
                 let (priced, plan) = price_cast(resolved, &caster, region);
-                if priced.spends > 0 {
+                // A cast refused for its goods alone spends no silver (`semantics::cast`,
+                // `RunCreateArtifact` in `spells.cpp`; `ah-h7xy`), so it is never what leaves
+                // the unit short.
+                let refused_for_goods = plan.as_ref().is_some_and(|plan| {
+                    plan.made == 0 && plan.capped_by == Some(ProductionCap::Materials)
+                });
+                if priced.spends > 0 && !refused_for_goods {
                     spent_on = spent_on.or(Some(SilverSpender::Cast));
                 }
                 cast = cast.or(plan);
