@@ -84,9 +84,21 @@ fn figures(review: &TurnReview) -> (i64, i64, i64) {
 /// gift reaches 4840 as: what they can have, however far beyond it the gift asks.
 const POOL: i64 = 544_165;
 
-fn assert_readable(review: &TurnReview) {
+/// What the template's taxers collect by the month's end, on the "can have" side with the pool
+/// since `ah-6xb2`: $27850, the ledger's best-case credit (`ah-ud89`; the SILVER column books the
+/// settled $27484 of it).
+const TAXED: i64 = 27_850;
+
+/// ... and what its entertainers earn, under Trident only (`ah-6xb2`).
+const ENTERTAINED_UNDER_TRIDENT: i64 = 840;
+
+fn assert_readable(review: &TurnReview, earned: i64) {
     let (short, held, spend) = figures(review);
-    assert_eq!(held, POOL, "they can have the pool");
+    assert_eq!(
+        held,
+        POOL + earned,
+        "they can have the pool and what they earn"
+    );
     assert!(short > 0, "short ${short}");
     assert!(held >= 0, "can have ${held}");
     assert!(spend >= 0, "spend ${spend}");
@@ -95,19 +107,22 @@ fn assert_readable(review: &TurnReview) {
 
 #[test]
 fn a_giver_asking_far_beyond_the_pool_reads_non_negative_figures() {
-    assert_readable(&review(&common::ruleset()));
+    assert_readable(&review(&common::ruleset()), TAXED);
 }
 
 #[test]
 fn and_under_the_trident_ruleset_too() {
-    assert_readable(&review(&common::trident_ruleset()));
+    assert_readable(
+        &review(&common::trident_ruleset()),
+        TAXED + ENTERTAINED_UNDER_TRIDENT,
+    );
 }
 
 /// The same gift as the hex's only order: no standing order of anyone else's in the sentence.
 #[test]
 fn the_gift_alone_reads_non_negative_figures() {
-    assert_readable(&review_orders(
-        &common::ruleset(),
-        "unit 4008\nGIVE 4840 9999999 SILV\n",
-    ));
+    assert_readable(
+        &review_orders(&common::ruleset(), "unit 4008\nGIVE 4840 9999999 SILV\n"),
+        0,
+    );
 }
