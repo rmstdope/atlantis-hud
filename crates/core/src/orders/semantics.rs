@@ -5670,6 +5670,10 @@ struct Ledger<'a> {
     /// and [`SharerStock::at`] adds it back wherever the stock really left is wanted, and is its
     /// only reader - the way [`Ledger::overcharged`] does for a cut `BUY` (`ah-0mch`).
     unfunded: BTreeMap<(String, String), i64>,
+    /// The part of [`Ledger::unfunded`] silver each unit's `CAST` put there: what neither it nor
+    /// any sharer could fund of the spell's cost as [`cast`] priced it. [`SharerStock::at`] reads
+    /// it to hand a refused cast's cost back without adding this part twice (`ah-szu0`).
+    unfunded_casts: BTreeMap<String, i64>,
     /// Every `GIVE`, `TAKE` and discard of silver this walk settled, in settlement order: who it
     /// left, who it reached (`None` for a discard, or a target this walk cannot credit), and how
     /// much - the amount the balances actually moved. What [`silver_can_have`] reads to add back
@@ -6169,6 +6173,7 @@ fn ledger_for_reaching<'a>(
         settled_gifts: BTreeMap::new(),
         shared_casts: BTreeMap::new(),
         unfunded: BTreeMap::new(),
+        unfunded_casts: BTreeMap::new(),
         silver_transfers: Vec::new(),
         silver_moves: BTreeMap::new(),
         shipping_paid: BTreeMap::new(),
@@ -11363,12 +11368,11 @@ fn cast(
     let (priced, plan) = price_cast(resolved, &caster, region);
     // A cast the purse could not pay is still charged in full, to keep its warning; what nobody
     // funded is booked so the pool is not read as drained by it (`ah-0mch`).
-    record_unfunded(
-        ledger,
-        who,
-        SILVER,
-        priced.spends - hopeful.saturating_add(lent_silver).max(0),
-    );
+    let unfunded_cast = priced.spends - hopeful.saturating_add(lent_silver).max(0);
+    record_unfunded(ledger, who, SILVER, unfunded_cast);
+    if unfunded_cast > 0 {
+        *ledger.unfunded_casts.entry(who.clone()).or_default() += unfunded_cast;
+    }
     move_silver(
         ledger,
         StatePhase::Cast,
@@ -13397,12 +13401,36 @@ impl SharerStock {
                     //
                     // A cast or a market the pool could not cover does not stop the fold judging
                     // STUDY, so a study the pool could still pay lends here too (`ah-szu0`).
-                    let refused = if !(silver && phase > StatePhase::Study) {
+                    //
+                    // A refused CAST took nothing either (`spells.cpp`: `RunCreateArtifact`), and
+                    // hands back its cost less the part [`Ledger::unfunded`] already added back
+                    // to `held` (`ah-szu0`).
+                    let unit_id = &ordered.unit.unit_id;
+                    let unfunded_cast = ledger.unfunded_casts.get(unit_id).copied().unwrap_or(0);
+                    let refused = if !silver {
                         0
-                    } else if !pooled {
-                        refused_study(ledger, hex, &ordered.unit.unit_id)
-                    } else {
+                    } else if pooled {
                         lending.refused[index]
+                            - if lending.refused_casts[index] {
+                                unfunded_cast
+                            } else {
+                                0
+                            }
+                    } else {
+                        let study = if phase > StatePhase::Study {
+                            refused_study(ledger, hex, unit_id)
+                        } else {
+                            0
+                        };
+                        // Where nothing pools, the caster's own silver is all the spell could
+                        // draw on, so a cast the ledger could not fund is a cast the engine
+                        // refused.
+                        let cast = if phase > StatePhase::Cast && unfunded_cast > 0 {
+                            refused_cast_cost(ledger, unit_id, 0) - unfunded_cast
+                        } else {
+                            0
+                        };
+                        study + cast
                     };
                     held.saturating_add(carried).saturating_add(refused)
                 }
@@ -13774,21 +13802,30 @@ impl<'a> Sharing<'a> {
     /// cast ([`claimant_cast_overdraft`]): the pool paid that before the market opened, and what
     /// the claimant sells afterwards is its own (`ah-9n7l.2`).
     fn silver_short_at(&self, hex: &Hex<'_>, ledger: &Ledger<'_>, moment: LendingMoment) -> i64 {
-        self.silver_short_reading(hex, ledger, moment, |index| {
-            silver_at(ledger, &hex.units[index].unit.unit_id, moment)
-        })
+        self.silver_short_reading(
+            hex,
+            ledger,
+            moment,
+            |index| silver_at(ledger, &hex.units[index].unit.unit_id, moment),
+            |_| false,
+        )
     }
 
     /// [`Sharing::silver_short_at`] with each unit's silver read by `held`, given its index into
     /// `hex.units`: the one formula, so the SILVER column's purse can read its own figures
     /// through it - the settled tax rather than the hopeful one (`ah-m2d9`) - and still cannot
     /// net the pool differently from the warning (`ah-moq3`, `ah-49j0`).
+    ///
+    /// `cast_refused` names the claimants whose CAST the pool refused: the engine took nothing for
+    /// it (`spells.cpp`: `RunCreateArtifact`), so nothing it overdrew at the cast is owed later and
+    /// [`claimant_cast_overdraft`] does not floor it (`ah-szu0`).
     fn silver_short_reading(
         &self,
         hex: &Hex<'_>,
         ledger: &Ledger<'_>,
         moment: LendingMoment,
         held: impl Fn(usize) -> i64,
+        cast_refused: impl Fn(usize) -> bool,
     ) -> i64 {
         hex.units
             .iter()
@@ -13798,6 +13835,8 @@ impl<'a> Sharing<'a> {
                 let held = held(index);
                 if self.pools_silver(ordered) {
                     -held
+                } else if cast_refused(index) {
+                    (-held).max(0)
                 } else {
                     (-held).max(0).max(claimant_cast_overdraft(
                         ledger,
@@ -14407,7 +14446,7 @@ impl MarketPurse {
 /// Settled **moment by moment** - the market, STUDY, the month's end - by [`sharing_purse`], the
 /// moments [`Sharing::silver_short_at`] reads the hex's warning at (`ah-4oz9`, `ah-49j0`).
 ///
-/// **All or nothing, deliberately**, at every moment but STUDY - the rule `ah-e66j` set for
+/// **All or nothing, deliberately**, at every moment but CAST and STUDY - the rule `ah-e66j` set for
 /// maintenance sharing and for the same reason: where the pool cannot cover every claimant, which
 /// unit is fed cannot be told, so none is credited and every figure stays pessimistic. A player
 /// then sees a shortfall that is real for *somebody* rather than a guess about who. The rule is
@@ -14418,6 +14457,9 @@ impl MarketPurse {
 /// walks the region's objects and the units in each (`monthorders.cpp`: `RunStudyOrders`) and
 /// refuses only the study whose cost is more than the shared money left (`Do1StudyOrder`: "STUDY:
 /// Not enough funds."), so the students earlier in region order are still paid (`ah-li7l`).
+/// CAST is paid the same way and for the same reason: the engine casts unit by unit in region
+/// order (`runorders.cpp`: `RunCastOrders`) and refuses a spell whose cost is more than the
+/// shared money, taking nothing for it (`spells.cpp`: `RunCreateArtifact`; `ah-szu0`).
 ///
 /// Every vector but `arrivals_lend` is index-aligned with `hex.units`, so a claimant is named by
 /// where it sits in the report rather than by a lookup. That does not depend on unit ids being
@@ -14439,10 +14481,10 @@ struct SharingPurse {
     /// A sharer that borrows is lent the money as surely as a non-sharer is, and counts it in its
     /// own column (`ah-0nwd`).
     borrows: Vec<i64>,
-    /// The fee of each unit's STUDY the purse could not pay, and so the engine refused and took
-    /// nothing for - the student's own coins included ([`refused_fee`], `ah-li7l`). `0` for a
-    /// unit whose study was paid or that does not study short. Handed back to the unit at every
-    /// later moment.
+    /// The cost of each unit's CAST and STUDY the purse could not pay, and so the engine refused
+    /// and took nothing for - the unit's own coins included ([`refused_cast_cost`],
+    /// [`refused_fee`]; `ah-szu0`, `ah-li7l`). `0` for a unit whose orders were paid or that does
+    /// not overdraw at either. Handed back to the unit at every later moment.
     refused: Vec<i64>,
     /// [`Lending::short_after_pool`]: what each refused STUDY still lacked after the pool
     /// (`ah-3uuf`).
@@ -14493,20 +14535,23 @@ struct Lending {
     /// What each unit's orders drew out of its faction-mates' pockets: its own overdraft, sharer
     /// or not, at each moment the pool covered.
     borrows: Vec<i64>,
-    /// The fee of each unit's STUDY the pool could not pay, and so the engine refused and took
-    /// nothing for - the student's own coins included ([`refused_fee`], `ah-li7l`). `0` for a
-    /// unit whose study was paid or that does not study short. Handed back to the unit at every
-    /// later moment.
+    /// The cost of each unit's CAST and STUDY the pool could not pay, and so the engine refused
+    /// and took nothing for - the unit's own coins included ([`refused_cast_cost`],
+    /// [`refused_fee`]; `ah-szu0`, `ah-li7l`). `0` for a unit whose orders were paid or that
+    /// does not overdraw at either. Handed back to the unit at every later moment.
     refused: Vec<i64>,
     /// What each refused STUDY still lacked once the pool had lent it all it had left at STUDY:
     /// the figure the study popup calls the student short by (`ah-3uuf`). `0` wherever
     /// [`Lending::refused`] is.
     short_after_pool: Vec<i64>,
-    /// The first moment but STUDY the pool could not cover in full, from which nothing more was
-    /// lent at any moment but STUDY - the all-or-nothing rule (`ah-e66j`, `ah-aqqb`). `None` where
-    /// every moment read was covered. STUDY never stops it, and is not stopped by it: it pays its
-    /// students one by one out of what the lenders still hold and refuses only those that no
-    /// longer fit (`ah-li7l`, `ah-szu0`).
+    /// Whether each unit's CAST is among what `refused` hands back: [`SharerStock::at`] then takes
+    /// off what the ledger already added back as [`Ledger::unfunded_casts`] (`ah-szu0`).
+    refused_casts: Vec<bool>,
+    /// The first moment the pool could not cover in full - the market or the month's end - from
+    /// which nothing more was lent at either - the all-or-nothing rule (`ah-e66j`, `ah-aqqb`).
+    /// `None` where every moment read was covered. CAST and STUDY never stop it, and are not
+    /// stopped by it: each pays its claimants one by one out of what the lenders still hold and
+    /// refuses only those that no longer fit (`ah-li7l`, `ah-szu0`).
     stopped_at: Option<LendingMoment>,
 }
 
@@ -14525,6 +14570,7 @@ impl Lending {
             borrows: vec![0; hex.units.len()],
             refused: vec![0; hex.units.len()],
             short_after_pool: vec![0; hex.units.len()],
+            refused_casts: vec![false; hex.units.len()],
             stopped_at: None,
         }
     }
@@ -14574,10 +14620,10 @@ impl Lending {
     /// plus what it has been lent so far, plus a refused study handed back - and every negative
     /// one filled from the lenders' positive ones in drain order ([`SharerStock::drained`]), or,
     /// where they cannot cover them all, nothing lent from that moment on but at STUDY, the
-    /// unpaid overdrafts laid aside so a later moment judges only what is new. At STUDY the
-    /// claimants are paid one by one in drain order instead, each in full or not at all, as the
-    /// engine pays them ([`SharerStock::paid_one_by_one`], `ah-li7l`), whether or not an earlier
-    /// moment stopped the pool (`ah-szu0`). Before any netting of lends against
+    /// unpaid overdrafts laid aside so a later moment judges only what is new. At CAST and STUDY
+    /// the claimants are paid one by one in drain order instead, each in full or not at all, as
+    /// the engine pays them ([`SharerStock::paid_one_by_one`], `ah-li7l`), whether or not an
+    /// earlier moment stopped the pool (`ah-szu0`). Before any netting of lends against
     /// borrows. The caller has already checked that the hex pools silver and that the pool is
     /// trusted.
     ///
@@ -14691,7 +14737,12 @@ impl Lending {
                 }
             }
 
-            if moment == LendingMoment::Study {
+            // The engine casts and studies one unit at a time, in region order (`runorders.cpp`:
+            // `RunCastOrders`; `monthorders.cpp`: `RunStudyOrders`), and refuses a spell or a
+            // study whose cost is more than the shared money left, taking nothing for it
+            // (`spells.cpp`: `RunCreateArtifact`; `Do1StudyOrder`). So both moments pay their
+            // claimants one by one, and neither stops the pool (`ah-li7l`, `ah-szu0`).
+            if matches!(moment, LendingMoment::Cast | LendingMoment::Study) {
                 let (lent, refused) = SharerStock::new(parties).paid_one_by_one();
                 for (lender, lent) in who.iter().zip(lent) {
                     match lender {
@@ -14703,9 +14754,15 @@ impl Lending {
                 for (claim, missing) in claims.into_iter().zip(refused) {
                     let Some(index) = claim else { continue };
                     if missing > 0 {
-                        purse.refused[index] +=
-                            refused_fee(ledger, &hex.units[index].unit.unit_id, needs[index]);
-                        purse.short_after_pool[index] += missing;
+                        let unit_id = &hex.units[index].unit.unit_id;
+                        if moment == LendingMoment::Cast {
+                            purse.refused_casts[index] = true;
+                            purse.refused[index] +=
+                                refused_cast_cost(ledger, unit_id, needs[index]);
+                        } else {
+                            purse.refused[index] += refused_fee(ledger, unit_id, needs[index]);
+                            purse.short_after_pool[index] += missing;
+                        }
                     } else {
                         purse.borrows[index] += needs[index];
                     }
@@ -14719,9 +14776,9 @@ impl Lending {
             let (lent, short) = SharerStock::new(parties).drained();
             if short > 0 || purse.stopped_at.is_some() {
                 // All or nothing (`ah-e66j`): from the first moment the pool cannot cover in
-                // full, it lends nothing at any moment but STUDY, which still pays its students
-                // one by one out of what the lenders hold (`monthorders.cpp`: `Do1StudyOrder`;
-                // `ah-szu0`).
+                // full, it lends nothing at the market or the month's end, while STUDY still pays
+                // its students one by one out of what the lenders hold (`monthorders.cpp`:
+                // `Do1StudyOrder`; `ah-szu0`).
                 purse.stopped_at.get_or_insert(moment);
                 for (unpaid, need) in unpaid.iter_mut().zip(needs) {
                     *unpaid += need;
@@ -14754,9 +14811,9 @@ impl Lending {
 /// Each moment of [`PURSE_MOMENTS`] in turn reads every unit's **position** -
 /// its own [`silver_at`] then, less what it has lent and plus what it has been lent so far - and
 /// fills every negative one from the lenders' positive ones, or, where they cannot cover them
-/// all, lends nothing from that moment on - except at STUDY, which pays the students one by one
-/// in region order and refuses only the ones that no longer fit, handing their fee back for the
-/// month-end reading (`ah-li7l`). A loan is never paid back by a later receipt: `rules/share` lends silver "for
+/// all, lends nothing from that moment on - except at CAST and STUDY, which pay their claimants
+/// one by one in region order and refuse only the ones that no longer fit, handing their cost
+/// back for the month-end reading (`ah-li7l`, `ah-szu0`). A loan is never paid back by a later receipt: `rules/share` lends silver "for
 /// buying or studying", and nothing in it returns a shipment or wages that arrive after STUDY to
 /// the sharer that already paid (`ah-qrk0`, `ah-aqqb`).
 ///
@@ -14842,11 +14899,15 @@ fn sharing_purse_over(
     }
     let lending = Lending::settle(hex, ledger, &sharing, moments);
 
-    // The warning's month-end reading, on the column's figures - less the studies the engine
-    // refuses, which take nothing (`ah-li7l`).
-    if sharing.silver_short_reading(hex, ledger, LendingMoment::MonthEnd, |index| {
-        own(index, LendingMoment::MonthEnd) + lending.refused[index]
-    }) > 0
+    // The warning's month-end reading, on the column's figures - less the casts and studies the
+    // engine refuses, which take nothing (`ah-li7l`, `ah-szu0`).
+    if sharing.silver_short_reading(
+        hex,
+        ledger,
+        LendingMoment::MonthEnd,
+        |index| own(index, LendingMoment::MonthEnd) + lending.refused[index],
+        |index| lending.refused_casts[index],
+    ) > 0
     {
         // Short only at the month's end: what the purse paid as each order ran stays paid, since
         // the engine charged it then, and what the hex is short is its maintenance - `rules/share`
@@ -14969,6 +15030,28 @@ fn refused_fee(ledger: &Ledger<'_>, unit_id: &str, overdrawn: i64) -> i64 {
         .map(|moved| -moved.amount)
         .sum::<i64>()
         .max(overdrawn)
+}
+
+/// What the ledger charged a unit for a CAST the game refuses, and so never took from it: the
+/// spell's whole silver cost, since `RunCreateArtifact` (`spells.cpp`) checks `GetSharedNum`
+/// against every input before it calls `ConsumeShared`, so a refused spell takes nothing, own
+/// coins included - and never less than the overdraft itself (`ah-szu0`). Net of what the spell
+/// would have earned, which a refused spell earns nothing of either.
+fn refused_cast_cost(ledger: &Ledger<'_>, unit_id: &str, overdrawn: i64) -> i64 {
+    (-ledger
+        .silver_moves
+        .get(unit_id)
+        .into_iter()
+        .flatten()
+        .filter(|moved| {
+            matches!(
+                moved.cause,
+                SilverChangeCause::CastSpent | SilverChangeCause::CastEarned
+            )
+        })
+        .map(|moved| moved.amount)
+        .sum::<i64>())
+    .max(overdrawn)
 }
 
 /// What a unit's own silver is short as the spells are cast, the moment `rules/sequenceofevents`
@@ -53288,6 +53371,98 @@ BUILD
         assert_eq!(
             silver_shipped(&review, "902"),
             140,
+            "{:?}",
+            shipment_silver(&review, "902")
+        );
+        // The SILVER column reads the same purse: 903's study is paid, so it is short nothing
+        // (`ah-szu0` review, finding 2).
+        let student = shipment_silver(&review, "903");
+        assert_eq!(student.short_for_orders, Some(0), "{student:?}");
+    }
+
+    /// A refused cast takes nothing, the caster's own coins included: `RunCreateArtifact`
+    /// (`spells.cpp`) checks `GetSharedNum` before it calls `ConsumeShared`. So sharer 901's $150
+    /// is untouched by its $200 amulet (`data/CRPA`), pays 903's $10 study (`data/COMB`), and its
+    /// `ALL SILV` ships the $140 left (`ah-szu0` review, finding 1).
+    #[test]
+    fn a_sharer_whose_own_cast_is_refused_still_pays_a_study_and_ships_the_rest() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            sharing(with_silver(with_skill(unit("901"), "CRPA", 1), 150)),
+            unit("903"),
+        ]);
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nCAST Create_Amulet_Of_Protection\nTRANSPORT 900 ALL SILV\n\
+             unit 903\nSTUDY COMB\n",
+            Some(&rules),
+            with_map(),
+        );
+        assert_eq!(
+            silver_shipped(&review, "901"),
+            140,
+            "{:?}",
+            shipment_silver(&review, "901")
+        );
+        let student = shipment_silver(&review, "903");
+        assert_eq!(student.short_for_orders, Some(0), "{student:?}");
+    }
+
+    /// Where nothing pools, a refused cast takes nothing either (`spells.cpp`:
+    /// `RunCreateArtifact`): 901's $150 cannot pay a $200 amulet (`data/CRPA`), so its `ALL SILV`
+    /// ships all $150 (`ah-szu0`).
+    #[test]
+    fn a_caster_whose_cast_is_refused_ships_its_own_silver_where_nothing_pools() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region
+            .units
+            .push(with_silver(with_skill(unit("901"), "CRPA", 1), 150));
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nCAST Create_Amulet_Of_Protection\nTRANSPORT 900 ALL SILV\n",
+            Some(&rules),
+            with_map(),
+        );
+        assert_eq!(
+            silver_shipped(&review, "901"),
+            150,
+            "{:?}",
+            shipment_silver(&review, "901")
+        );
+    }
+
+    /// The casts run before the market (`rules/sequenceofevents`), and a refused one takes
+    /// nothing (`spells.cpp`: `RunCreateArtifact`), so the market still finds sharer 902's $150:
+    /// 903's grain at $15 is bought out of it, and 902's `ALL SILV` ships the $135 left
+    /// (`ah-pp0s`, filed from `ah-szu0`'s review, finding 3).
+    #[test]
+    fn a_refused_cast_does_not_stop_the_pool_paying_a_later_buy() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.for_sale = vec![MarketItem {
+            amount: 100,
+            name: "grain".to_string(),
+            tag: "GRAI".to_string(),
+            price: 15,
+        }];
+        region.units.extend([
+            with_skill(unit("901"), "CRPA", 1),
+            sharing(with_silver(unit("902"), 150)),
+            unit("903"),
+        ]);
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nCAST Create_Amulet_Of_Protection\n\
+             unit 902\nTRANSPORT 900 ALL SILV\n\
+             unit 903\nBUY 1 grain\n",
+            Some(&rules),
+            with_map(),
+        );
+        assert_eq!(
+            silver_shipped(&review, "902"),
+            135,
             "{:?}",
             shipment_silver(&review, "902")
         );
