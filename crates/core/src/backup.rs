@@ -815,6 +815,36 @@ fn move_to_engine_turns(collections: &mut EncodedGameBackupCollections) {
     }
 }
 
+/// Caps every sighting of a faction holding an AtlaClient merge at that faction's newest imported
+/// turn (ah-vtgk).
+///
+/// AtlaClient stamps a hex with the engine's turn while version 1 numbered HUD's own turns one
+/// lower, so a hex merged from AtlaClient on the newest turn was stored one turn too new, and
+/// [`move_to_engine_turns`] keeps that difference. Nothing records which sighting came from
+/// AtlaClient, so the repair is the bound that always holds: no sighting is newer than the newest
+/// report of the faction it is filed under. Migration 16 makes the same repair to a stored desktop
+/// game, and `engineTurns.ts` to a browser one.
+fn cap_atlaclient_sightings(collections: &mut EncodedGameBackupCollections) {
+    let merged_from_atlaclient: std::collections::BTreeSet<&str> = collections
+        .merged_reports
+        .iter()
+        .filter(|merge| merge.merged_faction_id == crate::report::atlaclient::ATLACLIENT_SOURCE_ID)
+        .map(|merge| merge.faction_id.as_str())
+        .collect();
+    let mut newest: std::collections::BTreeMap<String, u32> = std::collections::BTreeMap::new();
+    for turn in &collections.imported_turns {
+        if merged_from_atlaclient.contains(turn.faction_id.as_str()) {
+            let entry = newest.entry(turn.faction_id.clone()).or_insert(0);
+            *entry = (*entry).max(turn.turn_number);
+        }
+    }
+    for sighting in &mut collections.region_sightings {
+        if let Some(&cap) = newest.get(&sighting.faction_id) {
+            sighting.last_seen_turn = sighting.last_seen_turn.min(cap);
+        }
+    }
+}
+
 /// One document -> rows to write. Two-stage on purpose: the envelope (`format`, `version`) is read
 /// from a `serde_json::Value` and judged FIRST, so a file that is not a backup, or is from a newer
 /// version, says so even when its body is also missing fields. Only then is the Value turned into a
@@ -869,6 +899,7 @@ pub fn decode_game_backup(
     } = backup;
     if version < 2 {
         move_to_engine_turns(&mut collections);
+        cap_atlaclient_sightings(&mut collections);
     }
     let created_at = manifest.created_at.clone();
     manifest.last_opened_at = opened_at.to_string();
@@ -2201,5 +2232,74 @@ mod tests {
             "version 2 is left as written"
         );
         assert_eq!(current.hex_notes[0].turn, 69);
+    }
+
+    /// ah-vtgk: a version-1 backup was written while HUD numbered its turns one lower than the
+    /// AtlaClient stamps it merged, so a hex merged from AtlaClient on the newest turn sits one turn
+    /// above that faction's newest report even after the move to the engine's count. Restoring it
+    /// caps that faction's sightings at its newest imported turn - the repair migration 16 makes to
+    /// a stored desktop game - and leaves a faction with no AtlaClient merge as it was.
+    #[test]
+    fn a_version_one_backup_caps_atlaclient_sightings_at_the_newest_turn() {
+        let turn = |faction_id: &str| GameBackupImportedTurn {
+            faction_id: faction_id.to_string(),
+            turn_number: 71,
+            raw_report: "r".to_string(),
+            parsed_payload_json: "{}".to_string(),
+            warnings_payload_json: "[]".to_string(),
+            imported_at: None,
+            updated_at: None,
+        };
+        let sighting = |faction_id: &str, last_seen_turn: u32| GameBackupRegionSighting {
+            faction_id: faction_id.to_string(),
+            region_id: "1:7,53".to_string(),
+            last_seen_turn,
+            payload_json: sighting_payload(),
+        };
+        let merge = |faction_id: &str, merged_faction_id: &str| GameBackupMergedReport {
+            faction_id: faction_id.to_string(),
+            turn_number: 71,
+            merged_faction_id: merged_faction_id.to_string(),
+            merged_faction_name: "AtlaClient, turn 72".to_string(),
+            merged_at: "2026-01-05T00:00:00Z".to_string(),
+        };
+        let content = content_with(
+            vec![turn("1"), turn("2")],
+            vec![],
+            vec![sighting("1", 72), sighting("2", 72)],
+            vec![
+                merge("1", crate::report::atlaclient::ATLACLIENT_SOURCE_ID),
+                merge("2", "21"),
+            ],
+            vec![],
+        );
+        let mut version_one: serde_json::Value = serde_json::from_str(
+            &encode_game_backup(content, "2026-01-06T00:00:00Z").expect("encodes"),
+        )
+        .expect("json");
+        version_one["version"] = serde_json::json!(1);
+
+        let restored = decode_game_backup(&version_one.to_string(), "2026-02-01T00:00:00Z")
+            .expect("decodes")
+            .collections;
+
+        let seen = |faction_id: &str| {
+            restored
+                .region_sightings
+                .iter()
+                .find(|row| row.faction_id == faction_id)
+                .map(|row| row.sighting.last_seen_turn)
+        };
+        assert_eq!(restored.imported_turns[0].turn_number, 72);
+        assert_eq!(
+            seen("1"),
+            Some(72),
+            "the AtlaClient-merged faction never reads past its newest turn"
+        );
+        assert_eq!(
+            seen("2"),
+            Some(73),
+            "a faction with no AtlaClient merge only moves"
+        );
     }
 }

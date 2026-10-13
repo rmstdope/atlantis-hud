@@ -23,7 +23,7 @@ use rusqlite::{params, Connection, ErrorCode, OptionalExtension, Transaction};
 use thiserror::Error;
 
 /// Current schema version expected by the persistence layer.
-pub const CURRENT_SCHEMA_VERSION: u32 = 15;
+pub const CURRENT_SCHEMA_VERSION: u32 = 16;
 /// The manifest file inside a game's directory. The directory is named after the game's id, so the
 /// file itself does not have to be, and a game can be found without parsing any filename.
 pub const GAME_MANIFEST_FILE_NAME: &str = "game.json";
@@ -48,13 +48,15 @@ const MIGRATION_0014_STUDY_PLAN_CASTS: &str =
     include_str!("../migrations/0014_study_plan_casts.sql");
 const MIGRATION_0015_ENGINE_TURN_NUMBERS: &str =
     include_str!("../migrations/0015_engine_turn_numbers.sql");
+const MIGRATION_0016_CAP_ATLACLIENT_SIGHTINGS: &str =
+    include_str!("../migrations/0016_cap_atlaclient_sightings.sql");
 
 struct Migration {
     version: u32,
     sql: &'static str,
 }
 
-const MIGRATIONS: [Migration; 15] = [
+const MIGRATIONS: [Migration; 16] = [
     Migration {
         version: 1,
         sql: MIGRATION_0001_INITIAL,
@@ -114,6 +116,10 @@ const MIGRATIONS: [Migration; 15] = [
     Migration {
         version: 15,
         sql: MIGRATION_0015_ENGINE_TURN_NUMBERS,
+    },
+    Migration {
+        version: 16,
+        sql: MIGRATION_0016_CAP_ATLACLIENT_SIGHTINGS,
     },
 ];
 
@@ -3364,8 +3370,8 @@ mod tests {
 
         assert_eq!(created.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(
-            created.schema_version, 15,
-            "the engine's turn numbers added migration 15"
+            created.schema_version, 16,
+            "capping AtlaClient sightings added migration 16"
         );
     }
 
@@ -4353,6 +4359,91 @@ mod tests {
                 r#"[{"turn":1,"spell":"FIRE"},{"turn":73,"spell":"FARS"}]"#
             )],
             "a goal's turn 0 marks a turnless legacy goal and stays 0; a cast has no such form"
+        );
+    }
+
+    /// ah-vtgk: before ah-m6pw an AtlaClient map's stamps were already the engine's turns while HUD
+    /// numbered its own one lower, so a hex merged from one was stored a turn too new, and migration
+    /// 15 kept that error. Opening a version-15 game caps every sighting of a faction that holds an
+    /// AtlaClient merge at that faction's newest imported turn; every other faction is left alone.
+    #[test]
+    fn upgrading_from_version_fifteen_caps_atlaclient_sightings_at_the_newest_turn() {
+        let dir = tempdir().expect("tempdir");
+        let manifest = fixture_manifest();
+        let home = dir.path().join(GAME_ID);
+        fs::create_dir_all(&home).expect("game home");
+        save_game_manifest(&home.join(GAME_MANIFEST_FILE_NAME), &manifest)
+            .expect("manifest save should succeed");
+
+        let database_path = home.join("game.sqlite");
+        let connection = Connection::open(&database_path).expect("db should open");
+        connection
+            .execute_batch(&format!(
+                "{MIGRATION_0001_INITIAL}
+                 {MIGRATION_0002_IMPORTED_TURNS}
+                 {MIGRATION_0003_ORDER_DRAFTS}
+                 {MIGRATION_0004_REGION_SIGHTINGS}
+                 {MIGRATION_0005_RENAME_PROJECT_TO_GAME}
+                 {MIGRATION_0006_ISO_IMPORT_TIMESTAMPS}
+                 {MIGRATION_0007_MERGED_REPORTS}
+                 {MIGRATION_0008_HEX_NOTES}
+                 {MIGRATION_0009_ARMIES}
+                 {MIGRATION_0010_ALLIED_MAGES}
+                 {MIGRATION_0011_STUDY_PLANS}
+                 {MIGRATION_0012_STUDY_PLAN_GOALS}
+                 {MIGRATION_0013_STUDY_GOAL_KIND}
+                 {MIGRATION_0014_STUDY_PLAN_CASTS}
+                 {MIGRATION_0015_ENGINE_TURN_NUMBERS}
+                 INSERT INTO schema_migrations (version)
+                     VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10), (11), (12), (13),
+                            (14), (15);
+                 INSERT INTO imported_turns
+                     (game_id, faction_id, turn_number, raw_report, parsed_payload_json,
+                      warnings_payload_json)
+                 VALUES ('faction-12', '95', 71, 'november', '{{}}', '[]'),
+                        ('faction-12', '95', 72, 'december', '{{}}', '[]'),
+                        ('faction-12', '73', 72, 'december', '{{}}', '[]');
+                 INSERT INTO merged_reports
+                     (game_id, faction_id, turn_number, merged_faction_id, merged_faction_name,
+                      merged_at)
+                 VALUES ('faction-12', '95', 72, 'atlaclient', 'AtlaClient, turn 16', 't'),
+                        ('faction-12', '73', 72, '21', 'Borg', 't');
+                 INSERT INTO region_sightings
+                     (game_id, faction_id, region_id, x, y, z, terrain, province, label,
+                      last_seen_turn, payload_json)
+                 VALUES ('faction-12', '95', '1:1,1', 1, 1, 1, 'plain', 'P', 'L', 73, '{{}}'),
+                        ('faction-12', '95', '1:2,2', 2, 2, 1, 'plain', 'P', 'L', 72, '{{}}'),
+                        ('faction-12', '95', '1:3,3', 3, 3, 1, 'plain', 'P', 'L', 70, '{{}}'),
+                        ('faction-12', '73', '1:1,1', 1, 1, 1, 'plain', 'P', 'L', 73, '{{}}');"
+            ))
+            .expect("legacy version 15 setup should succeed");
+        drop(connection);
+
+        let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("upgrade should succeed");
+        assert_eq!(reopened.schema_version, CURRENT_SCHEMA_VERSION);
+
+        let connection = Connection::open(&database_path).expect("db should reopen");
+        let mut statement = connection
+            .prepare(
+                "SELECT faction_id || ' ' || region_id || ' ' || last_seen_turn
+                   FROM region_sightings ORDER BY faction_id, region_id",
+            )
+            .expect("query should prepare");
+        let rows: Vec<String> = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query should run")
+            .collect::<Result<_, _>>()
+            .expect("rows should read");
+
+        assert_eq!(
+            rows,
+            vec![
+                "73 1:1,1 73",
+                "95 1:1,1 72",
+                "95 1:2,2 72",
+                "95 1:3,3 70",
+            ],
+            "only the AtlaClient-merged faction's sightings are capped, and only above its newest turn"
         );
     }
 

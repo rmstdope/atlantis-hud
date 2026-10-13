@@ -53,7 +53,7 @@ test("a game stored under the old turn numbers opens on the engine's", async ({ 
         request.onsuccess = () => {
           const database = request.result;
           const transaction = database.transaction(
-            ["importedTurns", "orderDrafts", "mergedReports", "hexNotes"],
+            ["importedTurns", "orderDrafts", "mergedReports", "regionSightings", "hexNotes"],
             "readwrite"
           );
           const base = { databasePath: "idb://game-old-turns", gameId: "old-turns" };
@@ -91,6 +91,33 @@ test("a game stored under the old turn numbers opens on the engine's", async ({ 
                 mergedFactionId: "73",
                 mergedFactionName: "Borg",
                 mergedAt: stamp
+              })
+            );
+          }
+          // ah-vtgk: an AtlaClient map merged into turn 71, as version 6 counted it. AtlaClient's
+          // stamps were the engine's turns already, so its newest hex was stored at 72 - one above
+          // the newest report - and an older hex at 70.
+          void run(
+            transaction.objectStore("mergedReports").put({
+              ...base,
+              factionId: "95",
+              turnNumber: 71,
+              mergedFactionId: "atlaclient",
+              mergedFactionName: "AtlaClient, turn 72",
+              mergedAt: stamp
+            })
+          );
+          for (const [regionId, lastSeenTurn] of [
+            ["1:1,1", 72],
+            ["1:2,2", 70]
+          ] as const) {
+            void run(
+              transaction.objectStore("regionSightings").put({
+                ...base,
+                factionId: "95",
+                regionId,
+                lastSeenTurn,
+                payloadJson: "null"
               })
             );
           }
@@ -202,7 +229,10 @@ test("a game stored under the old turn numbers opens on the engine's", async ({ 
           .turnHeader.turnNumber
       ]),
       drafts: (await all("orderDrafts")).map((row) => [row.turnNumber, row.orderText]),
-      merges: (await all("mergedReports")).map((row) => row.turnNumber),
+      merges: (await all("mergedReports")).map(
+        (row) => `${String(row.turnNumber)} ${String(row.mergedFactionId)}`
+      ),
+      sightings: (await all("regionSightings")).map((row) => [row.regionId, row.lastSeenTurn]),
       notes: (await all("hexNotes")).map((row) => row.turn)
     };
     database.close();
@@ -210,7 +240,7 @@ test("a game stored under the old turn numbers opens on the engine's", async ({ 
   });
 
   expect(stored).toEqual({
-    version: 7,
+    version: 8,
     turns: [
       [71, 71],
       [72, 72]
@@ -219,7 +249,12 @@ test("a game stored under the old turn numbers opens on the engine's", async ({ 
       [71, `#atlantis 95\nunit ${OWN_UNIT}\n@tax\n#end\n`],
       [72, `#atlantis 95\nunit ${OWN_UNIT}\n@work\n@entertain\n#end\n`]
     ],
-    merges: [71, 72],
+    merges: ["71 73", "72 73", "72 atlaclient"],
+    // The AtlaClient hex moved to 73 and was capped at the newest report, 72; the older one moved.
+    sightings: [
+      ["1:1,1", 72],
+      ["1:2,2", 71]
+    ],
     notes: [72]
   });
 });

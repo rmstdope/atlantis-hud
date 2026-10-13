@@ -11,7 +11,7 @@ import { clearGames, createGame, fillOrders, loadReport, openOrders, expectOrder
  */
 
 /** `GAME_DATABASE_VERSION` in `packages/browser-core/src/webStore.ts`. */
-const GAME_DATABASE_VERSION = 7;
+const GAME_DATABASE_VERSION = 8;
 /** `REGISTRY_DATABASE_VERSION` in the same file. */
 const REGISTRY_DATABASE_VERSION = 4;
 const REGISTRY = "atlantis-hud";
