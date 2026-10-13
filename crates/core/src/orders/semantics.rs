@@ -13421,7 +13421,11 @@ impl SharerStock {
                         0
                     } else if pooled && phase == StatePhase::Cast {
                         // Read while the casts are priced: a caster priced earlier whose cast
-                        // nobody could fund leaves the pool what it would have drawn.
+                        // nobody could fund leaves the pool what it would have drawn. That is
+                        // the engine's verdict as far as the ledger's figures go: [`cast`]
+                        // prices on the hopeful tax, so under an overstated tax (`ah-ud89`) it
+                        // can fund a cast the settled figures could not; the fold then refuses
+                        // it one by one ([`Lending::settle`]).
                         cast_back - unfunded_cast
                     } else if pooled {
                         // The fold either paid a judged caster's cast - a borrow that already
@@ -14666,6 +14670,24 @@ impl Lending {
         // (`ah-szu0`).
         let mut unpaid = vec![0_i64; hex.units.len()];
         for &moment in moments {
+            if moment == LendingMoment::Cast {
+                // The casts are judged one at a time, in region order, each against what the
+                // pool holds as its turn comes (`runorders.cpp`: `RunCastOrders`; `spells.cpp`:
+                // `RunCreateArtifact`) - which [`cast`] already did as it priced each one, handing
+                // back every earlier cast it found unfunded ([`SharerStock::at`]). Its verdict is
+                // taken here rather than judged again on the balances after every cast, where a
+                // sharer's own later cast would hide what it lent an earlier one (`ah-szu0`
+                // second follow-up review, finding 1). A refused cast took nothing, so its whole
+                // cost is handed back before the casts that were paid are lent for.
+                for index in 0..hex.units.len() {
+                    let unit_id = &hex.units[index].unit.unit_id;
+                    if judged(index) && ledger.unfunded_casts.get(unit_id).is_some_and(|&u| u > 0) {
+                        let overdrawn = (-own(index, moment)).max(0);
+                        purse.refused[index] += refused_cast_cost(ledger, unit_id, overdrawn);
+                        purse.refused_casts[index] = true;
+                    }
+                }
+            }
             let position = |purse: &Lending, index: usize, at: LendingMoment| {
                 own(index, at) - purse.lends[index]
                     + purse.borrows[index]
@@ -53496,6 +53518,40 @@ BUILD
             caster.short_for_orders,
             Some(0),
             "903's cast is paid: {caster:?}"
+        );
+    }
+
+    /// The casts are judged in region order, each against what the pool holds as its turn comes
+    /// (`runorders.cpp`: `RunCastOrders`; `spells.cpp`: `RunCreateArtifact`): 901's $200 amulet
+    /// (`data/CRPA`) is paid out of sharer 902's $700, leaving $500, so 902's own $600 ring
+    /// (`data/CRRI`) is refused and takes nothing, and 902's `ALL SILV` ships the $500
+    /// (`ah-szu0` second follow-up review, finding 1).
+    #[test]
+    fn a_sharer_that_casts_after_a_borrower_is_refused_and_ships_what_is_left() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            with_skill(unit("901"), "CRPA", 1),
+            sharing(with_silver(with_skill(unit("902"), "CRRI", 1), 700)),
+        ]);
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nCAST Create_Amulet_Of_Protection\n\
+             unit 902\nCAST Create_Ring_Of_Invisibility\nTRANSPORT 900 ALL SILV\n",
+            Some(&rules),
+            with_map(),
+        );
+        assert_eq!(
+            silver_shipped(&review, "902"),
+            500,
+            "{:?}",
+            shipment_silver(&review, "902")
+        );
+        let borrower = shipment_silver(&review, "901");
+        assert_eq!(
+            borrower.short_for_orders,
+            Some(0),
+            "901's cast is paid: {borrower:?}"
         );
     }
 
