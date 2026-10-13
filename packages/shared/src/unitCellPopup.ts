@@ -1516,7 +1516,11 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     lines,
     warning: partlyCounted
       ? "“+ ?” in the cell: this month is only partly counted, so this list may be short."
-      : null
+      : null,
+    // Movements that net to zero by month end leave no `items` change, yet the hover lists them,
+    // so the shared no-change sentence must not follow them (`ah-ymms`). Popup only: the cell's
+    // styling reads the report change, not this.
+    changed: causes.length > 0 || undefined
   };
 }
 
