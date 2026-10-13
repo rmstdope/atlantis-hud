@@ -1234,7 +1234,9 @@ fn current_schema_version(connection: &Connection) -> Result<u32, PersistenceErr
         .flatten()
         .unwrap_or(0);
 
-    Ok(version as u32)
+    // Out of range either way is no version this build wrote, so it reads as newer and is refused
+    // rather than wrapping round to one this build knows.
+    Ok(u32::try_from(version).unwrap_or(u32::MAX))
 }
 
 fn current_schema_version_read_only(connection: &Connection) -> Result<u32, PersistenceError> {
@@ -3189,6 +3191,29 @@ mod tests {
             fs::read(&created.game_file_path).expect("manifest bytes"),
             manifest_before,
             "the refused game's manifest is not stamped as opened"
+        );
+    }
+
+    /// A stored version too large for a `u32` must not wrap round to one this build knows.
+    #[test]
+    fn open_game_refuses_a_schema_version_too_large_to_narrow() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        Connection::open(&created.database_path)
+            .expect("db should open")
+            .execute(
+                "INSERT INTO schema_migrations (version) VALUES (?1)",
+                params![(1_i64 << 32) + 1],
+            )
+            .expect("an out-of-range version is recorded");
+
+        let error = open_game(dir.path(), GAME_ID, "2026-10-13T09:00:00Z")
+            .expect_err("an out-of-range schema should be refused");
+
+        assert!(
+            matches!(error, PersistenceError::NewerSchemaVersion { .. }),
+            "unexpected error: {error}"
         );
     }
 
