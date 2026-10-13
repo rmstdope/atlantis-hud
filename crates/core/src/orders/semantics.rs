@@ -15906,6 +15906,34 @@ fn silver_short_counting_cuts(hex: &Hex<'_>, ledger: &Ledger<'_>, sharing: &Shar
     at_market.max(at_study).max(0)
 }
 
+/// Whether `who` carries a `part-of-hex-shortfall` marker, and on which line: `None` for no
+/// marker, `Some(None)` for one on the unit's row. Ordinarily the first order that drew on the
+/// tag, which is where a player looking for the mistake starts.
+///
+/// Except a STUDY the purse paid in full (`ah-kxpf`). STUDY is the last order to draw on silver
+/// before maintenance - `rules/sequenceofevents` runs CAST and the market before it - so when it
+/// was the first draw and it went ahead, nothing the unit's orders asked for went unpaid. What is
+/// left to be short of is upkeep: `rules/share`, sharing silver "can leave the sharing unit
+/// without enough funds to pay maintenance". So the unit is marked only where the hex's shortfall
+/// counts upkeep (`upkeep_short`) and its own goes unpaid, and then on its row, as any upkeep
+/// shortage in a sharing hex is; a paid student whose upkeep is paid is not marked at all.
+fn pool_marker_anchor<'l>(
+    ledger: &'l Ledger<'_>,
+    who: &str,
+    tag: &str,
+    study: StudyOutcome,
+    upkeep_short: bool,
+) -> Option<Option<&'l PlacedIntent>> {
+    let at = ledger.charged_at.get(&(who.to_string(), tag.to_string()));
+    let paid_study = tag == SILVER
+        && at.is_some_and(|at| matches!(at.intent, Intent::Study { .. }))
+        && matches!(study, StudyOutcome::Paid { .. });
+    if !paid_study {
+        return Some(at);
+    }
+    (upkeep_short && unpaid_upkeep(ledger, who) > 0).then_some(None)
+}
+
 /// Silver and items a unit is short of, and what the hex's sharing units can cover for it.
 ///
 /// The engine's `Unit::GetSharedNum` counts a unit's own holdings plus every same-faction unit in
@@ -16202,6 +16230,19 @@ fn report_shortfalls(
                     placed,
                 ));
             }
+            // How each unit's STUDY went, the one reading every surface takes (`ah-2f77`).
+            let studies = if tag == SILVER {
+                study_settlement(hex, ledger)
+            } else {
+                Vec::new()
+            };
+            let study_of = |who: &str| {
+                hex.units
+                    .iter()
+                    .position(|ordered| ordered.unit.unit_id == who)
+                    .and_then(|index| studies.get(index).copied())
+                    .unwrap_or_default()
+            };
             for verdict in &verdicts {
                 let Verdict::DeferredToPool {
                     unit_id,
@@ -16225,7 +16266,11 @@ fn report_shortfalls(
                 {
                     continue;
                 }
-                let at = ledger.charged_at.get(&(unit_id.clone(), tag.clone()));
+                let Some(at) =
+                    pool_marker_anchor(ledger, unit_id, &tag, study_of(unit_id), upkeep > 0)
+                else {
+                    continue;
+                };
                 findings.push(ordered.finding(
                     hex,
                     codes::PART_OF_HEX_SHORTFALL,
@@ -16240,8 +16285,7 @@ fn report_shortfalls(
             // no month-end verdict, but its line drew on the pool all the same (`ah-qrk0`); so
             // does one overdrawn as the spells are cast and paid back by a sale (`ah-9n7l.2`).
             if tag == SILVER {
-                let studies = study_settlement(hex, ledger);
-                for (ordered, study) in hex.units.iter().zip(studies) {
+                for (ordered, &study) in hex.units.iter().zip(&studies) {
                     let who = &ordered.unit.unit_id;
                     if sharing.pools_silver(ordered)
                         || ledger.doubted.contains(who)
@@ -16262,7 +16306,10 @@ fn report_shortfalls(
                     {
                         continue;
                     }
-                    let at = ledger.charged_at.get(&(who.clone(), tag.clone()));
+                    // Nothing of this unit's is short at the month's end, so its upkeep is paid.
+                    let Some(at) = pool_marker_anchor(ledger, who, &tag, study, false) else {
+                        continue;
+                    };
                     findings.push(ordered.finding(
                         hex,
                         codes::PART_OF_HEX_SHORTFALL,
@@ -40426,14 +40473,16 @@ BUILD
                     "{id}: {column:?}"
                 );
 
-                // The hex warnings: a student that drew on the pool is marked on its line.
+                // The hex warnings: a student whose study the pool could not pay is marked on its
+                // line. One it paid is not marked at all: nothing of its own goes unpaid, and this
+                // hex owes no upkeep in silver (`ah-kxpf`).
                 let marked = review.findings.iter().any(|finding| {
                     finding.code == codes::PART_OF_HEX_SHORTFALL
                         && finding.unit_id.as_deref() == Some(id)
                 });
                 assert_eq!(
                     marked,
-                    outcome.drew_on_pool(),
+                    matches!(outcome, StudyOutcome::Refused { .. }),
                     "{id}: the warnings, against {outcome:?}: {:?}",
                     review.findings
                 );
@@ -62951,6 +63000,147 @@ BUILD
                     "the hex cannot pay its upkeep: {unit:?}"
                 );
             }
+        }
+
+        /// `ah-kxpf`. The hex's shortfall is the upkeep's, so it is shown as any upkeep shortage
+        /// in a sharing hex is: on the hex, and as a marker on the row of the unit whose upkeep
+        /// goes unpaid - never on the STUDY line the purse paid.
+        #[test]
+        fn the_hex_warning_is_the_upkeeps_and_not_on_the_study_line() {
+            let review = review_turn(
+                &report(hex()),
+                ORDERS,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let silver_findings: Vec<&Finding> = review
+                .findings
+                .iter()
+                .filter(|finding| {
+                    finding.code == codes::PART_OF_HEX_SHORTFALL
+                        || finding.code == codes::NOT_ENOUGH_SILVER
+                })
+                .collect();
+
+            assert!(
+                silver_findings
+                    .iter()
+                    .all(|finding| finding.line != Some(2)),
+                "nothing on the STUDY line: {silver_findings:?}"
+            );
+            assert!(
+                silver_findings.iter().any(|finding| {
+                    finding.code == codes::PART_OF_HEX_SHORTFALL
+                        && finding.unit_id.as_deref() == Some("5")
+                        && finding.line.is_none()
+                }),
+                "the student's upkeep goes unpaid, marked on its row: {silver_findings:?}"
+            );
+            assert!(
+                silver_findings.iter().any(|finding| {
+                    finding.code == codes::NOT_ENOUGH_SILVER
+                        && finding.unit_id.is_none()
+                        && finding.message.contains("short $15")
+                        && finding.message.contains("upkeep")
+                }),
+                "the hex is short its upkeep: {silver_findings:?}"
+            );
+        }
+
+        /// The other side of `ah-kxpf`: a second student the $5 left in the purse cannot pay for
+        /// is refused (`rules/share` lends only what the sharer has), so its shortfall is its
+        /// STUDY's and the marker stays on that line.
+        #[test]
+        fn a_study_the_purse_refused_keeps_its_marker_on_its_line() {
+            let review = review_turn(
+                &report(vec![region(vec![
+                    starving(with_silver(unit("5"), 0)),
+                    starving(with_silver(unit("9"), 0)),
+                    sharing(starving(with_silver(unit("7"), 15))),
+                ])]),
+                "unit 5\nSTUDY Combat\nunit 9\nSTUDY Combat\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let marker = |id: &str| {
+                review
+                    .findings
+                    .iter()
+                    .find(|finding| {
+                        finding.code == codes::PART_OF_HEX_SHORTFALL
+                            && finding.unit_id.as_deref() == Some(id)
+                    })
+                    .map(|finding| finding.line)
+                    .unwrap_or_else(|| panic!("no marker for {id}: {:?}", review.findings))
+            };
+
+            assert_eq!(marker("5"), None, "5's study was paid");
+            assert_eq!(marker("9"), Some(4), "9's study was refused");
+        }
+
+        /// Review finding 1 of `ah-kxpf`. Everyone eats grain, so nobody owes silver upkeep
+        /// (`rules/economy_maintenance`), and the hex is short only the fee of 4's STUDY, which the
+        /// purse refused. 6's study was paid and its upkeep is paid in food: nothing of 6's goes
+        /// unpaid, so 6 carries no marker at all - on its line or on its row.
+        fn paid_student_markers(regions: Vec<ReportRegion>, orders: &str) -> Vec<Finding> {
+            review_turn(
+                &report(regions),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            )
+            .findings
+            .into_iter()
+            .filter(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL)
+            .collect()
+        }
+
+        const TWO_STUDENTS: &str = "unit 6\nSTUDY Combat\nunit 4\nSTUDY Combat\n";
+
+        fn fed_students(others: Vec<ReportUnit>) -> ReportRegion {
+            let mut units = vec![
+                with_silver(unit("6"), 0),
+                with_silver(unit("4"), 0),
+                sharing(with_silver(unit("8"), 10)),
+            ];
+            units.extend(others);
+            caravanserai_hex("9", 100, units)
+        }
+
+        #[test]
+        fn a_paid_student_whose_upkeep_is_paid_carries_no_marker() {
+            let markers = paid_student_markers(vec![fed_students(Vec::new())], TWO_STUDENTS);
+
+            assert!(
+                markers
+                    .iter()
+                    .all(|finding| finding.unit_id.as_deref() != Some("6")),
+                "{markers:?}"
+            );
+            assert!(
+                markers
+                    .iter()
+                    .any(|finding| finding.unit_id.as_deref() == Some("4")
+                        && finding.line == Some(4)),
+                "the refused study keeps its line: {markers:?}"
+            );
+        }
+
+        /// ... and the same when the paid student is shipped silver after STUDY, which reaches
+        /// the markers for a draw repaid later (`ah-qrk0`).
+        #[test]
+        fn a_paid_student_shipped_silver_later_carries_no_marker() {
+            let markers = paid_student_markers(
+                vec![fed_students(Vec::new())],
+                &format!("unit 9\nTRANSPORT 6 100 SILV\n{TWO_STUDENTS}"),
+            );
+
+            assert!(
+                markers
+                    .iter()
+                    .all(|finding| finding.unit_id.as_deref() != Some("6")),
+                "{markers:?}"
+            );
         }
     }
 
