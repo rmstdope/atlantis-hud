@@ -209,6 +209,11 @@ pub enum PersistenceError {
     Serialization(#[from] serde_json::Error),
     #[error("invalid game manifest version: expected <= {max_supported}, got {actual}")]
     UnsupportedManifestVersion { max_supported: u32, actual: u32 },
+    #[error(
+        "game database version {actual} is newer than this build supports ({max_supported}): \
+         the game was saved by a newer version of Atlantis HUD"
+    )]
+    NewerSchemaVersion { actual: u32, max_supported: u32 },
     #[error(transparent)]
     Backup(#[from] atlantis_hud_core::backup::BackupError),
     #[error("database file does not exist: {0}")]
@@ -1186,6 +1191,16 @@ fn sidecar_database_path(game_file_path: &Path) -> PathBuf {
 }
 
 fn apply_migrations(connection: &mut Connection) -> Result<(), PersistenceError> {
+    // A newer build may have changed what stored rows mean, not just added to them, so running on
+    // its schema is never safe. Checked before anything is written, the CREATE below included.
+    let stored = current_schema_version_read_only(connection)?;
+    if stored > CURRENT_SCHEMA_VERSION {
+        return Err(PersistenceError::NewerSchemaVersion {
+            actual: stored,
+            max_supported: CURRENT_SCHEMA_VERSION,
+        });
+    }
+
     connection.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_migrations (
             version INTEGER PRIMARY KEY,
@@ -3127,6 +3142,53 @@ mod tests {
         assert_eq!(
             schema_version(&reopened.database_path).expect("schema read should succeed"),
             CURRENT_SCHEMA_VERSION
+        );
+    }
+
+    /// A database a newer build migrated may mean something else by the same columns (ah-m6pw's
+    /// migration 15 moved every stored turn number up by one), so an older build must refuse it
+    /// rather than run on it, and must leave both files exactly as it found them.
+    #[test]
+    fn open_game_refuses_a_database_whose_schema_is_newer_than_this_build() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        Connection::open(&created.database_path)
+            .expect("db should open")
+            .execute(
+                "INSERT INTO schema_migrations (version) VALUES (?1)",
+                params![CURRENT_SCHEMA_VERSION + 1],
+            )
+            .expect("a newer build's migration is recorded");
+        let database_before = fs::read(&created.database_path).expect("database bytes");
+        let manifest_before = fs::read(&created.game_file_path).expect("manifest bytes");
+
+        let error = open_game(dir.path(), GAME_ID, "2026-10-13T09:00:00Z")
+            .expect_err("a newer schema should be refused");
+
+        assert!(
+            matches!(
+                error,
+                PersistenceError::NewerSchemaVersion { actual, max_supported }
+                    if actual == CURRENT_SCHEMA_VERSION + 1 && max_supported == CURRENT_SCHEMA_VERSION
+            ),
+            "unexpected error: {error}"
+        );
+        let message = error.to_string();
+        assert!(
+            message.contains("newer than this build supports"),
+            "{message}"
+        );
+        assert!(message.contains("saved by a newer version"), "{message}");
+        assert_eq!(
+            fs::read(&created.database_path).expect("database bytes"),
+            database_before,
+            "the refused database is left untouched"
+        );
+        assert_eq!(
+            fs::read(&created.game_file_path).expect("manifest bytes"),
+            manifest_before,
+            "the refused game's manifest is not stamped as opened"
         );
     }
 
