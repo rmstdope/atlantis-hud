@@ -11483,7 +11483,15 @@ fn cast(
                 None,
             )
         };
-        let from_caster = own + uncovered;
+        // A refused cast takes nothing (`RunCreateArtifact`, `spells.cpp`), so a material the
+        // caster and its sharers cover in full stays where it is (`ah-479u`). Only the short
+        // material keeps its ceiling charge, so `not-enough-items` still reads one number
+        // (`ah-ofpb.5`, round 1 Q4).
+        let from_caster = if refused && uncovered == 0 {
+            0
+        } else {
+            own + uncovered
+        };
         record_unfunded(ledger, who, &material.tag, uncovered);
         charge(
             ledger,
@@ -54907,11 +54915,23 @@ BUILD
 
         /// What the ITEMS column moves on `id` for `tag`.
         fn moved(effects: &BTreeMap<UnitKey, UnitItemEffects>, id: &str, tag: &str) -> i64 {
+            moved_by(effects, id, tag, None)
+        }
+
+        /// What the ITEMS column moves on `id` for `tag`, for one cause only when one is given.
+        fn moved_by(
+            effects: &BTreeMap<UnitKey, UnitItemEffects>,
+            id: &str,
+            tag: &str,
+            cause: Option<ItemChangeCause>,
+        ) -> i64 {
             effects_for(effects, id)
                 .map(|unit| {
                     unit.moved
                         .iter()
-                        .filter(|movement| movement.tag == tag)
+                        .filter(|movement| {
+                            movement.tag == tag && cause.is_none_or(|cause| movement.cause == cause)
+                        })
                         .map(|movement| movement.delta)
                         .sum()
                 })
@@ -55000,6 +55020,160 @@ BUILD
                 0,
                 "{:?}",
                 effects_for(&effects, "902")
+            );
+        }
+
+        /// Mage 901 holds the 75 floater hides Summon Wind needs (`data/SWIN` level 3) and no
+        /// ironwood: the cast is refused for its ironwood and takes none of its hides, so they
+        /// stay in its ITEMS and `TRANSPORT 900 ALL FLOA` ships all 75 (`ah-479u`). The short
+        /// ironwood keeps its ceiling charge, so `not-enough-items` still reads one number
+        /// (`ah-ofpb.5`, round 1 Q4).
+        #[test]
+        fn a_refused_cast_leaves_a_material_the_mage_holds_in_full() {
+            let rules = trident_rules();
+            let mut region = caravanserai_owner("900", 1, 0, 0);
+            region.units.push(with_item(
+                with_skill(unit("901"), "SWIN", 3),
+                75,
+                "floater hides",
+                "FLOA",
+            ));
+            let report = report(vec![region]);
+            let orders = "unit 901\nCAST Summon_Wind\nTRANSPORT 900 ALL FLOA\n";
+            let effects = item_effects(&report, orders, Some(&rules), &CheckOptions::default());
+            let mage = effects_for(&effects, "901");
+            assert_eq!(
+                moved_by(&effects, "901", "FLOA", Some(ItemChangeCause::CastSpent)),
+                0,
+                "{mage:?}"
+            );
+            let shipped =
+                super::super::super::effects::transported_out(&report, &rules, orders, None);
+            assert_eq!(
+                shipped.get("901").map(Vec::as_slice),
+                Some(&[("FLOA".to_string(), 75)][..]),
+                "{shipped:?}"
+            );
+            assert_eq!(
+                moved_by(&effects, "901", "IRWD", Some(ItemChangeCause::CastSpent)),
+                -75,
+                "{mage:?}"
+            );
+            let review = review_turn(&report, orders, Some(&rules), with_map());
+            let short: Vec<&str> = review
+                .findings
+                .iter()
+                .filter(|finding| finding.code.as_str() == "not-enough-items")
+                .map(|finding| finding.message.as_str())
+                .collect();
+            assert_eq!(
+                short,
+                ["short 75 ironwood: this unit can have 0 and its orders spend 75"]
+            );
+        }
+
+        /// The same mage as a quartermaster (`rules/transport`) shipping `ALL FLOA` to a
+        /// caravanserai six hexes off: the refused cast took none of its hides, so the shipment is
+        /// priced for all 75 of them rather than for none (`ah-479u`).
+        #[test]
+        fn a_refused_cast_leaves_the_held_material_to_a_later_shipment() {
+            let rules = trident_rules();
+            let mut regions = priced_shipping(
+                5,
+                &[(75, "floater hides", "FLOA")],
+                vec![caravanserai_owner("901", 1, 0, 6)],
+            );
+            let sender = &mut regions[0].units[0];
+            *sender = with_skill(sender.clone(), "SWIN", 3);
+            let silver = sender_silver_in(
+                &rules,
+                regions,
+                "unit 900\nCAST Summon_Wind\nTRANSPORT 901 ALL FLOA\n",
+                with_map(),
+            );
+            let weight = rules.find_item("FLOA").expect("floater hides").weight;
+            assert_eq!(
+                silver.shipping.iter().map(|one| one.weight).sum::<i64>(),
+                75 * weight,
+                "{:?}",
+                silver.shipping
+            );
+        }
+
+        /// Mage 901 holds both materials but none of the $200 the spell costs, and nobody lends
+        /// it any: the cast is refused for its silver and takes neither material (`ah-479u`).
+        #[test]
+        fn a_cast_refused_for_its_silver_leaves_the_mages_own_goods() {
+            let rules = wind_for_silver_and_goods();
+            let report = report(vec![region(vec![with_item(
+                with_item(
+                    with_skill(unit("901"), "SWIN", 3),
+                    75,
+                    "floater hides",
+                    "FLOA",
+                ),
+                75,
+                "ironwood",
+                "IRWD",
+            )])]);
+            let orders = "unit 901\nCAST Summon_Wind\n";
+            let effects = item_effects(&report, orders, Some(&rules), &CheckOptions::default());
+            let mage = effects_for(&effects, "901");
+            for tag in ["FLOA", "IRWD"] {
+                assert_eq!(
+                    moved_by(&effects, "901", tag, Some(ItemChangeCause::CastSpent)),
+                    0,
+                    "{tag}: {mage:?}"
+                );
+            }
+            let review = review_turn(&report, orders, Some(&rules), CheckOptions::default());
+            assert!(
+                review
+                    .findings
+                    .iter()
+                    .any(|finding| finding.code.as_str() == "not-enough-silver"),
+                "{:?}",
+                review.findings
+            );
+        }
+
+        /// Mage 901 holds 50 floater hides and sharer 902 the other 25, but nobody holds ironwood:
+        /// the refused cast takes none of the hides, the mage's own 50 included (`ah-479u`).
+        #[test]
+        fn a_refused_cast_leaves_a_material_covered_with_a_sharers_help() {
+            let rules = trident_rules();
+            let report = report(vec![region(vec![
+                with_item(
+                    with_skill(unit("901"), "SWIN", 3),
+                    50,
+                    "floater hides",
+                    "FLOA",
+                ),
+                sharing(with_item(unit("902"), 25, "floater hides", "FLOA")),
+            ])]);
+            let effects = item_effects(
+                &report,
+                "unit 901\nCAST Summon_Wind\nunit 902\n",
+                Some(&rules),
+                &CheckOptions::default(),
+            );
+            assert_eq!(
+                moved(&effects, "901", "FLOA"),
+                0,
+                "{:?}",
+                effects_for(&effects, "901")
+            );
+            assert_eq!(
+                moved(&effects, "902", "FLOA"),
+                0,
+                "{:?}",
+                effects_for(&effects, "902")
+            );
+            assert_eq!(
+                moved(&effects, "901", "IRWD"),
+                -75,
+                "{:?}",
+                effects_for(&effects, "901")
             );
         }
 
