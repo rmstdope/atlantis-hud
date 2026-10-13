@@ -124,6 +124,13 @@ export type CoreWasmModule = {
   collections_naming_a_turn_state(): string[];
   /** One row, as JSON, with every turn it names moved to the engine's count (ah-m6pw). */
   move_row_to_engine_turns_state(collection: string, rowJson: string): string;
+  /**
+   * The AtlaClient sighting cap per faction, as a JSON object, from the `mergedReports` rows and
+   * the `importedTurns` keys - `atlantis_hud_core::sighting_cap`'s one rule (ah-vtgk).
+   */
+  atlaclient_caps_state(mergedReportsJson: string, importedTurnKeysJson: string): string;
+  /** One `regionSightings` row, as JSON, no newer than its faction's cap. */
+  cap_atlaclient_sighting_state(capsJson: string, rowJson: string): string;
 };
 
 /** One region as the core serialized it, ready to be written as a row. */

@@ -24,7 +24,6 @@ import type {
   StudyPlanRecord
 } from "@atlantis/core-client";
 import { STOP_SAVE_BUDGET_MS, deleteWithin, openWithin, stopCauseOf } from "./databaseOpen";
-import { atlaClientCaps, capAtlaClientSighting } from "./engineTurns";
 import type { CoreWasmModule } from "./webCoreAdapter";
 
 const REGISTRY_DATABASE_NAME = "atlantis-hud";
@@ -39,19 +38,23 @@ const REGISTRY_DATABASE_VERSION = 4;
 const GAME_DATABASE_VERSION = 8;
 /** The first game database version whose turns are the engine's; see `rowOnEngineTurns`. */
 const ENGINE_TURNS_VERSION = 7;
-/** The first game database version whose AtlaClient sightings are capped; see `engineTurns.ts`. */
+/** The first game database version whose AtlaClient sightings are capped; see `rowCapped`. */
 const ATLACLIENT_CAP_VERSION = 8;
 
 const GAME_STORE = "games";
 
 /**
- * What the game database's upgrade asks the core: which stores name a turn, and how one row moves.
- * The list is `atlantis_hud_core::stored_turns`', the same one a backup restore uses (ah-aguu), so it
- * is written once rather than re-listed here.
+ * What the game database's upgrade asks the core: which stores name a turn, how one row moves, and
+ * how an AtlaClient sighting is capped. The list is `atlantis_hud_core::stored_turns`' and the cap
+ * `atlantis_hud_core::sighting_cap`'s, the same ones a backup restore uses (ah-aguu, ah-4pbr), so
+ * neither is written again here.
  */
 export type EngineTurnUpgrade = Pick<
   CoreWasmModule,
-  "collections_naming_a_turn_state" | "move_row_to_engine_turns_state"
+  | "collections_naming_a_turn_state"
+  | "move_row_to_engine_turns_state"
+  | "atlaclient_caps_state"
+  | "cap_atlaclient_sighting_state"
 >;
 
 /**
@@ -68,6 +71,35 @@ export function rowOnEngineTurns<T extends Record<string, unknown>>(
 ): T {
   return JSON.parse(core.move_row_to_engine_turns_state(storeName, JSON.stringify(row))) as T;
 }
+
+/**
+ * The AtlaClient sighting cap of every faction holding an AtlaClient merge (ah-vtgk), as the core's
+ * opaque JSON for `rowCapped`. Takes the merge rows and the imported turns' keys
+ * (`[factionId, turnNumber]`), so the upgrade never has to read a whole report to learn its turn.
+ */
+export function atlaClientCapsJson(
+  core: EngineTurnUpgrade,
+  mergedReports: readonly unknown[],
+  importedTurnKeys: readonly unknown[]
+): string {
+  return core.atlaclient_caps_state(JSON.stringify(mergedReports), JSON.stringify(importedTurnKeys));
+}
+
+/**
+ * One sighting row of a game database below version 8, no newer than its faction's newest report.
+ *
+ * Before ah-m6pw an AtlaClient map's stamps were already the engine's turns while HUD numbered its
+ * own one lower, so a hex merged from one was stored a turn too new. The rule is the core's
+ * (`atlantis_hud_core::sighting_cap`), synchronous, which the upgrade's transaction requires.
+ */
+export function rowCapped<T extends Record<string, unknown>>(
+  core: EngineTurnUpgrade,
+  capsJson: string,
+  row: T
+): T {
+  return JSON.parse(core.cap_atlaclient_sighting_state(capsJson, JSON.stringify(row))) as T;
+}
+
 const IMPORTED_TURN_STORE = "importedTurns";
 const ORDER_DRAFT_STORE = "orderDrafts";
 const REGION_SIGHTING_STORE = "regionSightings";
@@ -372,10 +404,10 @@ function upgradeStoredTurns(
   const merges = transaction.objectStore(MERGED_REPORT_STORE).getAll();
   const turnKeys = transaction.objectStore(IMPORTED_TURN_STORE).getAllKeys();
   turnKeys.onsuccess = () => {
-    const caps = atlaClientCaps(merges.result, turnKeys.result);
+    const caps = atlaClientCapsJson(core, merges.result, turnKeys.result);
     const sightings = transaction.objectStore(REGION_SIGHTING_STORE);
     rewriteStore(sightings, (row) => {
-      const capped = capAtlaClientSighting(row, caps);
+      const capped = rowCapped(core, caps, row);
       return moveTurns ? rowOnEngineTurns(core, sightings.name, capped) : capped;
     });
   };

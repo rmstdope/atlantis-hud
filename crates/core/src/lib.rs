@@ -8,6 +8,7 @@ pub mod orders;
 pub mod queries;
 pub mod reopen;
 pub mod report;
+pub mod sighting_cap;
 pub mod stored_turns;
 pub mod stored_version;
 pub mod trade;
