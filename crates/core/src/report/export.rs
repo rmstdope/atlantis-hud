@@ -485,7 +485,7 @@ mod tests {
         );
 
         assert!(
-            text.contains("; last seen turn 68, 3 turns before this export"),
+            text.contains("; last seen turn 68, 4 turns before this export"),
             "the age belongs beside the data it qualifies:\n{text}"
         );
     }

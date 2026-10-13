@@ -1,5 +1,5 @@
 ; Mage sheet from Atlantis HUD
-; Borg (62), turn 18
+; Borg (62), turn 19
 
 Atlantis Report For:
 Borg (62) (Martial 1, Magic 4)

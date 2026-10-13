@@ -1,5 +1,5 @@
 ; Mage sheet from Atlantis HUD
-; Mantzikert (39), turn 17
+; Mantzikert (39), turn 18
 
 Atlantis Report For:
 Mantzikert (39) (Martial 1, Magic 4)

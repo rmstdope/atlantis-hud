@@ -37,14 +37,14 @@ fn empty_report(month: &str, year: u32) -> atlantis_hud_core::report::ParsedRepo
 fn a_current_report_hex_beats_a_stored_sighting_of_it() {
     let remembered_region = report_at_turn(
         "plain",
-        "February",
+        "January",
         1,
         "- Someone (500), Bar (2), 3 orcs [ORC].\n",
     )
     .regions[0]
         .clone();
 
-    let current = report_at_turn("mountain", "March", 1, "");
+    let current = report_at_turn("mountain", "February", 1, "");
 
     let known = resolve_known_map(
         &current,
@@ -61,7 +61,7 @@ fn a_current_report_hex_beats_a_stored_sighting_of_it() {
         .expect("known");
     assert_eq!(hex.knowledge, HexKnowledge::Current);
     assert_eq!(hex.terrain, "mountain", "the current report's terrain wins");
-    assert_eq!(hex.last_seen_turn, Some(2), "March, Year 1 is turn 2");
+    assert_eq!(hex.last_seen_turn, Some(2), "February, Year 1 is turn 2");
     assert!(
         hex.region.as_ref().unwrap().units.is_empty(),
         "a remembered garrison is not evidence of a present one"
@@ -74,14 +74,14 @@ fn a_current_report_hex_beats_a_stored_sighting_of_it() {
 fn an_older_sighting_is_stale_and_keeps_no_units() {
     let older = report_at_turn(
         "swamp",
-        "February",
+        "January",
         1,
         "- Someone (500), Bar (2), 3 orcs [ORC].\n",
     )
     .regions[0]
         .clone();
 
-    let current = empty_report("December", 6);
+    let current = empty_report("November", 6);
 
     let known = resolve_known_map(
         &current,
@@ -105,7 +105,7 @@ fn an_older_sighting_is_stale_and_keeps_no_units() {
 fn a_stale_hex_remembers_its_last_valid_unit_sightings() {
     let older = report_at_turn(
         "swamp",
-        "February",
+        "January",
         1,
         "- Someone (500), Bar (2), 3 orcs [ORC].\n- Other (600), Baz (3), 1 orc [ORC].\n",
     )
@@ -113,7 +113,7 @@ fn a_stale_hex_remembers_its_last_valid_unit_sightings() {
         .clone();
 
     let known = resolve_known_map(
-        &empty_report("December", 6),
+        &empty_report("November", 6),
         &[RememberedRegion {
             region: older,
             last_seen_turn: 1,
@@ -136,7 +136,7 @@ fn a_stale_hex_remembers_its_last_valid_unit_sightings() {
 fn a_later_sighting_elsewhere_invalidates_only_that_remembered_unit() {
     let older = report_at_turn(
         "swamp",
-        "February",
+        "January",
         1,
         "- Someone (500), Bar (2), 3 orcs [ORC].\n- Other (600), Baz (3), 1 orc [ORC].\n",
     )
@@ -144,7 +144,7 @@ fn a_later_sighting_elsewhere_invalidates_only_that_remembered_unit() {
         .clone();
     let mut later = report_at_turn(
         "plain",
-        "March",
+        "February",
         1,
         "- Someone (500), Bar (2), 3 orcs [ORC].\n",
     )
@@ -154,7 +154,7 @@ fn a_later_sighting_elsewhere_invalidates_only_that_remembered_unit() {
     later.region_id = "1:3,3".to_string();
 
     let known = resolve_known_map(
-        &empty_report("December", 6),
+        &empty_report("November", 6),
         &[
             RememberedRegion {
                 region: older,
@@ -185,7 +185,7 @@ fn a_later_sighting_elsewhere_invalidates_only_that_remembered_unit() {
 fn a_current_empty_hex_clears_its_remembered_units() {
     let older = report_at_turn(
         "swamp",
-        "February",
+        "January",
         1,
         "- Someone (500), Bar (2), 3 orcs [ORC].\n",
     )
@@ -193,7 +193,7 @@ fn a_current_empty_hex_clears_its_remembered_units() {
         .clone();
 
     let known = resolve_known_map(
-        &report_at_turn("swamp", "December", 6, ""),
+        &report_at_turn("swamp", "November", 6, ""),
         &[RememberedRegion {
             region: older,
             last_seen_turn: 1,
@@ -213,7 +213,7 @@ fn a_current_empty_hex_clears_its_remembered_units() {
 fn same_turn_duplicate_unit_sightings_in_different_regions_are_ambiguous() {
     let first = report_at_turn(
         "swamp",
-        "February",
+        "January",
         1,
         "- Someone (500), Bar (2), 3 orcs [ORC].\n",
     )
@@ -227,7 +227,7 @@ fn same_turn_duplicate_unit_sightings_in_different_regions_are_ambiguous() {
     }
 
     let known = resolve_known_map(
-        &empty_report("December", 6),
+        &empty_report("November", 6),
         &[
             RememberedRegion {
                 region: first,
@@ -258,7 +258,7 @@ fn same_turn_duplicate_unit_sightings_in_different_regions_are_ambiguous() {
 fn same_turn_duplicate_unit_sightings_in_one_region_remain_eligible() {
     let region = report_at_turn(
         "swamp",
-        "February",
+        "January",
         1,
         "- Someone (500), Bar (2), 3 orcs [ORC].\n",
     )
@@ -266,7 +266,7 @@ fn same_turn_duplicate_unit_sightings_in_one_region_remain_eligible() {
         .clone();
 
     let known = resolve_known_map(
-        &empty_report("December", 6),
+        &empty_report("November", 6),
         &[
             RememberedRegion {
                 region: region.clone(),
@@ -302,7 +302,7 @@ fn same_turn_duplicate_unit_sightings_in_one_region_remain_eligible() {
 fn the_allys_units_merge_ignores_a_stale_duplicate_of_the_same_hex() {
     let stale = report_at_turn(
         "swamp",
-        "February",
+        "January",
         1,
         "- Nobody (999), Bar (2), 1 orc [ORC].\n",
     )
@@ -310,7 +310,7 @@ fn the_allys_units_merge_ignores_a_stale_duplicate_of_the_same_hex() {
         .clone();
     let same_turn = report_at_turn(
         "swamp",
-        "December",
+        "November",
         6,
         "- Someone (500), Bar (2), 3 orcs [ORC].\n",
     )
@@ -318,7 +318,7 @@ fn the_allys_units_merge_ignores_a_stale_duplicate_of_the_same_hex() {
         .clone();
 
     // The current report, at turn 71, visits the hex itself, with a unit of its own.
-    let current = report_at_turn("swamp", "December", 6, "* Us (100), 1 man [MAN].\n");
+    let current = report_at_turn("swamp", "November", 6, "* Us (100), 1 man [MAN].\n");
 
     // Listed most-recent-first, which is what would fool an unsorted "last in the slice wins"
     // lookup into picking the stale entry instead.
@@ -357,10 +357,10 @@ fn the_allys_units_merge_ignores_a_stale_duplicate_of_the_same_hex() {
 /// and it should be the more recent sighting, exactly as the naming rules already prefer.
 #[test]
 fn two_direct_sightings_of_the_same_hex_settle_on_the_more_recent_one() {
-    let older = report_at_turn("swamp", "February", 1, "").regions[0].clone();
-    let newer = report_at_turn("forest", "March", 1, "").regions[0].clone();
+    let older = report_at_turn("swamp", "January", 1, "").regions[0].clone();
+    let newer = report_at_turn("forest", "February", 1, "").regions[0].clone();
 
-    let current = empty_report("December", 6);
+    let current = empty_report("November", 6);
 
     let known = resolve_known_map(
         &current,
@@ -391,7 +391,7 @@ fn two_direct_sightings_of_the_same_hex_settle_on_the_more_recent_one() {
 fn a_same_turn_ally_sighting_is_current_and_keeps_its_units() {
     let ally_sighting = report_at_turn(
         "plain",
-        "February",
+        "January",
         1,
         "- Someone (500), Bar (2), 3 orcs [ORC].\n",
     )
@@ -399,7 +399,7 @@ fn a_same_turn_ally_sighting_is_current_and_keeps_its_units() {
         .clone();
 
     // The current report says nothing about (1,1) at all - the ally sighting is the only account.
-    let current = empty_report("February", 1);
+    let current = empty_report("January", 1);
 
     let known = resolve_known_map(
         &current,
@@ -428,7 +428,7 @@ fn a_same_turn_ally_sighting_is_current_and_keeps_its_units() {
 fn an_allys_units_join_the_current_hex_marked_foreign() {
     let ally_sighting = report_at_turn(
         "plain",
-        "February",
+        "January",
         1,
         "- Someone (500), Bar (2), 3 orcs [ORC].\n",
     )
@@ -437,7 +437,7 @@ fn an_allys_units_join_the_current_hex_marked_foreign() {
 
     // The current report describes the same hex, with a unit of our own, but knows nothing of the
     // ally's stranger.
-    let current = report_at_turn("plain", "February", 1, "* Us (100), 1 man [MAN].\n");
+    let current = report_at_turn("plain", "January", 1, "* Us (100), 1 man [MAN].\n");
 
     let known = resolve_known_map(
         &current,
@@ -464,11 +464,11 @@ fn an_allys_units_join_the_current_hex_marked_foreign() {
 /// first naming wins.
 #[test]
 fn an_older_naming_is_overwritten_by_a_newer_one_and_the_first_in_a_turn_wins() {
-    let older = report_at_turn("swamp", "February", 1, "").regions[0].clone();
-    let newer = report_at_turn("forest", "March", 1, "").regions[0].clone();
+    let older = report_at_turn("swamp", "January", 1, "").regions[0].clone();
+    let newer = report_at_turn("forest", "February", 1, "").regions[0].clone();
 
     // Neither report actually visits (2,2); each merely names it through its own exit.
-    let current = empty_report("December", 6);
+    let current = empty_report("November", 6);
 
     let known = resolve_known_map(
         &current,
@@ -503,7 +503,7 @@ fn an_older_naming_is_overwritten_by_a_newer_one_and_the_first_in_a_turn_wins() 
 fn the_current_reports_naming_wins_over_memorys() {
     // A memory that named (2,2) as swamp at turn 1.
     let remembered_naming = parse_report_full(
-        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
+        "Atlantis Report For:\nFoo (1)\nJanuary, Year 1\n\n\
          plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n\
          Exits:\n  Southeast : swamp (2,2) in Nowhere.\n",
     )
@@ -513,7 +513,7 @@ fn the_current_reports_naming_wins_over_memorys() {
     // The current report, at turn 71, names the same hex as plain through its own exit - not
     // through a remembered region at all, so this exercises rule 2 rather than rule 4.
     let current = parse_report_full(
-        "Atlantis Report For:\nFoo (1)\nDecember, Year 6\n\n\
+        "Atlantis Report For:\nFoo (1)\nNovember, Year 6\n\n\
          plain (5,5) in Nowhere, 10 peasants (orcs), $5.\n\n\
          Exits:\n  Southeast : plain (2,2) in Nowhere.\n",
     );
@@ -533,20 +533,20 @@ fn the_current_reports_naming_wins_over_memorys() {
         .expect("named");
     assert_eq!(hex.knowledge, HexKnowledge::Named);
     assert_eq!(hex.terrain, "plain", "the current report's own naming wins");
-    assert_eq!(hex.last_seen_turn, Some(71), "December, Year 6 is turn 71");
+    assert_eq!(hex.last_seen_turn, Some(71), "November, Year 6 is turn 71");
 }
 
 /// A visited hex - current or stale - always beats one merely named by an exit.
 #[test]
 fn a_visited_hex_beats_one_merely_named() {
     // (2,2) is both stood in by an older sighting and merely named by the current report's exit.
-    let older = report_at_turn("swamp", "February", 1, "").regions[0].clone();
+    let older = report_at_turn("swamp", "January", 1, "").regions[0].clone();
     let mut moved = older.clone();
     moved.coordinate = at(2, 2);
     moved.region_id = "1:2,2".to_string();
 
     let current = parse_report_full(
-        "Atlantis Report For:\nFoo (1)\nDecember, Year 6\n\n\
+        "Atlantis Report For:\nFoo (1)\nNovember, Year 6\n\n\
          plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n\
          Exits:\n  Southeast : forest (2,2) in Nowhere.\n",
     );
@@ -577,7 +577,7 @@ fn a_visited_hex_beats_one_merely_named() {
 #[test]
 fn hexes_come_out_sorted_by_level_then_row_then_column() {
     let current = parse_report_full(
-        "Atlantis Report For:\nFoo (1)\nDecember, Year 6\n\n\
+        "Atlantis Report For:\nFoo (1)\nNovember, Year 6\n\n\
          plain (5,5) in Nowhere, 10 peasants (orcs), $5.\n\n\
          Exits:\n  North : plain (5,3) in Nowhere.\n  South : plain (5,7) in Nowhere.\n\
          Southwest : plain (4,6) in Nowhere.\n",
@@ -603,7 +603,7 @@ fn hexes_come_out_sorted_by_level_then_row_then_column() {
 #[test]
 fn a_named_hex_keeps_the_settlement_its_exits_names() {
     let current = parse_report_full(
-        "Atlantis Report For:\nFoo (1)\nDecember, Year 6\n\n\
+        "Atlantis Report For:\nFoo (1)\nNovember, Year 6\n\n\
          plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n\
          Exits:\n  Southeast : plain (2,2) in Nowhere, contains Foo [village].\n",
     );
@@ -626,7 +626,7 @@ fn a_named_hex_keeps_the_settlement_its_exits_names() {
 #[test]
 fn a_visited_hex_carries_its_own_settlement() {
     let current = parse_report_full(
-        "Atlantis Report For:\nFoo (1)\nDecember, Year 6\n\n\
+        "Atlantis Report For:\nFoo (1)\nNovember, Year 6\n\n\
          mountain (7,53) in Inhead, contains Inholm [city], 12051 peasants (hill dwarves), $33983.\n",
     );
 
@@ -646,7 +646,7 @@ fn a_visited_hex_carries_its_own_settlement() {
 const REPORT: &str = concat!(
     "Atlantis Report For:\n",
     "Foo (1)\n",
-    "December, Year 6\n",
+    "November, Year 6\n",
     "\n",
     "plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n",
     "\n",
@@ -692,7 +692,7 @@ fn rejects_unreadable_remembered_json() {
 /// by `report::level::level_name` - the level control reads this list rather than deriving it.
 #[test]
 fn the_map_lists_its_levels_by_name_shallowest_first() {
-    let current = report_at_turn("plain", "February", 1, "");
+    let current = report_at_turn("plain", "January", 1, "");
     let underworld_region =
         parse_region_header("cavern (7,53,underworld) in Deeps.").expect("header should parse");
 
@@ -719,7 +719,7 @@ fn the_map_lists_its_levels_by_name_shallowest_first() {
     );
 
     let nexus_report = parse_report_full(
-        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
+        "Atlantis Report For:\nFoo (1)\nJanuary, Year 1\n\n\
          nexus (0,0,nexus) in The Void.\n\n\
          Exits:\n  none\n",
     );
@@ -732,7 +732,7 @@ fn the_map_lists_its_levels_by_name_shallowest_first() {
         }]
     );
 
-    let empty = empty_report("February", 1);
+    let empty = empty_report("January", 1);
     let known_empty = resolve_known_map(&empty, &[]);
     assert!(known_empty.levels.is_empty());
 }
@@ -743,7 +743,7 @@ fn the_map_lists_its_levels_by_name_shallowest_first() {
 #[test]
 fn a_nexus_sighting_stored_on_the_surface_is_given_its_level_back() {
     let legacy_nexus = parse_report_full(
-        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
+        "Atlantis Report For:\nFoo (1)\nJanuary, Year 1\n\n\
          nexus (0,0) in The Void, 10 peasants (orcs), $5.\n\n\
          Exits:\n  Southeast : plain (2,2) in Nowhere.\n\n\
          - City Guard (1), on guard, Atlantis Defense (999), 10 vikings [VIKI].\n",
@@ -757,7 +757,7 @@ fn a_nexus_sighting_stored_on_the_surface_is_given_its_level_back() {
     );
 
     let current = parse_report_full(
-        "Atlantis Report For:\nFoo (1)\nMarch, Year 1\n\n\
+        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
          mountain (36,4) in Slounspifra, 5 peasants (orcs), $5.\n\n\
          Exits:\n  Southeast : plain (37,5) in Nowhere.\n",
     );
@@ -807,7 +807,7 @@ fn a_nexus_sighting_stored_on_the_surface_is_given_its_level_back() {
 #[test]
 fn a_neighbours_exit_naming_the_nexus_on_the_surface_is_also_repaired() {
     let neighbour = parse_report_full(
-        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
+        "Atlantis Report For:\nFoo (1)\nJanuary, Year 1\n\n\
          plain (2,2) in Nowhere, 10 peasants (orcs), $5.\n\n\
          Exits:\n  Northwest : nexus (0,0) in The Void.\n",
     )
@@ -816,7 +816,7 @@ fn a_neighbours_exit_naming_the_nexus_on_the_surface_is_also_repaired() {
     assert_eq!(neighbour.exits[0].coordinate.z, 1, "the pre-fix shape");
 
     let current = parse_report_full(
-        "Atlantis Report For:\nFoo (1)\nMarch, Year 1\n\n\
+        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
          mountain (36,4) in Slounspifra, 5 peasants (orcs), $5.\n\n\
          Exits:\n  Southeast : plain (37,5) in Nowhere.\n",
     );
@@ -847,7 +847,7 @@ fn a_legacy_unitless_underworld_cavern_is_repaired_off_the_surface() {
     use atlantis_hud_core::report::model::Coordinate;
 
     let legacy_cavern = parse_report_full(
-        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
+        "Atlantis Report For:\nFoo (1)\nJanuary, Year 1\n\n\
          cavern (7,53) in Deeps, 10 peasants (orcs), $5.\n\n\
          Exits:\n  North : tunnels (7,51) in Deeps.\n",
     )
@@ -859,7 +859,7 @@ fn a_legacy_unitless_underworld_cavern_is_repaired_off_the_surface() {
     );
 
     let known = resolve_known_map(
-        &empty_report("March", 1),
+        &empty_report("February", 1),
         &[RememberedRegion {
             region: legacy_cavern,
             last_seen_turn: 1,
@@ -887,7 +887,7 @@ fn a_legacy_unitless_underworld_cavern_is_repaired_off_the_surface() {
 #[test]
 fn a_units_region_id_is_repaired_along_with_its_regions() {
     let legacy_nexus = parse_report_full(
-        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
+        "Atlantis Report For:\nFoo (1)\nJanuary, Year 1\n\n\
          nexus (0,0) in The Void, 10 peasants (orcs), $5.\n\n\
          Exits:\n  Southeast : plain (2,2) in Nowhere.\n\n\
          - City Guard (1), on guard, Atlantis Defense (999), 10 vikings [VIKI].\n",
@@ -902,7 +902,7 @@ fn a_units_region_id_is_repaired_along_with_its_regions() {
     // Same turn as the sighting, and a different hex, so Rule 4 does not overwrite the nexus entry
     // and Rule 3 treats the sighting as current - keeping its units rather than dropping them.
     let current = parse_report_full(
-        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
+        "Atlantis Report For:\nFoo (1)\nJanuary, Year 1\n\n\
          mountain (36,4) in Slounspifra, 5 peasants (orcs), $5.\n\n\
          Exits:\n  Southeast : plain (37,5) in Nowhere.\n",
     );
@@ -934,7 +934,7 @@ const STORED_WITH_A_UNIT_OF_OURS: &str =
 
 fn stored_with_a_unit_of_ours() -> RememberedRegion {
     let region =
-        report_at_turn("plain", "February", 1, STORED_WITH_A_UNIT_OF_OURS).regions[0].clone();
+        report_at_turn("plain", "January", 1, STORED_WITH_A_UNIT_OF_OURS).regions[0].clone();
     let gone = region
         .units
         .iter()
@@ -971,7 +971,7 @@ fn unit_ids_at(known: &atlantis_hud_core::known_map::KnownMap, x: i32, y: i32) -
 #[test]
 fn a_same_turn_sighting_never_brings_back_a_unit_of_ours() {
     let known = resolve_known_map(
-        &empty_report("February", 1),
+        &empty_report("January", 1),
         &[stored_with_a_unit_of_ours()],
     );
 
@@ -980,7 +980,7 @@ fn a_same_turn_sighting_never_brings_back_a_unit_of_ours() {
 
 #[test]
 fn a_unit_of_ours_in_a_same_turn_sighting_does_not_join_the_reports_hex() {
-    let current = report_at_turn("plain", "February", 1, "* Us (100), 1 man [MAN].\n");
+    let current = report_at_turn("plain", "January", 1, "* Us (100), 1 man [MAN].\n");
     let known = resolve_known_map(&current, &[stored_with_a_unit_of_ours()]);
 
     assert_eq!(unit_ids_at(&known, 1, 1), ["100", "500"]);
