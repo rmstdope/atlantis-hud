@@ -3681,3 +3681,111 @@ describe("the unfinished mark in the popups", () => {
     expect(popup.notes.some((note) => note.startsWith("unfinished Galleon:"))).toBe(false);
   });
 });
+
+// ah-k52u: whether a hover adds "Nothing this month changes ..." is decided once, from what the
+// body wrote, so no column can list a movement and then say nothing changes.
+describe("the shared no-change sentence", () => {
+  const NOTHING = ["Nothing this month changes this.", "Nothing this month changes these."];
+  const item = (overrides: Partial<NonNullable<PreviewedUnit["itemChanges"]>[number]>) =>
+    ({
+      tag: "IRON",
+      name: "iron",
+      delta: 10,
+      cause: "was-given",
+      line: null,
+      unitPrice: null,
+      other: { unitId: "4686", name: "Unit" },
+      isMan: false,
+      ...overrides
+    }) as NonNullable<PreviewedUnit["itemChanges"]>[number];
+  // Ten iron given in and ten spent: the month ends as the report began, so no report change.
+  const netZeroIron = [item({}), item({ cause: "production-spent", delta: -10 })];
+  const merge = {
+    cause: "given" as const,
+    from: "1502",
+    men: 2,
+    menBefore: 4,
+    menArriving: [],
+    countInferred: false,
+    arrivingSkills: [],
+    skills: []
+  };
+
+  const cases: readonly { column: "men" | "movement" | "skills" | "items" | "structure"; unit: PreviewedUnit; facts: PopupFacts }[] = [
+    {
+      column: "men",
+      unit: unit({
+        men: 3,
+        menByRace: [{ amount: 3, name: "humans", tag: "HUMN" }],
+        itemChanges: [
+          item({ tag: "HUMN", name: "humans", isMan: true, cause: "bought", delta: 3, unitPrice: 60, other: null }),
+          item({ tag: "HUMN", name: "humans", isMan: true, cause: "given-away", delta: -3 })
+        ]
+      }),
+      facts: facts()
+    },
+    {
+      column: "movement",
+      unit: unit({
+        movement: { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk", swim: { kind: "absent" } },
+        items: [],
+        itemChanges: netZeroIron
+      }),
+      facts: facts()
+    },
+    {
+      column: "skills",
+      unit: unit({ own: true, skillMerges: [merge] }),
+      facts: facts()
+    },
+    { column: "items", unit: unit({ items: [], itemChanges: netZeroIron }), facts: facts() },
+    {
+      column: "structure",
+      unit: unit({ structureId: "11" }),
+      facts: facts({ structureLabel: "Stockade [11]", structureFinish: "finishing" })
+    }
+  ];
+
+  for (const { column, unit: u, facts: f } of cases) {
+    it(`the ${column} hover lists its movement and never says nothing changes`, () => {
+      const popup = columnPopup(popupForCell(column, u, f));
+      expect(popup.notes.length).toBeGreaterThan(0);
+      for (const sentence of NOTHING) {
+        expect(popup.notes).not.toContain(sentence);
+      }
+    });
+  }
+
+  it("a men line drawn with a before and after never sits beside the sentence", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "men",
+        unit({
+          men: 3,
+          menByRace: [{ amount: 3, name: "humans", tag: "HUMN" }],
+          previewChanges: [{ field: "items", original: "3 ORC" }]
+        }),
+        facts()
+      )
+    );
+    expect(popup.lines.some((line) => line.change)).toBe(true);
+    expect(popup.notes).not.toContain("Nothing this month changes this.");
+  });
+
+  it("a skills hover with nothing to list still opens with No skills., ahead of who joined", () => {
+    const popup = columnPopup(popupForCell("skills", unit({ own: true, skillMerges: [merge] }), facts()));
+    expect(popup.notes[0]).toBe("No skills.");
+    expect(popup.notes[1]).toMatch(/^2 men joined from /);
+  });
+
+  it("an unchanged long order still says so, through the same decision", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "longOrder",
+        unit({ own: true }),
+        facts({ longOrder: "WORK", reportedLongOrder: reported("WORK") })
+      )
+    );
+    expect(popup.notes).toEqual(["Nothing this month changes this."]);
+  });
+});
