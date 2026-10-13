@@ -803,17 +803,11 @@ pub fn decode_game_backup(
         Some(version) => version,
         None => return Err(BackupError::NoVersion),
     };
-    // Compared as `u64` before narrowing: a version too large for `u32` must still be judged
-    // "newer than this build supports" rather than truncating and wrapping into a value that
-    // passes the check below.
-    if version > u64::from(CURRENT_GAME_BACKUP_VERSION) {
-        return Err(BackupError::NewerVersion {
-            actual: u32::try_from(version).unwrap_or(u32::MAX),
-            max_supported: CURRENT_GAME_BACKUP_VERSION,
-        });
-    }
-    // Fits in `u32`: it has just been shown to be `<= CURRENT_GAME_BACKUP_VERSION`.
-    let version = u32::try_from(version).unwrap_or(u32::MAX);
+    let version = crate::stored_version::refuse_newer(version, CURRENT_GAME_BACKUP_VERSION)
+        .map_err(|newer| BackupError::NewerVersion {
+            actual: newer.actual,
+            max_supported: newer.max_supported,
+        })?;
     if version < 1 {
         return Err(BackupError::UnsupportedVersion(version));
     }

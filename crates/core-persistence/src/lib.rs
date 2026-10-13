@@ -1200,12 +1200,11 @@ fn apply_migrations(connection: &mut Connection) -> Result<(), PersistenceError>
     // A newer build may have changed what stored rows mean, not just added to them, so running on
     // its schema is never safe. Checked before anything is written, the CREATE below included.
     let stored = current_schema_version_read_only(connection)?;
-    if stored > CURRENT_SCHEMA_VERSION {
-        return Err(PersistenceError::NewerSchemaVersion {
-            actual: stored,
-            max_supported: CURRENT_SCHEMA_VERSION,
-        });
-    }
+    atlantis_hud_core::stored_version::refuse_newer(u64::from(stored), CURRENT_SCHEMA_VERSION)
+        .map_err(|newer| PersistenceError::NewerSchemaVersion {
+            actual: newer.actual,
+            max_supported: newer.max_supported,
+        })?;
 
     connection.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_migrations (
