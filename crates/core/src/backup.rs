@@ -15,7 +15,8 @@ use crate::report::sighting::{sighting_from_payload, RegionSighting};
 
 pub const GAME_BACKUP_FORMAT: &str = "atlantis-hud-game-backup";
 /// Version 2 numbers turns the engine's way, January of Year 1 being turn 1; version 1 numbered
-/// every turn one lower, and is read through [`move_to_engine_turns`] (ah-m6pw).
+/// every turn one lower, and is read through
+/// [`crate::stored_turns::move_collections_to_engine_turns`] (ah-m6pw, ah-aguu).
 pub const CURRENT_GAME_BACKUP_VERSION: u32 = 2;
 /// Moved from core-persistence with the manifest types; `create_game`/`open_game` still check it.
 pub const CURRENT_MANIFEST_VERSION: u32 = 1;
@@ -752,75 +753,12 @@ pub fn encode_game_backup_json(
     encode_game_backup(content, exported_at)
 }
 
-/// Moves every turn a version-1 backup names up by one.
-///
-/// Version 1 was written while `turn_number_for` called February of Year 1 turn 1; the engine's
-/// `Game::TurnNumber` (game.cpp) makes January of Year 1 turn 1, so every turn in such a backup is
-/// one low. This is the move migration 15 makes to a stored desktop game, applied to the file
-/// instead, so both stores and both platforms restore one backup alike. A goal's turn 0 marks a goal
-/// written before goals had turns, which every reader drops, so it stays; a cast has no such form.
-fn move_to_engine_turns(collections: &mut EncodedGameBackupCollections) {
-    let later = |turn: &mut u32| *turn = turn.saturating_add(1);
-
-    for turn in &mut collections.imported_turns {
-        later(&mut turn.turn_number);
-        // Through the typed result, so the payload comes back in the shape an import writes. A
-        // payload that does not read is left alone: it is only ever consulted for its season and
-        // to compare against a re-import.
-        if let Ok(mut parsed) =
-            serde_json::from_str::<crate::ReportParseResult>(&turn.parsed_payload_json)
-        {
-            if let Some(header) = parsed.turn_header.as_mut() {
-                later(&mut header.turn_number);
-            }
-            if let Ok(json) = serde_json::to_string(&parsed) {
-                turn.parsed_payload_json = json;
-            }
-        }
-    }
-    for draft in &mut collections.order_drafts {
-        later(&mut draft.turn_number);
-    }
-    for sighting in &mut collections.region_sightings {
-        later(&mut sighting.last_seen_turn);
-    }
-    for merge in &mut collections.merged_reports {
-        later(&mut merge.turn_number);
-    }
-    for note in &mut collections.hex_notes {
-        later(&mut note.turn);
-    }
-    for member in collections
-        .armies
-        .iter_mut()
-        .flat_map(|army| army.members.iter_mut())
-    {
-        later(&mut member.seen_turn);
-    }
-    for mage in &mut collections.allied_mages {
-        later(&mut mage.sheet_turn);
-    }
-    for plan in &mut collections.study_plans {
-        for goal in &mut plan.goals {
-            let (StudyGoal::Study { turn, .. } | StudyGoal::Teach { turn, .. }) = goal;
-            if *turn > 0 {
-                later(turn);
-            }
-        }
-        // A cast has no turnless form, so a cast on turn 0 (January of Year 1, as version 1
-        // counted) moves like any other.
-        for cast in &mut plan.casts {
-            later(&mut cast.turn);
-        }
-    }
-}
-
 /// Caps every sighting of a faction holding an AtlaClient merge at that faction's newest imported
 /// turn (ah-vtgk).
 ///
 /// AtlaClient stamps a hex with the engine's turn while version 1 numbered HUD's own turns one
 /// lower, so a hex merged from AtlaClient on the newest turn was stored one turn too new, and
-/// [`move_to_engine_turns`] keeps that difference. Nothing records which sighting came from
+/// [`crate::stored_turns::move_collections_to_engine_turns`] keeps that difference. Nothing records which sighting came from
 /// AtlaClient, so the repair is the bound that always holds: no sighting is newer than the newest
 /// report of the faction it is filed under. Migration 16 makes the same repair to a stored desktop
 /// game, and `engineTurns.ts` to a browser one.
@@ -853,7 +791,7 @@ pub fn decode_game_backup(
     backup_json: &str,
     opened_at: &str,
 ) -> Result<DecodedGameBackup, BackupError> {
-    let value: serde_json::Value =
+    let mut value: serde_json::Value =
         serde_json::from_str(backup_json).map_err(|_| BackupError::NotJson)?;
 
     let format = value.get("format").and_then(serde_json::Value::as_str);
@@ -879,6 +817,12 @@ pub fn decode_game_backup(
     if version < 1 {
         return Err(BackupError::UnsupportedVersion(version));
     }
+    // Version 1 was written while February of Year 1 was turn 1; the engine's `Game::TurnNumber`
+    // (game.cpp) makes January of Year 1 turn 1, so every turn it names is one low (ah-m6pw). The
+    // move is the one every store makes, from the one list of stored turns (ah-aguu).
+    if version < 2 {
+        crate::stored_turns::move_collections_to_engine_turns(&mut value);
+    }
 
     let backup: GameBackup =
         serde_json::from_value(value).map_err(|error| BackupError::Malformed(error.to_string()))?;
@@ -897,8 +841,8 @@ pub fn decode_game_backup(
         mut manifest,
         mut collections,
     } = backup;
+    // After the turns have moved (above, on the document), so the cap is read on the same count.
     if version < 2 {
-        move_to_engine_turns(&mut collections);
         cap_atlaclient_sightings(&mut collections);
     }
     let created_at = manifest.created_at.clone();
@@ -2131,6 +2075,31 @@ mod tests {
                 "{name} is a backup collection"
             );
         }
+    }
+
+    /// ah-aguu: a version-1 backup is moved by the same list the browser's upgrade uses, which
+    /// reads a payload under either spelling it was ever stored with and keeps that spelling.
+    #[test]
+    fn a_version_one_payload_from_before_camel_case_is_moved_too() {
+        let mut content = every_collection_on_the_old_count();
+        content.collections.imported_turns[0].parsed_payload_json =
+            r#"{"turn_header":{"turn_number":71,"season":"December"}}"#.to_string();
+        let mut version_one: serde_json::Value = serde_json::from_str(
+            &encode_game_backup(content, "2026-01-06T00:00:00Z").expect("encodes"),
+        )
+        .expect("json");
+        version_one["version"] = serde_json::json!(1);
+
+        let restored = decode_game_backup(&version_one.to_string(), "2026-02-01T00:00:00Z")
+            .expect("decodes")
+            .collections;
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&restored.imported_turns[0].parsed_payload_json).expect("json");
+        assert_eq!(
+            payload,
+            serde_json::json!({"turn_header": {"turn_number": 72, "season": "December"}})
+        );
     }
 
     /// One record in every collection, each naming its turns as version 1 counted them.
