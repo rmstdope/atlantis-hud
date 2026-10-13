@@ -3271,6 +3271,26 @@ describe("the items popup's cause sentences", () => {
     expect(notes.some((note) => note.startsWith("grain:"))).toBe(false);
   });
 
+  // ah-ymms: movements that net to zero leave no `items` report change, but the hover still lists
+  // them, so it must not also say nothing changes.
+  it("does not say nothing changes when it lists movements that net to zero", () => {
+    const notes = notesFor({
+      items: [{ name: "iron", tag: "IRON", amount: 0 }],
+      itemChanges: [
+        moved({ tag: "IRON", name: "iron", cause: "was-given", delta: 10, other: { unitId: "4686", name: "Unit" } }),
+        moved({ tag: "IRON", name: "iron", cause: "production-spent", delta: -10, other: { unitId: "4840", name: "Unit" } })
+      ]
+    });
+    expect(notes).toContain("iron: given 10 by Unit (4686), used 10 for Unit (4840) to produce.");
+    expect(notes).not.toContain("Nothing this month changes these.");
+  });
+
+  it("still says nothing changes when it lists no movement", () => {
+    expect(notesFor({ items: [{ name: "grain", tag: "GRAI", amount: 8 }] })).toContain(
+      "Nothing this month changes these."
+    );
+  });
+
   it("names every movement of one item in a single sentence", () => {
     expect(
       notesFor({
