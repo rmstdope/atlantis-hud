@@ -67,8 +67,8 @@ use crate::orders::silver::{
     MoneyRead, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
     PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages, SaleAnswer, SettledBuyAll,
     SettledGift, SharedCast, SharedMarket, ShipmentPriced, SilverChange, SilverChangeCause,
-    SilverDoubt, SilverMove, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
-    UpkeepSettlement, Workforce,
+    SilverDoubt, SilverDraw, SilverFunding, SilverMove, TransferShape, Transmuting, UnitFacts,
+    UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
@@ -2479,9 +2479,10 @@ fn forecast_hex(
                     .shared_casts
                     .get(&ordered.unit.unit_id)
                     .map_or(&[][..], Vec::as_slice),
-                // The exact silver GIVEs the hex's sharers paid in full (`ah-ub3y`).
-                paid_gifts: ledger
-                    .paid_gifts
+                // How the unit's silver transfers were funded as they ran: the exact GIVEs paid
+                // in full among them (`ah-ub3y`, `ah-rou9`).
+                fundings: ledger
+                    .silver_fundings
                     .get(&ordered.unit.unit_id)
                     .map_or(&[][..], Vec::as_slice),
                 ..phases.of_with(
@@ -5427,7 +5428,7 @@ impl PhaseHoldings {
             buy_all: &[],
             gifts: &[],
             casts: &[],
-            paid_gifts: &[],
+            fundings: &[],
             silver_moves: &[],
             market_withholds: 0,
         }
@@ -5457,7 +5458,7 @@ impl PhaseHoldings {
             buy_all,
             gifts,
             casts: &[],
-            paid_gifts: &[],
+            fundings: &[],
             silver_moves,
             market_withholds,
         }
@@ -5678,12 +5679,6 @@ struct Ledger<'a> {
     /// column through [`PhaseFacts::casts`] so it prices the spell from the same purse
     /// (`ah-0mch`).
     pub(crate) shared_casts: BTreeMap<String, Vec<SharedCast>>,
-    /// The document lines of each unit's exact silver `GIVE`s the game pays in full - out of the
-    /// unit's own silver or, beyond it, the other sharers' (`runorders.cpp`: `DoGiveOrder` checks
-    /// `GetSharedNum`): handed to the SILVER column through [`PhaseFacts::paid_gifts`] so it does
-    /// not name a gift the game refused nothing as the order the unit is short on (`ah-ub3y`).
-    /// Written by [`transfer`].
-    pub(crate) paid_gifts: BTreeMap<String, Vec<i64>>,
     /// What each unit was charged for a tag beyond what actually moved, because neither it nor
     /// any sharer could fund it: a `GIVE` the engine cuts with "Not enough.", a cast's materials
     /// or a sale the pool fell short of - every overdraft but a cast's silver, which is
@@ -5698,13 +5693,11 @@ struct Ledger<'a> {
     /// cast's verdict does, the refused cast's whole cost comes back instead (`ah-szu0`,
     /// `ah-eoag`).
     unfunded_casts: BTreeMap<String, i64>,
-    /// Which sharer funded each part of a silver `GIVE`, `TAKE` or discard beyond what its source
-    /// held, as the transfer ran, in settlement order: the engine runs the gives unit by unit and
-    /// `ConsumeShared` drains the sharers in region order against what each holds then
-    /// (`runorders.cpp`: `DoGiveOrders`, `DoGiveOrder`; `unit.cpp`). The purse books these as lent
-    /// before the cast moment ([`Lending::settle`]), so a sharer a later `GIVE` refilled is not
-    /// read as the one that paid (`ah-msds`).
-    gift_draws: Vec<GiftDraw>,
+    /// How each unit's silver `GIVE`s, `TAKE`s from it and discards were funded as they ran, keyed
+    /// by the transfer's source, in settlement order: the one record of what the `SHARE` pool paid
+    /// of a transfer and which sharer paid it ([`SilverFunding`], `ah-rou9`). Written by
+    /// [`transfer`] for every silver transfer with a source in this hex.
+    pub(crate) silver_fundings: BTreeMap<String, Vec<SilverFunding>>,
     /// Every `GIVE`, `TAKE` and discard of silver this walk settled, in settlement order: who it
     /// left, who it reached (`None` for a discard, or a target this walk cannot credit), and how
     /// much - the amount the balances actually moved. What [`silver_can_have`] reads to add back
@@ -6206,10 +6199,9 @@ fn ledger_for_reaching<'a>(
         settled_buy_all: BTreeMap::new(),
         settled_gifts: BTreeMap::new(),
         shared_casts: BTreeMap::new(),
-        paid_gifts: BTreeMap::new(),
         unfunded: BTreeMap::new(),
         unfunded_casts: BTreeMap::new(),
-        gift_draws: Vec::new(),
+        silver_fundings: BTreeMap::new(),
         silver_transfers: Vec::new(),
         silver_moves: BTreeMap::new(),
         shipping_paid: BTreeMap::new(),
@@ -8661,56 +8653,58 @@ struct SilverTransfer {
     received: i64,
 }
 
-/// One sharer's part in funding a silver transfer beyond its source's own silver, as
-/// [`Ledger::gift_draws`] records it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct GiftDraw {
-    /// The transfer's source, whose silver the sharer made up.
-    borrower: String,
-    /// The sharer drawn on.
-    lender: String,
-    amount: i64,
-}
-
 /// What the Give phase drew on the `SHARE` pool for `unit_id` as each of its transfers ran
-/// ([`Ledger::gift_draws`]), between two units neither of which is doubted. Gone from the sharers
+/// ([`Ledger::silver_fundings`]), between two units neither of which is doubted. Gone from the sharers
 /// for good (`unit.cpp`: `ConsumeShared`), so a reader of the unit's silver from the Give phase on
 /// must not let a receipt later in that phase net it away (`ah-9udi`).
 fn gift_drawn_by(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
-    gift_draws_where(ledger, |draw| draw.borrower == unit_id)
+    gift_draws_where(ledger, |borrower, _| borrower == unit_id)
 }
 
-/// What the Give phase drew on `unit_id` as a sharer ([`Ledger::gift_draws`]): the other side of
+/// What the Give phase drew on `unit_id` as a sharer ([`Ledger::silver_fundings`]): the other side of
 /// [`gift_drawn_by`], which its own ledger row never shows (`ah-9udi`).
 fn gift_lent_by(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
-    gift_draws_where(ledger, |draw| draw.lender == unit_id)
+    gift_draws_where(ledger, |_, draw| draw.lender == unit_id)
 }
 
-fn gift_draws_where(ledger: &Ledger<'_>, keep: impl Fn(&GiftDraw) -> bool) -> i64 {
+fn gift_draws_where(ledger: &Ledger<'_>, keep: impl Fn(&str, &SilverDraw) -> bool) -> i64 {
     ledger
-        .gift_draws
+        .silver_fundings
         .iter()
-        .filter(|draw| {
-            keep(draw)
-                && !ledger.doubted.contains(&draw.borrower)
+        .flat_map(|(borrower, fundings)| {
+            fundings
+                .iter()
+                .flat_map(|funding| funding.draws.iter())
+                .map(move |draw| (borrower, draw))
+        })
+        .filter(|(borrower, draw)| {
+            keep(borrower, draw)
+                && !ledger.doubted.contains(*borrower)
                 && !ledger.doubted.contains(&draw.lender)
         })
-        .map(|draw| draw.amount)
+        .map(|(_, draw)| draw.amount)
         .sum()
 }
 
 /// Lays the part of a silver transfer from `from` that its own silver does not cover on the hex's
 /// other sharers, in region order, each up to what it holds as the transfer runs - its balance
 /// less what earlier transfers drew on it, plus what they drew on others for it - as the engine's
-/// `Unit::ConsumeShared` does (`unit.cpp`; `runorders.cpp`: `DoGiveOrder`), and records each
-/// draw ([`Ledger::gift_draws`], `ah-msds`). `funded` is what the pool let the transfer move.
-fn record_gift_draws(ledger: &mut Ledger<'_>, hex: &Hex<'_>, from: &str, funded: i64) {
-    let holds = |ledger: &Ledger<'_>, unit_id: &str| {
+/// `Unit::ConsumeShared` does (`unit.cpp`; `runorders.cpp`: `DoGiveOrder`): the draws of the
+/// transfer's [`SilverFunding`] (`ah-msds`, `ah-rou9`). `funded` is what the pool let the transfer
+/// move.
+fn draws_for(ledger: &Ledger<'_>, hex: &Hex<'_>, from: &str, funded: i64) -> Vec<SilverDraw> {
+    let holds = |unit_id: &str| {
         let drawn: i64 = ledger
-            .gift_draws
+            .silver_fundings
             .iter()
-            .map(|draw| {
-                if draw.borrower == unit_id {
+            .flat_map(|(borrower, fundings)| {
+                fundings
+                    .iter()
+                    .flat_map(|funding| funding.draws.iter())
+                    .map(move |draw| (borrower, draw))
+            })
+            .map(|(borrower, draw)| {
+                if borrower == unit_id {
                     draw.amount
                 } else if draw.lender == unit_id {
                     -draw.amount
@@ -8722,8 +8716,9 @@ fn record_gift_draws(ledger: &mut Ledger<'_>, hex: &Hex<'_>, from: &str, funded:
         SharerStock::held_at(ledger, StatePhase::Give, unit_id, SILVER)
             .map(|held| held.saturating_add(drawn))
     };
-    let Some(own) = holds(ledger, from) else {
-        return;
+    let mut draws = Vec::new();
+    let Some(own) = holds(from) else {
+        return draws;
     };
     let mut owing = funded - own.max(0);
     for index in hex.report_order() {
@@ -8735,19 +8730,19 @@ fn record_gift_draws(ledger: &mut Ledger<'_>, hex: &Hex<'_>, from: &str, funded:
         if lender == from || !ordered.shares() {
             continue;
         }
-        let Some(has) = holds(ledger, lender) else {
+        let Some(has) = holds(lender) else {
             continue;
         };
         let amount = has.max(0).min(owing);
         if amount > 0 {
             owing -= amount;
-            ledger.gift_draws.push(GiftDraw {
-                borrower: from.to_string(),
+            draws.push(SilverDraw {
                 lender: lender.clone(),
                 amount,
             });
         }
     }
+    draws
 }
 
 /// Books what a unit was charged for `tag` beyond what it could fund (`Ledger::unfunded`).
@@ -8966,19 +8961,36 @@ fn transfer(
             },
         )
     };
-    // Which sharers made up the part of a silver transfer its source could not, read before this
-    // line is charged or its unfunded part booked (`ah-msds`).
-    if !from.is_empty()
-        && tag.eq_ignore_ascii_case(SILVER)
-        && hex.units.iter().any(|ordered| ordered.shares())
-    {
-        record_gift_draws(ledger, hex, &from, received);
-    }
+    // How a silver transfer was funded as it ran - what its source held, what the pool let move,
+    // and which sharers made up the rest, read before this line is charged or its unfunded part
+    // booked (`ah-msds`) - recorded once, and the one verdict on it every later reader takes
+    // (`ah-rou9`).
+    let funding = (!from.is_empty() && tag.eq_ignore_ascii_case(SILVER)).then(|| SilverFunding {
+        line: placed.line as i64,
+        exact_give: is_give && matches!(shape, TransferShape::Exact(_)),
+        asked: quantity,
+        own: known_source.max(0),
+        received,
+        pool_read,
+        draws: if hex.units.iter().any(|ordered| ordered.shares()) {
+            draws_for(ledger, hex, &from, received)
+        } else {
+            Vec::new()
+        },
+    });
     // A silver GIVE beyond the giver's own holding that sharers whose stock was read covered in
     // full: the engine refuses it nothing (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`),
     // so it is neither a cut line nor where the unit's shortfall is anchored (`ah-ub3y`,
     // `ah-f7md`). A pool this walk could not read is no evidence that it paid.
-    let pool_paid = quantity > known_source.max(0) && pool_read && received >= quantity;
+    let pool_paid = funding.as_ref().is_some_and(SilverFunding::pool_paid);
+    let refused_short = funding.as_ref().is_some_and(SilverFunding::refused_short);
+    if let Some(funding) = funding {
+        ledger
+            .silver_fundings
+            .entry(from.clone())
+            .or_default()
+            .push(funding);
+    }
     // What the source is charged below beyond what it gives: the ask itself for goods, `moved`
     // for silver.
     if !from.is_empty() {
@@ -9010,7 +9022,7 @@ fn transfer(
             // orders, they already agree with the column, and the settlement books neither.
             if is_give {
                 *ledger.silver_given.entry(from.clone()).or_default() += quantity;
-                if quantity > known_source.max(0) && !pool_paid {
+                if refused_short {
                     // The cut line is what overdrew the unit, so its finding points here even
                     // where it moves nothing and so draws nothing down (`ah-1c8p`).
                     ledger
@@ -9087,10 +9099,7 @@ fn transfer(
         let (cut, could_move) = if !tag.eq_ignore_ascii_case(SILVER) {
             (received < quantity, received.max(0))
         } else if is_give {
-            (
-                quantity > known_source.max(0) && !pool_paid,
-                known_source.max(0),
-            )
+            (refused_short, known_source.max(0))
         } else {
             (moved < quantity, moved)
         };
@@ -9116,19 +9125,6 @@ fn transfer(
         // actually taken. A `TAKE` is not recorded - the column never deferred one, and its taker
         // side is `Receipts`' business (`ah-awcm`).
         if is_give && tag.eq_ignore_ascii_case(SILVER) {
-            // Paid in full: out of what the giver held, or beyond it by sharers whose stock was
-            // actually read and covered every coin - a pool this walk could not read is no
-            // evidence that it paid (`ah-ub3y`).
-            if matches!(shape, TransferShape::Exact(_))
-                && moved >= quantity
-                && (quantity <= known_source.max(0) || pool_paid)
-            {
-                ledger
-                    .paid_gifts
-                    .entry(from.clone())
-                    .or_default()
-                    .push(placed.line as i64);
-            }
             if let TransferShape::All { except } = shape {
                 ledger
                     .settled_gifts
@@ -13759,7 +13755,7 @@ impl SharerStock {
                         .as_ref()
                         .map_or(0, |studies| studies[index].handed_back());
                     // What the Give phase drew and lent through the pool as each line ran
-                    // ([`Ledger::gift_draws`]), which the netted balance loses once a drawer
+                    // ([`Ledger::silver_fundings`]), which the netted balance loses once a drawer
                     // receives silver; from the cast on the purse carries it (`ah-9udi`).
                     let given = if silver
                         && pooled
@@ -14362,7 +14358,7 @@ fn lend_walking_sharers_silver(
                 .map_or(here, |neighbourhood| neighbourhood.at)
         };
         // A unit's silver at `moment` with what the Give phase drew for it and on it as each line
-        // ran ([`Ledger::gift_draws`]), which its ledger row nets away once it receives silver
+        // ran ([`Ledger::silver_fundings`]), which its ledger row nets away once it receives silver
         // (`ah-9udi`): a sharer drained then has nothing left to lend before it walks or where it
         // arrives, and a drawer refilled since owes the pool nothing more for its draw.
         let held_at = |who: &str, moment: LendingMoment| {
@@ -14911,7 +14907,7 @@ struct Lending {
     /// handed back whole there since that moment pays each claim in full or not at all
     /// ([`SharerStock::paid_one_by_one`]; `ah-mrs0`). The part of a GIVE nobody could fund was
     /// never claimed, and stays the ledger's to add back ([`unfunded_gift_silver`], `ah-2fn5`,
-    /// `ah-eoag`); the part the sharers funded is lent as it ran ([`Ledger::gift_draws`],
+    /// `ah-eoag`); the part the sharers funded is lent as it ran ([`Ledger::silver_fundings`],
     /// `ah-msds`), so what reaches this is an overdraft no gift draw booked: a silver EXCHANGE's.
     refused_cast: Vec<i64>,
     /// How each unit's STUDY went, judged one student at a time as the engine pays them - **the
@@ -15050,7 +15046,7 @@ impl Lending {
         // What the sharers funded of a GIVE or TAKE as it ran was drawn then, on the sharers that
         // held silver at that point (`runorders.cpp`: `DoGiveOrders`, `DoGiveOrder`;
         // `unit.cpp`: `ConsumeShared`), so it is lent before the cast moment, on the sharer the
-        // ledger recorded ([`Ledger::gift_draws`]), rather than laid on the sharers in drain order
+        // ledger recorded ([`Ledger::silver_fundings`]), rather than laid on the sharers in drain order
         // against what they hold once every later GIVE has run (`ah-msds`). A draw on a sharer
         // that walks away is booked too: it ran before the walker left, and
         // [`lend_walking_sharers_silver`] counts it in what the walker lent here, so it is not
@@ -15062,12 +15058,14 @@ impl Lending {
                     .position(|ordered| ordered.unit.unit_id == unit_id)
                     .filter(|&index| judged(index))
             };
-            for draw in &ledger.gift_draws {
-                if let (Some(borrower), Some(lender)) =
-                    (index_of(&draw.borrower), index_of(&draw.lender))
-                {
-                    purse.borrows[borrower] += draw.amount;
-                    purse.lends[lender] += draw.amount;
+            for (borrower, funding) in &ledger.silver_fundings {
+                for draw in funding.iter().flat_map(|funding| funding.draws.iter()) {
+                    if let (Some(borrower), Some(lender)) =
+                        (index_of(borrower), index_of(&draw.lender))
+                    {
+                        purse.borrows[borrower] += draw.amount;
+                        purse.lends[lender] += draw.amount;
+                    }
                 }
             }
         }
@@ -55244,7 +55242,7 @@ BUILD
     /// 902, the one 903 refilled, not 905, which 901's GIVE already drained (`runorders.cpp`:
     /// `DoExchangeOrder`; `unit.cpp`: `ConsumeShared`; `rules/exchange`, `rules/share`;
     /// `ah-6lw8`). `exchange_draw` sees 901's draw on 905 through [`SharerStock::at`]'s reading of
-    /// [`Ledger::gift_draws`] (`ah-9udi`); before that it laid the draw in drain order and named 905.
+    /// [`Ledger::silver_fundings`] (`ah-9udi`); before that it laid the draw in drain order and named 905.
     #[test]
     fn an_exchange_after_the_gifts_names_the_refilled_sharer_in_the_items_preview() {
         let rules = trident_rules();
@@ -56768,6 +56766,255 @@ BUILD
                     0,
                     "reversed: {reversed}"
                 );
+            }
+        }
+        // --- one record of how each silver transfer was funded, read alike (`ah-rou9`) --------
+        //
+        // One hex: 901 holds nothing and gives quartermaster 900 $100, which the pool pays out of
+        // sharer 905 (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`; `unit.cpp`:
+        // `ConsumeShared` drains the sharers in region order; `rules/share`). Then 903 refills
+        // sharer 902 with $50 and gives 901 $100, so a later GIVE refills a sharer and the giver
+        // later receives silver; 901's $200 amulet (`data/CRPA`) is refused against what is left,
+        // and 906 exchanges $50 for 908's sword. Every reader of what the pool paid of 901's GIVE
+        // must read it off the one record in [`Ledger::silver_fundings`].
+        mod gift_funding {
+            use super::*;
+
+            const ORDERS: &str = "unit 901\nGIVE 900 100 SILV\nCAST Create_Amulet_Of_Protection\n\
+                                  unit 902\n\
+                                  unit 903\nGIVE 902 50 SILV\nGIVE 901 100 SILV\n\
+                                  unit 906\nEXCHANGE 908 50 SILV 1 SWOR\n\
+                                  unit 908\nEXCHANGE 906 1 SWOR 50 SILV\n";
+
+            fn region() -> ReportRegion {
+                let mut region = caravanserai_owner("900", 1, 0, 0);
+                region.units.extend([
+                    with_skill(unit("901"), "CRPA", 1),
+                    sharing(unit("902")),
+                    sharing(with_silver(unit("905"), 100)),
+                    with_silver(unit("903"), 200),
+                    unit("906"),
+                    with_item(unit("908"), 1, "sword", "SWOR"),
+                ]);
+                region
+            }
+
+            /// The record holds what the GIVE asked, what its giver held as it ran, and which
+            /// sharer made up the rest - 905, whatever 901 and 902 receive afterwards.
+            #[test]
+            fn the_record_holds_the_gift_as_it_ran() {
+                let rules = trident_rules();
+                let region = region();
+                let ordered = OrderedUnits::read(ORDERS);
+                let hex = Hex::read(&region, &ordered, &[]);
+                let ledger = ledger_for(&hex, Some(&rules));
+                let fundings = &ledger.silver_fundings["901"];
+                assert_eq!(fundings.len(), 1, "{fundings:?}");
+                let gift = &fundings[0];
+                assert_eq!(
+                    (
+                        gift.line,
+                        gift.exact_give,
+                        gift.asked,
+                        gift.own,
+                        gift.received
+                    ),
+                    (2, true, 100, 0, 100),
+                    "{gift:?}"
+                );
+                assert!(gift.pool_read, "{gift:?}");
+                assert_eq!(
+                    gift.draws,
+                    vec![SilverDraw {
+                        lender: "905".to_string(),
+                        amount: 100
+                    }],
+                    "{gift:?}"
+                );
+                assert!(gift.pool_paid() && gift.paid_in_full() && !gift.refused_short());
+            }
+
+            /// The purse's lending before the market, and the Give phase's draw on and by each
+            /// unit, are the record's draws: 905 lent 901 the $100, though by the cast 901 holds
+            /// the $100 903 gave it and 902 the $50, which it lends 906's exchange (`ah-msds`,
+            /// `ah-9udi`).
+            #[test]
+            fn every_draw_reader_agrees_with_the_record() {
+                let rules = trident_rules();
+                let region = region();
+                let ordered = OrderedUnits::read(ORDERS);
+                let hex = Hex::read(&region, &ordered, &[]);
+                let ledger = ledger_for(&hex, Some(&rules));
+                let gift = &ledger.silver_fundings["901"][0];
+                let index = |id: &str| {
+                    hex.units
+                        .iter()
+                        .position(|ordered| ordered.unit.unit_id == id)
+                        .expect("listed")
+                };
+                assert_eq!(gift_drawn_by(&ledger, "901"), gift.drawn());
+                assert_eq!(gift_lent_by(&ledger, "905"), gift.draws[0].amount);
+                assert_eq!(gift_lent_by(&ledger, "902"), 0);
+                let lending = Lending::before(&hex, &ledger, StatePhase::Market);
+                assert_eq!(lending.borrows[index("901")], gift.drawn(), "{lending:?}");
+                assert_eq!(
+                    lending.lends[index("905")],
+                    gift.draws[0].amount,
+                    "{lending:?}"
+                );
+                // What 902 lends at the cast is 906's exchange's, not the gift's.
+                assert_eq!(
+                    lending.lends[index("902")],
+                    lending.borrows[index("906")],
+                    "{lending:?}"
+                );
+            }
+
+            /// The SILVER column reads the record's verdict that the pool paid the GIVE in full,
+            /// so it names the refused CAST as what 901 is short on (`ah-ub3y`).
+            #[test]
+            fn the_column_reads_paid_in_full_from_the_record() {
+                let rules = trident_rules();
+                let review = review_turn(&report(vec![region()]), ORDERS, Some(&rules), with_map());
+                let giver = shipment_silver(&review, "901");
+                assert!(
+                    giver.short_for_orders.is_some_and(|short| short > 0),
+                    "{giver:?}"
+                );
+                assert_eq!(
+                    giver.short_on,
+                    Some(crate::orders::silver::SilverSpender::Cast),
+                    "{giver:?}"
+                );
+            }
+
+            /// The editor's marker and the cut lines read the same verdict: no cut line and no
+            /// shortfall anchor on the GIVE the pool paid, the marker on the refused CAST
+            /// (`ah-f7md`).
+            #[test]
+            fn the_anchor_reads_the_record() {
+                let rules = trident_rules();
+                let region = region();
+                let ordered = OrderedUnits::read(ORDERS);
+                let hex = Hex::read(&region, &ordered, &[]);
+                let ledger = ledger_for(&hex, Some(&rules));
+                let gift = &ledger.silver_fundings["901"][0];
+                assert!(!gift.refused_short(), "{gift:?}");
+                assert!(
+                    !ledger
+                        .cut_transfers
+                        .iter()
+                        .any(|cut| cut.placed.line as i64 == gift.line && cut.source == "901"),
+                    "the GIVE the pool paid is a cut line"
+                );
+                assert!(
+                    ledger
+                        .charged_at
+                        .get(&("901".to_string(), "SILV".to_string()))
+                        .is_none_or(|placed| placed.line as i64 != gift.line),
+                    "{:?}",
+                    ledger.charged_at
+                );
+                let review = review_turn(&report(vec![region]), ORDERS, Some(&rules), with_map());
+                let markers: Vec<_> = review
+                    .findings
+                    .iter()
+                    .filter(|f| f.code.as_str() == "part-of-hex-shortfall")
+                    .map(|f| f.line)
+                    .collect();
+                assert!(!markers.contains(&Some(2)), "{:?}", review.findings);
+                assert!(markers.contains(&Some(3)), "{:?}", review.findings);
+            }
+
+            /// Every reader of what the pool paid of 901's GIVE, in one place, each against the
+            /// record rather than a figure of its own: the column's `short_on`, the editor's
+            /// anchor, the purse's lending, the Give-phase draw, and the exchange that follows the
+            /// gifts, which draws on 902 - the sharer 903 refilled - since the record says 905 is
+            /// spent (`ah-6lw8`; `rules/exchange`, `rules/share`). A reader that works the funding
+            /// out again for itself fails here.
+            #[test]
+            fn every_reader_reads_one_record() {
+                let rules = trident_rules();
+                let region = region();
+                let ordered = OrderedUnits::read(ORDERS);
+                let hex = Hex::read(&region, &ordered, &[]);
+                let ledger = ledger_for(&hex, Some(&rules));
+                let gift = ledger.silver_fundings["901"][0].clone();
+                let review = review_turn(
+                    &report(vec![region.clone()]),
+                    ORDERS,
+                    Some(&rules),
+                    with_map(),
+                );
+                let giver = shipment_silver(&review, "901");
+                let named_the_gift =
+                    giver.short_on == Some(crate::orders::silver::SilverSpender::Give);
+                let anchored_the_gift = review.findings.iter().any(|f| {
+                    f.code.as_str() == "part-of-hex-shortfall" && f.line == Some(gift.line as usize)
+                });
+                let lending = Lending::before(&hex, &ledger, StatePhase::Market);
+                let exchange_lent: Vec<(&str, i64)> = ledger
+                    .movements
+                    .iter()
+                    .filter(|movement| {
+                        movement.tag == "SILV"
+                            && movement.cause == ItemChangeCause::GivenAway
+                            && movement.unit_id != "906"
+                            && movement
+                                .other
+                                .as_ref()
+                                .is_some_and(|other| other.unit_id == "906")
+                    })
+                    .map(|movement| (movement.unit_id.as_str(), -movement.delta))
+                    .collect();
+                // What each sharer lent before the market, less what it lent 906's exchange: the
+                // gift's part.
+                let lent: BTreeMap<&str, i64> = hex
+                    .units
+                    .iter()
+                    .enumerate()
+                    .map(|(index, ordered)| {
+                        let id = ordered.unit.unit_id.as_str();
+                        let to_exchange: i64 = exchange_lent
+                            .iter()
+                            .filter(|(lender, _)| *lender == id)
+                            .map(|(_, amount)| amount)
+                            .sum();
+                        (id, lending.lends[index] - to_exchange)
+                    })
+                    .filter(|(_, lent)| *lent > 0)
+                    .collect();
+                let drawn: BTreeMap<&str, i64> = gift
+                    .draws
+                    .iter()
+                    .map(|draw| (draw.lender.as_str(), draw.amount))
+                    .collect();
+                let gift_lenders: BTreeSet<&str> = drawn.keys().copied().collect();
+                let exchange_lenders: Vec<&str> =
+                    exchange_lent.iter().map(|(lender, _)| *lender).collect();
+                assert_eq!(
+                    (
+                        named_the_gift,
+                        anchored_the_gift,
+                        lent,
+                        gift_drawn_by(&ledger, "901"),
+                    ),
+                    (
+                        !gift.paid_in_full(),
+                        gift.refused_short(),
+                        drawn,
+                        gift.drawn()
+                    ),
+                    "{gift:?}"
+                );
+                assert!(
+                    !exchange_lenders.is_empty()
+                        && exchange_lenders
+                            .iter()
+                            .all(|lender| !gift_lenders.contains(lender)),
+                    "the exchange drew on {exchange_lenders:?}, the gift on {gift_lenders:?}"
+                );
+                assert_eq!(exchange_lenders, vec!["902"], "{:?}", ledger.movements);
             }
         }
     }

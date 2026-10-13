@@ -676,6 +676,72 @@ pub struct SettledGift {
     pub other: String,
 }
 
+/// How one silver `GIVE`, `TAKE` or discard was funded as it ran - **the one record of what the
+/// `SHARE` pool paid of a transfer** (`ah-rou9`). The engine runs the gives unit by unit, cuts each
+/// to `GetSharedNum` with "Not enough." and draws what the source's own silver does not cover on
+/// the other sharers through `ConsumeShared`, in region order, against what each holds then
+/// (`runorders.cpp`: `DoGiveOrders`, `DoGiveOrder`; `unit.cpp`; `rules/share`). `semantics`
+/// writes one as each transfer runs; every reader of who paid for it - the SILVER column's
+/// `short_on`, the editor's shortfall marker and cut lines, the purse's lending and the pool's
+/// stock - reads it here rather than working it out again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SilverFunding {
+    /// The document line the order was written on.
+    pub line: i64,
+    /// A `GIVE` (or `GIVE 0` discard) of a stated quantity: not `ALL`, and not a `TAKE`.
+    pub exact_give: bool,
+    /// What the line moves.
+    pub asked: i64,
+    /// The source's own silver as the line ran, never negative.
+    pub own: i64,
+    /// What the source had to give as the engine counts it - its own silver and the other
+    /// sharers' - and so what reaches the receiver.
+    pub received: i64,
+    /// Whether the pool's stock could be read for the source. A pool this walk could not read is
+    /// no evidence that it paid.
+    pub pool_read: bool,
+    /// Which sharer made up each part of `received` beyond `own`, in the order they were drained.
+    pub draws: Vec<SilverDraw>,
+}
+
+impl SilverFunding {
+    /// Asked beyond the source's own silver, and the sharers whose stock was read covered every
+    /// coin of it: the engine refuses it nothing (`runorders.cpp`: `DoGiveOrder` checks
+    /// `GetSharedNum`; `ah-ub3y`, `ah-f7md`).
+    #[must_use]
+    pub fn pool_paid(&self) -> bool {
+        self.asked > self.own && self.pool_read && self.received >= self.asked
+    }
+
+    /// Asked beyond the source's own silver, and not paid by the pool: the line the engine cut,
+    /// and so where the source's shortfall is anchored (`ah-1c8p`, `ah-4k84`).
+    #[must_use]
+    pub fn refused_short(&self) -> bool {
+        self.asked > self.own && !self.pool_paid()
+    }
+
+    /// An exact silver `GIVE` the game pays in full, out of the giver's own silver or beyond it
+    /// by the pool: it is not the order the unit is short on (`ah-ub3y`).
+    #[must_use]
+    pub fn paid_in_full(&self) -> bool {
+        self.exact_give && (self.asked <= self.own || self.pool_paid())
+    }
+
+    /// What the pool drew for this transfer, on every sharer together.
+    #[must_use]
+    pub fn drawn(&self) -> i64 {
+        self.draws.iter().map(|draw| draw.amount).sum()
+    }
+}
+
+/// One sharer's part in funding a [`SilverFunding`]: who was drawn on, and for how much.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SilverDraw {
+    /// The sharer drawn on.
+    pub lender: String,
+    pub amount: i64,
+}
+
 /// What the hex's other `SHARE` units lend one `CAST` line, as the ledger read it when the spell
 /// resolved: `Unit::GetSharedNum` and `GetSharedMoney` (`unit.cpp`), which every cast cost reads in
 /// `spells.cpp` (`ah-0mch`). Recorded only for a line something was lent to, so the column prices
@@ -1443,7 +1509,7 @@ pub struct UnitFacts<'a> {
     /// for a `BUY` or a `STUDY` (`rules/sequenceofevents`, `ah-aqqb`).
     pub overdrawn_at_study: i64,
     /// What this unit's silver `GIVE`s and the `TAKE`s from it drew on its `SHARE` faction-mates
-    /// as they ran, from `Ledger::gift_draws`; `0` where they drew nothing. The purse lends it
+    /// as they ran, from `Ledger::silver_fundings`; `0` where they drew nothing. The purse lends it
     /// this much even where silver it receives later in the Give phase makes its month look paid
     /// for: the engine drew it from the sharers as the line ran (`runorders.cpp`: `DoGiveOrder`;
     /// `unit.cpp`: `ConsumeShared`; `ah-9udi`).
@@ -1644,11 +1710,13 @@ pub struct PhaseFacts<'a> {
     /// This unit's `CAST` lines that drew on another sharer, as the ledger settled them. Empty for
     /// a caller with no ledger, which is every test that builds its own `PhaseFacts`.
     pub casts: &'a [SharedCast],
-    /// The document lines of this unit's exact silver `GIVE`s that the game pays in full - out of
-    /// the unit's own silver or, beyond it, its `SHARE` faction-mates' (`runorders.cpp`:
-    /// `DoGiveOrder` checks `GetSharedNum`) - so it refuses them nothing (`ah-ub3y`). Empty for a
-    /// caller with no ledger, which is every test that builds its own `PhaseFacts`.
-    pub paid_gifts: &'a [i64],
+    /// How this unit's silver `GIVE`s, discards and the `TAKE`s from it were funded as they ran,
+    /// as the ledger recorded them ([`SilverFunding`], `ah-rou9`): which exact `GIVE`s the game
+    /// pays in full - out of the unit's own silver or, beyond it, its `SHARE` faction-mates'
+    /// (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`) - and so refuses nothing
+    /// (`ah-ub3y`). Empty for a caller with no ledger, which is every test that builds its own
+    /// `PhaseFacts`.
+    pub fundings: &'a [SilverFunding],
     /// This unit's silver movements as the ledger recorded them, in settlement order: what the
     /// SILVER column's rows and totals are (`ah-xryu`). Empty for a caller with no ledger, which is
     /// every test that builds its own `PhaseFacts`.
@@ -1678,7 +1746,7 @@ impl<'a> PhaseFacts<'a> {
             buy_all: &[],
             gifts: &[],
             casts: &[],
-            paid_gifts: &[],
+            fundings: &[],
             silver_moves: &[],
             market_withholds: 0,
         }
@@ -1734,11 +1802,17 @@ impl<'a> UnitFacts<'a> {
         self.phases.map_or(&[][..], |phases| phases.casts)
     }
 
-    /// The exact silver `GIVE` lines of this unit's that were paid in full, by the unit or by the
-    /// hex's `SHARE` purse. Empty where there is no ledger.
+    /// Whether this unit's exact silver `GIVE` on document line `line` was paid in full, by the
+    /// unit or by the hex's `SHARE` purse ([`SilverFunding::paid_in_full`]). `false` where there is
+    /// no ledger.
     #[must_use]
-    pub fn paid_gifts(&self) -> &'a [i64] {
-        self.phases.map_or(&[][..], |phases| phases.paid_gifts)
+    pub fn paid_in_full(&self, line: i64) -> bool {
+        self.phases.is_some_and(|phases| {
+            phases
+                .fundings
+                .iter()
+                .any(|funding| funding.line == line && funding.paid_in_full())
+        })
     }
 
     /// The ledger's record of this unit's silver. Empty where there is no ledger.
@@ -2913,7 +2987,7 @@ pub fn forecast_unit(
                         // nothing, so the shortfall bites on a later order and that is the one
                         // named, as `ah-m7su` already has it for `GIVE ALL` (`ah-ub3y`). Without
                         // a ledger nothing is known to be paid, and the gift is named as before.
-                        let paid = facts.paid_gifts().contains(&(placed.line as i64));
+                        let paid = facts.paid_in_full(placed.line as i64);
                         if count > 0 && !paid {
                             spent_on = spent_on.or(Some(SilverSpender::Give));
                         }
@@ -7956,7 +8030,7 @@ mod tests {
                 buy_all: &[],
                 gifts: &[],
                 casts: &[],
-                paid_gifts: &[],
+                fundings: &[],
                 silver_moves: &[],
                 market_withholds: 0,
             }),
