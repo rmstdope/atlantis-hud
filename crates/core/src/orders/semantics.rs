@@ -12575,17 +12575,20 @@ fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<(String, i64)> {
 }
 
 /// What the hex's `SHARE` purse moved into (positive) or out of (negative) each unit's silver for
-/// its orders - CAST, the market and STUDY ([`Lending::before`] maintenance) - with what a refused
-/// cast or study handed back, index-aligned with `hex.units`. The ledger charges a borrower the
-/// whole of what it spends and leaves its lenders' rows alone (`ah-0mch`), so maintenance reads
-/// a unit's silver as [`silver_balance`] plus this: `rules/sequenceofevents` charges upkeep after
-/// every order, so a buyer the purse paid keeps its wages for its own upkeep, and a sharer that
-/// lent its silver has that much less for its own (`rules/share`: sharing "can leave the sharing
-/// unit without enough funds to pay maintenance"; `ah-su1x`). All zero where nothing pools.
+/// its orders - CAST, the market and STUDY ([`Lending::before`] maintenance) - index-aligned with
+/// `hex.units`. The ledger charges a borrower the whole of what it spends and leaves its lenders'
+/// rows alone (`ah-0mch`), so maintenance reads a unit's silver as [`silver_balance`] plus this:
+/// `rules/sequenceofevents` charges upkeep after every order, so a buyer the purse paid keeps its
+/// wages for its own upkeep, and a sharer that lent its silver has that much less for its own
+/// (`rules/share`: sharing "can leave the sharing unit without enough funds to pay maintenance";
+/// `ah-su1x`). All zero where nothing pools.
+///
+/// Loans only: what a refused CAST or STUDY handed back ([`Lending::refused`]) stays out, since
+/// the hex's warning still counts a refused order as spending that silver (`ah-9n7l.2`).
 fn purse_carried(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<i64> {
     let lending = Lending::before(hex, ledger, StatePhase::Maintenance);
     (0..hex.units.len())
-        .map(|index| lending.borrows[index] - lending.lends[index] + lending.refused(index))
+        .map(|index| lending.borrows[index] - lending.lends[index])
         .collect()
 }
 

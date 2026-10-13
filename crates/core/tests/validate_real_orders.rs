@@ -641,15 +641,20 @@ fn the_committed_turns_upkeep_is_what_its_headcount_owes() {
     // whole of what this bead changes on a real turn: this faction stands several units to a hex
     // throughout, and the silver one of them holds now pays its neighbour's fee whether or not
     // anybody set `SHARE`, which is what the rules say happens.
+    //
+    // Was $1,270 until `ah-su1x` had maintenance read what the `SHARE` purse lent for orders: in
+    // `1:26,52` sharer 13403 lends its silver to its hex-mates' studies, first in drain order, so
+    // a faction-mate pays its $50 fee (`rules/share`: sharing "can leave the sharing unit without
+    // enough funds to pay maintenance").
     let shown: i64 = review.silver.iter().filter_map(|unit| unit.upkeep).sum();
-    assert_eq!(shown, 1_270);
+    assert_eq!(shown, 1_220);
     let shared: i64 = review
         .silver
         .iter()
         .map(|unit| unit.shared_silver_covered)
         .sum();
     assert_eq!(
-        shared, 820,
+        shared, 870,
         "and the column says which units their faction-mates paid for"
     );
     let covered: i64 = review
