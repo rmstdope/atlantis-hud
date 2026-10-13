@@ -260,6 +260,7 @@ impl Document {
             region_id: None,
             unit_id: None,
             formed: None,
+            counted_in: None,
             severity: OrderDiagnosticSeverity::Error,
         });
     }
@@ -352,6 +353,7 @@ impl Document {
             region_id: None,
             unit_id: None,
             formed: None,
+            counted_in: None,
             severity,
         });
     }

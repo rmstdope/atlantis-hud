@@ -1,7 +1,9 @@
+import { isValidElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { HexFindings } from "../orderEditor";
 import { ProblemsList } from "./ProblemsList";
+import { ProblemWho } from "./primitives";
 
 const HEXES: HexFindings[] = [
   {
@@ -176,5 +178,62 @@ describe("ProblemsList, a formed unit's entry (ah-jw85)", () => {
     // orders are its own, so the entry goes to it and not to the unit that forms it.
     expect(markup).toContain('data-testid="problem-unit-new-1"');
     expect(markup).toContain(">new 1<");
+  });
+});
+
+// `ah-6cka`: a walker's upkeep shortage is listed on the card of the hex it ends the month in, but
+// a formed unit's alias means something only in the hex it was formed in - so its link goes there,
+// to the finding's own hex, and not to the card's.
+describe("ProblemsList, a finding counted for another hex (ah-6cka)", () => {
+  /** Every element in a tree, depth first, without rendering anything. */
+  const elements = (node: unknown): ReactElement[] => {
+    if (Array.isArray(node)) {
+      return node.flatMap(elements);
+    }
+    if (!isValidElement(node)) {
+      return [];
+    }
+    const props = node.props as { children?: unknown };
+    return [node, ...elements(props.children)];
+  };
+
+  it("a_formed_walkers_link_goes_to_the_hex_it_was_formed_in", () => {
+    const hexes: HexFindings[] = [
+      {
+        regionId: "1:7,51",
+        findings: [
+          {
+            code: "not-enough-silver",
+            message: "short $40: this unit can have $0 and its orders and upkeep spend $40",
+            lineStart: 3,
+            lineEnd: 3,
+            columnStart: 0,
+            columnEnd: 4,
+            regionId: "1:7,53",
+            countedIn: "1:7,51",
+            unitId: "new-1",
+            formed: { alias: "1", formedBy: "1922" },
+            severity: "warning"
+          }
+        ]
+      }
+    ];
+    const selected: Array<[string, string | undefined]> = [];
+    const list = ProblemsList({
+      hexes,
+      labelFor: (regionId) => regionId,
+      onSelectHex: () => {},
+      onDismiss: () => {},
+      known: new Set(["1922", "new-1"]),
+      onSelectUnit: (unitId, regionId) => selected.push([unitId, regionId])
+    });
+    const who = elements(list).find((element) => element.type === ProblemWho);
+    expect(who).toBeDefined();
+    const link = ProblemWho(who!.props as Parameters<typeof ProblemWho>[0]) as ReactElement<{
+      onClick: () => void;
+    }>;
+    link.props.onClick();
+
+    expect(selected).toEqual([["new-1", "1:7,53"]]);
   });
 });

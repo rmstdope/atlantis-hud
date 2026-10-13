@@ -497,6 +497,25 @@ describe("findings that belong to a hex", () => {
   it("has no groups when nothing is wrong anywhere", () => {
     expect(findingsByHex([])).toEqual([]);
   });
+
+  /**
+   * ah-6cka: a walker's upkeep falls due in the hex it ends the month in (rules/sequenceofevents:
+   * movement orders are processed before "Maintenance costs are assessed"). The core still files
+   * the finding on the unit where it is listed, so its row keeps its mark, and says where it is
+   * counted; the Problems list and the region panel follow that, seen hex or never seen.
+   */
+  it("counts a walker's upkeep shortage for the hex it ends the month in", () => {
+    const walker: OrderDiagnostic = { ...unitFinding("4021", 3, "1:7,53"), countedIn: "1:7,51" };
+    const stayer = unitFinding("1795", 5, "1:7,53");
+
+    expect(findingsByHex([walker, stayer])).toEqual([
+      { regionId: "1:7,51", findings: [walker] },
+      { regionId: "1:7,53", findings: [stayer] }
+    ]);
+    expect(findingsForHex([walker, stayer], "1:7,51")).toEqual([walker]);
+    expect(findingsForHex([walker, stayer], "1:7,53")).toEqual([stayer]);
+    expect(unitsWarnedAboutSilver([walker])).toEqual(new Set([unitRowKey("1:7,53", "4021")]));
+  });
 });
 
 /**

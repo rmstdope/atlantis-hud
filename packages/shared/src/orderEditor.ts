@@ -254,6 +254,15 @@ export function diagnosticsForUnit(
     }));
 }
 
+/**
+ * The hex a finding is counted for: where the core says it falls due, else where it sits. A
+ * walker's upkeep shortage falls due in the hex it ends the month in, while the unit it names -
+ * and so its row's mark - stays where it is listed (`ah-6cka`).
+ */
+function countedHex(diagnostic: OrderDiagnostic): string | null {
+  return diagnostic.countedIn ?? diagnostic.regionId;
+}
+
 /** Everything the checks found in one hex, unit-level and hex-level alike. */
 export function findingsForHex(
   diagnostics: OrderDiagnostic[],
@@ -267,7 +276,7 @@ export function findingsForHex(
   // every pooled shortfall once more per contributing line (`ah-eurs`).
   return diagnostics.filter(
     (diagnostic) =>
-      diagnostic.regionId === regionId && diagnostic.code !== "part-of-hex-shortfall"
+      countedHex(diagnostic) === regionId && diagnostic.code !== "part-of-hex-shortfall"
   );
 }
 
@@ -296,14 +305,15 @@ export function findingsByHex(diagnostics: OrderDiagnostic[]): HexFindings[] {
     // finding's mark on one order line, not a finding of its own. Counted here it would inflate
     // the header chip once per contributing line and put "See Problems for the hex" into the very
     // list it points at (`ah-eurs`).
-    if (diagnostic.regionId === null || diagnostic.code === "part-of-hex-shortfall") {
+    const regionId = countedHex(diagnostic);
+    if (regionId === null || diagnostic.code === "part-of-hex-shortfall") {
       continue;
     }
-    const found = byHex.get(diagnostic.regionId);
+    const found = byHex.get(regionId);
     if (found) {
       found.push(diagnostic);
     } else {
-      byHex.set(diagnostic.regionId, [diagnostic]);
+      byHex.set(regionId, [diagnostic]);
     }
   }
 

@@ -45,4 +45,11 @@ unitId: string | null,
  * Set when `unit_id` names a unit this month's orders create rather than one the report
  * shows - see [`orders::semantics::FormedSubject`].
  */
-formed: FormedSubject | null, severity: OrderDiagnosticSeverity, };
+formed: FormedSubject | null, 
+/**
+ * The hex this is counted for, where that is not `region_id`: a walker's upkeep shortage
+ * falls due in the hex it ends the month in, while the unit it names stays listed in
+ * `region_id` (`ah-6cka`). Absent for everything counted where it sits, so the Problems list
+ * groups by `counted_in` when present and by `region_id` otherwise.
+ */
+countedIn?: string, severity: OrderDiagnosticSeverity, };

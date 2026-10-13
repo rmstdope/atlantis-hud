@@ -398,7 +398,9 @@ function Problems({
             <ProblemWho
               unitId={problem.unitId}
               formed={problem.formed}
-              regionId={regionId}
+              // The finding's own hex: one counted here may name a unit listed elsewhere, and a
+              // formed unit's alias belongs to the hex it was formed in (`ah-6cka`).
+              regionId={problem.regionId ?? regionId}
               known={known}
               onSelectUnit={onSelectUnit}
             />
