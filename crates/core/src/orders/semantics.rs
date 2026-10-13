@@ -5692,6 +5692,13 @@ struct Ledger<'a> {
     /// cast's verdict does, the refused cast's whole cost comes back instead (`ah-szu0`,
     /// `ah-eoag`).
     unfunded_casts: BTreeMap<String, i64>,
+    /// Which sharer funded each part of a silver `GIVE`, `TAKE` or discard beyond what its source
+    /// held, as the transfer ran, in settlement order: the engine runs the gives unit by unit and
+    /// `ConsumeShared` drains the sharers in region order against what each holds then
+    /// (`runorders.cpp`: `DoGiveOrders`, `DoGiveOrder`; `unit.cpp`). The purse books these as lent
+    /// before the cast moment ([`Lending::settle`]), so a sharer a later `GIVE` refilled is not
+    /// read as the one that paid (`ah-msds`).
+    gift_draws: Vec<GiftDraw>,
     /// Every `GIVE`, `TAKE` and discard of silver this walk settled, in settlement order: who it
     /// left, who it reached (`None` for a discard, or a target this walk cannot credit), and how
     /// much - the amount the balances actually moved. What [`silver_can_have`] reads to add back
@@ -6196,6 +6203,7 @@ fn ledger_for_reaching<'a>(
         paid_gifts: BTreeMap::new(),
         unfunded: BTreeMap::new(),
         unfunded_casts: BTreeMap::new(),
+        gift_draws: Vec::new(),
         silver_transfers: Vec::new(),
         silver_moves: BTreeMap::new(),
         shipping_paid: BTreeMap::new(),
@@ -8646,6 +8654,68 @@ struct SilverTransfer {
     received: i64,
 }
 
+/// One sharer's part in funding a silver transfer beyond its source's own silver, as
+/// [`Ledger::gift_draws`] records it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GiftDraw {
+    /// The transfer's source, whose silver the sharer made up.
+    borrower: String,
+    /// The sharer drawn on.
+    lender: String,
+    amount: i64,
+}
+
+/// Lays the part of a silver transfer from `from` that its own silver does not cover on the hex's
+/// other sharers, in region order, each up to what it holds as the transfer runs - its balance
+/// less what earlier transfers drew on it, plus what they drew on others for it - as the engine's
+/// `Unit::ConsumeShared` does (`unit.cpp`; `runorders.cpp`: `DoGiveOrder`), and records each
+/// draw ([`Ledger::gift_draws`], `ah-msds`). `funded` is what the pool let the transfer move.
+fn record_gift_draws(ledger: &mut Ledger<'_>, hex: &Hex<'_>, from: &str, funded: i64) {
+    let holds = |ledger: &Ledger<'_>, unit_id: &str| {
+        let drawn: i64 = ledger
+            .gift_draws
+            .iter()
+            .map(|draw| {
+                if draw.borrower == unit_id {
+                    draw.amount
+                } else if draw.lender == unit_id {
+                    -draw.amount
+                } else {
+                    0
+                }
+            })
+            .sum();
+        SharerStock::held_at(ledger, StatePhase::Give, unit_id, SILVER)
+            .map(|held| held.saturating_add(drawn))
+    };
+    let Some(own) = holds(ledger, from) else {
+        return;
+    };
+    let mut owing = funded - own.max(0);
+    for index in hex.report_order() {
+        if owing <= 0 {
+            break;
+        }
+        let ordered = &hex.units[index];
+        let lender = &ordered.unit.unit_id;
+        if lender == from || !ordered.shares() {
+            continue;
+        }
+        let Some(has) = holds(ledger, lender) else {
+            continue;
+        };
+        let amount = has.max(0).min(owing);
+        if amount > 0 {
+            owing -= amount;
+            ledger.gift_draws.push(GiftDraw {
+                borrower: from.to_string(),
+                lender: lender.clone(),
+                amount,
+            });
+        }
+    }
+}
+
 /// Books what a unit was charged for `tag` beyond what it could fund (`Ledger::unfunded`).
 fn record_unfunded(ledger: &mut Ledger<'_>, unit_id: &str, tag: &str, amount: i64) {
     if amount > 0 {
@@ -8862,6 +8932,14 @@ fn transfer(
             },
         )
     };
+    // Which sharers made up the part of a silver transfer its source could not, read before this
+    // line is charged or its unfunded part booked (`ah-msds`).
+    if !from.is_empty()
+        && tag.eq_ignore_ascii_case(SILVER)
+        && hex.units.iter().any(|ordered| ordered.shares())
+    {
+        record_gift_draws(ledger, hex, &from, received);
+    }
     // What the source is charged below beyond what it gives: the ask itself for goods, `moved`
     // for silver.
     if !from.is_empty() {
@@ -14241,14 +14319,32 @@ fn lend_walking_sharers_silver(
                 ));
             }
         }
-        let mut need = (need - staying).max(0);
+        // What the GIVEs and TAKEs drew on each walker as they ran, before anyone moved
+        // ([`Ledger::gift_draws`]; `rules/sequenceofevents`): lent before it left whatever the
+        // sharers that stay hold, and already part of `need` through its borrower's overdraft.
+        let gift_drawn = |who: &str| -> i64 {
+            ledger
+                .gift_draws
+                .iter()
+                .filter(|draw| {
+                    draw.lender == who
+                        && !ledger.doubted.contains(&draw.borrower)
+                        && !ledger.doubted.contains(&draw.lender)
+                })
+                .map(|draw| draw.amount)
+                .sum()
+        };
+        let drawn_on_walkers: i64 = walkers.iter().map(|w| gift_drawn(&w.unit.unit_id)).sum();
+        let mut need = (need - drawn_on_walkers - staying).max(0);
 
         for walker in walkers {
             let who = &walker.unit.unit_id;
-            let lent = silver_at(ledger, who, LendingMoment::Movement)
+            let drawn = gift_drawn(who);
+            let more = (silver_at(ledger, who, LendingMoment::Movement) - drawn)
                 .max(0)
                 .min(need);
-            need -= lent;
+            need -= more;
+            let lent = drawn + more;
             departing[index].insert(who.clone(), lent);
 
             let Some(&arrives) = by_place.get(&ends_at(walker)) else {
@@ -14746,9 +14842,10 @@ struct Lending {
     /// later moment, with a refused STUDY's fee: [`Lending::refused`]. It also carries an
     /// overdraft from before the casts that the pool could not pay in full at the cast moment,
     /// handed back whole there since that moment pays each claim in full or not at all
-    /// ([`SharerStock::paid_one_by_one`]; `ah-mrs0`). That overdraft is only the part of a GIVE
-    /// the sharers funded as it ran: the part nobody could fund was never claimed, and stays the
-    /// ledger's to add back ([`unfunded_gift_silver`], `ah-2fn5`, `ah-eoag`).
+    /// ([`SharerStock::paid_one_by_one`]; `ah-mrs0`). The part of a GIVE nobody could fund was
+    /// never claimed, and stays the ledger's to add back ([`unfunded_gift_silver`], `ah-2fn5`,
+    /// `ah-eoag`); the part the sharers funded is lent as it ran ([`Ledger::gift_draws`],
+    /// `ah-msds`), so what reaches this is an overdraft no gift draw booked: a silver EXCHANGE's.
     refused_cast: Vec<i64>,
     /// How each unit's STUDY went, judged one student at a time as the engine pays them - **the
     /// one reading of whether the purse paid a study** (`ah-2f77`). [`StudyOutcome::NoStudy`]
@@ -14874,7 +14971,7 @@ impl Lending {
         // unfunded then ([`unfunded_gift_silver`]) never left the unit, so it is no claim on the
         // purse at any later moment - where a later GIVE refilled a sharer, lending for it at the
         // cast would draw on silver that arrived after the gift (`ah-2fn5`). What the sharers did
-        // fund stays the unit's overdraft, and the cast moment lends it.
+        // fund is lent below, before the cast moment, on the sharers it was drawn on (`ah-msds`).
         let own = |index: usize, at: LendingMoment| {
             let unit_id = &hex.units[index].unit.unit_id;
             silver_at(ledger, unit_id, at)
@@ -14883,6 +14980,30 @@ impl Lending {
         };
         let report_order = hex.report_order();
         let mut purse = Self::nothing(hex, ledger);
+        // What the sharers funded of a GIVE or TAKE as it ran was drawn then, on the sharers that
+        // held silver at that point (`runorders.cpp`: `DoGiveOrders`, `DoGiveOrder`;
+        // `unit.cpp`: `ConsumeShared`), so it is lent before the cast moment, on the sharer the
+        // ledger recorded ([`Ledger::gift_draws`]), rather than laid on the sharers in drain order
+        // against what they hold once every later GIVE has run (`ah-msds`). A draw on a sharer
+        // that walks away is booked too: it ran before the walker left, and
+        // [`lend_walking_sharers_silver`] counts it in what the walker lent here, so it is not
+        // lent again where the walker's month ends (`ah-msds` review, finding 1).
+        if moments.contains(&LendingMoment::Cast) {
+            let index_of = |unit_id: &str| {
+                hex.units
+                    .iter()
+                    .position(|ordered| ordered.unit.unit_id == unit_id)
+                    .filter(|&index| judged(index))
+            };
+            for draw in &ledger.gift_draws {
+                if let (Some(borrower), Some(lender)) =
+                    (index_of(&draw.borrower), index_of(&draw.lender))
+                {
+                    purse.borrows[borrower] += draw.amount;
+                    purse.lends[lender] += draw.amount;
+                }
+            }
+        }
         // What each unit's orders overdrew it by at the moments the pool did not cover, and so
         // lent nothing for. Laid aside rather than claimed again at every later moment: an order
         // the engine refused there - a CAST whose cost is more than the shared money - took
@@ -14904,9 +15025,9 @@ impl Lending {
                     if judged(index) && ledger.unfunded_casts.get(unit_id).is_some_and(|&u| u > 0) {
                         // The spell's own cost alone: an overdraft its unit ran up before the
                         // casts - a GIVE beyond its own silver, which draws on its sharers
-                        // (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`) - is the pool's
-                        // to lend below, and handing it back here would leave the sharer that
-                        // paid it holding silver it no longer has (`ah-mrs0`).
+                        // (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`) - was lent above
+                        // as it ran (`ah-msds`), and handing it back here would leave the sharer
+                        // that paid it holding silver it no longer has (`ah-mrs0`).
                         purse.refused_cast[index] += refused_cast_cost(ledger, unit_id, 0);
                         purse.refused_casts[index] = true;
                     }
@@ -15018,11 +15139,10 @@ impl Lending {
                     if missing > 0 {
                         if moment == LendingMoment::Cast && purse.refused_casts[index] {
                             // Its cast was refused and handed back above, so what it still
-                            // claims is an overdraft from before the casts - the part of a GIVE
-                            // the sharers funded as it ran, which a cast paid earlier in drain
-                            // order has since drawn on - and that comes back as the model hands
-                            // it back with no cast at all, not the cast's cost a second time
-                            // (`ah-mrs0`).
+                            // claims is an overdraft from before the casts that no gift draw
+                            // booked above - a silver EXCHANGE's (`ah-msds`) - and that comes
+                            // back as the model hands it back with no cast at all, not the
+                            // cast's cost a second time (`ah-mrs0`).
                             purse.refused_cast[index] += needs[index];
                         } else if moment == LendingMoment::Cast {
                             purse.refused_casts[index] = true;
@@ -54824,6 +54944,144 @@ BUILD
             "{:?}",
             shipment_silver(&review, "902")
         );
+    }
+
+    /// A GIVE beyond the giver's silver drains the sharers that held silver **as it ran**, not the
+    /// ones that hold it once later GIVEs have run: the engine runs the gives unit by unit
+    /// (`runorders.cpp`: `DoGiveOrders`) and `ConsumeShared` drains the sharers in region order
+    /// (`unit.cpp`), so 901's $100 GIVE skips sharer 902 - empty then - and drains sharer 905. 903's
+    /// GIVE then fills 902 with $100, which 902 ships; 905 ships nothing (`ah-msds`).
+    #[test]
+    fn a_gift_is_lent_by_the_sharer_that_held_silver_as_it_ran() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            unit("901"),
+            sharing(unit("902")),
+            sharing(with_silver(unit("905"), 100)),
+            with_silver(unit("903"), 100),
+        ]);
+        let orders = "unit 901\nGIVE 900 100 SILV\n\
+                      unit 902\nTRANSPORT 900 ALL SILV\n\
+                      unit 905\nTRANSPORT 900 ALL SILV\n\
+                      unit 903\nGIVE 902 100 SILV\n";
+        let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
+        assert_eq!(
+            (
+                silver_shipped(&review, orders, "902"),
+                silver_shipped(&review, orders, "905")
+            ),
+            (100, 0),
+            "902: {:?}\n905: {:?}",
+            shipment_silver(&review, "902"),
+            shipment_silver(&review, "905")
+        );
+    }
+
+    /// A later GIVE beyond its giver's silver draws on the sharer holding silver as **it** runs:
+    /// 901's $100 GIVE drained sharer 905, 903 then filled sharer 902 with $100, so 906's $50 GIVE
+    /// drains 902, not the empty 905 (`unit.cpp`: `ConsumeShared`; `runorders.cpp`:
+    /// `DoGiveOrders`). 902 ships the $50 left and 905 nothing (`ah-msds`).
+    #[test]
+    fn a_later_gift_is_lent_by_the_sharer_refilled_before_it_ran() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            unit("901"),
+            sharing(unit("902")),
+            sharing(with_silver(unit("905"), 100)),
+            with_silver(unit("903"), 100),
+            unit("906"),
+        ]);
+        let orders = "unit 901\nGIVE 900 100 SILV\n\
+                      unit 902\nTRANSPORT 900 ALL SILV\n\
+                      unit 905\nTRANSPORT 900 ALL SILV\n\
+                      unit 903\nGIVE 902 100 SILV\n\
+                      unit 906\nGIVE 900 50 SILV\n";
+        let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
+        assert_eq!(
+            (
+                silver_shipped(&review, orders, "902"),
+                silver_shipped(&review, orders, "905")
+            ),
+            (50, 0),
+            "902: {:?}\n905: {:?}",
+            shipment_silver(&review, "902"),
+            shipment_silver(&review, "905")
+        );
+    }
+
+    /// A silver `EXCHANGE` after the gifts draws on what the sharers still hold once the gifts'
+    /// draws are booked, and no sharer pays twice: 901's GIVE drained 905, 903 refilled 902, and
+    /// 906's $50 offer is checked against and drawn from `GetSharedNum` (`runorders.cpp`:
+    /// `DoExchangeOrder`; `rules/exchange`), so 902 ships the $50 left and 905 nothing (`ah-msds`
+    /// review, finding 2).
+    #[test]
+    fn an_exchange_after_the_gifts_draws_on_what_the_sharers_still_hold() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            unit("901"),
+            sharing(unit("902")),
+            sharing(with_silver(unit("905"), 100)),
+            with_silver(unit("903"), 100),
+            unit("906"),
+            with_item(unit("908"), 1, "sword", "SWOR"),
+        ]);
+        let orders = "unit 901\nGIVE 900 100 SILV\n\
+                      unit 902\nTRANSPORT 900 ALL SILV\n\
+                      unit 905\nTRANSPORT 900 ALL SILV\n\
+                      unit 903\nGIVE 902 100 SILV\n\
+                      unit 906\nEXCHANGE 908 50 SILV 1 SWOR\n\
+                      unit 908\nEXCHANGE 906 1 SWOR 50 SILV\n";
+        let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
+        assert_eq!(
+            (
+                silver_shipped(&review, orders, "902"),
+                silver_shipped(&review, orders, "905")
+            ),
+            (50, 0),
+            "902: {:?}\n905: {:?}",
+            shipment_silver(&review, "902"),
+            shipment_silver(&review, "905")
+        );
+    }
+
+    /// A gift drawn on a sharer that then walks away is drawn on it before it leaves: GIVE runs
+    /// before movement (`rules/sequenceofevents`), and `ConsumeShared` drains walker 907, listed
+    /// first, for 901's $100 (`unit.cpp`; `runorders.cpp`: `DoGiveOrder`). So 907 arrives with
+    /// nothing and lends 902's study nothing, which is refused short $10 (`data/COMB`), and 905
+    /// ships its whole $100 - not lent twice, nor paid by the sharer that stays (`ah-msds` review,
+    /// findings 1 and the follow-up's 1).
+    #[test]
+    fn a_gift_drawn_on_a_walking_sharer_is_not_lent_twice() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            sharing(with_silver(unit("907"), 100)),
+            sharing(with_silver(unit("905"), 100)),
+            unit("901"),
+        ]);
+        let regions = vec![region, region_at("1:0,2", 0, 2, vec![unit("902")])];
+        let orders = "unit 907\nMOVE S\n\
+                      unit 905\nTRANSPORT 900 ALL SILV\n\
+                      unit 901\nGIVE 900 100 SILV\n\
+                      unit 902\nSTUDY COMB\n";
+        let mut options = with_map();
+        options
+            .month_end
+            .insert("907".to_string(), Coordinate { x: 0, y: 2, z: 1 });
+        let review = review_turn(&report(regions), orders, Some(&rules), options);
+        let walker = shipment_silver(&review, "907");
+        assert_eq!(walker.at_month_end, Some(0), "{walker:?}");
+        assert_eq!(
+            silver_shipped(&review, orders, "905"),
+            100,
+            "{:?}",
+            shipment_silver(&review, "905")
+        );
+        let student = shipment_silver(&review, "902");
+        assert_eq!(student.short_for_orders, Some(10), "{student:?}");
     }
 
     /// The same moment with nothing to refill the sharer: 901's GIVE of $100 is cut to sharer
