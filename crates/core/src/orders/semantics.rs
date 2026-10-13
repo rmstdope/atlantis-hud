@@ -13395,11 +13395,8 @@ impl SharerStock {
                     // a lender's own row alone, its study would look paid for out of silver it had
                     // already lent (cold-read review findings 2 and 3).
                     //
-                    // A limitation, inherited from the purse's all-or-nothing rule (`ah-e66j`):
-                    // where the fold stopped at the cast or the market, STUDY is never judged, so
-                    // a study the pool could still have paid hands nothing back and lends nothing
-                    // - a sharer's `ALL SILV` beside a cast the pool refused reads more than it will
-                    // ship (follow-up review finding 1, case A; `ah-szu0`).
+                    // A cast or a market the pool could not cover does not stop the fold judging
+                    // STUDY, so a study the pool could still pay lends here too (`ah-szu0`).
                     let refused = if !(silver && phase > StatePhase::Study) {
                         0
                     } else if !pooled {
@@ -14506,9 +14503,10 @@ struct Lending {
     /// [`Lending::refused`] is.
     short_after_pool: Vec<i64>,
     /// The first moment but STUDY the pool could not cover in full, from which nothing more was
-    /// lent - the all-or-nothing rule (`ah-e66j`, `ah-aqqb`). `None` where every moment read was
-    /// covered. STUDY never stops it: it pays its students one by one and refuses only those that
-    /// no longer fit (`ah-li7l`).
+    /// lent at any moment but STUDY - the all-or-nothing rule (`ah-e66j`, `ah-aqqb`). `None` where
+    /// every moment read was covered. STUDY never stops it, and is not stopped by it: it pays its
+    /// students one by one out of what the lenders still hold and refuses only those that no
+    /// longer fit (`ah-li7l`, `ah-szu0`).
     stopped_at: Option<LendingMoment>,
 }
 
@@ -14575,9 +14573,11 @@ impl Lending {
     /// [`silver_at`] then, less the tax its settlement will not collect, less what it has lent and
     /// plus what it has been lent so far, plus a refused study handed back - and every negative
     /// one filled from the lenders' positive ones in drain order ([`SharerStock::drained`]), or,
-    /// where they cannot cover them all, nothing lent from that moment on. At STUDY the claimants
-    /// are paid one by one in drain order instead, each in full or not at all, as the engine pays
-    /// them ([`SharerStock::paid_one_by_one`], `ah-li7l`). Before any netting of lends against
+    /// where they cannot cover them all, nothing lent from that moment on but at STUDY, the
+    /// unpaid overdrafts laid aside so a later moment judges only what is new. At STUDY the
+    /// claimants are paid one by one in drain order instead, each in full or not at all, as the
+    /// engine pays them ([`SharerStock::paid_one_by_one`], `ah-li7l`), whether or not an earlier
+    /// moment stopped the pool (`ah-szu0`). Before any netting of lends against
     /// borrows. The caller has already checked that the hex pools silver and that the pool is
     /// trusted.
     ///
@@ -14598,9 +14598,18 @@ impl Lending {
         };
         let report_order = hex.report_order();
         let mut purse = Self::nothing(hex, ledger);
+        // What each unit's orders overdrew it by at the moments the pool did not cover, and so
+        // lent nothing for. Laid aside rather than claimed again at every later moment: an order
+        // the engine refused there - a CAST whose cost is more than the shared money - took
+        // nothing, and a later STUDY is judged on its own fee against what the pool still holds
+        // (`ah-szu0`).
+        let mut unpaid = vec![0_i64; hex.units.len()];
         for &moment in moments {
             let position = |purse: &Lending, index: usize, at: LendingMoment| {
-                own(index, at) - purse.lends[index] + purse.borrows[index] + purse.refused[index]
+                own(index, at) - purse.lends[index]
+                    + purse.borrows[index]
+                    + purse.refused[index]
+                    + unpaid[index]
             };
             let needs: Vec<i64> = (0..hex.units.len())
                 .map(|index| {
@@ -14708,9 +14717,16 @@ impl Lending {
             // drains its sharers in whatever order it iterates them, so no split is truer than
             // another, and a whole number needs no rounding rule.
             let (lent, short) = SharerStock::new(parties).drained();
-            if short > 0 {
-                purse.stopped_at = Some(moment);
-                break;
+            if short > 0 || purse.stopped_at.is_some() {
+                // All or nothing (`ah-e66j`): from the first moment the pool cannot cover in
+                // full, it lends nothing at any moment but STUDY, which still pays its students
+                // one by one out of what the lenders hold (`monthorders.cpp`: `Do1StudyOrder`;
+                // `ah-szu0`).
+                purse.stopped_at.get_or_insert(moment);
+                for (unpaid, need) in unpaid.iter_mut().zip(needs) {
+                    *unpaid += need;
+                }
+                continue;
             }
             for (lender, lent) in who.into_iter().zip(lent) {
                 match lender {
@@ -53243,6 +53259,64 @@ BUILD
             shipment_silver(&review, "902").short_for_orders,
             Some(0),
             "902's study is paid"
+        );
+    }
+
+    /// A cast the pool cannot pay does not stop it paying a later study. The engine casts first
+    /// and refuses a spell whose cost is more than the shared money (`rules/sequenceofevents`;
+    /// `data/CRPA`: 200 silver), then pays each STUDY in region order out of what the pool still
+    /// holds (`monthorders.cpp`: `Do1StudyOrder`; `data/COMB`: 10). So mage 901's $200 amulet is
+    /// refused against sharer 902's $150, 903's $10 study is paid, and 902's `ALL SILV` ships the
+    /// $140 left (`ah-szu0`, case A).
+    #[test]
+    fn a_cast_the_pool_cannot_pay_does_not_stop_it_paying_a_later_study() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            with_skill(unit("901"), "CRPA", 1),
+            sharing(with_silver(unit("902"), 150)),
+            unit("903"),
+        ]);
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nCAST Create_Amulet_Of_Protection\n\
+             unit 902\nTRANSPORT 900 ALL SILV\n\
+             unit 903\nSTUDY COMB\n",
+            Some(&rules),
+            with_map(),
+        );
+        assert_eq!(
+            silver_shipped(&review, "902"),
+            140,
+            "{:?}",
+            shipment_silver(&review, "902")
+        );
+    }
+
+    /// Two students and a pool of $10: the engine pays the first study in region order and
+    /// refuses the second (`monthorders.cpp`: `Do1StudyOrder`; `data/COMB`: 10), so sharer 902's
+    /// `ALL SILV` ships nothing (`ah-szu0`, case B; fixed by `ah-li7l`).
+    #[test]
+    fn a_sharer_whose_purse_paid_one_of_two_students_ships_nothing() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            unit("901"),
+            sharing(with_silver(unit("902"), 10)),
+            unit("903"),
+        ]);
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nSTUDY COMB\nunit 902\nTRANSPORT 900 ALL SILV\n\
+             unit 903\nSTUDY COMB\n",
+            Some(&rules),
+            with_map(),
+        );
+        assert_eq!(
+            silver_shipped(&review, "902"),
+            0,
+            "{:?}",
+            shipment_silver(&review, "902")
         );
     }
 
