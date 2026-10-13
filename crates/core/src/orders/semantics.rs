@@ -8643,6 +8643,12 @@ struct SilverTransfer {
     from: String,
     to: Option<String>,
     amount: i64,
+    /// What `from`'s balance was charged for the line, and what `to`'s was credited (`0` with no
+    /// `to`). In a hex where a unit shares, a GIVE or TAKE charges its source the whole ask while
+    /// crediting only what the source could draw on, so the two differ by what nobody funded
+    /// (`ah-j5s1`).
+    charged: i64,
+    received: i64,
 }
 
 /// Books what a unit was charged for `tag` beyond what it could fund (`Ledger::unfunded`).
@@ -8928,6 +8934,8 @@ fn transfer(
                 } else {
                     quantity
                 },
+                charged: moved,
+                received: if to.is_some() { received } else { 0 },
             });
         } else {
             charge(ledger, StatePhase::Give, &from, &tag, quantity, placed);
@@ -14814,6 +14822,21 @@ fn silver_can_have(
         })
         .map(|moved| moved.amount)
         .sum();
+    // A move between two members is counted once, which is only so when the receiver was credited
+    // what the giver was charged. In a sharing hex the giver is charged the whole ask and the
+    // receiver credited only what could be drawn on (`ah-1c8p`, `ah-0mch`): the remainder was
+    // never silver the members had - it is what the orders ask beyond it, part of what they spend
+    // - so it is added back here, or a gift far beyond the pool reads as a negative figure
+    // (`ah-j5s1`).
+    let unfunded_within: i64 = ledger
+        .silver_transfers
+        .iter()
+        .filter(|moved| {
+            ids.contains(moved.from.as_str())
+                && moved.to.as_deref().is_some_and(|to| ids.contains(to))
+        })
+        .map(|moved| (moved.charged - moved.received).max(0))
+        .sum();
     // ... and what sharers arriving from other hexes lend here: `rules/share` lends within "the
     // same region", where their month ends, and `rules/sequenceofevents` runs movement after the
     // market, so they lend nothing to a reading taken there (`ah-asdp`).
@@ -14824,7 +14847,7 @@ fn silver_can_have(
     }
     .and_then(|lending| walking.map(|walking| walking.lends_at(lending)))
     .unwrap_or(0);
-    held + sent_out + arrivals_lend
+    held + sent_out + unfunded_within + arrivals_lend
 }
 
 /// What the shortfall pass decided about one unit and one item tag.
