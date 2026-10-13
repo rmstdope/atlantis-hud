@@ -15133,15 +15133,7 @@ fn silver_can_have(
     // never silver the members had - it is what the orders ask beyond it, part of what they spend
     // - so it is added back here, or a gift far beyond the pool reads as a negative figure
     // (`ah-j5s1`).
-    let unfunded_within: i64 = ledger
-        .silver_transfers
-        .iter()
-        .filter(|moved| {
-            ids.contains(moved.from.as_str())
-                && moved.to.as_deref().is_some_and(|to| ids.contains(to))
-        })
-        .map(|moved| (moved.charged - moved.received).max(0))
-        .sum();
+    let unfunded_within = silver_unfunded_between(ledger, &ids);
     // ... and what sharers arriving from other hexes lend here: `rules/share` lends within "the
     // same region", where their month ends, and `rules/sequenceofevents` runs movement after the
     // market, so they lend nothing to a reading taken there (`ah-asdp`).
@@ -15153,6 +15145,23 @@ fn silver_can_have(
     .and_then(|lending| walking.map(|walking| walking.lends_at(lending)))
     .unwrap_or(0);
     held + sent_out + unfunded_within + arrivals_lend
+}
+
+/// What the members' `GIVE`s and `TAKE`s of silver to one another asked beyond what the source
+/// could draw on - charged less received, summed. In a sharing hex the engine's
+/// `Game::DoGiveOrder` (`runorders.cpp`) cuts such a line to `s->GetSharedNum(o->item)` with "Not
+/// enough.", so this is what those lines were short as they ran, however the month's end nets out
+/// (`ah-j5s1`, `ah-uyon`).
+fn silver_unfunded_between(ledger: &Ledger<'_>, ids: &BTreeSet<&str>) -> i64 {
+    ledger
+        .silver_transfers
+        .iter()
+        .filter(|moved| {
+            ids.contains(moved.from.as_str())
+                && moved.to.as_deref().is_some_and(|to| ids.contains(to))
+        })
+        .map(|moved| (moved.charged - moved.received).max(0))
+        .sum()
 }
 
 /// What the shortfall pass decided about one unit and one item tag.
@@ -15374,6 +15383,21 @@ fn pool_shortfalls(
             (short_counting_cuts, ShortfallMoment::Market)
         } else {
             (short, moment)
+        };
+        // ... and never less than what a gift between its units asked beyond the pool. The engine
+        // cuts such a gift to what the pool holds as it runs (`runorders.cpp` `DoGiveOrder`,
+        // `GetSharedNum`), so the silver its receiver gets is the pool's own and pays none of the
+        // remainder; a month-end netting lets it, and reads the hex short by less - or not at all
+        // (`ah-uyon`). The moment stays the one read above: what the hex can have is the same.
+        let short = if tag == SILVER {
+            let ids: BTreeSet<&str> = hex
+                .units
+                .iter()
+                .map(|ordered| ordered.unit.unit_id.as_str())
+                .collect();
+            short.max(silver_unfunded_between(ledger, &ids))
+        } else {
+            short
         };
         if short <= 0 {
             continue;
@@ -66165,13 +66189,28 @@ BUILD
         );
     }
 
-    /// Sharers 7 ($100) and 8 ($50): 7 gives 8 $1000. The ledger charges 7 the whole ask, so the
-    /// pool judges the overdraft, and credits 8 what the pool can fund, $150. What nobody funded
-    /// was never the hex's silver: it is part of what the orders spend, so the hex can have its
-    /// $150 - not $-700 - and the two figures differ by the shortfall (`ah-j5s1`). The shortfall
-    /// itself is the pool's month-end netting, which this does not change.
+    /// `(short, can have, spend)` from a hex's not-enough-silver sentence.
+    fn hex_silver_figures(findings: &[Finding]) -> (i64, i64, i64) {
+        let sentence = hex_silver_sentence(findings).expect("the hex is short");
+        let figure = |after: &str| -> i64 {
+            let rest = &sentence[sentence.find(after).expect(after) + after.len()..];
+            rest.chars()
+                .take_while(|c| *c == '-' || c.is_ascii_digit())
+                .collect::<String>()
+                .parse()
+                .expect(after)
+        };
+        (figure("short $"), figure("can have $"), figure("spend $"))
+    }
+
+    /// Sharers 7 ($100) and 8 ($50): 7 gives 8 $1000. The engine's `Game::DoGiveOrder`
+    /// (`runorders.cpp`) cuts the gift to `s->GetSharedNum(o->item)` - 7's $100 and the sharer 8's
+    /// $50 - with "Not enough.", `ConsumeShared` takes 7's $100 and then 8's $50, and 8 receives
+    /// the $150. So the gift asks $850 beyond what the hex had: it can have $150, its orders spend
+    /// the $1000 asked, and it is short $850 - not the $700 a month-end netting reads, which lets
+    /// the $150 8 received fund the very gift that paid it (`ah-uyon`, `ah-j5s1`).
     #[test]
-    fn a_gift_between_sharers_beyond_the_pool_never_takes_can_have_below_the_pool() {
+    fn a_gift_between_sharers_beyond_the_pool_is_short_what_it_asked_beyond_the_pool() {
         let findings = check_turn(
             &report(vec![region(vec![
                 sharing(with_silver(unit("7"), 100)),
@@ -66181,21 +66220,24 @@ BUILD
             Some(&ruleset()),
             CheckOptions::default(),
         );
-        let sentence = hex_silver_sentence(&findings).expect("the hex is short");
-        let figure = |after: &str| -> i64 {
-            let rest = &sentence[sentence.find(after).expect(after) + after.len()..];
-            rest.chars()
-                .take_while(|c| *c == '-' || c.is_ascii_digit())
-                .collect::<String>()
-                .parse()
-                .expect(after)
-        };
-        assert_eq!(figure("can have $"), 150, "{sentence}");
-        assert_eq!(
-            figure("spend $") - figure("can have $"),
-            figure("short $"),
-            "{sentence}"
+        assert_eq!(hex_silver_figures(&findings), (850, 150, 1000));
+    }
+
+    /// Sharers 7 ($100) and 8 ($900): 7 gives 8 $2000. The engine cuts the gift to the pool's
+    /// $1000 (`runorders.cpp` `DoGiveOrder`, `GetSharedNum`), so it is $1000 short - even though
+    /// the month's end nets to nothing, 8's receipt covering 7's overdraft exactly (`ah-uyon`).
+    #[test]
+    fn a_gift_between_sharers_beyond_the_pool_is_short_even_when_the_month_end_nets_out() {
+        let findings = check_turn(
+            &report(vec![region(vec![
+                sharing(with_silver(unit("7"), 100)),
+                sharing(with_silver(unit("8"), 900)),
+            ])]),
+            "unit 7\nGIVE 8 2000 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
         );
+        assert_eq!(hex_silver_figures(&findings), (1000, 1000, 2000));
     }
 
     /// Sharers 7 ($100) and 8 ($50) fund unit 5's two swords at $125; sharer 7 gives $60 to unit
