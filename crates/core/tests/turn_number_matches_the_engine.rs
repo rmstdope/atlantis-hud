@@ -47,9 +47,15 @@ fn printed_turns(text: &str) -> Vec<(String, u32, u32)> {
         let mut rest = line;
         while let Some(start) = rest.find("Year ") {
             rest = &rest[start + "Year ".len()..];
-            let Some((year, after)) = rest.split_once(", ") else { break };
-            let Some((month, after)) = after.split_once(" (turn ") else { continue };
-            let Some((turn, _)) = after.split_once(')') else { continue };
+            let Some((year, after)) = rest.split_once(", ") else {
+                break;
+            };
+            let Some((month, after)) = after.split_once(" (turn ") else {
+                continue;
+            };
+            let Some((turn, _)) = after.split_once(')') else {
+                continue;
+            };
             if let (Ok(year), Ok(turn)) = (year.parse(), turn.parse()) {
                 found.push((month.to_string(), year, turn));
             }

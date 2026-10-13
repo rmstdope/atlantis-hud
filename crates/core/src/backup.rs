@@ -14,7 +14,9 @@ use crate::report::model::{CombatSpell, ItemAmount, ReportUnit, Skill};
 use crate::report::sighting::{sighting_from_payload, RegionSighting};
 
 pub const GAME_BACKUP_FORMAT: &str = "atlantis-hud-game-backup";
-pub const CURRENT_GAME_BACKUP_VERSION: u32 = 1;
+/// Version 2 numbers turns the engine's way, January of Year 1 being turn 1; version 1 numbered
+/// every turn one lower, and is read through [`move_to_engine_turns`] (ah-m6pw).
+pub const CURRENT_GAME_BACKUP_VERSION: u32 = 2;
 /// Moved from core-persistence with the manifest types; `create_game`/`open_game` still check it.
 pub const CURRENT_MANIFEST_VERSION: u32 = 1;
 
@@ -750,6 +752,69 @@ pub fn encode_game_backup_json(
     encode_game_backup(content, exported_at)
 }
 
+/// Moves every turn a version-1 backup names up by one.
+///
+/// Version 1 was written while `turn_number_for` called February of Year 1 turn 1; the engine's
+/// `Game::TurnNumber` (game.cpp) makes January of Year 1 turn 1, so every turn in such a backup is
+/// one low. This is the move migration 15 makes to a stored desktop game, applied to the file
+/// instead, so both stores and both platforms restore one backup alike. A goal's turn 0 is not a
+/// turn - it marks a goal written before goals had turns, which every reader drops - so it stays.
+fn move_to_engine_turns(collections: &mut EncodedGameBackupCollections) {
+    let later = |turn: &mut u32| *turn = turn.saturating_add(1);
+
+    for turn in &mut collections.imported_turns {
+        later(&mut turn.turn_number);
+        // Through the typed result, so the payload comes back in the shape an import writes. A
+        // payload that does not read is left alone: it is only ever consulted for its season and
+        // to compare against a re-import.
+        if let Ok(mut parsed) =
+            serde_json::from_str::<crate::ReportParseResult>(&turn.parsed_payload_json)
+        {
+            if let Some(header) = parsed.turn_header.as_mut() {
+                later(&mut header.turn_number);
+            }
+            if let Ok(json) = serde_json::to_string(&parsed) {
+                turn.parsed_payload_json = json;
+            }
+        }
+    }
+    for draft in &mut collections.order_drafts {
+        later(&mut draft.turn_number);
+    }
+    for sighting in &mut collections.region_sightings {
+        later(&mut sighting.last_seen_turn);
+    }
+    for merge in &mut collections.merged_reports {
+        later(&mut merge.turn_number);
+    }
+    for note in &mut collections.hex_notes {
+        later(&mut note.turn);
+    }
+    for member in collections
+        .armies
+        .iter_mut()
+        .flat_map(|army| army.members.iter_mut())
+    {
+        later(&mut member.seen_turn);
+    }
+    for mage in &mut collections.allied_mages {
+        later(&mut mage.sheet_turn);
+    }
+    for plan in &mut collections.study_plans {
+        for goal in &mut plan.goals {
+            let (StudyGoal::Study { turn, .. } | StudyGoal::Teach { turn, .. }) = goal;
+            if *turn > 0 {
+                later(turn);
+            }
+        }
+        for cast in &mut plan.casts {
+            if cast.turn > 0 {
+                later(&mut cast.turn);
+            }
+        }
+    }
+}
+
 /// One document -> rows to write. Two-stage on purpose: the envelope (`format`, `version`) is read
 /// from a `serde_json::Value` and judged FIRST, so a file that is not a backup, or is from a newer
 /// version, says so even when its body is also missing fields. Only then is the Value turned into a
@@ -800,8 +865,11 @@ pub fn decode_game_backup(
         version: _,
         exported_at: _,
         mut manifest,
-        collections,
+        mut collections,
     } = backup;
+    if version < 2 {
+        move_to_engine_turns(&mut collections);
+    }
     let created_at = manifest.created_at.clone();
     manifest.last_opened_at = opened_at.to_string();
     let GameBackupCollections {
@@ -1226,7 +1294,7 @@ mod tests {
         let encoded = encode_game_backup(content, "2026-01-03T00:00:00Z").expect("encodes");
 
         assert!(encoded.contains("\"format\": \"atlantis-hud-game-backup\""));
-        assert!(encoded.contains("\"version\": 1"));
+        assert!(encoded.contains("\"version\": 2"));
         assert!(encoded.contains("\"exportedAt\": \"2026-01-03T00:00:00Z\""));
         let a_pos = encoded
             .find("\"factionId\": \"1\"")
@@ -1238,7 +1306,7 @@ mod tests {
     }
 
     #[test]
-    fn backup_collections_stay_flattened_in_the_version_one_document() {
+    fn backup_collections_stay_flattened_in_the_backup_document() {
         let content = content_with(vec![], vec![], vec![], vec![], vec![]);
         let encoded = encode_game_backup(content, "2026-01-06T00:00:00Z").expect("encodes");
         let value: serde_json::Value = serde_json::from_str(&encoded).expect("valid JSON");
@@ -1257,7 +1325,7 @@ mod tests {
             assert!(object.contains_key(key), "missing flattened key {key}");
         }
         assert!(!object.contains_key("collections"));
-        assert_eq!(object.get("version"), Some(&serde_json::json!(1)));
+        assert_eq!(object.get("version"), Some(&serde_json::json!(2)));
 
         let mut old_value = value;
         let old_object = old_value.as_object_mut().expect("object");
@@ -1333,7 +1401,7 @@ mod tests {
 
         assert!(error
             .to_string()
-            .contains("newer than this build supports (1)"));
+            .contains("newer than this build supports (2)"));
     }
 
     #[test]
@@ -1954,5 +2022,170 @@ mod tests {
         assert_eq!(decoded.collections.order_drafts[0], draft);
         assert_eq!(decoded.collections.merged_reports[0], merge);
         assert_eq!(decoded.collections.hex_notes[0], note);
+    }
+
+    /// ah-m6pw: a version-1 backup numbered every turn one low (February of Year 1 was turn 1), so
+    /// restoring it moves every turn it names up by one - the same move migration 15 makes to a
+    /// stored game - and a backup written today says version 2, whose turns are already right.
+    #[test]
+    fn a_version_one_backup_is_restored_at_the_engines_turn_numbers() {
+        let unit = crate::report::parse_report_full(
+            "plain (7,53) in Inhead.\n\n- Sweep Mage (9001), Borg (21), 1 leader [LEAD].\n",
+        )
+        .regions
+        .remove(0)
+        .units
+        .remove(0);
+        let member = ArmyMember {
+            unit_id: "204".to_string(),
+            name: "Pikes".to_string(),
+            faction_id: None,
+            faction_name: None,
+            own: false,
+            region_id: "1:7,53".to_string(),
+            flags: vec![],
+            items: vec![],
+            skills: vec![],
+            combat_spell: None,
+            men: 10,
+            seen_turn: 66,
+            seen_at: "2026-01-05T00:00:00Z".to_string(),
+        };
+        let mut content = content_with(
+            vec![GameBackupImportedTurn {
+                faction_id: "1".to_string(),
+                turn_number: 71,
+                raw_report: "r".to_string(),
+                parsed_payload_json: {
+                    // As version 1 stored it: December of Year 6 numbered 71.
+                    let mut parsed =
+                        crate::parse_report("Atlantis Report For:\nFoo (1)\nDecember, Year 6\n");
+                    parsed
+                        .turn_header
+                        .as_mut()
+                        .expect("a dated report")
+                        .turn_number = 71;
+                    serde_json::to_string(&parsed).expect("serialises")
+                },
+                warnings_payload_json: "[]".to_string(),
+                imported_at: None,
+                updated_at: None,
+            }],
+            vec![GameBackupOrderDraft {
+                faction_id: "1".to_string(),
+                turn_number: 71,
+                order_text: "GIVE 5 SILV".to_string(),
+                updated_at: "2026-01-05T00:00:00Z".to_string(),
+            }],
+            vec![GameBackupRegionSighting {
+                faction_id: "1".to_string(),
+                region_id: "1:7,53".to_string(),
+                last_seen_turn: 68,
+                payload_json: sighting_payload(),
+            }],
+            vec![GameBackupMergedReport {
+                faction_id: "1".to_string(),
+                turn_number: 71,
+                merged_faction_id: "2".to_string(),
+                merged_faction_name: "Ally".to_string(),
+                merged_at: "2026-01-05T00:00:00Z".to_string(),
+            }],
+            vec![GameBackupHexNote {
+                id: "n1".to_string(),
+                region_id: "1:7,53".to_string(),
+                text: "note".to_string(),
+                on_map: true,
+                turn: 69,
+                created_at: "2026-01-05T00:00:00Z".to_string(),
+                updated_at: "2026-01-05T00:00:00Z".to_string(),
+            }],
+        );
+        content.collections.armies = vec![GameBackupArmy {
+            id: "army-1".to_string(),
+            name: "Escort".to_string(),
+            members: vec![member],
+            created_at: "2026-01-05T00:00:00Z".to_string(),
+            updated_at: "2026-01-05T00:00:00Z".to_string(),
+        }];
+        content.collections.allied_mages = vec![AlliedMage {
+            faction_id: "21".to_string(),
+            faction_name: Some("Borg".to_string()),
+            unit,
+            sheet_turn: 23,
+            received_at: "2026-01-05T00:00:00Z".to_string(),
+        }];
+        content.collections.study_plans = vec![StudyPlan {
+            faction_id: "21".to_string(),
+            unit_id: "9001".to_string(),
+            goals: vec![
+                StudyGoal::Study {
+                    turn: 0,
+                    skill: "FORC".to_string(),
+                },
+                StudyGoal::Teach {
+                    turn: 72,
+                    students: vec![],
+                    live: true,
+                },
+            ],
+            casts: vec![PlannedCast {
+                turn: 72,
+                spell: "FARS".to_string(),
+            }],
+            comment: String::new(),
+            updated_at: "2026-01-05T00:00:00Z".to_string(),
+        }];
+        let encoded = encode_game_backup(content, "2026-01-06T00:00:00Z").expect("encodes");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&encoded).expect("json")["version"],
+            2,
+            "a backup written today is numbered the engine's way"
+        );
+        let mut version_one: serde_json::Value = serde_json::from_str(&encoded).expect("json");
+        version_one["version"] = serde_json::json!(1);
+
+        let restored = decode_game_backup(&version_one.to_string(), "2026-02-01T00:00:00Z")
+            .expect("decodes")
+            .collections;
+
+        let turn = &restored.imported_turns[0];
+        assert_eq!(turn.turn_number, 72);
+        let payload: crate::ReportParseResult =
+            serde_json::from_str(&turn.parsed_payload_json).expect("payload still parses");
+        assert_eq!(
+            payload.turn_header.map(|header| header.turn_number),
+            Some(72)
+        );
+        assert_eq!(restored.order_drafts[0].turn_number, 72);
+        assert_eq!(restored.region_sightings[0].sighting.last_seen_turn, 69);
+        assert_eq!(restored.merged_reports[0].turn_number, 72);
+        assert_eq!(restored.hex_notes[0].turn, 70);
+        assert_eq!(restored.armies[0].members[0].seen_turn, 67);
+        assert_eq!(restored.allied_mages[0].sheet_turn, 24);
+        assert_eq!(
+            restored.study_plans[0].goals,
+            vec![
+                StudyGoal::Study {
+                    turn: 0,
+                    skill: "FORC".to_string(),
+                },
+                StudyGoal::Teach {
+                    turn: 73,
+                    students: vec![],
+                    live: true,
+                },
+            ],
+            "a goal's turn 0 marks a turnless legacy goal and stays 0"
+        );
+        assert_eq!(restored.study_plans[0].casts[0].turn, 73);
+
+        let current = decode_game_backup(&encoded, "2026-02-01T00:00:00Z")
+            .expect("decodes")
+            .collections;
+        assert_eq!(
+            current.imported_turns[0].turn_number, 71,
+            "version 2 is left as written"
+        );
+        assert_eq!(current.hex_notes[0].turn, 69);
     }
 }

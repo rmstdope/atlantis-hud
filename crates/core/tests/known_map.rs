@@ -970,10 +970,7 @@ fn unit_ids_at(known: &atlantis_hud_core::known_map::KnownMap, x: i32, y: i32) -
 /// this very turn, which an older merge may have restamped - never brings one of ours back.
 #[test]
 fn a_same_turn_sighting_never_brings_back_a_unit_of_ours() {
-    let known = resolve_known_map(
-        &empty_report("January", 1),
-        &[stored_with_a_unit_of_ours()],
-    );
+    let known = resolve_known_map(&empty_report("January", 1), &[stored_with_a_unit_of_ours()]);
 
     assert_eq!(unit_ids_at(&known, 1, 1), ["500"]);
 }

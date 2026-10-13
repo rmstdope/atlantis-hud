@@ -4244,7 +4244,10 @@ mod tests {
             column("SELECT CAST(last_seen_turn AS TEXT) FROM region_sightings"),
             vec!["69"]
         );
-        assert_eq!(column("SELECT CAST(turn AS TEXT) FROM hex_notes"), vec!["70"]);
+        assert_eq!(
+            column("SELECT CAST(turn AS TEXT) FROM hex_notes"),
+            vec!["70"]
+        );
         assert_eq!(
             column("SELECT members_json FROM armies"),
             vec![r#"[{"unitId":"1","seenTurn":67},{"unitId":"2","seenTurn":68}]"#],
