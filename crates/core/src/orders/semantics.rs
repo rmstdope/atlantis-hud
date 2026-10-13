@@ -67,8 +67,8 @@ use crate::orders::silver::{
     MoneyRead, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
     PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages, SaleAnswer, SettledBuyAll,
     SettledGift, SharedCast, SharedMarket, ShipmentPriced, SilverChange, SilverChangeCause,
-    SilverDoubt, SilverDraw, SilverFunding, SilverMove, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim,
-    UpkeepSettlement, Workforce,
+    SilverDoubt, SilverDraw, SilverFunding, SilverMove, TransferShape, Transmuting, UnitFacts,
+    UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
@@ -8963,31 +8963,36 @@ fn transfer(
     };
     // Which sharers made up the part of a silver transfer its source could not, read before this
     // line is charged or its unfunded part booked (`ah-msds`).
-    if !from.is_empty() && tag.eq_ignore_ascii_case(SILVER) {
-        let draws = if hex.units.iter().any(|ordered| ordered.shares()) {
+    // How a silver transfer was funded as it ran - what its source held, what the pool let move,
+    // and which sharers made up the rest, read before this line is charged or its unfunded part
+    // booked (`ah-msds`) - recorded once, and the one verdict on it every later reader takes
+    // (`ah-rou9`).
+    let funding = (!from.is_empty() && tag.eq_ignore_ascii_case(SILVER)).then(|| SilverFunding {
+        line: placed.line as i64,
+        exact_give: is_give && matches!(shape, TransferShape::Exact(_)),
+        asked: quantity,
+        own: known_source.max(0),
+        received,
+        pool_read,
+        draws: if hex.units.iter().any(|ordered| ordered.shares()) {
             draws_for(ledger, hex, &from, received)
         } else {
             Vec::new()
-        };
-        ledger
-            .silver_fundings
-            .entry(from.clone())
-            .or_default()
-            .push(SilverFunding {
-                line: placed.line as i64,
-                exact_give: is_give && matches!(shape, TransferShape::Exact(_)),
-                asked: quantity,
-                own: known_source.max(0),
-                received,
-                pool_read,
-                draws,
-            });
-    }
+        },
+    });
     // A silver GIVE beyond the giver's own holding that sharers whose stock was read covered in
     // full: the engine refuses it nothing (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`),
     // so it is neither a cut line nor where the unit's shortfall is anchored (`ah-ub3y`,
     // `ah-f7md`). A pool this walk could not read is no evidence that it paid.
-    let pool_paid = quantity > known_source.max(0) && pool_read && received >= quantity;
+    let pool_paid = funding.as_ref().is_some_and(SilverFunding::pool_paid);
+    let refused_short = funding.as_ref().is_some_and(SilverFunding::refused_short);
+    if let Some(funding) = funding {
+        ledger
+            .silver_fundings
+            .entry(from.clone())
+            .or_default()
+            .push(funding);
+    }
     // What the source is charged below beyond what it gives: the ask itself for goods, `moved`
     // for silver.
     if !from.is_empty() {
@@ -9019,7 +9024,7 @@ fn transfer(
             // orders, they already agree with the column, and the settlement books neither.
             if is_give {
                 *ledger.silver_given.entry(from.clone()).or_default() += quantity;
-                if quantity > known_source.max(0) && !pool_paid {
+                if refused_short {
                     // The cut line is what overdrew the unit, so its finding points here even
                     // where it moves nothing and so draws nothing down (`ah-1c8p`).
                     ledger
@@ -9096,10 +9101,7 @@ fn transfer(
         let (cut, could_move) = if !tag.eq_ignore_ascii_case(SILVER) {
             (received < quantity, received.max(0))
         } else if is_give {
-            (
-                quantity > known_source.max(0) && !pool_paid,
-                known_source.max(0),
-            )
+            (refused_short, known_source.max(0))
         } else {
             (moved < quantity, moved)
         };
@@ -56812,7 +56814,13 @@ BUILD
                 assert_eq!(fundings.len(), 1, "{fundings:?}");
                 let gift = &fundings[0];
                 assert_eq!(
-                    (gift.line, gift.exact_give, gift.asked, gift.own, gift.received),
+                    (
+                        gift.line,
+                        gift.exact_give,
+                        gift.asked,
+                        gift.own,
+                        gift.received
+                    ),
                     (2, true, 100, 0, 100),
                     "{gift:?}"
                 );
@@ -56851,7 +56859,11 @@ BUILD
                 assert_eq!(gift_lent_by(&ledger, "902"), 0);
                 let lending = Lending::before(&hex, &ledger, StatePhase::Market);
                 assert_eq!(lending.borrows[index("901")], gift.drawn(), "{lending:?}");
-                assert_eq!(lending.lends[index("905")], gift.draws[0].amount, "{lending:?}");
+                assert_eq!(
+                    lending.lends[index("905")],
+                    gift.draws[0].amount,
+                    "{lending:?}"
+                );
                 // What 902 lends at the cast is 906's exchange's, not the gift's.
                 assert_eq!(
                     lending.lends[index("902")],
@@ -56930,8 +56942,12 @@ BUILD
                 let hex = Hex::read(&region, &ordered, &[]);
                 let ledger = ledger_for(&hex, Some(&rules));
                 let gift = ledger.silver_fundings["901"][0].clone();
-                let review =
-                    review_turn(&report(vec![region.clone()]), ORDERS, Some(&rules), with_map());
+                let review = review_turn(
+                    &report(vec![region.clone()]),
+                    ORDERS,
+                    Some(&rules),
+                    with_map(),
+                );
                 let giver = shipment_silver(&review, "901");
                 let named_the_gift =
                     giver.short_on == Some(crate::orders::silver::SilverSpender::Give);
@@ -56985,7 +57001,12 @@ BUILD
                         lent,
                         gift_drawn_by(&ledger, "901"),
                     ),
-                    (!gift.paid_in_full(), gift.refused_short(), drawn, gift.drawn()),
+                    (
+                        !gift.paid_in_full(),
+                        gift.refused_short(),
+                        drawn,
+                        gift.drawn()
+                    ),
                     "{gift:?}"
                 );
                 assert!(
