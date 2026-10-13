@@ -2296,6 +2296,10 @@ mod tests {
             Some(72),
             "the AtlaClient-merged faction never reads past its newest turn"
         );
-        assert_eq!(seen("2"), Some(73), "a faction with no AtlaClient merge only moves");
+        assert_eq!(
+            seen("2"),
+            Some(73),
+            "a faction with no AtlaClient merge only moves"
+        );
     }
 }
