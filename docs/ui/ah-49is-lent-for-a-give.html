@@ -1,0 +1,24 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ah-49is Option A — “lent … for X to give to Y”</title><style>:root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--ink:#dbe3ec;--soft:#a3b0c0;--dim:#8a97a8;--brass:#d9a441;--select:#4a9fd8}
+*{box-sizing:border-box;margin:0}body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:32px 16px 64px}
+header,main{max-width:1200px;margin:0 auto}h1{font-size:23px;color:var(--brass)}header p{color:var(--soft);margin-top:10px;font-size:14px;max-width:100ch}
+s{color:#d97070}.setup{background:var(--panel);border-left:3px solid var(--brass);padding:10px 14px;border-radius:6px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:18px;margin-top:24px}
+.card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:14px}
+.lbl{display:block;font:11px/1.4 system-ui,sans-serif;letter-spacing:1px;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+.hover{background:var(--raised);border:1px solid var(--edge);border-radius:6px;padding:10px;font:12.5px/1.5 system-ui,sans-serif}
+.hover h4{font-size:11.5px;color:var(--select);margin-bottom:5px}.row{display:flex;justify-content:space-between;color:var(--soft)}
+.fig{color:var(--ink);font-variant-numeric:tabular-nums}.note{margin-top:8px;color:var(--ink)}
+</style></head><body>
+<header><h1>Option A — “lent … for X to give to Y”</h1><p>Reads like the existing “used 3 for Smiths (12) to produce” and “spent 5 for Masons (7) to build”: the lender is the subject, the borrower is named as the one acting.</p>
+<p class="setup">The hover on the <b>ITEMS</b> cell of the unit whose goods were shared. Today the reported case reads: <s>iron: gave 14 to Unit (4840), gave 14 to Unit (4008).</s></p></header>
+<main class="grid"><div class="card"><b class="lbl">The reported case — Trident (41,35): 4686 GIVE 4008 14 IRON; 4008 (no iron, listed first) GIVE 4840 14 IRON</b>
+<div class="hover"><h4>Unit (4686) — ITEMS</h4><div class="row"><span>iron</span><span class="fig">30 → 2</span></div>
+<p class="note">iron: lent 14 for Unit (4008) to give to Unit (4840), gave 14 to Unit (4008).</p></div></div><div class="card"><b class="lbl">The final receiver is not in your report</b>
+<div class="hover"><h4>Unit (4686) — ITEMS</h4><div class="row"><span>iron</span><span class="fig">30 → 16</span></div>
+<p class="note">iron: lent 14 for Unit (4008) to give to unit 4840, which your report does not show.</p></div></div><div class="card"><b class="lbl">The final receiver is another faction's unit, unnamed</b>
+<div class="hover"><h4>Unit (4686) — ITEMS</h4><div class="row"><span>iron</span><span class="fig">30 → 16</span></div>
+<p class="note">iron: lent 14 for Unit (4008) to give to another faction.</p></div></div><div class="card"><b class="lbl">Only part of the GIVE was borrowed — 4008 held 4, gave 14, so 10 came from the sharer</b>
+<div class="hover"><h4>Unit (4686) — ITEMS</h4><div class="row"><span>iron</span><span class="fig">30 → 20</span></div>
+<p class="note">iron: lent 10 for Unit (4008) to give to Unit (4840).</p></div></div><div class="card"><b class="lbl">One sharer funds two different units' GIVEs</b>
+<div class="hover"><h4>Unit (4686) — ITEMS</h4><div class="row"><span>iron</span><span class="fig">30 → 9</span></div>
+<p class="note">iron: lent 14 for Unit (4008) to give to Unit (4840), lent 7 for Scouts (4012) to give to Watch (1604).</p></div></div></main></body></html>
