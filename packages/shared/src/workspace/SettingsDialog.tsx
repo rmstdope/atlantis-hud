@@ -527,7 +527,7 @@ export const WARNING_GROUPS: readonly {
         code: "study-gains-nothing",
         title: "Study past what a skill gives",
         description:
-          "A unit ordered to study a skill past the level its own description says gives anything more, such as manipulation past level 2."
+          "A unit ordered to study a skill past the level its own description says gives anything more, such as manipulation."
       },
       {
         code: "study-unlearnable",

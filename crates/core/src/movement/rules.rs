@@ -1838,12 +1838,10 @@ mod tests {
     // catalogue is scraped from the game being played and may be stale, absent, or simply missing
     // an entry, and none of that is grounds for telling a player their order is wrong.
 
-    // `ItemEntry` carries `deny_unknown_fields`, so a new field must be optional in both
-    // directions: absent from a ruleset cached before it existed, and present in one scraped
-    // after (`ah-1ad6.1`).
     /// `data/MANI` says continued study gives no further advantages at level 3 in New Origins and
     /// at level 5 in both New Age worlds (`newage arcanum data MANI`, `newage trident data MANI`),
-    /// so the warning starts past 2 there and past 4 here (`ah-xy2g`). No other skill says it.
+    /// so the warning starts past 2 in New Origins and past 4 in New Age (`ah-xy2g`). No other
+    /// skill says it.
     #[test]
     fn useful_up_to_reads_each_worlds_own_manipulation_page() {
         for (json, mani) in [
@@ -1867,6 +1865,9 @@ mod tests {
         }
     }
 
+    // `ItemEntry` carries `deny_unknown_fields`, so a new field must be optional in both
+    // directions: absent from a ruleset cached before it existed, and present in one scraped
+    // after (`ah-1ad6.1`).
     #[test]
     fn a_ruleset_without_weapons_still_loads() {
         let json = r#"{
