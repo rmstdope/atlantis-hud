@@ -68,4 +68,7 @@ plan's *Known traps* lists the open and in-progress beads whose design names tha
 check is `bd list --status open,in_progress --json`, grepping their designs for it. The producer
 then rebases early, or asks for ordering, instead of finding the conflict at merge.
 
-**Seen before.** Nothing like it in `docs/retrospectives/`.
+**Seen before.** ah-64wm: two beads planned against the same function with no dependency edge,
+and nine conflict hunks in `effects.rs`. Its *Prevent by* (wire an edge at planning) did not reach
+this case: ah-pf7t was filed by Forge and planned by its producer, and ah-li7l was filed separately.
+Neither planning step saw the other.
