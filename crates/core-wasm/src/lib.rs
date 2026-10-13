@@ -467,6 +467,43 @@ pub fn move_row_to_engine_turns_state(collection: &str, row_json: &str) -> Resul
     Ok(row.to_string())
 }
 
+/// The AtlaClient sighting cap of every faction holding an AtlaClient merge, as a JSON object of
+/// faction id to turn (`atlantis_hud_core::sighting_cap`, ah-vtgk). Takes the `mergedReports` rows
+/// and the `importedTurns` keys (`[factionId, turnNumber]`) as JSON arrays, so the upgrade never
+/// reads a whole report to learn its turn. Synchronous, for the same upgrade transaction.
+#[wasm_bindgen]
+pub fn atlaclient_caps_state(
+    merged_reports_json: &str,
+    imported_turn_keys_json: &str,
+) -> Result<String, JsValue> {
+    let merged_reports: Vec<serde_json::Value> = serde_json::from_str(merged_reports_json)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let keys: Vec<serde_json::Value> = serde_json::from_str(imported_turn_keys_json)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let caps = atlantis_hud_core::sighting_cap::atlaclient_caps(
+        &merged_reports,
+        keys.iter().filter_map(|key| {
+            let [faction_id, turn_number] = key.as_array()?.as_slice() else {
+                return None;
+            };
+            Some((faction_id.as_str()?, turn_number.as_u64()?))
+        }),
+    );
+    serde_json::to_string(&caps).map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
+/// One `regionSightings` row, as JSON, no newer than its faction's cap from
+/// [`atlaclient_caps_state`]. Every other key is kept as it is.
+#[wasm_bindgen]
+pub fn cap_atlaclient_sighting_state(caps_json: &str, row_json: &str) -> Result<String, JsValue> {
+    let caps: atlantis_hud_core::sighting_cap::AtlaClientCaps =
+        serde_json::from_str(caps_json).map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let mut row: serde_json::Value =
+        serde_json::from_str(row_json).map_err(|error| JsValue::from_str(&error.to_string()))?;
+    atlantis_hud_core::sighting_cap::cap_atlaclient_sighting(&caps, &mut row);
+    Ok(row.to_string())
+}
+
 /// Plans a route for one unit against a ruleset the caller supplies.
 ///
 /// Available on every target: planning needs no native backing, unlike the persistence entry

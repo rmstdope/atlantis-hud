@@ -8,6 +8,10 @@
 -- an AtlaClient merge is newer than that faction's newest imported turn.
 --
 -- Run once, as a migration, so a map merged after this upgrade is never touched by it.
+--
+-- The rule's reference is atlantis_hud_core::sighting_cap (crates/core/src/sighting_cap.rs), which
+-- the browser's version-8 upgrade and a version-1 backup's restore both call (ah-4pbr). It stays
+-- SQL here because a migration cannot call the core row by row; a change to the rule changes both.
 UPDATE region_sightings
    SET last_seen_turn = (
            SELECT MAX(turn.turn_number)

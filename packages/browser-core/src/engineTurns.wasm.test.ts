@@ -1,8 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { CoreWasmModule } from "./webCoreAdapter";
-import { atlaClientCaps, capAtlaClientSighting } from "./engineTurns";
-import { rowOnEngineTurns } from "./webStore";
+import { atlaClientCapsJson, rowCapped, rowOnEngineTurns } from "./webStore";
 
 /**
  * ah-m6pw, ah-aguu: a game database below version 7 numbered every turn one low (February of Year 1
@@ -93,7 +92,8 @@ describe("moving a stored row to the engine's turn numbers, through the core", (
   it("caps an AtlaClient sighting before the move, so a version-6 row lands on the newest turn", async () => {
     const core = await realCore();
     // Stored on version 6's count: newest report 71, the AtlaClient hex one above it at 72 (ah-vtgk).
-    const caps = atlaClientCaps(
+    const caps = atlaClientCapsJson(
+      core,
       [{ factionId: "95", turnNumber: 71, mergedFactionId: "atlaclient" }],
       [["95", 71]]
     );
@@ -101,9 +101,30 @@ describe("moving a stored row to the engine's turn numbers, through the core", (
     const row = rowOnEngineTurns(
       core,
       "regionSightings",
-      capAtlaClientSighting({ factionId: "95", regionId: "1:1,1", lastSeenTurn: 72 }, caps)
+      rowCapped(core, caps, { factionId: "95", regionId: "1:1,1", lastSeenTurn: 72 })
     );
 
     expect(row.lastSeenTurn).toBe(72);
+  });
+
+  it("caps only a faction holding an AtlaClient merge, and keeps the store's own keys", async () => {
+    const core = await realCore();
+    const caps = atlaClientCapsJson(
+      core,
+      [
+        { factionId: "95", turnNumber: 72, mergedFactionId: "atlaclient" },
+        { factionId: "73", turnNumber: 72, mergedFactionId: "21" }
+      ],
+      [
+        ["95", 71],
+        ["95", 72],
+        ["73", 72]
+      ]
+    );
+
+    expect(
+      rowCapped(core, caps, { databasePath: "idb://game-g7", factionId: "95", regionId: "1:1,1", lastSeenTurn: 73 })
+    ).toEqual({ databasePath: "idb://game-g7", factionId: "95", regionId: "1:1,1", lastSeenTurn: 72 });
+    expect(rowCapped(core, caps, { factionId: "73", regionId: "1:1,1", lastSeenTurn: 73 }).lastSeenTurn).toBe(73);
   });
 });

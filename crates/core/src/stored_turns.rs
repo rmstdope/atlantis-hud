@@ -10,6 +10,9 @@
 //! The records are handled as `serde_json::Value` under the collections' camelCase names - the
 //! names the backup document and the browser's stores both use (ah-bmb3.3) - so a key a store keeps
 //! beside the wire fields (`databasePath`, `gameId`) passes through untouched.
+//!
+//! The other repair those upgrades make, capping a sighting merged from AtlaClient, is
+//! [`crate::sighting_cap`]'s, on the same records (ah-4pbr).
 
 use serde_json::Value;
 

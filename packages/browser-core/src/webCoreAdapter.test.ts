@@ -204,6 +204,8 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
     stored_season_state: () => undefined,
     collections_naming_a_turn_state: () => [],
     move_row_to_engine_turns_state: (_collection: string, rowJson: string) => rowJson,
+    atlaclient_caps_state: () => "{}",
+    cap_atlaclient_sighting_state: (_capsJson: string, rowJson: string) => rowJson,
     ordered_merged_reports_state: (recordsJson: string) =>
       (JSON.parse(recordsJson) as MergedReportRecord[]).sort(
         (left, right) =>

@@ -753,36 +753,6 @@ pub fn encode_game_backup_json(
     encode_game_backup(content, exported_at)
 }
 
-/// Caps every sighting of a faction holding an AtlaClient merge at that faction's newest imported
-/// turn (ah-vtgk).
-///
-/// AtlaClient stamps a hex with the engine's turn while version 1 numbered HUD's own turns one
-/// lower, so a hex merged from AtlaClient on the newest turn was stored one turn too new, and
-/// [`crate::stored_turns::move_collections_to_engine_turns`] keeps that difference. Nothing
-/// records which sighting came from AtlaClient, so the repair is the bound that always holds: no
-/// sighting is newer than the newest report of the faction it is filed under. Migration 16 makes the same repair to a stored desktop
-/// game, and `engineTurns.ts` to a browser one.
-fn cap_atlaclient_sightings(collections: &mut EncodedGameBackupCollections) {
-    let merged_from_atlaclient: std::collections::BTreeSet<&str> = collections
-        .merged_reports
-        .iter()
-        .filter(|merge| merge.merged_faction_id == crate::report::atlaclient::ATLACLIENT_SOURCE_ID)
-        .map(|merge| merge.faction_id.as_str())
-        .collect();
-    let mut newest: std::collections::BTreeMap<String, u32> = std::collections::BTreeMap::new();
-    for turn in &collections.imported_turns {
-        if merged_from_atlaclient.contains(turn.faction_id.as_str()) {
-            let entry = newest.entry(turn.faction_id.clone()).or_insert(0);
-            *entry = (*entry).max(turn.turn_number);
-        }
-    }
-    for sighting in &mut collections.region_sightings {
-        if let Some(&cap) = newest.get(&sighting.faction_id) {
-            sighting.last_seen_turn = sighting.last_seen_turn.min(cap);
-        }
-    }
-}
-
 /// One document -> rows to write. Two-stage on purpose: the envelope (`format`, `version`) is read
 /// from a `serde_json::Value` and judged FIRST, so a file that is not a backup, or is from a newer
 /// version, says so even when its body is also missing fields. Only then is the Value turned into a
@@ -814,8 +784,12 @@ pub fn decode_game_backup(
     // Version 1 was written while February of Year 1 was turn 1; the engine's `Game::TurnNumber`
     // (game.cpp) makes January of Year 1 turn 1, so every turn it names is one low (ah-m6pw). The
     // move is the one every store makes, from the one list of stored turns (ah-aguu).
+    // A hex merged from AtlaClient then was stamped a turn above HUD's own count, which the move
+    // keeps, so its faction's sightings are capped at its newest report (ah-vtgk) - after the move,
+    // so both read the same count. The cap is the one every store makes (ah-4pbr).
     if version < 2 {
         crate::stored_turns::move_collections_to_engine_turns(&mut value);
+        crate::sighting_cap::cap_atlaclient_sightings(&mut value);
     }
 
     let backup: GameBackup =
@@ -833,12 +807,8 @@ pub fn decode_game_backup(
         version: _,
         exported_at: _,
         mut manifest,
-        mut collections,
+        collections,
     } = backup;
-    // After the turns have moved (above, on the document), so the cap is read on the same count.
-    if version < 2 {
-        cap_atlaclient_sightings(&mut collections);
-    }
     let created_at = manifest.created_at.clone();
     manifest.last_opened_at = opened_at.to_string();
     let GameBackupCollections {
