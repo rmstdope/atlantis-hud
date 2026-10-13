@@ -54865,6 +54865,89 @@ BUILD
         }
     }
 
+    /// Every unit's silver position at TRANSPORT, for a hex built from `units` and `orders` under
+    /// the Trident rules: what [`SharerStock::at`] reads each one holding once the purse's
+    /// lending, its refusals and the ledger's add-back are all in - each coin of an overdraft
+    /// counted by exactly one of them (`ah-eoag`). The raw position, unclamped, so a coin counted
+    /// too few times shows as well as one counted twice; nobody lends after STUDY, so it is all
+    /// the unit holds.
+    fn held_at_transport(units: Vec<ReportUnit>, orders: &str) -> BTreeMap<String, i64> {
+        let hex_region = region(units);
+        let ordered = OrderedUnits::read(orders);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let rules = trident_rules();
+        let ledger = ledger_for(&hex, Some(&rules));
+        let stock = SharerStock::at(&ledger, &hex, StatePhase::Transport, SILVER)
+            .expect("the pool is readable");
+        assert!(stock.parties.iter().all(|party| !party.lends));
+        hex.units
+            .iter()
+            .zip(&stock.parties)
+            .map(|(o, party)| (o.unit.unit_id.clone(), party.position))
+            .collect()
+    }
+
+    /// CAST: 901 holds nothing, so its GIVE of $100 is paid by sharer 902's $150 (`runorders.cpp`:
+    /// `DoGiveOrder` checks `GetSharedNum`), and its $200 amulet (`data/CRPA`) is refused against
+    /// the $50 left and takes nothing (`spells.cpp`: `RunCreateArtifact`). The $150 the hex had is
+    /// held once: $50 by 902, $100 by 903 (`ah-eoag`).
+    #[test]
+    fn each_coin_of_a_refused_cast_beside_a_paid_gift_is_counted_once() {
+        let held = held_at_transport(
+            vec![
+                with_skill(unit("901"), "CRPA", 1),
+                sharing(with_silver(unit("902"), 150)),
+                unit("903"),
+            ],
+            "unit 901\nGIVE 903 100 SILV\nCAST Create_Amulet_Of_Protection\n",
+        );
+        assert_eq!(held["901"], 0, "{held:?}");
+        assert_eq!(held["902"], 50, "{held:?}");
+        assert_eq!(held["903"], 100, "{held:?}");
+    }
+
+    /// GIVE: sharer 902's $100 pays 901's GIVE of $100 in full, so 904's GIVE of $50 finds the pool
+    /// empty and moves nothing (`runorders.cpp`: `DoGiveOrder`, "Not enough.", then
+    /// `amt = GetSharedNum`). The $100 the hex had is held once, by 903 (`ah-eoag`).
+    #[test]
+    fn each_coin_of_a_refused_gift_beside_a_paid_one_is_counted_once() {
+        let held = held_at_transport(
+            vec![
+                unit("901"),
+                sharing(with_silver(unit("902"), 100)),
+                unit("903"),
+                unit("904"),
+            ],
+            "unit 901\nGIVE 903 100 SILV\nunit 904\nGIVE 903 50 SILV\n",
+        );
+        assert_eq!(held["901"], 0, "{held:?}");
+        assert_eq!(held["902"], 0, "{held:?}");
+        assert_eq!(held["904"], 0, "{held:?}");
+        assert_eq!(held["903"], 100, "{held:?}");
+    }
+
+    /// STUDY: sharer 902's $100 pays 901's GIVE of $100, so 904's GIVE of $50 finds the pool empty
+    /// and moves nothing (`runorders.cpp`: `DoGiveOrder`, "Not enough."), and both units' $10
+    /// studies (`data/COMB` in Trident) are refused and take nothing (`monthorders.cpp`:
+    /// `Do1StudyOrder`, "STUDY: Not enough funds."). The $100 the hex had is held once, by 903:
+    /// neither the refused gift nor the refused fees come back twice (`ah-eoag`).
+    #[test]
+    fn each_coin_of_a_refused_study_beside_a_paid_gift_is_counted_once() {
+        let held = held_at_transport(
+            vec![
+                unit("901"),
+                sharing(with_silver(unit("902"), 100)),
+                unit("903"),
+                unit("904"),
+            ],
+            "unit 901\nGIVE 903 100 SILV\nSTUDY COMB\nunit 904\nGIVE 903 50 SILV\nSTUDY COMB\n",
+        );
+        assert_eq!(held["901"], 0, "{held:?}");
+        assert_eq!(held["902"], 0, "{held:?}");
+        assert_eq!(held["904"], 0, "{held:?}");
+        assert_eq!(held["903"], 100, "{held:?}");
+    }
+
     /// From STUDY on only the sharers that stay lend (`ah-wyj8`): a sharer that walked away is
     /// never drained for a study after it left, in either report order.
     #[test]
