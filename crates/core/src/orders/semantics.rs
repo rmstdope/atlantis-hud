@@ -13439,8 +13439,20 @@ impl SharerStock {
                         // in `refused`; either way the ledger's add-back is not wanted as well
                         // (`ah-szu0` follow-up review, finding 1). A doubted unit is not judged,
                         // so it keeps the add-back.
+                        //
+                        // So does an overdraft from before the casts - a GIVE beyond what the
+                        // unit and its sharers held, which the ledger adds back in part: the fold
+                        // claims it whole at the cast, where it is either lent or handed back, so
+                        // that add-back is not wanted as well either (`ah-mrs0`). Where the fold
+                        // lent it rather than handing it back, this goes negative, taking off the
+                        // add-back the borrow already covers.
                         let judged = !ledger.doubted.contains(unit_id);
-                        lending.refused(index) - if judged { unfunded_cast } else { 0 }
+                        lending.refused(index)
+                            - if judged {
+                                unfunded_cast + unfunded_before_casts(ledger, unit_id)
+                            } else {
+                                0
+                            }
                     } else {
                         // Where nothing pools, the caster's own silver is all the spell could
                         // draw on, and STUDY is judged on what the refused cast handed back
@@ -14560,13 +14572,19 @@ struct Lending {
     /// The cost of each unit's CAST the pool could not pay, and so the engine refused and took
     /// nothing for - the unit's own coins included ([`refused_cast_cost`], `ah-szu0`). `0` for a
     /// unit whose cast was paid or that does not overdraw at it. Handed back to the unit at every
-    /// later moment, with a refused STUDY's fee: [`Lending::refused`].
+    /// later moment, with a refused STUDY's fee: [`Lending::refused`]. It also carries an
+    /// overdraft from before the casts - a GIVE beyond what the unit and its sharers held - that
+    /// the pool could not pay in full at the cast moment, handed back whole there since that
+    /// moment pays each claim in full or not at all ([`SharerStock::paid_one_by_one`]; the
+    /// engine part-funds such a GIVE instead, `ah-hreo`), and [`SharerStock::at`] nets the
+    /// ledger's own add-back of it off again ([`unfunded_before_casts`], `ah-mrs0`).
     refused_cast: Vec<i64>,
     /// How each unit's STUDY went, judged one student at a time as the engine pays them - **the
     /// one reading of whether the purse paid a study** (`ah-2f77`). [`StudyOutcome::NoStudy`]
     /// throughout where the moments read stop before STUDY.
     study: Vec<StudyOutcome>,
-    /// Whether each unit's CAST is among what `refused` hands back: [`SharerStock::at`] then takes
+    /// Whether each unit's claim at the cast moment is among what `refused` hands back - its CAST,
+    /// or an earlier overdraft for a unit with no cast (`ah-mrs0`): [`SharerStock::at`] then takes
     /// off what the ledger already added back as [`Ledger::unfunded_casts`] (`ah-szu0`).
     refused_casts: Vec<bool>,
     /// The first moment the pool could not cover in full - the market or the month's end - from
@@ -14699,8 +14717,12 @@ impl Lending {
                 for index in 0..hex.units.len() {
                     let unit_id = &hex.units[index].unit.unit_id;
                     if judged(index) && ledger.unfunded_casts.get(unit_id).is_some_and(|&u| u > 0) {
-                        let overdrawn = (-own(index, moment)).max(0);
-                        purse.refused_cast[index] += refused_cast_cost(ledger, unit_id, overdrawn);
+                        // The spell's own cost alone: an overdraft its unit ran up before the
+                        // casts - a GIVE beyond its own silver, which draws on its sharers
+                        // (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`) - is the pool's
+                        // to lend below, and handing it back here would leave the sharer that
+                        // paid it holding silver it no longer has (`ah-mrs0`).
+                        purse.refused_cast[index] += refused_cast_cost(ledger, unit_id, 0);
                         purse.refused_casts[index] = true;
                     }
                 }
@@ -14809,7 +14831,15 @@ impl Lending {
                     let Some(index) = claim else { continue };
                     let unit_id = &hex.units[index].unit.unit_id;
                     if missing > 0 {
-                        if moment == LendingMoment::Cast {
+                        if moment == LendingMoment::Cast && purse.refused_casts[index] {
+                            // Its cast was refused and handed back above, so what it still
+                            // claims is an overdraft from before the casts - a GIVE beyond what
+                            // it and its sharers held - and that comes back as the model hands it
+                            // back with no cast at all, not the cast's cost a second time
+                            // (`ah-mrs0`). The engine part-funds such a GIVE instead, which the
+                            // model does not yet (`ah-hreo`).
+                            purse.refused_cast[index] += needs[index];
+                        } else if moment == LendingMoment::Cast {
                             purse.refused_casts[index] = true;
                             purse.refused_cast[index] +=
                                 refused_cast_cost(ledger, unit_id, needs[index]);
@@ -15239,8 +15269,9 @@ fn studied_fee(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
 /// What the ledger charged a unit for a CAST the game refuses, and so never took from it: the
 /// spell's whole silver cost, since `RunCreateArtifact` (`spells.cpp`) checks `GetSharedNum`
 /// against every input before it calls `ConsumeShared`, so a refused spell takes nothing, own
-/// coins included - and never less than the overdraft itself (`ah-szu0`). Net of what the spell
-/// would have earned, which a refused spell earns nothing of either.
+/// coins included - and never less than `overdrawn`, the claim the caller judged refused, which
+/// is `0` where the caller wants the spell's own cost alone (`ah-szu0`, `ah-mrs0`). Net of what
+/// the spell would have earned, which a refused spell earns nothing of either.
 fn refused_cast_cost(ledger: &Ledger<'_>, unit_id: &str, overdrawn: i64) -> i64 {
     (-ledger
         .silver_moves
@@ -15256,6 +15287,18 @@ fn refused_cast_cost(ledger: &Ledger<'_>, unit_id: &str, overdrawn: i64) -> i64 
         .map(|moved| moved.amount)
         .sum::<i64>())
     .max(overdrawn)
+}
+
+/// What the ledger adds back to a unit's silver as [`Ledger::unfunded`] for orders before the
+/// casts rather than for a cast of its own ([`Ledger::unfunded_casts`]): a GIVE or TAKE beyond
+/// what it and its sharers held, the only other silver it records (`transfer`).
+fn unfunded_before_casts(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    let unfunded = ledger
+        .unfunded
+        .get(&(unit_id.to_string(), SILVER.to_string()))
+        .copied()
+        .unwrap_or(0);
+    (unfunded - ledger.unfunded_casts.get(unit_id).copied().unwrap_or(0)).max(0)
 }
 
 /// What a unit's own silver is short as the spells are cast, the moment `rules/sequenceofevents`
@@ -54254,6 +54297,121 @@ BUILD
             Some(0),
             "901's cast is paid: {borrower:?}"
         );
+    }
+
+    /// A refused cast hands back only what it took itself, never a GIVE's overdraft: 901 holds
+    /// nothing, so its GIVE of $100 draws on sharer 902's $150 (`runorders.cpp`: `DoGiveOrder`
+    /// checks `GetSharedNum`), and its $200 amulet (`data/CRPA`) is then refused against the $50
+    /// left (`spells.cpp`: `RunCreateArtifact`). So 901's `ALL SILV` ships nothing and 902's ships
+    /// the $50 left, not the $150 it had before it paid the gift (`ah-mrs0`).
+    #[test]
+    fn a_refused_cast_does_not_hand_back_a_gifts_overdraft() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            with_skill(unit("901"), "CRPA", 1),
+            sharing(with_silver(unit("902"), 150)),
+        ]);
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nGIVE 900 100 SILV\nCAST Create_Amulet_Of_Protection\n\
+             TRANSPORT 900 ALL SILV\n\
+             unit 902\nTRANSPORT 900 ALL SILV\n",
+            Some(&rules),
+            with_map(),
+        );
+        let caster = shipment_silver(&review, "901");
+        let shipped: i64 = caster
+            .changes
+            .iter()
+            .filter(|moved| moved.cause == SilverChangeCause::GaveAway && moved.line == Some(4))
+            .map(|moved| -moved.amount)
+            .sum();
+        assert_eq!(shipped, 0, "{caster:?}");
+        // The hex is short the refused amulet's $200 alone: 902's $150 paid the gift and ships
+        // the $50 left, so it is not counted shipping the $100 it gave as well.
+        assert!(
+            review
+                .findings
+                .iter()
+                .any(|f| f.code.as_str() == "not-enough-silver"
+                    && f.message.contains("short $200")
+                    && f.message.contains("can have $150")),
+            "the refused cast keeps its warning: {:?}",
+            review.findings
+        );
+        assert_eq!(
+            silver_shipped(&review, "902"),
+            50,
+            "{:?}",
+            shipment_silver(&review, "902")
+        );
+    }
+
+    /// A GIVE the pool can fund only in part is cut to what the sharers hold (`runorders.cpp`:
+    /// `DoGiveOrder`, "Not enough.", then `amt = GetSharedNum`), so 901's GIVE of $100 takes
+    /// sharer 902's whole $50, and its $200 amulet (`data/CRPA`) is refused against nothing
+    /// (`spells.cpp`: `RunCreateArtifact`). The cast is handed back once, so 901's `ALL SILV`
+    /// ships nothing, and the cut GIVE is still warned about (`ah-mrs0`).
+    #[test]
+    fn a_refused_cast_after_a_cut_gift_leaves_nothing_to_ship() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            with_skill(unit("901"), "CRPA", 1),
+            sharing(with_silver(unit("902"), 50)),
+        ]);
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nGIVE 900 100 SILV\nCAST Create_Amulet_Of_Protection\n\
+             TRANSPORT 900 ALL SILV\n\
+             unit 902\nTRANSPORT 900 ALL SILV\n",
+            Some(&rules),
+            with_map(),
+        );
+        let caster = shipment_silver(&review, "901");
+        let shipped: i64 = caster
+            .changes
+            .iter()
+            .filter(|moved| moved.cause == SilverChangeCause::GaveAway && moved.line == Some(4))
+            .map(|moved| -moved.amount)
+            .sum();
+        assert_eq!(shipped, 0, "{caster:?}");
+        assert!(
+            review
+                .findings
+                .iter()
+                .any(|f| f.line == Some(2) && f.code.as_str() == "part-of-hex-shortfall"),
+            "the cut GIVE keeps its warning: {:?}",
+            review.findings
+        );
+    }
+
+    /// A GIVE beyond what the unit and its sharers hold is cut to nothing (`runorders.cpp`:
+    /// `DoGiveOrder`, "Not enough.", then `amt = GetSharedNum`): 901 and sharer 902 hold nothing,
+    /// so 901's GIVE of $100 moves nothing and its `ALL SILV` ships nothing either. The part the
+    /// ledger adds back is not handed back a second time by the purse (`ah-mrs0`).
+    #[test]
+    fn a_gift_nobody_could_fund_leaves_its_giver_nothing_to_ship() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region
+            .units
+            .extend([unit("901"), sharing(with_silver(unit("902"), 0))]);
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nGIVE 900 100 SILV\nTRANSPORT 900 ALL SILV\nunit 902\n",
+            Some(&rules),
+            with_map(),
+        );
+        let giver = shipment_silver(&review, "901");
+        let shipped: i64 = giver
+            .changes
+            .iter()
+            .filter(|moved| moved.cause == SilverChangeCause::GaveAway && moved.line == Some(3))
+            .map(|moved| -moved.amount)
+            .sum();
+        assert_eq!(shipped, 0, "{giver:?}");
     }
 
     /// Where nothing pools, a refused cast hands its coins back before STUDY is judged: 901's $150
