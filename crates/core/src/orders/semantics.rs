@@ -2474,6 +2474,11 @@ fn forecast_hex(
                     .shared_casts
                     .get(&ordered.unit.unit_id)
                     .map_or(&[][..], Vec::as_slice),
+                // The exact silver GIVEs the hex's sharers paid in full (`ah-ub3y`).
+                pool_paid_gifts: ledger
+                    .pool_paid_gifts
+                    .get(&ordered.unit.unit_id)
+                    .map_or(&[][..], Vec::as_slice),
                 ..phases.of_with(
                     index,
                     &clamped[index],
@@ -5416,6 +5421,7 @@ impl PhaseHoldings {
             buy_all: &[],
             gifts: &[],
             casts: &[],
+            pool_paid_gifts: &[],
             silver_moves: &[],
             market_withholds: 0,
         }
@@ -5445,6 +5451,7 @@ impl PhaseHoldings {
             buy_all,
             gifts,
             casts: &[],
+            pool_paid_gifts: &[],
             silver_moves,
             market_withholds,
         }
@@ -5665,6 +5672,12 @@ struct Ledger<'a> {
     /// column through [`PhaseFacts::casts`] so it prices the spell from the same purse
     /// (`ah-0mch`).
     pub(crate) shared_casts: BTreeMap<String, Vec<SharedCast>>,
+    /// The document lines of each unit's exact silver `GIVE`s that asked for more than the unit
+    /// held and that the other sharers covered in full (`runorders.cpp`: `DoGiveOrder` checks
+    /// `GetSharedNum`): handed to the SILVER column through [`PhaseFacts::pool_paid_gifts`] so it
+    /// does not name a gift the game refused nothing as the order the unit is short on
+    /// (`ah-ub3y`). Written by [`transfer`].
+    pub(crate) pool_paid_gifts: BTreeMap<String, Vec<i64>>,
     /// What each unit was charged for a tag beyond what actually moved, because neither it nor
     /// any sharer could fund it: a `GIVE` the engine cuts with "Not enough.", a cast or sale the
     /// pool fell short of. The charge stays the whole ask, so the shortfall keeps its warning,
@@ -6176,6 +6189,7 @@ fn ledger_for_reaching<'a>(
         settled_buy_all: BTreeMap::new(),
         settled_gifts: BTreeMap::new(),
         shared_casts: BTreeMap::new(),
+        pool_paid_gifts: BTreeMap::new(),
         unfunded: BTreeMap::new(),
         unfunded_casts: BTreeMap::new(),
         silver_transfers: Vec::new(),
@@ -8958,6 +8972,18 @@ fn transfer(
         // actually taken. A `TAKE` is not recorded - the column never deferred one, and its taker
         // side is `Receipts`' business (`ah-awcm`).
         if is_give && tag.eq_ignore_ascii_case(SILVER) {
+            // More than the giver held, and every coin of it reached the receiver: the sharers
+            // paid it (`ah-ub3y`).
+            if matches!(shape, TransferShape::Exact(_))
+                && quantity > known_source.max(0)
+                && received >= quantity
+            {
+                ledger
+                    .pool_paid_gifts
+                    .entry(from.clone())
+                    .or_default()
+                    .push(placed.line as i64);
+            }
             if let TransferShape::All { except } = shape {
                 ledger
                     .settled_gifts
@@ -54345,6 +54371,61 @@ BUILD
             50,
             "{:?}",
             shipment_silver(&review, "902")
+        );
+    }
+
+    /// A GIVE the SHARE pool paid is not the order a unit is short on: 901 holds nothing, so its
+    /// GIVE of $100 is paid out of sharer 902's $150 (`runorders.cpp`: `DoGiveOrder` checks
+    /// `GetSharedNum`), and its $200 amulet (`data/CRPA`) is then refused against the $50 left
+    /// (`spells.cpp`: `RunCreateArtifact`). The SILVER column names the CAST (`ah-ub3y`).
+    #[test]
+    fn a_gift_the_pool_paid_is_not_what_a_refused_caster_is_short_on() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            with_skill(unit("901"), "CRPA", 1),
+            sharing(with_silver(unit("902"), 150)),
+        ]);
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nGIVE 900 100 SILV\nCAST Create_Amulet_Of_Protection\nunit 902\n",
+            Some(&rules),
+            with_map(),
+        );
+        let caster = shipment_silver(&review, "901");
+        assert!(
+            caster.short_for_orders.is_some_and(|short| short > 0),
+            "{caster:?}"
+        );
+        assert_eq!(
+            caster.short_on,
+            Some(crate::orders::silver::SilverSpender::Cast),
+            "{caster:?}"
+        );
+    }
+
+    /// The other side of `ah-ub3y`: a GIVE the pool could pay only in part is cut (`runorders.cpp`:
+    /// `DoGiveOrder`, "Not enough.", then `amt = GetSharedNum`), so it is still what 901 is short
+    /// on, ahead of the CAST written after it.
+    #[test]
+    fn a_gift_the_pool_cut_is_still_what_its_giver_is_short_on() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            with_skill(unit("901"), "CRPA", 1),
+            sharing(with_silver(unit("902"), 50)),
+        ]);
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nGIVE 900 100 SILV\nCAST Create_Amulet_Of_Protection\nunit 902\n",
+            Some(&rules),
+            with_map(),
+        );
+        let caster = shipment_silver(&review, "901");
+        assert_eq!(
+            caster.short_on,
+            Some(crate::orders::silver::SilverSpender::Give),
+            "{caster:?}"
         );
     }
 

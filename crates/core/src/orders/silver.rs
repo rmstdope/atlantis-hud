@@ -1636,6 +1636,11 @@ pub struct PhaseFacts<'a> {
     /// This unit's `CAST` lines that drew on another sharer, as the ledger settled them. Empty for
     /// a caller with no ledger, which is every test that builds its own `PhaseFacts`.
     pub casts: &'a [SharedCast],
+    /// The document lines of this unit's exact silver `GIVE`s that asked for more than the unit
+    /// held and that its `SHARE` faction-mates paid in full (`runorders.cpp`: `DoGiveOrder` checks
+    /// `GetSharedNum`), so the game refused them nothing (`ah-ub3y`). Empty for a caller with no
+    /// ledger, which is every test that builds its own `PhaseFacts`.
+    pub pool_paid_gifts: &'a [i64],
     /// This unit's silver movements as the ledger recorded them, in settlement order: what the
     /// SILVER column's rows and totals are (`ah-xryu`). Empty for a caller with no ledger, which is
     /// every test that builds its own `PhaseFacts`.
@@ -1665,6 +1670,7 @@ impl<'a> PhaseFacts<'a> {
             buy_all: &[],
             gifts: &[],
             casts: &[],
+            pool_paid_gifts: &[],
             silver_moves: &[],
             market_withholds: 0,
         }
@@ -1718,6 +1724,13 @@ impl<'a> UnitFacts<'a> {
     #[must_use]
     pub fn shared_casts(&self) -> &'a [SharedCast] {
         self.phases.map_or(&[][..], |phases| phases.casts)
+    }
+
+    /// The exact silver `GIVE` lines of this unit's that the hex's `SHARE` purse paid in full.
+    /// Empty where there is no ledger.
+    #[must_use]
+    pub fn pool_paid_gifts(&self) -> &'a [i64] {
+        self.phases.map_or(&[][..], |phases| phases.pool_paid_gifts)
     }
 
     /// The ledger's record of this unit's silver. Empty where there is no ledger.
@@ -2882,7 +2895,10 @@ pub fn forecast_unit(
                 match shape {
                     TransferShape::Unpriceable => {}
                     TransferShape::Exact(count) => {
-                        if count > 0 {
+                        // A gift the `SHARE` purse paid in full is refused nothing, so the
+                        // shortfall bites on a later order and that is the one named (`ah-ub3y`).
+                        let pool_paid = facts.pool_paid_gifts().contains(&(placed.line as i64));
+                        if count > 0 && !pool_paid {
                             spent_on = spent_on.or(Some(SilverSpender::Give));
                         }
                         if to_nobody {
@@ -7921,6 +7937,7 @@ mod tests {
                 buy_all: &[],
                 gifts: &[],
                 casts: &[],
+                pool_paid_gifts: &[],
                 silver_moves: &[],
                 market_withholds: 0,
             }),
