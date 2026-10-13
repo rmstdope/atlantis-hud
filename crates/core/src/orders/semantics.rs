@@ -6074,7 +6074,7 @@ impl Ledger<'_> {
     }
 
     /// What the sharer `unit_id` lent its faction-mates' orders before TRANSPORT: the `SHARE`
-    /// purse's own settlement ([`lend_at_moments`]) over the moments `rules/sequenceofevents`
+    /// purse's own settlement ([`Lending`]) over the moments `rules/sequenceofevents`
     /// (New Age: Trident) runs before it - CAST, the market and STUDY. `rules/share` lends silver
     /// "for buying or studying".
     ///
@@ -6099,25 +6099,15 @@ impl Ledger<'_> {
         else {
             return 0;
         };
-        let sharing = Sharing::for_silver(hex, self);
-        if sharing.reading(SILVER, None) == Reading::PerUnit || !sharing.pool_trusted(self) {
-            return 0;
-        }
-        let (mut purse, _) = lend_at_moments(
-            hex,
-            self,
-            &sharing,
-            &[
-                LendingMoment::Cast,
-                LendingMoment::Movement,
-                LendingMoment::Study,
-            ],
-        );
         // Net, as the month-end purse is: a sharer whose own STUDY the purse paid after it lent at
         // the market has that overdraft handed back by `refused_study` already, so only what it
         // lent beyond what it borrowed left it (`ah-su1x` review).
-        purse.net_passed_on();
-        purse.lends.get(index).copied().unwrap_or(0)
+        Lending::before(hex, self, StatePhase::Transport)
+            .netted()
+            .lends
+            .get(index)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// The item pictures maintenance reads, including the report-wide shipment phase that the
@@ -14374,146 +14364,218 @@ enum Lender {
     Arrival(usize),
 }
 
-impl SharingPurse {
+/// What each unit of a hex has lent and borrowed through its `SHARE` silver pool's moments
+/// ([`PURSE_MOMENTS`]), and what each sharer arriving from another hex lent: **the one home of
+/// "what has a sharer lent by moment M"** (`ah-pf7t`).
+///
+/// The ledger charges a borrower the whole of what it spends and leaves its lenders' rows alone
+/// (`ah-0mch`), so what a sharer lent is not a figure the ledger keeps, and three beads in a row
+/// paid a review round or more for re-deriving it (`ah-0mch`, `ah-lnz4`, `ah-su1x`). Every reader
+/// takes it from here instead: the month-end purse ([`sharing_purse`]) and every reading of what a
+/// sharer still holds ([`SharerStock::at`], which `TRANSPORT ... ALL SILV` reads). Built only by
+/// the moment fold below, on demand; it owns and caches nothing.
+///
+/// Every vector but `arrivals_lend` is index-aligned with `hex.units`; `arrivals_lend` is aligned
+/// with [`WalkingSilver::arrivals_at`] at [`LendingMoment::MonthEnd`] (`ah-wyj8`).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct Lending {
+    /// What each unit lent its faction-mates' orders.
+    lends: Vec<i64>,
+    /// What each arriving sharer lent here.
+    arrivals_lend: Vec<i64>,
+    /// What each unit's orders drew out of its faction-mates' pockets: its own overdraft, sharer
+    /// or not, at each moment the pool covered.
+    borrows: Vec<i64>,
+    /// The first moment the pool could not cover in full, from which nothing more was lent - the
+    /// all-or-nothing rule (`ah-e66j`, `ah-aqqb`). `None` where every moment read was covered.
+    stopped_at: Option<LendingMoment>,
+}
+
+impl Lending {
+    /// Nothing lent by anyone: a hex that does not pool silver, or a pool that cannot be trusted.
+    fn nothing(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Self {
+        Self {
+            lends: vec![0; hex.units.len()],
+            arrivals_lend: vec![
+                0;
+                ledger
+                    .walking_silver
+                    .arrivals_at(LendingMoment::MonthEnd)
+                    .len()
+            ],
+            borrows: vec![0; hex.units.len()],
+            stopped_at: None,
+        }
+    }
+
+    /// What the pool lent through every moment of [`PURSE_MOMENTS`] up to and including `last`.
+    fn through(hex: &Hex<'_>, ledger: &Ledger<'_>, last: LendingMoment) -> Self {
+        Self::over(hex, ledger, |moment| moment as usize <= last as usize)
+    }
+
+    /// What the pool lent through the moments whose phase comes before `phase`: what a reading of
+    /// the hex's silver at `phase` must carry. Nothing before [`StatePhase::Market`], since the
+    /// first moment is the cast.
+    fn before(hex: &Hex<'_>, ledger: &Ledger<'_>, phase: StatePhase) -> Self {
+        Self::over(hex, ledger, |moment| moment.phase() < phase)
+    }
+
+    fn over(hex: &Hex<'_>, ledger: &Ledger<'_>, take: impl Fn(LendingMoment) -> bool) -> Self {
+        let moments: Vec<LendingMoment> =
+            PURSE_MOMENTS.iter().copied().filter(|&m| take(m)).collect();
+        if moments.is_empty() {
+            return Self::nothing(hex, ledger);
+        }
+        let sharing = Sharing::for_silver(hex, ledger);
+        if sharing.reading(SILVER, None) == Reading::PerUnit || !sharing.pool_trusted(ledger) {
+            return Self::nothing(hex, ledger);
+        }
+        Self::settle(hex, ledger, &sharing, &moments)
+    }
+
+    /// `true` where every moment read was covered in full.
+    fn covered(&self) -> bool {
+        self.stopped_at.is_none()
+    }
+
     /// A unit that lent at one moment and was lent at a later one only passed its faction-mates'
     /// silver on: a sharer that paid for a `BUY` and then had its own STUDY paid for lent the
     /// difference, and its column shows that, not both halves (`ah-49j0`). So no unit both lends
-    /// and borrows, and what a borrower is credited is what its own orders overdrew it.
-    fn net_passed_on(&mut self) {
+    /// and borrows, and what a borrower is credited is what its own orders overdrew it. What a
+    /// unit holds once its lending is carried - its balance less `lends` plus `borrows` - is the
+    /// same netted or not.
+    fn netted(mut self) -> Self {
         for (lent, borrowed) in self.lends.iter_mut().zip(self.borrows.iter_mut()) {
             let passed_on = (*lent).min(*borrowed);
             *lent -= passed_on;
             *borrowed -= passed_on;
         }
+        self
     }
-}
 
-/// [`sharing_purse`]'s settlement, moment by moment through `moments`: each unit's position - its
-/// own [`silver_at`] then, less the tax its settlement will not collect, less what it has lent and
-/// plus what it has been lent so far - and every negative one filled from the lenders' positive
-/// ones in drain order, or, where they cannot cover them all, nothing lent from that moment on.
-/// Returns the purse, before any netting of lends against borrows, and whether every moment was
-/// covered. The caller has already checked that the hex pools silver and that the pool is trusted.
-///
-/// Also read before TRANSPORT ([`Ledger::lent_before_transport`]), over the moments that come
-/// before it, so a sharer's `TRANSPORT ... ALL SILV` and the month-end purse read one settlement
-/// (`ah-su1x`).
-fn lend_at_moments(
-    hex: &Hex<'_>,
-    ledger: &Ledger<'_>,
-    sharing: &Sharing<'_>,
-    moments: &[LendingMoment],
-) -> (SharingPurse, bool) {
-    let arrivals = ledger.walking_silver.arrivals_at(LendingMoment::MonthEnd);
-    let judged = |index: usize| !ledger.doubted.contains(&hex.units[index].unit.unit_id);
-    let own = |index: usize, at: LendingMoment| {
-        silver_at(ledger, &hex.units[index].unit.unit_id, at)
-            .saturating_sub(ledger.tax_overstated.get(index).copied().unwrap_or(0))
-    };
-    let report_order = hex.report_order();
-    let mut purse = SharingPurse {
-        lends: vec![0; hex.units.len()],
-        arrivals_lend: vec![0; arrivals.len()],
-        borrows: vec![0; hex.units.len()],
-        coverage: vec![None; hex.units.len()],
-    };
-    let mut covered = true;
-    for &moment in moments {
-        let position = |purse: &SharingPurse, index: usize, at: LendingMoment| {
-            own(index, at) - purse.lends[index] + purse.borrows[index]
+    /// The settlement, moment by moment through `moments`: each unit's position - its own
+    /// [`silver_at`] then, less the tax its settlement will not collect, less what it has lent and
+    /// plus what it has been lent so far - and every negative one filled from the lenders' positive
+    /// ones in drain order ([`SharerStock::drained`]), or, where they cannot cover them all,
+    /// nothing lent from that moment on. Before any netting of lends against borrows. The caller
+    /// has already checked that the hex pools silver and that the pool is trusted.
+    ///
+    /// The positions are the ones the warning judges - the whole of what each order asked, with no
+    /// [`Ledger::unfunded`] add-back - so a gift or cast no sharer could fund keeps the pool short
+    /// and its warning (`ah-0mch`).
+    fn settle(
+        hex: &Hex<'_>,
+        ledger: &Ledger<'_>,
+        sharing: &Sharing<'_>,
+        moments: &[LendingMoment],
+    ) -> Self {
+        let arrivals = ledger.walking_silver.arrivals_at(LendingMoment::MonthEnd);
+        let judged = |index: usize| !ledger.doubted.contains(&hex.units[index].unit.unit_id);
+        let own = |index: usize, at: LendingMoment| {
+            silver_at(ledger, &hex.units[index].unit.unit_id, at)
+                .saturating_sub(ledger.tax_overstated.get(index).copied().unwrap_or(0))
         };
-        let needs: Vec<i64> = (0..hex.units.len())
-            .map(|index| {
-                if judged(index) {
-                    (-position(&purse, index, moment)).max(0)
-                } else {
-                    0
-                }
-            })
-            .collect();
-        let need: i64 = needs.iter().sum();
-        if need == 0 {
-            continue;
-        }
+        let report_order = hex.report_order();
+        let mut purse = Self::nothing(hex, ledger);
+        for &moment in moments {
+            let position = |purse: &Lending, index: usize, at: LendingMoment| {
+                own(index, at) - purse.lends[index] + purse.borrows[index]
+            };
+            let needs: Vec<i64> = (0..hex.units.len())
+                .map(|index| {
+                    if judged(index) {
+                        (-position(&purse, index, moment)).max(0)
+                    } else {
+                        0
+                    }
+                })
+                .collect();
+            let need: i64 = needs.iter().sum();
+            if need == 0 {
+                continue;
+            }
 
-        // Every unit and arriving sharer as a party to the one reading ([`SharerStock`]), each
-        // with who it is, so what the reading says it lent can be booked back on it. The units in
-        // report order, which drains a formed sharer at the end of its former's structure
-        // (`ah-k1ue`).
-        let mut parties: Vec<StockParty> = Vec::new();
-        let mut who: Vec<Option<Lender>> = Vec::new();
-        for &index in &report_order {
-            let ordered = &hex.units[index];
-            if !judged(index) {
-                continue;
-            }
-            let at = position(&purse, index, moment);
-            if sharing.pools_silver(ordered) {
-                parties.push(StockParty {
-                    position: at,
-                    lends: true,
-                });
-                who.push(Some(Lender::Unit(index)));
-                continue;
-            }
-            parties.push(StockParty {
-                position: at.min(0),
-                lends: false,
-            });
-            who.push(None);
-            if matches!(moment, LendingMoment::Cast | LendingMoment::Movement) {
-                // A sharer that walks away lends here only what was drawn on it before it left.
-                if let Some(&departing) = ledger.walking_silver.departing.get(&ordered.unit.unit_id)
-                {
+            // Every unit and arriving sharer as a party to the one reading ([`SharerStock`]), each
+            // with who it is, so what the reading says it lent can be booked back on it. The units in
+            // report order, which drains a formed sharer at the end of its former's structure
+            // (`ah-k1ue`).
+            let mut parties: Vec<StockParty> = Vec::new();
+            let mut who: Vec<Option<Lender>> = Vec::new();
+            for &index in &report_order {
+                let ordered = &hex.units[index];
+                if !judged(index) {
+                    continue;
+                }
+                let at = position(&purse, index, moment);
+                if sharing.pools_silver(ordered) {
                     parties.push(StockParty {
-                        position: (departing - purse.lends[index]).max(0),
+                        position: at,
                         lends: true,
                     });
                     who.push(Some(Lender::Unit(index)));
+                    continue;
+                }
+                parties.push(StockParty {
+                    position: at.min(0),
+                    lends: false,
+                });
+                who.push(None);
+                if matches!(moment, LendingMoment::Cast | LendingMoment::Movement) {
+                    // A sharer that walks away lends here only what was drawn on it before it left.
+                    if let Some(&departing) =
+                        ledger.walking_silver.departing.get(&ordered.unit.unit_id)
+                    {
+                        parties.push(StockParty {
+                            position: (departing - purse.lends[index]).max(0),
+                            lends: true,
+                        });
+                        who.push(Some(Lender::Unit(index)));
+                    }
                 }
             }
-        }
-        // An arrival is not here for the market, and lends in all no more than its month-end
-        // figure, which `lend_walking_sharers_silver` capped at what the hex needs of it. Defensive
-        // at STUDY: a market the purse covered leaves STUDY needing no more than that cap already
-        // allows for, so no input is known that reaches it.
-        if !matches!(moment, LendingMoment::Cast | LendingMoment::Movement) {
-            for (index, (now, all_month)) in ledger
-                .walking_silver
-                .arrivals_at(moment)
-                .iter()
-                .zip(arrivals)
-                .enumerate()
-            {
-                parties.push(StockParty {
-                    position: (now.lends.min(all_month.lends) - purse.arrivals_lend[index]).max(0),
-                    lends: true,
-                });
-                who.push(Some(Lender::Arrival(index)));
+            // An arrival is not here for the market, and lends in all no more than its month-end
+            // figure, which `lend_walking_sharers_silver` capped at what the hex needs of it. Defensive
+            // at STUDY: a market the purse covered leaves STUDY needing no more than that cap already
+            // allows for, so no input is known that reaches it.
+            if !matches!(moment, LendingMoment::Cast | LendingMoment::Movement) {
+                for (index, (now, all_month)) in ledger
+                    .walking_silver
+                    .arrivals_at(moment)
+                    .iter()
+                    .zip(arrivals)
+                    .enumerate()
+                {
+                    parties.push(StockParty {
+                        position: (now.lends.min(all_month.lends) - purse.arrivals_lend[index])
+                            .max(0),
+                        lends: true,
+                    });
+                    who.push(Some(Lender::Arrival(index)));
+                }
+            }
+
+            // In report order and then the arrivals', rather than a proportional split: the engine
+            // drains its sharers in whatever order it iterates them, so no split is truer than
+            // another, and a whole number needs no rounding rule.
+            let (lent, short) = SharerStock::new(parties).drained();
+            if short > 0 {
+                purse.stopped_at = Some(moment);
+                break;
+            }
+            for (lender, lent) in who.into_iter().zip(lent) {
+                match lender {
+                    Some(Lender::Unit(index)) => purse.lends[index] += lent,
+                    Some(Lender::Arrival(index)) => purse.arrivals_lend[index] += lent,
+                    None => {}
+                }
+            }
+            for (borrowed, need) in purse.borrows.iter_mut().zip(needs) {
+                *borrowed += need;
             }
         }
 
-        // In report order and then the arrivals', rather than a proportional split: the engine
-        // drains its sharers in whatever order it iterates them, so no split is truer than
-        // another, and a whole number needs no rounding rule.
-        let (lent, short) = SharerStock::new(parties).drained();
-        if short > 0 {
-            covered = false;
-            break;
-        }
-        for (lender, lent) in who.into_iter().zip(lent) {
-            match lender {
-                Some(Lender::Unit(index)) => purse.lends[index] += lent,
-                Some(Lender::Arrival(index)) => purse.arrivals_lend[index] += lent,
-                None => {}
-            }
-        }
-        for (borrowed, need) in purse.borrows.iter_mut().zip(needs) {
-            *borrowed += need;
-        }
+        purse
     }
-
-    (purse, covered)
 }
 
 /// The purse this hex's `SHARE` flags open for orders, settled between the units that claim it.
@@ -14615,16 +14677,17 @@ fn sharing_purse_over(
         };
     }
 
-    let (mut purse, covered) = lend_at_moments(hex, ledger, &sharing, moments);
-
-    purse.net_passed_on();
-
-    purse.coverage = coverage_for(if covered {
-        super::silver::SharedSilverCoverage::Covered
-    } else {
-        super::silver::SharedSilverCoverage::Shortfall
-    });
-    purse
+    let lending = Lending::settle(hex, ledger, &sharing, moments).netted();
+    SharingPurse {
+        coverage: coverage_for(if lending.covered() {
+            super::silver::SharedSilverCoverage::Covered
+        } else {
+            super::silver::SharedSilverCoverage::Shortfall
+        }),
+        lends: lending.lends,
+        arrivals_lend: lending.arrivals_lend,
+        borrows: lending.borrows,
+    }
 }
 
 /// What a unit's own silver is short as STUDY settles, the moment `rules/sequenceofevents` charges
@@ -52721,6 +52784,39 @@ BUILD
             ledger.lent_before_transport(&hex, "902"),
             0,
             "a borrower lends nothing"
+        );
+    }
+
+    /// [`Lending`] is the one home of "what a sharer has lent by a moment" (`ah-pf7t`): read
+    /// before TRANSPORT and netted, it is what the purse lent through CAST, the market and STUDY -
+    /// the same three-sharer case as above, 903 lending $10 net and 901 the $5 of 903's study.
+    #[test]
+    fn lending_before_transport_is_what_the_purse_lent_by_study() {
+        let hex_region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 100,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 15,
+            }],
+            ..region(vec![
+                sharing(with_silver(unit("903"), 20)),
+                unit("902"),
+                sharing(with_silver(unit("901"), 100)),
+            ])
+        };
+        let ordered = OrderedUnits::read("unit 903\nSTUDY COMB\nunit 902\nBUY 1 grain\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let rules = trident_rules();
+        let ledger = ledger_for(&hex, Some(&rules));
+        let lending = Lending::before(&hex, &ledger, StatePhase::Transport).netted();
+        assert_eq!(lending.lends, vec![10, 0, 5]);
+        assert_eq!(lending.borrows, vec![0, 15, 0]);
+        assert!(lending.covered());
+        let through_study = Lending::through(&hex, &ledger, LendingMoment::Study).netted();
+        assert_eq!(
+            through_study.lends, lending.lends,
+            "STUDY is the last moment before TRANSPORT"
         );
     }
 
