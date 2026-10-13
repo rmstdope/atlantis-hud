@@ -15030,6 +15030,19 @@ enum ShortfallMoment {
     MonthEnd,
 }
 
+impl ShortfallMoment {
+    /// The phase whose balances the moment reads: the month's end has maintenance settled.
+    fn phase(self) -> StatePhase {
+        match self {
+            ShortfallMoment::Give => StatePhase::Give,
+            ShortfallMoment::Cast => StatePhase::Cast,
+            ShortfallMoment::Market => StatePhase::Market,
+            ShortfallMoment::Study => StatePhase::Study,
+            ShortfallMoment::MonthEnd => StatePhase::Maintenance,
+        }
+    }
+}
+
 /// The moment a unit's own shortfall of `short` is read at: the deepest of its mid-month readings
 /// when one of them is the whole of `short`, and the month's end otherwise. A GIVE's reading wins
 /// a tie, since it runs first (`ah-4k84`).
@@ -15077,7 +15090,13 @@ fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> Shor
 /// `walking`, for a sharing hex, counts a sharer whose month ends elsewhere only for what the hex
 /// had of it (`ah-a68f`); what it sent out of the set is added back on top, as for anyone else.
 /// It also adds what sharers arriving from elsewhere lend here at `moment` (`ah-asdp`).
+///
+/// Last, what the members earned after the Give phase and by `moment` ([`silver_earned_by`]): a
+/// TAX, a SELL, wages. Income is silver they can have, so the sentence's "spend" - this plus the
+/// shortfall - is what the orders and upkeep cost rather than that cost net of the income
+/// (`ah-6xb2`).
 fn silver_can_have(
+    hex: &Hex<'_>,
     ledger: &Ledger<'_>,
     members: &[&Ordered<'_>],
     moment: ShortfallMoment,
@@ -15144,7 +15163,58 @@ fn silver_can_have(
     }
     .and_then(|lending| walking.map(|walking| walking.lends_at(lending)))
     .unwrap_or(0);
-    held + sent_out + unfunded_within + arrivals_lend
+    // ... and what the members earned after the Give phase and by `moment`, so "spend" is what
+    // the orders and upkeep cost rather than that cost less the income (`ah-6xb2`). A walker's
+    // earnings are not: what it earned before leaving is carried away (above), and what it earns
+    // after is earned elsewhere.
+    let earned: i64 = ids
+        .iter()
+        .filter(|&&who| !walking.is_some_and(|walking| walking.departing.contains_key(who)))
+        .map(|&who| silver_earned_by(hex, ledger, who, moment.phase()))
+        .sum();
+    held + sent_out + unfunded_within + arrivals_lend + earned
+}
+
+/// What `who` earned of silver after the Give phase and by the end of `through`: TAX, PILLAGE, a
+/// SELL, a CAST that earns, WORK and ENTERTAIN (`rules/sequenceofevents`). A CLAIM is not here: it
+/// settles before the Give phase, so [`silver_can_have`] already has it in what was held.
+///
+/// The amounts the ledger's balances moved by, since the shortfall a sentence states is read from
+/// those balances: a contended tax pool's hopeful credit is counted whole, as the balance counts
+/// it, rather than at the settled share [`record_silver`] books (`ah-ud89`).
+fn silver_earned_by(hex: &Hex<'_>, ledger: &Ledger<'_>, who: &str, through: StatePhase) -> i64 {
+    let recorded: i64 = ledger
+        .silver_moves
+        .get(who)
+        .into_iter()
+        .flatten()
+        .filter(|moved| moved.phase > StatePhase::Give && moved.phase <= through)
+        .filter(|moved| {
+            matches!(
+                moved.cause,
+                SilverChangeCause::Taxed
+                    | SilverChangeCause::Pillaged
+                    | SilverChangeCause::Sold
+                    | SilverChangeCause::CastEarned
+                    | SilverChangeCause::Worked
+                    | SilverChangeCause::Entertained
+            )
+        })
+        .map(|moved| moved.amount)
+        .sum();
+    // `credit_tax` applies the hopeful credit and books it less this: add the difference back.
+    let overstated = hex
+        .units
+        .iter()
+        .enumerate()
+        .find(|(_, ordered)| ordered.unit.unit_id == who)
+        .filter(|(_, ordered)| {
+            StatePhase::Tax <= through && taxes(&ordered.flags, &ordered.intents)
+        })
+        .and_then(|(index, _)| ledger.tax_overstated.get(index))
+        .copied()
+        .unwrap_or(0);
+    recorded + overstated
 }
 
 /// What the members' `GIVE`s and `TAKE`s of silver to one another asked beyond what the source
@@ -15294,12 +15364,16 @@ fn judge_shortfalls(
 
 /// What a pooled tag owes once its claims are netted against its pool, or nothing at all when the
 /// pool covers them. `held` is what the pool's members and its borrowers can have, for the message:
-/// for silver, [`silver_can_have`] - the per-unit sentence's own answer (`ah-w2ou`).
+/// for silver, [`silver_can_have`] - the per-unit sentence's own answer (`ah-w2ou`). `upkeep` is
+/// the fee those same units pay out of their own silver and wages, which the message names as
+/// part of what they spend - its whole, as the unit sentence names it, since their wages are in
+/// `held` (`ah-6xb2`). Always `0` for an item.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PoolShortfall {
     tag: String,
     short: i64,
     held: i64,
+    upkeep: i64,
 }
 
 /// The pooled tags this hex is short of, from the `DeferredToPool` verdicts.
@@ -15425,13 +15499,28 @@ fn pool_shortfalls(
                                             .any(|reduced| reduced.unit_id == o.unit.unit_id))))))
             })
             .collect();
-        let held: i64 = if tag == SILVER {
-            silver_can_have(ledger, &counted, moment, sharing.walking)
+        let (held, upkeep) = if tag == SILVER {
+            (
+                silver_can_have(hex, ledger, &counted, moment, sharing.walking),
+                if moment == ShortfallMoment::MonthEnd {
+                    counted
+                        .iter()
+                        .map(|o| unpaid_upkeep(ledger, &o.unit.unit_id))
+                        .sum()
+                } else {
+                    0
+                },
+            )
         } else {
-            counted.iter().map(|o| o.holding(&tag)).sum()
+            (counted.iter().map(|o| o.holding(&tag)).sum(), 0)
         };
 
-        shortfalls.push(PoolShortfall { tag, short, held });
+        shortfalls.push(PoolShortfall {
+            tag,
+            short,
+            held,
+            upkeep,
+        });
     }
     shortfalls
 }
@@ -15644,7 +15733,7 @@ fn report_shortfalls(
             let (food, upkeep) = if moment == ShortfallMoment::MonthEnd {
                 (
                     food_counted_in(ledger, unit_id),
-                    upkeep_still_drawn(ledger, unit_id),
+                    unpaid_upkeep(ledger, unit_id),
                 )
             } else {
                 (0, 0)
@@ -15654,7 +15743,7 @@ fn report_shortfalls(
             // through the ledger's own `apply` (M2, `ah-jw85`), and so does what it claimed
             // (`ah-6ak4`). The food is not silver it can have: it is the part of the fee food
             // paid, counted on both sides so the sentence states the whole fee.
-            let can_have = silver_can_have(ledger, &[ordered], moment, None) + food;
+            let can_have = silver_can_have(hex, ledger, &[ordered], moment, None) + food;
             let mut finding = ordered.finding(
                 hex,
                 codes::NOT_ENOUGH_SILVER,
@@ -15693,7 +15782,13 @@ fn report_shortfalls(
         findings.push(finding);
     }
 
-    for PoolShortfall { tag, short, held } in pool_shortfalls(hex, ledger, &sharing, &verdicts) {
+    for PoolShortfall {
+        tag,
+        short,
+        held,
+        upkeep,
+    } in pool_shortfalls(hex, ledger, &sharing, &verdicts)
+    {
         // ... and a pointer on every order line that claims against that pool (`ah-eurs`). The
         // hex finding is right to be hex-anchored (`ah-sdda`), but it reaches no editor, so the
         // player typing the order that overdrew the hex is told nothing where they are looking.
@@ -15851,15 +15946,10 @@ fn report_shortfalls(
         }
 
         let message = if tag == SILVER {
-            let owed: i64 = hex
-                .units
-                .iter()
-                .map(|o| upkeep_still_drawn(ledger, &o.unit.unit_id))
-                .sum();
             format!(
                 "the units in this hex are short ${short} between them: they can have ${held} \
                  and their {} spend ${}",
-                if owed > 0 {
+                if upkeep > 0 {
                     "orders and upkeep"
                 } else {
                     "orders"
@@ -15997,45 +16087,25 @@ fn report_shortfalls(
     }
 }
 
-/// The maintenance a unit is left paying, once the faction's unclaimed fund has taken its share.
-///
-/// The fee a message may blame, rather than the fee that was charged: a unit whose whole fee the
-/// fund paid but whose orders still overspend must be told that its *orders* spend the silver, or
-/// the sentence's own arithmetic does not add up (`ah-fjty`).
-/// What maintenance is still taking off this unit's silver: what it actually drew, less what an
-/// earlier step of the payment order has already paid back.
-///
-/// Different from [`unpaid_upkeep`], which is the whole fee less the relief and answers a different
-/// question - whether an overdraft is maintenance's doing. This one words the message, and a
-/// message must not name an upkeep that spent none of the unit's silver: since `ah-gjq4` an idle
-/// unit's own wages pay its fee, exactly as an explicit `WORK`'s already did, and saying "its
-/// orders and upkeep spend" of a unit whose wages paid the fee sends the reader looking for a
-/// charge that is not there - the same reasoning `ah-1wcw.4` and `ah-fjty` applied to the fund.
-fn upkeep_still_drawn(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
-    let drawn = ledger
-        .upkeep_drawn
-        .get(unit_id)
-        .copied()
-        .unwrap_or_default();
-    let relieved = ledger
-        .upkeep_relieved
-        .get(unit_id)
-        .copied()
-        .unwrap_or_default();
-    (drawn - relieved).max(0)
-}
-
 /// The food a shortage message counts in for this unit: what paid part of its fee before silver,
-/// but only while the message still names upkeep. A unit whose wages or the unclaimed fund took the
-/// rest of the fee off its silver is told its *orders* spend, and a fee that is not in the sentence
-/// must not be in its figures either (`ah-1wcw.4`, `ah-fjty`, `ah-pyiy`).
+/// but only while the message still names upkeep. A unit whose whole remaining fee the unclaimed
+/// fund or a lender paid is told its *orders* spend, and a fee that is not in the sentence must not
+/// be in its figures either (`ah-1wcw.4`, `ah-fjty`, `ah-pyiy`).
 fn food_counted_in(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
-    if upkeep_still_drawn(ledger, unit_id) <= 0 {
+    if unpaid_upkeep(ledger, unit_id) <= 0 {
         return 0;
     }
     ledger.upkeep_food.get(unit_id).copied().unwrap_or_default()
 }
 
+/// The maintenance a unit is left paying out of its own silver and wages, once an earlier step of
+/// the payment order - a lender, the faction's unclaimed fund - has paid its share: the fee a
+/// not-enough-silver sentence names in what the unit spends. A unit whose whole fee was paid for it
+/// is told its *orders* spend, or the sentence's arithmetic does not add up (`ah-fjty`).
+///
+/// Wages are not taken off it: they are income, on the sentence's "can have" side with every other
+/// receipt earned by its moment, so "spend" is what the orders and upkeep cost (`ah-6xb2`, which
+/// replaced the netting `ah-gjq4` and `ah-1wcw.4` did here).
 fn unpaid_upkeep(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
     let fee = ledger.upkeep.get(unit_id).copied().unwrap_or_default();
     let paid = ledger
@@ -41422,6 +41492,53 @@ BUILD
         );
     }
 
+    /// `ah-6xb2`, the unit sentence: "spend" is what the orders and upkeep cost, and the wages
+    /// earned before the month's end are silver the unit can have. Fifty men owe $500 of upkeep
+    /// (`a_unit_that_cannot_pay_its_upkeep_is_warned_about`: $10 a man) and earn $300 by `WORK` at
+    /// $6 a man; the unit holds $100, so it is short $100. Netting the wages into the fee read
+    /// "can have $100 ... spend $200", a spend nothing adds up to.
+    #[test]
+    fn a_units_month_end_income_is_silver_it_can_have_not_a_smaller_spend() {
+        let regions = vec![ReportRegion {
+            wages: Some("$6.0".to_string()),
+            max_wages: Some(100_000),
+            ..region(vec![with_men(with_silver(starving(unit("5")), 100), 50)])
+        }];
+
+        let finding = only(check(regions, "unit 5\nWORK\n"));
+        assert_eq!(
+            finding.message,
+            "short $100: this unit can have $400 and its orders and upkeep spend $500"
+        );
+    }
+
+    /// `ah-6xb2`, the hex sentence and the bead's own figures: a pool of $100, a borrower owing
+    /// $500 of upkeep and earning $300 by `WORK`. The sharer is one man, so it owes $10 and earns
+    /// $6 working by default (`ah-gjq4`). It must read as the unit sentence does - $406 of silver
+    /// and wages on the "can have" side and the whole $510 of fees in "spend". Netting the wages
+    /// into the fees read "can have $100 ... spend $204".
+    #[test]
+    fn a_sharing_hexs_month_end_income_is_silver_it_can_have_not_a_smaller_spend() {
+        let regions = vec![ReportRegion {
+            wages: Some("$6.0".to_string()),
+            max_wages: Some(100_000),
+            ..region(vec![
+                sharing(with_silver(starving(unit("5")), 100)),
+                with_men(with_silver(starving(unit("7")), 0), 50),
+            ])
+        }];
+
+        let findings: Vec<Finding> = check(regions, "unit 5\nunit 7\nWORK\n")
+            .into_iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .collect();
+        assert_eq!(
+            only(findings).message,
+            "the units in this hex are short $104 between them: they can have $406 and their \
+             orders and upkeep spend $510"
+        );
+    }
+
     /// The shortfall check and the Silver column read one fact, so they must agree about it: a
     /// unit fed by its hex's faction food owes nothing, and warning that it is short of the fee
     /// the pool already paid is two surfaces contradicting each other (`ah-7cdt`, Psylocke).
@@ -66184,7 +66301,7 @@ BUILD
         let ledger = ledger_for(&hex, Some(&rules));
         let buyer = hex.find("5").expect("unit 5 is in the hex");
         assert_eq!(
-            silver_can_have(&ledger, &[buyer], ShortfallMoment::Market, None),
+            silver_can_have(&hex, &ledger, &[buyer], ShortfallMoment::Market, None),
             90
         );
     }
