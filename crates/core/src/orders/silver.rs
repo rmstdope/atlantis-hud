@@ -1509,7 +1509,7 @@ pub struct UnitFacts<'a> {
     /// for a `BUY` or a `STUDY` (`rules/sequenceofevents`, `ah-aqqb`).
     pub overdrawn_at_study: i64,
     /// What this unit's silver `GIVE`s and the `TAKE`s from it drew on its `SHARE` faction-mates
-    /// as they ran, from `Ledger::gift_draws`; `0` where they drew nothing. The purse lends it
+    /// as they ran, from `Ledger::silver_fundings`; `0` where they drew nothing. The purse lends it
     /// this much even where silver it receives later in the Give phase makes its month look paid
     /// for: the engine drew it from the sharers as the line ran (`runorders.cpp`: `DoGiveOrder`;
     /// `unit.cpp`: `ConsumeShared`; `ah-9udi`).
