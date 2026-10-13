@@ -11267,11 +11267,6 @@ fn study(
     );
 }
 
-/// Credits what an earning spell raises, and charges what the ruleset says a cast consumes -
-/// charged for every item it will make, not once whatever the roll makes (`ah-ofpb.4`). A spell the
-/// ruleset does not know, or knows no cost for, charges nothing and doubts nothing: most spells
-/// cost nothing to cast, and a unit's other sums are still good.
-#[allow(clippy::too_many_arguments)]
 /// What a CAST takes, settled once before anything is charged (`ah-1v3z`).
 ///
 /// `RunCreateArtifact` (`spells.cpp`) checks `GetSharedNum` against every input before it calls
@@ -11316,7 +11311,7 @@ impl CastOutcome {
     /// and what nobody covered. A refused cast leaves a material it was covered for where it is
     /// (`ah-479u`); only the short one keeps its ceiling charge, so `not-enough-items` still reads
     /// one number (`ah-ofpb.5`, round 1 Q4).
-    fn from_caster(self, own: i64, uncovered: i64) -> i64 {
+    fn caster_charge(self, own: i64, uncovered: i64) -> i64 {
         if self != Self::Paid && uncovered == 0 {
             0
         } else {
@@ -11325,6 +11320,11 @@ impl CastOutcome {
     }
 }
 
+/// Credits what an earning spell raises, and charges what the ruleset says a cast consumes -
+/// charged for every item it will make, not once whatever the roll makes (`ah-ofpb.4`). A spell the
+/// ruleset does not know, or knows no cost for, charges nothing and doubts nothing: most spells
+/// cost nothing to cast, and a unit's other sums are still good.
+#[allow(clippy::too_many_arguments)]
 fn cast(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
@@ -11568,7 +11568,7 @@ fn cast(
                 None,
             )
         };
-        let from_caster = outcome.from_caster(own, uncovered);
+        let from_caster = outcome.caster_charge(own, uncovered);
         record_unfunded(ledger, who, &material.tag, uncovered);
         charge(
             ledger,
@@ -55371,12 +55371,12 @@ BUILD
         #[test]
         fn a_refused_cast_charges_only_the_short_material() {
             for refused in [CastOutcome::RefusedForSilver, CastOutcome::RefusedForGoods] {
-                assert_eq!(refused.from_caster(40, 0), 0, "{refused:?}: covered");
-                assert_eq!(refused.from_caster(40, 35), 75, "{refused:?}: short");
-                assert_eq!(refused.from_caster(0, 75), 75, "{refused:?}: none held");
+                assert_eq!(refused.caster_charge(40, 0), 0, "{refused:?}: covered");
+                assert_eq!(refused.caster_charge(40, 35), 75, "{refused:?}: short");
+                assert_eq!(refused.caster_charge(0, 75), 75, "{refused:?}: none held");
             }
-            assert_eq!(CastOutcome::Paid.from_caster(40, 0), 40);
-            assert_eq!(CastOutcome::Paid.from_caster(40, 5), 45);
+            assert_eq!(CastOutcome::Paid.caster_charge(40, 0), 40);
+            assert_eq!(CastOutcome::Paid.caster_charge(40, 5), 45);
         }
     }
 
