@@ -24,14 +24,18 @@ import type {
   StudyPlanRecord
 } from "@atlantis/core-client";
 import { STOP_SAVE_BUDGET_MS, deleteWithin, openWithin, stopCauseOf } from "./databaseOpen";
+import { STORES_NAMING_A_TURN, moveRowToEngineTurns } from "./engineTurns";
 
 const REGISTRY_DATABASE_NAME = "atlantis-hud";
 const REGISTRY_DATABASE_VERSION = 4;
 /**
- * 6 since `ah-lyg6.2.1` added the study-plans store, 5 since `ah-lyg6.1.2.1` added the
- * allied-mages store. See `openGameDatabase` for what a bump costs.
+ * 7 since `ah-m6pw` moved every stored turn to the engine's count, 6 since `ah-lyg6.2.1` added the
+ * study-plans store, 5 since `ah-lyg6.1.2.1` added the allied-mages store. See `openGameDatabase`
+ * for what a bump costs.
  */
-const GAME_DATABASE_VERSION = 6;
+const GAME_DATABASE_VERSION = 7;
+/** The first game database version whose turns are the engine's; see `engineTurns.ts`. */
+const ENGINE_TURNS_VERSION = 7;
 
 const GAME_STORE = "games";
 const IMPORTED_TURN_STORE = "importedTurns";
@@ -293,7 +297,7 @@ function openGameDatabase(databasePath: string): Promise<IDBDatabase> {
   return openWithin(
     indexedDB.open(gameDatabaseName(databasePath), GAME_DATABASE_VERSION),
     "game",
-    (database) => {
+    (database, oldVersion, transaction) => {
       // The database belongs to one game, so its keys no longer carry the game: a turn is
       // identified by its faction and number, and a sighting by its faction and hex.
       //
@@ -310,8 +314,34 @@ function openGameDatabase(databasePath: string): Promise<IDBDatabase> {
       for (const collection of gameCollections) {
         create(collection.name, [...collection.keyPath]);
       }
+
+      // A database from before version 7 numbered every turn one low (ah-m6pw). A fresh one
+      // (oldVersion 0) holds nothing to move.
+      if (oldVersion > 0 && oldVersion < ENGINE_TURNS_VERSION) {
+        for (const name of STORES_NAMING_A_TURN) {
+          moveStoreToEngineTurns(transaction.objectStore(name));
+        }
+      }
     }
   );
+}
+
+/**
+ * Rewrites every row of one store with its turns one higher, inside the upgrade's transaction.
+ *
+ * The whole store is read before anything is written and cleared before anything is put back: the
+ * turn is part of the key in three stores, so moving rows one at a time would land turn N on the
+ * key turn N + 1 still holds.
+ */
+function moveStoreToEngineTurns(store: IDBObjectStore): void {
+  const read = store.getAll();
+  read.onsuccess = () => {
+    const rows = read.result as Record<string, unknown>[];
+    store.clear();
+    for (const row of rows) {
+      store.put(moveRowToEngineTurns(store.name, row));
+    }
+  };
 }
 
 /**

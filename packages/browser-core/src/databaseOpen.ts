@@ -39,7 +39,7 @@ export const realTimers: Timers = {
 export function openWithin(
   request: IDBOpenDBRequest,
   scope: StorageHeldScope,
-  upgrade: (database: IDBDatabase) => void,
+  upgrade: (database: IDBDatabase, oldVersion: number, transaction: IDBTransaction) => void,
   timers: Timers = realTimers,
   waitMs: number = HELD_WAIT_MS
 ): Promise<IDBDatabase> {
@@ -59,10 +59,11 @@ export function openWithin(
       }
     };
 
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       // The other tabs have let go: this tab is no longer held, however long the upgrade takes.
       stopWaiting();
-      upgrade(request.result);
+      // An open request in `upgradeneeded` always carries its versionchange transaction.
+      upgrade(request.result, event.oldVersion, request.transaction as IDBTransaction);
     };
     request.onsuccess = () => {
       stopWaiting();

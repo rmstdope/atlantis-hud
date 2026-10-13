@@ -11,7 +11,8 @@ function fakeRequest() {
     onsuccess: null as null | (() => void),
     onerror: null as null | (() => void),
     onblocked: null as null | (() => void),
-    onupgradeneeded: null as null | (() => void)
+    onupgradeneeded: null as null | ((event: { oldVersion: number }) => void),
+    transaction: { label: "versionchange" }
   };
   return { request, database, asRequest: request as unknown as IDBOpenDBRequest };
 }
@@ -63,11 +64,13 @@ describe("opening a database another tab may hold", () => {
     const upgrade = vi.fn();
     const opened = openWithin(asRequest, "game", upgrade);
     vi.advanceTimersByTime(100);
-    request.onupgradeneeded?.();
+    request.onupgradeneeded?.({ oldVersion: 6 });
     vi.advanceTimersByTime(5_900);
     request.onsuccess?.();
     await expect(opened).resolves.toBe(database);
-    expect(upgrade).toHaveBeenCalledWith(database);
+    // The version it upgrades from and the upgrade's own transaction, so an upgrade can rewrite
+    // the rows an older version stored (ah-m6pw).
+    expect(upgrade).toHaveBeenCalledWith(database, 6, request.transaction);
   });
 
   it("rejects with the request's own error", async () => {
