@@ -54706,11 +54706,23 @@ BUILD
 
         /// What the ITEMS column moves on `id` for `tag`.
         fn moved(effects: &BTreeMap<UnitKey, UnitItemEffects>, id: &str, tag: &str) -> i64 {
+            moved_by(effects, id, tag, None)
+        }
+
+        /// What the ITEMS column moves on `id` for `tag`, for one cause only when one is given.
+        fn moved_by(
+            effects: &BTreeMap<UnitKey, UnitItemEffects>,
+            id: &str,
+            tag: &str,
+            cause: Option<ItemChangeCause>,
+        ) -> i64 {
             effects_for(effects, id)
                 .map(|unit| {
                     unit.moved
                         .iter()
-                        .filter(|movement| movement.tag == tag)
+                        .filter(|movement| {
+                            movement.tag == tag && cause.is_none_or(|cause| movement.cause == cause)
+                        })
                         .map(|movement| movement.delta)
                         .sum()
                 })
@@ -54802,24 +54814,6 @@ BUILD
             );
         }
 
-        /// What the ITEMS column moves on `id` for `tag`, for one cause only.
-        fn moved_by(
-            effects: &BTreeMap<UnitKey, UnitItemEffects>,
-            id: &str,
-            tag: &str,
-            cause: ItemChangeCause,
-        ) -> i64 {
-            effects_for(effects, id)
-                .map(|unit| {
-                    unit.moved
-                        .iter()
-                        .filter(|movement| movement.tag == tag && movement.cause == cause)
-                        .map(|movement| movement.delta)
-                        .sum()
-                })
-                .unwrap_or(0)
-        }
-
         /// Mage 901 holds the 75 floater hides Summon Wind needs (`data/SWIN` level 3) and no
         /// ironwood: the cast is refused for its ironwood and takes none of its hides, so they
         /// stay in its ITEMS and `TRANSPORT 900 ALL FLOA` ships all 75 (`ah-479u`). The short
@@ -54840,7 +54834,7 @@ BUILD
             let effects = item_effects(&report, orders, Some(&rules), &CheckOptions::default());
             let mage = effects_for(&effects, "901");
             assert_eq!(
-                moved_by(&effects, "901", "FLOA", ItemChangeCause::CastSpent),
+                moved_by(&effects, "901", "FLOA", Some(ItemChangeCause::CastSpent)),
                 0,
                 "{mage:?}"
             );
@@ -54852,7 +54846,7 @@ BUILD
                 "{shipped:?}"
             );
             assert_eq!(
-                moved_by(&effects, "901", "IRWD", ItemChangeCause::CastSpent),
+                moved_by(&effects, "901", "IRWD", Some(ItemChangeCause::CastSpent)),
                 -75,
                 "{mage:?}"
             );
@@ -54894,6 +54888,83 @@ BUILD
                 75 * weight,
                 "{:?}",
                 silver.shipping
+            );
+        }
+
+        /// Mage 901 holds both materials but none of the $200 the spell costs, and nobody lends
+        /// it any: the cast is refused for its silver and takes neither material (`ah-479u`).
+        #[test]
+        fn a_cast_refused_for_its_silver_leaves_the_mages_own_goods() {
+            let rules = wind_for_silver_and_goods();
+            let report = report(vec![region(vec![with_item(
+                with_item(
+                    with_skill(unit("901"), "SWIN", 3),
+                    75,
+                    "floater hides",
+                    "FLOA",
+                ),
+                75,
+                "ironwood",
+                "IRWD",
+            )])]);
+            let orders = "unit 901\nCAST Summon_Wind\n";
+            let effects = item_effects(&report, orders, Some(&rules), &CheckOptions::default());
+            let mage = effects_for(&effects, "901");
+            for tag in ["FLOA", "IRWD"] {
+                assert_eq!(
+                    moved_by(&effects, "901", tag, Some(ItemChangeCause::CastSpent)),
+                    0,
+                    "{tag}: {mage:?}"
+                );
+            }
+            let review = review_turn(&report, orders, Some(&rules), CheckOptions::default());
+            assert!(
+                review
+                    .findings
+                    .iter()
+                    .any(|finding| finding.code.as_str() == "not-enough-silver"),
+                "{:?}",
+                review.findings
+            );
+        }
+
+        /// Mage 901 holds 50 floater hides and sharer 902 the other 25, but nobody holds ironwood:
+        /// the refused cast takes none of the hides, the mage's own 50 included (`ah-479u`).
+        #[test]
+        fn a_refused_cast_leaves_a_material_covered_with_a_sharers_help() {
+            let rules = trident_rules();
+            let report = report(vec![region(vec![
+                with_item(
+                    with_skill(unit("901"), "SWIN", 3),
+                    50,
+                    "floater hides",
+                    "FLOA",
+                ),
+                sharing(with_item(unit("902"), 25, "floater hides", "FLOA")),
+            ])]);
+            let effects = item_effects(
+                &report,
+                "unit 901\nCAST Summon_Wind\nunit 902\n",
+                Some(&rules),
+                &CheckOptions::default(),
+            );
+            assert_eq!(
+                moved(&effects, "901", "FLOA"),
+                0,
+                "{:?}",
+                effects_for(&effects, "901")
+            );
+            assert_eq!(
+                moved(&effects, "902", "FLOA"),
+                0,
+                "{:?}",
+                effects_for(&effects, "902")
+            );
+            assert_eq!(
+                moved(&effects, "901", "IRWD"),
+                -75,
+                "{:?}",
+                effects_for(&effects, "901")
             );
         }
 
