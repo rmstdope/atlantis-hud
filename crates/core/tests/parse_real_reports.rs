@@ -198,8 +198,8 @@ fn turn_71_reads_its_preamble() {
     assert_eq!(header.faction_types, vec!["Magic 5"]);
     assert_eq!(header.month.as_deref(), Some("December"));
     assert_eq!(header.year, Some(6));
-    // The filename calls this turn 71, and the date derivation agrees.
-    assert_eq!(header.turn_number, Some(71));
+    // The archive names this file t71; the engine numbers December, Year 6 turn 72 (ah-m6pw).
+    assert_eq!(header.turn_number, Some(72));
     assert_eq!(header.ruleset.as_deref(), Some("NewOrigins"));
     assert_eq!(header.ruleset_version.as_deref(), Some("3.0.0 (beta)"));
     assert_eq!(header.engine_version.as_deref(), Some("5.2.5 (beta)"));
@@ -303,7 +303,7 @@ fn turn_2_reads_its_preamble_and_per_unit_errors() {
     let header = parse_regions(TURN_2).header;
 
     assert_eq!(header.faction_id.as_deref(), Some("73"));
-    assert_eq!(header.turn_number, Some(2), "March of Year 1");
+    assert_eq!(header.turn_number, Some(3), "March of Year 1");
     assert_eq!(header.unclaimed_silver, Some(4935));
     assert_eq!(header.errors.len(), 2, "unit 1387 failed a BUY and a STUDY");
     assert!(header.errors.iter().all(|error| error.contains("1387")));
@@ -398,7 +398,7 @@ fn the_ally_report_describes_the_same_turn_as_faction_95() {
 
     assert_eq!(parsed.header.faction_id.as_deref(), Some("73"));
     assert_eq!(parsed.header.faction_name.as_deref(), Some("Borg"));
-    assert_eq!(parsed.header.turn_number, Some(71), "December, Year 6");
+    assert_eq!(parsed.header.turn_number, Some(72), "December, Year 6");
     assert_eq!(parsed.regions.len(), 3);
 }
 
@@ -437,7 +437,7 @@ fn turn_70_is_the_same_faction_one_turn_earlier() {
     let parsed = parse_regions(TURN_70);
 
     assert_eq!(parsed.header.faction_id.as_deref(), Some("95"));
-    assert_eq!(parsed.header.turn_number, Some(70), "November, Year 6");
+    assert_eq!(parsed.header.turn_number, Some(71), "November, Year 6");
     assert_eq!(parsed.regions.len(), 1);
     assert!(parsed.orders_template.is_some());
 }

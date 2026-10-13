@@ -42,18 +42,23 @@ pub fn is_map_export(text: &str) -> bool {
 ///
 /// A hex the exporter saw on the export turn itself carries no comment ([`staleness_note`] returns
 /// `None` when the age is zero) and is absent here; the caller stamps those with the file's own
-/// turn.
+/// turn, which is `file_turn`.
+///
+/// A note that says how many turns before the export the hex was seen is read as that distance
+/// back from `file_turn`, not as the absolute turn it also names. The file's turn is re-derived
+/// from its printed date by whichever build reads it, so the distance stays right across a change
+/// in how turns are counted - an export written before ah-m6pw names every absolute turn one low.
+/// A note with no distance (the export was taken from an older turn than the memory reaches) can
+/// only be taken at its word.
 #[must_use]
-pub fn map_export_ages(text: &str) -> BTreeMap<String, u32> {
+pub fn map_export_ages(text: &str, file_turn: u32) -> BTreeMap<String, u32> {
     let mut ages = BTreeMap::new();
     let mut pending: Option<u32> = None;
 
     for line in unwrap_lines(text) {
         let body = line.body();
         if let Some(rest) = body.strip_prefix(STALENESS_PREFIX) {
-            // Both forms `staleness_note` writes open the same way; the digits stop at the comma.
-            let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
-            pending = digits.parse().ok();
+            pending = read_staleness_note(rest, file_turn);
             continue;
         }
 
@@ -67,6 +72,23 @@ pub fn map_export_ages(text: &str) -> BTreeMap<String, u32> {
     }
 
     ages
+}
+
+/// The turn a staleness note places its hex at; `rest` is the note after [`STALENESS_PREFIX`].
+///
+/// Both forms [`staleness_note`] writes open with the absolute turn, the digits stopping at the
+/// comma; the longer one goes on to `, <k> turn(s) before this export`.
+fn read_staleness_note(rest: &str, file_turn: u32) -> Option<u32> {
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    let named: u32 = digits.parse().ok()?;
+    let distance = rest[digits.len()..]
+        .strip_prefix(", ")
+        .and_then(|after| after.split_once(' '))
+        .and_then(|(count, _)| count.parse::<u32>().ok());
+    Some(match distance {
+        Some(distance) => file_turn.checked_sub(distance).unwrap_or(named),
+        None => named,
+    })
 }
 
 /// The area, level and content one export covers.
@@ -485,7 +507,7 @@ mod tests {
         );
 
         assert!(
-            text.contains("; last seen turn 68, 3 turns before this export"),
+            text.contains("; last seen turn 68, 4 turns before this export"),
             "the age belongs beside the data it qualifies:\n{text}"
         );
     }
@@ -636,7 +658,7 @@ mod tests {
             &request((4, 50), (8, 54)),
         );
 
-        let ages = map_export_ages(&text);
+        let ages = map_export_ages(&text, file_turn(&text));
 
         assert_eq!(ages.get("1:4,50"), Some(&60), "the remembered hex's turn");
         assert_eq!(
@@ -655,9 +677,48 @@ mod tests {
             &request((4, 50), (8, 54)),
         );
 
-        let ages = map_export_ages(&text);
+        let ages = map_export_ages(&text, file_turn(&text));
 
         assert_eq!(ages.len(), 1, "one aged hex, not its exits too: {ages:?}");
+    }
+
+    fn file_turn(text: &str) -> u32 {
+        parse_report_full(text)
+            .header
+            .turn_number
+            .expect("an export names its turn")
+    }
+
+    /// ah-m6pw: an export written before turns took the engine's count names an absolute turn one
+    /// low. Its note also says how many turns before the export the hex was seen, and the export's
+    /// own turn is re-derived from its printed date, so the age is read from that difference -
+    /// which is right whichever numbering wrote the file.
+    #[test]
+    fn an_age_is_read_against_the_exports_own_turn() {
+        let text = concat!(
+            "; Map export from Atlantis HUD\n",
+            "\n",
+            "Atlantis Report For:\n",
+            "Borg (21) (Magic 5)\n",
+            "December, Year 6\n",
+            "\n",
+            "; last seen turn 60, 11 turns before this export\n",
+            "plain (4,50) in Isaen, 1200 peasants (humans), $600.\n",
+            "------------------------------------------------------------\n",
+            "\n",
+            "; last seen turn 64\n",
+            "plain (6,52) in Isaen, 1200 peasants (humans), $600.\n",
+            "------------------------------------------------------------\n",
+        );
+
+        let ages = map_export_ages(text, file_turn(text));
+
+        assert_eq!(ages.get("1:4,50"), Some(&61), "eleven turns before turn 72");
+        assert_eq!(
+            ages.get("1:6,52"),
+            Some(&64),
+            "a note naming no distance can only be taken at its word"
+        );
     }
 
     const MAGE_REPORT: &str = concat!(

@@ -11,6 +11,28 @@ function memoryStorage(): MarkStorage & { items: Map<string, string> } {
 }
 
 describe("the checked-report marks", () => {
+  it("reads marks written under the old turn count one turn later (ah-m6pw)", () => {
+    const storage = memoryStorage();
+    // Before ah-m6pw the core numbered every turn one lower, and the marks were kept under the key
+    // without a version.
+    storage.items.set("atlantis-hud-ruleset-checked-game-1", JSON.stringify(["95:70", "95:71", "95:?"]));
+
+    expect([...checkedKeys(storage, "game-1")].sort()).toEqual(["95:71", "95:72", "95:?"]);
+
+    markChecked(storage, "game-1", ["95:73"]);
+    expect([...checkedKeys(storage, "game-1")].sort()).toEqual(["95:71", "95:72", "95:73", "95:?"]);
+  });
+
+  it("moves old marks once, and not again after the first write", () => {
+    const storage = memoryStorage();
+    storage.items.set("atlantis-hud-ruleset-checked-game-1", JSON.stringify(["95:70"]));
+
+    markChecked(storage, "game-1", ["95:72"]);
+
+    expect([...checkedKeys(storage, "game-1")].sort()).toEqual(["95:71", "95:72"]);
+    expect([...checkedKeys(storage, "game-1")].sort()).toEqual(["95:71", "95:72"]);
+  });
+
   it("keeps a marked report marked for its game", () => {
     const storage = memoryStorage();
 

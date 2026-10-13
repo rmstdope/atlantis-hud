@@ -56,7 +56,7 @@ async function textStartX(line: ReturnType<Page["locator"]>) {
   return box!.x + paddingLeft;
 }
 
-/** The committed turn 40, whose Trader (6857) is a quartermaster owning a Caravanserai. */
+/** The committed t40 report, whose Trader (6857) is a quartermaster owning a Caravanserai. */
 const QUARTERMASTER_REPORT = readReport("g3f42t40");
 /** Woodsmen, in forest (38,0) with 20 wood - three hexes from that Caravanserai. */
 const SHIPPING_UNIT = "9431";
@@ -300,9 +300,9 @@ test("a refused Trident construction is an ordinary problem in both lists", asyn
  * off in Settings > Warnings > Transport takes all of that away at once, with nothing left saying
  * anything is hidden.
  *
- * The fixture is the committed turn 40, whose Trader (6857) is a `QUAM 5` quartermaster owning the
- * Caravanserai in mountain (36,4), three hexes from Woodsmen (9431) in forest (38,0) - one more than
- * `rules/economy_transport` lets an ordinary unit ship to a quartermaster.
+ * The fixture is the committed t40 report, whose Trader (6857) is a `QUAM 5` quartermaster owning
+ * the Caravanserai in mountain (36,4), three hexes from Woodsmen (9431) in forest (38,0) - one more
+ * than `rules/economy_transport` lets an ordinary unit ship to a quartermaster.
  */
 test("a shipment the game will not carry is an ordinary problem in both lists", async ({ page }) => {
   // This check alone, so the walk's first stop is this finding whatever else the fixture raises -

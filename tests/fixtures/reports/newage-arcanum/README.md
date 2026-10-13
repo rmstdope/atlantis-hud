@@ -11,15 +11,16 @@ merges, turn-over-turn history, and mature New Age maps without importing the en
 
 ## Identity and versions
 
-Names follow `newage-arcanum-f<faction>-t<server API turn>.rep`. Unlike the root Origins corpus,
-the turn in the filename is the server's history endpoint identifier, **not** HUD's date-derived
-turn number. Preserve both rather than changing the original report dates:
+Names follow `newage-arcanum-f<faction>-t<server API turn>.rep`. The server numbers turns the
+way the engine does (`Game::TurnNumber` in game.cpp: January of Year 1 is turn 1), and so does HUD
+since ah-m6pw, so the turn in the filename is also the turn HUD shows. The reports agree: a quest
+line in `newage-arcanum-f5-t84.rep` reads "Posted: Year 7, December (turn 84)".
 
-| API turn in filename | Printed report date | HUD date-derived turn | Printed game version | Engine |
-|---|---|---|---|---|
-| 2 | February, Year 1 | 1 | NewOrigins 8.1.0 | 5.2.5 beta |
-| 83 | November, Year 7 | 82 | NewAge 1.2.0 (beta) | 5.2.11 beta |
-| 84 | December, Year 7 | 83 | NewAge 1.2.0 (beta) | 5.2.11 beta |
+| Turn in filename and in HUD | Printed report date | Printed game version | Engine |
+|---|---|---|---|
+| 2 | February, Year 1 | NewOrigins 8.1.0 | 5.2.5 beta |
+| 83 | November, Year 7 | NewAge 1.2.0 (beta) | 5.2.11 beta |
+| 84 | December, Year 7 | NewAge 1.2.0 (beta) | 5.2.11 beta |
 
 The early reports really are branded NewOrigins despite coming from Arcanum's history endpoint.
 They are import/history fixtures, not evidence for today's New Age mechanics. Faction 5 is named

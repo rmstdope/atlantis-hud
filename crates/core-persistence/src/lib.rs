@@ -23,7 +23,7 @@ use rusqlite::{params, Connection, ErrorCode, OptionalExtension, Transaction};
 use thiserror::Error;
 
 /// Current schema version expected by the persistence layer.
-pub const CURRENT_SCHEMA_VERSION: u32 = 14;
+pub const CURRENT_SCHEMA_VERSION: u32 = 15;
 /// The manifest file inside a game's directory. The directory is named after the game's id, so the
 /// file itself does not have to be, and a game can be found without parsing any filename.
 pub const GAME_MANIFEST_FILE_NAME: &str = "game.json";
@@ -46,13 +46,15 @@ const MIGRATION_0012_STUDY_PLAN_GOALS: &str =
 const MIGRATION_0013_STUDY_GOAL_KIND: &str = include_str!("../migrations/0013_study_goal_kind.sql");
 const MIGRATION_0014_STUDY_PLAN_CASTS: &str =
     include_str!("../migrations/0014_study_plan_casts.sql");
+const MIGRATION_0015_ENGINE_TURN_NUMBERS: &str =
+    include_str!("../migrations/0015_engine_turn_numbers.sql");
 
 struct Migration {
     version: u32,
     sql: &'static str,
 }
 
-const MIGRATIONS: [Migration; 14] = [
+const MIGRATIONS: [Migration; 15] = [
     Migration {
         version: 1,
         sql: MIGRATION_0001_INITIAL,
@@ -108,6 +110,10 @@ const MIGRATIONS: [Migration; 14] = [
     Migration {
         version: 14,
         sql: MIGRATION_0014_STUDY_PLAN_CASTS,
+    },
+    Migration {
+        version: 15,
+        sql: MIGRATION_0015_ENGINE_TURN_NUMBERS,
     },
 ];
 
@@ -3018,7 +3024,8 @@ mod tests {
             &ImportedTurnKey {
                 game_id: "faction-12".to_string(),
                 faction_id: "95".to_string(),
-                turn_number: 71,
+                // Stored as 71, and moved to the engine's count by migration 15 (ah-m6pw).
+                turn_number: 72,
             },
         )
         .expect("load should succeed")
@@ -3270,8 +3277,8 @@ mod tests {
 
         assert_eq!(created.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(
-            created.schema_version, 14,
-            "a plan's casts added migration 14"
+            created.schema_version, 15,
+            "the engine's turn numbers added migration 15"
         );
     }
 
@@ -4128,6 +4135,140 @@ mod tests {
         assert_eq!(listed, vec![mine]);
     }
 
+    /// ah-m6pw: a version-14 database numbered every turn one low (February of Year 1 was turn 1).
+    /// Opening it moves every stored turn up by one, keys and JSON alike, so a report imported
+    /// afterwards lands on the same key as its copy from before the upgrade.
+    #[test]
+    fn upgrading_from_version_fourteen_moves_every_stored_turn_to_the_engines_count() {
+        let dir = tempdir().expect("tempdir");
+        let manifest = fixture_manifest();
+        let home = dir.path().join(GAME_ID);
+        fs::create_dir_all(&home).expect("game home");
+        save_game_manifest(&home.join(GAME_MANIFEST_FILE_NAME), &manifest)
+            .expect("manifest save should succeed");
+
+        let database_path = home.join("game.sqlite");
+        let connection = Connection::open(&database_path).expect("db should open");
+        connection
+            .execute_batch(&format!(
+                "{MIGRATION_0001_INITIAL}
+                 {MIGRATION_0002_IMPORTED_TURNS}
+                 {MIGRATION_0003_ORDER_DRAFTS}
+                 {MIGRATION_0004_REGION_SIGHTINGS}
+                 {MIGRATION_0005_RENAME_PROJECT_TO_GAME}
+                 {MIGRATION_0006_ISO_IMPORT_TIMESTAMPS}
+                 {MIGRATION_0007_MERGED_REPORTS}
+                 {MIGRATION_0008_HEX_NOTES}
+                 {MIGRATION_0009_ARMIES}
+                 {MIGRATION_0010_ALLIED_MAGES}
+                 {MIGRATION_0011_STUDY_PLANS}
+                 {MIGRATION_0012_STUDY_PLAN_GOALS}
+                 {MIGRATION_0013_STUDY_GOAL_KIND}
+                 {MIGRATION_0014_STUDY_PLAN_CASTS}
+                 INSERT INTO schema_migrations (version)
+                     VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10), (11), (12), (13),
+                            (14);
+                 INSERT INTO imported_turns
+                     (game_id, faction_id, turn_number, raw_report, parsed_payload_json,
+                      warnings_payload_json)
+                 VALUES
+                     ('faction-12', '95', 70, 'november',
+                      '{{\"turnHeader\":{{\"turnNumber\":70,\"season\":\"November\"}},\"share\":0.25}}',
+                      '[]'),
+                     ('faction-12', '95', 71, 'december',
+                      '{{\"turn_header\":{{\"turn_number\":71,\"season\":\"December\"}}}}', '[]');
+                 INSERT INTO order_drafts (game_id, faction_id, turn_number, order_text, updated_at)
+                 VALUES ('faction-12', '95', 70, 'a', 't'), ('faction-12', '95', 71, 'b', 't');
+                 INSERT INTO merged_reports
+                     (game_id, faction_id, turn_number, merged_faction_id, merged_faction_name,
+                      merged_at)
+                 VALUES ('faction-12', '95', 70, '73', 'Borg', 't'),
+                        ('faction-12', '95', 71, '73', 'Borg', 't');
+                 INSERT INTO region_sightings
+                     (game_id, faction_id, region_id, x, y, z, terrain, province, label,
+                      last_seen_turn, payload_json)
+                 VALUES ('faction-12', '95', '1:2,2', 2, 2, 1, 'plain', 'P', 'L', 68, '{{}}');
+                 INSERT INTO hex_notes
+                     (id, game_id, region_id, text, on_map, turn, created_at, updated_at)
+                 VALUES ('n1', 'faction-12', '1:2,2', 'note', 1, 69, 't', 't');
+                 INSERT INTO armies (id, game_id, name, members_json, created_at, updated_at)
+                 VALUES ('a1', 'faction-12', 'Host',
+                         '[{{\"unitId\":\"1\",\"seenTurn\":66}},{{\"unitId\":\"2\",\"seenTurn\":67}}]',
+                         't', 't');
+                 INSERT INTO allied_mages
+                     (game_id, faction_id, unit_id, faction_name, unit_json, sheet_turn,
+                      received_at)
+                 VALUES ('faction-12', '21', '9001', 'Borg', '{{}}', 23, 't');
+                 INSERT INTO study_plans
+                     (game_id, faction_id, unit_id, goals_json, comment, updated_at, casts_json)
+                 VALUES ('faction-12', '95', '7', 
+                         '[{{\"kind\":\"study\",\"turn\":0,\"skill\":\"FORC\"}},{{\"kind\":\"study\",\"turn\":72,\"skill\":\"FORC\"}},{{\"kind\":\"teach\",\"turn\":73,\"students\":[],\"live\":true}}]',
+                         '', 't', '[{{\"turn\":0,\"spell\":\"FIRE\"}},{{\"turn\":72,\"spell\":\"FARS\"}}]');"
+            ))
+            .expect("legacy version 14 setup should succeed");
+        drop(connection);
+
+        let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("upgrade should succeed");
+        assert_eq!(reopened.schema_version, CURRENT_SCHEMA_VERSION);
+
+        let connection = Connection::open(&database_path).expect("db should reopen");
+        let column = |sql: &str| -> Vec<String> {
+            let mut statement = connection.prepare(sql).expect("query should prepare");
+            statement
+                .query_map([], |row| row.get::<_, String>(0))
+                .expect("query should run")
+                .collect::<Result<_, _>>()
+                .expect("rows should read")
+        };
+
+        assert_eq!(
+            column(
+                "SELECT turn_number || ' ' || parsed_payload_json FROM imported_turns
+                 ORDER BY turn_number"
+            ),
+            vec![
+                r#"71 {"turnHeader":{"turnNumber":71,"season":"November"},"share":0.25}"#,
+                r#"72 {"turn_header":{"turn_number":72,"season":"December"}}"#,
+            ],
+            "adjacent turns shift without colliding on the key, and the payload follows its key"
+        );
+        assert_eq!(
+            column("SELECT turn_number || order_text FROM order_drafts ORDER BY turn_number"),
+            vec!["71a", "72b"]
+        );
+        assert_eq!(
+            column("SELECT CAST(turn_number AS TEXT) FROM merged_reports ORDER BY turn_number"),
+            vec!["71", "72"]
+        );
+        assert_eq!(
+            column("SELECT CAST(last_seen_turn AS TEXT) FROM region_sightings"),
+            vec!["69"]
+        );
+        assert_eq!(
+            column("SELECT CAST(turn AS TEXT) FROM hex_notes"),
+            vec!["70"]
+        );
+        assert_eq!(
+            column("SELECT members_json FROM armies"),
+            vec![r#"[{"unitId":"1","seenTurn":67},{"unitId":"2","seenTurn":68}]"#],
+            "every member moves, in its own order"
+        );
+        assert_eq!(
+            column("SELECT CAST(sheet_turn AS TEXT) FROM allied_mages"),
+            vec!["24"]
+        );
+        assert_eq!(
+            column("SELECT goals_json || ' ' || casts_json FROM study_plans"),
+            vec![concat!(
+                r#"[{"kind":"study","turn":0,"skill":"FORC"},"#,
+                r#"{"kind":"study","turn":73,"skill":"FORC"},"#,
+                r#"{"kind":"teach","turn":74,"students":[],"live":true}] "#,
+                r#"[{"turn":1,"spell":"FIRE"},{"turn":73,"spell":"FARS"}]"#
+            )],
+            "a goal's turn 0 marks a turnless legacy goal and stays 0; a cast has no such form"
+        );
+    }
+
     /// The migration path a real database takes: version 10 with data in it, opened by this build.
     #[test]
     fn upgrading_from_version_ten_gains_study_plans_and_keeps_allied_mages() {
@@ -4524,9 +4665,14 @@ mod tests {
         drop(connection);
 
         open_game(dir.path(), &manifest.metadata.game_id, CREATED_AT).expect("reopen migrates");
+        // Rewound past migration 15 too, which moves the turn one up again (ah-m6pw).
+        let key = ImportedTurnKey {
+            turn_number: record.key.turn_number + 1,
+            ..record.key.clone()
+        };
 
         assert_eq!(
-            load_imported_turn_stamps(&created.database_path, &record.key)
+            load_imported_turn_stamps(&created.database_path, &key)
                 .expect("load should succeed")
                 .expect("stamps should exist"),
             ImportedTurnStamps {

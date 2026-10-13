@@ -79,7 +79,7 @@ test("the palette finds historical units and map objects", async ({ page }) => {
     mimeType: "text/plain",
     buffer: Buffer.from(F42_T42, "utf8")
   });
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*42\b/);
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*43\b/);
 
   await page.setInputFiles('input[type="file"]', {
     name: "f42-t40.rep",
@@ -90,17 +90,17 @@ test("the palette finds historical units and map objects", async ({ page }) => {
 
   await page.keyboard.press("ControlOrMeta+k");
   await page.getByTestId("palette-input").fill("Historical Scout (99999)");
-  await expect(page.getByTestId("palette-item").first()).toContainText("last seen turn 40");
+  await expect(page.getByTestId("palette-item").first()).toContainText("last seen turn 41");
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("command-palette")).toHaveCount(0);
-  await expect(page.getByTestId("panel-region")).toContainText("Last seen turn 40");
+  await expect(page.getByTestId("panel-region")).toContainText("Last seen turn 41");
 
   await page.keyboard.press("ControlOrMeta+k");
   await page.getByTestId("palette-input").fill("Bog [1]");
-  await expect(page.getByTestId("palette-item").first()).toContainText("last seen turn 40");
+  await expect(page.getByTestId("palette-item").first()).toContainText("last seen turn 41");
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("command-palette")).toHaveCount(0);
-  await expect(page.getByTestId("panel-region")).toContainText("Last seen turn 40");
+  await expect(page.getByTestId("panel-region")).toContainText("Last seen turn 41");
 });
 
 test("arrowing down a long list keeps the highlight on screen", async ({ page }) => {
@@ -433,11 +433,6 @@ async function onlyTheUnitsWithNoOrders(page: Page) {
   await onlyChecks(page, ["unit-does-nothing"]);
   await loadReport(page);
 }
-
-/** The first unit with no orders, and the walk's first stop. */
-const IDLE_UNIT = "14451";
-/** The second, and its second stop. */
-const OTHER_IDLE_UNIT = "13432";
 
 test("a problem with no offending word lands the cursor at the end of the orders", async ({
   page

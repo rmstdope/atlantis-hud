@@ -29,7 +29,7 @@ test("writes every mage out as a sheet an ally can read", async ({ page }, testI
 
   const text = readFileSync(path, "utf8");
   expect(text.startsWith("; Mage sheet from Atlantis HUD")).toBe(true);
-  expect(download.suggestedFilename()).toMatch(/^mages-.+-turn-71\.txt$/u);
+  expect(download.suggestedFilename()).toMatch(/^mages-.+-turn-72\.txt$/u);
 
   // The mages actually reached the core. Without this the three assertions below all hold for an
   // empty sheet, which is exactly the failure this spec exists to catch: the shell sending an
@@ -78,7 +78,7 @@ test("takes an ally's mage sheet back in", async ({ page }, testInfo) => {
   await expect(page.getByTestId("import-status")).toContainText("region");
 
   await importReport(page, "mages-Borg-turn-71.txt", sheet);
-  await expect(page.getByTestId("import-status")).toContainText(/\d+ mages from .+, turn 71, taken in/u);
+  await expect(page.getByTestId("import-status")).toContainText(/\d+ mages from .+, turn 72, taken in/u);
 });
 
 /**
@@ -117,7 +117,7 @@ test("says whose sheets you hold, and forgets one", async ({ page }, testInfo) =
   const panel = page.getByTestId("mage-sheets");
   await expect(panel).toContainText(/\(95\)/u);
   await expect(panel).toContainText(/\d+ mages?/u);
-  await expect(panel).toContainText("turn 71");
+  await expect(panel).toContainText("turn 72");
 
   await panel.getByTestId("forget-mage-sheet-95").click();
   await expect(page.getByTestId("forget-mage-sheet-confirm-95")).toContainText("Forget");
@@ -156,22 +156,22 @@ test("asks what to do with mages a newer sheet leaves out", async ({ page }) => 
 
   await importReport(page, "mages-Mantzikert-turn-17.txt", readMageSheet("g7f39t17"));
   await expect(page.getByTestId("import-status")).toContainText(
-    "4 mages from Mantzikert (39), turn 17, taken in"
+    "4 mages from Mantzikert (39), turn 18, taken in"
   );
 
   await importReport(page, "mages-Mantzikert-turn-18.txt", readMageSheet("g7f39t18trimmed"));
   await expect(page.getByTestId("missing-mages-prompt")).toBeVisible();
   await expect(page.getByTestId("missing-mages-question")).toHaveText(
-    "Mantzikert (39)'s turn 18 sheet leaves out 3 mages that its turn 17 sheet had:"
+    "Mantzikert (39)'s turn 19 sheet leaves out 3 mages that its turn 18 sheet had:"
   );
   await expect(page.getByTestId("missing-mages-list")).toContainText("Bey (1447)");
-  await expect(page.getByTestId("missing-mages-list")).toContainText("last seen turn 17");
+  await expect(page.getByTestId("missing-mages-list")).toContainText("last seen turn 18");
 
   await page.getByTestId("missing-mages-keep").click();
   await expect(page.getByTestId("missing-mages-prompt")).toHaveCount(0);
   // An em dash, not a hyphen - `mageSheetStatus` writes one.
   await expect(page.getByTestId("import-status")).toContainText(
-    "2 mages from Mantzikert (39), turn 18, taken in — 3 kept from turn 17, now stale"
+    "2 mages from Mantzikert (39), turn 19, taken in — 3 kept from turn 18, now stale"
   );
 });
 

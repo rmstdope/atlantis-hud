@@ -76,7 +76,7 @@ fn a_remembered_hex_keeps_the_turn_it_was_last_seen_in() {
     assert!(stale.visited, "t40 actually stood in it");
 
     let current = accumulated.hex(at(40, 2)).expect("described by t42");
-    assert_eq!(current.last_seen_turn, Some(42));
+    assert_eq!(current.last_seen_turn, Some(43));
 
     let current_only = MapKnowledge::from_report(&t42);
     assert!(

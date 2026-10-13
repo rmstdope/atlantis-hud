@@ -1539,8 +1539,8 @@ mod sightings_tests {
             "the eleven regions the report visited"
         );
         assert!(
-            remembered.iter().all(|entry| entry.last_seen_turn == 71),
-            "every one of them was seen in turn 71"
+            remembered.iter().all(|entry| entry.last_seen_turn == 72),
+            "every one of them was seen in turn 72"
         );
 
         // The payload is a whole region, exits included - which is the point of storing it, and
@@ -1590,7 +1590,7 @@ mod sightings_tests {
             .and_then(|units| units.iter().find(|unit| unit["unitId"] == "7124"))
             .expect("Drones remain remembered");
 
-        assert_eq!(retained.last_seen_turn, 17);
+        assert_eq!(retained.last_seen_turn, 18);
         assert_eq!(unit["factionId"], "34");
         assert_eq!(unit["factionName"], "Queen XOT");
         assert_eq!(unit["own"], false);
@@ -1705,7 +1705,7 @@ mod sightings_tests {
                     == Some("1:10,50")
             })
             .expect("the shared hex is remembered");
-        assert_eq!(shared.last_seen_turn, 71);
+        assert_eq!(shared.last_seen_turn, 72);
     }
 
     /// Re-importing the same turn moves `updatedAt` but leaves `importedAt` where it was: when a
@@ -1741,7 +1741,7 @@ mod sightings_tests {
             &ImportedTurnKey {
                 game_id: "faction-95".to_string(),
                 faction_id: "95".to_string(),
-                turn_number: 71,
+                turn_number: 72,
             },
         )
         .expect("load should succeed")
@@ -1797,7 +1797,7 @@ mod merge_tests {
     const MERGED_AT: &str = "2026-08-10T18:30:00Z";
     const ATLACLIENT_MAP: &str = atlantis_hud_fixtures::ATLACLIENT_T16.text;
 
-    /// A game with faction 95's turn 71 already imported, which is the state a merge starts from.
+    /// A game with faction 95's turn 72 already imported, which is the state a merge starts from.
     fn game_with_turn_71(directory: &std::path::Path) -> OpenedGameDto {
         let created = command_create_game(
             directory.to_str().expect("a path"),
@@ -1828,7 +1828,7 @@ mod merge_tests {
             &created.database_path,
             "faction-95",
             "95",
-            71,
+            72,
             ALLY_TURN_71,
             None,
             MERGED_AT,
@@ -1883,7 +1883,7 @@ mod merge_tests {
             &created.database_path,
             "faction-95",
             "95",
-            71,
+            72,
             ALLY_TURN_71,
             Some(RULESET),
             MERGED_AT,
@@ -1911,7 +1911,7 @@ mod merge_tests {
             &created.database_path,
             "faction-95",
             "95",
-            71,
+            72,
             ALLY_TURN_71,
             None,
             MERGED_AT,
@@ -1922,12 +1922,12 @@ mod merge_tests {
             .expect("the lookup succeeds")
             .expect("a turn reopens");
         assert_eq!(latest.key.faction_id, "95");
-        assert_eq!(latest.key.turn_number, 71);
+        assert_eq!(latest.key.turn_number, 72);
     }
 
     /// The remembered faction reaches the query rather than stopping at the command boundary.
     ///
-    /// Two factions hold turn 71; which one reopens is decided by the argument alone.
+    /// Two factions hold turn 72; which one reopens is decided by the argument alone.
     #[test]
     fn the_remembered_faction_reaches_the_query() {
         let directory = tempdir().expect("a temporary directory");
@@ -1953,7 +1953,7 @@ mod merge_tests {
             .expect("the lookup succeeds")
             .expect("a turn reopens");
             assert_eq!(latest.key.faction_id, remembered);
-            assert_eq!(latest.key.turn_number, 71);
+            assert_eq!(latest.key.turn_number, 72);
         }
     }
 
@@ -1966,14 +1966,14 @@ mod merge_tests {
             &created.database_path,
             "faction-95",
             "95",
-            71,
+            72,
             ALLY_TURN_71,
             None,
             MERGED_AT,
         )
         .expect("the merge succeeds");
 
-        let merged = command_load_merged_reports(&created.database_path, "faction-95", "95", 71)
+        let merged = command_load_merged_reports(&created.database_path, "faction-95", "95", 72)
             .expect("the record loads");
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].merged_faction_id, "73");
@@ -1990,16 +1990,16 @@ mod merge_tests {
             &created.database_path,
             "faction-95",
             "95",
-            71,
+            72,
             TURN_2,
             None,
             MERGED_AT,
         )
-        .expect_err("turn 2 is not turn 71");
+        .expect_err("turn 3 is not turn 72");
 
         assert_eq!(
             rejection,
-            "a report from turn 2 cannot be merged into turn 71"
+            "a report from turn 3 cannot be merged into turn 72"
         );
     }
 
@@ -2015,7 +2015,7 @@ mod merge_tests {
             &created.database_path,
             "faction-95",
             "95",
-            71,
+            72,
             ATLACLIENT_MAP,
             None,
             MERGED_AT,
@@ -2054,7 +2054,7 @@ mod merge_tests {
             &created.database_path,
             "faction-95",
             "95",
-            71,
+            72,
             ATLACLIENT_MAP,
             None,
             MERGED_AT,
@@ -2064,7 +2064,7 @@ mod merge_tests {
         assert_eq!(result.merged_faction_id, "atlaclient");
         assert_eq!(result.merged_faction_name, "AtlaClient, turn 16");
 
-        let merged = command_load_merged_reports(&created.database_path, "faction-95", "95", 71)
+        let merged = command_load_merged_reports(&created.database_path, "faction-95", "95", 72)
             .expect("the record loads");
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].merged_faction_id, "atlaclient");
@@ -2082,7 +2082,7 @@ mod merge_tests {
             &created.database_path,
             "faction-95",
             "95",
-            71,
+            72,
             TURN_71,
             None,
             MERGED_AT,
@@ -2189,7 +2189,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         let preview =
             command_preview_report_import(&created.database_path, "faction-12", "17", report)
                 .expect("preview import");
-        assert_eq!(preview.turn_number, Some(2));
+        assert_eq!(preview.turn_number, Some(3));
         assert!(!preview.duplicate_preview.exists);
         assert!(preview.parse_result.meets_minimum_import_threshold);
 
@@ -2654,8 +2654,8 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         assert_eq!(sightings.len(), 1);
         assert_eq!(sightings[0].region_id, "1:12,34");
         assert_eq!(sightings[0].terrain, "plain");
-        // March of Year 1 is turn 2, and the sighting carries that rather than nothing.
-        assert_eq!(sightings[0].last_seen_turn, 2);
+        // March of Year 1 is turn 3, and the sighting carries that rather than nothing.
+        assert_eq!(sightings[0].last_seen_turn, 3);
     }
 
     #[test]
@@ -2692,13 +2692,13 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         )
         .expect("import commit should succeed");
 
-        let loaded = command_load_imported_turn(&created.database_path, "faction-12", "17", 2)
+        let loaded = command_load_imported_turn(&created.database_path, "faction-12", "17", 3)
             .expect("load imported turn should succeed")
             .expect("imported turn should exist");
 
         assert_eq!(loaded.key.game_id, "faction-12");
         assert_eq!(loaded.key.faction_id, "17");
-        assert_eq!(loaded.key.turn_number, 2);
+        assert_eq!(loaded.key.turn_number, 3);
         assert_eq!(loaded.raw_report, report);
     }
 
@@ -2768,7 +2768,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             .iter()
             .map(|summary| summary.key.turn_number)
             .collect();
-        assert_eq!(turn_numbers, vec![2, 3]);
+        assert_eq!(turn_numbers, vec![3, 4]);
         assert_eq!(listed[0].season.as_deref(), Some("March"));
         assert_eq!(listed[1].season.as_deref(), Some("April"));
     }

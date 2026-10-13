@@ -121,9 +121,11 @@ pub struct FactionRef {
 
 /// Converts a printed date into the game's turn number.
 ///
-/// A game begins in February of Year 1, which is turn 1, and advances one month per turn. Verified
-/// against three real reports: February Year 1 is turn 1, March Year 1 is turn 2, and December
-/// Year 6 is turn 71.
+/// January of Year 1 is turn 1, and each turn advances one month: the engine's own
+/// `Game::TurnNumber` (game.cpp) is `(year - 1) * 12 + month + 1` with January as month 0, and a
+/// New Age report prints the same number beside a date ("Posted: Year 7, December (turn 84)",
+/// `newage-arcanum-f5-t84.rep`). The New Origins fixtures' file names are the archive's numbering,
+/// one below this (ah-m6pw).
 #[must_use]
 pub fn turn_number_for(month: &str, year: u32) -> Option<u32> {
     let index = MONTHS
@@ -133,8 +135,7 @@ pub fn turn_number_for(month: &str, year: u32) -> Option<u32> {
 
     (year.checked_sub(1)?)
         .checked_mul(12)?
-        .checked_add(month_number)?
-        .checked_sub(1)
+        .checked_add(month_number)
 }
 
 /// Reads `December, Year 6`.
@@ -415,10 +416,10 @@ mod tests {
 
     #[test]
     fn derives_the_turn_number_from_the_printed_date() {
-        // A game starts in February of Year 1.
-        assert_eq!(turn_number_for("February", 1), Some(1));
-        assert_eq!(turn_number_for("March", 1), Some(2));
-        assert_eq!(turn_number_for("December", 6), Some(71));
+        // January of Year 1 is turn 1, as the engine counts it.
+        assert_eq!(turn_number_for("January", 1), Some(1));
+        assert_eq!(turn_number_for("February", 1), Some(2));
+        assert_eq!(turn_number_for("December", 6), Some(72));
         assert_eq!(turn_number_for("Nonesuch", 6), None);
     }
 
@@ -471,7 +472,7 @@ mod tests {
         assert_eq!(header.faction_types, vec!["Magic 5"]);
         assert_eq!(header.month.as_deref(), Some("December"));
         assert_eq!(header.year, Some(6));
-        assert_eq!(header.turn_number, Some(71));
+        assert_eq!(header.turn_number, Some(72));
         assert_eq!(header.engine_version.as_deref(), Some("5.2.5 (beta)"));
         assert_eq!(header.ruleset.as_deref(), Some("NewOrigins"));
         assert_eq!(header.ruleset_version.as_deref(), Some("3.0.0 (beta)"));
@@ -486,7 +487,7 @@ mod tests {
         ));
 
         assert_eq!(header.faction_types, vec!["Martial 1", "Magic 1"]);
-        assert_eq!(header.turn_number, Some(1));
+        assert_eq!(header.turn_number, Some(2));
     }
 
     #[test]

@@ -629,7 +629,7 @@ pub fn plan_merge(
             .map_or(viewer_turn_number, |header| header.turn_number);
         return MergePlan::MapExport {
             file_turn,
-            ages: report::export::map_export_ages(raw_report),
+            ages: report::export::map_export_ages(raw_report, file_turn),
         };
     }
 
@@ -904,7 +904,7 @@ mod tests {
         assert_eq!(
             summary.turn_header,
             Some(TurnHeader {
-                turn_number: 71,
+                turn_number: 72,
                 season: "December".to_string(),
             })
         );
@@ -1048,10 +1048,10 @@ mod tests {
         );
     }
 
-    /// The mini report is March, Year 1, which the header module numbers turn 2.
+    /// The mini report is March, Year 1, which the header module numbers turn 3.
     #[test]
     fn a_report_for_the_turn_on_screen_may_be_merged() {
-        assert_eq!(reject_merge(&parse_report(MINI_REPORT), 2, "99"), None);
+        assert_eq!(reject_merge(&parse_report(MINI_REPORT), 3, "99"), None);
     }
 
     #[test]
@@ -1059,7 +1059,7 @@ mod tests {
         let rejection = reject_merge(&parse_report(MINI_REPORT), 71, "99");
         assert_eq!(
             rejection.as_deref(),
-            Some("a report from turn 2 cannot be merged into turn 71"),
+            Some("a report from turn 3 cannot be merged into turn 71"),
             "the refusal names both turns, because the player has to know which file to find"
         );
     }
@@ -1079,7 +1079,7 @@ mod tests {
     /// words, and the core was simply never told whose map was being merged into (`ah-8z4y.3.2`).
     #[test]
     fn a_report_from_the_viewers_own_faction_is_rejected() {
-        let rejection = reject_merge(&parse_report(MINI_REPORT), 2, "17");
+        let rejection = reject_merge(&parse_report(MINI_REPORT), 3, "17");
 
         assert_eq!(
             rejection.as_deref(),
@@ -1093,7 +1093,7 @@ mod tests {
     fn a_merge_is_not_refused_for_belonging_to_the_wrong_faction() {
         let parsed = parse_report(MINI_REPORT);
 
-        assert_eq!(reject_merge(&parsed, 2, "99"), None);
+        assert_eq!(reject_merge(&parsed, 3, "99"), None);
         assert!(
             reject_import(&parsed, "95").is_some(),
             "the same report filed under the viewer would be refused"
@@ -1225,7 +1225,7 @@ mod tests {
         assert_eq!(
             parsed.turn_header,
             Some(TurnHeader {
-                turn_number: 2,
+                turn_number: 3,
                 season: "March".to_string(),
             })
         );
@@ -1388,7 +1388,7 @@ mod tests {
     #[test]
     fn an_allied_report_is_planned_as_a_report() {
         assert_eq!(
-            plan_merge(MINI_REPORT, &parse_report(MINI_REPORT), 2, "99"),
+            plan_merge(MINI_REPORT, &parse_report(MINI_REPORT), 3, "99"),
             MergePlan::AlliedReport
         );
     }
@@ -1396,7 +1396,7 @@ mod tests {
     #[test]
     fn an_own_faction_report_that_is_not_a_map_export_is_still_refused() {
         assert_eq!(
-            plan_merge(MINI_REPORT, &parse_report(MINI_REPORT), 2, "17"),
+            plan_merge(MINI_REPORT, &parse_report(MINI_REPORT), 3, "17"),
             MergePlan::Refused("a faction's own report is loaded rather than merged".to_string())
         );
     }
@@ -1434,7 +1434,7 @@ mod tests {
             panic!("a map export should be planned as one");
         };
 
-        assert_eq!(file_turn, 2, "the turn the file itself names");
+        assert_eq!(file_turn, 3, "the turn the file itself names");
         assert_eq!(ages.get("1:99,99"), Some(&1));
         assert_eq!(
             ages.get("1:12,34"),

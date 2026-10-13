@@ -215,12 +215,12 @@ fn a_same_turn_ally_seen_hex_names_the_units_instead_of_nobody_else_is_here() {
     .regions[0]
         .clone();
 
-    // The current (turn 71) report never visits (30,30) - the ally is the only account of it.
+    // The current (turn 72, December Year 6) report never visits (30,30) - the ally is the only account of it.
     let map = MapKnowledge::from_remembered(
         &report,
         &[RememberedRegion {
             region: ally_sighting,
-            last_seen_turn: 71,
+            last_seen_turn: 72,
         }],
     );
 

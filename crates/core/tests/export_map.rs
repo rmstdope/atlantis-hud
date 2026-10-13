@@ -83,7 +83,7 @@ fn a_remembered_region_is_exported_beside_this_turn_s() {
 
     assert_eq!(ids.len(), report.regions.len() + 1);
     assert!(ids.contains(&"1:99,99".to_string()));
-    assert!(text.contains("; last seen turn 60, 11 turns before this export"));
+    assert!(text.contains("; last seen turn 60, 12 turns before this export"));
 }
 
 #[test]
@@ -285,13 +285,13 @@ fn a_remembered_hex_from_an_earlier_turn_is_exported_without_its_units() {
     let text = export_map(&report, &[remembered], &whole_map(ExportContent::default()));
 
     assert!(exported_unit_ids(&text).is_empty());
-    assert!(text.contains("; last seen turn 60, 11 turns before this export"));
+    assert!(text.contains("; last seen turn 60, 12 turns before this export"));
 }
 
 #[test]
 fn a_same_turn_remembered_hex_keeps_other_factions_units() {
     let report = parse_report_full(TURN_71);
-    let (remembered, id) = remembered_with_a_foreign_unit(&report, 71);
+    let (remembered, id) = remembered_with_a_foreign_unit(&report, 72);
 
     let text = export_map(&report, &[remembered], &whole_map(ExportContent::default()));
 

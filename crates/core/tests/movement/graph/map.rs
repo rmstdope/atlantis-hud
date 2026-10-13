@@ -317,7 +317,7 @@ fn the_planner_sees_a_same_turn_allys_units() {
     use atlantis_hud_core::movement::graph::RememberedRegion;
 
     let ally_sighting = parse_report_full(
-        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
+        "Atlantis Report For:\nFoo (1)\nJanuary, Year 1\n\n\
          plain (9,9) in Nowhere, 10 peasants (orcs), $5.\n\n\
          Exits:\n  North : plain (9,7) in Nowhere.\n\n\
          - Someone (500), Bar (2), 3 orcs [ORC].\n",
@@ -326,7 +326,7 @@ fn the_planner_sees_a_same_turn_allys_units() {
         .clone();
 
     // The current report never visits (9,9) itself - the ally is the only account of it.
-    let current = parse_report_full("Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n");
+    let current = parse_report_full("Atlantis Report For:\nFoo (1)\nJanuary, Year 1\n");
 
     let map = MapKnowledge::from_remembered(
         &current,

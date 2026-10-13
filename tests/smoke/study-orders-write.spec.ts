@@ -27,7 +27,7 @@ async function openPlannerWithHandWrittenOrders(page: import("@playwright/test")
 
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
-  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-72`);
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-73`);
   await cell.click();
   await expect(page.getByTestId("study-schedule-popover")).toBeVisible();
   await page.getByTestId("study-schedule-choice-FORC").click();
@@ -96,7 +96,7 @@ test("a planned cast is written beside the study, and unticking the box leaves i
 }) => {
   await openPlannerWithHandWrittenOrders(page);
   await page.getByTestId("study-planner-view-schedule").click();
-  await page.getByTestId(`study-schedule-cast-${MAGE}-72`).click();
+  await page.getByTestId(`study-schedule-cast-${MAGE}-73`).click();
   await page.getByTestId("study-schedule-cast-choice-FIRE").click();
   await expect(page.getByTestId("study-schedule-cast-popover")).toHaveCount(0);
   await page.getByTestId("study-planner-view-orders").click();

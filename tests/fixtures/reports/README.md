@@ -41,6 +41,12 @@ The game is part of the name because a faction id is only unique within one game
 in both game 2 and game 3 here, so `f42-t0` alone would be ambiguous between two entirely different
 turns. `scripts/reportFixtures.test.ts` enforces the pattern on every fixture in this directory.
 
+The `<turn>` is the archive's number for the report, and it is **one below the turn HUD shows**:
+the archive calls January of Year 1 turn 0, while the engine - and so HUD - calls it turn 1
+(`Game::TurnNumber` in game.cpp is `(year - 1) * 12 + month + 1`, January being month 0; ah-m6pw).
+So `g7-f95-t71`, dated December, Year 6, is HUD's turn 72. The names were kept rather than renamed,
+since every test and document refers to these files by them.
+
 ## Redaction
 
 Every `#atlantis <id> "..."` line has its quoted value replaced with `<password>`, and nothing else

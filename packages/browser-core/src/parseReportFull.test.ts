@@ -31,7 +31,7 @@ describe("the full model across the WebAssembly boundary", () => {
     const parsed = await client.parseReportFull(REPORT);
 
     expect(parsed.header.factionName).toBe("Borg TNG");
-    expect(parsed.header.turnNumber).toBe(71);
+    expect(parsed.header.turnNumber).toBe(72);
     expect(parsed.regions).toHaveLength(11);
 
     // Proves the serde rename survives the boundary: a naming mismatch would leave these undefined.

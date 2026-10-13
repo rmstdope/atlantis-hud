@@ -68,7 +68,7 @@ describe("what a report import writes, across the WebAssembly boundary", () => {
     )) as Array<{ region: { regionId?: string }; lastSeenTurn: number }>;
     expect(remembered).toHaveLength(11);
     const shared = remembered.find((entry) => entry.region.regionId === "1:10,50");
-    expect(shared?.lastSeenTurn).toBe(71);
+    expect(shared?.lastSeenTurn).toBe(72);
   });
 
   it("a newer report replaces the older memory of a hex", async () => {
@@ -102,7 +102,7 @@ describe("what a report import writes, across the WebAssembly boundary", () => {
     )) as Array<{ region: { regionId?: string }; lastSeenTurn: number }>;
     expect(remembered).toHaveLength(11);
     const shared = remembered.find((entry) => entry.region.regionId === "1:10,50");
-    expect(shared?.lastSeenTurn).toBe(71);
+    expect(shared?.lastSeenTurn).toBe(72);
   });
 
   it("persists a transferred retained unit under its receiving faction", async () => {
@@ -136,7 +136,7 @@ describe("what a report import writes, across the WebAssembly boundary", () => {
     const retained = remembered.find((entry) => entry.region.regionId === "1:42,80");
     const unit = retained?.region.units.find((entry) => entry.unitId === "7124");
 
-    expect(retained?.lastSeenTurn).toBe(17);
+    expect(retained?.lastSeenTurn).toBe(18);
     expect(unit).toMatchObject({ factionId: "34", factionName: "Queen XOT", own: false });
   });
 

@@ -11,7 +11,7 @@ import { clearGames, createGame, fillOrders, loadReport, openOrders, expectOrder
  */
 
 /** `GAME_DATABASE_VERSION` in `packages/browser-core/src/webStore.ts`. */
-const GAME_DATABASE_VERSION = 6;
+const GAME_DATABASE_VERSION = 7;
 /** `REGISTRY_DATABASE_VERSION` in the same file. */
 const REGISTRY_DATABASE_VERSION = 4;
 const REGISTRY = "atlantis-hud";
@@ -112,7 +112,7 @@ test("a game another tab holds says so, and Try again opens it once the tab lets
   await holder.evaluate(() => window.__held?.close());
   await tryAgain.click();
   await expect(notice).toBeHidden({ timeout: 10_000 });
-  await expect(app.getByTestId("import-status")).toContainText("restored turn 71");
+  await expect(app.getByTestId("import-status")).toContainText("restored turn 72");
 });
 
 test("the saved games list another tab holds says so", async ({ page, context }) => {
@@ -199,7 +199,7 @@ test.describe("a tab asked to let go", () => {
     await asNewerBuild(page, database);
     await page.getByTestId("storage-stopped-reload").click();
     await expect(page.getByTestId("game-indicator")).toContainText("Midgard");
-    await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+    await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
     await openOrders(page, "18642");
     await expectOrders(page, /@work/u);
   });

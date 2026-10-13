@@ -68,13 +68,13 @@ describe("which turn a game reopens on, across the WebAssembly boundary", () => 
       opened.databasePath,
       "g7",
       FACTION_ID,
-      70,
+      71,
       "@work",
       "2026-08-01T12:00:00Z"
     );
 
     expect(await adapter.loadLatestImportedTurn(opened.databasePath, "g7", null)).toMatchObject({
-      key: { factionId: FACTION_ID, turnNumber: 71 }
+      key: { factionId: FACTION_ID, turnNumber: 72 }
     });
   });
 
@@ -105,10 +105,10 @@ describe("which turn a game reopens on, across the WebAssembly boundary", () => 
 
     expect(
       await adapter.loadLatestImportedTurn(opened.databasePath, "g9", FACTION_ID)
-    ).toMatchObject({ key: { factionId: FACTION_ID, turnNumber: 71 } });
+    ).toMatchObject({ key: { factionId: FACTION_ID, turnNumber: 72 } });
     expect(
       await adapter.loadLatestImportedTurn(opened.databasePath, "g9", ALLY_FACTION_ID)
-    ).toMatchObject({ key: { factionId: ALLY_FACTION_ID, turnNumber: 71 } });
+    ).toMatchObject({ key: { factionId: ALLY_FACTION_ID, turnNumber: 72 } });
   });
 
   it("a game holding no imports reopens on nothing", async () => {

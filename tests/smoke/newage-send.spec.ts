@@ -14,8 +14,9 @@ import { clearGames, closeRulesetCheck, createGame } from "./gameSetup";
  * password in cleartext in its first line, so only a length is kept - which is what proves the
  * orders left and the password went nowhere it should not.
  *
- * The fixture is faction 95, turn 71, whose orders template line reads `#atlantis 95 "<password>"`,
- * so the stand-in signs in as faction 95 and every assertion here names that turn and that faction.
+ * The fixture is faction 95, turn 72 (the file named t71), whose orders template line reads
+ * `#atlantis 95 "<password>"`, so the stand-in signs in as faction 95 and every assertion here names
+ * that turn and that faction.
  */
 const TURN_71 = readReport("g7f95t71");
 
@@ -108,7 +109,7 @@ async function ordersReplyWith(page: import("@playwright/test").Page, reply: Rep
   }, reply);
 }
 
-/** An Arcanum game with turn 71 fetched, so there are orders to send. */
+/** An Arcanum game with turn 72 fetched, so there are orders to send. */
 async function withTurnLoaded(page: import("@playwright/test").Page) {
   await clearGames(page);
   await page.getByTestId("game-ruleset").selectOption("newage-arcanum");
@@ -140,7 +141,7 @@ test("sends orders and reports that the world saved them with errors", async ({ 
 
   await page.getByTestId("send-orders").click();
   await expect(page.getByTestId("newage-send-meta")).toContainText(
-    "turn 71 · atlantis-newage.com"
+    "turn 72 · atlantis-newage.com"
   );
   // Both are asked for, every send: there is no session to lean on.
   await expect(page.getByTestId("newage-faction-number")).toHaveValue("95");
@@ -150,7 +151,7 @@ test("sends orders and reports that the world saved them with errors", async ({ 
   await page.getByTestId("newage-send-confirm").click();
 
   await expect(page.getByTestId("newage-send-outcome")).toHaveText(
-    "Orders for turn 71 were saved, but the world found 2 errors in them."
+    "Orders for turn 72 were saved, but the world found 2 errors in them."
   );
   await expect(page.getByTestId("newage-send-errors").locator("li")).toHaveCount(2);
   await expect(page.getByTestId("newage-send-warnings").locator("li")).toHaveCount(1);

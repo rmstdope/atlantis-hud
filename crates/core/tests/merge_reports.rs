@@ -18,9 +18,9 @@ const VIEWER: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 const ALLY: &str = atlantis_hud_fixtures::G8_F73_T71.text;
 const SWAMP: &str = "1:10,50";
 
-/// Faction 95's stored map, exactly as importing its turn 71 would have written it.
+/// Faction 95's stored map, exactly as importing its turn 72 (the file named t71) would have written it.
 fn viewer_sightings() -> Vec<RegionSighting> {
-    region_sightings(&parse_report_full(VIEWER), 71)
+    region_sightings(&parse_report_full(VIEWER), 72)
 }
 
 /// The same map as the merge reads it: the key, the turn and the payload, and nothing else.
@@ -40,13 +40,13 @@ fn unit<'a>(region: &'a ReportRegion, unit_id: &str) -> Option<&'a ReportUnit> {
 }
 
 fn merged() -> Vec<RegionSighting> {
-    merge_report_into_sightings(&viewer_map(), &parse_report_full(ALLY), 71).sightings
+    merge_report_into_sightings(&viewer_map(), &parse_report_full(ALLY), 72).sightings
 }
 
 #[test]
-fn both_fixtures_describe_turn_71() {
-    assert_eq!(parse_report_full(VIEWER).header.turn_number, Some(71));
-    assert_eq!(parse_report_full(ALLY).header.turn_number, Some(71));
+fn both_fixtures_describe_turn_72() {
+    assert_eq!(parse_report_full(VIEWER).header.turn_number, Some(72));
+    assert_eq!(parse_report_full(ALLY).header.turn_number, Some(72));
     assert_eq!(
         parse_report_full(ALLY).header.faction_id.as_deref(),
         Some("73")
@@ -55,7 +55,7 @@ fn both_fixtures_describe_turn_71() {
 
 #[test]
 fn the_ally_contributes_every_hex_it_saw_and_two_the_viewer_had_not() {
-    let outcome = merge_report_into_sightings(&viewer_map(), &parse_report_full(ALLY), 71);
+    let outcome = merge_report_into_sightings(&viewer_map(), &parse_report_full(ALLY), 72);
 
     assert_eq!(outcome.merged_region_count, 3);
     assert_eq!(

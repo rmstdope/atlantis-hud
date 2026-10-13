@@ -81,7 +81,7 @@ test("exports the whole known map when nothing was selected", async ({ page }, t
 
   const { text, name } = await exportAndRead(page, testInfo);
 
-  expect(name).toBe("map-turn-71-level-1.txt");
+  expect(name).toBe("map-turn-72-level-1.txt");
   expect(text).toContain("Atlantis Report For:");
   expect(text).toContain("Borg TNG (95)");
   expect(text).toContain("mountain (7,53) in Inhead");
@@ -173,7 +173,7 @@ test("re-imports its own export as a map, and leaves the turn alone", async ({ p
   await expect(page.getByTestId("map-export-prompt")).toHaveCount(0);
 
   // The turn on screen survived, faction and all - which is the whole point of the bead.
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
 });
 
@@ -213,14 +213,14 @@ test("adds a map export handed over in a batch, and keeps the turn it came with"
   await expect(dialog).toContainText(
     "Nothing added to your map — the map export held nothing new."
   );
-  await expect(dialog).toContainText("Turn 71 is on screen.");
+  await expect(dialog).toContainText("Turn 72 is on screen.");
   await expect(dialog).toContainText(`${name} — map export, nothing new to your map`);
 
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(dialog).toHaveCount(0);
 
   // The turn survived the batch, faction and all.
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
 
   // And the stored report is still the real one. The faction's allowances come from the report's
@@ -247,7 +247,7 @@ test("cancels a map export without writing anything", async ({ page }, testInfo)
 
   await expect(page.getByTestId("map-export-prompt")).toHaveCount(0);
   await expect(page.getByTestId("import-status")).not.toContainText("added to your map");
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
 });
 
 /**
@@ -321,7 +321,7 @@ test("imports a map exported by AtlaClient", async ({ page }) => {
   await expect(page.getByTestId("map-export-prompt")).toHaveCount(0);
 
   // The turn on screen survived, faction and all.
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
 
   // Where the hexes came from, answerable after a reload. The browser adapter files an AtlaClient
