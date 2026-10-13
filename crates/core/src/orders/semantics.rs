@@ -39793,6 +39793,36 @@ BUILD
         );
     }
 
+    /// `ah-3uuf` review: in a hex short at the month's end, an earlier moment the purse could not
+    /// cover leaves every known shortfall unanswered, as it does in a hex that is not. Sharer 7's
+    /// $200 pays 5's cast ($200, `data/CRPA`) before the market (`rules/sequenceofevents`), then
+    /// cannot pay 6's $100 sword, and 8 has nothing for its upkeep. The cast stays paid, but 5's
+    /// overdraft is not called covered.
+    #[test]
+    fn a_hex_short_at_the_months_end_after_an_uncovered_market_leaves_the_cast_unanswered() {
+        let orders = "unit 5\nCAST Create_Amulet_Of_Protection\nunit 6\nBUY 1 swords\n";
+        let hex_region = selling_swords(vec![
+            with_skill(with_silver(unit("5"), 0), "CRPA", 1),
+            with_silver(unit("6"), 0),
+            sharing(with_silver(unit("7"), 200)),
+            starving(with_silver(unit("8"), 0)),
+        ]);
+
+        let purse = purse_of(&hex_region, orders);
+
+        assert_eq!(purse.borrows, vec![200, 0, 0, 0], "the cast stays paid");
+        assert_eq!(purse.lends, vec![0, 0, 200, 0]);
+        assert_eq!(
+            purse.coverage,
+            vec![
+                Some(crate::orders::silver::SharedSilverCoverage::Shortfall),
+                Some(crate::orders::silver::SharedSilverCoverage::Shortfall),
+                None,
+                Some(crate::orders::silver::SharedSilverCoverage::Shortfall),
+            ]
+        );
+    }
+
     #[test]
     fn a_doubted_sharer_makes_the_purse_untrustworthy() {
         let hex_region = region(vec![
