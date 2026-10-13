@@ -6035,27 +6035,63 @@ impl Ledger<'_> {
     /// charges it all the same, and silver that only arrives in a TRANSPORT sub-phase must not
     /// meet it (`ah-rt4p`).
     ///
-    /// Silver also leaves out what a sharer lent the market ([`MarketPurse::lent_by`]): BUY runs
-    /// before TRANSPORT (`rules/sequenceofevents`), so a sharer's `TRANSPORT ... ALL SILV` ships
-    /// only what the hex's purchases left it (`ah-su1x`).
+    /// Silver also leaves out what a sharer lent its faction-mates' orders before TRANSPORT
+    /// ([`Ledger::lent_before_transport`]), so a sharer's `TRANSPORT ... ALL SILV` ships only what
+    /// the hex's purchases and studies left it (`ah-su1x`).
     fn transport_holding(&self, hex: &Hex<'_>, unit_id: &str, tag: &str) -> i64 {
-        let (refused, lent_to_market) = if tag.eq_ignore_ascii_case(SILVER) {
+        let (refused, lent) = if tag.eq_ignore_ascii_case(SILVER) {
             (
                 refused_study(self, hex, unit_id),
-                hex.units
-                    .iter()
-                    .position(|ordered| ordered.unit.unit_id == unit_id)
-                    .map_or(0, |index| self.market_purse.lent_by(index)),
+                self.lent_before_transport(hex, unit_id),
             )
         } else {
             (0, 0)
         };
-        self.state.balance_at(StatePhase::Transport, unit_id, tag) + refused - lent_to_market
+        self.state.balance_at(StatePhase::Transport, unit_id, tag) + refused - lent
             + self
                 .unconsumed_production
                 .get(&(unit_id.to_string(), tag.to_ascii_uppercase()))
                 .copied()
                 .unwrap_or_default()
+    }
+
+    /// What the sharer `unit_id` lent its faction-mates' orders before TRANSPORT: every overdraft
+    /// standing in the hex as TRANSPORT opens, laid on the lenders in drain order by
+    /// [`SharerStock::drained`], as `Unit::ConsumeShared` drained them. `rules/share` (New Age:
+    /// Trident) lends silver "for buying or studying", and `rules/sequenceofevents` runs CAST, the
+    /// market and STUDY before TRANSPORT.
+    ///
+    /// The ledger charges a borrower the whole of what it spends and leaves its lenders' rows
+    /// alone, so this silver is still in the lender's balance though the purse took it: a
+    /// `TRANSPORT ... ALL SILV` sized on that balance would ship it again, and the purse would then
+    /// have nothing to cover the borrower with at the month's end (`ah-su1x`). A cut-down `BUY`'s
+    /// [`Ledger::overcharged`] part is handed back first, since the market never took it.
+    ///
+    /// `0` for a non-sharer, a unit the hex does not list, and a pool [`SharerStock::at`] cannot
+    /// read - an uncertain sharer or an untrusted pool, where no figure stands behind a loan.
+    fn lent_before_transport(&self, hex: &Hex<'_>, unit_id: &str) -> i64 {
+        let Some(index) = hex
+            .units
+            .iter()
+            .position(|ordered| ordered.unit.unit_id == unit_id)
+        else {
+            return 0;
+        };
+        let Some(mut stock) = SharerStock::at(self, hex, StatePhase::Transport, SILVER) else {
+            return 0;
+        };
+        if !stock.lends(index) {
+            return 0;
+        }
+        for (party, ordered) in stock.parties.iter_mut().zip(&hex.units) {
+            party.position = party.position.saturating_add(
+                self.overcharged
+                    .get(&ordered.unit.unit_id)
+                    .copied()
+                    .unwrap_or_default(),
+            );
+        }
+        stock.drained().0.get(index).copied().unwrap_or(0)
     }
 
     /// The item pictures maintenance reads, including the report-wide shipment phase that the
@@ -14210,20 +14246,6 @@ impl MarketPurse {
     /// not cut on account of it.
     fn borrowed_by(&self, index: usize) -> i64 {
         (-self.stock().position(index)).max(0)
-    }
-
-    /// What the sharer at `index` paid for the hex's other units' `BUY` lines, read off
-    /// [`MarketPurse::stock`] in drain order as `Unit::ConsumeShared` drained it. The ledger
-    /// charges a borrower the whole purchase and leaves its lenders' rows alone, so this silver is
-    /// still in the lender's ledger balance though the market took it: a later spend sized on that
-    /// balance - a `TRANSPORT ... ALL SILV`, which `rules/sequenceofevents` runs after the market -
-    /// takes it off (`ah-su1x`). `0` for a non-sharer, and where the purse is not trusted, since
-    /// the market then capped nothing on it either.
-    fn lent_by(&self, index: usize) -> i64 {
-        if !self.trusted || !self.sharer.get(index).copied().unwrap_or(false) {
-            return 0;
-        }
-        self.stock().drained().0.get(index).copied().unwrap_or(0)
     }
 
     /// What the market must take off the unit at `index`'s own market-open balance **in addition
@@ -52263,41 +52285,44 @@ BUILD
         );
     }
 
-    /// `rules/sequenceofevents` (New Age: Trident) runs TAX under "Tax orders" and BUY under
-    /// "Market orders", both before TRANSPORT, which follows the month-long orders. So a `SHARE`
-    /// taxer that also ships `ALL SILV` to a quartermaster still holds this month's tax when a
-    /// hex-mate with no silver of its own buys: the purse pays the BUY, and the shipment carries
-    /// only what is left (`ah-su1x`).
-    #[test]
-    fn a_sharing_taxers_transport_all_silver_ships_only_what_the_buy_left() {
-        let hex = || {
-            let mut region = caravanserai_owner("900", 1, 0, 0);
-            region.tax_base = Some(10_000);
-            region.for_sale = vec![MarketItem {
-                amount: 100,
-                name: "grain".to_string(),
-                tag: "GRAI".to_string(),
-                price: 20,
-            }];
-            // Fed from its own grain (`with_men_grain`), so maintenance leaves its silver alone and
-            // what TRANSPORT ships is the whole of what the month left it.
-            region.units.push(sharing(with_skill(
-                with_men_grain(with_men(unit("901"), 30), 30),
-                "COMB",
-                1,
-            )));
-            region.units.push(unit("902"));
-            vec![region]
-        };
-        let rules = trident_rules();
-        let orders = "unit 901\nTAX\nTRANSPORT 900 ALL SILV\nunit 902\nBUY 10 grain\n";
-        let review = review_turn(&report(hex()), orders, Some(&rules), with_map());
+    /// A Trident hex for `ah-su1x`: quartermaster 900 owning its Caravanserai, a 30-man `SHARE`
+    /// taxer 901 fed from its own grain (`with_men_grain`), so maintenance leaves its silver alone
+    /// and what TRANSPORT ships is the whole of what the month left it, then `others` in the order
+    /// given, then 902 with no silver of its own. Grain sells at $20.
+    fn sharing_taxer_hex(others: Vec<ReportUnit>) -> Vec<ReportRegion> {
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.tax_base = Some(10_000);
+        region.for_sale = vec![MarketItem {
+            amount: 100,
+            name: "grain".to_string(),
+            tag: "GRAI".to_string(),
+            price: 20,
+        }];
+        region.units.extend(others);
+        region.units.push(sharing(with_skill(
+            with_men_grain(with_men(unit("901"), 30), 30),
+            "COMB",
+            1,
+        )));
+        region.units.push(unit("902"));
+        vec![region]
+    }
 
+    /// What `orders` leave quartermaster 900 with beyond what a month of 901's tax alone leaves
+    /// it, after asserting that nobody in [`sharing_taxer_hex`] is short of silver.
+    fn shipped_beyond_baseline(others: Vec<ReportUnit>, orders: &str) -> (TurnReview, i64) {
+        let rules = trident_rules();
+        let review = review_turn(
+            &report(sharing_taxer_hex(others.clone())),
+            orders,
+            Some(&rules),
+            with_map(),
+        );
         let buyer = shipment_silver(&review, "902");
         assert_eq!(
             buyer.short_for_orders,
             Some(0),
-            "the sharer's tax pays the BUY: {buyer:?}"
+            "the sharers pay 902's order: {buyer:?}"
         );
         assert!(
             review
@@ -52307,23 +52332,81 @@ BUILD
             "{:?}",
             review.findings
         );
-
-        let taxer = shipment_silver(&review, "901");
-        let tax = taxer.income.expect("the taxer's tax is priced");
         let baseline = review_turn(
-            &report(hex()),
-            "unit 901\nTAX\nunit 902\n",
+            &report(sharing_taxer_hex(others)),
+            "unit 901\nTAX\n",
             Some(&rules),
             with_map(),
         );
+        let received = shipment_silver(&review, "900")
+            .at_month_end
+            .zip(shipment_silver(&baseline, "900").at_month_end)
+            .map(|(now, before)| now - before)
+            .expect("the quartermaster's month is a number");
+        (review, received)
+    }
+
+    /// `rules/sequenceofevents` (New Age: Trident) runs TAX under "Tax orders" and BUY under
+    /// "Market orders", both before TRANSPORT, which follows the month-long orders. So a `SHARE`
+    /// taxer that also ships `ALL SILV` to a quartermaster still holds this month's tax when a
+    /// hex-mate with no silver of its own buys: the purse pays the BUY, and the shipment carries
+    /// only what is left (`ah-su1x`).
+    #[test]
+    fn a_sharing_taxers_transport_all_silver_ships_only_what_the_buy_left() {
+        let (review, received) = shipped_beyond_baseline(
+            vec![],
+            "unit 901\nTAX\nTRANSPORT 900 ALL SILV\nunit 902\nBUY 10 grain\n",
+        );
+        let taxer = shipment_silver(&review, "901");
+        let tax = taxer.income.expect("the taxer's tax is priced");
         assert_eq!(
-            shipment_silver(&review, "900").at_month_end,
-            shipment_silver(&baseline, "900")
-                .at_month_end
-                .map(|silver| silver + tax - 200),
+            received,
+            tax - 200,
             "the quartermaster receives the tax less the $200 the BUY took"
         );
         assert_eq!(taxer.at_month_end, Some(0), "{taxer:?}");
+    }
+
+    /// `rules/share` (Trident): a sharing unit "will provide silver for buying or studying", and
+    /// STUDY is a month-long order, so it too runs before TRANSPORT (`rules/sequenceofevents`). A
+    /// hex-mate's study is paid from the taxer's tax, and `ALL SILV` ships what it left: combat
+    /// costs 10 a month (`data/COMB`) (`ah-su1x` review, finding 1).
+    #[test]
+    fn a_sharing_taxers_transport_all_silver_ships_only_what_the_study_left() {
+        let (review, received) = shipped_beyond_baseline(
+            vec![],
+            "unit 901\nTAX\nTRANSPORT 900 ALL SILV\nunit 902\nSTUDY COMB\n",
+        );
+        let taxer = shipment_silver(&review, "901");
+        let tax = taxer.income.expect("the taxer's tax is priced");
+        assert_eq!(received, tax - 10);
+        assert_eq!(taxer.at_month_end, Some(0), "{taxer:?}");
+    }
+
+    /// Two sharers both ship `ALL SILV`, and the BUY drains them in report order, as
+    /// `Unit::ConsumeShared` does: 903, listed first, lends all its $150 and ships nothing, and
+    /// the taxer lends the other $50 and ships the rest (`ah-su1x` review, finding 3).
+    #[test]
+    fn the_sharer_the_buy_drained_first_is_the_one_whose_shipment_shrinks() {
+        let (review, received) = shipped_beyond_baseline(
+            vec![sharing(with_silver(unit("903"), 150))],
+            "unit 903\nTRANSPORT 900 ALL SILV\n\
+             unit 901\nTAX\nTRANSPORT 900 ALL SILV\nunit 902\nBUY 10 grain\n",
+        );
+        let shipped = |id: &str| -> i64 {
+            shipment_silver(&review, id)
+                .changes
+                .iter()
+                .filter(|moved| moved.cause == SilverChangeCause::GaveAway)
+                .map(|moved| -moved.amount)
+                .sum()
+        };
+        let tax = shipment_silver(&review, "901")
+            .income
+            .expect("the taxer's tax is priced");
+        assert_eq!(shipped("903"), 0, "{:?}", shipment_silver(&review, "903"));
+        assert_eq!(shipped("901"), tax - 50);
+        assert_eq!(received, 150 + tax - 200);
     }
 
     /// What a quartermaster ships to another quartermaster in TRANSPORT's second sub-phase is gone
