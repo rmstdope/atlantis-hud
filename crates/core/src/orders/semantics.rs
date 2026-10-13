@@ -13354,17 +13354,59 @@ impl SharerStock {
     /// `None` where it cannot be read: a sharer's balance a `GIVE` left uncertain, or a pool whose
     /// sum is not to be trusted. A non-sharer whose balance is uncertain is read as having drawn
     /// nothing; [`SharerStock::for_spender`] refuses a spender whose own balance is not known.
+    ///
+    /// Silver read after a moment the purse lends at ([`PURSE_MOMENTS`]) carries what it lent
+    /// there ([`Lending::before`]): a lender's position is less what it lent and a borrower's is
+    /// plus what it was lent, so a drain at `phase` lays only what is new and nothing is lent
+    /// twice (`ah-su1x`, `ah-pf7t`). From STUDY on only the sharers that stay lend
+    /// ([`Sharing::for_silver`]), and a STUDY the pool did not cover was refused and hands its
+    /// overdraft back ([`refused_study`]). Before the market - every GIVE, TAKE and CAST - there
+    /// is nothing to carry.
     fn at(ledger: &Ledger<'_>, hex: &Hex<'_>, phase: StatePhase, tag: &str) -> Option<Self> {
-        let sharing = Sharing::read(hex);
+        let silver = tag.eq_ignore_ascii_case(SILVER);
+        let staying = silver && phase > StatePhase::Movement;
+        let sharing = if staying {
+            Sharing::for_silver(hex, ledger)
+        } else {
+            Sharing::read(hex)
+        };
         let pooled = sharing.reading(tag, ledger.ruleset) == Reading::Pooled;
         if pooled && !sharing.pool_trusted(ledger) {
             return None;
         }
+        let lending = if silver && pooled {
+            Lending::before(hex, ledger, phase)
+        } else {
+            Lending::nothing(hex, ledger)
+        };
         let mut parties = Vec::with_capacity(hex.units.len());
-        for ordered in &hex.units {
-            let lends = pooled && ordered.shares();
+        for (index, ordered) in hex.units.iter().enumerate() {
+            let lends = pooled
+                && if staying {
+                    sharing.pools_silver(ordered)
+                } else {
+                    ordered.shares()
+                };
             let position = match Self::held_at(ledger, phase, &ordered.unit.unit_id, tag) {
-                Some(held) => held,
+                Some(held) => {
+                    let carried = lending.borrows[index] - lending.lends[index];
+                    let refused = if silver && phase > StatePhase::Study {
+                        let refused = refused_study(ledger, hex, &ordered.unit.unit_id);
+                        if !pooled {
+                            refused
+                        } else if lending.covered() {
+                            // The purse paid the study, and `borrows` already says so.
+                            0
+                        } else {
+                            // What the purse lent before it stopped already covers part of the
+                            // overdraft `refused_study` reads off the unit's own row.
+                            (refused - lending.borrows[index]).max(0)
+                        }
+                    } else {
+                        0
+                    };
+                    held.saturating_add(carried).saturating_add(refused)
+                }
                 None if lends => return None,
                 None => 0,
             };
@@ -13376,8 +13418,11 @@ impl SharerStock {
         })
     }
 
-    /// One unit's balance as [`SharerStock::at`] reads it, or `None` where a `GIVE` left it
-    /// uncertain.
+    /// One unit's balance as [`SharerStock::at`] reads it, before any lending is carried, or
+    /// `None` where a `GIVE` left it uncertain: the ledger's balance with what it charged but
+    /// never took added back - [`Ledger::unfunded`], and for silver after the market
+    /// [`Ledger::overcharged`], the part of a cut `BUY`'s ask the market left in the unit's hands
+    /// (`rules/buy`: "it will attempt to buy as many as it can").
     fn held_at(ledger: &Ledger<'_>, phase: StatePhase, unit_id: &str, tag: &str) -> Option<i64> {
         let known = ledger.state.known_balance_at(phase, unit_id, tag).ok()?;
         let unfunded = ledger
@@ -13385,7 +13430,12 @@ impl SharerStock {
             .get(&(unit_id.to_string(), tag.to_ascii_uppercase()))
             .copied()
             .unwrap_or(0);
-        Some(known.saturating_add(unfunded))
+        let overcharged = if tag.eq_ignore_ascii_case(SILVER) && phase > StatePhase::Market {
+            ledger.overcharged.get(unit_id).copied().unwrap_or(0)
+        } else {
+            0
+        };
+        Some(known.saturating_add(unfunded).saturating_add(overcharged))
     }
 
     /// [`SharerStock::at`] for one spender, with where it sits among the parties. `None` where the
@@ -13418,6 +13468,13 @@ impl SharerStock {
 
     fn position(&self, x: usize) -> i64 {
         self.parties.get(x).map_or(0, |party| party.position)
+    }
+
+    /// What `x` holds once what the purse lent at its moments is carried, before anything more is
+    /// drained: what a `TRANSPORT ... ALL SILV` can ship, since `rules/share` lends silver only
+    /// "for buying or studying". Negative where its own orders overdrew it beyond what it was lent.
+    fn held(&self, x: usize) -> i64 {
+        self.position(x)
     }
 
     fn lends(&self, x: usize) -> bool {
@@ -52818,6 +52875,116 @@ BUILD
             through_study.lends, lending.lends,
             "STUDY is the last moment before TRANSPORT"
         );
+    }
+
+    /// The silver stock at TRANSPORT, read off ledger and hex: what each unit holds once the
+    /// purse's lending is carried, what a further drain would lay on each, and a lookup by id.
+    fn silver_stock_at_transport(
+        hex: &Hex<'_>,
+        ledger: &Ledger<'_>,
+    ) -> (BTreeMap<String, i64>, Vec<i64>) {
+        let stock = SharerStock::at(ledger, hex, StatePhase::Transport, SILVER)
+            .expect("the pool is readable");
+        let held = hex
+            .units
+            .iter()
+            .enumerate()
+            .map(|(x, o)| (o.unit.unit_id.clone(), stock.held(x)))
+            .collect();
+        (held, stock.drained().0)
+    }
+
+    /// `units` in report order, then reversed: every two-spender case in both orders (`ah-lnz4`).
+    fn both_orders<'a>(units: Vec<ReportUnit>) -> [(&'a str, Vec<ReportUnit>); 2] {
+        let mut reversed = units.clone();
+        reversed.reverse();
+        [("as listed", units), ("reversed", reversed)]
+    }
+
+    /// A reading of a sharer's silver after STUDY carries what the purse lent through CAST, the
+    /// market and STUDY ([`Lending`]), so nothing is laid on the lenders a second time - the
+    /// mistake a flat drain at TRANSPORT made (`ah-su1x`, second fix; `ah-pf7t`). 902's $15 BUY
+    /// and 903's $10 study (`data/COMB` in Trident) are paid out of the sharers' $120.
+    #[test]
+    fn a_silver_stock_read_after_study_carries_what_the_purse_lent() {
+        for (order, units) in both_orders(vec![
+            sharing(with_silver(unit("903"), 20)),
+            unit("902"),
+            sharing(with_silver(unit("901"), 100)),
+        ]) {
+            let hex_region = ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 100,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 15,
+                }],
+                ..region(units)
+            };
+            let ordered = OrderedUnits::read("unit 903\nSTUDY COMB\nunit 902\nBUY 1 grain\n");
+            let hex = Hex::read(&hex_region, &ordered, &[]);
+            let rules = trident_rules();
+            let ledger = ledger_for(&hex, Some(&rules));
+            let (held, drained) = silver_stock_at_transport(&hex, &ledger);
+            assert_eq!(
+                drained,
+                vec![0, 0, 0],
+                "{order}: nothing new to lend at TRANSPORT"
+            );
+            assert_eq!(held["902"], 0, "{order}: the borrower's BUY was paid for");
+            assert_eq!(
+                held["903"] + held["901"],
+                120 - 15 - 10,
+                "{order}: {held:?}"
+            );
+            let lending = Lending::before(&hex, &ledger, StatePhase::Transport).netted();
+            let at = |id: &str| hex.units.iter().position(|o| o.unit.unit_id == id).unwrap();
+            assert_eq!(held["901"], 100 - lending.lends[at("901")], "{order}");
+        }
+    }
+
+    /// A STUDY the pool cannot cover is refused and takes nothing (`refused_study`): a reading
+    /// after STUDY leaves the sharer's $5 its own, where a flat drain laid the student's $10
+    /// overdraft on it (`ah-su1x` follow-up review, finding 1; `data/COMB` costs 10 in Trident).
+    #[test]
+    fn a_silver_stock_read_after_a_refused_study_lends_it_nothing() {
+        for (order, units) in both_orders(vec![sharing(with_silver(unit("903"), 5)), unit("902")]) {
+            let hex_region = region(units);
+            let ordered = OrderedUnits::read("unit 902\nSTUDY COMB\n");
+            let hex = Hex::read(&hex_region, &ordered, &[]);
+            let rules = trident_rules();
+            let ledger = ledger_for(&hex, Some(&rules));
+            let (held, drained) = silver_stock_at_transport(&hex, &ledger);
+            assert_eq!(drained, vec![0, 0], "{order}");
+            assert_eq!(held["903"], 5, "{order}");
+            assert_eq!(held["902"], 0, "{order}: the fee was handed back");
+        }
+    }
+
+    /// From STUDY on only the sharers that stay lend (`ah-wyj8`): a sharer that walked away is
+    /// never drained for a study after it left, in either report order.
+    #[test]
+    fn a_silver_stock_read_after_movement_does_not_drain_a_walker() {
+        for (order, units) in both_orders(vec![
+            sharing(with_silver(unit("903"), 150)),
+            unit("902"),
+            sharing(with_silver(unit("901"), 100)),
+        ]) {
+            let hex_region = region(units);
+            let ordered = OrderedUnits::read("unit 903\nMOVE S\nunit 902\nSTUDY COMB\n");
+            let hex = Hex::read(&hex_region, &ordered, &[]);
+            let rules = trident_rules();
+            let mut ledger = ledger_for(&hex, Some(&rules));
+            ledger.walking_silver.departing.insert("903".to_string(), 0);
+            let (held, drained) = silver_stock_at_transport(&hex, &ledger);
+            assert_eq!(drained, vec![0, 0, 0], "{order}");
+            assert_eq!(held["903"], 150, "{order}: the walker lent nothing");
+            assert_eq!(
+                held["901"], 90,
+                "{order}: the sharer that stayed paid the study"
+            );
+            assert_eq!(held["902"], 0, "{order}");
+        }
     }
 
     /// What a quartermaster ships to another quartermaster in TRANSPORT's second sub-phase is gone
