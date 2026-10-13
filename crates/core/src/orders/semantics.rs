@@ -11377,24 +11377,68 @@ fn cast(
     if unfunded_cast > 0 {
         *ledger.unfunded_casts.entry(who.clone()).or_default() += unfunded_cast;
     }
-    move_silver(
-        ledger,
-        StatePhase::Cast,
-        who,
-        priced.earns,
-        SilverChangeCause::CastEarned,
-        Some(placed),
-        None,
-    );
-    move_silver(
-        ledger,
-        StatePhase::Cast,
-        who,
-        -priced.spends,
-        SilverChangeCause::CastSpent,
-        Some(placed),
-        None,
-    );
+    // Where each material would come from, read before anything is charged: the caster's own
+    // stock first, then the other sharers' (`Unit::ConsumeShared`, `ah-0mch`), off the one reading
+    // ([`SharerStock`]), so stock an earlier borrower drew on is not spent again.
+    let sources: Vec<(i64, Vec<(usize, i64)>)> = plan
+        .iter()
+        .flat_map(|plan| &plan.materials)
+        .map(|material| {
+            let cast_balance = |lender: &Ordered<'_>| {
+                ledger
+                    .state
+                    .balance_at(StatePhase::Cast, &lender.unit.unit_id, &material.tag)
+            };
+            match SharerStock::for_spender(ledger, hex, StatePhase::Cast, who, &material.tag) {
+                Some((stock, x)) => (stock.own_for(x), stock.lenders_within(x, hex, cast_balance)),
+                None => (
+                    ledger
+                        .state
+                        .balance_at(StatePhase::Cast, who, &material.tag)
+                        .max(0),
+                    lenders_on_doubt(ledger, hex, who, &material.tag, cast_balance),
+                ),
+            }
+        })
+        .collect();
+    // `RunCreateArtifact` (`spells.cpp`) checks `GetSharedNum` against every input before it
+    // calls `ConsumeShared` for any, so a spell short of one input is refused and takes none of
+    // them (`ah-h7xy`).
+    let short_of_goods = plan
+        .iter()
+        .flat_map(|plan| &plan.materials)
+        .zip(&sources)
+        .any(|(material, (own, lenders))| {
+            (*own)
+                .max(0)
+                .saturating_add(lenders.iter().map(|(_, lends)| lends).sum::<i64>())
+                < material.amount
+        });
+    let refused = unfunded_cast > 0 || short_of_goods;
+    // A cast refused for its silver keeps its silver charged, and its warning, and every later
+    // reading hands it back ([`Ledger::unfunded_casts`], `ah-szu0`). One refused for its goods
+    // alone had the silver and never spent it, so nothing is charged and there is nothing to hand
+    // back (`ah-h7xy`).
+    if unfunded_cast > 0 || !short_of_goods {
+        move_silver(
+            ledger,
+            StatePhase::Cast,
+            who,
+            priced.earns,
+            SilverChangeCause::CastEarned,
+            Some(placed),
+            None,
+        );
+        move_silver(
+            ledger,
+            StatePhase::Cast,
+            who,
+            -priced.spends,
+            SilverChangeCause::CastSpent,
+            Some(placed),
+            None,
+        );
+    }
 
     let Some(plan) = plan else {
         // A spell the ruleset has no entry for could be a typo or a spell the scraper missed;
@@ -11416,40 +11460,29 @@ fn cast(
     // `ItemMovement`s so the ITEMS column can show them exactly as `produce()`'s do. Nothing is
     // credited - `cast()` has never called `credit` for an item and must not start (round 2, Q5,
     // answer C).
-    for material in &plan.materials {
-        // The caster's own stock first, then the other sharers' (`Unit::ConsumeShared`,
-        // `ah-0mch`), each charged where the goods were - read off the one reading
-        // ([`SharerStock`]), so stock an earlier borrower drew on is not spent again. Whatever none
-        // of them covers stays on the caster, so a cast the pool cannot fund still overdraws it.
-        let cast_balance = |lender: &Ordered<'_>| {
-            ledger
-                .state
-                .balance_at(StatePhase::Cast, &lender.unit.unit_id, &material.tag)
-        };
-        let (own, lenders) =
-            match SharerStock::for_spender(ledger, hex, StatePhase::Cast, who, &material.tag) {
-                Some((stock, x)) => (stock.own_for(x), stock.lenders_within(x, hex, cast_balance)),
-                None => (
-                    ledger
-                        .state
-                        .balance_at(StatePhase::Cast, who, &material.tag)
-                        .max(0),
-                    lenders_on_doubt(ledger, hex, who, &material.tag, cast_balance),
-                ),
-            };
+    for (material, (own, lenders)) in plan.materials.iter().zip(sources) {
+        // Each charged where the goods were: the caster's own, then the sharers' read above.
+        // Whatever none of them covers stays on the caster, so a cast the pool cannot fund still
+        // overdraws it. A refused cast draws on no sharer, since it takes nothing (`ah-h7xy`); what
+        // the sharers could have lent it is still not the caster's shortfall.
         let own = material.amount.min(own);
-        let uncovered = draw_on_lenders(
-            ledger,
-            hex,
-            StatePhase::Cast,
-            actor,
-            &material.tag,
-            &lenders,
-            material.amount - own,
-            placed,
-            ItemChangeCause::CastSpent,
-            None,
-        );
+        let uncovered = if refused {
+            let lent: i64 = lenders.iter().map(|(_, lends)| lends).sum();
+            (material.amount - own - lent).max(0)
+        } else {
+            draw_on_lenders(
+                ledger,
+                hex,
+                StatePhase::Cast,
+                actor,
+                &material.tag,
+                &lenders,
+                material.amount - own,
+                placed,
+                ItemChangeCause::CastSpent,
+                None,
+            )
+        };
         let from_caster = own + uncovered;
         record_unfunded(ledger, who, &material.tag, uncovered);
         charge(
@@ -54638,6 +54671,154 @@ BUILD
                 "{order}: the sharer that stayed paid the study"
             );
             assert_eq!(held["902"], 0, "{order}");
+        }
+    }
+
+    // --- a refused CAST takes none of its inputs (`ah-h7xy`) ---------------------------------
+    //
+    // `RunCreateArtifact` (`spells.cpp`) reads `GetSharedNum` for every input before it calls
+    // `ConsumeShared` for any, so a spell short of one input is refused and takes nothing - its
+    // silver and the goods a sharer would have lent included. `data/SWIN` level 3 costs 75 floater
+    // hides [FLOA] and 75 ironwood [IRWD]; no committed world prices a spell in silver and goods
+    // both, so the cases that need both add 200 silver to that one spell.
+    mod a_refused_cast_takes_none_of_its_inputs {
+        use super::*;
+
+        /// Trident, with Summon Wind costing 200 silver beside its floater hides and ironwood.
+        fn wind_for_silver_and_goods() -> Ruleset {
+            let mut json: serde_json::Value =
+                serde_json::from_str(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+                    .expect("the Trident ruleset is JSON");
+            json["skills"]["SWIN"]["cast"]["costs"]
+                .as_array_mut()
+                .expect("Summon Wind has cast costs")
+                .push(serde_json::json!({ "tag": "SILV", "amount": 200 }));
+            Ruleset::from_json(&json.to_string()).expect("the amended ruleset loads")
+        }
+
+        /// What the ITEMS column moves on `id` for `tag`.
+        fn moved(effects: &BTreeMap<UnitKey, UnitItemEffects>, id: &str, tag: &str) -> i64 {
+            effects_for(effects, id)
+                .map(|unit| {
+                    unit.moved
+                        .iter()
+                        .filter(|movement| movement.tag == tag)
+                        .map(|movement| movement.delta)
+                        .sum()
+                })
+                .unwrap_or(0)
+        }
+
+        /// Mage 901 holds no ironwood and sharer 902 holds the 75 floater hides: the cast is
+        /// refused for its ironwood, so 902's hides stay where they are.
+        #[test]
+        fn a_cast_short_of_one_good_leaves_a_sharers_other_good() {
+            let rules = trident_rules();
+            let report = report(vec![region(vec![
+                with_skill(unit("901"), "SWIN", 3),
+                sharing(with_item(unit("902"), 75, "floater hides", "FLOA")),
+            ])]);
+            let effects = item_effects(
+                &report,
+                "unit 901\nCAST Summon_Wind\nunit 902\n",
+                Some(&rules),
+                &CheckOptions::default(),
+            );
+            assert_eq!(
+                moved(&effects, "902", "FLOA"),
+                0,
+                "{:?}",
+                effects_for(&effects, "902")
+            );
+        }
+
+        /// Mage 901 has no silver and nobody lends it any, so the cast is refused for its silver,
+        /// and sharer 902's hides and ironwood stay where they are.
+        #[test]
+        fn a_cast_short_of_silver_leaves_a_sharers_goods() {
+            let rules = wind_for_silver_and_goods();
+            let report = report(vec![region(vec![
+                with_skill(unit("901"), "SWIN", 3),
+                sharing(with_item(
+                    with_item(unit("902"), 75, "floater hides", "FLOA"),
+                    75,
+                    "ironwood",
+                    "IRWD",
+                )),
+            ])]);
+            let effects = item_effects(
+                &report,
+                "unit 901\nCAST Summon_Wind\nunit 902\n",
+                Some(&rules),
+                &CheckOptions::default(),
+            );
+            let sharer = effects_for(&effects, "902");
+            assert_eq!(moved(&effects, "902", "FLOA"), 0, "{sharer:?}");
+            assert_eq!(moved(&effects, "902", "IRWD"), 0, "{sharer:?}");
+        }
+
+        /// Mage 901 holds the $200 the spell costs, and sharer 902 the hides, but nobody holds
+        /// ironwood: the cast is refused for its goods and takes none of 901's silver, so its
+        /// `ALL SILV` ships all $200 and no hide leaves 902.
+        #[test]
+        fn a_cast_short_of_goods_hands_its_silver_back() {
+            let rules = wind_for_silver_and_goods();
+            let mut region = caravanserai_owner("900", 1, 0, 0);
+            region.units.extend([
+                with_silver(with_skill(unit("901"), "SWIN", 3), 200),
+                sharing(with_item(unit("902"), 75, "floater hides", "FLOA")),
+            ]);
+            let report = report(vec![region]);
+            let orders = "unit 901\nCAST Summon_Wind\nTRANSPORT 900 ALL SILV\nunit 902\n";
+            let review = review_turn(&report, orders, Some(&rules), with_map());
+            assert_eq!(
+                silver_shipped(&review, "901"),
+                200,
+                "{:?}",
+                shipment_silver(&review, "901")
+            );
+            // The SILVER row reads the same: a refused cast spent nothing.
+            let mage = shipment_silver(&review, "901");
+            assert!(
+                mage.changes
+                    .iter()
+                    .all(|change| change.cause != SilverChangeCause::CastSpent),
+                "{mage:?}"
+            );
+            let effects = item_effects(&report, orders, Some(&rules), &CheckOptions::default());
+            assert_eq!(
+                moved(&effects, "902", "FLOA"),
+                0,
+                "{:?}",
+                effects_for(&effects, "902")
+            );
+        }
+
+        /// A cast refused for its goods spends no silver, so it is not what leaves the mage short:
+        /// 901's $200 cannot pay for 20 grain at $20 (`rules/buy`), and the SILVER column names
+        /// the BUY rather than the refused cast (`ah-h7xy` review, finding 1).
+        #[test]
+        fn a_cast_refused_for_its_goods_is_not_what_leaves_the_mage_short() {
+            let rules = wind_for_silver_and_goods();
+            let mut region = region(vec![with_silver(with_skill(unit("901"), "SWIN", 3), 200)]);
+            region.for_sale = vec![MarketItem {
+                amount: 100,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 20,
+            }];
+            let review = review_turn(
+                &report(vec![region]),
+                "unit 901\nCAST Summon_Wind\nBUY 20 grain\n",
+                Some(&rules),
+                CheckOptions::default(),
+            );
+            let mage = shipment_silver(&review, "901");
+            assert_eq!(
+                mage.short_on,
+                Some(crate::orders::silver::SilverSpender::Buy),
+                "{mage:?}"
+            );
         }
     }
 
