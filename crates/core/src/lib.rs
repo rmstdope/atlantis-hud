@@ -629,7 +629,7 @@ pub fn plan_merge(
             .map_or(viewer_turn_number, |header| header.turn_number);
         return MergePlan::MapExport {
             file_turn,
-            ages: report::export::map_export_ages(raw_report),
+            ages: report::export::map_export_ages(raw_report, file_turn),
         };
     }
 
