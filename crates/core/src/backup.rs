@@ -758,9 +758,9 @@ pub fn encode_game_backup_json(
 ///
 /// AtlaClient stamps a hex with the engine's turn while version 1 numbered HUD's own turns one
 /// lower, so a hex merged from AtlaClient on the newest turn was stored one turn too new, and
-/// [`crate::stored_turns::move_collections_to_engine_turns`] keeps that difference. Nothing records which sighting came from
-/// AtlaClient, so the repair is the bound that always holds: no sighting is newer than the newest
-/// report of the faction it is filed under. Migration 16 makes the same repair to a stored desktop
+/// [`crate::stored_turns::move_collections_to_engine_turns`] keeps that difference. Nothing
+/// records which sighting came from AtlaClient, so the repair is the bound that always holds: no
+/// sighting is newer than the newest report of the faction it is filed under. Migration 16 makes the same repair to a stored desktop
 /// game, and `engineTurns.ts` to a browser one.
 fn cap_atlaclient_sightings(collections: &mut EncodedGameBackupCollections) {
     let merged_from_atlaclient: std::collections::BTreeSet<&str> = collections

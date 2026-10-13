@@ -89,6 +89,7 @@ describe("moving a stored row to the engine's turn numbers, through the core", (
       rowOnEngineTurns(core, "armies", { id: "a1", members: [{ unitId: "1", seenTurn: 66 }] }).members
     ).toEqual([{ unitId: "1", seenTurn: 67 }]);
   });
+
   it("caps an AtlaClient sighting before the move, so a version-6 row lands on the newest turn", async () => {
     const core = await realCore();
     // Stored on version 6's count: newest report 71, the AtlaClient hex one above it at 72 (ah-vtgk).
