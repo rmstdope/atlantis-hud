@@ -264,6 +264,16 @@ describe("plannerGroups", () => {
     expect(own?.mages.map((mage) => mage.unitId)).toEqual(["882"]);
   });
 
+  // ah-xy2g (gh-1554): manipulation is an ordinary skill, not one the magic study planner plans.
+  it("neither lists manipulation as known nor offers it to study", () => {
+    const one = groupsOf({ ownMages: [ONE] }).at(0)?.mages[0];
+    expect(one?.knows.map((skill) => skill.tag)).toEqual(["FORC"]);
+    expect(one?.summary.startsWith("force 1 · ")).toBe(true);
+
+    const six = groupsOf({ ownMages: [SIX] }).at(0)?.mages[0];
+    expect(six?.canStudy.map((node) => node.tag)).not.toContain("MANI");
+  });
+
   it("keys a mage by his faction and his unit", () => {
     const mage = groupsOf({}).at(0)?.mages[0];
     expect(mage?.key).toBe(`95/${mage?.unitId}`);

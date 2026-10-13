@@ -3,7 +3,7 @@ import { mageSheetRows } from "./alliedMageChip";
 import { factionLabelOf } from "./factionLabel";
 import type { GameDataIndex } from "./gameData";
 import { isApprentice, openingMage, standingOf, type MageStanding, type SkillStanding } from "./magicStanding";
-import type { MagicSkillNode, MagicTree } from "./magicTree";
+import { studyPlannerTree, type MagicSkillNode, type MagicTree } from "./magicTree";
 import { skillWords } from "./skillReading";
 import { projectedLevel } from "./studyProgress";
 import { compareUnitIds } from "./unitOrder";
@@ -210,6 +210,9 @@ export function plannerGroups(input: {
   viewedTurn: number | null;
 }): PlannerGroup[] {
   const groups: PlannerGroup[] = [];
+  // Standings, and so who is an apprentice, are read against the whole tree; each row is drawn
+  // against the planner's, which leaves manipulation out (`ah-xy2g`).
+  const plannerTree = studyPlannerTree(input.tree);
 
   // Apprentices are not planned here: `rules/magic_apprentices` says manipulation makes an
   // apprentice, who may use a mage's items but casts no spell, and this pane plans spellcasters.
@@ -237,7 +240,7 @@ export function plannerGroups(input: {
             standing,
             factionId: input.report?.header.factionId ?? "",
             factionLabel: label,
-            tree: input.tree,
+            tree: plannerTree,
             skills: null,
             sheetTurn: null,
             monthsUnreported: 0
@@ -270,7 +273,7 @@ export function plannerGroups(input: {
             standing,
             factionId: record.factionId,
             factionLabel: row.factionLabel,
-            tree: input.tree,
+            tree: plannerTree,
             skills: record.unit.skills,
             // The faction's own row, not this record's, for both: the heading says how old the
             // news about this faction is, and a detail sentence that disagreed with the heading

@@ -853,6 +853,19 @@ pub struct SkillEntry {
 }
 
 impl SkillEntry {
+    /// The highest level worth studying to, when the catalogue says study past it gains nothing.
+    ///
+    /// `data/MANI` level 3 reads "Continued study of this skill gives no further advantages.", so
+    /// manipulation answers `Some(2)` in New Origins; the New Age worlds print the same sentence at
+    /// level 5 and answer `Some(4)`. `None` for every skill whose page says no such thing.
+    #[must_use]
+    pub fn useful_up_to(&self) -> Option<u32> {
+        self.levels
+            .iter()
+            .find(|entry| entry.description.contains("gives no further advantages"))
+            .map(|entry| entry.level.saturating_sub(1))
+    }
+
     /// Whether the game permits ordinary `STUDY` of this skill.
     ///
     /// `data/skills` leaves `cost` absent for skills granted by an item (for example Trident's

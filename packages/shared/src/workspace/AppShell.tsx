@@ -278,7 +278,7 @@ import type { Viewport } from "./mapViewport";
 import { parseGameData } from "../gameData";
 import { shelterNames, shelterSeats } from "../studyShelter";
 import { standingAfterOrders } from "../studyStanding";
-import { buildMagicTree } from "../magicTree";
+import { buildMagicTree, studyPlannerTree } from "../magicTree";
 import { isApprentice, magesOf, openingMage } from "../magicStanding";
 import { plannerEmptyCopy, plannerGroups, plannerSummaryLine } from "../studyPlanner";
 import { ShortcutHelp } from "./ShortcutHelp";
@@ -738,6 +738,12 @@ export function AppShell({
   const [gameDataOpen, setGameDataOpen] = useState<{ entryId: string | null } | null>(null);
   // The magic study tree, derived from the same index and gated the same way: no ruleset, no tree.
   const magicTree = useMemo(() => (gameData === null ? null : buildMagicTree(gameData)), [gameData]);
+  // The tree the study planner plans against: manipulation left out, as the ordinary skill the
+  // navigator ruled it (ah-xy2g). The magic tree's own dialog keeps the whole of it.
+  const studyTree = useMemo(
+    () => (magicTree === null ? null : studyPlannerTree(magicTree)),
+    [magicTree]
+  );
   /**
    * The faction's own mages, and where each stands in every magic skill (ah-67h8).
    *
@@ -5529,7 +5535,7 @@ export function AppShell({
           onDismiss={() => setGameDataOpen(null)}
         />
       ) : null}
-      {studyPlannerOpen && magicTree !== null ? (
+      {studyPlannerOpen && studyTree !== null ? (
         <StudyPlannerDialog
           groups={plannerGroupRows}
           seats={shelter}
@@ -5546,7 +5552,7 @@ export function AppShell({
           orders={orders}
           regionBanner={regionBanner}
           onWriteOrdersDocument={writeStudyOrdersDocument}
-          tree={magicTree}
+          tree={studyTree}
           plans={studyPlans}
           viewedTurn={parsed?.header.turnNumber ?? null}
           assumeSheltered={assumeMagesSheltered}

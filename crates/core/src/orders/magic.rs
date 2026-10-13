@@ -22,6 +22,20 @@ use crate::report::model::{ItemAmount, Skill};
 /// the item entry, so the tag is the only signal there is.
 pub(crate) const LEADER_TAG: &str = "LEAD";
 
+/// The skill that makes an apprentice: `rules/magic_apprentices`, "Apprentices may be created by
+/// having a unit study manipulation."
+pub(crate) const APPRENTICE_SKILL: &str = "MANI";
+
+/// Whether studying `tag` is studying magic in the sense of `rules/magic_skills`' halving outside
+/// a building that houses mages.
+///
+/// Every magic skill except manipulation: the navigator ruled it studied as the ordinary skill it
+/// is (`ah-xy2g`, gh-1554). It still makes an apprentice, so [`begins_magic`] and [`is_mage`]
+/// keep answering for it.
+pub(crate) fn studied_as_magic(ruleset: &Ruleset, tag: &str) -> bool {
+    ruleset.is_magic(tag) && !tag.eq_ignore_ascii_case(APPRENTICE_SKILL)
+}
+
 /// Whether studying `skill` is what makes a unit a mage or an apprentice.
 ///
 /// The catalogue's magic skills that require nothing first: `force`, `pattern` and `spirit`
@@ -123,6 +137,15 @@ mod tests {
         assert!(is_mage(&ruleset, &[skill("MANI")]));
         assert!(!is_mage(&ruleset, &[skill("COMB")]));
         assert!(!is_mage(&ruleset, &[]));
+    }
+
+    #[test]
+    fn manipulation_is_not_studied_as_magic() {
+        let ruleset = ruleset();
+        assert!(studied_as_magic(&ruleset, "FORC"));
+        assert!(studied_as_magic(&ruleset, "ESWO"));
+        assert!(!studied_as_magic(&ruleset, "MANI"));
+        assert!(!studied_as_magic(&ruleset, "COMB"));
     }
 
     #[test]

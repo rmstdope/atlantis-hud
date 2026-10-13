@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readRuleset, readTridentRuleset } from "@atlantis/fixtures";
 import { parseGameData, type GameDataIndex } from "./gameData";
-import { buildMagicTree, highestMagicSkill } from "./magicTree";
+import { buildMagicTree, highestMagicSkill, studyPlannerTree } from "./magicTree";
 
 /**
  * A miniature ruleset holding every edge case the grouping has to survive: the four roots, a
@@ -263,5 +263,28 @@ describe("highestMagicSkill", () => {
   it("finds nothing for a unit holding no magic skill", () => {
     expect(of([{ name: "mining", tag: "MINI", level: 4, points: 300 }])).toBeNull();
     expect(of([])).toBeNull();
+  });
+});
+
+// ah-xy2g (gh-1554): the navigator ruled manipulation an ordinary skill, so the study planner is
+// handed a tree without it - while the magic tree's own Apprenticeship card stays as it is.
+describe("studyPlannerTree", () => {
+  it("leaves manipulation and its Apprenticeship branch out", () => {
+    const full = buildMagicTree(index);
+    const planned = studyPlannerTree(full);
+
+    expect(planned.byTag.has("MANI")).toBe(false);
+    expect(planned.branches.map((branch) => branch.key)).not.toContain("MANI");
+    expect(planned.skillCount).toBe(full.skillCount - 1);
+    expect(full.byTag.has("MANI")).toBe(true);
+  });
+
+  it("keeps every other magic skill", () => {
+    const full = buildMagicTree(index);
+    const planned = studyPlannerTree(full);
+
+    expect([...planned.byTag.keys()].sort()).toEqual(
+      [...full.byTag.keys()].filter((tag) => tag !== "MANI").sort()
+    );
   });
 });
