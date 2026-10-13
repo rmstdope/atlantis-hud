@@ -2249,6 +2249,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
                 region_id: None,
                 unit_id: None,
                 formed: None,
+                counted_in: None,
                 severity: atlantis_hud_core::OrderDiagnosticSeverity::Error,
             }])
             .expect("serializes")

@@ -96,6 +96,13 @@ pub struct OrderDiagnostic {
     /// shows - see [`orders::semantics::FormedSubject`].
     #[serde(default)]
     pub formed: Option<orders::semantics::FormedSubject>,
+    /// The hex this is counted for, where that is not `region_id`: a walker's upkeep shortage
+    /// falls due in the hex it ends the month in, while the unit it names stays listed in
+    /// `region_id` (`ah-6cka`). Absent for everything counted where it sits, so the Problems list
+    /// groups by `counted_in` when present and by `region_id` otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub counted_in: Option<String>,
     pub severity: OrderDiagnosticSeverity,
 }
 

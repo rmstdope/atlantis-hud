@@ -468,6 +468,12 @@ pub struct Finding {
     /// Set when `unit_id` names a unit this month's orders create rather than one the report
     /// shows - see [`FormedSubject`].
     pub formed: Option<FormedSubject>,
+    /// The hex the finding is counted for, where that is not `region_id`: a walker's or a sailing
+    /// passenger's upkeep falls due in the hex it ends the month in (`rules/sequenceofevents`:
+    /// movement orders are processed before "Maintenance costs are assessed"), while the unit -
+    /// its row, its orders - stays in the hex it is listed in (`ah-6cka`). `None` for every
+    /// finding counted where it sits.
+    pub counted_in: Option<String>,
 }
 
 /// Where the report shows each unit, by unit number, across every region it covers.
@@ -866,7 +872,7 @@ pub fn review_turn(
     lend_walking_sharers_silver(&mut hexes, &reach, StatePhase::Maintenance);
 
     let mut lent_across: Vec<(UnitKey, i64)> = Vec::new();
-    for priced in &hexes {
+    for (index, priced) in hexes.iter().enumerate() {
         let (hex, ledger) = priced;
         // Per hex, because the pools are: what one region's units ask of its tax base says nothing
         // about the next region's.
@@ -899,7 +905,16 @@ pub fn review_turn(
         // actually happen (`ah-0wpn`).
         let departed = departures_after_load_checks(hex, ledger, ruleset);
         check_region_pools(hex, &overruns, ruleset, &plurals, &options, &mut findings);
-        check_resources(hex, ledger, ruleset, &plurals, &options, &mut findings);
+        let ends_elsewhere = ends_elsewhere(hex, index, &reach);
+        check_resources(
+            hex,
+            ledger,
+            ruleset,
+            &plurals,
+            &options,
+            &ends_elsewhere,
+            &mut findings,
+        );
         check_markets(hex, ruleset, &options, &mut findings);
         check_emptied_sales(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_emptied_buys(hex, ledger, ruleset, &plurals, &options, &mut findings);
@@ -3377,6 +3392,7 @@ impl<'a> Hex<'a> {
             column_start: None,
             column_end: None,
             formed: None,
+            counted_in: None,
         }
     }
 }
@@ -5149,6 +5165,7 @@ impl Ordered<'_> {
             column_start: None,
             column_end: None,
             formed: self.formed.clone(),
+            counted_in: None,
         }
     }
 
@@ -5168,6 +5185,7 @@ impl Ordered<'_> {
             column_start: at.map(|placed| placed.column_start),
             column_end: at.map(|placed| placed.column_end),
             formed: self.formed.clone(),
+            counted_in: None,
         }
     }
 }
@@ -7479,9 +7497,34 @@ fn check_resources(
     ruleset: Option<&Ruleset>,
     plurals: &Plurals,
     options: &CheckOptions,
+    ends_elsewhere: &BTreeMap<String, Coordinate>,
     findings: &mut Vec<Finding>,
 ) {
-    report_shortfalls(ledger, hex, ruleset, plurals, options, findings);
+    report_shortfalls(
+        ledger,
+        hex,
+        ruleset,
+        plurals,
+        options,
+        ends_elsewhere,
+        findings,
+    );
+}
+
+/// The units of `hexes[index]` that end the month in another hex, and where - [`SharingReach`]'s
+/// answer, the one maintenance itself is settled by. A unit that stays is not in it.
+fn ends_elsewhere(
+    hex: &Hex<'_>,
+    index: usize,
+    reach: &SharingReach,
+) -> BTreeMap<String, Coordinate> {
+    hex.units
+        .iter()
+        .filter_map(|ordered| {
+            let at = reach.of(index, &ordered.unit.unit_id)?.at;
+            (at != hex.region.coordinate).then(|| (ordered.unit.unit_id.clone(), at))
+        })
+        .collect()
 }
 
 // --- markets: a BUY or SELL naming what this hex does not trade --------------------------------
@@ -15014,6 +15057,7 @@ fn report_shortfalls(
     ruleset: Option<&Ruleset>,
     plurals: &Plurals,
     options: &CheckOptions,
+    ends_elsewhere: &BTreeMap<String, Coordinate>,
     findings: &mut Vec<Finding>,
 ) {
     let sharing = Sharing::for_silver(hex, ledger);
@@ -15168,7 +15212,7 @@ fn report_shortfalls(
             // (`ah-6ak4`). The food is not silver it can have: it is the part of the fee food
             // paid, counted on both sides so the sentence states the whole fee.
             let can_have = silver_can_have(ledger, &[ordered], moment, None) + food;
-            ordered.finding(
+            let mut finding = ordered.finding(
                 hex,
                 codes::NOT_ENOUGH_SILVER,
                 format!(
@@ -15177,7 +15221,15 @@ fn report_shortfalls(
                     can_have + short,
                 ),
                 at,
-            )
+            );
+            // A shortfall the month's end reads, with upkeep in it, falls due where the unit
+            // ends the month: `rules/sequenceofevents` processes movement orders before
+            // "Maintenance costs are assessed". The unit is still the one named, and its row is
+            // still where it is listed; the hex it is counted for is the one it reaches (`ah-6cka`).
+            if moment == ShortfallMoment::MonthEnd && upkeep > 0 {
+                finding.counted_in = ends_elsewhere.get(unit_id).map(Coordinate::id);
+            }
+            finding
         } else {
             let short_of = counted_item(short, tag, hex, ruleset, plurals);
             // Both figures count what the unit withdrew this month, exactly as `short` already
@@ -21645,6 +21697,7 @@ fn check_upkeep_fund(
             column_start: None,
             column_end: None,
             formed: None,
+            counted_in: None,
         });
     }
 }
@@ -22036,6 +22089,7 @@ fn check_claims(
             column_start: Some(placed.column_start),
             column_end: Some(placed.column_end),
             formed: None,
+            counted_in: None,
         });
     }
 }
@@ -22122,6 +22176,7 @@ fn check_faction_orders(
             column_start: Some(placed.column_start),
             column_end: Some(placed.column_end),
             formed: None,
+            counted_in: None,
         });
     }
 }
@@ -40185,6 +40240,64 @@ BUILD
             "nobody where the walker ends the month can pay: {:?}",
             review.findings
         );
+    }
+
+    /// `ah-6cka`: `rules/sequenceofevents` processes "ADVANCE, MOVE and SAIL orders" before
+    /// "Maintenance costs are assessed", so a walker's upkeep falls due in the hex it ends the
+    /// month in. With no unclaimed silver, a penniless walker's shortage is still named on the
+    /// walker - its row stays in the hex it is listed in - but it is counted for the hex it
+    /// reaches, seen or never seen, and not for the hex it leaves.
+    #[test]
+    fn a_walkers_upkeep_shortage_is_counted_where_it_ends_the_month() {
+        for seen in [true, false] {
+            let (mut report, orders, _) = a_walkers_turn(Vec::new(), Vec::new(), true);
+            report.header.unclaimed_silver = None;
+            if !seen {
+                // Never seen: the hex it walks into is only an exit of the one it leaves.
+                report.regions.retain(|region| region.region_id != "1:7,51");
+            }
+            let (report, options) = traced(
+                report,
+                &orders,
+                &ruleset(),
+                disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+            );
+            let review = review_turn(&report, &orders, Some(&ruleset()), options);
+            let warned: Vec<(&str, Option<&str>, Option<&str>)> = upkeep_warnings(&review)
+                .iter()
+                .map(|finding| {
+                    (
+                        finding.region_id.as_str(),
+                        finding.unit_id.as_deref(),
+                        finding.counted_in.as_deref(),
+                    )
+                })
+                .collect();
+            assert_eq!(
+                warned,
+                vec![("1:7,53", Some("4021"), Some("1:7,51"))],
+                "seen: {seen}; on the walker, counted where it ends the month: {:?}",
+                review.findings
+            );
+        }
+    }
+
+    /// `ah-6cka`, the control: a unit that stays is counted where it stands, as before.
+    #[test]
+    fn a_stayers_upkeep_shortage_is_counted_where_it_stands() {
+        let (mut report, orders, _) = a_walkers_turn(Vec::new(), Vec::new(), false);
+        report.header.unclaimed_silver = None;
+        let (report, options) = traced(
+            report,
+            &orders,
+            &ruleset(),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+        );
+        let review = review_turn(&report, &orders, Some(&ruleset()), options);
+        let warnings = upkeep_warnings(&review);
+        assert_eq!(warnings.len(), 1, "{:?}", review.findings);
+        assert_eq!(warnings[0].unit_id.as_deref(), Some("4021"));
+        assert_eq!(warnings[0].counted_in, None);
     }
 
     /// `ah-n3qb`: steps 5 and 6 feed a unit from "faction units in the same region"
