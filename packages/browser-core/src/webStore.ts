@@ -24,18 +24,26 @@ import type {
   StudyPlanRecord
 } from "@atlantis/core-client";
 import { STOP_SAVE_BUDGET_MS, deleteWithin, openWithin, stopCauseOf } from "./databaseOpen";
-import { STORES_NAMING_A_TURN, moveRowToEngineTurns } from "./engineTurns";
+import {
+  STORES_NAMING_A_TURN,
+  atlaClientCaps,
+  capAtlaClientSighting,
+  moveRowToEngineTurns
+} from "./engineTurns";
 
 const REGISTRY_DATABASE_NAME = "atlantis-hud";
 const REGISTRY_DATABASE_VERSION = 4;
 /**
- * 7 since `ah-m6pw` moved every stored turn to the engine's count, 6 since `ah-lyg6.2.1` added the
+ * 8 since `ah-vtgk` capped the sightings an AtlaClient map was merged into, 7 since `ah-m6pw` moved
+ * every stored turn to the engine's count, 6 since `ah-lyg6.2.1` added the
  * study-plans store, 5 since `ah-lyg6.1.2.1` added the allied-mages store. See `openGameDatabase`
  * for what a bump costs.
  */
-const GAME_DATABASE_VERSION = 7;
+const GAME_DATABASE_VERSION = 8;
 /** The first game database version whose turns are the engine's; see `engineTurns.ts`. */
 const ENGINE_TURNS_VERSION = 7;
+/** The first game database version whose AtlaClient sightings are capped; see `engineTurns.ts`. */
+const ATLACLIENT_CAP_VERSION = 8;
 
 const GAME_STORE = "games";
 const IMPORTED_TURN_STORE = "importedTurns";
@@ -315,19 +323,48 @@ function openGameDatabase(databasePath: string): Promise<IDBDatabase> {
         create(collection.name, [...collection.keyPath]);
       }
 
-      // A database from before version 7 numbered every turn one low (ah-m6pw). A fresh one
-      // (oldVersion 0) holds nothing to move.
-      if (oldVersion > 0 && oldVersion < ENGINE_TURNS_VERSION) {
-        for (const name of STORES_NAMING_A_TURN) {
-          moveStoreToEngineTurns(transaction.objectStore(name));
-        }
+      // A fresh database (oldVersion 0) holds nothing to move or cap.
+      if (oldVersion > 0 && oldVersion < ATLACLIENT_CAP_VERSION) {
+        upgradeStoredTurns(transaction, oldVersion < ENGINE_TURNS_VERSION);
       }
     }
   );
 }
 
 /**
- * Rewrites every row of one store with its turns one higher, inside the upgrade's transaction.
+ * The two repairs a game database stored before version 8 takes, inside the upgrade's transaction.
+ *
+ * Below version 7 every turn is one low (ah-m6pw), so every store naming a turn moves up by one.
+ * Below version 8 a hex merged from an AtlaClient map before ah-m6pw sits one turn above its
+ * faction's newest report (ah-vtgk), so that faction's sightings are capped at it. The cap is read
+ * from the merges and the imported turns' keys, which are asked for before any move is queued -
+ * requests in a transaction run in the order they are made - so both read the turns as stored, and
+ * a sighting is capped before it is moved, on the same count. The sightings are walked only once
+ * the cap is known; their key holds no turn, so the other stores' moves cannot reach them.
+ */
+function upgradeStoredTurns(transaction: IDBTransaction, moveTurns: boolean): void {
+  const merges = transaction.objectStore(MERGED_REPORT_STORE).getAll();
+  const turnKeys = transaction.objectStore(IMPORTED_TURN_STORE).getAllKeys();
+  turnKeys.onsuccess = () => {
+    const caps = atlaClientCaps(merges.result, turnKeys.result);
+    const sightings = transaction.objectStore(REGION_SIGHTING_STORE);
+    rewriteStore(sightings, (row) => {
+      const capped = capAtlaClientSighting(row, caps);
+      return moveTurns ? moveRowToEngineTurns(sightings.name, capped) : capped;
+    });
+  };
+  if (moveTurns) {
+    for (const name of STORES_NAMING_A_TURN) {
+      if (name !== REGION_SIGHTING_STORE) {
+        const store = transaction.objectStore(name);
+        rewriteStore(store, (row) => moveRowToEngineTurns(store.name, row));
+      }
+    }
+  }
+}
+
+/**
+ * Rewrites every row of one store, inside the upgrade's transaction.
  *
  * A cursor walking the keys from the highest down, so only one row is in memory at a time - a
  * game's imported turns are whole reports, a megabyte each in a mature New Age game. The turn is
@@ -335,7 +372,10 @@ function openGameDatabase(databasePath: string): Promise<IDBDatabase> {
  * moves to N + 1 only after the row that was at N + 1 has already moved on to N + 2, and a row put
  * above the cursor is never visited again.
  */
-function moveStoreToEngineTurns(store: IDBObjectStore): void {
+function rewriteStore(
+  store: IDBObjectStore,
+  rewrite: (row: Record<string, unknown>) => Record<string, unknown>
+): void {
   const walk = store.openCursor(null, "prev");
   walk.onsuccess = () => {
     const cursor = walk.result;
@@ -346,7 +386,7 @@ function moveStoreToEngineTurns(store: IDBObjectStore): void {
     // differs from the cursor's. Requests run in order, so a row whose key is unchanged is
     // deleted and then written straight back.
     cursor.delete();
-    store.put(moveRowToEngineTurns(store.name, cursor.value as Record<string, unknown>));
+    store.put(rewrite(cursor.value as Record<string, unknown>));
     cursor.continue();
   };
 }
