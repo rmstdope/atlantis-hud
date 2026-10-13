@@ -55240,6 +55240,47 @@ BUILD
         );
     }
 
+    /// The same moment in the ITEMS preview: the sharer that gives the $50 for 906's exchange is
+    /// 902, the one 903 refilled, not 905, which 901's GIVE already drained (`runorders.cpp`:
+    /// `DoExchangeOrder`; `unit.cpp`: `ConsumeShared`; `rules/exchange`, `rules/share`;
+    /// `ah-6lw8`). `exchange_draw` sees 901's draw on 905 through [`SharerStock::at`]'s reading of
+    /// [`Ledger::gift_draws`] (`ah-9udi`); before that it laid the draw in drain order and named 905.
+    #[test]
+    fn an_exchange_after_the_gifts_names_the_refilled_sharer_in_the_items_preview() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.extend([
+            unit("901"),
+            sharing(unit("902")),
+            sharing(with_silver(unit("905"), 100)),
+            with_silver(unit("903"), 100),
+            unit("906"),
+            with_item(unit("908"), 1, "sword", "SWOR"),
+        ]);
+        let orders = "unit 901\nGIVE 900 100 SILV\n\
+                      unit 903\nGIVE 902 100 SILV\n\
+                      unit 906\nEXCHANGE 908 50 SILV 1 SWOR\n\
+                      unit 908\nEXCHANGE 906 1 SWOR 50 SILV\n";
+        let ordered = OrderedUnits::read(orders);
+        let hex = Hex::read(&region, &ordered, &[]);
+        let ledger = ledger_for(&hex, Some(&rules));
+        let lent_to_906: Vec<(&str, i64)> = ledger
+            .movements
+            .iter()
+            .filter(|movement| {
+                movement.tag == "SILV"
+                    && movement.cause == ItemChangeCause::GivenAway
+                    && movement.unit_id != "906"
+                    && movement
+                        .other
+                        .as_ref()
+                        .is_some_and(|other| other.unit_id == "906")
+            })
+            .map(|movement| (movement.unit_id.as_str(), movement.delta))
+            .collect();
+        assert_eq!(lent_to_906, vec![("902", -50)], "{:?}", ledger.movements);
+    }
+
     /// A gift drawn on a sharer that then walks away is drawn on it before it leaves: GIVE runs
     /// before movement (`rules/sequenceofevents`), and `ConsumeShared` drains walker 907, listed
     /// first, for 901's $100 (`unit.cpp`; `runorders.cpp`: `DoGiveOrder`). So 907 arrives with
