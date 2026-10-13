@@ -55010,13 +55010,33 @@ BUILD
         assert_eq!(held["903"], 100, "{held:?}");
     }
 
+    /// STUDY: sharer 902's $105 pays 901's GIVE of $100, so 901's $10 study (`data/COMB` in
+    /// Trident) is refused against the $5 left and takes nothing (`monthorders.cpp`:
+    /// `Do1StudyOrder`, "STUDY: Not enough funds."). The $105 the hex had is held once: $5 by
+    /// 902, which keeps its change rather than paying the refused fee, and $100 by 903
+    /// (`ah-eoag`, cold-read review finding 1).
+    #[test]
+    fn each_coin_of_a_refused_study_beside_a_paid_gift_is_counted_once() {
+        let held = held_at_transport(
+            vec![
+                unit("901"),
+                sharing(with_silver(unit("902"), 105)),
+                unit("903"),
+            ],
+            "unit 901\nGIVE 903 100 SILV\nSTUDY COMB\n",
+        );
+        assert_eq!(held["901"], 0, "{held:?}");
+        assert_eq!(held["902"], 5, "{held:?}");
+        assert_eq!(held["903"], 100, "{held:?}");
+    }
+
     /// STUDY: sharer 902's $100 pays 901's GIVE of $100, so 904's GIVE of $50 finds the pool empty
     /// and moves nothing (`runorders.cpp`: `DoGiveOrder`, "Not enough."), and both units' $10
     /// studies (`data/COMB` in Trident) are refused and take nothing (`monthorders.cpp`:
     /// `Do1StudyOrder`, "STUDY: Not enough funds."). The $100 the hex had is held once, by 903:
     /// neither the refused gift nor the refused fees come back twice (`ah-eoag`).
     #[test]
-    fn each_coin_of_a_refused_study_beside_a_paid_gift_is_counted_once() {
+    fn each_coin_of_refused_studies_beside_a_refused_gift_is_counted_once() {
         let held = held_at_transport(
             vec![
                 unit("901"),
