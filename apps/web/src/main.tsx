@@ -42,7 +42,7 @@ loadCoreWasm()
   .then((wasm) => {
     // Kept in hand as well as given to the core: the shell needs to hear when another tab asks this
     // one to let go of the storage.
-    const store = createWebStore();
+    const store = createWebStore(wasm);
     const client = createCoreClient(createWebCoreAdapter(wasm, store));
     root.render(
       <StrictMode>

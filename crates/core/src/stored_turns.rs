@@ -92,8 +92,20 @@ fn payload_later(payload: &mut Value) {
     let Some(text) = payload.as_str() else {
         return;
     };
-    // A payload that does not read is left alone: it is only ever consulted for its season and to
-    // compare against a re-import.
+    // Through the typed result first, so the payload comes back in the shape an import writes: a
+    // re-import compares payloads as text (`diff_imported_turn`), and re-ordered keys would read
+    // as a changed parse.
+    if let Ok(mut parsed) = serde_json::from_str::<crate::ReportParseResult>(text) {
+        if let Some(header) = parsed.turn_header.as_mut() {
+            header.turn_number = header.turn_number.saturating_add(1);
+            if let Ok(json) = serde_json::to_string(&parsed) {
+                *payload = Value::String(json);
+                return;
+            }
+        }
+    }
+    // Otherwise as plain JSON, under either spelling. A payload that does not read at all is left
+    // alone: it is only ever consulted for its season and to compare against a re-import.
     let Ok(mut parsed) = serde_json::from_str::<Value>(text) else {
         return;
     };
@@ -182,6 +194,34 @@ mod tests {
             json!({"turnHeader": {"turnNumber": 72, "season": "December"}, "regions": []})
         );
         assert_eq!(record["warningsPayloadJson"], "[]");
+    }
+
+    /// A re-import compares payloads as text (`diff_imported_turn`), so a payload that reads is
+    /// written back in the shape an import writes, not with its keys re-ordered.
+    #[test]
+    fn a_payload_that_reads_comes_back_as_an_import_writes_it() {
+        let mut parsed = crate::parse_report("Atlantis Report For:\nFoo (1)\nDecember, Year 6\n");
+        parsed
+            .turn_header
+            .as_mut()
+            .expect("a dated report")
+            .turn_number = 71;
+        let mut expected = parsed.clone();
+        expected
+            .turn_header
+            .as_mut()
+            .expect("a dated report")
+            .turn_number = 72;
+
+        let record = moved(
+            "importedTurns",
+            json!({"turnNumber": 71, "parsedPayloadJson": serde_json::to_string(&parsed).unwrap()}),
+        );
+
+        assert_eq!(
+            record["parsedPayloadJson"],
+            serde_json::to_string(&expected).unwrap()
+        );
     }
 
     #[test]
