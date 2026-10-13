@@ -13585,10 +13585,11 @@ impl SharerStock {
     /// the lenders still hold or not at all: the engine's STUDY, which refuses a study whose cost
     /// is more than `Unit::GetSharedMoney` and otherwise `ConsumeSharedMoney`s it
     /// (`monthorders.cpp`: `Do1StudyOrder`), so one student the pool cannot pay leaves the ones
-    /// before it paid (`ah-li7l`). What each party lent, and whether each party's overdraft was
-    /// refused, both aligned with the parties. Where every overdraft fits it lends exactly what
-    /// [`SharerStock::drained`] does.
-    fn paid_one_by_one(&self) -> (Vec<i64>, Vec<bool>) {
+    /// before it paid (`ah-li7l`). What each party lent, and what each refused party's overdraft
+    /// still lacked once the lenders had lent all they had left - `0` for one that was paid or
+    /// owed nothing (`ah-3uuf`) - both aligned with the parties. Where every overdraft fits it
+    /// lends exactly what [`SharerStock::drained`] does.
+    fn paid_one_by_one(&self) -> (Vec<i64>, Vec<i64>) {
         let mut stock: Vec<i64> = self
             .parties
             .iter()
@@ -13601,14 +13602,15 @@ impl SharerStock {
             })
             .collect();
         let mut lent = vec![0; self.parties.len()];
-        let mut refused = vec![false; self.parties.len()];
+        let mut refused = vec![0; self.parties.len()];
         for &claimant in &self.order {
             let need = (-self.parties[claimant].position).max(0);
             if need == 0 {
                 continue;
             }
-            if need > stock.iter().sum::<i64>() {
-                refused[claimant] = true;
+            let left: i64 = stock.iter().sum();
+            if need > left {
+                refused[claimant] = need - left;
                 continue;
             }
             let mut owing = need;
@@ -14434,7 +14436,8 @@ struct SharingPurse {
     arrivals_lend: Vec<i64>,
     /// What each unit's orders drew out of its faction-mates' pockets, and so what the purse lends
     /// it: its own overdraft, sharer or not, at each moment the purse covered. `0` for a unit that
-    /// is not overdrawn and `0` for every unit in a hex the purse could not cover (`ah-3c2t.2`).
+    /// is not overdrawn and `0` at every moment the purse could not cover (`ah-3c2t.2`) - but a
+    /// hex short only at the month's end keeps what it lent before then (`ah-3uuf`).
     ///
     /// A sharer that borrows is lent the money as surely as a non-sharer is, and counts it in its
     /// own column (`ah-0nwd`).
@@ -14444,6 +14447,9 @@ struct SharingPurse {
     /// unit whose study was paid or that does not study short. Handed back to the unit at every
     /// later moment.
     refused: Vec<i64>,
+    /// [`Lending::short_after_pool`]: what each refused STUDY still lacked after the pool
+    /// (`ah-3uuf`).
+    short_after_pool: Vec<i64>,
     /// The result of judging each known shortfall against this pool, aligned with `hex.units`.
     coverage: Vec<Option<super::silver::SharedSilverCoverage>>,
 }
@@ -14495,6 +14501,10 @@ struct Lending {
     /// unit whose study was paid or that does not study short. Handed back to the unit at every
     /// later moment.
     refused: Vec<i64>,
+    /// What each refused STUDY still lacked once the pool had lent it all it had left at STUDY:
+    /// the figure the study popup calls the student short by (`ah-3uuf`). `0` wherever
+    /// [`Lending::refused`] is.
+    short_after_pool: Vec<i64>,
     /// The first moment but STUDY the pool could not cover in full, from which nothing more was
     /// lent - the all-or-nothing rule (`ah-e66j`, `ah-aqqb`). `None` where every moment read was
     /// covered. STUDY never stops it: it pays its students one by one and refuses only those that
@@ -14516,6 +14526,7 @@ impl Lending {
             ],
             borrows: vec![0; hex.units.len()],
             refused: vec![0; hex.units.len()],
+            short_after_pool: vec![0; hex.units.len()],
             stopped_at: None,
         }
     }
@@ -14680,11 +14691,12 @@ impl Lending {
                         None => {}
                     }
                 }
-                for (claim, refused) in claims.into_iter().zip(refused) {
+                for (claim, missing) in claims.into_iter().zip(refused) {
                     let Some(index) = claim else { continue };
-                    if refused {
+                    if missing > 0 {
                         purse.refused[index] +=
                             refused_fee(ledger, &hex.units[index].unit.unit_id, needs[index]);
+                        purse.short_after_pool[index] += missing;
                     } else {
                         purse.borrows[index] += needs[index];
                     }
@@ -14723,8 +14735,7 @@ impl Lending {
 /// is exactly the defect this exists to fix: the silver column said a unit was short while the
 /// warning, reading the hex, said it was not (`ah-moq3`).
 ///
-/// A hex short at the month's end, by the warning's formula on the column's figures, lends
-/// nothing. Otherwise each moment of [`PURSE_MOMENTS`] in turn reads every unit's **position** -
+/// Each moment of [`PURSE_MOMENTS`] in turn reads every unit's **position** -
 /// its own [`silver_at`] then, less what it has lent and plus what it has been lent so far - and
 /// fills every negative one from the lenders' positive ones, or, where they cannot cover them
 /// all, lends nothing from that moment on - except at STUDY, which pays the students one by one
@@ -14732,6 +14743,11 @@ impl Lending {
 /// month-end reading (`ah-li7l`). A loan is never paid back by a later receipt: `rules/share` lends silver "for
 /// buying or studying", and nothing in it returns a shipment or wages that arrive after STUDY to
 /// the sharer that already paid (`ah-qrk0`, `ah-aqqb`).
+///
+/// A hex short at the month's end, by the warning's formula on the column's figures, lends
+/// nothing there, and keeps what it lent before: the engine charged the market and STUDY as they
+/// ran, so the shortfall is its maintenance's, marked on the units whose upkeep it leaves unpaid
+/// (`ah-3uuf`; until then such a hex lent nothing at all).
 ///
 /// Every reading of a unit's silver here takes off its [`Ledger::tax_overstated`] - what the
 /// ledger's hopeful tax credit says beyond the settled share the column counts - so a sharer that
@@ -14773,6 +14789,7 @@ fn sharing_purse_over(
         arrivals_lend: vec![0; arrivals.len()],
         borrows: vec![0; hex.units.len()],
         refused: vec![0; hex.units.len()],
+        short_after_pool: vec![0; hex.units.len()],
         coverage: vec![None; hex.units.len()],
     };
 
@@ -14815,9 +14832,47 @@ fn sharing_purse_over(
         own(index, LendingMoment::MonthEnd) + lending.refused[index]
     }) > 0
     {
+        // Short only at the month's end: what the purse paid as each order ran stays paid, since
+        // the engine charged it then, and what the hex is short is its maintenance - `rules/share`
+        // (New Age: Trident): sharing "can leave the sharing unit without enough funds to pay
+        // maintenance". So the purse is settled up to the month's end and no further, and the
+        // shortfall lands on the units whose upkeep it leaves unpaid (`ah-3uuf`).
+        let before_month_end: Vec<LendingMoment> = moments
+            .iter()
+            .copied()
+            .filter(|&moment| moment != LendingMoment::MonthEnd)
+            .collect();
+        let paid = Lending::settle(hex, ledger, &sharing, &before_month_end);
+        let coverage = (0..hex.units.len())
+            .map(|index| {
+                let position = own(index, LendingMoment::MonthEnd) - paid.lends[index]
+                    + paid.borrows[index]
+                    + paid.refused[index];
+                if !judged(index) {
+                    None
+                } else if position < 0 || paid.refused[index] > 0 {
+                    Some(super::silver::SharedSilverCoverage::Shortfall)
+                } else if own(index, LendingMoment::MonthEnd) < 0 {
+                    // The rule the covered hex below applies too: an earlier moment the purse
+                    // could not cover leaves every known shortfall unanswered.
+                    Some(if paid.covered() {
+                        super::silver::SharedSilverCoverage::Covered
+                    } else {
+                        super::silver::SharedSilverCoverage::Shortfall
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let paid = paid.netted();
         return SharingPurse {
-            coverage: coverage_for(super::silver::SharedSilverCoverage::Shortfall),
-            ..nothing
+            coverage,
+            lends: paid.lends,
+            arrivals_lend: paid.arrivals_lend,
+            borrows: paid.borrows,
+            refused: paid.refused,
+            short_after_pool: paid.short_after_pool,
         };
     }
 
@@ -14843,6 +14898,7 @@ fn sharing_purse_over(
         arrivals_lend: lending.arrivals_lend,
         borrows: lending.borrows,
         refused: lending.refused,
+        short_after_pool: lending.short_after_pool,
     }
 }
 
@@ -18679,10 +18735,19 @@ fn one_study_forecast(
             .balance_at(StatePhase::Movement, &ordered.unit.unit_id, SILVER)
             + through_purse;
         if priced.spends > balance {
+            // A study the purse refused is short what it still lacked once the pool had lent it
+            // all it had left - the engine weighs the fee against the shared money, own and
+            // sharers' together (`monthorders.cpp`: `Do1StudyOrder`) - not what the unit lacks on
+            // its own (`ah-3uuf`).
+            let short_after_pool = purse.short_after_pool.get(index).copied().unwrap_or(0);
             doubts.push(StudyDoubt {
                 reason: StudyDoubtReason::FeeShort,
                 fee: priced.spends,
-                short_by: priced.spends - balance,
+                short_by: if short_after_pool > 0 {
+                    short_after_pool
+                } else {
+                    priced.spends - balance
+                },
                 teacher: String::new(),
             });
         }
@@ -32722,7 +32787,11 @@ BUILD
                 Some(500),
                 "the whole ask survives"
             );
-            assert_eq!(column.at_month_end, Some(-300));
+            // The sharer's $300 pays the three swords as the market runs, and stays lent though
+            // the hex reads short at the month's end on the whole ask: what the purse paid as an
+            // order ran is paid (`ah-3uuf`; this once pinned -300, the purse lending nothing).
+            assert_eq!(column.borrowed_for_orders, 300);
+            assert_eq!(column.at_month_end, Some(0));
             // The ITEMS ledger cuts the same purchase to the same three swords -
             // `a_shared_purse_pays_for_what_one_buy_can_reach`, on this hex.
         }
@@ -39692,6 +39761,90 @@ BUILD
                 Some(crate::orders::silver::SharedSilverCoverage::Covered),
                 Some(crate::orders::silver::SharedSilverCoverage::Shortfall),
                 None,
+            ]
+        );
+    }
+
+    /// `ah-3uuf`: a hex short only at the month's end keeps what its purse paid before then.
+    /// Sharer 7's $10 pays 5's Combat (`rules/skills_studying`); 8 has nothing for its $10 upkeep
+    /// (`rules/economy_maintenance`), so the hex is short then. 5 eats its grain, so the loan
+    /// leaves it whole: its fee's overdraft is covered, and 8 alone is short.
+    #[test]
+    fn a_hex_short_only_at_the_months_end_keeps_the_study_it_paid_covered() {
+        let hex_region = region(vec![
+            with_silver(unit("5"), 0),
+            sharing(with_silver(unit("7"), 10)),
+            starving(with_silver(unit("8"), 0)),
+        ]);
+
+        let purse = purse_of(&hex_region, "unit 5\nSTUDY combat\n");
+
+        assert_eq!(purse.borrows, vec![10, 0, 0]);
+        assert_eq!(purse.lends, vec![0, 10, 0]);
+        assert_eq!(
+            purse.coverage,
+            vec![
+                Some(crate::orders::silver::SharedSilverCoverage::Covered),
+                None,
+                Some(crate::orders::silver::SharedSilverCoverage::Shortfall),
+            ]
+        );
+    }
+
+    /// `ah-3uuf` with `ah-li7l`: sharer 7's $15 pays 5's $10 Combat and refuses 9's, and 8's
+    /// unpaid upkeep leaves the hex short at the month's end as well. 5 stays paid, 9's refused
+    /// study is a shortfall of its own - $5 beyond what the pool had left - and so is 8's upkeep.
+    #[test]
+    fn a_refused_study_in_a_hex_short_at_the_months_end_stays_short() {
+        let hex_region = region(vec![
+            with_silver(unit("5"), 0),
+            with_silver(unit("9"), 0),
+            sharing(with_silver(unit("7"), 15)),
+            starving(with_silver(unit("8"), 0)),
+        ]);
+
+        let purse = purse_of(&hex_region, "unit 5\nSTUDY combat\nunit 9\nSTUDY combat\n");
+
+        assert_eq!(purse.borrows, vec![10, 0, 0, 0]);
+        assert_eq!(purse.lends, vec![0, 0, 10, 0]);
+        assert_eq!(purse.short_after_pool, vec![0, 5, 0, 0]);
+        assert_eq!(
+            purse.coverage,
+            vec![
+                Some(crate::orders::silver::SharedSilverCoverage::Covered),
+                Some(crate::orders::silver::SharedSilverCoverage::Shortfall),
+                None,
+                Some(crate::orders::silver::SharedSilverCoverage::Shortfall),
+            ]
+        );
+    }
+
+    /// `ah-3uuf` review: in a hex short at the month's end, an earlier moment the purse could not
+    /// cover leaves every known shortfall unanswered, as it does in a hex that is not. Sharer 7's
+    /// $200 pays 5's cast ($200, `data/CRPA`) before the market (`rules/sequenceofevents`), then
+    /// cannot pay 6's $100 sword, and 8 has nothing for its upkeep. The cast stays paid, but 5's
+    /// overdraft is not called covered.
+    #[test]
+    fn a_hex_short_at_the_months_end_after_an_uncovered_market_leaves_the_cast_unanswered() {
+        let orders = "unit 5\nCAST Create_Amulet_Of_Protection\nunit 6\nBUY 1 swords\n";
+        let hex_region = selling_swords(vec![
+            with_skill(with_silver(unit("5"), 0), "CRPA", 1),
+            with_silver(unit("6"), 0),
+            sharing(with_silver(unit("7"), 200)),
+            starving(with_silver(unit("8"), 0)),
+        ]);
+
+        let purse = purse_of(&hex_region, orders);
+
+        assert_eq!(purse.borrows, vec![200, 0, 0, 0], "the cast stays paid");
+        assert_eq!(purse.lends, vec![0, 0, 200, 0]);
+        assert_eq!(
+            purse.coverage,
+            vec![
+                Some(crate::orders::silver::SharedSilverCoverage::Shortfall),
+                Some(crate::orders::silver::SharedSilverCoverage::Shortfall),
+                None,
+                Some(crate::orders::silver::SharedSilverCoverage::Shortfall),
             ]
         );
     }
@@ -61620,11 +61773,12 @@ BUILD
         assert_eq!(study.points_after, 30);
     }
 
-    /// `ah-41yw`: a purse that cannot cover the whole fee lends nothing toward it - the purse's
-    /// all-or-nothing rule (`ah-e66j`) - so the student stays short by all it lacks on its own,
-    /// and a sharer's silver is never credited merely because the sharer holds it.
+    /// `ah-41yw`, `ah-3uuf`: a purse that cannot cover the whole fee pays none of it - the engine
+    /// refuses a study whose cost is more than the shared money (`monthorders.cpp`:
+    /// `Do1StudyOrder`) - but the figure the popup gives is what is still missing once the pool has
+    /// lent what it can: $200 less the student's $40 and the sharer's $100.
     #[test]
-    fn a_purse_that_cannot_cover_the_fee_lends_nothing_toward_it() {
+    fn a_purse_that_cannot_cover_the_fee_leaves_short_what_the_pool_could_not_add() {
         // Tactics costs $200 a man (`rules/skills_studying`).
         let student = with_men(with_silver(unit("900"), 40), 1);
         let sharer = sharing(with_silver(unit("901"), 100));
@@ -61637,7 +61791,96 @@ BUILD
 
         assert_eq!(study.doubts.len(), 1, "{study:?}");
         assert_eq!(study.doubts[0].reason, effects::StudyDoubtReason::FeeShort);
-        assert_eq!(study.doubts[0].short_by, 160);
+        assert_eq!(study.doubts[0].short_by, 60);
+    }
+
+    /// `ah-3uuf`, the several-students case left to `ah-li7l`: the engine pays STUDY one student
+    /// at a time in region order (`monthorders.cpp`: `RunStudyOrders`, `Do1StudyOrder`), so the
+    /// sharer's $15 pays 5's $10 Combat (`rules/skills_studying`) and refuses 9's. The popup says
+    /// so: 5 is not short, and 9 is short the $5 the pool no longer holds.
+    #[test]
+    fn the_study_popup_follows_the_purse_paying_students_one_by_one() {
+        let hex = || {
+            vec![region(vec![
+                with_silver(unit("5"), 0),
+                with_silver(unit("9"), 0),
+                sharing(with_silver(unit("7"), 15)),
+            ])]
+        };
+        let orders = "unit 5\nSTUDY Combat\nunit 9\nSTUDY Combat\n";
+
+        let paid = study_of(hex(), orders, "5").expect("5's study is forecast");
+        assert!(paid.doubts.is_empty(), "{paid:?}");
+
+        let refused = study_of(hex(), orders, "9").expect("9's study is forecast");
+        assert_eq!(refused.doubts.len(), 1, "{refused:?}");
+        assert_eq!(
+            refused.doubts[0].reason,
+            effects::StudyDoubtReason::FeeShort
+        );
+        assert_eq!(refused.doubts[0].short_by, 5);
+    }
+
+    /// `ah-3uuf`, case 1. A student with nothing, beside a sharer with $15, studies Combat ($10,
+    /// `rules/skills_studying`); both pay their own $10 upkeep in silver
+    /// (`rules/economy_maintenance`). At STUDY the purse holds $15 and pays the fee, so the engine
+    /// runs the study; only at the month's end is the hex short, and that is maintenance's -
+    /// `rules/share` (New Age: Trident) warns sharing "can leave the sharing unit without enough
+    /// funds to pay maintenance". Both surfaces say the study was paid.
+    mod a_study_paid_before_the_hex_runs_short {
+        use super::*;
+
+        fn hex() -> Vec<ReportRegion> {
+            vec![region(vec![
+                starving(with_silver(unit("5"), 0)),
+                sharing(starving(with_silver(unit("7"), 15))),
+            ])]
+        }
+
+        const ORDERS: &str = "unit 5\nSTUDY Combat\n";
+
+        #[test]
+        fn the_study_popup_does_not_call_it_short() {
+            let study = study_of(hex(), ORDERS, "5").expect("the study is forecast");
+
+            assert!(study.doubts.is_empty(), "{study:?}");
+            assert_eq!(study.points_after, 30);
+        }
+
+        #[test]
+        fn the_silver_column_shows_the_fee_lent_and_the_upkeep_short() {
+            let review = review_turn(
+                &report(hex()),
+                ORDERS,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let silver = |id: &str| {
+                review
+                    .silver
+                    .iter()
+                    .find(|forecast| forecast.unit_id == id)
+                    .cloned()
+                    .unwrap_or_else(|| panic!("no forecast for {id}: {:?}", review.silver))
+            };
+            let (student, sharer) = (silver("5"), silver("7"));
+
+            assert_eq!(student.borrowed_for_orders, 10, "{student:?}");
+            assert!(
+                sharer
+                    .changes
+                    .iter()
+                    .any(|change| change.cause == SilverChangeCause::Lent && change.amount == -10),
+                "the sharer pays the fee: {sharer:?}"
+            );
+            for unit in [&student, &sharer] {
+                assert_eq!(
+                    unit.shared_silver_coverage,
+                    Some(crate::orders::silver::SharedSilverCoverage::Shortfall),
+                    "the hex cannot pay its upkeep: {unit:?}"
+                );
+            }
+        }
     }
 
     /// `ah-8n8y`. `rules/sequenceofevents` settles BUY before STUDY and `rules/skills_studying`
