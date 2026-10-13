@@ -78,11 +78,20 @@ fn the_listed_first_giver_passes_on_iron_its_sharing_faction_mate_lends() {
     assert_eq!(
         iron_changes(lender),
         [
-            (ItemChangeCause::GivenAway, -14, Some("4840".to_string())),
+            (ItemChangeCause::LentForGive, -14, Some("4840".to_string())),
             (ItemChangeCause::GivenAway, -14, Some("4008".to_string())),
         ],
         "4686 lends to 4008's GIVE first, then gives its own"
     );
+    // The loan names whose GIVE it paid for, so the hover never says 4686 gave to 4840 itself
+    // (`ah-49is`).
+    let borrowers: Vec<_> = lender
+        .item_changes
+        .iter()
+        .filter(|change| change.tag == "IRON")
+        .map(|change| change.borrower.as_ref().map(|party| party.unit_id.clone()))
+        .collect();
+    assert_eq!(borrowers, [Some("4008".to_string()), None]);
     assert_eq!(iron(lender), 60 - 28);
     assert_eq!(iron(first), 14, "4008 keeps what 4686 gives it afterwards");
 }

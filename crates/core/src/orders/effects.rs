@@ -609,6 +609,12 @@ pub enum ItemChangeCause {
     GivenAway,
     /// Handed to this unit by another unit's `GIVE`.
     WasGiven,
+    /// Drawn from this sharing unit to pay for another unit's `GIVE`, whose own stock fell short
+    /// (newage trident `rules/share`; the engine's `Unit::ConsumeShared`, `ah-0mch`). `other` is
+    /// that GIVE's receiver as [`ItemChangeCause::GivenAway`] would name it - `None` for another
+    /// faction's unit - and [`ItemChange::borrower`] the unit whose GIVE it was. This unit never
+    /// ordered a GIVE to the receiver, so it is not `GivenAway` (`ah-49is`).
+    LentForGive,
     /// Collected by this unit's `TAKE FROM`.
     Took,
     /// Collected from this unit by another unit's `TAKE FROM`.
@@ -665,6 +671,14 @@ pub struct ItemChange {
     /// [`ItemChangeCause::Bought`] and [`ItemChangeCause::Sold`].
     pub unit_price: Option<i64>,
     pub other: Option<ItemChangeParty>,
+    /// The unit whose order this unit's goods paid for: `Some` only on
+    /// [`ItemChangeCause::LentForGive`], where `other` is that order's receiver (`ah-49is`).
+    //
+    // `skip_serializing_if` is load-bearing, as on `FieldChange::cause`: the TypeScript says
+    // `borrower?:`, a key that may be absent and is never `null`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub borrower: Option<ItemChangeParty>,
     /// Whether this tag names people rather than equipment, as `Ruleset::is_man` settles it
     /// (`crates/core/src/movement/rules.rs`). A centaur counts, being both a race and a mount;
     /// the catalogue takes that view when it is scraped and nothing here re-decides it
@@ -2044,6 +2058,7 @@ fn apply_item_movement(
             line: movement.line,
             unit_price: movement.unit_price,
             other: movement.other.clone(),
+            borrower: None,
             is_man: ruleset.is_man(&movement.tag),
         },
         stock,
@@ -2719,6 +2734,7 @@ impl Working {
                         line: None,
                         unit_price: None,
                         other: Some(dissolving),
+                        borrower: None,
                         is_man: false,
                     },
                     Stock::Moved,
@@ -2779,6 +2795,7 @@ impl Working {
                         line: None,
                         unit_price: None,
                         other: None,
+                        borrower: None,
                         is_man: false,
                     },
                     Stock::Moved,
@@ -3312,6 +3329,7 @@ impl Working {
                                 name: None,
                             }),
                             // The refusal above already asked the same question of the same tag.
+                            borrower: None,
                             is_man: self.ruleset.is_man(&tag),
                         },
                         Stock::Moved,
@@ -3387,6 +3405,21 @@ impl Working {
             (true, GiveReach::Discard) => (ItemChangeCause::Discarded, ItemChangeCause::WasGiven),
             (true, _) => (ItemChangeCause::GivenAway, ItemChangeCause::WasGiven),
             (false, _) => (ItemChangeCause::WasTakenFrom, ItemChangeCause::Took),
+        };
+        // What a sharer's row says when its goods pay for this GIVE: a loan for the source's GIVE,
+        // never a GIVE of its own to the receiver (`ah-49is`). Another faction's unit is named as
+        // no receiver at all, which the hover words as "another faction". A discard and a TAKE
+        // keep the source's own cause; their words are not this bead's.
+        let (lender_cause, lender_other, lender_borrower) = match (is_give, reach) {
+            (true, GiveReach::Discard) | (false, _) => (source_cause, far_end.clone(), None),
+            (true, GiveReach::Foreign) => {
+                (ItemChangeCause::LentForGive, None, Some(near_end.clone()))
+            }
+            (true, _) => (
+                ItemChangeCause::LentForGive,
+                far_end.clone(),
+                Some(near_end.clone()),
+            ),
         };
 
         // An exact quantity is clamped to what the source has as the engine counts it: its own
@@ -3473,10 +3506,11 @@ impl Working {
                         tag: tag.clone(),
                         name: name.clone(),
                         delta: -take,
-                        cause: source_cause,
+                        cause: lender_cause,
                         line,
                         unit_price: None,
-                        other: far_end.clone(),
+                        other: lender_other.clone(),
+                        borrower: lender_borrower.clone(),
                         is_man,
                     },
                     Stock::Moved,
@@ -3501,6 +3535,7 @@ impl Working {
                         // different phase of `rules/sequenceofevents`.
                         unit_price: None,
                         other: far_end.clone(),
+                        borrower: None,
                         is_man,
                     },
                     Stock::Moved,
@@ -3517,6 +3552,7 @@ impl Working {
                         line,
                         unit_price: None,
                         other: Some(near_end.clone()),
+                        borrower: None,
                         is_man,
                     },
                     Stock::Moved,
@@ -4058,6 +4094,7 @@ impl Working {
                                 unit_id: pending.to.clone(),
                                 name: receiver_name,
                             }),
+                            borrower: None,
                             is_man,
                         },
                         Stock::Moved,
@@ -4080,6 +4117,7 @@ impl Working {
                                     unit_id: from.clone(),
                                     name: Some(from_name),
                                 }),
+                                borrower: None,
                                 is_man,
                             },
                             Stock::Moved,
@@ -9314,6 +9352,7 @@ mod tests {
                     line: Some(2),
                     unit_price: Some(10),
                     other: None,
+                    borrower: None,
                     is_man: false,
                 }]
             );
@@ -11502,6 +11541,129 @@ mod tests {
             );
         }
 
+        /// A sharer above a borrower holding 4 swords, an own recipient, and another faction's
+        /// unit standing in the hex. Every unit of the hex is `sharing`'s neighbour, so the
+        /// borrower's overdrawn GIVE draws on the sharer (newage trident `rules/share`;
+        /// `Unit::ConsumeShared`, `ah-0mch`).
+        fn report_with_a_lender() -> String {
+            [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "Exits:",
+                "  Southeast : plain (2,2) in Nowhere.",
+                "",
+                "* Sharer (900), Foo (1), sharing, leader [LEAD], 20 swords [SWOR], 100 silver \
+                 [SILV]. Weight: 30. \
+                 Capacity: 0/0/15/0.",
+                "* Borrower (901), Foo (1), leader [LEAD], 4 swords [SWOR], 4 silver [SILV]. \
+                 Weight: 14. \
+                 Capacity: 0/0/15/0.",
+                "* Recipient (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                "- Stranger (7001), Bar (2), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                "",
+            ]
+            .join("\n")
+        }
+
+        /// The sharer's changes of `tag` as `(cause, delta, receiver, borrower)`.
+        fn loans(
+            response: &OrdersPreviewResponse,
+            tag: &str,
+        ) -> Vec<(
+            ItemChangeCause,
+            i64,
+            Option<ItemChangeParty>,
+            Option<String>,
+        )> {
+            row_of(response, "900")
+                .item_changes
+                .iter()
+                .filter(|change| change.tag == tag)
+                .map(|change| {
+                    (
+                        change.cause,
+                        change.delta,
+                        change.other.clone(),
+                        change.borrower.as_ref().map(|party| party.unit_id.clone()),
+                    )
+                })
+                .collect()
+        }
+
+        /// Only what the borrower lacked is lent: it spends its own 4 first (`ah-49is`).
+        #[test]
+        fn a_partly_funded_give_lends_only_what_the_borrower_lacked() {
+            let response = preview_over(&report_with_a_lender(), "unit 901\nGIVE 902 14 SWOR\n");
+
+            assert_eq!(
+                loans(&response, "SWOR"),
+                [(
+                    ItemChangeCause::LentForGive,
+                    -10,
+                    Some(ItemChangeParty {
+                        unit_id: "902".to_string(),
+                        name: Some("Recipient".to_string()),
+                    }),
+                    Some("901".to_string()),
+                )]
+            );
+            let borrower: Vec<_> = row_of(&response, "901")
+                .item_changes
+                .iter()
+                .map(|change| (change.cause, change.delta, change.borrower.clone()))
+                .collect();
+            assert_eq!(borrower, [(ItemChangeCause::GivenAway, -4, None)]);
+        }
+
+        /// A receiver the report never prints keeps its number and no name (`ah-49is`).
+        #[test]
+        fn a_loan_for_a_give_to_an_unshown_unit_names_it_without_a_name() {
+            let response = preview_over(&report_with_a_lender(), "unit 901\nGIVE 4840 14 SWOR\n");
+
+            assert_eq!(
+                loans(&response, "SWOR"),
+                [(
+                    ItemChangeCause::LentForGive,
+                    -10,
+                    Some(ItemChangeParty {
+                        unit_id: "4840".to_string(),
+                        name: None,
+                    }),
+                    Some("901".to_string()),
+                )]
+            );
+        }
+
+        /// Another faction's unit is not named as a receiver at all: the hover says "another
+        /// faction" (`ah-49is`). Silver, because `rules/give` lets silver go to any unit, while
+        /// other goods need a Friendly declaration no report shows.
+        #[test]
+        fn a_loan_for_a_give_to_a_foreign_unit_names_no_receiver() {
+            let response = preview_over(&report_with_a_lender(), "unit 901\nGIVE 7001 14 SILV\n");
+
+            assert_eq!(
+                loans(&response, "SILV"),
+                [(
+                    ItemChangeCause::LentForGive,
+                    -10,
+                    None,
+                    Some("901".to_string())
+                )]
+            );
+        }
+
+        /// The wire carries no `borrower` key on a change that has none, so the TypeScript's
+        /// `borrower?:` is true of what is sent (`ah-49is`).
+        #[test]
+        fn a_change_without_a_borrower_writes_no_borrower_key() {
+            let response = preview_over(&report_with_three(), "unit 900\nGIVE 902 4 SWOR\n");
+            let wire = serde_json::to_value(&row_of(&response, "900").item_changes[0])
+                .expect("an item change serialises");
+            assert!(wire.get("borrower").is_none(), "{wire}");
+        }
+
         /// `rules/sequenceofevents` processes FORM before LEAVE and ENTER, so an ENTER the former
         /// wrote above its FORM does not move where the formed unit stands (`ah-qzxe`).
         #[test]
@@ -11535,6 +11697,7 @@ mod tests {
                         unit_id: "902".to_string(),
                         name: Some("Recipient".to_string()),
                     }),
+                    borrower: None,
                     is_man: false,
                 }],
             );
@@ -11553,6 +11716,7 @@ mod tests {
                         unit_id: "900".to_string(),
                         name: Some("Source".to_string()),
                     }),
+                    borrower: None,
                     is_man: false,
                 }],
             );
@@ -11622,6 +11786,7 @@ mod tests {
                     line: Some(2),
                     unit_price: None,
                     other: None,
+                    borrower: None,
                     is_man: false,
                 }],
             );
@@ -11648,6 +11813,7 @@ mod tests {
                     line: Some(2),
                     unit_price: None,
                     other: None,
+                    borrower: None,
                     is_man: false,
                 }],
             );
@@ -11757,6 +11923,7 @@ mod tests {
                         unit_id: "900".to_string(),
                         name: Some("Source".to_string()),
                     }),
+                    borrower: None,
                     is_man: false,
                 }],
             );
@@ -11775,6 +11942,7 @@ mod tests {
                         unit_id: "901".to_string(),
                         name: Some("Taker".to_string()),
                     }),
+                    borrower: None,
                     is_man: false,
                 }],
             );
@@ -11803,6 +11971,7 @@ mod tests {
                         unit_id: "7777".to_string(),
                         name: None,
                     }),
+                    borrower: None,
                     is_man: false,
                 }],
             );

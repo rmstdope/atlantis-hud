@@ -133,6 +133,7 @@ fn preview_transfers(report_text: &str, orders: &str) -> BTreeMap<String, BTreeM
                 if !matches!(
                     change.cause,
                     ItemChangeCause::GivenAway
+                        | ItemChangeCause::LentForGive
                         | ItemChangeCause::WasGiven
                         | ItemChangeCause::Took
                         | ItemChangeCause::WasTakenFrom
