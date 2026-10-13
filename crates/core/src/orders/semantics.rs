@@ -54055,6 +54055,24 @@ BUILD
         );
     }
 
+    /// `DISTRIBUTE` is `TRANSPORT` by another name (`rules/transport`), and a repeating `@`
+    /// order is the same order, so the helper reads that shipment too (`ah-nd0e` review,
+    /// finding 1).
+    #[test]
+    fn silver_shipped_reads_a_repeating_distribute_as_a_shipment() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.units.push(with_silver(unit("901"), 300));
+        let orders = "unit 901\nGIVE 900 100 SILV\n@distribute 900 ALL SILV\n";
+        let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
+        assert_eq!(
+            silver_shipped(&review, orders, "901"),
+            200,
+            "{:?}",
+            shipment_silver(&review, "901")
+        );
+    }
+
     /// A `BUY` the unit cannot afford in full buys "as many as it can" (`rules/buy`), so the part
     /// of its ask it never spent is still in its hands when TRANSPORT runs, after the market
     /// (`rules/sequenceofevents`): 903's $50 buys two grain at $20 and its `ALL SILV` ships the $10
@@ -54754,7 +54772,7 @@ BUILD
             let orders = "unit 901\nCAST Summon_Wind\nTRANSPORT 900 ALL SILV\nunit 902\n";
             let review = review_turn(&report, orders, Some(&rules), with_map());
             assert_eq!(
-                silver_shipped(&review, "901"),
+                silver_shipped(&review, orders, "901"),
                 200,
                 "{:?}",
                 shipment_silver(&review, "901")
