@@ -4203,7 +4203,7 @@ mod tests {
                      (game_id, faction_id, unit_id, goals_json, comment, updated_at, casts_json)
                  VALUES ('faction-12', '95', '7', 
                          '[{{\"kind\":\"study\",\"turn\":0,\"skill\":\"FORC\"}},{{\"kind\":\"study\",\"turn\":72,\"skill\":\"FORC\"}},{{\"kind\":\"teach\",\"turn\":73,\"students\":[],\"live\":true}}]',
-                         '', 't', '[{{\"turn\":72,\"spell\":\"FARS\"}}]');"
+                         '', 't', '[{{\"turn\":0,\"spell\":\"FIRE\"}},{{\"turn\":72,\"spell\":\"FARS\"}}]');"
             ))
             .expect("legacy version 14 setup should succeed");
         drop(connection);
@@ -4263,9 +4263,9 @@ mod tests {
                 r#"[{"kind":"study","turn":0,"skill":"FORC"},"#,
                 r#"{"kind":"study","turn":73,"skill":"FORC"},"#,
                 r#"{"kind":"teach","turn":74,"students":[],"live":true}] "#,
-                r#"[{"turn":73,"spell":"FARS"}]"#
+                r#"[{"turn":1,"spell":"FIRE"},{"turn":73,"spell":"FARS"}]"#
             )],
-            "a goal's turn 0 marks a turnless legacy goal and stays 0"
+            "a goal's turn 0 marks a turnless legacy goal and stays 0; a cast has no such form"
         );
     }
 

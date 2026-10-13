@@ -14,6 +14,8 @@ import { clearGames, expectOrders, openOrders } from "./gameSetup";
  * to test an upgrade is to put the older database back: a fresh game never takes the upgrade path.
  */
 const REPORT = readReport("g7f95t71");
+/** The month before, which version 6 stored as turn 70: an adjacent key the move must not hit. */
+const EARLIER = readReport("g7f95t70");
 
 /** Inholm holds 92 units; this one is the player's, so its orders are editable. */
 const OWN_UNIT = "18642";
@@ -22,7 +24,7 @@ test("a game stored under the old turn numbers opens on the engine's", async ({ 
   await clearGames(page);
 
   await page.evaluate(
-    async ({ report, unit }) => {
+    async ({ report, earlier, unit }) => {
       const stamp = "2026-08-01T09:00:00Z";
       const run = (request: IDBRequest) =>
         new Promise<void>((resolve, reject) => {
@@ -51,10 +53,47 @@ test("a game stored under the old turn numbers opens on the engine's", async ({ 
         request.onsuccess = () => {
           const database = request.result;
           const transaction = database.transaction(
-            ["importedTurns", "orderDrafts", "hexNotes"],
+            ["importedTurns", "orderDrafts", "mergedReports", "hexNotes"],
             "readwrite"
           );
           const base = { databasePath: "idb://game-old-turns", gameId: "old-turns" };
+          // Turns 70 and 71 side by side in every store keyed by turn, so moving 70 up lands on the
+          // key 71 held a moment ago.
+          void run(
+            transaction.objectStore("importedTurns").put({
+              ...base,
+              factionId: "95",
+              turnNumber: 70,
+              rawReport: earlier,
+              parsedPayloadJson: JSON.stringify({
+                turnHeader: { turnNumber: 70, season: "November" }
+              }),
+              warningsPayloadJson: "[]",
+              importedAt: stamp,
+              updatedAt: stamp
+            })
+          );
+          void run(
+            transaction.objectStore("orderDrafts").put({
+              ...base,
+              factionId: "95",
+              turnNumber: 70,
+              orderText: `#atlantis 95\nunit ${unit}\n@tax\n#end\n`,
+              updatedAt: stamp
+            })
+          );
+          for (const turnNumber of [70, 71]) {
+            void run(
+              transaction.objectStore("mergedReports").put({
+                ...base,
+                factionId: "95",
+                turnNumber,
+                mergedFactionId: "73",
+                mergedFactionName: "Borg",
+                mergedAt: stamp
+              })
+            );
+          }
           void run(
             transaction.objectStore("importedTurns").put({
               ...base,
@@ -131,7 +170,7 @@ test("a game stored under the old turn numbers opens on the engine's", async ({ 
         request.onerror = () => reject(request.error);
       });
     },
-    { report: REPORT, unit: OWN_UNIT }
+    { report: REPORT, earlier: EARLIER, unit: OWN_UNIT }
   );
 
   await page.reload();
@@ -162,12 +201,25 @@ test("a game stored under the old turn numbers opens on the engine's", async ({ 
         (JSON.parse(row.parsedPayloadJson as string) as { turnHeader: { turnNumber: number } })
           .turnHeader.turnNumber
       ]),
-      drafts: (await all("orderDrafts")).map((row) => row.turnNumber),
+      drafts: (await all("orderDrafts")).map((row) => [row.turnNumber, row.orderText]),
+      merges: (await all("mergedReports")).map((row) => row.turnNumber),
       notes: (await all("hexNotes")).map((row) => row.turn)
     };
     database.close();
     return result;
   });
 
-  expect(stored).toEqual({ version: 7, turns: [[72, 72]], drafts: [72], notes: [72] });
+  expect(stored).toEqual({
+    version: 7,
+    turns: [
+      [71, 71],
+      [72, 72]
+    ],
+    drafts: [
+      [71, `#atlantis 95\nunit ${OWN_UNIT}\n@tax\n#end\n`],
+      [72, `#atlantis 95\nunit ${OWN_UNIT}\n@work\n@entertain\n#end\n`]
+    ],
+    merges: [71, 72],
+    notes: [72]
+  });
 });

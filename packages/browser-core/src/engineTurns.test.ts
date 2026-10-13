@@ -71,14 +71,21 @@ describe("moving a stored row to the engine's turn numbers", () => {
         { kind: "study", turn: 0, skill: "FORC" },
         { kind: "teach", turn: 72, students: [], live: true }
       ],
-      casts: [{ turn: 72, spell: "FARS" }]
+      casts: [
+        { turn: 0, spell: "FIRE" },
+        { turn: 72, spell: "FARS" }
+      ]
     });
 
     expect(moved.goals).toEqual([
       { kind: "study", turn: 0, skill: "FORC" },
       { kind: "teach", turn: 73, students: [], live: true }
     ]);
-    expect(moved.casts).toEqual([{ turn: 73, spell: "FARS" }]);
+    // A cast has no turnless form, so one on turn 0 moves too.
+    expect(moved.casts).toEqual([
+      { turn: 1, spell: "FIRE" },
+      { turn: 73, spell: "FARS" }
+    ]);
   });
 
   it("carries a plan stored before goals or casts existed through untouched", () => {

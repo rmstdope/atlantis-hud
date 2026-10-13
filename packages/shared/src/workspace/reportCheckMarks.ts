@@ -10,8 +10,31 @@
 /** The minimal interface this module needs from any storage backend. */
 export type MarkStorage = Pick<Storage, "getItem" | "setItem">;
 
+/**
+ * Versioned since ah-m6pw, which moved every turn the core derives up by one (the engine makes
+ * January of Year 1 turn 1). Marks kept under the unversioned key name each turn one lower, so they
+ * are read from there once, moved up by one, and written under this key from then on.
+ */
 function marksKey(gameId: string): string {
+  return `atlantis-hud-ruleset-checked-v2-${gameId}`;
+}
+
+function oldCountMarksKey(gameId: string): string {
   return `atlantis-hud-ruleset-checked-${gameId}`;
+}
+
+function readMarks(raw: string): string[] {
+  const parsed: unknown = JSON.parse(raw);
+  return Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === "string") : [];
+}
+
+/** `faction:turn` one turn later; a key whose turn is not a number is kept as it is. */
+function onEngineCount(key: string): string {
+  const split = key.lastIndexOf(":");
+  const turn = Number(key.slice(split + 1));
+  return split >= 0 && key.slice(split + 1) !== "" && Number.isInteger(turn)
+    ? `${key.slice(0, split)}:${turn + 1}`
+    : key;
 }
 
 /** localStorage, or `null` where there is none or it may not be touched. */
@@ -26,8 +49,11 @@ export function optionalMarkStorage(): MarkStorage | null {
 /** The reports of `gameId` already checked. */
 export function checkedKeys(storage: MarkStorage | null, gameId: string): Set<string> {
   try {
-    const parsed: unknown = JSON.parse(storage?.getItem(marksKey(gameId)) ?? "[]");
-    return new Set(Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === "string") : []);
+    const current = storage?.getItem(marksKey(gameId)) ?? null;
+    if (current !== null) {
+      return new Set(readMarks(current));
+    }
+    return new Set(readMarks(storage?.getItem(oldCountMarksKey(gameId)) ?? "[]").map(onEngineCount));
   } catch {
     return new Set();
   }

@@ -329,18 +329,25 @@ function openGameDatabase(databasePath: string): Promise<IDBDatabase> {
 /**
  * Rewrites every row of one store with its turns one higher, inside the upgrade's transaction.
  *
- * The whole store is read before anything is written and cleared before anything is put back: the
- * turn is part of the key in three stores, so moving rows one at a time would land turn N on the
- * key turn N + 1 still holds.
+ * A cursor walking the keys from the highest down, so only one row is in memory at a time - a
+ * game's imported turns are whole reports, a megabyte each in a mature New Age game. The turn is
+ * part of the key in three stores, and the walk is what keeps the move from colliding: turn N
+ * moves to N + 1 only after the row that was at N + 1 has already moved on to N + 2, and a row put
+ * above the cursor is never visited again.
  */
 function moveStoreToEngineTurns(store: IDBObjectStore): void {
-  const read = store.getAll();
-  read.onsuccess = () => {
-    const rows = read.result as Record<string, unknown>[];
-    store.clear();
-    for (const row of rows) {
-      store.put(moveRowToEngineTurns(store.name, row));
+  const walk = store.openCursor(null, "prev");
+  walk.onsuccess = () => {
+    const cursor = walk.result;
+    if (cursor === null) {
+      return;
     }
+    // Deleted and put rather than updated in place: `cursor.update` refuses a value whose key
+    // differs from the cursor's. Requests run in order, so a row whose key is unchanged is
+    // deleted and then written straight back.
+    cursor.delete();
+    store.put(moveRowToEngineTurns(store.name, cursor.value as Record<string, unknown>));
+    cursor.continue();
   };
 }
 

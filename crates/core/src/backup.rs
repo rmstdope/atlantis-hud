@@ -757,8 +757,8 @@ pub fn encode_game_backup_json(
 /// Version 1 was written while `turn_number_for` called February of Year 1 turn 1; the engine's
 /// `Game::TurnNumber` (game.cpp) makes January of Year 1 turn 1, so every turn in such a backup is
 /// one low. This is the move migration 15 makes to a stored desktop game, applied to the file
-/// instead, so both stores and both platforms restore one backup alike. A goal's turn 0 is not a
-/// turn - it marks a goal written before goals had turns, which every reader drops - so it stays.
+/// instead, so both stores and both platforms restore one backup alike. A goal's turn 0 marks a goal
+/// written before goals had turns, which every reader drops, so it stays; a cast has no such form.
 fn move_to_engine_turns(collections: &mut EncodedGameBackupCollections) {
     let later = |turn: &mut u32| *turn = turn.saturating_add(1);
 
@@ -807,10 +807,10 @@ fn move_to_engine_turns(collections: &mut EncodedGameBackupCollections) {
                 later(turn);
             }
         }
+        // A cast has no turnless form, so a cast on turn 0 (January of Year 1, as version 1
+        // counted) moves like any other.
         for cast in &mut plan.casts {
-            if cast.turn > 0 {
-                later(&mut cast.turn);
-            }
+            later(&mut cast.turn);
         }
     }
 }
@@ -2128,10 +2128,16 @@ mod tests {
                     live: true,
                 },
             ],
-            casts: vec![PlannedCast {
-                turn: 72,
-                spell: "FARS".to_string(),
-            }],
+            casts: vec![
+                PlannedCast {
+                    turn: 0,
+                    spell: "FIRE".to_string(),
+                },
+                PlannedCast {
+                    turn: 72,
+                    spell: "FARS".to_string(),
+                },
+            ],
             comment: String::new(),
             updated_at: "2026-01-05T00:00:00Z".to_string(),
         }];
@@ -2177,7 +2183,15 @@ mod tests {
             ],
             "a goal's turn 0 marks a turnless legacy goal and stays 0"
         );
-        assert_eq!(restored.study_plans[0].casts[0].turn, 73);
+        assert_eq!(
+            restored.study_plans[0]
+                .casts
+                .iter()
+                .map(|cast| cast.turn)
+                .collect::<Vec<_>>(),
+            vec![1, 73],
+            "a cast has no turnless form, so one on turn 0 moves too"
+        );
 
         let current = decode_game_backup(&encoded, "2026-02-01T00:00:00Z")
             .expect("decodes")

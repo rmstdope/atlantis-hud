@@ -18,7 +18,7 @@ function later(value: unknown): unknown {
   return typeof value === "number" ? value + 1 : value;
 }
 
-/** A goal's or cast's turn 0 is not a turn: it marks one written before goals had turns. */
+/** A goal's turn 0 marks one written before goals had turns, which every reader drops. */
 function laterUnlessZero(value: unknown): unknown {
   return typeof value === "number" && value > 0 ? value + 1 : value;
 }
@@ -86,8 +86,10 @@ export function moveRowToEngineTurns<T extends Row>(storeName: string, row: T): 
     case "studyPlans":
       return withLater(
         withLater(row, "goals", (goals) => eachLater(goals, "turn", laterUnlessZero)),
+        // A cast has no turnless form, so one on turn 0 (January of Year 1, as counted before)
+        // moves like any other.
         "casts",
-        (casts) => eachLater(casts, "turn", laterUnlessZero)
+        (casts) => eachLater(casts, "turn", later)
       ) as T;
     default:
       return row;

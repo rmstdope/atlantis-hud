@@ -52,8 +52,9 @@ UPDATE armies
              FROM (SELECT value FROM json_each(armies.members_json) ORDER BY key) AS member)
  WHERE json_valid(members_json) AND json_type(members_json) = 'array';
 
--- A planned goal or cast names its turn. A goal's turn 0 is not a turn: it marks a goal written
--- before goals had turns, which every reader drops, so it stays 0.
+-- A planned goal or cast names its turn. A goal's turn 0 marks a goal written before goals had
+-- turns, which every reader drops, so it stays 0 - a real January of Year 1 goal is indistinguishable
+-- from it and was already dropped. A cast has no turnless form, so every cast moves.
 UPDATE study_plans
    SET goals_json = (
            SELECT json_group_array(
@@ -68,7 +69,6 @@ UPDATE study_plans
    SET casts_json = (
            SELECT json_group_array(
                       CASE WHEN json_type(planned.value, '$.turn') = 'integer'
-                                AND json_extract(planned.value, '$.turn') > 0
                            THEN json_set(planned.value, '$.turn',
                                          json_extract(planned.value, '$.turn') + 1)
                            ELSE json(planned.value) END)
