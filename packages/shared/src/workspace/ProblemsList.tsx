@@ -65,7 +65,10 @@ export function ProblemsList({
                 <ProblemWho
                   unitId={finding.unitId}
                   formed={finding.formed}
-                  regionId={hex.regionId}
+                  // The finding's own hex rather than the card's: a walker's upkeep is listed where
+                  // it ends the month, but a formed unit's alias belongs to the hex it was formed
+                  // in (`ah-6cka`).
+                  regionId={finding.regionId ?? hex.regionId}
                   known={known}
                   onSelectUnit={onSelectUnit}
                 />

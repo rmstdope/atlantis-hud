@@ -4102,6 +4102,9 @@ pub struct UpkeepSettlement {
     /// Every unit that owed maintenance it could not pay, whether or not the fund reached it, with
     /// what it could not pay - so a warning can say where its total comes from (`ah-bwxp.2`).
     pub claimants: BTreeMap<super::semantics::UnitKey, i64>,
+    /// Where each claimant's fee falls due: [`UpkeepClaim::pays_in`], by the same key as
+    /// `claimants`, so a unit's warning is counted for the hex it ends the month in (`ah-6cka`).
+    pub pays_in: BTreeMap<super::semantics::UnitKey, Coordinate>,
     /// What the claimants owed, by the region each fee falls due in, in the order the regions
     /// first appear among the claims. Sums to `owed` (`ah-bwxp.2`).
     pub short_by_region: Vec<(Coordinate, i64)>,
@@ -4176,6 +4179,15 @@ pub fn settle_unclaimed(claims: &[UpkeepClaim], available: Option<i64>) -> Upkee
     UpkeepSettlement {
         covered,
         short_by_region,
+        pays_in: claiming
+            .clone()
+            .map(|claim| {
+                (
+                    super::semantics::unit_key(&claim.region_id, &claim.unit_id),
+                    claim.pays_in,
+                )
+            })
+            .collect(),
         claimants: claiming
             .map(|claim| {
                 (

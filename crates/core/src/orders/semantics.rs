@@ -21682,12 +21682,19 @@ fn check_upkeep_fund(
         settlement.available
     );
 
-    for (unit, short) in report
+    for (region, unit, short) in report
         .regions
         .iter()
-        .flat_map(|region| region.units.iter())
-        .filter_map(|unit| short_of(unit).map(|short| (unit, short)))
+        .flat_map(|region| region.units.iter().map(move |unit| (region, unit)))
+        .filter_map(|(region, unit)| short_of(unit).map(|short| (region, unit, short)))
     {
+        // Counted for the hex the fee falls due in, where the unit ends the month - the region
+        // the message's own breakdown names (`ah-6cka`).
+        let counted_in = settlement
+            .pays_in
+            .get(&unit_key(&unit.region_id, &unit.unit_id))
+            .filter(|at| **at != region.coordinate)
+            .map(Coordinate::id);
         findings.push(Finding {
             code: codes::UPKEEP_EXCEEDS_UNCLAIMED,
             message: format!("this unit is ${short} short of its upkeep; {total}"),
@@ -21697,7 +21704,7 @@ fn check_upkeep_fund(
             column_start: None,
             column_end: None,
             formed: None,
-            counted_in: None,
+            counted_in,
         });
     }
 }
@@ -40280,6 +40287,34 @@ BUILD
                 review.findings
             );
         }
+    }
+
+    /// `ah-6cka`, with a fund too small to reach every claimant: the per-unit
+    /// `upkeep-exceeds-unclaimed` is counted where the walker ends the month too, the region its
+    /// own message already names.
+    #[test]
+    fn a_walkers_unfunded_upkeep_is_counted_where_it_ends_the_month() {
+        let (mut report, orders, options) = a_walkers_turn(Vec::new(), Vec::new(), true);
+        report.header.unclaimed_silver = Some(5);
+        let review = review_turn(&report, &orders, Some(&ruleset()), options);
+        let warned: Vec<(&str, Option<&str>, Option<&str>)> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::UPKEEP_EXCEEDS_UNCLAIMED)
+            .map(|finding| {
+                (
+                    finding.region_id.as_str(),
+                    finding.unit_id.as_deref(),
+                    finding.counted_in.as_deref(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            warned,
+            vec![("1:7,53", Some("4021"), Some("1:7,51"))],
+            "{:?}",
+            review.findings
+        );
     }
 
     /// `ah-6cka`, the control: a unit that stays is counted where it stands, as before.
