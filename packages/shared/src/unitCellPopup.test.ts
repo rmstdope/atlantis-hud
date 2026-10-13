@@ -3285,6 +3285,18 @@ describe("the items popup's cause sentences", () => {
     expect(notes).not.toContain("Nothing this month changes these.");
   });
 
+  it("does not say nothing changes for a builder that drew all its material from a sharer", () => {
+    const notes = notesFor({
+      items: [],
+      itemChanges: [
+        moved({ tag: "WOOD", name: "wood", cause: "drawn-from-sharer", delta: 5, other: { unitId: "4008", name: "Sharer" } }),
+        moved({ tag: "WOOD", name: "wood", cause: "build-spent", delta: -5 })
+      ]
+    });
+    expect(notes[0]).toMatch(/^wood: drew 5 from Sharer \(4008\)'s shared stock, spent 5 /);
+    expect(notes).not.toContain("Nothing this month changes these.");
+  });
+
   it("still says nothing changes when it lists no movement", () => {
     expect(notesFor({ items: [{ name: "grain", tag: "GRAI", amount: 8 }] })).toContain(
       "Nothing this month changes these."
