@@ -13340,9 +13340,10 @@ impl SharerStock {
     /// there ([`Lending::before`]): a lender's position is less what it lent and a borrower's is
     /// plus what it was lent, so a drain at `phase` lays only what is new and nothing is lent
     /// twice (`ah-su1x`, `ah-pf7t`). From STUDY on only the sharers that stay lend
-    /// ([`Sharing::for_silver`]), and a STUDY the pool did not cover was refused and hands its
-    /// overdraft back ([`refused_study`]). Before the market - every GIVE, TAKE and CAST - there
-    /// is nothing to carry.
+    /// ([`Sharing::for_silver`]), and a STUDY the engine refused hands its whole fee back: in a
+    /// pool, as the fold judged each student ([`Lending::refused`], `ah-li7l`); where nothing
+    /// pools, off the unit's own row ([`refused_study`]). Before the market - every GIVE, TAKE and
+    /// CAST - there is nothing to carry.
     fn at(ledger: &Ledger<'_>, hex: &Hex<'_>, phase: StatePhase, tag: &str) -> Option<Self> {
         let silver = tag.eq_ignore_ascii_case(SILVER);
         let staying = silver && phase > StatePhase::Movement;
@@ -14857,11 +14858,12 @@ fn silver_short_at_study(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
 /// `rules/sequenceofevents` runs STUDY before TRANSPORT, so silver shipped to the unit later
 /// cannot pay for it. The engine refuses a study outright when its cost is more than the unit can
 /// draw on (`monthorders.cpp`: "STUDY: Not enough funds."), and takes nothing: the whole fee is
-/// handed back. In a hex whose `SHARE` purse lends silver "for buying or studying"
-/// (`rules/share`), this is the case where the purse paid: the unit's own coins went on the
-/// study and the purse paid the rest, so only the overdraft is handed back (`ah-rt4p`). A study
-/// the purse refused hands back its whole fee instead, which [`Ledger::transport_holding`] reads
-/// from the purse's own settlement (`ah-li7l`).
+/// handed back. That is the whole answer where nothing pools, and [`SharerStock::at`] reads it
+/// there. In a hex whose `SHARE` purse lends silver "for buying or studying" (`rules/share`),
+/// [`SharerStock::at`] reads the purse's own judgment of each student instead
+/// ([`Lending::refused`], `ah-li7l`), and this is reached only from
+/// [`Ledger::transport_holding`]'s fallback, where the pool cannot be read: it hands back the
+/// overdraft alone, the case where the purse paid the rest (`ah-rt4p`).
 fn refused_study(ledger: &Ledger<'_>, hex: &Hex<'_>, unit_id: &str) -> i64 {
     let overdrawn = silver_short_at_study(ledger, unit_id);
     if overdrawn <= 0 {
