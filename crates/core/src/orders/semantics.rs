@@ -6071,8 +6071,9 @@ impl Ledger<'_> {
     /// orders left it (`ah-su1x`); hands back a STUDY the unit could not pay for, which silver
     /// arriving only in a TRANSPORT sub-phase must not meet ([`study_settlement`], `ah-rt4p`, `ah-2f77`); and
     /// keeps what a cut `BUY` never spent ([`Ledger::overcharged`]). Where the stock cannot be
-    /// read - the unit's own balance or the pool is in doubt - the plain balance, silver with the
-    /// refused study handed back, lending nothing, as the purse itself lends nothing there. A
+    /// read - the unit's own balance or the pool is in doubt - the plain balance, silver with what
+    /// its own silver did not pay of its STUDY handed back ([`StudyOutcome::handed_back`]: the
+    /// purse's loan, a refused fee, or an unjudged overdraft) and no other lending. A
     /// refused CAST is not handed back there: which cast the engine refuses cannot be told
     /// without the pool, so the reading stays pessimistic (`ah-szu0` follow-up review, finding 3).
     fn transport_holding(&self, hex: &Hex<'_>, unit_id: &str, tag: &str) -> i64 {
@@ -14903,10 +14904,12 @@ impl StudyOutcome {
         }
     }
 
-    /// What a reading after STUDY adds back to the unit's own row: the whole fee of a refused
-    /// study, the overdraft of one the purse could not judge.
+    /// What a reading after STUDY adds back to the ledger's own row for the unit, which was
+    /// charged the whole fee: what the purse lent towards a study it paid, the whole fee of a
+    /// refused study, and the overdraft of one the purse could not judge.
     fn handed_back(self) -> i64 {
         match self {
+            StudyOutcome::Paid { lent, .. } => lent,
             StudyOutcome::Refused { fee, .. } => fee,
             StudyOutcome::Unjudged { overdrawn } => overdrawn,
             _ => 0,
@@ -40452,6 +40455,73 @@ BUILD
                 })
                 .sum();
             assert_eq!(ledger.transport_holding(&hex, "7", SILVER), 15 - lent);
+        }
+
+        /// `TRANSPORT`'s own holding for a student whose own silver a `GIVE` left uncertain, read
+        /// off the plain balance because its stock cannot be ([`Ledger::transport_holding`]).
+        fn uncertain_student_holding(student_silver: i64, sharer_silver: i64) -> i64 {
+            let hex_region = region(vec![
+                with_silver(unit("5"), student_silver),
+                sharing(with_silver(unit("7"), sharer_silver)),
+            ]);
+            let ordered = OrderedUnits::read("unit 5\nSTUDY Combat\n");
+            let hex = Hex::read(&hex_region, &ordered, &[]);
+            let rules = ruleset();
+            let mut ledger = ledger_for(&hex, Some(&rules));
+            ledger.state.uncertain.insert(
+                ("5".to_owned(), SILVER.to_owned()),
+                UncertainGive {
+                    target: "x".to_owned(),
+                    line: 1,
+                },
+            );
+            ledger.transport_holding(&hex, "5", SILVER)
+        }
+
+        /// Review finding 1: the purse paid $5 of 5's $10 Combat, so its own $5 is spent and what
+        /// the ledger charged beyond it is the purse's, not a debt TRANSPORT must meet first.
+        #[test]
+        fn a_paid_student_whose_own_silver_is_uncertain_ships_nothing_and_owes_nothing() {
+            assert_eq!(uncertain_student_holding(5, 15), 0);
+        }
+
+        /// A study the purse refused took nothing (`monthorders.cpp`: `Do1StudyOrder`), the
+        /// student's own $3 included: sharer 7's $5 and 5's $3 cannot meet the $10 fee.
+        #[test]
+        fn a_refused_student_whose_own_silver_is_uncertain_keeps_its_own_silver() {
+            assert_eq!(uncertain_student_holding(3, 5), 3);
+        }
+
+        /// Review finding 2: a study that cannot raise the level is not performed and not billed
+        /// (`ah-jzs9`), so the study popup does not call a fee short that nobody is charged - as
+        /// the ledger and the SILVER column already did not. 60 gnolls at combat 5 (`data/GNOL`
+        /// takes combat to 5) with $100.
+        #[test]
+        fn a_study_at_the_ceiling_is_not_called_short_of_its_fee() {
+            let student = with_men_grain(
+                with_skill_points(
+                    with_silver(with_race(unit("8573"), 60, "gnoll", "GNOL"), 100),
+                    "COMB",
+                    5,
+                    450,
+                ),
+                60,
+            );
+            let study = study_of(
+                vec![region(vec![student])],
+                "unit 8573\nSTUDY COMB\n",
+                "8573",
+            )
+            .expect("the study is forecast");
+
+            assert!(study.cannot_raise_the_level, "{study:?}");
+            assert!(
+                !study
+                    .doubts
+                    .iter()
+                    .any(|doubt| doubt.reason == effects::StudyDoubtReason::FeeShort),
+                "{study:?}"
+            );
         }
     }
 
