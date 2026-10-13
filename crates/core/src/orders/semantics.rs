@@ -5666,14 +5666,18 @@ struct Ledger<'a> {
     /// (`ah-0mch`).
     pub(crate) shared_casts: BTreeMap<String, Vec<SharedCast>>,
     /// What each unit was charged for a tag beyond what actually moved, because neither it nor
-    /// any sharer could fund it: a `GIVE` the engine cuts with "Not enough.", a cast or sale the
-    /// pool fell short of. The charge stays the whole ask, so the shortfall keeps its warning,
-    /// and [`SharerStock::at`] adds it back wherever the stock really left is wanted, and is its
-    /// only reader - the way [`Ledger::overcharged`] does for a cut `BUY` (`ah-0mch`).
+    /// any sharer could fund it: a `GIVE` the engine cuts with "Not enough.", a cast's materials
+    /// or a sale the pool fell short of - every overdraft but a cast's silver, which is
+    /// [`Ledger::unfunded_casts`]'s alone, so no coin is booked in both. The charge stays the
+    /// whole ask, so the shortfall keeps its warning, and [`SharerStock`] adds it back wherever
+    /// the ledger answers for the overdraft ([`OverdraftOwner`]) - the way
+    /// [`Ledger::overcharged`] does for a cut `BUY` (`ah-0mch`, `ah-eoag`).
     unfunded: BTreeMap<(String, String), i64>,
-    /// The part of [`Ledger::unfunded`] silver each unit's `CAST` put there: what neither it nor
-    /// any sharer could fund of the spell's cost as [`cast`] priced it. [`SharerStock::at`] reads
-    /// it to hand a refused cast's cost back without adding this part twice (`ah-szu0`).
+    /// What neither each unit nor any sharer could fund of its `CAST`'s silver cost as [`cast`]
+    /// priced it - the one record of it, and the mark of a cast the engine refuses. Added back
+    /// only where the ledger answers for the overdraft ([`OverdraftOwner::Ledger`]); where the
+    /// cast's verdict does, the refused cast's whole cost comes back instead (`ah-szu0`,
+    /// `ah-eoag`).
     unfunded_casts: BTreeMap<String, i64>,
     /// Every `GIVE`, `TAKE` and discard of silver this walk settled, in settlement order: who it
     /// left, who it reached (`None` for a discard, or a target this walk cannot credit), and how
@@ -11371,9 +11375,9 @@ fn cast(
     // charged from `spends` alone; `plan.materials` never contains `SILV` (`ah-ofpb.4`).
     let (priced, plan) = price_cast(resolved, &caster, region);
     // A cast the purse could not pay is still charged in full, to keep its warning; what nobody
-    // funded is booked so the pool is not read as drained by it (`ah-0mch`).
+    // funded is booked so the pool is not read as drained by it (`ah-0mch`) - in
+    // `unfunded_casts` alone, never in `unfunded` as well (`ah-eoag`).
     let unfunded_cast = priced.spends - hopeful.saturating_add(lent_silver).max(0);
-    record_unfunded(ledger, who, SILVER, unfunded_cast);
     if unfunded_cast > 0 {
         *ledger.unfunded_casts.entry(who.clone()).or_default() += unfunded_cast;
     }
@@ -13344,6 +13348,92 @@ fn claimant_cast_overdraft(ledger: &Ledger<'_>, unit_id: &str, moment: LendingMo
     (-silver_at(ledger, unit_id, LendingMoment::Cast)).max(0)
 }
 
+/// Who answers for what a unit's orders overdrew it - charged beyond what it and its sharers
+/// held - in one reading of a hex's pool: **exactly one side**, so no coin of an overdraft is
+/// counted by two (`ah-eoag`). The ledger charges the whole ask and books what nobody funded
+/// ([`Ledger::unfunded`], [`Ledger::unfunded_casts`]); the purse ([`Lending`]) works from the
+/// whole ask too, and lends for it or hands it back. Reading both at once counted the overdraft
+/// twice, and three claimant kinds in a row each paid for a fix of it (`ah-0mch`, `ah-szu0`,
+/// `ah-mrs0`). The part of a `GIVE` or `TAKE` nobody funded as it ran is the ledger's under every
+/// owner ([`unfunded_gift_silver`]): the engine judged it then, and the purse claims none of it
+/// (`ah-2fn5`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OverdraftOwner {
+    /// The ledger's add-back: what nobody funded never left the unit. Goods, silver before the
+    /// casts, a unit the purse does not judge, and the cast itself where nothing pools.
+    Ledger,
+    /// The casts' verdict: a cast [`cast`] found unfunded is refused and takes nothing
+    /// (`spells.cpp`: `RunCreateArtifact`), so its whole cost comes back
+    /// ([`refused_cast_cost`]) in place of the ledger's add-back of its unfunded part. At the
+    /// pooled cast reading, and after the cast where nothing pools.
+    Cast,
+    /// The purse: its positions are the whole of every cast and study, so what it lent for one is
+    /// in the borrows and what it refused is in [`Lending::refused`], and none of the ledger's
+    /// add-back of a cast is wanted as well. From the cast on, in a pool, for a unit the purse
+    /// judges.
+    Purse,
+}
+
+impl OverdraftOwner {
+    /// The owner of a reading of `tag` at `phase`, for a unit the purse judges or not, in a hex
+    /// whose `tag` pools or not.
+    fn of(silver: bool, pooled: bool, phase: StatePhase, judged: bool) -> Self {
+        if !silver || phase < StatePhase::Cast {
+            OverdraftOwner::Ledger
+        } else if pooled && phase == StatePhase::Cast {
+            OverdraftOwner::Cast
+        } else if pooled {
+            if judged {
+                OverdraftOwner::Purse
+            } else {
+                OverdraftOwner::Ledger
+            }
+        } else if phase == StatePhase::Cast {
+            OverdraftOwner::Ledger
+        } else {
+            OverdraftOwner::Cast
+        }
+    }
+
+    /// What this owner adds to the unit's known balance ([`SharerStock::known_at`]) for its
+    /// overdraft: the ledger's add-back, a refused cast's cost, or what the purse handed back.
+    /// `lending` and `index` are read by [`OverdraftOwner::Purse`] alone.
+    fn answers(
+        self,
+        ledger: &Ledger<'_>,
+        unit_id: &str,
+        tag: &str,
+        lending: &Lending,
+        index: usize,
+    ) -> i64 {
+        let unfunded = |tag: &str| {
+            ledger
+                .unfunded
+                .get(&(unit_id.to_string(), tag.to_ascii_uppercase()))
+                .copied()
+                .unwrap_or(0)
+        };
+        let unfunded_cast = ledger.unfunded_casts.get(unit_id).copied().unwrap_or(0);
+        match self {
+            OverdraftOwner::Ledger if tag.eq_ignore_ascii_case(SILVER) => {
+                unfunded(tag).saturating_add(unfunded_cast)
+            }
+            OverdraftOwner::Ledger => unfunded(tag),
+            OverdraftOwner::Cast => {
+                let cast_back = if unfunded_cast > 0 {
+                    refused_cast_cost(ledger, unit_id, 0)
+                } else {
+                    0
+                };
+                unfunded_gift_silver(ledger, unit_id).saturating_add(cast_back)
+            }
+            OverdraftOwner::Purse => {
+                unfunded_gift_silver(ledger, unit_id).saturating_add(lending.refused(index))
+            }
+        }
+    }
+}
+
 /// One party to a hex's `SHARE` pool at one moment, as [`SharerStock`] reads it: what it holds of
 /// the tag - negative where its orders have overdrawn it - and whether it lends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -13385,9 +13475,10 @@ impl SharerStock {
     }
 
     /// The ledger's reading at `phase`, index-aligned with `hex.units`: each unit's balance with
-    /// its [`Ledger::unfunded`] part added back, since that silver or those goods never left
-    /// anyone, and the hex's sharers lending - none, where the tag does not pool (men, or a hex
-    /// nobody shares in).
+    /// its overdraft answered by exactly one side ([`OverdraftOwner`], `ah-eoag`) - the ledger's
+    /// add-back of what never left anyone, a refused cast's whole cost, or the purse's lending and
+    /// hand-backs - and the hex's sharers lending - none, where the tag does not pool (men, or a
+    /// hex nobody shares in).
     ///
     /// `None` where it cannot be read: a sharer's balance a `GIVE` left uncertain, or a pool whose
     /// sum is not to be trusted. A non-sharer whose balance is uncertain is read as having drawn
@@ -13438,70 +13529,26 @@ impl SharerStock {
                 } else {
                     ordered.shares()
                 };
-            let position = match Self::held_at(ledger, phase, &ordered.unit.unit_id, tag) {
-                Some(held) => {
+            let unit_id = &ordered.unit.unit_id;
+            let position = match Self::known_at(ledger, phase, unit_id, tag) {
+                Some(known) => {
                     let carried = lending.borrows[index] - lending.lends[index];
-                    // A STUDY the engine refused took nothing (`monthorders.cpp`: `cost >
-                    // GetSharedMoney()`, "STUDY: Not enough funds."), so its fee comes back. In a
-                    // pool the fold judged each student as the engine pays them, one by one on
-                    // its position net of what it lent ([`Lending::refused`], `ah-li7l`); read off
-                    // a lender's own row alone, its study would look paid for out of silver it had
-                    // already lent (cold-read review findings 2 and 3).
-                    //
-                    // A cast or a market the pool could not cover does not stop the fold judging
-                    // STUDY, so a study the pool could still pay lends here too (`ah-szu0`).
-                    //
-                    // A refused CAST took nothing either (`spells.cpp`: `RunCreateArtifact`), and
-                    // hands back its cost less the part [`Ledger::unfunded`] already added back
-                    // to `held` (`ah-szu0`).
-                    let unit_id = &ordered.unit.unit_id;
-                    let unfunded_cast = ledger.unfunded_casts.get(unit_id).copied().unwrap_or(0);
-                    // A cast the ledger could not fund out of what the pool held as it was
-                    // priced - in region order, each earlier refused cast handed back as here -
-                    // is a cast the engine refused: its whole cost, as the ledger charged it.
-                    let cast_back = if unfunded_cast > 0 {
-                        refused_cast_cost(ledger, unit_id, 0)
-                    } else {
-                        0
-                    };
-                    let refused = if !silver || phase < StatePhase::Cast {
-                        0
-                    } else if pooled && phase == StatePhase::Cast {
-                        // Read while the casts are priced: a caster priced earlier whose cast
-                        // nobody could fund leaves the pool what it would have drawn. That is
-                        // the engine's verdict as far as the ledger's figures go: [`cast`]
-                        // prices on the hopeful tax, so under an overstated tax (`ah-ud89`) it
-                        // can fund a cast the settled figures could not; the fold then refuses
-                        // it one by one ([`Lending::settle`]).
-                        cast_back - unfunded_cast
-                    } else if pooled {
-                        // The fold either paid a judged caster's cast - a borrow that already
-                        // covers the unfunded part - or refused it and hands back its whole cost
-                        // in `refused`; either way the ledger's add-back is not wanted as well
-                        // (`ah-szu0` follow-up review, finding 1). A doubted unit is not judged,
-                        // so it keeps the add-back.
-                        //
-                        // An overdraft from before the casts - a GIVE beyond what the unit and its
-                        // sharers held - is not this: the fold claims only what the sharers funded
-                        // as the GIVE ran, so the ledger's add-back of the rest is the one wanted
-                        // (`ah-2fn5`).
-                        let judged = !ledger.doubted.contains(unit_id);
-                        lending.refused(index) - if judged { unfunded_cast } else { 0 }
-                    } else {
-                        // Where nothing pools, the caster's own silver is all the spell could
-                        // draw on, and STUDY is judged on what the refused cast handed back
-                        // (`ah-szu0` follow-up review, finding 2).
-                        let study = own_studies
-                            .as_ref()
-                            .map_or(0, |studies| studies[index].handed_back());
-                        let cast = if phase > StatePhase::Cast {
-                            cast_back - unfunded_cast
-                        } else {
-                            0
-                        };
-                        study + cast
-                    };
-                    held.saturating_add(carried).saturating_add(refused)
+                    // What the unit's orders overdrew it, answered by exactly one side
+                    // ([`OverdraftOwner`], `ah-eoag`): the ledger's add-back, a refused cast's
+                    // whole cost, or the purse's own lending and hand-backs.
+                    let judged = !ledger.doubted.contains(unit_id);
+                    let overdraft = OverdraftOwner::of(silver, pooled, phase, judged)
+                        .answers(ledger, unit_id, tag, &lending, index);
+                    // Where nothing pools, a STUDY is judged on the unit's own silver once a
+                    // refused cast handed its coins back (`ah-szu0` follow-up review, finding 2);
+                    // in a pool the purse's judgment is already in [`Lending::refused`].
+                    let study = own_studies
+                        .as_ref()
+                        .map_or(0, |studies| studies[index].handed_back());
+                    known
+                        .saturating_add(carried)
+                        .saturating_add(overdraft)
+                        .saturating_add(study)
                 }
                 None if lends => return None,
                 None => 0,
@@ -13514,24 +13561,35 @@ impl SharerStock {
         })
     }
 
-    /// One unit's balance as [`SharerStock::at`] reads it, before any lending is carried, or
-    /// `None` where a `GIVE` left it uncertain: the ledger's balance with what it charged but
-    /// never took added back - [`Ledger::unfunded`], and for silver after the market
-    /// [`Ledger::overcharged`], the part of a cut `BUY`'s ask the market left in the unit's hands
-    /// (`rules/buy`: "it will attempt to buy as many as it can").
+    /// One unit's balance as the ledger answers for its overdraft ([`OverdraftOwner::Ledger`]),
+    /// or `None` where a `GIVE` left it uncertain: the ledger's balance with what it charged but
+    /// never took added back - [`Ledger::unfunded`] and [`Ledger::unfunded_casts`], and for silver
+    /// after the market [`Ledger::overcharged`], the part of a cut `BUY`'s ask the market left in
+    /// the unit's hands (`rules/buy`: "it will attempt to buy as many as it can"). For a reader
+    /// that settles no purse, such as an exchange at the `GIVE` phase.
     fn held_at(ledger: &Ledger<'_>, phase: StatePhase, unit_id: &str, tag: &str) -> Option<i64> {
+        Self::known_at(ledger, phase, unit_id, tag).map(|known| {
+            known.saturating_add(OverdraftOwner::Ledger.answers(
+                ledger,
+                unit_id,
+                tag,
+                &Lending::default(),
+                0,
+            ))
+        })
+    }
+
+    /// One unit's balance with no overdraft added back - the ledger's balance, and for silver
+    /// after the market [`Ledger::overcharged`] - or `None` where a `GIVE` left it uncertain.
+    /// Who answers for its overdraft is [`OverdraftOwner`]'s to say (`ah-eoag`).
+    fn known_at(ledger: &Ledger<'_>, phase: StatePhase, unit_id: &str, tag: &str) -> Option<i64> {
         let known = ledger.state.known_balance_at(phase, unit_id, tag).ok()?;
-        let unfunded = ledger
-            .unfunded
-            .get(&(unit_id.to_string(), tag.to_ascii_uppercase()))
-            .copied()
-            .unwrap_or(0);
         let overcharged = if tag.eq_ignore_ascii_case(SILVER) && phase > StatePhase::Market {
             ledger.overcharged.get(unit_id).copied().unwrap_or(0)
         } else {
             0
         };
-        Some(known.saturating_add(unfunded).saturating_add(overcharged))
+        Some(known.saturating_add(overcharged))
     }
 
     /// [`SharerStock::at`] for one spender, with where it sits among the parties. `None` where the
@@ -14610,16 +14668,16 @@ struct Lending {
     /// overdraft from before the casts that the pool could not pay in full at the cast moment,
     /// handed back whole there since that moment pays each claim in full or not at all
     /// ([`SharerStock::paid_one_by_one`]; `ah-mrs0`). That overdraft is only the part of a GIVE
-    /// the sharers funded as it ran: the part nobody could fund was never claimed
-    /// ([`unfunded_before_casts`], `ah-2fn5`).
+    /// the sharers funded as it ran: the part nobody could fund was never claimed, and stays the
+    /// ledger's to add back ([`unfunded_gift_silver`], `ah-2fn5`, `ah-eoag`).
     refused_cast: Vec<i64>,
     /// How each unit's STUDY went, judged one student at a time as the engine pays them - **the
     /// one reading of whether the purse paid a study** (`ah-2f77`). [`StudyOutcome::NoStudy`]
     /// throughout where the moments read stop before STUDY.
     study: Vec<StudyOutcome>,
     /// Whether each unit's claim at the cast moment is among what `refused` hands back - its CAST,
-    /// or an earlier overdraft for a unit with no cast (`ah-mrs0`): [`SharerStock::at`] then takes
-    /// off what the ledger already added back as [`Ledger::unfunded_casts`] (`ah-szu0`).
+    /// or an earlier overdraft for a unit with no cast (`ah-mrs0`): nothing it overdrew at the cast
+    /// is owed later ([`Sharing::silver_short_reading`]'s `cast_refused`, `ah-szu0`).
     refused_casts: Vec<bool>,
     /// The first moment the pool could not cover in full - the market or the month's end - from
     /// which nothing more was lent at either - the all-or-nothing rule (`ah-e66j`, `ah-aqqb`).
@@ -14718,7 +14776,7 @@ impl Lending {
     /// The positions are the whole of what each order asked, with no [`Ledger::unfunded`] add-back
     /// for a cast, so a cast no sharer could fund keeps the pool short (`ah-0mch`) - with one
     /// exception: the part of a GIVE or TAKE nobody could fund as it ran
-    /// ([`unfunded_before_casts`]) is added back, since the engine judged it then and the purse
+    /// ([`unfunded_gift_silver`]) is added back, since the engine judged it then and the purse
     /// lends nothing for it (`ah-2fn5`). The warning's own readings ([`Sharing::silver_short_at`],
     /// [`sharing_purse_over`]) keep that part as owed on purpose: it is what the cut line was
     /// short, and the line keeps its warning.
@@ -14734,7 +14792,7 @@ impl Lending {
         // in the Give phase: the engine runs the gives unit by unit, cutting each to
         // `GetSharedNum` with "Not enough." and drawing the rest on the sharers through
         // `ConsumeShared` (`runorders.cpp`: `DoGiveOrders`, `DoGiveOrder`). What the ledger found
-        // unfunded then ([`unfunded_before_casts`]) never left the unit, so it is no claim on the
+        // unfunded then ([`unfunded_gift_silver`]) never left the unit, so it is no claim on the
         // purse at any later moment - where a later GIVE refilled a sharer, lending for it at the
         // cast would draw on silver that arrived after the gift (`ah-2fn5`). What the sharers did
         // fund stays the unit's overdraft, and the cast moment lends it.
@@ -14742,7 +14800,7 @@ impl Lending {
             let unit_id = &hex.units[index].unit.unit_id;
             silver_at(ledger, unit_id, at)
                 .saturating_sub(ledger.tax_overstated.get(index).copied().unwrap_or(0))
-                .saturating_add(unfunded_before_casts(ledger, unit_id))
+                .saturating_add(unfunded_gift_silver(ledger, unit_id))
         };
         let report_order = hex.report_order();
         let mut purse = Self::nothing(hex, ledger);
@@ -15337,17 +15395,17 @@ fn refused_cast_cost(ledger: &Ledger<'_>, unit_id: &str, overdrawn: i64) -> i64 
     .max(overdrawn)
 }
 
-/// What the ledger adds back to a unit's silver as [`Ledger::unfunded`] for orders before the
-/// casts rather than for a cast of its own ([`Ledger::unfunded_casts`]): a GIVE or TAKE beyond
-/// what it and its sharers held as it ran, the only other silver it records (`transfer`). The
-/// purse ([`Lending::settle`]) claims none of it, since the engine judged it then (`ah-2fn5`).
-fn unfunded_before_casts(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
-    let unfunded = ledger
+/// What the ledger adds back to a unit's silver for orders before the casts: a GIVE or TAKE
+/// beyond what it and its sharers held as it ran, the only silver [`Ledger::unfunded`] records
+/// (`transfer`) - a cast's is [`Ledger::unfunded_casts`]'s alone (`ah-eoag`). The engine judged
+/// it then, so it never left the unit, and the purse ([`Lending::settle`]) claims none of it
+/// (`ah-2fn5`): whoever answers for the rest of an overdraft, this part is always the ledger's.
+fn unfunded_gift_silver(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    ledger
         .unfunded
         .get(&(unit_id.to_string(), SILVER.to_string()))
         .copied()
-        .unwrap_or(0);
-    (unfunded - ledger.unfunded_casts.get(unit_id).copied().unwrap_or(0)).max(0)
+        .unwrap_or(0)
 }
 
 /// What a unit's own silver is short as the spells are cast, the moment `rules/sequenceofevents`
@@ -54551,14 +54609,10 @@ BUILD
             sharing(with_silver(unit("902"), 50)),
             with_silver(unit("903"), 100),
         ]);
-        let review = review_turn(
-            &report(vec![region]),
-            "unit 901\nGIVE 900 100 SILV\nTRANSPORT 900 ALL SILV\n\
+        let orders = "unit 901\nGIVE 900 100 SILV\nTRANSPORT 900 ALL SILV\n\
              unit 902\nTRANSPORT 900 ALL SILV\n\
-             unit 903\nGIVE 902 100 SILV\n",
-            Some(&rules),
-            with_map(),
-        );
+             unit 903\nGIVE 902 100 SILV\n";
+        let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         let receiver = shipment_silver(&review, "900");
         let received: i64 = receiver
             .changes
@@ -54579,7 +54633,7 @@ BUILD
             review.findings
         );
         assert_eq!(
-            silver_shipped(&review, "902"),
+            silver_shipped(&review, orders, "902"),
             100,
             "{:?}",
             shipment_silver(&review, "902")
@@ -54597,15 +54651,11 @@ BUILD
         region
             .units
             .extend([unit("901"), sharing(with_silver(unit("902"), 50))]);
-        let review = review_turn(
-            &report(vec![region]),
-            "unit 901\nGIVE 900 100 SILV\nTRANSPORT 900 ALL SILV\n\
-             unit 902\nTRANSPORT 900 ALL SILV\n",
-            Some(&rules),
-            with_map(),
-        );
+        let orders = "unit 901\nGIVE 900 100 SILV\nTRANSPORT 900 ALL SILV\n\
+             unit 902\nTRANSPORT 900 ALL SILV\n";
+        let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, "902"),
+            silver_shipped(&review, orders, "902"),
             0,
             "{:?}",
             shipment_silver(&review, "902")
@@ -54637,7 +54687,7 @@ BUILD
             );
             let review = review_turn(&report(vec![region]), &orders, Some(&rules), with_map());
             assert_eq!(
-                silver_shipped(&review, "902"),
+                silver_shipped(&review, &orders, "902"),
                 ships,
                 "refilled: {refill}: {:?}",
                 shipment_silver(&review, "902")
@@ -54658,17 +54708,13 @@ BUILD
             sharing(with_silver(unit("902"), 50)),
             with_silver(unit("903"), 300),
         ]);
-        let review = review_turn(
-            &report(vec![region]),
-            "unit 901\nGIVE 900 100 SILV\nCAST Create_Amulet_Of_Protection\n\
+        let orders = "unit 901\nGIVE 900 100 SILV\nCAST Create_Amulet_Of_Protection\n\
              TRANSPORT 900 ALL SILV\n\
              unit 902\nTRANSPORT 900 ALL SILV\n\
-             unit 903\nGIVE 902 300 SILV\n",
-            Some(&rules),
-            with_map(),
-        );
+             unit 903\nGIVE 902 300 SILV\n";
+        let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, "902"),
+            silver_shipped(&review, orders, "902"),
             100,
             "{:?}",
             shipment_silver(&review, "902")
@@ -54863,6 +54909,135 @@ BUILD
             assert_eq!(held["903"], 5, "{order}");
             assert_eq!(held["902"], 0, "{order}: the fee was handed back");
         }
+    }
+
+    /// Every unit's silver position at TRANSPORT, for a hex built from `units` and `orders` under
+    /// the Trident rules: what [`SharerStock::at`] reads each one holding once the purse's
+    /// lending, its refusals and the ledger's add-back are all in - each coin of an overdraft
+    /// counted by exactly one of them (`ah-eoag`). The raw position, unclamped, so a coin counted
+    /// too few times shows as well as one counted twice; nobody lends after STUDY, so it is all
+    /// the unit holds.
+    fn held_at_transport(units: Vec<ReportUnit>, orders: &str) -> BTreeMap<String, i64> {
+        let hex_region = region(units);
+        let ordered = OrderedUnits::read(orders);
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let rules = trident_rules();
+        let ledger = ledger_for(&hex, Some(&rules));
+        let stock = SharerStock::at(&ledger, &hex, StatePhase::Transport, SILVER)
+            .expect("the pool is readable");
+        assert!(stock.parties.iter().all(|party| !party.lends));
+        hex.units
+            .iter()
+            .zip(&stock.parties)
+            .map(|(o, party)| (o.unit.unit_id.clone(), party.position))
+            .collect()
+    }
+
+    /// Exactly one side answers for an overdraft in each reading of the pool (`ah-eoag`): the
+    /// ledger's add-back until the casts are judged and for goods, the cast's verdict at the cast
+    /// and wherever nothing pools, and the purse from the cast on for a unit it judges.
+    #[test]
+    fn overdraft_owner_is_one_per_reading() {
+        use OverdraftOwner::{Cast, Ledger, Purse};
+        let of = OverdraftOwner::of;
+        // Goods: always the ledger's.
+        assert_eq!(of(false, true, StatePhase::Transport, true), Ledger);
+        assert_eq!(of(false, false, StatePhase::Transport, true), Ledger);
+        // Silver before the casts: the ledger's, pooled or not.
+        assert_eq!(of(true, true, StatePhase::Give, true), Ledger);
+        assert_eq!(of(true, false, StatePhase::Give, true), Ledger);
+        // Pooled: the cast's verdict at the cast, doubted or not ...
+        assert_eq!(of(true, true, StatePhase::Cast, true), Cast);
+        assert_eq!(of(true, true, StatePhase::Cast, false), Cast);
+        // ... and the purse's after it for a unit it judges; a doubted one keeps the ledger's.
+        assert_eq!(of(true, true, StatePhase::Market, true), Purse);
+        assert_eq!(of(true, true, StatePhase::Transport, true), Purse);
+        assert_eq!(of(true, true, StatePhase::Transport, false), Ledger);
+        // Nothing pooled: the ledger's at the cast, the cast's verdict after it.
+        assert_eq!(of(true, false, StatePhase::Cast, true), Ledger);
+        assert_eq!(of(true, false, StatePhase::Transport, true), Cast);
+        assert_eq!(of(true, false, StatePhase::Transport, false), Cast);
+    }
+
+    /// CAST: 901 holds nothing, so its GIVE of $100 is paid by sharer 902's $150 (`runorders.cpp`:
+    /// `DoGiveOrder` checks `GetSharedNum`), and its $200 amulet (`data/CRPA`) is refused against
+    /// the $50 left and takes nothing (`spells.cpp`: `RunCreateArtifact`). The $150 the hex had is
+    /// held once: $50 by 902, $100 by 903 (`ah-eoag`).
+    #[test]
+    fn each_coin_of_a_refused_cast_beside_a_paid_gift_is_counted_once() {
+        let held = held_at_transport(
+            vec![
+                with_skill(unit("901"), "CRPA", 1),
+                sharing(with_silver(unit("902"), 150)),
+                unit("903"),
+            ],
+            "unit 901\nGIVE 903 100 SILV\nCAST Create_Amulet_Of_Protection\n",
+        );
+        assert_eq!(held["901"], 0, "{held:?}");
+        assert_eq!(held["902"], 50, "{held:?}");
+        assert_eq!(held["903"], 100, "{held:?}");
+    }
+
+    /// GIVE: sharer 902's $100 pays 901's GIVE of $100 in full, so 904's GIVE of $50 finds the pool
+    /// empty and moves nothing (`runorders.cpp`: `DoGiveOrder`, "Not enough.", then
+    /// `amt = GetSharedNum`). The $100 the hex had is held once, by 903 (`ah-eoag`).
+    #[test]
+    fn each_coin_of_a_refused_gift_beside_a_paid_one_is_counted_once() {
+        let held = held_at_transport(
+            vec![
+                unit("901"),
+                sharing(with_silver(unit("902"), 100)),
+                unit("903"),
+                unit("904"),
+            ],
+            "unit 901\nGIVE 903 100 SILV\nunit 904\nGIVE 903 50 SILV\n",
+        );
+        assert_eq!(held["901"], 0, "{held:?}");
+        assert_eq!(held["902"], 0, "{held:?}");
+        assert_eq!(held["904"], 0, "{held:?}");
+        assert_eq!(held["903"], 100, "{held:?}");
+    }
+
+    /// STUDY: sharer 902's $105 pays 901's GIVE of $100, so 901's $10 study (`data/COMB` in
+    /// Trident) is refused against the $5 left and takes nothing (`monthorders.cpp`:
+    /// `Do1StudyOrder`, "STUDY: Not enough funds."). The $105 the hex had is held once: $5 by
+    /// 902, which keeps its change rather than paying the refused fee, and $100 by 903
+    /// (`ah-eoag`, cold-read review finding 1).
+    #[test]
+    fn each_coin_of_a_refused_study_beside_a_paid_gift_is_counted_once() {
+        let held = held_at_transport(
+            vec![
+                unit("901"),
+                sharing(with_silver(unit("902"), 105)),
+                unit("903"),
+            ],
+            "unit 901\nGIVE 903 100 SILV\nSTUDY COMB\n",
+        );
+        assert_eq!(held["901"], 0, "{held:?}");
+        assert_eq!(held["902"], 5, "{held:?}");
+        assert_eq!(held["903"], 100, "{held:?}");
+    }
+
+    /// STUDY: sharer 902's $100 pays 901's GIVE of $100, so 904's GIVE of $50 finds the pool empty
+    /// and moves nothing (`runorders.cpp`: `DoGiveOrder`, "Not enough."), and both units' $10
+    /// studies (`data/COMB` in Trident) are refused and take nothing (`monthorders.cpp`:
+    /// `Do1StudyOrder`, "STUDY: Not enough funds."). The $100 the hex had is held once, by 903:
+    /// neither the refused gift nor the refused fees come back twice (`ah-eoag`).
+    #[test]
+    fn each_coin_of_refused_studies_beside_a_refused_gift_is_counted_once() {
+        let held = held_at_transport(
+            vec![
+                unit("901"),
+                sharing(with_silver(unit("902"), 100)),
+                unit("903"),
+                unit("904"),
+            ],
+            "unit 901\nGIVE 903 100 SILV\nSTUDY COMB\nunit 904\nGIVE 903 50 SILV\nSTUDY COMB\n",
+        );
+        assert_eq!(held["901"], 0, "{held:?}");
+        assert_eq!(held["902"], 0, "{held:?}");
+        assert_eq!(held["904"], 0, "{held:?}");
+        assert_eq!(held["903"], 100, "{held:?}");
     }
 
     /// From STUDY on only the sharers that stay lend (`ah-wyj8`): a sharer that walked away is
