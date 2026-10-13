@@ -41,3 +41,31 @@ pool's own rules.
 **Seen before.** ah-0mch (a single-spender test cannot see a second reader), ah-lnz4 (both report
 orders), ah-su1x (re-derived lending dropping one purse rule at a time). This one is the same cause
 one level up: the test meant to stop re-derivation had the single-lender blind spot.
+
+## Two fixes to the same fold landed on main while the refactor that moves it was open
+
+**What happened.** The bead moved `lend_at_moments` into `Lending`. While its PR was open, two beads
+changed that same function on main:
+
+- ah-41yw generalised `sharing_purse` into `sharing_purse_over(moments)`, adding a fourth reader of
+  the lending.
+- ah-li7l taught the fold to pay STUDY students one by one and to hand back a refused student's
+  whole fee.
+
+Each landing put the PR in conflict. The second also overlapped the PR's own refused-study logic, so
+the rule had to be ported into `Lending::settle` by hand. A rebase of nine commits conflicted at
+every step, so it was abandoned for a single merge.
+
+**Why.** Nothing in the board marks a refactoring bead's target as in flight. ah-li7l was filed and
+built in the same hours, against the function this bead was deleting. The bead's own *Where*
+section named `sharing_purse` and `lend_at_moments`, but no other bead could see that.
+
+**Cost.** Two conflict resolutions (one simple, one a hand port), a third review round on the merge
+resolution, a doc fix push, and two more CI cycles. About an hour.
+
+**Prevent by.** In `produce-bead` step 2, when a bead's plan deletes or moves a named function, the
+plan's *Known traps* lists the open and in-progress beads whose design names that function. The
+check is `bd list --status open,in_progress --json`, grepping their designs for it. The producer
+then rebases early, or asks for ordering, instead of finding the conflict at merge.
+
+**Seen before.** Nothing like it in `docs/retrospectives/`.
