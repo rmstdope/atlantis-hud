@@ -29,7 +29,7 @@ import {
   type TeachRefusal
 } from "./studyTeaching";
 import { standingsFrom, type SkillStanding } from "./magicStanding";
-import type { MagicTree } from "./magicTree";
+import { APPRENTICE_SKILL, type MagicTree } from "./magicTree";
 import { plannedCasts, plannedGoals } from "./studyPlans";
 import { PRACTICE_POINTS_PER_MONTH, STUDY_POINTS_PER_MONTH, monthEnd } from "./studyProgress";
 import type { PlannerGroup } from "./studyPlanner";
@@ -39,6 +39,13 @@ import { joinNames } from "./workspace/standingChip";
 
 /** How many turns the Schedule draws. Six, chosen with the navigator. */
 export const SCHEDULE_TURNS = 6;
+
+/**
+ * Why a saved manipulation goal plans nothing: the navigator ruled manipulation an ordinary skill
+ * that the magic study planner does not plan (`ah-xy2g`, gh-1554).
+ */
+export const MANIPULATION_NOT_PLANNED =
+  "Manipulation is studied as an ordinary skill, so this planner does not plan it.";
 
 /** One mage's levels and points at one turn, keyed by upper-cased tag. */
 export type SkillPoints = ReadonlyMap<string, { level: number; points: number }>;
@@ -402,7 +409,10 @@ export function projectAll(input: {
         maxLevel: node?.maxLevel ?? Infinity,
         blocked:
           where === undefined
-            ? `${name} is not a magic skill this ruleset knows.`
+            ? goal.skill.toUpperCase() === APPRENTICE_SKILL
+              ? // A goal saved before ah-xy2g: the planner's tree no longer carries manipulation.
+                MANIPULATION_NOT_PLANNED
+              : `${name} is not a magic skill this ruleset knows.`
             : blockedBecause(where, name, input.tree, goal.skill)
       });
     }

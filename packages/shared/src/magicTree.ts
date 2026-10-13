@@ -65,7 +65,9 @@ export type MagicTree = {
 /** The three branches whose title and blurb are written rather than taken from a skill. */
 const FOUNDATIONS = "FOUND";
 const DIRECT = "DIRECT";
-const APPRENTICESHIP = "MANI";
+/** Manipulation's tag, which is also its branch's key: `rules/magic_apprentices`. */
+export const APPRENTICE_SKILL = "MANI";
+const APPRENTICESHIP = APPRENTICE_SKILL;
 const ITEM_GRANTED = "ITEM_GRANTED";
 
 const NAMED_BRANCHES: Readonly<Record<string, { title: string; blurb: string }>> = {
@@ -237,6 +239,31 @@ function branchesOf(
 /** `artifact lore` reads as `Artifact lore` - the skill's own name, not title case per word. */
 function branchTitle(name: string): string {
   return name === "" ? name : name[0].toUpperCase() + name.slice(1);
+}
+
+/**
+ * `tree` as the study planner plans it: without manipulation and its Apprenticeship card.
+ *
+ * The navigator ruled manipulation an ordinary skill rather than a magic one (`ah-xy2g`, gh-1554):
+ * `data/MANI` makes an apprentice at level 1 and says continued study past level 2 gives no
+ * further advantages, so it is neither a skill a mage is planned towards nor one studied at half
+ * effect in the open. The magic tree's own reference view keeps the card.
+ */
+export function studyPlannerTree(tree: MagicTree): MagicTree {
+  if (!tree.byTag.has(APPRENTICESHIP)) {
+    return tree;
+  }
+  const byTag = new Map([...tree.byTag].filter(([tag]) => tag !== APPRENTICESHIP));
+  return {
+    branches: tree.branches
+      .map((branch) => ({
+        ...branch,
+        skills: branch.skills.filter((skill) => skill.tag !== APPRENTICESHIP)
+      }))
+      .filter((branch) => branch.skills.length > 0),
+    byTag,
+    skillCount: byTag.size
+  };
 }
 
 /**

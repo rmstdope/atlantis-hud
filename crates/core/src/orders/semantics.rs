@@ -181,6 +181,10 @@ pub mod codes {
     pub const TOO_MANY_QUARTERMASTERS: Code = Code("too-many-quartermasters");
     pub const STUDY_AT_MAXIMUM: Code = Code("study-at-maximum");
     pub const STUDY_UNLEARNABLE: Code = Code("study-unlearnable");
+    /// A STUDY past the level the skill's own page says is worth having (`data/MANI` level 3,
+    /// "Continued study of this skill gives no further advantages."; `ah-xy2g`). Its own code
+    /// rather than `study-at-maximum`'s, whose contract is the ceiling the forecast also reads.
+    pub const STUDY_GAINS_NOTHING: Code = Code("study-gains-nothing");
     pub const MAGIC_STUDY_CAPPED_BY_PREREQUISITES: Code =
         Code("magic-study-capped-by-prerequisites");
     pub const ALREADY_BUILT: Code = Code("already-built");
@@ -275,7 +279,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 56] = [
+    pub const ALL: [Code; 57] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -332,6 +336,7 @@ pub mod codes {
         SAIL_THROUGH_NECK_OF_LAND,
         TRANSPORT_OUT_OF_REACH,
         SAIL_NOT_BY_OWNER,
+        STUDY_GAINS_NOTHING,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -19092,7 +19097,10 @@ fn check_studying(
 ) {
     // No ruleset, no stated ceiling: there is nothing to compare the unit's level against.
     let Some(ruleset) = ruleset else { return };
-    if !options.emits(codes::STUDY_AT_MAXIMUM) && !options.emits(codes::STUDY_UNLEARNABLE) {
+    if !options.emits(codes::STUDY_AT_MAXIMUM)
+        && !options.emits(codes::STUDY_UNLEARNABLE)
+        && !options.emits(codes::STUDY_GAINS_NOTHING)
+    {
         return;
     }
 
@@ -19139,6 +19147,26 @@ fn check_studying(
                 hex,
                 codes::STUDY_AT_MAXIMUM,
                 ceiling_message(&ceiling, skill, level, plurals),
+                Some(placed),
+            ));
+        } else if let Some(useful) = skill
+            .useful_up_to()
+            .filter(|useful| options.emits(codes::STUDY_GAINS_NOTHING) && level >= *useful)
+        {
+            // Below the ceiling, but past what the skill's own page says is worth having:
+            // `data/MANI` level 3, "Continued study of this skill gives no further advantages."
+            let standing = if level == useful {
+                "already there".to_string()
+            } else {
+                format!("already at level {level}")
+            };
+            findings.push(ordered.finding(
+                hex,
+                codes::STUDY_GAINS_NOTHING,
+                format!(
+                    "{} gives no further advantages past level {useful} and this unit is {standing}",
+                    skill.name
+                ),
                 Some(placed),
             ));
         }
@@ -19419,7 +19447,8 @@ fn magic_study_halved(hex: &Hex<'_>, ruleset: &Ruleset) -> Vec<Option<bool>> {
         let Some(skill) = ruleset.find_skill(studying) else {
             continue;
         };
-        if !ruleset.is_magic(&skill.tag) {
+        // Manipulation is studied as an ordinary skill (`ah-xy2g`): never halved.
+        if !magic::studied_as_magic(ruleset, &skill.tag) {
             continue;
         }
 
@@ -50274,6 +50303,80 @@ BUILD
         mage_with_id("5", level)
     }
 
+    /// A funded leader holding `level` in manipulation, ordered to study it.
+    fn apprentice(level: u32) -> ReportUnit {
+        with_race(studying_unit("5", "MANI", level), 1, "leader", "LEAD")
+    }
+
+    /// `ah-xy2g` (gh-1554): manipulation is studied as the ordinary skill the navigator ruled it
+    /// to be, so `rules/magic_skills`' halving outside a building never reaches it. Before the fix
+    /// an apprentice at level 2 in the open was told half his month was wasted.
+    #[test]
+    fn manipulation_studied_in_the_open_is_not_halved() {
+        let findings = check(vec![region(vec![apprentice(2)])], "unit 5\nSTUDY MANI\n");
+
+        assert!(
+            findings
+                .iter()
+                .all(|finding| finding.code != codes::MAGIC_STUDY_OUTSIDE_BUILDING),
+            "{findings:?}"
+        );
+    }
+
+    /// `data/MANI` level 3: "Continued study of this skill gives no further advantages." So a
+    /// STUDY that takes manipulation past level 2 is flagged as gaining nothing (`ah-xy2g`).
+    #[test]
+    fn studying_manipulation_past_level_2_gains_nothing() {
+        let at_two = only(check(
+            vec![region(vec![apprentice(2)])],
+            "unit 5\nSTUDY MANI\n",
+        ));
+        assert_eq!(at_two.code, codes::STUDY_GAINS_NOTHING);
+        assert_eq!(
+            at_two.message,
+            "manipulation gives no further advantages past level 2 and this unit is already there"
+        );
+
+        let at_three = only(check(
+            vec![region(vec![apprentice(3)])],
+            "unit 5\nSTUDY MANI\n",
+        ));
+        assert_eq!(
+            at_three.message,
+            "manipulation gives no further advantages past level 2 and this unit is already at level 3"
+        );
+    }
+
+    /// The other side of the same ruling (`ah-xy2g`): an apprentice studying manipulation takes
+    /// no mage seat, so a one-seat building still shelters the mage listed after him.
+    #[test]
+    fn an_apprentice_takes_no_mage_seat() {
+        let findings = check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("2", "Fort")],
+                ..region(vec![
+                    in_structure(
+                        with_race(studying_unit("4", "MANI", 1), 1, "leader", "LEAD"),
+                        "2",
+                    ),
+                    in_structure(mage_with_id("5", 2), "2"),
+                ])
+            }],
+            "unit 4\nSTUDY MANI\nunit 5\nSTUDY FORC\n",
+        );
+
+        assert_eq!(findings, vec![]);
+    }
+
+    /// Level 1 to 2 is still worth studying as far as this check can say: silent.
+    #[test]
+    fn studying_manipulation_up_to_level_2_is_silent() {
+        assert_eq!(
+            check(vec![region(vec![apprentice(1)])], "unit 5\nSTUDY MANI\n"),
+            vec![]
+        );
+    }
+
     #[test]
     fn mage_seats_go_to_eligible_mages_in_report_order() {
         let findings = check(
@@ -57048,6 +57151,18 @@ BUILD
                     "WOOD",
                 )])],
                 orders: "unit 900\nBUILD Caravanserai\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::STUDY_GAINS_NOTHING,
+                regions: vec![region(vec![with_race(
+                    studying_unit("900", "MANI", 2),
+                    1,
+                    "leader",
+                    "LEAD",
+                )])],
+                orders: "unit 900\nSTUDY MANI\n",
                 allowance: None,
                 unclaimed: None,
             },
@@ -64737,16 +64852,12 @@ BUILD
     fn a_magic_study_outside_a_building_is_worth_half_a_month() {
         let mage = with_skill_points(
             with_silver(with_race(unit("900"), 1, "leader", "LEAD"), 1000),
-            "MANI",
+            "FORC",
             2,
             90,
         );
-        let study = study_of(
-            vec![region(vec![mage])],
-            "unit 900\nSTUDY Manipulation\n",
-            "900",
-        )
-        .expect("a studying unit is forecast");
+        let study = study_of(vec![region(vec![mage])], "unit 900\nSTUDY Force\n", "900")
+            .expect("a studying unit is forecast");
 
         assert!(study.halved_outside_a_building, "{study:?}");
         assert_eq!(study.months_numerator, 1);
@@ -64759,18 +64870,14 @@ BUILD
         let mage = in_structure(
             with_skill_points(
                 with_silver(with_race(unit("900"), 1, "leader", "LEAD"), 1000),
-                "MANI",
+                "FORC",
                 2,
                 90,
             ),
             "77",
         );
-        let study = study_of(
-            vec![region(vec![mage])],
-            "unit 900\nSTUDY Manipulation\n",
-            "900",
-        )
-        .expect("a studying unit is forecast");
+        let study = study_of(vec![region(vec![mage])], "unit 900\nSTUDY Force\n", "900")
+            .expect("a studying unit is forecast");
 
         assert!(
             study
@@ -64790,12 +64897,12 @@ BUILD
     fn the_magic_shelter_walk_still_warns_exactly_as_it_did() {
         let mage = with_skill_points(
             with_silver(with_race(unit("900"), 1, "leader", "LEAD"), 1000),
-            "MANI",
+            "FORC",
             2,
             90,
         );
         let regions = vec![region(vec![mage])];
-        let orders = "unit 900\nSTUDY Manipulation\n";
+        let orders = "unit 900\nSTUDY Force\n";
 
         let warned = check(regions.clone(), orders)
             .iter()
@@ -64806,6 +64913,28 @@ BUILD
 
         assert!(warned);
         assert_eq!(warned, halved);
+    }
+
+    /// `ah-xy2g` (gh-1554): manipulation is studied as an ordinary skill, so the same apprentice
+    /// in the open is forecast a whole month - the forecast and the finding agree about him.
+    #[test]
+    fn a_manipulation_study_outside_a_building_is_worth_a_whole_month() {
+        let apprentice = with_skill_points(
+            with_silver(with_race(unit("900"), 1, "leader", "LEAD"), 1000),
+            "MANI",
+            2,
+            90,
+        );
+        let study = study_of(
+            vec![region(vec![apprentice])],
+            "unit 900\nSTUDY Manipulation\n",
+            "900",
+        )
+        .expect("a studying unit is forecast");
+
+        assert!(!study.halved_outside_a_building, "{study:?}");
+        assert_eq!(study.months_numerator, 1);
+        assert_eq!(study.months_denominator, 1);
     }
 
     /// The month takes the **best** of several teachers rather than their sum

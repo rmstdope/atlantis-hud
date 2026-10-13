@@ -58,7 +58,8 @@ export const ADVISORY_CHECK_CODES = [
   "passage-with-no-known-exit",
   "sail-through-neck-of-land",
   "transport-out-of-reach",
-  "sail-not-by-owner"
+  "sail-not-by-owner",
+  "study-gains-nothing"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];

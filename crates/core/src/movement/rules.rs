@@ -853,6 +853,19 @@ pub struct SkillEntry {
 }
 
 impl SkillEntry {
+    /// The highest level worth studying to, when the catalogue says study past it gains nothing.
+    ///
+    /// `data/MANI` level 3 reads "Continued study of this skill gives no further advantages.", so
+    /// manipulation answers `Some(2)` in New Origins; the New Age worlds print the same sentence at
+    /// level 5 and answer `Some(4)`. `None` for every skill whose page says no such thing.
+    #[must_use]
+    pub fn useful_up_to(&self) -> Option<u32> {
+        self.levels
+            .iter()
+            .find(|entry| entry.description.contains("gives no further advantages"))
+            .map(|entry| entry.level.saturating_sub(1))
+    }
+
     /// Whether the game permits ordinary `STUDY` of this skill.
     ///
     /// `data/skills` leaves `cost` absent for skills granted by an item (for example Trident's
@@ -1824,6 +1837,33 @@ mod tests {
     // Failing to recognise a name is a **warning** wherever it is asked, never an error: the
     // catalogue is scraped from the game being played and may be stale, absent, or simply missing
     // an entry, and none of that is grounds for telling a player their order is wrong.
+
+    /// `data/MANI` says continued study gives no further advantages at level 3 in New Origins and
+    /// at level 5 in both New Age worlds (`newage arcanum data MANI`, `newage trident data MANI`),
+    /// so the warning starts past 2 in New Origins and past 4 in New Age (`ah-xy2g`). No other
+    /// skill says it.
+    #[test]
+    fn useful_up_to_reads_each_worlds_own_manipulation_page() {
+        for (json, mani) in [
+            (atlantis_hud_fixtures::RULESET_JSON, Some(2)),
+            (atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON, Some(4)),
+            (atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON, Some(4)),
+        ] {
+            let ruleset = Ruleset::from_json(json).expect("a committed ruleset should be usable");
+            assert_eq!(
+                ruleset
+                    .find_skill("MANI")
+                    .and_then(SkillEntry::useful_up_to),
+                mani
+            );
+            assert_eq!(
+                ruleset
+                    .find_skill("FORC")
+                    .and_then(SkillEntry::useful_up_to),
+                None
+            );
+        }
+    }
 
     // `ItemEntry` carries `deny_unknown_fields`, so a new field must be optional in both
     // directions: absent from a ruleset cached before it existed, and present in one scraped
