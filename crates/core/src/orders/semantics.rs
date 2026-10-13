@@ -8961,8 +8961,6 @@ fn transfer(
             },
         )
     };
-    // Which sharers made up the part of a silver transfer its source could not, read before this
-    // line is charged or its unfunded part booked (`ah-msds`).
     // How a silver transfer was funded as it ran - what its source held, what the pool let move,
     // and which sharers made up the rest, read before this line is charged or its unfunded part
     // booked (`ah-msds`) - recorded once, and the one verdict on it every later reader takes
