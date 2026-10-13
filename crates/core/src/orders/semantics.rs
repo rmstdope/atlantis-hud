@@ -8949,7 +8949,7 @@ fn transfer(
     // full: the engine refuses it nothing (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`),
     // so it is neither a cut line nor where the unit's shortfall is anchored (`ah-ub3y`,
     // `ah-f7md`). A pool this walk could not read is no evidence that it paid.
-    let pool_paid = pool_read && received >= quantity;
+    let pool_paid = quantity > known_source.max(0) && pool_read && received >= quantity;
     // What the source is charged below beyond what it gives: the ask itself for goods, `moved`
     // for silver.
     if !from.is_empty() {
@@ -9013,7 +9013,7 @@ fn transfer(
                     Some(placed.line as i64),
                     target_label.map(str::to_string),
                 );
-                ledger.state.apply(StatePhase::Give, &from, SILVER, -moved);
+                apply_silver(ledger, StatePhase::Give, &from, -moved, None);
             } else if is_give {
                 move_silver(
                     ledger,
