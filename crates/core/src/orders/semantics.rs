@@ -5252,6 +5252,15 @@ impl PhaseState {
         )
     }
 
+    /// A unit's balance of `tag` as the ledger booked it by `phase`.
+    ///
+    /// **Not what a `SHARE` sharer still holds.** The ledger charges a borrower the whole of what
+    /// it spends and leaves its lenders' rows alone - silver the purse lent, and goods a gift drew
+    /// on (`ah-0mch`) - so a lender's balance still counts what it lent. A reader sizing anything on
+    /// a unit's stock in a hex that shares asks [`SharerStock::at`] (what is held, with the purse's
+    /// lending carried) or [`Lending`] (what was lent by a moment), and never re-derives the
+    /// lending: three beads paid a review round or more each for doing so (`ah-0mch`, `ah-lnz4`,
+    /// `ah-su1x`; `ah-pf7t`).
     fn balance_at(&self, phase: StatePhase, unit_id: &str, tag: &str) -> i64 {
         self.balances
             .get(&(unit_id.to_owned(), tag.to_ascii_uppercase()))
@@ -6058,17 +6067,18 @@ impl Ledger<'_> {
     /// stock cannot be read - the unit's own balance or the pool is in doubt - the plain balance
     /// with the refused study handed back, lending nothing, as the purse itself lends nothing there.
     fn transport_holding(&self, hex: &Hex<'_>, unit_id: &str, tag: &str) -> i64 {
-        let held = if tag.eq_ignore_ascii_case(SILVER) {
-            SharerStock::for_spender(self, hex, StatePhase::Transport, unit_id, SILVER).map_or_else(
+        let held = SharerStock::for_spender(self, hex, StatePhase::Transport, unit_id, tag)
+            .map_or_else(
                 || {
                     self.state.balance_at(StatePhase::Transport, unit_id, tag)
-                        + refused_study(self, hex, unit_id)
+                        + if tag.eq_ignore_ascii_case(SILVER) {
+                            refused_study(self, hex, unit_id)
+                        } else {
+                            0
+                        }
                 },
-                |(stock, x)| stock.held(x),
-            )
-        } else {
-            self.state.balance_at(StatePhase::Transport, unit_id, tag)
-        };
+                |(stock, x)| stock.own_for(x),
+            );
         held + self
             .unconsumed_production
             .get(&(unit_id.to_string(), tag.to_ascii_uppercase()))
@@ -13285,8 +13295,11 @@ struct StockParty {
 
 /// What each sharing unit of a hex still has to lend of one tag at one moment: **the one reading**
 /// every spend that draws on a `SHARE` pool takes (`ah-lnz4`). GIVE and TAKE, SELL, CAST, the
-/// market's BUY sizing and the SILVER column's purse all build one and ask it, so a second spender
-/// can never read a sharer's stock that a first spend already drew on.
+/// market's BUY sizing, TRANSPORT and the SILVER column's purse all build one and ask it, so a
+/// second spender can never read a sharer's stock that a first spend already drew on. What the
+/// purse lent at its moments comes from [`Lending`], the one home of that figure, and is carried
+/// into every silver reading after the cast (`ah-pf7t`); `share_pool_agreement` holds every
+/// consumer to the same answer.
 ///
 /// The ledger charges a borrower the whole of what it spends and leaves its lenders' rows alone, so
 /// what a sharer still has is not a balance the ledger holds. This derives it: every party's
@@ -13434,13 +13447,6 @@ impl SharerStock {
 
     fn position(&self, x: usize) -> i64 {
         self.parties.get(x).map_or(0, |party| party.position)
-    }
-
-    /// What `x` holds once what the purse lent at its moments is carried, before anything more is
-    /// drained: what a `TRANSPORT ... ALL SILV` can ship, since `rules/share` lends silver only
-    /// "for buying or studying". Negative where its own orders overdrew it beyond what it was lent.
-    fn held(&self, x: usize) -> i64 {
-        self.position(x)
     }
 
     fn lends(&self, x: usize) -> bool {
@@ -52837,8 +52843,9 @@ BUILD
         );
     }
 
-    /// The silver stock at TRANSPORT, read off ledger and hex: what each unit holds once the
-    /// purse's lending is carried, what a further drain would lay on each, and a lookup by id.
+    /// The silver stock at TRANSPORT, read off ledger and hex: what each unit has of its own once
+    /// the purse's lending is carried ([`SharerStock::own_for`]), by id, and what a drain at
+    /// TRANSPORT itself would still lay on each.
     fn silver_stock_at_transport(
         hex: &Hex<'_>,
         ledger: &Ledger<'_>,
@@ -52849,7 +52856,7 @@ BUILD
             .units
             .iter()
             .enumerate()
-            .map(|(x, o)| (o.unit.unit_id.clone(), stock.held(x)))
+            .map(|(x, o)| (o.unit.unit_id.clone(), stock.own_for(x)))
             .collect();
         (held, stock.drained().0)
     }
@@ -52944,6 +52951,268 @@ BUILD
                 "{order}: the sharer that stayed paid the study"
             );
             assert_eq!(held["902"], 0, "{order}");
+        }
+    }
+
+    // --- every consumer of a SHARE pool agrees on what each sharer lent (`ah-pf7t`) -----------
+    //
+    // One hex, sharer 2 holding $300 and 15 wood between spender 1, listed before it, and spender
+    // 3, listed after it (and the same hex reversed, `ah-lnz4`); quartermaster 900 to ship to.
+    // Each case drives one consumer, or two on the same sharer, in a turn of its own, and sharer 2
+    // ships `ALL SILV` (and `ALL WOOD`) to 900. Every reader of the pool must then tell one story:
+    // what the consumer drew, what [`Lending`] says sharer 2 lent before TRANSPORT, what TRANSPORT
+    // ships, and what the month-end purse books as `Lent` on its SILVER row. A new reader that
+    // re-derives the lending instead of asking [`SharerStock::at`] or [`Lending`] fails here.
+    mod share_pool_agreement {
+        use super::*;
+
+        const LENDER: &str = "2";
+
+        /// One consumer's turn and what it should cost sharer 2.
+        struct Case {
+            name: &'static str,
+            /// Orders for spenders 1 and 3 (and walker 4); sharer 2's shipment is added.
+            orders: &'static str,
+            /// What the consumer drew out of the pool, as the consumer itself reports it.
+            drew: fn(&TurnReview) -> i64,
+            /// Silver sharer 2 lent before TRANSPORT.
+            lent: i64,
+            /// Whether the hex ends the month short - a STUDY the pool refused - so the month-end
+            /// purse lends nothing at all, by the all-or-nothing rule (`ah-e66j`, `ah-aqqb`).
+            short_at_month_end: bool,
+            /// Whether a sharer walks out of the hex as movement begins (`ah-wyj8`).
+            walker: bool,
+        }
+
+        fn silver(review: &TurnReview, id: &str) -> UnitSilver {
+            shipment_silver(review, id)
+        }
+
+        fn spent_on(review: &TurnReview, id: &str, cause: SilverChangeCause) -> i64 {
+            silver(review, id)
+                .changes
+                .iter()
+                .filter(|moved| moved.cause == cause)
+                .map(|moved| -moved.amount)
+                .sum()
+        }
+
+        fn cases() -> Vec<Case> {
+            vec![
+                Case {
+                    name: "GIVE: a giver with no silver gives the sharer's",
+                    orders: "unit 1\nGIVE 3 100 SILV\n",
+                    drew: |review| silver(review, "3").received,
+                    lent: 100,
+                    short_at_month_end: false,
+                    walker: false,
+                },
+                Case {
+                    name: "CAST: a mage with no silver casts on the sharer's",
+                    orders: "unit 1\nCAST Create_Amulet_Of_Protection\n",
+                    // `data/CRPA` (Trident): 200 silver a cast.
+                    drew: |review| silver(review, "1").cast_made * 200,
+                    lent: 200,
+                    short_at_month_end: false,
+                    walker: false,
+                },
+                Case {
+                    name: "BUY: a buyer with no silver buys on the sharer's",
+                    orders: "unit 3\nBUY 2 grain\n",
+                    drew: |review| spent_on(review, "3", SilverChangeCause::Bought),
+                    lent: 40,
+                    short_at_month_end: false,
+                    walker: false,
+                },
+                Case {
+                    name: "STUDY: a student with no silver studies on the sharer's",
+                    orders: "unit 3\nSTUDY COMB\n",
+                    // `data/COMB` (Trident): 10 silver a month.
+                    drew: |review| spent_on(review, "3", SilverChangeCause::Studied),
+                    lent: 10,
+                    short_at_month_end: false,
+                    walker: false,
+                },
+                Case {
+                    name: "two spenders: a cast and a BUY empty the sharer between them",
+                    orders: "unit 1\nCAST Create_Amulet_Of_Protection\nunit 3\nBUY 5 grain\n",
+                    drew: |review| {
+                        silver(review, "1").cast_made * 200
+                            + spent_on(review, "3", SilverChangeCause::Bought)
+                    },
+                    lent: 300,
+                    short_at_month_end: false,
+                    walker: false,
+                },
+                Case {
+                    name: "a STUDY the emptied pool refuses lends nothing more",
+                    orders: "unit 1\nCAST Create_Amulet_Of_Protection\nSTUDY COMB\n\
+                             unit 3\nBUY 5 grain\n",
+                    drew: |review| {
+                        silver(review, "1").cast_made * 200
+                            + spent_on(review, "3", SilverChangeCause::Bought)
+                    },
+                    lent: 300,
+                    short_at_month_end: true,
+                    walker: false,
+                },
+                Case {
+                    name: "a sharer that walked away lends a STUDY nothing",
+                    orders: "unit 4\nMOVE S\nunit 3\nSTUDY COMB\n",
+                    drew: |review| spent_on(review, "3", SilverChangeCause::Studied),
+                    lent: 10,
+                    short_at_month_end: false,
+                    walker: true,
+                },
+            ]
+        }
+
+        /// The hex, its spenders in `reversed` order or as listed, and the walker's destination.
+        fn regions(reversed: bool, walker: bool) -> Vec<ReportRegion> {
+            let mut region = caravanserai_owner("900", 1, 0, 0);
+            region.for_sale = vec![MarketItem {
+                amount: 100,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 20,
+            }];
+            region.wanted = vec![MarketItem {
+                amount: 100,
+                name: "wood".to_string(),
+                tag: "WOOD".to_string(),
+                price: 3,
+            }];
+            let mut units = vec![
+                with_skill(unit("1"), "CRPA", 1),
+                sharing(with_item(
+                    with_silver(unit(LENDER), 300),
+                    15,
+                    "wood",
+                    "WOOD",
+                )),
+                with_skill(unit("3"), "CRPA", 1),
+            ];
+            if walker {
+                // Listed first, so a flat drain would lay a later study on it.
+                units.insert(0, sharing(with_silver(unit("4"), 500)));
+            }
+            if reversed {
+                units.reverse();
+            }
+            region.units.extend(units);
+            vec![region, region_at("1:0,2", 0, 2, Vec::new())]
+        }
+
+        fn options(walker: bool) -> CheckOptions {
+            let mut options = with_map();
+            if walker {
+                options
+                    .month_end
+                    .insert("4".to_string(), Coordinate { x: 0, y: 2, z: 1 });
+            }
+            options
+        }
+
+        /// What [`Lending`] says sharer 2 lent before TRANSPORT, off the hex's own ledger.
+        fn lending_before_transport(regions: &[ReportRegion], orders: &str, walker: bool) -> i64 {
+            let ordered = OrderedUnits::read(orders);
+            let hex = Hex::read(&regions[0], &ordered, &[]);
+            let rules = trident_rules();
+            let mut ledger = ledger_for(&hex, Some(&rules));
+            if walker {
+                ledger.walking_silver.departing.insert("4".to_string(), 0);
+            }
+            let index = hex
+                .units
+                .iter()
+                .position(|o| o.unit.unit_id == LENDER)
+                .expect("the sharer is in the hex");
+            Lending::before(&hex, &ledger, StatePhase::Transport)
+                .netted()
+                .lends[index]
+        }
+
+        #[test]
+        fn every_silver_consumer_agrees_on_what_the_sharer_lent() {
+            let rules = trident_rules();
+            for case in cases() {
+                for reversed in [false, true] {
+                    let label = format!("{} (reversed: {reversed})", case.name);
+                    let regions = regions(reversed, case.walker);
+                    let orders = format!("{}unit {LENDER}\nTRANSPORT 900 ALL SILV\n", case.orders);
+                    let review = review_turn(
+                        &report(regions.clone()),
+                        &orders,
+                        Some(&rules),
+                        options(case.walker),
+                    );
+                    assert_eq!((case.drew)(&review), case.lent, "{label}: the consumer");
+                    assert_eq!(
+                        lending_before_transport(&regions, &orders, case.walker),
+                        case.lent,
+                        "{label}: Lending"
+                    );
+                    assert_eq!(
+                        silver_shipped(&review, LENDER),
+                        300 - case.lent,
+                        "{label}: TRANSPORT {:?}",
+                        silver(&review, LENDER)
+                    );
+                    let purse_lent = spent_on(&review, LENDER, SilverChangeCause::Lent);
+                    let expected = if case.short_at_month_end {
+                        0
+                    } else {
+                        case.lent
+                    };
+                    assert_eq!(purse_lent, expected, "{label}: the month-end purse");
+                }
+            }
+        }
+
+        /// Goods draw on the sharer's own row as they are spent (`draw_on_lenders`), so the one
+        /// reading of its stock ([`SharerStock::at`]) is what a later spend and TRANSPORT both
+        /// read: spender 1's GIVE of 10 of the sharer's wood and spender 3's SELL of 15 leave the
+        /// sharer none to ship, in either order (`rules/sequenceofevents`: "Give orders" before
+        /// "Market orders").
+        #[test]
+        fn a_gift_and_a_sale_of_a_sharers_goods_agree_with_what_it_ships() {
+            let rules = trident_rules();
+            for reversed in [false, true] {
+                let orders = format!(
+                    "unit 1\nGIVE 3 10 WOOD\nunit 3\nSELL 15 wood\n\
+                     unit {LENDER}\nTRANSPORT 900 ALL WOOD\n"
+                );
+                let regions = regions(reversed, false);
+                let review =
+                    review_turn(&report(regions.clone()), &orders, Some(&rules), with_map());
+                let sold = silver(&review, "3")
+                    .changes
+                    .iter()
+                    .filter(|moved| moved.cause == SilverChangeCause::Sold)
+                    .map(|moved| moved.amount)
+                    .sum::<i64>();
+                assert_eq!(sold, 15 * 3, "reversed: {reversed}: 3 sells all 15");
+                let ordered = OrderedUnits::read(&orders);
+                let hex = Hex::read(&regions[0], &ordered, &[]);
+                let ledger = ledger_for(&hex, Some(&rules));
+                let x = hex
+                    .units
+                    .iter()
+                    .position(|o| o.unit.unit_id == LENDER)
+                    .expect("the sharer is in the hex");
+                let stock = SharerStock::at(&ledger, &hex, StatePhase::Transport, "WOOD")
+                    .expect("the pool is readable");
+                assert_eq!(
+                    stock.own_for(x),
+                    0,
+                    "reversed: {reversed}: none left to ship"
+                );
+                assert_eq!(
+                    ledger.transport_holding(&hex, LENDER, "WOOD"),
+                    0,
+                    "reversed: {reversed}"
+                );
+            }
         }
     }
 
