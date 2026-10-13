@@ -8272,10 +8272,12 @@ mod tests {
 
     #[test]
     fn the_receivers_skills_keep_their_order_and_new_ones_follow_in_arrival_order() {
+        // LUMB is held by both sides: it keeps the receiver's place and takes no newcomer's slot.
+        // FORC and ARMO arrive out of alphabetical order and must stay that way.
         let merged = merge_skills(
             &[skill("STEA", 30), skill("LUMB", 30)],
             5,
-            &[skill("FORC", 30)],
+            &[skill("FORC", 30), skill("LUMB", 30), skill("ARMO", 30)],
             5,
         );
 
@@ -8284,8 +8286,20 @@ mod tests {
                 .iter()
                 .map(|skill| skill.tag.clone())
                 .collect::<Vec<_>>(),
-            vec!["STEA", "LUMB", "FORC"]
+            vec!["STEA", "LUMB", "FORC", "ARMO"]
         );
+    }
+
+    /// The old tag sort made a merge that moved no figure still read as a change whenever the
+    /// receiver's report order was not alphabetical (`ah-isae`). Men arriving at the receiver's own
+    /// points leave its skills exactly as they were, order included.
+    #[test]
+    fn men_arriving_at_the_receivers_own_points_change_nothing() {
+        let held = [skill("STEA", 90), skill("LUMB", 30)];
+
+        let merged = merge_skills(&held, 5, &held, 3);
+
+        assert_eq!(merged, held.to_vec());
     }
 
     #[test]
