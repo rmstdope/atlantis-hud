@@ -7731,7 +7731,6 @@ fn charge_settled_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>, loans: &HexLoan
     // surfaces contradicting each other, which is what `ah-7cdt`'s verification found.
     let claims = ledger.food_claims.clone();
     let settled = ledger.faction_fed.clone();
-
     for (((ordered, facts), shares), claim) in
         hex.units.iter().zip(&facts).zip(&shares).zip(&claims)
     {
@@ -57386,6 +57385,46 @@ BUILD
             .filter(|moved| moved.cause == cause)
             .map(|moved| moved.amount)
             .sum()
+    }
+
+    /// The hex `ah-2zku`'s scenes stand in: wages of $20 (`rules/work`), every unit paying its $10
+    /// upkeep in silver (`rules/economy_maintenance`: "This fee is generally 10 silver for a
+    /// normal character"), 900 a quartermaster owning a Caravanserai for 902's shipment. 901
+    /// (sharing, empty) GIVEs 900 $100 it does not have, drawing it all on sharer 902
+    /// (`runorders.cpp`: `DoGiveOrder`, `GetSharedNum`; `unit.cpp`: `ConsumeShared`), and 902's
+    /// `TRANSPORT 900 ALL SILV` ships its wage. `extra` units follow in document order.
+    fn drained_sharer_review(extra: Vec<ReportUnit>, more_orders: &str) -> TurnReview {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.wages = Some("$20".to_string());
+        region.max_wages = Some(1000);
+        region.units.extend([
+            sharing(starving(unit("901"))),
+            sharing(with_silver(starving(unit("902")), 100)),
+        ]);
+        region.units.extend(extra);
+        let orders =
+            format!("unit 901\nGIVE 900 100 SILV\nunit 902\nTRANSPORT 900 ALL SILV\n{more_orders}");
+        review_turn(&report(vec![region]), &orders, Some(&rules), with_map())
+    }
+
+    /// A sharer the GIVE drained ends the month with nothing, and its $10 upkeep is paid at
+    /// maintenance by a faction-mate's silver (`rules/economy_maintenance`: "Silver from other
+    /// faction units in the same region"), not by the `SHARE` purse lending for orders: its
+    /// `lent` line is the GIVE's whole $100, and the giver's `was lent` the same (`ah-2zku`).
+    /// 905 refills 901, which pays.
+    #[test]
+    fn a_drained_sharers_upkeep_is_shared_at_maintenance_not_netted_into_its_lending() {
+        let review = drained_sharer_review(
+            vec![with_silver(starving(unit("905")), 1000)],
+            "unit 905\nGIVE 901 300 SILV\n",
+        );
+        let fed = shipment_silver(&review, "902");
+        assert_eq!(silver_booked(&review, "902", SilverChangeCause::Lent), -100, "{fed:?}");
+        assert_eq!(silver_booked(&review, "901", SilverChangeCause::WasLent), 100);
+        assert_eq!(fed.shared_silver_covered, 10, "{fed:?}");
+        assert_eq!(fed.upkeep, Some(0), "{fed:?}");
+        assert_eq!(fed.at_month_end, Some(0), "{fed:?}");
     }
 
     /// A giver that holds part of a GIVE draws only the rest on its sharers (`unit.cpp`:
