@@ -1154,8 +1154,9 @@ fn settle_report_wide(
                 }
                 settlement.food_left =
                     feed_groups_from_faction_food(hexes, inputs.reach.neighbourhoods());
-                for (hex, ledger) in hexes.iter_mut() {
-                    charge_settled_upkeep(ledger, hex);
+                let upkeep = UpkeepSilver::read(hexes);
+                for (index, (hex, ledger)) in hexes.iter_mut().enumerate() {
+                    charge_settled_upkeep(ledger, hex, &upkeep.carried[index]);
                 }
             }
             // Step 4 comes before steps 5 and 6: a neighbour's silver is spent before anybody's
@@ -7376,7 +7377,8 @@ fn unit_facts<'a>(
 fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     ledger.food_claims = step_one_claims(ledger, hex);
     ledger.faction_fed = feed_from_faction_food(&ledger.food_claims).settled;
-    charge_settled_upkeep(ledger, hex);
+    let carried = UpkeepSilver::hex_row(hex, ledger).0;
+    charge_settled_upkeep(ledger, hex, &carried);
 }
 
 /// Each unit's step-1 food claim - what it owes, and what it has spare, once it has eaten its own
@@ -7473,8 +7475,9 @@ fn pay_wages(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
 }
 
 /// Steps 1 to 3 of the payment order for one hex, once step 2 has been settled into
-/// `ledger.faction_fed`.
-fn charge_settled_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
+/// `ledger.faction_fed`. `carried` is the hex's row of [`UpkeepSilver`]: what the `SHARE` purse
+/// moved into or out of each unit's silver for its orders, by unit id.
+fn charge_settled_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>, carried: &BTreeMap<String, i64>) {
     // Built before anything below draws the balance down - see *Known traps*: this function
     // mutates `balance` as it goes, and a `LateHoldings` read after that loop would price later
     // units against a balance earlier ones have already spent.
@@ -7525,8 +7528,15 @@ fn charge_settled_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
         // What the wages did not cover, which is what the wording and the unclaimed fund read as
         // maintenance's own draw (`ah-fjty`, `ah-gjq4`). `ledger.upkeep` keeps the *full* fee.
         // Only the wages still in hand once TRANSPORT has run cover it: a shipment they paid for
-        // leaves the fee to maintenance's later steps (`ah-9n7l.2`).
-        let in_hand = spendable_silver_at(ledger, &ordered.unit.unit_id, StatePhase::Transport);
+        // leaves the fee to maintenance's later steps (`ah-9n7l.2`). So does silver the unit lent
+        // the `SHARE` purse's orders, which the ledger leaves on its row (`ah-rbei`).
+        let in_hand = spendable_silver_at(ledger, &ordered.unit.unit_id, StatePhase::Transport)
+            .saturating_add(
+                carried
+                    .get(&ordered.unit.unit_id)
+                    .copied()
+                    .unwrap_or_default(),
+            );
         let covered = late_income(facts, region, *shares, ledger.ruleset).min(in_hand.max(0));
         let charged = (owed - covered).max(0);
         ledger.upkeep.insert(ordered.unit.unit_id.clone(), owed);
@@ -12503,25 +12513,23 @@ fn relieved_balance(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
 /// every message state - is exact either way.
 fn upkeep_claims(hexes: &[(Hex<'_>, Ledger<'_>)], reach: &SharingReach) -> Vec<UpkeepClaim> {
     let mut claims = Vec::new();
-    let carried = purse_carried(hexes);
-    for (index, (hex, ledger)) in hexes.iter().enumerate() {
-        claims.extend(
-            unpayable_upkeep(hex, ledger, &carried[index])
-                .into_iter()
-                .map(|(unit_id, short)| {
-                    // Where the fee falls due, for the warning's breakdown (`ah-bwxp.2`): the
-                    // region the unit ends the month in, as step 4 already groups it.
-                    let pays_in = reach
-                        .of(index, &unit_id)
-                        .map_or(hex.region.coordinate, |neighbourhood| neighbourhood.at);
-                    UpkeepClaim {
-                        region_id: hex.region.region_id.clone(),
-                        unit_id,
-                        pays_in,
-                        short,
-                    }
-                }),
-        );
+    let upkeep = UpkeepSilver::read(hexes);
+    for (index, (hex, _)) in hexes.iter().enumerate() {
+        claims.extend(unpayable_upkeep(hexes, index, &upkeep).into_iter().map(
+            |(unit_id, short)| {
+                // Where the fee falls due, for the warning's breakdown (`ah-bwxp.2`): the
+                // region the unit ends the month in, as step 4 already groups it.
+                let pays_in = reach
+                    .of(index, &unit_id)
+                    .map_or(hex.region.coordinate, |neighbourhood| neighbourhood.at);
+                UpkeepClaim {
+                    region_id: hex.region.region_id.clone(),
+                    unit_id,
+                    pays_in,
+                    short,
+                }
+            },
+        ));
     }
     claims
 }
@@ -12536,8 +12544,13 @@ fn upkeep_claims(hexes: &[(Hex<'_>, Ledger<'_>)], reach: &SharingReach) -> Vec<U
 /// `SHARE` pool would cover; two implementations of one idea is how the column and the warning
 /// drifted apart before (`ah-ycuj`).
 ///
-/// `carried` is this hex's row of [`purse_carried`].
-fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>, carried: &[i64]) -> Vec<(String, i64)> {
+/// The hex is `hexes[index]`, and each unit's silver is read through `upkeep`.
+fn unpayable_upkeep(
+    hexes: &[(Hex<'_>, Ledger<'_>)],
+    index: usize,
+    upkeep: &UpkeepSilver,
+) -> Vec<(String, i64)> {
+    let (hex, ledger) = &hexes[index];
     let mut claims = Vec::new();
     let owes = |ordered: &Ordered<'_>| -> Option<(String, i64)> {
         let who = &ordered.unit.unit_id;
@@ -12555,15 +12568,15 @@ fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>, carried: &[i64]) -> Vec<
     };
 
     // Every unit is judged on its own balance, which already carries whatever step 4 lent it
-    // (`silver_balance`) and what the `SHARE` purse lent for orders ([`purse_carried`]). At most
+    // and what the `SHARE` purse lent for orders, both in [`UpkeepSilver`]. At most
     // what maintenance drew is maintenance's fault, and the rest of an overdraft belongs to the
     // unit's orders: a unit holding $10, buying $350 of horses and owing $40 is short $380, of
     // which food or the fund may pay $40 and never the $340.
-    for (index, ordered) in hex.units.iter().enumerate() {
+    for ordered in &hex.units {
         let Some((unit_id, drawn)) = owes(ordered) else {
             continue;
         };
-        let overdraft = -silver_balance(ledger, &unit_id).saturating_add(carried[index]);
+        let overdraft = -upkeep.of(hexes, index, &unit_id);
         let short = overdraft.min(drawn);
         if short > 0 {
             claims.push((unit_id, short));
@@ -12572,14 +12585,16 @@ fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>, carried: &[i64]) -> Vec<
     claims
 }
 
-/// What the hex's `SHARE` purse moved into (positive) or out of (negative) each unit's silver for
-/// its orders - CAST, the market, STUDY and a TRANSPORT's fee ([`Lending::before_maintenance`],
-/// `ah-qugc`) - index-aligned with `hex.units`. The ledger charges a borrower the whole of what it spends and leaves its lenders'
-/// rows alone (`ah-0mch`), so maintenance reads a unit's silver as [`silver_balance`] plus this:
-/// `rules/sequenceofevents` charges upkeep after every order, so a buyer the purse paid keeps its
-/// wages for its own upkeep, and a sharer that lent its silver has that much less for its own
-/// (`rules/share`: sharing "can leave the sharing unit without enough funds to pay maintenance";
-/// `ah-su1x`). All zero where nothing pools.
+/// A unit's silver as maintenance reads it: [`silver_balance`] - the ledger's, with the relief an
+/// earlier step of the payment order wrote - with what the hex's `SHARE` purse moved into or out
+/// of it for its orders carried: CAST, the market, STUDY and a TRANSPORT's fee
+/// ([`Lending::carried`] of [`Lending::before_maintenance`], `ah-qugc`), the one reading of a unit's loans that [`SharerStock::at`] and the month-end
+/// purse take too (`ah-pf7t`, `ah-rbei`). The ledger charges a borrower the whole of what it
+/// spends and leaves its lenders' rows alone (`ah-0mch`), and `rules/sequenceofevents` charges
+/// upkeep after every order, so a buyer the purse paid keeps its wages for its own upkeep, and a
+/// sharer that lent its silver has that much less for its own (`rules/share`: sharing "can leave
+/// the sharing unit without enough funds to pay maintenance"; `ah-su1x`). `share_pool_agreement`
+/// holds maintenance to it. Nothing is carried where nothing pools.
 ///
 /// Loans only: what a refused CAST or STUDY handed back ([`Lending::refused`]) stays out, since
 /// the hex's warning still counts a refused order as spending that silver (`ah-9n7l.2`).
@@ -12588,32 +12603,65 @@ fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>, carried: &[i64]) -> Vec<
 /// movement comes before the month-long orders and maintenance after them
 /// (`rules/sequenceofevents`), so what it lent a STUDY where it arrived is gone before its upkeep
 /// is assessed, and is taken off its row in the hex the report lists it in (`ah-6y6e`).
-fn purse_carried(hexes: &[(Hex<'_>, Ledger<'_>)]) -> Vec<Vec<i64>> {
-    let mut lent_on_arrival: BTreeMap<UnitKey, i64> = BTreeMap::new();
-    let mut carried: Vec<Vec<i64>> = hexes
-        .iter()
-        .map(|(hex, ledger)| {
-            let lending = Lending::before_maintenance(hex, ledger);
-            for (arrival, lent) in ledger
-                .walking_silver
-                .arrivals_at(LendingMoment::MonthEnd)
-                .iter()
-                .zip(&lending.arrivals_lend)
-            {
-                *lent_on_arrival.entry(arrival.unit.clone()).or_default() += lent;
+///
+/// Built once per maintenance step and read as the step goes: the loans are fixed for the month,
+/// since maintenance lends none of the purse's order money, while [`silver_balance`] is read live
+/// at every [`UpkeepSilver::of`], so the relief steps 4-6 write is seen. Steps 1-3 read the loans
+/// too ([`charge_settled_upkeep`]): wages still in hand after TRANSPORT pay a unit's own fee only
+/// if the purse did not lend them out first.
+struct UpkeepSilver {
+    /// What the purse moved for each unit's orders, by hex and then by unit id.
+    carried: Vec<BTreeMap<String, i64>>,
+}
+
+impl UpkeepSilver {
+    fn read(hexes: &[(Hex<'_>, Ledger<'_>)]) -> Self {
+        let mut lent_on_arrival: BTreeMap<UnitKey, i64> = BTreeMap::new();
+        let mut carried: Vec<BTreeMap<String, i64>> = hexes
+            .iter()
+            .map(|(hex, ledger)| {
+                let (row, arrivals) = Self::hex_row(hex, ledger);
+                for (unit, lent) in arrivals {
+                    *lent_on_arrival.entry(unit).or_default() += lent;
+                }
+                row
+            })
+            .collect();
+        for ((hex, _), row) in hexes.iter().zip(&mut carried) {
+            for (unit_id, carried) in row.iter_mut() {
+                let key = unit_key(&hex.region.region_id, unit_id);
+                *carried -= lent_on_arrival.get(&key).copied().unwrap_or(0);
             }
-            (0..hex.units.len())
-                .map(|index| lending.borrows[index] - lending.lends[index])
-                .collect()
-        })
-        .collect();
-    for ((hex, _), row) in hexes.iter().zip(&mut carried) {
-        for (ordered, carried) in hex.units.iter().zip(row.iter_mut()) {
-            let key = unit_key(&hex.region.region_id, &ordered.unit.unit_id);
-            *carried -= lent_on_arrival.get(&key).copied().unwrap_or(0);
         }
+        Self { carried }
     }
-    carried
+
+    /// One hex's loans, by unit id, before any walker's arrival loans are taken off, and what each
+    /// sharer arriving here lent, by the unit it is.
+    fn hex_row(hex: &Hex<'_>, ledger: &Ledger<'_>) -> (BTreeMap<String, i64>, Vec<(UnitKey, i64)>) {
+        let lending = Lending::before_maintenance(hex, ledger);
+        let arrivals = ledger
+            .walking_silver
+            .arrivals_at(LendingMoment::MonthEnd)
+            .iter()
+            .zip(&lending.arrivals_lend)
+            .map(|(arrival, lent)| (arrival.unit.clone(), *lent))
+            .collect();
+        let row = hex
+            .units
+            .iter()
+            .enumerate()
+            .map(|(index, ordered)| (ordered.unit.unit_id.clone(), lending.carried(index)))
+            .collect();
+        (row, arrivals)
+    }
+
+    /// Unit `unit_id`'s silver in `hexes[hex]`, as maintenance reads it. A unit the hex does not
+    /// list carries nothing.
+    fn of(&self, hexes: &[(Hex<'_>, Ledger<'_>)], hex: usize, unit_id: &str) -> i64 {
+        silver_balance(&hexes[hex].1, unit_id)
+            .saturating_add(self.carried[hex].get(unit_id).copied().unwrap_or_default())
+    }
 }
 
 /// Step 4 of the maintenance payment order: silver from other faction units in the same region pays
@@ -12643,13 +12691,13 @@ fn share_silver_for_upkeep(
 ) -> BTreeMap<UnitKey, i64> {
     // What the `SHARE` purse moved for orders, read once per hex: lending for upkeep below moves
     // none of it.
-    let carried = purse_carried(hexes);
+    let upkeep = UpkeepSilver::read(hexes);
     // What each unit could not pay itself, read once per hex before anything is lent.
-    let owing: Vec<BTreeMap<String, i64>> = hexes
-        .iter()
-        .zip(&carried)
-        .map(|((hex, ledger), carried)| {
-            unpayable_upkeep(hex, ledger, carried).into_iter().collect()
+    let owing: Vec<BTreeMap<String, i64>> = (0..hexes.len())
+        .map(|index| {
+            unpayable_upkeep(hexes, index, &upkeep)
+                .into_iter()
+                .collect()
         })
         .collect();
 
@@ -12668,25 +12716,14 @@ fn share_silver_for_upkeep(
 
         // Every own unit in the region lends what it has spare. `silver_balance` is post-orders and
         // post-own-maintenance and already carries any relief written before this point, and with
-        // what the `SHARE` purse lent for orders carried ([`purse_carried`]) it is exactly "what
+        // what the `SHARE` purse lent for orders carried ([`UpkeepSilver`]) it is exactly "what
         // this unit has spare" - which `balance_of` is not.
         let spare: Vec<(&Member, i64)> = members
             .iter()
             .filter(|(index, unit_id)| !hexes[*index].1.doubted.contains(unit_id))
             .map(|member| {
                 let (index, unit_id) = member;
-                let (hex, ledger) = &hexes[*index];
-                let carried = hex
-                    .units
-                    .iter()
-                    .position(|ordered| &ordered.unit.unit_id == unit_id)
-                    .map_or(0, |position| carried[*index][position]);
-                (
-                    member,
-                    silver_balance(ledger, unit_id)
-                        .saturating_add(carried)
-                        .max(0),
-                )
+                (member, upkeep.of(hexes, *index, unit_id).max(0))
             })
             .collect();
         let pool: i64 = spare.iter().map(|(_, spare)| spare).sum();
@@ -12892,12 +12929,12 @@ fn feed_from_food_after_silver(
     let mut all: BTreeMap<UnitKey, LateFoodRelief> = BTreeMap::new();
 
     // What each unit could not pay itself, read once per hex before anything is fed.
-    let carried = purse_carried(hexes);
-    let owing: Vec<BTreeMap<String, i64>> = hexes
-        .iter()
-        .zip(&carried)
-        .map(|((hex, ledger), carried)| {
-            unpayable_upkeep(hex, ledger, carried).into_iter().collect()
+    let upkeep = UpkeepSilver::read(hexes);
+    let owing: Vec<BTreeMap<String, i64>> = (0..hexes.len())
+        .map(|index| {
+            unpayable_upkeep(hexes, index, &upkeep)
+                .into_iter()
+                .collect()
         })
         .collect();
 
@@ -13811,7 +13848,7 @@ impl SharerStock {
             let unit_id = &ordered.unit.unit_id;
             let position = match Self::known_at(ledger, phase, unit_id, tag) {
                 Some(known) => {
-                    let carried = lending.borrows[index] - lending.lends[index];
+                    let carried = lending.carried(index);
                     // What the unit's orders overdrew it, answered by exactly one side
                     // ([`OverdraftOwner`], `ah-eoag`): the ledger's add-back, a refused cast's
                     // whole cost, or the purse's own lending and hand-backs.
@@ -15083,6 +15120,16 @@ impl Lending {
         self.refused_cast[index] + self.study[index].refused_fee()
     }
 
+    /// What the purse moved into (positive) or out of (negative) unit `index`'s silver by the
+    /// moments read: what it was lent less what it lent. **The one reading of a unit's loans**:
+    /// every reader that carries the purse into a unit's silver - [`SharerStock::at`], the
+    /// settlement's positions, the month-end purse and maintenance ([`UpkeepSilver`]) - asks
+    /// this rather than subtracting the two itself (`ah-pf7t`, `ah-rbei`). The same netted or
+    /// not ([`Lending::netted`] takes the same amount off both sides).
+    fn carried(&self, index: usize) -> i64 {
+        self.borrows[index] - self.lends[index]
+    }
+
     /// [`Lending::refused`] for every unit of the hex.
     fn refused_all(&self) -> Vec<i64> {
         (0..self.study.len())
@@ -15225,8 +15272,8 @@ impl Lending {
                     .sum::<i64>()
             };
             let position = |purse: &Lending, index: usize, at: LendingMoment| {
-                own(index, at) - purse.lends[index]
-                    + purse.borrows[index]
+                own(index, at)
+                    + purse.carried(index)
                     + purse.refused(index)
                     + unpaid[index]
                     + refused_shipments(index)
@@ -15683,9 +15730,8 @@ fn sharing_purse_over(
         let paid = Lending::settle(hex, ledger, &sharing, &before_month_end);
         let coverage = (0..hex.units.len())
             .map(|index| {
-                let position = own(index, LendingMoment::MonthEnd) - paid.lends[index]
-                    + paid.borrows[index]
-                    + paid.refused(index);
+                let position =
+                    own(index, LendingMoment::MonthEnd) + paid.carried(index) + paid.refused(index);
                 if !judged(index) {
                     None
                 } else if position < 0 || paid.refused(index) > 0 {
@@ -57112,6 +57158,214 @@ BUILD
                 );
             }
         }
+        // --- maintenance, the last consumer of what a sharer lent (`ah-rbei`) -------------------
+        //
+        // `rules/sequenceofevents` charges upkeep after the market and STUDY, and `rules/share`
+        // warns that sharing silver "can leave the sharing unit without enough funds to pay
+        // maintenance". So maintenance reads a sharer's silver less what the purse lent for orders
+        // and a borrower's plus what it was lent, from [`Lending`] like every other consumer here.
+        // `ah-su1x` first shipped without that and was caught only by a failed verification.
+
+        /// One maintenance reading: sharer 2's silver, the orders, and who must be paid upkeep by a
+        /// faction-mate (`rules/economy_maintenance`: "Silver in the unit's possession", then
+        /// "Silver from other faction units in the same region").
+        struct UpkeepCase {
+            name: &'static str,
+            sharer_silver: i64,
+            orders: &'static str,
+            /// What sharer 2 lent the orders, which the purse records before maintenance.
+            lent: i64,
+            /// Each unit's upkeep a faction-mate's silver paid, by id; every other unit's is 0.
+            covered: &'static [(&'static str, i64)],
+        }
+
+        fn upkeep_cases() -> Vec<UpkeepCase> {
+            // The sharer studies combat itself in the first three - `data/COMB` (Trident): "costs
+            // 10 silver per month of study" - so it earns no wages and holds only what it started
+            // with, less its own fee and what it lends.
+            vec![
+                UpkeepCase {
+                    // The sharer keeps $10 after its own fee and lending $40 (2 wood at $20),
+                    // enough for its own 10 (`rules/economy_maintenance`: "10 silver for a normal
+                    // character"); the buyer's wages pay its own, since the purse paid its BUY.
+                    name: "BUY: the lender keeps its upkeep, the working borrower pays its own",
+                    sharer_silver: 60,
+                    orders: "unit 2\nSTUDY COMB\nunit 3\nBUY 2 wood\nWORK\n",
+                    lent: 40,
+                    covered: &[],
+                },
+                UpkeepCase {
+                    // The sharer lends all it has left after its fee, so its upkeep is a
+                    // faction-mate's to pay - the borrower's wages, which the BUY no longer
+                    // draws on, or the worker's.
+                    name: "BUY: the lender lends it all and a faction-mate pays its upkeep",
+                    sharer_silver: 50,
+                    orders: "unit 2\nSTUDY COMB\nunit 3\nBUY 2 wood\nWORK\n",
+                    lent: 40,
+                    covered: &[(LENDER, 10)],
+                },
+                UpkeepCase {
+                    // The sharer's $20 pays its own fee and the student's, so neither has silver
+                    // for upkeep, and the worker's wages pay both.
+                    name: "STUDY: the lender pays the fee and a faction-mate pays its upkeep",
+                    sharer_silver: 20,
+                    orders: "unit 2\nSTUDY COMB\nunit 3\nSTUDY COMB\nunit 4\nWORK\n",
+                    lent: 10,
+                    covered: &[(LENDER, 10), ("3", 10)],
+                },
+                UpkeepCase {
+                    // The sharer lends its whole $40, works (`rules/work`) and ships the $20 it
+                    // earned, so it ends with nothing for its upkeep: what maintenance reads as
+                    // the wages still in hand after TRANSPORT is less what it lent, and a
+                    // faction-mate pays the fee (`rules/sequenceofevents`: WORK, then TRANSPORT,
+                    // then maintenance).
+                    name: "BUY: the lender ships its wages and a faction-mate pays its upkeep",
+                    sharer_silver: 40,
+                    orders: "unit 2\nWORK\nTRANSPORT 900 ALL SILV\nunit 3\nBUY 2 wood\nWORK\n",
+                    lent: 40,
+                    covered: &[(LENDER, 10)],
+                },
+            ]
+        }
+
+        /// One Trident hex selling wood at $20: quartermaster 900, fed by its grain; sharer 2 and
+        /// borrower 3, one man each and paying upkeep in silver; and worker 4, three men.
+        fn upkeep_region(sharer_silver: i64, reversed: bool) -> ReportRegion {
+            let mut region = caravanserai_owner("900", 1, 0, 0);
+            region.wages = Some("20".to_string());
+            region.max_wages = Some(100_000);
+            region.for_sale = vec![MarketItem {
+                amount: 100,
+                name: "wood".to_string(),
+                tag: "WOOD".to_string(),
+                price: 20,
+            }];
+            let mut units = vec![
+                sharing(starving(with_silver(unit(LENDER), sharer_silver))),
+                starving(unit("3")),
+                starving(with_men(unit("4"), 3)),
+            ];
+            if reversed {
+                units.reverse();
+            }
+            region.units.extend(units);
+            region
+        }
+
+        /// Maintenance reads a sharer's silver with what it lent the hex's orders gone, and a
+        /// borrower's with what it was lent: the faction-mate relief below is the engine's only
+        /// if both are carried. Dropping the purse's loans from maintenance's reading fails here.
+        #[test]
+        fn every_maintenance_reading_carries_what_the_sharer_lent() {
+            let rules = trident_rules();
+            for case in upkeep_cases() {
+                for reversed in [false, true] {
+                    let label = format!("{} (reversed: {reversed})", case.name);
+                    let region = upkeep_region(case.sharer_silver, reversed);
+                    let review = review_turn(
+                        &report(vec![region.clone()]),
+                        case.orders,
+                        Some(&rules),
+                        with_map(),
+                    );
+
+                    let ordered = OrderedUnits::read(case.orders);
+                    let hex = Hex::read(&region, &ordered, &[]);
+                    let ledger = ledger_for(&hex, Some(&rules));
+                    let x = hex
+                        .units
+                        .iter()
+                        .position(|o| o.unit.unit_id == LENDER)
+                        .expect("the sharer is in the hex");
+                    assert_eq!(
+                        Lending::before_maintenance(&hex, &ledger).netted().lends[x],
+                        case.lent,
+                        "{label}: Lending"
+                    );
+                    assert_eq!(
+                        spent_on(&review, LENDER, SilverChangeCause::Lent),
+                        case.lent,
+                        "{label}: the month-end purse"
+                    );
+
+                    for id in ["900", LENDER, "3", "4"] {
+                        let expected = case
+                            .covered
+                            .iter()
+                            .find(|(covered, _)| *covered == id)
+                            .map_or(0, |(_, amount)| *amount);
+                        assert_eq!(
+                            silver(&review, id).shared_silver_covered,
+                            expected,
+                            "{label}: maintenance, unit {id}: {:#?}",
+                            review.silver
+                        );
+                    }
+                    assert!(
+                        review
+                            .findings
+                            .iter()
+                            .all(|finding| finding.code != codes::NOT_ENOUGH_SILVER),
+                        "{label}: {:?}",
+                        review.findings
+                    );
+                }
+            }
+        }
+
+        /// [`Lending::carried`] is the one reading of what the purse moved into or out of a unit's
+        /// silver: its borrows less its lends, and the same whether or not the two are netted.
+        #[test]
+        fn lending_carried_is_borrows_less_lends_netted_or_not() {
+            let rules = trident_rules();
+            let case = &upkeep_cases()[0];
+            let region = upkeep_region(case.sharer_silver, false);
+            let ordered = OrderedUnits::read(case.orders);
+            let hex = Hex::read(&region, &ordered, &[]);
+            let ledger = ledger_for(&hex, Some(&rules));
+            let lending = Lending::before_maintenance(&hex, &ledger);
+            let netted = lending.clone().netted();
+            let carried: Vec<i64> = (0..hex.units.len()).map(|i| lending.carried(i)).collect();
+            let at = |id: &str| hex.units.iter().position(|o| o.unit.unit_id == id).unwrap();
+            assert_eq!(carried[at(LENDER)], -case.lent, "{lending:?}");
+            assert_eq!(carried[at("3")], case.lent, "{lending:?}");
+            for (index, &carried) in carried.iter().enumerate() {
+                assert_eq!(
+                    carried,
+                    lending.borrows[index] - lending.lends[index],
+                    "{lending:?}"
+                );
+                assert_eq!(netted.carried(index), carried, "{netted:?}");
+            }
+        }
+
+        /// Maintenance reads a unit's silver through [`UpkeepSilver`]: its relieved balance with
+        /// what the purse lent it or out of it carried ([`Lending::carried`] before maintenance).
+        #[test]
+        fn upkeep_silver_reads_a_lender_less_what_it_lent() {
+            let rules = trident_rules();
+            let case = &upkeep_cases()[0];
+            let region = upkeep_region(case.sharer_silver, false);
+            let ordered = OrderedUnits::read(case.orders);
+            let hex = Hex::read(&region, &ordered, &[]);
+            let ledger = ledger_for(&hex, Some(&rules));
+            let hexes = vec![(hex, ledger)];
+            let upkeep = UpkeepSilver::read(&hexes);
+            let (_, ledger) = &hexes[0];
+            for (id, carried) in [(LENDER, -case.lent), ("3", case.lent), ("4", 0)] {
+                assert_eq!(
+                    upkeep.of(&hexes, 0, id),
+                    silver_balance(ledger, id) + carried,
+                    "unit {id}"
+                );
+            }
+            assert_eq!(
+                upkeep.of(&hexes, 0, "999"),
+                silver_balance(ledger, "999"),
+                "a unit the hex does not list carries nothing"
+            );
+        }
+
         // --- one record of how each silver transfer was funded, read alike (`ah-rou9`) --------
         //
         // One hex: 901 holds nothing and gives quartermaster 900 $100, which the pool pays out of
