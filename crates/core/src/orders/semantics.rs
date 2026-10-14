@@ -2779,11 +2779,12 @@ fn forecast_hex(
     // `silver_moves` is what was actually charged, including a refused shipment whose goods stayed.
     //
     // Before the `Lent` pass below, not after it: TRANSPORT is an order the `SHARE` purse pays
-    // (`rules/share`), and `forecast_unit` could not count that loan, since it never sees the bill.
-    // So the part of the bill the purse lent is counted here, into the sender's
-    // `shared_silver_for_orders`, which is what the `Lent` pass debits its lenders for - before
-    // this ran after it, the lender's row showed nothing leaving and the sender ended the month
-    // short of what it was lent (`ah-nq3k`). The `Shipped` lines themselves are listed last.
+    // (`rules/share`), and `forecast_unit` could not credit that loan, since it never sees the bill.
+    // The loan itself is the purse's record's - TRANSPORT is one of its moments ([`PURSE_MOMENTS`],
+    // `ah-8bzm`), so `purse_for_orders` already borrows it for the sender and lends it out of the
+    // sharers that paid it. What is credited here is that record's borrow, up to what the bill
+    // overdrew, into the sender's `shared_silver_for_orders`, which the `Lent` pass then debits
+    // its lenders for (`ah-nq3k`). The `Shipped` lines themselves are listed last.
     let shipped_moves: Vec<Vec<SilverMove>> = into[start..]
         .iter_mut()
         .enumerate()
@@ -2823,8 +2824,8 @@ fn forecast_hex(
                 .map(|wanted| wanted.saturating_add(bill));
             if let Some(before) = forecast.at_month_end {
                 let after = before.saturating_sub(bill);
-                // What the bill overdrew, lent by the purse up to what it lends this unit beyond
-                // what its other orders were already lent.
+                // What the bill overdrew, lent up to what the record lends this unit beyond what
+                // its other orders were already credited.
                 let overdrawn = (-after).max(0) - (-before).max(0);
                 let lent = overdrawn
                     .min(purse_for_orders.borrows[index] - forecast.shared_silver_for_orders)
@@ -14318,7 +14319,14 @@ impl SharerStock {
         unit_id: &str,
         tag: &str,
     ) -> Option<(Self, usize)> {
-        Self::spender_in(ledger, hex, phase, unit_id, tag, Self::at(ledger, hex, phase, tag))
+        Self::spender_in(
+            ledger,
+            hex,
+            phase,
+            unit_id,
+            tag,
+            Self::at(ledger, hex, phase, tag),
+        )
     }
 
     /// [`SharerStock::for_spender`] on a stock already read - [`SharerStock::carrying`]'s, for
@@ -15337,7 +15345,7 @@ impl MarketPurse {
 
 /// What this hex's `SHARE` flags lend for orders, and who lent it to whom.
 ///
-/// Settled **moment by moment** - the market, STUDY, the month's end - by [`sharing_purse`], the
+/// Settled **moment by moment** - the market, STUDY, TRANSPORT, the month's end - by [`sharing_purse`], the
 /// moments [`Sharing::silver_short_at`] reads the hex's warning at (`ah-4oz9`, `ah-49j0`).
 ///
 /// **All or nothing, deliberately**, at every moment but CAST and STUDY - the rule `ah-e66j` set for
@@ -21755,9 +21763,9 @@ fn shipping_purse(
             // an arrival lends what it holds less what it lent here already.
             let sender_id = &sender.unit.unit_id;
             let lending = Lending::through(hex, ledger, StatePhase::Transport);
-            let stock = SharerStock::carrying(ledger, hex, StatePhase::Transport, SILVER, |_, _| {
-                lending.clone()
-            });
+            let lent_by_arrivals: i64 = lending.arrivals_lend.iter().sum();
+            let stock =
+                SharerStock::carrying(ledger, hex, StatePhase::Transport, SILVER, |_, _| lending);
             let Some((stock, at)) = SharerStock::spender_in(
                 ledger,
                 hex,
@@ -21777,8 +21785,8 @@ fn shipping_purse(
                 .filter(|(index, ordered)| *index != at && sharing.pools_silver(ordered))
                 .map(|(index, _)| stock.position(index))
                 .sum();
-            let arrivals = ledger.relief().walking.lends_at(LendingMoment::Transport)
-                - lending.arrivals_lend.iter().sum::<i64>();
+            let arrivals =
+                ledger.relief().walking.lends_at(LendingMoment::Transport) - lent_by_arrivals;
             stock.position(at) + sharers + arrivals
         }
     }
@@ -54814,11 +54822,70 @@ BUILD
             Some(&ruleset()),
             with_map(),
         );
-        assert_eq!(shipment_silver(&review, "900").shipping.len(), 1, "{:?}", review.silver);
+        assert_eq!(
+            shipment_silver(&review, "900").shipping.len(),
+            1,
+            "{:?}",
+            review.silver
+        );
         assert!(
             shipment_silver(&review, "906").shipping.is_empty(),
             "$5 is left in the purse, not $45: {:?}",
             review.silver
+        );
+    }
+
+    /// One fee loan beside a BUY loan in the same hex, read by every surface that reads loans
+    /// from the purse's one record ([`Lending`], `ah-8bzm`). A $80 sharer with no food lends a
+    /// non-sharer $30 for `BUY 2 grain` at the market and 900 its $45 fee at TRANSPORT
+    /// (`rules/sequenceofevents`: market orders, then TRANSPORT, then maintenance; `rules/share`),
+    /// so:
+    /// - the purse has $5 left when 906's $45 fee is judged, and the engine refuses it
+    ///   (`runorders.cpp`: "Cannot afford shipping cost.");
+    /// - the sharer's row reads `lent -75` and ends at $5, and each borrower reads what it was lent;
+    /// - maintenance carries both loans: the sharer pays 5 of its 10 upkeep itself, and the
+    ///   non-sharing keeper the rest (`rules/share`: sharing "can leave the sharing unit without
+    ///   enough funds to pay maintenance").
+    #[test]
+    fn one_fee_loan_beside_a_buy_loan_reads_the_same_on_every_surface() {
+        let review = review_turn(
+            &report(two_senders(vec![
+                sharing(starving(with_silver(unit("903"), 80))),
+                starving(with_silver(unit("904"), 100)),
+                unit("905"),
+            ])),
+            &format!("{TWO_SENDERS}unit 905\nBUY 2 grain\n"),
+            Some(&ruleset()),
+            with_map(),
+        );
+        // The purse's remaining silver at TRANSPORT.
+        assert_eq!(
+            shipment_silver(&review, "900").shipping.len(),
+            1,
+            "{:?}",
+            review.silver
+        );
+        assert!(
+            shipment_silver(&review, "906").shipping.is_empty(),
+            "$80 less $30 and $45 leaves $5: {:?}",
+            review.silver
+        );
+        // The lender's `lent` line and the borrowers' `was lent`.
+        assert_eq!(silver_booked(&review, "903", SilverChangeCause::Lent), -75);
+        assert_eq!(shipment_silver(&review, "903").at_month_end, Some(5));
+        assert_eq!(
+            silver_booked(&review, "900", SilverChangeCause::WasLent),
+            45
+        );
+        assert_eq!(
+            silver_booked(&review, "905", SilverChangeCause::WasLent),
+            30
+        );
+        // Maintenance's carry.
+        let sharer = shipment_silver(&review, "903");
+        assert_eq!(
+            sharer.shared_silver_covered, 5,
+            "the sharer lent $75 of its $80 and pays 5 of its 10 itself: {sharer:?}"
         );
     }
 
@@ -58782,7 +58849,9 @@ BUILD
                         .position(|o| o.unit.unit_id == LENDER)
                         .expect("the sharer is in the hex");
                     assert_eq!(
-                        Lending::before(&hex, &ledger, StatePhase::Maintenance).netted().lends[x],
+                        Lending::before(&hex, &ledger, StatePhase::Maintenance)
+                            .netted()
+                            .lends[x],
                         case.lent,
                         "{label}: Lending"
                     );
