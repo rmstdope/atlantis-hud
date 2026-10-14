@@ -16884,7 +16884,8 @@ fn pool_silver_figures(
         .iter()
         .map(|ordered| ordered.unit.unit_id.as_str())
         .collect();
-    let short = short.max(silver_unfunded_between(ledger, &between_everyone));
+    let unfunded = silver_unfunded_between(ledger, &between_everyone);
+    let short = short.max(unfunded);
     if short <= 0 {
         return None;
     }
@@ -16920,7 +16921,9 @@ fn pool_silver_figures(
         .map(|ordered| ordered.unit.unit_id.as_str())
         .collect();
     let can_have = can_have + silver_unfunded_between(ledger, &between_counted);
-    let short = short - upkeep_lent_beyond_need(hex, ledger, sharing, &between_counted, moment);
+    // ... and never below the gifts' floor above, whatever the upkeep loans give back.
+    let short = (short - upkeep_lent_beyond_need(hex, ledger, sharing, &between_counted, moment))
+        .max(unfunded);
     if short <= 0 {
         return None;
     }
@@ -16945,16 +16948,15 @@ fn pool_silver_figures(
 /// `RunTransportOrders`, "Cannot afford shipping cost."), so what that money was stays in the
 /// purse, and `rules/sequenceofevents` assesses maintenance only after TRANSPORT. Maintenance then
 /// lends from whichever faction-mate comes first (`runorders.cpp`: `CheckFactionMaintenanceItem`
-/// walks the region's units in order), so the sharer's leftover can pay a borrower's fee that a
-/// unit with plenty would have paid. Counted gone, it makes the hex short by more than any order
+/// walks the region's units in order), so the sharer's leftover can pay a borrower's upkeep that
+/// a unit with plenty would have paid. Counted gone, it makes the hex short by more than any order
 /// and upkeep on the SILVER cells adds up to.
 ///
 /// Bounded three ways: by what the sharers lent; by the refused fees, the only asks that silver
 /// was kept from; and by what the uncounted units had spare after maintenance. A fee nobody
 /// outside could have paid is the sentence's own upkeep, and its loan stays spent
-/// (`a_sharing_hexs_month_end_income_is_silver_it_can_have_not_a_smaller_spend`). Silver the purse
-/// never lends to an order, such as a CAST's, stays outside this
-/// (`sale_funded_cast_in_a_sharing_hex`).
+/// (`upkeep_the_purse_lends_with_nobody_else_to_pay_it_stays_spent`,
+/// `upkeep_the_purse_lends_beyond_what_others_have_spare_stays_spent`).
 fn upkeep_lent_beyond_need(
     hex: &Hex<'_>,
     ledger: &Ledger<'_>,
@@ -54999,6 +55001,54 @@ BUILD
             vec![
                 "the units in this hex are short $40 between them: they can have $60 \
                  and their orders and upkeep spend $100"
+                    .to_string()
+            ],
+        );
+    }
+
+    /// [`upkeep_the_purse_lends_after_a_refused_shipment_is_not_counted_against_it`]'s hex, with
+    /// `others` beside the sender and the $60 sharer; the hex sentence.
+    fn hex_sentence_after_a_refused_shipment(others: Vec<ReportUnit>) -> Vec<String> {
+        let mut regions = two_shipments_from_900(0);
+        regions[0].units[0] = starving(regions[0].units[0].clone());
+        let sharer = in_hex(&regions, sharing(starving(with_silver(unit("903"), 60))));
+        regions[0].units.push(sharer);
+        for other in others {
+            let other = in_hex(&regions, other);
+            regions[0].units.push(other);
+        }
+        let orders = "unit 900\nTRANSPORT 901 9 FUR\nTRANSPORT 902 9 FUR\n";
+        let review = review_turn(&report(regions), orders, Some(&ruleset()), with_map());
+        assert_eq!(shipments_of_900(&review), 1, "{:?}", review.silver);
+        short_messages(&review, None)
+    }
+
+    /// With nobody else holding silver, the sharer's last $5 is the only silver the sender's upkeep
+    /// can be paid from (`rules/economy_maintenance`: "Silver from other faction units in the same
+    /// region"), so the loan stays spent, and the other $5 of that upkeep goes unpaid: $50 short
+    /// of $90 of fees and both units' $10 upkeep. Given back, it would read $45 of $105.
+    #[test]
+    fn upkeep_the_purse_lends_with_nobody_else_to_pay_it_stays_spent() {
+        assert_eq!(
+            hex_sentence_after_a_refused_shipment(Vec::new()),
+            vec![
+                "the units in this hex are short $50 between them: they can have $60 \
+                 and their orders and upkeep spend $110"
+                    .to_string()
+            ],
+        );
+    }
+
+    /// A $13 non-sharer pays its own $10 and lends the sender $3; the sharer's $5 pays the rest,
+    /// and nobody has anything spare left to pay it instead, so the loan stays spent and $2 of the
+    /// sender's upkeep goes unpaid: $47 short. Given back, it would read $42.
+    #[test]
+    fn upkeep_the_purse_lends_beyond_what_others_have_spare_stays_spent() {
+        assert_eq!(
+            hex_sentence_after_a_refused_shipment(vec![starving(with_silver(unit("904"), 13))]),
+            vec![
+                "the units in this hex are short $47 between them: they can have $60 \
+                 and their orders and upkeep spend $107"
                     .to_string()
             ],
         );
