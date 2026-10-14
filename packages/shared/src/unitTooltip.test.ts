@@ -361,6 +361,34 @@ describe("the silver section", () => {
     ]);
   });
 
+  // `ah-2zku`: a faction-mate's upkeep this unit paid is maintenance it paid, so the rows still
+  // add up and the month end is the cell's.
+  it("counts what a unit paid of a faction-mate's upkeep as its upkeep", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({
+        held: 0,
+        income: 1645,
+        lateIncome: 67,
+        expense: 0,
+        upkeep: 30,
+        upkeepLent: 100,
+        atMonthEnd: 1645
+      }),
+      false,
+      true
+    );
+
+    expect(summary.silver?.rows).toEqual([
+      { label: "Held now", value: "0" },
+      { label: "In, in time", value: "1578" },
+      { label: "In, too late", value: "67" },
+      { label: "Out", value: "0" },
+      { label: "Upkeep", value: "130" },
+      { label: "At month end", value: "1515" }
+    ]);
+  });
+
   // `ah-e23d.2`. A foreign player that may share the pool leaves every figure plain - the
   // navigator chose the note alone - and the note says why the figure may be less.
   it("the_silver_section_leaves_a_foreign_sharers_figures_plain_and_says_why", () => {

@@ -1834,6 +1834,18 @@ function silverCauseWhy(
     parts.push("to a faction-mate's orders in this hex");
   } else if (group.cause === "was-lent") {
     parts.push("by your units in this hex");
+  } else if (group.cause === "was-lent-for-upkeep") {
+    // `rules/economy_maintenance`: "Silver from other faction units in the same region" pays what
+    // the unit's own silver could not (`ah-2zku`).
+    const by = others(group.entries);
+    if (by.length > 0) {
+      parts.push(`by ${andList(by)}`);
+    }
+  } else if (group.cause === "lent-for-upkeep") {
+    const to = others(group.entries);
+    if (to.length > 0) {
+      parts.push(`to ${andList(to)}`);
+    }
   } else if (group.cause === "was-taken") {
     const by = others(group.entries);
     if (by.length > 0) {
@@ -1886,6 +1898,11 @@ function silverCauseWhy(
   }
 
   return parts.length > 0 ? parts.join(", ") : undefined;
+}
+
+/** Whether a cause group is step 4's maintenance sharing, which the popup draws with the upkeep. */
+function isUpkeepShare(group: SilverCauseGroup): boolean {
+  return group.cause === "was-lent-for-upkeep" || group.cause === "lent-for-upkeep";
 }
 
 /**
@@ -2028,7 +2045,11 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
       : shown.kind === "single"
         ? shown.value
         : shown.low;
-  const groups = silverCauseGroups(silver.changes);
+  // Step 4 of maintenance - faction-mates' silver paying upkeep - is drawn with the upkeep row and
+  // only when the column counts it, or the lines would not add up to the cell (`ah-2zku`).
+  const allGroups = silverCauseGroups(silver.changes);
+  const upkeepShares = facts.countUpkeep ? allGroups.filter(isUpkeepShare) : [];
+  const groups = allGroups.filter((group) => !isUpkeepShare(group));
   const lines: PopupLine[] = [silverTotalLine(silver, shown)];
   for (const group of groups) {
     const why = silverCauseWhy(group, silver, unit.itemChanges ?? []);
@@ -2051,10 +2072,26 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
       ...(conditionalWhy === undefined ? {} : { why: conditionalWhy })
     });
   }
+  // Directly above the upkeep row: what faction-mates paid of this unit's fee, or what it paid of
+  // theirs (`ah-2zku`).
+  for (const group of upkeepShares) {
+    const why = silverCauseWhy(group, silver, unit.itemChanges ?? []);
+    lines.push({
+      label: silverCauseLabel(group.cause),
+      value: signed(group.amount),
+      tone: group.amount > 0 ? "up" : "down",
+      ...(why === undefined ? {} : { why })
+    });
+  }
+  // The fee before faction-mates' silver paid any of it, which the line above accounts for.
+  const paidByMates = upkeepShares
+    .filter((group) => group.cause === "was-lent-for-upkeep")
+    .reduce((sum, group) => sum + group.amount, 0);
   // Last, where `rules/sequenceofevents` puts maintenance - and only while the column counts it,
   // since with the setting off the cell's figure excludes it (`ah-1wcw.4`).
-  if (facts.countUpkeep && silver.upkeep !== null && silver.upkeep !== 0) {
-    lines.push({ label: "upkeep", value: signed(-silver.upkeep), tone: "down" });
+  const fee = silver.upkeep === null ? null : silver.upkeep + paidByMates;
+  if (facts.countUpkeep && fee !== null && fee !== 0) {
+    lines.push({ label: "upkeep", value: signed(-fee), tone: "down" });
   }
 
   const noteFacts: SilverFacts = {
@@ -2062,9 +2099,10 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     silver,
     warned: facts.silverWarned,
     hexShort: facts.silverHexShort ?? false,
-    countUpkeep: facts.countUpkeep
+    countUpkeep: facts.countUpkeep,
+    upkeepLinesDrawn: paidByMates > 0
   };
-  const notes = silverNoteLines(noteFacts, groups);
+  const notes = silverNoteLines(noteFacts, [...groups, ...upkeepShares]);
   if (silver.doubt !== null) {
     // Above the doubt's own sentence, which says *why* it could not be added up.
     notes.unshift("This month cannot be added up, so what moved this unit's silver is not listed.");
