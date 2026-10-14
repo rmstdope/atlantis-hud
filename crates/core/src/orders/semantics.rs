@@ -55442,6 +55442,8 @@ BUILD
             "the buyer's wages pay its own upkeep: {buyer:?}"
         );
         assert_eq!(buyer.upkeep, Some(80), "{buyer:?}");
+        // The agreed shortfall for the wood it does not get, kept by the navigator on this bead.
+        assert_eq!(buyer.short_for_orders, Some(81), "{buyer:?}");
         let relieved: i64 = ["900", "901", "902", "903", "904"]
             .iter()
             .map(|id| shipment_silver(&review, id).shared_silver_covered)
