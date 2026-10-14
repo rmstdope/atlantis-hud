@@ -549,9 +549,9 @@ export const WARNING_GROUPS: readonly {
       },
       {
         code: "magic-study-needs-a-lone-leader",
-        title: "Magic study by a unit that cannot become a mage",
+        title: "Study by a unit that cannot become a mage or apprentice",
         description:
-          "A unit that is not one leader on its own ordered to begin force, pattern, spirit or manipulation."
+          "A unit that is not one leader on its own ordered to begin force, pattern or spirit, which make a mage, or manipulation, which makes an apprentice."
       }
     ]
   },

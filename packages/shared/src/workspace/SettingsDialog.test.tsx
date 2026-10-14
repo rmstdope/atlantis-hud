@@ -73,6 +73,29 @@ describe("the warnings tab's coverage of the core's codes", () => {
   });
 
   /**
+   * `ah-egla`. Manipulation makes an apprentice, not a mage (data/MANI), but only a lone leader may
+   * become one (rules/magic_apprentices), so the warning still covers it. The words are the
+   * navigator's: they say what each skill makes, and stop calling manipulation magic. The code is
+   * unchanged so a player's on/off choice carries over.
+   */
+  it("pins the lone-leader study row's words and place", () => {
+    const studying = WARNING_GROUPS.find((group) => group.heading === "Studying/Teaching");
+    if (!studying) {
+      throw new Error("the Studying/Teaching group is missing");
+    }
+    const at = studying.entries.findIndex(
+      (entry) => entry.code === "magic-study-needs-a-lone-leader"
+    );
+    expect(studying.entries[at - 1]?.code).toBe("magic-study-outside-building");
+    expect(studying.entries[at]).toEqual({
+      code: "magic-study-needs-a-lone-leader",
+      title: "Study by a unit that cannot become a mage or apprentice",
+      description:
+        "A unit that is not one leader on its own ordered to begin force, pattern or spirit, which make a mage, or manipulation, which makes an apprentice."
+    });
+  });
+
+  /**
    * The words and the position are the navigator's decision: a fourth row under Sailing, after the
    * land-to-land check it is nearest in kind, so either can be silenced on its own.
    */
