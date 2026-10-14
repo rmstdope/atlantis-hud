@@ -12573,8 +12573,8 @@ fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>, carried: &[i64]) -> Vec<
 }
 
 /// What the hex's `SHARE` purse moved into (positive) or out of (negative) each unit's silver for
-/// its orders - CAST, the market and STUDY ([`Lending::before`] maintenance) - index-aligned with
-/// `hex.units`. The ledger charges a borrower the whole of what it spends and leaves its lenders'
+/// its orders - CAST, the market, STUDY and a TRANSPORT's fee ([`Lending::before_maintenance`],
+/// `ah-qugc`) - index-aligned with `hex.units`. The ledger charges a borrower the whole of what it spends and leaves its lenders'
 /// rows alone (`ah-0mch`), so maintenance reads a unit's silver as [`silver_balance`] plus this:
 /// `rules/sequenceofevents` charges upkeep after every order, so a buyer the purse paid keeps its
 /// wages for its own upkeep, and a sharer that lent its silver has that much less for its own
@@ -12593,7 +12593,7 @@ fn purse_carried(hexes: &[(Hex<'_>, Ledger<'_>)]) -> Vec<Vec<i64>> {
     let mut carried: Vec<Vec<i64>> = hexes
         .iter()
         .map(|(hex, ledger)| {
-            let lending = Lending::before(hex, ledger, StatePhase::Maintenance);
+            let lending = Lending::before_maintenance(hex, ledger);
             for (arrival, lent) in ledger
                 .walking_silver
                 .arrivals_at(LendingMoment::MonthEnd)
@@ -15040,12 +15040,32 @@ impl Lending {
     /// the hex's silver at `phase` must carry. Nothing before [`StatePhase::Market`], since the
     /// first moment is the cast.
     fn before(hex: &Hex<'_>, ledger: &Ledger<'_>, phase: StatePhase) -> Self {
-        Self::over(hex, ledger, |moment| moment.phase() < phase)
+        let moments: Vec<LendingMoment> = PURSE_MOMENTS
+            .iter()
+            .copied()
+            .filter(|moment| moment.phase() < phase)
+            .collect();
+        Self::over(hex, ledger, &moments)
     }
 
-    fn over(hex: &Hex<'_>, ledger: &Ledger<'_>, take: impl Fn(LendingMoment) -> bool) -> Self {
-        let moments: Vec<LendingMoment> =
-            PURSE_MOMENTS.iter().copied().filter(|&m| take(m)).collect();
+    /// What the pool lent for orders by the time maintenance is assessed: [`Lending::before`]
+    /// maintenance, and then the shipment fees TRANSPORT drew on it ([`shipping_purse`]).
+    /// `rules/sequenceofevents` processes TRANSPORT orders before maintenance is assessed, so a
+    /// sharer whose silver paid a hex-mate's fee has that much less for its own upkeep
+    /// (`rules/share`; `ah-qugc`). TRANSPORT is no [`PURSE_MOMENTS`] moment: elsewhere the
+    /// month-end purse lends for a fee, and only maintenance, which runs between the two, needs it
+    /// read on its own.
+    fn before_maintenance(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Self {
+        let mut moments: Vec<LendingMoment> = PURSE_MOMENTS
+            .iter()
+            .copied()
+            .filter(|moment| moment.phase() < StatePhase::Maintenance)
+            .collect();
+        moments.push(LendingMoment::Transport);
+        Self::over(hex, ledger, &moments)
+    }
+
+    fn over(hex: &Hex<'_>, ledger: &Ledger<'_>, moments: &[LendingMoment]) -> Self {
         if moments.is_empty() {
             return Self::nothing(hex, ledger);
         }
@@ -15053,7 +15073,7 @@ impl Lending {
         if sharing.reading(SILVER, None) == Reading::PerUnit || !sharing.pool_trusted(ledger) {
             return Self::nothing(hex, ledger);
         }
-        Self::settle(hex, ledger, &sharing, &moments)
+        Self::settle(hex, ledger, &sharing, moments)
     }
 
     /// What the engine never took from a unit, and so hands back at every later moment: the cost
@@ -53799,6 +53819,49 @@ BUILD
         let poor = sender_silver(with_mate(10), UNPAID, with_map());
         assert!(poor.shipping.is_empty(), "thirty is not forty-five");
         assert!(codes(&unpaid_findings(with_mate(10), UNPAID)).contains(&"part-of-hex-shortfall"));
+    }
+
+    /// `rules/sequenceofevents` processes TRANSPORT orders before maintenance is assessed, and
+    /// `rules/share` warns that sharing silver "can leave the sharing unit without enough funds to
+    /// pay maintenance", while a non-sharer's funds "will be shared for maintenance". So a sharer
+    /// whose whole $45 the pool spent on a hex-mate's shipment fee owes its own 10 of upkeep out
+    /// of nothing, and the non-sharer's $100 pays both its upkeep and the sender's - as it already
+    /// does for a $45 BUY (`ah-su1x`). Before the fix the sharer was shown paying its own upkeep
+    /// and the hex was "short $20" (`ah-qugc`).
+    #[test]
+    fn a_sharer_that_pays_a_shipment_fee_has_that_much_less_for_its_upkeep() {
+        let mut regions = unpaid_shipping(0);
+        regions[0].units[0] = starving(regions[0].units[0].clone());
+        let here = regions[0].region_id.clone();
+        for mate in [
+            sharing(starving(with_silver(unit("903"), 45))),
+            starving(with_silver(unit("904"), 100)),
+        ] {
+            let mut mate = mate;
+            mate.region_id = here.clone();
+            regions[0].units.push(mate);
+        }
+        let review = review_turn(&report(regions), UNPAID, Some(&ruleset()), with_map());
+
+        let sender = shipment_silver(&review, "900");
+        assert_eq!(
+            sender.shipping.len(),
+            1,
+            "the pool pays the fee: {sender:?}"
+        );
+        let sharer = shipment_silver(&review, "903");
+        assert_eq!(
+            sharer.shared_silver_covered, 10,
+            "the sharer lent its $45 and has nothing for its upkeep: {sharer:?}"
+        );
+        assert_eq!(sender.shared_silver_covered, 10, "{sender:?}");
+        let short: Vec<&str> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.message.contains("short $"))
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert!(short.is_empty(), "{short:?}");
     }
 
     /// TRANSPORT runs after movement (`rules/sequenceofevents`), so a sharing faction-mate that
