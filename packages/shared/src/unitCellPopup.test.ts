@@ -2516,6 +2516,34 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
     );
   });
 
+  // ah-30y0: Hangaround (8446) in neworigins-3.0.0-g3-f42-t42.rep, @STUDY MANI with nothing else
+  // touching its skills - no report change, so only the drawn chain says the month moves the row.
+  it("the skills popup never says nothing changes beside a skill this month's study moves", () => {
+    const popup = skillsPopup(
+      own({
+        previewChanges: [],
+        reportedSkills: [skill("manipulation", "MANI", 2, 90)],
+        skills: [skill("manipulation", "MANI", 2, 90)],
+        study: forecast({
+          tag: "MANI",
+          name: "manipulation",
+          levelBefore: 2,
+          pointsBefore: 90,
+          levelAfter: 2,
+          pointsAfter: 120
+        })
+      })
+    );
+    expect(popup.lines[0]!.steps).toEqual([
+      { value: "2 (90)", mark: "reported" },
+      { value: "2 (120)", mark: "projected" }
+    ]);
+    expect(popup.notes).toContain(
+      "Studying manipulation: worth one month. The blue figure is next turn's report; everything before it is this month."
+    );
+    expect(popup.notes).not.toContain("Nothing this month changes these.");
+  });
+
   it("the skills popup gives a studied skill a line of its own when the unit has never held it", () => {
     const popup = skillsPopup(
       own({

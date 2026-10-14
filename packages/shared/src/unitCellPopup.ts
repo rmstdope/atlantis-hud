@@ -686,9 +686,17 @@ export function popupForCell(
  * them - three orcs given away and three humans recruited (`ah-rgkk.4.2`), ten iron given in and
  * ten spent (`ah-ymms`) - so a body that wrote any cause sentence, or drew any line with a before
  * and after, never gets the sentence. Each column used to opt out by hand, and one forgot.
+ *
+ * A line drawn as a chain of `steps` is a line with a before and after too: `chainFor` draws one
+ * only when the figure moved or this month's STUDY projects it forward, and a study leaves no
+ * report change behind - so without this a studied skill sat beside the sentence (`ah-30y0`).
  */
 function saysNothingChanges(compared: boolean, body: Body): boolean {
-  return compared && body.causes.length === 0 && !body.lines.some((line) => line.change);
+  return (
+    compared &&
+    body.causes.length === 0 &&
+    !body.lines.some((line) => line.change || (line.steps?.length ?? 0) > 1)
+  );
 }
 
 type Body = {
