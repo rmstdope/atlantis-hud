@@ -70,12 +70,14 @@ fn every_unit_in_the_corpus_totals_what_its_changes_say() {
             // unit's income. It reaches the month end as `shared_silver_for_orders` instead, a
             // sharer's included (`ah-3c2t.2`, `ah-0nwd`), and the line says who covered it.
             .filter(|change| change.cause != SilverChangeCause::WasLent)
+            .filter(|change| !upkeep_shared(change.cause))
             .filter(|change| change.amount > 0)
             .map(|change| change.amount)
             .sum();
         let expense_moved: i64 = unit
             .changes
             .iter()
+            .filter(|change| !upkeep_shared(change.cause))
             .filter(|change| change.amount < 0)
             .map(|change| -change.amount)
             .sum();
@@ -380,4 +382,14 @@ fn a_borrowing_unit_never_also_lends() {
             unit.unit_id
         );
     }
+}
+
+/// Step 4's maintenance lines (`ah-2zku`): maintenance is in neither total, so the silver one
+/// faction-mate pays another's upkeep with is not either. Each unit's own lines still add up to its
+/// month end, with its upkeep.
+fn upkeep_shared(cause: SilverChangeCause) -> bool {
+    matches!(
+        cause,
+        SilverChangeCause::LentForUpkeep | SilverChangeCause::WasLentForUpkeep
+    )
 }

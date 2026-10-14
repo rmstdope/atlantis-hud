@@ -389,6 +389,15 @@ pub struct UnitSilver {
     /// Automatic and unconditional: the `SHARE` flag governs discretionary spending only, so this
     /// is not the same thing as the `sharing` pool `report_shortfalls` uses.
     pub shared_silver_covered: i64,
+    /// What this unit's own silver paid of *other* units' upkeep at step 4 of the payment order
+    /// (`rules/economy_maintenance`: "Silver from other faction units in the same region") - the
+    /// other side of their `shared_silver_covered`, booked as its `LentForUpkeep` lines. `0` for
+    /// every unit that paid no faction-mate's fee, and for every lender in a region whose pool
+    /// was contended by several claimants (`ah-e66j`, `ah-2zku`).
+    ///
+    /// Maintenance, so never in `at_month_end` (`ah-1wcw.4`): a consumer that counts upkeep takes
+    /// this off with it.
+    pub upkeep_lent: i64,
     /// What a faction-mate's `SHARE` lends this unit for its orders, at the hex's discretionary
     /// purse. `0` for every unit nothing lent to, and `0`, deliberately, for every unit in a hex
     /// whose purse could not cover every claimant - where which unit was fed cannot be told and
@@ -881,6 +890,19 @@ pub enum SilverChangeCause {
     /// and this line says who covered it. That is why
     /// `crates/core/tests/silver_totals_are_its_movements.rs` excludes it from the income sum.
     WasLent,
+    /// Silver this unit's faction-mates in the same region paid its upkeep with, at step 4 of the
+    /// payment order (`rules/economy_maintenance`: "Silver from other faction units in the same
+    /// region", after "Silver in the unit's possession"). `other` names the payer; one entry per
+    /// payer (`ah-2zku`).
+    ///
+    /// **Outside both totals**, as [`Self::WasLent`] is: maintenance is never in `income`,
+    /// `expense` or `at_month_end` (`ah-1wcw.4`). It is what [`UnitSilver::shared_silver_covered`]
+    /// takes off `upkeep`, so a consumer counting upkeep draws it beside the fee.
+    WasLentForUpkeep,
+    /// The mirror of [`Self::WasLentForUpkeep`], on the payer: what its silver paid of a
+    /// faction-mate's upkeep, `other` naming the unit fed. Outside both totals for the same
+    /// reason; [`UnitSilver::upkeep_lent`] is its sum (`ah-2zku`).
+    LentForUpkeep,
     /// What a `TRANSPORT`/`DISTRIBUTE` pays to ship goods by weight (`data/quartermaster`). One
     /// line however many shipments the unit wrote, the way two purchases already add into one
     /// `Bought` (`ah-7ale.3`).
@@ -2306,6 +2328,7 @@ pub fn forecast_unit(
             taken_unshown_from: Vec::new(),
             faction_food_covered: 0,
             shared_silver_covered: 0,
+            upkeep_lent: 0,
             shared_silver_for_orders: 0,
             market_purse_held_only: false,
             income_in_time_at_most: false,
@@ -2376,6 +2399,7 @@ pub fn forecast_unit(
             taken_unshown_from: Vec::new(),
             faction_food_covered: 0,
             shared_silver_covered: 0,
+            upkeep_lent: 0,
             shared_silver_for_orders: 0,
             market_purse_held_only: false,
             income_in_time_at_most: false,
@@ -3271,6 +3295,7 @@ pub fn forecast_unit(
         taken_unshown_from: receipts.taken_unshown_from.clone(),
         faction_food_covered: 0,
         shared_silver_covered: 0,
+        upkeep_lent: 0,
         shared_silver_for_orders: shared,
         market_purse_held_only: matches!(shared_market, SharedMarket::HeldOnly(_)),
         income_in_time_at_most,

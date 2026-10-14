@@ -146,6 +146,17 @@ factionFoodCovered: number,
  */
 sharedSilverCovered: number, 
 /**
+ * What this unit's own silver paid of *other* units' upkeep at step 4 of the payment order
+ * (`rules/economy_maintenance`: "Silver from other faction units in the same region") - the
+ * other side of their `shared_silver_covered`, booked as its `LentForUpkeep` lines. `0` for
+ * every unit that paid no faction-mate's fee, and for every lender in a region whose pool
+ * was contended by several claimants (`ah-e66j`, `ah-2zku`).
+ *
+ * Maintenance, so never in `at_month_end` (`ah-1wcw.4`): a consumer that counts upkeep takes
+ * this off with it.
+ */
+upkeepLent: number, 
+/**
  * What a faction-mate's `SHARE` lends this unit for its orders, at the hex's discretionary
  * purse. `0` for every unit nothing lent to, and `0`, deliberately, for every unit in a hex
  * whose purse could not cover every claimant - where which unit was fed cannot be told and
