@@ -14169,7 +14169,9 @@ impl<'a> Sharing<'a> {
                     || walking
                         .arrivals_at(LendingMoment::MonthEnd)
                         .iter()
-                        .any(|arrival| arrival.lends > 0)
+                        // What maintenance took counts: the orders before it could borrow it
+                        // (`ah-6y6e`).
+                        .any(|arrival| arrival.lends.saturating_add(arrival.maintenance) > 0)
                     || walking.departing.values().any(|lent| *lent > 0)
             }
             _ => !self.sharers.is_empty(),
@@ -14363,6 +14365,11 @@ struct ArrivingSilver {
     /// Where its own row - and its own ledger - is: the hex the report lists it in.
     unit: UnitKey,
     lends: i64,
+    /// What maintenance took off its silver ([`maintenance_settled`]), on the `MonthEnd` figure
+    /// once the month has settled and `0` everywhere else. Every order comes before maintenance
+    /// (`rules/sequenceofevents`), so what a STUDY or a shipment here may borrow of it is its
+    /// month-end figure with this handed back: its own fee does not come first (`ah-6y6e`).
+    maintenance: i64,
 }
 
 impl WalkingSilver {
@@ -14400,6 +14407,14 @@ fn lend_across_hexes(silver: &mut [UnitSilver], lent_across: &[(UnitKey, i64)]) 
             });
         }
     }
+}
+
+/// What maintenance took off `unit_id`'s [`silver_balance`]: the fee charged to its balance, less
+/// what steps 4 to 7 relieved it of, plus what it lent a faction-mate's fee at step 4. Added back,
+/// it reads the unit's silver as the month-long orders left it (`ah-6y6e`).
+fn maintenance_settled(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    let read = |map: &BTreeMap<String, i64>| map.get(unit_id).copied().unwrap_or_default();
+    read(&ledger.upkeep) - read(&ledger.upkeep_relieved) + read(&ledger.upkeep_lent)
 }
 
 /// Fills every ledger's [`WalkingSilver`]: which of its sharers walk away and what they lent
@@ -14487,6 +14502,11 @@ fn lend_walking_sharers_silver(
             let lends_at = |moment: LendingMoment| ArrivingSilver {
                 unit: unit_key(&hex.region.region_id, who),
                 lends: (held_at(who, moment) - more).max(0),
+                maintenance: if moment == LendingMoment::MonthEnd {
+                    maintenance_settled(ledger, who)
+                } else {
+                    0
+                },
             };
             let slots = &mut arrivals[arrives];
             slots[LendingMoment::Study as usize].push(lends_at(LendingMoment::Study));
@@ -15245,7 +15265,10 @@ impl Lending {
                     .enumerate()
                 {
                     parties.push(StockParty {
-                        position: (now.lends.min(all_month.lends) - purse.arrivals_lend[index])
+                        position: (now
+                            .lends
+                            .min(all_month.lends.saturating_add(all_month.maintenance))
+                            - purse.arrivals_lend[index])
                             .max(0),
                         lends: true,
                     });
@@ -68452,19 +68475,7 @@ BUILD
     /// short $10.
     #[test]
     fn a_sharer_that_walks_in_pays_for_a_study_before_anybodys_upkeep() {
-        let regions = vec![
-            region_at("1:7,53", 7, 53, vec![starving(with_silver(unit("5"), 0))]),
-            region_at(
-                "1:7,51",
-                7,
-                51,
-                vec![sharing(starving(with_silver(unit("7"), 20)))],
-            ),
-        ];
-        let orders = "unit 5\nSTUDY combat\nunit 7\nMOVE S\n";
-        let (report, options) =
-            traced(report(regions), orders, &ruleset(), CheckOptions::default());
-        let review = review_turn(&report, orders, Some(&ruleset()), options);
+        let review = study_paid_by_a_walker_holding(20);
 
         // The STUDY line is paid; what is short is the student's own $10 fee, which nobody's
         // silver is left for.
@@ -68503,6 +68514,55 @@ BUILD
             Some(10),
             "$20 less the $10 STUDY it lent, before its own $10 fee: {sharer:?}"
         );
+    }
+
+    /// The review's case of `ah-6y6e`: the walker of
+    /// [`a_sharer_that_walks_in_pays_for_a_study_before_anybodys_upkeep`] with $15. It still lends
+    /// the $10 STUDY, which comes before maintenance (`rules/sequenceofevents`), and is left $5
+    /// for its own $10 fee - "sharing silver ... can leave the sharing unit without enough funds
+    /// to pay maintenance" (`rules/share`). Before the fix its own fee capped the loan at $5, and
+    /// the STUDY was refused.
+    #[test]
+    fn a_sharer_that_walks_in_pays_for_a_study_before_its_own_upkeep() {
+        for held in [15, 10] {
+            let review = study_paid_by_a_walker_holding(held);
+            let student = forecast_for(&review, "5");
+            assert_eq!(student.short_for_orders, Some(0), "${held}: {student:?}");
+            assert!(
+                review.findings.iter().all(|finding| {
+                    finding.code != codes::NOT_ENOUGH_SILVER
+                        || finding.unit_id.as_deref() != Some("5")
+                        || finding.line.is_none()
+                }),
+                "${held}: nothing on the STUDY line: {:?}",
+                review.findings
+            );
+            let sharer = forecast_for(&review, "7");
+            assert_eq!(sharer.upkeep, Some(10), "${held}: {sharer:?}");
+            assert_eq!(
+                sharer.at_month_end,
+                Some(held - 10),
+                "${held} less the $10 STUDY it lent: {sharer:?}"
+            );
+        }
+    }
+
+    /// Student 5 (one man, $0, no food) studies combat in (7,53); sharer 7 (one man, `held`, no
+    /// food) walks `MOVE S` into it from (7,51).
+    fn study_paid_by_a_walker_holding(held: i64) -> TurnReview {
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![starving(with_silver(unit("5"), 0))]),
+            region_at(
+                "1:7,51",
+                7,
+                51,
+                vec![sharing(starving(with_silver(unit("7"), held)))],
+            ),
+        ];
+        let orders = "unit 5\nSTUDY combat\nunit 7\nMOVE S\n";
+        let (report, options) =
+            traced(report(regions), orders, &ruleset(), CheckOptions::default());
+        review_turn(&report, orders, Some(&ruleset()), options)
     }
 
     /// The control: a sharer that stays where it is listed pays as it always did.
