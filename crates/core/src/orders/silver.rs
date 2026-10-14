@@ -344,7 +344,8 @@ pub struct UnitSilver {
     /// order in the unit's block that actually moves silver out. A `GIVE` of items and a costless
     /// `CAST` are not spending orders and are never named, and neither is a silver `GIVE` the
     /// ledger paid in full, by the unit or by the hex's `SHARE` purse, since the game refuses it
-    /// nothing (`ah-ub3y`). `None` when `short_for_orders` is
+    /// nothing (`ah-ub3y`): the same verdict the editor's anchor reads ([`SilverFunding::cut_gift`],
+    /// `ah-jz5q`). `None` when `short_for_orders` is
     /// `Some(0)` or `None`.
     ///
     /// A tag rather than a word: how it is said is the interface's business, and the core has no
@@ -713,18 +714,16 @@ impl SilverFunding {
         self.asked > self.own && self.pool_read && self.received >= self.asked
     }
 
-    /// Asked beyond the source's own silver, and not paid by the pool: the line the engine cut,
-    /// and so where the source's shortfall is anchored (`ah-1c8p`, `ah-4k84`).
+    /// **The one verdict on a silver gift** (`ah-jz5q`): an exact `GIVE` or `GIVE 0` discard asked
+    /// beyond its giver's own silver and not paid in full by the pool - the line the engine cut
+    /// (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`, "Not enough."). It is the order the
+    /// unit is short on, and where its shortfall is anchored; any other gift was refused nothing
+    /// and is neither (`ah-1c8p`, `ah-4k84`, `ah-ub3y`, `ah-f7md`, `ah-bky7`). The SILVER column's
+    /// `short_on` and the editor's anchor both read this and nothing else. A `TAKE` is never a cut
+    /// gift - its cut is what moved - and a `GIVE ALL` asks no more than its giver holds.
     #[must_use]
-    pub fn refused_short(&self) -> bool {
-        self.asked > self.own && !self.pool_paid()
-    }
-
-    /// An exact silver `GIVE` the game pays in full, out of the giver's own silver or beyond it
-    /// by the pool: it is not the order the unit is short on (`ah-ub3y`).
-    #[must_use]
-    pub fn paid_in_full(&self) -> bool {
-        self.exact_give && (self.asked <= self.own || self.pool_paid())
+    pub fn cut_gift(&self) -> bool {
+        self.exact_give && self.asked > self.own && !self.pool_paid()
     }
 
     /// What the pool drew for this transfer, on every sharer together.
@@ -1804,16 +1803,17 @@ impl<'a> UnitFacts<'a> {
     }
 
     /// Whether this unit's exact silver `GIVE` on document line `line` was paid in full, by the
-    /// unit or by the hex's `SHARE` purse ([`SilverFunding::paid_in_full`]). `false` where there is
-    /// no ledger.
+    /// unit or by the hex's `SHARE` purse: recorded, and not [`SilverFunding::cut_gift`]. `false`
+    /// where there is no ledger, so the gift is named as it always was.
     #[must_use]
     pub fn paid_in_full(&self, line: i64) -> bool {
-        self.phases.is_some_and(|phases| {
-            phases
-                .fundings
-                .iter()
-                .any(|funding| funding.line == line && funding.paid_in_full())
-        })
+        self.fundings()
+            .iter()
+            .any(|funding| funding.line == line && funding.exact_give && !funding.cut_gift())
+    }
+
+    fn fundings(&self) -> &'a [SilverFunding] {
+        self.phases.map_or(&[][..], |phases| phases.fundings)
     }
 
     /// The ledger's record of this unit's silver. Empty where there is no ledger.
@@ -7202,6 +7202,45 @@ mod cast_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The one verdict on a silver gift (`ah-jz5q`): only an exact GIVE or discard asked beyond
+    /// its giver's own silver and not paid in full by a pool that was read is cut
+    /// (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`, "Not enough.").
+    #[test]
+    fn a_gift_is_cut_only_beyond_what_its_giver_and_a_read_pool_pay() {
+        let funding = |exact_give, own, received, pool_read| SilverFunding {
+            line: 2,
+            exact_give,
+            asked: 100,
+            own,
+            received,
+            pool_read,
+            draws: Vec::new(),
+        };
+        let cases = [
+            ("paid by its giver", funding(true, 100, 100, false), false),
+            ("paid by the pool", funding(true, 0, 100, true), false),
+            ("cut by the pool", funding(true, 0, 50, true), true),
+            (
+                "cut where nothing pools",
+                funding(true, 50, 50, false),
+                true,
+            ),
+            (
+                "a pool nobody read pays nothing",
+                funding(true, 0, 100, false),
+                true,
+            ),
+            (
+                "a TAKE or GIVE ALL is never a cut gift",
+                funding(false, 0, 50, true),
+                false,
+            ),
+        ];
+        for (case, funding, cut) in cases {
+            assert_eq!(funding.cut_gift(), cut, "{case}: {funding:?}");
+        }
+    }
 
     /// The pooled-material seam `ah-728m.2.2` opened between the two production surfaces.
     mod shared_materials {

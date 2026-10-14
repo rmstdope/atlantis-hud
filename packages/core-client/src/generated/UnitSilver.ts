@@ -75,7 +75,9 @@ shortForOrders: number | null,
  * order in the unit's block that actually moves silver out. A `GIVE` of items and a costless
  * `CAST` are not spending orders and are never named, and neither is a silver `GIVE` the
  * ledger paid in full, by the unit or by the hex's `SHARE` purse, since the game refuses it
- * nothing (`ah-ub3y`). `None` when `short_for_orders` is
+ * nothing (`ah-ub3y`). A gift the engine cut is named ahead of anything written above it,
+ * read from the same verdict as the editor's anchor ([`SilverFunding::cut_gift`],
+ * `ah-jz5q`). `None` when `short_for_orders` is
  * `Some(0)` or `None`.
  *
  * A tag rather than a word: how it is said is the interface's business, and the core has no
