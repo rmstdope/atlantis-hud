@@ -12868,15 +12868,37 @@ impl HexLoans {
 }
 
 /// What a refused CAST or STUDY handed back to each unit of one hex by maintenance, index-aligned
-/// with `hex.units`: in a pool, the purse's own judgment ([`Lending::refused`]); where nothing
-/// pools, each unit's own row - a cast its own silver could not pay ([`refused_cast_cost`]) and a
-/// study it could not ([`own_study_outcome`]) - since the engine takes nothing for either there
-/// too (`spells.cpp`: `RunCreateArtifact`; `monthorders.cpp`: `Do1StudyOrder`; `ah-vdav`).
-/// `lending` is the purse's reading before maintenance, which lends nothing where nothing pools.
+/// with `hex.units`, since the engine takes nothing for either in any hex (`spells.cpp`:
+/// `RunCreateArtifact`; `monthorders.cpp`: `Do1StudyOrder`). In a trusted pool, the purse's own
+/// judgment ([`Lending::refused`]). Elsewhere each unit's own row: a cast neither it nor any
+/// sharer could fund ([`Ledger::unfunded_casts`], [`refused_cast_cost`]) and a study its own
+/// silver could not pay ([`own_study_outcome`]) - where nothing pools (`ah-vdav`), and in a pool
+/// that cannot be trusted ([`Sharing::pool_trusted`]) only when the sharers could not lend what
+/// it lacks either (`rules/share`: "for buying or studying"; `ah-dkkm`). There the purse lends
+/// nothing, so what the sharers hold at STUDY - a doubted one's best reading included, never an
+/// overdraft, so a sharing student's own shortfall is not counted against itself - is drawn on
+/// student by student in hex order, as the engine pays them.
+/// `lending` is the purse's reading before maintenance.
 fn refused_before_maintenance(hex: &Hex<'_>, ledger: &Ledger<'_>, lending: &Lending) -> Vec<i64> {
-    if Sharing::for_silver(hex, ledger).reading(SILVER, None) != Reading::PerUnit {
+    let sharing = Sharing::for_silver(hex, ledger);
+    let pooled = sharing.reading(SILVER, None) == Reading::Pooled;
+    if pooled && sharing.pool_trusted(ledger) {
         return lending.refused_all();
     }
+    // What each pooled sharer could lend at STUDY: never its overdraft.
+    let lends_at_study = |ordered: &Ordered<'_>| {
+        if pooled && sharing.pools_silver(ordered) {
+            silver_at(ledger, &ordered.unit.unit_id, LendingMoment::Study).max(0)
+        } else {
+            0
+        }
+    };
+    let mut lendable = if pooled {
+        hex.units.iter().map(lends_at_study).sum::<i64>()
+            + sharing.silver_from_walkers(LendingMoment::Study).max(0)
+    } else {
+        0
+    };
     hex.units
         .iter()
         .map(|ordered| {
@@ -12886,7 +12908,15 @@ fn refused_before_maintenance(hex: &Hex<'_>, ledger: &Ledger<'_>, lending: &Lend
             } else {
                 0
             };
-            cast_back + own_study_outcome(ledger, unit_id).refused_fee()
+            let study_back = match own_study_outcome(ledger, unit_id) {
+                StudyOutcome::Refused { short, .. } if short <= lendable => {
+                    lendable -= short;
+                    0
+                }
+                StudyOutcome::Refused { fee, .. } => fee,
+                _ => 0,
+            };
+            cast_back + study_back
         })
         .collect()
 }
@@ -55620,6 +55650,160 @@ BUILD
                   orders spend $200"
             ],
         );
+    }
+
+    /// `orders` for [`refused_order_hex`], with its sharer doubted: a `BUY` of an item no market
+    /// sells leaves its month unreadable, so the hex pools but its pool cannot be trusted
+    /// (`Sharing::pool_trusted`).
+    fn doubting_the_sharer(orders: &str) -> String {
+        format!("{orders}unit 904\nBUY 1 unobtainium\n")
+    }
+
+    /// A STUDY its student's own silver cannot pay, in a hex whose pool cannot be trusted, is
+    /// refused and takes nothing as anywhere else (`monthorders.cpp`: `Do1StudyOrder`): 902's $8
+    /// cannot pay combat's $10 (`data/COMB` in Trident). So 902 still holds its $8 at maintenance
+    /// and pays 8 of its own 10 upkeep from it; faction-mate 903 pays only the other 2 (`ah-dkkm`).
+    #[test]
+    fn a_refused_students_own_silver_pays_its_upkeep_in_an_untrusted_pool() {
+        let rules = trident_rules();
+        let orders = doubting_the_sharer("unit 902\nSTUDY COMB\n");
+        let review = review_turn(
+            &report(refused_order_hex(with_silver(unit("902"), 8))),
+            &orders,
+            Some(&rules),
+            CheckOptions::default(),
+        );
+        let student = shipment_silver(&review, "902");
+        assert!(student.pool_doubted, "the pool is untrusted: {student:?}");
+        assert_eq!(
+            student.shared_silver_covered, 2,
+            "902's own $8 pays the first 8 of its upkeep: {student:?}"
+        );
+        assert_eq!(student.upkeep, Some(8), "{student:?}");
+    }
+
+    /// The purse is still the best reading of a pool it cannot vouch for: a doubted sharer
+    /// holding $500 can lend 902 the $2 its STUDY lacks ("for buying or studying",
+    /// `rules/share`), so the study goes ahead, spends 902's $8, and nothing is handed back -
+    /// faction-mates pay all 10 of its upkeep (`ah-dkkm` review, finding 1).
+    #[test]
+    fn a_student_a_doubted_sharer_can_fund_pays_no_upkeep_of_its_own() {
+        let rules = trident_rules();
+        let orders = doubting_the_sharer("unit 902\nSTUDY COMB\n");
+        let review = review_turn(
+            &report(vec![region(vec![
+                starving(with_silver(unit("902"), 8)),
+                sharing(with_silver(unit("904"), 500)),
+                with_silver(unit("903"), 100),
+            ])]),
+            &orders,
+            Some(&rules),
+            CheckOptions::default(),
+        );
+        let student = shipment_silver(&review, "902");
+        assert!(student.pool_doubted, "the pool is untrusted: {student:?}");
+        assert_eq!(student.shared_silver_covered, 10, "{student:?}");
+        assert_eq!(student.upkeep, Some(0), "{student:?}");
+    }
+
+    /// A sharing student's own overdraft is no silver the pool can lend it: 902 shares its $8,
+    /// the doubted 905 holds $3 and lends the $2 combat's $10 lacks (`rules/share`, `data/COMB`
+    /// in Trident), so the study goes ahead and nothing is handed back - faction-mates pay all 10
+    /// of 902's upkeep (`ah-dkkm` follow-up review, finding 1).
+    #[test]
+    fn a_sharing_student_a_doubted_sharer_can_fund_pays_no_upkeep_of_its_own() {
+        let rules = trident_rules();
+        let orders = "unit 902\nSTUDY COMB\nunit 905\nBUY 1 unobtainium\n";
+        let review = review_turn(
+            &report(vec![region(vec![
+                starving(sharing(with_silver(unit("902"), 8))),
+                sharing(with_silver(unit("905"), 3)),
+                with_silver(unit("903"), 100),
+            ])]),
+            orders,
+            Some(&rules),
+            CheckOptions::default(),
+        );
+        let student = shipment_silver(&review, "902");
+        assert!(student.pool_doubted, "the pool is untrusted: {student:?}");
+        assert_eq!(student.shared_silver_covered, 10, "{student:?}");
+        assert_eq!(student.upkeep, Some(0), "{student:?}");
+    }
+
+    /// A sharing student's own silver is not counted twice: the doubted 905's $1 cannot lend the
+    /// $2 902's study lacks, so the study is refused, takes nothing, and 902 pays 8 of its own 10
+    /// upkeep from the $8 it keeps (`ah-dkkm` follow-up review, finding 1).
+    #[test]
+    fn a_sharing_student_a_doubted_sharer_cannot_fund_pays_its_own_upkeep() {
+        let rules = trident_rules();
+        let orders = "unit 902\nSTUDY COMB\nunit 905\nBUY 1 unobtainium\n";
+        let review = review_turn(
+            &report(vec![region(vec![
+                starving(sharing(with_silver(unit("902"), 8))),
+                sharing(with_silver(unit("905"), 1)),
+                with_silver(unit("903"), 100),
+            ])]),
+            orders,
+            Some(&rules),
+            CheckOptions::default(),
+        );
+        let student = shipment_silver(&review, "902");
+        assert!(student.pool_doubted, "the pool is untrusted: {student:?}");
+        assert_eq!(student.upkeep, Some(8), "{student:?}");
+        assert_eq!(student.shared_silver_covered, 2, "{student:?}");
+    }
+
+    /// The engine pays students one by one in region order (`monthorders.cpp`: `Do1StudyOrder`),
+    /// so a doubted sharer's $3 lends 902 the $2 it lacks and has $1 left for 906's $2: 906's
+    /// STUDY is refused and takes nothing, and 906 pays 8 of its own 10 upkeep from the $8 it
+    /// keeps, while 902 pays none (`ah-dkkm` follow-up review, finding 2).
+    #[test]
+    fn students_in_an_untrusted_pool_draw_on_the_sharers_one_by_one() {
+        let rules = trident_rules();
+        let orders = "unit 902\nSTUDY COMB\nunit 906\nSTUDY COMB\nunit 905\nBUY 1 unobtainium\n";
+        let review = review_turn(
+            &report(vec![region(vec![
+                starving(with_silver(unit("902"), 8)),
+                starving(with_silver(unit("906"), 8)),
+                sharing(with_silver(unit("905"), 3)),
+                with_silver(unit("903"), 100),
+            ])]),
+            orders,
+            Some(&rules),
+            CheckOptions::default(),
+        );
+        let first = shipment_silver(&review, "902");
+        assert_eq!(first.upkeep, Some(0), "{first:?}");
+        let second = shipment_silver(&review, "906");
+        assert!(second.pool_doubted, "the pool is untrusted: {second:?}");
+        assert_eq!(second.upkeep, Some(8), "{second:?}");
+        assert_eq!(second.shared_silver_covered, 2, "{second:?}");
+    }
+
+    /// A CAST its caster's own silver cannot pay, in a hex whose pool cannot be trusted, is
+    /// refused and takes nothing, the caster's own coins included (`spells.cpp`:
+    /// `RunCreateArtifact`): 901's $150 cannot pay the amulet's $200 (`data/CRPA`). So 901 still
+    /// holds its $150 at maintenance and pays its own 10 upkeep from it; no faction-mate pays any
+    /// (`ah-dkkm`).
+    #[test]
+    fn a_refused_casters_own_silver_pays_its_upkeep_in_an_untrusted_pool() {
+        let orders = doubting_the_sharer("unit 901\nCAST Create_Amulet_Of_Protection\n");
+        let review = review_turn(
+            &report(refused_order_hex(with_silver(
+                with_skill(unit("901"), "CRPA", 1),
+                150,
+            ))),
+            &orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let caster = shipment_silver(&review, "901");
+        assert!(caster.pool_doubted, "the pool is untrusted: {caster:?}");
+        assert_eq!(
+            caster.shared_silver_covered, 0,
+            "901's own $150 pays its upkeep: {caster:?}"
+        );
+        assert_eq!(caster.upkeep, Some(10), "{caster:?}");
     }
 
     /// With nobody to pay the rest, the refused student's own $8 pays what it can of its upkeep and
