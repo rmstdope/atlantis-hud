@@ -57112,6 +57112,151 @@ BUILD
                 );
             }
         }
+        // --- maintenance, the last consumer of what a sharer lent (`ah-rbei`) -------------------
+        //
+        // `rules/sequenceofevents` charges upkeep after the market and STUDY, and `rules/share`
+        // warns that sharing silver "can leave the sharing unit without enough funds to pay
+        // maintenance". So maintenance reads a sharer's silver less what the purse lent for orders
+        // and a borrower's plus what it was lent, from [`Lending`] like every other consumer here.
+        // `ah-su1x` first shipped without that and was caught only by a failed verification.
+
+        /// One maintenance reading: sharer 2's silver, the orders, and who must be paid upkeep by a
+        /// faction-mate (`rules/economy_maintenance`: "Silver in the unit's possession", then
+        /// "Silver from other faction units in the same region").
+        struct UpkeepCase {
+            name: &'static str,
+            sharer_silver: i64,
+            orders: &'static str,
+            /// What sharer 2 lent the orders, which the purse records before maintenance.
+            lent: i64,
+            /// Each unit's upkeep a faction-mate's silver paid, by id; every other unit's is 0.
+            covered: &'static [(&'static str, i64)],
+        }
+
+        fn upkeep_cases() -> Vec<UpkeepCase> {
+            // The sharer studies combat itself every time - `data/COMB` (Trident): "costs 10
+            // silver per month of study" - so it earns no wages and holds only what it started
+            // with, less its own fee and what it lends.
+            vec![
+                UpkeepCase {
+                    // The sharer keeps $10 after its own fee and lending $40 (2 wood at $20),
+                    // enough for its own 10 (`rules/economy_maintenance`: "10 silver for a normal
+                    // character"); the buyer's wages pay its own, since the purse paid its BUY.
+                    name: "BUY: the lender keeps its upkeep, the working borrower pays its own",
+                    sharer_silver: 60,
+                    orders: "unit 2\nSTUDY COMB\nunit 3\nBUY 2 wood\nWORK\n",
+                    lent: 40,
+                    covered: &[],
+                },
+                UpkeepCase {
+                    // The sharer lends all it has left after its fee, so its upkeep is a
+                    // faction-mate's to pay - the borrower's wages, which the BUY no longer
+                    // draws on, or the worker's.
+                    name: "BUY: the lender lends it all and a faction-mate pays its upkeep",
+                    sharer_silver: 50,
+                    orders: "unit 2\nSTUDY COMB\nunit 3\nBUY 2 wood\nWORK\n",
+                    lent: 40,
+                    covered: &[(LENDER, 10)],
+                },
+                UpkeepCase {
+                    // The sharer's $20 pays its own fee and the student's, so neither has silver
+                    // for upkeep, and the worker's wages pay both.
+                    name: "STUDY: the lender pays the fee and a faction-mate pays its upkeep",
+                    sharer_silver: 20,
+                    orders: "unit 2\nSTUDY COMB\nunit 3\nSTUDY COMB\nunit 4\nWORK\n",
+                    lent: 10,
+                    covered: &[(LENDER, 10), ("3", 10)],
+                },
+            ]
+        }
+
+        /// One Trident hex selling wood at $20: quartermaster 900, fed by its grain; sharer 2 and
+        /// borrower 3, one man each and paying upkeep in silver; and worker 4, three men.
+        fn upkeep_region(sharer_silver: i64, reversed: bool) -> ReportRegion {
+            let mut region = caravanserai_owner("900", 1, 0, 0);
+            region.wages = Some("20".to_string());
+            region.max_wages = Some(100_000);
+            region.for_sale = vec![MarketItem {
+                amount: 100,
+                name: "wood".to_string(),
+                tag: "WOOD".to_string(),
+                price: 20,
+            }];
+            let mut units = vec![
+                sharing(starving(with_silver(unit(LENDER), sharer_silver))),
+                starving(unit("3")),
+                starving(with_men(unit("4"), 3)),
+            ];
+            if reversed {
+                units.reverse();
+            }
+            region.units.extend(units);
+            region
+        }
+
+        /// Maintenance reads a sharer's silver with what it lent the hex's orders gone, and a
+        /// borrower's with what it was lent: the faction-mate relief below is the engine's only
+        /// if both are carried. Dropping the purse's loans from maintenance's reading fails here.
+        #[test]
+        fn every_maintenance_reading_carries_what_the_sharer_lent() {
+            let rules = trident_rules();
+            for case in upkeep_cases() {
+                for reversed in [false, true] {
+                    let label = format!("{} (reversed: {reversed})", case.name);
+                    let region = upkeep_region(case.sharer_silver, reversed);
+                    let review = review_turn(
+                        &report(vec![region.clone()]),
+                        case.orders,
+                        Some(&rules),
+                        with_map(),
+                    );
+
+                    let ordered = OrderedUnits::read(case.orders);
+                    let hex = Hex::read(&region, &ordered, &[]);
+                    let ledger = ledger_for(&hex, Some(&rules));
+                    let x = hex
+                        .units
+                        .iter()
+                        .position(|o| o.unit.unit_id == LENDER)
+                        .expect("the sharer is in the hex");
+                    assert_eq!(
+                        Lending::before(&hex, &ledger, StatePhase::Maintenance)
+                            .netted()
+                            .lends[x],
+                        case.lent,
+                        "{label}: Lending"
+                    );
+                    assert_eq!(
+                        spent_on(&review, LENDER, SilverChangeCause::Lent),
+                        case.lent,
+                        "{label}: the month-end purse"
+                    );
+
+                    for id in ["900", LENDER, "3", "4"] {
+                        let expected = case
+                            .covered
+                            .iter()
+                            .find(|(covered, _)| *covered == id)
+                            .map_or(0, |(_, amount)| *amount);
+                        assert_eq!(
+                            silver(&review, id).shared_silver_covered,
+                            expected,
+                            "{label}: maintenance, unit {id}: {:#?}",
+                            review.silver
+                        );
+                    }
+                    assert!(
+                        review
+                            .findings
+                            .iter()
+                            .all(|finding| finding.code != codes::NOT_ENOUGH_SILVER),
+                        "{label}: {:?}",
+                        review.findings
+                    );
+                }
+            }
+        }
+
         // --- one record of how each silver transfer was funded, read alike (`ah-rou9`) --------
         //
         // One hex: 901 holds nothing and gives quartermaster 900 $100, which the pool pays out of
