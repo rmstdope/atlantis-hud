@@ -860,7 +860,7 @@ pub fn review_turn(
     lend_walking_sharers_silver(&mut hexes, &reach, StatePhase::Transport);
 
     // Shipping, then maintenance's steps 4 to 7, in the one order `REPORT_WIDE_STEPS` states.
-    let month_end = settle_report_wide(
+    let mut month_end = settle_report_wide(
         &mut hexes,
         &ReportWideInputs {
             report,
@@ -873,17 +873,24 @@ pub fn review_turn(
         },
         StatePhase::Maintenance,
     );
-    // ... and a STUDY, judged on what the settled month leaves it.
+    // ... and a STUDY, judged on what the settled month leaves it - once on the warning's
+    // settlement of maintenance, kept beside the ledgers, and once on the column's, which they
+    // hold (`ah-ayg7`).
+    let mut warning_relief = std::mem::take(&mut month_end.warning_relief);
+    if !warning_relief.is_empty() {
+        swap_upkeep_relief(&mut hexes, &mut warning_relief, false);
+        lend_walking_sharers_silver(&mut hexes, &reach, StatePhase::Maintenance);
+        swap_upkeep_relief(&mut hexes, &mut warning_relief, true);
+    }
     lend_walking_sharers_silver(&mut hexes, &reach, StatePhase::Maintenance);
 
     let mut lent_across: Vec<(UnitKey, i64)> = Vec::new();
-    for (index, priced) in hexes.iter().enumerate() {
-        let (hex, ledger) = priced;
+    for (index, priced) in hexes.iter_mut().enumerate() {
         // Per hex, because the pools are: what one region's units ask of its tax base says nothing
         // about the next region's.
         let mut overruns: Vec<PoolOverrun> = Vec::new();
         forecast_hex(
-            priced,
+            &*priced,
             &receipts,
             purse,
             ruleset,
@@ -900,6 +907,13 @@ pub fn review_turn(
             options.emits(codes::TRANSPORT_OUT_OF_REACH),
             &mut lent_across,
         );
+        // The SILVER column has read the column's settlement of maintenance; every check below
+        // reads the warning's, which counts a refused order as spending its silver (`ah-ayg7`).
+        if let Some(warning) = warning_relief.get_mut(index) {
+            warning.swap_with(&mut priced.1);
+            priced.1.maintenance_hands_back = false;
+        }
+        let (hex, ledger) = &*priced;
         if hex.units.is_empty() {
             continue;
         }
@@ -1084,6 +1098,11 @@ struct ReportWideSettlement {
     shared_silver: BTreeMap<UnitKey, i64>,
     food_relief: BTreeMap<UnitKey, LateFoodRelief>,
     fund: UpkeepSettlement,
+    /// The warning's settlement of steps 4 to 7, per hex in the driver's order: the one without a
+    /// refused order's hand-back ([`Ledger::maintenance_hands_back`], `ah-ayg7`). The ledgers keep
+    /// the column's; the shortfall checks swap this in ([`UpkeepRelief::swap_with`]). Empty when
+    /// the driver stopped before maintenance.
+    warning_relief: Vec<UpkeepRelief>,
 }
 
 /// Every step of `REPORT_WIDE_STEPS` whose phase is no later than `through`, in table order,
@@ -1105,8 +1124,25 @@ fn settle_report_wide(
     // goods only once the last one has run, and meanwhile are added to each sender's stock
     // (`shipping_bills`).
     let mut delivered = Vec::new();
+    // The warning's settlement of maintenance steps 4 to 7, kept beside the ledgers while the
+    // column's runs in them ([`Ledger::maintenance_hands_back`], `ah-ayg7`); `None` until step 4.
+    let mut warning_upkeep: Option<Vec<UpkeepRelief>> = None;
     for (phase, step) in REPORT_WIDE_STEPS {
         if phase > through {
+            continue;
+        }
+        if step.settles_upkeep_relief() {
+            let warning = warning_upkeep.get_or_insert_with(|| {
+                hexes
+                    .iter()
+                    .map(|(_, ledger)| UpkeepRelief::of(ledger))
+                    .collect()
+            });
+            // The warning's pass first, on its own state, its figures discarded.
+            swap_upkeep_relief(hexes, warning, false);
+            let _ = run_upkeep_step(hexes, inputs, step, &settlement);
+            swap_upkeep_relief(hexes, warning, true);
+            run_upkeep_step(hexes, inputs, step, &settlement).store(&mut settlement);
             continue;
         }
         match step {
@@ -1159,26 +1195,114 @@ fn settle_report_wide(
                     charge_settled_upkeep(ledger, hex, &upkeep.carried[index]);
                 }
             }
-            // Step 4 comes before steps 5 and 6: a neighbour's silver is spent before anybody's
-            // grain.
-            ReportWideStep::ShareSilverForUpkeep => {
-                settlement.shared_silver =
-                    share_silver_for_upkeep(hexes, inputs.reach.neighbourhoods());
-            }
-            // Steps 5 and 6 come before step 7, and `upkeep_claims` reads the relief they leave.
-            ReportWideStep::FeedFromFood => {
-                settlement.food_relief = feed_from_food_after_silver(
-                    hexes,
-                    inputs.reach.neighbourhoods(),
-                    &settlement.food_left,
-                );
-            }
-            ReportWideStep::DrawOnUnclaimedFund => {
-                settlement.fund = draw_on_unclaimed_fund(hexes, inputs);
-            }
+            ReportWideStep::ShareSilverForUpkeep
+            | ReportWideStep::FeedFromFood
+            | ReportWideStep::DrawOnUnclaimedFund => unreachable!("settled above"),
         }
     }
+    // The ledgers keep the column's settlement; the warning's is handed on beside it.
+    settlement.warning_relief = warning_upkeep.unwrap_or_default();
     settlement
+}
+
+impl ReportWideStep {
+    /// Maintenance steps 4 to 7, which write [`UpkeepRelief`] and are settled twice.
+    fn settles_upkeep_relief(self) -> bool {
+        matches!(
+            self,
+            ReportWideStep::ShareSilverForUpkeep
+                | ReportWideStep::FeedFromFood
+                | ReportWideStep::DrawOnUnclaimedFund
+        )
+    }
+}
+
+/// What one of maintenance steps 4 to 7 paid on the units' behalf.
+enum UpkeepStepFigures {
+    SharedSilver(BTreeMap<UnitKey, i64>),
+    FoodRelief(BTreeMap<UnitKey, LateFoodRelief>),
+    Fund(UpkeepSettlement),
+}
+
+impl UpkeepStepFigures {
+    fn store(self, settlement: &mut ReportWideSettlement) {
+        match self {
+            UpkeepStepFigures::SharedSilver(shared) => settlement.shared_silver = shared,
+            UpkeepStepFigures::FoodRelief(relief) => settlement.food_relief = relief,
+            UpkeepStepFigures::Fund(fund) => settlement.fund = fund,
+        }
+    }
+}
+
+/// One of maintenance steps 4 to 7, on whichever settlement the ledgers hold.
+fn run_upkeep_step(
+    hexes: &mut [(Hex<'_>, Ledger<'_>)],
+    inputs: &ReportWideInputs<'_>,
+    step: ReportWideStep,
+    settlement: &ReportWideSettlement,
+) -> UpkeepStepFigures {
+    match step {
+        // Step 4 comes before steps 5 and 6: a neighbour's silver is spent before anybody's
+        // grain.
+        ReportWideStep::ShareSilverForUpkeep => UpkeepStepFigures::SharedSilver(
+            share_silver_for_upkeep(hexes, inputs.reach.neighbourhoods()),
+        ),
+        // Steps 5 and 6 come before step 7, and `upkeep_claims` reads the relief they leave.
+        ReportWideStep::FeedFromFood => UpkeepStepFigures::FoodRelief(feed_from_food_after_silver(
+            hexes,
+            inputs.reach.neighbourhoods(),
+            &settlement.food_left,
+        )),
+        ReportWideStep::DrawOnUnclaimedFund => {
+            UpkeepStepFigures::Fund(draw_on_unclaimed_fund(hexes, inputs))
+        }
+        _ => unreachable!("not a step of maintenance's relief"),
+    }
+}
+
+/// The ledger state maintenance steps 4 to 7 write, and nothing else - what each unit was relieved
+/// of and lent for upkeep, and whether its hex's maintenance sharing fell short - with the silver
+/// sharers walking across hex borders lend at the month's end, which is read from it
+/// ([`lend_walking_sharers_silver`] at [`StatePhase::Maintenance`]). One settlement's worth: the
+/// column's or the warning's (`ah-ayg7`).
+#[derive(Default)]
+struct UpkeepRelief {
+    relieved: BTreeMap<String, i64>,
+    lent: BTreeMap<String, i64>,
+    pooled: bool,
+    walking: WalkingSilver,
+}
+
+impl UpkeepRelief {
+    fn of(ledger: &Ledger<'_>) -> Self {
+        Self {
+            relieved: ledger.upkeep_relieved.clone(),
+            lent: ledger.upkeep_lent.clone(),
+            pooled: ledger.maintenance_pooled,
+            walking: ledger.walking_silver.clone(),
+        }
+    }
+
+    /// Swaps this settlement with the one `ledger` holds.
+    fn swap_with(&mut self, ledger: &mut Ledger<'_>) {
+        std::mem::swap(&mut ledger.upkeep_relieved, &mut self.relieved);
+        std::mem::swap(&mut ledger.upkeep_lent, &mut self.lent);
+        std::mem::swap(&mut ledger.maintenance_pooled, &mut self.pooled);
+        std::mem::swap(&mut ledger.walking_silver, &mut self.walking);
+    }
+}
+
+/// Swaps each ledger's [`UpkeepRelief`] with the one kept for it, and sets whether maintenance
+/// carries a refused order's hand-back ([`Ledger::maintenance_hands_back`]) for what runs next.
+fn swap_upkeep_relief(
+    hexes: &mut [(Hex<'_>, Ledger<'_>)],
+    kept: &mut [UpkeepRelief],
+    hands_back: bool,
+) {
+    for ((_, ledger), kept) in hexes.iter_mut().zip(kept.iter_mut()) {
+        kept.swap_with(ledger);
+        ledger.maintenance_hands_back = hands_back;
+    }
 }
 
 /// Maintenance step 7: what the faction's unclaimed fund pays towards upkeep.
@@ -5590,6 +5714,15 @@ struct Ledger<'a> {
     /// `check_sailing` and `check_movement` read this ledger and must go on seeing the silver the
     /// unit actually holds.
     upkeep_lent: BTreeMap<String, i64>,
+    /// Whether maintenance reads a unit's silver with what a refused CAST or STUDY handed back
+    /// ([`Lending::refused`]) carried ([`UpkeepSilver`]). The engine took nothing for the order,
+    /// so the unit pays its own upkeep from those coins before a faction-mate is asked
+    /// (`ah-ayg7`) - that is the settlement the SILVER column shows. The hex's shortfall warning
+    /// counts the refused order as spending the same coins (`ah-9n7l.2`), so it reads a second
+    /// settlement of steps 4 to 7 with this off, and the ledger is left holding that one
+    /// ([`settle_report_wide`]): otherwise the coins would be spent twice there, once by the order
+    /// and once by the upkeep.
+    maintenance_hands_back: bool,
     /// The food that paid part of each unit's fee before silver did - steps 1 and 2 of the payment
     /// order (`rules/economy_maintenance`) - in silver. Present only for a unit `upkeep` also holds,
     /// i.e. one the food did not wholly feed. Read only to word `not-enough-silver`, which states the
@@ -6182,6 +6315,7 @@ fn ledger_for_reaching<'a>(
         upkeep_drawn: BTreeMap::new(),
         upkeep_relieved: BTreeMap::new(),
         upkeep_lent: BTreeMap::new(),
+        maintenance_hands_back: false,
         upkeep_food: BTreeMap::new(),
         maintenance_pooled: false,
         walking_silver: WalkingSilver::default(),
@@ -12559,11 +12693,7 @@ fn unpayable_upkeep(
             // this module - and a guessed headcount is charged nothing to begin with.
             return None;
         }
-        // What an earlier step has already paid off is no longer drawn on the balance, so it is no
-        // longer maintenance's to claim: steps 5 and 6 write their relief before step 7 asks.
-        let drawn = ledger.upkeep_drawn.get(who).copied().unwrap_or_default()
-            - ledger.upkeep_relieved.get(who).copied().unwrap_or_default();
-        let drawn = drawn.max(0);
+        let drawn = upkeep_still_drawn(ledger, who);
         (drawn > 0).then(|| (who.clone(), drawn))
     };
 
@@ -12596,8 +12726,11 @@ fn unpayable_upkeep(
 /// the sharing unit without enough funds to pay maintenance"; `ah-su1x`). `share_pool_agreement`
 /// holds maintenance to it. Nothing is carried where nothing pools.
 ///
-/// Loans only: what a refused CAST or STUDY handed back ([`Lending::refused`]) stays out, since
-/// the hex's warning still counts a refused order as spending that silver (`ah-9n7l.2`).
+/// What a refused CAST or STUDY handed back ([`Lending::refused`]) is carried too: the engine
+/// took nothing for the order, the unit's own coins included (`spells.cpp`: `RunCreateArtifact`;
+/// `monthorders.cpp`: `Do1StudyOrder`), so the unit pays its own upkeep from them before a
+/// faction-mate is asked (`ah-ayg7`) - only in the settlement the SILVER column shows: the one the
+/// hex's warning reads leaves it out ([`Ledger::maintenance_hands_back`]).
 ///
 /// Report-wide, one row per hex, because a sharer that walks into another hex lends there:
 /// movement comes before the month-long orders and maintenance after them
@@ -12651,7 +12784,18 @@ impl UpkeepSilver {
             .units
             .iter()
             .enumerate()
-            .map(|(index, ordered)| (ordered.unit.unit_id.clone(), lending.carried(index)))
+            .map(|(index, ordered)| {
+                // A refused order's hand-back, in the column's settlement only (`ah-ayg7`).
+                let handed_back = if ledger.maintenance_hands_back {
+                    lending.refused(index)
+                } else {
+                    0
+                };
+                (
+                    ordered.unit.unit_id.clone(),
+                    lending.carried(index) + handed_back,
+                )
+            })
             .collect();
         (row, arrivals)
     }
@@ -12662,6 +12806,23 @@ impl UpkeepSilver {
         silver_balance(&hexes[hex].1, unit_id)
             .saturating_add(self.carried[hex].get(unit_id).copied().unwrap_or_default())
     }
+}
+
+/// The fee maintenance still draws on a unit's balance: what it drew, less what an earlier step
+/// has already paid off - steps 5 and 6 write their relief before step 7 asks. `0` for a unit
+/// that owes nothing.
+fn upkeep_still_drawn(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    (ledger
+        .upkeep_drawn
+        .get(unit_id)
+        .copied()
+        .unwrap_or_default()
+        - ledger
+            .upkeep_relieved
+            .get(unit_id)
+            .copied()
+            .unwrap_or_default())
+    .max(0)
 }
 
 /// Step 4 of the maintenance payment order: silver from other faction units in the same region pays
@@ -54886,6 +55047,173 @@ BUILD
                 .iter()
                 .all(|moved| moved.cause != SilverChangeCause::Lent),
             "{worker:?}"
+        );
+    }
+
+    /// The hex of `ah-ayg7`'s cases: `student` first, paying its upkeep in silver (one man, 10,
+    /// `rules/economy_maintenance`), a sharer with nothing to lend so the hex pools (`rules/share`),
+    /// and a non-sharer with $100 that feeds itself and lends only for maintenance, which "Money
+    /// will be shared automatically between your units in the same region" pays
+    /// (`rules/economy_maintenance`).
+    fn refused_order_hex(student: ReportUnit) -> Vec<ReportRegion> {
+        vec![region(vec![
+            starving(student),
+            sharing(unit("904")),
+            with_silver(unit("903"), 100),
+        ])]
+    }
+
+    /// The hex's own `not-enough-silver` sentences: the ones on no unit.
+    fn hex_silver_messages(review: &TurnReview) -> Vec<&str> {
+        review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER && finding.unit_id.is_none())
+            .map(|finding| finding.message.as_str())
+            .collect()
+    }
+
+    /// A STUDY the pool cannot fund is refused and takes nothing (`monthorders.cpp`:
+    /// `Do1StudyOrder`, `ah-li7l`): 902's $8 and the empty sharer cannot pay combat's $10
+    /// (`data/COMB` in Trident). So 902 still holds its $8 at maintenance and pays 8 of its own 10
+    /// upkeep from it; faction-mate 903 pays only the other 2 (`ah-ayg7`).
+    #[test]
+    fn a_refused_students_own_silver_pays_its_upkeep_before_a_faction_mate() {
+        let rules = trident_rules();
+        let orders = "unit 902\nSTUDY COMB\n";
+        let review = review_turn(
+            &report(refused_order_hex(with_silver(unit("902"), 8))),
+            orders,
+            Some(&rules),
+            CheckOptions::default(),
+        );
+        let student = shipment_silver(&review, "902");
+        assert_eq!(
+            student.shared_silver_covered, 2,
+            "902's own $8 pays the first 8 of its upkeep: {student:?}"
+        );
+        assert_eq!(student.upkeep, Some(8), "{student:?}");
+        assert_eq!(student.short_for_orders, Some(2), "{student:?}");
+        // The warning still counts the refused STUDY as spending its $10, so the $8 the upkeep
+        // took from the hand-back is not spent a second time in it.
+        assert_eq!(
+            hex_silver_messages(&review),
+            vec![
+                "the units in this hex are short $2 between them: they can have $8 and their \
+                  orders spend $10"
+            ],
+        );
+    }
+
+    /// A CAST the pool cannot fund is refused and takes nothing, the caster's own coins included
+    /// (`spells.cpp`: `RunCreateArtifact`, `ah-szu0`): 901's $150 and the empty sharer cannot pay
+    /// the amulet's $200 (`data/CRPA`). So 901 still holds its $150 at maintenance and pays its own
+    /// 10 upkeep from it; no faction-mate pays any (`ah-ayg7`).
+    #[test]
+    fn a_refused_casters_own_silver_pays_its_upkeep() {
+        let orders = "unit 901\nCAST Create_Amulet_Of_Protection\n";
+        let review = review_turn(
+            &report(refused_order_hex(with_silver(
+                with_skill(unit("901"), "CRPA", 1),
+                150,
+            ))),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let caster = shipment_silver(&review, "901");
+        assert_eq!(
+            caster.shared_silver_covered, 0,
+            "901's own $150 pays its upkeep: {caster:?}"
+        );
+        assert_eq!(caster.upkeep, Some(10), "{caster:?}");
+        assert_eq!(caster.short_for_orders, Some(50), "{caster:?}");
+        assert_eq!(
+            hex_silver_messages(&review),
+            vec![
+                "the units in this hex are short $50 between them: they can have $150 and their \
+                  orders spend $200"
+            ],
+        );
+    }
+
+    /// With nobody to pay the rest, the refused student's own $8 pays what it can of its upkeep and
+    /// the rest goes unpaid, while the hex's warning reads as it did before `ah-ayg7`: it counts
+    /// the refused STUDY as spending the $8, so the upkeep it names is the whole 10 (review of
+    /// PR #1572, finding 1, case C).
+    #[test]
+    fn a_refused_student_with_no_faction_mate_to_pay_keeps_the_hexs_warning() {
+        let review = review_turn(
+            &report(vec![region(vec![
+                starving(with_silver(unit("902"), 8)),
+                sharing(unit("904")),
+            ])]),
+            "unit 902\nSTUDY COMB\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        let student = shipment_silver(&review, "902");
+        // Nobody pays any of it for the student: the column's fee is the student's own whole 10.
+        assert_eq!(student.shared_silver_covered, 0, "{student:?}");
+        assert_eq!(student.upkeep, Some(10), "{student:?}");
+        assert_eq!(
+            hex_silver_messages(&review),
+            vec![
+                "the units in this hex are short $12 between them: they can have $8 and their \
+                  orders and upkeep spend $20"
+            ],
+        );
+    }
+
+    /// The same with a second starving unit beside it: the warning still counts both fees whole
+    /// (review of PR #1572, finding 1, case D).
+    #[test]
+    fn a_refused_student_beside_another_starving_unit_keeps_the_hexs_warning() {
+        let review = review_turn(
+            &report(vec![region(vec![
+                starving(with_silver(unit("902"), 8)),
+                sharing(unit("904")),
+                starving(unit("905")),
+            ])]),
+            "unit 902\nSTUDY COMB\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        let messages = hex_silver_messages(&review);
+        assert_eq!(messages.len(), 1, "{messages:?}");
+        assert!(
+            messages[0].starts_with("the units in this hex are short $22 between them")
+                && messages[0].ends_with("spend $30"),
+            "{messages:?}"
+        );
+    }
+
+    /// A refused caster's coins are its own, so at step 4 they pay starving 905's upkeep - while
+    /// the warning, which counts the refused CAST as spending them, reads as before `ah-ayg7` and
+    /// still names 905's fee (review of PR #1572, finding 2, case A).
+    #[test]
+    fn a_refused_casters_coins_lent_for_upkeep_keep_the_hexs_warning() {
+        let review = review_turn(
+            &report(vec![region(vec![
+                with_silver(with_skill(unit("901"), "CRPA", 1), 150),
+                sharing(unit("904")),
+                starving(unit("905")),
+            ])]),
+            "unit 901\nCAST Create_Amulet_Of_Protection\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let starving = shipment_silver(&review, "905");
+        assert_eq!(starving.shared_silver_covered, 10, "{starving:?}");
+        // The column reads its own settlement throughout: the purse that paid 905 is not short
+        // (follow-up review of PR #1572, finding 1).
+        assert_eq!(starving.shared_silver_coverage, None, "{starving:?}");
+        assert_eq!(
+            hex_silver_messages(&review),
+            vec![
+                "the units in this hex are short $60 between them: they can have $150 and their \
+                  orders and upkeep spend $210"
+            ],
         );
     }
 
