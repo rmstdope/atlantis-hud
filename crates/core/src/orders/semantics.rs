@@ -14199,7 +14199,9 @@ impl<'a> Sharing<'a> {
     /// the sharers that walked away lent before they left, and what the arrivals lend then.
     ///
     /// A doubted sharer is counted here: what reads this either gates on
-    /// [`Sharing::pool_trusted`] first, or is the shipping purse, which never has.
+    /// [`Sharing::pool_trusted`] first, or is the shipping purse's fallback for a pool
+    /// [`SharerStock::at`] cannot read, where the hex warns of nothing anyway
+    /// ([`pool_shortfalls`]).
     fn silver_held_at(&self, ledger: &Ledger<'_>, moment: LendingMoment) -> i64 {
         self.sharers
             .iter()
@@ -53986,6 +53988,12 @@ BUILD
         assert!(!ships(
             fee_after_loans_with_south(vec![walker(), unit("905")]),
             &mate_bought
+        ));
+        // Nor does what it carries away pay: $150 less its $60 loan is $90, enough for the fee,
+        // but it is in another hex by TRANSPORT (`ah-x0iq` follow-up review, finding 1).
+        assert!(!ships(
+            fee_after_loans_with_south(vec![sharing(with_silver(unit("903"), 150))]),
+            sender_bought
         ));
     }
 
