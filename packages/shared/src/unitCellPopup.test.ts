@@ -4081,3 +4081,88 @@ describe("upkeep a faction-mate paid, in the silver popup", () => {
     );
   });
 });
+
+// `ah-suqu`, docs/ui/ah-suqu-upkeep-payer.html: the pair `ah-2zku` agreed for drained sharers is
+// every unit's. Maintenance pays upkeep from "Silver from other faction units in the same region"
+// for any unit (`rules/economy_maintenance`), sharing or not.
+describe("upkeep a faction-mate paid, for a unit that shares nothing", () => {
+  const silverPopup = (silver: Parameters<typeof aUnitSilver>[0], more: Partial<PopupFacts> = {}) =>
+    columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({ silver: aUnitSilver(silver), countUpkeep: true, ...more })
+      )
+    );
+
+  // Transporter (2418) of the test turn (share-purse-batch, forest (38,2)): nothing held, nothing
+  // lent, its $10 paid by a faction-mate.
+  it("draws the fed unit's line above upkeep, with no who-paid or starvation sentence", () => {
+    const popup = silverPopup(
+      {
+        held: 0,
+        atMonthEnd: 0,
+        upkeep: 0,
+        sharedSilverCovered: 10,
+        changes: [{ amount: 10, cause: "was-lent-for-upkeep", line: null, other: "Unit (7826)" }]
+      },
+      { silverWarned: true }
+    );
+    expect(popup.lines.map((line) => line.label)).toEqual([
+      "silver",
+      "was lent for upkeep",
+      "upkeep"
+    ]);
+    expect(popup.lines.slice(-2)).toEqual([
+      { label: "was lent for upkeep", value: "+10", tone: "up", why: "by Unit (7826)" },
+      { label: "upkeep", value: "-10", tone: "down" }
+    ]);
+    expect(popup.lines[0]).toMatchObject({ value: "0" });
+    expect(popup.notes.join(" ")).not.toContain("upkeep was paid by");
+    expect(popup.notes.join(" ")).not.toContain("may avoid starvation");
+  });
+
+  it("draws the payer's line to both units it fed, with the total", () => {
+    const popup = silverPopup({
+      held: 50,
+      atMonthEnd: 50,
+      upkeep: 10,
+      upkeepLent: 20,
+      changes: [
+        { amount: -10, cause: "lent-for-upkeep", line: null, other: "Transporter (2418)" },
+        { amount: -10, cause: "lent-for-upkeep", line: null, other: "Ship1 (4671)" }
+      ]
+    });
+    expect(popup.lines.slice(-2)).toEqual([
+      {
+        label: "lent for upkeep",
+        value: "-20",
+        tone: "down",
+        why: "to Transporter (2418) and Ship1 (4671)"
+      },
+      { label: "upkeep", value: "-10", tone: "down" }
+    ]);
+    expect(popup.lines[0]).toMatchObject({ value: "20" });
+  });
+
+  // Settled 2026-10-15: the upkeep row is the fee left after the unclaimed fund and food paid, so
+  // the lines add up to the month end (0 + 6 - 6 = 0); the fund's share stays in the sentence.
+  it("splits with the unclaimed fund: upkeep is what the fund left, the fund is in the sentence", () => {
+    const popup = silverPopup({
+      held: 0,
+      atMonthEnd: 0,
+      upkeep: 0,
+      sharedSilverCovered: 6,
+      unclaimedCovered: 4,
+      changes: [{ amount: 6, cause: "was-lent-for-upkeep", line: null, other: "Unit (7826)" }]
+    });
+    expect(popup.lines.slice(-2)).toEqual([
+      { label: "was lent for upkeep", value: "+6", tone: "up", why: "by Unit (7826)" },
+      { label: "upkeep", value: "-6", tone: "down" }
+    ]);
+    expect(popup.lines[0]).toMatchObject({ value: "0" });
+    expect(popup.notes).toContain(
+      "This unit's upkeep was paid by the faction's unclaimed silver (4)."
+    );
+  });
+});

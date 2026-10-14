@@ -58234,6 +58234,94 @@ BUILD
         }
     }
 
+    /// A hex with no `SHARE` anywhere, for `ah-suqu`: every unit pays its $10 upkeep in silver
+    /// (`rules/economy_maintenance`: "This fee is generally 10 silver for a normal character"), and
+    /// no orders move any of it. `units` are `(id, silver)` in document order; `purse` is the
+    /// faction's unclaimed fund.
+    fn plain_upkeep_review(units: &[(&str, i64)], purse: Option<i64>) -> TurnReview {
+        let units = units
+            .iter()
+            .map(|(id, silver)| with_silver(starving(unit(id)), *silver))
+            .collect();
+        review_turn(
+            &report_with_purse(purse, vec![region(units)]),
+            "",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        )
+    }
+
+    /// A unit that shares nothing and holds nothing has its upkeep paid by a faction-mate's silver
+    /// all the same (`rules/economy_maintenance`: "Silver from other faction units in the same
+    /// region"; `ah-e66j` made that independent of `SHARE`), and both units say so: the pair
+    /// `ah-2zku` agreed for drained sharers is every unit's (`ah-suqu`).
+    #[test]
+    fn a_non_sharing_unit_fed_by_a_faction_mate_books_was_lent_for_upkeep() {
+        let review = plain_upkeep_review(&[("901", 0), ("903", 50)], None);
+        assert_eq!(
+            silver_moved(&review, "901", SilverChangeCause::WasLentForUpkeep),
+            vec![(10, "Unit 903 (903)".to_string())]
+        );
+        assert_eq!(
+            silver_moved(&review, "903", SilverChangeCause::LentForUpkeep),
+            vec![(-10, "Unit 901 (901)".to_string())]
+        );
+        let fed = shipment_silver(&review, "901");
+        assert_eq!(fed.shared_silver_covered, 10, "{fed:?}");
+        assert_eq!(fed.upkeep, Some(0), "{fed:?}");
+        assert_eq!(fed.at_month_end, Some(0), "{fed:?}");
+        let payer = shipment_silver(&review, "903");
+        assert_eq!(payer.upkeep_lent, 10, "{payer:?}");
+        assert_eq!(payer.upkeep, Some(10), "{payer:?}");
+        assert_eq!(
+            payer.at_month_end,
+            Some(50),
+            "month ends are unchanged: {payer:?}"
+        );
+    }
+
+    /// The test turn's shape (share-purse-batch, forest (38,2)): one faction-mate pays two empty
+    /// units' fees, $20 between them, and each fed unit names it.
+    #[test]
+    fn one_payer_feeding_two_units_books_one_line_per_side_with_the_total() {
+        let review = plain_upkeep_review(&[("901", 0), ("902", 0), ("903", 50)], None);
+        for id in ["901", "902"] {
+            assert_eq!(
+                silver_moved(&review, id, SilverChangeCause::WasLentForUpkeep),
+                vec![(10, "Unit 903 (903)".to_string())],
+                "{id}"
+            );
+            assert_eq!(shipment_silver(&review, id).upkeep, Some(0), "{id}");
+        }
+        let lent = silver_moved(&review, "903", SilverChangeCause::LentForUpkeep);
+        assert_eq!(
+            lent,
+            vec![
+                (-10, "Unit 901 (901)".to_string()),
+                (-10, "Unit 902 (902)".to_string())
+            ]
+        );
+        assert_eq!(shipment_silver(&review, "903").upkeep_lent, 20);
+    }
+
+    /// Faction-mates pay what they have spare and the faction's unclaimed fund the rest, in that
+    /// order (`rules/economy_maintenance`: faction units' silver, then "If you have silver in your
+    /// unclaimed fund, then that silver will be automatically claimed by units that would
+    /// otherwise starve"): 903's spare $6, then $4 from the fund.
+    #[test]
+    fn mates_pay_part_and_the_unclaimed_fund_pays_the_rest() {
+        let review = plain_upkeep_review(&[("901", 0), ("903", 16)], Some(100));
+        assert_eq!(
+            silver_moved(&review, "901", SilverChangeCause::WasLentForUpkeep),
+            vec![(6, "Unit 903 (903)".to_string())]
+        );
+        let fed = shipment_silver(&review, "901");
+        assert_eq!(fed.shared_silver_covered, 6, "{fed:?}");
+        assert_eq!(fed.unclaimed_covered, 4, "{fed:?}");
+        assert_eq!(fed.upkeep, Some(0), "{fed:?}");
+        assert_eq!(shipment_silver(&review, "903").upkeep_lent, 6);
+    }
+
     /// A giver that holds part of a GIVE draws only the rest on its sharers (`unit.cpp`:
     /// `ConsumeShared` spends the unit's own stock first): 901's $30 and sharer 902's $50 make
     /// the $80 its GIVE of $100 is cut to (`runorders.cpp`: `DoGiveOrder`, `amt = GetSharedNum`),
