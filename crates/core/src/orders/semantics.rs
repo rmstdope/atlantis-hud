@@ -12824,17 +12824,26 @@ impl UpkeepSilver {
 }
 
 /// What a refused CAST or STUDY handed back to each unit of one hex by maintenance, index-aligned
-/// with `hex.units`: in a trusted pool, the purse's own judgment ([`Lending::refused`]); where
-/// nothing pools, or the pool cannot be trusted ([`Sharing::pool_trusted`]), each unit's own row -
-/// a cast its own silver could not pay ([`refused_cast_cost`]) and a study it could not
-/// ([`own_study_outcome`]) - since the engine takes nothing for either in any hex (`spells.cpp`:
-/// `RunCreateArtifact`; `monthorders.cpp`: `Do1StudyOrder`; `ah-vdav`, `ah-dkkm`). `lending` is
-/// the purse's reading before maintenance, which lends nothing in either of those hexes.
+/// with `hex.units`, since the engine takes nothing for either in any hex (`spells.cpp`:
+/// `RunCreateArtifact`; `monthorders.cpp`: `Do1StudyOrder`). In a trusted pool, the purse's own
+/// judgment ([`Lending::refused`]). Elsewhere each unit's own row: a cast neither it nor any
+/// sharer could fund ([`Ledger::unfunded_casts`], [`refused_cast_cost`]) and a study its own
+/// silver could not pay ([`own_study_outcome`]) - where nothing pools (`ah-vdav`), and in a pool
+/// that cannot be trusted ([`Sharing::pool_trusted`]), where the purse lends nothing, only when
+/// what the sharers hold at STUDY, a doubted one's best reading included
+/// ([`Sharing::silver_held_at`]), could not lend what it lacks either (`rules/share`: "for
+/// buying or studying"; `ah-dkkm`). `lending` is the purse's reading before maintenance.
 fn refused_before_maintenance(hex: &Hex<'_>, ledger: &Ledger<'_>, lending: &Lending) -> Vec<i64> {
     let sharing = Sharing::for_silver(hex, ledger);
-    if sharing.reading(SILVER, None) == Reading::Pooled && sharing.pool_trusted(ledger) {
+    let pooled = sharing.reading(SILVER, None) == Reading::Pooled;
+    if pooled && sharing.pool_trusted(ledger) {
         return lending.refused_all();
     }
+    let lendable = if pooled {
+        sharing.silver_held_at(ledger, LendingMoment::Study).max(0)
+    } else {
+        0
+    };
     hex.units
         .iter()
         .map(|ordered| {
@@ -12844,7 +12853,11 @@ fn refused_before_maintenance(hex: &Hex<'_>, ledger: &Ledger<'_>, lending: &Lend
             } else {
                 0
             };
-            cast_back + own_study_outcome(ledger, unit_id).refused_fee()
+            let study_back = match own_study_outcome(ledger, unit_id) {
+                StudyOutcome::Refused { fee, short } if short > lendable => fee,
+                _ => 0,
+            };
+            cast_back + study_back
         })
         .collect()
 }
@@ -55452,6 +55465,30 @@ BUILD
             "902's own $8 pays the first 8 of its upkeep: {student:?}"
         );
         assert_eq!(student.upkeep, Some(8), "{student:?}");
+    }
+
+    /// The purse is still the best reading of a pool it cannot vouch for: a doubted sharer
+    /// holding $500 can lend 902 the $2 its STUDY lacks ("for buying or studying",
+    /// `rules/share`), so the study goes ahead, spends 902's $8, and nothing is handed back -
+    /// faction-mates pay all 10 of its upkeep (`ah-dkkm` review, finding 1).
+    #[test]
+    fn a_student_a_doubted_sharer_can_fund_pays_no_upkeep_of_its_own() {
+        let rules = trident_rules();
+        let orders = doubting_the_sharer("unit 902\nSTUDY COMB\n");
+        let review = review_turn(
+            &report(vec![region(vec![
+                starving(with_silver(unit("902"), 8)),
+                sharing(with_silver(unit("904"), 500)),
+                with_silver(unit("903"), 100),
+            ])]),
+            &orders,
+            Some(&rules),
+            CheckOptions::default(),
+        );
+        let student = shipment_silver(&review, "902");
+        assert!(student.pool_doubted, "the pool is untrusted: {student:?}");
+        assert_eq!(student.shared_silver_covered, 10, "{student:?}");
+        assert_eq!(student.upkeep, Some(0), "{student:?}");
     }
 
     /// A CAST its caster's own silver cannot pay, in a hex whose pool cannot be trusted, is
