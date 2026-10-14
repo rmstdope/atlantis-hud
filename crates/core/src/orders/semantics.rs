@@ -53951,6 +53951,41 @@ BUILD
         );
     }
 
+    /// A sharer walking in that pays the fee has lent its $45 there before maintenance, so it has
+    /// nothing for its own upkeep and a faction-mate pays it (`rules/sequenceofevents`: movement,
+    /// then TRANSPORT, then maintenance; `rules/share`; `ah-qugc`, `ah-6y6e`).
+    #[test]
+    fn a_sharer_that_walks_in_and_pays_the_fee_has_that_much_less_for_its_upkeep() {
+        let mut regions = unpaid_shipping(0);
+        regions[0].units[0] = starving(regions[0].units[0].clone());
+        let mut keeper = starving(with_silver(unit("904"), 100));
+        keeper.region_id = regions[0].region_id.clone();
+        regions[0].units.push(keeper);
+        regions.push(region_at(
+            "1:0,2",
+            0,
+            2,
+            vec![sharing(starving(with_silver(unit("903"), 45)))],
+        ));
+        let orders = format!("{UNPAID}unit 903\nMOVE N\n");
+        let (traced_report, options) =
+            traced(report(regions.clone()), &orders, &ruleset(), with_map());
+        let review = review_turn(
+            &report(traced_report.regions),
+            &orders,
+            Some(&ruleset()),
+            options,
+        );
+        let sender = shipment_silver(&review, "900");
+        assert_eq!(
+            sender.shipping.len(),
+            1,
+            "the arriving sharer pays: {sender:?}"
+        );
+        let walker = shipment_silver(&review, "903");
+        assert_eq!(walker.shared_silver_covered, 10, "{walker:?}");
+    }
+
     fn unpaid_findings_with(
         regions: Vec<ReportRegion>,
         orders: &str,
