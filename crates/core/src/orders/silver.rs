@@ -1714,7 +1714,9 @@ pub struct PhaseFacts<'a> {
     /// as the ledger recorded them ([`SilverFunding`], `ah-rou9`): which exact `GIVE`s the game
     /// pays in full - out of the unit's own silver or, beyond it, its `SHARE` faction-mates'
     /// (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`) - and so refuses nothing
-    /// (`ah-ub3y`). Empty for a caller with no ledger, which is every test that builds its own
+    /// (`ah-ub3y`). The same record, through [`SilverFunding::cut_gift`], is what anchors the
+    /// editor's shortfall finding on a gift, so the column and the anchor cannot disagree about one
+    /// (`ah-jz5q`). Empty for a caller with no ledger, which is every test that builds its own
     /// `PhaseFacts`.
     pub fundings: &'a [SilverFunding],
     /// This unit's silver movements as the ledger recorded them, in settlement order: what the

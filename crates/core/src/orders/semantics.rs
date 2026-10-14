@@ -5808,7 +5808,10 @@ struct Ledger<'a> {
     /// shortfall computed from a sum with a hole in it is exactly the false warning this module's
     /// header refuses to produce.
     doubted: BTreeSet<String>,
-    /// The first order that drew each balance down, so a finding can point at a line.
+    /// Where each balance's shortfall is anchored, so a finding can point at a line: the first
+    /// order that drew it down - except for a silver gift or discard, which is never marked by its
+    /// draw and is marked here only when [`SilverFunding::cut_gift`] says the engine cut it, even
+    /// where it moves nothing (`ah-1c8p`, `ah-jz5q`).
     charged_at: BTreeMap<(String, String), PlacedIntent>,
     /// What each unit was charged in maintenance, so a shortfall message can say that the fee is
     /// part of what drew the balance down - it is not an order, and saying "its orders spend" of
@@ -13608,7 +13611,9 @@ fn record_silver(
 }
 
 /// Applies a signed silver movement to the running balance, and does the `charged_at` bookkeeping
-/// [`charge`] does for every other tag.
+/// [`charge`] does for every other tag. A silver gift or discard passes no `placed`: its anchor is
+/// the funding record's verdict ([`SilverFunding::cut_gift`]), set in `transfer`, never its draw
+/// (`ah-jz5q`).
 fn apply_silver(
     ledger: &mut Ledger<'_>,
     phase: StatePhase,
@@ -57001,6 +57006,24 @@ BUILD
                 2,
                 Cast,
                 3,
+            ),
+            (
+                "discard paid by the pool",
+                0,
+                Some(150),
+                format!("GIVE 0 100 SILV\n{CAST}"),
+                2,
+                Cast,
+                3,
+            ),
+            (
+                "discard cut by the pool",
+                0,
+                Some(50),
+                format!("GIVE 0 100 SILV\n{CAST}"),
+                2,
+                Give,
+                2,
             ),
             (
                 "discard cut",
