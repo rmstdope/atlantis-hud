@@ -829,3 +829,37 @@ describe("what a drawn cause line already says", () => {
     expect(silverCauseLabel("brand-new-cause")).toBe("brand new cause");
   });
 });
+
+// `ah-2zku`: step 4 of maintenance drawn as lines, and the sentence that no longer repeats them.
+describe("upkeep a faction-mate paid", () => {
+  it("names the two lines", () => {
+    expect(silverCauseLabel("was-lent-for-upkeep")).toBe("was lent for upkeep");
+    expect(silverCauseLabel("lent-for-upkeep")).toBe("lent for upkeep");
+  });
+
+  const paid = (upkeepLinesDrawn?: boolean): SilverFacts => ({
+    unit: unit(),
+    silver: aUnitSilver({ upkeep: 0, ownFoodCovered: 8, sharedSilverCovered: 20 }),
+    warned: false,
+    countUpkeep: true,
+    ...(upkeepLinesDrawn === undefined ? {} : { upkeepLinesDrawn })
+  });
+
+  it("leaves the faction-mate's silver out of who paid where a line names it", () => {
+    expect(silverNoteLines(paid(true))).toContain("This unit's upkeep was paid by its own food (8).");
+  });
+
+  it("keeps it where no line is drawn, as on the whole-unit tooltip", () => {
+    expect(silverNoteLines(paid())).toContain(
+      "This unit's upkeep was paid by its own food (8) and a faction-mate's silver (20)."
+    );
+  });
+
+  it("says nothing of who paid where the drawn line was the only payer", () => {
+    const onlyMates: SilverFacts = {
+      ...paid(true),
+      silver: aUnitSilver({ upkeep: 0, sharedSilverCovered: 20 })
+    };
+    expect(silverNoteLines(onlyMates).join(" ")).not.toContain("upkeep was paid by");
+  });
+});

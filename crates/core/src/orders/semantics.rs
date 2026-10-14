@@ -57510,17 +57510,20 @@ BUILD
     /// normal character"), 900 a quartermaster owning a Caravanserai for 902's shipment. 901
     /// (sharing, empty) GIVEs 900 $100 it does not have, drawing it all on sharer 902
     /// (`runorders.cpp`: `DoGiveOrder`, `GetSharedNum`; `unit.cpp`: `ConsumeShared`), and 902's
-    /// `TRANSPORT 900 ALL SILV` ships its wage. `extra` units follow in document order.
+    /// `TRANSPORT 900 ALL SILV` ships its wage. `extra` units follow in document order, and 900
+    /// comes last, so the units that pay at step 4 are the scene's own.
     fn drained_sharer_review(extra: Vec<ReportUnit>, more_orders: &str) -> TurnReview {
         let rules = trident_rules();
         let mut region = caravanserai_owner("900", 1, 0, 0);
         region.wages = Some("$20".to_string());
         region.max_wages = Some(1000);
+        let quartermaster = region.units.remove(0);
         region.units.extend([
             sharing(starving(unit("901"))),
             sharing(with_silver(starving(unit("902")), 100)),
         ]);
         region.units.extend(extra);
+        region.units.push(quartermaster);
         let orders =
             format!("unit 901\nGIVE 900 100 SILV\nunit 902\nTRANSPORT 900 ALL SILV\n{more_orders}");
         review_turn(&report(vec![region]), &orders, Some(&rules), with_map())
@@ -57550,6 +57553,20 @@ BUILD
         assert_eq!(fed.shared_silver_covered, 10, "{fed:?}");
         assert_eq!(fed.upkeep, Some(0), "{fed:?}");
         assert_eq!(fed.at_month_end, Some(0), "{fed:?}");
+        // The refilled giver, first in document order, pays: $300 received, $20 earned, its own
+        // $10 and 902's $10 paid.
+        assert_eq!(
+            silver_moved(&review, "902", SilverChangeCause::WasLentForUpkeep),
+            vec![(10, "Unit 901 (901)".to_string())]
+        );
+        assert_eq!(
+            silver_moved(&review, "901", SilverChangeCause::LentForUpkeep),
+            vec![(-10, "Unit 902 (902)".to_string())]
+        );
+        let payer = shipment_silver(&review, "901");
+        assert_eq!(payer.upkeep_lent, 10, "{payer:?}");
+        assert_eq!(payer.upkeep, Some(10), "{payer:?}");
+        assert_eq!(payer.at_month_end, Some(320), "{payer:?}");
     }
 
     /// A hex for step 4's own scenes: no wage, so a unit's month end is what it holds. 901 (sharing,
@@ -57661,6 +57678,51 @@ BUILD
             silver_moved(&review, "901", SilverChangeCause::WasLentForUpkeep),
             vec![(10, "Unit 903 (903)".to_string())]
         );
+    }
+
+    /// A GIVE the game cuts gives only what the giver and its sharers held (`runorders.cpp`:
+    /// `DoGiveOrder`, `amt = GetSharedNum`; `ah-hreo`), so the part nobody funded never left the
+    /// giver, and maintenance reads it so (`ah-2zku`, the navigator's answer on review finding 1).
+    /// 901 (sharing, empty) GIVEs 909 $300 and the game cuts it to sharer 902's $100. 901 works for
+    /// $20 and pays its own $10 upkeep out of it (`rules/economy_maintenance`: "Silver in the
+    /// unit's possession"), so it is no claimant, and its $10 spare pays IDLE 902's fee ahead of
+    /// 903 in document order ("Silver from other faction units in the same region").
+    #[test]
+    fn a_giver_whose_gift_the_game_cut_pays_upkeep_from_what_it_kept() {
+        let mut receiver = unit("909");
+        receiver.own = false;
+        receiver.faction_id = Some("2".to_string());
+        receiver.faction_name = Some("Theirs".to_string());
+        let hex = ReportRegion {
+            wages: Some("$20".to_string()),
+            max_wages: Some(1000),
+            ..region(vec![
+                sharing(starving(unit("901"))),
+                sharing(with_silver(starving(unit("902")), 100)),
+                starving(unit("903")),
+                receiver,
+            ])
+        };
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 901\nGIVE 909 300 SILV\nunit 902\nIDLE\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        let giver = shipment_silver(&review, "901");
+        assert_eq!(giver.shared_silver_covered, 0, "{giver:?}");
+        assert_eq!(giver.upkeep, Some(10), "{giver:?}");
+        assert_eq!(giver.upkeep_lent, 10, "{giver:?}");
+        assert_eq!(
+            silver_moved(&review, "901", SilverChangeCause::LentForUpkeep),
+            vec![(-10, "Unit 902 (902)".to_string())]
+        );
+        assert_eq!(
+            silver_moved(&review, "902", SilverChangeCause::WasLentForUpkeep),
+            vec![(10, "Unit 901 (901)".to_string())]
+        );
+        assert_eq!(silver_booked(&review, "902", SilverChangeCause::Lent), -100);
+        assert_eq!(shipment_silver(&review, "903").upkeep_lent, 0);
     }
 
     /// A pool short of the one fee it is asked for leaves no doubt about who is fed: 902 is
