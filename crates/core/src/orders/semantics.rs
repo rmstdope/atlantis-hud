@@ -16896,8 +16896,9 @@ fn pool_shortfalls(
     // the verdicts' claims make below - every undoubted claimant's overdraft against the pool.
     // The verdicts see only units with a SILVER entry at maintenance, while this reads every
     // unit's `relieved_balance`; they agree because that balance can be negative only through a
-    // charge, which books the entry - `UpkeepRelief::relieved` only adds, and only a sharer that holds
-    // silver has `UpkeepRelief::lent` to subtract.
+    // charge, which books the entry - `UpkeepRelief::relieved` only adds, and a unit that lends at
+    // step 4 either holds silver or was charged a cut GIVE whose unfunded part it lends from, which
+    // booked the entry already (`ah-2zku`).
     let silver_by_moment =
         sharing.walking.is_some() && sharing.reading(SILVER, None) == Reading::Pooled;
     if silver_by_moment {
@@ -57723,6 +57724,34 @@ BUILD
         );
         assert_eq!(silver_booked(&review, "902", SilverChangeCause::Lent), -100);
         assert_eq!(shipment_silver(&review, "903").upkeep_lent, 0);
+        // The cut line keeps its owed $200 (`ah-2fn5`): the month end is the order's figure, and
+        // what the giver lent for upkeep comes off only with the upkeep, never netted into it.
+        assert_eq!(giver.at_month_end, Some(-180), "{giver:?}");
+        assert_eq!(
+            giver
+                .at_month_end
+                .zip(giver.upkeep)
+                .map(|(end, upkeep)| end - upkeep - giver.upkeep_lent),
+            Some(-200),
+            "the cell with upkeep counted is the cut part alone: {giver:?}"
+        );
+        let warned: Vec<_> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "not-enough-silver")
+            .map(|finding| (finding.unit_id.clone(), finding.message.clone()))
+            .collect();
+        // A pooled hex warns once for the hex (`ah-5znb`), and for the cut part alone: step 4
+        // moved silver between its units and changed nothing it sums.
+        assert_eq!(
+            warned,
+            vec![(
+                None,
+                "the units in this hex are short $200 between them: they can have $100 and their \
+                 orders spend $300"
+                    .to_string()
+            )]
+        );
     }
 
     /// A pool short of the one fee it is asked for leaves no doubt about who is fed: 902 is
