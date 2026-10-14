@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lone leader warning A</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+  header p b { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+  .orders { background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 13px;
+    font-family:'SF Mono',Menlo,monospace; font-size:12px; color:var(--ink-soft); white-space:pre; margin-top:10px; }
+  .dim { color:var(--ink-dim); } .red { color:var(--danger); }
+  .opt { display:inline-block; background:#f5f5f5; color:#111; padding:3px 9px; font-weight:bold;
+    font-family:system-ui,sans-serif; font-size:12px; margin:26px 0 4px; }
+  ul.notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:10px; max-width:100ch;}
+  ul.notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  ul.notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .q { background:#2a2113; border:1px solid #5c4718; border-left:4px solid var(--brass); border-radius:5px;
+    padding:11px 14px; margin:22px 0 2px; max-width:100ch; font-size:13.5px; }
+  .q b { color:var(--brass); }
+  .note { color:var(--ink-soft); font-size:13px; background:var(--raised); border-left:3px solid var(--edge);
+    padding:9px 13px; margin:12px 0 4px; max-width:100ch; } .note b { color:var(--ink); }
+  .settings { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:14px 16px;
+    max-width:78ch; margin-top:10px; font-family:system-ui,-apple-system,sans-serif; }
+  .settings h4 { font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass);
+    font-weight:normal; margin-bottom:9px; }
+  .row { display:flex; gap:10px; align-items:flex-start; padding:6px 0; border-top:1px solid rgba(38,48,61,.6); }
+  .row:first-of-type { border-top:none; }
+  .sw { width:30px; height:17px; border-radius:9px; background:var(--brass); position:relative; flex:none; margin-top:2px; }
+  .sw::after { content:""; position:absolute; right:2px; top:2px; width:13px; height:13px; border-radius:50%; background:#10151c; }
+  .row .t { font-size:13px; color:var(--ink); } .row .d { font-size:11.5px; color:var(--ink-dim); margin-top:1px; }
+  .row.new .t { color:var(--brass); } .row.old { opacity:.45; }
+  table.grid { width:100%; border-collapse:collapse; font-size:12.5px; background:var(--panel);
+    border:1px solid var(--edge); margin-top:10px; font-family:system-ui,-apple-system,sans-serif; max-width:114ch;}
+  table.grid th { text-align:left; color:var(--ink-dim); font-weight:normal; font-size:11px;
+    letter-spacing:1.2px; text-transform:uppercase; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  table.grid td { padding:7px 10px; border-bottom:1px solid rgba(38,48,61,.5); color:var(--ink); vertical-align:top; }
+  table.grid td.m { font-family:system-ui,sans-serif; color:#f0d8d8; }
+  table.grid td.q { font-family:system-ui,sans-serif; color:var(--ink-dim); }
+
+  @media (max-width:520px){ body{padding:20px 16px 48px} }
+</style></head><body>
+<header><h1>Option A — <span>name the skills and what each makes</span></h1>
+<p>Manipulation makes a unit an <b>apprentice</b>, not a mage, and the rest of the app now treats it as an ordinary skill. Like a mage, an apprentice must still be one leader on its own (rules: <i>Apprentices</i>), so the warning keeps covering it — only the Settings row's words change.</p></header>
+<main>
+<h3 class="sec">Settings → Warnings, as it will read</h3>
+<p>Shown in place, with the neighbours it sits beside. Before is dimmed underneath.</p>
+<div class="settings"><h4>Studying / Teaching</h4>
+  <div class="row old"><div class="sw"></div><div><div class="t">Magic study outside a building</div>
+    <div class="d">A mage above level 2 studying magic where no building houses them, which halves the month's study.</div></div></div>
+  <div class="row new"><div class="sw"></div><div><div class="t">Study by a unit that cannot become a mage or apprentice</div><div class="d">A unit that is not one leader on its own ordered to begin force, pattern or spirit, which make a mage, or manipulation, which makes an apprentice.</div></div></div>
+</div>
+<div class="settings" style="opacity:.45"><h4>Before</h4>
+  <div class="row"><div class="sw"></div><div><div class="t">Magic study by a unit that cannot become a mage</div>
+  <div class="d">A unit that is not one leader on its own ordered to begin force, pattern, spirit or manipulation.</div></div></div></div>
+<h3 class="sec">The warning on the order — unchanged</h3>
+<p>It already names the skill and never calls it magic, so it stays exactly as it is.</p>
+<div class="orders">unit 5
+<span class="red">STUDY MANI</span>   <span class="red">only a lone leader can begin manipulation; this unit has 3 humans</span></div>
+<ul class="notes"><li>Names every order that triggers it, like its neighbours do.</li><li>Says outright that manipulation makes an apprentice.</li><li class="con">Longest description in the section.</li></ul>
+<h3 class="sec">Narrow window</h3><p>The row wraps as one unit; nothing else moves.</p>
+<div class="settings" style="max-width:320px"><h4>Studying / Teaching</h4>
+  <div class="row new"><div class="sw"></div><div><div class="t">Study by a unit that cannot become a mage or apprentice</div><div class="d">A unit that is not one leader on its own ordered to begin force, pattern or spirit, which make a mage, or manipulation, which makes an apprentice.</div></div></div></div>
+</main></body></html>
