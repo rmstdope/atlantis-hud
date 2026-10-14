@@ -32,3 +32,29 @@ the same sharer) would have caught the first fix too.
 
 **Seen before.** ah-0mch (a sharer's stock lent twice: second readers of a balance the first spend
 had not reduced).
+
+## Verification failed: the fix's fixtures never paid upkeep in silver (second pass, PR #1568)
+
+**What happened.** The first pass merged green and failed verification. In the navigator's real
+hex the taxer paid its upkeep in silver and the buyer WORKed, and the buyer was still shown short
+for its BUY, with phantom upkeep relief "paid by a faction-mate". Every first-pass test built the
+taxer with `with_men_grain`, and the default `unit()` fixture feeds itself too. So no unit in those
+tests paid upkeep in silver, and maintenance step 4, which reads the ledger balance without the
+purse's loans, was never exercised.
+
+**Why.** The fixture default is deliberately silver-neutral (the comment on `unit()` says so), which
+is right for most tests but hides every interaction between SHARE lending and maintenance. Nothing
+prompts a SHARE test to also try units that pay upkeep in silver.
+
+**Cost.** One failed verification (a navigator sitting), the bead reopened at P0, and a second
+full pass. A local slip in the second pass cost one extra gate run: `cargo test | head` hid a
+failing integration binary, because cargo stops at the first failing binary without
+`--no-fail-fast`.
+
+**Prevent by.** A paragraph on `sharing_taxer_hex` and on `unit()` in semantics.rs's tests: a test
+of SHARE silver must include at least one case built with `starving` (upkeep paid in silver) and a
+borrower with late income (wages), since maintenance step 4 judges upkeep after the purse has lent.
+For a local run of the whole crate, use `cargo test -p atlantis-hud-core --no-fail-fast`.
+
+**Seen before.** The first section of this file: a second reader of a lender's balance (there
+TRANSPORT, here maintenance) that the purse's lending had not reduced.
