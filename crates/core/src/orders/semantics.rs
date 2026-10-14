@@ -1327,12 +1327,18 @@ impl<'a> Ledger<'a> {
         }
     }
 
-    /// [`Ledger::relief`], to write: the settlement being settled.
+    /// [`Ledger::relief`], to write: the settlement being settled. The warning's exists only once
+    /// maintenance has forked it ([`Ledger::fork_warning`]).
     fn relief_mut(&mut self) -> &mut UpkeepRelief {
         let relief = &mut self.relief;
         match relief.serving {
             Surface::Column => &mut relief.column,
-            Surface::Warning => relief.warning.get_or_insert_with(|| relief.column.clone()),
+            // Written only once maintenance has forked the two (`settle_report_wide`): a write
+            // that forked here would also turn the column's hand-back on ([`Ledger::hands_back`]).
+            Surface::Warning => relief
+                .warning
+                .as_mut()
+                .expect("the warning's settlement is written only after maintenance forks it"),
         }
     }
 
@@ -42063,6 +42069,8 @@ BUILD
         let mut ledger = ledger_for(&hex, Some(&rules));
         ledger.relief_mut().relieved.insert("5".to_string(), 2);
         assert_eq!(ledger.as_warning().relief().relieved.get("5"), Some(&2));
+        // Steps 1 to 3 run before the fork and carry no refused order's hand-back.
+        assert!(!ledger.hands_back());
 
         ledger.fork_warning();
         {
