@@ -1155,6 +1155,11 @@ fn settle_report_wide(
                     super::transport::ShipmentPhase::BetweenQuartermasters,
                     &delivered,
                 );
+                // Every fee has been judged: from here on what TRANSPORT moves is recorded as
+                // moved after them ([`Ledger::silver_moved_after_fees`], `ah-k719`).
+                for (_, ledger) in hexes.iter_mut() {
+                    ledger.fees_judged = true;
+                }
                 credit_shipped_goods(hexes, phase, &shipped, Credit::Silver);
                 delivered.extend(shipped);
             }
@@ -2782,9 +2787,9 @@ fn forecast_hex(
     // (`rules/share`), and `forecast_unit` could not credit that loan, since it never sees the bill.
     // The loan itself is the purse's record's - TRANSPORT is one of its moments ([`PURSE_MOMENTS`],
     // `ah-8bzm`), so `purse_for_orders` already borrows it for the sender and lends it out of the
-    // sharers that paid it. What is credited here is that record's borrow, up to what the bill
-    // overdrew, into the sender's `shared_silver_for_orders`, which the `Lent` pass then debits
-    // its lenders for (`ah-nq3k`). The `Shipped` lines themselves are listed last.
+    // sharers that paid it. What is credited here is that record's borrow, up to the bill, into
+    // the sender's `shared_silver_for_orders`, which the `Lent` pass then debits its lenders for
+    // (`ah-nq3k`, `ah-k719`). The `Shipped` lines themselves are listed last.
     let shipped_moves: Vec<Vec<SilverMove>> = into[start..]
         .iter_mut()
         .enumerate()
@@ -2824,10 +2829,12 @@ fn forecast_hex(
                 .map(|wanted| wanted.saturating_add(bill));
             if let Some(before) = forecast.at_month_end {
                 let after = before.saturating_sub(bill);
-                // What the bill overdrew, lent up to what the record lends this unit beyond what
-                // its other orders were already credited.
-                let overdrawn = (-after).max(0) - (-before).max(0);
-                let lent = overdrawn
+                // What the record lends this unit beyond what its other orders were already
+                // credited, up to the bill. Not what the bill overdrew the month's end: the purse
+                // lent the fee as the shipment ran, and silver that reached the sender later in
+                // TRANSPORT pays none of it back (`runorders.cpp`: `ConsumeSharedMoney`;
+                // `ah-qrk0`, `ah-k719`).
+                let lent = bill
                     .min(purse_for_orders.borrows[index] - forecast.shared_silver_for_orders)
                     .max(0);
                 forecast.shared_silver_for_orders += lent;
@@ -5956,6 +5963,20 @@ struct Ledger<'a> {
     /// then would hand back silver that never left, while later shipments are still being judged
     /// against the purse (`ah-8bzm`).
     pub(crate) refused_shipments_charged: bool,
+    /// The silver TRANSPORT moved into (positive) or out of (negative) each unit once every fee
+    /// had been judged, keyed by unit id: what the second sub-phase credited as it ended, and all
+    /// the third moved (`rules/sequenceofevents`). Only the second sub-phase charges a fee
+    /// ([`super::transport::priced`] charges between quartermasters alone), and the engine takes
+    /// each fee from the shared money as its shipment runs (`runorders.cpp`:
+    /// `RunTransportOrders`, `ConsumeSharedMoney`), so the purse's TRANSPORT moment reads each
+    /// unit without it ([`silver_at`]): a loan is never paid back by a later receipt (`ah-qrk0`,
+    /// `ah-k719`). Written as each shipment moves silver, once [`Ledger::fees_judged`] is set, so
+    /// a reading later in the same sub-phase already sees an earlier send (`ah-k719` review,
+    /// finding 1).
+    pub(crate) silver_moved_after_fees: BTreeMap<String, i64>,
+    /// Whether every TRANSPORT fee has been judged: set as the second sub-phase's shipments are
+    /// settled, before its silver is credited (`settle_report_wide`).
+    pub(crate) fees_judged: bool,
     /// Which of the two unmeasurable causes each of this hex's units met, by unit number
     /// (`ah-7ale.5`). Not gated on the Transport warning: it is what makes the month read `?`, and
     /// no figure may claim to be certain when it is not.
@@ -6339,7 +6360,13 @@ impl Ledger<'_> {
     /// refused CAST is not handed back there: which cast the engine refuses cannot be told
     /// without the pool, so the reading stays pessimistic (`ah-szu0` follow-up review, finding 3).
     fn transport_holding(&self, hex: &Hex<'_>, unit_id: &str, tag: &str) -> i64 {
-        let held = SharerStock::for_spender(self, hex, StatePhase::Transport, unit_id, tag)
+        // The fees already booked at TRANSPORT are carried too ([`Lending::through`]): the engine
+        // took each from the shared money as its shipment ran (`runorders.cpp`:
+        // `ConsumeSharedMoney`), so a sharer that lent for one ships only what it left (`ah-k719`).
+        let stock = SharerStock::carrying(self, hex, StatePhase::Transport, tag, |hex, ledger| {
+            Lending::through(hex, ledger, StatePhase::Transport)
+        });
+        let held = SharerStock::spender_in(self, hex, StatePhase::Transport, unit_id, tag, stock)
             .map_or_else(
                 || {
                     self.state.balance_at(StatePhase::Transport, unit_id, tag)
@@ -6443,6 +6470,8 @@ fn ledger_for_reaching<'a>(
         shipping_paid: BTreeMap::new(),
         refused_shipments: Vec::new(),
         refused_shipments_charged: false,
+        silver_moved_after_fees: BTreeMap::new(),
+        fees_judged: false,
         shipping_unmeasured: BTreeMap::new(),
         sold: BTreeMap::new(),
         dead_sales: Vec::new(),
@@ -14009,6 +14038,16 @@ fn silver_at(ledger: &Ledger<'_>, unit_id: &str, moment: LendingMoment) -> i64 {
     match moment {
         LendingMoment::MonthEnd => relieved_balance(ledger, unit_id, SILVER),
         LendingMoment::Cast => ledger.state.balance_at(StatePhase::Cast, unit_id, SILVER),
+        // As the fees were taken: nothing TRANSPORT moved after them pays a loan back or is lent
+        // for ([`Ledger::silver_moved_after_fees`], `ah-k719`).
+        LendingMoment::Transport => {
+            unlent_silver_at(ledger, unit_id, StatePhase::Transport)
+                - ledger
+                    .silver_moved_after_fees
+                    .get(unit_id)
+                    .copied()
+                    .unwrap_or(0)
+        }
         _ => unlent_silver_at(ledger, unit_id, moment.phase()),
     }
 }
@@ -21267,6 +21306,7 @@ impl SettledShipment {
 
     fn debit_sender(&self, ledger: &mut Ledger<'_>, phase: StatePhase, placed: &PlacedIntent) {
         if let Some(amount) = self.silver_change_for(&self.sender) {
+            moved_after_fees(ledger, &self.sender, amount);
             move_silver(
                 ledger,
                 phase,
@@ -21287,6 +21327,7 @@ impl SettledShipment {
 
     fn credit_receiver(&self, ledger: &mut Ledger<'_>, phase: StatePhase) {
         if let Some(amount) = self.silver_change_for(&self.target) {
+            moved_after_fees(ledger, &self.target, amount);
             move_silver(
                 ledger,
                 phase,
@@ -21303,6 +21344,17 @@ impl SettledShipment {
                 .and_modify(|amount| *amount += self.quantity)
                 .or_insert(self.quantity);
         }
+    }
+}
+
+/// Record `amount` of silver a shipment moves for `unit_id` once every fee has been judged
+/// ([`Ledger::silver_moved_after_fees`], `ah-k719`).
+fn moved_after_fees(ledger: &mut Ledger<'_>, unit_id: &str, amount: i64) {
+    if ledger.fees_judged {
+        *ledger
+            .silver_moved_after_fees
+            .entry(unit_id.to_string())
+            .or_default() += amount;
     }
 }
 
@@ -54901,6 +54953,116 @@ BUILD
         assert_eq!(sender.shared_silver_for_orders, 45, "{sender:?}");
         assert_eq!(sender.short_for_orders, Some(45), "{sender:?}");
         assert_eq!(fee_loan(&review, "903"), (45, Some(0), -45, Some(5)));
+    }
+
+    /// [`two_senders`]' hex, with the target 901 a Quartermaster 5 holding `$100` it ships to 900
+    /// between the two Caravanserais - weightless, so free (`data/quartermaster` charges per
+    /// weight unit) - in the same sub-phase 900's own fee is paid in (`rules/sequenceofevents`:
+    /// "Items are sent from one quartermaster unit to another"), and so credited after it.
+    fn fee_then_receipt(mates: Vec<ReportUnit>) -> Vec<ReportRegion> {
+        let mut regions = two_senders(mates);
+        let target = &mut regions[1].units[0];
+        target.skills.retain(|skill| skill.tag != "QUAM");
+        *target = with_silver(with_skill(target.clone(), "QUAM", 5), 100);
+        regions
+    }
+
+    /// `ah-k719` case 1: a $0 non-sharing sender whose $45 fee a $50 sharer pays, and which only
+    /// afterwards receives $100 by TRANSPORT, still owes the loan it took: the engine drew the fee
+    /// on the sharer as it ran (`runorders.cpp`: `RunTransportOrders`, `ConsumeSharedMoney`), and a
+    /// later receipt pays no loan back (`ah-qrk0`). So 906's $45 fee meets the $5 left and is
+    /// refused, and the column reads the sharer `lent -45` ending at $5 and 900 ending at $100.
+    #[test]
+    fn a_fee_loan_is_not_paid_back_by_silver_the_sender_receives_later_at_transport() {
+        let orders = format!("{TWO_SENDERS}unit 901\nTRANSPORT 900 100 SILV\n");
+        let review = review_turn(
+            &report(fee_then_receipt(vec![sharing(with_silver(
+                unit("903"),
+                50,
+            ))])),
+            &orders,
+            Some(&ruleset()),
+            with_map(),
+        );
+        assert_eq!(
+            shipment_silver(&review, "900").shipping.len(),
+            1,
+            "{:?}",
+            review.silver
+        );
+        assert!(
+            shipment_silver(&review, "906").shipping.is_empty(),
+            "$5 is left in the purse, not $50: {:?}",
+            review.silver
+        );
+        assert_eq!(
+            fee_loan(&review, "903"),
+            (45, Some(100), -45, Some(5)),
+            "{:?}",
+            review.silver
+        );
+    }
+
+    /// `ah-k719` case 2: a $50 sharer that lent $45 for 900's fee between the Caravanserais
+    /// (`rules/sequenceofevents`: the second TRANSPORT phase) has $5 left when its own
+    /// `TRANSPORT ... ALL SILV` to a hex-mate runs in the third ("Items are sent a quartermaster
+    /// unit to non-quartermaster units"): the engine took the fee from it already
+    /// (`runorders.cpp`: `ConsumeSharedMoney`). 906 is [`two_senders`]' second Quartermaster,
+    /// here sharing $50 and shipping no furs.
+    #[test]
+    fn a_sharer_that_lent_for_a_fee_ships_only_what_the_fee_left_with_all_silv() {
+        let mut regions = two_senders(vec![unit("905")]);
+        let sharer = regions[0]
+            .units
+            .iter_mut()
+            .find(|unit| unit.unit_id == "906")
+            .expect("two_senders has 906");
+        *sharer = sharing(with_silver(sharer.clone(), 50));
+        let orders = format!("{UNPAID}unit 906\nTRANSPORT 905 ALL SILV\n");
+        let review = review_turn(&report(regions), &orders, Some(&ruleset()), with_map());
+        assert_eq!(
+            shipment_silver(&review, "900").shipping.len(),
+            1,
+            "{:?}",
+            review.silver
+        );
+        assert_eq!(
+            silver_shipped(&review, &orders, "906"),
+            5,
+            "{:?}",
+            shipment_silver(&review, "906")
+        );
+    }
+
+    /// `ah-k719` review, finding 1: case 2 with the borrower 900 forwarding its later $100
+    /// receipt with `ALL SILV` ahead of 906 in the third sub-phase. 900's send leaves its purse as
+    /// it runs, so the purse must not read 900 as needing that $100 too when 906's turn comes:
+    /// 906 still ships the $5 its $45 fee loan left (`runorders.cpp`: `ConsumeSharedMoney`; `ALL`
+    /// ships `u->items.GetNum`, the unit's own).
+    #[test]
+    fn a_sharer_that_lent_for_a_fee_ships_what_it_left_after_the_borrower_forwards_its_receipt() {
+        let mut regions = fee_then_receipt(vec![unit("905")]);
+        let sharer = regions[0]
+            .units
+            .iter_mut()
+            .find(|unit| unit.unit_id == "906")
+            .expect("two_senders has 906");
+        *sharer = sharing(with_silver(sharer.clone(), 50));
+        let orders = "unit 900\nTRANSPORT 901 9 FUR\nTRANSPORT 905 ALL SILV\n\
+                      unit 906\nTRANSPORT 905 ALL SILV\nunit 901\nTRANSPORT 900 100 SILV\n";
+        let review = review_turn(&report(regions), orders, Some(&ruleset()), with_map());
+        assert_eq!(
+            silver_shipped(&review, orders, "900"),
+            100,
+            "{:?}",
+            shipment_silver(&review, "900")
+        );
+        assert_eq!(
+            silver_shipped(&review, orders, "906"),
+            5,
+            "{:?}",
+            shipment_silver(&review, "906")
+        );
     }
 
     fn unpaid_findings_with(
