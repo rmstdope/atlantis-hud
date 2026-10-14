@@ -13346,6 +13346,40 @@ mod tests {
         );
     }
 
+    /// `ah-qrlx`: Maurice de Bracy (1160) of `neworigins-3.0.0-g3-f42-t82.rep` holds a balrog and
+    /// an illusory one, written `balrog [BALR] (illusion)`, and printed `Weight: 261`. Silver weighs
+    /// nothing (`data/SILV`, weight 0), so giving it away leaves the weight where it was. The
+    /// illusion was read as a second real balrog, one more than the ledger's balance, and a
+    /// balrog's weight (`data/BALR`, weight 250) came off per line: -239. It is `illusory balrog
+    /// [IBALR]` (`data/IBALR`, weight 1).
+    #[test]
+    fn giving_silver_away_leaves_the_weight_of_a_unit_holding_an_illusion() {
+        let report = [
+            "Foo (1) Report",
+            "",
+            "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+            "",
+            "Exits:",
+            "  Southeast : plain (2,2) in Nowhere.",
+            "",
+            "* Maurice (1160), Foo (1), behind, leader [LEAD], balrog [BALR], balrog [BALR] \
+             (illusion), 304 silver [SILV]. Weight: 261. Capacity: 316/316/331/15.",
+            "* Ivanhoe (683), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            "",
+        ]
+        .join("\n");
+        let response = reach_preview(&report, "unit 1160\nGIVE 683 290 SILV\n", FLAT_MAP);
+
+        assert_eq!(reach_held(&response, "1160", "SILV"), 14);
+        assert_eq!(
+            reach_unit(&response, "1160")
+                .unit
+                .movement
+                .map(|movement| movement.load),
+            Some(261)
+        );
+    }
+
     /// The report's own row for a unit, which a unit weighed as it steps off still matches.
     fn reported_unit(report: &str, unit_id: &str) -> ReportUnit {
         ReportCache::new()

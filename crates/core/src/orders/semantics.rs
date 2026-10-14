@@ -62593,6 +62593,49 @@ BUILD
         );
     }
 
+    /// `ah-qrlx`: Maurice de Bracy (1160) of `neworigins-3.0.0-g3-f42-t82.rep` holds a balrog and
+    /// an illusory one, which the report writes `balrog [BALR] (illusion)`. The illusion is its own
+    /// item (`data/IBALR`: weight 1, can walk, no capacity), so the unit walks 316 - a leader's
+    /// 15, a balrog's 300 (`data/LEAD`, `data/BALR`: weight 250, walking capacity 50) and the
+    /// illusion's own 1. Read as a second
+    /// balrog, the check saw one balrog fewer than the report's two and weighed 20 grain
+    /// (`data/GRAI`: weight 5) at 111 rather than 361.
+    #[test]
+    fn a_gift_overloads_a_unit_holding_an_illusion() {
+        let report = crate::report::parse_report_full(
+            &[
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "Exits:",
+                "  South : plain (1,3) in Nowhere.",
+                "",
+                "* Maurice (1160), Foo (1), behind, leader [LEAD], balrog [BALR], balrog [BALR] \
+                 (illusion). Weight: 261. Capacity: 0/301/316/0.",
+                "* Granary (8801), Foo (1), leader [LEAD], 20 grain [GRAI]. Weight: 110. \
+                 Capacity: 0/0/15/0.",
+                "",
+            ]
+            .join("\n"),
+        );
+        let findings = check_turn(
+            &report,
+            "unit 8801\nGIVE 1160 20 GRAI\nunit 1160\nMOVE S\n",
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+        );
+        let finding = only(findings);
+        assert_eq!(finding.code.as_str(), "unit-overloaded");
+        assert!(
+            finding
+                .message
+                .contains("it carries 361 and the most it can move with is 316"),
+            "{}",
+            finding.message
+        );
+    }
+
     #[test]
     fn a_gift_that_overloads_a_unit_stops_it_moving() {
         let region = region(vec![
