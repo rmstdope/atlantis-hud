@@ -9127,6 +9127,11 @@ fn transfer(
     // so it is neither a cut line nor where the unit's shortfall is anchored (`ah-ub3y`,
     // `ah-f7md`). A pool this walk could not read is no evidence that it paid.
     let pool_paid = funding.as_ref().is_some_and(SilverFunding::pool_paid);
+    // A silver GIVE its giver paid in full out of its own silver: refused nothing either, so it
+    // is not where the unit's shortfall is anchored, in a hex that shares or not (`ah-bky7`).
+    let own_paid = funding
+        .as_ref()
+        .is_some_and(|funding| funding.asked <= funding.own);
     let refused_short = funding.as_ref().is_some_and(SilverFunding::refused_short);
     if let Some(funding) = funding {
         ledger
@@ -9185,10 +9190,10 @@ fn transfer(
                     Some(placed),
                     target_label.map(str::to_string),
                 );
-            } else if is_give && pool_paid {
+            } else if is_give && (pool_paid || own_paid) {
                 // Booked as `move_silver` books it, but without its `charged_at` mark: the game
                 // refused this line nothing, so the shortfall marker belongs on the order it does
-                // refuse, which the SILVER column names too (`ah-f7md`).
+                // refuse, which the SILVER column names too (`ah-f7md`, `ah-bky7`).
                 record_silver(
                     ledger,
                     StatePhase::Give,
@@ -55844,6 +55849,37 @@ BUILD
             .collect();
         assert!(!markers.contains(&Some(2)), "{:?}", review.findings);
         assert!(markers.contains(&Some(3)), "{:?}", review.findings);
+    }
+
+    /// Nor a GIVE its giver paid in full out of its own silver, in a hex that shares: 901's $100
+    /// covers its GIVE (`rules/give`), which runs before the CAST (`rules/sequenceofevents`), and
+    /// its $200 amulet (`data/CRPA`) is then short of what sharer 902's $150 can lend. The hex's
+    /// `part-of-hex-shortfall` sits on the refused CAST, as the SILVER column says, for an exact
+    /// GIVE and for `ALL SILV` alike (`ah-bky7`).
+    #[test]
+    fn a_gift_its_giver_paid_does_not_carry_the_hex_shortfall_marker() {
+        for give in ["GIVE 900 100 SILV", "GIVE 900 ALL SILV"] {
+            let rules = trident_rules();
+            let mut region = caravanserai_owner("900", 1, 0, 0);
+            region.units.extend([
+                with_silver(with_skill(unit("901"), "CRPA", 1), 100),
+                sharing(with_silver(unit("902"), 150)),
+            ]);
+            let review = review_turn(
+                &report(vec![region]),
+                &format!("unit 901\n{give}\nCAST Create_Amulet_Of_Protection\nunit 902\n"),
+                Some(&rules),
+                with_map(),
+            );
+            let markers: Vec<_> = review
+                .findings
+                .iter()
+                .filter(|f| f.code.as_str() == "part-of-hex-shortfall")
+                .map(|f| f.line)
+                .collect();
+            assert!(!markers.contains(&Some(2)), "{give}: {:?}", review.findings);
+            assert!(markers.contains(&Some(3)), "{give}: {:?}", review.findings);
+        }
     }
 
     /// Nor is a GIVE the unit paid out of its own silver, with no `SHARE` anywhere: 901's $100
