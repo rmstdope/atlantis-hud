@@ -12724,9 +12724,10 @@ fn unpayable_upkeep(
 /// upkeep after every order, so a buyer the purse paid keeps its wages for its own upkeep, and a
 /// sharer that lent its silver has that much less for its own (`rules/share`: sharing "can leave
 /// the sharing unit without enough funds to pay maintenance"; `ah-su1x`). `share_pool_agreement`
-/// holds maintenance to it. Nothing is carried where nothing pools.
+/// holds maintenance to it. No loan is carried where nothing pools.
 ///
-/// What a refused CAST or STUDY handed back ([`Lending::refused`]) is carried too: the engine
+/// What a refused CAST or STUDY handed back ([`refused_before_maintenance`]) is carried too, in a
+/// pool or where nothing pools (`ah-vdav`): the engine
 /// took nothing for the order, the unit's own coins included (`spells.cpp`: `RunCreateArtifact`;
 /// `monthorders.cpp`: `Do1StudyOrder`), so the unit pays its own upkeep from them before a
 /// faction-mate is asked (`ah-ayg7`) - only in the settlement the SILVER column shows: the one the
@@ -12780,20 +12781,20 @@ impl UpkeepSilver {
             .zip(&lending.arrivals_lend)
             .map(|(arrival, lent)| (arrival.unit.clone(), *lent))
             .collect();
+        // A refused order's hand-back, in the column's settlement only (`ah-ayg7`).
+        let handed_back = if ledger.maintenance_hands_back {
+            refused_before_maintenance(hex, ledger, &lending)
+        } else {
+            vec![0; hex.units.len()]
+        };
         let row = hex
             .units
             .iter()
             .enumerate()
             .map(|(index, ordered)| {
-                // A refused order's hand-back, in the column's settlement only (`ah-ayg7`).
-                let handed_back = if ledger.maintenance_hands_back {
-                    lending.refused(index)
-                } else {
-                    0
-                };
                 (
                     ordered.unit.unit_id.clone(),
-                    lending.carried(index) + handed_back,
+                    lending.carried(index) + handed_back[index],
                 )
             })
             .collect();
@@ -12806,6 +12807,30 @@ impl UpkeepSilver {
         silver_balance(&hexes[hex].1, unit_id)
             .saturating_add(self.carried[hex].get(unit_id).copied().unwrap_or_default())
     }
+}
+
+/// What a refused CAST or STUDY handed back to each unit of one hex by maintenance, index-aligned
+/// with `hex.units`: in a pool, the purse's own judgment ([`Lending::refused`]); where nothing
+/// pools, each unit's own row - a cast its own silver could not pay ([`refused_cast_cost`]) and a
+/// study it could not ([`own_study_outcome`]) - since the engine takes nothing for either there
+/// too (`spells.cpp`: `RunCreateArtifact`; `monthorders.cpp`: `Do1StudyOrder`; `ah-vdav`).
+/// `lending` is the purse's reading before maintenance, which lends nothing where nothing pools.
+fn refused_before_maintenance(hex: &Hex<'_>, ledger: &Ledger<'_>, lending: &Lending) -> Vec<i64> {
+    if Sharing::for_silver(hex, ledger).reading(SILVER, None) != Reading::PerUnit {
+        return lending.refused_all();
+    }
+    hex.units
+        .iter()
+        .map(|ordered| {
+            let unit_id = &ordered.unit.unit_id;
+            let cast_back = if ledger.unfunded_casts.get(unit_id).is_some_and(|&u| u > 0) {
+                refused_cast_cost(ledger, unit_id, 0)
+            } else {
+                0
+            };
+            cast_back + own_study_outcome(ledger, unit_id).refused_fee()
+        })
+        .collect()
 }
 
 /// The fee maintenance still draws on a unit's balance: what it drew, less what an earlier step
