@@ -55386,6 +55386,85 @@ BUILD
         );
     }
 
+    /// `ah-4rw8`: the hex of
+    /// [`a_borrower_that_works_pays_its_own_upkeep_and_the_lending_taxers_is_shared`], but the buyer orders 2 wood ($162) against the
+    /// taxer's $150, and a faction-mate that does not share holds silver to spare. `rules/buy`
+    /// (New Age: Trident): "If the unit can't afford as many as [quantity], it will attempt to buy
+    /// as many as it can", so the buyer buys 1 wood with the $81 the taxer lends, and spends no
+    /// more; its own wages, which `rules/sequenceofevents` pays before maintenance, cover its $80
+    /// upkeep. Maintenance once read the buyer's silver with the whole $162 asked charged against
+    /// it, so it showed the buyer's upkeep "paid by a faction-mate's silver" that nobody gave
+    /// (53 here, at `d86431c`); reading the purse's loans through `Lending::carried` (`ah-rbei`)
+    /// is what ended that.
+    ///
+    /// The cut itself stays a warning on the line and a shortfall of the hex, as `ah-omn7` (Q1 B)
+    /// and `ah-szye` agreed; the navigator kept that on this bead.
+    #[test]
+    fn a_buy_the_purse_can_only_partly_pay_leaves_the_buyer_paying_its_own_upkeep() {
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.tax_base = Some(10_000);
+        region.wages = Some("13.5".to_string());
+        region.max_wages = Some(100_000);
+        region.for_sale = vec![MarketItem {
+            amount: 100,
+            name: "wood".to_string(),
+            tag: "WOOD".to_string(),
+            price: 81,
+        }];
+        region
+            .units
+            .push(sharing(starving(with_men(unit("903"), 3))));
+        region
+            .units
+            .push(sharing(starving(with_men(unit("902"), 8))));
+        region.units.push(sharing(starving(with_skill(
+            with_men(unit("901"), 3),
+            "COMB",
+            1,
+        ))));
+        // As 4868 in the navigator's hex: silver to spare and no SHARE, so it would pay any upkeep
+        // maintenance judged unpaid.
+        region
+            .units
+            .push(starving(with_silver(with_men(unit("904"), 1), 1_000)));
+        let rules = trident_rules();
+        let orders = "unit 901\nTAX\nTRANSPORT 900 ALL SILV\nunit 902\nBUY 2 wood\n";
+        let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
+
+        let taxer = shipment_silver(&review, "901");
+        assert_eq!(taxer.income, Some(150), "{taxer:?}");
+
+        let buyer = shipment_silver(&review, "902");
+        assert_eq!(buyer.expense, Some(81), "one wood is bought: {buyer:?}");
+        assert_eq!(buyer.borrowed_for_orders, 81, "{buyer:?}");
+        assert_eq!(
+            buyer.shared_silver_covered, 0,
+            "the buyer's wages pay its own upkeep: {buyer:?}"
+        );
+        assert_eq!(buyer.upkeep, Some(80), "{buyer:?}");
+        let relieved: i64 = ["900", "901", "902", "903", "904"]
+            .iter()
+            .map(|id| shipment_silver(&review, id).shared_silver_covered)
+            .sum();
+        assert_eq!(
+            relieved, 30,
+            "only the lending taxer's upkeep is shared: {:#?}",
+            review.silver
+        );
+
+        assert!(
+            review.findings.iter().any(|finding| {
+                finding.code == codes::PART_OF_HEX_SHORTFALL
+                    && finding.unit_id.as_deref() == Some("902")
+                    && finding
+                        .message
+                        .contains("so this order buys 1 of the 2 wood")
+            }),
+            "{:#?}",
+            review.findings
+        );
+    }
+
     /// What `id`'s `TRANSPORT` orders shipped, off its SILVER column: the `GaveAway` changes whose
     /// line in `orders` - the document `review` was made from - is a `TRANSPORT`, or its synonym
     /// `DISTRIBUTE` (`rules/transport`). A `GIVE` books `GaveAway` too, so the column alone cannot
