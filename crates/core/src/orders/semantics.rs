@@ -5946,6 +5946,12 @@ struct Ledger<'a> {
     /// Every shipment a sender's month could not pay for, in settlement order. Always accompanied
     /// by a `not-enough-silver` finding on the same unit: the charge is the whole ask.
     pub(crate) refused_shipments: Vec<super::transport::RefusedShipment>,
+    /// Whether `charge_refused_shipments` has charged [`Ledger::refused_shipments`] into the
+    /// balances yet. Until it has, a refusal is recorded and nothing more, so the purse's
+    /// TRANSPORT moment has nothing of it to hand back ([`Lending::settle`]): adding its cost back
+    /// then would hand back silver that never left, while later shipments are still being judged
+    /// against the purse (`ah-8bzm`).
+    pub(crate) refused_shipments_charged: bool,
     /// Which of the two unmeasurable causes each of this hex's units met, by unit number
     /// (`ah-7ale.5`). Not gated on the Transport warning: it is what makes the month read `?`, and
     /// no figure may claim to be certain when it is not.
@@ -6432,6 +6438,7 @@ fn ledger_for_reaching<'a>(
         silver_moves: BTreeMap::new(),
         shipping_paid: BTreeMap::new(),
         refused_shipments: Vec::new(),
+        refused_shipments_charged: false,
         shipping_unmeasured: BTreeMap::new(),
         sold: BTreeMap::new(),
         dead_sales: Vec::new(),
@@ -12812,7 +12819,7 @@ fn unpayable_upkeep(
 /// A unit's silver as maintenance reads it: [`silver_balance`] - the ledger's, with the relief an
 /// earlier step of the payment order wrote - with what the hex's `SHARE` purse moved into or out
 /// of it for its orders carried: CAST, the market, STUDY and a TRANSPORT's fee
-/// ([`Lending::carried`] of [`Lending::before_maintenance`], `ah-qugc`), the one reading of a unit's loans that [`SharerStock::at`] and the month-end
+/// ([`Lending::carried`] of [`Lending::before`] maintenance, `ah-qugc`, `ah-8bzm`), the one reading of a unit's loans that [`SharerStock::at`] and the month-end
 /// purse take too (`ah-pf7t`, `ah-rbei`). The ledger charges a borrower the whole of what it
 /// spends and leaves its lenders' rows alone (`ah-0mch`), and `rules/sequenceofevents` charges
 /// upkeep after every order, so a buyer the purse paid keeps its wages for its own upkeep, and a
@@ -12886,7 +12893,7 @@ impl HexLoans {
     /// One hex's loans, before any walker's arrival loans are taken off, and what each sharer
     /// arriving here lent, by the unit it is.
     fn read(hex: &Hex<'_>, ledger: &Ledger<'_>) -> (Self, Vec<(UnitKey, i64)>) {
-        let lending = Lending::before_maintenance(hex, ledger);
+        let lending = Lending::before(hex, ledger, StatePhase::Maintenance);
         let arrivals = ledger
             .relief()
             .walking
@@ -14173,6 +14180,21 @@ impl SharerStock {
     /// pools, off the unit's own row ([`study_settlement`], `ah-2f77`). Before the market - every GIVE, TAKE and
     /// CAST - there is nothing to carry.
     fn at(ledger: &Ledger<'_>, hex: &Hex<'_>, phase: StatePhase, tag: &str) -> Option<Self> {
+        Self::carrying(ledger, hex, phase, tag, |hex, ledger| {
+            Lending::before(hex, ledger, phase)
+        })
+    }
+
+    /// [`SharerStock::at`], carrying the loans `lending` reads rather than those of the moments
+    /// before `phase`: [`shipping_purse`] carries the fees already booked at TRANSPORT too
+    /// ([`Lending::through`], `ah-8bzm`). `lending` is asked only where silver pools.
+    fn carrying(
+        ledger: &Ledger<'_>,
+        hex: &Hex<'_>,
+        phase: StatePhase,
+        tag: &str,
+        lending: impl FnOnce(&Hex<'_>, &Ledger<'_>) -> Lending,
+    ) -> Option<Self> {
         let silver = tag.eq_ignore_ascii_case(SILVER);
         let staying = silver && phase > StatePhase::Movement;
         let sharing = if staying {
@@ -14185,7 +14207,7 @@ impl SharerStock {
             return None;
         }
         let lending = if silver && pooled {
-            Lending::before(hex, ledger, phase)
+            lending(hex, ledger)
         } else {
             Lending::nothing(hex, ledger)
         };
@@ -14194,8 +14216,9 @@ impl SharerStock {
         // "for buying or studying"), so a reading after it lends nothing more through the stock:
         // an overdraft the purse did not cover - a cast or a study it refused - stays its
         // borrower's and is never laid on a sharer (cold-read review finding 1). A shipment's
-        // fee, which the engine also draws on the pool for at TRANSPORT, is [`shipping_purse`]'s
-        // and not read here.
+        // fee, which the engine also draws on the pool for at TRANSPORT, is judged by
+        // [`shipping_purse`] on these positions, which carry the fees already lent for
+        // ([`SharerStock::carrying`], `ah-8bzm`).
         let lending_over = silver && phase > StatePhase::Study;
         // Where nothing pools, how each unit's own STUDY went ([`study_settlement`], `ah-2f77`);
         // in a pool the fold's judgment is already in [`Lending::refused`].
@@ -14295,8 +14318,21 @@ impl SharerStock {
         unit_id: &str,
         tag: &str,
     ) -> Option<(Self, usize)> {
+        Self::spender_in(ledger, hex, phase, unit_id, tag, Self::at(ledger, hex, phase, tag))
+    }
+
+    /// [`SharerStock::for_spender`] on a stock already read - [`SharerStock::carrying`]'s, for
+    /// [`shipping_purse`].
+    fn spender_in(
+        ledger: &Ledger<'_>,
+        hex: &Hex<'_>,
+        phase: StatePhase,
+        unit_id: &str,
+        tag: &str,
+        stock: Option<Self>,
+    ) -> Option<(Self, usize)> {
         let own = Self::held_at(ledger, phase, unit_id, tag)?;
-        let mut stock = Self::at(ledger, hex, phase, tag)?;
+        let mut stock = stock?;
         let index = match hex.units.iter().position(|o| o.unit.unit_id == unit_id) {
             Some(index) => index,
             None => {
@@ -15352,12 +15388,16 @@ struct SharingPurse {
 
 /// The moments `SHARE` lends silver for orders at, in the order `rules/sequenceofevents` runs
 /// them: CAST under "Instant Magic" (`ah-9n7l.2`), BUY under "Market orders" (read as movement
-/// begins), STUDY among "Month long orders", and the month's end, where what is still owed is
-/// netted.
-const PURSE_MOMENTS: [LendingMoment; 4] = [
+/// begins), STUDY among "Month long orders", TRANSPORT - whose fee the engine draws on the shared
+/// money as each shipment runs (`runorders.cpp`: `RunTransportOrders`, `GetSharedMoney`,
+/// `ConsumeSharedMoney`) - and the month's end, where what is still owed is netted. TRANSPORT is
+/// a moment like the others so that its fee loans live in the one record every reader takes loans
+/// from (`ah-8bzm`).
+const PURSE_MOMENTS: [LendingMoment; 5] = [
     LendingMoment::Cast,
     LendingMoment::Movement,
     LendingMoment::Study,
+    LendingMoment::Transport,
     LendingMoment::MonthEnd,
 ];
 
@@ -15452,20 +15492,17 @@ impl Lending {
         Self::over(hex, ledger, &moments)
     }
 
-    /// What the pool lent for orders by the time maintenance is assessed: [`Lending::before`]
-    /// maintenance, and then the shipment fees TRANSPORT drew on it ([`shipping_purse`]).
-    /// `rules/sequenceofevents` processes TRANSPORT orders before maintenance is assessed, so a
-    /// sharer whose silver paid a hex-mate's fee has that much less for its own upkeep
-    /// (`rules/share`; `ah-qugc`). TRANSPORT is no [`PURSE_MOMENTS`] moment: elsewhere the
-    /// month-end purse lends for a fee, and only maintenance, which runs between the two, needs it
-    /// read on its own.
-    fn before_maintenance(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Self {
-        let mut moments: Vec<LendingMoment> = PURSE_MOMENTS
+    /// What the pool lent through the moments whose phase is `phase` or earlier: what a reader
+    /// judging a claim *at* that moment must carry, the claims already paid there included. At
+    /// [`StatePhase::Transport`] that is every fee already booked, so a later shipment is judged
+    /// against the shared money the earlier fees left (`runorders.cpp`: `RunTransportOrders`;
+    /// `ah-8bzm`).
+    fn through(hex: &Hex<'_>, ledger: &Ledger<'_>, phase: StatePhase) -> Self {
+        let moments: Vec<LendingMoment> = PURSE_MOMENTS
             .iter()
             .copied()
-            .filter(|moment| moment.phase() < StatePhase::Maintenance)
+            .filter(|moment| moment.phase() <= phase)
             .collect();
-        moments.push(LendingMoment::Transport);
         Self::over(hex, ledger, &moments)
     }
 
@@ -15627,7 +15664,7 @@ impl Lending {
             // so at TRANSPORT it is handed back: what is left to lend for is the fees that were
             // paid (`ah-qugc` review, finding 1).
             let refused_shipments = |index: usize| {
-                if moment != LendingMoment::Transport {
+                if moment != LendingMoment::Transport || !ledger.refused_shipments_charged {
                     return 0;
                 }
                 let unit_id = &hex.units[index].unit.unit_id;
@@ -15735,11 +15772,12 @@ impl Lending {
             // (`spells.cpp`: `RunCreateArtifact`; `Do1StudyOrder`). So both moments pay their
             // claimants one by one, and neither stops the pool (`ah-li7l`, `ah-szu0`).
             //
-            // TRANSPORT too, for maintenance's reading alone ([`Lending::before_maintenance`]):
-            // [`shipping_purse`] judged each fee against what the sharers held, whether or not
-            // the market's purse stopped, so a fee it paid is lent for here whatever an earlier
-            // moment did (`ah-qugc` review, finding 2). No input is known that stops the market
-            // and still has the pool pay a fee, so no test reaches that case.
+            // TRANSPORT too: the engine checks each fee against the shared money left and refuses
+            // only one it cannot cover (`runorders.cpp`: `RunTransportOrders`, "Cannot afford
+            // shipping cost."), and [`shipping_purse`] judged each one so, whether or not the
+            // market's purse stopped - so a fee it paid is lent for here whatever an earlier
+            // moment did (`ah-qugc` review, finding 2; `ah-8bzm`). No input is known that stops
+            // the market and still has the pool pay a fee, so no test reaches that case.
             if matches!(
                 moment,
                 LendingMoment::Cast | LendingMoment::Study | LendingMoment::Transport
@@ -21652,6 +21690,7 @@ fn credit_shipped_goods(
 /// shipment is judged against, though the game ships that one (all or nothing, `ah-7ale.4`).
 fn charge_refused_shipments(hexes: &mut [(Hex<'_>, Ledger<'_>)], phase: StatePhase) {
     for (hex, ledger) in hexes.iter_mut() {
+        ledger.refused_shipments_charged = true;
         let refused: Vec<(String, i64, i64)> = ledger
             .refused_shipments
             .iter()
@@ -21708,15 +21747,25 @@ fn shipping_purse(
         Reading::Pooled => {
             // The ledger charges a borrower and leaves its lenders' rows alone (`ah-0mch`), so the
             // pool is read through the one reading that carries what the purse lent and handed
-            // back before TRANSPORT ([`SharerStock::at`]): the engine judges a fee against the
-            // shared money left then (`runorders.cpp`: "Cannot afford shipping cost."; `ah-x0iq`).
-            // A sharer that walked away is gone by TRANSPORT, so what it lent before it left is
-            // already in its borrowers' positions and not counted again; an arrival lends what it
-            // holds less what it lent here already.
+            // back - before TRANSPORT, and for the fees already booked at it ([`Lending::through`])
+            // - since the engine judges each fee against the shared money the earlier orders and
+            // fees left (`runorders.cpp`: `RunTransportOrders`, "Cannot afford shipping cost.";
+            // `ah-x0iq`, `ah-8bzm`). A sharer that walked away is gone by TRANSPORT, so what it
+            // lent before it left is already in its borrowers' positions and not counted again;
+            // an arrival lends what it holds less what it lent here already.
             let sender_id = &sender.unit.unit_id;
-            let Some((stock, at)) =
-                SharerStock::for_spender(ledger, hex, StatePhase::Transport, sender_id, SILVER)
-            else {
+            let lending = Lending::through(hex, ledger, StatePhase::Transport);
+            let stock = SharerStock::carrying(ledger, hex, StatePhase::Transport, SILVER, |_, _| {
+                lending.clone()
+            });
+            let Some((stock, at)) = SharerStock::spender_in(
+                ledger,
+                hex,
+                StatePhase::Transport,
+                sender_id,
+                SILVER,
+                stock,
+            ) else {
                 // A pool or a sender that cannot be read is judged on the ledger's figures.
                 return sharing.silver_held_at(ledger, LendingMoment::Transport)
                     + if sharing.pools_silver(sender) { 0 } else { own };
@@ -21728,7 +21777,6 @@ fn shipping_purse(
                 .filter(|(index, ordered)| *index != at && sharing.pools_silver(ordered))
                 .map(|(index, _)| stock.position(index))
                 .sum();
-            let lending = Lending::before(hex, ledger, StatePhase::Transport);
             let arrivals = ledger.relief().walking.lends_at(LendingMoment::Transport)
                 - lending.arrivals_lend.iter().sum::<i64>();
             stock.position(at) + sharers + arrivals
@@ -54731,14 +54779,60 @@ BUILD
         );
     }
 
-    /// A $0 sender whose first $45 fee a $50 sharer pays and whose second the engine refuses
-    /// (`runorders.cpp`: "Cannot afford shipping cost.") leaves the hex short at the month's end,
-    /// and there the purse is all or nothing ([`SharingPurse`]): it credits nobody, so the shipping
-    /// block lends nothing and the sender stays short both fees, exactly as before `ah-nq3k`
-    /// (`ah-nq3k` review, finding 2). Maintenance still carries the paid fee's loan
-    /// (`a_refused_shipment_leaves_the_paid_fees_loan_carried_into_maintenance`).
+    /// [`fee_after_loans`]'s hex with a second Quartermaster-5 sender, unit 906, owning a
+    /// Caravanserai of its own and holding nine furs and no silver: its `TRANSPORT 901 9 FUR`
+    /// costs $45, as 900's does (`rules/transport`: a long-distance sender "must also be a
+    /// quartermaster and be the owner of a transport structure").
+    fn two_senders(mates: Vec<ReportUnit>) -> Vec<ReportRegion> {
+        let mut regions = fee_after_loans(mates);
+        let mut second = with_item(with_skill(unit("906"), "QUAM", 5), 9, "furs", "FUR");
+        second.structure_id = Some("401".to_string());
+        second.region_id = regions[0].region_id.clone();
+        regions[0].structures.push(Structure {
+            structure_id: "401".to_string(),
+            name: "Caravan".to_string(),
+            kind: "Caravanserai".to_string(),
+            ..Default::default()
+        });
+        regions[0].units.push(second);
+        regions
+    }
+
+    const TWO_SENDERS: &str = "unit 900\nTRANSPORT 901 9 FUR\nunit 906\nTRANSPORT 901 9 FUR\n";
+
+    /// The engine pays the fees in turn, each against the shared money the earlier ones left
+    /// (`runorders.cpp`: `RunTransportOrders` checks `cost > u->GetSharedMoney()`, "Cannot afford
+    /// shipping cost.", then `ConsumeSharedMoney(cost)`). So a $50 sharer pays 900's $45 fee and
+    /// has $5 for 906's: the second shipment is refused. Before `ah-8bzm` both were priced as paid,
+    /// since the first fee's loan sat outside the purse's record and the second sender's purse
+    /// still counted the sharer's whole $50.
     #[test]
-    fn a_refused_shipment_beside_a_paid_one_lends_nothing_on_the_column() {
+    fn a_second_senders_fee_is_judged_against_what_the_first_fee_left() {
+        let review = review_turn(
+            &report(two_senders(vec![sharing(with_silver(unit("903"), 50))])),
+            TWO_SENDERS,
+            Some(&ruleset()),
+            with_map(),
+        );
+        assert_eq!(shipment_silver(&review, "900").shipping.len(), 1, "{:?}", review.silver);
+        assert!(
+            shipment_silver(&review, "906").shipping.is_empty(),
+            "$5 is left in the purse, not $45: {:?}",
+            review.silver
+        );
+    }
+
+    /// A $0 sender whose first $45 fee a $50 sharer pays and whose second the engine refuses
+    /// (`runorders.cpp`: "Cannot afford shipping cost.") leaves the hex short at the month's end.
+    /// There the purse keeps what it lent before the month's end, since the engine charged it as
+    /// the order ran (`ah-3uuf`), and the first fee is among that: the engine took it at TRANSPORT
+    /// (`ConsumeSharedMoney`). So the sharer reads `lent -45` and ends at $5 - the figure
+    /// maintenance already pays its upkeep from
+    /// (`a_refused_shipment_leaves_the_paid_fees_loan_carried_into_maintenance`) - and the sender is
+    /// short only the refused fee's ask. Before `ah-8bzm` the column lent nothing here while
+    /// maintenance carried the loan (`ah-nq3k` review, finding 2).
+    #[test]
+    fn a_refused_shipment_beside_a_paid_one_still_lends_the_paid_fee_on_the_column() {
         let mut regions = two_shipments_from_900(0);
         let mut sharer = sharing(with_silver(unit("903"), 50));
         sharer.region_id = regions[0].region_id.clone();
@@ -54747,9 +54841,9 @@ BUILD
         let review = review_turn(&report(regions), orders, Some(&ruleset()), with_map());
         let sender = shipment_silver(&review, "900");
         assert_eq!(sender.shipping.len(), 1, "one fee is paid: {sender:?}");
-        assert_eq!(sender.shared_silver_for_orders, 0, "{sender:?}");
-        assert_eq!(sender.short_for_orders, Some(90), "{sender:?}");
-        assert_eq!(fee_loan(&review, "903"), (0, Some(-45), 0, Some(50)));
+        assert_eq!(sender.shared_silver_for_orders, 45, "{sender:?}");
+        assert_eq!(sender.short_for_orders, Some(45), "{sender:?}");
+        assert_eq!(fee_loan(&review, "903"), (45, Some(0), -45, Some(5)));
     }
 
     fn unpaid_findings_with(
@@ -58688,7 +58782,7 @@ BUILD
                         .position(|o| o.unit.unit_id == LENDER)
                         .expect("the sharer is in the hex");
                     assert_eq!(
-                        Lending::before_maintenance(&hex, &ledger).netted().lends[x],
+                        Lending::before(&hex, &ledger, StatePhase::Maintenance).netted().lends[x],
                         case.lent,
                         "{label}: Lending"
                     );
@@ -58733,7 +58827,7 @@ BUILD
             let ordered = OrderedUnits::read(case.orders);
             let hex = Hex::read(&region, &ordered, &[]);
             let ledger = ledger_for(&hex, Some(&rules));
-            let lending = Lending::before_maintenance(&hex, &ledger);
+            let lending = Lending::before(&hex, &ledger, StatePhase::Maintenance);
             let netted = lending.clone().netted();
             let carried: Vec<i64> = (0..hex.units.len()).map(|i| lending.carried(i)).collect();
             let at = |id: &str| hex.units.iter().position(|o| o.unit.unit_id == id).unwrap();
