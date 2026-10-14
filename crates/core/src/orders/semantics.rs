@@ -12822,8 +12822,9 @@ impl HexLoans {
     /// **The one reading of a unit's silver net of what the `SHARE` purse lent out of it or into
     /// it** (`ah-ia41`): the unlent reading at `phase` - [`silver_balance`], with the relief
     /// maintenance's steps wrote, at [`StatePhase::Maintenance`]; [`unlent_silver_at`] before it -
-    /// with [`HexLoans::carried`] added. Four readers once added the loans by hand, and the third
-    /// and fourth forgot (`ah-su1x`, `ah-rbei`, `ah-x0iq`).
+    /// with [`HexLoans::carried`] added - for maintenance, steps 3 to 7. The orders' own readers,
+    /// TRANSPORT's purse among them, read the same loans per index through [`SharerStock::at`].
+    /// Readers that once added the loans by hand forgot them twice (`ah-su1x`, `ah-rbei`).
     fn silver_net_of_loans_at(&self, ledger: &Ledger<'_>, unit_id: &str, phase: StatePhase) -> i64 {
         let unlent = if phase == StatePhase::Maintenance {
             silver_balance(ledger, unit_id)
@@ -58147,6 +58148,15 @@ BUILD
             let (loans, _) = HexLoans::read(&hex, &ledger);
             for (id, carried) in [(LENDER, -case.lent), ("3", case.lent), ("4", 0), ("999", 0)] {
                 assert_eq!(loans.carried(id), carried, "unit {id}");
+                if id == LENDER {
+                    // Its $60 less its own $10 fee, less the $40 it lent: the $10
+                    // `upkeep_cases` says it keeps.
+                    assert_eq!(
+                        loans.silver_net_of_loans_at(&ledger, id, StatePhase::Transport),
+                        10,
+                        "the lender at TRANSPORT"
+                    );
+                }
                 assert_eq!(
                     loans.silver_net_of_loans_at(&ledger, id, StatePhase::Transport),
                     unlent_silver_at(&ledger, id, StatePhase::Transport) + carried,
