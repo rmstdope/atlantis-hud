@@ -2628,8 +2628,10 @@ fn forecast_hex(
             .copied()
             .unwrap_or_default();
         facts.transport_warning = transport_warning;
+        // Unlent on purpose: this is the overdraft the purse is asked to cover, which its loans
+        // would cancel (`ah-ia41`).
         facts.overdrawn_at_study =
-            (-spendable_silver_at(ledger, &ordered.unit.unit_id, StatePhase::Study)).max(0);
+            (-unlent_silver_at(ledger, &ordered.unit.unit_id, StatePhase::Study)).max(0);
         facts.drawn_at_give = gift_drawn_by(ledger, &ordered.unit.unit_id);
         claims.push(food_claim(&facts, ruleset));
 
@@ -7511,8 +7513,8 @@ fn unit_facts<'a>(
 fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     ledger.food_claims = step_one_claims(ledger, hex);
     ledger.faction_fed = feed_from_faction_food(&ledger.food_claims).settled;
-    let carried = UpkeepSilver::hex_row(hex, ledger).0;
-    charge_settled_upkeep(ledger, hex, &carried);
+    let loans = HexLoans::read(hex, ledger).0;
+    charge_settled_upkeep(ledger, hex, &loans);
 }
 
 /// Each unit's step-1 food claim - what it owes, and what it has spare, once it has eaten its own
@@ -7609,9 +7611,9 @@ fn pay_wages(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
 }
 
 /// Steps 1 to 3 of the payment order for one hex, once step 2 has been settled into
-/// `ledger.faction_fed`. `carried` is the hex's row of [`UpkeepSilver`]: what the `SHARE` purse
+/// `ledger.faction_fed`. `loans` is the hex's row of [`UpkeepSilver`]: what the `SHARE` purse
 /// moved into or out of each unit's silver for its orders, by unit id.
-fn charge_settled_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>, carried: &BTreeMap<String, i64>) {
+fn charge_settled_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>, loans: &HexLoans) {
     // Built before anything below draws the balance down - see *Known traps*: this function
     // mutates `balance` as it goes, and a `LateHoldings` read after that loop would price later
     // units against a balance earlier ones have already spent.
@@ -7664,13 +7666,8 @@ fn charge_settled_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>, carried: &BTree
         // Only the wages still in hand once TRANSPORT has run cover it: a shipment they paid for
         // leaves the fee to maintenance's later steps (`ah-9n7l.2`). So does silver the unit lent
         // the `SHARE` purse's orders, which the ledger leaves on its row (`ah-rbei`).
-        let in_hand = spendable_silver_at(ledger, &ordered.unit.unit_id, StatePhase::Transport)
-            .saturating_add(
-                carried
-                    .get(&ordered.unit.unit_id)
-                    .copied()
-                    .unwrap_or_default(),
-            );
+        let in_hand =
+            loans.silver_net_of_loans_at(ledger, &ordered.unit.unit_id, StatePhase::Transport);
         let covered = late_income(facts, region, *shares, ledger.ruleset).min(in_hand.max(0));
         let charged = (owed - covered).max(0);
         ledger.upkeep.insert(ordered.unit.unit_id.clone(), owed);
@@ -12749,19 +12746,21 @@ fn unpayable_upkeep(
 /// since maintenance lends none of the purse's order money, while [`silver_balance`] is read live
 /// at every [`UpkeepSilver::of`], so the relief steps 4-6 write is seen. Steps 1-3 read the loans
 /// too ([`charge_settled_upkeep`]): wages still in hand after TRANSPORT pay a unit's own fee only
-/// if the purse did not lend them out first.
+/// if the purse did not lend them out first. Both read through
+/// [`HexLoans::silver_net_of_loans_at`], so no step adds the loans onto a balance itself
+/// (`ah-ia41`).
 struct UpkeepSilver {
-    /// What the purse moved for each unit's orders, by hex and then by unit id.
-    carried: Vec<BTreeMap<String, i64>>,
+    /// What the purse moved for each unit's orders, one row per hex.
+    carried: Vec<HexLoans>,
 }
 
 impl UpkeepSilver {
     fn read(hexes: &[(Hex<'_>, Ledger<'_>)]) -> Self {
         let mut lent_on_arrival: BTreeMap<UnitKey, i64> = BTreeMap::new();
-        let mut carried: Vec<BTreeMap<String, i64>> = hexes
+        let mut carried: Vec<HexLoans> = hexes
             .iter()
             .map(|(hex, ledger)| {
-                let (row, arrivals) = Self::hex_row(hex, ledger);
+                let (row, arrivals) = HexLoans::read(hex, ledger);
                 for (unit, lent) in arrivals {
                     *lent_on_arrival.entry(unit).or_default() += lent;
                 }
@@ -12769,7 +12768,7 @@ impl UpkeepSilver {
             })
             .collect();
         for ((hex, _), row) in hexes.iter().zip(&mut carried) {
-            for (unit_id, carried) in row.iter_mut() {
+            for (unit_id, carried) in row.0.iter_mut() {
                 let key = unit_key(&hex.region.region_id, unit_id);
                 *carried -= lent_on_arrival.get(&key).copied().unwrap_or(0);
             }
@@ -12777,9 +12776,21 @@ impl UpkeepSilver {
         Self { carried }
     }
 
-    /// One hex's loans, by unit id, before any walker's arrival loans are taken off, and what each
-    /// sharer arriving here lent, by the unit it is.
-    fn hex_row(hex: &Hex<'_>, ledger: &Ledger<'_>) -> (BTreeMap<String, i64>, Vec<(UnitKey, i64)>) {
+    /// Unit `unit_id`'s silver in `hexes[hex]`, as maintenance reads it. A unit the hex does not
+    /// list carries nothing.
+    fn of(&self, hexes: &[(Hex<'_>, Ledger<'_>)], hex: usize, unit_id: &str) -> i64 {
+        self.carried[hex].silver_net_of_loans_at(&hexes[hex].1, unit_id, StatePhase::Maintenance)
+    }
+}
+
+/// One hex's row of [`UpkeepSilver`]: what the `SHARE` purse moved into (positive) or out of
+/// (negative) each unit's silver for its orders before maintenance, by unit id.
+struct HexLoans(BTreeMap<String, i64>);
+
+impl HexLoans {
+    /// One hex's loans, before any walker's arrival loans are taken off, and what each sharer
+    /// arriving here lent, by the unit it is.
+    fn read(hex: &Hex<'_>, ledger: &Ledger<'_>) -> (Self, Vec<(UnitKey, i64)>) {
         let lending = Lending::before_maintenance(hex, ledger);
         let arrivals = ledger
             .walking_silver
@@ -12812,14 +12823,28 @@ impl UpkeepSilver {
                 )
             })
             .collect();
-        (row, arrivals)
+        (Self(row), arrivals)
     }
 
-    /// Unit `unit_id`'s silver in `hexes[hex]`, as maintenance reads it. A unit the hex does not
-    /// list carries nothing.
-    fn of(&self, hexes: &[(Hex<'_>, Ledger<'_>)], hex: usize, unit_id: &str) -> i64 {
-        silver_balance(&hexes[hex].1, unit_id)
-            .saturating_add(self.carried[hex].get(unit_id).copied().unwrap_or_default())
+    /// What the purse moved into or out of `unit_id`'s silver; `0` for a unit the hex does not
+    /// list.
+    fn carried(&self, unit_id: &str) -> i64 {
+        self.0.get(unit_id).copied().unwrap_or_default()
+    }
+
+    /// **The one reading of a unit's silver net of what the `SHARE` purse lent out of it or into
+    /// it** (`ah-ia41`): the unlent reading at `phase` - [`silver_balance`], with the relief
+    /// maintenance's steps wrote, at [`StatePhase::Maintenance`]; [`unlent_silver_at`] before it -
+    /// with [`HexLoans::carried`] added - for maintenance, steps 3 to 7. The orders' own readers,
+    /// TRANSPORT's purse among them, read the same loans per index through [`SharerStock::at`].
+    /// Readers that once added the loans by hand forgot them twice (`ah-su1x`, `ah-rbei`).
+    fn silver_net_of_loans_at(&self, ledger: &Ledger<'_>, unit_id: &str, phase: StatePhase) -> i64 {
+        let unlent = if phase == StatePhase::Maintenance {
+            silver_balance(ledger, unit_id)
+        } else {
+            unlent_silver_at(ledger, unit_id, phase)
+        };
+        unlent.saturating_add(self.carried(unit_id))
     }
 }
 
@@ -13842,7 +13867,8 @@ impl LendingMoment {
     }
 }
 
-/// One unit's silver as the pool reads it at `moment`: [`spendable_silver_at`], and at the month's
+/// One unit's silver as the pool reads it at `moment`: [`unlent_silver_at`], unlent on purpose since
+/// [`Lending`] is computed from it and its loans cannot precede it (`ah-ia41`), and at the month's
 /// end [`relieved_balance`], which has maintenance and its relief settled. At the cast the plain
 /// balance: the market has not charged a `BUY` yet, so there is nothing for `overcharged` to give
 /// back.
@@ -13850,7 +13876,7 @@ fn silver_at(ledger: &Ledger<'_>, unit_id: &str, moment: LendingMoment) -> i64 {
     match moment {
         LendingMoment::MonthEnd => relieved_balance(ledger, unit_id, SILVER),
         LendingMoment::Cast => ledger.state.balance_at(StatePhase::Cast, unit_id, SILVER),
-        _ => spendable_silver_at(ledger, unit_id, moment.phase()),
+        _ => unlent_silver_at(ledger, unit_id, moment.phase()),
     }
 }
 
@@ -16127,7 +16153,9 @@ fn silver_short_mid_month(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
 /// CAST, PRODUCE and BUILD, so a wage pays none of them however much it leaves at the month's end
 /// (`ah-uwa3`, `ah-9n7l.2`).
 fn silver_short_before_wages(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
-    (-spendable_silver_at(ledger, unit_id, StatePhase::PrimaryProduction)).max(0)
+    // Unlent on purpose: read only where silver does not pool ([`judge_shortfalls`]' `!pooled`
+    // arm of [`silver_short_mid_month`]), so there is no loan to carry (`ah-ia41`).
+    (-unlent_silver_at(ledger, unit_id, StatePhase::PrimaryProduction)).max(0)
 }
 
 /// When a not-enough-silver sentence reads its figures, in `rules/sequenceofevents` order: GIVE
@@ -21568,10 +21596,13 @@ fn shipping_purse(
     }
 }
 
-/// A unit's silver in one phase's slot as a purse: the ledger balance plus what its `BUY` lines were
-/// charged beyond what they spent (`Ledger::overcharged`), since the ledger charges a cut-down
-/// purchase its whole ask and the market really left that silver in the unit's hands.
-fn spendable_silver_at(ledger: &Ledger<'_>, unit_id: &str, phase: StatePhase) -> i64 {
+/// A unit's silver in one phase's slot **before the `SHARE` purse's loans**: the ledger balance plus
+/// what its `BUY` lines were charged beyond what they spent (`Ledger::overcharged`), since the
+/// ledger charges a cut-down purchase its whole ask and the market really left that silver in the
+/// unit's hands. The ledger leaves a lender's row alone (`ah-0mch`), so for a sharer this still
+/// counts silver the purse lent away: a reader that wants what the unit has left reads
+/// [`HexLoans::silver_net_of_loans_at`], and every other caller says why it wants this (`ah-ia41`).
+fn unlent_silver_at(ledger: &Ledger<'_>, unit_id: &str, phase: StatePhase) -> i64 {
     ledger.state.balance_at(phase, unit_id, SILVER)
         + ledger.overcharged.get(unit_id).copied().unwrap_or_default()
 }
@@ -58225,6 +58256,43 @@ BUILD
                 silver_balance(ledger, "999"),
                 "a unit the hex does not list carries nothing"
             );
+        }
+
+        /// [`HexLoans::silver_net_of_loans_at`] is the one reading of a unit's silver with the
+        /// purse's loans carried (`ah-ia41`): the unlent reading at the phase asked - the relieved
+        /// balance at maintenance, [`unlent_silver_at`] before it - plus what the purse moved
+        /// into or out of the unit. No caller adds the loans onto a balance itself.
+        #[test]
+        fn silver_net_of_loans_reads_the_unlent_balance_with_the_loans() {
+            let rules = trident_rules();
+            let case = &upkeep_cases()[0];
+            let region = upkeep_region(case.sharer_silver, false);
+            let ordered = OrderedUnits::read(case.orders);
+            let hex = Hex::read(&region, &ordered, &[]);
+            let ledger = ledger_for(&hex, Some(&rules));
+            let (loans, _) = HexLoans::read(&hex, &ledger);
+            for (id, carried) in [(LENDER, -case.lent), ("3", case.lent), ("4", 0), ("999", 0)] {
+                assert_eq!(loans.carried(id), carried, "unit {id}");
+                if id == LENDER {
+                    // Its $60 less its own $10 fee, less the $40 it lent: the $10
+                    // `upkeep_cases` says it keeps.
+                    assert_eq!(
+                        loans.silver_net_of_loans_at(&ledger, id, StatePhase::Transport),
+                        10,
+                        "the lender at TRANSPORT"
+                    );
+                }
+                assert_eq!(
+                    loans.silver_net_of_loans_at(&ledger, id, StatePhase::Transport),
+                    unlent_silver_at(&ledger, id, StatePhase::Transport) + carried,
+                    "unit {id} at TRANSPORT"
+                );
+                assert_eq!(
+                    loans.silver_net_of_loans_at(&ledger, id, StatePhase::Maintenance),
+                    silver_balance(&ledger, id) + carried,
+                    "unit {id} at maintenance"
+                );
+            }
         }
 
         // --- one record of how each silver transfer was funded, read alike (`ah-rou9`) --------
