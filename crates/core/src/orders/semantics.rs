@@ -12603,7 +12603,7 @@ fn purse_carried(hexes: &[(Hex<'_>, Ledger<'_>)]) -> Vec<Vec<i64>> {
                 *lent_on_arrival.entry(arrival.unit.clone()).or_default() += lent;
             }
             (0..hex.units.len())
-                .map(|index| lending.borrows[index] - lending.lends[index])
+                .map(|index| lending.carried(index))
                 .collect()
         })
         .collect();
@@ -13811,7 +13811,7 @@ impl SharerStock {
             let unit_id = &ordered.unit.unit_id;
             let position = match Self::known_at(ledger, phase, unit_id, tag) {
                 Some(known) => {
-                    let carried = lending.borrows[index] - lending.lends[index];
+                    let carried = lending.carried(index);
                     // What the unit's orders overdrew it, answered by exactly one side
                     // ([`OverdraftOwner`], `ah-eoag`): the ledger's add-back, a refused cast's
                     // whole cost, or the purse's own lending and hand-backs.
@@ -15083,6 +15083,16 @@ impl Lending {
         self.refused_cast[index] + self.study[index].refused_fee()
     }
 
+    /// What the purse moved into (positive) or out of (negative) unit `index`'s silver by the
+    /// moments read: what it was lent less what it lent. **The one reading of a unit's loans**:
+    /// every reader that carries the purse into a unit's silver - [`SharerStock::at`], the
+    /// settlement's positions, the month-end purse and maintenance ([`UpkeepSilver`]) - asks
+    /// this rather than subtracting the two itself (`ah-pf7t`, `ah-rbei`). The same netted or
+    /// not ([`Lending::netted`] takes the same amount off both sides).
+    fn carried(&self, index: usize) -> i64 {
+        self.borrows[index] - self.lends[index]
+    }
+
     /// [`Lending::refused`] for every unit of the hex.
     fn refused_all(&self) -> Vec<i64> {
         (0..self.study.len())
@@ -15225,8 +15235,8 @@ impl Lending {
                     .sum::<i64>()
             };
             let position = |purse: &Lending, index: usize, at: LendingMoment| {
-                own(index, at) - purse.lends[index]
-                    + purse.borrows[index]
+                own(index, at)
+                    + purse.carried(index)
                     + purse.refused(index)
                     + unpaid[index]
                     + refused_shipments(index)
@@ -15683,9 +15693,8 @@ fn sharing_purse_over(
         let paid = Lending::settle(hex, ledger, &sharing, &before_month_end);
         let coverage = (0..hex.units.len())
             .map(|index| {
-                let position = own(index, LendingMoment::MonthEnd) - paid.lends[index]
-                    + paid.borrows[index]
-                    + paid.refused(index);
+                let position =
+                    own(index, LendingMoment::MonthEnd) + paid.carried(index) + paid.refused(index);
                 if !judged(index) {
                     None
                 } else if position < 0 || paid.refused(index) > 0 {
@@ -57254,6 +57263,32 @@ BUILD
                         review.findings
                     );
                 }
+            }
+        }
+
+        /// [`Lending::carried`] is the one reading of what the purse moved into or out of a unit's
+        /// silver: its borrows less its lends, and the same whether or not the two are netted.
+        #[test]
+        fn lending_carried_is_borrows_less_lends_netted_or_not() {
+            let rules = trident_rules();
+            let case = &upkeep_cases()[0];
+            let region = upkeep_region(case.sharer_silver, false);
+            let ordered = OrderedUnits::read(case.orders);
+            let hex = Hex::read(&region, &ordered, &[]);
+            let ledger = ledger_for(&hex, Some(&rules));
+            let lending = Lending::before(&hex, &ledger, StatePhase::Maintenance);
+            let netted = lending.clone().netted();
+            let carried: Vec<i64> = (0..hex.units.len()).map(|i| lending.carried(i)).collect();
+            let at = |id: &str| hex.units.iter().position(|o| o.unit.unit_id == id).unwrap();
+            assert_eq!(carried[at(LENDER)], -case.lent, "{lending:?}");
+            assert_eq!(carried[at("3")], case.lent, "{lending:?}");
+            for index in 0..hex.units.len() {
+                assert_eq!(
+                    carried[index],
+                    lending.borrows[index] - lending.lends[index],
+                    "{lending:?}"
+                );
+                assert_eq!(netted.carried(index), carried[index], "{netted:?}");
             }
         }
 
