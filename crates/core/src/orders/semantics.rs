@@ -12552,20 +12552,40 @@ fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<(String, i64)> {
     };
 
     // Every unit is judged on its own balance, which already carries whatever step 4 lent it
-    // (`silver_balance`). At most what maintenance drew is maintenance's fault, and the rest of an
-    // overdraft belongs to the unit's orders: a unit holding $10, buying $350 of horses and owing
-    // $40 is short $380, of which food or the fund may pay $40 and never the $340.
-    for ordered in &hex.units {
+    // (`silver_balance`) and what the `SHARE` purse lent for orders ([`purse_carried`]). At most
+    // what maintenance drew is maintenance's fault, and the rest of an overdraft belongs to the
+    // unit's orders: a unit holding $10, buying $350 of horses and owing $40 is short $380, of
+    // which food or the fund may pay $40 and never the $340.
+    let carried = purse_carried(hex, ledger);
+    for (index, ordered) in hex.units.iter().enumerate() {
         let Some((unit_id, drawn)) = owes(ordered) else {
             continue;
         };
-        let overdraft = -silver_balance(ledger, &unit_id);
+        let overdraft = -silver_balance(ledger, &unit_id).saturating_add(carried[index]);
         let short = overdraft.min(drawn);
         if short > 0 {
             claims.push((unit_id, short));
         }
     }
     claims
+}
+
+/// What the hex's `SHARE` purse moved into (positive) or out of (negative) each unit's silver for
+/// its orders - CAST, the market and STUDY ([`Lending::before`] maintenance) - index-aligned with
+/// `hex.units`. The ledger charges a borrower the whole of what it spends and leaves its lenders'
+/// rows alone (`ah-0mch`), so maintenance reads a unit's silver as [`silver_balance`] plus this:
+/// `rules/sequenceofevents` charges upkeep after every order, so a buyer the purse paid keeps its
+/// wages for its own upkeep, and a sharer that lent its silver has that much less for its own
+/// (`rules/share`: sharing "can leave the sharing unit without enough funds to pay maintenance";
+/// `ah-su1x`). All zero where nothing pools.
+///
+/// Loans only: what a refused CAST or STUDY handed back ([`Lending::refused`]) stays out, since
+/// the hex's warning still counts a refused order as spending that silver (`ah-9n7l.2`).
+fn purse_carried(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<i64> {
+    let lending = Lending::before(hex, ledger, StatePhase::Maintenance);
+    (0..hex.units.len())
+        .map(|index| lending.borrows[index] - lending.lends[index])
+        .collect()
 }
 
 /// Step 4 of the maintenance payment order: silver from other faction units in the same region pays
@@ -12598,6 +12618,12 @@ fn share_silver_for_upkeep(
         .iter()
         .map(|(hex, ledger)| unpayable_upkeep(hex, ledger).into_iter().collect())
         .collect();
+    // What the `SHARE` purse moved for orders, read once per hex: lending for upkeep below moves
+    // none of it.
+    let carried: Vec<Vec<i64>> = hexes
+        .iter()
+        .map(|(hex, ledger)| purse_carried(hex, ledger))
+        .collect();
 
     let mut covered: BTreeMap<UnitKey, i64> = BTreeMap::new();
     for Neighbourhood { members, .. } in groups {
@@ -12613,14 +12639,26 @@ fn share_silver_for_upkeep(
         }
 
         // Every own unit in the region lends what it has spare. `silver_balance` is post-orders and
-        // post-own-maintenance and already carries any relief written before this point, so it is
-        // exactly "what this unit has spare" - which `balance_of` is not.
+        // post-own-maintenance and already carries any relief written before this point, and with
+        // what the `SHARE` purse lent for orders carried ([`purse_carried`]) it is exactly "what
+        // this unit has spare" - which `balance_of` is not.
         let spare: Vec<(&Member, i64)> = members
             .iter()
             .filter(|(index, unit_id)| !hexes[*index].1.doubted.contains(unit_id))
             .map(|member| {
                 let (index, unit_id) = member;
-                (member, silver_balance(&hexes[*index].1, unit_id).max(0))
+                let (hex, ledger) = &hexes[*index];
+                let carried = hex
+                    .units
+                    .iter()
+                    .position(|ordered| &ordered.unit.unit_id == unit_id)
+                    .map_or(0, |position| carried[*index][position]);
+                (
+                    member,
+                    silver_balance(ledger, unit_id)
+                        .saturating_add(carried)
+                        .max(0),
+                )
             })
             .collect();
         let pool: i64 = spare.iter().map(|(_, spare)| spare).sum();
@@ -54497,6 +54535,97 @@ BUILD
         assert_eq!(shipped("903"), 0, "{:?}", shipment_silver(&review, "903"));
         assert_eq!(shipped("901"), tax - 50);
         assert_eq!(received, 150 + tax - 200);
+    }
+
+    /// The navigator's failed verification of `ah-su1x`: the hex of [`sharing_taxer_hex`], but
+    /// every unit pays its upkeep in silver and the buyer earns wages. `rules/sequenceofevents`
+    /// (New Age: Trident) runs TAX, then BUY, then WORK and TRANSPORT, then maintenance. So the
+    /// taxer lends the whole BUY, ships the rest, and is left with nothing for its own upkeep,
+    /// which "Money will be shared automatically between your units in the same region"
+    /// (`rules/economy_maintenance`) pays; the buyer's wages pay its own upkeep in full, since the
+    /// purse already paid its BUY. Before the fix the buyer was shown short of silver for the BUY
+    /// and its upkeep "paid by a faction-mate's silver" that nobody gave.
+    #[test]
+    fn a_borrower_that_works_pays_its_own_upkeep_and_the_lending_taxers_is_shared() {
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.tax_base = Some(10_000);
+        region.wages = Some("13.5".to_string());
+        region.max_wages = Some(100_000);
+        region.for_sale = vec![MarketItem {
+            amount: 100,
+            name: "wood".to_string(),
+            tag: "WOOD".to_string(),
+            price: 81,
+        }];
+        // Report order: 903, with nothing until its wages, before the buyer and the taxer.
+        region
+            .units
+            .push(sharing(starving(with_men(unit("903"), 3))));
+        region
+            .units
+            .push(sharing(starving(with_men(unit("902"), 8))));
+        region.units.push(sharing(starving(with_skill(
+            with_men(unit("901"), 3),
+            "COMB",
+            1,
+        ))));
+        let rules = trident_rules();
+        let orders = "unit 901\nTAX\nTRANSPORT 900 ALL SILV\nunit 902\nBUY 1 wood\n";
+        let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
+
+        let buyer = shipment_silver(&review, "902");
+        assert_eq!(buyer.short_for_orders, Some(0), "{buyer:?}");
+        assert_eq!(buyer.borrowed_for_orders, 81, "{buyer:?}");
+        assert_eq!(
+            buyer.shared_silver_covered, 0,
+            "the buyer's wages pay its own upkeep: {buyer:?}"
+        );
+        assert!(
+            review
+                .findings
+                .iter()
+                .all(|finding| finding.code != codes::NOT_ENOUGH_SILVER),
+            "{:?}",
+            review.findings
+        );
+
+        let taxer = shipment_silver(&review, "901");
+        let tax = taxer.income.expect("the taxer's tax is priced");
+        assert_eq!(
+            silver_shipped(&review, orders, "901"),
+            tax - 81,
+            "{taxer:?}"
+        );
+
+        assert!(
+            taxer
+                .changes
+                .iter()
+                .any(|moved| moved.cause == SilverChangeCause::Lent && moved.amount == -81),
+            "the taxer lends the whole BUY: {taxer:?}"
+        );
+
+        // Maintenance: the taxer lent and shipped everything, so its 30 (10 a man,
+        // `rules/economy_maintenance`) is paid by a faction-mate; nobody else's upkeep is. Only the
+        // fed unit's row shows it, as `ah-e66j` agreed.
+        assert_eq!(taxer.shared_silver_covered, 30, "{taxer:?}");
+        assert_eq!(taxer.upkeep, Some(0), "{taxer:?}");
+        assert_eq!(buyer.upkeep, Some(80), "{buyer:?}");
+        let relieved: i64 = ["900", "901", "902", "903"]
+            .iter()
+            .map(|id| shipment_silver(&review, id).shared_silver_covered)
+            .sum();
+        assert_eq!(relieved, 30, "{:#?}", review.silver);
+        // The worker held nothing until WORK, after the market (`rules/sequenceofevents`), so it
+        // lent nothing to the BUY - the navigator's third observation.
+        let worker = shipment_silver(&review, "903");
+        assert!(
+            worker
+                .changes
+                .iter()
+                .all(|moved| moved.cause != SilverChangeCause::Lent),
+            "{worker:?}"
+        );
     }
 
     /// What `id`'s `TRANSPORT` orders shipped, off its SILVER column: the `GaveAway` changes whose
