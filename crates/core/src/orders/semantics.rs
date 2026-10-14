@@ -15208,11 +15208,28 @@ impl Lending {
                     }
                 }
             }
+            // A shipment the pool could not pay was refused and took nothing, but
+            // `charge_refused_shipments` charges its whole ask into the balance the warning reads,
+            // so at TRANSPORT it is handed back: what is left to lend for is the fees that were
+            // paid (`ah-qugc` review, finding 1).
+            let refused_shipments = |index: usize| {
+                if moment != LendingMoment::Transport {
+                    return 0;
+                }
+                let unit_id = &hex.units[index].unit.unit_id;
+                ledger
+                    .refused_shipments
+                    .iter()
+                    .filter(|refused| &refused.unit_id == unit_id)
+                    .map(|refused| refused.cost)
+                    .sum::<i64>()
+            };
             let position = |purse: &Lending, index: usize, at: LendingMoment| {
                 own(index, at) - purse.lends[index]
                     + purse.borrows[index]
                     + purse.refused(index)
                     + unpaid[index]
+                    + refused_shipments(index)
             };
             let needs: Vec<i64> = (0..hex.units.len())
                 .map(|index| {
@@ -15302,7 +15319,15 @@ impl Lending {
             // study whose cost is more than the shared money left, taking nothing for it
             // (`spells.cpp`: `RunCreateArtifact`; `Do1StudyOrder`). So both moments pay their
             // claimants one by one, and neither stops the pool (`ah-li7l`, `ah-szu0`).
-            if matches!(moment, LendingMoment::Cast | LendingMoment::Study) {
+            //
+            // TRANSPORT too, for maintenance's reading alone ([`Lending::before_maintenance`]):
+            // [`shipping_purse`] judged each fee against what the sharers held, whether or not
+            // the market's purse stopped, so a fee it paid is lent for here whatever an earlier
+            // moment did (`ah-qugc` review, finding 2).
+            if matches!(
+                moment,
+                LendingMoment::Cast | LendingMoment::Study | LendingMoment::Transport
+            ) {
                 let (lent, refused) = SharerStock::new(parties).paid_one_by_one();
                 for (lender, lent) in who.iter().zip(lent) {
                     match lender {
@@ -15314,6 +15339,11 @@ impl Lending {
                 for (claim, missing) in claims.into_iter().zip(refused) {
                     let Some(index) = claim else { continue };
                     let unit_id = &hex.units[index].unit.unit_id;
+                    if missing > 0 && moment == LendingMoment::Transport {
+                        // Its refused shipments were handed back above, so what the pool
+                        // cannot pay is an overdraft no fee made, and nothing is lent for it.
+                        continue;
+                    }
                     if missing > 0 {
                         if moment == LendingMoment::Cast && purse.refused_casts[index] {
                             // Its cast was refused and handed back above, so what it still
@@ -53862,6 +53892,34 @@ BUILD
             .map(|finding| finding.message.as_str())
             .collect();
         assert!(short.is_empty(), "{short:?}");
+    }
+
+    /// The same, with a second shipment the pool cannot pay: the engine refuses it and takes
+    /// nothing for it, so the sharer's $45 still paid the first fee and it still has nothing for
+    /// its own upkeep (`ah-qugc` review, finding 1).
+    #[test]
+    fn a_refused_shipment_leaves_the_paid_fees_loan_carried_into_maintenance() {
+        let mut regions = two_shipments_from_900(0);
+        regions[0].units[0] = starving(regions[0].units[0].clone());
+        let here = regions[0].region_id.clone();
+        for mate in [
+            sharing(starving(with_silver(unit("903"), 50))),
+            starving(with_silver(unit("904"), 100)),
+        ] {
+            let mut mate = mate;
+            mate.region_id = here.clone();
+            regions[0].units.push(mate);
+        }
+        let orders = "unit 900\nTRANSPORT 901 9 FUR\nTRANSPORT 902 9 FUR\n";
+        let review = review_turn(&report(regions), orders, Some(&ruleset()), with_map());
+
+        let sender = shipment_silver(&review, "900");
+        assert_eq!(sender.shipping.len(), 1, "one fee is paid: {sender:?}");
+        let sharer = shipment_silver(&review, "903");
+        assert_eq!(
+            sharer.shared_silver_covered, 5,
+            "the sharer lent $45 of its $50 and pays 5 of its 10 itself: {sharer:?}"
+        );
     }
 
     /// TRANSPORT runs after movement (`rules/sequenceofevents`), so a sharing faction-mate that
