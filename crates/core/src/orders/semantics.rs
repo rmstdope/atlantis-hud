@@ -55450,6 +55450,43 @@ BUILD
         );
     }
 
+    /// Maintenance's steps 4 to 7 are settled once for each surface, and each reader is handed its
+    /// own by what it calls, never by where it runs (`ah-a6gv`). Two men studying combat cost $20
+    /// ("Most skills cost $10 per person per month to study", `rules/skills_studying` in Trident);
+    /// 902's $15 and the empty sharer cannot pay the rest, so the STUDY is refused and takes
+    /// nothing (`ah-li7l`). The SILVER column's settlement hands the $15 back, and step 4 lends 10
+    /// of it to starving 905's upkeep, so 905's purse is not short. The warning's counts the
+    /// refused STUDY as spending the $15 (`ah-9n7l.2`), so it still names 905's upkeep. Handing
+    /// `forecast_hex` the warning's settlement marks 905 short; handing the checks the column's
+    /// drops the upkeep from the sentence.
+    #[test]
+    fn each_reader_is_handed_its_own_settlement_of_a_refused_students_upkeep() {
+        let review = review_turn(
+            &report(vec![region(vec![
+                with_silver(with_men(unit("902"), 2), 15),
+                sharing(unit("904")),
+                starving(unit("905")),
+            ])]),
+            "unit 902\nSTUDY COMB\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        let fed = shipment_silver(&review, "905");
+        assert_eq!(fed.shared_silver_covered, 10, "{fed:?}");
+        assert_eq!(
+            fed.shared_silver_coverage, None,
+            "the column reads its own settlement: {fed:?}"
+        );
+        assert_eq!(
+            hex_silver_messages(&review),
+            vec![
+                "the units in this hex are short $15 between them: they can have $15 and their \
+                  orders and upkeep spend $30"
+            ],
+            "the warning reads its own settlement",
+        );
+    }
+
     /// The same with a second starving unit beside it: the warning still counts both fees whole
     /// (review of PR #1572, finding 1, case D).
     #[test]
