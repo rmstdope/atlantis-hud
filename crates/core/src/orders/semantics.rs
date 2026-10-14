@@ -5479,17 +5479,12 @@ impl PhaseState {
             balances: BTreeMap::new(),
             uncertain: BTreeMap::new(),
         };
-        // A tag the report writes on two lines (`balrog [BALR], balrog [BALR] (illusion)`,
-        // `ah-qrlx`) is one balance, the lines summed - an insert kept only the last.
         for ordered in &hex.units {
             for item in &ordered.unit.items {
-                let balance = state
-                    .balances
-                    .entry((ordered.unit.unit_id.clone(), item.tag.to_ascii_uppercase()))
-                    .or_insert([0; StatePhase::COUNT]);
-                for value in balance {
-                    *value = value.saturating_add(item.amount);
-                }
+                state.balances.insert(
+                    (ordered.unit.unit_id.clone(), item.tag.to_ascii_uppercase()),
+                    [item.amount; StatePhase::COUNT],
+                );
             }
         }
         state
@@ -20929,17 +20924,12 @@ fn carrying_after_orders(
     ledger: &Ledger<'_>,
     ruleset: Option<&Ruleset>,
 ) -> Carrying {
-    // One entry per tag, the report's lines for it summed: a tag written twice
-    // (`balrog [BALR], balrog [BALR] (illusion)`, `ah-qrlx`) is one holding, which the ledger's
-    // balance replaces whole.
-    let mut stepping_off: Vec<(String, i64)> = Vec::with_capacity(ordered.unit.items.len());
-    for item in &ordered.unit.items {
-        let tag = item.tag.to_ascii_uppercase();
-        match stepping_off.iter_mut().find(|(held, _)| held == &tag) {
-            Some(entry) => entry.1 = entry.1.saturating_add(item.amount),
-            None => stepping_off.push((tag, item.amount)),
-        }
-    }
+    let mut stepping_off: Vec<(String, i64)> = ordered
+        .unit
+        .items
+        .iter()
+        .map(|item| (item.tag.to_ascii_uppercase(), item.amount))
+        .collect();
     for (tag, holding) in ledger
         .state
         .holdings_at(StatePhase::Movement, &ordered.unit.unit_id)
@@ -62041,33 +62031,44 @@ BUILD
         );
     }
 
-    /// `ah-qrlx`: a unit listing `balrog [BALR]` twice - the real one and its illusion, as Maurice
-    /// de Bracy (1160) of `neworigins-3.0.0-g3-f42-t82.rep` does - printed `Weight: 261`. Each
-    /// BALR line was read as holding one of the two and took a balrog's weight off (`data/BALR`:
-    /// weight 250, walking capacity 50), so 80 grain (`data/GRAI`: weight 5) weighed 161 rather
-    /// than 661 and passed an allowance of 615 - a leader's 15 and two balrogs at 300.
+    /// `ah-qrlx`: Maurice de Bracy (1160) of `neworigins-3.0.0-g3-f42-t82.rep` holds a balrog and
+    /// an illusory one, which the report writes `balrog [BALR] (illusion)`. The illusion is its own
+    /// item (`data/IBALR`: weight 1, can walk, no capacity), so the unit walks 316 - a leader's
+    /// 15, a balrog's 300 (`data/LEAD`, `data/BALR`: weight 250, walking capacity 50) and the
+    /// illusion's own 1. Read as a second
+    /// balrog, the check saw one balrog fewer than the report's two and weighed 20 grain
+    /// (`data/GRAI`: weight 5) at 111 rather than 361.
     #[test]
-    fn a_gift_overloads_a_unit_that_lists_a_tag_twice() {
-        let mut maurice = carrying_with("1160", 261, "316/316/331/15");
-        for _ in 0..2 {
-            maurice.items.push(ItemAmount {
-                amount: 1,
-                name: "balrog".to_string(),
-                tag: "BALR".to_string(),
-                needs: None,
-            });
-        }
-        let region = region(vec![
-            maurice,
-            with_item(with_people(unit("8801"), vec![]), 80, "grain", "GRAI"),
-        ]);
-        let finding = only(check(
-            vec![region],
-            "unit 8801\nGIVE 1160 80 GRAI\nunit 1160\nMOVE S\n",
-        ));
+    fn a_gift_overloads_a_unit_holding_an_illusion() {
+        let report = crate::report::parse_report_full(
+            &[
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "Exits:",
+                "  South : plain (1,3) in Nowhere.",
+                "",
+                "* Maurice (1160), Foo (1), behind, leader [LEAD], balrog [BALR], balrog [BALR] \
+                 (illusion). Weight: 261. Capacity: 0/301/316/0.",
+                "* Granary (8801), Foo (1), leader [LEAD], 20 grain [GRAI]. Weight: 110. \
+                 Capacity: 0/0/15/0.",
+                "",
+            ]
+            .join("\n"),
+        );
+        let findings = check_turn(
+            &report,
+            "unit 8801\nGIVE 1160 20 GRAI\nunit 1160\nMOVE S\n",
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+        );
+        let finding = only(findings);
         assert_eq!(finding.code.as_str(), "unit-overloaded");
         assert!(
-            finding.message.contains("it carries 661"),
+            finding
+                .message
+                .contains("it carries 361 and the most it can move with is 316"),
             "{}",
             finding.message
         );

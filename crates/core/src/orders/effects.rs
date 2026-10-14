@@ -13346,13 +13346,14 @@ mod tests {
         );
     }
 
-    /// `ah-qrlx`: Maurice de Bracy (1160) of `neworigins-3.0.0-g3-f42-t82.rep` lists `balrog
-    /// [BALR]` twice - the real one and its illusion - and printed `Weight: 261`. Silver weighs
-    /// nothing (`data/SILV`, weight 0), so giving it away leaves the weight where it was; the
-    /// panel read each BALR line as holding one of the two and took a balrog's weight (`data/BALR`,
-    /// weight 250) off for each, showing -239.
+    /// `ah-qrlx`: Maurice de Bracy (1160) of `neworigins-3.0.0-g3-f42-t82.rep` holds a balrog and
+    /// an illusory one, written `balrog [BALR] (illusion)`, and printed `Weight: 261`. Silver weighs
+    /// nothing (`data/SILV`, weight 0), so giving it away leaves the weight where it was. The
+    /// illusion was read as a second real balrog, one more than the ledger's balance, and a
+    /// balrog's weight (`data/BALR`, weight 250) came off per line: -239. It is `illusory balrog
+    /// [IBALR]` (`data/IBALR`, weight 1).
     #[test]
-    fn giving_silver_away_leaves_the_weight_of_a_unit_listing_a_tag_twice() {
+    fn giving_silver_away_leaves_the_weight_of_a_unit_holding_an_illusion() {
         let report = [
             "Foo (1) Report",
             "",

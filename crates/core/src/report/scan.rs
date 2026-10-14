@@ -294,9 +294,20 @@ pub fn parse_settlement(input: &str) -> Option<Settlement> {
 ///
 /// A bare `leader [LEAD]` means one. An unfinished ship's trailing `(needs 33)` - the engine's
 /// `Item::Report` form for one, giving the work still to do - is read into `needs` (`ah-uxmh`).
+/// An illusion's trailing `(illusion)` - `Item::Report` again, written only to the owner - names
+/// its own item, read as the data page names it: `balrog [BALR] (illusion)` is `illusory balrog
+/// [IBALR]` (`data/IBALR`, `ah-qrlx`).
 #[must_use]
 pub fn parse_item_amount(input: &str) -> Option<ItemAmount> {
     let text = input.trim().trim_end_matches('.');
+    if let Some(real) = text.strip_suffix(" (illusion)") {
+        let item = parse_item_amount(real)?;
+        return Some(ItemAmount {
+            name: format!("illusory {}", item.name),
+            tag: format!("I{}", item.tag),
+            ..item
+        });
+    }
     let (text, needs) = match text
         .strip_suffix(')')
         .and_then(|rest| rest.rsplit_once(" (needs "))
@@ -611,6 +622,29 @@ mod tests {
                 .expect("item")
                 .needs,
             None
+        );
+    }
+
+    /// The engine's `Item::Report` writes an illusion under its real item's name and tag with
+    /// ` (illusion)` appended, and only to the unit's owner (`../Atlantis/items.cpp`). It is its
+    /// own item, `illusory balrog [IBALR], weight 1` (`data/IBALR`), and is read as that, or it
+    /// weighs as a real balrog (`data/BALR`, weight 250) and the two lines share one tag
+    /// (`ah-qrlx`).
+    #[test]
+    fn reads_an_illusion_as_its_illusory_item() {
+        assert_eq!(
+            parse_item_amount("balrog [BALR] (illusion)"),
+            Some(ItemAmount {
+                amount: 1,
+                name: "illusory balrog".to_string(),
+                tag: "IBALR".to_string(),
+                needs: None,
+            })
+        );
+        let imps = parse_item_amount("3 imps [IMP] (illusion)").expect("item");
+        assert_eq!(
+            (imps.amount, imps.name.as_str(), imps.tag.as_str()),
+            (3, "illusory imps", "IIMP")
         );
     }
 

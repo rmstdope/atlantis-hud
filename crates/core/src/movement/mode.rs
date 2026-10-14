@@ -358,22 +358,6 @@ pub fn carrying_after_transfers(
             .sum::<i64>()
     };
 
-    // A report may write one tag on two lines - `balrog [BALR], balrog [BALR] (illusion)`
-    // (`ah-qrlx`) - and both callers pass the report's own lines through, so the holding is the
-    // tag's lines summed. Compared line by line, each read as the whole holding and the
-    // difference was counted once per line.
-    let mut holdings: Vec<(&str, i64)> = Vec::with_capacity(stepping_off.len());
-    for (tag, count) in stepping_off {
-        match holdings
-            .iter_mut()
-            .find(|(held, _)| held.eq_ignore_ascii_case(tag))
-        {
-            Some(entry) => entry.1 = entry.1.saturating_add(*count),
-            None => holdings.push((tag, *count)),
-        }
-    }
-    let stepping_off = holdings.as_slice();
-
     let weight = reported_weight.map(|printed| {
         let mut weight = printed;
         let mut changed = |tag: &str, moved: i64| {
