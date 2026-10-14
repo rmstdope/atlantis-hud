@@ -349,7 +349,8 @@ export type ColumnShares = Partial<Record<UnitColumn, number>>;
 const NOMINAL_TABLE_PX = 1504;
 
 /**
- * The silver figure the column shows: the forecast, less upkeep when the setting says so.
+ * The silver figure the column shows: the forecast, less upkeep - its own, and what it paid of
+ * faction-mates' - when the setting says so.
  *
  * `null` propagates - a forecast that could not be priced, or an upkeep that could not be, is not
  * a number - which is what puts the row's `?` in the column and sorts it last. With the setting
@@ -400,7 +401,9 @@ export function silverShown(silver: UnitSilver | null, countUpkeep: boolean): nu
   if (!countUpkeep) {
     return silver.atMonthEnd;
   }
-  return silver.upkeep === null ? null : silver.atMonthEnd - silver.upkeep;
+  // What the unit's silver paid of faction-mates' upkeep is maintenance too, and off with it
+  // (`ah-2zku`).
+  return silver.upkeep === null ? null : silver.atMonthEnd - silver.upkeep - silver.upkeepLent;
 }
 
 

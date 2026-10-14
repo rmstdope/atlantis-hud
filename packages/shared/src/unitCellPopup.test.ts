@@ -11,6 +11,7 @@ import {
   popupLabelInk,
   reportedFlags,
   reportedItems,
+  type ColumnPopup,
   type PopupFacts
 } from "./unitCellPopup";
 
@@ -3903,5 +3904,180 @@ describe("the shared no-change sentence", () => {
       )
     );
     expect(popup.notes).toEqual(["Nothing this month changes this."]);
+  });
+});
+
+// `rules/economy_maintenance` (New Age: Trident) pays upkeep from "Silver in the unit's possession",
+// then "Silver from other faction units in the same region": the core books that step as a
+// `was-lent-for-upkeep` / `lent-for-upkeep` pair, and the hover draws it above the `upkeep` row
+// (`ah-2zku`, docs/ui/ah-2zku-upkeep-lent.html).
+describe("upkeep a faction-mate paid, in the silver popup", () => {
+  const silverPopup = (silver: Parameters<typeof aUnitSilver>[0], more: Partial<PopupFacts> = {}) =>
+    columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({ silver: aUnitSilver(silver), countUpkeep: true, ...more })
+      )
+    );
+  const labels = (popup: ColumnPopup) => popup.lines.map((line) => line.label);
+
+  // Unit (4862) of the bead: drained of 789 by a faction-mate's GIVE, its wage shipped, its 100
+  // upkeep paid by Unit (3431).
+  const drained = {
+    held: 789,
+    atMonthEnd: 0,
+    upkeep: 0,
+    sharedSilverCovered: 100,
+    changes: [
+      { amount: 226, cause: "worked" as const, line: null, other: null },
+      { amount: -789, cause: "lent" as const, line: null, other: null },
+      { amount: -226, cause: "gave-away" as const, line: 7, other: "Prefect Elfried (5508)" },
+      { amount: 100, cause: "was-lent-for-upkeep" as const, line: null, other: "Unit (3431)" }
+    ]
+  };
+
+  it("keeps the GIVE's draw whole and draws the fed unit's line directly above the upkeep row", () => {
+    const popup = silverPopup(drained);
+    expect(labels(popup)).toEqual([
+      "silver",
+      "worked",
+      "lent",
+      "gave away",
+      "was lent for upkeep",
+      "upkeep"
+    ]);
+    expect(popup.lines.find((line) => line.label === "lent")).toMatchObject({ value: "-789" });
+    expect(popup.lines.find((line) => line.label === "was lent for upkeep")).toEqual({
+      label: "was lent for upkeep",
+      value: "+100",
+      tone: "up",
+      why: "by Unit (3431)"
+    });
+    expect(popup.lines.at(-1)).toEqual({ label: "upkeep", value: "-100", tone: "down" });
+    expect(popup.lines[0]).toMatchObject({ value: "0", change: { from: "789" } });
+  });
+
+  it("says nothing about starvation, and drops the faction-mate's part of who paid", () => {
+    const popup = silverPopup(drained, { silverWarned: true });
+    expect(popup.notes.join(" ")).not.toContain("may avoid starvation");
+    expect(popup.notes.join(" ")).not.toContain("upkeep was paid by");
+  });
+
+  it("keeps the rest of who paid the upkeep", () => {
+    const popup = silverPopup({
+      ...drained,
+      ownFoodCovered: 8,
+      changes: [{ amount: 100, cause: "was-lent-for-upkeep", line: null, other: "Unit (3431)" }]
+    });
+    expect(popup.notes).toContain("This unit's upkeep was paid by its own food (8).");
+  });
+
+  it("names every payer on one line", () => {
+    const popup = silverPopup({
+      ...drained,
+      changes: [
+        { amount: 63, cause: "was-lent-for-upkeep", line: null, other: "Unit (4682)" },
+        { amount: 37, cause: "was-lent-for-upkeep", line: null, other: "Unit (4829)" }
+      ]
+    });
+    expect(popup.lines.filter((line) => line.label === "was lent for upkeep")).toEqual([
+      { label: "was lent for upkeep", value: "+100", tone: "up", why: "by Unit (4682) and Unit (4829)" }
+    ]);
+  });
+
+  it("draws the payer's line above its own upkeep row, and takes it off the month end", () => {
+    const popup = silverPopup({
+      held: 0,
+      atMonthEnd: 1645,
+      upkeep: 30,
+      upkeepLent: 100,
+      changes: [
+        { amount: 1578, cause: "was-given", line: 3, other: "Unit (4868)" },
+        { amount: 67, cause: "worked", line: null, other: null },
+        { amount: -100, cause: "lent-for-upkeep", line: null, other: "Unit (4862)" }
+      ]
+    });
+    expect(labels(popup).slice(-2)).toEqual(["lent for upkeep", "upkeep"]);
+    expect(popup.lines.find((line) => line.label === "lent for upkeep")).toEqual({
+      label: "lent for upkeep",
+      value: "-100",
+      tone: "down",
+      why: "to Unit (4862)"
+    });
+    expect(popup.lines.at(-1)).toEqual({ label: "upkeep", value: "-30", tone: "down" });
+    expect(popup.lines[0]).toMatchObject({ value: "1515" });
+  });
+
+  it("names every unit one payer fed on one line, with the total", () => {
+    const popup = silverPopup({
+      held: 500,
+      atMonthEnd: 500,
+      upkeep: 10,
+      upkeepLent: 150,
+      changes: [
+        { amount: -100, cause: "lent-for-upkeep", line: null, other: "Unit (4862)" },
+        { amount: -50, cause: "lent-for-upkeep", line: null, other: "Unit (4870)" }
+      ]
+    });
+    expect(popup.lines.find((line) => line.label === "lent for upkeep")).toMatchObject({
+      value: "-150",
+      why: "to Unit (4862) and Unit (4870)"
+    });
+  });
+
+  it("keeps the starvation sentence where faction-mates could pay only part", () => {
+    const popup = silverPopup(
+      {
+        held: 0,
+        atMonthEnd: 0,
+        upkeep: 50,
+        sharedSilverCovered: 50,
+        changes: [{ amount: 50, cause: "was-lent-for-upkeep", line: null, other: "Unit (4682)" }]
+      },
+      { silverWarned: true }
+    );
+    expect(popup.lines.slice(-2)).toEqual([
+      { label: "was lent for upkeep", value: "+50", tone: "up", why: "by Unit (4682)" },
+      { label: "upkeep", value: "-100", tone: "down" }
+    ]);
+    expect(popup.lines[0]).toMatchObject({ value: "-50" });
+    expect(popup.notes).toContain(
+      "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
+    );
+  });
+
+  it("hides both lines with the upkeep row when upkeep is not counted", () => {
+    const fed = silverPopup(drained, { countUpkeep: false });
+    expect(labels(fed)).toEqual(["silver", "worked", "lent", "gave away"]);
+    const payer = silverPopup(
+      {
+        held: 0,
+        atMonthEnd: 1645,
+        upkeep: 30,
+        upkeepLent: 100,
+        changes: [{ amount: -100, cause: "lent-for-upkeep", line: null, other: "Unit (4862)" }]
+      },
+      { countUpkeep: false }
+    );
+    expect(labels(payer)).toEqual(["silver"]);
+    expect(payer.lines[0]).toMatchObject({ value: "1645" });
+  });
+
+  it("draws neither where the month cannot be added up", () => {
+    const popup = silverPopup({
+      ...drained,
+      upkeep: 0,
+      doubt: "estimated-men",
+      changes: []
+    });
+    expect(labels(popup)).not.toContain("was lent for upkeep");
+    expect(labels(popup)).not.toContain("upkeep");
+  });
+
+  it("reads the new lines out like every other movement line", () => {
+    expect(popupAsText(silverPopup(drained))).toContain(
+      "was lent for upkeep +100, by Unit (3431). upkeep -100."
+    );
   });
 });

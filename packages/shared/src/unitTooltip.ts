@@ -205,7 +205,16 @@ function summariseSilver(
       value: atMostIf(figure(silver.lateIncome, unknown), silver.lateIncome, silver.lateIncomeAtMost)
     },
     { label: "Out", value: figure(silver.expense, unknown) },
-    ...(countUpkeep ? [{ label: "Upkeep", value: figure(silver.upkeep, unknown) }] : []),
+    // What the unit paid of faction-mates' upkeep is upkeep it paid, so the rows still add up to
+    // the month end (`ah-2zku`).
+    ...(countUpkeep
+      ? [
+          {
+            label: "Upkeep",
+            value: figure(silver.upkeep === null ? null : silver.upkeep + silver.upkeepLent, unknown)
+          }
+        ]
+      : []),
     {
       label: "At month end",
       value: atMostIf(figure(end, unknown), end, shareBoundedByAnUnreadUnit(silver))
@@ -226,12 +235,15 @@ function inTime(silver: UnitSilver): number | null {
   return silver.income - silver.lateIncome;
 }
 
-/** The month-end figure with upkeep taken off, or `null` where either term is unpriceable. */
+/**
+ * The month-end figure with upkeep taken off, or `null` where either term is unpriceable - the
+ * column's own figure (`silverShown`), what the unit paid of faction-mates' upkeep included.
+ */
 function shownEnd(silver: UnitSilver): number | null {
   if (silver.atMonthEnd === null || silver.upkeep === null) {
     return null;
   }
-  return silver.atMonthEnd - silver.upkeep;
+  return silver.atMonthEnd - silver.upkeep - silver.upkeepLent;
 }
 
 

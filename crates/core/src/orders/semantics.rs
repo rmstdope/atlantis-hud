@@ -1090,7 +1090,7 @@ struct ReportWideSettlement {
     /// What each neighbourhood's faction food still holds once step 2 has run, index-aligned with
     /// [`SharingReach::neighbourhoods`]: `None` where step 2 was contended (`FactionFoodPass::pool_left`).
     food_left: Vec<Option<Vec<FoodAmount>>>,
-    shared_silver: BTreeMap<UnitKey, i64>,
+    shared_silver: SharedUpkeep,
     food_relief: BTreeMap<UnitKey, LateFoodRelief>,
     fund: UpkeepSettlement,
 }
@@ -1212,7 +1212,7 @@ impl ReportWideStep {
 
 /// What one of maintenance steps 4 to 7 paid on the units' behalf.
 enum UpkeepStepFigures {
-    SharedSilver(BTreeMap<UnitKey, i64>),
+    SharedSilver(SharedUpkeep),
     FoodRelief(BTreeMap<UnitKey, LateFoodRelief>),
     Fund(UpkeepSettlement),
 }
@@ -1440,7 +1440,7 @@ fn draw_on_unclaimed_fund(
 struct Relief<'a> {
     /// Step 4: silver from other own units in the region each unit ends the month in (`ah-e66j`,
     /// `ah-bwxp.1`).
-    shared_silver: &'a BTreeMap<UnitKey, i64>,
+    shared_silver: &'a SharedUpkeep,
     /// Steps 5 and 6: the unit's own food, then the faction food where it ends the month
     /// (`ah-eacd`, `ah-n3qb`).
     food: &'a BTreeMap<UnitKey, LateFoodRelief>,
@@ -2978,11 +2978,45 @@ fn forecast_hex(
             continue;
         };
         let covered = shared_silver
+            .covered
             .get(&unit_key(&hex.region.region_id, &ordered.unit.unit_id))
             .copied()
             .unwrap_or_default();
         forecast.shared_silver_covered = covered;
         forecast.upkeep = Some((owed - covered).max(0));
+    }
+    // Who paid whom at step 4, on both sides: the fed unit's `was lent for upkeep` and the payer's
+    // `lent for upkeep`, each naming the other (`ah-2zku`). Outside every total, as maintenance
+    // always is; the payer's sum is `upkeep_lent`, which a consumer counting upkeep takes off.
+    for (ordered, forecast) in hex.units.iter().zip(into[start..].iter_mut()) {
+        let key = unit_key(&hex.region.region_id, &ordered.unit.unit_id);
+        for transfer in &shared_silver.transfers {
+            let (amount, other, cause) = if transfer.fed == key {
+                (
+                    transfer.amount,
+                    &transfer.payer_label,
+                    SilverChangeCause::WasLentForUpkeep,
+                )
+            } else if transfer.payer == key {
+                forecast.upkeep_lent += transfer.amount;
+                (
+                    -transfer.amount,
+                    &transfer.fed_label,
+                    SilverChangeCause::LentForUpkeep,
+                )
+            } else {
+                continue;
+            };
+            // The guard every hex-pass line makes: a doubted unit's list is emptied (`ah-rgkk.4.4`).
+            if forecast.doubt.is_none() {
+                forecast.changes.push(SilverChange {
+                    amount,
+                    cause,
+                    line: None,
+                    other: Some(other.clone()),
+                });
+            }
+        }
     }
 
     // Steps 5 and 6, decided per hex before this one was priced and only applied here.
@@ -7760,7 +7794,6 @@ fn charge_settled_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>, loans: &HexLoan
     // surfaces contradicting each other, which is what `ah-7cdt`'s verification found.
     let claims = ledger.food_claims.clone();
     let settled = ledger.faction_fed.clone();
-
     for (((ordered, facts), shares), claim) in
         hex.units.iter().zip(&facts).zip(&shares).zip(&claims)
     {
@@ -13056,14 +13089,15 @@ fn upkeep_still_drawn(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
 /// Runs before steps 5 and 6, so a neighbour's silver is spent before anybody's grain - which is
 /// the rules' own order and not a preference.
 ///
-/// Returns what each fed unit's neighbours paid, for the column to show. A region whose pool cannot
-/// cover every claimant lends all of it anyway and returns nothing for it: the total is exact even
-/// though which unit the engine feeds is not, and understating what step 4 paid would send a claim
-/// to the unclaimed fund that step 4 had already met.
+/// Returns what each fed unit's neighbours paid, and who paid whom, for the column to show. A region
+/// whose pool cannot cover several claimants lends all of it anyway and returns nothing for it:
+/// the total is exact even though which unit the engine feeds is not, and understating what step 4
+/// paid would send a claim to the unclaimed fund that step 4 had already met. A pool short of a
+/// single claimant's fee leaves no such doubt, so what it paid is returned (`ah-2zku`).
 fn share_silver_for_upkeep(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
     groups: &[Neighbourhood],
-) -> BTreeMap<UnitKey, i64> {
+) -> SharedUpkeep {
     // What the `SHARE` purse moved for orders, read once per hex: lending for upkeep below moves
     // none of it.
     let upkeep = UpkeepSilver::read(hexes);
@@ -13076,7 +13110,7 @@ fn share_silver_for_upkeep(
         })
         .collect();
 
-    let mut covered: BTreeMap<UnitKey, i64> = BTreeMap::new();
+    let mut shared = SharedUpkeep::default();
     for Neighbourhood { members, .. } in groups {
         let claims: Vec<(&Member, i64)> = members
             .iter()
@@ -13114,8 +13148,11 @@ fn share_silver_for_upkeep(
         // claims - and no unit's figure moves. Pessimistic, and the same posture `food_contended`
         // and `unclaimed_contended` already take.
         let short = pool < needed;
+        // Who is fed is in doubt only where a short pool has several claimants to choose between.
+        let credited = !short || claims.len() == 1;
         let mut left = pool.min(needed);
         let lent = left;
+        let mut fed: Vec<(UnitKey, String, i64)> = Vec::new();
         for ((index, unit_id), claim) in &claims {
             if left <= 0 {
                 break;
@@ -13128,10 +13165,10 @@ fn share_silver_for_upkeep(
                 .relieved
                 .entry(unit_id.clone())
                 .or_default() += relieved;
-            if !short {
-                *covered
-                    .entry(unit_key(&hex.region.region_id, unit_id))
-                    .or_default() += relieved;
+            if credited && relieved > 0 {
+                let key = unit_key(&hex.region.region_id, unit_id);
+                *shared.covered.entry(key.clone()).or_default() += relieved;
+                fed.push((key, unit_label(hex, unit_id), relieved));
             }
         }
         // The hex-level sentence ("the units in this hex are short ... between them") sums the
@@ -13147,6 +13184,7 @@ fn share_silver_for_upkeep(
 
         // The lenders, in document order, for exactly what the borrowers took.
         let mut owed = lent;
+        let mut paid: Vec<(UnitKey, String, i64)> = Vec::new();
         for ((index, unit_id), spare) in &spare {
             if owed <= 0 {
                 break;
@@ -13154,17 +13192,96 @@ fn share_silver_for_upkeep(
             let taken = (*spare).min(owed);
             if taken > 0 {
                 owed -= taken;
-                *hexes[*index]
-                    .1
-                    .relief_mut()
-                    .lent
-                    .entry(unit_id.clone())
-                    .or_default() += taken;
+                let (hex, ledger) = &mut hexes[*index];
+                *ledger.relief_mut().lent.entry(unit_id.clone()).or_default() += taken;
+                paid.push((
+                    unit_key(&hex.region.region_id, unit_id),
+                    unit_label(hex, unit_id),
+                    taken,
+                ));
             }
+        }
+        if credited {
+            shared.transfers.extend(pair_upkeep_transfers(&paid, &fed));
         }
     }
 
-    covered
+    shared
+}
+
+/// What step 4 of the maintenance payment order paid, for the column: each fed unit's total, and
+/// who paid whom (`ah-2zku`).
+#[derive(Debug, Default)]
+struct SharedUpkeep {
+    /// What each fed unit's faction-mates paid of its upkeep.
+    covered: BTreeMap<UnitKey, i64>,
+    /// Who paid whom, and how much, in document order.
+    transfers: Vec<UpkeepTransfer>,
+}
+
+/// One payer's part of one fed unit's upkeep at step 4. Each side carries its label, as
+/// [`SilverChange::other`] names a unit, since a neighbourhood can span hexes and the hex that
+/// books one side need not list the other.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UpkeepTransfer {
+    payer: UnitKey,
+    payer_label: String,
+    fed: UnitKey,
+    fed_label: String,
+    amount: i64,
+}
+
+/// A unit of `hex` as [`SilverChange::other`] names it: `<name> (<id>)`, the form a gift's giver
+/// takes; `unit <id>` for one the hex does not list.
+fn unit_label(hex: &Hex<'_>, unit_id: &str) -> String {
+    hex.units
+        .iter()
+        .find(|ordered| ordered.unit.unit_id == unit_id)
+        .map_or_else(
+            || format!("unit {unit_id}"),
+            |ordered| format!("{} ({})", ordered.unit.name, ordered.unit.unit_id),
+        )
+}
+
+/// Pairs what the lenders paid with what the fed units were relieved, both in document order: the
+/// first lender's silver pays the first fee until one runs out. The engine names no pairing (step 4
+/// pools the region's silver); this is the order step 4 already lends and relieves in, so the
+/// pairs sum to exactly what `upkeep_lent` and `upkeep_relieved` hold.
+fn pair_upkeep_transfers(
+    paid: &[(UnitKey, String, i64)],
+    fed: &[(UnitKey, String, i64)],
+) -> Vec<UpkeepTransfer> {
+    let mut transfers = Vec::new();
+    let mut payers = paid.iter();
+    let mut payer: Option<(&UnitKey, &String)> = None;
+    let mut payer_left = 0;
+    for (fed, fed_label, owed) in fed {
+        let mut owed = *owed;
+        while owed > 0 {
+            if payer_left == 0 {
+                let Some((next, label, amount)) = payers.next() else {
+                    return transfers;
+                };
+                payer = Some((next, label));
+                payer_left = *amount;
+                continue;
+            }
+            let Some((payer, payer_label)) = payer else {
+                return transfers;
+            };
+            let amount = owed.min(payer_left);
+            owed -= amount;
+            payer_left -= amount;
+            transfers.push(UpkeepTransfer {
+                payer: payer.clone(),
+                payer_label: payer_label.clone(),
+                fed: fed.clone(),
+                fed_label: fed_label.clone(),
+                amount,
+            });
+        }
+    }
+    transfers
 }
 
 /// One unit's place in `hexes`: the hex it is listed in, and its number there. A number alone does
@@ -16818,8 +16935,9 @@ fn pool_shortfalls(
     // the verdicts' claims make below - every undoubted claimant's overdraft against the pool.
     // The verdicts see only units with a SILVER entry at maintenance, while this reads every
     // unit's `relieved_balance`; they agree because that balance can be negative only through a
-    // charge, which books the entry - `UpkeepRelief::relieved` only adds, and only a sharer that holds
-    // silver has `UpkeepRelief::lent` to subtract.
+    // charge, which books the entry - `UpkeepRelief::relieved` only adds, and a unit that lends at
+    // step 4 either holds silver or was charged a cut GIVE whose unfunded part it lends from, which
+    // booked the entry already (`ah-2zku`).
     let silver_by_moment =
         sharing.walking.is_some() && sharing.reading(SILVER, None) == Reading::Pooled;
     if silver_by_moment {
@@ -57548,6 +57666,288 @@ BUILD
             .filter(|moved| moved.cause == cause)
             .map(|moved| moved.amount)
             .sum()
+    }
+
+    /// The hex `ah-2zku`'s scenes stand in: wages of $20 (`rules/work`), every unit paying its $10
+    /// upkeep in silver (`rules/economy_maintenance`: "This fee is generally 10 silver for a
+    /// normal character"), 900 a quartermaster owning a Caravanserai for 902's shipment. 901
+    /// (sharing, empty) GIVEs 900 $100 it does not have, drawing it all on sharer 902
+    /// (`runorders.cpp`: `DoGiveOrder`, `GetSharedNum`; `unit.cpp`: `ConsumeShared`), and 902's
+    /// `TRANSPORT 900 ALL SILV` ships its wage. `extra` units follow in document order, and 900
+    /// comes last, so the units that pay at step 4 are the scene's own.
+    fn drained_sharer_review(extra: Vec<ReportUnit>, more_orders: &str) -> TurnReview {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region.wages = Some("$20".to_string());
+        region.max_wages = Some(1000);
+        let quartermaster = region.units.remove(0);
+        region.units.extend([
+            sharing(starving(unit("901"))),
+            sharing(with_silver(starving(unit("902")), 100)),
+        ]);
+        region.units.extend(extra);
+        region.units.push(quartermaster);
+        let orders =
+            format!("unit 901\nGIVE 900 100 SILV\nunit 902\nTRANSPORT 900 ALL SILV\n{more_orders}");
+        review_turn(&report(vec![region]), &orders, Some(&rules), with_map())
+    }
+
+    /// A sharer the GIVE drained ends the month with nothing, and its $10 upkeep is paid at
+    /// maintenance by a faction-mate's silver (`rules/economy_maintenance`: "Silver from other
+    /// faction units in the same region"), not by the `SHARE` purse lending for orders: its
+    /// `lent` line is the GIVE's whole $100, and the giver's `was lent` the same (`ah-2zku`).
+    /// 905 refills 901, which pays.
+    #[test]
+    fn a_drained_sharers_upkeep_is_shared_at_maintenance_not_netted_into_its_lending() {
+        let review = drained_sharer_review(
+            vec![with_silver(starving(unit("905")), 1000)],
+            "unit 905\nGIVE 901 300 SILV\n",
+        );
+        let fed = shipment_silver(&review, "902");
+        assert_eq!(
+            silver_booked(&review, "902", SilverChangeCause::Lent),
+            -100,
+            "{fed:?}"
+        );
+        assert_eq!(
+            silver_booked(&review, "901", SilverChangeCause::WasLent),
+            100
+        );
+        assert_eq!(fed.shared_silver_covered, 10, "{fed:?}");
+        assert_eq!(fed.upkeep, Some(0), "{fed:?}");
+        assert_eq!(fed.at_month_end, Some(0), "{fed:?}");
+        // The refilled giver, first in document order, pays: $300 received, $20 earned, its own
+        // $10 and 902's $10 paid.
+        assert_eq!(
+            silver_moved(&review, "902", SilverChangeCause::WasLentForUpkeep),
+            vec![(10, "Unit 901 (901)".to_string())]
+        );
+        assert_eq!(
+            silver_moved(&review, "901", SilverChangeCause::LentForUpkeep),
+            vec![(-10, "Unit 902 (902)".to_string())]
+        );
+        let payer = shipment_silver(&review, "901");
+        assert_eq!(payer.upkeep_lent, 10, "{payer:?}");
+        assert_eq!(payer.upkeep, Some(10), "{payer:?}");
+        assert_eq!(payer.at_month_end, Some(320), "{payer:?}");
+    }
+
+    /// A hex for step 4's own scenes: no wage, so a unit's month end is what it holds. 901 (sharing,
+    /// fed by its own grain unless `starving_giver`) GIVEs 909 $100, drawing it all on sharer 902
+    /// (`runorders.cpp`: `DoGiveOrder`; `unit.cpp`: `ConsumeShared`), which then has nothing for
+    /// its $10 upkeep (`rules/economy_maintenance`). `payers` hold silver and pay their own $10 in
+    /// it; 909, another faction's unit, receives the gift.
+    fn upkeep_share_review(starving_giver: bool, payers: &[(&str, i64)]) -> TurnReview {
+        let giver = if starving_giver {
+            starving(unit("901"))
+        } else {
+            unit("901")
+        };
+        let mut units = vec![
+            sharing(giver),
+            sharing(with_silver(starving(unit("902")), 100)),
+        ];
+        units.extend(
+            payers
+                .iter()
+                .map(|(id, silver)| with_silver(starving(unit(id)), *silver)),
+        );
+        // Another faction's unit, so the gift it receives pays nobody's upkeep here.
+        let mut receiver = unit("909");
+        receiver.own = false;
+        receiver.faction_id = Some("2".to_string());
+        receiver.faction_name = Some("Theirs".to_string());
+        units.push(receiver);
+        review_turn(
+            &report(vec![region(units)]),
+            "unit 901\nGIVE 909 100 SILV\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        )
+    }
+
+    /// `id`'s change-list entries for `cause`, as `(amount, other)`.
+    fn silver_moved(review: &TurnReview, id: &str, cause: SilverChangeCause) -> Vec<(i64, String)> {
+        shipment_silver(review, id)
+            .changes
+            .iter()
+            .filter(|moved| moved.cause == cause)
+            .map(|moved| (moved.amount, moved.other.clone().unwrap_or_default()))
+            .collect()
+    }
+
+    /// Step 4 says who paid whom: 903's spare $40 pays drained 902's $10 fee
+    /// (`rules/economy_maintenance`: "Silver from other faction units in the same region"), a
+    /// `was lent for upkeep` line on 902 and a `lent for upkeep` line on 903 (`ah-2zku`).
+    #[test]
+    fn step_four_books_who_paid_a_faction_mates_upkeep() {
+        let review = upkeep_share_review(false, &[("903", 50)]);
+        assert_eq!(
+            silver_moved(&review, "902", SilverChangeCause::WasLentForUpkeep),
+            vec![(10, "Unit 903 (903)".to_string())]
+        );
+        assert_eq!(
+            silver_moved(&review, "903", SilverChangeCause::LentForUpkeep),
+            vec![(-10, "Unit 902 (902)".to_string())]
+        );
+        let payer = shipment_silver(&review, "903");
+        assert_eq!(payer.upkeep_lent, 10, "{payer:?}");
+        assert_eq!(
+            payer.upkeep,
+            Some(10),
+            "its own fee is unchanged: {payer:?}"
+        );
+        assert_eq!(
+            payer.at_month_end,
+            Some(50),
+            "maintenance stays out of it: {payer:?}"
+        );
+        let fed = shipment_silver(&review, "902");
+        assert_eq!(fed.shared_silver_covered, 10, "{fed:?}");
+        assert_eq!(fed.upkeep, Some(0), "{fed:?}");
+        assert_eq!(silver_booked(&review, "902", SilverChangeCause::Lent), -100);
+    }
+
+    /// Two payers for one fee, in document order: 903's spare $6 then 904's $4.
+    #[test]
+    fn step_four_books_several_payers_for_one_unit() {
+        let review = upkeep_share_review(false, &[("903", 16), ("904", 14)]);
+        assert_eq!(
+            silver_moved(&review, "902", SilverChangeCause::WasLentForUpkeep),
+            vec![
+                (6, "Unit 903 (903)".to_string()),
+                (4, "Unit 904 (904)".to_string())
+            ]
+        );
+        assert_eq!(shipment_silver(&review, "903").upkeep_lent, 6);
+        assert_eq!(shipment_silver(&review, "904").upkeep_lent, 4);
+        assert_eq!(shipment_silver(&review, "902").upkeep, Some(0));
+    }
+
+    /// One payer for two fees: 901 gave away silver it never had and holds nothing either, so
+    /// 903 pays both.
+    #[test]
+    fn step_four_books_one_payer_for_several_units() {
+        let review = upkeep_share_review(true, &[("903", 50)]);
+        assert_eq!(
+            silver_moved(&review, "903", SilverChangeCause::LentForUpkeep),
+            vec![
+                (-10, "Unit 901 (901)".to_string()),
+                (-10, "Unit 902 (902)".to_string())
+            ]
+        );
+        assert_eq!(shipment_silver(&review, "903").upkeep_lent, 20);
+        assert_eq!(
+            silver_moved(&review, "901", SilverChangeCause::WasLentForUpkeep),
+            vec![(10, "Unit 903 (903)".to_string())]
+        );
+    }
+
+    /// A GIVE the game cuts gives only what the giver and its sharers held (`runorders.cpp`:
+    /// `DoGiveOrder`, `amt = GetSharedNum`; `ah-hreo`), so the part nobody funded never left the
+    /// giver, and maintenance reads it so (`ah-2zku`, the navigator's answer on review finding 1).
+    /// 901 (sharing, empty) GIVEs 909 $300 and the game cuts it to sharer 902's $100. 901 works for
+    /// $20 and pays its own $10 upkeep out of it (`rules/economy_maintenance`: "Silver in the
+    /// unit's possession"), so it is no claimant, and its $10 spare pays IDLE 902's fee ahead of
+    /// 903 in document order ("Silver from other faction units in the same region").
+    #[test]
+    fn a_giver_whose_gift_the_game_cut_pays_upkeep_from_what_it_kept() {
+        let mut receiver = unit("909");
+        receiver.own = false;
+        receiver.faction_id = Some("2".to_string());
+        receiver.faction_name = Some("Theirs".to_string());
+        let hex = ReportRegion {
+            wages: Some("$20".to_string()),
+            max_wages: Some(1000),
+            ..region(vec![
+                sharing(starving(unit("901"))),
+                sharing(with_silver(starving(unit("902")), 100)),
+                starving(unit("903")),
+                receiver,
+            ])
+        };
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 901\nGIVE 909 300 SILV\nunit 902\nIDLE\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        let giver = shipment_silver(&review, "901");
+        assert_eq!(giver.shared_silver_covered, 0, "{giver:?}");
+        assert_eq!(giver.upkeep, Some(10), "{giver:?}");
+        assert_eq!(giver.upkeep_lent, 10, "{giver:?}");
+        assert_eq!(
+            silver_moved(&review, "901", SilverChangeCause::LentForUpkeep),
+            vec![(-10, "Unit 902 (902)".to_string())]
+        );
+        assert_eq!(
+            silver_moved(&review, "902", SilverChangeCause::WasLentForUpkeep),
+            vec![(10, "Unit 901 (901)".to_string())]
+        );
+        assert_eq!(silver_booked(&review, "902", SilverChangeCause::Lent), -100);
+        assert_eq!(shipment_silver(&review, "903").upkeep_lent, 0);
+        // The cut line keeps its owed $200 (`ah-2fn5`): the month end is the order's figure, and
+        // what the giver lent for upkeep comes off only with the upkeep, never netted into it.
+        assert_eq!(giver.at_month_end, Some(-180), "{giver:?}");
+        assert_eq!(
+            giver
+                .at_month_end
+                .zip(giver.upkeep)
+                .map(|(end, upkeep)| end - upkeep - giver.upkeep_lent),
+            Some(-200),
+            "the cell with upkeep counted is the cut part alone: {giver:?}"
+        );
+        let warned: Vec<_> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "not-enough-silver")
+            .map(|finding| (finding.unit_id.clone(), finding.message.clone()))
+            .collect();
+        // A pooled hex warns once for the hex (`ah-5znb`), and for the cut part alone: step 4
+        // moved silver between its units and changed nothing it sums.
+        assert_eq!(
+            warned,
+            vec![(
+                None,
+                "the units in this hex are short $200 between them: they can have $100 and their \
+                 orders spend $300"
+                    .to_string()
+            )]
+        );
+    }
+
+    /// A pool short of the one fee it is asked for leaves no doubt about who is fed: 902 is
+    /// credited the $5 903 has spare and still owes $5.
+    #[test]
+    fn a_single_claimant_a_short_pool_part_covers_is_credited_what_it_got() {
+        let review = upkeep_share_review(false, &[("903", 15)]);
+        let fed = shipment_silver(&review, "902");
+        assert_eq!(fed.shared_silver_covered, 5, "{fed:?}");
+        assert_eq!(fed.upkeep, Some(5), "{fed:?}");
+        assert_eq!(
+            silver_moved(&review, "902", SilverChangeCause::WasLentForUpkeep),
+            vec![(5, "Unit 903 (903)".to_string())]
+        );
+        assert_eq!(shipment_silver(&review, "903").upkeep_lent, 5);
+    }
+
+    /// A pool short of several fees cannot say whom the game feeds, so as `ah-e66j` decided
+    /// nobody's figure moves and no line is booked.
+    #[test]
+    fn a_short_pool_contended_by_several_claimants_books_nothing() {
+        let review = upkeep_share_review(true, &[("903", 15)]);
+        for id in ["901", "902", "903"] {
+            let forecast = shipment_silver(&review, id);
+            assert_eq!(forecast.shared_silver_covered, 0, "{forecast:?}");
+            assert_eq!(forecast.upkeep_lent, 0, "{forecast:?}");
+            assert!(
+                forecast.changes.iter().all(|moved| !matches!(
+                    moved.cause,
+                    SilverChangeCause::LentForUpkeep | SilverChangeCause::WasLentForUpkeep
+                )),
+                "{forecast:?}"
+            );
+        }
     }
 
     /// A giver that holds part of a GIVE draws only the rest on its sharers (`unit.cpp`:

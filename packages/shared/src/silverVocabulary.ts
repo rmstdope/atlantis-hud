@@ -321,7 +321,7 @@ function namesInAList(names: string[]): string {
  * `ownFoodCovered` is guarded on `forcedOwnFood`, because a unit fed at step 5 has a non-zero
  * `ownFoodCovered` too and both sentences would otherwise claim the same food (`ah-eacd`).
  */
-function upkeepSources(silver: UnitSilver): string[] {
+function upkeepSources(silver: UnitSilver, upkeepLinesDrawn = false): string[] {
   return [
     silver.ownFoodCovered > 0 && silver.forcedOwnFood === 0
       ? `its own food (${silver.ownFoodCovered})`
@@ -329,7 +329,10 @@ function upkeepSources(silver: UnitSilver): string[] {
     silver.factionFoodCovered > 0 && silver.forcedFactionFood === 0
       ? `faction food here (${silver.factionFoodCovered})`
       : null,
-    silver.sharedSilverCovered > 0 ? `a faction-mate's silver (${silver.sharedSilverCovered})` : null,
+    // A drawn `was lent for upkeep` line says this part with names (`ah-2zku`).
+    silver.sharedSilverCovered > 0 && !upkeepLinesDrawn
+      ? `a faction-mate's silver (${silver.sharedSilverCovered})`
+      : null,
     silver.unclaimedCovered > 0 ? `the faction's unclaimed silver (${silver.unclaimedCovered})` : null
   ].filter((source): source is string => source !== null);
 }
@@ -347,6 +350,12 @@ export type SilverFacts = {
   hexShort?: boolean;
   /** Whether the Silver column is counting upkeep, which adds the fifth row (`ah-1wcw.4`). */
   countUpkeep: boolean;
+  /**
+   * Whether the surface drew a `was lent for upkeep` line, which names what faction-mates' silver
+   * paid of this unit's upkeep - so the "upkeep was paid by" sentence leaves that part out
+   * (`ah-2zku`). Absent means no: the whole-unit tooltip draws no lines and keeps it.
+   */
+  upkeepLinesDrawn?: boolean;
 };
 
 /**
@@ -915,8 +924,10 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   // satisfies several and would otherwise show four near-identical lines (`ah-x36v`).
   {
     id: "upkeep-paid-by",
-    when: ({ silver, countUpkeep }) => countUpkeep && upkeepSources(silver).length > 0,
-    say: ({ silver }) => `This unit's upkeep was paid by ${namesInAList(upkeepSources(silver))}.`,
+    when: ({ silver, countUpkeep, upkeepLinesDrawn }) =>
+      countUpkeep && upkeepSources(silver, upkeepLinesDrawn).length > 0,
+    say: ({ silver, upkeepLinesDrawn }) =>
+      `This unit's upkeep was paid by ${namesInAList(upkeepSources(silver, upkeepLinesDrawn))}.`,
     example: () => ({
       unit: aReportUnit({ men: 6, items: [{ tag: "GRAI", name: "grain", amount: 4 }] }),
       silver: aUnitSilver({
@@ -1194,6 +1205,8 @@ export const SILVER_CAUSE_LABELS: Readonly<Record<Exclude<SilverChangeCause, "to
   lent: "lent",
   "was-taken": "was taken",
   "was-lent": "was lent",
+  "was-lent-for-upkeep": "was lent for upkeep",
+  "lent-for-upkeep": "lent for upkeep",
   shipped: "shipped",
   "gift-reverted": "reverted"
 };

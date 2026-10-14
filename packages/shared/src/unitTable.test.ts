@@ -607,6 +607,13 @@ describe("silverShown", () => {
     expect(silverShown(rescued, true)).toBe(100);
   });
 
+  // `ah-2zku`: what a unit's silver paid of a faction-mate's upkeep is maintenance too.
+  it("takes off what the unit paid of faction-mates' upkeep, only when the setting is on", () => {
+    const payer = { ...forecast(1645, 30), upkeepLent: 100 } satisfies UnitSilver;
+    expect(silverShown(payer, true)).toBe(1515);
+    expect(silverShown(payer, false)).toBe(1645);
+  });
+
   it("propagates a null from either side", () => {
     expect(silverShown(forecast(null, 50), true)).toBeNull();
     expect(silverShown(forecast(100, null), true)).toBeNull();

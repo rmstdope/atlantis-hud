@@ -310,6 +310,7 @@ fn claim_case(upkeep: i64, late_income: i64, shared_silver_covered: i64) -> Unit
         taken_unshown_from: Vec::new(),
         faction_food_covered: 0,
         shared_silver_covered,
+        upkeep_lent: 0,
         shared_silver_for_orders: 0,
         market_purse_held_only: false,
         income_in_time_at_most: false,
@@ -659,8 +660,10 @@ fn the_column_and_the_warning_agree_on_every_sharing_hex_in_the_corpus() {
 /// hex is marked once and no unit's figure moves - and without a fixture for it the restored guard
 /// would still be blind to the case it most needs to catch.
 ///
-/// One lender with a little spare and one unit that cannot pay a penny of its fee: the pool is real
-/// but too small, so nothing is recorded on either unit and the hex is marked instead.
+/// One lender with a little spare and two units that cannot pay a penny of their fees: the pool is
+/// real but too small, so nothing is recorded on any unit and the hex is marked instead. Two
+/// paupers, because with one there is no doubt who is fed, and a single claimant is credited what
+/// a short pool paid it (`ah-2zku`).
 #[test]
 fn a_hex_that_cannot_cover_its_own_upkeep_is_warned_once_for_the_hex() {
     let ruleset = ruleset();
@@ -684,6 +687,7 @@ fn a_hex_that_cannot_cover_its_own_upkeep_is_warned_once_for_the_hex() {
         "",
         "* Lender (100), The Disinherited Knights (42), behind, human [HUMN], 12 silver [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills: none.",
         "* Pauper (101), The Disinherited Knights (42), behind, human [HUMN]. Weight: 10. Capacity: 0/0/15/0. Skills: none.",
+        "* Pauper (102), The Disinherited Knights (42), behind, human [HUMN]. Weight: 10. Capacity: 0/0/15/0. Skills: none.",
         "",
     ]
     .join("\n");
@@ -695,7 +699,7 @@ fn a_hex_that_cannot_cover_its_own_upkeep_is_warned_once_for_the_hex() {
     // nothing, which is the state this branch needs.
     let review = review_turn(
         &parsed,
-        "unit 100\nIDLE\nunit 101\nIDLE\n",
+        "unit 100\nIDLE\nunit 101\nIDLE\nunit 102\nIDLE\n",
         Some(&ruleset),
         CheckOptions::default(),
     );
@@ -707,7 +711,7 @@ fn a_hex_that_cannot_cover_its_own_upkeep_is_warned_once_for_the_hex() {
         .collect();
     assert_eq!(
         silver.len(),
-        2,
+        3,
         "both own units must reach the column, or this fixture asserts about nothing"
     );
 
@@ -724,6 +728,8 @@ fn a_hex_that_cannot_cover_its_own_upkeep_is_warned_once_for_the_hex() {
     assert_eq!(silver["101"].held, 0);
     assert_eq!(silver["100"].upkeep, Some(10));
     assert_eq!(silver["101"].upkeep, Some(10));
+    assert_eq!(silver["102"].upkeep, Some(10));
+    assert_eq!(silver["100"].upkeep_lent, 0);
 
     let shortfalls: Vec<_> = review
         .findings
@@ -747,15 +753,21 @@ fn a_hex_that_cannot_cover_its_own_upkeep_is_warned_once_for_the_hex() {
     );
 
     // And the reconstruction the corpus walk uses agrees, which is the point of the fixture: a
-    // real pool of $2 against claims of $10, and the pauper's whole overdraft still upkeep.
+    // real pool of $2 against claims of $20, and each pauper's whole overdraft still upkeep.
     let left_of = |unit: &UnitSilver| {
         balance_before_maintenance(unit).expect("nothing is doubted here")
             - upkeep_before_hex_sharing(unit)
     };
     let claim_of = |unit: &UnitSilver| (-left_of(unit)).max(0).min(upkeep_before_hex_sharing(unit));
-    let pool = left_of(silver["100"]).max(0) + left_of(silver["101"]).max(0);
-    let claims = claim_of(silver["100"]) + claim_of(silver["101"]);
-    assert_eq!((pool, claims), (2, 10));
+    let pool = ["100", "101", "102"]
+        .iter()
+        .map(|id| left_of(silver[id]).max(0))
+        .sum::<i64>();
+    let claims = ["100", "101", "102"]
+        .iter()
+        .map(|id| claim_of(silver[id]))
+        .sum::<i64>();
+    assert_eq!((pool, claims), (2, 20));
     assert!(
         pool > 0 && pool < claims,
         "the reconstruction must see a real pool that falls short - pool {pool}, claims {claims}"
