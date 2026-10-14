@@ -55387,7 +55387,7 @@ BUILD
     }
 
     /// `ah-4rw8`: the hex of
-    /// [`a_borrower_that_works_pays_its_own_upkeep_and_the_lending_taxers_is_shared`], but the buyer orders 2 wood ($162) against the
+    /// `a_borrower_that_works_pays_its_own_upkeep_and_the_lending_taxers_is_shared`, but the buyer orders 2 wood ($162) against the
     /// taxer's $150, and a faction-mate that does not share holds silver to spare. `rules/buy`
     /// (New Age: Trident): "If the unit can't afford as many as [quantity], it will attempt to buy
     /// as many as it can", so the buyer buys 1 wood with the $81 the taxer lends, and spends no
