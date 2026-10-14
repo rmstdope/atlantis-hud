@@ -53986,6 +53986,51 @@ BUILD
         assert_eq!(walker.shared_silver_covered, 10, "{walker:?}");
     }
 
+    /// `ah-74sv`: [`a_sharer_that_pays_a_shipment_fee_has_that_much_less_for_its_upkeep`] with the
+    /// sharer walking in. TRANSPORT runs after movement and maintenance after TRANSPORT
+    /// (`rules/sequenceofevents`), and sharing "can leave the sharing unit without enough funds to
+    /// pay maintenance" (`rules/share`), so walker 903, whose whole $45 the pool spent on the
+    /// sender's fee where it arrives, owes its own 10 of upkeep out of nothing, and non-sharer 904's
+    /// $100 pays both its upkeep and the sender's. The walker is listed in the hex it left, so its
+    /// loan where it arrives has to be taken off that row ([`purse_carried`]).
+    #[test]
+    fn a_sharer_that_walks_in_and_pays_a_shipment_fee_has_that_much_less_for_its_upkeep() {
+        let mut regions = unpaid_shipping(0);
+        regions[0].units[0] = starving(regions[0].units[0].clone());
+        let mut mate = starving(with_silver(unit("904"), 100));
+        mate.region_id = regions[0].region_id.clone();
+        regions[0].units.push(mate);
+        // South of the sender's (0,0), so `MOVE N` walks it in.
+        regions.push(region_at(
+            "1:0,2",
+            0,
+            2,
+            vec![sharing(starving(with_silver(unit("903"), 45)))],
+        ));
+        let orders = format!("{UNPAID}unit 903\nMOVE N\n");
+        let (traced_report, options) = traced(report(regions), &orders, &ruleset(), with_map());
+        let review = review_turn(&traced_report, &orders, Some(&ruleset()), options);
+
+        let sender = shipment_silver(&review, "900");
+        assert_eq!(
+            sender.shipping.len(),
+            1,
+            "the walker pays the fee: {sender:?}"
+        );
+        let walker = shipment_silver(&review, "903");
+        assert_eq!(
+            walker.shared_silver_covered, 10,
+            "the walker lent its $45 and has nothing for its upkeep: {walker:?}"
+        );
+        let short: Vec<&str> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.message.contains("short $"))
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert!(short.is_empty(), "{short:?}");
+    }
+
     fn unpaid_findings_with(
         regions: Vec<ReportRegion>,
         orders: &str,
