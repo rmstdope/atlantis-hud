@@ -294,7 +294,7 @@ pub fn parse_settlement(input: &str) -> Option<Settlement> {
 ///
 /// A bare `leader [LEAD]` means one. An unfinished ship's trailing `(needs 33)` - the engine's
 /// `Item::Report` form for one, giving the work still to do - is read into `needs` (`ah-uxmh`).
-/// An illusion's trailing `(illusion)` - `Item::Report` again, written only to the owner - names
+/// An illusion's trailing `(illusion)` - `Item::Report` again, written to whoever sees true - names
 /// its own item, read as the data page names it: `balrog [BALR] (illusion)` is `illusory balrog
 /// [IBALR]` (`data/IBALR`, `ah-qrlx`).
 #[must_use]
@@ -626,7 +626,8 @@ mod tests {
     }
 
     /// The engine's `Item::Report` writes an illusion under its real item's name and tag with
-    /// ` (illusion)` appended, and only to the unit's owner (`../Atlantis/items.cpp`). It is its
+    /// ` (illusion)` appended, for its owner and for an observer with true sight
+    /// (`../Atlantis/items.cpp`, `unit.cpp`'s `items.Report(obs, truesight, 0)`). It is its
     /// own item, `illusory balrog [IBALR], weight 1` (`data/IBALR`), and is read as that, or it
     /// weighs as a real balrog (`data/BALR`, weight 250) and the two lines share one tag
     /// (`ah-qrlx`).
@@ -645,6 +646,12 @@ mod tests {
         assert_eq!(
             (imps.amount, imps.name.as_str(), imps.tag.as_str()),
             (3, "illusory imps", "IIMP")
+        );
+        // A foreign unit's, as `neworigins-3.0.0-g3-f42-t82.rep` shows zZZ (12730).
+        let demons = parse_item_amount("3 demons [DEMO] (illusion).").expect("item");
+        assert_eq!(
+            (demons.amount, demons.name.as_str(), demons.tag.as_str()),
+            (3, "illusory demons", "IDEMO")
         );
     }
 
