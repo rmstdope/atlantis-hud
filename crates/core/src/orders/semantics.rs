@@ -9122,16 +9122,11 @@ fn transfer(
             Vec::new()
         },
     });
-    // A silver GIVE beyond the giver's own holding that sharers whose stock was read covered in
-    // full: the engine refuses it nothing (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`),
-    // so it is neither a cut line nor where the unit's shortfall is anchored (`ah-ub3y`,
-    // `ah-f7md`). A pool this walk could not read is no evidence that it paid.
-    let pool_paid = funding.as_ref().is_some_and(SilverFunding::pool_paid);
-    // A silver GIVE its giver paid in full out of its own silver: refused nothing either, so it
-    // is not where the unit's shortfall is anchored, in a hex that shares or not (`ah-bky7`).
-    let own_paid = funding
-        .as_ref()
-        .is_some_and(|funding| funding.asked <= funding.own);
+    // A silver GIVE asked beyond the giver's own holding and not covered in full by sharers whose
+    // stock was read: the engine cuts it (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`),
+    // so it is a cut line and where the unit's shortfall is anchored. Any other silver GIVE was
+    // paid in full and is neither (`ah-ub3y`, `ah-f7md`, `ah-bky7`). A pool this walk could not
+    // read is no evidence that it paid.
     let refused_short = funding.as_ref().is_some_and(SilverFunding::refused_short);
     if let Some(funding) = funding {
         ledger
@@ -9190,10 +9185,11 @@ fn transfer(
                     Some(placed),
                     target_label.map(str::to_string),
                 );
-            } else if is_give && (pool_paid || own_paid) {
-                // Booked as `move_silver` books it, but without its `charged_at` mark: the game
-                // refused this line nothing, so the shortfall marker belongs on the order it does
-                // refuse, which the SILVER column names too (`ah-f7md`, `ah-bky7`).
+            } else if is_give && !refused_short {
+                // Paid in full, by the giver's own silver or by the pool. Booked as `move_silver`
+                // books it, but without its `charged_at` mark: the game refused this line nothing,
+                // so the shortfall marker belongs on the order it does refuse, which the SILVER
+                // column names too, in a hex that shares or not (`ah-f7md`, `ah-bky7`).
                 record_silver(
                     ledger,
                     StatePhase::Give,
@@ -55858,7 +55854,7 @@ BUILD
     /// GIVE and for `ALL SILV` alike (`ah-bky7`).
     #[test]
     fn a_gift_its_giver_paid_does_not_carry_the_hex_shortfall_marker() {
-        for give in ["GIVE 900 100 SILV", "GIVE 900 ALL SILV"] {
+        for give in ["GIVE 900 ALL SILV", "GIVE 900 100 SILV"] {
             let rules = trident_rules();
             let mut region = caravanserai_owner("900", 1, 0, 0);
             region.units.extend([
@@ -55880,6 +55876,31 @@ BUILD
             assert!(!markers.contains(&Some(2)), "{give}: {:?}", review.findings);
             assert!(markers.contains(&Some(3)), "{give}: {:?}", review.findings);
         }
+    }
+
+    /// Where nothing shares, the unit's own `not-enough-silver` follows the column too: 901's $100
+    /// pays its GIVE in full (`rules/give`), so the finding sits on the $200 CAST (`data/CRPA`)
+    /// that runs after it (`rules/sequenceofevents`) and is refused, not on the GIVE (`ah-bky7`).
+    #[test]
+    fn a_gift_its_giver_paid_does_not_carry_its_own_shortfall_finding() {
+        let rules = trident_rules();
+        let mut region = caravanserai_owner("900", 1, 0, 0);
+        region
+            .units
+            .push(with_silver(with_skill(unit("901"), "CRPA", 1), 100));
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nGIVE 900 100 SILV\nCAST Create_Amulet_Of_Protection\n",
+            Some(&rules),
+            with_map(),
+        );
+        let lines: Vec<_> = review
+            .findings
+            .iter()
+            .filter(|f| f.code.as_str() == "not-enough-silver")
+            .map(|f| f.line)
+            .collect();
+        assert_eq!(lines, vec![Some(3)], "{:?}", review.findings);
     }
 
     /// Nor is a GIVE the unit paid out of its own silver, with no `SHARE` anywhere: 901's $100
