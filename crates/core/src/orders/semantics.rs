@@ -21290,8 +21290,33 @@ fn shipping_purse(
         // A sharer is already inside the pool; a non-sharer borrows from it - the rule
         // `judge_shortfalls`' `claims_pool` states.
         Reading::Pooled => {
-            sharing.silver_held_at(ledger, LendingMoment::Transport)
-                + if sharing.pools_silver(sender) { 0 } else { own }
+            // The ledger charges a borrower and leaves its lenders' rows alone (`ah-0mch`), so
+            // what the purse lent before TRANSPORT - a hex-mate's BUY or STUDY - is carried here,
+            // as every reading after a lending moment carries it ([`Lending::before`]): the engine
+            // judges the fee against the shared money left then (`runorders.cpp`: "Cannot afford
+            // shipping cost."; `ah-x0iq`).
+            let lending = Lending::before(hex, ledger, StatePhase::Transport);
+            let carried = |index: usize| lending.borrows[index] - lending.lends[index];
+            let sharers: i64 = hex
+                .units
+                .iter()
+                .enumerate()
+                .filter(|(_, ordered)| sharing.pools_silver(ordered))
+                .map(|(index, _)| carried(index))
+                .sum();
+            let sender_carried = hex
+                .units
+                .iter()
+                .position(|ordered| ordered.unit.unit_id == sender.unit.unit_id)
+                .filter(|_| !sharing.pools_silver(sender))
+                .map_or(0, carried);
+            sharing.silver_held_at(ledger, LendingMoment::Transport) + sharers
+                - lending.arrivals_lend.iter().sum::<i64>()
+                + if sharing.pools_silver(sender) {
+                    0
+                } else {
+                    own + sender_carried
+                }
         }
     }
 }
@@ -53853,6 +53878,50 @@ BUILD
         let poor = sender_silver(with_mate(10), UNPAID, with_map());
         assert!(poor.shipping.is_empty(), "thirty is not forty-five");
         assert!(codes(&unpaid_findings(with_mate(10), UNPAID)).contains(&"part-of-hex-shortfall"));
+    }
+
+    /// The SHARE purse lends for a hex-mate's BUY before TRANSPORT (`rules/sequenceofevents`:
+    /// market orders, then month-long orders, then TRANSPORT), and the engine judges a fee against
+    /// the shared money left then, refusing one it cannot cover and taking nothing for it
+    /// (`runorders.cpp`: "Cannot afford shipping cost."). So a sharer's $50, $30 of it lent to a
+    /// non-sharer's `BUY 2 grain`, has $20 for the sender's $45 fee: the shipment is refused, as
+    /// the hex's warning says. Before the fix the preview priced it as paid from the whole $50
+    /// (`ah-x0iq`).
+    #[test]
+    fn a_fee_is_judged_against_what_the_purse_has_left_after_its_earlier_loans() {
+        let mut regions = unpaid_shipping(0);
+        regions[0].for_sale.push(MarketItem {
+            amount: 40,
+            name: "grain".to_string(),
+            tag: "GRAI".to_string(),
+            price: 15,
+        });
+        let here = regions[0].region_id.clone();
+        for mate in [sharing(with_silver(unit("903"), 50)), unit("905")] {
+            let mut mate = mate;
+            mate.region_id = here.clone();
+            regions[0].units.push(mate);
+        }
+        let orders = format!("{UNPAID}unit 905\nBUY 2 grain\n");
+        let review = review_turn(&report(regions), &orders, Some(&ruleset()), with_map());
+
+        let sender = shipment_silver(&review, "900");
+        assert!(
+            sender.shipping.is_empty(),
+            "$20 is left in the purse, not $45: {sender:?}"
+        );
+        assert_eq!(shipped(&sender), Vec::<&SilverChange>::new());
+        let short: Vec<&str> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.message.contains("short $"))
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(
+            short,
+            ["the units in this hex are short $25 between them: they can have $50 and their orders spend $75"],
+            "the warning counts the refused fee's ask, as for a sender alone"
+        );
     }
 
     /// `rules/sequenceofevents` processes TRANSPORT orders before maintenance is assessed, and
