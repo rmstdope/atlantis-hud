@@ -12724,9 +12724,10 @@ fn unpayable_upkeep(
 /// upkeep after every order, so a buyer the purse paid keeps its wages for its own upkeep, and a
 /// sharer that lent its silver has that much less for its own (`rules/share`: sharing "can leave
 /// the sharing unit without enough funds to pay maintenance"; `ah-su1x`). `share_pool_agreement`
-/// holds maintenance to it. Nothing is carried where nothing pools.
+/// holds maintenance to it. No loan is carried where nothing pools.
 ///
-/// What a refused CAST or STUDY handed back ([`Lending::refused`]) is carried too: the engine
+/// What a refused CAST or STUDY handed back ([`refused_before_maintenance`]) is carried too, in a
+/// pool or where nothing pools (`ah-vdav`): the engine
 /// took nothing for the order, the unit's own coins included (`spells.cpp`: `RunCreateArtifact`;
 /// `monthorders.cpp`: `Do1StudyOrder`), so the unit pays its own upkeep from them before a
 /// faction-mate is asked (`ah-ayg7`) - only in the settlement the SILVER column shows: the one the
@@ -12780,20 +12781,20 @@ impl UpkeepSilver {
             .zip(&lending.arrivals_lend)
             .map(|(arrival, lent)| (arrival.unit.clone(), *lent))
             .collect();
+        // A refused order's hand-back, in the column's settlement only (`ah-ayg7`).
+        let handed_back = if ledger.maintenance_hands_back {
+            refused_before_maintenance(hex, ledger, &lending)
+        } else {
+            vec![0; hex.units.len()]
+        };
         let row = hex
             .units
             .iter()
             .enumerate()
             .map(|(index, ordered)| {
-                // A refused order's hand-back, in the column's settlement only (`ah-ayg7`).
-                let handed_back = if ledger.maintenance_hands_back {
-                    lending.refused(index)
-                } else {
-                    0
-                };
                 (
                     ordered.unit.unit_id.clone(),
-                    lending.carried(index) + handed_back,
+                    lending.carried(index) + handed_back[index],
                 )
             })
             .collect();
@@ -12806,6 +12807,30 @@ impl UpkeepSilver {
         silver_balance(&hexes[hex].1, unit_id)
             .saturating_add(self.carried[hex].get(unit_id).copied().unwrap_or_default())
     }
+}
+
+/// What a refused CAST or STUDY handed back to each unit of one hex by maintenance, index-aligned
+/// with `hex.units`: in a pool, the purse's own judgment ([`Lending::refused`]); where nothing
+/// pools, each unit's own row - a cast its own silver could not pay ([`refused_cast_cost`]) and a
+/// study it could not ([`own_study_outcome`]) - since the engine takes nothing for either there
+/// too (`spells.cpp`: `RunCreateArtifact`; `monthorders.cpp`: `Do1StudyOrder`; `ah-vdav`).
+/// `lending` is the purse's reading before maintenance, which lends nothing where nothing pools.
+fn refused_before_maintenance(hex: &Hex<'_>, ledger: &Ledger<'_>, lending: &Lending) -> Vec<i64> {
+    if Sharing::for_silver(hex, ledger).reading(SILVER, None) != Reading::PerUnit {
+        return lending.refused_all();
+    }
+    hex.units
+        .iter()
+        .map(|ordered| {
+            let unit_id = &ordered.unit.unit_id;
+            let cast_back = if ledger.unfunded_casts.get(unit_id).is_some_and(|&u| u > 0) {
+                refused_cast_cost(ledger, unit_id, 0)
+            } else {
+                0
+            };
+            cast_back + own_study_outcome(ledger, unit_id).refused_fee()
+        })
+        .collect()
 }
 
 /// The fee maintenance still draws on a unit's balance: what it drew, less what an earlier step
@@ -54966,6 +54991,82 @@ BUILD
             receiver.at_month_end,
             baseline.at_month_end.map(|silver| silver + 205),
             "901's own 5 were not spent on a study it could not pay for"
+        );
+    }
+
+    /// The `not-enough-silver` sentences of one review, on a unit or on the hex.
+    fn silver_shortfall_messages(review: &TurnReview) -> Vec<(Option<String>, String)> {
+        review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .map(|finding| (finding.unit_id.clone(), finding.message.clone()))
+            .collect()
+    }
+
+    /// A CAST its caster cannot pay where nothing pools is refused and takes nothing, the caster's
+    /// own coins included (`spells.cpp`: `RunCreateArtifact`, `ah-szu0`): 901's $150 cannot pay the
+    /// amulet's $200 (`data/CRPA`), and no unit of the hex shares (`rules/share`). So 901 still
+    /// holds its $150 at maintenance and pays its own 10 upkeep (`rules/economy_maintenance`) from
+    /// it; faction-mate 903 pays none (`ah-vdav`).
+    #[test]
+    fn a_refused_casters_own_silver_pays_its_upkeep_where_nothing_pools() {
+        let orders = "unit 901\nCAST Create_Amulet_Of_Protection\n";
+        let review = review_turn(
+            &report(vec![region(vec![
+                with_silver(with_skill(starving(unit("901")), "CRPA", 1), 150),
+                with_silver(unit("903"), 100),
+            ])]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let caster = shipment_silver(&review, "901");
+        assert_eq!(
+            caster.shared_silver_covered, 0,
+            "901's own $150 pays its upkeep: {caster:?}"
+        );
+        assert_eq!(caster.upkeep, Some(10), "{caster:?}");
+        // The warning still counts the refused CAST as spending its $200.
+        assert_eq!(
+            silver_shortfall_messages(&review),
+            vec![(
+                Some("901".to_string()),
+                "short $50: this unit can have $150 and its orders spend $200".to_string()
+            )],
+        );
+    }
+
+    /// A STUDY its student cannot pay where nothing pools is refused and takes nothing
+    /// (`monthorders.cpp`: `Do1StudyOrder`, `ah-li7l`): 902's $8 cannot pay combat's $10
+    /// (`data/COMB` in Trident). So 902 still holds its $8 at maintenance and pays 8 of its own 10
+    /// upkeep from it; faction-mate 903 pays only the other 2 (`ah-vdav`).
+    #[test]
+    fn a_refused_students_own_silver_pays_its_upkeep_where_nothing_pools() {
+        let rules = trident_rules();
+        let orders = "unit 902\nSTUDY COMB\n";
+        let review = review_turn(
+            &report(vec![region(vec![
+                with_silver(starving(unit("902")), 8),
+                with_silver(unit("903"), 100),
+            ])]),
+            orders,
+            Some(&rules),
+            CheckOptions::default(),
+        );
+        let student = shipment_silver(&review, "902");
+        assert_eq!(
+            student.shared_silver_covered, 2,
+            "902's own $8 pays the first 8 of its upkeep: {student:?}"
+        );
+        assert_eq!(student.upkeep, Some(8), "{student:?}");
+        // The warning still counts the refused STUDY as spending its $10.
+        assert_eq!(
+            silver_shortfall_messages(&review),
+            vec![(
+                Some("902".to_string()),
+                "short $2: this unit can have $8 and its orders spend $10".to_string()
+            )],
         );
     }
 
