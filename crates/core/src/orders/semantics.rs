@@ -57294,13 +57294,13 @@ BUILD
             let at = |id: &str| hex.units.iter().position(|o| o.unit.unit_id == id).unwrap();
             assert_eq!(carried[at(LENDER)], -case.lent, "{lending:?}");
             assert_eq!(carried[at("3")], case.lent, "{lending:?}");
-            for index in 0..hex.units.len() {
+            for (index, &carried) in carried.iter().enumerate() {
                 assert_eq!(
-                    carried[index],
+                    carried,
                     lending.borrows[index] - lending.lends[index],
                     "{lending:?}"
                 );
-                assert_eq!(netted.carried(index), carried[index], "{netted:?}");
+                assert_eq!(netted.carried(index), carried, "{netted:?}");
             }
         }
 
