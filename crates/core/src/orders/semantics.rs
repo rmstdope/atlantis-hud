@@ -15348,7 +15348,7 @@ impl MarketPurse {
 /// Settled **moment by moment** - the market, STUDY, TRANSPORT, the month's end - by [`sharing_purse`], the
 /// moments [`Sharing::silver_short_at`] reads the hex's warning at (`ah-4oz9`, `ah-49j0`).
 ///
-/// **All or nothing, deliberately**, at every moment but CAST and STUDY - the rule `ah-e66j` set for
+/// **All or nothing, deliberately**, at every moment but CAST, STUDY and TRANSPORT - the rule `ah-e66j` set for
 /// maintenance sharing and for the same reason: where the pool cannot cover every claimant, which
 /// unit is fed cannot be told, so none is credited and every figure stays pessimistic. A player
 /// then sees a shortfall that is real for *somebody* rather than a guess about who. The rule is
@@ -15461,9 +15461,9 @@ struct Lending {
     refused_casts: Vec<bool>,
     /// The first moment the pool could not cover in full - the market or the month's end - from
     /// which nothing more was lent at either - the all-or-nothing rule (`ah-e66j`, `ah-aqqb`).
-    /// `None` where every moment read was covered. CAST and STUDY never stop it, and are not
-    /// stopped by it: each pays its claimants one by one out of what the lenders still hold and
-    /// refuses only those that no longer fit (`ah-li7l`, `ah-szu0`).
+    /// `None` where every moment read was covered. CAST, STUDY and TRANSPORT never stop it, and
+    /// are not stopped by it: each pays its claimants one by one out of what the lenders still
+    /// hold and refuses only those that no longer fit (`ah-li7l`, `ah-szu0`, `ah-8bzm`).
     stopped_at: Option<LendingMoment>,
 }
 
@@ -15574,8 +15574,8 @@ impl Lending {
     /// plus what it has been lent so far, plus a refused study handed back - and every negative
     /// one filled from the lenders' positive ones in drain order ([`SharerStock::drained`]), or,
     /// where they cannot cover them all, nothing lent from that moment on but at STUDY, the
-    /// unpaid overdrafts laid aside so a later moment judges only what is new. At CAST and STUDY
-    /// the claimants are paid one by one in drain order instead, each in full or not at all, as
+    /// unpaid overdrafts laid aside so a later moment judges only what is new. At CAST, STUDY
+    /// and TRANSPORT the claimants are paid one by one in drain order instead, each in full or not at all, as
     /// the engine pays them ([`SharerStock::paid_one_by_one`], `ah-li7l`), whether or not an
     /// earlier moment stopped the pool (`ah-szu0`). Before any netting of lends against
     /// borrows. The caller has already checked that the hex pools silver and that the pool is
@@ -15802,10 +15802,12 @@ impl Lending {
                     let Some(index) = claim else { continue };
                     let unit_id = &hex.units[index].unit.unit_id;
                     if missing > 0 && moment == LendingMoment::Transport {
-                        // Its refused shipments were handed back above, so what the pool
-                        // cannot pay is not lent for: an overdraft no fee made, since
-                        // [`shipping_purse`] judges a fee against what the purse has left after
-                        // its earlier loans (`ah-x0iq`).
+                        // Its refused shipments were handed back above once charged, and are
+                        // not yet in its balance while [`shipping_purse`] is still judging fees
+                        // ([`Ledger::refused_shipments_charged`]), so what the pool cannot pay is
+                        // not lent for: an overdraft no fee made, since [`shipping_purse`] judges
+                        // a fee against what the purse has left after its earlier loans
+                        // (`ah-x0iq`, `ah-8bzm`).
                         continue;
                     }
                     if missing > 0 {
@@ -16048,7 +16050,7 @@ fn own_study_outcome(ledger: &Ledger<'_>, unit_id: &str) -> StudyOutcome {
 /// Each moment of [`PURSE_MOMENTS`] in turn reads every unit's **position** -
 /// its own [`silver_at`] then, less what it has lent and plus what it has been lent so far - and
 /// fills every negative one from the lenders' positive ones, or, where they cannot cover them
-/// all, lends nothing from that moment on - except at CAST and STUDY, which pay their claimants
+/// all, lends nothing from that moment on - except at CAST, STUDY and TRANSPORT, which pay their claimants
 /// one by one in region order and refuse only the ones that no longer fit, handing their cost
 /// back for the month-end reading (`ah-li7l`, `ah-szu0`). A loan is never paid back by a later receipt: `rules/share` lends silver "for
 /// buying or studying", and nothing in it returns a shipment or wages that arrive after STUDY to
