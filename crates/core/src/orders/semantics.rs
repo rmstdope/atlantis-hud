@@ -2673,6 +2673,76 @@ fn forecast_hex(
         ));
     }
 
+    // What each unit pays to ship goods, booked from the ledger's own settlement rather than
+    // repriced here. `shipping_paid` is what moved (and what was only conditionally priced);
+    // `silver_moves` is what was actually charged, including a refused shipment whose goods stayed.
+    //
+    // Before the `Lent` pass below, not after it: TRANSPORT is an order the `SHARE` purse pays
+    // (`rules/share`), and `forecast_unit` could not count that loan, since it never sees the bill.
+    // So the part of the bill the purse lent is counted here, into the sender's
+    // `shared_silver_for_orders`, which is what the `Lent` pass debits its lenders for - before
+    // this ran after it, the lender's row showed nothing leaving and the sender ended the month
+    // short of what it was lent (`ah-nq3k`). The `Shipped` lines themselves are listed last.
+    let shipped_moves: Vec<Vec<SilverMove>> = into[start..]
+        .iter_mut()
+        .enumerate()
+        .map(|(index, forecast)| {
+            let shipped = ledger
+                .shipping_paid
+                .get(&forecast.unit_id)
+                .cloned()
+                .unwrap_or_default();
+            let shipped_moves: Vec<SilverMove> = ledger
+                .silver_moves
+                .get(&forecast.unit_id)
+                .map(|moves| {
+                    moves
+                        .iter()
+                        .filter(|moved| moved.cause == SilverChangeCause::Shipped)
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default();
+            let bill: i64 = shipped_moves.iter().map(|moved| -moved.amount.min(0)).sum();
+            // A refused shipment spends nothing, but its ask is still what made the month short
+            // (`ah-7ale.4`).
+            let refused: i64 = ledger
+                .refused_shipments
+                .iter()
+                .filter(|refused| refused.unit_id == forecast.unit_id)
+                .map(|refused| refused.cost)
+                .sum();
+            if bill == 0 && shipped.is_empty() && refused == 0 {
+                return shipped_moves;
+            }
+            forecast.shipping = shipped;
+            forecast.expense = forecast.expense.map(|spent| spent.saturating_add(bill));
+            forecast.wanted_for_orders = forecast
+                .wanted_for_orders
+                .map(|wanted| wanted.saturating_add(bill));
+            if let Some(before) = forecast.at_month_end {
+                let after = before.saturating_sub(bill);
+                // What the bill overdrew, lent by the purse up to what it lends this unit beyond
+                // what its other orders were already lent.
+                let overdrawn = (-after).max(0) - (-before).max(0);
+                let lent = overdrawn
+                    .min(purse_for_orders.borrows[index] - forecast.shared_silver_for_orders)
+                    .max(0);
+                forecast.shared_silver_for_orders += lent;
+                forecast.at_month_end = Some(after.saturating_add(lent));
+            }
+            // After the paid bill is in, so the refused ask is judged against what the paid ones
+            // left.
+            if refused > 0 {
+                forecast.wanted_for_orders = forecast
+                    .wanted_for_orders
+                    .map(|wanted| wanted.saturating_add(refused));
+                forecast.short_for_orders = super::silver::short_for_orders_of(forecast);
+            }
+            shipped_moves
+        })
+        .collect();
+
     // A sharer that lends 50 spends 50: what the purse settled out of it is an expense of its
     // own, so the hex's total silver is unchanged and a player adding their hex up finds it
     // (`ah-moq3`). Who lent what is [`sharing_purse`]'s settlement, moment by moment (`ah-49j0`).
@@ -2730,8 +2800,9 @@ fn forecast_hex(
 
     // The borrower's mirror of the `Lent` rows above, and deliberately not part of that loop: the
     // draw is not drained out of anything here. The lender's row is an expense and moves `expense`
-    // and `at_month_end` with it; this one moves no total itself, because `forecast_unit` already
-    // counted the loan into the borrower's month end as `shared_silver_for_orders` - a sharer's
+    // and `at_month_end` with it; this one moves no total itself, because `forecast_unit` - or,
+    // for a TRANSPORT fee, the shipping block above (`ah-nq3k`) - already counted the loan into
+    // the borrower's month end as `shared_silver_for_orders` - a sharer's
     // too, since `ah-0nwd` (`ah-3c2t.2` had a sharing borrower keep its red figure). Appended
     // after the `Lent` pass so it is the last line in the list, which is where the agreed mockup
     // draws it - under `bought`.
@@ -2860,63 +2931,11 @@ fn forecast_hex(
         forecast.upkeep = Some((owed - covered).max(0));
     }
 
-    // What each unit pays to ship goods, booked from the ledger's own settlement rather than
-    // repriced here. `shipping_paid` is what moved (and what was only conditionally priced);
-    // `silver_moves` is what was actually charged, including a refused shipment whose goods stayed.
-    for forecast in into[start..].iter_mut() {
-        let shipped = ledger
-            .shipping_paid
-            .get(&forecast.unit_id)
-            .cloned()
-            .unwrap_or_default();
-        let shipped_moves = ledger
-            .silver_moves
-            .get(&forecast.unit_id)
-            .map(|moves| {
-                moves
-                    .iter()
-                    .filter(|moved| moved.cause == SilverChangeCause::Shipped)
-                    .cloned()
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        let bill: i64 = ledger
-            .silver_moves
-            .get(&forecast.unit_id)
-            .map(|moves| {
-                moves
-                    .iter()
-                    .filter(|moved| moved.cause == SilverChangeCause::Shipped)
-                    .map(|moved| -moved.amount.min(0))
-                    .sum()
-            })
-            .unwrap_or_default();
-        // A refused shipment spends nothing, but its ask is still what made the month short
-        // (`ah-7ale.4`).
-        let refused: i64 = ledger
-            .refused_shipments
-            .iter()
-            .filter(|refused| refused.unit_id == forecast.unit_id)
-            .map(|refused| refused.cost)
-            .sum();
-        if bill == 0 && shipped.is_empty() && refused == 0 {
-            continue;
-        }
-        forecast.shipping = shipped;
-        forecast.expense = forecast.expense.map(|spent| spent.saturating_add(bill));
-        forecast.wanted_for_orders = forecast
-            .wanted_for_orders
-            .map(|wanted| wanted.saturating_add(bill));
-        // After the paid bill is in, so the refused ask is judged against what the paid ones left.
-        if refused > 0 {
-            forecast.wanted_for_orders = forecast
-                .wanted_for_orders
-                .map(|wanted| wanted.saturating_add(refused));
-            forecast.short_for_orders = super::silver::short_for_orders_of(forecast);
-        }
-        forecast.at_month_end = forecast.at_month_end.map(|end| end.saturating_sub(bill));
+    // What each unit's shipments drew on the `SHARE` purse, now its totals are in, with the line
+    // that says so: listed last, after `Lent` and `WasLent`, where the popup has always drawn it.
+    for (forecast, shipped_moves) in into[start..].iter_mut().zip(shipped_moves) {
         if forecast.doubt.is_none() {
-            for moved in &shipped_moves {
+            for moved in shipped_moves {
                 forecast.changes.push(SilverChange {
                     amount: moved.amount,
                     cause: SilverChangeCause::Shipped,
@@ -54431,6 +54450,156 @@ BUILD
         );
         let walker = shipment_silver(&review, "903");
         assert_eq!(walker.shared_silver_covered, 10, "{walker:?}");
+    }
+
+    /// The SILVER cells of a $0 sender whose $45 fee the `SHARE` purse paid, and of the sharer that
+    /// lent it: the lender reads `lent -45` and ends at 0, and the sender, `was lent +45` and
+    /// `shipped -45`, ends at 0 rather than 45 short - as a `BUY` loan already reads on both rows
+    /// (`rules/share`; `ah-nq3k`).
+    fn assert_the_fee_loan_shows_on_both_rows(review: &TurnReview, lender: &str) {
+        let sender = shipment_silver(review, "900");
+        assert_eq!(
+            sender.shipping.len(),
+            1,
+            "the pool pays the fee: {sender:?}"
+        );
+        assert_eq!(
+            silver_booked(review, "900", SilverChangeCause::WasLent),
+            45,
+            "{sender:?}"
+        );
+        assert_eq!(
+            sender.at_month_end,
+            Some(0),
+            "the sender was lent its fee: {sender:?}"
+        );
+        let lent = shipment_silver(review, lender);
+        assert_eq!(
+            silver_booked(review, lender, SilverChangeCause::Lent),
+            -45,
+            "the lender's row says where its $45 went: {lent:?}"
+        );
+        assert_eq!(lent.at_month_end, Some(0), "{lent:?}");
+    }
+
+    #[test]
+    fn a_shipment_fee_the_purse_pays_is_lent_on_the_sharers_row() {
+        let mut regions = unpaid_shipping(0);
+        let here = regions[0].region_id.clone();
+        for mut mate in [
+            sharing(with_silver(unit("903"), 45)),
+            with_silver(unit("904"), 100),
+        ] {
+            mate.region_id = here.clone();
+            regions[0].units.push(mate);
+        }
+        let review = review_turn(&report(regions), UNPAID, Some(&ruleset()), with_map());
+        assert_the_fee_loan_shows_on_both_rows(&review, "903");
+    }
+
+    /// The same, for a sharer that walks into the sender's hex and pays the fee there: its own
+    /// row, in the hex it left, says what it lent (`ah-wyj8`, `ah-nq3k`).
+    #[test]
+    fn a_shipment_fee_an_arriving_sharer_pays_is_lent_on_its_row() {
+        let mut regions = unpaid_shipping(0);
+        let mut keeper = with_silver(unit("904"), 100);
+        keeper.region_id = regions[0].region_id.clone();
+        regions[0].units.push(keeper);
+        regions.push(region_at(
+            "1:0,2",
+            0,
+            2,
+            vec![sharing(with_silver(unit("903"), 45))],
+        ));
+        let orders = format!("{UNPAID}unit 903\nMOVE N\n");
+        let (traced_report, options) =
+            traced(report(regions.clone()), &orders, &ruleset(), with_map());
+        let review = review_turn(
+            &report(traced_report.regions),
+            &orders,
+            Some(&ruleset()),
+            options,
+        );
+        assert_the_fee_loan_shows_on_both_rows(&review, "903");
+    }
+
+    /// The sender's (`id`) and its lender's silver as the column books it: what the sender was
+    /// lent and where it ends, and what the lender lent and where it ends.
+    fn fee_loan(review: &TurnReview, lender: &str) -> (i64, Option<i64>, i64, Option<i64>) {
+        (
+            silver_booked(review, "900", SilverChangeCause::WasLent),
+            shipment_silver(review, "900").at_month_end,
+            silver_booked(review, lender, SilverChangeCause::Lent),
+            shipment_silver(review, lender).at_month_end,
+        )
+    }
+
+    /// A sender holding $20 of a $45 fee pays that itself and is lent the other 25 (`unit.cpp`:
+    /// `ConsumeShared` spends the unit's own stock first): it ends at 0, and the sharer's $100 at
+    /// 75 (`ah-nq3k` review, finding 1).
+    #[test]
+    fn a_sender_that_pays_part_of_its_fee_is_lent_only_the_rest() {
+        let mut regions = unpaid_shipping(20);
+        let mut sharer = sharing(with_silver(unit("903"), 100));
+        sharer.region_id = regions[0].region_id.clone();
+        regions[0].units.push(sharer);
+        let review = review_turn(&report(regions), UNPAID, Some(&ruleset()), with_map());
+        assert_eq!(
+            fee_loan(&review, "903"),
+            (25, Some(0), -25, Some(75)),
+            "{:?}",
+            review.silver
+        );
+    }
+
+    /// A $0 sender that buys two grain at $15 and ships for $45 is lent both, once each: $75 off
+    /// the sharer's $100, and the sender ends at 0 - the fee's loan is counted on top of the
+    /// BUY's, never over it (`ah-nq3k` review, finding 1).
+    #[test]
+    fn a_sender_lent_for_its_buy_and_its_fee_is_lent_each_once() {
+        let orders = format!("{UNPAID}BUY 2 grain\n");
+        let review = review_turn(
+            &report(fee_after_loans(vec![sharing(with_silver(
+                unit("903"),
+                100,
+            ))])),
+            &orders,
+            Some(&ruleset()),
+            with_map(),
+        );
+        assert_eq!(
+            shipment_silver(&review, "900").shipping.len(),
+            1,
+            "{:?}",
+            review.silver
+        );
+        assert_eq!(
+            fee_loan(&review, "903"),
+            (75, Some(0), -75, Some(25)),
+            "{:?}",
+            review.silver
+        );
+    }
+
+    /// A $0 sender whose first $45 fee a $50 sharer pays and whose second the engine refuses
+    /// (`runorders.cpp`: "Cannot afford shipping cost.") leaves the hex short at the month's end,
+    /// and there the purse is all or nothing ([`SharingPurse`]): it credits nobody, so the shipping
+    /// block lends nothing and the sender stays short both fees, exactly as before `ah-nq3k`
+    /// (`ah-nq3k` review, finding 2). Maintenance still carries the paid fee's loan
+    /// (`a_refused_shipment_leaves_the_paid_fees_loan_carried_into_maintenance`).
+    #[test]
+    fn a_refused_shipment_beside_a_paid_one_lends_nothing_on_the_column() {
+        let mut regions = two_shipments_from_900(0);
+        let mut sharer = sharing(with_silver(unit("903"), 50));
+        sharer.region_id = regions[0].region_id.clone();
+        regions[0].units.push(sharer);
+        let orders = "unit 900\nTRANSPORT 901 9 FUR\nTRANSPORT 902 9 FUR\n";
+        let review = review_turn(&report(regions), orders, Some(&ruleset()), with_map());
+        let sender = shipment_silver(&review, "900");
+        assert_eq!(sender.shipping.len(), 1, "one fee is paid: {sender:?}");
+        assert_eq!(sender.shared_silver_for_orders, 0, "{sender:?}");
+        assert_eq!(sender.short_for_orders, Some(90), "{sender:?}");
+        assert_eq!(fee_loan(&review, "903"), (0, Some(-45), 0, Some(50)));
     }
 
     fn unpaid_findings_with(
