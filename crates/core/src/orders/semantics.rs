@@ -14236,7 +14236,9 @@ impl<'a> Sharing<'a> {
     /// the sharers that walked away lent before they left, and what the arrivals lend then.
     ///
     /// A doubted sharer is counted here: what reads this either gates on
-    /// [`Sharing::pool_trusted`] first, or is the shipping purse, which never has.
+    /// [`Sharing::pool_trusted`] first, or is the shipping purse's fallback for a pool
+    /// [`SharerStock::at`] cannot read, where the hex warns of nothing anyway
+    /// ([`pool_shortfalls`]).
     fn silver_held_at(&self, ledger: &Ledger<'_>, moment: LendingMoment) -> i64 {
         self.sharers
             .iter()
@@ -15389,10 +15391,9 @@ impl Lending {
                     let unit_id = &hex.units[index].unit.unit_id;
                     if missing > 0 && moment == LendingMoment::Transport {
                         // Its refused shipments were handed back above, so what the pool
-                        // cannot pay is not lent for. Usually an overdraft no fee made; it can
-                        // also be a fee [`shipping_purse`] judged paid against silver the purse
-                        // had already lent at the market, which this reading does not lend
-                        // twice (`ah-x0iq`).
+                        // cannot pay is not lent for: an overdraft no fee made, since
+                        // [`shipping_purse`] judges a fee against what the purse has left after
+                        // its earlier loans (`ah-x0iq`).
                         continue;
                     }
                     if missing > 0 {
@@ -21336,8 +21337,32 @@ fn shipping_purse(
         // A sharer is already inside the pool; a non-sharer borrows from it - the rule
         // `judge_shortfalls`' `claims_pool` states.
         Reading::Pooled => {
-            sharing.silver_held_at(ledger, LendingMoment::Transport)
-                + if sharing.pools_silver(sender) { 0 } else { own }
+            // The ledger charges a borrower and leaves its lenders' rows alone (`ah-0mch`), so the
+            // pool is read through the one reading that carries what the purse lent and handed
+            // back before TRANSPORT ([`SharerStock::at`]): the engine judges a fee against the
+            // shared money left then (`runorders.cpp`: "Cannot afford shipping cost."; `ah-x0iq`).
+            // A sharer that walked away is gone by TRANSPORT, so what it lent before it left is
+            // already in its borrowers' positions and not counted again; an arrival lends what it
+            // holds less what it lent here already.
+            let sender_id = &sender.unit.unit_id;
+            let Some((stock, at)) =
+                SharerStock::for_spender(ledger, hex, StatePhase::Transport, sender_id, SILVER)
+            else {
+                // A pool or a sender that cannot be read is judged on the ledger's figures.
+                return sharing.silver_held_at(ledger, LendingMoment::Transport)
+                    + if sharing.pools_silver(sender) { 0 } else { own };
+            };
+            let sharers: i64 = hex
+                .units
+                .iter()
+                .enumerate()
+                .filter(|(index, ordered)| *index != at && sharing.pools_silver(ordered))
+                .map(|(index, _)| stock.position(index))
+                .sum();
+            let lending = Lending::before(hex, ledger, StatePhase::Transport);
+            let arrivals = ledger.walking_silver.lends_at(LendingMoment::Transport)
+                - lending.arrivals_lend.iter().sum::<i64>();
+            stock.position(at) + sharers + arrivals
         }
     }
 }
@@ -53899,6 +53924,150 @@ BUILD
         let poor = sender_silver(with_mate(10), UNPAID, with_map());
         assert!(poor.shipping.is_empty(), "thirty is not forty-five");
         assert!(codes(&unpaid_findings(with_mate(10), UNPAID)).contains(&"part-of-hex-shortfall"));
+    }
+
+    /// The SHARE purse lends for a hex-mate's BUY before TRANSPORT (`rules/sequenceofevents`:
+    /// market orders, then month-long orders, then TRANSPORT), and the engine judges a fee against
+    /// the shared money left then, refusing one it cannot cover and taking nothing for it
+    /// (`runorders.cpp`: "Cannot afford shipping cost."). So a sharer's $50, $30 of it lent to a
+    /// non-sharer's `BUY 2 grain`, has $20 for the sender's $45 fee: the shipment is refused, as
+    /// the hex's warning says. Before the fix the preview priced it as paid from the whole $50
+    /// (`ah-x0iq`).
+    #[test]
+    fn a_fee_is_judged_against_what_the_purse_has_left_after_its_earlier_loans() {
+        let mut regions = unpaid_shipping(0);
+        regions[0].for_sale.push(MarketItem {
+            amount: 40,
+            name: "grain".to_string(),
+            tag: "GRAI".to_string(),
+            price: 15,
+        });
+        let here = regions[0].region_id.clone();
+        for mate in [sharing(with_silver(unit("903"), 50)), unit("905")] {
+            let mut mate = mate;
+            mate.region_id = here.clone();
+            regions[0].units.push(mate);
+        }
+        let orders = format!("{UNPAID}unit 905\nBUY 2 grain\n");
+        let review = review_turn(&report(regions), &orders, Some(&ruleset()), with_map());
+
+        let sender = shipment_silver(&review, "900");
+        assert!(
+            sender.shipping.is_empty(),
+            "$20 is left in the purse, not $45: {sender:?}"
+        );
+        assert_eq!(shipped(&sender), Vec::<&SilverChange>::new());
+        let short: Vec<&str> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.message.contains("short $"))
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(
+            short,
+            ["the units in this hex are short $25 between them: they can have $50 and their orders spend $75"],
+            "the warning counts the refused fee's ask, as for a sender alone"
+        );
+    }
+
+    /// The hex of `ah-x0iq`'s probe: the sender's $45 shipment, a market selling grain at $15, and
+    /// faction-mates standing beside the sender.
+    fn fee_after_loans(mates: Vec<ReportUnit>) -> Vec<ReportRegion> {
+        let mut regions = unpaid_shipping(0);
+        regions[0].for_sale.push(MarketItem {
+            amount: 40,
+            name: "grain".to_string(),
+            tag: "GRAI".to_string(),
+            price: 15,
+        });
+        let here = regions[0].region_id.clone();
+        for mut mate in mates {
+            mate.region_id = here.clone();
+            regions[0].units.push(mate);
+        }
+        regions
+    }
+
+    /// [`fee_after_loans`] with an empty hex south of the sender's, for a sharer to walk to.
+    fn fee_after_loans_with_south(mates: Vec<ReportUnit>) -> Vec<ReportRegion> {
+        let mut regions = fee_after_loans(mates);
+        regions.push(region_at("1:0,2", 0, 2, vec![]));
+        regions
+    }
+
+    /// Whether 900's shipment is priced as paid, with the units' movement traced first.
+    fn ships(regions: Vec<ReportRegion>, orders: &str) -> bool {
+        let (traced_report, options) = traced(report(regions), orders, &ruleset(), with_map());
+        let review = review_turn(&traced_report, orders, Some(&ruleset()), options);
+        !shipment_silver(&review, "900").shipping.is_empty()
+    }
+
+    /// A sender that borrowed for its own `BUY` has that loan in its hand, not a debt the pool
+    /// still owes: a $50 sharer that lent it $30 has $20 for a $45 fee, an $80 one $50
+    /// (`runorders.cpp`: "Cannot afford shipping cost."; `ah-x0iq` review, finding 5).
+    #[test]
+    fn a_sender_that_borrowed_for_its_buy_is_judged_on_what_the_purse_has_left() {
+        let orders = format!("{UNPAID}BUY 2 grain\n");
+        assert!(!ships(
+            fee_after_loans(vec![sharing(with_silver(unit("903"), 50))]),
+            &orders
+        ));
+        assert!(ships(
+            fee_after_loans(vec![sharing(with_silver(unit("903"), 80))]),
+            &orders
+        ));
+    }
+
+    /// A sharer that walks away lends at the market before it leaves (`rules/sequenceofevents`:
+    /// market orders, then movement) and is gone by TRANSPORT, so what it lent is spent - whether
+    /// it lent the sender or a hex-mate - and nothing is left for the fee (`ah-x0iq` review,
+    /// findings 1 and 2).
+    #[test]
+    fn a_sharer_that_walked_away_after_lending_leaves_nothing_for_the_fee() {
+        let walker = || sharing(with_silver(unit("903"), 100));
+        let sender_bought = "unit 900\nBUY 4 grain\nTRANSPORT 901 9 FUR\nunit 903\nMOVE S\n";
+        assert!(!ships(
+            fee_after_loans_with_south(vec![walker()]),
+            sender_bought
+        ));
+        let mate_bought = format!("{UNPAID}unit 903\nMOVE S\nunit 905\nBUY 4 grain\n");
+        assert!(!ships(
+            fee_after_loans_with_south(vec![walker(), unit("905")]),
+            &mate_bought
+        ));
+        // Nor does what it carries away pay: $150 less its $60 loan is $90, enough for the fee,
+        // but it is in another hex by TRANSPORT (`ah-x0iq` follow-up review, finding 1).
+        assert!(!ships(
+            fee_after_loans_with_south(vec![sharing(with_silver(unit("903"), 150))]),
+            sender_bought
+        ));
+    }
+
+    /// The engine refuses a STUDY the shared money cannot pay and takes nothing for it
+    /// (`monthorders.cpp`: "STUDY: Not enough funds."), so a sharer's $50 is all still there at
+    /// TRANSPORT and pays the $45 fee (`ah-x0iq` review, finding 3; `data/COMB`: 10 silver a
+    /// month of study, so six men ask $60).
+    #[test]
+    fn a_refused_study_leaves_the_purse_whole_for_the_fee() {
+        let mut regions = fee_after_loans(vec![sharing(with_silver(unit("903"), 50))]);
+        regions[0].units[0] = with_men(regions[0].units[0].clone(), 6);
+        assert!(ships(regions, &format!("{UNPAID}STUDY combat\n")));
+    }
+
+    /// An arrival lends the hex it walks into (`ah-wyj8`), and what it lent a STUDY there is gone
+    /// before TRANSPORT (`rules/sequenceofevents`: month-long orders, then TRANSPORT): $60 less
+    /// four men's $40 study leaves $20 for a $45 fee (`ah-x0iq` review, finding 5).
+    #[test]
+    fn an_arrival_that_paid_a_study_here_has_only_the_rest_for_the_fee() {
+        let mut regions = fee_after_loans(vec![with_men(unit("905"), 4)]);
+        regions.push(region_at(
+            "1:0,2",
+            0,
+            2,
+            vec![sharing(with_silver(unit("903"), 60))],
+        ));
+        let orders = format!("{UNPAID}unit 903\nMOVE N\nunit 905\nSTUDY combat\n");
+        assert!(!ships(regions, &orders));
     }
 
     /// `rules/sequenceofevents` processes TRANSPORT orders before maintenance is assessed, and
