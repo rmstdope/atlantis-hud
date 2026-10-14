@@ -2701,10 +2701,7 @@ fn forecast_hex(
                         .collect()
                 })
                 .unwrap_or_default();
-            let bill: i64 = shipped_moves
-                .iter()
-                .map(|moved| -moved.amount.min(0))
-                .sum();
+            let bill: i64 = shipped_moves.iter().map(|moved| -moved.amount.min(0)).sum();
             // A refused shipment spends nothing, but its ask is still what made the month short
             // (`ah-7ale.4`).
             let refused: i64 = ledger
@@ -54415,7 +54412,11 @@ BUILD
     /// (`rules/share`; `ah-nq3k`).
     fn assert_the_fee_loan_shows_on_both_rows(review: &TurnReview, lender: &str) {
         let sender = shipment_silver(review, "900");
-        assert_eq!(sender.shipping.len(), 1, "the pool pays the fee: {sender:?}");
+        assert_eq!(
+            sender.shipping.len(),
+            1,
+            "the pool pays the fee: {sender:?}"
+        );
         assert_eq!(
             silver_booked(review, "900", SilverChangeCause::WasLent),
             45,
