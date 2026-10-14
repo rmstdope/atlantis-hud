@@ -15323,7 +15323,8 @@ impl Lending {
             // TRANSPORT too, for maintenance's reading alone ([`Lending::before_maintenance`]):
             // [`shipping_purse`] judged each fee against what the sharers held, whether or not
             // the market's purse stopped, so a fee it paid is lent for here whatever an earlier
-            // moment did (`ah-qugc` review, finding 2).
+            // moment did (`ah-qugc` review, finding 2). No input is known that stops the market
+            // and still has the pool pay a fee, so no test reaches that case.
             if matches!(
                 moment,
                 LendingMoment::Cast | LendingMoment::Study | LendingMoment::Transport
@@ -15341,7 +15342,10 @@ impl Lending {
                     let unit_id = &hex.units[index].unit.unit_id;
                     if missing > 0 && moment == LendingMoment::Transport {
                         // Its refused shipments were handed back above, so what the pool
-                        // cannot pay is an overdraft no fee made, and nothing is lent for it.
+                        // cannot pay is not lent for. Usually an overdraft no fee made; it can
+                        // also be a fee [`shipping_purse`] judged paid against silver the purse
+                        // had already lent at the market, which this reading does not lend
+                        // twice (`ah-x0iq`).
                         continue;
                     }
                     if missing > 0 {
