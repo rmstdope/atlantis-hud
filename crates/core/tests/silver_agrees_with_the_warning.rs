@@ -606,7 +606,7 @@ fn the_column_and_the_warning_agree_on_every_sharing_hex_in_the_corpus() {
             judged_pooled_hexes += 1;
         }
 
-        // The ledger sets `maintenance_pooled` only when step 4 had something to lend and could
+        // The ledger sets the relief's `pooled` only when step 4 had something to lend and could
         // not cover everybody, and emits the hex finding only when some unit's whole overdraft is
         // then still upkeep. Both halves are needed: a hex that covered everybody is silent, and
         // so is one whose only overdrafts are its orders'.
