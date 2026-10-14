@@ -12698,7 +12698,8 @@ fn unpayable_upkeep(
     };
 
     // Every unit is judged on its own balance, which already carries whatever step 4 lent it
-    // and what the `SHARE` purse lent for orders, both in [`UpkeepSilver`]. At most
+    // and what the `SHARE` purse lent for orders, both in [`UpkeepSilver`], with what never left it
+    // handed back in the column's settlement (`ah-ayg7`, `ah-5xdk`). At most
     // what maintenance drew is maintenance's fault, and the rest of an overdraft belongs to the
     // unit's orders: a unit holding $10, buying $350 of horses and owing $40 is short $380, of
     // which food or the fund may pay $40 and never the $340.
@@ -12731,7 +12732,12 @@ fn unpayable_upkeep(
 /// took nothing for the order, the unit's own coins included (`spells.cpp`: `RunCreateArtifact`;
 /// `monthorders.cpp`: `Do1StudyOrder`), so the unit pays its own upkeep from them before a
 /// faction-mate is asked (`ah-ayg7`) - only in the settlement the SILVER column shows: the one the
-/// hex's warning reads leaves it out ([`Ledger::maintenance_hands_back`]).
+/// hex's warning reads leaves it out ([`Ledger::maintenance_hands_back`]). So, in that same
+/// settlement, is the part of a unit's own cut GIVE of silver, or a TAKE of silver from it, that
+/// nobody could fund ([`unfunded_gift_silver`]): the engine cut it to what the pool held as it ran
+/// (`runorders.cpp`: `DoGiveOrder`, `GetSharedNum`), so it never left the unit, and silver it
+/// receives or earns afterwards pays its own upkeep (`rules/economy_maintenance`: "Silver in the
+/// unit's possession" first; `ah-5xdk`). The warning keeps the cut part as owed.
 ///
 /// Report-wide, one row per hex, because a sharer that walks into another hex lends there:
 /// movement comes before the month-long orders and maintenance after them
@@ -12781,9 +12787,16 @@ impl UpkeepSilver {
             .zip(&lending.arrivals_lend)
             .map(|(arrival, lent)| (arrival.unit.clone(), *lent))
             .collect();
-        // A refused order's hand-back, in the column's settlement only (`ah-ayg7`).
+        // A refused order's hand-back (`ah-ayg7`) and a cut gift's unfunded part (`ah-5xdk`), in
+        // the column's settlement only.
         let handed_back = if ledger.maintenance_hands_back {
             refused_before_maintenance(hex, ledger, &lending)
+                .into_iter()
+                .zip(&hex.units)
+                .map(|(refused, ordered)| {
+                    refused + unfunded_gift_silver(ledger, &ordered.unit.unit_id)
+                })
+                .collect()
         } else {
             vec![0; hex.units.len()]
         };
@@ -12902,7 +12915,8 @@ fn share_silver_for_upkeep(
 
         // Every own unit in the region lends what it has spare. `silver_balance` is post-orders and
         // post-own-maintenance and already carries any relief written before this point, and with
-        // what the `SHARE` purse lent for orders carried ([`UpkeepSilver`]) it is exactly "what
+        // what the `SHARE` purse lent for orders carried and, in the column's settlement, what never
+        // left it handed back ([`UpkeepSilver`], `ah-ayg7`, `ah-5xdk`) it is exactly "what
         // this unit has spare" - which `balance_of` is not.
         let spare: Vec<(&Member, i64)> = members
             .iter()
@@ -56475,6 +56489,117 @@ BUILD
             silver_booked(&review, "902", SilverChangeCause::GaveAway),
             0
         );
+    }
+
+    /// A gift between sharers cut to the pool, and a gift back: sharers 901 ($789) and 902
+    /// ($3713), 901 GIVE 902 10000 SILV and 902 GIVE 901 1000 SILV. The engine runs the gives unit
+    /// by unit in report order (`runorders.cpp`: `DoGiveOrders`), so 901's runs first: it is cut
+    /// to the pool's $4502 and `ConsumeShared` takes 901's own $789 and then all of 902's $3713
+    /// (`DoGiveOrder`, `GetSharedNum`; `unit.cpp`; `rules/share`). Then 902 gives $1000 back, so
+    /// 901 holds $1000 at maintenance and pays its own upkeep: "Silver in the unit's possession"
+    /// comes before "Silver from other faction units in the same region"
+    /// (`rules/economy_maintenance`). The $5498 of the ask nobody could fund never left 901, so no
+    /// faction-mate's silver pays its fee (`ah-5xdk`).
+    #[test]
+    fn a_giver_whose_cut_gift_comes_back_in_part_pays_its_own_upkeep() {
+        let rules = trident_rules();
+        let region = region(vec![
+            sharing(with_silver(starving(unit("901")), 789)),
+            sharing(with_silver(starving(unit("902")), 3713)),
+        ]);
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nGIVE 902 10000 SILV\nunit 902\nGIVE 901 1000 SILV\n",
+            Some(&rules),
+            with_map(),
+        );
+        let giver = shipment_silver(&review, "901");
+        assert_eq!(
+            (giver.upkeep, giver.shared_silver_covered),
+            (Some(10), 0),
+            "901 pays its own upkeep from the $1000 it got back: {giver:?}"
+        );
+        // And the receiver's column is as the engine ran it: the whole $3713 lent, the $1000 it
+        // gave back a line of its own.
+        let receiver = shipment_silver(&review, "902");
+        assert_eq!(
+            (
+                silver_booked(&review, "902", SilverChangeCause::WasGiven),
+                silver_booked(&review, "902", SilverChangeCause::GaveAway),
+                silver_booked(&review, "902", SilverChangeCause::Lent),
+                receiver.at_month_end,
+            ),
+            (4502, -1000, -3713, Some(3502)),
+            "902: {receiver:?}"
+        );
+        // The hex's own sentence still counts the ask beyond the pool as owed (`ah-uyon`).
+        assert_eq!(hex_silver_figures(&review.findings), (5498, 4502, 10000));
+    }
+
+    /// The fixture's own order: the receiver 902 is listed first, so its GIVE back runs first
+    /// (`runorders.cpp`: `DoGiveOrders`, unit by unit in report order). 902 holds $2713 when
+    /// 901's gift runs, 901 holds $1789; the gift is cut to $4502 and draws 901's $1789 and then
+    /// 902's $2713 (`DoGiveOrder`, `GetSharedNum`; `unit.cpp`: `ConsumeShared`). 901 then works
+    /// for its wage and pays its own upkeep from it (`rules/economy_maintenance`), so no
+    /// faction-mate's silver pays it (`ah-5xdk` review, finding 2).
+    #[test]
+    fn a_giver_whose_cut_gift_was_refilled_first_pays_its_upkeep_from_its_wage() {
+        let rules = trident_rules();
+        let place = ReportRegion {
+            wages: Some("$12.0".to_string()),
+            max_wages: Some(5000),
+            ..region(vec![
+                sharing(with_silver(starving(unit("902")), 3713)),
+                sharing(with_silver(starving(unit("901")), 789)),
+            ])
+        };
+        let review = review_turn(
+            &report(vec![place]),
+            "unit 902\nGIVE 901 1000 SILV\nunit 901\nGIVE 902 10000 SILV\nWORK\n",
+            Some(&rules),
+            with_map(),
+        );
+        let giver = shipment_silver(&review, "901");
+        assert_eq!(
+            (giver.upkeep, giver.shared_silver_covered),
+            (Some(10), 0),
+            "901 pays its own upkeep from its wage: {giver:?}"
+        );
+        assert_eq!(
+            silver_booked(&review, "902", SilverChangeCause::Lent),
+            -2713,
+            "{:?}",
+            shipment_silver(&review, "902")
+        );
+    }
+
+    /// A giver whose cut gift came back to it whole lends its faction-mates their upkeep out of
+    /// it: 901 ($789) GIVE 902 10000 SILV is cut to the pool's $4502, drawing all of 902's $3713
+    /// (`runorders.cpp`: `DoGiveOrder`, `GetSharedNum`; `unit.cpp`: `ConsumeShared`), and 902 gives
+    /// the $4502 back. 902 and the penniless 903 then owe $10 each, and "Silver from other faction
+    /// units in the same region" pays it (`rules/economy_maintenance`) from 901's $4502: the part
+    /// of its ask nobody funded never left it, so it is not read as overdrawn (`ah-5xdk` review,
+    /// finding 1).
+    #[test]
+    fn a_giver_whose_cut_gift_came_back_lends_its_mates_their_upkeep() {
+        let rules = trident_rules();
+        let region = region(vec![
+            sharing(with_silver(starving(unit("901")), 789)),
+            sharing(with_silver(starving(unit("902")), 3713)),
+            starving(unit("903")),
+        ]);
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 901\nGIVE 902 10000 SILV\nunit 902\nGIVE 901 4502 SILV\n",
+            Some(&rules),
+            with_map(),
+        );
+        for id in ["902", "903"] {
+            let fed = shipment_silver(&review, id);
+            assert_eq!(fed.shared_silver_covered, 10, "{id}: {fed:?}");
+        }
+        let giver = shipment_silver(&review, "901");
+        assert_eq!(giver.shared_silver_covered, 0, "901: {giver:?}");
     }
 
     /// A gift drawn on the pool stays lent when its giver receives silver later in the Give phase:
