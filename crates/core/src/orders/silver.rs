@@ -1840,6 +1840,22 @@ impl<'a> UnitFacts<'a> {
         self.phases.map_or(&[][..], |phases| phases.fundings)
     }
 
+    /// What the engine refused this unit's cut silver `GIVE`s, judged against the hex's `SHARE`
+    /// pool as each ran: the ask beyond what the unit and its sharing faction-mates still held
+    /// (`runorders.cpp`: `DoGiveOrder`, "Not enough."; `unit.cpp`: `GetSharedNum`). Only where the
+    /// pool's stock was read, since elsewhere `received` is the ask itself. A floor under the
+    /// unit's shortfall, because a faction-mate's earlier GIVE can drain this unit's own silver
+    /// before its GIVE runs, and the `Lent` row that records it is booked after the forecast
+    /// (`ah-fj2l`).
+    #[must_use]
+    pub fn refused_at_give(&self) -> i64 {
+        self.fundings()
+            .iter()
+            .filter(|funding| funding.cut_gift() && funding.pool_read)
+            .map(|funding| (funding.asked - funding.received).max(0))
+            .sum()
+    }
+
     /// The ledger's record of this unit's silver. Empty where there is no ledger.
     #[must_use]
     pub(crate) fn silver_moves(&self) -> &'a [SilverMove] {
@@ -3256,7 +3272,14 @@ pub fn forecast_unit(
         ),
         _ => None,
     };
-    let short_for_orders = short_before_sharing.map(|short| short.saturating_sub(shared).max(0));
+    // Never less than what the engine cut its GIVEs by: the walk above starts from what the unit
+    // held, and cannot see a faction-mate's earlier GIVE draining that through the pool (`ah-fj2l`).
+    let short_for_orders = short_before_sharing.map(|short| {
+        short
+            .saturating_sub(shared)
+            .max(facts.refused_at_give())
+            .max(0)
+    });
 
     // The note says *this unit's month costs nothing*, so a unit that paid for a study anywhere
     // must not carry it, whatever else it also ordered.

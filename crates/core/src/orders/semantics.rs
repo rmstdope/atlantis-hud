@@ -57148,6 +57148,42 @@ BUILD
         );
     }
 
+    /// A sharer whose silver a faction-mate's GIVE drew on first is short by what that left it,
+    /// not by what it held: 901 comes first in the region, so its GIVE of $400 spends its own $300
+    /// and then sharer 902's $100 (`unit.cpp`: `Unit::ConsumeShared` spends the unit's own stock,
+    /// then each same-faction `SHARE` unit's in region order). 902 then holds the $400 it was
+    /// given and nothing of its own, so its GIVE of $1000 finds $400 (`Unit::GetSharedNum`) and
+    /// is cut to it (`runorders.cpp`: `DoGiveOrder`, "Not enough.") - $600 short, the hex's own
+    /// figure, never the $500 its $100 would make it if it had not lent it (`ah-fj2l`).
+    #[test]
+    fn a_sharer_drained_by_an_earlier_gift_is_short_by_what_it_lent() {
+        let rules = trident_rules();
+        let review = review_turn(
+            &report(vec![region(vec![
+                sharing(with_silver(unit("901"), 300)),
+                sharing(with_silver(unit("902"), 100)),
+            ])]),
+            "unit 901\nGIVE 902 400 SILV\nunit 902\nGIVE 901 1000 SILV\n",
+            Some(&rules),
+            with_map(),
+        );
+        let hex: Vec<_> = review
+            .findings
+            .iter()
+            .filter(|f| f.code.as_str() == "not-enough-silver" && f.unit_id.is_none())
+            .map(|f| f.message.clone())
+            .collect();
+        assert_eq!(hex.len(), 1, "{:?}", review.findings);
+        assert!(hex[0].contains("short $600 "), "{hex:?}");
+        let giver = shipment_silver(&review, "902");
+        assert_eq!(giver.short_for_orders, Some(600), "{giver:?}");
+        assert_eq!(
+            giver.short_on,
+            Some(crate::orders::silver::SilverSpender::Give),
+            "{giver:?}"
+        );
+    }
+
     /// The SILVER column's `short_on` and the editor's shortfall anchor read one verdict on a
     /// silver gift, so they always name the same line: the gift where the engine cut it
     /// (`runorders.cpp`: `DoGiveOrder`, "Not enough."), and the $200 amulet (`data/CRPA`) it then
