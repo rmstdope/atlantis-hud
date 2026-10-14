@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Upkeep a mate paid, as lines</title>
+<style>
+:root{--ground:#10151c;--raised:#1c232e;--edge:#26303d;--edge-soft:#1e2733;--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--ok:#4fb783;--danger:#d97070;}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:28px 16px 64px}
+header,section{max-width:1180px;margin:0 auto}
+h1{font-size:24px} h1 span{color:var(--brass)}
+h2{font-size:16px;margin:34px 0 4px;border-top:1px solid var(--edge);padding-top:18px}
+h2 em{color:var(--brass);font-style:normal;font-size:11px;letter-spacing:1.6px;text-transform:uppercase;margin-right:10px}
+p{color:var(--ink-soft);max-width:92ch;margin-top:8px;font-size:14px} b{color:var(--ink)}
+.tips{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px;margin-top:14px;align-items:start}
+.tip{font-family:'Helvetica Neue',Arial,sans-serif;background:var(--raised);border:1px solid var(--edge);border-radius:5px;padding:10px 12px;box-shadow:0 8px 26px rgba(0,0,0,.45)}
+.sect{color:var(--brass);font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px}
+.hd{font-size:12.5px;margin-bottom:6px;border-bottom:1px solid var(--edge-soft);padding-bottom:5px}
+.il{font-size:12px;color:var(--ink-soft);padding:3px 0;border-bottom:1px solid var(--edge-soft);display:flex;justify-content:space-between;gap:12px}
+.k{color:var(--ink)} .v{font-family:Menlo,monospace;font-size:11.5px;white-space:nowrap}
+.s{display:block;color:var(--ink-dim);font-size:11px;font-style:italic;margin-top:2px;font-family:Georgia,serif}
+.up{color:var(--ok)} .down{color:var(--danger)}
+.new{background:rgba(79,183,131,.10);border-left:2px solid var(--ok);padding-left:7px}
+.gone{background:rgba(217,112,112,.10);border-left:2px solid var(--danger);padding-left:7px}
+.note{font-size:11.5px;color:var(--ink-soft);font-style:italic;padding-top:7px;margin-top:5px;border-top:1px solid var(--edge-soft);font-family:Georgia,serif}
+.cap{font-size:12.5px;color:var(--ink-soft);margin-top:8px}
+</style></head><body>
+<header><h1><span>Option A</span> &mdash; upkeep a faction-mate pays is a line on both units</h1>
+<p>The draw for the GIVE is always shown whole. Silver handed over at month end to pay upkeep gets <b>its own pair of lines</b>: &ldquo;was lent for upkeep&rdquo; on the unit that was fed, &ldquo;lent for upkeep&rdquo; on whoever paid. The list always adds up to the month end. <b>Recommended</b>: every movement of silver is a line, on both sides, the way a ledger does it.</p></header>
+<section><h2><em>Today</em> the same draw, shown two ways</h2>
+<p>Jungle (38,34). Unit (4862) is sharing and holds 789. Unit (3431) gives 789 it doesn't have, so sharing takes all 789 from Unit (4862). At the end of the month Unit (4862) has nothing left for its 100 upkeep.</p>
+<div class="tips">
+<div class="tip"><div class="sect">Silver &middot; a faction-mate can cover the upkeep</div><div class="hd">Unit (4862)</div>
+<div class="il "><span class="k">silver<span class="s"></span></span><span class="v ">789 &rarr; 0</span></div><div class="il "><span class="k">worked<span class="s"></span></span><span class="v up">+226</span></div><div class="il gone"><span class="k">lent<span class="s">to a faction-mate's orders in this hex</span></span><span class="v down">&minus;689</span></div><div class="il "><span class="k">shipped<span class="s">to Prefect Elfried (5508)</span></span><span class="v down">&minus;226</span></div><div class="il "><span class="k">upkeep<span class="s"></span></span><span class="v down">&minus;100</span></div>
+<div class="note">The GIVE looks as if it took 689. It took 789; 100 came back for upkeep.</div></div>
+<div class="tip"><div class="sect">Silver &middot; nobody seems to cover it</div><div class="hd">Unit (4862)</div>
+<div class="il "><span class="k">silver<span class="s"></span></span><span class="v ">789 &rarr; &minus;100</span></div><div class="il "><span class="k">worked<span class="s"></span></span><span class="v up">+226</span></div><div class="il "><span class="k">lent<span class="s">to a faction-mate's orders in this hex</span></span><span class="v down">&minus;789</span></div><div class="il "><span class="k">shipped<span class="s">to Prefect Elfried (5508)</span></span><span class="v down">&minus;226</span></div><div class="il "><span class="k">upkeep<span class="s"></span></span><span class="v down">&minus;100</span></div>
+<div class="note gone">This unit may avoid starvation if a same-region allied unit is sharing silver or food.</div>
+<div class="note">Yet Unit (4682) and Unit (4829) end the month with 63 and 37, which the game hands over for upkeep.</div></div>
+</div></section>
+<section><h2><em>A</em> a faction-mate can cover it (Unit (3431) pays)</h2><div class="tips">
+<div class="tip"><div class="sect">Silver</div><div class="hd">Unit (4862)</div>
+<div class="il "><span class="k">silver<span class="s"></span></span><span class="v ">789 &rarr; 0</span></div><div class="il "><span class="k">worked<span class="s"></span></span><span class="v up">+226</span></div><div class="il new"><span class="k">lent<span class="s">to a faction-mate's orders in this hex</span></span><span class="v down">&minus;789</span></div><div class="il "><span class="k">shipped<span class="s">to Prefect Elfried (5508)</span></span><span class="v down">&minus;226</span></div><div class="il new"><span class="k">was lent for upkeep<span class="s">by Unit (3431)</span></span><span class="v up">+100</span></div><div class="il "><span class="k">upkeep<span class="s"></span></span><span class="v down">&minus;100</span></div></div>
+<div class="tip"><div class="sect">Silver</div><div class="hd">Unit (3431)</div>
+<div class="il "><span class="k">silver<span class="s"></span></span><span class="v ">0 &rarr; 1515</span></div><div class="il new"><span class="k">was lent<span class="s">by your units in this hex</span></span><span class="v up">+789</span></div><div class="il "><span class="k">gave away<span class="s">to Prefect Elfried (5508)</span></span><span class="v down">&minus;789</span></div><div class="il "><span class="k">was given<span class="s">from Unit (4868)</span></span><span class="v up">+1578</span></div><div class="il "><span class="k">worked<span class="s"></span></span><span class="v up">+67</span></div><div class="il new"><span class="k">lent for upkeep<span class="s">to Unit (4862)</span></span><span class="v down">&minus;100</span></div><div class="il "><span class="k">upkeep<span class="s"></span></span><span class="v down">&minus;30</span></div></div>
+</div><p class="cap">Unit (3431)'s own wage and upkeep are illustrative.</p></section>
+<section><h2><em>A</em> the other case: two sharers' leftover wages cover it</h2><div class="tips">
+<div class="tip"><div class="sect">Silver</div><div class="hd">Unit (4862)</div>
+<div class="il "><span class="k">silver<span class="s"></span></span><span class="v ">789 &rarr; 0</span></div><div class="il "><span class="k">worked<span class="s"></span></span><span class="v up">+226</span></div><div class="il "><span class="k">lent<span class="s">to a faction-mate's orders in this hex</span></span><span class="v down">&minus;789</span></div><div class="il "><span class="k">shipped<span class="s">to Prefect Elfried (5508)</span></span><span class="v down">&minus;226</span></div><div class="il new"><span class="k">was lent for upkeep<span class="s">by Unit (4682) and Unit (4829)</span></span><span class="v up">+100</span></div><div class="il "><span class="k">upkeep<span class="s"></span></span><span class="v down">&minus;100</span></div></div>
+<div class="tip"><div class="sect">Silver</div><div class="hd">Unit (4682)</div>
+<div class="il "><span class="k">silver<span class="s"></span></span><span class="v ">0 &rarr; 0</span></div><div class="il "><span class="k">worked<span class="s"></span></span><span class="v up">+73</span></div><div class="il new"><span class="k">lent for upkeep<span class="s">to Unit (4862)</span></span><span class="v down">&minus;63</span></div><div class="il "><span class="k">upkeep<span class="s"></span></span><span class="v down">&minus;10</span></div></div>
+</div><p class="cap">The starvation sentence is gone: the upkeep is paid.</p></section>
+<section><h2><em>A</em> only part can be covered (mates have 50)</h2><div class="tips">
+<div class="tip"><div class="sect">Silver</div><div class="hd">Unit (4862)</div>
+<div class="il "><span class="k">silver<span class="s"></span></span><span class="v ">789 &rarr; &minus;50</span></div><div class="il "><span class="k">worked<span class="s"></span></span><span class="v up">+226</span></div><div class="il "><span class="k">lent<span class="s">to a faction-mate's orders in this hex</span></span><span class="v down">&minus;789</span></div><div class="il "><span class="k">shipped<span class="s">to Prefect Elfried (5508)</span></span><span class="v down">&minus;226</span></div><div class="il new"><span class="k">was lent for upkeep<span class="s">by Unit (4682)</span></span><span class="v up">+50</span></div><div class="il "><span class="k">upkeep<span class="s"></span></span><span class="v down">&minus;100</span></div>
+<div class="note">This unit may avoid starvation if a same-region allied unit is sharing silver or food.</div></div>
+<div class="tip"><div class="sect">Silver &middot; nobody can cover any of it</div><div class="hd">Unit (4862)</div>
+<div class="il "><span class="k">silver<span class="s"></span></span><span class="v ">789 &rarr; &minus;100</span></div><div class="il "><span class="k">worked<span class="s"></span></span><span class="v up">+226</span></div><div class="il "><span class="k">lent<span class="s">to a faction-mate's orders in this hex</span></span><span class="v down">&minus;789</span></div><div class="il "><span class="k">shipped<span class="s">to Prefect Elfried (5508)</span></span><span class="v down">&minus;226</span></div><div class="il "><span class="k">upkeep<span class="s"></span></span><span class="v down">&minus;100</span></div>
+<div class="note">This unit may avoid starvation if a same-region allied unit is sharing silver or food.</div></div>
+</div></section></body></html>
