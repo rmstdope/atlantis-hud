@@ -12573,8 +12573,8 @@ fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>, carried: &[i64]) -> Vec<
 }
 
 /// What the hex's `SHARE` purse moved into (positive) or out of (negative) each unit's silver for
-/// its orders - CAST, the market and STUDY ([`Lending::before`] maintenance) - index-aligned with
-/// `hex.units`. The ledger charges a borrower the whole of what it spends and leaves its lenders'
+/// its orders - CAST, the market, STUDY and a TRANSPORT's fee ([`Lending::before_maintenance`],
+/// `ah-qugc`) - index-aligned with `hex.units`. The ledger charges a borrower the whole of what it spends and leaves its lenders'
 /// rows alone (`ah-0mch`), so maintenance reads a unit's silver as [`silver_balance`] plus this:
 /// `rules/sequenceofevents` charges upkeep after every order, so a buyer the purse paid keeps its
 /// wages for its own upkeep, and a sharer that lent its silver has that much less for its own
@@ -12593,7 +12593,7 @@ fn purse_carried(hexes: &[(Hex<'_>, Ledger<'_>)]) -> Vec<Vec<i64>> {
     let mut carried: Vec<Vec<i64>> = hexes
         .iter()
         .map(|(hex, ledger)| {
-            let lending = Lending::before(hex, ledger, StatePhase::Maintenance);
+            let lending = Lending::before_maintenance(hex, ledger);
             for (arrival, lent) in ledger
                 .walking_silver
                 .arrivals_at(LendingMoment::MonthEnd)
@@ -15040,12 +15040,32 @@ impl Lending {
     /// the hex's silver at `phase` must carry. Nothing before [`StatePhase::Market`], since the
     /// first moment is the cast.
     fn before(hex: &Hex<'_>, ledger: &Ledger<'_>, phase: StatePhase) -> Self {
-        Self::over(hex, ledger, |moment| moment.phase() < phase)
+        let moments: Vec<LendingMoment> = PURSE_MOMENTS
+            .iter()
+            .copied()
+            .filter(|moment| moment.phase() < phase)
+            .collect();
+        Self::over(hex, ledger, &moments)
     }
 
-    fn over(hex: &Hex<'_>, ledger: &Ledger<'_>, take: impl Fn(LendingMoment) -> bool) -> Self {
-        let moments: Vec<LendingMoment> =
-            PURSE_MOMENTS.iter().copied().filter(|&m| take(m)).collect();
+    /// What the pool lent for orders by the time maintenance is assessed: [`Lending::before`]
+    /// maintenance, and then the shipment fees TRANSPORT drew on it ([`shipping_purse`]).
+    /// `rules/sequenceofevents` processes TRANSPORT orders before maintenance is assessed, so a
+    /// sharer whose silver paid a hex-mate's fee has that much less for its own upkeep
+    /// (`rules/share`; `ah-qugc`). TRANSPORT is no [`PURSE_MOMENTS`] moment: elsewhere the
+    /// month-end purse lends for a fee, and only maintenance, which runs between the two, needs it
+    /// read on its own.
+    fn before_maintenance(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Self {
+        let mut moments: Vec<LendingMoment> = PURSE_MOMENTS
+            .iter()
+            .copied()
+            .filter(|moment| moment.phase() < StatePhase::Maintenance)
+            .collect();
+        moments.push(LendingMoment::Transport);
+        Self::over(hex, ledger, &moments)
+    }
+
+    fn over(hex: &Hex<'_>, ledger: &Ledger<'_>, moments: &[LendingMoment]) -> Self {
         if moments.is_empty() {
             return Self::nothing(hex, ledger);
         }
@@ -15053,7 +15073,7 @@ impl Lending {
         if sharing.reading(SILVER, None) == Reading::PerUnit || !sharing.pool_trusted(ledger) {
             return Self::nothing(hex, ledger);
         }
-        Self::settle(hex, ledger, &sharing, &moments)
+        Self::settle(hex, ledger, &sharing, moments)
     }
 
     /// What the engine never took from a unit, and so hands back at every later moment: the cost
@@ -15188,11 +15208,28 @@ impl Lending {
                     }
                 }
             }
+            // A shipment the pool could not pay was refused and took nothing, but
+            // `charge_refused_shipments` charges its whole ask into the balance the warning reads,
+            // so at TRANSPORT it is handed back: what is left to lend for is the fees that were
+            // paid (`ah-qugc` review, finding 1).
+            let refused_shipments = |index: usize| {
+                if moment != LendingMoment::Transport {
+                    return 0;
+                }
+                let unit_id = &hex.units[index].unit.unit_id;
+                ledger
+                    .refused_shipments
+                    .iter()
+                    .filter(|refused| &refused.unit_id == unit_id)
+                    .map(|refused| refused.cost)
+                    .sum::<i64>()
+            };
             let position = |purse: &Lending, index: usize, at: LendingMoment| {
                 own(index, at) - purse.lends[index]
                     + purse.borrows[index]
                     + purse.refused(index)
                     + unpaid[index]
+                    + refused_shipments(index)
             };
             let needs: Vec<i64> = (0..hex.units.len())
                 .map(|index| {
@@ -15282,7 +15319,16 @@ impl Lending {
             // study whose cost is more than the shared money left, taking nothing for it
             // (`spells.cpp`: `RunCreateArtifact`; `Do1StudyOrder`). So both moments pay their
             // claimants one by one, and neither stops the pool (`ah-li7l`, `ah-szu0`).
-            if matches!(moment, LendingMoment::Cast | LendingMoment::Study) {
+            //
+            // TRANSPORT too, for maintenance's reading alone ([`Lending::before_maintenance`]):
+            // [`shipping_purse`] judged each fee against what the sharers held, whether or not
+            // the market's purse stopped, so a fee it paid is lent for here whatever an earlier
+            // moment did (`ah-qugc` review, finding 2). No input is known that stops the market
+            // and still has the pool pay a fee, so no test reaches that case.
+            if matches!(
+                moment,
+                LendingMoment::Cast | LendingMoment::Study | LendingMoment::Transport
+            ) {
                 let (lent, refused) = SharerStock::new(parties).paid_one_by_one();
                 for (lender, lent) in who.iter().zip(lent) {
                     match lender {
@@ -15294,6 +15340,14 @@ impl Lending {
                 for (claim, missing) in claims.into_iter().zip(refused) {
                     let Some(index) = claim else { continue };
                     let unit_id = &hex.units[index].unit.unit_id;
+                    if missing > 0 && moment == LendingMoment::Transport {
+                        // Its refused shipments were handed back above, so what the pool
+                        // cannot pay is not lent for. Usually an overdraft no fee made; it can
+                        // also be a fee [`shipping_purse`] judged paid against silver the purse
+                        // had already lent at the market, which this reading does not lend
+                        // twice (`ah-x0iq`).
+                        continue;
+                    }
                     if missing > 0 {
                         if moment == LendingMoment::Cast && purse.refused_casts[index] {
                             // Its cast was refused and handed back above, so what it still
@@ -53801,6 +53855,77 @@ BUILD
         assert!(codes(&unpaid_findings(with_mate(10), UNPAID)).contains(&"part-of-hex-shortfall"));
     }
 
+    /// `rules/sequenceofevents` processes TRANSPORT orders before maintenance is assessed, and
+    /// `rules/share` warns that sharing silver "can leave the sharing unit without enough funds to
+    /// pay maintenance", while a non-sharer's funds "will be shared for maintenance". So a sharer
+    /// whose whole $45 the pool spent on a hex-mate's shipment fee owes its own 10 of upkeep out
+    /// of nothing, and the non-sharer's $100 pays both its upkeep and the sender's - as it already
+    /// does for a $45 BUY (`ah-su1x`). Before the fix the sharer was shown paying its own upkeep
+    /// and the hex was "short $20" (`ah-qugc`).
+    #[test]
+    fn a_sharer_that_pays_a_shipment_fee_has_that_much_less_for_its_upkeep() {
+        let mut regions = unpaid_shipping(0);
+        regions[0].units[0] = starving(regions[0].units[0].clone());
+        let here = regions[0].region_id.clone();
+        for mate in [
+            sharing(starving(with_silver(unit("903"), 45))),
+            starving(with_silver(unit("904"), 100)),
+        ] {
+            let mut mate = mate;
+            mate.region_id = here.clone();
+            regions[0].units.push(mate);
+        }
+        let review = review_turn(&report(regions), UNPAID, Some(&ruleset()), with_map());
+
+        let sender = shipment_silver(&review, "900");
+        assert_eq!(
+            sender.shipping.len(),
+            1,
+            "the pool pays the fee: {sender:?}"
+        );
+        let sharer = shipment_silver(&review, "903");
+        assert_eq!(
+            sharer.shared_silver_covered, 10,
+            "the sharer lent its $45 and has nothing for its upkeep: {sharer:?}"
+        );
+        assert_eq!(sender.shared_silver_covered, 10, "{sender:?}");
+        let short: Vec<&str> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.message.contains("short $"))
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert!(short.is_empty(), "{short:?}");
+    }
+
+    /// The same, with a second shipment the pool cannot pay: the engine refuses it and takes
+    /// nothing for it, so the sharer's $45 still paid the first fee and it still has nothing for
+    /// its own upkeep (`ah-qugc` review, finding 1).
+    #[test]
+    fn a_refused_shipment_leaves_the_paid_fees_loan_carried_into_maintenance() {
+        let mut regions = two_shipments_from_900(0);
+        regions[0].units[0] = starving(regions[0].units[0].clone());
+        let here = regions[0].region_id.clone();
+        for mate in [
+            sharing(starving(with_silver(unit("903"), 50))),
+            starving(with_silver(unit("904"), 100)),
+        ] {
+            let mut mate = mate;
+            mate.region_id = here.clone();
+            regions[0].units.push(mate);
+        }
+        let orders = "unit 900\nTRANSPORT 901 9 FUR\nTRANSPORT 902 9 FUR\n";
+        let review = review_turn(&report(regions), orders, Some(&ruleset()), with_map());
+
+        let sender = shipment_silver(&review, "900");
+        assert_eq!(sender.shipping.len(), 1, "one fee is paid: {sender:?}");
+        let sharer = shipment_silver(&review, "903");
+        assert_eq!(
+            sharer.shared_silver_covered, 5,
+            "the sharer lent $45 of its $50 and pays 5 of its 10 itself: {sharer:?}"
+        );
+    }
+
     /// TRANSPORT runs after movement (`rules/sequenceofevents`), so a sharing faction-mate that
     /// walks in this month pays the bill too (`ah-wyj8`).
     #[test]
@@ -53824,6 +53949,41 @@ BUILD
             !codes(&findings).contains(&"not-enough-silver"),
             "{findings:?}"
         );
+    }
+
+    /// A sharer walking in that pays the fee has lent its $45 there before maintenance, so it has
+    /// nothing for its own upkeep and a faction-mate pays it (`rules/sequenceofevents`: movement,
+    /// then TRANSPORT, then maintenance; `rules/share`; `ah-qugc`, `ah-6y6e`).
+    #[test]
+    fn a_sharer_that_walks_in_and_pays_the_fee_has_that_much_less_for_its_upkeep() {
+        let mut regions = unpaid_shipping(0);
+        regions[0].units[0] = starving(regions[0].units[0].clone());
+        let mut keeper = starving(with_silver(unit("904"), 100));
+        keeper.region_id = regions[0].region_id.clone();
+        regions[0].units.push(keeper);
+        regions.push(region_at(
+            "1:0,2",
+            0,
+            2,
+            vec![sharing(starving(with_silver(unit("903"), 45)))],
+        ));
+        let orders = format!("{UNPAID}unit 903\nMOVE N\n");
+        let (traced_report, options) =
+            traced(report(regions.clone()), &orders, &ruleset(), with_map());
+        let review = review_turn(
+            &report(traced_report.regions),
+            &orders,
+            Some(&ruleset()),
+            options,
+        );
+        let sender = shipment_silver(&review, "900");
+        assert_eq!(
+            sender.shipping.len(),
+            1,
+            "the arriving sharer pays: {sender:?}"
+        );
+        let walker = shipment_silver(&review, "903");
+        assert_eq!(walker.shared_silver_covered, 10, "{walker:?}");
     }
 
     fn unpaid_findings_with(
