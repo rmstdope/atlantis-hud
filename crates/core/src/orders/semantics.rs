@@ -54618,6 +54618,16 @@ BUILD
             .map(|id| shipment_silver(&review, id).shared_silver_covered)
             .sum();
         assert_eq!(relieved, 30, "{:#?}", review.silver);
+        // The worker held nothing until WORK, after the market (`rules/sequenceofevents`), so it
+        // lent nothing to the BUY - the navigator's third observation.
+        let worker = shipment_silver(&review, "903");
+        assert!(
+            worker
+                .changes
+                .iter()
+                .all(|moved| moved.cause != SilverChangeCause::Lent),
+            "{worker:?}"
+        );
     }
 
     /// What `id`'s `TRANSPORT` orders shipped, off its SILVER column: the `GaveAway` changes whose
