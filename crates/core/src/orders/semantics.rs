@@ -5808,7 +5808,10 @@ struct Ledger<'a> {
     /// shortfall computed from a sum with a hole in it is exactly the false warning this module's
     /// header refuses to produce.
     doubted: BTreeSet<String>,
-    /// The first order that drew each balance down, so a finding can point at a line.
+    /// Where each balance's shortfall is anchored, so a finding can point at a line: the first
+    /// order that drew it down - except for a silver gift or discard, which is never marked by its
+    /// draw and is marked here only when [`SilverFunding::cut_gift`] says the engine cut it, even
+    /// where it moves nothing (`ah-1c8p`, `ah-jz5q`).
     charged_at: BTreeMap<(String, String), PlacedIntent>,
     /// What each unit was charged in maintenance, so a shortfall message can say that the fee is
     /// part of what drew the balance down - it is not an order, and saying "its orders spend" of
@@ -9216,12 +9219,12 @@ fn transfer(
             Vec::new()
         },
     });
-    // A silver GIVE asked beyond the giver's own holding and not covered in full by sharers whose
-    // stock was read: the engine cuts it (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`),
-    // so it is a cut line and where the unit's shortfall is anchored. Any other silver GIVE was
-    // paid in full and is neither (`ah-ub3y`, `ah-f7md`, `ah-bky7`). A pool this walk could not
-    // read is no evidence that it paid.
-    let refused_short = funding.as_ref().is_some_and(SilverFunding::refused_short);
+    // The one verdict on a silver gift (`ah-jz5q`): an exact GIVE or discard asked beyond the
+    // giver's own holding and not covered in full by sharers whose stock was read is cut by the
+    // engine (`runorders.cpp`: `DoGiveOrder` checks `GetSharedNum`), so it is a cut line and where
+    // the unit's shortfall is anchored. Any other gift was paid in full and is neither (`ah-ub3y`,
+    // `ah-f7md`, `ah-bky7`). The SILVER column's `short_on` reads the same verdict off the record.
+    let cut_gift = funding.as_ref().is_some_and(SilverFunding::cut_gift);
     if let Some(funding) = funding {
         ledger
             .silver_fundings
@@ -9260,7 +9263,7 @@ fn transfer(
             // orders, they already agree with the column, and the settlement books neither.
             if is_give {
                 *ledger.silver_given.entry(from.clone()).or_default() += quantity;
-                if refused_short {
+                if cut_gift {
                     // The cut line is what overdrew the unit, so its finding points here even
                     // where it moves nothing and so draws nothing down (`ah-1c8p`).
                     ledger
@@ -9268,42 +9271,25 @@ fn transfer(
                         .entry((from.clone(), SILVER.to_ascii_uppercase()))
                         .or_insert_with(|| placed.clone());
                 }
-            }
-            if reach == GiveReach::Discard {
-                move_silver(
-                    ledger,
-                    StatePhase::Give,
-                    &from,
-                    -moved,
-                    SilverChangeCause::Discarded,
-                    Some(placed),
-                    target_label.map(str::to_string),
-                );
-            } else if is_give && !refused_short {
-                // Paid in full, by the giver's own silver or by the pool. Booked as `move_silver`
-                // books it, but without its `charged_at` mark: the game refused this line nothing,
-                // so the shortfall marker belongs on the order it does refuse, which the SILVER
-                // column names too, in a hex that shares or not (`ah-f7md`, `ah-bky7`).
+                // Booked as `move_silver` books it, but without the draw's `charged_at` mark: a
+                // gift's anchor is the verdict above and nothing else, so one paid in full - by
+                // its giver or by the pool, given away or discarded - leaves the shortfall marker
+                // to the order the game does refuse, which the SILVER column names too
+                // (`ah-f7md`, `ah-bky7`, `ah-jz5q`).
                 record_silver(
                     ledger,
                     StatePhase::Give,
                     &from,
                     -moved,
-                    SilverChangeCause::GaveAway,
+                    if reach == GiveReach::Discard {
+                        SilverChangeCause::Discarded
+                    } else {
+                        SilverChangeCause::GaveAway
+                    },
                     Some(placed.line as i64),
                     target_label.map(str::to_string),
                 );
                 apply_silver(ledger, StatePhase::Give, &from, -moved, None);
-            } else if is_give {
-                move_silver(
-                    ledger,
-                    StatePhase::Give,
-                    &from,
-                    -moved,
-                    SilverChangeCause::GaveAway,
-                    Some(placed),
-                    target_label.map(str::to_string),
-                );
             } else {
                 apply_silver(ledger, StatePhase::Give, &from, -moved, Some(placed));
             }
@@ -9338,7 +9324,7 @@ fn transfer(
         let (cut, could_move) = if !tag.eq_ignore_ascii_case(SILVER) {
             (received < quantity, received.max(0))
         } else if is_give {
-            (refused_short, known_source.max(0))
+            (cut_gift, known_source.max(0))
         } else {
             (moved < quantity, moved)
         };
@@ -13625,7 +13611,9 @@ fn record_silver(
 }
 
 /// Applies a signed silver movement to the running balance, and does the `charged_at` bookkeeping
-/// [`charge`] does for every other tag.
+/// [`charge`] does for every other tag. A silver gift or discard passes no `placed`: its anchor is
+/// the funding record's verdict ([`SilverFunding::cut_gift`]), set in `transfer`, never its draw
+/// (`ah-jz5q`).
 fn apply_silver(
     ledger: &mut Ledger<'_>,
     phase: StatePhase,
@@ -56880,6 +56868,214 @@ BUILD
         );
     }
 
+    /// The SILVER column's `short_on` and the editor's shortfall anchor read one verdict on a
+    /// silver gift, so they always name the same line: the gift where the engine cut it
+    /// (`runorders.cpp`: `DoGiveOrder`, "Not enough."), and the $200 amulet (`data/CRPA`) it then
+    /// refuses where the gift was paid in full - by its giver or by the `SHARE` pool. A GIVE runs
+    /// before a CAST or a BUY whatever the block's order (`rules/sequenceofevents`), and a `GIVE 0`
+    /// discard is a gift like any other (`rules/give`; `ah-jz5q`).
+    #[test]
+    fn a_gift_names_the_same_line_on_the_column_and_the_anchor() {
+        use crate::orders::silver::SilverSpender::{Cast, Give};
+        const CAST: &str = "CAST Create_Amulet_Of_Protection";
+        // (what it is, 901's silver, the sharer's silver if one shares, 901's orders, the gift's
+        // line, the order short on and the line it is anchored on)
+        let cases = [
+            (
+                "paid by its giver",
+                100,
+                None,
+                format!("GIVE 900 100 SILV\n{CAST}"),
+                2,
+                Cast,
+                3,
+            ),
+            (
+                "paid by its giver, sharing",
+                100,
+                Some(150),
+                format!("GIVE 900 100 SILV\n{CAST}"),
+                2,
+                Cast,
+                3,
+            ),
+            (
+                "ALL paid by its giver",
+                100,
+                None,
+                format!("GIVE 900 ALL SILV\n{CAST}"),
+                2,
+                Cast,
+                3,
+            ),
+            (
+                "ALL paid by its giver, sharing",
+                100,
+                Some(150),
+                format!("GIVE 900 ALL SILV\n{CAST}"),
+                2,
+                Cast,
+                3,
+            ),
+            (
+                "paid by the pool",
+                0,
+                Some(150),
+                format!("GIVE 900 100 SILV\n{CAST}"),
+                2,
+                Cast,
+                3,
+            ),
+            (
+                "cut by the pool",
+                0,
+                Some(50),
+                format!("GIVE 900 100 SILV\n{CAST}"),
+                2,
+                Give,
+                2,
+            ),
+            (
+                "cut where nothing pools",
+                50,
+                None,
+                format!("GIVE 900 100 SILV\n{CAST}"),
+                2,
+                Give,
+                2,
+            ),
+            (
+                "cut, written below the CAST",
+                50,
+                None,
+                format!("{CAST}\nGIVE 900 100 SILV"),
+                3,
+                Give,
+                3,
+            ),
+            (
+                "cut by the pool, written below the CAST",
+                0,
+                Some(50),
+                format!("{CAST}\nGIVE 900 100 SILV"),
+                3,
+                Give,
+                3,
+            ),
+            (
+                "cut, below a CAST its giver could pay for",
+                250,
+                None,
+                format!("{CAST}\nGIVE 900 300 SILV"),
+                3,
+                Give,
+                3,
+            ),
+            (
+                "cut, below a BUY",
+                50,
+                None,
+                "BUY 1 grain\nGIVE 900 100 SILV".to_string(),
+                3,
+                Give,
+                3,
+            ),
+            (
+                "cut by the pool, below a BUY",
+                0,
+                Some(50),
+                "BUY 1 grain\nGIVE 900 100 SILV".to_string(),
+                3,
+                Give,
+                3,
+            ),
+            (
+                "discard paid by its giver",
+                100,
+                None,
+                format!("GIVE 0 100 SILV\n{CAST}"),
+                2,
+                Cast,
+                3,
+            ),
+            (
+                "discard paid by its giver, sharing",
+                100,
+                Some(150),
+                format!("GIVE 0 100 SILV\n{CAST}"),
+                2,
+                Cast,
+                3,
+            ),
+            (
+                "discard paid by the pool",
+                0,
+                Some(150),
+                format!("GIVE 0 100 SILV\n{CAST}"),
+                2,
+                Cast,
+                3,
+            ),
+            (
+                "discard cut by the pool",
+                0,
+                Some(50),
+                format!("GIVE 0 100 SILV\n{CAST}"),
+                2,
+                Give,
+                2,
+            ),
+            (
+                "discard cut",
+                50,
+                None,
+                format!("GIVE 0 100 SILV\n{CAST}"),
+                2,
+                Give,
+                2,
+            ),
+        ];
+        for (case, held, shared, orders, gift_line, short_on, anchor) in cases {
+            let rules = trident_rules();
+            let mut region = caravanserai_owner("900", 1, 0, 0);
+            region.for_sale = vec![MarketItem {
+                amount: 40,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 12,
+            }];
+            region
+                .units
+                .push(with_silver(with_skill(unit("901"), "CRPA", 1), held));
+            let mut orders = format!("unit 901\n{orders}\n");
+            if let Some(shared) = shared {
+                region.units.push(sharing(with_silver(unit("902"), shared)));
+                orders.push_str("unit 902\n");
+            }
+            let review = review_turn(&report(vec![region]), &orders, Some(&rules), with_map());
+            let caster = shipment_silver(&review, "901");
+            let anchors: Vec<usize> = review
+                .findings
+                .iter()
+                .filter(|f| {
+                    matches!(
+                        f.code.as_str(),
+                        "not-enough-silver" | "part-of-hex-shortfall"
+                    )
+                })
+                .filter_map(|f| f.line)
+                .collect();
+            assert_eq!(
+                caster.short_on == Some(Give),
+                anchors.contains(&gift_line),
+                "{case}: the column and the anchor disagree: {caster:?} {:?}",
+                review.findings
+            );
+            assert_eq!(caster.short_on, Some(short_on), "{case}: {caster:?}");
+            assert_eq!(anchors, vec![anchor], "{case}: {:?}", review.findings);
+        }
+    }
+
     /// A GIVE the pool can fund only in part is cut to what the sharers hold (`runorders.cpp`:
     /// `DoGiveOrder`, "Not enough.", then `amt = GetSharedNum`), so 901's GIVE of $100 takes
     /// sharer 902's whole $50, and its $200 amulet (`data/CRPA`) is refused against nothing
@@ -59041,7 +59237,7 @@ BUILD
                     }],
                     "{gift:?}"
                 );
-                assert!(gift.pool_paid() && gift.paid_in_full() && !gift.refused_short());
+                assert!(gift.pool_paid() && !gift.cut_gift(), "{gift:?}");
             }
 
             /// The purse's lending before the market, and the Give phase's draw on and by each
@@ -59109,7 +59305,7 @@ BUILD
                 let hex = Hex::read(&region, &ordered, &[]);
                 let ledger = ledger_for(&hex, Some(&rules));
                 let gift = &ledger.silver_fundings["901"][0];
-                assert!(!gift.refused_short(), "{gift:?}");
+                assert!(!gift.cut_gift(), "{gift:?}");
                 assert!(
                     !ledger
                         .cut_transfers
@@ -59209,12 +59405,7 @@ BUILD
                         lent,
                         gift_drawn_by(&ledger, "901"),
                     ),
-                    (
-                        !gift.paid_in_full(),
-                        gift.refused_short(),
-                        drawn,
-                        gift.drawn()
-                    ),
+                    (gift.cut_gift(), gift.cut_gift(), drawn, gift.drawn()),
                     "{gift:?}"
                 );
                 assert!(
