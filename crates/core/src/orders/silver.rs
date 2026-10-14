@@ -1503,7 +1503,8 @@ pub struct UnitFacts<'a> {
     pub shipping_unmeasured: super::transport::UnmeasuredShipments,
     /// Whether the hover may name the cause - `Settings › Warnings › Transport` is on.
     pub transport_warning: bool,
-    /// How far the ledger has this unit overdrawn as STUDY settles, from `spendable_silver_at`;
+    /// How far the ledger has this unit overdrawn as STUDY settles, from `unlent_silver_at` (before
+    /// the purse's loans, which are what this sizes);
     /// `0` where it is not. The `SHARE` purse may lend it this much even where silver it receives
     /// afterwards - a shipment, wages - makes its month look paid for: that silver comes too late
     /// for a `BUY` or a `STUDY` (`rules/sequenceofevents`, `ah-aqqb`).
