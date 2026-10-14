@@ -16920,6 +16920,10 @@ fn pool_silver_figures(
         .map(|ordered| ordered.unit.unit_id.as_str())
         .collect();
     let can_have = can_have + silver_unfunded_between(ledger, &between_counted);
+    let short = short - upkeep_lent_beyond_need(hex, ledger, sharing, &between_counted, moment);
+    if short <= 0 {
+        return None;
+    }
 
     let upkeep = if moment == ShortfallMoment::MonthEnd {
         counted
@@ -16930,6 +16934,72 @@ fn pool_silver_figures(
         0
     };
     Some((ShortfallFigures { short, can_have }, upkeep))
+}
+
+/// What a sharing hex's month-end shortfall counts as spent and need not: the silver its pooled
+/// sharers lent faction-mates for upkeep that a refused shipment left in the purse and that the
+/// units the sentence leaves out (`counted` names the ones it reads) still had spare to pay
+/// instead (`ah-69ew`).
+///
+/// The engine refuses a TRANSPORT whose fee is more than the shared money left (`runorders.cpp`:
+/// `RunTransportOrders`, "Cannot afford shipping cost."), so what that money was stays in the
+/// purse, and `rules/sequenceofevents` assesses maintenance only after TRANSPORT. Maintenance then
+/// lends from whichever faction-mate comes first (`runorders.cpp`: `CheckFactionMaintenanceItem`
+/// walks the region's units in order), so the sharer's leftover can pay a borrower's fee that a
+/// unit with plenty would have paid. Counted gone, it makes the hex short by more than any order
+/// and upkeep on the SILVER cells adds up to.
+///
+/// Bounded three ways: by what the sharers lent; by the refused fees, the only asks that silver
+/// was kept from; and by what the uncounted units had spare after maintenance. A fee nobody
+/// outside could have paid is the sentence's own upkeep, and its loan stays spent
+/// (`a_sharing_hexs_month_end_income_is_silver_it_can_have_not_a_smaller_spend`). Silver the purse
+/// never lends to an order, such as a CAST's, stays outside this
+/// (`sale_funded_cast_in_a_sharing_hex`).
+fn upkeep_lent_beyond_need(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    sharing: &Sharing<'_>,
+    counted: &BTreeSet<&str>,
+    moment: ShortfallMoment,
+) -> i64 {
+    if moment != ShortfallMoment::MonthEnd {
+        return 0;
+    }
+    let lent: i64 = sharing
+        .sharers
+        .iter()
+        .filter(|(_, o)| sharing.pools_silver(o))
+        .map(|(_, o)| {
+            ledger
+                .relief()
+                .lent
+                .get(&o.unit.unit_id)
+                .copied()
+                .unwrap_or_default()
+        })
+        .sum();
+    let refused: i64 = ledger
+        .refused_shipments
+        .iter()
+        .map(|refused| refused.cost)
+        .sum();
+    if lent <= 0 || refused <= 0 {
+        return 0;
+    }
+    let spare_outside: i64 = hex
+        .units
+        .iter()
+        .map(|o| o.unit.unit_id.as_str())
+        .filter(|&who| {
+            !counted.contains(who)
+                && !ledger.doubted.contains(who)
+                && !sharing
+                    .walking
+                    .is_some_and(|walking| walking.departing.contains_key(who))
+        })
+        .map(|who| relieved_balance(ledger, who, SILVER).max(0))
+        .sum();
+    lent.min(refused).min(spare_outside)
 }
 
 /// What a hex whose `SHARE` purse cut a `BUY` is short of silver, read where the cut happened
@@ -54901,6 +54971,37 @@ BUILD
         assert_eq!(sender.shared_silver_for_orders, 45, "{sender:?}");
         assert_eq!(sender.short_for_orders, Some(45), "{sender:?}");
         assert_eq!(fee_loan(&review, "903"), (45, Some(0), -45, Some(5)));
+    }
+
+    /// A $0 sender pays its first $45 fee from a $60 sharer's loan and is refused its second, so
+    /// the sharer holds $15 at TRANSPORT, pays its own $10 upkeep, and maintenance lends its last
+    /// $5 to the sender's upkeep (`runorders.cpp`: `CheckFactionMaintenanceItem` walks the
+    /// faction-mates in order); a $100 non-sharer pays the rest. `rules/sequenceofevents` assesses
+    /// maintenance after TRANSPORT, so that $5 was in the purse when the refused fee asked for it:
+    /// the hex is short $40 - $90 of fees and the sharer's $10 upkeep against its $60 - not $45,
+    /// whose "spend" of $105 no order or upkeep on the SILVER cells adds up to (`ah-69ew`).
+    #[test]
+    fn upkeep_the_purse_lends_after_a_refused_shipment_is_not_counted_against_it() {
+        let mut regions = two_shipments_from_900(0);
+        regions[0].units[0] = starving(regions[0].units[0].clone());
+        for mate in [
+            sharing(starving(with_silver(unit("903"), 60))),
+            starving(with_silver(unit("904"), 100)),
+        ] {
+            let mate = in_hex(&regions, mate);
+            regions[0].units.push(mate);
+        }
+        let orders = "unit 900\nTRANSPORT 901 9 FUR\nTRANSPORT 902 9 FUR\n";
+        let review = review_turn(&report(regions), orders, Some(&ruleset()), with_map());
+        assert_eq!(shipments_of_900(&review), 1, "{:?}", review.silver);
+        assert_eq!(
+            short_messages(&review, None),
+            vec![
+                "the units in this hex are short $40 between them: they can have $60 \
+                 and their orders and upkeep spend $100"
+                    .to_string()
+            ],
+        );
     }
 
     fn unpaid_findings_with(
