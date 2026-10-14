@@ -12824,13 +12824,15 @@ impl UpkeepSilver {
 }
 
 /// What a refused CAST or STUDY handed back to each unit of one hex by maintenance, index-aligned
-/// with `hex.units`: in a pool, the purse's own judgment ([`Lending::refused`]); where nothing
-/// pools, each unit's own row - a cast its own silver could not pay ([`refused_cast_cost`]) and a
-/// study it could not ([`own_study_outcome`]) - since the engine takes nothing for either there
-/// too (`spells.cpp`: `RunCreateArtifact`; `monthorders.cpp`: `Do1StudyOrder`; `ah-vdav`).
-/// `lending` is the purse's reading before maintenance, which lends nothing where nothing pools.
+/// with `hex.units`: in a trusted pool, the purse's own judgment ([`Lending::refused`]); where
+/// nothing pools, or the pool cannot be trusted ([`Sharing::pool_trusted`]), each unit's own row -
+/// a cast its own silver could not pay ([`refused_cast_cost`]) and a study it could not
+/// ([`own_study_outcome`]) - since the engine takes nothing for either in any hex (`spells.cpp`:
+/// `RunCreateArtifact`; `monthorders.cpp`: `Do1StudyOrder`; `ah-vdav`, `ah-dkkm`). `lending` is
+/// the purse's reading before maintenance, which lends nothing in either of those hexes.
 fn refused_before_maintenance(hex: &Hex<'_>, ledger: &Ledger<'_>, lending: &Lending) -> Vec<i64> {
-    if Sharing::for_silver(hex, ledger).reading(SILVER, None) != Reading::PerUnit {
+    let sharing = Sharing::for_silver(hex, ledger);
+    if sharing.reading(SILVER, None) == Reading::Pooled && sharing.pool_trusted(ledger) {
         return lending.refused_all();
     }
     hex.units
@@ -55420,6 +55422,62 @@ BUILD
                   orders spend $200"
             ],
         );
+    }
+
+    /// `orders` for [`refused_order_hex`], with its sharer doubted: a `BUY` of an item no market
+    /// sells leaves its month unreadable, so the hex pools but its pool cannot be trusted
+    /// (`Sharing::pool_trusted`).
+    fn doubting_the_sharer(orders: &str) -> String {
+        format!("{orders}unit 904\nBUY 1 unobtainium\n")
+    }
+
+    /// A STUDY its student's own silver cannot pay, in a hex whose pool cannot be trusted, is
+    /// refused and takes nothing as anywhere else (`monthorders.cpp`: `Do1StudyOrder`): 902's $8
+    /// cannot pay combat's $10 (`data/COMB` in Trident). So 902 still holds its $8 at maintenance
+    /// and pays 8 of its own 10 upkeep from it; faction-mate 903 pays only the other 2 (`ah-dkkm`).
+    #[test]
+    fn a_refused_students_own_silver_pays_its_upkeep_in_an_untrusted_pool() {
+        let rules = trident_rules();
+        let orders = doubting_the_sharer("unit 902\nSTUDY COMB\n");
+        let review = review_turn(
+            &report(refused_order_hex(with_silver(unit("902"), 8))),
+            &orders,
+            Some(&rules),
+            CheckOptions::default(),
+        );
+        let student = shipment_silver(&review, "902");
+        assert!(student.pool_doubted, "the pool is untrusted: {student:?}");
+        assert_eq!(
+            student.shared_silver_covered, 2,
+            "902's own $8 pays the first 8 of its upkeep: {student:?}"
+        );
+        assert_eq!(student.upkeep, Some(8), "{student:?}");
+    }
+
+    /// A CAST its caster's own silver cannot pay, in a hex whose pool cannot be trusted, is
+    /// refused and takes nothing, the caster's own coins included (`spells.cpp`:
+    /// `RunCreateArtifact`): 901's $150 cannot pay the amulet's $200 (`data/CRPA`). So 901 still
+    /// holds its $150 at maintenance and pays its own 10 upkeep from it; no faction-mate pays any
+    /// (`ah-dkkm`).
+    #[test]
+    fn a_refused_casters_own_silver_pays_its_upkeep_in_an_untrusted_pool() {
+        let orders = doubting_the_sharer("unit 901\nCAST Create_Amulet_Of_Protection\n");
+        let review = review_turn(
+            &report(refused_order_hex(with_silver(
+                with_skill(unit("901"), "CRPA", 1),
+                150,
+            ))),
+            &orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let caster = shipment_silver(&review, "901");
+        assert!(caster.pool_doubted, "the pool is untrusted: {caster:?}");
+        assert_eq!(
+            caster.shared_silver_covered, 0,
+            "901's own $150 pays its upkeep: {caster:?}"
+        );
+        assert_eq!(caster.upkeep, Some(10), "{caster:?}");
     }
 
     /// With nobody to pay the rest, the refused student's own $8 pays what it can of its upkeep and
