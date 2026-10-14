@@ -12503,9 +12503,10 @@ fn relieved_balance(ledger: &Ledger<'_>, unit_id: &str, tag: &str) -> i64 {
 /// every message state - is exact either way.
 fn upkeep_claims(hexes: &[(Hex<'_>, Ledger<'_>)], reach: &SharingReach) -> Vec<UpkeepClaim> {
     let mut claims = Vec::new();
+    let carried = purse_carried(hexes);
     for (index, (hex, ledger)) in hexes.iter().enumerate() {
         claims.extend(
-            unpayable_upkeep(hex, ledger)
+            unpayable_upkeep(hex, ledger, &carried[index])
                 .into_iter()
                 .map(|(unit_id, short)| {
                     // Where the fee falls due, for the warning's breakdown (`ah-bwxp.2`): the
@@ -12534,7 +12535,9 @@ fn upkeep_claims(hexes: &[(Hex<'_>, Ledger<'_>)], reach: &SharingReach) -> Vec<U
 /// (`ah-e66j`). An earlier version of this function carried a second branch that *estimated* what a
 /// `SHARE` pool would cover; two implementations of one idea is how the column and the warning
 /// drifted apart before (`ah-ycuj`).
-fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<(String, i64)> {
+///
+/// `carried` is this hex's row of [`purse_carried`].
+fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>, carried: &[i64]) -> Vec<(String, i64)> {
     let mut claims = Vec::new();
     let owes = |ordered: &Ordered<'_>| -> Option<(String, i64)> {
         let who = &ordered.unit.unit_id;
@@ -12556,7 +12559,6 @@ fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<(String, i64)> {
     // what maintenance drew is maintenance's fault, and the rest of an overdraft belongs to the
     // unit's orders: a unit holding $10, buying $350 of horses and owing $40 is short $380, of
     // which food or the fund may pay $40 and never the $340.
-    let carried = purse_carried(hex, ledger);
     for (index, ordered) in hex.units.iter().enumerate() {
         let Some((unit_id, drawn)) = owes(ordered) else {
             continue;
@@ -12581,11 +12583,37 @@ fn unpayable_upkeep(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<(String, i64)> {
 ///
 /// Loans only: what a refused CAST or STUDY handed back ([`Lending::refused`]) stays out, since
 /// the hex's warning still counts a refused order as spending that silver (`ah-9n7l.2`).
-fn purse_carried(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<i64> {
-    let lending = Lending::before(hex, ledger, StatePhase::Maintenance);
-    (0..hex.units.len())
-        .map(|index| lending.borrows[index] - lending.lends[index])
-        .collect()
+///
+/// Report-wide, one row per hex, because a sharer that walks into another hex lends there:
+/// movement comes before the month-long orders and maintenance after them
+/// (`rules/sequenceofevents`), so what it lent a STUDY where it arrived is gone before its upkeep
+/// is assessed, and is taken off its row in the hex the report lists it in (`ah-6y6e`).
+fn purse_carried(hexes: &[(Hex<'_>, Ledger<'_>)]) -> Vec<Vec<i64>> {
+    let mut lent_on_arrival: BTreeMap<UnitKey, i64> = BTreeMap::new();
+    let mut carried: Vec<Vec<i64>> = hexes
+        .iter()
+        .map(|(hex, ledger)| {
+            let lending = Lending::before(hex, ledger, StatePhase::Maintenance);
+            for (arrival, lent) in ledger
+                .walking_silver
+                .arrivals_at(LendingMoment::MonthEnd)
+                .iter()
+                .zip(&lending.arrivals_lend)
+            {
+                *lent_on_arrival.entry(arrival.unit.clone()).or_default() += lent;
+            }
+            (0..hex.units.len())
+                .map(|index| lending.borrows[index] - lending.lends[index])
+                .collect()
+        })
+        .collect();
+    for ((hex, _), row) in hexes.iter().zip(&mut carried) {
+        for (ordered, carried) in hex.units.iter().zip(row.iter_mut()) {
+            let key = unit_key(&hex.region.region_id, &ordered.unit.unit_id);
+            *carried -= lent_on_arrival.get(&key).copied().unwrap_or(0);
+        }
+    }
+    carried
 }
 
 /// Step 4 of the maintenance payment order: silver from other faction units in the same region pays
@@ -12613,16 +12641,16 @@ fn share_silver_for_upkeep(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
     groups: &[Neighbourhood],
 ) -> BTreeMap<UnitKey, i64> {
+    // What the `SHARE` purse moved for orders, read once per hex: lending for upkeep below moves
+    // none of it.
+    let carried = purse_carried(hexes);
     // What each unit could not pay itself, read once per hex before anything is lent.
     let owing: Vec<BTreeMap<String, i64>> = hexes
         .iter()
-        .map(|(hex, ledger)| unpayable_upkeep(hex, ledger).into_iter().collect())
-        .collect();
-    // What the `SHARE` purse moved for orders, read once per hex: lending for upkeep below moves
-    // none of it.
-    let carried: Vec<Vec<i64>> = hexes
-        .iter()
-        .map(|(hex, ledger)| purse_carried(hex, ledger))
+        .zip(&carried)
+        .map(|((hex, ledger), carried)| {
+            unpayable_upkeep(hex, ledger, carried).into_iter().collect()
+        })
         .collect();
 
     let mut covered: BTreeMap<UnitKey, i64> = BTreeMap::new();
@@ -12864,9 +12892,13 @@ fn feed_from_food_after_silver(
     let mut all: BTreeMap<UnitKey, LateFoodRelief> = BTreeMap::new();
 
     // What each unit could not pay itself, read once per hex before anything is fed.
+    let carried = purse_carried(hexes);
     let owing: Vec<BTreeMap<String, i64>> = hexes
         .iter()
-        .map(|(hex, ledger)| unpayable_upkeep(hex, ledger).into_iter().collect())
+        .zip(&carried)
+        .map(|((hex, ledger), carried)| {
+            unpayable_upkeep(hex, ledger, carried).into_iter().collect()
+        })
         .collect();
 
     for (Neighbourhood { members, .. }, food_left) in groups.iter().zip(food_left) {
@@ -68409,6 +68441,68 @@ BUILD
             .into_iter()
             .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
             .collect()
+    }
+
+    /// `ah-6y6e`: student 5 (one man, $0, no food) studies in (7,53); sharer 7 (one man, $20, no
+    /// food) walks in from (7,51). Movement comes before the month-long orders and maintenance
+    /// after them (`rules/sequenceofevents`), so the walker lends the $10 STUDY (`data/COMB`: 10
+    /// silver a month; `rules/share`) and keeps $10, which its own $10 fee takes
+    /// (`rules/economy_maintenance`). Nothing is left for the student's fee. Before the fix,
+    /// maintenance lent the walker's silver to the student's fee first, and the STUDY was shown
+    /// short $10.
+    #[test]
+    fn a_sharer_that_walks_in_pays_for_a_study_before_anybodys_upkeep() {
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![starving(with_silver(unit("5"), 0))]),
+            region_at(
+                "1:7,51",
+                7,
+                51,
+                vec![sharing(starving(with_silver(unit("7"), 20)))],
+            ),
+        ];
+        let orders = "unit 5\nSTUDY combat\nunit 7\nMOVE S\n";
+        let (report, options) =
+            traced(report(regions), orders, &ruleset(), CheckOptions::default());
+        let review = review_turn(&report, orders, Some(&ruleset()), options);
+
+        // The STUDY line is paid; what is short is the student's own $10 fee, which nobody's
+        // silver is left for.
+        let short: Vec<(Option<&str>, Option<usize>, &str)> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .map(|finding| {
+                (
+                    finding.unit_id.as_deref(),
+                    finding.line,
+                    finding.message.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            short,
+            vec![(
+                None,
+                None,
+                "the units in this hex are short $10 between them: they can have $10 and their \
+                 orders and upkeep spend $20"
+            )]
+        );
+        let student = forecast_for(&review, "5");
+        assert_eq!(student.short_for_orders, Some(0), "{student:?}");
+        assert_eq!(
+            student.shared_silver_covered, 0,
+            "the walker's silver went to the STUDY and its own fee: {student:?}"
+        );
+        let sharer = forecast_for(&review, "7");
+        assert_eq!(sharer.upkeep, Some(10), "{sharer:?}");
+        assert_eq!(sharer.shared_silver_covered, 0, "{sharer:?}");
+        assert_eq!(
+            sharer.at_month_end,
+            Some(10),
+            "$20 less the $10 STUDY it lent, before its own $10 fee: {sharer:?}"
+        );
     }
 
     /// The control: a sharer that stays where it is listed pays as it always did.
