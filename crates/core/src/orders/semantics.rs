@@ -54994,10 +54994,6 @@ BUILD
         );
     }
 
-    /// Silver a quartermaster receives in an earlier TRANSPORT sub-phase is in hand when it forwards
-    /// it in a later one (`rules/sequenceofevents`), so forwarding it is not a cost its own silver
-    /// must fund - and late wages, which WORK earns before TRANSPORT, are forwarded too
-    /// (`ah-rt4p`).
     /// The `not-enough-silver` sentences of one review, on a unit or on the hex.
     fn silver_shortfall_messages(review: &TurnReview) -> Vec<(Option<String>, String)> {
         review
@@ -55074,6 +55070,10 @@ BUILD
         );
     }
 
+    /// Silver a quartermaster receives in an earlier TRANSPORT sub-phase is in hand when it forwards
+    /// it in a later one (`rules/sequenceofevents`), so forwarding it is not a cost its own silver
+    /// must fund - and late wages, which WORK earns before TRANSPORT, are forwarded too
+    /// (`ah-rt4p`).
     #[test]
     fn forwarding_silver_received_earlier_in_transport_is_not_an_unpayable_cost() {
         let regions = || {
