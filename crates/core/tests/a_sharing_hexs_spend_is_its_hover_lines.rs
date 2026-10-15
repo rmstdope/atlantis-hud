@@ -23,12 +23,9 @@ mod common;
 /// The hex's units that share: they hold no silver and earn it this month.
 const SHARERS: [&str; 3] = ["3431", "4682", "4829"];
 
-/// What the wood costs at this market.
-const WOOD: i64 = 81;
-
 /// The jungle hex as the report showed it, cut to our own units: three sharers with no silver,
-/// three faction-mates that stop sharing this month, a leader with none, and a quartermaster in a
-/// Caravanserai for the `TRANSPORT`.
+/// and four faction-mates put on `SHARE 0` this month - two holding silver (4868, 4862), a leader
+/// with none (4216), and a quartermaster in a Caravanserai for the `TRANSPORT` (5508).
 const REPORT: &str = "Bog Brawlers (5) Report
 
 jungle (38,34) in Mordur Canopy, contains Brackford [city], 8647
@@ -75,18 +72,13 @@ Exits:
 
 ";
 
-fn review(buy: i64, transport: bool) -> TurnReview {
+fn review(buy: i64) -> TurnReview {
     let ruleset = common::trident_ruleset();
     let mut parsed = parse_report_full(REPORT);
     classify_units(&mut parsed, &ruleset);
-    let transport = if transport {
-        "TRANSPORT 5508 ALL SILV\n"
-    } else {
-        ""
-    };
     let orders = format!(
         "unit 5508\nSHARE 0\nunit 4868\nSHARE 0\nunit 4862\nSHARE 0\nunit 4216\nSHARE 0\n\
-         unit 4829\nTAX\n{transport}unit 4682\nBUY {buy} WOOD\n"
+         unit 4829\nTAX\nTRANSPORT 5508 ALL SILV\nunit 4682\nBUY {buy} WOOD\n"
     );
     review_turn(&parsed, &orders, Some(&ruleset), CheckOptions::default())
 }
@@ -124,7 +116,10 @@ fn forecast<'a>(review: &'a TurnReview, unit_id: &str) -> &'a UnitSilver {
 }
 
 /// What the sharers' SILVER hovers say they spend, line by line, counting each coin once.
-fn hover_spend(review: &TurnReview, buy: i64) -> i64 {
+///
+/// The hex's orders spend silver only on the `BUY`, the `TRANSPORT` and upkeep, so every other
+/// cause scores nothing here; a fixture that adds another kind of spend must add it below.
+fn hover_spend(review: &TurnReview) -> i64 {
     let sharer = |label: &str| SHARERS.iter().any(|id| label.ends_with(&format!("({id})")));
     SHARERS
         .iter()
@@ -134,8 +129,12 @@ fn hover_spend(review: &TurnReview, buy: i64) -> i64 {
                 .changes
                 .iter()
                 .map(|change| match change.cause {
-                    // The hover names the whole ask beside a BUY the purse cut ("asked ...").
-                    SilverChangeCause::Bought => buy * WOOD,
+                    // The hover names the whole ask beside a BUY the purse cut ("asked ..."): what
+                    // it bought plus what the cut left unbought. The unit has one BUY, so one line.
+                    SilverChangeCause::Bought => {
+                        -change.amount + unit.wanted_for_orders.expect("priced")
+                            - unit.expense.expect("priced")
+                    }
                     SilverChangeCause::GaveAway => -change.amount,
                     // A fee paid for a unit outside the pool; one paid for a sharer is that
                     // sharer's upkeep, counted below.
@@ -152,12 +151,15 @@ fn hover_spend(review: &TurnReview, buy: i64) -> i64 {
         .sum()
 }
 
-fn assert_adds_up(buy: i64) {
-    let review = review(buy, true);
+/// `spend` is the bead's figure for that order: it pins the case, so the two sides cannot drift
+/// together unnoticed.
+fn assert_adds_up(buy: i64, spend_found: i64) {
+    let review = review(buy);
     let (short, can_have, spend) = sentence(&review);
+    assert_eq!(spend, spend_found, "the case the bead was found in");
     assert_eq!(
         spend,
-        hover_spend(&review, buy),
+        hover_spend(&review),
         "the sentence spends what the sharers' hover lines do"
     );
     assert_eq!(short, spend - can_have, "short is spend less can have");
@@ -165,18 +167,18 @@ fn assert_adds_up(buy: i64) {
 
 #[test]
 fn with_the_transport_in_two_wood_spend_what_the_hovers_add_up_to() {
-    assert_adds_up(2);
+    assert_adds_up(2, 348);
 }
 
 #[test]
 fn and_four_wood_too() {
-    assert_adds_up(4);
+    assert_adds_up(4, 510);
 }
 
 /// The $7 the navigator could not find: 3431's silver paying the leader's fee, on 3431's hover.
 #[test]
 fn the_sharers_silver_paying_an_outsiders_upkeep_is_a_line_on_the_payer() {
-    let review = review(2, true);
+    let review = review(2);
     let lent: Vec<(i64, Option<&str>)> = forecast(&review, "3431")
         .changes
         .iter()
