@@ -14253,15 +14253,6 @@ enum LendingMoment {
 impl LendingMoment {
     const COUNT: usize = LendingMoment::MonthEnd as usize + 1;
 
-    /// Whether movement has run by this moment (`rules/sequenceofevents`: "ADVANCE, MOVE and
-    /// SAIL orders" come before STUDY, TRANSPORT and maintenance).
-    fn after_movement(self) -> bool {
-        matches!(
-            self,
-            LendingMoment::Study | LendingMoment::Transport | LendingMoment::MonthEnd
-        )
-    }
-
     fn phase(self) -> StatePhase {
         match self {
             LendingMoment::Cast => StatePhase::Cast,
@@ -14843,19 +14834,20 @@ impl<'a> Sharing<'a> {
     }
 
     /// `position`, a unit's silver position in this pool at `moment`, as far as the pool answers
-    /// for it: a unit that has left by then is owed for no more than it owed as it left,
-    /// `at_movement` - what it spends or owes where it arrives is that region's business
-    /// (`rules/economy_maintenance`: "this will not happen between units in different regions";
-    /// `ah-6cka`).
+    /// for it: at the month's end a unit that has left is owed for no more than it owed before
+    /// maintenance, `before_upkeep` - its upkeep falls due where it ends the month
+    /// (`rules/sequenceofevents`), and `rules/economy_maintenance` shares for it "between your
+    /// units in the same region" and "this will not happen between units in different regions"
+    /// (`ah-6cka`). What its STUDY or TRANSPORT draws on this pool is left as it was.
     fn position_here(
         &self,
         ordered: &Ordered<'_>,
         moment: LendingMoment,
         position: i64,
-        at_movement: impl FnOnce() -> i64,
+        before_upkeep: impl FnOnce() -> i64,
     ) -> i64 {
-        if moment.after_movement() && self.leaves(ordered) {
-            position.max(at_movement().min(0))
+        if moment == LendingMoment::MonthEnd && self.leaves(ordered) {
+            position.max(before_upkeep().min(0))
         } else {
             position
         }
@@ -15000,7 +14992,7 @@ impl<'a> Sharing<'a> {
                 }
                 let who = &ordered.unit.unit_id;
                 let held = self.position_here(ordered, moment, held, || {
-                    silver_at(ledger, who, LendingMoment::Movement)
+                    silver_at(ledger, who, LendingMoment::Transport)
                 });
                 if cast_refused(index) {
                     (-held).max(0).max(drawn)
@@ -15085,8 +15077,8 @@ struct WalkingSilver {
     /// hex's total is exact either way; only which unit a shortfall is laid on can differ.
     departing: BTreeMap<String, i64>,
     /// Every unit listed in this hex whose month ends in another region, sharer or not
-    /// ([`SharingReach`]). After movement it is no claimant on this hex's silver pool beyond what
-    /// it already owed as it left: `rules/economy_maintenance` shares "between your units in the
+    /// ([`SharingReach`]). Its upkeep is no claim on this hex's silver pool
+    /// ([`Sharing::position_here`]): `rules/economy_maintenance` shares "between your units in the
     /// same region" and "this will not happen between units in different regions", and
     /// `rules/sequenceofevents` assesses maintenance after movement (`ah-6cka`).
     leaving: BTreeSet<String>,
@@ -15999,7 +15991,7 @@ impl Lending {
                     &hex.units[index],
                     at,
                     own(index, at) + carried + refused_shipments(index),
-                    || own(index, LendingMoment::Movement) + carried,
+                    || own(index, LendingMoment::Transport) + carried,
                 )
             };
             let needs: Vec<i64> = (0..hex.units.len())
@@ -16414,14 +16406,14 @@ fn sharing_purse_over(
             .saturating_sub(ledger.tax_overstated.get(index).copied().unwrap_or(0))
     };
 
-    // What the purse answers for at the month's end: a unit that has left owes it no more than
-    // it owed as it left (`ah-6cka`).
+    // What the purse answers for at the month's end: a unit that has left owes it nothing for
+    // its upkeep (`ah-6cka`).
     let own_end = |index: usize| {
         sharing.position_here(
             &hex.units[index],
             LendingMoment::MonthEnd,
             own(index, LendingMoment::MonthEnd),
-            || own(index, LendingMoment::Movement),
+            || own(index, LendingMoment::Transport),
         )
     };
     let coverage_for = |outcome| {
@@ -16989,14 +16981,13 @@ fn judge_shortfalls(
             }
             let short = (-balance).max(mid_month);
 
-            // A unit that leaves the hex answers to its pool for what it owed as it left, and to
-            // nobody here for the rest - its upkeep above all, which falls due where it ends the
-            // month (`rules/sequenceofevents`; `rules/economy_maintenance`: "this will not happen
+            // A unit that leaves the hex answers to its pool for what it owed before maintenance,
+            // and to nobody here for its upkeep, which falls due where it ends the month (`rules/sequenceofevents`; `rules/economy_maintenance`: "this will not happen
             // between units in different regions"). That rest is its own shortfall (`ah-6cka`).
             let (short, own_short) = if pooled && tag == SILVER && sharing.leaves(ordered) {
                 let owed_here =
                     (-sharing.position_here(ordered, LendingMoment::MonthEnd, balance, || {
-                        silver_at(ledger, who, LendingMoment::Movement)
+                        silver_at(ledger, who, LendingMoment::Transport)
                     }))
                     .max(0)
                     .min(short);
