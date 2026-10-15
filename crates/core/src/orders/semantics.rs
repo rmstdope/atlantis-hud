@@ -58273,10 +58273,11 @@ BUILD
         let payer = shipment_silver(&review, "903");
         assert_eq!(payer.upkeep_lent, 10, "{payer:?}");
         assert_eq!(payer.upkeep, Some(10), "{payer:?}");
+        // `at_month_end` is the figure before upkeep; the cell shows it less both.
         assert_eq!(
-            payer.at_month_end,
-            Some(50),
-            "month ends are unchanged: {payer:?}"
+            payer.at_month_end.map(|end| end - 10 - payer.upkeep_lent),
+            Some(30),
+            "the payer's shown month end is its $50 less its own fee and the one it paid: {payer:?}"
         );
     }
 
@@ -58319,7 +58320,12 @@ BUILD
         assert_eq!(fed.shared_silver_covered, 6, "{fed:?}");
         assert_eq!(fed.unclaimed_covered, 4, "{fed:?}");
         assert_eq!(fed.upkeep, Some(0), "{fed:?}");
-        assert_eq!(shipment_silver(&review, "903").upkeep_lent, 6);
+        assert_eq!(fed.at_month_end, Some(0), "{fed:?}");
+        // The fund's $4 is never charged to the payer: it pays its own fee and the $6 it lent.
+        let payer = shipment_silver(&review, "903");
+        assert_eq!(payer.upkeep_lent, 6, "{payer:?}");
+        assert_eq!(payer.upkeep, Some(10), "{payer:?}");
+        assert_eq!(payer.at_month_end, Some(16), "{payer:?}");
     }
 
     /// A giver that holds part of a GIVE draws only the rest on its sharers (`unit.cpp`:

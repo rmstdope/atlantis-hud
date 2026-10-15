@@ -4084,7 +4084,9 @@ describe("upkeep a faction-mate paid, in the silver popup", () => {
 
 // `ah-suqu`, docs/ui/ah-suqu-upkeep-payer.html: the pair `ah-2zku` agreed for drained sharers is
 // every unit's. Maintenance pays upkeep from "Silver from other faction units in the same region"
-// for any unit (`rules/economy_maintenance`), sharing or not.
+// for any unit (`rules/economy_maintenance`), sharing or not. The composer is never told whether
+// a unit shares, so the non-sharing guard is in core (`semantics.rs`, `ah-suqu` scenes); these pin
+// the test turn's strings and the split with the unclaimed fund.
 describe("upkeep a faction-mate paid, for a unit that shares nothing", () => {
   const silverPopup = (silver: Parameters<typeof aUnitSilver>[0], more: Partial<PopupFacts> = {}) =>
     columnPopup(
