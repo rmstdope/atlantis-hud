@@ -1536,6 +1536,11 @@ pub struct UnitFacts<'a> {
     /// for: the engine drew it from the sharers as the line ran (`runorders.cpp`: `DoGiveOrder`;
     /// `unit.cpp`: `ConsumeShared`; `ah-9udi`).
     pub drawn_at_give: i64,
+    /// What a faction-mate's silver `GIVE`s and `TAKE`s drew on this unit as a `SHARE` unit, from
+    /// `Ledger::silver_fundings`; `0` where they drew nothing. Gone before any order of this unit's
+    /// own spends from the Give phase on (`unit.cpp`: `ConsumeShared`), and booked as `Lent` only
+    /// after the forecast, so the shortfall walk starts without it (`ah-fj2l`).
+    pub lent_at_give: i64,
     /// The unit's skills once this month's gifts and recruits have merged in.
     ///
     /// Read by the PRODUCE arm, which `rules/buy` says a `BUY` dilutes, by the STUDY arm's
@@ -3233,8 +3238,11 @@ pub fn forecast_unit(
     // what has arrived by its phase, so a SELL, a TAX or a shipment's silver never pays for a
     // CAST or a STUDY that runs before it (`rules/sequenceofevents`, `ah-9n7l.2`).
     let short_before_sharing = match (income, wanted_for_orders) {
+        // From what the unit holds once a faction-mate's GIVE has drawn on it: the engine took
+        // that before this unit's own orders could spend it (`unit.cpp`: `ConsumeShared`), and the
+        // `Lent` row that records it is booked after this figure (`ah-fj2l`).
         (Some(_), Some(wanted)) => Some(short_in_turn_order(
-            held,
+            held.saturating_sub(facts.lent_at_give),
             &moves,
             wanted.saturating_sub(expense.unwrap_or(wanted)).max(0),
         )),
@@ -7756,6 +7764,7 @@ mod tests {
             transport_warning: true,
             overdrawn_at_study: 0,
             drawn_at_give: 0,
+            lent_at_give: 0,
             skills_before_market_unknown: false,
             skills_after_arrivals: &[],
             skills_after_arrivals_unknown: false,
@@ -9937,6 +9946,7 @@ mod tests {
             transport_warning: true,
             overdrawn_at_study: 0,
             drawn_at_give: 0,
+            lent_at_give: 0,
             skills_before_market_unknown: false,
             skills_after_arrivals: &[],
             skills_after_arrivals_unknown: false,
@@ -10847,6 +10857,7 @@ mod combat_ready_tests {
             transport_warning: true,
             overdrawn_at_study: 0,
             drawn_at_give: 0,
+            lent_at_give: 0,
             skills_before_market_unknown: false,
             skills_after_arrivals: skills,
             skills_after_arrivals_unknown: false,
