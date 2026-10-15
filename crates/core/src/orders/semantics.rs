@@ -11844,7 +11844,6 @@ fn cast(
             });
         }
     }
-    let goods_moved = held != actor.unit.items;
     let mut goods_lent = false;
     // Every tag a sharer holds as the spell resolves - what it received this month included, and
     // the caster's own, which an earlier borrower may have drawn on.
@@ -11881,9 +11880,7 @@ fn cast(
             }),
         }
     }
-    // Recorded too when the caster's own goods moved before the spell, so the SILVER column prices
-    // the cast from the same goods this ledger does.
-    if lent_silver != 0 || goods_lent || goods_moved {
+    if lent_silver != 0 || goods_lent {
         ledger
             .shared_casts
             .entry(who.clone())
@@ -59532,6 +59529,41 @@ BUILD
             assert_eq!(
                 moved(&effects, "5", "MITH", ItemChangeCause::CastCreated),
                 1,
+                "{mage:?}"
+            );
+        }
+
+        /// Mage 5 gives 15 of its 20 swords away and sharer 7 holds 10 more: `GetSharedNum` reads
+        /// 5 + 10 = 15 as the spell resolves, so all 15 are enchanted - the 5 left on the mage and
+        /// the 10 its sharer lends (`Unit::ConsumeShared`).
+        #[test]
+        fn an_enchantment_after_a_gift_draws_its_sharer_for_the_rest() {
+            let report = report(vec![region(vec![
+                with_skill(with_item(unit("5"), 20, "sword", "SWOR"), "ESWO", 3),
+                unit("6"),
+                sharing(with_item(unit("7"), 10, "sword", "SWOR")),
+            ])]);
+            let effects = item_effects(
+                &report,
+                "unit 5\nGIVE 6 15 SWOR\nCAST Enchant_Swords\nunit 6\nunit 7\n",
+                Some(&ruleset()),
+                &CheckOptions::default(),
+            );
+            let mage = effects_for(&effects, "5");
+            assert_eq!(
+                moved(&effects, "5", "SWOR", ItemChangeCause::CastSpent),
+                -5,
+                "{mage:?}"
+            );
+            assert_eq!(
+                moved(&effects, "7", "SWOR", ItemChangeCause::CastSpent),
+                -10,
+                "{:?}",
+                effects_for(&effects, "7")
+            );
+            assert_eq!(
+                moved(&effects, "5", "MSWO", ItemChangeCause::CastCreated),
+                15,
                 "{mage:?}"
             );
         }
