@@ -16982,7 +16982,8 @@ fn judge_shortfalls(
             let short = (-balance).max(mid_month);
 
             // A unit that leaves the hex answers to its pool for what it owed before maintenance,
-            // and to nobody here for its upkeep, which falls due where it ends the month (`rules/sequenceofevents`; `rules/economy_maintenance`: "this will not happen
+            // and to nobody here for its upkeep, which falls due where it ends the month
+            // (`rules/sequenceofevents`; `rules/economy_maintenance`: "this will not happen
             // between units in different regions"). That rest is its own shortfall (`ah-6cka`).
             let (short, own_short) = if pooled && tag == SILVER && sharing.leaves(ordered) {
                 let owed_here =
