@@ -315,7 +315,6 @@ fn structure_line(structure: &Structure) -> String {
     line
 }
 
-/// One unit line: the head sentence, then the labelled sections the parser splits on.
 /// One held item as the engine's `Item::Report` writes it, the inverse of `parse_item_amount`.
 ///
 /// An illusion is read as its own item, `illusory balrog [IBALR]` (`data/IBALR`), but the engine
@@ -332,6 +331,7 @@ fn item_text(item: &ItemAmount) -> String {
     }
 }
 
+/// One unit line: the head sentence, then the labelled sections the parser splits on.
 fn unit_line(unit: &ReportUnit) -> String {
     let mut head = format!(
         "{} {} ({})",
