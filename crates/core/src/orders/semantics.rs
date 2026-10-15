@@ -11729,6 +11729,11 @@ impl CastOutcome {
         self != Self::RefusedForGoods
     }
 
+    /// Whether a create-artifact spell's product arrives: refused, it makes nothing (`ah-j5p8`).
+    fn creates(self) -> bool {
+        self == Self::Paid
+    }
+
     /// Whether the sharers are drawn on: a refused cast takes nothing from them.
     fn draws_on_sharers(self) -> bool {
         self == Self::Paid
@@ -12031,8 +12036,17 @@ fn cast(
         }
     }
     // The arrival is `made`, never `charged`: a mage that cannot afford one is charged for one and
-    // makes none, and the column must show the materials going and nothing coming back.
-    if let Some(tag) = plan.tag.clone().filter(|_| plan.made != 0) {
+    // makes none, and the column must show the materials going and nothing coming back. A
+    // create-artifact cast that is refused makes nothing either (`RunCreateArtifact`,
+    // `spells.cpp`), whatever `plan` priced it from: the caster's `held` is its report stock, so a
+    // material it gave away before the spell (`rules/sequenceofevents`) still reads as there
+    // (`ah-j5p8`). An enchantment or a transmutation is never refused that way - it makes as many
+    // as its stock allows (`RunEnchant`, `RunTransmutation`) - so its arrival stands.
+    if let Some(tag) = plan
+        .tag
+        .clone()
+        .filter(|_| plan.made != 0 && (outcome.creates() || !plan.per_cast))
+    {
         ledger.movements.push(ItemMovement {
             unit_id: who.clone(),
             name: item_name(&tag, hex, ruleset),
@@ -59355,6 +59369,92 @@ BUILD
                 -75,
                 "{:?}",
                 effects_for(&effects, "901")
+            );
+        }
+
+        /// Mage 901 holds the 75 ironwood Summon Wind needs (`data/SWIN` level 3) and sharer 902
+        /// the 75 floater hides, but 901 gives its ironwood to 903 first: `rules/sequenceofevents`
+        /// processes GIVE before `Spells are CAST`, so the cast is refused for its ironwood and
+        /// makes no cloudship (`RunCreateArtifact`, `spells.cpp`, as `ah-h7xy` cites it) - the
+        /// ITEMS column shows none arriving, as it does for a refusal reached without the GIVE
+        /// (`ah-j5p8`).
+        #[test]
+        fn a_cast_refused_for_a_material_given_away_creates_nothing() {
+            let rules = trident_rules();
+            let report = report(vec![region(vec![
+                with_item(with_skill(unit("901"), "SWIN", 3), 75, "ironwood", "IRWD"),
+                sharing(with_item(unit("902"), 75, "floater hides", "FLOA")),
+                unit("903"),
+            ])]);
+            let effects = item_effects(
+                &report,
+                "unit 901\nGIVE 903 75 IRWD\nCAST Summon_Wind\nunit 902\nunit 903\n",
+                Some(&rules),
+                &CheckOptions::default(),
+            );
+            assert_eq!(
+                moved_by(&effects, "901", "CLOU", Some(ItemChangeCause::CastCreated)),
+                0,
+                "{:?}",
+                effects_for(&effects, "901")
+            );
+            assert_eq!(
+                moved(&effects, "902", "FLOA"),
+                0,
+                "{:?}",
+                effects_for(&effects, "902")
+            );
+        }
+
+        /// Mage 5 enchants swords (`data/ESWO`) after giving 10 of its 20 away: an enchantment is
+        /// paid per item and makes as many as the stock allows (`RunEnchant`, `spells.cpp`), so
+        /// the cast is not refused and its enchanted swords still arrive (`ah-j5p8` review,
+        /// finding 1).
+        #[test]
+        fn an_enchantment_short_of_its_stock_still_creates_its_product() {
+            let report = report(vec![region(vec![
+                with_skill(with_item(unit("5"), 20, "sword", "SWOR"), "ESWO", 3),
+                unit("6"),
+            ])]);
+            let effects = item_effects(
+                &report,
+                "unit 5\nGIVE 6 10 SWOR\nCAST Enchant_Swords\nunit 6\n",
+                Some(&ruleset()),
+                &CheckOptions::default(),
+            );
+            assert!(
+                moved_by(&effects, "5", "MSWO", Some(ItemChangeCause::CastCreated)) > 0,
+                "{:?}",
+                effects_for(&effects, "5")
+            );
+        }
+
+        /// The same mage and sharer with no GIVE: the cast goes ahead, draws the sharer's hides and
+        /// still shows its cloudship arriving (`ah-j5p8`).
+        #[test]
+        fn a_cast_its_sharer_completes_still_creates_its_product() {
+            let rules = trident_rules();
+            let report = report(vec![region(vec![
+                with_item(with_skill(unit("901"), "SWIN", 3), 75, "ironwood", "IRWD"),
+                sharing(with_item(unit("902"), 75, "floater hides", "FLOA")),
+            ])]);
+            let effects = item_effects(
+                &report,
+                "unit 901\nCAST Summon_Wind\nunit 902\n",
+                Some(&rules),
+                &CheckOptions::default(),
+            );
+            assert_eq!(
+                moved_by(&effects, "901", "CLOU", Some(ItemChangeCause::CastCreated)),
+                1,
+                "{:?}",
+                effects_for(&effects, "901")
+            );
+            assert_eq!(
+                moved(&effects, "902", "FLOA"),
+                -75,
+                "{:?}",
+                effects_for(&effects, "902")
             );
         }
 
