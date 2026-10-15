@@ -752,8 +752,9 @@ pub struct SilverDraw {
 
 /// What the hex's other `SHARE` units lend one `CAST` line, as the ledger read it when the spell
 /// resolved: `Unit::GetSharedNum` and `GetSharedMoney` (`unit.cpp`), which every cast cost reads in
-/// `spells.cpp` (`ah-0mch`). Recorded only for a line something was lent to, so the column prices
-/// the cast from the same purse the ledger charged it from.
+/// `spells.cpp` (`ah-0mch`). Recorded only for a line something was lent to, or whose caster's own
+/// goods moved before the spell resolved (`ah-yan9`), so the column prices the cast from the same
+/// purse and goods the ledger charged it from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SharedCast {
     /// The document line the order was written on.
@@ -761,8 +762,8 @@ pub struct SharedCast {
     /// What the pool adds to the caster's own silver as the spell resolved - negative where the
     /// caster shares and an earlier borrower already drew on its own.
     pub silver: i64,
-    /// The caster's own goods with every other sharer's added in, men excepted: what the
-    /// spell's materials are counted against.
+    /// The caster's own goods as the spell resolves, with every other sharer's added in, men
+    /// excepted: what the spell's materials are counted against.
     pub held: Vec<ItemAmount>,
 }
 

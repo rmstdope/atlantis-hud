@@ -11818,7 +11818,33 @@ fn cast(
         })
     };
     let lent_silver = lent_of(SILVER);
-    let mut held = actor.unit.items.clone();
+    // The caster's own goods as the spell resolves, not as the report found them: the engine sizes
+    // an enchantment and a transmutation from `GetSharedNum` at that moment (`RunEnchant`,
+    // `RunTransmutation`, `spells.cpp`), after every GIVE and TAKE (`rules/sequenceofevents`), so
+    // what it gave away is gone and what it was given is there (`ah-yan9`).
+    let mut held: Vec<ItemAmount> = actor
+        .unit
+        .items
+        .iter()
+        .map(|own| ItemAmount {
+            amount: ledger
+                .state
+                .balance_at(StatePhase::Cast, who, &own.tag)
+                .max(0),
+            ..own.clone()
+        })
+        .collect();
+    for (tag, amount) in ledger.state.holdings_at(StatePhase::Cast, who) {
+        if amount > 0 && !held.iter().any(|own| own.tag.eq_ignore_ascii_case(&tag)) {
+            held.push(ItemAmount {
+                amount,
+                name: item_name(&tag, hex, ruleset),
+                tag,
+                needs: None,
+            });
+        }
+    }
+    let goods_moved = held != actor.unit.items;
     let mut goods_lent = false;
     // Every tag a sharer holds as the spell resolves - what it received this month included, and
     // the caster's own, which an earlier borrower may have drawn on.
@@ -11855,7 +11881,9 @@ fn cast(
             }),
         }
     }
-    if lent_silver != 0 || goods_lent {
+    // Recorded too when the caster's own goods moved before the spell, so the SILVER column prices
+    // the cast from the same goods this ledger does.
+    if lent_silver != 0 || goods_lent || goods_moved {
         ledger
             .shared_casts
             .entry(who.clone())
@@ -47344,12 +47372,52 @@ BUILD
         assert_eq!(check(regions, "unit 5\nCAST Enchant_Swords\n"), vec![]);
     }
 
-    /// `ah-ofpb.4`: a level 3 enchanter draws on ten swords, one per mithril sword it will make -
-    /// not the one the stated cost names. A capped cast can never overspend on its own, so the
-    /// gift to unit 6 is what makes the change observable, exactly as
-    /// `a_mage_is_charged_for_every_artifact_it_makes` needs one for silver.
+    /// What the ITEMS column says the CASTs in `orders` spend of `tag` for unit 5.
+    fn cast_spends(regions: Vec<ReportRegion>, orders: &str, tag: &str) -> i64 {
+        item_effects(
+            &report(regions),
+            orders,
+            Some(&ruleset()),
+            &CheckOptions::default(),
+        )
+        .values()
+        .flat_map(|unit| &unit.moved)
+        .filter(|movement| {
+            movement.unit_id == "5"
+                && movement.tag == tag
+                && movement.cause == ItemChangeCause::CastSpent
+        })
+        .map(|movement| movement.delta)
+        .sum()
+    }
+
+    /// `ah-ofpb.4`: a level 3 enchanter draws on fifteen swords, one per mithril sword it will
+    /// make (`data/ESWO`: 5 times the level) - not the one the stated cost names. A capped cast
+    /// can never overspend, and nothing after it can make it: a GIVE runs before the spell, which
+    /// then enchants what the gift left (`rules/sequenceofevents`, `RunEnchant` in `spells.cpp`;
+    /// `ah-yan9`), and a SELL sells what is left (`rules/sell`). So the charge is read off the
+    /// ITEMS column.
     #[test]
     fn a_cast_draws_on_every_item_it_will_consume() {
+        let regions = vec![region(vec![with_item(
+            with_skill(unit("5"), "ESWO", 3),
+            20,
+            "swords",
+            "SWOR",
+        )])];
+
+        assert_eq!(
+            cast_spends(regions, "unit 5\nCAST Enchant_Swords\n", "SWOR"),
+            -15
+        );
+    }
+
+    /// The gift runs first and leaves no sword, so the spell has nothing to enchant and is warned
+    /// about exactly as `an_enchanter_with_nothing_to_enchant_is_warned_about` is: short the one
+    /// sword its floor charges, which `not-enough-items` reads as one number (`ah-ofpb.5`,
+    /// reconciled by `ah-yan9`).
+    #[test]
+    fn an_enchanter_that_gave_every_sword_away_is_short_one() {
         let regions = vec![region(vec![
             with_item(with_skill(unit("5"), "ESWO", 3), 10, "swords", "SWOR"),
             unit("6"),
@@ -47362,7 +47430,7 @@ BUILD
         assert_eq!(finding.code.as_str(), "not-enough-items");
         assert_eq!(
             finding.message,
-            "short 10 swords: this unit can have 10 and its orders spend 20"
+            "short 1 sword: this unit can have 10 and its orders spend 11"
         );
     }
 
@@ -47477,36 +47545,36 @@ BUILD
         );
     }
 
-    /// `ah-ofpb.4`: a level 3 transmuter's capacity is 6 rootstone (`ceil(200 x 3 / 100)`), and
-    /// `data/TRNS` offers a number only to make *fewer* than that maximum - asking for more than
-    /// the level allows charges the same as not asking at all. A capped cast can never overspend
-    /// on its own, so the gift is what makes the balance observable, exactly as
-    /// `a_mage_is_charged_for_every_artifact_it_makes` needs one for silver.
+    /// `ah-ofpb.4`: a level 3 transmuter's capacity is 6 rootstone (`data/TRNS`: 2 stone times the
+    /// level), and `data/TRNS` offers a number only to make *fewer* than that maximum - asking for
+    /// more than the level allows charges the same as not asking at all. Read off the ITEMS
+    /// column, for the reason `a_cast_draws_on_every_item_it_will_consume` gives.
     #[test]
     fn a_transmuter_makes_what_its_level_allows() {
-        let holding_six_stone = || {
-            vec![region(vec![
-                with_item(with_skill(unit("5"), "TRNS", 3), 6, "stone", "STON"),
-                unit("6"),
-            ])]
+        let holding_ten_stone = || {
+            vec![region(vec![with_item(
+                with_skill(unit("5"), "TRNS", 3),
+                10,
+                "stone",
+                "STON",
+            )])]
         };
 
-        let unnumbered = only(check(
-            holding_six_stone(),
-            "unit 5\nCAST Transmutation rootstone\nGIVE 6 6 STON\n",
-        ));
-        assert_eq!(unnumbered.code.as_str(), "not-enough-items");
         assert_eq!(
-            unnumbered.message,
-            "short 6 stone: this unit can have 6 and its orders spend 12"
+            cast_spends(
+                holding_ten_stone(),
+                "unit 5\nCAST Transmutation rootstone\n",
+                "STON"
+            ),
+            -6
         );
-
-        let asking_for_more_than_the_level_allows = only(check(
-            holding_six_stone(),
-            "unit 5\nCAST Transmutation 10 rootstone\nGIVE 6 6 STON\n",
-        ));
         assert_eq!(
-            asking_for_more_than_the_level_allows.message, unnumbered.message,
+            cast_spends(
+                holding_ten_stone(),
+                "unit 5\nCAST Transmutation 10 rootstone\n",
+                "STON"
+            ),
+            -6,
             "10 is capped to the level's 6, same as asking for none at all"
         );
     }
@@ -59381,6 +59449,115 @@ BUILD
             assert_eq!(
                 mage.short_on,
                 Some(crate::orders::silver::SilverSpender::Buy),
+                "{mage:?}"
+            );
+        }
+    }
+
+    // --- a per-item CAST is sized from what is left when the spell resolves (`ah-yan9`) --------
+    //
+    // `rules/sequenceofevents` processes GIVE and TAKE before `Spells are CAST`, and the engine
+    // sizes an enchantment from `GetSharedNum` at that moment (`Game::RunEnchant`, `spells.cpp`:
+    // `num = GetSharedNum(i) / a`, then `ConsumeShared(i, num * a)`), and a transmutation likewise
+    // (`Game::RunTransmutation`: `num = GetSharedNum(source)`, capped by the level).
+    mod a_per_item_cast_reads_the_stock_left_at_cast {
+        use super::*;
+
+        /// The ITEMS movements on `id` for `tag` booked under `cause`.
+        fn moved(
+            effects: &BTreeMap<UnitKey, UnitItemEffects>,
+            id: &str,
+            tag: &str,
+            cause: ItemChangeCause,
+        ) -> i64 {
+            effects_for(effects, id)
+                .map(|unit| {
+                    unit.moved
+                        .iter()
+                        .filter(|movement| movement.tag == tag && movement.cause == cause)
+                        .map(|movement| movement.delta)
+                        .sum()
+                })
+                .unwrap_or(0)
+        }
+
+        /// Level 3 Enchant Swords makes up to 15 mithril swords (`data/ESWO`: 5 times the level,
+        /// at a cost of sword). Mage 5 holds 20 swords and gives 10 away first, so the spell
+        /// enchants the 10 left.
+        #[test]
+        fn an_enchantment_after_a_gift_enchants_what_the_gift_left() {
+            let report = report(vec![region(vec![
+                with_skill(with_item(unit("5"), 20, "sword", "SWOR"), "ESWO", 3),
+                unit("6"),
+            ])]);
+            let effects = item_effects(
+                &report,
+                "unit 5\nGIVE 6 10 SWOR\nCAST Enchant_Swords\nunit 6\n",
+                Some(&ruleset()),
+                &CheckOptions::default(),
+            );
+            let mage = effects_for(&effects, "5");
+            assert_eq!(
+                moved(&effects, "5", "SWOR", ItemChangeCause::CastSpent),
+                -10,
+                "{mage:?}"
+            );
+            assert_eq!(
+                moved(&effects, "5", "MSWO", ItemChangeCause::CastCreated),
+                10,
+                "{mage:?}"
+            );
+        }
+
+        /// Level 1 Transmutation makes up to 2 mithril, one iron each (`data/TRNS`). Mage 5 holds
+        /// 10 iron and gives 9 away first, so the spell transmutes the one left.
+        #[test]
+        fn a_transmutation_after_a_gift_transmutes_what_the_gift_left() {
+            let report = report(vec![region(vec![
+                with_skill(with_item(unit("5"), 10, "iron", "IRON"), "TRNS", 1),
+                unit("6"),
+            ])]);
+            let effects = item_effects(
+                &report,
+                "unit 5\nGIVE 6 9 IRON\nCAST Transmutation mithril\nunit 6\n",
+                Some(&ruleset()),
+                &CheckOptions::default(),
+            );
+            let mage = effects_for(&effects, "5");
+            assert_eq!(
+                moved(&effects, "5", "IRON", ItemChangeCause::CastSpent),
+                -1,
+                "{mage:?}"
+            );
+            assert_eq!(
+                moved(&effects, "5", "MITH", ItemChangeCause::CastCreated),
+                1,
+                "{mage:?}"
+            );
+        }
+
+        /// Mage 5 holds no swords and is given 10 before the spell: it enchants those 10.
+        #[test]
+        fn an_enchantment_enchants_what_it_was_given() {
+            let report = report(vec![region(vec![
+                with_skill(unit("5"), "ESWO", 3),
+                with_item(unit("6"), 10, "sword", "SWOR"),
+            ])]);
+            let effects = item_effects(
+                &report,
+                "unit 5\nCAST Enchant_Swords\nunit 6\nGIVE 5 10 SWOR\n",
+                Some(&ruleset()),
+                &CheckOptions::default(),
+            );
+            let mage = effects_for(&effects, "5");
+            assert_eq!(
+                moved(&effects, "5", "SWOR", ItemChangeCause::CastSpent),
+                -10,
+                "{mage:?}"
+            );
+            assert_eq!(
+                moved(&effects, "5", "MSWO", ItemChangeCause::CastCreated),
+                10,
                 "{mage:?}"
             );
         }
