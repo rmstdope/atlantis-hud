@@ -11729,6 +11729,11 @@ impl CastOutcome {
         self != Self::RefusedForGoods
     }
 
+    /// Whether the spell's product arrives: a refused cast makes nothing (`ah-j5p8`).
+    fn creates(self) -> bool {
+        self == Self::Paid
+    }
+
     /// Whether the sharers are drawn on: a refused cast takes nothing from them.
     fn draws_on_sharers(self) -> bool {
         self == Self::Paid
@@ -12031,8 +12036,15 @@ fn cast(
         }
     }
     // The arrival is `made`, never `charged`: a mage that cannot afford one is charged for one and
-    // makes none, and the column must show the materials going and nothing coming back.
-    if let Some(tag) = plan.tag.clone().filter(|_| plan.made != 0) {
+    // makes none, and the column must show the materials going and nothing coming back. A refused
+    // cast makes nothing either (`RunCreateArtifact`, `spells.cpp`), whatever `plan` priced it
+    // from: the caster's `held` is its report stock, so a material it gave away before the spell
+    // (`rules/sequenceofevents`) still reads as there (`ah-j5p8`).
+    if let Some(tag) = plan
+        .tag
+        .clone()
+        .filter(|_| plan.made != 0 && outcome.creates())
+    {
         ledger.movements.push(ItemMovement {
             unit_id: who.clone(),
             name: item_name(&tag, hex, ruleset),
@@ -59355,6 +59367,69 @@ BUILD
                 -75,
                 "{:?}",
                 effects_for(&effects, "901")
+            );
+        }
+
+        /// Mage 901 holds the 75 ironwood Summon Wind needs (`data/SWIN` level 3) and sharer 902
+        /// the 75 floater hides, but 901 gives its ironwood to 903 first: `rules/sequenceofevents`
+        /// processes GIVE before `Spells are CAST`, so the cast is refused for its ironwood and
+        /// makes no cloudship (`RunCreateArtifact`, `spells.cpp`, as `ah-h7xy` cites it) - the
+        /// ITEMS column shows none arriving, as it does for a refusal reached without the GIVE
+        /// (`ah-j5p8`).
+        #[test]
+        fn a_cast_refused_for_a_material_given_away_creates_nothing() {
+            let rules = trident_rules();
+            let report = report(vec![region(vec![
+                with_item(with_skill(unit("901"), "SWIN", 3), 75, "ironwood", "IRWD"),
+                sharing(with_item(unit("902"), 75, "floater hides", "FLOA")),
+                unit("903"),
+            ])]);
+            let effects = item_effects(
+                &report,
+                "unit 901\nGIVE 903 75 IRWD\nCAST Summon_Wind\nunit 902\nunit 903\n",
+                Some(&rules),
+                &CheckOptions::default(),
+            );
+            assert_eq!(
+                moved_by(&effects, "901", "CLOU", Some(ItemChangeCause::CastCreated)),
+                0,
+                "{:?}",
+                effects_for(&effects, "901")
+            );
+            assert_eq!(
+                moved(&effects, "902", "FLOA"),
+                0,
+                "{:?}",
+                effects_for(&effects, "902")
+            );
+        }
+
+        /// The same mage and sharer with no GIVE: the cast goes ahead, draws the sharer's hides and
+        /// still shows its cloudship arriving (`ah-j5p8`).
+        #[test]
+        fn a_cast_its_sharer_completes_still_creates_its_product() {
+            let rules = trident_rules();
+            let report = report(vec![region(vec![
+                with_item(with_skill(unit("901"), "SWIN", 3), 75, "ironwood", "IRWD"),
+                sharing(with_item(unit("902"), 75, "floater hides", "FLOA")),
+            ])]);
+            let effects = item_effects(
+                &report,
+                "unit 901\nCAST Summon_Wind\nunit 902\n",
+                Some(&rules),
+                &CheckOptions::default(),
+            );
+            assert_eq!(
+                moved_by(&effects, "901", "CLOU", Some(ItemChangeCause::CastCreated)),
+                1,
+                "{:?}",
+                effects_for(&effects, "901")
+            );
+            assert_eq!(
+                moved(&effects, "902", "FLOA"),
+                -75,
+                "{:?}",
+                effects_for(&effects, "902")
             );
         }
 
