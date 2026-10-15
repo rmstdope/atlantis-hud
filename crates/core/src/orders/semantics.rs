@@ -16668,8 +16668,10 @@ fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> Shor
 /// charged the whole ask - was never the members' silver, and is part of what they spend
 /// (`ah-j5s1`); that remainder is added by [`pool_silver_figures`], the one place a gift beyond
 /// the pool is counted (`ah-9bac`), and is always `0` for one unit. Nothing that leaves the set
-/// is taken off: a `GIVE` out, a discard, or a `TAKE` by an outsider is part of what the orders
-/// spend.
+/// is taken off here: a `GIVE` out, a discard, or a `TAKE` by an outsider is part of what the orders
+/// spend. The one exception is read by [`pool_silver_figures`]: for the sharing hex's sentence,
+/// silver that reached one of the hex's own units outside the set is still in the hex and is not
+/// spending (`ah-3qmk`), so it is taken off again there.
 ///
 /// Read as the ledger's own Give-phase balance - which has every receipt in, at the amount the
 /// ledger moved, including a gift its giver funded by a `CLAIM` - with what left the set added
@@ -17216,8 +17218,10 @@ fn pool_silver_figures(
     let can_have = can_have + silver_unfunded_between(ledger, &between_counted);
     // ... but silver a counted unit gave a faction-mate of the hex the sentence does not count is
     // still in the hex and is not spent: `silver_can_have` adds every gift out of the set back as
-    // spending, so this one is taken off again (`ah-3qmk`). What came in from such a mate is
-    // already in the Give-phase balance it reads.
+    // spending, so what reached the mate is taken off again (`ah-3qmk`). What the gift asked
+    // beyond that - a sharer's overdraft the pool could not fund - never reached anyone and stays
+    // part of what the orders spend (`ah-j5s1`). What came in from such a mate is already in the
+    // Give-phase balance `silver_can_have` reads.
     let can_have = can_have
         - ledger
             .silver_transfers
@@ -17226,7 +17230,7 @@ fn pool_silver_figures(
                 hex_mate_transfer(hex, &between_counted, &moved.from, moved.to.as_deref())
                     == Some(MateTransfer::Out)
             })
-            .map(|moved| moved.amount)
+            .map(|moved| moved.received)
             .sum::<i64>();
 
     let upkeep = if moment == ShortfallMoment::MonthEnd {
@@ -57276,14 +57280,16 @@ BUILD
             shipment_silver(&review, "901")
         );
         // The hex is short the refused amulet's $200 alone: 902's $150 paid the gift and ships
-        // the $50 left, so it is not counted shipping the $100 it gave as well.
+        // the $50 left, so it is not counted shipping the $100 it gave as well. The $100 reached
+        // 900, a faction-mate in the hex, so it is not spent either: the hex can have the $50
+        // left (`ah-3qmk`).
         assert!(
             review
                 .findings
                 .iter()
                 .any(|f| f.code.as_str() == "not-enough-silver"
                     && f.message.contains("short $200")
-                    && f.message.contains("can have $150")),
+                    && f.message.contains("can have $50")),
             "the refused cast keeps its warning: {:?}",
             review.findings
         );
@@ -73924,11 +73930,12 @@ BUILD
     }
 
     /// Sharers 7 ($100) and 8 ($50) fund unit 5's two swords at $125; sharer 7 gives $60 to unit
-    /// 300, which the hex does not count. Under rule R the gift is part of what the orders spend
-    /// rather than silver the hex cannot have - as the unit sentence already reads a gift (M2,
-    /// `ah-jw85`): "can have $150 and spend $310", not "$90 ... $250". The shortfall is unchanged.
+    /// 300, a faction-mate in the hex the sentence does not count. The $60 is still in the hex, so
+    /// it is not what the orders spend: the counted units can have the $90 left and the orders
+    /// spend the swords' $250 (`ah-3qmk`, reversing `ah-jw85`'s rule R for faction-mates in the
+    /// hex). The shortfall is unchanged.
     #[test]
-    fn a_gift_from_a_sharer_to_an_uncounted_unit_is_spent_not_lost_from_can_have() {
+    fn a_gift_from_a_sharer_to_a_faction_mate_in_the_hex_is_not_spent() {
         let findings = check_turn(
             &report(vec![a_sword_market(
                 125,
@@ -73946,8 +73953,8 @@ BUILD
         assert_eq!(
             hex_silver_sentence(&findings),
             Some(
-                "the units in this hex are short $160 between them: they can have $150 and their \
-                 orders spend $310"
+                "the units in this hex are short $160 between them: they can have $90 and their \
+                 orders spend $250"
             ),
             "{findings:#?}"
         );
@@ -74074,14 +74081,23 @@ BUILD
     }
 
     /// Sharers 7 ($100) and 8 ($50) fund unit 5's two $100 swords while silver leaves sharer 7
-    /// another way: taken by unit 300, which the hex does not count, or discarded (`rules/give`:
-    /// "If 0 is specified as the unit number, then the items are discarded"). Under rule R
-    /// neither is taken off what the hex can have; both are part of what its orders spend.
+    /// another way: taken by unit 300, a faction-mate in the hex the sentence does not count, or
+    /// discarded (`rules/give`: "If 0 is specified as the unit number, then the items are
+    /// discarded"). The discard is part of what the orders spend (rule R); the take is not, since
+    /// the $60 is still in the hex (`ah-3qmk`), so the counted units can have only the $90 left.
     #[test]
-    fn silver_taken_by_an_outsider_or_discarded_is_spent_not_lost_from_can_have() {
-        for orders in [
-            "unit 5\nBUY 2 swords\nunit 300\nTAKE FROM 7 60 SILV\n",
-            "unit 5\nBUY 2 swords\nunit 7\nGIVE 0 60 SILV\n",
+    fn silver_taken_by_a_faction_mate_is_not_spent_but_discarded_silver_is() {
+        for (orders, expected) in [
+            (
+                "unit 5\nBUY 2 swords\nunit 300\nTAKE FROM 7 60 SILV\n",
+                "the units in this hex are short $110 between them: they can have $90 and their \
+                 orders spend $200",
+            ),
+            (
+                "unit 5\nBUY 2 swords\nunit 7\nGIVE 0 60 SILV\n",
+                "the units in this hex are short $110 between them: they can have $150 and their \
+                 orders spend $260",
+            ),
         ] {
             let findings = check_turn(
                 &report(vec![a_sword_market(
@@ -74099,10 +74115,7 @@ BUILD
             );
             assert_eq!(
                 hex_silver_sentence(&findings),
-                Some(
-                    "the units in this hex are short $110 between them: they can have $150 and \
-                     their orders spend $260"
-                ),
+                Some(expected),
                 "{orders}: {findings:#?}"
             );
         }
@@ -74110,22 +74123,45 @@ BUILD
 
     /// A walking sharer's gift out of the hex is added back on top of what the hex had of it
     /// (`ah-a68f`), so silver it earned before leaving cannot cancel the gift: sharer 6 gives its
-    /// $50 to unit 9, sells two furs and walks north; sharer 8 studies with nothing. The hex can
-    /// have the $50 gift whether or not the furs were sold (`ah-w2ou` review, finding 2).
+    /// $50 to unit 9, sells two furs and walks north; sharer 8 studies with nothing. Given to
+    /// another faction's 9 (`rules/give`: silver may be given to any unit) the hex can have the $50
+    /// gift whether or not the furs were sold (`ah-w2ou` review, finding 2); given to our own 9,
+    /// which stays in the hex, the $50 is not spent and the sharers can have none of it
+    /// (`ah-3qmk`).
     #[test]
     fn a_walking_sharers_gift_out_counts_whatever_it_earned_before_leaving() {
         let mut options = CheckOptions::default();
         options
             .month_end
             .insert("6".to_string(), Coordinate { x: 7, y: 51, z: 1 });
-        for (furs, orders) in [
+        let mate = "the units in this hex are short $10 between them: they can have $0 and their \
+                    orders spend $10";
+        let outsider = "the units in this hex are short $10 between them: they can have $50 and \
+                        their orders spend $60";
+        for (furs, own, expected, orders) in [
             (
                 2,
+                true,
+                mate,
                 "unit 6\nGIVE 9 50 SILV\nSELL 2 furs\nMOVE N\nunit 8\nSTUDY combat\nunit 9\n",
             ),
             (
                 0,
+                true,
+                mate,
                 "unit 6\nGIVE 9 50 SILV\nMOVE N\nunit 8\nSTUDY combat\nunit 9\n",
+            ),
+            (
+                2,
+                false,
+                outsider,
+                "unit 6\nGIVE 9 50 SILV\nSELL 2 furs\nMOVE N\nunit 8\nSTUDY combat\n",
+            ),
+            (
+                0,
+                false,
+                outsider,
+                "unit 6\nGIVE 9 50 SILV\nMOVE N\nunit 8\nSTUDY combat\n",
             ),
         ] {
             let mut walker = sharing(with_silver(unit("6"), 50));
@@ -74146,7 +74182,16 @@ BUILD
                     vec![
                         walker,
                         sharing(with_silver(unit("8"), 0)),
-                        with_silver(unit("9"), 0),
+                        if own {
+                            with_silver(unit("9"), 0)
+                        } else {
+                            ReportUnit {
+                                faction_id: Some("77".to_string()),
+                                faction_name: Some("Rivals".to_string()),
+                                own: false,
+                                ..unit("9")
+                            }
+                        },
                     ],
                 )
             };
@@ -74159,10 +74204,7 @@ BUILD
             );
             assert_eq!(
                 hex_silver_sentence(&review.findings),
-                Some(
-                    "the units in this hex are short $10 between them: they can have $50 and \
-                     their orders spend $60"
-                ),
+                Some(expected),
                 "{orders}: {:#?}",
                 review.findings
             );
@@ -74171,9 +74213,11 @@ BUILD
 
     /// A walking sharer may give, or have taken, more silver than it holds - its overdraft is the
     /// pool's - and the hex then can have what it held, no more: sharer 6 holds $50 and walks
-    /// north, sharer 8 holds $20 and studies, unit 9 is given or takes $80 from sharer 6. Rule R
-    /// adds back the $80 that left, against the $30 overdraft it made, not on top of a floor the
-    /// walk clamp lifted it to (`ah-w2ou` follow-up review).
+    /// north, sharer 8 holds $20 and studies, unit 9 is given or takes $80 from sharer 6. The
+    /// $70 the pool held reaches 9, a faction-mate that stays in the hex, so it is not spent and the
+    /// sharers can have none of it (`ah-3qmk`); the $10 the gift asked beyond the pool reached
+    /// nobody and is part of what the orders spend, beside the study's $10 (`ah-j5s1`). The $30
+    /// overdraft is not lifted to a floor by the walk clamp first (`ah-w2ou` follow-up review).
     #[test]
     fn a_walking_sharer_overdrawn_by_a_transfer_out_counts_only_what_it_held() {
         let mut options = CheckOptions::default();
@@ -74204,8 +74248,8 @@ BUILD
             assert_eq!(
                 hex_silver_sentence(&review.findings),
                 Some(
-                    "the units in this hex are short $20 between them: they can have $70 and \
-                     their orders spend $90"
+                    "the units in this hex are short $20 between them: they can have $0 and \
+                     their orders spend $20"
                 ),
                 "{orders}: {:#?}",
                 review.findings
