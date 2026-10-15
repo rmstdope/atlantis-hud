@@ -1347,8 +1347,8 @@ impl<'a> Ledger<'a> {
         }
     }
 
-    /// Whether maintenance reads a unit's silver with what a refused CAST or STUDY handed back
-    /// ([`Lending::refused`]) carried ([`UpkeepSilver`]): only in the column's settlement of steps 4
+    /// Whether maintenance reads a unit's silver with what its orders asked and the engine never
+    /// took ([`Untaken`]) carried ([`UpkeepSilver`]): only in the column's settlement of steps 4
     /// to 7, once maintenance has forked the two ([`Surface`]). Steps 1 to 3 run before the fork
     /// and carry no hand-back, as `ah-ayg7` left them.
     fn hands_back(&self) -> bool {
@@ -12848,7 +12848,7 @@ fn unpayable_upkeep(
 
     // Every unit is judged on its own balance, which already carries whatever step 4 lent it
     // and what the `SHARE` purse lent for orders, both in [`UpkeepSilver`], with what never left it
-    // handed back in the column's settlement (`ah-ayg7`, `ah-5xdk`). At most
+    // handed back in the column's settlement ([`Untaken`], `ah-19o3`). At most
     // what maintenance drew is maintenance's fault, and the rest of an overdraft belongs to the
     // unit's orders: a unit holding $10, buying $350 of horses and owing $40 is short $380, of
     // which food or the fund may pay $40 and never the $340.
@@ -13185,7 +13185,7 @@ fn share_silver_for_upkeep(
         // Every own unit in the region lends what it has spare. `silver_balance` is post-orders and
         // post-own-maintenance and already carries any relief written before this point, and with
         // what the `SHARE` purse lent for orders carried and, in the column's settlement, what never
-        // left it handed back ([`UpkeepSilver`], `ah-ayg7`, `ah-5xdk`) it is exactly "what
+        // left it handed back ([`UpkeepSilver`], [`Untaken`]) it is exactly "what
         // this unit has spare" - which `balance_of` is not.
         let spare: Vec<(&Member, i64)> = members
             .iter()
