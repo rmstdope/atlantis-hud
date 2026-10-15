@@ -13525,7 +13525,17 @@ impl SharingReach {
             .iter()
             .any(|placed| matches!(placed.intent, Intent::Move { .. }));
         if !sails && walks {
-            if let Some(at) = month_end.get(&ordered.unit.unit_id) {
+            // A formed unit's alias is its hex's alone, so the trace keys it by region too
+            // (`ah-6cka`).
+            let traced = if ordered.formed.is_some() {
+                month_end.get(&super::transport::formed_month_end_key(
+                    &hex.region.region_id,
+                    &ordered.unit.unit_id,
+                ))
+            } else {
+                month_end.get(&ordered.unit.unit_id)
+            };
+            if let Some(at) = traced {
                 return *at;
             }
         }
@@ -14839,6 +14849,33 @@ impl<'a> Sharing<'a> {
         }
     }
 
+    /// Whether `ordered` ends its month in another region ([`WalkingSilver::leaving`]). Only the
+    /// month-long silver reading knows; the others pool the hex as listed.
+    fn leaves(&self, ordered: &Ordered<'_>) -> bool {
+        self.walking
+            .is_some_and(|walking| walking.leaving.contains(&ordered.unit.unit_id))
+    }
+
+    /// `position`, a unit's silver position in this pool at `moment`, as far as the pool answers
+    /// for it: at the month's end a unit that has left is owed for no more than it owed before
+    /// maintenance, `before_upkeep` - its upkeep falls due where it ends the month
+    /// (`rules/sequenceofevents`), and `rules/economy_maintenance` shares for it "between your
+    /// units in the same region" and "this will not happen between units in different regions"
+    /// (`ah-6cka`). What its STUDY or TRANSPORT draws on this pool is left as it was.
+    fn position_here(
+        &self,
+        ordered: &Ordered<'_>,
+        moment: LendingMoment,
+        position: i64,
+        before_upkeep: impl FnOnce() -> i64,
+    ) -> i64 {
+        if moment == LendingMoment::MonthEnd && self.leaves(ordered) {
+            position.max(before_upkeep().min(0))
+        } else {
+            position
+        }
+    }
+
     /// Whether `ordered` is inside this hex's silver pool: a sharer that ends its month here.
     fn pools_silver(&self, ordered: &Ordered<'_>) -> bool {
         ordered.shares()
@@ -14974,15 +15011,19 @@ impl<'a> Sharing<'a> {
                 // row already nets that draw against what it holds, so only a claimant needs it.
                 let drawn = gift_drawn_by(ledger, &ordered.unit.unit_id);
                 if self.pools_silver(ordered) {
-                    -held
-                } else if cast_refused(index) {
+                    return -held;
+                }
+                let who = &ordered.unit.unit_id;
+                let held = self.position_here(ordered, moment, held, || {
+                    silver_at(ledger, who, LendingMoment::Transport)
+                });
+                if cast_refused(index) {
                     (-held).max(0).max(drawn)
                 } else {
-                    (-held).max(0).max(drawn).max(claimant_cast_overdraft(
-                        ledger,
-                        &ordered.unit.unit_id,
-                        moment,
-                    ))
+                    (-held)
+                        .max(0)
+                        .max(drawn)
+                        .max(claimant_cast_overdraft(ledger, who, moment))
                 }
             })
             .sum::<i64>()
@@ -15058,6 +15099,12 @@ struct WalkingSilver {
     /// whatever order it iterates them - the same reason `forecast_hex` drains in hex order. The
     /// hex's total is exact either way; only which unit a shortfall is laid on can differ.
     departing: BTreeMap<String, i64>,
+    /// Every unit listed in this hex whose month ends in another region, sharer or not
+    /// ([`SharingReach`]). Its upkeep is no claim on this hex's silver pool
+    /// ([`Sharing::position_here`]): `rules/economy_maintenance` shares "between your units in the
+    /// same region" and "this will not happen between units in different regions", and
+    /// `rules/sequenceofevents` assesses maintenance after movement (`ah-6cka`).
+    leaving: BTreeSet<String>,
     /// The sharers ending their month here from another hex, each with what it lends at each
     /// [`LendingMoment`]: its [`silver_at`] then, less what it lent before it left. Indexed by
     /// the moment; read through [`WalkingSilver::arrivals_at`].
@@ -15147,6 +15194,7 @@ fn lend_walking_sharers_silver(
         .map(|(index, (hex, _))| (hex.region.coordinate, index))
         .collect();
     let mut departing: Vec<BTreeMap<String, i64>> = vec![BTreeMap::new(); hexes.len()];
+    let mut leaving: Vec<BTreeSet<String>> = vec![BTreeSet::new(); hexes.len()];
     let mut arrivals: Vec<[Vec<ArrivingSilver>; LendingMoment::COUNT]> =
         vec![Default::default(); hexes.len()];
     let mut doubted: Vec<bool> = vec![false; hexes.len()];
@@ -15165,6 +15213,12 @@ fn lend_walking_sharers_silver(
         let held_at = |who: &str, moment: LendingMoment| {
             silver_at(ledger, who, moment) + gift_drawn_by(ledger, who) - gift_lent_by(ledger, who)
         };
+        leaving[index] = hex
+            .units
+            .iter()
+            .filter(|ordered| ends_at(ordered) != here)
+            .map(|ordered| ordered.unit.unit_id.clone())
+            .collect();
         let walkers: Vec<&Ordered<'_>> = hex
             .units
             .iter()
@@ -15257,6 +15311,7 @@ fn lend_walking_sharers_silver(
             // still unpaid (`ah-qrk0`).
             let before = WalkingSilver {
                 departing: departing[index].clone(),
+                leaving: leaving[index].clone(),
                 ..WalkingSilver::default()
             };
             let pool = Sharing::with_walking(hex, &before);
@@ -15273,6 +15328,7 @@ fn lend_walking_sharers_silver(
         }
         let walking = &mut ledger.relief_mut().walking;
         walking.departing = std::mem::take(&mut departing[index]);
+        walking.leaving = std::mem::take(&mut leaving[index]);
         walking.arrival_doubted = doubted[index];
         walking.arrivals[LendingMoment::Study as usize] = at_study;
         walking.arrivals[LendingMoment::MonthEnd as usize] = at_month_end;
@@ -15953,11 +16009,13 @@ impl Lending {
                     .sum::<i64>()
             };
             let position = |purse: &Lending, index: usize, at: LendingMoment| {
-                own(index, at)
-                    + purse.carried(index)
-                    + purse.refused(index)
-                    + unpaid[index]
-                    + refused_shipments(index)
+                let carried = purse.carried(index) + purse.refused(index) + unpaid[index];
+                sharing.position_here(
+                    &hex.units[index],
+                    at,
+                    own(index, at) + carried + refused_shipments(index),
+                    || own(index, LendingMoment::Transport) + carried,
+                )
             };
             let needs: Vec<i64> = (0..hex.units.len())
                 .map(|index| {
@@ -16371,11 +16429,19 @@ fn sharing_purse_over(
             .saturating_sub(ledger.tax_overstated.get(index).copied().unwrap_or(0))
     };
 
+    // What the purse answers for at the month's end: a unit that has left owes it nothing for
+    // its upkeep (`ah-6cka`).
+    let own_end = |index: usize| {
+        sharing.position_here(
+            &hex.units[index],
+            LendingMoment::MonthEnd,
+            own(index, LendingMoment::MonthEnd),
+            || own(index, LendingMoment::Transport),
+        )
+    };
     let coverage_for = |outcome| {
         (0..hex.units.len())
-            .map(|index| {
-                (judged(index) && own(index, LendingMoment::MonthEnd) < 0).then_some(outcome)
-            })
+            .map(|index| (judged(index) && own_end(index) < 0).then_some(outcome))
             .collect()
     };
 
@@ -16410,13 +16476,12 @@ fn sharing_purse_over(
         let paid = Lending::settle(hex, ledger, &sharing, &before_month_end);
         let coverage = (0..hex.units.len())
             .map(|index| {
-                let position =
-                    own(index, LendingMoment::MonthEnd) + paid.carried(index) + paid.refused(index);
+                let position = own_end(index) + paid.carried(index) + paid.refused(index);
                 if !judged(index) {
                     None
                 } else if position < 0 || paid.refused(index) > 0 {
                     Some(super::silver::SharedSilverCoverage::Shortfall)
-                } else if own(index, LendingMoment::MonthEnd) < 0 {
+                } else if own_end(index) < 0 {
                     // The rule the covered hex below applies too: an earlier moment the purse
                     // could not cover leaves every known shortfall unanswered.
                     Some(if paid.covered() {
@@ -16941,21 +17006,45 @@ fn judge_shortfalls(
             }
             let short = (-balance).max(mid_month);
 
-            if pooled {
-                verdicts.push(Verdict::DeferredToPool {
+            // A unit that leaves the hex answers to its pool for what it owed before maintenance,
+            // and to nobody here for its upkeep, which falls due where it ends the month
+            // (`rules/sequenceofevents`; `rules/economy_maintenance`: "this will not happen
+            // between units in different regions"). That rest is its own shortfall (`ah-6cka`).
+            let (short, own_short) = if pooled && tag == SILVER && sharing.leaves(ordered) {
+                let owed_here =
+                    (-sharing.position_here(ordered, LendingMoment::MonthEnd, balance, || {
+                        silver_at(ledger, who, LendingMoment::Transport)
+                    }))
+                    .max(0)
+                    .min(short);
+                (owed_here, short - owed_here)
+            } else {
+                (short, 0)
+            };
+            if own_short > 0 {
+                verdicts.push(Verdict::UnitShort {
                     unit_id: unit_id.clone(),
                     tag: tag.clone(),
-                    short,
-                    // A sharer's own overdraft is already inside the pool's sum, so it claims
-                    // nothing against it - but its tag still goes up for judgement.
-                    // A sharer walking away is outside the silver pool it leaves, so it claims
-                    // against it like anyone else (`ah-wyj8`).
-                    claims_pool: if tag == SILVER {
-                        !sharing.pools_silver(ordered)
-                    } else {
-                        !ordered.shares()
-                    },
+                    short: own_short,
                 });
+            }
+            if pooled {
+                if short > 0 {
+                    verdicts.push(Verdict::DeferredToPool {
+                        unit_id: unit_id.clone(),
+                        tag: tag.clone(),
+                        short,
+                        // A sharer's own overdraft is already inside the pool's sum, so it claims
+                        // nothing against it - but its tag still goes up for judgement.
+                        // A sharer walking away is outside the silver pool it leaves, so it claims
+                        // against it like anyone else (`ah-wyj8`).
+                        claims_pool: if tag == SILVER {
+                            !sharing.pools_silver(ordered)
+                        } else {
+                            !ordered.shares()
+                        },
+                    });
+                }
                 continue;
             }
 
@@ -43132,6 +43221,95 @@ BUILD
         assert_eq!(warnings.len(), 1, "{:?}", review.findings);
         assert_eq!(warnings[0].unit_id.as_deref(), Some("4021"));
         assert_eq!(warnings[0].counted_in, None);
+    }
+
+    /// `ah-6cka`, as verification found it: a walker leaving a faction-mate set `SHARE 1`.
+    /// `rules/economy_maintenance` shares silver for maintenance "between your units in the same
+    /// region" and "this will not happen between units in different regions", and
+    /// `rules/sequenceofevents` assesses maintenance after movement - so the banker left in
+    /// (7,53) lends the walker nothing, whatever its SHARE flag, and the walker's shortage is
+    /// counted where it ends the month.
+    #[test]
+    fn a_walker_leaving_a_sharing_banker_is_short_where_it_ends_the_month() {
+        let (mut report, _, _) = a_walkers_turn(
+            vec![with_silver(starving(unit("1795")), 500)],
+            Vec::new(),
+            true,
+        );
+        report.header.unclaimed_silver = None;
+        let orders = "unit 4021\nMOVE N\nunit 1795\nSHARE 1\n";
+        let (report, options) = traced(
+            report,
+            orders,
+            &ruleset(),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+        );
+        let review = review_turn(&report, orders, Some(&ruleset()), options);
+        // The loan verification saw was the purse's ("was lent +30 by your units in this hex"),
+        // not step 4's, so it is the purse's figures that must read nothing.
+        let fed = walker(&review);
+        assert_eq!(fed.shared_silver_covered, 0, "{fed:?}");
+        assert_eq!(
+            fed.borrowed_for_orders, 0,
+            "the purse it left lends it nothing: {fed:?}"
+        );
+        assert!(
+            !fed.changes
+                .iter()
+                .any(|change| change.cause == SilverChangeCause::WasLent),
+            "{fed:?}"
+        );
+        let warned: Vec<(Option<&str>, Option<&str>)> = upkeep_warnings(&review)
+            .iter()
+            .map(|finding| (finding.unit_id.as_deref(), finding.counted_in.as_deref()))
+            .collect();
+        assert_eq!(
+            warned,
+            vec![(Some("4021"), Some("1:7,51"))],
+            "{:?} {:?}",
+            review.findings,
+            walker(&review)
+        );
+    }
+
+    /// `ah-6cka`, the formed walker verification found: a unit FORMed in (7,53) that MOVEs N ends
+    /// the month in (7,51) like any walker (`rules/sequenceofevents`: FORM is processed with the
+    /// other instant orders, movement before maintenance), so the faction-mate it was formed
+    /// beside does not feed it (`rules/economy_maintenance`: "this will not happen between units
+    /// in different regions"), and its shortage is counted where it ends the month.
+    #[test]
+    fn a_formed_walker_is_not_fed_by_the_hex_it_was_formed_in() {
+        let (mut report, _, _) = a_walkers_turn(
+            vec![with_silver(starving(unit("1795")), 500)],
+            Vec::new(),
+            false,
+        );
+        report.header.unclaimed_silver = None;
+        let orders = "unit 4021\nFORM 1\nMOVE N\nEND\nGIVE NEW 1 1 HUMN\nunit 1795\n";
+        let (report, options) = traced(
+            report,
+            orders,
+            &ruleset(),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
+        );
+        let review = review_turn(&report, orders, Some(&ruleset()), options);
+        let formed: Vec<&UnitSilver> = review
+            .silver
+            .iter()
+            .filter(|silver| silver.unit_id != "4021" && silver.unit_id != "1795")
+            .collect();
+        assert_eq!(formed.len(), 1, "{:?}", review.silver);
+        assert_eq!(
+            formed[0].shared_silver_covered, 0,
+            "the banker it was formed beside lends it nothing: {:?}",
+            formed[0]
+        );
+        let warned: Vec<Option<&str>> = upkeep_warnings(&review)
+            .iter()
+            .filter(|finding| finding.unit_id.as_deref() == Some(formed[0].unit_id.as_str()))
+            .map(|finding| finding.counted_in.as_deref())
+            .collect();
+        assert_eq!(warned, vec![Some("1:7,51")], "{:?}", review.findings);
     }
 
     /// `ah-n3qb`: steps 5 and 6 feed a unit from "faction units in the same region"

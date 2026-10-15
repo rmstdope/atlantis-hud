@@ -1458,7 +1458,10 @@ pub(crate) fn measure_shipments(
 ) -> ShipmentMeasures {
     use crate::movement::graph::MapKnowledge;
 
-    if !ships_anything(orders_document, ruleset) && !moves_anywhere(orders_document, ruleset) {
+    if !ships_anything(orders_document, ruleset)
+        && !moves_anywhere(orders_document, ruleset)
+        && !a_formed_unit_walks(report, orders_document, ruleset)
+    {
         return ShipmentMeasures::default();
     }
     // Passages are not read: a crossing the faction has not proved names no month end, and one it
@@ -1571,21 +1574,47 @@ pub fn village_sites(
     ))
 }
 
-/// Whether the document writes any directional `MOVE`/`ADVANCE` step.
-fn moves_anywhere(orders_document: &str, ruleset: &Ruleset) -> bool {
-    use super::intents::{read_intents, Intent};
+/// Whether `intents` hold a directional `MOVE`/`ADVANCE` step.
+fn walks(intents: &[super::intents::PlacedIntent]) -> bool {
+    use super::intents::Intent;
     use crate::movement::orders::MoveStep;
 
-    read_intents(orders_document, Some(ruleset))
+    intents.iter().any(|placed| {
+        matches!(
+            &placed.intent,
+            Intent::Move { steps } if steps.iter().any(|step| matches!(step, MoveStep::Go(_)))
+        )
+    })
+}
+
+/// Whether the document writes any directional `MOVE`/`ADVANCE` step for a unit the report shows.
+fn moves_anywhere(orders_document: &str, ruleset: &Ruleset) -> bool {
+    super::intents::read_intents(orders_document, Some(ruleset))
         .iter()
-        .any(|unit| {
-            unit.intents.iter().any(|placed| {
-                matches!(
-                    &placed.intent,
-                    Intent::Move { steps } if steps.iter().any(|step| matches!(step, MoveStep::Go(_)))
-                )
-            })
+        .any(|unit| walks(&unit.intents))
+}
+
+/// Whether a `FORM` block of the document writes one: `rules/form` creates the unit before
+/// movement (`rules/sequenceofevents`), so it can walk the month it is formed, and a month end
+/// that skipped it left a formed walker fed from the hex it left (`ah-6cka`).
+fn a_formed_unit_walks(
+    report: &crate::report::ParsedReport,
+    orders_document: &str,
+    ruleset: &Ruleset,
+) -> bool {
+    let regions: BTreeMap<&str, &crate::report::model::ReportRegion> = report
+        .regions
+        .iter()
+        .flat_map(|region| {
+            region
+                .units
+                .iter()
+                .map(move |unit| (unit.unit_id.as_str(), region))
         })
+        .collect();
+    super::intents::read_formed(orders_document, &regions, Some(ruleset))
+        .iter()
+        .any(|block| walks(&block.intents))
 }
 
 /// Whether the document writes any `TRANSPORT`/`DISTRIBUTE`, which is what the keystroke-path
@@ -1826,13 +1855,24 @@ fn month_end(
     })
 }
 
-/// Where each unit the report shows ends the month, from the passes the map is drawn from.
-/// Formed units are left out: the check side knows them by a different id (`ah-b6fz`).
+/// Where each unit ends the month, from the passes the map is drawn from. A formed unit is keyed
+/// by its region as well ([`super::transport::formed_month_end_key`]): its alias is only unique
+/// within the hex that formed it, so a bare `new-1` would hand one hex's walker's month end to
+/// another's (`ah-b6fz`), and leaving it out fed a formed walker from the hex it left (`ah-6cka`).
 fn month_end_of(decided: &[Decided]) -> super::transport::MonthEndHexes {
     decided
         .iter()
-        .filter(|d| !d.formed)
-        .filter_map(|d| Some((d.entry.unit.unit_id.clone(), d.ends_at?)))
+        .filter_map(|d| {
+            let key = if d.formed {
+                super::transport::formed_month_end_key(
+                    &d.entry.unit.region_id,
+                    &d.entry.unit.unit_id,
+                )
+            } else {
+                d.entry.unit.unit_id.clone()
+            };
+            Some((key, d.ends_at?))
+        })
         .collect()
 }
 
