@@ -11729,7 +11729,7 @@ impl CastOutcome {
         self != Self::RefusedForGoods
     }
 
-    /// Whether the spell's product arrives: a refused cast makes nothing (`ah-j5p8`).
+    /// Whether a create-artifact spell's product arrives: refused, it makes nothing (`ah-j5p8`).
     fn creates(self) -> bool {
         self == Self::Paid
     }
@@ -12036,14 +12036,16 @@ fn cast(
         }
     }
     // The arrival is `made`, never `charged`: a mage that cannot afford one is charged for one and
-    // makes none, and the column must show the materials going and nothing coming back. A refused
-    // cast makes nothing either (`RunCreateArtifact`, `spells.cpp`), whatever `plan` priced it
-    // from: the caster's `held` is its report stock, so a material it gave away before the spell
-    // (`rules/sequenceofevents`) still reads as there (`ah-j5p8`).
+    // makes none, and the column must show the materials going and nothing coming back. A
+    // create-artifact cast that is refused makes nothing either (`RunCreateArtifact`,
+    // `spells.cpp`), whatever `plan` priced it from: the caster's `held` is its report stock, so a
+    // material it gave away before the spell (`rules/sequenceofevents`) still reads as there
+    // (`ah-j5p8`). An enchantment or a transmutation is never refused that way - it makes as many
+    // as its stock allows (`RunEnchant`, `RunTransmutation`) - so its arrival stands.
     if let Some(tag) = plan
         .tag
         .clone()
-        .filter(|_| plan.made != 0 && outcome.creates())
+        .filter(|_| plan.made != 0 && (outcome.creates() || !plan.per_cast))
     {
         ledger.movements.push(ItemMovement {
             unit_id: who.clone(),
@@ -59401,6 +59403,29 @@ BUILD
                 0,
                 "{:?}",
                 effects_for(&effects, "902")
+            );
+        }
+
+        /// Mage 5 enchants swords (`data/ESWO`) after giving 10 of its 20 away: an enchantment is
+        /// paid per item and makes as many as the stock allows (`RunEnchant`, `spells.cpp`), so
+        /// the cast is not refused and its enchanted swords still arrive (`ah-j5p8` review,
+        /// finding 1).
+        #[test]
+        fn an_enchantment_short_of_its_stock_still_creates_its_product() {
+            let report = report(vec![region(vec![
+                with_skill(with_item(unit("5"), 20, "sword", "SWOR"), "ESWO", 3),
+                unit("6"),
+            ])]);
+            let effects = item_effects(
+                &report,
+                "unit 5\nGIVE 6 10 SWOR\nCAST Enchant_Swords\nunit 6\n",
+                Some(&ruleset()),
+                &CheckOptions::default(),
+            );
+            assert!(
+                moved_by(&effects, "5", "MSWO", Some(ItemChangeCause::CastCreated)) > 0,
+                "{:?}",
+                effects_for(&effects, "5")
             );
         }
 

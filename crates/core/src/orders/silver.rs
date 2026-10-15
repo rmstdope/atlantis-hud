@@ -5833,6 +5833,10 @@ pub struct CastPlan {
     /// Whether the skill's paragraph calls this creation a summoning, which decides one word in
     /// the ITEMS hover and one in the cap sentence. `false` for a spell that creates nothing.
     pub summons: bool,
+    /// Whether the inputs are paid once for the whole cast (`Game::RunCreateArtifact`), so a cast
+    /// short of one is refused outright, rather than per item (`Game::RunEnchant`,
+    /// `Game::RunTransmutation`), which make as many as the stock allows (`ah-j5p8`).
+    pub per_cast: bool,
 }
 
 /// `CAST Transmutation [number] <material>` split into how many and what.
@@ -6060,6 +6064,7 @@ pub fn plan_cast(cost: &CastCost, caster: &Caster<'_>, level: i64) -> CastPlan {
         },
         capped_by,
         summons: output.is_some_and(|output| output.summoned),
+        per_cast,
     }
 }
 
