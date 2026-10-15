@@ -316,6 +316,22 @@ fn structure_line(structure: &Structure) -> String {
 }
 
 /// One unit line: the head sentence, then the labelled sections the parser splits on.
+/// One held item as the engine's `Item::Report` writes it, the inverse of `parse_item_amount`.
+///
+/// An illusion is read as its own item, `illusory balrog [IBALR]` (`data/IBALR`), but the engine
+/// writes it under the real item's name and tag with ` (illusion)` appended
+/// (`../Atlantis/items.cpp`), and so does the export, so it reads like the owner's report and the
+/// parser reads it back as the illusion (`ah-nm65`).
+fn item_text(item: &ItemAmount) -> String {
+    match (
+        item.name.strip_prefix("illusory "),
+        item.tag.strip_prefix('I'),
+    ) {
+        (Some(name), Some(tag)) => format!("{} {name} [{tag}] (illusion)", item.amount),
+        _ => format!("{} {} [{}]", item.amount, item.name, item.tag),
+    }
+}
+
 fn unit_line(unit: &ReportUnit) -> String {
     let mut head = format!(
         "{} {} ({})",
@@ -337,7 +353,7 @@ fn unit_line(unit: &ReportUnit) -> String {
             Some(needs) => {
                 head.push_str(&format!(", {} [{}] (needs {needs})", item.name, item.tag));
             }
-            None => head.push_str(&format!(", {} {} [{}]", item.amount, item.name, item.tag)),
+            None => head.push_str(&format!(", {}", item_text(item))),
         }
     }
     head.push('.');
@@ -628,6 +644,46 @@ mod tests {
                 .expect("the written line parses")
                 .items,
             vec![ship]
+        );
+    }
+
+    /// An illusion is written in the engine's own form, `Item::Report` in `../Atlantis/items.cpp`:
+    /// the real item's name and tag with ` (illusion)` appended, never the `illusory balrog
+    /// [IBALR]` the parser reads it as (`data/IBALR`). The export reads like the owner's report and
+    /// a reparse still reads the illusion, not a second real balrog (`ah-nm65`, `ah-qrlx`).
+    #[test]
+    fn writes_an_illusion_in_the_engine_s_own_form_so_a_reparse_reads_it_back() {
+        let item = |amount, name: &str, tag: &str| ItemAmount {
+            amount,
+            name: name.to_string(),
+            tag: tag.to_string(),
+            needs: None,
+        };
+        let unit = ReportUnit {
+            unit_id: "1160".to_string(),
+            name: "Summoner".to_string(),
+            items: vec![
+                item(1, "balrog", "BALR"),
+                item(1, "illusory balrog", "IBALR"),
+                item(3, "illusory imps", "IIMP"),
+            ],
+            ..ReportUnit::default()
+        };
+
+        let line = unit_line(&unit);
+
+        assert!(
+            line.contains(
+                ", 1 balrog [BALR], 1 balrog [BALR] (illusion), 3 imps [IMP] (illusion)."
+            ),
+            "{line}"
+        );
+        assert!(!line.contains("illusory"), "{line}");
+        assert_eq!(
+            parse_unit(&line, true, "1:7,53", None)
+                .expect("the written line parses")
+                .items,
+            unit.items
         );
     }
 
