@@ -57227,7 +57227,10 @@ BUILD
                 .map(|f| f.message.clone())
                 .collect();
             assert_eq!(hex.len(), 1, "{case}: {:?}", review.findings);
-            assert!(hex[0].contains(&format!("short ${short} ")), "{case}: {hex:?}");
+            assert!(
+                hex[0].contains(&format!("short ${short} ")),
+                "{case}: {hex:?}"
+            );
             let giver = shipment_silver(&review, "902");
             assert_eq!(giver.short_for_orders, Some(short), "{case}: {giver:?}");
             assert_eq!(giver.short_on, Some(Give), "{case}: {giver:?}");
