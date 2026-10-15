@@ -43162,11 +43162,19 @@ BUILD
             disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TWO_MONTH_LONG_ORDERS]),
         );
         let review = review_turn(&report, orders, Some(&ruleset()), options);
+        // The loan verification saw was the purse's ("was lent +30 by your units in this hex"),
+        // not step 4's, so it is the purse's figures that must read nothing.
+        let fed = walker(&review);
+        assert_eq!(fed.shared_silver_covered, 0, "{fed:?}");
         assert_eq!(
-            walker(&review).shared_silver_covered,
-            0,
-            "the banker it left lends it nothing: {:?}",
-            walker(&review)
+            fed.borrowed_for_orders, 0,
+            "the purse it left lends it nothing: {fed:?}"
+        );
+        assert!(
+            !fed.changes
+                .iter()
+                .any(|change| change.cause == SilverChangeCause::WasLent),
+            "{fed:?}"
         );
         let warned: Vec<(Option<&str>, Option<&str>)> = upkeep_warnings(&review)
             .iter()
