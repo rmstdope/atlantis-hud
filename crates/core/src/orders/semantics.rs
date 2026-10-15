@@ -2739,6 +2739,7 @@ fn forecast_hex(
         facts.overdrawn_at_study =
             (-unlent_silver_at(ledger, &ordered.unit.unit_id, StatePhase::Study)).max(0);
         facts.drawn_at_give = gift_drawn_by(ledger, &ordered.unit.unit_id);
+        facts.lent_at_give = gift_lent_by(ledger, &ordered.unit.unit_id);
         claims.push(food_claim(&facts, ruleset));
 
         into.push(forecast_unit(
@@ -7653,6 +7654,7 @@ fn unit_facts<'a>(
         transport_warning: true,
         overdrawn_at_study: 0,
         drawn_at_give: 0,
+        lent_at_give: 0,
         phases,
     }
 }
@@ -9268,11 +9270,19 @@ fn transfer(
     // and which sharers made up the rest, read before this line is charged or its unfunded part
     // booked (`ah-msds`) - recorded once, and the one verdict on it every later reader takes
     // (`ah-rou9`).
+    // What the source still holds of its own as the line runs: its balance, plus what its earlier
+    // transfers drew on the sharers, less what a faction-mate's earlier transfer drew on it - which
+    // its own balance never shows (`unit.cpp`: `ConsumeShared`; `ah-fj2l`). The funding record and
+    // the cut record below both read it.
+    let own_silver = known_source
+        .saturating_add(gift_drawn_by(ledger, &from))
+        .saturating_sub(gift_lent_by(ledger, &from))
+        .max(0);
     let funding = (!from.is_empty() && tag.eq_ignore_ascii_case(SILVER)).then(|| SilverFunding {
         line: placed.line as i64,
         exact_give: is_give && matches!(shape, TransferShape::Exact(_)),
         asked: quantity,
-        own: known_source.max(0),
+        own: own_silver,
         received,
         pool_read,
         draws: if hex.units.iter().any(|ordered| ordered.shares()) {
@@ -9386,7 +9396,7 @@ fn transfer(
         let (cut, could_move) = if !tag.eq_ignore_ascii_case(SILVER) {
             (received < quantity, received.max(0))
         } else if is_give {
-            (cut_gift, known_source.max(0))
+            (cut_gift, own_silver)
         } else {
             (moved < quantity, moved)
         };
@@ -57146,6 +57156,116 @@ BUILD
             Some(crate::orders::silver::SilverSpender::Give),
             "{caster:?}"
         );
+    }
+
+    /// A sharer whose silver a faction-mate's GIVE drew on first is short by what that left it,
+    /// not by what it held: 901 comes first in the region, so its GIVE of $400 spends its own $300
+    /// and then sharer 902's $100 (`unit.cpp`: `Unit::ConsumeShared` spends the unit's own stock,
+    /// then each same-faction `SHARE` unit's in region order). 902 then holds the $400 it was
+    /// given and nothing of its own, so its GIVE of $1000 finds $400 (`Unit::GetSharedNum`) and
+    /// is cut to it (`runorders.cpp`: `DoGiveOrder`, "Not enough.") - $600 short, the hex's own
+    /// figure, never the $500 its $100 would make it if it had not lent it (`ah-fj2l`).
+    #[test]
+    fn a_sharer_drained_by_an_earlier_gift_is_short_by_what_it_lent() {
+        let rules = trident_rules();
+        let review = review_turn(
+            &report(vec![region(vec![
+                sharing(with_silver(unit("901"), 300)),
+                sharing(with_silver(unit("902"), 100)),
+            ])]),
+            "unit 901\nGIVE 902 400 SILV\nunit 902\nGIVE 901 1000 SILV\n",
+            Some(&rules),
+            with_map(),
+        );
+        let hex: Vec<_> = review
+            .findings
+            .iter()
+            .filter(|f| f.code.as_str() == "not-enough-silver" && f.unit_id.is_none())
+            .map(|f| f.message.clone())
+            .collect();
+        assert_eq!(hex.len(), 1, "{:?}", review.findings);
+        assert!(hex[0].contains("short $600 "), "{hex:?}");
+        let giver = shipment_silver(&review, "902");
+        assert_eq!(giver.short_for_orders, Some(600), "{giver:?}");
+        assert_eq!(
+            giver.short_on,
+            Some(crate::orders::silver::SilverSpender::Give),
+            "{giver:?}"
+        );
+    }
+
+    /// The same drain where the ask fits inside what the sharer held before it, and with a spend
+    /// after the cut gift: 901's GIVE of $400 to non-sharer 903 spends its own $300 and then 902's
+    /// $100 (`unit.cpp`: `Unit::ConsumeShared`), so 902's GIVE finds nothing and is cut to it
+    /// (`runorders.cpp`: `DoGiveOrder`, "Not enough."), and its $10 study (`data/COMB`) after it
+    /// finds nothing either. 902 is short what the hex is short, on its GIVE, both times
+    /// (`ah-fj2l`, review findings 1 and 2).
+    #[test]
+    fn a_drained_sharer_is_short_its_whole_gift_and_what_it_spends_after() {
+        use crate::orders::silver::SilverSpender::Give;
+        let rules = trident_rules();
+        for (case, orders, short) in [
+            ("an ask within what it held", "GIVE 903 50 SILV", 50),
+            (
+                "a study after the cut gift",
+                "GIVE 903 1000 SILV\nSTUDY COMB",
+                1010,
+            ),
+        ] {
+            let review = review_turn(
+                &report(vec![region(vec![
+                    sharing(with_silver(unit("901"), 300)),
+                    sharing(with_silver(unit("902"), 100)),
+                    unit("903"),
+                ])]),
+                &format!("unit 901\nGIVE 903 400 SILV\nunit 902\n{orders}\nunit 903\n"),
+                Some(&rules),
+                with_map(),
+            );
+            let hex: Vec<_> = review
+                .findings
+                .iter()
+                .filter(|f| f.code.as_str() == "not-enough-silver" && f.unit_id.is_none())
+                .map(|f| f.message.clone())
+                .collect();
+            assert_eq!(hex.len(), 1, "{case}: {:?}", review.findings);
+            assert!(
+                hex[0].contains(&format!("short ${short} ")),
+                "{case}: {hex:?}"
+            );
+            let giver = shipment_silver(&review, "902");
+            assert_eq!(giver.short_for_orders, Some(short), "{case}: {giver:?}");
+            assert_eq!(giver.short_on, Some(Give), "{case}: {giver:?}");
+        }
+    }
+
+    /// The ledger's record of the cut says the same: 902's own $100 went to 901's earlier GIVE
+    /// (`unit.cpp`: `Unit::ConsumeShared`), so its gift could move none of its own and is short
+    /// the whole ask at the Give phase (`runorders.cpp`: `DoGiveOrder`, "Not enough."), never what
+    /// it held before the drain (`ah-fj2l`, follow-up review finding 1).
+    #[test]
+    fn a_drained_sharers_cut_gift_could_move_none_of_its_own() {
+        let rules = trident_rules();
+        for (ask, short) in [(50, 50), (1000, 1000)] {
+            let hex = region(vec![
+                sharing(with_silver(unit("901"), 300)),
+                sharing(with_silver(unit("902"), 100)),
+                unit("903"),
+            ]);
+            let ordered = OrderedUnits::read(&format!(
+                "unit 901\nGIVE 903 400 SILV\nunit 902\nGIVE 903 {ask} SILV\nunit 903\n"
+            ));
+            let hex_with_transfers = hex_with_transfers(
+                &hex,
+                &ordered,
+                &[],
+                Some(&rules),
+                &BTreeSet::new(),
+                &NO_UNITS_SHOWN,
+            );
+            let ledger = ledger_for(&hex_with_transfers, Some(&rules));
+            assert_eq!(silver_short_at_give(&ledger, "902"), short, "GIVE {ask}");
+        }
     }
 
     /// The SILVER column's `short_on` and the editor's shortfall anchor read one verdict on a
