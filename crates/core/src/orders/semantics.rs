@@ -17256,7 +17256,9 @@ enum MateTransfer {
 
 /// How a transfer `from` -> `to` crosses the boundary of `counted` within the hex's own units: a
 /// receiver outside the hex, of another faction, or no receiver at all is not a faction-mate, and
-/// a move between two counted units does not cross.
+/// a move between two counted units does not cross. A mate is one of the hex's units when the Give
+/// phase runs, whatever it does later: one that then walks away carries the goods off, but the
+/// orders that cost the counted units something still did not spend them (`ah-3qmk`).
 fn hex_mate_transfer(
     hex: &Hex<'_>,
     counted: &BTreeSet<&str>,
@@ -59734,7 +59736,7 @@ BUILD
                 "{mage:?}"
             );
         }
-        /// The hex's sentence for `tag`, the only finding with no unit.
+        /// The hex's sentences under finding `code`: the findings with no unit.
         fn hex_shortfall(review: &TurnReview, code: &str) -> Vec<String> {
             review
                 .findings
@@ -59779,6 +59781,74 @@ BUILD
                 hex_shortfall(&review, "not-enough-items"),
                 [
                     "the units in this hex are short 75 ironwood between them: they can have 0 \
+                  and their orders spend 75"
+                ]
+            );
+        }
+
+        /// `rules/take`: TAKE "works just like the GIVE order, except that the direction of transfer
+        /// is reversed". So non-sharing 902 taking the mage's 75 ironwood before the cast reads as
+        /// the gift does: not spent, and nothing the counted units can have (`ah-3qmk`).
+        #[test]
+        fn ironwood_a_faction_mate_takes_is_not_what_the_hex_spends() {
+            let rules = trident_rules();
+            let report = report(vec![region(vec![
+                with_item(
+                    with_item(
+                        with_skill(unit("901"), "SWIN", 3),
+                        75,
+                        "floater hides",
+                        "FLOA",
+                    ),
+                    75,
+                    "ironwood",
+                    "IRWD",
+                ),
+                unit("902"),
+                sharing(unit("903")),
+            ])]);
+            let review = review_turn(
+                &report,
+                "unit 901\nCAST Summon_Wind\nunit 902\nSHARE 0\nTAKE FROM 901 75 IRWD\nunit 903\n",
+                Some(&rules),
+                CheckOptions::default(),
+            );
+            assert_eq!(
+                hex_shortfall(&review, "not-enough-items"),
+                [
+                    "the units in this hex are short 75 ironwood between them: they can have 0 \
+                  and their orders spend 75"
+                ]
+            );
+        }
+
+        /// The other direction: non-sharing 902 gives the mage 40 of its 75 ironwood, so the
+        /// counted units - the borrowing mage and sharer 903 - can have those 40 of the cast's 75
+        /// (`data/SWIN` level 3), and are short the 35 that 902 keeps and will not lend
+        /// (`rules/share`, `ah-3qmk`).
+        #[test]
+        fn ironwood_a_faction_mate_gives_in_is_what_the_hex_can_have() {
+            let rules = trident_rules();
+            let report = report(vec![region(vec![
+                with_item(
+                    with_skill(unit("901"), "SWIN", 3),
+                    75,
+                    "floater hides",
+                    "FLOA",
+                ),
+                with_item(unit("902"), 75, "ironwood", "IRWD"),
+                sharing(unit("903")),
+            ])]);
+            let review = review_turn(
+                &report,
+                "unit 901\nCAST Summon_Wind\nunit 902\nSHARE 0\nGIVE 901 40 IRWD\nunit 903\n",
+                Some(&rules),
+                CheckOptions::default(),
+            );
+            assert_eq!(
+                hex_shortfall(&review, "not-enough-items"),
+                [
+                    "the units in this hex are short 35 ironwood between them: they can have 40 \
                   and their orders spend 75"
                 ]
             );
