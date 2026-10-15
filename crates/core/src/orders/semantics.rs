@@ -5978,6 +5978,10 @@ struct Ledger<'a> {
     /// much - the amount the balances actually moved. What [`silver_can_have`] reads to add back
     /// silver that left a set of units, by unit id rather than by any label (`ah-w2ou`).
     pub(crate) silver_transfers: Vec<SilverTransfer>,
+    /// Every `GIVE` and `TAKE` of goods between two units this walk settled, in settlement order,
+    /// with what reached the receiver. What [`pool_shortfalls`] reads so goods moved between two
+    /// of the hex's own units are not counted as spent (`ah-3qmk`).
+    goods_transfers: Vec<GoodsTransfer>,
     /// Every movement of every unit's silver this month, in the order the walk settled them,
     /// keyed by unit id.
     ///
@@ -6501,6 +6505,7 @@ fn ledger_for_reaching<'a>(
         unfunded_casts: BTreeMap::new(),
         silver_fundings: BTreeMap::new(),
         silver_transfers: Vec::new(),
+        goods_transfers: Vec::new(),
         silver_moves: BTreeMap::new(),
         shipping_paid: BTreeMap::new(),
         refused_shipments: Vec::new(),
@@ -8958,6 +8963,16 @@ struct SilverTransfer {
     received: i64,
 }
 
+/// One settled transfer of goods from one unit to another, as [`Ledger::goods_transfers`] records
+/// it: `received` is what the receiver was credited.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GoodsTransfer {
+    from: String,
+    to: String,
+    tag: String,
+    received: i64,
+}
+
 /// What the Give phase drew on the `SHARE` pool for `unit_id` as each of its transfers ran
 /// ([`Ledger::silver_fundings`]), between two units neither of which is doubted. Gone from the sharers
 /// for good (`unit.cpp`: `ConsumeShared`), so a reader of the unit's silver from the Give phase on
@@ -9445,6 +9460,14 @@ fn transfer(
             // other sharers' (`ah-ud89`, `ah-1c8p`, `ah-0mch`).
             apply_silver(ledger, StatePhase::Give, &to, received, Some(placed));
         } else {
+            if !from.is_empty() {
+                ledger.goods_transfers.push(GoodsTransfer {
+                    from: from.clone(),
+                    to: to.clone(),
+                    tag: tag.to_ascii_uppercase(),
+                    received,
+                });
+            }
             credit(ledger, StatePhase::Give, &to, &tag, received);
         }
     }
@@ -17062,7 +17085,7 @@ fn pool_shortfalls(
             let short = claimed - sharing.pool(ledger, &tag);
             // What the pool's members and its borrowers hold of it, so the message can say "they
             // can have X and their orders spend Y" the way the per-unit one does.
-            let can_have = hex
+            let counted: Vec<&Ordered<'_>> = hex
                 .units
                 .iter()
                 .filter(|o| {
@@ -17070,8 +17093,24 @@ fn pool_shortfalls(
                         || (!ledger.doubted.contains(&o.unit.unit_id)
                             && relieved_balance(ledger, &o.unit.unit_id, &tag) < 0)
                 })
-                .map(|o| o.holding(&tag))
+                .collect();
+            let ids: BTreeSet<&str> = counted.iter().map(|o| o.unit.unit_id.as_str()).collect();
+            // Goods moved between a counted unit and a faction-mate of the hex the sentence does
+            // not count are still in the hex, so they are neither spent nor - once given away -
+            // something the counted units can have (`ah-3qmk`; `rules/give`, `rules/share`).
+            let with_mates: i64 = ledger
+                .goods_transfers
+                .iter()
+                .filter(|moved| moved.tag.eq_ignore_ascii_case(&tag))
+                .map(
+                    |moved| match hex_mate_transfer(hex, &ids, &moved.from, Some(&moved.to)) {
+                        Some(MateTransfer::Out) => -moved.received,
+                        Some(MateTransfer::In) => moved.received,
+                        None => 0,
+                    },
+                )
                 .sum();
+            let can_have = counted.iter().map(|o| o.holding(&tag)).sum::<i64>() + with_mates;
             (short > 0).then_some((ShortfallFigures { short, can_have }, 0))
         };
         let Some((figures, upkeep)) = found else {
@@ -17175,6 +17214,20 @@ fn pool_silver_figures(
         .map(|ordered| ordered.unit.unit_id.as_str())
         .collect();
     let can_have = can_have + silver_unfunded_between(ledger, &between_counted);
+    // ... but silver a counted unit gave a faction-mate of the hex the sentence does not count is
+    // still in the hex and is not spent: `silver_can_have` adds every gift out of the set back as
+    // spending, so this one is taken off again (`ah-3qmk`). What came in from such a mate is
+    // already in the Give-phase balance it reads.
+    let can_have = can_have
+        - ledger
+            .silver_transfers
+            .iter()
+            .filter(|moved| {
+                hex_mate_transfer(hex, &between_counted, &moved.from, moved.to.as_deref())
+                    == Some(MateTransfer::Out)
+            })
+            .map(|moved| moved.amount)
+            .sum::<i64>();
 
     let upkeep = if moment == ShortfallMoment::MonthEnd {
         counted
@@ -17185,6 +17238,38 @@ fn pool_silver_figures(
         0
     };
     Some((ShortfallFigures { short, can_have }, upkeep))
+}
+
+/// Which way a transfer crossed between a set of counted units and the hex's other units of our
+/// own faction, or `None` when it did neither (`ah-3qmk`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MateTransfer {
+    /// From a counted unit to a faction-mate in the hex outside the set.
+    Out,
+    /// From such a faction-mate to a counted unit.
+    In,
+}
+
+/// How a transfer `from` -> `to` crosses the boundary of `counted` within the hex's own units: a
+/// receiver outside the hex, of another faction, or no receiver at all is not a faction-mate, and
+/// a move between two counted units does not cross.
+fn hex_mate_transfer(
+    hex: &Hex<'_>,
+    counted: &BTreeSet<&str>,
+    from: &str,
+    to: Option<&str>,
+) -> Option<MateTransfer> {
+    let to = to?;
+    let mate = |id: &str| {
+        !counted.contains(id) && hex.units.iter().any(|ordered| ordered.unit.unit_id == id)
+    };
+    if counted.contains(from) && mate(to) {
+        Some(MateTransfer::Out)
+    } else if mate(from) && counted.contains(to) {
+        Some(MateTransfer::In)
+    } else {
+        None
+    }
 }
 
 /// What a hex whose `SHARE` purse cut a `BUY` is short of silver, read where the cut happened
@@ -59641,6 +59726,136 @@ BUILD
                 mage.short_on,
                 Some(crate::orders::silver::SilverSpender::Buy),
                 "{mage:?}"
+            );
+        }
+        /// The hex's sentence for `tag`, the only finding with no unit.
+        fn hex_shortfall(review: &TurnReview, code: &str) -> Vec<String> {
+            review
+                .findings
+                .iter()
+                .filter(|finding| finding.code.as_str() == code && finding.unit_id.is_none())
+                .map(|finding| finding.message.clone())
+                .collect()
+        }
+
+        /// Mage 901 gives its 75 ironwood to faction-mate 902, which stays in the hex and does not
+        /// share, then casts Summon Wind for 75 ironwood (`data/SWIN` level 3); 903 shares, so the
+        /// hex is judged as one. `rules/give` moves the ironwood to 902 before the cast
+        /// (`rules/sequenceofevents`: GIVE before CAST), so it is still in the hex: the gift is
+        /// not spending, and the units the sentence counts - the sharer and the borrowing mage -
+        /// can have none of it, since 902 will not lend it (`rules/share`). Psylocke's fixture,
+        /// navigator's reading (`ah-3qmk`).
+        #[test]
+        fn a_gift_to_a_faction_mate_in_the_hex_is_not_what_the_hex_spends() {
+            let rules = trident_rules();
+            let report = report(vec![region(vec![
+                with_item(
+                    with_item(
+                        with_skill(unit("901"), "SWIN", 3),
+                        75,
+                        "floater hides",
+                        "FLOA",
+                    ),
+                    75,
+                    "ironwood",
+                    "IRWD",
+                ),
+                unit("902"),
+                sharing(unit("903")),
+            ])]);
+            let review = review_turn(
+                &report,
+                "unit 901\nGIVE 902 75 IRWD\nCAST Summon_Wind\nunit 902\nSHARE 0\nunit 903\n",
+                Some(&rules),
+                CheckOptions::default(),
+            );
+            assert_eq!(
+                hex_shortfall(&review, "not-enough-items"),
+                [
+                    "the units in this hex are short 75 ironwood between them: they can have 0 \
+                  and their orders spend 75"
+                ]
+            );
+        }
+
+        /// The same shape in silver: 901 gives its $200 to non-sharing faction-mate 902 and then
+        /// casts a Summon Wind costing $200 (`ah-3qmk`).
+        #[test]
+        fn a_silver_gift_to_a_faction_mate_in_the_hex_is_not_what_the_hex_spends() {
+            let rules = wind_for_silver_and_goods();
+            let report = report(vec![region(vec![
+                with_silver(
+                    with_item(
+                        with_item(
+                            with_skill(unit("901"), "SWIN", 3),
+                            75,
+                            "floater hides",
+                            "FLOA",
+                        ),
+                        75,
+                        "ironwood",
+                        "IRWD",
+                    ),
+                    200,
+                ),
+                unit("902"),
+                sharing(unit("903")),
+            ])]);
+            let review = review_turn(
+                &report,
+                "unit 901\nGIVE 902 200 SILV\nCAST Summon_Wind\nunit 902\nSHARE 0\nunit 903\n",
+                Some(&rules),
+                CheckOptions::default(),
+            );
+            assert_eq!(
+                hex_shortfall(&review, "not-enough-silver"),
+                [
+                    "the units in this hex are short $200 between them: they can have $0 and \
+                  their orders spend $200"
+                ]
+            );
+        }
+
+        /// A gift to another player's unit does leave the faction (`rules/give`: silver may be
+        /// given to any unit), so it is still part of what the hex's orders spend (`ah-3qmk`).
+        #[test]
+        fn a_silver_gift_to_another_faction_is_still_what_the_hex_spends() {
+            let rules = wind_for_silver_and_goods();
+            let report = report(vec![region(vec![
+                with_silver(
+                    with_item(
+                        with_item(
+                            with_skill(unit("901"), "SWIN", 3),
+                            75,
+                            "floater hides",
+                            "FLOA",
+                        ),
+                        75,
+                        "ironwood",
+                        "IRWD",
+                    ),
+                    200,
+                ),
+                ReportUnit {
+                    faction_id: Some("77".to_string()),
+                    faction_name: Some("Rivals".to_string()),
+                    own: false,
+                    ..unit("9001")
+                },
+                sharing(unit("903")),
+            ])]);
+            let review = review_turn(
+                &report,
+                "unit 901\nGIVE 9001 200 SILV\nCAST Summon_Wind\nunit 903\n",
+                Some(&rules),
+                CheckOptions::default(),
+            );
+            assert_eq!(
+                hex_shortfall(&review, "not-enough-silver"),
+                [
+                    "the units in this hex are short $200 between them: they can have $200 and \
+                  their orders spend $400"
+                ]
             );
         }
     }
