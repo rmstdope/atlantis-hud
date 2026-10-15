@@ -7,8 +7,18 @@ use crate::movement::rules::OrderLanguage;
 /// TRANSPORT, so a shipment is measured from here (`ah-b6fz`).
 ///
 /// A unit absent from the map is measured from where the report shows it: it does not move, or the
-/// forecast cannot name where its month ends (`→ …`), or this month's orders form it.
+/// forecast cannot name where its month ends (`→ …`).
+///
+/// A unit this month's orders form is keyed by [`formed_month_end_key`], never by its bare
+/// `new-<alias>`: `rules/form` scopes an alias to its region, so two hexes may each form a
+/// `new-1`. A shipment reads the map by bare id, so it still measures a formed unit from where it
+/// was formed; maintenance reads it by that key (`ah-6cka`).
 pub type MonthEndHexes = std::collections::BTreeMap<String, crate::report::model::Coordinate>;
+
+/// The [`MonthEndHexes`] key of the unit formed as `unit_id` (`new-<alias>`) in `region_id`.
+pub(crate) fn formed_month_end_key(region_id: &str, unit_id: &str) -> String {
+    format!("{region_id}/{unit_id}")
+}
 
 /// The hex one end of a shipment is measured from: its month-end hex when the map names one,
 /// otherwise `reported`.
