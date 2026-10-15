@@ -12876,17 +12876,12 @@ fn unpayable_upkeep(
 /// the sharing unit without enough funds to pay maintenance"; `ah-su1x`). `share_pool_agreement`
 /// holds maintenance to it. No loan is carried where nothing pools.
 ///
-/// What a refused CAST or STUDY handed back ([`refused_before_maintenance`]) is carried too, in a
-/// pool or where nothing pools (`ah-vdav`): the engine
-/// took nothing for the order, the unit's own coins included (`spells.cpp`: `RunCreateArtifact`;
-/// `monthorders.cpp`: `Do1StudyOrder`), so the unit pays its own upkeep from them before a
-/// faction-mate is asked (`ah-ayg7`) - only in the settlement the SILVER column shows: the one the
-/// hex's warning reads leaves it out ([`Ledger::hands_back`]). So, in that same
-/// settlement, is the part of a unit's own cut GIVE of silver, or a TAKE of silver from it, that
-/// nobody could fund ([`unfunded_gift_silver`]): the engine cut it to what the pool held as it ran
-/// (`runorders.cpp`: `DoGiveOrder`, `GetSharedNum`), so it never left the unit, and silver it
-/// receives or earns afterwards pays its own upkeep (`rules/economy_maintenance`: "Silver in the
-/// unit's possession" first; `ah-5xdk`). The warning keeps the cut part as owed.
+/// What each unit's orders asked and the engine never took - a refused CAST or STUDY, a cut GIVE or
+/// TAKE of silver, a cut BUY - is carried too, as one record read once per hex in every `SHARE`
+/// reading ([`Untaken`], `ah-19o3`), so the unit pays its own upkeep from that silver before a
+/// faction-mate is asked (`rules/economy_maintenance`: "Silver in the unit's possession" first) -
+/// only in the settlement the SILVER column shows: the one the hex's warning reads leaves it out
+/// and keeps every refused or cut order as spent ([`Ledger::hands_back`]).
 ///
 /// Report-wide, one row per hex, because a sharer that walks into another hex lends there:
 /// movement comes before the month-long orders and maintenance after them
@@ -12951,15 +12946,12 @@ impl HexLoans {
             .zip(&lending.arrivals_lend)
             .map(|(arrival, lent)| (arrival.unit.clone(), *lent))
             .collect();
-        // A refused order's hand-back (`ah-ayg7`) and a cut gift's unfunded part (`ah-5xdk`), in
-        // the column's settlement only.
-        let handed_back = if ledger.hands_back() {
-            refused_before_maintenance(hex, ledger, &lending)
+        // What the engine never took of each unit's orders ([`Untaken`]), in the column's
+        // settlement only.
+        let handed_back: Vec<i64> = if ledger.hands_back() {
+            untaken_before_maintenance(hex, ledger, &lending)
                 .into_iter()
-                .zip(&hex.units)
-                .map(|(refused, ordered)| {
-                    refused + unfunded_gift_silver(ledger, &ordered.unit.unit_id)
-                })
+                .map(Untaken::silver)
                 .collect()
         } else {
             vec![0; hex.units.len()]
@@ -13000,23 +12992,80 @@ impl HexLoans {
     }
 }
 
-/// What a refused CAST or STUDY handed back to each unit of one hex by maintenance, index-aligned
-/// with `hex.units`, since the engine takes nothing for either in any hex (`spells.cpp`:
-/// `RunCreateArtifact`; `monthorders.cpp`: `Do1StudyOrder`). In a trusted pool, the purse's own
-/// judgment ([`Lending::refused`]). Elsewhere each unit's own row: a cast neither it nor any
-/// sharer could fund ([`Ledger::unfunded_casts`], [`refused_cast_cost`]) and a study its own
+/// What one unit's orders asked of its silver and the engine never took, before maintenance: **the
+/// one reading of it maintenance carries**, in every `SHARE` reading (`ah-19o3`). The ledger
+/// charges each order the whole of what it asked, so each part below is silver that never left the
+/// unit and pays its own upkeep before a faction-mate's ("Silver in the unit's possession" first,
+/// `rules/economy_maintenance`). Read in the column's settlement only: the hex's warning keeps
+/// every refused or cut order as spent ([`Ledger::hands_back`]).
+///
+/// A part added here once, for every reading, is how a new order kind is covered; adding it to
+/// one reading's branch, or as a term beside this in [`HexLoans::read`], is how the same defect
+/// was fixed four times over (`ah-ayg7`, `ah-vdav`, `ah-5xdk`, `ah-dkkm`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Untaken {
+    /// The part of a GIVE or TAKE of silver nobody could fund as it ran: the engine cut it to what
+    /// the pool held (`runorders.cpp`: `DoGiveOrder`, `GetSharedNum`; [`unfunded_gift_silver`],
+    /// `ah-5xdk`).
+    gift: i64,
+    /// The part of a `BUY`'s ask the market never spent: "If the unit can't afford as many as
+    /// [quantity], it will attempt to buy as many as it can" (`rules/buy`; [`Ledger::overcharged`],
+    /// `ah-19o3`).
+    buy: i64,
+    /// A refused CAST's whole cost, the unit's own coins included (`spells.cpp`:
+    /// `RunCreateArtifact`; [`refused_cast_cost`]); in a trusted pool also an earlier overdraft the
+    /// cast moment refused ([`Lending::refused_cast`], `ah-mrs0`).
+    cast: i64,
+    /// A refused STUDY's whole fee (`monthorders.cpp`: `Do1StudyOrder`).
+    study: i64,
+}
+
+impl Untaken {
+    /// Every part together: what maintenance adds to the unit's ledger balance.
+    fn silver(self) -> i64 {
+        self.gift
+            .saturating_add(self.buy)
+            .saturating_add(self.cast)
+            .saturating_add(self.study)
+    }
+}
+
+/// [`Untaken`] for each unit of one hex, index-aligned with `hex.units`. `lending` is the purse's
+/// reading before maintenance.
+///
+/// The gift and the market's cut are the ledger's in every reading: each was judged as it ran. A
+/// refused CAST or STUDY depends on the reading. In a trusted pool, the purse's own judgment
+/// ([`Lending::refused_cast`], [`StudyOutcome::refused_fee`]; `ah-ayg7`). Elsewhere each unit's
+/// own row: a cast neither it nor any sharer could fund ([`own_refused_cast`]) and a study its own
 /// silver could not pay ([`own_study_outcome`]) - where nothing pools (`ah-vdav`), and in a pool
-/// that cannot be trusted ([`Sharing::pool_trusted`]) only when the sharers could not lend what
-/// it lacks either (`rules/share`: "for buying or studying"; `ah-dkkm`). There the purse lends
+/// that cannot be trusted ([`Sharing::pool_trusted`]) only when the sharers could not lend what it
+/// lacks either (`rules/share`: "for buying or studying"; `ah-dkkm`). There the purse lends
 /// nothing, so what the sharers hold at STUDY - a doubted one's best reading included, never an
 /// overdraft, so a sharing student's own shortfall is not counted against itself - is drawn on
 /// student by student in hex order, as the engine pays them.
-/// `lending` is the purse's reading before maintenance.
-fn refused_before_maintenance(hex: &Hex<'_>, ledger: &Ledger<'_>, lending: &Lending) -> Vec<i64> {
+fn untaken_before_maintenance(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    lending: &Lending,
+) -> Vec<Untaken> {
+    let judged_by_ledger = |unit_id: &str| Untaken {
+        gift: unfunded_gift_silver(ledger, unit_id),
+        buy: ledger.overcharged.get(unit_id).copied().unwrap_or(0),
+        ..Untaken::default()
+    };
     let sharing = Sharing::for_silver(hex, ledger);
     let pooled = sharing.reading(SILVER, None) == Reading::Pooled;
     if pooled && sharing.pool_trusted(ledger) {
-        return lending.refused_all();
+        return hex
+            .units
+            .iter()
+            .enumerate()
+            .map(|(index, ordered)| Untaken {
+                cast: lending.refused_cast[index],
+                study: lending.study[index].refused_fee(),
+                ..judged_by_ledger(&ordered.unit.unit_id)
+            })
+            .collect();
     }
     // What each pooled sharer could lend at STUDY: never its overdraft.
     let lends_at_study = |ordered: &Ordered<'_>| {
@@ -13036,12 +13085,7 @@ fn refused_before_maintenance(hex: &Hex<'_>, ledger: &Ledger<'_>, lending: &Lend
         .iter()
         .map(|ordered| {
             let unit_id = &ordered.unit.unit_id;
-            let cast_back = if ledger.unfunded_casts.get(unit_id).is_some_and(|&u| u > 0) {
-                refused_cast_cost(ledger, unit_id, 0)
-            } else {
-                0
-            };
-            let study_back = match own_study_outcome(ledger, unit_id) {
+            let study = match own_study_outcome(ledger, unit_id) {
                 StudyOutcome::Refused { short, .. } if short <= lendable => {
                     lendable -= short;
                     0
@@ -13049,9 +13093,24 @@ fn refused_before_maintenance(hex: &Hex<'_>, ledger: &Ledger<'_>, lending: &Lend
                 StudyOutcome::Refused { fee, .. } => fee,
                 _ => 0,
             };
-            cast_back + study_back
+            Untaken {
+                cast: own_refused_cast(ledger, unit_id),
+                study,
+                ..judged_by_ledger(unit_id)
+            }
         })
         .collect()
+}
+
+/// What a unit's own CAST handed back where the purse does not judge it: the spell's whole cost
+/// ([`refused_cast_cost`]) if any of it went unfunded ([`Ledger::unfunded_casts`]), since a refused
+/// spell takes nothing (`spells.cpp`: `RunCreateArtifact`), and `0` otherwise.
+fn own_refused_cast(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    if ledger.unfunded_casts.get(unit_id).is_some_and(|&u| u > 0) {
+        refused_cast_cost(ledger, unit_id, 0)
+    } else {
+        0
+    }
 }
 
 /// The fee maintenance still draws on a unit's balance: what it drew, less what an earlier step
@@ -14251,14 +14310,8 @@ impl OverdraftOwner {
                 unfunded(tag).saturating_add(unfunded_cast)
             }
             OverdraftOwner::Ledger => unfunded(tag),
-            OverdraftOwner::Cast => {
-                let cast_back = if unfunded_cast > 0 {
-                    refused_cast_cost(ledger, unit_id, 0)
-                } else {
-                    0
-                };
-                unfunded_gift_silver(ledger, unit_id).saturating_add(cast_back)
-            }
+            OverdraftOwner::Cast => unfunded_gift_silver(ledger, unit_id)
+                .saturating_add(own_refused_cast(ledger, unit_id)),
             OverdraftOwner::Purse => {
                 unfunded_gift_silver(ledger, unit_id).saturating_add(lending.refused(index))
             }
@@ -16165,11 +16218,7 @@ fn unjudged_study(ledger: &Ledger<'_>, unit_id: &str) -> StudyOutcome {
 /// `ah-rt4p`). STUDY runs before TRANSPORT (`rules/sequenceofevents`), so silver shipped later
 /// cannot pay for it.
 fn own_study_outcome(ledger: &Ledger<'_>, unit_id: &str) -> StudyOutcome {
-    let cast_back = if ledger.unfunded_casts.get(unit_id).is_some_and(|&u| u > 0) {
-        refused_cast_cost(ledger, unit_id, 0)
-    } else {
-        0
-    };
+    let cast_back = own_refused_cast(ledger, unit_id);
     let overdrawn = silver_short_at_study_after(ledger, unit_id, cast_back);
     let fee = studied_fee(ledger, unit_id);
     if overdrawn > 0 {
@@ -56355,6 +56404,121 @@ BUILD
             "901's own $150 pays its upkeep: {caster:?}"
         );
         assert_eq!(caster.upkeep, Some(10), "{caster:?}");
+    }
+
+    /// The `SHARE` readings a hex's silver can take for the hand-back of a refused or cut order
+    /// (`ah-19o3`): nothing pools, a pool that can be trusted, and one that cannot.
+    #[derive(Debug, Clone, Copy)]
+    enum UntakenReading {
+        PerUnit,
+        TrustedPool,
+        UntrustedPool,
+    }
+
+    /// Every kind of order the engine refuses or cuts short of what it asked, as maintenance must
+    /// read it (`ah-19o3`).
+    const UNTAKEN_KINDS: [&str; 4] = ["CAST", "STUDY", "GIVE", "BUY"];
+
+    /// One case of `ah-19o3`'s table: actor 901, listed first, starving with one man, so it owes
+    /// 10 upkeep in silver (`rules/economy_maintenance`); non-sharer 903 with $100, whose silver is
+    /// shared "for maintenance, but not for less important purposes" (`rules/share`); and, in a
+    /// pooled reading, an empty sharer 904 ([`refused_order_hex`]'s shape), doubted for the
+    /// untrusted one ([`doubting_the_sharer`]). The hex's market sells wood at $81. `kind` picks
+    /// 901's order and holding, each one the engine refuses or cuts:
+    ///
+    /// - CAST: $150 against the amulet's $200 (`data/CRPA`), refused and taking nothing.
+    /// - STUDY (Trident): $8 against combat's $10 (`data/COMB` in Trident), refused likewise.
+    /// - GIVE: $50 against a gift of $100, cut to the $50 (`runorders.cpp`: `DoGiveOrder`), then
+    ///   $30 given back by 903, whose order runs after 901's in report order.
+    /// - BUY: $100 against 2 wood, buying "as many as it can" - 1 (`rules/buy`).
+    ///
+    /// Returns the review, and 901's `(upkeep, shared_silver_covered)` as the engine leaves it.
+    fn untaken_case(reading: UntakenReading, kind: &str) -> (TurnReview, (Option<i64>, i64)) {
+        let (actor, orders, rules, expected) = match kind {
+            "CAST" => (
+                with_silver(with_skill(unit("901"), "CRPA", 1), 150),
+                "unit 901\nCAST Create_Amulet_Of_Protection\n",
+                ruleset(),
+                (Some(10), 0),
+            ),
+            "STUDY" => (
+                with_silver(unit("901"), 8),
+                "unit 901\nSTUDY COMB\n",
+                trident_rules(),
+                (Some(8), 2),
+            ),
+            "GIVE" => (
+                with_silver(unit("901"), 50),
+                "unit 901\nGIVE 903 100 SILV\nunit 903\nGIVE 901 30 SILV\n",
+                ruleset(),
+                (Some(10), 0),
+            ),
+            "BUY" => (
+                with_silver(unit("901"), 100),
+                "unit 901\nBUY 2 wood\n",
+                ruleset(),
+                (Some(10), 0),
+            ),
+            other => panic!("no case for {other}"),
+        };
+        let mut units = vec![starving(actor)];
+        if !matches!(reading, UntakenReading::PerUnit) {
+            units.push(sharing(unit("904")));
+        }
+        units.push(with_silver(unit("903"), 100));
+        let mut place = region(units);
+        place.for_sale = vec![MarketItem {
+            amount: 100,
+            name: "wood".to_string(),
+            tag: "WOOD".to_string(),
+            price: 81,
+        }];
+        let orders = match reading {
+            UntakenReading::UntrustedPool => doubting_the_sharer(orders),
+            _ => orders.to_string(),
+        };
+        let review = review_turn(&report(vec![place]), &orders, Some(&rules), with_map());
+        (review, expected)
+    }
+
+    /// Runs every kind of [`untaken_case`] in `reading` and names each one whose actor is not
+    /// left paying its own upkeep from what the engine never took.
+    fn untaken_failures(reading: UntakenReading) -> Vec<String> {
+        UNTAKEN_KINDS
+            .iter()
+            .filter_map(|kind| {
+                let (review, expected) = untaken_case(reading, kind);
+                let actor = shipment_silver(&review, "901");
+                let doubted_as_read =
+                    actor.pool_doubted == matches!(reading, UntakenReading::UntrustedPool);
+                let got = (actor.upkeep, actor.shared_silver_covered);
+                (got != expected || !doubted_as_read).then(|| {
+                    format!("{reading:?} {kind}: expected {expected:?}, got {got:?}: {actor:?}")
+                })
+            })
+            .collect()
+    }
+
+    /// Where nothing pools, every order the engine refused or cut leaves its unit's own silver
+    /// paying its upkeep before a faction-mate's (`ah-19o3`).
+    #[test]
+    fn an_order_the_engine_cut_leaves_its_silver_for_upkeep_where_nothing_pools() {
+        let failures = untaken_failures(UntakenReading::PerUnit);
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
+
+    /// In a pool that can be trusted, the same (`ah-19o3`).
+    #[test]
+    fn an_order_the_engine_cut_leaves_its_silver_for_upkeep_in_a_trusted_pool() {
+        let failures = untaken_failures(UntakenReading::TrustedPool);
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
+
+    /// In a pool that cannot be trusted, the same (`ah-19o3`).
+    #[test]
+    fn an_order_the_engine_cut_leaves_its_silver_for_upkeep_in_an_untrusted_pool() {
+        let failures = untaken_failures(UntakenReading::UntrustedPool);
+        assert!(failures.is_empty(), "{failures:#?}");
     }
 
     /// With nobody to pay the rest, the refused student's own $8 pays what it can of its upkeep and
