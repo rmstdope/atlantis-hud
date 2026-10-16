@@ -505,16 +505,19 @@
  * A mark in the coordinates' way (ah-qf24, `StepsDown` in mapThemes/hexCoords.tsx) steps down
  * beneath them: 9 screen px below their top (7 for the print, 2 for the gap), less the room the mark
  * already has (`--mark-room`, world units), plus any screen-constant lettering reaching above its
- * anchor (`--mark-above`). Only where the coordinates are printed at the top edge - the same bands
+ * anchor (`--mark-above`), in the wrapper's own units (`--mark-unit` world units each). Only where the coordinates are printed at the top edge - the same bands
  * and `data-named` split as `.map-coords` above - so far out, and on a named hex up close, the mark
  * stays where its look draws it. Never up.
  */
 .map-mid .map-steps-down,
 .map-near .map-steps-down:not([data-named]) {
   transform: translateY(
-    max(
-      0px,
-      calc((9px + var(--mark-above, 0px)) / var(--map-scale, 1) - var(--mark-room, 0px))
+    calc(
+      max(
+          0px,
+          calc((9px + var(--mark-above, 0px)) / var(--map-scale, 1) - var(--mark-room, 0px))
+        ) /
+        var(--mark-unit, 1)
     )
   );
 }

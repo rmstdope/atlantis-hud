@@ -45,6 +45,7 @@ import {
   SHAFT,
   showsQuestion,
   SPRITE_PX,
+  spriteRoom,
   STATIONS,
   TILE_BLOCK,
   TILE_SIZE,
@@ -57,7 +58,7 @@ import {
   unitRow,
   type Bitmap,
 } from "./paint";
-import { CoordsTail } from "../hexCoords";
+import { CoordsTail, StepsDown } from "../hexCoords";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 
@@ -297,7 +298,15 @@ function Marks({ view }: { view: HexView }) {
           />
         )}
         {view.buildings > 0 && (
-          <Sprite mark="buildings" at={STATIONS.buildings} bitmap={HOUSE} />
+          // Its roof reaches the hex's coordinates, so it steps down beneath them (ah-qf24).
+          <StepsDown
+            view={view}
+            named={view.settlement !== null}
+            top={{ y: (STATIONS.buildings.y - spriteRoom(HOUSE, SPRITE_PX)) * SCALE }}
+            unit={SCALE}
+          >
+            <Sprite mark="buildings" at={STATIONS.buildings} bitmap={HOUSE} />
+          </StepsDown>
         )}
         {view.guard && (
           <Sprite

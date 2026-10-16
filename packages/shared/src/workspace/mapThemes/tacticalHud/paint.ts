@@ -123,6 +123,9 @@ export const GUARD_RING = 38.6 / MOCKUP_RADIUS;
  * Read off the stations `MarkLayer` draws at. The guard is a ring round the rim and claims nothing;
  * the age readout is drawn by the terrain layer, for a faded stale hex, and is claimed with it.
  */
+/** How far the battle triangle's room reaches from its station, in mockup units. */
+export const BATTLE_ROOM = 9;
+
 export function markFootprint(view: HexView): MarkSpot[] {
   const spots: MarkSpot[] = [];
   const claim = (at: { x: number; y: number }, size: number) =>
@@ -132,7 +135,7 @@ export function markFootprint(view: HexView): MarkSpot[] {
     claim(STATIONS.ship, 10);
   }
   if (view.battle) {
-    claim(STATIONS.battle, 9);
+    claim(STATIONS.battle, BATTLE_ROOM);
   }
   if (view.gate) {
     claim(STATIONS.gate, 10);

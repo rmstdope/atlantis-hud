@@ -160,6 +160,13 @@ describe("a mark in the coordinates' way steps down beneath them (ah-qf24)", () 
       </StepsDown>
     );
     expect(named).toContain('data-named="true"');
+    expect(named).toContain("--mark-unit:1");
+    const scaled = draw(
+      <StepsDown view={PLAIN} named={false} top={{ y: coordsTop }} unit={0.5625}>
+        {mark}
+      </StepsDown>
+    );
+    expect(scaled).toContain("--mark-unit:0.5625");
     expect(named).toContain("--mark-above:0px");
 
     for (const view of [OFF, null]) {

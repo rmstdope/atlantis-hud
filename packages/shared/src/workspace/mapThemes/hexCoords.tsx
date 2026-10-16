@@ -124,23 +124,28 @@ const px = (value: number) => `${Number(value.toFixed(3))}px`;
  * Wraps a mark a look draws in the coordinates' way. A group of its own with no `transform`
  * attribute, since the CSS transform that steps it down would replace one. `named` is whether the
  * look writes this hex's name, which is where its coordinates go up close; the band rule in
- * `theme.css` reads it exactly as `.map-coords[data-named]` does. Without coordinates, nothing.
+ * `theme.css` reads it exactly as `.map-coords[data-named]` does. `unit` is how many world units
+ * one of the wrapper's own units is, for a look that draws its marks inside a `scale(...)` group;
+ * `top` is in world units whatever it is. Without coordinates, nothing.
  */
 export function StepsDown({
   view,
   named,
   top,
+  unit = 1,
   children
 }: {
   view: HexView | null;
   named: boolean;
   top: MarkTop;
+  unit?: number;
   children: ReactNode;
 }) {
   if (view === null || view.coords === null) return <>{children}</>;
   const style = {
     "--mark-room": px(markRoom(top)),
-    "--mark-above": px(top.abovePx ?? 0)
+    "--mark-above": px(top.abovePx ?? 0),
+    "--mark-unit": Number(unit.toFixed(5))
   } as CSSProperties;
   return (
     <g

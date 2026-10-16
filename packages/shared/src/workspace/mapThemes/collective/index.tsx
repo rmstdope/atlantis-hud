@@ -39,7 +39,7 @@ import {
   STATIONS,
   terrainCode
 } from "./paint";
-import { CoordsTail } from "../hexCoords";
+import { CoordsTail, StepsDown } from "../hexCoords";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 
@@ -318,18 +318,28 @@ function MarkLayer({ views }: LayerProps) {
                 />
               )}
 
-              {/* Last turn's battle: lit when the viewer's faction fought, dim when it only watched. */}
+              {/*
+                Last turn's battle: lit when the viewer's faction fought, dim when it only watched.
+                Steps down beneath the hex's coordinates (ah-qf24).
+              */}
               {view.battle && (
-                <g
-                  data-mark="battle"
-                  data-battle={view.battle}
-                  transform={at(STATIONS.battle)}
+                <StepsDown
+                  view={view}
+                  named={view.settlement !== null}
+                  top={{ y: (STATIONS.battle.y - BATTLE_SIZE - 2) * SCALE }}
+                  unit={SCALE}
                 >
-                  <Wire
-                    d={`M${-BATTLE_SIZE},${-BATTLE_SIZE} L${BATTLE_SIZE},${BATTLE_SIZE} M${BATTLE_SIZE},${-BATTLE_SIZE} L${-BATTLE_SIZE},${BATTLE_SIZE}`}
-                    className={view.battle === "own" ? "co-battle" : "co-battle-other"}
-                  />
-                </g>
+                  <g
+                    data-mark="battle"
+                    data-battle={view.battle}
+                    transform={at(STATIONS.battle)}
+                  >
+                    <Wire
+                      d={`M${-BATTLE_SIZE},${-BATTLE_SIZE} L${BATTLE_SIZE},${BATTLE_SIZE} M${BATTLE_SIZE},${-BATTLE_SIZE} L${-BATTLE_SIZE},${BATTLE_SIZE}`}
+                      className={view.battle === "own" ? "co-battle" : "co-battle-other"}
+                    />
+                  </g>
+                </StepsDown>
               )}
 
               {/* A monster: a hollow red triangle, the one mark that is not a readout. */}

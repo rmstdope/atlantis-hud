@@ -28,6 +28,7 @@ import type { LayerProps, MapTheme } from "../mapTheme";
 import { TERRAIN_KINDS, terrainClassName, type TerrainPaint } from "../terrain";
 import {
   ANCHORS,
+  GUARD_ROOM,
   castleOf,
   drawsTerrainIcon,
   iconId,
@@ -45,7 +46,7 @@ import {
   WASH_VARIANTS,
   workshopRoofs,
 } from "./paint";
-import { CoordsTail } from "../hexCoords";
+import { CoordsTail, StepsDown } from "../hexCoords";
 
 /** Everything in this theme is drawn at the mockup's radius and shrunk to the map's. */
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
@@ -402,24 +403,34 @@ function MarkLayer({ views }: LayerProps) {
                 </g>
               )}
 
-              {/* The guard's banner, north-west, in the colours of whoever holds the hex. */}
+              {/*
+                The guard's banner, north-west, in the colours of whoever holds the hex. Its flag
+                reaches the hex's coordinates, so it steps down beneath them (ah-qf24).
+              */}
               {view.guard && (
-                <g
-                  className="ch-glyph"
-                  data-mark="guard"
-                  data-guard={view.guard}
-                  transform={at(ANCHORS.guard)}
-                  strokeWidth={INK}
-                  vectorEffect="non-scaling-stroke"
+                <StepsDown
+                  view={view}
+                  named={view.settlement !== null}
+                  top={{ y: (ANCHORS.guard.y + GUARD_ROOM.dy - GUARD_ROOM.size) * SCALE }}
+                  unit={SCALE}
                 >
-                  <line x1={0} y1={7} x2={0} y2={-7} fill="none" />
-                  <path
-                    d="M0,-7 h8 l-2.5,2.5 l2.5,2.5 H0 Z"
-                    className={
-                      view.guard === "own" ? "ch-fill-own" : "ch-fill-foreign"
-                    }
-                  />
-                </g>
+                  <g
+                    className="ch-glyph"
+                    data-mark="guard"
+                    data-guard={view.guard}
+                    transform={at(ANCHORS.guard)}
+                    strokeWidth={INK}
+                    vectorEffect="non-scaling-stroke"
+                  >
+                    <line x1={0} y1={7} x2={0} y2={-7} fill="none" />
+                    <path
+                      d="M0,-7 h8 l-2.5,2.5 l2.5,2.5 H0 Z"
+                      className={
+                        view.guard === "own" ? "ch-fill-own" : "ch-fill-foreign"
+                      }
+                    />
+                  </g>
+                </StepsDown>
               )}
 
               {/* Workshops huddled against the castle's west wall: a cottage, or a hall of two. */}
