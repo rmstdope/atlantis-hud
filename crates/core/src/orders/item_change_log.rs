@@ -68,6 +68,7 @@ mod tests {
             other: None,
             borrower: None,
             is_man: false,
+            plural: None,
         }
     }
 

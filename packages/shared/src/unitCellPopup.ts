@@ -1868,7 +1868,8 @@ function marketClause(group: SilverCauseGroup, itemChanges: readonly ItemChange[
     if (only === undefined || only.unitPrice === null) {
       continue;
     }
-    priced.push(`${count(Math.abs(only.delta), only.name)} at ${only.unitPrice} each`);
+    // The report's own plural where it printed one - `114 livestock`, not `livestocks` (`ah-yvgi`).
+    priced.push(`${count(Math.abs(only.delta), only.name, only.plural)} at ${only.unitPrice} each`);
   }
   return priced.length > 0 ? andList(priced) : undefined;
 }

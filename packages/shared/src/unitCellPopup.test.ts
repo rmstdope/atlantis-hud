@@ -1798,6 +1798,40 @@ describe("the column popups", () => {
     expect(popup.lines[1]?.why).toBe("2 horses at 45 each");
   });
 
+  // ah-yvgi: Farmers (3493) in Aportheo read "sold 114 livestocks at 21 each"; the report's own
+  // plural is "livestock", and the core now carries it on the change.
+  it("the silver popup counts goods with the plural the report prints", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({
+          own: true,
+          itemChanges: [
+            {
+              tag: "LIVE",
+              name: "livestock",
+              plural: "livestock",
+              delta: -114,
+              cause: "sold",
+              line: 4,
+              unitPrice: 21,
+              other: null,
+              isMan: false
+            }
+          ]
+        }),
+        facts({
+          silver: aUnitSilver({
+            held: 0,
+            atMonthEnd: 2394,
+            changes: [{ amount: 2394, cause: "sold", line: 4, other: null }]
+          })
+        })
+      )
+    );
+    expect(popup.lines.find((line) => line.label === "sold")?.why).toBe("114 livestock at 21 each");
+  });
+
   it("the silver popup says when a unit taxes or works without an order", () => {
     const popup = columnPopup(
       popupForCell(

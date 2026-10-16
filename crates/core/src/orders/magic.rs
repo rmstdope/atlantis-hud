@@ -55,6 +55,28 @@ pub(crate) fn is_mage(ruleset: &Ruleset, skills: &[Skill]) -> bool {
     skills.iter().any(|skill| ruleset.is_magic(&skill.tag))
 }
 
+/// Whether this unit's only magic is `manipulation`, which `data/MANI` says makes an apprentice
+/// rather than a mage - the engine names the two apart when it refuses a recruitment
+/// (`runorders.cpp`: "Apprentices can't recruit more men"), and so does the warning (`ah-yvgi`).
+pub(crate) fn is_apprentice(ruleset: &Ruleset, skills: &[Skill]) -> bool {
+    is_mage(ruleset, skills)
+        && skills
+            .iter()
+            .filter(|skill| ruleset.is_magic(&skill.tag))
+            .all(|skill| skill.tag.eq_ignore_ascii_case(APPRENTICE_SKILL))
+}
+
+/// Whether recruiting `tag` would put leaders and normal men in one unit, which
+/// `rules/playing_units` forbids: "Leaders and normal people may not be mixed in the same unit"
+/// (`ah-yvgi`). Accept on doubt: a unit whose races the report did not list mixes nothing.
+pub(crate) fn mixes_leaders(men_by_race: &[ItemAmount], tag: &str) -> bool {
+    let buys_leaders = tag.eq_ignore_ascii_case(LEADER_TAG);
+    men_by_race
+        .iter()
+        .filter(|race| race.amount > 0)
+        .any(|race| race.tag.eq_ignore_ascii_case(LEADER_TAG) != buys_leaders)
+}
+
 /// Whether this unit is exactly one man and that man a leader.
 ///
 /// `None` where the app cannot say: a race breakdown that does not account for every man.

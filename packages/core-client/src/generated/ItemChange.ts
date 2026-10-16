@@ -44,4 +44,11 @@ borrower?: ItemChangeParty,
  * in. `false` on a tag the catalogue does not carry, which is the same answer it gives for a
  * sword.
  */
-isMan: boolean, };
+isMan: boolean, 
+/**
+ * The item's plural as the report prints it - `livestock`, not `livestocks` - for a consumer
+ * that counts these goods (`ah-yvgi`). `None` where the report never showed more than one of
+ * them, and the consumer falls back to its own plural of `name`. Filled once, as the preview
+ * is assembled, rather than at every site that records a change.
+ */
+plural?: string, };
