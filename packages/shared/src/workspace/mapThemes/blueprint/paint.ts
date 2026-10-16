@@ -184,6 +184,81 @@ export function revisionNote(
     : null;
 }
 
+/** The battle starburst's outer radius, in mockup units: where its right tip reaches. */
+export const STAR_REACH = 6.5;
+
+/** Screen px between the star's right tip and a revision note written beside it (ah-1n1z). */
+export const BESIDE_GAP_PX = 4;
+
+/** Screen px the note's baseline sits below the star's centre when the two share a line. */
+export const BESIDE_DROP_PX = 3.5;
+
+/**
+ * Architects Daughter's advance widths at the note's 10px, for the characters a revision note can
+ * hold - read from the bundled @fontsource woff's `hmtx`. Anything else is reckoned an average glyph.
+ */
+const NOTE_ADVANCE_PX: Record<string, number> = {
+  r: 5.52,
+  e: 5.41,
+  v: 5.19,
+  ".": 1.41,
+  " ": 4.0,
+  t: 4.04,
+  "-": 3.11,
+  "0": 6.31,
+  "1": 1.28,
+  "2": 5.72,
+  "3": 5.09,
+  "4": 6.81,
+  "5": 7.08,
+  "6": 6.27,
+  "7": 6.15,
+  "8": 6.48,
+  "9": 5.69,
+};
+const OTHER_ADVANCE_PX = 5.5;
+
+/** How wide a note is lettered, in screen px: the note is screen-constant, so this never scales. */
+export function noteWidthPx(note: string): number {
+  return [...note].reduce(
+    (width, char) => width + (NOTE_ADVANCE_PX[char] ?? OTHER_ADVANCE_PX),
+    0,
+  );
+}
+
+/**
+ * The revision note a hex writes beside its battle star, or null when it writes none there (ah-1n1z;
+ * agreed mockup `docs/ui/ah-1n1z-one-line.html`): the two stations overlap, so a stale hex that also
+ * had a battle puts both on the star's line rather than one over the other. The one answer both
+ * layers ask - the star's and the note's - so they cannot disagree about a hex. A never-surveyed
+ * hex letters `TBD`, not a revision, and is never paired.
+ */
+export function besideNote(
+  view: Pick<HexView, "battle" | "hatched" | "ageInTurns" | "unsurveyed">,
+): string | null {
+  return view.battle !== null && !view.unsurveyed ? revisionNote(view) : null;
+}
+
+/**
+ * How far the star and the note move, in screen px, to sit on one line centred where the star was.
+ *
+ * The line is the star, a gap and the note. Centring it moves the star left by half of gap and note,
+ * and the note - anchored at the star's unmoved right tip - by the gap less half of both, so it
+ * starts exactly a gap past the moved tip. Screen px because the note is lettered at a constant
+ * size while the star scales with the map: the stylesheet divides by `--map-scale` (`.bp-beside`).
+ * A long age is never shortened; the line simply runs on past the hex's edge.
+ */
+export function besideLine(note: string): {
+  starShiftPx: number;
+  noteShiftPx: number;
+} {
+  const width = noteWidthPx(note);
+  return {
+    starShiftPx: -(BESIDE_GAP_PX + width) / 2,
+    noteShiftPx: (BESIDE_GAP_PX - width) / 2,
+  };
+}
+
 /**
  * How strongly a hex's hatch is drawn.
  *

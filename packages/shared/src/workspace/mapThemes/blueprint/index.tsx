@@ -14,6 +14,7 @@ import "@fontsource/architects-daughter/latin-400.css";
  * outside that transform at a constant screen size.
  */
 
+import type { CSSProperties, ReactNode } from "react";
 import { HEX_RADIUS } from "../../mapViewport";
 import { HEX_POINTS } from "../geometry";
 import type { HexView } from "../hexView";
@@ -22,6 +23,9 @@ import type { LayerProps, MapTheme } from "../mapTheme";
 import { terrainClassName, TERRAIN_KINDS, type TerrainPaint } from "../terrain";
 import {
   BATTLE_ROOM,
+  BESIDE_DROP_PX,
+  besideLine,
+  besideNote,
   callouts,
   floorPlan,
   hatchStrength,
@@ -29,6 +33,7 @@ import {
   MOCKUP_RADIUS,
   NAME_Y,
   revisionNote,
+  STAR_REACH,
   STATIONS,
   worksBoxes,
 } from "./paint";
@@ -42,6 +47,37 @@ const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
  */
 const NOTE_ABOVE_PX = 8.5;
 const NOTE_TILT_PX = 3.5;
+
+/** Where the battle star's room begins: the top both it and a note beside it step down from. */
+const BATTLE_TOP = { y: (STATIONS.battle.y - BATTLE_ROOM) * SCALE };
+
+/**
+ * A mark moved sideways onto the line it shares with another (ah-1n1z): by `x` (and `y`) screen px,
+ * which the stylesheet's `.bp-beside` rule turns into the wrapper's own units at close zoom only.
+ * A group of its own, since that CSS transform would replace a `transform` attribute.
+ */
+function Beside({
+  x,
+  y = 0,
+  unit = 1,
+  children,
+}: {
+  x: number;
+  y?: number;
+  unit?: number;
+  children: ReactNode;
+}) {
+  const style = {
+    "--beside-x": `${Number(x.toFixed(3))}px`,
+    "--beside-y": `${Number(y.toFixed(3))}px`,
+    "--beside-unit": Number(unit.toFixed(5)),
+  } as CSSProperties;
+  return (
+    <g className="bp-beside" style={style}>
+      {children}
+    </g>
+  );
+}
 
 /** The hexagon's corners relative to its centre, in world units. */
 const CORNERS = HEX_POINTS.split(" ").map(
@@ -326,33 +362,55 @@ function TerrainLayer({ views }: LayerProps) {
         if (note === null) {
           return null;
         }
-        const x = view.at.x + STATIONS.note.x * SCALE;
-        const y = view.at.y + STATIONS.note.y * SCALE;
+        // On a stale hex that also had a battle the note is written beside the star, from its
+        // right tip on its line, and drops with it (ah-1n1z).
+        const paired = besideNote(view) !== null;
+        const x = paired
+          ? view.at.x + STAR_REACH * SCALE
+          : view.at.x + STATIONS.note.x * SCALE;
+        const y = paired
+          ? view.at.y + STATIONS.battle.y * SCALE
+          : view.at.y + STATIONS.note.y * SCALE;
+        const text = (
+          <text
+            className={`bp-label bp-note ${view.unsurveyed ? "bp-note-tbd" : "bp-note-rev"}`}
+            data-note={view.unsurveyed ? "tbd" : "rev"}
+            x={x}
+            y={y}
+            textAnchor={paired ? "start" : "middle"}
+            transform={
+              view.unsurveyed
+                ? undefined
+                : `rotate(-12 ${x.toFixed(2)} ${y.toFixed(2)})`
+            }
+          >
+            {note}
+          </text>
+        );
         return (
           // The note sits where the hex's coordinates go, so it steps down beneath them (ah-qf24).
           <StepsDown
             key={view.key}
             view={view}
             named={themeWritesName(blueprint)(view)}
-            top={{
-              y: y - view.at.y,
-              abovePx: view.unsurveyed ? NOTE_ABOVE_PX : NOTE_ABOVE_PX + NOTE_TILT_PX
-            }}
+            top={
+              paired
+                ? BATTLE_TOP
+                : {
+                    y: y - view.at.y,
+                    abovePx: view.unsurveyed
+                      ? NOTE_ABOVE_PX
+                      : NOTE_ABOVE_PX + NOTE_TILT_PX,
+                  }
+            }
           >
-            <text
-              className={`bp-label bp-note ${view.unsurveyed ? "bp-note-tbd" : "bp-note-rev"}`}
-              data-note={view.unsurveyed ? "tbd" : "rev"}
-              x={x}
-              y={y}
-              textAnchor="middle"
-              transform={
-                view.unsurveyed
-                  ? undefined
-                  : `rotate(-12 ${x.toFixed(2)} ${y.toFixed(2)})`
-              }
-            >
-              {note}
-            </text>
+            {paired ? (
+              <Beside x={besideLine(note).noteShiftPx} y={BESIDE_DROP_PX}>
+                {text}
+              </Beside>
+            ) : (
+              text
+            )}
           </StepsDown>
         );
       })}
@@ -378,7 +436,7 @@ const ROAD_STYLE: RoadStyle = {
 const STARBURST =
   Array.from({ length: 16 }, (_, index) => {
     const angle = (index * Math.PI) / 8 - Math.PI / 2;
-    const r = index % 2 === 0 ? 6.5 : 2.6;
+    const r = index % 2 === 0 ? STAR_REACH : 2.6;
     return `${index === 0 ? "M" : "L"}${(Math.cos(angle) * r).toFixed(2)},${(Math.sin(angle) * r).toFixed(2)}`;
   }).join(" ") + " Z";
 
@@ -446,6 +504,23 @@ function Settlement({ view }: { view: HexView }) {
   );
 }
 
+/** The star, moved left to make room for the revision note beside it on a stale hex (ah-1n1z). */
+function BattleBeside({
+  view,
+  children,
+}: {
+  view: HexView;
+  children: ReactNode;
+}) {
+  const note = besideNote(view);
+  if (note === null) return <>{children}</>;
+  return (
+    <Beside x={besideLine(note).starShiftPx} unit={SCALE}>
+      {children}
+    </Beside>
+  );
+}
+
 function MarkLayer({ views }: LayerProps) {
   return (
     <g pointerEvents="none">
@@ -473,26 +548,28 @@ function MarkLayer({ views }: LayerProps) {
                 <StepsDown
                   view={view}
                   named={themeWritesName(blueprint)(view)}
-                  top={{ y: (STATIONS.battle.y - BATTLE_ROOM) * SCALE }}
+                  top={BATTLE_TOP}
                   unit={SCALE}
                 >
-                  <g
-                    className={`bp-mark ${view.battle === "own" ? "bp-battle" : "bp-battle-other"}`}
-                    data-mark="battle"
-                    data-battle={view.battle}
-                    transform={at(STATIONS.battle)}
-                  >
-                    <path
-                      d={STARBURST}
-                      fill="none"
-                      strokeWidth={1.4}
-                      strokeLinejoin="round"
-                      strokeDasharray={
-                        view.battle === "own" ? undefined : "2 1.5"
-                      }
-                      vectorEffect="non-scaling-stroke"
-                    />
-                  </g>
+                  <BattleBeside view={view}>
+                    <g
+                      className={`bp-mark ${view.battle === "own" ? "bp-battle" : "bp-battle-other"}`}
+                      data-mark="battle"
+                      data-battle={view.battle}
+                      transform={at(STATIONS.battle)}
+                    >
+                      <path
+                        d={STARBURST}
+                        fill="none"
+                        strokeWidth={1.4}
+                        strokeLinejoin="round"
+                        strokeDasharray={
+                          view.battle === "own" ? undefined : "2 1.5"
+                        }
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    </g>
+                  </BattleBeside>
                 </StepsDown>
               )}
 
