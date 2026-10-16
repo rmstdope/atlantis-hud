@@ -75,10 +75,12 @@ test("the palette finds a settlement by name and goes to its hex", async ({ page
 
   await page.keyboard.press("ControlOrMeta+k");
   await page.getByTestId("palette-input").fill("Inholm");
-  const first = page.getByTestId("palette-item").first();
-  await expect(first).toContainText("Inholm [city] · ");
-  await expect(first).toContainText("settlement");
-  await page.keyboard.press("Enter");
+  // Picked by kind, not position: units named after the town (Inholm Militia, Inholm Guards) are
+  // equally good matches and may lead the list.
+  const row = page.getByTestId("palette-item").filter({ hasText: "settlement" });
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText("Inholm [city] · ");
+  await row.click();
 
   await expect(page.getByTestId("command-palette")).toHaveCount(0);
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
