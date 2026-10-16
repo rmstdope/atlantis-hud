@@ -43,6 +43,30 @@ function markup(initialEntryId: string | null): string {
   );
 }
 
+const THEME = readFileSync(new URL("../theme.css", import.meta.url), "utf8");
+const LIGHT_AT = THEME.indexOf(':root[data-theme="light"]');
+const DARK_THEME = THEME.slice(0, LIGHT_AT);
+const LIGHT_THEME = THEME.slice(LIGHT_AT, THEME.indexOf("}", LIGHT_AT));
+
+/**
+ * Every `game-data-link-*` button in `html` is coloured by a `--color-*` token both themes define,
+ * not the body text's, and shows a ring under keyboard focus (ah-eip5).
+ */
+function expectLinksLookLikeLinks(html: string): void {
+  const links = [...html.matchAll(/<button[^>]*data-testid="game-data-link-[^"]*"[^>]*>/gu)];
+  expect(links.length).toBeGreaterThanOrEqual(2);
+  for (const [link] of links) {
+    const classes = /class="([^"]*)"/u.exec(link)?.[1].split(" ") ?? [];
+    const colours = classes.filter((c) => /^text-[a-z-]+$/u.test(c) && c !== "text-left");
+    expect(colours, link).toHaveLength(1);
+    const token = `--color-${colours[0].slice("text-".length)}:`;
+    expect(DARK_THEME, `${link} in dark`).toContain(token);
+    expect(LIGHT_THEME, `${link} in light`).toContain(token);
+    expect(colours[0], link).not.toBe("text-ink");
+    expect(classes, link).toContain("focus-visible:outline");
+  }
+}
+
 describe("GameDataDialog", () => {
   it("lists every ship on the Ships tab and details the chosen one", () => {
     const html = markup("ship:LONG");
@@ -148,22 +172,8 @@ describe("GameDataDialog", () => {
   // ah-eip5: every cross-reference was drawn `text-accent`, which names no theme token, so a link
   // took the body text's colour and only an underline on hover set it apart.
   it("draws every cross-reference in a defined colour that is not the body text's, with a focus ring", () => {
-    const theme = readFileSync(new URL("../theme.css", import.meta.url), "utf8");
-    const light = theme.slice(theme.indexOf(':root[data-theme="light"]'));
-    // A skill's Produces row, a structure's Built with row and the items it is linked from.
-    const html = markup("skill:MINI") + markup("building:MINE") + markup("equipment:MITH");
-    const links = [...html.matchAll(/<button[^>]*data-testid="game-data-link-[^"]*"[^>]*>/gu)];
-    expect(links.length).toBeGreaterThanOrEqual(3);
-    for (const [link] of links) {
-      const classes = /class="([^"]*)"/u.exec(link)?.[1].split(" ") ?? [];
-      const colours = classes.filter((c) => /^text-[a-z-]+$/u.test(c) && c !== "text-left");
-      expect(colours, link).toHaveLength(1);
-      const token = `--color-${colours[0].slice("text-".length)}:`;
-      expect(theme, `${link} in dark`).toContain(token);
-      expect(light, `${link} in light`).toContain(token);
-      expect(colours[0], link).not.toBe("text-ink");
-      expect(classes, link).toContain("focus-visible:outline");
-    }
+    // A skill's Produces row, a structure's Built with row and the item it is linked from.
+    expectLinksLookLikeLinks(markup("skill:MINI") + markup("building:MINE") + markup("equipment:MITH"));
   });
 });
 
@@ -387,6 +397,12 @@ describe("an order's entry (ah-mlls.6)", () => {
 
   const render = (entryId: string) =>
     renderToStaticMarkup(<GameDataDialog index={orders} initialEntryId={entryId} onDismiss={() => {}} />);
+
+  it("draws an order's mentions of other orders as links (ah-eip5)", () => {
+    const html = render("order:GIVE");
+    expect(html).toContain('data-testid="game-data-link-order:FORM"');
+    expectLinksLookLikeLinks(html);
+  });
 
   it("shows Syntax, What it does and Examples, in that order", () => {
     const html = render("order:GIVE");
