@@ -10,7 +10,7 @@ import { allBadges, BADGES } from "./mapThemes/hexView";
  * that every badge is present, that each checkbox says what the record says, and that the panel
  * carries the affordances a popover in this workspace is expected to have.
  */
-function draw(badges = allBadges(true), biomeSymbols = false): string {
+function draw(badges = allBadges(true), biomeSymbols = false, hexCoordinates = true): string {
   return renderToStaticMarkup(
     <BadgeMenu
       badges={badges}
@@ -18,6 +18,8 @@ function draw(badges = allBadges(true), biomeSymbols = false): string {
       onSetAll={() => {}}
       biomeSymbols={biomeSymbols}
       onToggleBiomeSymbols={() => {}}
+      hexCoordinates={hexCoordinates}
+      onToggleHexCoordinates={() => {}}
     />
   );
 }
@@ -29,8 +31,9 @@ describe("the badge popover", () => {
     for (const { label } of BADGES) {
       expect(svg, label).toContain(label);
     }
-    // One more than the badges: the biome symbols row under its own heading (ah-d9jb.4).
-    expect((svg.match(/type="checkbox"/g) ?? []).length).toBe(BADGES.length + 1);
+    // Two more than the badges: the biome symbols row under its own heading (ah-d9jb.4), and the
+    // hex coordinates row under its own (ah-ezyg).
+    expect((svg.match(/type="checkbox"/g) ?? []).length).toBe(BADGES.length + 2);
   });
 
   it("lists Regions among the badges, for the province outlines on the map", () => {
@@ -109,5 +112,34 @@ describe("the biome symbols row (ah-d9jb.4)", () => {
 
     expect(markup).not.toMatch(/title="/);
     expect(markup.slice(markup.indexOf("<hr"))).not.toMatch(/>[^<]*(legend|symbol key)[^<]*</i);
+  });
+});
+
+describe("the hex coordinates row (ah-ezyg)", () => {
+  const box = (markup: string) =>
+    /<input[^>]*data-setting="hex-coordinates"[^>]*>/.exec(markup)?.[0] ?? "";
+
+  it("sits under a Grid heading of its own, at the very bottom, below the Terrain heading's row", () => {
+    const markup = draw();
+    const biome = markup.indexOf("Biome symbols");
+    const divider = markup.indexOf("<hr", biome);
+    const heading = markup.indexOf(">Grid<");
+    const row = markup.indexOf(">Hex coordinates<");
+
+    expect(biome).toBeGreaterThan(-1);
+    expect(divider).toBeGreaterThan(biome);
+    expect(heading).toBeGreaterThan(divider);
+    expect(row).toBeGreaterThan(heading);
+    expect(markup.indexOf("<input", row)).toBe(-1);
+  });
+
+  it("is a checkbox showing whether the coordinates are on", () => {
+    expect(box(draw(allBadges(true), false, true))).toContain("checked");
+    expect(box(draw(allBadges(true), false, false))).not.toContain("checked");
+    expect(box(draw())).toContain('type="checkbox"');
+  });
+
+  it("is not a badge, so All, None and the lit chip leave it out", () => {
+    expect(box(draw())).not.toContain("data-badge");
   });
 });

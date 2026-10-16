@@ -39,6 +39,8 @@ export function MapViewControls({
   const setAllBadges = useWorkspaceStore((state) => state.setAllBadges);
   const biomeSymbols = useWorkspaceStore((state) => state.biomeSymbols);
   const toggleBiomeSymbols = useWorkspaceStore((state) => state.toggleBiomeSymbols);
+  const hexCoordinates = useWorkspaceStore((state) => state.hexCoordinates);
+  const toggleHexCoordinates = useWorkspaceStore((state) => state.toggleHexCoordinates);
   const [badgesOpen, setBadgesOpen] = useState(false);
   const showingEverything = Object.values(badges).every(Boolean);
 
@@ -57,6 +59,8 @@ export function MapViewControls({
             onSetAll={setAllBadges}
             biomeSymbols={biomeSymbols}
             onToggleBiomeSymbols={toggleBiomeSymbols}
+            hexCoordinates={hexCoordinates}
+            onToggleHexCoordinates={toggleHexCoordinates}
           />
         }
       >
@@ -67,7 +71,8 @@ export function MapViewControls({
           // Lit while any badge is off, so a hex missing a mark is never a mystery: the strip says
           // the map is showing less than everything without the panel having to be open. The
           // biome symbols are not a badge and do not count (ah-d9jb.4): they start off for
-          // everybody, and a chip lit on their account would be lit for every player.
+          // everybody, and a chip lit on their account would be lit for every player. Nor do the
+          // hex coordinates (ah-ezyg), which are not a mark either.
           data-badges-all={showingEverything}
           onClick={() => setBadgesOpen((open) => !open)}
           className={`flex items-center gap-1 rounded border px-2 py-0.5 text-pane ${

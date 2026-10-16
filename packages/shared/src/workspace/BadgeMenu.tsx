@@ -20,6 +20,9 @@ import { PopoverFrame } from "./popover";
  * biome symbols (ah-d9jb.4). It adds to the terrain rather than marking anything on it, so All and
  * None leave it alone, it starts off, and having it off never lights the chip.
  *
+ * At the very bottom, under a Grid heading, the hex coordinates (ah-ezyg): not a badge either, for
+ * the same reasons, though it starts on.
+ *
  * Absolutely positioned on purpose: `readInsets` frames the map from the bounding box of the chip
  * strip's overlay element, so a panel that grew that box would make zoom-to-fit fit the map into a
  * window the size of its own controls.
@@ -29,13 +32,17 @@ export function BadgeMenu({
   onToggle,
   onSetAll,
   biomeSymbols,
-  onToggleBiomeSymbols
+  onToggleBiomeSymbols,
+  hexCoordinates,
+  onToggleHexCoordinates
 }: {
   badges: Record<BadgeName, boolean>;
   onToggle: (badge: BadgeName) => void;
   onSetAll: (on: boolean) => void;
   biomeSymbols: boolean;
   onToggleBiomeSymbols: () => void;
+  hexCoordinates: boolean;
+  onToggleHexCoordinates: () => void;
 }) {
   return (
     <PopoverFrame
@@ -91,6 +98,18 @@ export function BadgeMenu({
           className="h-3 w-3 accent-select"
         />
         Biome symbols
+      </label>
+      <hr className="mx-0.5 my-1 border-edge" />
+      <div className="px-1 text-ink-dim">Grid</div>
+      <label className="flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 text-ink hover:bg-panel">
+        <input
+          type="checkbox"
+          data-setting="hex-coordinates"
+          checked={hexCoordinates}
+          onChange={onToggleHexCoordinates}
+          className="h-3 w-3 accent-select"
+        />
+        Hex coordinates
       </label>
     </PopoverFrame>
   );
