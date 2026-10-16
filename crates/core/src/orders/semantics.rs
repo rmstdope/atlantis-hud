@@ -16130,6 +16130,12 @@ enum Lender {
 struct Lending {
     /// What each unit lent its faction-mates' orders.
     lends: Vec<i64>,
+    /// The part of `lends` the Give phase drew on each unit as a faction-mate's GIVE or TAKE ran
+    /// ([`Ledger::silver_fundings`]). Gone before the unit's own orders run (`unit.cpp`:
+    /// `ConsumeShared`), so [`Lending::netted`] never passes it on against what the unit is lent
+    /// later: a sharer a GIVE drains and whose STUDY the purse then pays lent the whole draw and
+    /// was lent the fee, as its column reads it (`ah-d3in`).
+    lent_at_give: Vec<i64>,
     /// What each arriving sharer lent here.
     arrivals_lend: Vec<i64>,
     /// What each unit's orders drew out of its faction-mates' pockets: its own overdraft, sharer
@@ -16167,6 +16173,7 @@ impl Lending {
     fn nothing(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Self {
         Self {
             lends: vec![0; hex.units.len()],
+            lent_at_give: vec![0; hex.units.len()],
             arrivals_lend: vec![
                 0;
                 ledger
@@ -16258,12 +16265,24 @@ impl Lending {
     /// A unit that lent at one moment and was lent at a later one only passed its faction-mates'
     /// silver on: a sharer that paid for a `BUY` and then had its own STUDY paid for lent the
     /// difference, and its column shows that, not both halves (`ah-49j0`). So no unit both lends
-    /// and borrows, and what a borrower is credited is what its own orders overdrew it. What a
+    /// and borrows - but for a Give-phase draw, below - and what a borrower is credited is what
+    /// its own orders overdrew it. What a
     /// unit holds once its lending is carried - its balance less `lends` plus `borrows` - is the
     /// same netted or not.
+    ///
+    /// What the Give phase drew on a unit ([`Lending::lent_at_give`]) is never netted: it left
+    /// before any order of the unit's own could spend it, and the column already reads the unit's
+    /// silver from that point on without it (`forecast_unit`, `ah-fj2l`). Netting it against a
+    /// later loan would leave the borrower's fee unlent while its silver is still counted gone,
+    /// a STUDY the purse pays shown as one the unit cannot (`ah-d3in`).
     fn netted(mut self) -> Self {
-        for (lent, borrowed) in self.lends.iter_mut().zip(self.borrows.iter_mut()) {
-            let passed_on = (*lent).min(*borrowed);
+        for ((lent, borrowed), at_give) in self
+            .lends
+            .iter_mut()
+            .zip(self.borrows.iter_mut())
+            .zip(&self.lent_at_give)
+        {
+            let passed_on = (*lent - at_give).max(0).min(*borrowed);
             *lent -= passed_on;
             *borrowed -= passed_on;
         }
@@ -16382,6 +16401,7 @@ impl Lending {
                     {
                         purse.borrows[borrower] += draw.amount;
                         purse.lends[lender] += draw.amount;
+                        purse.lent_at_give[lender] += draw.amount;
                     }
                 }
             }
@@ -60977,6 +60997,28 @@ BUILD
         assert_eq!(lending.lends, vec![10, 0, 5]);
         assert_eq!(lending.borrows, vec![0, 15, 0]);
         assert!(lending.covered());
+    }
+
+    /// [`Lending::netted`] passes on only what a unit lent beyond its Give-phase draws
+    /// (`ah-d3in`): a sharer a GIVE drained of 100 that also lent 200 later and was lent 10 for its
+    /// own study passed 10 of the 200 on, and keeps the whole Give-phase draw lent.
+    #[test]
+    fn netting_passes_on_only_what_was_lent_after_the_give_phase() {
+        let lending = Lending {
+            lends: vec![300, 405, 100, 50],
+            lent_at_give: vec![100, 405, 100, 0],
+            arrivals_lend: Vec::new(),
+            borrows: vec![10, 2, 300, 20],
+            refused_cast: vec![0; 4],
+            study: vec![StudyOutcome::NoStudy; 4],
+            refused_casts: vec![false; 4],
+            stopped_at: None,
+        }
+        .netted();
+        // Partly passed on; a partial drain (GIVE 13125 in `ah-d3in`'s hex) keeps both rows; all
+        // lent at the Give phase passes nothing on; nothing lent at the Give phase nets as before.
+        assert_eq!(lending.lends, vec![290, 405, 100, 30]);
+        assert_eq!(lending.borrows, vec![0, 2, 300, 0]);
     }
 
     use crate::orders::transport::ShipmentPhase;

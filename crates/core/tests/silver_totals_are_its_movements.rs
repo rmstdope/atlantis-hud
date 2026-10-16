@@ -363,7 +363,11 @@ fn a_buy_all_after_taking_all_the_silver_spends_what_the_take_brought() {
 }
 
 /// `sharing_purse` nets what a unit lent against what it was lent, so the two are mutually
-/// exclusive by construction. This is what keeps them so (`ah-3c2t.2`, `ah-49j0`).
+/// exclusive in this corpus (`ah-3c2t.2`, `ah-49j0`) - **with one exception the corpus does not
+/// reach**: what the Give phase drew on a sharer for a faction-mate's GIVE is never netted, so a
+/// sharer a GIVE drains and whose STUDY the purse then pays shows both rows (`ah-d3in`,
+/// `a_sharer_drained_by_a_give_studies_on_the_purse.rs`). A fixture that fails this test with such
+/// a sharer wants this test taught the exception, not the netting restored.
 #[test]
 fn a_borrowing_unit_never_also_lends() {
     for (fixture, unit) in the_corpus() {
