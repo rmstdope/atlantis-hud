@@ -22,13 +22,13 @@ import {
   BESIDE_DROP_PX,
   BESIDE_GAP_PX,
   besideLine,
+  besideNote,
   callouts,
   floorPlan,
   hatchStrength,
   markFootprint,
   MOCKUP_RADIUS,
   noteWidthPx,
-  pairsNote,
   revisionNote,
   STAR_REACH,
   STATIONS,
@@ -154,10 +154,7 @@ describe("terrain as drafting hatches", () => {
     expect(svg).toContain("url(#bp-hatch-lake)");
     expect(svg).toContain("bp-terrain-lake");
     // The sea's wave, flattened: the same tile with a gentler swell.
-    expect({ ...HATCHES.lake, line: undefined }).toEqual({
-      ...HATCHES.ocean,
-      line: undefined,
-    });
+    expect({ ...HATCHES.lake, line: undefined }).toEqual({ ...HATCHES.ocean, line: undefined });
     expect(HATCHES.lake.line).not.toBe(HATCHES.ocean.line);
   });
 
@@ -322,13 +319,15 @@ describe("the battle star and the revision note on one line (ah-1n1z)", () => {
   });
 
   it("pairs them only on a stale hex that also had a battle", () => {
-    const stale = { hatched: true, ageInTurns: 2 };
-    expect(pairsNote({ ...stale, battle: "own" })).toBe(true);
-    expect(pairsNote({ ...stale, battle: "other" })).toBe(true);
-    expect(pairsNote({ ...stale, battle: null })).toBe(false);
-    expect(pairsNote({ hatched: false, ageInTurns: null, battle: "own" })).toBe(
-      false,
-    );
+    const stale = { hatched: true, ageInTurns: 2, unsurveyed: false };
+    expect(besideNote({ ...stale, battle: "own" })).toBe("rev. t-2");
+    expect(besideNote({ ...stale, battle: "other" })).toBe("rev. t-2");
+    expect(besideNote({ ...stale, battle: null })).toBeNull();
+    expect(
+      besideNote({ ...stale, hatched: false, ageInTurns: null, battle: "own" }),
+    ).toBeNull();
+    // A never-surveyed hex letters TBD, never a revision, even were it given an age.
+    expect(besideNote({ ...stale, unsurveyed: true, battle: "own" })).toBeNull();
   });
 
   it("centres the pair: the star moves left by half the gap and note, the note starts a gap past it", () => {

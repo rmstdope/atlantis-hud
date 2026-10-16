@@ -227,14 +227,16 @@ export function noteWidthPx(note: string): number {
 }
 
 /**
- * Whether a hex writes its revision note beside its battle star (ah-1n1z; agreed mockup
- * `docs/ui/ah-1n1z-one-line.html`): the two stations overlap, so a stale hex that also had a battle
- * puts both on the star's line rather than one over the other.
+ * The revision note a hex writes beside its battle star, or null when it writes none there (ah-1n1z;
+ * agreed mockup `docs/ui/ah-1n1z-one-line.html`): the two stations overlap, so a stale hex that also
+ * had a battle puts both on the star's line rather than one over the other. The one answer both
+ * layers ask - the star's and the note's - so they cannot disagree about a hex. A never-surveyed
+ * hex letters `TBD`, not a revision, and is never paired.
  */
-export function pairsNote(
-  view: Pick<HexView, "battle" | "hatched" | "ageInTurns">,
-): boolean {
-  return view.battle !== null && revisionNote(view) !== null;
+export function besideNote(
+  view: Pick<HexView, "battle" | "hatched" | "ageInTurns" | "unsurveyed">,
+): string | null {
+  return view.battle !== null && !view.unsurveyed ? revisionNote(view) : null;
 }
 
 /**

@@ -25,13 +25,13 @@ import {
   BATTLE_ROOM,
   BESIDE_DROP_PX,
   besideLine,
+  besideNote,
   callouts,
   floorPlan,
   hatchStrength,
   markFootprint,
   MOCKUP_RADIUS,
   NAME_Y,
-  pairsNote,
   revisionNote,
   STAR_REACH,
   STATIONS,
@@ -364,7 +364,7 @@ function TerrainLayer({ views }: LayerProps) {
         }
         // On a stale hex that also had a battle the note is written beside the star, from its
         // right tip on its line, and drops with it (ah-1n1z).
-        const paired = !view.unsurveyed && pairsNote(view);
+        const paired = besideNote(view) !== null;
         const x = paired
           ? view.at.x + STAR_REACH * SCALE
           : view.at.x + STATIONS.note.x * SCALE;
@@ -512,8 +512,8 @@ function BattleBeside({
   view: HexView;
   children: ReactNode;
 }) {
-  const note = revisionNote(view);
-  if (note === null || !pairsNote(view)) return <>{children}</>;
+  const note = besideNote(view);
+  if (note === null) return <>{children}</>;
   return (
     <Beside x={besideLine(note).starShiftPx} unit={SCALE}>
       {children}
@@ -783,6 +783,5 @@ export const blueprint: MapTheme = {
   RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer,
   markFootprint,
-  nameLine: (view) =>
-    view.settlement ? { y: NAME_Y * SCALE, fontPx: 12 } : null,
+  nameLine: (view) => view.settlement ? { y: NAME_Y * SCALE, fontPx: 12 } : null,
 };
