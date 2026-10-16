@@ -3636,9 +3636,23 @@ pub fn feed_from_faction_food(claims: &[FoodClaim]) -> FactionFoodPass {
 /// proportional-to-men.
 #[must_use]
 pub fn split_pool(wants: &[i64], pool: i64) -> Vec<i64> {
+    split_pool_against(wants, 0, pool)
+}
+
+/// [`split_pool`], divided by at least `attempted` rather than by the claims alone.
+///
+/// A market sale is the case: `Game::DoSell` (`runorders.cpp`) divides the line by what every
+/// seller *ordered* (`GetSellAmount`), and cuts an order to what its unit holds only afterwards,
+/// at that unit's own turn - so a unit ordering more than it holds claims only its holding, yet
+/// squeezes everybody else by its whole order (`ah-6la1`). Worked through exactly, that walk in
+/// report order gives each seller `pool * claim / attempted` whatever the order, which is why the
+/// split can stay positional. An `attempted` below the claims' own total changes nothing.
+#[must_use]
+pub fn split_pool_against(wants: &[i64], attempted: i64, pool: i64) -> Vec<i64> {
     let clamped: Vec<i64> = wants.iter().map(|want| (*want).max(0)).collect();
     let pool = pool.max(0);
-    let total: i128 = clamped.iter().map(|want| i128::from(*want)).sum();
+    let claimed: i128 = clamped.iter().map(|want| i128::from(*want)).sum();
+    let total = claimed.max(i128::from(attempted));
     if total <= i128::from(pool) {
         // Nothing is contended, so nothing is divided - which is also what keeps a lone taxer,
         // and every hex the region can afford, reading exactly as it did before.
