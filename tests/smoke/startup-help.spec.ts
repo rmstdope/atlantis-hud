@@ -23,6 +23,8 @@ test("greets a first-time player with the shortcuts overlay", async ({ page }) =
   await expect(page.getByTestId("shortcut-help")).toBeVisible();
   // It is the same overlay the shortcut opens, not a separate greeting.
   await expect(page.getByTestId("shortcut-help")).toContainText("command palette");
+  // Ready to be typed into straight away (ah-ppit).
+  await expect(page.getByTestId("shortcut-help-filter")).toBeFocused();
 });
 
 test("stops greeting once told to, and starts again when asked to", async ({ page }) => {
