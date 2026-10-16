@@ -7,6 +7,7 @@ import {
   mageNotePaletteRows,
   noteSnippet,
   paletteKeyReduce,
+  settleHighlight,
   settlementPaletteRows,
   type PaletteEntry
 } from "./commandPalette";
@@ -464,6 +465,79 @@ describe("paletteKeyReduce", () => {
 
   it("stays put with nothing to highlight", () => {
     expect(paletteKeyReduce({ index: 0, count: 0, pageSize: 2 }, "ArrowDown")).toBeNull();
+  });
+});
+
+describe("greyed rows (ah-mlls.7)", () => {
+  // Rows 1 and 3 are greyed: the header greys their buttons.
+  const enabled = [true, false, true, false, true];
+  const at = (index: number, key: string) =>
+    paletteKeyReduce({ index, count: enabled.length, pageSize: 2, enabled }, key);
+
+  it("steps over a greyed row with the arrows", () => {
+    expect(at(0, "ArrowDown")).toBe(2);
+    expect(at(2, "ArrowDown")).toBe(4);
+    expect(at(4, "ArrowUp")).toBe(2);
+    expect(at(2, "ArrowUp")).toBe(0);
+  });
+
+  it("stays put when only greyed rows lie that way", () => {
+    expect(at(4, "ArrowDown")).toBe(4);
+    expect(at(0, "ArrowUp")).toBe(0);
+    const tail = [true, false, false];
+    expect(paletteKeyReduce({ index: 0, count: 3, pageSize: 2, enabled: tail }, "ArrowDown")).toBe(0);
+    expect(paletteKeyReduce({ index: 0, count: 3, pageSize: 2, enabled: tail }, "End")).toBe(0);
+  });
+
+  it("lands a page, Home or End on the nearest row that can be chosen", () => {
+    // PageDown from 0 aims at 2; PageDown from 2 aims at 4.
+    expect(at(0, "PageDown")).toBe(2);
+    expect(at(2, "PageDown")).toBe(4);
+    // PageUp from 4 aims at 2; from 2 at 0.
+    expect(at(4, "PageUp")).toBe(2);
+    // A page aimed at a greyed row goes on past it, or comes back when nothing lies beyond.
+    const greyedEnd = [true, true, false];
+    expect(paletteKeyReduce({ index: 0, count: 3, pageSize: 2, enabled: greyedEnd }, "PageDown")).toBe(1);
+    const greyedStart = [false, true, true];
+    expect(paletteKeyReduce({ index: 2, count: 3, pageSize: 2, enabled: greyedStart }, "Home")).toBe(1);
+    expect(paletteKeyReduce({ index: 2, count: 3, pageSize: 2, enabled: greyedStart }, "PageUp")).toBe(1);
+  });
+
+  it("still claims the key when every row is greyed, so the caret does not move", () => {
+    const none = [false, false];
+    expect(paletteKeyReduce({ index: 0, count: 2, pageSize: 2, enabled: none }, "ArrowDown")).toBe(0);
+  });
+
+  it("settles the highlight on a row that can be chosen, or on none", () => {
+    expect(settleHighlight(0, [true, false])).toBe(0);
+    expect(settleHighlight(0, [false, true])).toBe(1);
+    expect(settleHighlight(5, [true, false])).toBe(0);
+    expect(settleHighlight(1, [true, false])).toBe(0);
+    expect(settleHighlight(0, [false, false])).toBe(-1);
+    expect(settleHighlight(0, [])).toBe(-1);
+  });
+
+  it("carries a greyed action's reason onto its entry, and still finds it by typing", () => {
+    const built = buildPaletteEntries({
+      armies: [],
+      ownUnits: [],
+      foreignUnits: [],
+      staleUnits: [],
+      settlements: [],
+      factions: [],
+      regions: [],
+      structures: [],
+      actions: [
+        { id: "send-orders", label: "Send orders", unavailable: "No #atlantis line.", run: noop },
+        { id: "settings", label: "Open settings", run: noop }
+      ],
+      orderCommands: [],
+      gameData: [],
+      openGameData: noop
+    });
+    expect(built[0]?.unavailable).toBe("No #atlantis line.");
+    expect(built[1]?.unavailable).toBeUndefined();
+    expect(filterPalette(built, "orders").map((entry) => entry.id)).toEqual(["action-send-orders"]);
   });
 });
 

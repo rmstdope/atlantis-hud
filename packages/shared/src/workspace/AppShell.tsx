@@ -286,8 +286,10 @@ import {
   buildPaletteEntries,
   hexNotePaletteRows,
   mageNotePaletteRows,
-  settlementPaletteRows
+  settlementPaletteRows,
+  type PaletteInput
 } from "../commandPalette";
+import { paletteTurnActions, type TurnActionId } from "./paletteTurnActions";
 import { paletteFactions } from "../paletteFactions";
 import { shownMemberCount } from "./armyRows";
 import { structurePaletteLabel, structuresForUnitDock } from "../structureLabel";
@@ -1846,13 +1848,15 @@ export function AppShell({
   // Production counts against a region limit, so it is offered only where the report prints one.
   const offersProduction = statesRegionLimit(parsed?.header.factionStatus ?? null);
 
-  const paletteEntries = useMemo(() => {
+  // Everything the palette lists but the header's Import, Fetch and Send, which are added further
+  // down (`paletteEntries`) where the send and fetch state they mirror is declared (ah-mlls.7).
+  const paletteInput = useMemo<PaletteInput>(() => {
     const mac = isMacPlatform();
     const helpSpec = SHORTCUTS.find((entry) => entry.id === "help");
     const gameDataSpec = SHORTCUTS.find((entry) => entry.id === "gameData");
     const magicTreeSpec = SHORTCUTS.find((entry) => entry.id === "magicTree");
     const studyPlannerSpec = SHORTCUTS.find((entry) => entry.id === "studyPlanner");
-    return buildPaletteEntries({
+    return {
       // Only with a game open, as the rail lists them (ah-mlls.4). Choosing one does what a click
       // on its rail entry does, and unfolds the pane first: the dock's focus effect needs the
       // rows rendered, as the dossier's "show their units" line found (`onShowUnits` below).
@@ -2078,7 +2082,7 @@ export function AppShell({
               }
             }))
           : []
-    });
+    };
   }, [
     hexNotes,
     studyPlans,
@@ -4659,6 +4663,12 @@ export function AppShell({
    * local for the length of one call, which is the whole of what "no session" means.
    */
   const [fetchPhase, setFetchPhase] = useState<NewAgeFetchPhase | null>(null);
+  /**
+   * The choice the Fetch dialog opens on. The header's button always asks for "Latest report"; the
+   * palette's "Fetch all reports not yet fetched/imported" row asks for the history (ah-mlls.7).
+   * Set at every opening, so one opening's choice never carries over to the next.
+   */
+  const [fetchScopeOnOpen, setFetchScopeOnOpen] = useState<NewAgeFetchScope>("thisTurn");
   const fetchAbort = useRef<AbortController | null>(null);
   /** Set when the dialog is dismissed mid-run; the run reads it at each boundary. */
   const fetchAbandoned = useRef(false);
@@ -4736,6 +4746,104 @@ export function AppShell({
   const sendOffReason = sendDisabledReason({
     hasUploadAddress: uploadUrl !== null || newAgeSendable
   });
+
+  /**
+   * What the header's Send opens, or null where it shows no Send: a game is one road or the other
+   * and never both - `newAgeSendable` is true only for a ruleset in `NEW_AGE_WORLDS`, and those
+   * declare no `ordersUploadUrl`. Shared with the palette's "Send orders" row (ah-mlls.7).
+   */
+  const openSend =
+    uploadOrders === undefined && !newAgeSendable
+      ? null
+      : () => {
+          if (newAgeSendable) {
+            setNewAgeSendPhase({ kind: "ready" });
+            return;
+          }
+          setSendPhase({ kind: "ready" });
+        };
+
+  /** Which Fetch dialog the header's button opens, or null when it shows no Fetch. */
+  const fetchRoad: "new-age" | "new-origins" | null =
+    openGameId === null
+      ? null
+      : newAgeApi !== null && newAgeWorld !== null
+        ? "new-age"
+        : isNewOrigins && pbemTransport !== undefined
+          ? "new-origins"
+          : null;
+
+  /** Opens that dialog; `scope` is only asked by a New Age one, which has the choice to tick. */
+  const openFetch = (scope: NewAgeFetchScope) => {
+    if (fetchRoad === "new-age") {
+      setFetchScopeOnOpen(scope);
+      setFetchPhase({ kind: "ready", message: null, retype: false });
+    } else if (fetchRoad === "new-origins") {
+      setOriginsPhase({ kind: "ready", message: null, retype: false });
+    }
+  };
+
+  /** The hidden file input behind the header's Import, so the palette opens the same picker. */
+  const importInput = useRef<HTMLInputElement | null>(null);
+
+  // The palette, with the header's Import, Fetch and Send leading its commands (ah-mlls.7): rows
+  // only where the header has the button, greyed with the reason where it greys it. Rebuilt as
+  // that state moves, so an open palette shows the current reason - the import count advancing.
+  const sendShown = openSend !== null;
+  const heldScope = heldNotice?.scope ?? null;
+  const turnRows = useMemo(
+    () =>
+      paletteTurnActions({
+        gameOpen: game !== null,
+        importBusy: busy,
+        importProgress,
+        held: heldScope,
+        fetch: fetchRoad,
+        send: sendShown ? { canSend: canSendOrders, reason: sendOffReason } : null
+      }),
+    [game, busy, importProgress, heldScope, fetchRoad, sendShown, canSendOrders, sendOffReason]
+  );
+  // Through a ref, so the rows run today's openers without the memo depending on closures that
+  // are rebuilt on every render.
+  const runTurnAction = useRef<(id: TurnActionId) => void>(() => {});
+  runTurnAction.current = (id) => {
+    // The palette can be summoned over an open Fetch or Send window, whose backdrop covers the
+    // header; the header's buttons cannot be pressed then, so the rows do nothing either. Otherwise
+    // a Fetch row would reset a running fetch to its form, and Send would stack over Fetch.
+    if (
+      fetchPhase !== null ||
+      originsPhase !== null ||
+      sendPhase !== null ||
+      newAgeSendPhase !== null
+    ) {
+      return;
+    }
+    switch (id) {
+      case "import-reports":
+        importInput.current?.click();
+        return;
+      case "fetch-latest":
+        openFetch("thisTurn");
+        return;
+      case "fetch-all":
+        openFetch("thisTurnAndHistory");
+        return;
+      case "send-orders":
+        openSend?.();
+        return;
+    }
+  };
+  const paletteEntries = useMemo(
+    () =>
+      buildPaletteEntries({
+        ...paletteInput,
+        actions: [
+          ...turnRows.map((row) => ({ ...row, run: () => runTurnAction.current(row.id) })),
+          ...paletteInput.actions
+        ]
+      }),
+    [paletteInput, turnRows]
+  );
 
   const sendOrders = useCallback(
     async (password: string) => {
@@ -5972,37 +6080,15 @@ export function AppShell({
         progress={importProgress}
         onExportOrders={exportOrders}
         canExport={ordersDocument.length > 0}
-        // A game is one road or the other and never both: `newAgeSendable` is true only for a
-        // ruleset in `NEW_AGE_WORLDS`, and those declare no `ordersUploadUrl`.
-        onSendOrders={
-          uploadOrders === undefined && !newAgeSendable
-            ? undefined
-            : () => {
-                if (newAgeSendable) {
-                  setNewAgeSendPhase({ kind: "ready" });
-                  return;
-                }
-                setSendPhase({ kind: "ready" });
-              }
-        }
+        onSendOrders={openSend ?? undefined}
         canSend={canSendOrders}
         sendDisabledReason={sendOffReason}
         fetchControl={
-          openGameId === null
+          fetchRoad === null
             ? undefined
-            : newAgeApi !== null && newAgeWorld !== null
-              ? {
-                  label: FETCH_CONTROL_LABEL,
-                  onFetch: () => setFetchPhase({ kind: "ready", message: null, retype: false })
-                }
-              : isNewOrigins && pbemTransport !== undefined
-                ? {
-                    label: FETCH_CONTROL_LABEL,
-                    onFetch: () =>
-                      setOriginsPhase({ kind: "ready", message: null, retype: false })
-                  }
-                : undefined
+            : { label: FETCH_CONTROL_LABEL, onFetch: () => openFetch("thisTurn") }
         }
+        importInputRef={importInput}
         onExportOrdersLong={exportOrdersLong}
         canExportLong={ordersDocument.length > 0 && ordersTemplateText !== null}
         onExportMap={() => openExport()}
@@ -6529,6 +6615,7 @@ export function AppShell({
               : null
           }
           phase={fetchPhase}
+          initialScope={fetchScopeOnOpen}
           onFetch={(factionNumber, password, scope) =>
             void fetchFromNewAge(factionNumber, password, scope)
           }

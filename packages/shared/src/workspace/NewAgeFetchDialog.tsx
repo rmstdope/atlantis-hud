@@ -29,6 +29,7 @@ export function NewAgeFetchDialog({
   turnNumber,
   suggestedFactionNumber,
   phase,
+  initialScope = "thisTurn",
   onFetch,
   onDismiss
 }: {
@@ -41,6 +42,12 @@ export function NewAgeFetchDialog({
   /** Prefills the faction number; the player can change it. `null` leaves the field empty. */
   suggestedFactionNumber: string | null;
   phase: NewAgeFetchPhase;
+  /**
+   * The choice ticked when the dialog opens: the palette's "Fetch all reports not yet
+   * fetched/imported" row asks for the history (ah-mlls.7). Read once, as the state's seed, so the
+   * next opening - from the header's button - is back on "Latest report".
+   */
+  initialScope?: NewAgeFetchScope;
   onFetch: (factionNumber: string, password: string, scope: NewAgeFetchScope) => void;
   /** Cancel and Escape both abandon whatever is running, so this promises nothing. */
   onDismiss: () => void;
@@ -49,7 +56,7 @@ export function NewAgeFetchDialog({
   const [password, setPassword] = useState("");
   // The dialog is mounted only while a fetch phase exists, so this resets on every open by
   // construction rather than by an effect (the navigator, round 3).
-  const [scope, setScope] = useState<NewAgeFetchScope>("thisTurn");
+  const [scope, setScope] = useState<NewAgeFetchScope>(initialScope);
   const fieldRef = useRef<HTMLInputElement | null>(null);
   // Whatever held focus when this mounted, so it can be given back on unmount - the rule
   // `ChipPopover` follows. This codebase has no focus trap and this dialog adds none.

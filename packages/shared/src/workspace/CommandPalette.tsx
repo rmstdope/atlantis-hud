@@ -4,6 +4,7 @@ import {
   noteSnippet,
   paletteKeyReduce,
   PALETTE_PAGE_ROWS,
+  settleHighlight,
   type PaletteEntry
 } from "../commandPalette";
 import { useEscapeToDismiss } from "./dismissLayer";
@@ -65,6 +66,7 @@ function rowTitle(entry: PaletteEntry): string {
   const standing = entry.kind === "faction" ? factionRow(entry) : null;
   return [
     `${entry.label}${standing?.mark ?? ""}`,
+    entry.unavailable,
     entry.note?.place,
     entry.faction?.label,
     entry.count?.text,
@@ -94,8 +96,11 @@ export function CommandPalette({
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const shown = useMemo(() => filterPalette(entries, query), [entries, query]);
-  // Clamped rather than stored: a narrowing query must not leave the highlight past the end.
-  const active = Math.min(index, Math.max(0, shown.length - 1));
+  // Which rows can be chosen: a greyed one (ah-mlls.7) is listed but never highlighted or run.
+  const enabled = useMemo(() => shown.map((entry) => entry.unavailable === undefined), [shown]);
+  // Settled rather than stored: a narrowing query must not leave the highlight past the end, and
+  // the highlight must never rest on a greyed row. -1 when every row shown is greyed.
+  const active = settleHighlight(index, enabled);
 
   useEscapeToDismiss(onDismiss);
 
@@ -135,7 +140,8 @@ export function CommandPalette({
   }, []);
 
   const run = (entry: PaletteEntry | undefined) => {
-    if (!entry) {
+    // A greyed row does nothing at all, the palette staying open (ah-mlls.7).
+    if (!entry || entry.unavailable !== undefined) {
       return;
     }
     onDismiss();
@@ -178,10 +184,12 @@ export function CommandPalette({
             const step = (from: number) =>
               paletteKeyReduce(
                 {
-                  // The same clamp `active` applies, so a narrowed list still steps from a real row.
-                  index: Math.min(from, Math.max(0, shown.length - 1)),
+                  // The same settling `active` applies, so a narrowed list still steps from the row
+                  // drawn highlighted - not from a greyed row the stored index may rest on.
+                  index: Math.max(0, settleHighlight(from, enabled)),
                   count: shown.length,
-                  pageSize: PALETTE_PAGE_ROWS
+                  pageSize: PALETTE_PAGE_ROWS,
+                  enabled
                 },
                 event.key
               );
@@ -208,25 +216,35 @@ export function CommandPalette({
           {shown.map((entry, at) => {
             // A faction row's attitude, house mark and colour (ah-mlls.3); null on every other row.
             const standing = entry.kind === "faction" ? factionRow(entry) : null;
+            const greyed = entry.unavailable !== undefined;
             return (
               <li key={entry.id} role="presentation">
                 <button
                   type="button"
                   role="option"
                   aria-selected={at === active}
+                  aria-disabled={greyed ? true : undefined}
                   data-testid="palette-item"
                   // Selection follows the pointer the way it follows the arrows - but on real
                   // movement only. `pointerenter` also fires when a row scrolls *under* a
                   // stationary mouse, so on an uncapped list (ah-yk6b) arrowing down would scroll
                   // a row beneath the pointer and hand the highlight straight back to it.
                   onPointerMove={() => {
+                    // A greyed row never takes the highlight, from the pointer either (ah-mlls.7).
+                    if (greyed) {
+                      return;
+                    }
                     byKeyboard.current = false;
                     setIndex(at);
                   }}
                   onClick={() => run(entry)}
                   title={rowTitle(entry)}
                   className={`flex w-full items-baseline gap-2 rounded px-2 py-1 text-left ${
-                    at === active ? "bg-edge/40 text-ink" : "text-ink-soft"
+                    greyed
+                      ? "cursor-default text-ink-dim"
+                      : at === active
+                        ? "bg-edge/40 text-ink"
+                        : "text-ink-soft"
                   }`}
                 >
                   {/* One flat row so each piece shrinks on its own terms (ah-mlls.1): the auto margin
@@ -235,6 +253,19 @@ export function CommandPalette({
                       unit's name shorten. The kind and the history marker never shrink. */}
                   {entry.note !== undefined ? (
                     <PaletteNoteText text={entry.label} place={entry.note.place} query={query} />
+                  ) : greyed ? (
+                    // The reason sits beside the label when it fits and wraps beneath it, inside
+                    // the row, when it does not - never cut short, since a keyboard user has no
+                    // hover to read the rest by (ah-mlls.7).
+                    <span className="mr-auto flex min-w-0 flex-wrap items-baseline gap-x-2">
+                      <span>{entry.label}</span>
+                      <span
+                        data-testid="palette-unavailable"
+                        className="min-w-0 text-pane-sm italic text-ink-dim"
+                      >
+                        {entry.unavailable}
+                      </span>
+                    </span>
                   ) : (
                     <span className={`mr-auto min-w-0 truncate ${standing?.labelClassName ?? ""}`}>
                       {entry.label}

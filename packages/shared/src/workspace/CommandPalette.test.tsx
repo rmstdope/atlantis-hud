@@ -208,3 +208,57 @@ describe("a palette row for a note (ah-mlls.5)", () => {
     expect(kindLabel(own)).toBe("unit");
   });
 });
+
+describe("a greyed row in the palette (ah-mlls.7)", () => {
+  const REASON =
+    "These orders have no #atlantis line, so the server cannot tell which faction they belong to.";
+  const send: PaletteEntry = {
+    id: "action-send-orders",
+    kind: "action",
+    label: "Send orders",
+    unavailable: REASON,
+    run: noop
+  };
+  const settings: PaletteEntry = {
+    id: "action-settings",
+    kind: "action",
+    label: "Open settings",
+    run: noop
+  };
+
+  it("says why beside its label, in full, and is marked unavailable", () => {
+    const row = rowOf(draw([send, settings]), "Send orders");
+    expect(row).toContain('aria-disabled="true"');
+    expect(row).toContain('data-testid="palette-unavailable"');
+    expect(row).toContain(">These orders have no #atlantis line");
+    // Wraps rather than being cut short: no truncation on the reason.
+    const reason = row.slice(row.indexOf('data-testid="palette-unavailable"'));
+    expect(reason.slice(0, reason.indexOf(">"))).not.toContain("truncate");
+    expect(row.indexOf("Send orders")).toBeLessThan(row.indexOf("These orders"));
+    expect(row.indexOf("These orders")).toBeLessThan(row.indexOf(">action<"));
+  });
+
+  it("is drawn dim, never highlighted", () => {
+    const row = rowOf(draw([send, settings]), "Send orders");
+    expect(row).toContain('aria-selected="false"');
+    expect(row).toContain("text-ink-dim");
+  });
+
+  it("hands the highlight to the first row that can be chosen", () => {
+    expect(rowOf(draw([send, settings]), "Open settings")).toContain('aria-selected="true"');
+  });
+
+  it("highlights nothing when every row is greyed", () => {
+    expect(draw([send])).not.toContain('aria-selected="true"');
+  });
+
+  it("puts the reason in the hover text", () => {
+    expect(rowOf(draw([send]), "Send orders")).toContain(`title="Send orders · ${REASON}`);
+  });
+
+  it("leaves a row that can be chosen unmarked", () => {
+    const row = rowOf(draw([settings]), "Open settings");
+    expect(row).not.toContain("aria-disabled");
+    expect(row).not.toContain("palette-unavailable");
+  });
+});

@@ -86,6 +86,12 @@ export type PaletteEntry = {
    * (`filterPalette`).
    */
   note?: { place: string };
+  /**
+   * Set on a greyed row (ah-mlls.7), and what makes it one: why it cannot be chosen right now,
+   * written out beside the label. Still matched by `filterPalette`, so the player who types "send"
+   * learns why Send is off; never highlighted, never run.
+   */
+  unavailable?: string;
   run: () => void;
 };
 
@@ -120,7 +126,14 @@ export type PaletteInput = {
     lastSeenTurn?: number;
     run: () => void;
   }>;
-  actions: Array<{ id: string; label: string; binding?: string; run: () => void }>;
+  actions: Array<{
+    id: string;
+    label: string;
+    binding?: string;
+    /** Why the action is greyed right now, or absent when it can be chosen (ah-mlls.7). */
+    unavailable?: string;
+    run: () => void;
+  }>;
   /** The world's orders, as the core grammar lists them; each opens its game data entry. */
   orderCommands: readonly string[];
   /**
@@ -237,6 +250,7 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       kind: "action",
       label: action.label,
       binding: action.binding,
+      ...(action.unavailable === undefined ? {} : { unavailable: action.unavailable }),
       run: action.run
     })),
     ...input.orderCommands.map<PaletteEntry>((command) => ({
@@ -492,6 +506,46 @@ export function filterPalette(entries: readonly PaletteEntry[], query: string): 
 export const PALETTE_PAGE_ROWS = 10;
 
 /**
+ * The row nearest `from` that can be chosen, looking `first` way and then the other; -1 when every
+ * row is greyed (ah-mlls.7). `from` is clamped into the list first.
+ */
+function nearestEnabled(
+  from: number,
+  enabled: readonly boolean[],
+  first: "forward" | "backward"
+): number {
+  const last = enabled.length - 1;
+  const start = Math.max(0, Math.min(last, from));
+  const ahead = () => {
+    for (let at = start; at <= last; at += 1) {
+      if (enabled[at]) return at;
+    }
+    return -1;
+  };
+  const behind = () => {
+    for (let at = start; at >= 0; at -= 1) {
+      if (enabled[at]) return at;
+    }
+    return -1;
+  };
+  if (first === "forward") {
+    const found = ahead();
+    return found !== -1 ? found : behind();
+  }
+  const found = behind();
+  return found !== -1 ? found : ahead();
+}
+
+/**
+ * Which row the highlight is drawn on: `index`, or the nearest row below it that can be chosen,
+ * or above it when none is below; -1 when nothing can be chosen (ah-mlls.7). A greyed row is
+ * never highlighted, so Enter can never land on one.
+ */
+export function settleHighlight(index: number, enabled: readonly boolean[]): number {
+  return enabled.length === 0 ? -1 : nearestEnabled(index, enabled, "forward");
+}
+
+/**
  * Where an arrow key moves the highlight, or null for any other key - which stays with the input,
  * where typing belongs.
  *
@@ -503,7 +557,18 @@ export const PALETTE_PAGE_ROWS = 10;
  * the missing `preventDefault` would move the text caret instead of doing nothing.
  */
 export function paletteKeyReduce(
-  state: { index: number; count: number; pageSize: number },
+  state: {
+    index: number;
+    count: number;
+    pageSize: number;
+    /**
+     * Which rows can be chosen, by index; absent means all. A greyed row (ah-mlls.7) is stepped
+     * over: the move lands on the nearest row that can be chosen in the key's direction, or comes
+     * back the other way when nothing lies beyond. With every row greyed the index is returned
+     * unchanged, so the key is still claimed from the input.
+     */
+    enabled?: readonly boolean[];
+  },
   key: string
 ): number | null {
   if (state.count === 0) {
@@ -511,20 +576,33 @@ export function paletteKeyReduce(
   }
   const last = state.count - 1;
   const clamp = (at: number) => Math.max(0, Math.min(last, at));
+  let target: number;
+  let direction: "forward" | "backward";
   switch (key) {
     case "ArrowDown":
-      return clamp(state.index + 1);
+      [target, direction] = [clamp(state.index + 1), "forward"];
+      break;
     case "ArrowUp":
-      return clamp(state.index - 1);
+      [target, direction] = [clamp(state.index - 1), "backward"];
+      break;
     case "PageDown":
-      return clamp(state.index + state.pageSize);
+      [target, direction] = [clamp(state.index + state.pageSize), "forward"];
+      break;
     case "PageUp":
-      return clamp(state.index - state.pageSize);
+      [target, direction] = [clamp(state.index - state.pageSize), "backward"];
+      break;
     case "Home":
-      return 0;
+      [target, direction] = [0, "forward"];
+      break;
     case "End":
-      return last;
+      [target, direction] = [last, "backward"];
+      break;
     default:
       return null;
   }
+  if (state.enabled === undefined) {
+    return target;
+  }
+  const landed = nearestEnabled(target, state.enabled, direction);
+  return landed === -1 ? clamp(state.index) : landed;
 }
