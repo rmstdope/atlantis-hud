@@ -1,0 +1,182 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Factions in the palette</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --soft:#a3b0c0; --dim:#8a97a8; --ink:#dbe3ec; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; --foreign:#f07070; --select:#6fb3ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 24px 64px; background:var(--ground); color:var(--ink); font:15px/1.55 Georgia, "Times New Roman", serif; }
+  header, main { max-width:1100px; margin:auto; }
+  h1 { margin:0; font-size:26px; } h1 span, h2 { color:var(--brass); }
+  header p, .intro { color:var(--soft); max-width:90ch; }
+  h2 { margin:36px 0 0; font-size:18px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(330px, 1fr)); gap:20px; margin-top:16px; }
+  .card { overflow:hidden; border:1px solid var(--edge); border-radius:9px; background:var(--panel); }
+  .card:target { border-color:var(--brass); box-shadow:0 0 0 2px var(--brass); }
+  .card header { padding:14px 16px 10px; }
+  .card h3 { margin:0; font-size:16px; }
+  .card h3 em { color:var(--brass); font-size:11px; font-style:normal; letter-spacing:.12em; margin-right:7px; }
+  .card header p { margin:6px 0 0; font-size:12.5px; }
+  .palette { margin:0 16px 16px; overflow:hidden; border:1px solid var(--edge); border-radius:5px; background:var(--raised); font-family:Arial, sans-serif; font-size:12px; }
+  .query { padding:7px 9px; border-bottom:1px solid var(--edge); color:var(--ink); }
+  .cursor { color:var(--brass); }
+  .row { display:flex; align-items:baseline; gap:8px; padding:6px 9px; color:var(--soft); }
+  .row + .row { border-top:1px solid #1e2733; }
+  .row.active { background:#26303d; color:var(--ink); }
+  .place { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+  .place.foreign { color:var(--foreign); }
+  .right { flex:none; margin-left:auto; display:flex; gap:8px; align-items:baseline; }
+  .kind { flex:none; color:var(--dim); font-size:10px; letter-spacing:.08em; text-transform:uppercase; }
+  .faction { flex:none; color:var(--soft); font-size:10.5px; white-space:nowrap; max-width:11em; overflow:hidden; text-overflow:ellipsis; }
+  .faction.hidden { color:var(--dim); font-style:italic; }
+  .history { flex:none; color:var(--brass); font-size:10px; letter-spacing:.04em; white-space:nowrap; }
+  .notes { margin:0; padding:12px 16px 14px 32px; border-top:1px solid var(--edge); color:var(--soft); font-size:12.5px; }
+  .notes li + li { margin-top:4px; } .notes .good { color:var(--ok); } .notes .bad { color:var(--danger); }
+  .state { margin-top:14px; padding:13px 16px; border-left:3px solid var(--brass); border-radius:5px; background:var(--panel); color:var(--soft); font-size:13px; }
+  .scene { margin:0 16px 16px; display:grid; grid-template-columns:1fr 1.2fr; gap:10px; font-family:Arial, sans-serif; font-size:11.5px; }
+  .pane { border:1px solid var(--edge); border-radius:5px; background:var(--raised); padding:8px; color:var(--soft); }
+  .pane b { color:var(--ink); }
+  .hex { width:46px; height:40px; clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%); background:#2a3646; display:inline-block; margin:2px; }
+  .hex.sel { background:var(--brass); }
+  .u { padding:3px 5px; border-radius:3px; } .u.sel { background:#26303d; color:var(--ink); outline:1px solid var(--select); }
+  .u.f { color:var(--foreign); }
+  kbd { padding:1px 4px; border:1px solid var(--edge); border-radius:3px; background:var(--raised); color:var(--ink); font:11px monospace; }
+</style>
+<style>
+ .att{flex:none;font-size:10.5px;color:var(--soft);white-space:nowrap}
+ .att.ally{color:var(--ok)} .att.host{color:var(--danger)} .att.you{color:var(--brass)}
+ .app{margin:0 16px 16px;border:1px solid var(--edge);border-radius:5px;background:#131920;font-family:Arial,sans-serif;font-size:11.5px;position:relative;min-height:300px}
+ .bar{display:flex;gap:10px;align-items:center;padding:6px 9px;border-bottom:1px solid var(--edge);color:var(--soft)}
+ .chip{border:1px solid var(--edge);border-radius:4px;padding:2px 7px;color:var(--ink);background:var(--raised)}
+ .chip.open{outline:1px solid var(--select)}
+ .pop{position:absolute;background:var(--raised);border:1px solid var(--edge);border-radius:6px;padding:10px 12px;width:250px;color:var(--soft);box-shadow:0 8px 24px #0008}
+ .pop b{color:var(--ink)} .pop h4{margin:0 0 6px;color:var(--ink);font-size:13px}
+ .pop .lbl{color:var(--dim);font-size:10px;letter-spacing:.08em;text-transform:uppercase;margin-top:8px}
+ .pop .hx{display:flex;justify-content:space-between;padding:2px 0}
+ .pop a{color:var(--select)}
+ .mapbg{padding:30px 20px;color:var(--dim)}
+</style>
+<style>.card.chosen{border-color:var(--brass);box-shadow:0 0 0 2px var(--brass)} .card.chosen h3 em::after{content:" · chosen";color:var(--ok)}</style></head><body>
+<header><h1>Factions <span>in the palette</span></h1><p><strong>Chosen.</strong> A faction is found in the command palette by its name or number. Its row shows your attitude towards it (or <i>your faction</i>), plus <i>last seen turn N</i> for a faction met only in an earlier turn. Choosing it opens that faction's details under your faction chip, with ‹ back to your own faction. Factions from earlier turns show where they were last seen. With nothing typed, factions come right after the towns and cities. The chosen option on each question is outlined.</p></header>
+<main><h2 style="border-top:1px solid var(--edge);padding-top:18px">How a row reads</h2>
+<h2>Option A — recommended: say where you stand with them</h2><div class="cards">
+<section class="card chosen" id="a"><header><h3><em>A — recommended</em> Attitude beside the faction</h3><p>The level you have declared towards them (Ally, Friendly, Neutral, Unfriendly, Hostile), or your default when you declared nothing for them. Your own faction says <i>your faction</i>.</p></header>
+<div class="palette"><div class="query">th<span class="cursor">|</span></div>
+<div class="row active"><span class="place">Thane's Ring (10)</span><span class="right"><span class="att host">Hostile</span><span class="kind">faction</span></span></div>
+<div class="row"><span class="place">The Borg TNG (95)</span><span class="right"><span class="att you">your faction</span><span class="kind">faction</span></span></div>
+<div class="row"><span class="place">Thornwood Free Company (31)</span><span class="right"><span class="att ally">Ally</span><span class="kind">faction</span></span></div>
+<div class="row"><span class="place">Thane (2240)</span><span class="right"><span class="faction">Thane's Ring (10)</span><span class="kind">unit</span></span></div>
+<div class="row"><span class="place">Thanes Hall [3] · Tower in Vale (18, 52)</span><span class="right"><span class="kind">structure</span></span></div></div>
+<ul class="notes"><li class="good">Answers "friend or foe?" before you open anything — the first thing you want to know of a faction.</li><li class="good">Colour is extra; the word is always there.</li><li class="bad">One more word on the row; it shortens before the name does in a narrow window.</li></ul></section>
+<section class="card" id="b"><header><h3><em>B</em> Name and number only</h3><p>The row is just the faction; the attitude is in its details once opened.</p></header>
+<div class="palette"><div class="query">th<span class="cursor">|</span></div>
+<div class="row active"><span class="place">Thane's Ring (10)</span><span class="right"><span class="kind">faction</span></span></div>
+<div class="row"><span class="place">The Borg TNG (95)</span><span class="right"><span class="kind">faction</span></span></div>
+<div class="row"><span class="place">Thornwood Free Company (31)</span><span class="right"><span class="kind">faction</span></span></div>
+<div class="row"><span class="place">Thane (2240)</span><span class="right"><span class="faction">Thane's Ring (10)</span><span class="kind">unit</span></span></div>
+<div class="row"><span class="place">Thanes Hall [3] · Tower in Vale (18, 52)</span><span class="right"><span class="kind">structure</span></span></div></div>
+<ul class="notes"><li class="good">Shortest, calmest rows.</li><li class="bad">Your own faction looks like anyone else's; you open it to learn friend or foe.</li></ul></section></div>
+</body></html>
+<main><h2 style="border-top:1px solid var(--edge);padding-top:18px">Where the details open</h2>
+<div class="cards">
+<section class="card chosen" id="a"><header><h3><em>A — recommended</em> Under your faction chip, with ‹ back</h3><p>The palette closes and the details open where your faction panel opens, exactly as if you had clicked the faction in your attitudes list: ‹ takes you to your own faction panel.</p></header>
+<div class="app"><div class="bar"><span class="chip open">The Borg TNG (95) ▾</span><span>Turn 47</span><span style="margin-left:auto">Import · Fetch · Send</span></div>
+<div class="pop" style="left:8px;top:36px"><h4><a>‹</a> Thane's Ring (10)</h4><div class="lbl">Attitude</div><div><b>Hostile</b></div>
+<div class="lbl">Seen in</div><div class="hx"><span>mountain (7,53)</span><span>3 units</span></div><div class="hx"><span>forest (8,53)</span><span>1 unit</span></div>
+<div style="margin-top:8px"><a>Show their 4 units in the list</a></div></div><div class="mapbg" style="padding-left:290px">map…</div></div>
+<ul class="notes"><li class="good">One place for faction details, whichever way you got there — and the keyboard route already works there.</li><li class="good">‹ leads somewhere useful: your own attitudes, where you'd change how you stand with them.</li><li class="bad">Sits at the top-left, away from the middle of the screen where the palette was.</li></ul></section>
+<section class="card" id="b"><header><h3><em>B</em> Centred where the palette was</h3><p>The details open in the palette's own spot, top-middle, with no ‹ back. Esc or a click outside closes them.</p></header>
+<div class="app"><div class="bar"><span class="chip">The Borg TNG (95) ▾</span><span>Turn 47</span><span style="margin-left:auto">Import · Fetch · Send</span></div>
+<div class="pop" style="left:50%;transform:translateX(-50%);top:46px"><h4>Thane's Ring (10)</h4><div class="lbl">Attitude</div><div><b>Hostile</b></div>
+<div class="lbl">Seen in</div><div class="hx"><span>mountain (7,53)</span><span>3 units</span></div><div class="hx"><span>forest (8,53)</span><span>1 unit</span></div>
+<div style="margin-top:8px"><a>Show their 4 units in the list</a></div></div><div class="mapbg">map…</div></div>
+<ul class="notes"><li class="good">Your eye stays where it was.</li><li class="bad">A third place the same details can appear, with no way on to your own attitudes.</li></ul></section></div>
+</body></html>
+<main><h2 style="border-top:1px solid var(--edge);padding-top:18px">Which factions are listed</h2>
+<div class="cards">
+<section class="card" id="a"><header><h3><em>A — recommended</em> This turn's report only</h3><p>A faction met only in an older report is not listed. Everything listed opens details that have something in them.</p></header>
+<div class="palette"><div class="query">gr<span class="cursor">|</span></div>
+<div class="row active"><span class="place">Grey Pilgrims (44)</span><span class="right"><span class="att">Neutral</span><span class="kind">faction</span></span></div>
+<div class="row"><span class="place">Grain Barge (1931)</span><span class="right"><span class="kind">unit</span></span></div></div>
+<ul class="notes"><li class="good">Every row leads to something current.</li><li class="bad">A neighbour who walked out of sight last turn can't be found as a faction until seen again.</li></ul></section>
+<section class="card chosen" id="b"><header><h3><em>B</em> Also factions from earlier turns</h3><p>Listed with <i>last seen turn N</i>, as remembered units are. Their details say they are not in this report.</p></header>
+<div class="palette"><div class="query">gr<span class="cursor">|</span></div>
+<div class="row active"><span class="place">Grey Pilgrims (44)</span><span class="right"><span class="att">Neutral</span><span class="kind">faction</span></span></div>
+<div class="row"><span class="place">Greenhollow Traders (58)</span><span class="right"><span class="history">last seen turn 41</span><span class="kind">faction</span></span></div>
+<div class="row"><span class="place">Grain Barge (1931)</span><span class="right"><span class="kind">unit</span></span></div></div>
+<div class="app" style="min-height:120px"><div class="pop" style="left:8px;top:8px;position:relative"><h4>Greenhollow Traders (58)</h4><div class="lbl">Attitude</div><div><b>Neutral</b> <span style="color:var(--dim)">(default)</span></div><div class="lbl">Seen in</div><div><i>no hex of theirs is in this report</i></div></div></div>
+<ul class="notes"><li class="good">You can find anyone you've ever met.</li><li class="bad">Opens details that are mostly empty; the units they had then aren't listed there.</li></ul></section></div>
+</body></html>
+<main><h2 style="border-top:1px solid var(--edge);padding-top:18px">A faction from an earlier turn: its details</h2>
+<div class="palette" style="max-width:520px;margin:16px 0"><div class="query">green<span class="cursor">|</span></div>
+<div class="row active"><span class="place">Greenhollow Traders (58)</span><span class="right"><span class="history">last seen turn 41</span><span class="att">Neutral</span><span class="kind">faction</span></span></div></div>
+<div class="cards">
+<section class="card chosen" id="a"><header><h3><em>A — recommended</em> Where they were last seen</h3><p>"Seen in" becomes "Last seen", listing the hexes your older reports remember their units in, each with its turn. Clicking a hex goes there, as today. No "Show their units" link, since none are in this turn's list.</p></header>
+<div class="app" style="min-height:190px"><div class="pop" style="left:8px;top:8px"><h4><a>‹</a> Greenhollow Traders (58)</h4><div class="lbl">Attitude</div><div><b>Neutral</b></div>
+<div class="lbl">Last seen</div><div style="font-size:10.5px;color:var(--dim)">None of their units is in this turn's report.</div>
+<div class="hx"><span>plain (12,34)</span><span><span class="history">turn 41</span> · 2 units</span></div><div class="hx"><span>forest (13,35)</span><span><span class="history">turn 39</span> · 1 unit</span></div></div></div>
+<ul class="notes"><li class="good">Tells you where to look for them — the reason you searched.</li><li class="bad">A little more on the panel than for a current faction.</li></ul></section>
+<section class="card" id="b"><header><h3><em>B</em> Just say they aren't here</h3><p>Attitude, then one line. Nothing to click.</p></header>
+<div class="app" style="min-height:190px"><div class="pop" style="left:8px;top:8px"><h4><a>‹</a> Greenhollow Traders (58)</h4><div class="lbl">Attitude</div><div><b>Neutral</b></div>
+<div class="lbl">Seen in</div><div><i>no hex of theirs is in this report</i> · <span class="history">last seen turn 41</span></div></div></div>
+<ul class="notes"><li class="good">Simple; the same panel as today with one marker added.</li><li class="bad">A dead end — you know when, not where.</li></ul></section></div>
+</body></html>
+<main><h2 style="border-top:1px solid var(--edge);padding-top:18px">With nothing typed: where factions sit</h2>
+<div class="cards">
+<section class="card chosen" id="a"><header><h3><em>A — recommended</em> Right after the towns and cities</h3><p>Ahead of the hexes, so a dozen factions are a short scroll away.</p></header>
+<div class="palette"><div class="query"><span class="cursor">|</span></div>
+<div class="row active"><span class="place">Iron Wardens (512)</span><span class="right"><span class="kind">unit</span></span></div>
+<div class="row"><span class="place">… your units, other units …</span></div>
+<div class="row"><span class="place">Akroitos [city] · plain (12,34) in Hope</span><span class="right"><span class="kind">settlement</span></span></div>
+<div class="row"><span class="place">The Borg TNG (95)</span><span class="right"><span class="att you">your faction</span><span class="kind">faction</span></span></div>
+<div class="row"><span class="place">Thane's Ring (10)</span><span class="right"><span class="att host">Hostile</span><span class="kind">faction</span></span></div>
+<div class="row"><span class="place">Greenhollow Traders (58)</span><span class="right"><span class="history">last seen turn 41</span><span class="att">Neutral</span><span class="kind">faction</span></span></div>
+<div class="row"><span class="place">plain (12,34) in Hope</span><span class="right"><span class="kind">region</span></span></div>
+<div class="row"><span class="place">… hexes, structures, actions, orders, game data</span></div></div>
+<ul class="notes"><li class="good">Factions are few and important; they aren't buried.</li><li class="bad">Pushes the hexes a few rows further down.</li></ul></section>
+<section class="card" id="b"><header><h3><em>B</em> After the game data, at the very end</h3><p>New kinds go to the bottom; existing order untouched.</p></header>
+<div class="palette"><div class="query"><span class="cursor">|</span></div>
+<div class="row active"><span class="place">Iron Wardens (512)</span><span class="right"><span class="kind">unit</span></span></div>
+<div class="row"><span class="place">… units, towns, hexes, structures, actions, orders, game data …</span></div>
+<div class="row"><span class="place">The Borg TNG (95)</span><span class="right"><span class="att you">your faction</span><span class="kind">faction</span></span></div>
+<div class="row"><span class="place">Thane's Ring (10)</span><span class="right"><span class="att host">Hostile</span><span class="kind">faction</span></span></div></div>
+<ul class="notes"><li class="good">Nothing you know moves.</li><li class="bad">Hundreds of rows to scroll past; in practice you'd always type.</li></ul></section></div>
+</body></html>
+<main><h2 style="border-top:1px solid var(--edge);padding-top:18px">A faction with no name</h2>
+<div class="cards">
+<section class="card chosen" id="a"><header><h3><em>A — recommended</em> "Unnamed faction (95)"</h3><p>The words your faction panel already uses.</p></header>
+<div class="palette"><div class="query">95<span class="cursor">|</span></div>
+<div class="row active"><span class="place">Unnamed faction (95)</span><span class="right"><span class="att you">your faction</span><span class="kind">faction</span></span></div>
+<div class="row"><span class="place">Scout (953)</span><span class="right"><span class="kind">unit</span></span></div></div>
+<ul class="notes"><li class="good">Matches the panel it opens.</li><li class="bad">The word "faction" twice on one row.</li></ul></section>
+<section class="card" id="b"><header><h3><em>B</em> "Faction 95"</h3><p>Just the number, worded.</p></header>
+<div class="palette"><div class="query">95<span class="cursor">|</span></div>
+<div class="row active"><span class="place">Faction 95</span><span class="right"><span class="att you">your faction</span><span class="kind">faction</span></span></div>
+<div class="row"><span class="place">Scout (953)</span><span class="right"><span class="kind">unit</span></span></div></div>
+<ul class="notes"><li class="good">Short.</li><li class="bad">Reads differently from every other row and from the panel it opens.</li></ul></section></div>
+</body></html>
+<main><h2 style="border-top:1px solid var(--edge);padding-top:18px">Narrow window, words, merged allies, settled states</h2>
+<h2>1 · A narrow window</h2><div class="cards">
+<section class="card chosen" id="narrow-a"><header><h3><em>A — recommended</em> The name shortens; attitude and kind stay</h3><p>The attitude is one short word and is the reason the row is there. Hover shows the full row.</p></header>
+<div class="palette narrow"><div class="query">free<span class="cursor">|</span></div>
+<div class="row active"><span class="place">Thornwood Free Company of the…</span><span class="right"><span class="att ally">Ally</span><span class="kind">faction</span></span></div>
+<div class="row"><span class="place">Greenhollow Free Tra…</span><span class="right"><span class="history">last seen turn 41</span><span class="att">Neutral</span><span class="kind">faction</span></span></div></div>
+<ul class="notes"><li class="bad">The faction's number, at the end of the name, can be cut off — search by number still finds it.</li></ul></section>
+<section class="card" id="narrow-b"><header><h3><em>B</em> The attitude shortens first</h3><p>As the faction beside a foreign unit does today.</p></header>
+<div class="palette narrow"><div class="query">free<span class="cursor">|</span></div>
+<div class="row active"><span class="place">Thornwood Free Company of the West (31)</span><span class="right"><span class="att ally">A…</span><span class="kind">faction</span></span></div>
+<div class="row"><span class="place">Greenhollow Free Traders (58)</span><span class="right"><span class="history">last seen…</span><span class="kind">faction</span></span></div></div>
+<ul class="notes"><li class="bad">The friend-or-foe word is what goes.</li></ul></section></div>
+<h2>2 · The line under "Last seen" for an earlier-turn faction</h2><div class="cards">
+<section class="card chosen" id="words-a"><header><h3><em>A — recommended</em> "None of their units is in this turn's report."</h3></header>
+<div class="app" style="min-height:140px"><div class="pop" style="left:8px;top:8px"><h4><a>‹</a> Greenhollow Traders (58)</h4><div class="lbl">Attitude</div><div><b>Neutral</b></div><div class="lbl">Last seen</div><div style="font-size:10.5px;color:var(--dim)">None of their units is in this turn's report.</div><div class="hx"><span>plain (12,34)</span><span><span class="history">turn 41</span> · 2 units</span></div></div></div></section>
+<section class="card" id="words-b"><header><h3><em>B</em> "Where their units were in earlier reports."</h3></header>
+<div class="app" style="min-height:140px"><div class="pop" style="left:8px;top:8px"><h4><a>‹</a> Greenhollow Traders (58)</h4><div class="lbl">Attitude</div><div><b>Neutral</b></div><div class="lbl">Last seen</div><div style="font-size:10.5px;color:var(--dim)">Where their units were in earlier reports.</div><div class="hx"><span>plain (12,34)</span><span><span class="history">turn 41</span> · 2 units</span></div></div></div></section></div>
+<h2>3 · An ally whose report you merged in</h2><div class="cards">
+<section class="card chosen" id="merged-a"><header><h3><em>A — recommended</em> Marked brass with ⌂, as in your attitudes list</h3></header>
+<div class="palette"><div class="query">thorn<span class="cursor">|</span></div><div class="row active"><span class="place" style="color:var(--brass)">Thornwood Free Company (31) ⌂</span><span class="right"><span class="att ally">Ally</span><span class="kind">faction</span></span></div></div>
+<ul class="notes"><li class="good">Same mark everywhere the app names a merged ally.</li></ul></section>
+<section class="card" id="merged-b"><header><h3><em>B</em> No mark</h3></header>
+<div class="palette"><div class="query">thorn<span class="cursor">|</span></div><div class="row active"><span class="place">Thornwood Free Company (31)</span><span class="right"><span class="att ally">Ally</span><span class="kind">faction</span></span></div></div>
+<ul class="notes"><li class="good">Calmer row.</li><li class="bad">The one place a merged ally isn't told apart.</li></ul></section></div>
+<h2>Already settled, drawn for the record</h2>
+<div class="state">No report loaded: no faction rows. No match: the existing <i>nothing matches</i>. A unit whose owner is concealed adds no faction. No attitude declared and no default in the report: <i>not declared</i>, dim italic, as the faction details already say. Esc or a click outside closes the palette and returns focus where it came from; choosing a faction moves focus into its details, and closing those returns focus to your faction chip. Nothing is saved.</div>
+</body></html>
+</main></body></html>
