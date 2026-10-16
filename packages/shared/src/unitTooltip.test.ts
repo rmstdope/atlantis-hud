@@ -361,9 +361,9 @@ describe("the silver section", () => {
     ]);
   });
 
-  // `ah-2zku`: a faction-mate's upkeep this unit paid is maintenance it paid, so the rows still
-  // add up and the month end is the cell's.
-  it("counts what a unit paid of a faction-mate's upkeep as its upkeep", () => {
+  // `ah-kv6c`, reversing `ah-2zku`'s folding: Upkeep is what the unit's own men cost, and what it
+  // paid of faction-mates' upkeep is a row of its own - the rows still add up to the month end.
+  it("the_popup_shows_lent_upkeep_on_its_own_row", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
       aUnitSilver({
@@ -384,8 +384,38 @@ describe("the silver section", () => {
       { label: "In, in time", value: "1578" },
       { label: "In, too late", value: "67" },
       { label: "Out", value: "0" },
-      { label: "Upkeep", value: "130" },
+      { label: "Upkeep", value: "30" },
+      { label: "Lent for upkeep", value: "100" },
       { label: "At month end", value: "1515" }
+    ]);
+  });
+
+  // The verification case: 2 orcs at 10 each (`rules/economy_maintenance`, Trident) worked 45 and
+  // lent 25 to faction-mates in the hex.
+  it("the_popup_no_longer_reads_lent_silver_as_the_lenders_own_upkeep", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "3431" }),
+      aUnitSilver({
+        held: 0,
+        income: 45,
+        lateIncome: 45,
+        expense: 0,
+        upkeep: 20,
+        upkeepLent: 25,
+        atMonthEnd: 45
+      }),
+      false,
+      true
+    );
+
+    expect(summary.silver?.rows).toEqual([
+      { label: "Held now", value: "0" },
+      { label: "In, in time", value: "0" },
+      { label: "In, too late", value: "45" },
+      { label: "Out", value: "0" },
+      { label: "Upkeep", value: "20" },
+      { label: "Lent for upkeep", value: "25" },
+      { label: "At month end", value: "0" }
     ]);
   });
 

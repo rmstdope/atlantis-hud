@@ -205,16 +205,7 @@ function summariseSilver(
       value: atMostIf(figure(silver.lateIncome, unknown), silver.lateIncome, silver.lateIncomeAtMost)
     },
     { label: "Out", value: figure(silver.expense, unknown) },
-    // What the unit paid of faction-mates' upkeep is upkeep it paid, so the rows still add up to
-    // the month end (`ah-2zku`).
-    ...(countUpkeep
-      ? [
-          {
-            label: "Upkeep",
-            value: figure(silver.upkeep === null ? null : silver.upkeep + silver.upkeepLent, unknown)
-          }
-        ]
-      : []),
+    ...(countUpkeep ? upkeepRows(silver, unknown) : []),
     {
       label: "At month end",
       value: atMostIf(figure(end, unknown), end, shareBoundedByAnUnreadUnit(silver))
@@ -222,6 +213,20 @@ function summariseSilver(
   ];
 
   return { rows, note: silverNote(unit, silver, warned, countUpkeep, hexShort) };
+}
+
+/**
+ * The upkeep rows, shown while the Silver column counts upkeep (`ah-1wcw.4`): what the unit's own
+ * men cost, then what it paid of faction-mates' upkeep at step 4 of the payment order
+ * (`rules/economy_maintenance`), each on a row of its own so the first is never read as the
+ * second (`ah-kv6c`). The rows still add up to the month end: `shownEnd` takes off both.
+ */
+function upkeepRows(silver: UnitSilver, unknown: string): TooltipEntry[] {
+  const rows: TooltipEntry[] = [{ label: "Upkeep", value: figure(silver.upkeep, unknown) }];
+  if (silver.upkeepLent > 0) {
+    rows.push({ label: "Lent for upkeep", value: String(silver.upkeepLent) });
+  }
+  return rows;
 }
 
 /**
