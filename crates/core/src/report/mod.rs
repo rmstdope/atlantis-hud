@@ -88,6 +88,31 @@ pub(crate) fn opens_a_region(line: &LogicalLine) -> bool {
     parse_region_header(body).is_some()
 }
 
+/// Marks the lines of the `Events during turn:` section, which no region header can be.
+///
+/// An event can name a hex exactly as a region header does - `mountain (16,70) in Fe'eind has been
+/// utterly annihilated.` - so the section is found by its shape instead: the engine prints the
+/// heading, every event back to back, and then one blank line (`faction.cpp`, `WriteReport`).
+/// Blank lines are gone after unwrapping, so the section ends where the line numbers skip one.
+fn event_lines(lines: &[LogicalLine]) -> Vec<bool> {
+    let mut marks = vec![false; lines.len()];
+    let mut previous_end: Option<usize> = None;
+    for (index, line) in lines.iter().enumerate() {
+        if let Some(end) = previous_end {
+            if line.line_start == end + 1 {
+                marks[index] = true;
+                previous_end = Some(line.line_end);
+                continue;
+            }
+            previous_end = None;
+        }
+        if line.indent == 0 && line.body() == "Events during turn:" {
+            previous_end = Some(line.line_end);
+        }
+    }
+    marks
+}
+
 /// Parses a turn report.
 ///
 /// Sections the parser does not model yet are simply not region headers, so they fall away without
@@ -95,10 +120,11 @@ pub(crate) fn opens_a_region(line: &LogicalLine) -> bool {
 #[must_use]
 pub fn parse_report_full(source: &str) -> ParsedReport {
     let lines = unwrap_lines(source);
+    let events = event_lines(&lines);
     let starts: Vec<usize> = lines
         .iter()
         .enumerate()
-        .filter(|(_, line)| opens_a_region(line))
+        .filter(|(index, line)| !events[*index] && opens_a_region(line))
         .map(|(index, _)| index)
         .collect();
 
