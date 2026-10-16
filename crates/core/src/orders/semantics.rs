@@ -1147,7 +1147,13 @@ fn settle_report_wide(
                     super::transport::ShipmentPhase::ToQuartermaster,
                     &delivered,
                 );
-                credit_shipped_goods(hexes, phase, &shipped, Credit::Silver);
+                credit_shipped_goods(
+                    hexes,
+                    phase,
+                    super::transport::ShipmentPhase::ToQuartermaster,
+                    &shipped,
+                    Credit::Silver,
+                );
                 delivered.extend(shipped);
             }
             ReportWideStep::ShipBetweenQuartermasters => {
@@ -1158,7 +1164,13 @@ fn settle_report_wide(
                     super::transport::ShipmentPhase::BetweenQuartermasters,
                     &delivered,
                 );
-                credit_shipped_goods(hexes, phase, &shipped, Credit::Silver);
+                credit_shipped_goods(
+                    hexes,
+                    phase,
+                    super::transport::ShipmentPhase::BetweenQuartermasters,
+                    &shipped,
+                    Credit::Silver,
+                );
                 delivered.extend(shipped);
             }
             ReportWideStep::ShipFromQuartermasters => {
@@ -1169,9 +1181,21 @@ fn settle_report_wide(
                     super::transport::ShipmentPhase::FromQuartermaster,
                     &delivered,
                 );
-                credit_shipped_goods(hexes, phase, &shipped, Credit::Silver);
+                credit_shipped_goods(
+                    hexes,
+                    phase,
+                    super::transport::ShipmentPhase::FromQuartermaster,
+                    &shipped,
+                    Credit::Silver,
+                );
                 delivered.extend(shipped);
-                credit_shipped_goods(hexes, phase, &delivered, Credit::OtherGoods);
+                credit_shipped_goods(
+                    hexes,
+                    phase,
+                    super::transport::ShipmentPhase::FromQuartermaster,
+                    &delivered,
+                    Credit::OtherGoods,
+                );
             }
             ReportWideStep::ChargeRefusedShipments => charge_refused_shipments(hexes, phase),
             // Steps 1 to 3 read holdings after every shipment, and step 4 lends what they leave.
@@ -6004,7 +6028,8 @@ struct Ledger<'a> {
     /// against the purse (`ah-8bzm`).
     pub(crate) refused_shipments_charged: bool,
     /// TRANSPORT as the engine runs it (`runorders.cpp`: `RunTransportOrders`): every shipment
-    /// that moves silver, in settlement order, each with what it sent, what it paid and what it
+    /// that moves silver - ships it or pays a fee - in settlement order, each with what it sent,
+    /// what it paid and what it
     /// drew on the sharers, and the silver each sub-phase credits as it ends
     /// (`rules/sequenceofevents`, `ah-rt4p`). **The one record of TRANSPORT's silver**: the purse
     /// lends through it one step at a time ([`Lending::at_shipment`]), so a reader asks for the
@@ -6218,6 +6243,8 @@ struct ShipmentName {
 /// One step of TRANSPORT's run ([`Ledger::transport_run`]).
 #[derive(Debug, Clone)]
 struct TransportStep {
+    /// The sub-phase it runs in (`rules/sequenceofevents`).
+    phase: super::transport::ShipmentPhase,
     /// The shipment, or `None` for the silver a sub-phase credits as it ends (`ah-rt4p`).
     shipment: Option<ShipmentName>,
     /// The silver the step moved, by unit id: a send and a fee out, a receipt in.
@@ -6237,6 +6264,34 @@ enum TransportPoint<'a> {
     /// and this is the seam that reads what one lent once it has (`ah-3ffm`).
     #[cfg_attr(not(test), allow(dead_code))]
     After(&'a ShipmentName),
+}
+
+impl TransportStep {
+    /// How many of `run`'s steps the fees were taken by: every shipment of the first two
+    /// sub-phases, and the first's receipts. Only the second sub-phase charges a fee
+    /// ([`super::transport::priced`] charges between quartermasters alone), so what the second's
+    /// receipts and the third sub-phase move can have paid no fee and no loan (`ah-k719`). The run
+    /// is appended in order, so those steps lead it.
+    fn fees_taken(run: &[TransportStep]) -> usize {
+        use super::transport::ShipmentPhase;
+        run.iter()
+            .take_while(|step| match step.phase {
+                ShipmentPhase::ToQuartermaster => true,
+                ShipmentPhase::BetweenQuartermasters => step.shipment.is_some(),
+                ShipmentPhase::FromQuartermaster => false,
+            })
+            .count()
+    }
+
+    /// What `steps` moved of `unit_id`'s silver.
+    fn moved(steps: &[TransportStep], unit_id: &str) -> i64 {
+        steps
+            .iter()
+            .flat_map(|step| &step.silver)
+            .filter(|(who, _)| who == unit_id)
+            .map(|(_, amount)| amount)
+            .sum()
+    }
 }
 
 impl TransportPoint<'_> {
@@ -14448,10 +14503,24 @@ fn silver_at(ledger: &Ledger<'_>, unit_id: &str, moment: LendingMoment) -> i64 {
     match moment {
         LendingMoment::MonthEnd => relieved_balance(ledger, unit_id, SILVER),
         LendingMoment::Cast => ledger.state.balance_at(StatePhase::Cast, unit_id, SILVER),
-        // At TRANSPORT, the run as it stands: the purse's own fold reads it one step at a time
-        // instead ([`Lending::settle`], `ah-3ffm`).
+        // As the fees were taken ([`TransportStep::fees_taken`]): nothing TRANSPORT moved after
+        // them pays a loan back or is lent for (`ah-k719`). The purse's own fold reads the run one
+        // step at a time instead ([`Lending::settle`], `ah-3ffm`).
+        LendingMoment::Transport => transport_silver_at(
+            ledger,
+            unit_id,
+            TransportStep::fees_taken(&ledger.transport_run),
+        ),
         _ => unlent_silver_at(ledger, unit_id, moment.phase()),
     }
+}
+
+/// `unit_id`'s silver after the first `steps` steps of TRANSPORT's run ([`Ledger::transport_run`]):
+/// what it held before the first shipment, and what those steps moved.
+fn transport_silver_at(ledger: &Ledger<'_>, unit_id: &str, steps: usize) -> i64 {
+    let run = &ledger.transport_run;
+    unlent_silver_at(ledger, unit_id, StatePhase::Transport) - TransportStep::moved(run, unit_id)
+        + TransportStep::moved(&run[..steps], unit_id)
 }
 
 /// What a unit that does not pool its silver overdrew as the spells were cast, counted at every
@@ -16091,21 +16160,40 @@ impl Lending {
         // cast would draw on silver that arrived after the gift (`ah-2fn5`). What the sharers did
         // fund is lent below, before the cast moment, on the sharers it was drawn on (`ah-msds`).
         // At TRANSPORT, the unit's silver after the first `read` steps of the run: what it held
-        // before the first shipment, and what those steps moved (`ah-3ffm`).
-        let moved = |unit_id: &str, steps: &[TransportStep]| -> i64 {
-            steps
-                .iter()
-                .flat_map(|step| &step.silver)
-                .filter(|(who, _)| who == unit_id)
-                .map(|(_, amount)| amount)
-                .sum()
-        };
+        // before the first shipment, and what those steps moved ([`transport_silver_at`],
+        // `ah-3ffm`). Each unit's running total is worked out once, here, rather than at every
+        // reading of every step.
+        let index_of: BTreeMap<&str, usize> = hex
+            .units
+            .iter()
+            .enumerate()
+            .map(|(index, ordered)| (ordered.unit.unit_id.as_str(), index))
+            .collect();
+        let mut moved_by: Vec<Vec<i64>> = vec![vec![0; run.len() + 1]; hex.units.len()];
+        for (step_index, step) in run.iter().enumerate() {
+            for totals in &mut moved_by {
+                totals[step_index + 1] = totals[step_index];
+            }
+            for (who, amount) in &step.silver {
+                if let Some(&index) = index_of.get(who.as_str()) {
+                    moved_by[index][step_index + 1] += amount;
+                }
+            }
+        }
+        let before_run: Vec<i64> = hex
+            .units
+            .iter()
+            .map(|ordered| {
+                let unit_id = &ordered.unit.unit_id;
+                unlent_silver_at(ledger, unit_id, StatePhase::Transport)
+                    - TransportStep::moved(&ledger.transport_run, unit_id)
+            })
+            .collect();
+        let fees_taken = TransportStep::fees_taken(run);
         let own = |index: usize, at: LendingMoment, read: usize| {
             let unit_id = &hex.units[index].unit.unit_id;
             let silver = if at == LendingMoment::Transport {
-                unlent_silver_at(ledger, unit_id, StatePhase::Transport)
-                    - moved(unit_id, &ledger.transport_run)
-                    + moved(unit_id, &run[..read])
+                before_run[index] + moved_by[index][read]
             } else {
                 silver_at(ledger, unit_id, at)
             };
@@ -16230,7 +16318,7 @@ impl Lending {
                     &hex.units[index],
                     at,
                     own(index, at, read) + carried + refused_shipments(index),
-                    || own(index, LendingMoment::Transport, run.len()) + carried,
+                    || own(index, LendingMoment::Transport, fees_taken) + carried,
                 )
             };
             let needs: Vec<i64> = (0..hex.units.len())
@@ -22047,14 +22135,19 @@ impl SettledShipment {
         }
     }
 
-    fn credit_receiver(&self, ledger: &mut Ledger<'_>, phase: StatePhase) {
+    fn credit_receiver(
+        &self,
+        ledger: &mut Ledger<'_>,
+        phase: StatePhase,
+        sub_phase: super::transport::ShipmentPhase,
+    ) {
         if let Some(amount) = self.silver_change_for(&self.target) {
             // The receipts a sub-phase credits as it ends are one step of the run.
             if !matches!(
                 ledger.transport_run.last(),
-                Some(TransportStep { shipment: None, .. })
+                Some(TransportStep { shipment: None, phase, .. }) if *phase == sub_phase
             ) {
-                begin_transport_step(ledger, None, Vec::new());
+                begin_transport_step(ledger, sub_phase, None, Vec::new());
             }
             transport_silver(
                 ledger,
@@ -22075,14 +22168,17 @@ impl SettledShipment {
     }
 }
 
-/// Open the next step of TRANSPORT's run ([`Ledger::transport_run`]): `shipment` with what it
-/// drew on the sharers, or `None` for the silver a sub-phase credits as it ends.
+/// Open the next step of TRANSPORT's run ([`Ledger::transport_run`]) in sub-phase `phase`:
+/// `shipment` with what it drew on the sharers, or `None` for the silver the sub-phase credits as
+/// it ends.
 fn begin_transport_step(
     ledger: &mut Ledger<'_>,
+    phase: super::transport::ShipmentPhase,
     shipment: Option<ShipmentName>,
     draws: Vec<(Lender, i64)>,
 ) {
     ledger.transport_run.push(TransportStep {
+        phase,
         shipment,
         silver: Vec::new(),
         draws,
@@ -22453,11 +22549,14 @@ fn shipping_bills(
                     unmeasured.world_wrap = true;
                     if !conditional {
                         ledger.cut_shipments.extend(cut.take());
-                        begin_transport_step(
-                            ledger,
-                            Some(name.clone()),
-                            std::mem::take(&mut draws),
-                        );
+                        if tag.eq_ignore_ascii_case(SILVER) {
+                            begin_transport_step(
+                                ledger,
+                                sub_phase,
+                                Some(name.clone()),
+                                std::mem::take(&mut draws),
+                            );
+                        }
                         delivered.push(settle_shipment_delivery(
                             ledger,
                             settled_at,
@@ -22477,11 +22576,14 @@ fn shipping_bills(
                 ) => {
                     if !conditional {
                         ledger.cut_shipments.extend(cut.take());
-                        begin_transport_step(
-                            ledger,
-                            Some(name.clone()),
-                            std::mem::take(&mut draws),
-                        );
+                        if tag.eq_ignore_ascii_case(SILVER) {
+                            begin_transport_step(
+                                ledger,
+                                sub_phase,
+                                Some(name.clone()),
+                                std::mem::take(&mut draws),
+                            );
+                        }
                         delivered.push(settle_shipment_delivery(
                             ledger,
                             settled_at,
@@ -22514,6 +22616,7 @@ fn shipping_bills(
                     if cost <= purse {
                         begin_transport_step(
                             ledger,
+                            sub_phase,
                             Some(name.clone()),
                             std::mem::take(&mut draws),
                         );
@@ -22687,6 +22790,7 @@ enum Credit {
 fn credit_shipped_goods(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
     phase: StatePhase,
+    sub_phase: super::transport::ShipmentPhase,
     delivered: &[SettledShipment],
     which: Credit,
 ) {
@@ -22696,7 +22800,7 @@ fn credit_shipped_goods(
         }
         for (hex, ledger) in hexes.iter_mut() {
             if hex.find(&shipment.target).is_some() {
-                shipment.credit_receiver(ledger, phase);
+                shipment.credit_receiver(ledger, phase, sub_phase);
                 break;
             }
         }
@@ -60537,6 +60641,59 @@ BUILD
         assert!(lending.covered());
     }
 
+    use crate::orders::transport::ShipmentPhase;
+    /// TRANSPORT's second sub-phase, the one that charges fees (`rules/sequenceofevents`).
+    const BETWEEN: ShipmentPhase = ShipmentPhase::BetweenQuartermasters;
+    /// TRANSPORT's last sub-phase, after every fee.
+    const FROM: ShipmentPhase = ShipmentPhase::FromQuartermaster;
+
+    /// Read outside the purse's fold, a unit's TRANSPORT silver is the run as the fees were taken
+    /// - every shipment of the first two sub-phases and the first's receipts - and not what the
+    /// second's receipts and the third sub-phase moved after them, which no fee or loan can have
+    /// spent: a leaver's before-upkeep reading at the month's end rests on it (`ah-k719`; `ah-3ffm`
+    /// review, finding 1).
+    #[test]
+    fn silver_at_transport_is_the_run_as_the_fees_were_taken() {
+        let hex_region = region(vec![with_silver(unit("906"), 10)]);
+        let ordered = OrderedUnits::read("unit 906\nTRANSPORT 901 9 FUR\nTRANSPORT 905 20 SILV\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let rules = trident_rules();
+        let mut ledger = ledger_for(&hex, Some(&rules));
+        let fee = ShipmentName {
+            sender: "906".to_string(),
+            line: 2,
+        };
+        let send = ShipmentName {
+            sender: "906".to_string(),
+            line: 3,
+        };
+        book_shipment(
+            &mut ledger,
+            BETWEEN,
+            &fee,
+            vec![],
+            &[("906", -5, SilverChangeCause::Shipped)],
+        );
+        begin_transport_step(&mut ledger, BETWEEN, None, vec![]);
+        transport_silver(
+            &mut ledger,
+            StatePhase::Transport,
+            "906",
+            50,
+            SilverChangeCause::Received,
+            None,
+            None,
+        );
+        book_shipment(
+            &mut ledger,
+            FROM,
+            &send,
+            vec![],
+            &[("906", -20, SilverChangeCause::Sent)],
+        );
+        assert_eq!(silver_at(&ledger, "906", LendingMoment::Transport), 5);
+    }
+
     /// A shipment of `sender`'s that has not run: read `Before` it, the purse is the run so far.
     fn unrun(sender: &str) -> ShipmentName {
         ShipmentName {
@@ -60549,11 +60706,12 @@ BUILD
     /// what it drew on the sharers, then its silver through [`transport_silver`].
     fn book_shipment(
         ledger: &mut Ledger<'_>,
+        phase: ShipmentPhase,
         name: &ShipmentName,
         draws: Vec<(Lender, i64)>,
         silver: &[(&str, i64, SilverChangeCause)],
     ) {
-        begin_transport_step(ledger, Some(name.clone()), draws);
+        begin_transport_step(ledger, phase, Some(name.clone()), draws);
         for &(who, amount, cause) in silver {
             transport_silver(
                 ledger,
@@ -60574,8 +60732,9 @@ BUILD
     /// (`unit.cpp`: `ConsumeShared`). Read at each shipment, never at the month's end, which lends
     /// again and hides a draw lent at the wrong point of the run (`docs/retrospectives/ah-9yvv.md`).
     /// Lent ahead of its shipment - before the fee, as the old after-fees split's removal did - the
-    /// draw would leave the fee only 35 to drain, and 903 lending 35 of it; lent after the run, the
-    /// fold would lend the send's overdraft once more (`ah-3ffm`).
+    /// draw would leave the fee only 35 to drain, and 903 lending 35 of it; lent once the run's
+    /// fold is done, the draw would be lent twice - once by the fold for the send's overdraft, and
+    /// again as a draw (`ah-3ffm`).
     #[test]
     fn the_purse_lends_a_transport_draw_at_its_own_shipment() {
         let hex_region = region(vec![
@@ -60597,12 +60756,14 @@ BUILD
         };
         book_shipment(
             &mut ledger,
+            BETWEEN,
             &fee,
             vec![],
             &[("906", -45, SilverChangeCause::Shipped)],
         );
         book_shipment(
             &mut ledger,
+            FROM,
             &draw,
             vec![(Lender::Unit(1), 10)],
             &[("906", -10, SilverChangeCause::Sent)],
@@ -60652,11 +60813,12 @@ BUILD
         };
         book_shipment(
             &mut ledger,
+            BETWEEN,
             &fee,
             vec![],
             &[("906", -45, SilverChangeCause::Shipped)],
         );
-        begin_transport_step(&mut ledger, None, vec![]);
+        begin_transport_step(&mut ledger, BETWEEN, None, vec![]);
         transport_silver(
             &mut ledger,
             StatePhase::Transport,
