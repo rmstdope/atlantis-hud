@@ -17339,6 +17339,9 @@ struct SilverFigures {
 /// as a negative figure (`ah-j5s1`). A unit never moves silver to itself, so that is `0` for a set
 /// of one. The upkeep is what the members are left paying ([`unpaid_upkeep`]) when the sentence is
 /// read at the month's end, and nothing at any earlier moment, which settles before maintenance.
+/// At the month's end the food that paid part of a member's fee ([`food_counted_in`]) is counted
+/// in too: it is not silver they can have, but counted on both sides it makes the sentence state
+/// the whole fee (`ah-pyiy`), for a sharing hex's counted units as for one unit (`ah-ex2l`).
 fn silver_figures(
     hex: &Hex<'_>,
     ledger: &Ledger<'_>,
@@ -17351,13 +17354,17 @@ fn silver_figures(
         .iter()
         .map(|member| member.unit.unit_id.as_str())
         .collect();
-    let can_have = silver_can_have(hex, ledger, members, moment, walking)
-        + silver_unfunded_between(ledger, &ids);
-    let upkeep = if moment == ShortfallMoment::MonthEnd {
-        ids.iter().map(|who| unpaid_upkeep(ledger, who)).sum()
+    let (upkeep, food) = if moment == ShortfallMoment::MonthEnd {
+        (
+            ids.iter().map(|who| unpaid_upkeep(ledger, who)).sum(),
+            ids.iter().map(|who| food_counted_in(ledger, who)).sum(),
+        )
     } else {
-        0
+        (0, 0)
     };
+    let can_have = silver_can_have(hex, ledger, members, moment, walking)
+        + silver_unfunded_between(ledger, &ids)
+        + food;
     SilverFigures {
         figures: ShortfallFigures { short, can_have },
         upkeep,
@@ -18261,26 +18268,14 @@ fn report_shortfalls(
             // A GIVE's likewise, which runs before both (`ah-4k84`), and a cut `BUY`'s, at the
             // market (`ah-y70h`).
             let moment = unit_shortfall_moment(ledger, unit_id, short);
-            let food = if moment == ShortfallMoment::MonthEnd {
-                food_counted_in(ledger, unit_id)
-            } else {
-                0
-            };
             // What the unit can have is the one answer the hex's sentence gives too (`ah-w2ou`):
             // what it was given or took this month counts, exactly as `short` already does
             // through the ledger's own `apply` (M2, `ah-jw85`), and so does what it claimed
-            // (`ah-6ak4`). It is the unit as a set of one, read by the function the hex's sentence
-            // reads its counted units with (`ah-wka4`). The food is not silver it can have: it is
-            // the part of the fee food paid, counted on both sides so the sentence states the
-            // whole fee.
-            let SilverFigures {
-                figures: ShortfallFigures { can_have, .. },
-                upkeep,
-            } = silver_figures(hex, ledger, &[ordered], short, moment, None);
-            let figures = ShortfallFigures {
-                short,
-                can_have: can_have + food,
-            };
+            // (`ah-6ak4`), and so does the food that paid part of its fee (`ah-ex2l`). It is the
+            // unit as a set of one, read by the function the hex's sentence reads its counted
+            // units with (`ah-wka4`).
+            let SilverFigures { figures, upkeep } =
+                silver_figures(hex, ledger, &[ordered], short, moment, None);
             let mut finding = ordered.finding(
                 hex,
                 codes::NOT_ENOUGH_SILVER,
@@ -47700,6 +47695,35 @@ BUILD
         assert_eq!(
             only(findings).message,
             "short $30: this unit can have $60 and its orders and upkeep spend $90"
+        );
+    }
+
+    /// `ah-ex2l`: the hex's sentence, once a third unit shares, counts the food that paid part of
+    /// the leader's fee on both sides as the leader's own sentence does above - the same short,
+    /// can-have and spend whether or not anybody shares. The sharer holds nothing and is fed by
+    /// no fee of its own, so it adds nothing either way (`rules/share`).
+    #[test]
+    fn a_sharing_hex_counts_the_food_that_paid_part_of_a_fee_as_the_unit_alone_does() {
+        let findings = silver_warnings(check_against(
+            &trident_rules(),
+            vec![region(vec![
+                trident_leader("5", 2, 0),
+                sharing(with_men(with_silver(starving(unit("7")), 0), 0)),
+            ])],
+            "",
+        ));
+        let hex: Vec<String> = findings
+            .into_iter()
+            .map(|finding| finding.message)
+            .filter(|message| message.starts_with("the units in this hex"))
+            .collect();
+        assert_eq!(
+            hex,
+            vec![
+                "the units in this hex are short $30 between them: they can have $60 and their \
+                 orders and upkeep spend $90"
+                    .to_string()
+            ]
         );
     }
 
