@@ -1,4 +1,4 @@
-import type { ChangeEvent, DragEvent, ReactNode } from "react";
+import type { ChangeEvent, DragEvent, MutableRefObject, ReactNode } from "react";
 import { useRef } from "react";
 import type { MageSheetChip } from "../alliedMageChip";
 import type { MapLevel } from "../hexMapModel";
@@ -10,6 +10,7 @@ import {
   turnReportIsWarning
 } from "../turnReport";
 import { ExportMenu } from "./ExportMenu";
+import { importingLabel } from "./paletteTurnActions";
 import { ChipPopover } from "./popover";
 import { SettingsButton } from "./SettingsButton";
 import type { UpdateMark } from "./appUpdate";
@@ -50,16 +51,6 @@ export type FetchHeaderControl = {
   label: string;
   onFetch: () => void;
 };
-
-/**
- * What the import button says while it is working.
- *
- * Counted only for a batch. One report is over before a count could be read, and "Importing 1/1…"
- * is a progress bar for a journey of one step.
- */
-function importingLabel(progress: { done: number; total: number } | null): string {
-  return progress === null ? "Importing…" : `Importing ${progress.done}/${progress.total}…`;
-}
 
 type AppHeaderProps = {
   gameName: string;
@@ -191,6 +182,11 @@ type AppHeaderProps = {
    * already plays.
    */
   fetchControl?: FetchHeaderControl;
+  /**
+   * The hidden file input behind Import, when the shell wants to open the same picker itself - the
+   * command palette's "Import reports" row does (ah-mlls.7). The header keeps its own otherwise.
+   */
+  importInputRef?: MutableRefObject<HTMLInputElement | null>;
   /** Whether the settings panel is showing. Same split as the picker: header owns the button. */
   settingsOpen: boolean;
   onToggleSettings: () => void;
@@ -251,12 +247,14 @@ export function AppHeader({
   canSend = false,
   sendDisabledReason,
   fetchControl,
+  importInputRef,
   settingsOpen,
   onToggleSettings,
   updateMark,
   settings
 }: AppHeaderProps) {
-  const fileRef = useRef<HTMLInputElement | null>(null);
+  const ownFileRef = useRef<HTMLInputElement | null>(null);
+  const fileRef = importInputRef ?? ownFileRef;
   const level = useWorkspaceStore((state) => state.level);
   const setLevel = useWorkspaceStore((state) => state.setLevel);
   const toggle = (id: HeaderPopoverId) => onOpenPopover(openPopover === id ? null : id);

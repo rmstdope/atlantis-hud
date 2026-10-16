@@ -2,12 +2,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { NewAgeFetchDialog } from "./NewAgeFetchDialog";
-import type { NewAgeFetchPhase } from "./newAgeFetchView";
+import type { NewAgeFetchPhase, NewAgeFetchScope } from "./newAgeFetchView";
 import { NEW_AGE_HOST } from "./newAgeSignInView";
 
-const draw = (phase: NewAgeFetchPhase) =>
+const draw = (phase: NewAgeFetchPhase, initialScope?: NewAgeFetchScope) =>
   renderToStaticMarkup(
     <NewAgeFetchDialog
+      initialScope={initialScope}
       rulesetLabel="New Age: Arcanum"
       worldName="Arcanum"
       host={NEW_AGE_HOST}
@@ -68,4 +69,20 @@ describe("NewAgeFetchDialog", () => {
     expect(markup).toContain("Signing in…");
     expect(markup).not.toContain('role="progressbar"');
   });
+
+  it("opens on Latest report unless told otherwise", () => {
+    const markup = draw({ kind: "ready", message: null, retype: false });
+    expect(radio(markup, "newage-fetch-scope-this-turn")).toContain("checked");
+    expect(radio(markup, "newage-fetch-scope-history")).not.toContain("checked");
+  });
+
+  it("opens with the palette's choice already ticked (ah-mlls.7)", () => {
+    const markup = draw({ kind: "ready", message: null, retype: false }, "thisTurnAndHistory");
+    expect(radio(markup, "newage-fetch-scope-history")).toContain("checked");
+    expect(radio(markup, "newage-fetch-scope-this-turn")).not.toContain("checked");
+  });
 });
+
+function radio(markup: string, testId: string): string {
+  return markup.match(new RegExp(`<input[^>]*data-testid="${testId}"[^>]*>`))?.[0] ?? "";
+}
