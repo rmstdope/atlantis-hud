@@ -21941,6 +21941,25 @@ fn silver_purse_unknowable(hex: &Hex<'_>, ledger: &Ledger<'_>, unit_id: &str) ->
             .any(|other| other.shares() && ledger.doubted.contains(&other.unit.unit_id))
 }
 
+/// What `sender` can ship of silver as the engine reads it, `Unit::GetSharedNum` (`unit.cpp`):
+/// its own, and every sharing faction-mate's in the hex whatever its own flag - each as
+/// [`Ledger::transport_holding`] reads it, so what earlier shipments, fees and loans took is
+/// already out (`ah-0aqx` review, finding 1).
+fn shared_silver_at_transport(hex: &Hex<'_>, ledger: &Ledger<'_>, sender: &str) -> i64 {
+    let own = ledger.transport_holding(hex, sender, SILVER).max(0);
+    let sharers: i64 = hex
+        .units
+        .iter()
+        .filter(|other| other.unit.unit_id != sender && other.shares())
+        .map(|other| {
+            ledger
+                .transport_holding(hex, &other.unit.unit_id, SILVER)
+                .max(0)
+        })
+        .sum();
+    own + sharers
+}
+
 /// The silver each sender of an exact silver `TRANSPORT` holds as the engine checks every
 /// shipment, once and before any of them runs (`runorders.cpp`: `CheckTransportOrders`, then
 /// `RunTransportOrders`): [`Ledger::silver_at_transport_check`] (`ah-0aqx`). Taken before the
@@ -21962,7 +21981,7 @@ fn snapshot_transport_check(hex: &Hex<'_>, ledger: &mut Ledger<'_>, ruleset: Opt
         if !ships_exact_silver || silver_purse_unknowable(hex, ledger, sender) {
             continue;
         }
-        let held = ledger.transport_holding(hex, sender, SILVER).max(0);
+        let held = shared_silver_at_transport(hex, ledger, sender);
         ledger
             .silver_at_transport_check
             .insert(sender.to_string(), held);
@@ -22101,9 +22120,18 @@ fn shipping_bills(
                 .get(&(sender.to_string(), tag.clone()))
                 .copied()
                 .unwrap_or_default();
-            let held = (ledger.transport_holding(hex, sender, &tag) + arrived - already).max(0);
-            let quantity = super::transfers::quantity_moved(amount, held);
             let conditional = acceptance == super::transport::Acceptance::AcceptanceUnknown;
+            // An exact silver line draws on the faction's sharers too (`GetSharedNum`); `ALL`
+            // ships the unit's own (`u->items.GetNum`), as does every other good here.
+            let exact_silver = matches!(amount, Amount::Exact(_))
+                && tag.eq_ignore_ascii_case(SILVER)
+                && !silver_purse_unknowable(hex, ledger, sender);
+            let held = if exact_silver {
+                shared_silver_at_transport(hex, ledger, sender)
+            } else {
+                (ledger.transport_holding(hex, sender, &tag) + arrived - already).max(0)
+            };
+            let quantity = super::transfers::quantity_moved(amount, held);
             // An exact silver ask the sender cannot meet (`ah-0aqx`, `runorders.cpp`). Refused
             // outright where it exceeds what was held as shipping began (`CheckTransportOrders`:
             // `o->type = NORDERS`); otherwise cut to what is left as it runs (`RunTransportOrders`:
@@ -56048,6 +56076,70 @@ BUILD
             );
             assert!(silver_shipped(&review, &orders, "906") > 0, "{orders}");
         }
+    }
+
+    /// `Unit::GetSharedNum` (`unit.cpp`) counts every sharing faction-mate's silver in the region
+    /// whatever the sender's own flag, and `ConsumeShared` draws the rest from them (`rules/share`:
+    /// a sharer supplies "any other unit of your faction that needs them"). So non-sharing 906's $5
+    /// and sharer 903's $50 meet `TRANSPORT 905 10 SILV` in full: 10 ship, 903 lends 5, and nothing
+    /// is said (`ah-0aqx` review, finding 1).
+    #[test]
+    fn a_non_sharing_sender_ships_silver_a_sharing_mate_lends_it() {
+        let mut regions = two_senders(vec![unit("905"), sharing(with_silver(unit("903"), 50))]);
+        let sender = regions[0]
+            .units
+            .iter_mut()
+            .find(|unit| unit.unit_id == "906")
+            .expect("two_senders has 906");
+        *sender = with_silver(sender.clone(), 5);
+        let orders = "unit 906\nTRANSPORT 905 10 SILV\n";
+        let review = review_turn(&report(regions), orders, Some(&ruleset()), with_map());
+        assert_eq!(
+            silver_shipped(&review, orders, "906"),
+            10,
+            "{:?}",
+            shipment_silver(&review, "906")
+        );
+        assert!(
+            shipment_warnings(&review, "906").is_empty(),
+            "{:?}",
+            shipment_warnings(&review, "906")
+        );
+        assert_eq!(
+            shipment_silver(&review, "903").at_month_end,
+            Some(45),
+            "{:?}",
+            shipment_silver(&review, "903")
+        );
+    }
+
+    /// `CheckTransportOrders` judges every shipment before any runs, so a $0 quartermaster cannot
+    /// forward an exact amount it is only sent this month: `TRANSPORT 902 200 SILV` is refused
+    /// though 900's $200 reaches 901 in the first sub-phase. `ALL SILV` is never checked
+    /// (`o->amount > 0` only) and still forwards it (`ah-rt4p`; `ah-0aqx` review, finding 3).
+    #[test]
+    fn an_exact_relay_of_silver_received_this_month_is_refused_and_all_silv_still_forwards() {
+        let regions = || {
+            let mut regions = priced_shipping(5, &[], vec![caravanserai_owner("901", 1, 0, 6)]);
+            regions[1].units.push(unit("902"));
+            regions
+        };
+        let exact = "unit 900\nTRANSPORT 901 200 SILV\nunit 901\nTRANSPORT 902 200 SILV\n";
+        let review = review_turn(&report(regions()), exact, Some(&ruleset()), with_map());
+        assert_eq!(silver_shipped(&review, exact, "901"), 0);
+        assert_eq!(
+            shipment_warnings(&review, "901"),
+            vec![(
+                Some(4),
+                "short $200 when shipping begins: this unit can have $0 then, so it ships none \
+                 of the 200 silver ordered"
+                    .to_string()
+            )]
+        );
+        let all = "unit 900\nTRANSPORT 901 200 SILV\nunit 901\nTRANSPORT 902 ALL SILV\n";
+        let review = review_turn(&report(regions()), all, Some(&ruleset()), with_map());
+        assert_eq!(silver_shipped(&review, all, "901"), 200);
+        assert!(shipment_warnings(&review, "901").is_empty());
     }
 
     /// The "Not enough silver" switch off: the sentence goes, the forecast still ships what the
