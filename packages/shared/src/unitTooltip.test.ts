@@ -5,7 +5,7 @@ import {
   HOVER_DELAY_MS,
   placeTooltip,
   placeUnderAnchor,
-  summariseUnit
+  summariseUnit,
 } from "./unitTooltip";
 import { SILVER_NOTES } from "./silverVocabulary";
 
@@ -28,14 +28,14 @@ describe("summariseUnit", () => {
       unit({
         skills: [
           { name: "observation", tag: "OBSE", level: 3, points: 180 },
-          { name: "stealth", tag: "STEA", level: 1, points: 30 }
-        ]
-      })
+          { name: "stealth", tag: "STEA", level: 1, points: 30 },
+        ],
+      }),
     );
 
     expect(summary.skills).toEqual([
       { label: "observation OBSE", value: "3 (180)" },
-      { label: "stealth STEA", value: "1 (30)" }
+      { label: "stealth STEA", value: "1 (30)" },
     ]);
   });
 
@@ -44,14 +44,20 @@ describe("summariseUnit", () => {
       unit({
         items: [
           { amount: 2, name: "swords", tag: "SWOR" },
-          { amount: 1200, name: "grain", tag: "GRAI" }
-        ]
-      })
+          { amount: 1200, name: "grain", tag: "GRAI" },
+        ],
+      }),
     );
 
-    expect(summary.items.map((item) => item.label)).toEqual(["grain GRAI", "swords SWOR"]);
+    expect(summary.items.map((item) => item.label)).toEqual([
+      "grain GRAI",
+      "swords SWOR",
+    ]);
     // The digits, not the grouping: see the locale test below.
-    expect(summary.items.map((item) => item.value.replace(/\D/g, ""))).toEqual(["1200", "2"]);
+    expect(summary.items.map((item) => item.value.replace(/\D/g, ""))).toEqual([
+      "1200",
+      "2",
+    ]);
   });
 
   it("leaves silver out of the card's item list", () => {
@@ -60,13 +66,18 @@ describe("summariseUnit", () => {
         items: [
           { amount: 2, name: "lead", tag: "LEAD" },
           { amount: 1000, name: "silver", tag: "SILV" },
-          { amount: 12, name: "grain", tag: "GRAI" }
-        ]
-      })
+          { amount: 12, name: "grain", tag: "GRAI" },
+        ],
+      }),
     );
 
-    expect(summary.items.some((item) => item.label.includes("SILV"))).toBe(false);
-    expect(summary.items.map((item) => item.label)).toEqual(["grain GRAI", "lead LEAD"]);
+    expect(summary.items.some((item) => item.label.includes("SILV"))).toBe(
+      false,
+    );
+    expect(summary.items.map((item) => item.label)).toEqual([
+      "grain GRAI",
+      "lead LEAD",
+    ]);
   });
 
   /**
@@ -76,7 +87,7 @@ describe("summariseUnit", () => {
    */
   it("groups thousands in whatever way the reader's locale does", () => {
     const [grain] = summariseUnit(
-      unit({ items: [{ amount: 1200, name: "grain", tag: "GRAI" }] })
+      unit({ items: [{ amount: 1200, name: "grain", tag: "GRAI" }] }),
     ).items;
 
     expect(grain.value.replace(/\D/g, "")).toBe("1200");
@@ -87,7 +98,7 @@ describe("summariseUnit", () => {
     const skills = [{ name: "stealth", tag: "STEA", level: 1, points: 30 }];
     const items = [
       { amount: 2, name: "swords", tag: "SWOR" },
-      { amount: 1200, name: "silver", tag: "SILV" }
+      { amount: 1200, name: "silver", tag: "SILV" },
     ];
     summariseUnit(unit({ skills, items }));
 
@@ -113,27 +124,42 @@ describe("placeTooltip", () => {
   const size = { width: 200, height: 100 };
 
   it("sits below and to the right of the pointer when there is room", () => {
-    expect(placeTooltip({ x: 100, y: 100 }, size, viewport)).toEqual({ left: 112, top: 112 });
+    expect(placeTooltip({ x: 100, y: 100 }, size, viewport)).toEqual({
+      left: 112,
+      top: 112,
+    });
   });
 
   it("flips to the left of the pointer rather than run off the right edge", () => {
-    expect(placeTooltip({ x: 950, y: 100 }, size, viewport)).toEqual({ left: 738, top: 112 });
+    expect(placeTooltip({ x: 950, y: 100 }, size, viewport)).toEqual({
+      left: 738,
+      top: 112,
+    });
   });
 
   it("flips above the pointer rather than run off the bottom edge", () => {
-    expect(placeTooltip({ x: 100, y: 750 }, size, viewport)).toEqual({ left: 112, top: 638 });
+    expect(placeTooltip({ x: 100, y: 750 }, size, viewport)).toEqual({
+      left: 112,
+      top: 638,
+    });
   });
 
   it("stays on screen when neither side has room", () => {
     // A tooltip wider than the viewport has nowhere to flip to, so it is pinned to the left edge
     // rather than left hanging off one side.
     const wide = { width: 1200, height: 100 };
-    expect(placeTooltip({ x: 500, y: 100 }, wide, viewport)).toEqual({ left: 0, top: 112 });
+    expect(placeTooltip({ x: 500, y: 100 }, wide, viewport)).toEqual({
+      left: 0,
+      top: 112,
+    });
   });
 
   it("never places the tooltip above the top of the viewport", () => {
     const tall = { width: 200, height: 900 };
-    expect(placeTooltip({ x: 100, y: 750 }, tall, viewport)).toEqual({ left: 112, top: 0 });
+    expect(placeTooltip({ x: 100, y: 750 }, tall, viewport)).toEqual({
+      left: 112,
+      top: 0,
+    });
   });
 });
 
@@ -147,13 +173,16 @@ describe("placeUnderAnchor", () => {
   const cell = { left: 300, top: 200, width: 80, height: 24 };
 
   it("hangs just under the cell, lined up with its left edge", () => {
-    expect(placeUnderAnchor(cell, size, viewport)).toEqual({ left: 300, top: 228 });
+    expect(placeUnderAnchor(cell, size, viewport)).toEqual({
+      left: 300,
+      top: 228,
+    });
   });
 
   it("flips above the cell rather than run off the bottom edge", () => {
     expect(placeUnderAnchor({ ...cell, top: 760 }, size, viewport)).toEqual({
       left: 300,
-      top: 656
+      top: 656,
     });
   });
 
@@ -162,13 +191,16 @@ describe("placeUnderAnchor", () => {
     // side of it would point at the wrong column.
     expect(placeUnderAnchor({ ...cell, left: 900 }, size, viewport)).toEqual({
       left: 800,
-      top: 228
+      top: 228,
     });
   });
 
   it("stays on screen when neither side has room", () => {
     const tall = { width: 200, height: 900 };
-    expect(placeUnderAnchor(cell, tall, viewport)).toEqual({ left: 300, top: 0 });
+    expect(placeUnderAnchor(cell, tall, viewport)).toEqual({
+      left: 300,
+      top: 0,
+    });
   });
 });
 
@@ -177,7 +209,7 @@ describe("a skill's study points in the unit tooltip (ah-ded4)", () => {
   // what the cell does — otherwise a many-skilled unit is worse off than before the points existed.
   it("carries the level and the points, so a truncated cell can be recovered", () => {
     const summary = summariseUnit(
-      unit({ skills: [{ name: "mining", tag: "MINI", level: 2, points: 90 }] })
+      unit({ skills: [{ name: "mining", tag: "MINI", level: 2, points: 90 }] }),
     );
 
     expect(summary.skills).toEqual([{ label: "mining MINI", value: "2 (90)" }]);
@@ -185,7 +217,7 @@ describe("a skill's study points in the unit tooltip (ah-ded4)", () => {
 
   it("renders (0) for a skill with no points yet", () => {
     const summary = summariseUnit(
-      unit({ skills: [{ name: "mining", tag: "MINI", level: 0, points: 0 }] })
+      unit({ skills: [{ name: "mining", tag: "MINI", level: 0, points: 0 }] }),
     );
 
     expect(summary.skills).toEqual([{ label: "mining MINI", value: "0 (0)" }]);
@@ -208,24 +240,24 @@ describe("the silver section", () => {
       expense: 200,
       atMonthEnd: -140,
       upkeep: 50,
-      ...overrides
+      ...overrides,
     });
 
   it("says_when_a_unit_taxes_by_its_flag", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
-      forecast({ income: 40000, atMonthEnd: 39860, taxesByFlag: true })
+      forecast({ income: 40000, atMonthEnd: 39860, taxesByFlag: true }),
     );
 
     expect(summary.silver?.note).toBe(
-      "This unit is set to tax every turn, so it taxes without an order."
+      "This unit is set to tax every turn, so it taxes without an order.",
     );
   });
 
   it("a_unit_with_a_tax_order_says_nothing_extra", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
-      forecast({ income: 40000, atMonthEnd: 39860, taxesByFlag: false })
+      forecast({ income: 40000, atMonthEnd: 39860, taxesByFlag: false }),
     );
 
     expect(summary.silver?.note ?? null).toBeNull();
@@ -241,13 +273,13 @@ describe("the silver section", () => {
         produced: 1,
         producedName: "catapult",
         productionWanted: 2,
-        productionCappedBy: "silver"
+        productionCappedBy: "silver",
       }),
-      true
+      true,
     );
 
     expect(capped.silver?.note).toBe(
-      "This unit has silver for 1 catapult, not the 2 its skill and tools could make."
+      "This unit has silver for 1 catapult, not the 2 its skill and tools could make.",
     );
   });
 
@@ -261,9 +293,9 @@ describe("the silver section", () => {
         produced: 0,
         producedName: "catapult",
         productionWanted: 2,
-        productionCappedBy: "materials"
+        productionCappedBy: "materials",
       }),
-      true
+      true,
     );
 
     // Every sentence that holds, not the first (`ah-x36v`): no silver moves either, and that is
@@ -271,8 +303,8 @@ describe("the silver section", () => {
     expect(capped.silver?.note).toBe(
       [
         "This unit has materials for 0 catapults, not the 2 its skill and tools could make.",
-        "Nothing this unit is ordered to do moves silver."
-      ].join("\n")
+        "Nothing this unit is ordered to do moves silver.",
+      ].join("\n"),
     );
   });
 
@@ -288,17 +320,17 @@ describe("the silver section", () => {
         produced: 1,
         producedName: "catapult",
         productionWanted: 2,
-        productionCappedBy: "silver"
+        productionCappedBy: "silver",
       }),
-      true
+      true,
     );
 
     // The shortfall still reads first, and the capped count is no longer lost behind it (`ah-x36v`).
     expect(both.silver?.note).toBe(
       [
         "This unit cannot pay the 200 its production costs.",
-        "This unit has silver for 1 catapult, not the 2 its skill and tools could make."
-      ].join("\n")
+        "This unit has silver for 1 catapult, not the 2 its skill and tools could make.",
+      ].join("\n"),
     );
   });
 
@@ -312,23 +344,27 @@ describe("the silver section", () => {
         produced: 2,
         producedName: "catapult",
         productionWanted: 2,
-        productionCappedBy: null
+        productionCappedBy: null,
       }),
-      true
+      true,
     );
 
     expect(full.silver?.note).toBeNull();
   });
 
   it("the_silver_section_says_what_made_the_number", () => {
-    const summary = summariseUnit(aReportUnit({ unitId: "1" }), forecast(), true);
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast(),
+      true,
+    );
 
     expect(summary.silver?.rows).toEqual([
       { label: "Held now", value: "60" },
       { label: "In, in time", value: "0" },
       { label: "In, too late", value: "0" },
       { label: "Out", value: "200" },
-      { label: "At month end", value: "-140" }
+      { label: "At month end", value: "-140" },
     ]);
   });
 
@@ -345,10 +381,10 @@ describe("the silver section", () => {
         expense: 0,
         upkeep: 50,
         atMonthEnd: 582,
-        lateIncomeAtMost: true
+        lateIncomeAtMost: true,
       }),
       false,
-      true
+      true,
     );
 
     expect(summary.silver?.rows).toEqual([
@@ -357,7 +393,7 @@ describe("the silver section", () => {
       { label: "In, too late", value: "60 at most" },
       { label: "Out", value: "0" },
       { label: "Upkeep", value: "50" },
-      { label: "At month end", value: "532 at most" }
+      { label: "At month end", value: "532 at most" },
     ]);
   });
 
@@ -373,10 +409,10 @@ describe("the silver section", () => {
         expense: 0,
         upkeep: 30,
         upkeepLent: 100,
-        atMonthEnd: 1645
+        atMonthEnd: 1645,
       }),
       false,
-      true
+      true,
     );
 
     expect(summary.silver?.rows).toEqual([
@@ -386,7 +422,7 @@ describe("the silver section", () => {
       { label: "Out", value: "0" },
       { label: "Upkeep", value: "30" },
       { label: "Lent for upkeep", value: "100" },
-      { label: "At month end", value: "1515" }
+      { label: "At month end", value: "1515" },
     ]);
   });
 
@@ -402,10 +438,10 @@ describe("the silver section", () => {
         expense: 0,
         upkeep: 20,
         upkeepLent: 25,
-        atMonthEnd: 45
+        atMonthEnd: 45,
       }),
       false,
-      true
+      true,
     );
 
     expect(summary.silver?.rows).toEqual([
@@ -415,7 +451,7 @@ describe("the silver section", () => {
       { label: "Out", value: "0" },
       { label: "Upkeep", value: "20" },
       { label: "Lent for upkeep", value: "25" },
-      { label: "At month end", value: "0" }
+      { label: "At month end", value: "0" },
     ]);
   });
 
@@ -431,10 +467,10 @@ describe("the silver section", () => {
         expense: 0,
         upkeep: 0,
         sharedSilverCovered: 100,
-        atMonthEnd: 0
+        atMonthEnd: 0,
       }),
       false,
-      true
+      true,
     );
     expect(fully.silver?.rows).toEqual([
       { label: "Held now", value: "0" },
@@ -443,7 +479,7 @@ describe("the silver section", () => {
       { label: "Out", value: "0" },
       { label: "Upkeep", value: "100" },
       { label: "Was lent for upkeep", value: "100" },
-      { label: "At month end", value: "0" }
+      { label: "At month end", value: "0" },
     ]);
 
     const partly = summariseUnit(
@@ -455,19 +491,68 @@ describe("the silver section", () => {
         expense: 0,
         upkeep: 50,
         sharedSilverCovered: 50,
-        atMonthEnd: 0
+        atMonthEnd: 0,
       }),
       // Ending the month at -50, it carries the not-enough-silver finding.
       true,
-      true
+      true,
     );
     expect(partly.silver?.rows.slice(4)).toEqual([
       { label: "Upkeep", value: "100" },
       { label: "Was lent for upkeep", value: "50" },
-      { label: "At month end", value: "-50" }
+      { label: "At month end", value: "-50" },
     ]);
     expect(partly.silver?.note ?? "").toContain(
-      "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
+      "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
+    );
+  });
+
+  // `ah-kv6c`, amended 2026-10-16: each amount is said once. With the Was lent for upkeep row
+  // drawn, "This unit's upkeep was paid by …" leaves out its faction-mate part, as the silver
+  // cell's hover does (`ah-2zku`), and is gone when faction-mates were the only payer.
+  it("the_popup_says_what_faction_mates_paid_only_on_the_was_lent_row", () => {
+    const fed = {
+      held: 0,
+      income: 0,
+      lateIncome: 0,
+      expense: 0,
+      atMonthEnd: 0,
+    };
+    const fully = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({ ...fed, upkeep: 0, sharedSilverCovered: 100 }),
+      false,
+      true,
+    );
+    // Only today's unrelated note: nothing it is ordered to do moves silver.
+    expect(fully.silver?.note).toBe(
+      "Nothing this unit is ordered to do moves silver.",
+    );
+
+    const partly = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({ ...fed, upkeep: 50, sharedSilverCovered: 50 }),
+      true,
+      true,
+    );
+    expect(partly.silver?.note ?? "").not.toContain("upkeep was paid by");
+    expect(partly.silver?.note ?? "").toContain(
+      "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
+    );
+
+    const mixed = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({
+        ...fed,
+        upkeep: 0,
+        ownFoodCovered: 20,
+        sharedSilverCovered: 80,
+      }),
+      false,
+      true,
+    );
+    expect(mixed.silver?.note).toBe(
+      "This unit's upkeep was paid by its own food (20).\nNothing this unit is ordered to do moves silver.",
     );
   });
 
@@ -476,16 +561,20 @@ describe("the silver section", () => {
       aReportUnit({ unitId: "1" }),
       aUnitSilver({ upkeep: 20, upkeepLent: 15, sharedSilverCovered: 10 }),
       false,
-      true
+      true,
     );
 
     expect(summary.silver?.rows.map((row) => row.label).slice(4)).toEqual([
       "Upkeep",
       "Lent for upkeep",
       "Was lent for upkeep",
-      "At month end"
+      "At month end",
     ]);
-    expect(summary.silver?.rows.slice(4, 7).map((row) => row.value)).toEqual(["30", "15", "10"]);
+    expect(summary.silver?.rows.slice(4, 7).map((row) => row.value)).toEqual([
+      "30",
+      "15",
+      "10",
+    ]);
   });
 
   it("the_popup_hides_both_lent_rows_with_the_upkeep_row", () => {
@@ -493,7 +582,7 @@ describe("the silver section", () => {
       aReportUnit({ unitId: "1" }),
       aUnitSilver({ upkeep: 20, upkeepLent: 15, sharedSilverCovered: 10 }),
       false,
-      false
+      false,
     );
 
     expect(summary.silver?.rows.map((row) => row.label)).toEqual([
@@ -501,7 +590,7 @@ describe("the silver section", () => {
       "In, in time",
       "In, too late",
       "Out",
-      "At month end"
+      "At month end",
     ]);
   });
 
@@ -510,13 +599,13 @@ describe("the silver section", () => {
       aReportUnit({ unitId: "1" }),
       aUnitSilver({ upkeep: null, upkeepLent: 25 }),
       false,
-      true
+      true,
     );
 
     expect(summary.silver?.rows.slice(4)).toEqual([
       { label: "Upkeep", value: "?" },
       { label: "Lent for upkeep", value: "25" },
-      { label: "At month end", value: "?" }
+      { label: "At month end", value: "?" },
     ]);
   });
 
@@ -525,7 +614,7 @@ describe("the silver section", () => {
       aReportUnit({ unitId: "1" }),
       aUnitSilver({ upkeep: 20, upkeepLent: 0, sharedSilverCovered: 0 }),
       false,
-      true
+      true,
     );
 
     expect(summary.silver?.rows.map((row) => row.label)).toEqual([
@@ -534,7 +623,7 @@ describe("the silver section", () => {
       "In, too late",
       "Out",
       "Upkeep",
-      "At month end"
+      "At month end",
     ]);
   });
 
@@ -550,10 +639,10 @@ describe("the silver section", () => {
         expense: 0,
         upkeep: 50,
         atMonthEnd: 582,
-        lateIncomeForeignSharer: true
+        lateIncomeForeignSharer: true,
       }),
       false,
-      true
+      true,
     );
 
     expect(summary.silver?.rows).toEqual([
@@ -562,10 +651,10 @@ describe("the silver section", () => {
       { label: "In, too late", value: "60" },
       { label: "Out", value: "0" },
       { label: "Upkeep", value: "50" },
-      { label: "At month end", value: "532" }
+      { label: "At month end", value: "532" },
     ]);
     expect(summary.silver?.note).toContain(
-      "A foreign unit in this region may also draw on this pool, so this unit may be paid less than this."
+      "A foreign unit in this region may also draw on this pool, so this unit may be paid less than this.",
     );
   });
 
@@ -578,9 +667,9 @@ describe("the silver section", () => {
         lateIncome: 0,
         expense: 0,
         atMonthEnd: 560,
-        incomeInTimeAtMost: true
+        incomeInTimeAtMost: true,
       }),
-      false
+      false,
     );
 
     expect(summary.silver?.rows).toEqual([
@@ -588,7 +677,7 @@ describe("the silver section", () => {
       { label: "In, in time", value: "500 at most" },
       { label: "In, too late", value: "0" },
       { label: "Out", value: "0" },
-      { label: "At month end", value: "560 at most" }
+      { label: "At month end", value: "560 at most" },
     ]);
   });
 
@@ -601,9 +690,9 @@ describe("the silver section", () => {
         lateIncome: null,
         expense: 0,
         atMonthEnd: null,
-        doubt: "contested-region-pool"
+        doubt: "contested-region-pool",
       }),
-      false
+      false,
     );
 
     expect(summary.silver?.rows).toEqual([
@@ -611,12 +700,17 @@ describe("the silver section", () => {
       { label: "In, in time", value: "?" },
       { label: "In, too late", value: "?" },
       { label: "Out", value: "0" },
-      { label: "At month end", value: "?" }
+      { label: "At month end", value: "?" },
     ]);
   });
 
   it("the_silver_section_shows_an_upkeep_row_only_when_counting", () => {
-    const counting = summariseUnit(aReportUnit({ unitId: "1" }), forecast(), true, true);
+    const counting = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast(),
+      true,
+      true,
+    );
 
     expect(counting.silver?.rows).toEqual([
       { label: "Held now", value: "60" },
@@ -624,7 +718,7 @@ describe("the silver section", () => {
       { label: "In, too late", value: "0" },
       { label: "Out", value: "200" },
       { label: "Upkeep", value: "50" },
-      { label: "At month end", value: "-190" }
+      { label: "At month end", value: "-190" },
     ]);
   });
 
@@ -633,20 +727,20 @@ describe("the silver section", () => {
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: 0, factionFoodCovered: 60 }),
       true,
-      true
+      true,
     );
     expect(covered.silver?.note).toBe(
-      "This unit's upkeep was paid by faction food here (60)."
+      "This unit's upkeep was paid by faction food here (60).",
     );
 
     const contested = summariseUnit(
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: null, doubt: "contested-faction-food" }),
       true,
-      true
+      true,
     );
     expect(contested.silver?.note).toBe(
-      "There is not enough faction food here to feed every unit set to eat it."
+      "There is not enough faction food here to feed every unit set to eat it.",
     );
   });
 
@@ -654,19 +748,19 @@ describe("the silver section", () => {
     const forced = summariseUnit(
       aReportUnit({
         unitId: "1",
-        items: [{ amount: 2, name: "grain", tag: "GRAI" }]
+        items: [{ amount: 2, name: "grain", tag: "GRAI" }],
       }),
       forecast({
         upkeep: 0,
         ownFoodCovered: 60,
         forcedOwnFood: 2,
-        forcedOwnFoodTag: "GRAI"
+        forcedOwnFoodTag: "GRAI",
       }),
       true,
-      true
+      true,
     );
     expect(forced.silver?.note).toBe(
-      "This unit has no silver for its upkeep, so 2 grain will be eaten."
+      "This unit has no silver for its upkeep, so 2 grain will be eaten.",
     );
   });
 
@@ -677,13 +771,13 @@ describe("the silver section", () => {
         upkeep: 0,
         ownFoodCovered: 150,
         forcedOwnFood: 3,
-        forcedOwnFoodTag: null
+        forcedOwnFoodTag: null,
       }),
       true,
-      true
+      true,
     );
     expect(mixed.silver?.note).toBe(
-      "This unit has no silver for its upkeep, so 3 of its food items will be eaten."
+      "This unit has no silver for its upkeep, so 3 of its food items will be eaten.",
     );
   });
 
@@ -692,20 +786,20 @@ describe("the silver section", () => {
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: 0, factionFoodCovered: 50, forcedFactionFood: 1 }),
       true,
-      true
+      true,
     );
     expect(fed.silver?.note).toBe(
-      "This unit has no silver for its upkeep, so 1 faction food item in this hex will be eaten."
+      "This unit has no silver for its upkeep, so 1 faction food item in this hex will be eaten.",
     );
 
     const several = summariseUnit(
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: 0, factionFoodCovered: 100, forcedFactionFood: 2 }),
       true,
-      true
+      true,
     );
     expect(several.silver?.note).toBe(
-      "This unit has no silver for its upkeep, so 2 faction food items in this hex will be eaten."
+      "This unit has no silver for its upkeep, so 2 faction food items in this hex will be eaten.",
     );
   });
 
@@ -714,13 +808,13 @@ describe("the silver section", () => {
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: 60, foodContended: true }),
       true,
-      true
+      true,
     );
     expect(contended.silver?.note).toBe(
       [
         "There is not enough food here to feed every unit that needs it, so this unit may yet be fed.",
-        "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
-      ].join("\n")
+        "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
+      ].join("\n"),
     );
   });
 
@@ -729,9 +823,11 @@ describe("the silver section", () => {
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: 0, ownFoodCovered: 60, forcedOwnFood: 0 }),
       true,
-      true
+      true,
     );
-    expect(chosen.silver?.note).toBe("This unit's upkeep was paid by its own food (60).");
+    expect(chosen.silver?.note).toBe(
+      "This unit's upkeep was paid by its own food (60).",
+    );
   });
 
   it("the_silver_section_says_when_a_units_own_food_fed_it", () => {
@@ -739,9 +835,11 @@ describe("the silver section", () => {
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: 0, ownFoodCovered: 60 }),
       true,
-      true
+      true,
     );
-    expect(fed.silver?.note).toBe("This unit's upkeep was paid by its own food (60).");
+    expect(fed.silver?.note).toBe(
+      "This unit's upkeep was paid by its own food (60).",
+    );
   });
 
   it("a_unit_fed_by_both_names_its_own_food_first", () => {
@@ -751,10 +849,10 @@ describe("the silver section", () => {
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: 0, ownFoodCovered: 50, factionFoodCovered: 10 }),
       true,
-      true
+      true,
     );
     expect(both.silver?.note).toBe(
-      "This unit's upkeep was paid by its own food (50) and faction food here (10)."
+      "This unit's upkeep was paid by its own food (50) and faction food here (10).",
     );
   });
 
@@ -762,7 +860,7 @@ describe("the silver section", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: 0, ownFoodCovered: 50, factionFoodCovered: 10 }),
-      true
+      true,
     );
     expect(summary.silver?.note ?? "").not.toContain("own food");
     expect(summary.silver?.note ?? "").not.toContain("Faction food");
@@ -774,15 +872,21 @@ describe("the silver section", () => {
     // so the explanation of the figure on show wins.
     const fed = summariseUnit(
       aReportUnit({ unitId: "1" }),
-      forecast({ income: 0, expense: 0, atMonthEnd: 0, upkeep: 0, factionFoodCovered: 60 }),
+      forecast({
+        income: 0,
+        expense: 0,
+        atMonthEnd: 0,
+        upkeep: 0,
+        factionFoodCovered: 60,
+      }),
       true,
-      true
+      true,
     );
     expect(fed.silver?.note).toBe(
       [
         "This unit's upkeep was paid by faction food here (60).",
-        "Nothing this unit is ordered to do moves silver."
-      ].join("\n")
+        "Nothing this unit is ordered to do moves silver.",
+      ].join("\n"),
     );
   });
 
@@ -793,16 +897,16 @@ describe("the silver section", () => {
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: 0, unclaimedCovered: 60 }),
       true,
-      true
+      true,
     );
     expect(fed.silver?.note).toBe(
-      "This unit's upkeep was paid by the faction's unclaimed silver (60)."
+      "This unit's upkeep was paid by the faction's unclaimed silver (60).",
     );
 
     const notCounting = summariseUnit(
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: 0, unclaimedCovered: 60 }),
-      true
+      true,
     );
     expect(notCounting.silver?.note ?? "").not.toContain("unclaimed silver");
   });
@@ -815,22 +919,22 @@ describe("the silver section", () => {
       aReportUnit({ unitId: "1" }),
       forecast({ income: 72, lateIncome: 72, worksByDefault: true }),
       true,
-      true
+      true,
     );
     expect(idle.silver?.note).toBe(
       [
         "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
-        "This unit has no month-long order, so it will work and earn wages."
-      ].join("\n")
+        "This unit has no month-long order, so it will work and earn wages.",
+      ].join("\n"),
     );
 
     const notCounting = summariseUnit(
       aReportUnit({ unitId: "1" }),
       forecast({ income: 72, lateIncome: 72, worksByDefault: true }),
-      true
+      true,
     );
     expect(notCounting.silver?.note).toBe(
-      "This unit has no month-long order, so it will work and earn wages."
+      "This unit has no month-long order, so it will work and earn wages.",
     );
   });
 
@@ -845,16 +949,16 @@ describe("the silver section", () => {
         lateIncome: 0,
         worksByDefault: true,
         received: 40,
-        givers: ["Lender (100)"]
+        givers: ["Lender (100)"],
       }),
       true,
-      true
+      true,
     );
     expect(gifted.silver?.note).toBe(
       [
         "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
-        "Includes 40 given by Lender (100) in this hex."
-      ].join("\n")
+        "Includes 40 given by Lender (100) in this hex.",
+      ].join("\n"),
     );
   });
 
@@ -868,16 +972,16 @@ describe("the silver section", () => {
         lateIncome: 72,
         worksByDefault: true,
         upkeep: 0,
-        factionFoodCovered: 60
+        factionFoodCovered: 60,
       }),
       true,
-      true
+      true,
     );
     expect(fed.silver?.note).toBe(
       [
         "This unit's upkeep was paid by faction food here (60).",
-        "This unit has no month-long order, so it will work and earn wages."
-      ].join("\n")
+        "This unit has no month-long order, so it will work and earn wages.",
+      ].join("\n"),
     );
   });
 
@@ -888,19 +992,19 @@ describe("the silver section", () => {
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: 50, unclaimedContended: true }),
       true,
-      true
+      true,
     );
     expect(contended.silver?.note).toBe(
       [
         "There is not enough unclaimed silver to feed every unit that needs it.",
-        "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
-      ].join("\n")
+        "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
+      ].join("\n"),
     );
 
     const notCounting = summariseUnit(
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: 50, unclaimedContended: true }),
-      true
+      true,
     );
     expect(notCounting.silver?.note ?? "").not.toContain("unclaimed silver");
   });
@@ -909,14 +1013,14 @@ describe("the silver section", () => {
     const covered = summariseUnit(
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: 0, factionFoodCovered: 60 }),
-      true
+      true,
     );
     expect(covered.silver?.note ?? "").not.toContain("Faction food");
 
     const contested = summariseUnit(
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: null, doubt: "contested-faction-food" }),
-      true
+      true,
     );
     expect(contested.silver?.note ?? "").not.toContain("faction food");
   });
@@ -926,7 +1030,7 @@ describe("the silver section", () => {
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: null }),
       true,
-      true
+      true,
     );
 
     expect(counting.silver?.rows).toEqual([
@@ -935,7 +1039,7 @@ describe("the silver section", () => {
       { label: "In, too late", value: "0" },
       { label: "Out", value: "200" },
       { label: "Upkeep", value: "?" },
-      { label: "At month end", value: "?" }
+      { label: "At month end", value: "?" },
     ]);
   });
 
@@ -951,8 +1055,8 @@ describe("the silver section", () => {
         income: null,
         lateIncome: null,
         atMonthEnd: null,
-        doubt: "unknown-tax-base"
-      })
+        doubt: "unknown-tax-base",
+      }),
     );
 
     expect(summary.silver?.rows).toEqual([
@@ -960,7 +1064,7 @@ describe("the silver section", () => {
       { label: "In, in time", value: "?" },
       { label: "In, too late", value: "?" },
       { label: "Out", value: "200" },
-      { label: "At month end", value: "?" }
+      { label: "At month end", value: "?" },
     ]);
   });
 
@@ -977,17 +1081,17 @@ describe("the silver section", () => {
         expense: 50,
         atMonthEnd: -50,
         shortForOrders: 50,
-        shortOn: "study"
+        shortOn: "study",
       }),
       true,
-      true
+      true,
     );
 
     expect(summary.silver?.note).toBe(
       [
         "This unit cannot pay the 50 its study costs.",
-        "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
-      ].join("\n")
+        "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
+      ].join("\n"),
     );
   });
 
@@ -1001,18 +1105,18 @@ describe("the silver section", () => {
         expense: 60,
         atMonthEnd: 60,
         shortForOrders: 60,
-        shortOn: "buy"
+        shortOn: "buy",
       }),
       true,
-      true
+      true,
     );
 
     expect(summary.silver?.note).toBe(
       [
         "Wages arrive too late to pay for this month's orders, so this unit is 60 short when it buys.",
         "This unit cannot pay the 60 its purchase costs.",
-        "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
-      ].join("\n")
+        "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
+      ].join("\n"),
     );
   });
 
@@ -1027,19 +1131,32 @@ describe("the silver section", () => {
           expense: 50,
           atMonthEnd: -50,
           shortForOrders: 50,
-          shortOn
+          shortOn,
         }),
         true,
-        true
+        true,
       ).silver?.note;
 
-    const ally = "This unit may avoid starvation if a same-region allied unit is sharing silver or food.";
-    expect(note("study")).toBe(["This unit cannot pay the 50 its study costs.", ally].join("\n"));
-    expect(note("buy")).toBe(["This unit cannot pay the 50 its purchase costs.", ally].join("\n"));
-    expect(note("produce")).toBe(["This unit cannot pay the 50 its production costs.", ally].join("\n"));
-    expect(note("cast")).toBe(["This unit cannot pay the 50 its casting costs.", ally].join("\n"));
-    expect(note("give")).toBe(["This unit cannot pay the 50 it gives away.", ally].join("\n"));
-    expect(note(null)).toBe(["This unit cannot pay the 50 its orders cost.", ally].join("\n"));
+    const ally =
+      "This unit may avoid starvation if a same-region allied unit is sharing silver or food.";
+    expect(note("study")).toBe(
+      ["This unit cannot pay the 50 its study costs.", ally].join("\n"),
+    );
+    expect(note("buy")).toBe(
+      ["This unit cannot pay the 50 its purchase costs.", ally].join("\n"),
+    );
+    expect(note("produce")).toBe(
+      ["This unit cannot pay the 50 its production costs.", ally].join("\n"),
+    );
+    expect(note("cast")).toBe(
+      ["This unit cannot pay the 50 its casting costs.", ally].join("\n"),
+    );
+    expect(note("give")).toBe(
+      ["This unit cannot pay the 50 it gives away.", ally].join("\n"),
+    );
+    expect(note(null)).toBe(
+      ["This unit cannot pay the 50 its orders cost.", ally].join("\n"),
+    );
   });
 
   it("says_when_a_faction_mate_pays_for_this_units_orders", () => {
@@ -1054,14 +1171,14 @@ describe("the silver section", () => {
         shortForOrders: 0,
         upkeep: 0,
         sharedSilverForOrders: 50,
-        borrowedForOrders: 50
+        borrowedForOrders: 50,
       }),
       false,
-      true
+      true,
     );
 
     expect(summary.silver?.note).toBe(
-      "A faction-mate's silver in this hex pays for this unit's orders."
+      "A faction-mate's silver in this hex pays for this unit's orders.",
     );
   });
 
@@ -1079,14 +1196,14 @@ describe("the silver section", () => {
         shortForOrders: 0,
         upkeep: 0,
         sharedSilverForOrders: 0,
-        borrowedForOrders: 1600
+        borrowedForOrders: 1600,
       }),
       false,
-      true
+      true,
     );
 
     expect(summary.silver?.note).toBe(
-      "A faction-mate's silver in this hex pays for this unit's orders."
+      "A faction-mate's silver in this hex pays for this unit's orders.",
     );
   });
 
@@ -1101,27 +1218,29 @@ describe("the silver section", () => {
         atMonthEnd: 50,
         shortForOrders: 0,
         upkeep: 0,
-        sharedSilverForOrders: 0
+        sharedSilverForOrders: 0,
       }),
       false,
-      true
+      true,
     );
 
     expect(summary.silver?.note ?? null).toBeNull();
   });
 
   it("says_when_a_faction_mate_pays_the_upkeep", () => {
-    // Automatic maintenance sharing, which needs no SHARE flag - so it gets its own sentence
-    // rather than the flag's (`ah-e66j`, round 1).
+    // Automatic maintenance sharing, which needs no SHARE flag (`ah-e66j`, round 1). Since
+    // `ah-kv6c` it is said once, on the Was lent for upkeep row, and in no sentence.
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: 0, sharedSilverCovered: 60 }),
       true,
-      true
+      true,
     );
-    expect(summary.silver?.note).toBe(
-      "This unit's upkeep was paid by a faction-mate's silver (60)."
-    );
+    expect(summary.silver?.rows).toContainEqual({
+      label: "Was lent for upkeep",
+      value: "60",
+    });
+    expect(summary.silver?.note ?? null).toBeNull();
   });
 
   it("says_an_allied_unit_might_yet_cover_unpaid_upkeep", () => {
@@ -1131,11 +1250,11 @@ describe("the silver section", () => {
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: 60 }),
       true,
-      true
+      true,
     );
 
     expect(summary.silver?.note).toBe(
-      "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
+      "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
     );
   });
 
@@ -1148,11 +1267,11 @@ describe("the silver section", () => {
       false,
       true,
       null,
-      true
+      true,
     );
 
     expect(summary.silver?.note).toBe(
-      "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
+      "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
     );
   });
 
@@ -1163,7 +1282,7 @@ describe("the silver section", () => {
       false,
       true,
       null,
-      true
+      true,
     );
 
     expect(summary.silver?.note ?? "").not.toContain("may avoid starvation");
@@ -1176,52 +1295,75 @@ describe("the silver section", () => {
       aReportUnit({ unitId: "1" }),
       forecast({ sharedSilverCovered: 60 }),
       false,
-      true
+      true,
     );
-    expect(shared.silver?.note).toBe(
-      "This unit's upkeep was paid by a faction-mate's silver (60)."
+    // Said on the Was lent for upkeep row (`ah-kv6c`), never as the flag's sentence.
+    expect(shared.silver?.rows).toContainEqual({
+      label: "Was lent for upkeep",
+      value: "60",
+    });
+    expect(shared.silver?.note ?? "").not.toContain(
+      "Shared silver in this hex covers the shortfall.",
     );
 
     const flagged = summariseUnit(
       aReportUnit({ unitId: "1" }),
       forecast({ sharedSilverCoverage: "covered" }),
       false,
-      true
+      true,
     );
-    expect(flagged.silver?.note).toBe("Shared silver in this hex covers the shortfall.");
+    expect(flagged.silver?.note).toBe(
+      "Shared silver in this hex covers the shortfall.",
+    );
   });
 
   it("says_when_shared_silver_covers_the_shortfall", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
       forecast({ sharedSilverCoverage: "covered" }),
-      false
+      false,
     );
-    expect(summary.silver?.note).toBe("Shared silver in this hex covers the shortfall.");
+    expect(summary.silver?.note).toBe(
+      "Shared silver in this hex covers the shortfall.",
+    );
   });
 
   it("says_why_each_doubt_could_not_be_priced", () => {
     const note = (doubt: UnitSilver["doubt"]) =>
-      summariseUnit(aReportUnit({ unitId: "1" }), forecast({ atMonthEnd: null, doubt })).silver
-        ?.note;
+      summariseUnit(
+        aReportUnit({ unitId: "1" }),
+        forecast({ atMonthEnd: null, doubt }),
+      ).silver?.note;
 
-    expect(note("unknown-tax-base")).toBe("The report never said what this region's tax base is.");
-    expect(note("unpriced-skill")).toBe("The ruleset does not say what studying this skill costs.");
+    expect(note("unknown-tax-base")).toBe(
+      "The report never said what this region's tax base is.",
+    );
+    expect(note("unpriced-skill")).toBe(
+      "The ruleset does not say what studying this skill costs.",
+    );
     expect(note("estimated-men")).toBe(
-      "This unit's headcount is an estimate, so its month cannot be priced."
+      "This unit's headcount is an estimate, so its month cannot be priced.",
     );
     expect(note("takes-a-whole-class")).toBe(
-      "Taking a whole class of another unit's items cannot be followed, so this unit's month has no total."
+      "Taking a whole class of another unit's items cannot be followed, so this unit's month has no total.",
     );
   });
 
   it("says_what_a_unit_took_and_from_whom", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
-      forecast({ income: 100, expense: 0, atMonthEnd: 160, taken: 100, takenFrom: ["Workers (6567)"] })
+      forecast({
+        income: 100,
+        expense: 0,
+        atMonthEnd: 160,
+        taken: 100,
+        takenFrom: ["Workers (6567)"],
+      }),
     );
 
-    expect(summary.silver?.note).toBe("Includes 100 taken from Workers (6567) in this hex.");
+    expect(summary.silver?.note).toBe(
+      "Includes 100 taken from Workers (6567) in this hex.",
+    );
   });
 
   it("names_two_sources_the_way_gifts_are_named", () => {
@@ -1232,12 +1374,12 @@ describe("the silver section", () => {
         expense: 0,
         atMonthEnd: 270,
         taken: 210,
-        takenFrom: ["Workers (6567)", "MinersA (16435)"]
-      })
+        takenFrom: ["Workers (6567)", "MinersA (16435)"],
+      }),
     );
 
     expect(summary.silver?.note).toBe(
-      "Includes 210 taken from Workers (6567) and MinersA (16435) in this hex."
+      "Includes 210 taken from Workers (6567) and MinersA (16435) in this hex.",
     );
   });
 
@@ -1252,10 +1394,11 @@ describe("the silver section", () => {
       takenFrom: ["Workers (6567)"],
       received: 25,
       givers: ["ArmorerA (5671)"],
-      givenToNobody: 30
+      givenToNobody: 30,
     };
     const note = (silver: Partial<UnitSilver>) =>
-      summariseUnit(aReportUnit({ unitId: "1" }), forecast(silver)).silver?.note;
+      summariseUnit(aReportUnit({ unitId: "1" }), forecast(silver)).silver
+        ?.note;
 
     // All three now appear together, in this order - which is what `ah-awcm` was agreed to do and
     // what the first-match contract could not honour (`ah-x36v`).
@@ -1263,28 +1406,28 @@ describe("the silver section", () => {
       [
         "Includes 100 taken from Workers (6567) in this hex.",
         "Includes 25 given by ArmorerA (5671) in this hex.",
-        "Includes 30 given away to nobody."
-      ].join("\n")
+        "Includes 30 given away to nobody.",
+      ].join("\n"),
     );
     expect(note({ ...all, taken: 0, takenFrom: [] })).toBe(
       [
         "Includes 25 given by ArmorerA (5671) in this hex.",
-        "Includes 30 given away to nobody."
-      ].join("\n")
+        "Includes 30 given away to nobody.",
+      ].join("\n"),
     );
-    expect(note({ ...all, taken: 0, takenFrom: [], received: 0, givers: [] })).toBe(
-      "Includes 30 given away to nobody."
-    );
+    expect(
+      note({ ...all, taken: 0, takenFrom: [], received: 0, givers: [] }),
+    ).toBe("Includes 30 given away to nobody.");
   });
 
   it("the_note_explains_a_pool_contended_by_a_guessed_headcount", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
-      forecast({ atMonthEnd: null, doubt: "contested-region-pool" })
+      forecast({ atMonthEnd: null, doubt: "contested-region-pool" }),
     );
 
     expect(summary.silver?.note).toBe(
-      "Another of your units here draws on the same pool and its headcount is an estimate, so this unit's share cannot be worked out."
+      "Another of your units here draws on the same pool and its headcount is an estimate, so this unit's share cannot be worked out.",
     );
   });
 
@@ -1298,10 +1441,10 @@ describe("the silver section", () => {
         expense: 60,
         atMonthEnd: 60,
         shortForOrders: 60,
-        shortOn: "buy"
+        shortOn: "buy",
       }),
       true,
-      true
+      true,
     );
 
     expect(summary.silver?.rows).toEqual([
@@ -1310,14 +1453,14 @@ describe("the silver section", () => {
       { label: "In, too late", value: "120" },
       { label: "Out", value: "60" },
       { label: "Upkeep", value: "50" },
-      { label: "At month end", value: "10" }
+      { label: "At month end", value: "10" },
     ]);
     expect(summary.silver?.note).toBe(
       [
         "Wages arrive too late to pay for this month's orders, so this unit is 60 short when it buys.",
         "This unit cannot pay the 60 its purchase costs.",
-        "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
-      ].join("\n")
+        "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
+      ].join("\n"),
     );
   });
 
@@ -1327,7 +1470,7 @@ describe("the silver section", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
       forecast({ income: 200, expense: 0, atMonthEnd: 260 }),
-      true
+      true,
     );
     expect(summary.silver?.note).toBeNull();
   });
@@ -1335,61 +1478,80 @@ describe("the silver section", () => {
   it("says_when_nothing_the_unit_does_moves_silver", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
-      forecast({ income: 0, expense: 0, atMonthEnd: 60 })
+      forecast({ income: 0, expense: 0, atMonthEnd: 60 }),
     );
-    expect(summary.silver?.note).toBe("Nothing this unit is ordered to do moves silver.");
+    expect(summary.silver?.note).toBe(
+      "Nothing this unit is ordered to do moves silver.",
+    );
   });
 
   it("the_silver_section_explains_a_gift_and_an_unpriced_spell", () => {
     const note = (silver: Partial<UnitSilver>) =>
-      summariseUnit(aReportUnit({ unitId: "1" }), forecast(silver)).silver?.note;
+      summariseUnit(aReportUnit({ unitId: "1" }), forecast(silver)).silver
+        ?.note;
 
     expect(
-      note({ income: null, atMonthEnd: null, doubt: "unknown-goods", doubtSubject: "herbs" })
-    ).toBe("The report does not say what herbs are, so what this sale earns cannot be said.");
+      note({
+        income: null,
+        atMonthEnd: null,
+        doubt: "unknown-goods",
+        doubtSubject: "herbs",
+      }),
+    ).toBe(
+      "The report does not say what herbs are, so what this sale earns cannot be said.",
+    );
     expect(
       note({
         income: 200,
         expense: 0,
         atMonthEnd: 260,
         received: 200,
-        givers: ["Paymaster (2390)"]
-      })
+        givers: ["Paymaster (2390)"],
+      }),
     ).toBe("Includes 200 given by Paymaster (2390) in this hex.");
   });
 
   it("the_silver_section_explains_a_purchase_and_a_withdrawal", () => {
     const note = (silver: Partial<UnitSilver>) =>
-      summariseUnit(aReportUnit({ unitId: "1" }), forecast(silver)).silver?.note;
+      summariseUnit(aReportUnit({ unitId: "1" }), forecast(silver)).silver
+        ?.note;
 
     expect(
       note({
         expense: null,
         atMonthEnd: null,
         doubt: "market-does-not-sell",
-        doubtSubject: "horses"
-      })
-    ).toBe("This region is not selling horses, so what the purchase costs cannot be said.");
-    expect(note({ expense: null, atMonthEnd: null, doubt: "gives-a-whole-class" })).toBe(
-      "This unit is giving away a whole class of goods, which cannot be counted."
+        doubtSubject: "horses",
+      }),
+    ).toBe(
+      "This region is not selling horses, so what the purchase costs cannot be said.",
+    );
+    expect(
+      note({ expense: null, atMonthEnd: null, doubt: "gives-a-whole-class" }),
+    ).toBe(
+      "This unit is giving away a whole class of goods, which cannot be counted.",
     );
     expect(
       note({
         expense: null,
         atMonthEnd: null,
         doubt: "gives-a-whole-class",
-        doubtSubject: "MAGIC"
-      })
+        doubtSubject: "MAGIC",
+      }),
     ).toBe(
-      "This unit is giving away all its MAGIC items, and this application cannot tell which items those are."
+      "This unit is giving away all its MAGIC items, and this application cannot tell which items those are.",
     );
     expect(
-      note({ expense: null, atMonthEnd: null, doubt: "give-consequences-uncertain" })
+      note({
+        expense: null,
+        atMonthEnd: null,
+        doubt: "give-consequences-uncertain",
+      }),
     ).toBe(
-      "Because this GIVE cannot be predicted, what this unit earns or spends afterwards cannot be said."
+      "Because this GIVE cannot be predicted, what this unit earns or spends afterwards cannot be said.",
     );
     expect(
-      note({ income: 0, expense: 300, atMonthEnd: 60, givenToNobody: 300 })
+      note({ income: 0, expense: 300, atMonthEnd: 60, givenToNobody: 300 }),
     ).toBe("Includes 300 given away to nobody.");
   });
 
@@ -1397,15 +1559,21 @@ describe("the silver section", () => {
     const note = (countUpkeep: boolean) =>
       summariseUnit(
         aReportUnit({ unitId: "1" }),
-        forecast({ income: 0, expense: 0, atMonthEnd: 60, upkeep: 0, withdrawing: true }),
+        forecast({
+          income: 0,
+          expense: 0,
+          atMonthEnd: 60,
+          upkeep: 0,
+          withdrawing: true,
+        }),
         true,
-        countUpkeep
+        countUpkeep,
       ).silver?.note;
 
     // It explains `Out`, which is on show whatever the upkeep setting says (`ah-tdsi`).
     const said = [
       "This unit's withdrawal is paid from the faction's unclaimed silver.",
-      "Nothing this unit is ordered to do moves silver."
+      "Nothing this unit is ordered to do moves silver.",
     ].join("\n");
     expect(note(true)).toBe(said);
     expect(note(false)).toBe(said);
@@ -1419,22 +1587,30 @@ describe("the silver section", () => {
       summariseUnit(
         aReportUnit({ unitId: "1" }),
         forecast({ withdrawing: true, ...overrides }),
-        true
+        true,
       ).silver?.note;
 
     expect(
-      noteFor({ income: 300, expense: 0, atMonthEnd: 360, received: 300, givers: ["2"] })
+      noteFor({
+        income: 300,
+        expense: 0,
+        atMonthEnd: 360,
+        received: 300,
+        givers: ["2"],
+      }),
     ).toBe(
       [
         "Includes 300 given by 2 in this hex.",
-        "This unit's withdrawal is paid from the faction's unclaimed silver."
-      ].join("\n")
+        "This unit's withdrawal is paid from the faction's unclaimed silver.",
+      ].join("\n"),
     );
-    expect(noteFor({ income: 0, expense: 300, atMonthEnd: 60, givenToNobody: 300 })).toBe(
+    expect(
+      noteFor({ income: 0, expense: 300, atMonthEnd: 60, givenToNobody: 300 }),
+    ).toBe(
       [
         "Includes 300 given away to nobody.",
-        "This unit's withdrawal is paid from the faction's unclaimed silver."
-      ].join("\n")
+        "This unit's withdrawal is paid from the faction's unclaimed silver.",
+      ].join("\n"),
     );
   });
 
@@ -1442,14 +1618,22 @@ describe("the silver section", () => {
     const note = (givers: string[], received: number) =>
       summariseUnit(
         aReportUnit({ unitId: "1" }),
-        forecast({ income: received, expense: 0, atMonthEnd: 60 + received, received, givers })
+        forecast({
+          income: received,
+          expense: 0,
+          atMonthEnd: 60 + received,
+          received,
+          givers,
+        }),
       ).silver?.note;
 
     expect(note(["Paymaster (2390)", "Steward (2391)"], 300)).toBe(
-      "Includes 300 given by Paymaster (2390) and Steward (2391) in this hex."
+      "Includes 300 given by Paymaster (2390) and Steward (2391) in this hex.",
     );
-    expect(note(["Paymaster (2390)", "Steward (2391)", "Reeve (2392)"], 400)).toBe(
-      "Includes 400 given by Paymaster (2390), Steward (2391) and Reeve (2392) in this hex."
+    expect(
+      note(["Paymaster (2390)", "Steward (2391)", "Reeve (2392)"], 400),
+    ).toBe(
+      "Includes 400 given by Paymaster (2390), Steward (2391) and Reeve (2392) in this hex.",
     );
   });
 
@@ -1459,7 +1643,7 @@ describe("the silver section", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
       forecast({ income: 0, expense: 100, atMonthEnd: -40 }),
-      true
+      true,
     );
     expect(summary.silver?.note).toBeNull();
   });
@@ -1467,7 +1651,7 @@ describe("the silver section", () => {
   it("says_nothing_when_there_is_nothing_to_explain", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
-      forecast({ income: 400, expense: 100, atMonthEnd: 360 })
+      forecast({ income: 400, expense: 100, atMonthEnd: 360 }),
     );
     expect(summary.silver?.note).toBeNull();
   });
@@ -1475,7 +1659,13 @@ describe("the silver section", () => {
 
 describe("the hover says every sentence that holds (ah-x36v)", () => {
   const forecast = (overrides: Partial<UnitSilver> = {}): UnitSilver =>
-    aUnitSilver({ regionId: "1:6,52", held: 60, expense: 200, atMonthEnd: 60, ...overrides });
+    aUnitSilver({
+      regionId: "1:6,52",
+      held: 60,
+      expense: 200,
+      atMonthEnd: 60,
+      ...overrides,
+    });
 
   it("a unit whose neighbour pays both ways is told both", () => {
     const summary = summariseUnit(
@@ -1484,17 +1674,19 @@ describe("the hover says every sentence that holds (ah-x36v)", () => {
         upkeep: 50,
         sharedSilverCovered: 20,
         sharedSilverForOrders: 50,
-        borrowedForOrders: 50
+        borrowedForOrders: 50,
       }),
       false,
-      true
+      true,
     );
 
+    // The upkeep half is said on the Was lent for upkeep row (`ah-kv6c`), the orders half here.
+    expect(summary.silver?.rows).toContainEqual({
+      label: "Was lent for upkeep",
+      value: "20",
+    });
     expect(summary.silver?.note).toBe(
-      [
-        "This unit's upkeep was paid by a faction-mate's silver (20).",
-        "A faction-mate's silver in this hex pays for this unit's orders."
-      ].join("\n")
+      "A faction-mate's silver in this hex pays for this unit's orders.",
     );
   });
 
@@ -1508,14 +1700,14 @@ describe("the hover says every sentence that holds (ah-x36v)", () => {
         producedName: "sword",
         productionWanted: 8,
         productionRequested: 10,
-        productionCappedBy: "workforce"
+        productionCappedBy: "workforce",
       }),
       false,
-      true
+      true,
     );
 
     expect(summary.silver?.note).toBe(
-      "Requested: 10 swords. This month: 8.\nLimited by skill and tools. The remaining 2 carry over."
+      "Requested: 10 swords. This month: 8.\nLimited by skill and tools. The remaining 2 carry over.",
     );
   });
 
@@ -1528,16 +1720,16 @@ describe("the hover says every sentence that holds (ah-x36v)", () => {
         takenFrom: ["Workers (6567)"],
         received: 25,
         givers: ["Quartermaster (18500)"],
-        givenToNobody: 10
-      })
+        givenToNobody: 10,
+      }),
     );
 
     expect(summary.silver?.note).toBe(
       [
         "Includes 100 taken from Workers (6567) in this hex.",
         "Includes 25 given by Quartermaster (18500) in this hex.",
-        "Includes 10 given away to nobody."
-      ].join("\n")
+        "Includes 10 given away to nobody.",
+      ].join("\n"),
     );
   });
 
@@ -1552,72 +1744,90 @@ describe("the hover says every sentence that holds (ah-x36v)", () => {
         income: 112,
         lateIncome: 12,
         taken: 100,
-        takenFrom: ["Workers (6567)"]
-      })
+        takenFrom: ["Workers (6567)"],
+      }),
     );
 
     expect(summary.silver?.note).toBe(
       [
         "This unit has no month-long order, so it will work and earn wages.",
-        "Includes 100 taken from Workers (6567) in this hex."
-      ].join("\n")
+        "Includes 100 taken from Workers (6567) in this hex.",
+      ].join("\n"),
     );
   });
 
   it("a take from a source the report does not show says so", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
-      forecast({ income: 100, takenUnshown: 100, takenUnshownFrom: ["unit 999"] })
+      forecast({
+        income: 100,
+        takenUnshown: 100,
+        takenUnshownFrom: ["unit 999"],
+      }),
     );
 
     expect(summary.silver?.note).toBe(
-      "Includes 100 taken from unit 999, which your report does not show here."
+      "Includes 100 taken from unit 999, which your report does not show here.",
     );
   });
 
   it("a unit with one applicable note is unchanged", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
-      forecast({ income: 40000, atMonthEnd: 39860, taxesByFlag: true })
+      forecast({ income: 40000, atMonthEnd: 39860, taxesByFlag: true }),
     );
 
     expect(summary.silver?.note).toBe(
-      "This unit is set to tax every turn, so it taxes without an order."
+      "This unit is set to tax every turn, so it taxes without an order.",
     );
   });
 });
 
 describe("who paid this unit's upkeep, in one sentence (ah-x36v)", () => {
   const forecast = (overrides: Partial<UnitSilver> = {}): UnitSilver =>
-    aUnitSilver({ regionId: "1:6,52", held: 60, expense: 200, atMonthEnd: 60, ...overrides });
+    aUnitSilver({
+      regionId: "1:6,52",
+      held: 60,
+      expense: 200,
+      atMonthEnd: 60,
+      ...overrides,
+    });
 
   const note = (overrides: Partial<UnitSilver>, countUpkeep = true) =>
-    summariseUnit(aReportUnit({ unitId: "1" }), forecast(overrides), false, countUpkeep).silver
-      ?.note;
+    summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast(overrides),
+      false,
+      countUpkeep,
+    ).silver?.note;
 
   it("one source reads as one", () => {
     expect(note({ upkeep: 0, ownFoodCovered: 8 })).toBe(
-      "This unit's upkeep was paid by its own food (8)."
+      "This unit's upkeep was paid by its own food (8).",
     );
   });
 
   it("two sources read as a pair", () => {
-    expect(note({ upkeep: 0, factionFoodCovered: 12, sharedSilverCovered: 20 })).toBe(
-      "This unit's upkeep was paid by faction food here (12) and a faction-mate's silver (20)."
+    expect(
+      note({ upkeep: 0, factionFoodCovered: 12, unclaimedCovered: 10 }),
+    ).toBe(
+      "This unit's upkeep was paid by faction food here (12) and the faction's unclaimed silver (10).",
     );
   });
 
-  it("all four read in the game's payment order", () => {
+  // The popup leaves the faction-mate part to its Was lent for upkeep row (`ah-kv6c`), so the
+  // three it can still name are what it lists.
+  it("every source it names reads in the game's payment order", () => {
     expect(
       note({
         upkeep: 0,
         ownFoodCovered: 8,
         factionFoodCovered: 12,
         sharedSilverCovered: 20,
-        unclaimedCovered: 10
-      })
+        unclaimedCovered: 10,
+      }),
     ).toBe(
-      "This unit's upkeep was paid by its own food (8), faction food here (12), a faction-mate's silver (20) and the faction's unclaimed silver (10)."
+      "This unit's upkeep was paid by its own food (8), faction food here (12) and the faction's unclaimed silver (10).",
     );
   });
 
@@ -1629,27 +1839,28 @@ describe("who paid this unit's upkeep, in one sentence (ah-x36v)", () => {
       ownFoodCovered: 10,
       forcedOwnFood: 2,
       forcedOwnFoodTag: "GRAI",
-      factionFoodCovered: 12
+      factionFoodCovered: 12,
     });
 
-    expect(said).toContain("This unit's upkeep was paid by faction food here (12).");
+    expect(said).toContain(
+      "This unit's upkeep was paid by faction food here (12).",
+    );
     expect(said).not.toContain("its own food");
   });
 
   it("with upkeep counting off nothing is said", () => {
-    expect(note({ upkeep: 0, ownFoodCovered: 8, unclaimedCovered: 10 }, false) ?? "").not.toContain(
-      "upkeep was paid by"
-    );
+    expect(
+      note({ upkeep: 0, ownFoodCovered: 8, unclaimedCovered: 10 }, false) ?? "",
+    ).not.toContain("upkeep was paid by");
   });
 });
 
 describe("a unit whose line was cut short (ah-l09a.4)", () => {
   const rowsOf = (unit: ReturnType<typeof aReportUnit>, silver: UnitSilver) =>
     Object.fromEntries(
-      (summariseUnit(unit, silver, false, true).silver?.rows ?? []).map((row) => [
-        row.label,
-        row.value
-      ])
+      (summariseUnit(unit, silver, false, true).silver?.rows ?? []).map(
+        (row) => [row.label, row.value],
+      ),
     );
 
   it("says a unit whose silver was never read holds an unknown amount", () => {
@@ -1661,7 +1872,7 @@ describe("a unit whose line was cut short (ah-l09a.4)", () => {
       lateIncome: null,
       expense: null,
       upkeep: null,
-      atMonthEnd: null
+      atMonthEnd: null,
     });
 
     expect(rowsOf(unit, silver)).toEqual({
@@ -1670,10 +1881,10 @@ describe("a unit whose line was cut short (ah-l09a.4)", () => {
       "In, too late": "not known",
       Out: "not known",
       Upkeep: "not known",
-      "At month end": "not known"
+      "At month end": "not known",
     });
     expect(summariseUnit(unit, silver, false, true).silver?.note).toBe(
-      "This unit's line in the turn report could not be read, so how much silver it holds is not known. It is not zero \u2014 it was never read."
+      "This unit's line in the turn report could not be read, so how much silver it holds is not known. It is not zero \u2014 it was never read.",
     );
   });
 
@@ -1685,10 +1896,10 @@ describe("a unit whose line was cut short (ah-l09a.4)", () => {
       income: null,
       lateIncome: null,
       expense: null,
-      atMonthEnd: null
+      atMonthEnd: null,
     });
     expect(summariseUnit(unit, silver, false, true).silver?.note).toBe(
-      "Part of this unit's line in the turn report could not be read, so how much silver it holds is not known. It is not zero \u2014 it was never read."
+      "Part of this unit's line in the turn report could not be read, so how much silver it holds is not known. It is not zero \u2014 it was never read.",
     );
   });
 
@@ -1696,7 +1907,7 @@ describe("a unit whose line was cut short (ah-l09a.4)", () => {
     const unit = aReportUnit({
       unitId: "1",
       read: "partial",
-      items: [{ tag: "SILV", name: "silver", amount: 7500 }]
+      items: [{ tag: "SILV", name: "silver", amount: 7500 }],
     });
     const silver = aUnitSilver({
       doubt: "unit-line-cut-short",
@@ -1705,7 +1916,7 @@ describe("a unit whose line was cut short (ah-l09a.4)", () => {
       lateIncome: null,
       expense: null,
       upkeep: null,
-      atMonthEnd: null
+      atMonthEnd: null,
     });
 
     expect(rowsOf(unit, silver)).toEqual({
@@ -1714,10 +1925,10 @@ describe("a unit whose line was cut short (ah-l09a.4)", () => {
       "In, too late": "not known",
       Out: "not known",
       Upkeep: "not known",
-      "At month end": "not known"
+      "At month end": "not known",
     });
     expect(summariseUnit(unit, silver, false, true).silver?.note).toBe(
-      "Part of this unit's line in the turn report could not be read, so this unit's month cannot be added up."
+      "Part of this unit's line in the turn report could not be read, so this unit's month cannot be added up.",
     );
   });
 
@@ -1730,7 +1941,7 @@ describe("a unit whose line was cut short (ah-l09a.4)", () => {
       lateIncome: null,
       expense: null,
       upkeep: null,
-      atMonthEnd: null
+      atMonthEnd: null,
     });
 
     expect(rowsOf(unit, silver)).toEqual({
@@ -1739,7 +1950,7 @@ describe("a unit whose line was cut short (ah-l09a.4)", () => {
       "In, too late": "?",
       Out: "?",
       Upkeep: "?",
-      "At month end": "?"
+      "At month end": "?",
     });
   });
 });
@@ -1767,7 +1978,7 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
     "unit-line-cut-short",
     "unpriced-shipment",
     "steal-uncertain",
-    "exchange-uncertain"
+    "exchange-uncertain",
   ];
 
   // Built with `aUnitSilver` (`ah-uhnd`) so a field added to `UnitSilver` later does not silently
@@ -1836,29 +2047,53 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
           alreadyBought: 0,
           silverAvailable: 356,
           price: 18,
-          cappedBy: "silver"
-        }
-      ]
+          cappedBy: "silver",
+        },
+      ],
     });
 
-  const unit = aReportUnit({ men: 6, items: [{ tag: "GRAI", name: "grain", amount: 4 }] });
-
-  it.each(DOUBTS)("every note appears when every fact is true (%s)", (doubt) => {
-    const silver = everything(doubt);
-    const facts = { unit, silver, warned: false, countUpkeep: true };
-    const expected = SILVER_NOTES.filter((note) => note.when(facts)).map((note) => note.say(facts));
-
-    // A case that exercises only a handful of notes would prove nothing about the rest.
-    expect(expected.length).toBeGreaterThan(10);
-    expect(summariseUnit(unit, silver, false, true).silver?.note).toBe(expected.join("\n"));
+  const unit = aReportUnit({
+    men: 6,
+    items: [{ tag: "GRAI", name: "grain", amount: 4 }],
   });
+
+  it.each(DOUBTS)(
+    "every note appears when every fact is true (%s)",
+    (doubt) => {
+      const silver = everything(doubt);
+      // The popup draws the Was lent for upkeep row whenever faction-mates paid (`ah-kv6c`).
+      const facts = {
+        unit,
+        silver,
+        warned: false,
+        countUpkeep: true,
+        upkeepLinesDrawn: silver.sharedSilverCovered > 0,
+      };
+      const expected = SILVER_NOTES.filter((note) => note.when(facts)).map(
+        (note) => note.say(facts),
+      );
+
+      // A case that exercises only a handful of notes would prove nothing about the rest.
+      expect(expected.length).toBeGreaterThan(10);
+      expect(summariseUnit(unit, silver, false, true).silver?.note).toBe(
+        expected.join("\n"),
+      );
+    },
+  );
 
   it("leaves no note unreachable but the two that read a silence", () => {
     const appeared = new Set(
       DOUBTS.flatMap((doubt) => {
-        const facts = { unit, silver: everything(doubt), warned: false, countUpkeep: true };
-        return SILVER_NOTES.filter((note) => note.when(facts)).map((note) => note.id);
-      })
+        const facts = {
+          unit,
+          silver: everything(doubt),
+          warned: false,
+          countUpkeep: true,
+        };
+        return SILVER_NOTES.filter((note) => note.when(facts)).map(
+          (note) => note.id,
+        );
+      }),
     );
 
     // Two notes say that something did NOT happen, so an everything-is-true case cannot reach
@@ -1868,12 +2103,12 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
     // everything-is-true unit, holding silver at month end, cannot have. Each is covered by its own
     // example above. Every other note must appear here.
     expect(
-      SILVER_NOTES.map((note) => note.id).filter((id) => !appeared.has(id))
+      SILVER_NOTES.map((note) => note.id).filter((id) => !appeared.has(id)),
     ).toEqual([
       "shared-silver-covers-shortfall",
       "shared-silver-unjudged",
       "allied-upkeep-might-cover",
-      "nothing-moves-silver"
+      "nothing-moves-silver",
     ]);
   });
 });
@@ -1882,15 +2117,17 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
 describe("a dissolving unit's note", () => {
   it("says where its goods go", () => {
     expect(
-      summariseUnit(unit(), null, false, false, { into: "Tax Collector (1922)" }).note
+      summariseUnit(unit(), null, false, false, {
+        into: "Tax Collector (1922)",
+      }).note,
     ).toBe(
-      "Gains no recruits, so the game dissolves it and its goods revert to Tax Collector (1922)."
+      "Gains no recruits, so the game dissolves it and its goods revert to Tax Collector (1922).",
     );
   });
 
   it("says so plainly where there is nobody in the hex to take them", () => {
     expect(summariseUnit(unit(), null, false, false, { into: null }).note).toBe(
-      "Gains no recruits, so the game dissolves it. No unit of yours is shown in this hex for its goods to revert to."
+      "Gains no recruits, so the game dissolves it. No unit of yours is shown in this hex for its goods to revert to.",
     );
   });
 
