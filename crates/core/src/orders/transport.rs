@@ -101,6 +101,9 @@ pub(crate) struct RefusedShipment {
     pub ordered: i64,
     /// What it would have cost, which is what the sender's month is short by on account of it.
     pub cost: i64,
+    /// What the sender could pay the fee from when it was judged - its own silver, or the SHARE
+    /// purse's remainder - for the refused line's own sentence (`ah-2pbd`).
+    pub available: i64,
 }
 
 /// What shipping one weight unit costs in silver, or `None` when the shipment is free.
