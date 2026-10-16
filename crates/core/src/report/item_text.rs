@@ -48,10 +48,7 @@ impl Form {
             Self::Needs => {
                 let (item, needs) = text.strip_suffix(')')?.rsplit_once(" (needs ")?;
                 let needs = needs.trim().parse::<i64>().ok()?;
-                Some(ItemAmount {
-                    needs: Some(needs),
-                    ..read_plain(item.trim_end())?
-                })
+                Some(read_plain(item.trim_end())?.with_needs(needs))
             }
             Self::Marked {
                 suffix,
@@ -115,12 +112,7 @@ fn read_plain(text: &str) -> Option<ItemAmount> {
         return None;
     }
 
-    Some(ItemAmount {
-        amount,
-        name,
-        tag,
-        needs: None,
-    })
+    Some(ItemAmount::new(amount, name, tag))
 }
 
 /// Reads one item as the report prints it, by the first form in [`ITEM_FORMS`] that reads it.
@@ -145,11 +137,10 @@ mod tests {
     use super::*;
 
     fn item(amount: i64, name: &str, tag: &str, needs: Option<i64>) -> ItemAmount {
-        ItemAmount {
-            amount,
-            name: name.to_string(),
-            tag: tag.to_string(),
-            needs,
+        let item = ItemAmount::new(amount, name, tag);
+        match needs {
+            Some(needs) => item.with_needs(needs),
+            None => item,
         }
     }
 

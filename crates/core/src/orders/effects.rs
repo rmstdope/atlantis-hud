@@ -3725,12 +3725,11 @@ impl Working {
                         from,
                         men: moved,
                         men_before,
-                        men_arriving: vec![crate::report::model::ItemAmount {
-                            name: name.clone(),
-                            tag: tag.clone(),
-                            amount: moved,
-                            needs: None,
-                        }],
+                        men_arriving: vec![crate::report::model::ItemAmount::new(
+                            moved,
+                            name.clone(),
+                            tag.clone(),
+                        )],
                         count_inferred: false,
                         arriving_skills: arriving,
                         skills: merged,
@@ -4635,12 +4634,11 @@ fn add_item(items: &mut Vec<crate::report::model::ItemAmount>, name: &str, tag: 
     if let Some(existing) = items.iter_mut().find(|item| item.tag == tag) {
         existing.amount += amount;
     } else {
-        items.push(crate::report::model::ItemAmount {
+        items.push(crate::report::model::ItemAmount::new(
             amount,
-            name: name.to_string(),
-            tag: tag.to_string(),
-            needs: None,
-        });
+            name.to_string(),
+            tag.to_string(),
+        ));
     }
 }
 

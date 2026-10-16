@@ -44,6 +44,29 @@ pub struct ItemAmount {
     pub needs: Option<i64>,
 }
 
+impl ItemAmount {
+    /// An item as the report spells it, `57 grain [GRAI]`, with every optional part unset.
+    ///
+    /// Build items through this rather than a struct literal (`ah-vojk`), so that a new optional
+    /// field is added here alone; set the optional parts with the `with_*` methods below.
+    #[must_use]
+    pub fn new(amount: i64, name: impl Into<String>, tag: impl Into<String>) -> Self {
+        Self {
+            amount,
+            name: name.into(),
+            tag: tag.into(),
+            needs: None,
+        }
+    }
+
+    /// The work an unfinished ship still needs (`ah-uxmh`).
+    #[must_use]
+    pub fn with_needs(mut self, needs: i64) -> Self {
+        self.needs = Some(needs);
+        self
+    }
+}
+
 /// An item offered or sought in a market, as in `138 grain [GRAI] at $24`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
@@ -468,6 +491,21 @@ pub struct UnreadableLine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn item_amount_new_leaves_needs_unset() {
+        let item = ItemAmount::new(57, "grain", "GRAI");
+        assert_eq!(item.amount, 57);
+        assert_eq!(item.name, "grain");
+        assert_eq!(item.tag, "GRAI");
+        assert_eq!(item.needs, None);
+    }
+
+    #[test]
+    fn with_needs_sets_the_remaining_work() {
+        let ship = ItemAmount::new(1, "unfinished Galleon", "GALL").with_needs(33);
+        assert_eq!(ship.needs, Some(33));
+    }
 
     #[test]
     fn a_unit_is_read_completely_unless_something_says_otherwise() {

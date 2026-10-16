@@ -206,12 +206,7 @@ mod tests {
     }
 
     fn race(tag: &str, amount: i64) -> ItemAmount {
-        ItemAmount {
-            amount,
-            name: String::new(),
-            tag: tag.to_string(),
-            needs: None,
-        }
+        ItemAmount::new(amount, String::new(), tag.to_string())
     }
 
     fn tags(ceiling: &StudyCeiling<'_>) -> Vec<String> {

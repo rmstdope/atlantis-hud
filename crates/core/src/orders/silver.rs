@@ -5197,12 +5197,11 @@ fn pooled_materials(
             .find(|item| item.tag.eq_ignore_ascii_case(&material.tag))
         {
             Some(item) => item.amount = material.amount,
-            None => items.push(ItemAmount {
-                amount: material.amount,
-                name: name_of(&material.tag),
-                tag: material.tag.to_ascii_uppercase(),
-                needs: None,
-            }),
+            None => items.push(ItemAmount::new(
+                material.amount,
+                name_of(&material.tag),
+                material.tag.to_ascii_uppercase(),
+            )),
         }
     }
     items
@@ -5731,12 +5730,7 @@ pub fn plan_production(
         silver: made * silver_each,
         materials: materials_each
             .iter()
-            .map(|input| ItemAmount {
-                amount: made * input.amount,
-                name: input.tag.clone(),
-                tag: input.tag.clone(),
-                needs: None,
-            })
+            .map(|input| ItemAmount::new(made * input.amount, input.tag.clone(), input.tag.clone()))
             .collect(),
         capped_by,
     })
@@ -5756,12 +5750,11 @@ fn subtract_running(
         .find(|item| item.tag.eq_ignore_ascii_case(tag))
     {
         Some(entry) => entry.amount -= amount,
-        None => held.push(ItemAmount {
-            amount: -amount,
-            name: name_of(tag),
-            tag: tag.to_ascii_uppercase(),
-            needs: None,
-        }),
+        None => held.push(ItemAmount::new(
+            -amount,
+            name_of(tag),
+            tag.to_ascii_uppercase(),
+        )),
     }
 }
 
@@ -6066,12 +6059,7 @@ pub fn plan_cast(cost: &CastCost, caster: &Caster<'_>, level: i64) -> CastPlan {
         materials: if charged > 0 {
             materials_each
                 .iter()
-                .map(|(tag, amount)| ItemAmount {
-                    amount: charged * amount,
-                    name: tag.clone(),
-                    tag: tag.clone(),
-                    needs: None,
-                })
+                .map(|(tag, amount)| ItemAmount::new(charged * amount, tag.clone(), tag.clone()))
                 .collect()
         } else {
             Vec::new()
@@ -6097,12 +6085,7 @@ mod production_tests {
     fn held(items: &[(&str, i64)]) -> Vec<ItemAmount> {
         items
             .iter()
-            .map(|(tag, amount)| ItemAmount {
-                amount: *amount,
-                name: tag.to_lowercase(),
-                tag: (*tag).to_string(),
-                needs: None,
-            })
+            .map(|(tag, amount)| ItemAmount::new(*amount, tag.to_lowercase(), (*tag).to_string()))
             .collect()
     }
 
@@ -6901,12 +6884,7 @@ mod cast_tests {
     fn holding(items: &[(&str, i64)]) -> Vec<ItemAmount> {
         items
             .iter()
-            .map(|(tag, amount)| ItemAmount {
-                amount: *amount,
-                name: tag.to_lowercase(),
-                tag: (*tag).to_string(),
-                needs: None,
-            })
+            .map(|(tag, amount)| ItemAmount::new(*amount, tag.to_lowercase(), (*tag).to_string()))
             .collect()
     }
 
@@ -7321,12 +7299,7 @@ mod tests {
         use super::*;
 
         fn item(amount: i64, tag: &str) -> ItemAmount {
-            ItemAmount {
-                amount,
-                name: tag.to_ascii_lowercase(),
-                tag: tag.to_string(),
-                needs: None,
-            }
+            ItemAmount::new(amount, tag.to_ascii_lowercase(), tag.to_string())
         }
 
         fn named(tag: &str) -> String {
@@ -7353,12 +7326,7 @@ mod tests {
                 pooled,
                 vec![
                     item(11, "HAMM"),
-                    ItemAmount {
-                        amount: 20,
-                        name: "a iron".to_string(),
-                        tag: "IRON".to_string(),
-                        needs: None,
-                    }
+                    ItemAmount::new(20, "a iron".to_string(), "IRON".to_string())
                 ],
                 "a smith carrying no iron of its own may still forge from the hex's"
             );
@@ -7368,12 +7336,7 @@ mod tests {
         fn tags_are_matched_whatever_their_case() {
             assert_eq!(
                 pooled_materials(&[item(5, "iron")], &[item(20, "IRON")], &named),
-                vec![ItemAmount {
-                    amount: 20,
-                    name: "iron".to_string(),
-                    tag: "iron".to_string(),
-                    needs: None,
-                }],
+                vec![ItemAmount::new(20, "iron".to_string(), "iron".to_string())],
                 "one entry, raised - not a second one beside it"
             );
         }
@@ -8061,12 +8024,7 @@ mod tests {
             requested: None,
             item: "SWOR".to_string(),
         })];
-        let items = [ItemAmount {
-            amount: 20,
-            name: "iron".into(),
-            tag: "IRON".into(),
-            needs: None,
-        }];
+        let items = [ItemAmount::new(20, "iron", "IRON")];
         let smith = [skill("WEAP", 1)];
         let unit = forecast_unit(
             UnitFacts {
@@ -8113,12 +8071,7 @@ mod tests {
             }),
             placed(Intent::Work),
         ];
-        let items = [ItemAmount {
-            amount: 20,
-            name: "iron".into(),
-            tag: "IRON".into(),
-            needs: None,
-        }];
+        let items = [ItemAmount::new(20, "iron", "IRON")];
         let smith = [skill("WEAP", 1)];
         let rules = ruleset();
         let picture = |men: i64| LateFacts {
@@ -8360,12 +8313,7 @@ mod tests {
             requested: None,
             item: "SWOR".to_string(),
         })];
-        let items = [ItemAmount {
-            amount: 20,
-            name: "iron".into(),
-            tag: "IRON".into(),
-            needs: None,
-        }];
+        let items = [ItemAmount::new(20, "iron", "IRON")];
         let smith = [skill("WEAP", 1)];
         let unit = forecast_unit(
             UnitFacts {
@@ -8400,12 +8348,7 @@ mod tests {
     #[test]
     fn a_unit_with_no_production_reports_none_left() {
         let receipts = Receipts::default();
-        let items = [ItemAmount {
-            amount: 20,
-            name: "iron".into(),
-            tag: "IRON".into(),
-            needs: None,
-        }];
+        let items = [ItemAmount::new(20, "iron", "IRON")];
         let unit = forecast_unit(
             UnitFacts {
                 men_reported: 8,
@@ -9948,12 +9891,7 @@ mod tests {
     }
 
     fn item(amount: i64, tag: &str) -> ItemAmount {
-        ItemAmount {
-            amount,
-            name: tag.to_lowercase(),
-            tag: tag.to_string(),
-            needs: None,
-        }
+        ItemAmount::new(amount, tag.to_lowercase(), tag.to_string())
     }
 
     /// A unit described only by what it is made of, for the upkeep rules.
@@ -10295,12 +10233,7 @@ mod tests {
             },
         )];
         // `data/GNOL`: a gnoll takes combat to 5, which is combat's own maximum too.
-        let gnolls = [ItemAmount {
-            amount: 60,
-            name: "gnoll".to_string(),
-            tag: "GNOL".to_string(),
-            needs: None,
-        }];
+        let gnolls = [ItemAmount::new(60, "gnoll".to_string(), "GNOL".to_string())];
         let at_the_top = [skill("COMB", 5)];
         let below = [skill("COMB", 4)];
 
@@ -10355,12 +10288,7 @@ mod tests {
     fn a_unit_that_paid_for_any_study_carries_no_note() {
         let ruleset = ruleset();
         let receipts = Receipts::default();
-        let gnolls = [ItemAmount {
-            amount: 60,
-            name: "gnoll".to_string(),
-            tag: "GNOL".to_string(),
-            needs: None,
-        }];
+        let gnolls = [ItemAmount::new(60, "gnoll".to_string(), "GNOL".to_string())];
         // At combat's ceiling, and below observation's: one study is free, the other is not.
         let skills = [skill("COMB", 5), skill("OBSE", 1)];
         let intents = [
@@ -10405,12 +10333,7 @@ mod tests {
     fn an_unpriced_study_beside_a_capped_one_keeps_the_note() {
         let ruleset = ruleset();
         let receipts = Receipts::default();
-        let gnolls = [ItemAmount {
-            amount: 60,
-            name: "gnoll".to_string(),
-            tag: "GNOL".to_string(),
-            needs: None,
-        }];
+        let gnolls = [ItemAmount::new(60, "gnoll".to_string(), "GNOL".to_string())];
         let skills = [skill("COMB", 5)];
         let intents = [
             at_line(
@@ -10838,12 +10761,7 @@ mod combat_ready_tests {
     }
 
     fn item(tag: &str, amount: i64) -> ItemAmount {
-        ItemAmount {
-            amount,
-            name: tag.to_lowercase(),
-            tag: tag.to_string(),
-            needs: None,
-        }
+        ItemAmount::new(amount, tag.to_lowercase(), tag.to_string())
     }
 
     fn skill(tag: &str, level: u32) -> Skill {

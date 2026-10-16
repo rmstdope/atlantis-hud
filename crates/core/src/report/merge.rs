@@ -383,12 +383,7 @@ mod tests {
     }
 
     fn item(name: &str) -> ItemAmount {
-        ItemAmount {
-            amount: 1,
-            name: name.to_owned(),
-            tag: name.to_uppercase(),
-            needs: None,
-        }
+        ItemAmount::new(1, name.to_owned(), name.to_uppercase())
     }
 
     fn market(name: &str) -> MarketItem {

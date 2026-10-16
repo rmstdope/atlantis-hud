@@ -1030,12 +1030,7 @@ mod tests {
 
     /// `men` people of one race, as a classified unit lists them.
     fn race(tag: &str, men: i64) -> Vec<ItemAmount> {
-        vec![ItemAmount {
-            amount: men,
-            name: String::new(),
-            tag: tag.to_string(),
-            needs: None,
-        }]
+        vec![ItemAmount::new(men, String::new(), tag.to_string())]
     }
 
     /// `data/LEAD` lets a leader study every skill to 5, which is every skill's own maximum - so a
@@ -1308,18 +1303,8 @@ mod tests {
     fn study_uses_the_least_ceiling_of_a_mixed_unit() {
         let ruleset = ruleset();
         let mixed = vec![
-            ItemAmount {
-                amount: 4,
-                name: String::new(),
-                tag: "HUMN".to_string(),
-                needs: None,
-            },
-            ItemAmount {
-                amount: 2,
-                name: String::new(),
-                tag: "WELF".to_string(),
-                needs: None,
-            },
+            ItemAmount::new(4, String::new(), "HUMN".to_string()),
+            ItemAmount::new(2, String::new(), "WELF".to_string()),
         ];
 
         assert!(
@@ -1480,24 +1465,9 @@ mod tests {
                 },
             ],
             products: vec![
-                ItemAmount {
-                    amount: 57,
-                    name: "grain".to_string(),
-                    tag: "GRAI".to_string(),
-                    needs: None,
-                },
-                ItemAmount {
-                    amount: 37,
-                    name: "iron".to_string(),
-                    tag: "IRON".to_string(),
-                    needs: None,
-                },
-                ItemAmount {
-                    amount: 17,
-                    name: "stone".to_string(),
-                    tag: "STON".to_string(),
-                    needs: None,
-                },
+                ItemAmount::new(57, "grain".to_string(), "GRAI".to_string()),
+                ItemAmount::new(37, "iron".to_string(), "IRON".to_string()),
+                ItemAmount::new(17, "stone".to_string(), "STON".to_string()),
             ],
             units: vec![unit_18642()],
             ..Default::default()
@@ -1790,24 +1760,9 @@ mod tests {
         let mut region = inholm_region();
         let mut unit = unit_18642();
         unit.items = vec![
-            ItemAmount {
-                amount: 1,
-                name: "sword".to_string(),
-                tag: "SWOR".to_string(),
-                needs: None,
-            },
-            ItemAmount {
-                amount: 150,
-                name: "silver".to_string(),
-                tag: "SILV".to_string(),
-                needs: None,
-            },
-            ItemAmount {
-                amount: 3,
-                name: "herbs".to_string(),
-                tag: "HERB".to_string(),
-                needs: None,
-            },
+            ItemAmount::new(1, "sword".to_string(), "SWOR".to_string()),
+            ItemAmount::new(150, "silver".to_string(), "SILV".to_string()),
+            ItemAmount::new(3, "herbs".to_string(), "HERB".to_string()),
         ];
         region.units = vec![unit];
         report(vec![region])

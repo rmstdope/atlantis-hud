@@ -112,12 +112,7 @@ mod tests {
     }
 
     fn race(amount: i64, tag: &str) -> ItemAmount {
-        ItemAmount {
-            amount,
-            name: tag.to_lowercase(),
-            tag: tag.to_string(),
-            needs: None,
-        }
+        ItemAmount::new(amount, tag.to_lowercase(), tag.to_string())
     }
 
     #[test]
