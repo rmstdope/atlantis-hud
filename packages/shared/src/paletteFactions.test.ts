@@ -24,9 +24,9 @@ const ATTITUDES: DeclaredAttitudes = {
   ]
 };
 
-function report(attitudes: DeclaredAttitudes | null = ATTITUDES): ParsedReport {
+function report(attitudes: DeclaredAttitudes = ATTITUDES): ParsedReport {
   return aParsedReport({
-    header: { ...aReportHeaderInfo({ factionId: "95", factionName: "Borg TNG" }), attitudes: attitudes ?? undefined },
+    header: { ...aReportHeaderInfo({ factionId: "95", factionName: "Borg TNG" }), attitudes },
     regions: [
       region("1:7,53", [
         ["1", "95", "Borg TNG"],
@@ -72,7 +72,7 @@ describe("paletteFactions", () => {
   });
 
   it("leaves the attitude unknown when the report declares neither it nor a default", () => {
-    const rows = paletteFactions({ parsed: report(null), merged: [], hexes: [] });
+    const rows = paletteFactions({ parsed: report({ defaultAttitude: null, levels: [] }), merged: [], hexes: [] });
     expect(rows.find((row) => row.factionId === "44")?.attitude).toBeNull();
   });
 
