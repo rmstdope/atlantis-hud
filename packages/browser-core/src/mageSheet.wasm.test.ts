@@ -37,7 +37,8 @@ describe("a mage sheet, across the WebAssembly boundary", () => {
 
     expect(text.startsWith("; Mage sheet from Atlantis HUD")).toBe(true);
     expect(text).toContain("Outdoor Mage (301)");
-    expect(text).toContain("force [FORC] 3 (180)");
+    // The sheet is wrapped like a report, so a skill may break across lines; read it unwrapped.
+    expect(text.replace(/\s+/g, " ")).toContain("force [FORC] 3 (180)");
     expect(text).not.toContain("Woodsman");
     expect(text).not.toContain("Wages:");
   });
