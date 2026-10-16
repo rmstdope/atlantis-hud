@@ -4,6 +4,7 @@ import type { CreatedItem } from "./CreatedItem";
 import type { FieldChange } from "./FieldChange";
 import type { ItemChange } from "./ItemChange";
 import type { ProducedItem } from "./ProducedItem";
+import type { RefusedCast } from "./RefusedCast";
 import type { ReportUnit } from "./ReportUnit";
 import type { SkillInfo } from "./SkillInfo";
 import type { SkillMerge } from "./SkillMerge";
@@ -62,6 +63,13 @@ built: Array<BuildSpend>,
  * whose cast creates nothing an item catalogue can carry (`ah-ofpb.5`).
  */
 created: Array<CreatedItem>, 
+/**
+ * This unit's create-artifact `CAST` orders the game refuses this month, in document order:
+ * what each would have made and what it is short of, so the ITEMS column can end the short
+ * material red and strike the product through (`ah-44at`). Empty for a unit whose every cast
+ * goes ahead.
+ */
+refusedCasts: Array<RefusedCast>, 
 /**
  * One line of what this unit's `TRANSPORT`/`DISTRIBUTE` orders send this month, in document
  * order. Empty for a unit that sent nothing (`ah-bxgs`).

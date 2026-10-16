@@ -5917,6 +5917,9 @@ struct Ledger<'a> {
     /// What each unit's `BUILD` orders spend, in document order (`ah-ofpb.2`). Keyed by unit id,
     /// exactly as `uncounted` is, because a `BUILD` records more than a movement can carry.
     pub(crate) built: BTreeMap<String, Vec<super::effects::BuildSpend>>,
+    /// Each unit's create-artifact `CAST`s the game refuses, in document order (`ah-44at`). Keyed
+    /// by unit id, exactly as `built` is.
+    pub(crate) refused_casts: BTreeMap<String, Vec<super::effects::RefusedCast>>,
     /// The work each structure has already received this month from the builders walked so far.
     /// `Run1BuildOrder` (`monthorders.cpp`) decrements the object's `incomplete` as each builder
     /// is reached, so a later builder of the same structure is priced against what is left
@@ -6494,6 +6497,7 @@ fn ledger_for_reaching<'a>(
         unfollowed_recruits: BTreeSet::new(),
         refused_recruits: Vec::new(),
         built: BTreeMap::new(),
+        refused_casts: BTreeMap::new(),
         build_laid: BTreeMap::new(),
         build_doubted: BTreeSet::new(),
         build_placement_refusals: BTreeMap::new(),
@@ -7400,6 +7404,12 @@ pub(crate) fn item_effects(
                 .or_default()
                 .built = spends;
         }
+        for (unit_id, casts) in ledger.refused_casts {
+            result
+                .entry(unit_key(&hex.region.region_id, &unit_id))
+                .or_default()
+                .refused_casts = casts;
+        }
     }
 
     // Into the month's order, once, after every hex has been walked (`ah-rgkk.3.1`).
@@ -7429,6 +7439,8 @@ pub(crate) struct UnitItemEffects {
     pub uncounted: Vec<String>,
     /// What this unit's `BUILD` orders spend this month, in document order (`ah-ofpb.2`).
     pub built: Vec<super::effects::BuildSpend>,
+    /// This unit's create-artifact `CAST`s the game refuses, in document order (`ah-44at`).
+    pub refused_casts: Vec<super::effects::RefusedCast>,
     /// This unit's settled recruits this month, one entry per man tag `Ledger::bought` credited
     /// it. Empty both when nothing was recruited and when a `BUY ALL` makes the exact figure
     /// unknowable - either way the preview falls back to its own net-count inference
@@ -12025,6 +12037,45 @@ fn cast(
         }
         return;
     };
+
+    // What the ITEMS column needs to end a refused cast's short material red and strike its product
+    // through (`ah-44at`). Only a create-artifact cast is refused outright: an enchantment or a
+    // transmutation makes as many as its stock allows (`RunEnchant`, `RunTransmutation`,
+    // `spells.cpp`), so it is never one of these (`ah-j5p8`).
+    if outcome != CastOutcome::Paid && plan.per_cast {
+        let short = plan
+            .materials
+            .iter()
+            .zip(&shortfalls)
+            .filter(|(_, short)| **short > 0)
+            .map(|(material, short)| super::effects::ShortMaterial {
+                tag: material.tag.to_ascii_uppercase(),
+                name: item_name(&material.tag, hex, ruleset),
+                amount: *short,
+            })
+            .collect();
+        let product = plan.tag.clone().filter(|_| plan.wanted > 0).map(|tag| {
+            super::effects::RefusedProduct {
+                name: item_name(&tag, hex, ruleset),
+                tag,
+                fewest: plan.wanted_certain,
+                most: plan.wanted,
+            }
+        });
+        ledger
+            .refused_casts
+            .entry(who.clone())
+            .or_default()
+            .push(super::effects::RefusedCast {
+                product,
+                silver_short: if outcome == CastOutcome::RefusedForSilver {
+                    unfunded_cast.max(0)
+                } else {
+                    0
+                },
+                short,
+            });
+    }
 
     // The recording `ah-ofpb.5` adds: what a cast consumes and what it creates, both as
     // `ItemMovement`s so the ITEMS column can show them exactly as `produce()`'s do. Nothing is
@@ -60245,6 +60296,185 @@ BUILD
                     .starts_with("short $200: this unit can have $200 and its orders spend $400"),
                 "{sentences:?}"
             );
+        }
+
+        // --- what a refused cast tells the ITEMS column (`ah-44at`) ----------------------------
+        //
+        // `data/SWIN` level 3 (Trident, `newage trident data SWIN`): "a 20 percent times their
+        // level chance to create a Cloudship [CLOU] ... at a cost of 75 floater hides [FLOA] and
+        // 75 ironwood [IRWD]" - so a level 3 mage's would-be yield is 0-1.
+
+        use crate::orders::effects::{RefusedCast, RefusedProduct, ShortMaterial};
+
+        /// The refused casts the ITEMS column is told about for `id`.
+        fn refused(effects: &BTreeMap<UnitKey, UnitItemEffects>, id: &str) -> Vec<RefusedCast> {
+            effects_for(effects, id)
+                .map(|unit| unit.refused_casts.clone())
+                .unwrap_or_default()
+        }
+
+        fn cloudship() -> Option<RefusedProduct> {
+            Some(RefusedProduct {
+                tag: "CLOU".to_string(),
+                name: "Cloudship".to_string(),
+                fewest: 0,
+                most: 1,
+            })
+        }
+
+        /// `name` is the catalogue's (`floater hide`): the hover names an item the way its own
+        /// line does, so this is only what it falls back on.
+        fn short(tag: &str, name: &str, amount: i64) -> ShortMaterial {
+            ShortMaterial {
+                tag: tag.to_string(),
+                name: name.to_string(),
+                amount,
+            }
+        }
+
+        fn items_after(
+            report: &ParsedReport,
+            orders: &str,
+            rules: &Ruleset,
+        ) -> BTreeMap<UnitKey, UnitItemEffects> {
+            item_effects(report, orders, Some(rules), &CheckOptions::default())
+        }
+
+        /// The agreed worked example: Ivanhoe holds 75 ironwood and no floater hides, and nobody
+        /// lends him any, so the cast is refused 75 floater hides short.
+        #[test]
+        fn a_cast_refused_for_its_goods_records_what_it_is_short_of() {
+            let report = report(vec![region(vec![with_item(
+                with_skill(unit("901"), "SWIN", 3),
+                75,
+                "ironwood",
+                "IRWD",
+            )])]);
+            let effects = items_after(&report, "unit 901\nCAST Summon_Wind\n", &trident_rules());
+            assert_eq!(
+                refused(&effects, "901"),
+                [RefusedCast {
+                    product: cloudship(),
+                    silver_short: 0,
+                    short: vec![short("FLOA", "floater hide", 75)],
+                }]
+            );
+        }
+
+        /// Holding 50 of the 75 hides, the cast is 25 short.
+        #[test]
+        fn a_partly_held_material_records_only_its_shortfall() {
+            let report = report(vec![region(vec![with_item(
+                with_item(with_skill(unit("901"), "SWIN", 3), 75, "ironwood", "IRWD"),
+                50,
+                "floater hides",
+                "FLOA",
+            )])]);
+            let effects = items_after(&report, "unit 901\nCAST Summon_Wind\n", &trident_rules());
+            assert_eq!(
+                refused(&effects, "901")
+                    .iter()
+                    .flat_map(|cast| cast.short.clone())
+                    .collect::<Vec<_>>(),
+                [short("FLOA", "floater hide", 25)]
+            );
+        }
+
+        /// What a sharer could lend is not the caster's shortfall (`rules/share`): 50 held and 10
+        /// on 902's shelf leave the cast 15 hides short.
+        #[test]
+        fn a_sharers_stock_is_not_part_of_the_shortfall() {
+            let report = report(vec![region(vec![
+                with_item(
+                    with_item(with_skill(unit("901"), "SWIN", 3), 75, "ironwood", "IRWD"),
+                    50,
+                    "floater hides",
+                    "FLOA",
+                ),
+                sharing(with_item(unit("902"), 10, "floater hides", "FLOA")),
+            ])]);
+            let effects = items_after(
+                &report,
+                "unit 901\nCAST Summon_Wind\nunit 902\n",
+                &trident_rules(),
+            );
+            assert_eq!(
+                refused(&effects, "901")
+                    .iter()
+                    .flat_map(|cast| cast.short.clone())
+                    .collect::<Vec<_>>(),
+                [short("FLOA", "floater hide", 15)]
+            );
+        }
+
+        /// Both materials held and no silver for the 200 the amended spell costs: refused for its
+        /// silver, short of no material.
+        #[test]
+        fn a_cast_refused_for_its_silver_records_its_silver_and_product() {
+            let report = report(vec![region(vec![with_item(
+                with_item(with_skill(unit("901"), "SWIN", 3), 75, "ironwood", "IRWD"),
+                75,
+                "floater hides",
+                "FLOA",
+            )])]);
+            let effects = items_after(
+                &report,
+                "unit 901\nCAST Summon_Wind\n",
+                &wind_for_silver_and_goods(),
+            );
+            assert_eq!(
+                refused(&effects, "901"),
+                [RefusedCast {
+                    product: cloudship(),
+                    silver_short: 200,
+                    short: Vec::new(),
+                }]
+            );
+        }
+
+        /// No silver and no goods: refused for its silver (`CastOutcome::settle`), and both
+        /// materials are still short, in the spell's cost order.
+        #[test]
+        fn a_cast_short_of_silver_and_goods_records_both() {
+            let report = report(vec![region(vec![with_skill(unit("901"), "SWIN", 3)])]);
+            let effects = items_after(
+                &report,
+                "unit 901\nCAST Summon_Wind\n",
+                &wind_for_silver_and_goods(),
+            );
+            assert_eq!(
+                refused(&effects, "901"),
+                [RefusedCast {
+                    product: cloudship(),
+                    silver_short: 200,
+                    short: vec![
+                        short("FLOA", "floater hide", 75),
+                        short("IRWD", "ironwood", 75)
+                    ],
+                }]
+            );
+        }
+
+        /// A cast with both materials in hand is not refused, and says nothing here.
+        #[test]
+        fn a_paid_cast_records_no_refusal() {
+            let report = report(vec![region(vec![with_item(
+                with_item(with_skill(unit("901"), "SWIN", 3), 75, "ironwood", "IRWD"),
+                75,
+                "floater hides",
+                "FLOA",
+            )])]);
+            let effects = items_after(&report, "unit 901\nCAST Summon_Wind\n", &trident_rules());
+            assert_eq!(refused(&effects, "901"), []);
+        }
+
+        /// An enchantment makes as many as its stock allows (`RunEnchant`, `spells.cpp`), so one
+        /// with no swords to enchant is not refused outright and says nothing here (`ah-j5p8`).
+        #[test]
+        fn an_enchantment_short_of_its_stock_records_no_refusal() {
+            let report = report(vec![region(vec![with_skill(unit("5"), "ESWO", 3)])]);
+            let effects = items_after(&report, "unit 5\nCAST Enchant_Swords\n", &ruleset());
+            assert_eq!(refused(&effects, "5"), []);
         }
     }
 

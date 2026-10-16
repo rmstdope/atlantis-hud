@@ -5812,6 +5812,10 @@ pub struct CastPlan {
     /// `made_certain` above is the floor beside this ceiling, added by `ah-ofpb.5`. `1` for a spell
     /// that creates nothing an item catalogue can carry, which the page prices per attempt.
     pub wanted: i64,
+    /// The fewest the mage's level alone would bring - `made_certain` before what it can pay for
+    /// caps it. A refused cast makes none, and its struck ITEMS line reads this to `wanted`
+    /// (`ah-44at`).
+    pub wanted_certain: i64,
     /// How many times the per-item cost is charged: for an enchantment or a transmutation `made`,
     /// but never fewer than one when `wanted` is more than none; for a create-artifact cast, which
     /// pays once per cast (`ah-jmr8`), `1`. A mage that cannot afford even one is charged for one
@@ -6045,6 +6049,7 @@ pub fn plan_cast(cost: &CastCost, caster: &Caster<'_>, level: i64) -> CastPlan {
     CastPlan {
         made,
         made_certain: capacity_fewest.min(made),
+        wanted_certain: capacity_fewest.min(wanted),
         wanted,
         charged,
         tag: output.map(|output| output.tag.to_ascii_uppercase()),
@@ -7073,6 +7078,26 @@ mod cast_tests {
         let plan = plan_cast(&cast_cost("CRRU"), &unlimited(), 3);
         assert_eq!(plan.made_certain, 2);
         assert_eq!(plan.made, 3);
+    }
+
+    /// The same runesmith holding nothing the spell costs makes none (`made_certain == 0`), but
+    /// its level still promises two certain and a chance of a third: what a refused cast's struck
+    /// line reads (`ah-44at`).
+    #[test]
+    fn plan_cast_keeps_the_levels_fewest_when_it_can_pay_for_none() {
+        let plan = plan_cast(
+            &cast_cost("CRRU"),
+            &Caster {
+                skills: &[],
+                held: &holding(&[]),
+                silver_available: 0,
+                silver_hopeful: 0,
+                transmuting: None,
+            },
+            3,
+        );
+        assert_eq!((plan.made, plan.made_certain), (0, 0));
+        assert_eq!((plan.wanted_certain, plan.wanted), (2, 3));
     }
 
     /// A level 5 ring maker is 20 x 5 = 100 percent, exactly one ring: no chance is left over, so
