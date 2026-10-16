@@ -1158,11 +1158,6 @@ fn settle_report_wide(
                     super::transport::ShipmentPhase::BetweenQuartermasters,
                     &delivered,
                 );
-                // Every fee has been judged: from here on what TRANSPORT moves is recorded as
-                // moved after them ([`Ledger::silver_moved_after_fees`], `ah-k719`).
-                for (_, ledger) in hexes.iter_mut() {
-                    ledger.fees_judged = true;
-                }
                 credit_shipped_goods(hexes, phase, &shipped, Credit::Silver);
                 delivered.extend(shipped);
             }
@@ -6008,20 +6003,15 @@ struct Ledger<'a> {
     /// then would hand back silver that never left, while later shipments are still being judged
     /// against the purse (`ah-8bzm`).
     pub(crate) refused_shipments_charged: bool,
-    /// The silver TRANSPORT moved into (positive) or out of (negative) each unit once every fee
-    /// had been judged, keyed by unit id: what the second sub-phase credited as it ended, and all
-    /// the third moved (`rules/sequenceofevents`). Only the second sub-phase charges a fee
-    /// ([`super::transport::priced`] charges between quartermasters alone), and the engine takes
-    /// each fee from the shared money as its shipment runs (`runorders.cpp`:
-    /// `RunTransportOrders`, `ConsumeSharedMoney`), so the purse's TRANSPORT moment reads each
-    /// unit without it ([`silver_at`]): a loan is never paid back by a later receipt (`ah-qrk0`,
-    /// `ah-k719`). Written as each shipment moves silver, once [`Ledger::fees_judged`] is set, so
-    /// a reading later in the same sub-phase already sees an earlier send (`ah-k719` review,
-    /// finding 1).
-    pub(crate) silver_moved_after_fees: BTreeMap<String, i64>,
-    /// Whether every TRANSPORT fee has been judged: set as the second sub-phase's shipments are
-    /// settled, before its silver is credited (`settle_report_wide`).
-    pub(crate) fees_judged: bool,
+    /// TRANSPORT as the engine runs it (`runorders.cpp`: `RunTransportOrders`): every shipment
+    /// that moves silver, in settlement order, each with what it sent, what it paid and what it
+    /// drew on the sharers, and the silver each sub-phase credits as it ends
+    /// (`rules/sequenceofevents`, `ah-rt4p`). **The one record of TRANSPORT's silver**: the purse
+    /// lends through it one step at a time ([`Lending::at_shipment`]), so a reader asks for the
+    /// lending before or after a named shipment rather than keeping a record of its own (`ah-3ffm`,
+    /// replacing `ah-k719`'s and `ah-9yvv`'s). Appended only through [`begin_transport_step`] and
+    /// [`transport_silver`], so it cannot drift from the balance.
+    transport_run: Vec<TransportStep>,
     /// Each sender's silver as the engine's `CheckTransportOrders` reads it, once, before any
     /// shipment runs (`runorders.cpp`: `o->amount > u->GetSharedNum(o->item)` refuses the whole
     /// order, "Not enough <item>."), keyed by unit id (`ah-0aqx`). Written by
@@ -6032,12 +6022,6 @@ struct Ledger<'a> {
     /// was left as the line ran, or refused outright before shipping began (`ah-0aqx`). Said on
     /// the sender's own line by [`report_shortfalls`].
     cut_shipments: Vec<CutShipment>,
-    /// What each exact silver shipment drew on the hex's sharers beyond its sender's own silver,
-    /// in settlement order (`runorders.cpp`: `RunTransportOrders` checks the amount against
-    /// `GetSharedNum` and spends it with `ConsumeShared`; `rules/share`; `ah-9yvv`). Booked as it
-    /// runs, so a later line reads what an earlier one left, and lent by the purse's TRANSPORT
-    /// moment ([`Lending::settle`]) on the sharer it was drawn on.
-    shipment_draws: Vec<ShipmentDraw>,
     /// Which of the two unmeasurable causes each of this hex's units met, by unit number
     /// (`ah-7ale.5`). Not gated on the Transport warning: it is what makes the month read `?`, and
     /// no figure may claim to be certain when it is not.
@@ -6224,18 +6208,48 @@ struct CutShipment {
     placed: PlacedIntent,
 }
 
-/// What one exact silver shipment drew on one sharer ([`Ledger::shipment_draws`], `ah-9yvv`).
+/// A shipment of TRANSPORT's run, by who sends it and the line it is ordered on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ShipmentName {
+    sender: String,
+    line: usize,
+}
+
+/// One step of TRANSPORT's run ([`Ledger::transport_run`]).
 #[derive(Debug, Clone)]
-struct ShipmentDraw {
-    /// The sender, which spent the silver.
-    borrower: String,
-    /// The sharer it was drawn on: a unit of the hex, or a sharer that walked in.
-    lender: Lender,
-    amount: i64,
-    /// Drawn once every fee had been judged ([`Ledger::fees_judged`]). Such a shipment is not in
-    /// the sender's TRANSPORT-moment silver ([`silver_at`]), so its draw is lent after the
-    /// moment's fees are; one drawn before is in it, as an overdraft the draw answers.
-    after_fees: bool,
+struct TransportStep {
+    /// The shipment, or `None` for the silver a sub-phase credits as it ends (`ah-rt4p`).
+    shipment: Option<ShipmentName>,
+    /// The silver the step moved, by unit id: a send and a fee out, a receipt in.
+    silver: Vec<(String, i64)>,
+    /// What the shipment drew on the sharers beyond its sender's own silver, each on the sharer it
+    /// was drawn on (`unit.cpp`: `ConsumeShared`; `rules/share`; `ah-9yvv`).
+    draws: Vec<(Lender, i64)>,
+}
+
+/// A point in TRANSPORT's run, which the purse lends through one shipment at a time
+/// ([`Lending::at_shipment`]). `Before` a shipment not yet in the run is the run so far: it is
+/// the next to run.
+#[derive(Debug, Clone, Copy)]
+enum TransportPoint<'a> {
+    Before(&'a ShipmentName),
+    /// Read only by the tests today: every reader in the walk judges a shipment before it runs,
+    /// and this is the seam that reads what one lent once it has (`ah-3ffm`).
+    #[cfg_attr(not(test), allow(dead_code))]
+    After(&'a ShipmentName),
+}
+
+impl TransportPoint<'_> {
+    /// How many of `run`'s steps come before this point.
+    fn steps_in(self, run: &[TransportStep]) -> usize {
+        let (name, after) = match self {
+            TransportPoint::Before(name) => (name, false),
+            TransportPoint::After(name) => (name, true),
+        };
+        run.iter()
+            .position(|step| step.shipment.as_ref() == Some(name))
+            .map_or(run.len(), |at| at + usize::from(after))
+    }
 }
 
 /// A `BUY` line with nothing left to buy, and the limit its own earlier lines had emptied.
@@ -6450,12 +6464,26 @@ impl Ledger<'_> {
     /// purse's loan, a refused fee, or an unjudged overdraft) and no other lending. A
     /// refused CAST is not handed back there: which cast the engine refuses cannot be told
     /// without the pool, so the reading stays pessimistic (`ah-szu0` follow-up review, finding 3).
-    fn transport_holding(&self, hex: &Hex<'_>, unit_id: &str, tag: &str) -> i64 {
-        // The fees already booked at TRANSPORT are carried too ([`Lending::through`]): the engine
-        // took each from the shared money as its shipment ran (`runorders.cpp`:
+    ///
+    /// Read `before` the shipment about to run, which is not in the run yet: the stock is the
+    /// ledger's as it stands, so no earlier point of the run can be read here.
+    fn transport_holding(
+        &self,
+        hex: &Hex<'_>,
+        unit_id: &str,
+        tag: &str,
+        before: &ShipmentName,
+    ) -> i64 {
+        debug_assert_eq!(
+            TransportPoint::Before(before).steps_in(&self.transport_run),
+            self.transport_run.len(),
+            "the holding is read before the shipment about to run"
+        );
+        // The shipments already run are carried too ([`Lending::at_shipment`]): the engine took
+        // each fee from the shared money as its shipment ran (`runorders.cpp`:
         // `ConsumeSharedMoney`), so a sharer that lent for one ships only what it left (`ah-k719`).
         let stock = SharerStock::carrying(self, hex, StatePhase::Transport, tag, |hex, ledger| {
-            Lending::through(hex, ledger, StatePhase::Transport)
+            Lending::at_shipment(hex, ledger, TransportPoint::Before(before))
         });
         let held = SharerStock::spender_in(self, hex, StatePhase::Transport, unit_id, tag, stock)
             .map_or_else(
@@ -6563,11 +6591,9 @@ fn ledger_for_reaching<'a>(
         shipping_paid: BTreeMap::new(),
         refused_shipments: Vec::new(),
         refused_shipments_charged: false,
-        silver_moved_after_fees: BTreeMap::new(),
-        fees_judged: false,
+        transport_run: Vec::new(),
         silver_at_transport_check: BTreeMap::new(),
         cut_shipments: Vec::new(),
-        shipment_draws: Vec::new(),
         shipping_unmeasured: BTreeMap::new(),
         sold: BTreeMap::new(),
         dead_sales: Vec::new(),
@@ -14422,16 +14448,8 @@ fn silver_at(ledger: &Ledger<'_>, unit_id: &str, moment: LendingMoment) -> i64 {
     match moment {
         LendingMoment::MonthEnd => relieved_balance(ledger, unit_id, SILVER),
         LendingMoment::Cast => ledger.state.balance_at(StatePhase::Cast, unit_id, SILVER),
-        // As the fees were taken: nothing TRANSPORT moved after them pays a loan back or is lent
-        // for ([`Ledger::silver_moved_after_fees`], `ah-k719`).
-        LendingMoment::Transport => {
-            unlent_silver_at(ledger, unit_id, StatePhase::Transport)
-                - ledger
-                    .silver_moved_after_fees
-                    .get(unit_id)
-                    .copied()
-                    .unwrap_or(0)
-        }
+        // At TRANSPORT, the run as it stands: the purse's own fold reads it one step at a time
+        // instead ([`Lending::settle`], `ah-3ffm`).
         _ => unlent_silver_at(ledger, unit_id, moment.phase()),
     }
 }
@@ -14593,7 +14611,7 @@ impl SharerStock {
 
     /// [`SharerStock::at`], carrying the loans `lending` reads rather than those of the moments
     /// before `phase`: [`shipping_purse`] carries the fees already booked at TRANSPORT too
-    /// ([`Lending::through`], `ah-8bzm`). `lending` is asked only where silver pools.
+    /// ([`Lending::at_shipment`], `ah-8bzm`). `lending` is asked only where silver pools.
     fn carrying(
         ledger: &Ledger<'_>,
         hex: &Hex<'_>,
@@ -15941,31 +15959,37 @@ impl Lending {
 
     /// What the pool lent through the moments whose phase comes before `phase`: what a reading of
     /// the hex's silver at `phase` must carry. Nothing before [`StatePhase::Market`], since the
-    /// first moment is the cast.
+    /// first moment is the cast. Past TRANSPORT, its whole run.
     fn before(hex: &Hex<'_>, ledger: &Ledger<'_>, phase: StatePhase) -> Self {
         let moments: Vec<LendingMoment> = PURSE_MOMENTS
             .iter()
             .copied()
             .filter(|moment| moment.phase() < phase)
             .collect();
-        Self::over(hex, ledger, &moments)
+        Self::over(hex, ledger, &moments, &ledger.transport_run)
     }
 
-    /// What the pool lent through the moments whose phase is `phase` or earlier: what a reader
-    /// judging a claim *at* that moment must carry, the claims already paid there included. At
-    /// [`StatePhase::Transport`] that is every fee already booked, so a later shipment is judged
-    /// against the shared money the earlier fees left (`runorders.cpp`: `RunTransportOrders`;
-    /// `ah-8bzm`).
-    fn through(hex: &Hex<'_>, ledger: &Ledger<'_>, phase: StatePhase) -> Self {
+    /// What the pool lent through every moment before TRANSPORT and TRANSPORT's run up to
+    /// `point`: what a reader judging a shipment *at* that point must carry, the shipments already
+    /// run included. So a shipment is judged against the shared money the earlier ones left, as
+    /// the engine judges it (`runorders.cpp`: `RunTransportOrders`; `ah-8bzm`), and a test can read
+    /// the lending at a shipment directly (`ah-3ffm`).
+    fn at_shipment(hex: &Hex<'_>, ledger: &Ledger<'_>, point: TransportPoint<'_>) -> Self {
         let moments: Vec<LendingMoment> = PURSE_MOMENTS
             .iter()
             .copied()
-            .filter(|moment| moment.phase() <= phase)
+            .filter(|moment| moment.phase() <= StatePhase::Transport)
             .collect();
-        Self::over(hex, ledger, &moments)
+        let run = &ledger.transport_run[..point.steps_in(&ledger.transport_run)];
+        Self::over(hex, ledger, &moments, run)
     }
 
-    fn over(hex: &Hex<'_>, ledger: &Ledger<'_>, moments: &[LendingMoment]) -> Self {
+    fn over(
+        hex: &Hex<'_>,
+        ledger: &Ledger<'_>,
+        moments: &[LendingMoment],
+        run: &[TransportStep],
+    ) -> Self {
         if moments.is_empty() {
             return Self::nothing(hex, ledger);
         }
@@ -15973,7 +15997,7 @@ impl Lending {
         if sharing.reading(SILVER, None) == Reading::PerUnit || !sharing.pool_trusted(ledger) {
             return Self::nothing(hex, ledger);
         }
-        Self::settle(hex, ledger, &sharing, moments)
+        Self::settle(hex, ledger, &sharing, moments, run)
     }
 
     /// What the engine never took from a unit, and so hands back at every later moment: the cost
@@ -16044,6 +16068,7 @@ impl Lending {
         ledger: &Ledger<'_>,
         sharing: &Sharing<'_>,
         moments: &[LendingMoment],
+        run: &[TransportStep],
     ) -> Self {
         let arrivals = ledger.relief().walking.arrivals_at(LendingMoment::MonthEnd);
         let judged = |index: usize| !ledger.doubted.contains(&hex.units[index].unit.unit_id);
@@ -16055,9 +16080,26 @@ impl Lending {
         // purse at any later moment - where a later GIVE refilled a sharer, lending for it at the
         // cast would draw on silver that arrived after the gift (`ah-2fn5`). What the sharers did
         // fund is lent below, before the cast moment, on the sharers it was drawn on (`ah-msds`).
-        let own = |index: usize, at: LendingMoment| {
+        // At TRANSPORT, the unit's silver after the first `read` steps of the run: what it held
+        // before the first shipment, and what those steps moved (`ah-3ffm`).
+        let moved = |unit_id: &str, steps: &[TransportStep]| -> i64 {
+            steps
+                .iter()
+                .flat_map(|step| &step.silver)
+                .filter(|(who, _)| who == unit_id)
+                .map(|(_, amount)| amount)
+                .sum()
+        };
+        let own = |index: usize, at: LendingMoment, read: usize| {
             let unit_id = &hex.units[index].unit.unit_id;
-            silver_at(ledger, unit_id, at)
+            let silver = if at == LendingMoment::Transport {
+                unlent_silver_at(ledger, unit_id, StatePhase::Transport)
+                    - moved(unit_id, &ledger.transport_run)
+                    + moved(unit_id, &run[..read])
+            } else {
+                silver_at(ledger, unit_id, at)
+            };
+            silver
                 .saturating_sub(ledger.tax_overstated.get(index).copied().unwrap_or(0))
                 .saturating_add(unfunded_gift_silver(ledger, unit_id))
         };
@@ -16095,45 +16137,44 @@ impl Lending {
         // nothing, and a later STUDY is judged on its own fee against what the pool still holds
         // (`ah-szu0`).
         let mut unpaid = vec![0_i64; hex.units.len()];
-        // What each exact silver shipment drew on a sharer as it ran, lent on that sharer
-        // ([`Ledger::shipment_draws`], `ah-9yvv`). One drawn before the fees were judged sits in its
-        // sender's TRANSPORT position as an overdraft, so it is lent before the moment's fold, which
-        // then finds nothing more to lend for it; one drawn after is not in that position, so it is
-        // lent once the fold has lent for the fees, which it cannot have paid for.
-        let lend_draws = |purse: &mut Lending, after_fees: bool| {
-            for draw in ledger
-                .shipment_draws
-                .iter()
-                .filter(|draw| draw.after_fees == after_fees)
-            {
-                let Some(borrower) = hex
-                    .units
+        // What a shipment drew on the sharers as it ran, lent on the sharer it was drawn on as its
+        // step of the run is read (`ah-9yvv`, `ah-3ffm`): before its fee is judged, and after
+        // every earlier shipment's.
+        let lend_draws = |purse: &mut Lending, step: &TransportStep| {
+            let Some(borrower) = step.shipment.as_ref().and_then(|shipment| {
+                hex.units
                     .iter()
-                    .position(|ordered| ordered.unit.unit_id == draw.borrower)
+                    .position(|ordered| ordered.unit.unit_id == shipment.sender)
                     .filter(|&index| judged(index))
-                else {
-                    continue;
-                };
-                purse.borrows[borrower] += draw.amount;
-                match draw.lender {
-                    Lender::Unit(index) => purse.lends[index] += draw.amount,
+            }) else {
+                return;
+            };
+            for &(lender, amount) in &step.draws {
+                purse.borrows[borrower] += amount;
+                match lender {
+                    Lender::Unit(index) => purse.lends[index] += amount,
                     Lender::Arrival(index) => {
                         if let Some(lent) = purse.arrivals_lend.get_mut(index) {
-                            *lent += draw.amount;
+                            *lent += amount;
                         }
                     }
                 }
             }
         };
-        let mut draws_after_fees_due = false;
-        for &moment in moments {
-            if draws_after_fees_due {
-                lend_draws(&mut purse, true);
-                draws_after_fees_due = false;
-            }
-            if moment == LendingMoment::Transport {
-                lend_draws(&mut purse, false);
-                draws_after_fees_due = true;
+        // Every moment is one reading, but TRANSPORT, which is read before its first shipment and
+        // after each step of its run in turn, as the engine runs them (`runorders.cpp`:
+        // `RunTransportOrders`; `ah-3ffm`). `read` is how many of the run's steps a reading has.
+        let readings = moments.iter().flat_map(|&moment| {
+            let last = if moment == LendingMoment::Transport {
+                run.len()
+            } else {
+                0
+            };
+            (0..=last).map(move |read| (moment, read))
+        });
+        for (moment, read) in readings {
+            if moment == LendingMoment::Transport && read > 0 {
+                lend_draws(&mut purse, &run[read - 1]);
             }
             if moment == LendingMoment::Cast {
                 // The casts are judged one at a time, in region order, each against what the
@@ -16178,8 +16219,8 @@ impl Lending {
                 sharing.position_here(
                     &hex.units[index],
                     at,
-                    own(index, at) + carried + refused_shipments(index),
-                    || own(index, LendingMoment::Transport) + carried,
+                    own(index, at, read) + carried + refused_shipments(index),
+                    || own(index, LendingMoment::Transport, run.len()) + carried,
                 )
             };
             let needs: Vec<i64> = (0..hex.units.len())
@@ -16361,10 +16402,6 @@ impl Lending {
             }
         }
 
-        if draws_after_fees_due {
-            lend_draws(&mut purse, true);
-        }
-
         // A judged student the purse lent nothing to paid its whole fee from its own silver.
         if moments.contains(&LendingMoment::Study) {
             for (index, outcome) in purse.study.iter_mut().enumerate() {
@@ -16474,6 +16511,7 @@ fn study_settlement(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Vec<StudyOutcome> {
             LendingMoment::Movement,
             LendingMoment::Study,
         ],
+        &[],
     );
     hex.units
         .iter()
@@ -16620,7 +16658,7 @@ fn sharing_purse_over(
             ..nothing
         };
     }
-    let lending = Lending::settle(hex, ledger, &sharing, moments);
+    let lending = Lending::settle(hex, ledger, &sharing, moments, &ledger.transport_run);
 
     // The warning's month-end reading, on the column's figures - less the casts and studies the
     // engine refuses, which take nothing (`ah-li7l`, `ah-szu0`).
@@ -16642,7 +16680,13 @@ fn sharing_purse_over(
             .copied()
             .filter(|&moment| moment != LendingMoment::MonthEnd)
             .collect();
-        let paid = Lending::settle(hex, ledger, &sharing, &before_month_end);
+        let paid = Lending::settle(
+            hex,
+            ledger,
+            &sharing,
+            &before_month_end,
+            &ledger.transport_run,
+        );
         let coverage = (0..hex.units.len())
             .map(|index| {
                 let position = own_end(index) + paid.carried(index) + paid.refused(index);
@@ -21975,8 +22019,7 @@ impl SettledShipment {
 
     fn debit_sender(&self, ledger: &mut Ledger<'_>, phase: StatePhase, placed: &PlacedIntent) {
         if let Some(amount) = self.silver_change_for(&self.sender) {
-            moved_after_fees(ledger, &self.sender, amount);
-            move_silver(
+            transport_silver(
                 ledger,
                 phase,
                 &self.sender,
@@ -21996,8 +22039,14 @@ impl SettledShipment {
 
     fn credit_receiver(&self, ledger: &mut Ledger<'_>, phase: StatePhase) {
         if let Some(amount) = self.silver_change_for(&self.target) {
-            moved_after_fees(ledger, &self.target, amount);
-            move_silver(
+            // The receipts a sub-phase credits as it ends are one step of the run.
+            if !matches!(
+                ledger.transport_run.last(),
+                Some(TransportStep { shipment: None, .. })
+            ) {
+                begin_transport_step(ledger, None, Vec::new());
+            }
+            transport_silver(
                 ledger,
                 phase,
                 &self.target,
@@ -22016,15 +22065,37 @@ impl SettledShipment {
     }
 }
 
-/// Record `amount` of silver a shipment moves for `unit_id` once every fee has been judged
-/// ([`Ledger::silver_moved_after_fees`], `ah-k719`).
-fn moved_after_fees(ledger: &mut Ledger<'_>, unit_id: &str, amount: i64) {
-    if ledger.fees_judged {
-        *ledger
-            .silver_moved_after_fees
-            .entry(unit_id.to_string())
-            .or_default() += amount;
-    }
+/// Open the next step of TRANSPORT's run ([`Ledger::transport_run`]): `shipment` with what it
+/// drew on the sharers, or `None` for the silver a sub-phase credits as it ends.
+fn begin_transport_step(
+    ledger: &mut Ledger<'_>,
+    shipment: Option<ShipmentName>,
+    draws: Vec<(Lender, i64)>,
+) {
+    ledger.transport_run.push(TransportStep {
+        shipment,
+        silver: Vec::new(),
+        draws,
+    });
+}
+
+/// [`move_silver`] for a move TRANSPORT makes, logged on the run's open step
+/// ([`begin_transport_step`]) so the purse reads it where the run made it (`ah-3ffm`).
+fn transport_silver(
+    ledger: &mut Ledger<'_>,
+    phase: StatePhase,
+    who: &str,
+    amount: i64,
+    cause: SilverChangeCause,
+    placed: Option<&PlacedIntent>,
+    other: Option<String>,
+) {
+    let step = ledger
+        .transport_run
+        .last_mut()
+        .expect("a TRANSPORT move is made inside a step of the run");
+    step.silver.push((who.to_string(), amount));
+    move_silver(ledger, phase, who, amount, cause, placed, other);
 }
 
 /// Push `finding` unless a finding of its own code, or a part-of-hex-shortfall marker, already
@@ -22069,7 +22140,7 @@ fn silver_shortfall_claimable(hex: &Hex<'_>, ledger: &Ledger<'_>, unit_id: &str)
 fn snapshot_transport_check(hex: &Hex<'_>, ledger: &mut Ledger<'_>, ruleset: Option<&Ruleset>) {
     for ordered in &hex.units {
         let sender = ordered.unit.unit_id.as_str();
-        let ships_exact_silver = ordered.intents.iter().any(|placed| {
+        let first_exact_silver = ordered.intents.iter().find(|placed| {
             matches!(
                 &placed.intent,
                 Intent::Transport {
@@ -22080,11 +22151,18 @@ fn snapshot_transport_check(hex: &Hex<'_>, ledger: &mut Ledger<'_>, ruleset: Opt
                     .is_some_and(|tag| tag.eq_ignore_ascii_case(SILVER))
             )
         });
-        if !ships_exact_silver || !silver_shortfall_claimable(hex, ledger, sender) {
+        let Some(first) = first_exact_silver else {
+            continue;
+        };
+        if !silver_shortfall_claimable(hex, ledger, sender) {
             continue;
         }
-        let held = ledger.transport_holding(hex, sender, SILVER).max(0)
-            + shipment_lenders(ledger, hex, sender)
+        let first = ShipmentName {
+            sender: sender.to_string(),
+            line: first.line,
+        };
+        let held = ledger.transport_holding(hex, sender, SILVER, &first).max(0)
+            + shipment_lenders(ledger, hex, &first)
                 .iter()
                 .map(|(_, left)| left)
                 .sum::<i64>();
@@ -22102,15 +22180,21 @@ fn snapshot_transport_check(hex: &Hex<'_>, ledger: &mut Ledger<'_>, ruleset: Opt
 /// joins the open ground, ahead of any structure, so where a staying sharer is inside a structure
 /// the engine may draw on an arrival first: the total drawn is the same, only which sharer's row
 /// shows the loan can differ (`ah-9yvv` review, finding 3).
-/// Read on the same stock [`shipping_purse`] judges a fee on, which carries every fee and every
-/// earlier draw already lent at TRANSPORT ([`Lending::through`]), so nothing is drawn twice. Empty
-/// where silver does not pool here, or the pool or the sender cannot be read.
-fn shipment_lenders(ledger: &Ledger<'_>, hex: &Hex<'_>, sender: &str) -> Vec<(Lender, i64)> {
+/// Read on the same stock [`shipping_purse`] judges a fee on, the purse `before` this shipment,
+/// which carries every fee and every draw of the shipments already run ([`Lending::at_shipment`]),
+/// so nothing is drawn twice. Empty where silver does not pool here, or the pool or the sender
+/// cannot be read.
+fn shipment_lenders(
+    ledger: &Ledger<'_>,
+    hex: &Hex<'_>,
+    before: &ShipmentName,
+) -> Vec<(Lender, i64)> {
+    let sender = before.sender.as_str();
     let sharing = Sharing::for_silver(hex, ledger);
     if sharing.reading(SILVER, ledger.ruleset) != Reading::Pooled {
         return Vec::new();
     }
-    let lending = Lending::through(hex, ledger, StatePhase::Transport);
+    let lending = Lending::at_shipment(hex, ledger, TransportPoint::Before(before));
     let lent_by_arrivals = lending.arrivals_lend.clone();
     let stock = SharerStock::carrying(ledger, hex, StatePhase::Transport, SILVER, |_, _| lending);
     let Some((stock, at)) =
@@ -22142,13 +22226,9 @@ fn shipment_lenders(ledger: &Ledger<'_>, hex: &Hex<'_>, sender: &str) -> Vec<(Le
 }
 
 /// `drawn` - what a shipment moves beyond its sender's own silver - laid on `lenders` in order,
-/// each up to what it has ([`Ledger::shipment_draws`], `ah-9yvv`).
-fn shipment_draws_for(
-    sender: &str,
-    lenders: &[(Lender, i64)],
-    drawn: i64,
-    after_fees: bool,
-) -> Vec<ShipmentDraw> {
+/// each up to what it has: the draws its step of the run lends ([`TransportStep::draws`],
+/// `ah-9yvv`).
+fn draws_on_sharers(lenders: &[(Lender, i64)], drawn: i64) -> Vec<(Lender, i64)> {
     let mut owing = drawn.max(0);
     let mut draws = Vec::new();
     for &(lender, left) in lenders {
@@ -22157,12 +22237,7 @@ fn shipment_draws_for(
         }
         let amount = left.min(owing);
         owing -= amount;
-        draws.push(ShipmentDraw {
-            borrower: sender.to_string(),
-            lender,
-            amount,
-            after_fees,
-        });
+        draws.push((lender, amount));
     }
     draws
 }
@@ -22215,6 +22290,10 @@ fn shipping_bills(
             let Some(id) = super::transport::shipment_target(sender, to, what) else {
                 continue;
             };
+            let name = ShipmentName {
+                sender: sender.to_string(),
+                line: placed.line,
+            };
             // This pass's own: an unfinished hull has no catalogue weight, so no honest price.
             let Selector::Item(text) = what else {
                 continue;
@@ -22236,7 +22315,7 @@ fn shipping_bills(
                         .is_some_and(|entry| {
                             let tag = entry.tag.to_ascii_uppercase();
                             let already_shipped = shipment_allowance_used(&shipped, &tag);
-                            let held = (ledger.transport_holding(hex, sender, &tag)
+                            let held = (ledger.transport_holding(hex, sender, &tag, &name)
                                 + received_earlier
                                     .get(&(sender.to_string(), tag.clone()))
                                     .copied()
@@ -22300,7 +22379,8 @@ fn shipping_bills(
                 .copied()
                 .unwrap_or_default();
             let conditional = acceptance == super::transport::Acceptance::AcceptanceUnknown;
-            let held = (ledger.transport_holding(hex, sender, &tag) + arrived - already).max(0);
+            let held =
+                (ledger.transport_holding(hex, sender, &tag, &name) + arrived - already).max(0);
             // An exact silver ask the sender cannot meet (`ah-0aqx`, `runorders.cpp`). Refused
             // outright where it exceeds what was held as shipping began (`CheckTransportOrders`:
             // `o->type = NORDERS`); otherwise cut to what is left as it runs (`RunTransportOrders`:
@@ -22315,7 +22395,7 @@ fn shipping_bills(
             // silver first and draws the rest on them (`unit.cpp`; `rules/share`; `ah-9yvv`). `ALL`
             // ships the sender's own alone (`amt = u->items.GetNum`).
             let lenders = if asked.is_some() {
-                shipment_lenders(ledger, hex, sender)
+                shipment_lenders(ledger, hex, &name)
             } else {
                 Vec::new()
             };
@@ -22324,8 +22404,7 @@ fn shipping_bills(
                 Some(asked) => asked.clamp(0, can_have),
                 None => super::transfers::quantity_moved(amount, held),
             };
-            let mut draws =
-                shipment_draws_for(sender, &lenders, quantity - held, ledger.fees_judged);
+            let mut draws = draws_on_sharers(&lenders, quantity - held);
             if let Some(asked) = asked {
                 if let Some(&check) = ledger.silver_at_transport_check.get(sender) {
                     if asked > check {
@@ -22364,7 +22443,11 @@ fn shipping_bills(
                     unmeasured.world_wrap = true;
                     if !conditional {
                         ledger.cut_shipments.extend(cut.take());
-                        ledger.shipment_draws.append(&mut draws);
+                        begin_transport_step(
+                            ledger,
+                            Some(name.clone()),
+                            std::mem::take(&mut draws),
+                        );
                         delivered.push(settle_shipment_delivery(
                             ledger,
                             settled_at,
@@ -22384,7 +22467,11 @@ fn shipping_bills(
                 ) => {
                     if !conditional {
                         ledger.cut_shipments.extend(cut.take());
-                        ledger.shipment_draws.append(&mut draws);
+                        begin_transport_step(
+                            ledger,
+                            Some(name.clone()),
+                            std::mem::take(&mut draws),
+                        );
                         delivered.push(settle_shipment_delivery(
                             ledger,
                             settled_at,
@@ -22413,9 +22500,14 @@ fn shipping_bills(
                     }
                     // Judged before anything is booked: a shipment is all or nothing, so a
                     // refusal must leave no `Shipped` move behind (`ah-7ale.4`).
-                    let purse = shipping_purse(ledger, hex, ordered, ruleset);
+                    let purse = shipping_purse(ledger, hex, ordered, ruleset, &name);
                     if cost <= purse {
-                        move_silver(
+                        begin_transport_step(
+                            ledger,
+                            Some(name.clone()),
+                            std::mem::take(&mut draws),
+                        );
+                        transport_silver(
                             ledger,
                             settled_at,
                             sender,
@@ -22425,7 +22517,6 @@ fn shipping_bills(
                             None,
                         );
                         ledger.cut_shipments.extend(cut.take());
-                        ledger.shipment_draws.append(&mut draws);
                         delivered.push(settle_shipment_delivery(
                             ledger,
                             settled_at,
@@ -22656,6 +22747,7 @@ fn shipping_purse(
     hex: &Hex<'_>,
     sender: &Ordered<'_>,
     ruleset: Option<&Ruleset>,
+    before: &ShipmentName,
 ) -> i64 {
     let own = silver_at(ledger, &sender.unit.unit_id, LendingMoment::Transport);
     let sharing = Sharing::for_silver(hex, ledger);
@@ -22666,14 +22758,15 @@ fn shipping_purse(
         Reading::Pooled => {
             // The ledger charges a borrower and leaves its lenders' rows alone (`ah-0mch`), so the
             // pool is read through the one reading that carries what the purse lent and handed
-            // back - before TRANSPORT, and for the fees already booked at it ([`Lending::through`])
+            // back - before TRANSPORT, and for the shipments of its run already run, `before` this
+            // one ([`Lending::at_shipment`])
             // - since the engine judges each fee against the shared money the earlier orders and
             // fees left (`runorders.cpp`: `RunTransportOrders`, "Cannot afford shipping cost.";
             // `ah-x0iq`, `ah-8bzm`). A sharer that walked away is gone by TRANSPORT, so what it
             // lent before it left is already in its borrowers' positions and not counted again;
             // an arrival lends what it holds less what it lent here already.
             let sender_id = &sender.unit.unit_id;
-            let lending = Lending::through(hex, ledger, StatePhase::Transport);
+            let lending = Lending::at_shipment(hex, ledger, TransportPoint::Before(before));
             let lent_by_arrivals: i64 = lending.arrivals_lend.iter().sum();
             let stock =
                 SharerStock::carrying(ledger, hex, StatePhase::Transport, SILVER, |_, _| lending);
@@ -42545,7 +42638,7 @@ BUILD
 
                 // TRANSPORT: a refused study's fee comes back, a paid one's is gone.
                 assert_eq!(
-                    ledger.transport_holding(&hex, id, SILVER),
+                    ledger.transport_holding(&hex, id, SILVER, &unrun(id)),
                     0,
                     "{id}: every student had nothing of its own, paid or refused"
                 );
@@ -42559,7 +42652,10 @@ BUILD
                     _ => 0,
                 })
                 .sum();
-            assert_eq!(ledger.transport_holding(&hex, "7", SILVER), 15 - lent);
+            assert_eq!(
+                ledger.transport_holding(&hex, "7", SILVER, &unrun("7")),
+                15 - lent
+            );
         }
 
         /// `TRANSPORT`'s own holding for a student whose own silver a `GIVE` left uncertain, read
@@ -42580,7 +42676,7 @@ BUILD
                     line: 1,
                 },
             );
-            ledger.transport_holding(&hex, "5", SILVER)
+            ledger.transport_holding(&hex, "5", SILVER, &unrun("5"))
         }
 
         /// Review finding 1: the purse paid $5 of 5's $10 Combat, so its own $5 is spent and what
@@ -60431,6 +60527,142 @@ BUILD
         assert!(lending.covered());
     }
 
+    /// A shipment of `sender`'s that has not run: read `Before` it, the purse is the run so far.
+    fn unrun(sender: &str) -> ShipmentName {
+        ShipmentName {
+            sender: sender.to_string(),
+            line: usize::MAX,
+        }
+    }
+
+    /// One shipment of TRANSPORT's run, booked as `shipping_bills` books it: the step first, with
+    /// what it drew on the sharers, then its silver through [`transport_silver`].
+    fn book_shipment(
+        ledger: &mut Ledger<'_>,
+        name: &ShipmentName,
+        draws: Vec<(Lender, i64)>,
+        silver: &[(&str, i64, SilverChangeCause)],
+    ) {
+        begin_transport_step(ledger, Some(name.clone()), draws);
+        for &(who, amount, cause) in silver {
+            transport_silver(
+                ledger,
+                StatePhase::Transport,
+                who,
+                amount,
+                cause,
+                None,
+                None,
+            );
+        }
+    }
+
+    /// The purse lends TRANSPORT one shipment at a time, as the engine runs it (`runorders.cpp`:
+    /// `RunTransportOrders` spends a shipment with `ConsumeShared`, then its fee with
+    /// `ConsumeSharedMoney`). Non-sharer 906 ($5) first ships 10 silver, drawing 5 on sharer 903
+    /// ($50; `unit.cpp`: `ConsumeShared` spends the sender's own first), then pays a $45 fee, which
+    /// the purse lends out of what 903 has left. Read at each shipment, never at the month's end:
+    /// the month-end moment lends again and would hide a draw lent at the wrong point of the run
+    /// (`docs/retrospectives/ah-9yvv.md`; `ah-3ffm`).
+    #[test]
+    fn the_purse_lends_a_transport_draw_at_its_own_shipment() {
+        let hex_region = region(vec![
+            sharing(with_silver(unit("903"), 50)),
+            with_silver(unit("906"), 5),
+        ]);
+        let ordered = OrderedUnits::read("unit 906\nTRANSPORT 905 10 SILV\nTRANSPORT 901 9 FUR\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let rules = trident_rules();
+        let mut ledger = ledger_for(&hex, Some(&rules));
+        let (lender, sender) = (0, 1);
+        let draw = ShipmentName {
+            sender: "906".to_string(),
+            line: 2,
+        };
+        let fee = ShipmentName {
+            sender: "906".to_string(),
+            line: 3,
+        };
+        book_shipment(
+            &mut ledger,
+            &draw,
+            vec![(Lender::Unit(lender), 5)],
+            &[("906", -10, SilverChangeCause::Sent)],
+        );
+        book_shipment(
+            &mut ledger,
+            &fee,
+            vec![],
+            &[("906", -45, SilverChangeCause::Shipped)],
+        );
+
+        let at = |point| Lending::at_shipment(&hex, &ledger, point);
+        let before_draw = at(TransportPoint::Before(&draw));
+        assert_eq!(
+            (before_draw.lends[lender], before_draw.borrows[sender]),
+            (0, 0),
+            "nothing is drawn before the shipment runs"
+        );
+        let after_draw = at(TransportPoint::After(&draw));
+        assert_eq!(
+            (after_draw.lends[lender], after_draw.borrows[sender]),
+            (5, 5)
+        );
+        assert_eq!(
+            at(TransportPoint::Before(&fee)).lends[lender],
+            5,
+            "the fee is not lent before it runs"
+        );
+        let after_fee = at(TransportPoint::After(&fee));
+        assert_eq!(
+            (after_fee.lends[lender], after_fee.borrows[sender]),
+            (50, 50)
+        );
+    }
+
+    /// A loan the purse made for a fee is never paid back by silver the run credits later
+    /// (`ah-qrk0`, `ah-k719`): $0 non-sharer 906's $45 fee is lent by sharer 903, then 906 is
+    /// credited $100 as its sub-phase ends, and 903 has still lent 45 - read after the receipt and
+    /// before a shipment that has not run yet, never at the month's end (`ah-3ffm`).
+    #[test]
+    fn a_receipt_later_in_the_run_pays_no_fee_loan_back() {
+        let hex_region = region(vec![sharing(with_silver(unit("903"), 50)), unit("906")]);
+        let ordered = OrderedUnits::read("unit 906\nTRANSPORT 901 9 FUR\nTRANSPORT 905 10 SILV\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let rules = trident_rules();
+        let mut ledger = ledger_for(&hex, Some(&rules));
+        let fee = ShipmentName {
+            sender: "906".to_string(),
+            line: 2,
+        };
+        let next = ShipmentName {
+            sender: "906".to_string(),
+            line: 3,
+        };
+        book_shipment(
+            &mut ledger,
+            &fee,
+            vec![],
+            &[("906", -45, SilverChangeCause::Shipped)],
+        );
+        begin_transport_step(&mut ledger, None, vec![]);
+        transport_silver(
+            &mut ledger,
+            StatePhase::Transport,
+            "906",
+            100,
+            SilverChangeCause::Received,
+            None,
+            None,
+        );
+        assert_eq!(
+            Lending::at_shipment(&hex, &ledger, TransportPoint::After(&fee)).lends,
+            vec![45, 0]
+        );
+        let later = Lending::at_shipment(&hex, &ledger, TransportPoint::Before(&next));
+        assert_eq!((later.lends, later.borrows), (vec![45, 0], vec![0, 45]));
+    }
+
     /// The silver stock at TRANSPORT, read off ledger and hex: each unit's position once the
     /// purse's lending is carried, by id, and what a drain at TRANSPORT itself would still lay on
     /// each. The raw position, unclamped - not [`SharerStock::own_for`], which reads a non-lender
@@ -62138,7 +62370,7 @@ BUILD
                     "reversed: {reversed}: none left to ship"
                 );
                 assert_eq!(
-                    ledger.transport_holding(&hex, LENDER, "WOOD"),
+                    ledger.transport_holding(&hex, LENDER, "WOOD", &unrun(LENDER)),
                     0,
                     "reversed: {reversed}"
                 );
