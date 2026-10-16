@@ -4190,8 +4190,9 @@ describe("a refused cast in the items popup", () => {
     silverShort,
     short
   });
-  const FLOA = (amount: number) => ({ tag: "FLOA", name: "floater hide", amount });
-  const IRWD = (amount: number) => ({ tag: "IRWD", name: "ironwood", amount });
+  const FLOA = (amount: number) => ({ tag: "FLOA", name: "floater hide", plural: "floater hides", amount });
+  const IRWD = (amount: number) => ({ tag: "IRWD", name: "ironwood", plural: "ironwood", amount });
+  // Every `spent` name below is what the core emits: the catalogue's singular (`item_name`).
   const ivanhoe = (overrides: Partial<PreviewedUnit>) =>
     unit({ unitId: "683", name: "Ivanhoe", ...overrides });
   const popupOf = (overrides: Partial<PreviewedUnit>) =>
@@ -4207,7 +4208,7 @@ describe("a refused cast in the items popup", () => {
     const popup = popupOf({
       items: [{ name: "ironwood", tag: "IRWD", amount: 75 }],
       previewChanges: [{ field: "items", original: "9571 SILV, 75 IRWD" }],
-      itemChanges: [spent("FLOA", "floater hides", -75)],
+      itemChanges: [spent("FLOA", "floater hide", -75)],
       refusedCasts: [cloudship([FLOA(75)])]
     });
     expect(popup.lines).toEqual([
@@ -4224,10 +4225,35 @@ describe("a refused cast in the items popup", () => {
     );
   });
 
+  it("names a single missing item in the singular", () => {
+    const popup = popupOf({
+      items: [],
+      previewChanges: [{ field: "items", original: "" }],
+      itemChanges: [spent("FLOA", "floater hide", -1)],
+      refusedCasts: [cloudship([FLOA(1)])]
+    });
+    expect(popup.lines[0]?.label).toBe("floater hide FLOA");
+    expect(popup.notes[0]).toBe("floater hide: consumed 1 by a spell.");
+    expect(popup.warning).toBe("A red figure in the cell: this unit ends the month 1 floater hide short.");
+  });
+
+  it("groups a large red figure as the figure it is paired with", () => {
+    const popup = popupOf({
+      items: [],
+      previewChanges: [{ field: "items", original: "2000 FLOA" }],
+      itemChanges: [spent("FLOA", "floater hide", -3500)],
+      refusedCasts: [cloudship([FLOA(1500)])]
+    });
+    expect(popup.lines[0]).toMatchObject({
+      value: (-1500).toLocaleString(),
+      change: { direction: "down", from: (2000).toLocaleString() }
+    });
+  });
+
   it("pairs from what the report listed when the items list did not change", () => {
     const popup = popupOf({
       items: [{ name: "ironwood", tag: "IRWD", amount: 75 }],
-      itemChanges: [spent("FLOA", "floater hides", -75)],
+      itemChanges: [spent("FLOA", "floater hide", -75)],
       refusedCasts: [cloudship([FLOA(75)])]
     });
     expect(popup.lines[0]).toEqual({
@@ -4242,7 +4268,7 @@ describe("a refused cast in the items popup", () => {
     const popup = popupOf({
       items: [{ name: "ironwood", tag: "IRWD", amount: 75 }],
       previewChanges: [{ field: "items", original: "50 FLOA, 75 IRWD" }],
-      itemChanges: [spent("FLOA", "floater hides", -75)],
+      itemChanges: [spent("FLOA", "floater hide", -75)],
       refusedCasts: [cloudship([FLOA(25)])]
     });
     expect(popup.lines[0]).toEqual({
@@ -4260,7 +4286,7 @@ describe("a refused cast in the items popup", () => {
     const popup = popupOf({
       items: [],
       previewChanges: [{ field: "items", original: "" }],
-      itemChanges: [spent("FLOA", "floater hides", -75), spent("IRWD", "ironwood", -75)],
+      itemChanges: [spent("FLOA", "floater hide", -75), spent("IRWD", "ironwood", -75)],
       refusedCasts: [cloudship([FLOA(75), IRWD(75)])]
     });
     expect(popup.lines.map((line) => `${line.label} ${line.value}`)).toEqual([
@@ -4300,7 +4326,7 @@ describe("a refused cast in the items popup", () => {
     const popup = popupOf({
       items: [{ name: "ironwood", tag: "IRWD", amount: 75 }],
       previewChanges: [{ field: "items", original: "75 IRWD" }],
-      itemChanges: [spent("FLOA", "floater hides", -75)],
+      itemChanges: [spent("FLOA", "floater hide", -75)],
       refusedCasts: [cloudship([FLOA(75)], 200)]
     });
     expect(popup.lines[0]?.value).toBe("-75");
@@ -4316,7 +4342,7 @@ describe("a refused cast in the items popup", () => {
       previewChanges: [{ field: "items", original: "75 FLOA, 75 IRWD" }],
       created: [{ fewest: 0, most: 1, tag: "CLOU", summoned: false }],
       itemChanges: [
-        spent("FLOA", "floater hides", -75),
+        spent("FLOA", "floater hide", -75),
         spent("IRWD", "ironwood", -75),
         { ...spent("CLOU", "Cloudship", 1), cause: "cast-created" }
       ]
@@ -4333,10 +4359,10 @@ describe("a refused cast in the items popup", () => {
       previewChanges: [{ field: "items", original: "75 FLOA, 75 IRWD" }],
       created: [{ fewest: 0, most: 1, tag: "CLOU", summoned: false }],
       itemChanges: [
-        spent("FLOA", "floater hides", -75),
+        spent("FLOA", "floater hide", -75),
         spent("IRWD", "ironwood", -75),
         { ...spent("CLOU", "Cloudship", 1), cause: "cast-created" },
-        spent("FLOA", "floater hides", -75, 4)
+        spent("FLOA", "floater hide", -75, 4)
       ],
       refusedCasts: [cloudship([FLOA(75)])]
     });
@@ -4351,7 +4377,7 @@ describe("a refused cast in the items popup", () => {
     const popup = popupOf({
       items: [],
       previewChanges: [{ field: "items", original: "" }],
-      itemChanges: [spent("FLOA", "floater hides", -75)],
+      itemChanges: [spent("FLOA", "floater hide", -75)],
       refusedCasts: [cloudship([FLOA(75)])]
     });
     expect(popup.lines).toHaveLength(2);
@@ -4370,7 +4396,7 @@ describe("a refused cast in the items popup", () => {
       previewChanges: [
         { field: "items", original: many.map((item) => `${item.amount} ${item.tag}`).join(", ") }
       ],
-      itemChanges: [spent("FLOA", "floater hides", -75)],
+      itemChanges: [spent("FLOA", "floater hide", -75)],
       refusedCasts: [cloudship([FLOA(75)])]
     });
     expect(popup.lines[0]?.value).toBe("-75");
@@ -4382,7 +4408,7 @@ describe("a refused cast in the items popup", () => {
       items: [],
       previewChanges: [{ field: "items", original: "" }],
       uncounted: ["buy all HORS"],
-      itemChanges: [spent("FLOA", "floater hides", -75)],
+      itemChanges: [spent("FLOA", "floater hide", -75)],
       refusedCasts: [cloudship([FLOA(75)])]
     });
     expect(popup.warning).toBe(

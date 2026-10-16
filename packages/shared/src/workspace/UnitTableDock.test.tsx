@@ -1067,7 +1067,7 @@ describe("the items column", () => {
           {
             product: { tag: "CLOU", name: "Cloudship", fewest: 0, most: 1 },
             silverShort: 0,
-            short: [{ tag: "FLOA", name: "floater hide", amount: 75 }]
+            short: [{ tag: "FLOA", name: "floater hide", plural: "floater hides", amount: 75 }]
           }
         ]
       })

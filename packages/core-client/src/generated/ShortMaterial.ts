@@ -5,6 +5,11 @@
  */
 export type ShortMaterial = { tag: string, 
 /**
- * The catalogue's display name.
+ * The catalogue's display name, the singular.
  */
-name: string, amount: number, };
+name: string, 
+/**
+ * The report's own plural, as `counted_item` reads it, or `name` where the report shows
+ * nobody holding more than one (`ah-rsdz`): what a sentence counting other than one names.
+ */
+plural: string, amount: number, };

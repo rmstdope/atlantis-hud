@@ -30,12 +30,11 @@ const cloudship = (short: RefusedCast["short"], silverShort = 0): RefusedCast =>
   short
 });
 
-const FLOA = (amount: number) => ({ tag: "FLOA", name: "floater hide", amount });
-const IRWD = (amount: number) => ({ tag: "IRWD", name: "ironwood", amount });
+const FLOA = (amount: number) => ({ tag: "FLOA", name: "floater hide", plural: "floater hides", amount });
+const IRWD = (amount: number) => ({ tag: "IRWD", name: "ironwood", plural: "ironwood", amount });
 
-/** The hover's own names, as its lines label them. */
-const names: Record<string, string> = { FLOA: "floater hides", IRWD: "ironwood", CLOU: "Cloudship" };
-const named = (tag: string, fallback: string) => names[tag] ?? fallback;
+/** The hover's own name for a product, as its line labels it. */
+const named = (_tag: string, fallback: string) => fallback;
 
 describe("the figure a refused cast leaves a material at", () => {
   it("is minus the shortfall when the caster holds none", () => {
@@ -44,7 +43,7 @@ describe("the figure a refused cast leaves a material at", () => {
       itemChanges: [spent("FLOA", "floater hides", -75)],
       refusedCasts: [cloudship([FLOA(75)])]
     });
-    expect(shortItems(unit)).toEqual([{ tag: "FLOA", name: "floater hide", figure: -75 }]);
+    expect(shortItems(unit)).toEqual([{ tag: "FLOA", name: "floater hide", plural: "floater hides", figure: -75 }]);
   });
 
   it("is minus the shortfall alone when the caster holds part of it", () => {
@@ -109,28 +108,31 @@ describe("the agreed words", () => {
     );
   });
 
-  it("falls back on the core's name for an item the hover has no line for", () => {
-    expect(refusedProductReason(cloudship([FLOA(75)]), (_tag, fallback) => fallback)).toBe(
-      "Cloudship: not created — the cast is 75 floater hide short."
+  // The core names an item by the catalogue's singular; a count other than one takes the
+  // report's own plural, as `counted_item` does (`ah-rsdz`).
+  it("agrees each count with its noun", () => {
+    expect(refusedProductReason(cloudship([FLOA(1)]), named)).toBe(
+      "Cloudship: not created — the cast is 1 floater hide short."
+    );
+    expect(shortSentence([{ tag: "FLOA", name: "floater hide", plural: "floater hides", figure: -1 }])).toBe(
+      "A red figure in the cell: this unit ends the month 1 floater hide short."
     );
   });
 
   it("says the red figure in one sentence", () => {
-    expect(shortSentence([{ tag: "FLOA", name: "floater hide", figure: -75 }], named)).toBe(
+    expect(shortSentence([{ tag: "FLOA", name: "floater hide", plural: "floater hides", figure: -75 }])).toBe(
       "A red figure in the cell: this unit ends the month 75 floater hides short."
     );
     expect(
       shortSentence(
         [
-          { tag: "FLOA", name: "floater hide", figure: -75 },
-          { tag: "IRWD", name: "ironwood", figure: -75 }
-        ],
-        named
-      )
+          { tag: "FLOA", name: "floater hide", plural: "floater hides", figure: -75 },
+          { tag: "IRWD", name: "ironwood", plural: "ironwood", figure: -75 }
+        ])
     ).toBe(
       "A red figure in the cell: this unit ends the month 75 floater hides and 75 ironwood short."
     );
-    expect(shortSentence([], named)).toBeNull();
+    expect(shortSentence([])).toBeNull();
   });
 
   it("lists three or more with commas and 'and' before the last", () => {

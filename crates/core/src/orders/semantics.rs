@@ -7181,6 +7181,7 @@ pub(crate) fn item_effects(
     let ordered = OrderedUnits::read_with_ruleset(orders_document, ruleset, &report_skills);
     let foreign_unit_ids = foreign_unit_ids(report);
     let shown_anywhere = unit_ids_in(report);
+    let plurals = plurals_in(report);
     let mut result: BTreeMap<UnitKey, UnitItemEffects> = BTreeMap::new();
 
     // The units this month's `FORM` orders create, built before `hexes` below so they outlive
@@ -7404,7 +7405,14 @@ pub(crate) fn item_effects(
                 .or_default()
                 .built = spends;
         }
-        for (unit_id, casts) in ledger.refused_casts {
+        for (unit_id, mut casts) in ledger.refused_casts {
+            // The report's own plural, read from the whole report as `counted_item` reads it, so a
+            // sentence counting 75 says `floater hides` (`ah-rsdz`, `ah-44at`).
+            for short in casts.iter_mut().flat_map(|cast| cast.short.iter_mut()) {
+                if let Some(plural) = plurals.get(&short.tag) {
+                    short.plural.clone_from(plural);
+                }
+            }
             result
                 .entry(unit_key(&hex.region.region_id, &unit_id))
                 .or_default()
@@ -12048,10 +12056,15 @@ fn cast(
             .iter()
             .zip(&shortfalls)
             .filter(|(_, short)| **short > 0)
-            .map(|(material, short)| super::effects::ShortMaterial {
-                tag: material.tag.to_ascii_uppercase(),
-                name: item_name(&material.tag, hex, ruleset),
-                amount: *short,
+            .map(|(material, short)| {
+                let name = item_name(&material.tag, hex, ruleset);
+                super::effects::ShortMaterial {
+                    tag: material.tag.to_ascii_uppercase(),
+                    // The report-wide plural is not to hand here; `item_effects` fills it in.
+                    plural: name.clone(),
+                    name,
+                    amount: *short,
+                }
             })
             .collect();
         let product = plan.tag.clone().filter(|_| plan.wanted > 0).map(|tag| {
@@ -60322,12 +60335,14 @@ BUILD
             })
         }
 
-        /// `name` is the catalogue's (`floater hide`): the hover names an item the way its own
-        /// line does, so this is only what it falls back on.
-        fn short(tag: &str, name: &str, amount: i64) -> ShortMaterial {
+        /// `name` is the catalogue's singular (`floater hide`); `plural` the report's own, as
+        /// `counted_item` reads it, or the singular where the report shows nobody holding more
+        /// than one.
+        fn short(tag: &str, name: &str, plural: &str, amount: i64) -> ShortMaterial {
             ShortMaterial {
                 tag: tag.to_string(),
                 name: name.to_string(),
+                plural: plural.to_string(),
                 amount,
             }
         }
@@ -60356,7 +60371,7 @@ BUILD
                 [RefusedCast {
                     product: cloudship(),
                     silver_short: 0,
-                    short: vec![short("FLOA", "floater hide", 75)],
+                    short: vec![short("FLOA", "floater hide", "floater hide", 75)],
                 }]
             );
         }
@@ -60376,7 +60391,7 @@ BUILD
                     .iter()
                     .flat_map(|cast| cast.short.clone())
                     .collect::<Vec<_>>(),
-                [short("FLOA", "floater hide", 25)]
+                [short("FLOA", "floater hide", "floater hides", 25)]
             );
         }
 
@@ -60403,7 +60418,7 @@ BUILD
                     .iter()
                     .flat_map(|cast| cast.short.clone())
                     .collect::<Vec<_>>(),
-                [short("FLOA", "floater hide", 15)]
+                [short("FLOA", "floater hide", "floater hides", 15)]
             );
         }
 
@@ -60448,8 +60463,8 @@ BUILD
                     product: cloudship(),
                     silver_short: 200,
                     short: vec![
-                        short("FLOA", "floater hide", 75),
-                        short("IRWD", "ironwood", 75)
+                        short("FLOA", "floater hide", "floater hide", 75),
+                        short("IRWD", "ironwood", "ironwood", 75)
                     ],
                 }]
             );

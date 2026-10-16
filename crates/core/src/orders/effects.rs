@@ -747,8 +747,11 @@ pub struct RefusedProduct {
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct ShortMaterial {
     pub tag: String,
-    /// The catalogue's display name.
+    /// The catalogue's display name, the singular.
     pub name: String,
+    /// The report's own plural, as `counted_item` reads it, or `name` where the report shows
+    /// nobody holding more than one (`ah-rsdz`): what a sentence counting other than one names.
+    pub plural: String,
     pub amount: i64,
 }
 

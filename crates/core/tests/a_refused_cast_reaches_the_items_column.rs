@@ -18,6 +18,11 @@ mod common;
 
 /// One hex and one mage, Ivanhoe (683), whose line carries `items` after its men and `skill`.
 fn report(items: &str, skill: &str) -> String {
+    report_beside(items, skill, "")
+}
+
+/// The same, with `neighbour` - a whole unit line - standing beside him.
+fn report_beside(items: &str, skill: &str, neighbour: &str) -> String {
     let mage = format!(
         "* Ivanhoe (683), Foo (1), behind, orc [ORC]{items}. Weight: 10. Capacity: 0/0/15/0. \
          Skills: {skill}."
@@ -31,6 +36,7 @@ fn report(items: &str, skill: &str) -> String {
         "  Southeast : desert (1,49) in Nowhere.",
         "",
         &mage,
+        neighbour,
         "",
     ]
     .join("\n")
@@ -38,7 +44,11 @@ fn report(items: &str, skill: &str) -> String {
 
 /// What the ITEMS column is told about Ivanhoe's refused casts, given his report line and orders.
 fn refused_casts(items: &str, skill: &str, script: &str) -> Vec<RefusedCast> {
-    let report_text = report(items, skill);
+    refused_casts_in(&report(items, skill), script)
+}
+
+fn refused_casts_in(report_text: &str, script: &str) -> Vec<RefusedCast> {
+    let report_text = report_text.to_string();
     let template = extract_orders_template(&report_text)
         .map(|template| template.text)
         .unwrap_or_default();
@@ -58,7 +68,7 @@ fn refused_casts(items: &str, skill: &str, script: &str) -> Vec<RefusedCast> {
 const WIND: &str = "summon wind [SWIN] 3 (180)";
 
 #[test]
-fn a_cast_short_of_a_material_reaches_the_preview() {
+fn a_refused_cast_short_of_a_material_reaches_the_preview() {
     assert_eq!(
         refused_casts(", 75 ironwood [IRWD]", WIND, "CAST Summon_Wind"),
         [RefusedCast {
@@ -72,6 +82,8 @@ fn a_cast_short_of_a_material_reaches_the_preview() {
             short: vec![ShortMaterial {
                 tag: "FLOA".to_string(),
                 name: "floater hide".to_string(),
+                // Nobody in this report holds more than one, so there is no plural to read.
+                plural: "floater hide".to_string(),
                 amount: 75,
             }],
         }]
@@ -79,7 +91,7 @@ fn a_cast_short_of_a_material_reaches_the_preview() {
 }
 
 #[test]
-fn a_cast_short_of_silver_reaches_the_preview() {
+fn a_refused_cast_short_of_silver_reaches_the_preview() {
     let refused = refused_casts(
         "",
         "create amulet of protection [CRPA] 1 (30)",
@@ -100,7 +112,7 @@ fn a_cast_short_of_silver_reaches_the_preview() {
 }
 
 #[test]
-fn a_cast_that_goes_ahead_carries_no_refusal() {
+fn a_cast_that_goes_ahead_carries_no_refused_cast() {
     assert_eq!(
         refused_casts(
             ", 75 ironwood [IRWD], 75 floater hides [FLOA]",
@@ -108,5 +120,26 @@ fn a_cast_that_goes_ahead_carries_no_refusal() {
             "CAST Summon_Wind"
         ),
         []
+    );
+}
+
+/// Brian (1159) holds the hides and is not sharing: the cast is still refused, and the shortfall
+/// carries the report's own plural, `floater hides`, for a sentence that counts more than one
+/// (`counted_item`, `ah-rsdz`).
+#[test]
+fn a_refused_casts_shortfall_takes_the_reports_plural() {
+    let report_text = report_beside(
+        ", 75 ironwood [IRWD]",
+        WIND,
+        "- Brian (1159), Bar (2), orc [ORC], 75 floater hides [FLOA]. Weight: 85.",
+    );
+    let refused = refused_casts_in(&report_text, "CAST Summon_Wind");
+    assert_eq!(
+        refused
+            .iter()
+            .flat_map(|cast| cast.short.iter())
+            .map(|short| (short.name.as_str(), short.plural.as_str(), short.amount))
+            .collect::<Vec<_>>(),
+        [("floater hide", "floater hides", 75)]
     );
 }

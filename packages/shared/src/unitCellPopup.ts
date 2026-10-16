@@ -27,7 +27,7 @@ import {
   type PreviewedUnit
 } from "./unitPreview";
 import { summariseUnit } from "./unitTooltip";
-import { andList, refusedProductReason, shortItems, shortSentence } from "./refusedCast";
+import { andList, refusedProductReason, shortItems, shortName, shortSentence } from "./refusedCast";
 import { isUnfinishedShipName, type StructureFinish } from "./unfinishedMark";
 import {
   silverCauseGroups,
@@ -313,8 +313,12 @@ export function reportedFlags(original: string): readonly string[] {
  * `items` change's original carries no names at all (`crates/core/src/orders/effects.rs`).
  */
 function itemName(tag: string, unit: PreviewedUnit): string | undefined {
+  // A material a refused cast leaves short is named to agree with the figure it ends at - the core
+  // names a movement by the catalogue's singular, and `-75` is not one (`ah-44at`).
+  const short = shortItems(unit).find((item) => item.tag === tag);
   return (
     unit.items.find((item) => item.tag === tag)?.name ??
+    (short ? shortName(short) : undefined) ??
     (unit.itemChanges ?? []).find((change) => change.tag === tag)?.name
   );
 }
@@ -407,7 +411,7 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
         tag,
         line: {
           ...line,
-          value: String(figure),
+          value: figure.toLocaleString(),
           change: { direction: "down" as const, from: from === undefined ? "none" : from.toLocaleString() }
         },
         moved: true,
@@ -1616,7 +1620,7 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     .filter((note): note is string => note !== undefined);
   // Red first, as `silverMarkWarning` puts it, then the partly-counted sentence (`ah-44at`).
   const warning = [
-    shortSentence(shortItems(unit), named),
+    shortSentence(shortItems(unit)),
     partlyCounted
       ? "“+ ?” in the cell: this month is only partly counted, so this list may be short."
       : null
