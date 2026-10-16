@@ -1295,7 +1295,11 @@ describe("the biome symbols (ah-d9jb.4)", () => {
 
 describe("the hex coordinates (ah-ezyg)", () => {
   /** The congested fixture's map, through the probe theme, with the coordinates as asked. */
-  function drawCoords(hexCoordinates: boolean | undefined, step?: number): string {
+  function drawCoords(
+    hexCoordinates: boolean | undefined,
+    step?: number,
+    notes: HexNoteRecord[] = []
+  ): string {
     const canvas = (
       <MapCanvas
         gameId={null}
@@ -1310,6 +1314,7 @@ describe("the hex coordinates (ah-ezyg)", () => {
         showTextures={false}
         badges={allBadges(true)}
         hexCoordinates={hexCoordinates}
+        notes={notes}
       />
     );
     if (step === undefined) {
@@ -1334,6 +1339,20 @@ describe("the hex coordinates (ah-ezyg)", () => {
 
   it("marks a hex whose settlement name the theme writes, so its name carries the coordinates up close", () => {
     expect(drawCoords(true)).toMatch(/data-hex-coords="1:7,53"[^>]*data-named="true"/);
+  });
+
+  it("drops a note pin beneath the coordinates printed at its hex's top edge (ah-qf24)", () => {
+    const pinY = (svg: string) =>
+      Number(/translate\([-\d.]+,([-\d.]+)\) scale\([^)]*\)"><g[^>]*data-testid="map-note-pin"/.exec(svg)?.[1]);
+    const notes = [note({ id: "newest" }), note({ id: "older" })];
+    // Close zoom, where the probe theme letters no name, so the coordinates hold the top edge.
+    const on = pinY(drawCoords(true, 4, notes));
+    const off = pinY(drawCoords(false, 4, notes));
+
+    expect(Number.isFinite(on) && Number.isFinite(off)).toBe(true);
+    expect(on).toBeGreaterThan(off);
+    // Far out the coordinates are not printed, and the pin is not drawn either.
+    expect(drawCoords(true, -6, notes)).not.toContain("map-note-pin");
   });
 
   it("draws none while switched off, or when nobody says", () => {
