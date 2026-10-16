@@ -1157,6 +1157,7 @@ export function AppShell({
   const layers = useWorkspaceStore((state) => state.layers);
   const badges = useWorkspaceStore((state) => state.badges);
   const biomeSymbols = useWorkspaceStore((state) => state.biomeSymbols);
+  const hexCoordinates = useWorkspaceStore((state) => state.hexCoordinates);
   const showTextures = useSettingsStore((state) => state.biomeTextures);
   // The set the map shows lags the chosen one until all its pictures have loaded (ah-d9jb.3).
   const shownTextureSet = useShownTextureSet(useSettingsStore((state) => state.textureSet));
@@ -6050,6 +6051,7 @@ export function AppShell({
           water={water}
           badges={badges}
           biomeSymbols={biomeSymbols}
+          hexCoordinates={hexCoordinates}
           route={chooseRouteOverlay({
             movementLayerOn: layers.movement,
             plannerArmed: planner.armed,

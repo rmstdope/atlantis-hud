@@ -31,6 +31,7 @@ import {
   STATIONS,
   worksBoxes,
 } from "./paint";
+import { CoordsTail } from "../hexCoords";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 
@@ -661,6 +662,7 @@ function MarkLayer({ views }: LayerProps) {
                 textAnchor="middle"
               >
                 {view.settlement.name}
+                <CoordsTail coords={view.coords} />
               </text>
             )}
           </g>

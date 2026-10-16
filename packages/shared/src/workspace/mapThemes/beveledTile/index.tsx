@@ -32,6 +32,7 @@ import {
   roofAnchors
 } from "./paint";
 import { terrainClassName } from "../terrain";
+import { CoordsTail } from "../hexCoords";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 
@@ -334,6 +335,7 @@ function MarkLayer({ views }: LayerProps) {
             {view.settlement && (
               <text className="bt-label bt-name" x={0} y={NAME_Y * SCALE} textAnchor="middle">
                 {view.settlement.name}
+                <CoordsTail coords={view.coords} />
               </text>
             )}
           </g>

@@ -31,6 +31,7 @@ import {
   markFootprint
 } from "./paint";
 import { terrainClassName } from "../terrain";
+import { CoordsTail } from "../hexCoords";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 
@@ -291,6 +292,7 @@ function MarkLayer({ views }: LayerProps) {
             {emblem === "settlement" && view.settlement && (
               <text className="ed-label ed-name" x={0} y={NAME_Y * SCALE} textAnchor="middle">
                 {view.settlement.name}
+                <CoordsTail coords={view.coords} />
               </text>
             )}
             {bar && (
@@ -317,5 +319,8 @@ export const emblemAndDots: MapTheme = {
   TerrainLayer,
   RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer,
-  markFootprint
+  markFootprint,
+  // The name is written only under a settlement emblem: a gate or a battle outranks it, and then
+  // the hex's coordinates stay at its top edge (ah-ezyg).
+  writesName: (view) => emblemFor(view) === "settlement" && view.settlement !== null
 };

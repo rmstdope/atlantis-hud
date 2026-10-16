@@ -36,6 +36,7 @@ import {
   STARBURST,
   starburstPoints
 } from "./paint";
+import { CoordsTail } from "../hexCoords";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 
@@ -304,6 +305,7 @@ function MarkLayer({ views }: LayerProps) {
             {view.settlement && (
               <text className="sg-label sg-name" x={0} y={NAME_Y * SCALE} textAnchor="middle">
                 {view.settlement.name.toUpperCase()}
+                <CoordsTail coords={view.coords} />
               </text>
             )}
           </g>

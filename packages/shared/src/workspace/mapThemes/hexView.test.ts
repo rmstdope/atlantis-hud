@@ -64,6 +64,15 @@ describe("what a hex shows, prepared for whichever theme draws it", () => {
     expect(view.at.y).toBeCloseTo(53 * ROW_PITCH);
   });
 
+  it("writes the hex's coordinates as x,y while hex coordinates are asked for (ah-ezyg)", () => {
+    const node = hex({ knowledge: "current", regionId: "1:33,25", coordinate: at(33, 25) });
+
+    expect(viewOf(node, { hexCoordinates: true }).coords).toBe("33,25");
+    expect(viewOf(node, { hexCoordinates: false }).coords).toBeNull();
+    // A caller that says nothing - a tool, a test - gets the map as it was before the setting.
+    expect(viewOf(node).coords).toBeNull();
+  });
+
   it("offers the biome texture only while textures are asked for", () => {
     const textured = viewOf(hex({ knowledge: "current" })).texture;
 

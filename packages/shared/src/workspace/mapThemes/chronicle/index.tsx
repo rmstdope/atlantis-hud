@@ -45,6 +45,7 @@ import {
   WASH_VARIANTS,
   workshopRoofs,
 } from "./paint";
+import { CoordsTail } from "../hexCoords";
 
 /** Everything in this theme is drawn at the mockup's radius and shrunk to the map's. */
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
@@ -565,6 +566,7 @@ function MarkLayer({ views }: LayerProps) {
                 textAnchor="middle"
               >
                 {view.settlement.name}
+                <CoordsTail coords={view.coords} />
               </text>
             )}
           </g>

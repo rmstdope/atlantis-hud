@@ -57,6 +57,7 @@ import {
   unitRow,
   type Bitmap,
 } from "./paint";
+import { CoordsTail } from "../hexCoords";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 
@@ -349,6 +350,7 @@ function Marks({ view }: { view: HexView }) {
           textAnchor="middle"
         >
           {view.settlement.name.toUpperCase()}
+          <CoordsTail coords={view.coords} />
         </text>
       )}
       {units.map((unit) => (

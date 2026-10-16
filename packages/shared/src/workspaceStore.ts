@@ -219,6 +219,12 @@ export type WorkspaceState = {
    * and never what lights the Badges chip - which keeps meaning "a mark is hidden".
    */
   biomeSymbols: boolean;
+  /**
+   * Whether the map prints each known hex's coordinates on it (ah-ezyg). Offered in the badge menu
+   * under a Grid heading, but not a badge: on for everybody until turned off, untouched by All and
+   * None, and never what lights the Badges chip.
+   */
+  hexCoordinates: boolean;
   /** Whether the region panel's Problems section is shown. On by default. */
   regionProblemsShown: boolean;
   /**
@@ -318,6 +324,8 @@ export type WorkspaceState = {
   setAllBadges: (on: boolean) => void;
   /** Turns the biome symbols on or off. */
   toggleBiomeSymbols: () => void;
+  /** Turns the hex coordinates on the map on or off. */
+  toggleHexCoordinates: () => void;
   /** Arms destination picking for exactly one click. */
   armPlanner: () => void;
   /** Records where a route was planned to, and disarms. */
@@ -424,6 +432,7 @@ type Persisted = Pick<
   | "layers"
   | "badges"
   | "biomeSymbols"
+  | "hexCoordinates"
   | "regionProblemsShown"
 >;
 
@@ -448,6 +457,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       layers: INITIAL_LAYERS,
       badges: allBadges(true),
       biomeSymbols: false,
+      hexCoordinates: true,
       regionProblemsShown: true,
       planner: { armed: false, destinationId: null },
       unitSlotTab: null,
@@ -604,6 +614,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       toggleBiomeSymbols: () => set((state) => ({ biomeSymbols: !state.biomeSymbols })),
 
+      toggleHexCoordinates: () => set((state) => ({ hexCoordinates: !state.hexCoordinates })),
+
       toggleRegionProblems: () =>
         set((state) => ({ regionProblemsShown: !state.regionProblemsShown })),
       showRegionProblems: () => set({ regionProblemsShown: true }),
@@ -638,6 +650,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         layers: state.layers,
         badges: state.badges,
         biomeSymbols: state.biomeSymbols,
+        hexCoordinates: state.hexCoordinates,
         regionProblemsShown: state.regionProblemsShown
       }),
       /**
@@ -674,6 +687,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           // Off unless storage holds a real `true`: a record written before the symbols existed
           // reads as off, which is also the shipped default, so nobody's map changes on update.
           biomeSymbols: stored.biomeSymbols === true,
+          // On unless storage holds a real `false`: on is the agreed default, and a record written
+          // before the setting existed has no older default to migrate from.
+          hexCoordinates:
+            typeof stored.hexCoordinates === "boolean" ? stored.hexCoordinates : true,
           // Not a record, so `reconcile` does not apply: a missing or malformed key must read
           // as shown, or an upgrade silently hides every player's diagnostics.
           regionProblemsShown:
@@ -707,6 +724,7 @@ export function resetWorkspaceStore() {
     layers: INITIAL_LAYERS,
     badges: allBadges(true),
     biomeSymbols: false,
+    hexCoordinates: true,
     regionProblemsShown: true,
     unitSlotTab: null,
     mapView: NO_MAP_VIEW

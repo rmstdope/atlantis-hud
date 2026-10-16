@@ -32,6 +32,7 @@ import {
   markFootprint
 } from "./paint";
 import { TERRAIN_KINDS } from "../terrain";
+import { CoordsTail } from "../hexCoords";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 
@@ -399,6 +400,7 @@ function MarkLayer({ views }: LayerProps) {
             {view.settlement && (
               <text className="mw-label mw-name" x={0} y={NAME_Y * SCALE} textAnchor="middle">
                 {view.settlement.name}
+                <CoordsTail coords={view.coords} />
               </text>
             )}
             {stands.map((stand) => (

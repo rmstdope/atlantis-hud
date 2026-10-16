@@ -6,6 +6,7 @@ import { HEX_RADIUS } from "../mapViewport";
 import { allBadges, buildHexViews, dampFog, type HexView } from "./hexView";
 import { aHexView } from "./hexViewFixture";
 import type { LayerProps, MapTheme } from "./mapTheme";
+import { themeWritesName } from "./hexCoords";
 import {
   DEFAULT_MAP_THEME_ID,
   getMapTheme,
@@ -361,6 +362,63 @@ describe("where every theme says its marks are, for the biome symbols to keep cl
   it("leaves roads to the map, which draws them the same way under every theme", () => {
     for (const theme of MAP_THEMES) {
       expect(theme.markFootprint(bareView({ roads: ["n", "se"] })), theme.id).toEqual([]);
+    }
+  });
+});
+
+describe("the coordinates joining a settlement's name, in every theme (ah-ezyg)", () => {
+  const NAMED: ReadonlyArray<[string, Partial<HexView>]> = [
+    ["a settlement alone", {}],
+    ["a settlement with units", { units: { own: 3, foreign: 2, monster: 1 } }],
+    ["a settlement with a gate", { gate: true }],
+    ["a settlement with a battle", { battle: "own" }],
+    ["a settlement with a ship and a building", { ships: 1, buildings: 1 }]
+  ];
+  const named = (overrides: Partial<HexView>, coords: string | null) =>
+    aHexView({ settlement: { name: "Kerrin", tier: "city" }, coords, ...overrides });
+  const marks = (theme: MapTheme, view: HexView) =>
+    renderToStaticMarkup(
+      <svg>
+        <theme.MarkLayer views={[view]} />
+      </svg>
+    );
+
+  it("follow the name on its line wherever the theme writes the name, and only there", () => {
+    for (const theme of MAP_THEMES) {
+      const writesName = themeWritesName(theme);
+      for (const [what, overrides] of NAMED) {
+        const view = named(overrides, "33,25");
+        const markup = marks(theme, view);
+        const label = `${theme.id}: ${what}`;
+        if (writesName(view)) {
+          expect(markup, label).toMatch(/Kerrin<tspan[^>]*data-coords-tail[^>]*> 33,25<\/tspan>/i);
+        } else {
+          expect(markup, label).not.toContain("data-coords-tail");
+          expect(markup.toLowerCase(), label).not.toContain("kerrin");
+        }
+      }
+    }
+  });
+
+  it("names at least the plain settlement in every theme, so the join is never silently lost", () => {
+    for (const theme of MAP_THEMES) {
+      expect(themeWritesName(theme)(named({}, "33,25")), theme.id).toBe(true);
+    }
+  });
+
+  it("add nothing to any name while the switch is off", () => {
+    for (const theme of MAP_THEMES) {
+      for (const [what, overrides] of NAMED) {
+        expect(marks(theme, named(overrides, null)), `${theme.id}: ${what}`).not.toContain(
+          "data-coords-tail"
+        );
+      }
+    }
+  });
+
+  it("never print coordinates on a hex the theme names nothing in", () => {
+    for (const theme of MAP_THEMES) {
+      expect(marks(theme, aHexView({ coords: "33,25" })), theme.id).not.toContain("33,25");
     }
   });
 });

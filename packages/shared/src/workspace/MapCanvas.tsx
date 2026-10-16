@@ -82,6 +82,7 @@ import type { BlockedHex } from "./blockedHexes";
 import { BlockedHatchPattern, BlockedLabels, BlockedRings } from "./mapThemes/blockedLayer";
 import { BiomeSymbolDefs, BiomeSymbolLayer } from "./mapThemes/BiomeSymbolLayer";
 import { drawsBiomeSymbols } from "./mapThemes/biomeSymbols";
+import { drawsHexCoordinates, HexCoordsLayer, themeWritesName } from "./mapThemes/hexCoords";
 import type { MapTheme } from "./mapThemes/mapTheme";
 import { DEFAULT_WATER, type WaterTerrains } from "./mapThemes/terrain";
 import {
@@ -475,6 +476,11 @@ type MapCanvasProps = {
   /** Whether each hex is sprinkled with its biome's symbols (ah-d9jb.4). Off when absent. */
   biomeSymbols?: boolean;
   /**
+   * Whether every known hex prints its coordinates (ah-ezyg): at its top edge, or after the
+   * settlement name a theme writes. Off when absent.
+   */
+  hexCoordinates?: boolean;
+  /**
    * The movement line to draw, whatever its source - the planner's preview or a written order.
    * Solid through the hexes the coming month covers, dotted for the rest; a null `solidSteps`
    * means the unit's speed is unknown and the whole line is dotted.
@@ -672,6 +678,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     water = DEFAULT_WATER,
     badges,
     biomeSymbols = false,
+    hexCoordinates = false,
     route = null,
     routeAnimationSpeed = null,
     animateTheme = false,
@@ -751,7 +758,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       badges,
       battles,
       blocked,
-      fogDamping: theme.fogDamping
+      fogDamping: theme.fogDamping,
+      hexCoordinates
     }),
     [
       showStaleness,
@@ -762,7 +770,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       badges,
       battles,
       blocked,
-      theme.fogDamping
+      theme.fogDamping,
+      hexCoordinates
     ]
   );
   const allViews = useMemo(
@@ -1344,6 +1353,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
   // The hexes whose note pin is on the map, so the biome symbols keep clear of it. Only read while
   // the symbols are drawn, which is never far out - where the pins are not drawn either.
   const showsBiomeSymbols = drawsBiomeSymbols(band, biomeSymbols);
+  const showsHexCoordinates = drawsHexCoordinates(band, hexCoordinates);
   const pinnedHexes = useMemo(
     () => new Set(notePinsOnLevel.map((pin) => pin.regionId)),
     [notePinsOnLevel]
@@ -1763,6 +1773,13 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
           <BlockedRings views={allViews} />
           <theme.MarkLayer views={allViews} />
           <BlockedLabels views={allViews} />
+          {/*
+            The hex coordinates (ah-ezyg), over every mark so none covers them. Map-owned in shared
+            geometry like the blocked labels; a theme only says which hexes' names carry them.
+          */}
+          {showsHexCoordinates && (
+            <HexCoordsLayer views={allViews} writesName={themeWritesName(theme)} />
+          )}
 
           {/*
             A hovered trade route (the Trade popover): coins travelling a dotted silver track
