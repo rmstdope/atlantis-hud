@@ -532,7 +532,6 @@ describe("greyed rows (ah-mlls.7)", () => {
         { id: "settings", label: "Open settings", run: noop }
       ],
       orderCommands: [],
-      insertOrder: noop,
       gameData: [],
       openGameData: noop
     });
