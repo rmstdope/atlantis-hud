@@ -54932,7 +54932,11 @@ BUILD
             sent,
             [
                 (SilverChangeCause::Sent, -3, Some("unit 2100".to_string())),
-                (SilverChangeCause::GaveAway, -2, Some("unit 2100".to_string())),
+                (
+                    SilverChangeCause::GaveAway,
+                    -2,
+                    Some("unit 2100".to_string())
+                ),
             ]
         );
         let mut received = causes("2100");
@@ -54940,8 +54944,16 @@ BUILD
         assert_eq!(
             received,
             [
-                (SilverChangeCause::WasGiven, 2, Some("Njosn (2000)".to_string())),
-                (SilverChangeCause::Received, 3, Some("Njosn (2000)".to_string())),
+                (
+                    SilverChangeCause::WasGiven,
+                    2,
+                    Some("Njosn (2000)".to_string())
+                ),
+                (
+                    SilverChangeCause::Received,
+                    3,
+                    Some("Njosn (2000)".to_string())
+                ),
             ]
         );
     }
@@ -57725,11 +57737,7 @@ BUILD
 
         let taxer = shipment_silver(&review, "901");
         let tax = taxer.income.expect("the taxer's tax is priced");
-        assert_eq!(
-            silver_shipped(&review, "901"),
-            tax - 81,
-            "{taxer:?}"
-        );
+        assert_eq!(silver_shipped(&review, "901"), tax - 81, "{taxer:?}");
 
         assert!(
             taxer
