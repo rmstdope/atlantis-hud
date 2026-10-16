@@ -56792,6 +56792,43 @@ BUILD
         );
     }
 
+    /// `ah-mnvp`: a walker's TRANSPORT draws on the purse of the hex it is listed in. 905 holds $5,
+    /// walks south and ships $10; sharer 903 stays behind with $50 and lends it the other $5. This
+    /// is the behaviour `docs/retrospectives/ah-6cka.md` found no core test pinned - questionable by
+    /// `rules/sequenceofevents` (TRANSPORT after movement) and `rules/share` ("in the same region"),
+    /// but the one the share purse has today, and the one `PurseMembership::claim_here` says - so a
+    /// change to which hex a leaver claims on fails here before it fails in the smoke suite. Traced,
+    /// so the month end is the movement trace's.
+    #[test]
+    fn a_walkers_transport_is_lent_by_the_sharer_in_the_hex_it_leaves() {
+        let mut regions = non_sharing_sender(
+            5,
+            vec![
+                with_silver(unit("905"), 5),
+                sharing(with_silver(unit("903"), 50)),
+            ],
+        );
+        regions.push(region_at("1:0,2", 0, 2, vec![]));
+        let orders = "unit 905\nMOVE S\nTRANSPORT 906 10 SILV\n";
+        let (traced_report, options) = traced(report(regions), orders, &ruleset(), with_map());
+        assert_eq!(
+            options.month_end.get("905"),
+            Some(&Coordinate { x: 0, y: 2, z: 1 }),
+            "the walker leaves"
+        );
+        let review = review_turn(
+            &report(traced_report.regions),
+            orders,
+            Some(&ruleset()),
+            options,
+        );
+        let walker = shipment_silver(&review, "905");
+        assert_eq!(silver_shipped(&review, "905"), 10, "{walker:?}");
+        assert_eq!(walker.borrowed_for_orders, 5, "{walker:?}");
+        assert_eq!(silver_booked(&review, "903", SilverChangeCause::Lent), -5);
+        assert!(shipment_warnings(&review, "905").is_empty());
+    }
+
     /// A sharer that walks in lends at TRANSPORT (`GetSharedNum` is 55), so no refusal is claimed
     /// (follow-up finding 3), and the shipment draws its other 5 on the arrival (`ah-9yvv`).
     #[test]
@@ -72867,6 +72904,39 @@ BUILD
             .into_iter()
             .filter(|movement| movement.tag == "WOOD")
             .collect()
+    }
+
+    /// `ah-mnvp`: a sailing passenger's STUDY draws on the purse of the hex it is listed in, while
+    /// its upkeep does not. Passenger 901 holds nothing, studies aboard longship 329 as its
+    /// captain sails north, and banker 903 stays behind with $500: the banker pays the study, as
+    /// the g5-f21-t24 fixture's Drones (10594) is paid (`a_sharing_passenger_keeps_its_study_loan`),
+    /// and none of the upkeep, which `rules/economy_maintenance` shares only "between your units in
+    /// the same region" and `rules/sequenceofevents` assesses after movement (`ah-6cka`).
+    #[test]
+    fn a_passengers_study_is_lent_by_the_sharer_in_the_hex_it_leaves() {
+        let banker = sharing(with_silver(unit("903"), 500));
+        let (report, _) = passenger_palace(
+            open_sea(vec![banker]),
+            region_at("1:7,53", 7, 53, vec![]),
+            None,
+        );
+        let orders = "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 903\n";
+        let review = review_turn(&report, orders, Some(&trident()), CheckOptions::default());
+        let silver = |id: &str| {
+            review
+                .silver
+                .iter()
+                .find(|forecast| forecast.unit_id == id)
+                .cloned()
+                .unwrap_or_else(|| panic!("no forecast for {id}"))
+        };
+        let passenger = silver("901");
+        let fee = passenger.wanted_for_orders.expect("the study is priced");
+        assert!(fee > 0, "{passenger:?}");
+        assert_eq!(passenger.borrowed_for_orders, fee, "{passenger:?}");
+        assert_eq!(passenger.shared_silver_covered, 0, "{passenger:?}");
+        assert_eq!(passenger.upkeep_lent, 0, "{passenger:?}");
+        assert_eq!(silver("903").at_month_end, Some(500 - fee));
     }
 
     /// The bead's regression: a sharer staying in the open sea the fleet leaves holds wood, and so
