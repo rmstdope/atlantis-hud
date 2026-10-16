@@ -147,6 +147,12 @@ describe("runPreflight", () => {
     expect(summary.text).toContain("disk-preflight FAIL");
   });
 
+  it("fails the gate when the preflight is killed", () => {
+    const { result } = runPreflight(script("kill -9 $$"));
+
+    expect(result).toEqual({ name: "disk-preflight", passed: false });
+  });
+
   it("passes a preflight that ran, whatever it said about the disk", () => {
     const { text, result } = runPreflight(script('echo "disk: 3 GB free, below the floor"; exit 1'));
 

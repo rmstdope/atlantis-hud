@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -31,15 +31,25 @@ describe("the cerebro mount (ah-r5hr)", () => {
     expect(cerebroScript("disk-preflight")).toBe(join(REPO, CEREBRO_MOUNT, "scripts", "disk-preflight"));
   });
 
-  it("is spelled nowhere else in the consumer's scripts or package.json", () => {
-    const literal = /cerebro\/scripts|"cerebro",\s*"scripts"/;
-    const own = new Set(["cerebro.ts", "cerebro.test.ts"]);
-    const offenders = readdirSync(join(REPO, "scripts"))
-      .filter((name) => name.endsWith(".ts") && !own.has(name))
-      .map((name) => join("scripts", name))
-      .concat("package.json")
-      .filter((path) => literal.test(readFileSync(join(REPO, path), "utf8")));
-    expect(offenders, "reach cerebro through scripts/cerebro.ts instead").toEqual([]);
+  it("is spelled nowhere else in the consumer's scripts, package.json files or settings hooks", () => {
+    // git grep exits 1 when nothing matches, which is the passing case.
+    const run = spawnSync(
+      "git",
+      [
+        "grep",
+        "-lE",
+        'cerebro/scripts|"cerebro",[[:space:]]*"scripts"',
+        "--",
+        "scripts/**",
+        "**/package.json",
+        ".claude/settings.json",
+        ":!scripts/cerebro.ts",
+        ":!scripts/cerebro.test.ts"
+      ],
+      { cwd: REPO, encoding: "utf8" }
+    );
+    expect(run.status, run.stderr).toBe(1);
+    expect(run.stdout.trim().split("\n").filter(Boolean), "reach cerebro through scripts/cerebro.ts instead").toEqual([]);
   });
 });
 
