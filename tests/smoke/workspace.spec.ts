@@ -2251,6 +2251,81 @@ test("biome symbols can be turned on from the Badges menu, are left alone by Non
 });
 
 /**
+ * Hex coordinates (ah-ezyg) are on for every player until turned off: each known hex prints its x,y
+ * just inside its top edge, a named hex carries them after its name up close and at its top edge at
+ * middle zoom, and far out there are none. The switch sits under a Grid heading at the bottom of
+ * the Badges menu, is not a badge (None leaves it, and off never lights the chip), and survives a
+ * reload.
+ */
+test("hex coordinates are printed on the map by default, join a settlement's name up close, and can be switched off for good", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  const map = page.getByTestId("map-canvas");
+  const svg = page.locator("[data-testid='map-canvas'] svg").first();
+  const labels = map.locator("[data-hex-coords]");
+  const tails = map.locator("[data-coords-tail]");
+  const zoomTo = async (band: "near" | "mid" | "far") => {
+    const button = band === "near" ? "Zoom in" : "Zoom out";
+    for (let step = 0; step < 16; step += 1) {
+      if (((await svg.getAttribute("class")) ?? "").includes(`map-${band}`)) return;
+      await page.getByRole("button", { name: button, exact: true }).click();
+    }
+    await expect(svg).toHaveClass(new RegExp(`map-${band}`));
+  };
+
+  // Up close: every known hex labelled, a settlement's name followed by its coordinates, and the
+  // named hex's top-edge label stepping aside for the name.
+  await zoomTo("near");
+  await expect(labels.first()).toBeVisible();
+  await expect(labels.first()).toHaveText(/^\d+,\d+$/);
+  await expect(tails.first()).toBeVisible();
+  await expect(tails.first()).toHaveText(/^ \d+,\d+$/);
+  const named = map.locator("[data-hex-coords][data-named]").first();
+  await expect(named).toBeAttached();
+  await expect(named).toBeHidden();
+
+  // Middle zoom: the names are gone, so the named hex's coordinates sit at its top edge.
+  await zoomTo("mid");
+  await expect(named).toBeVisible();
+
+  // Far out: none, though the switch is still on.
+  await zoomTo("far");
+  await expect(labels).toHaveCount(0);
+
+  await zoomTo("near");
+  const trigger = page.getByTestId("layer-chips").getByRole("button", { name: "Badges", exact: true });
+  await trigger.click();
+  const menu = page.getByTestId("badge-menu");
+  await expect(menu.getByText("Grid", { exact: true })).toBeVisible();
+  const box = menu.getByRole("checkbox", { name: "Hex coordinates", exact: true });
+  await expect(box).toBeChecked();
+
+  // None hides every mark and leaves the coordinates where they were.
+  await menu.getByRole("button", { name: "None", exact: true }).click();
+  await expect(box).toBeChecked();
+  await expect(labels.first()).toBeVisible();
+  await menu.getByRole("button", { name: "All", exact: true }).click();
+
+  await box.uncheck();
+  await expect(labels).toHaveCount(0);
+  await expect(tails).toHaveCount(0);
+  // Still open, as after every other row, and the chip does not light for it.
+  await expect(menu).toBeVisible();
+  await expect(trigger).toHaveAttribute("data-badges-all", "true");
+
+  await page.reload();
+  await expect(map.locator('[data-shield="own"]').first()).toBeAttached();
+  await zoomTo("near");
+  await expect(labels).toHaveCount(0);
+  await page.getByTestId("layer-chips").getByRole("button", { name: "Badges", exact: true }).click();
+  await expect(
+    page.getByTestId("badge-menu").getByRole("checkbox", { name: "Hex coordinates", exact: true })
+  ).not.toBeChecked();
+});
+
+/**
  * Region decorations are on by default, like every other badge, so a player who has never opened
  * the Badges menu already sees province names on the map. Turning the badge off is the one
  * documented way to lose them, and the choice is a preference like the rest of the set.
