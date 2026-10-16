@@ -30,30 +30,15 @@ pub enum GiveRefusal {
     CannotChangeHands,
     /// `rules/give`: "men may not be given to units in other factions".
     MenToAnotherFaction,
-    /// `rules/magic`: "mages may not GIVE men at all" - the discard included, and a TAKE never.
+    /// `rules/magic`: "mages may not GIVE men at all; once a unit becomes a mage (by studying one
+    /// of the Foundations), the unit number is fixed. (The mage may be given to another faction
+    /// using the GIVE UNIT order.)" So the refusal is about **men**, and about the item forms of
+    /// `GIVE` only - the discard included; `GIVE UNIT` is the rule's own exception, and TAKE,
+    /// TRANSPORT and DISTRIBUTE are other orders. A unit holding any catalogue-marked magic skill
+    /// is already a mage (`magic::is_mage`).
     MageGivesMen,
     /// The navigator's New Origins ruling (`ah-ndp9`): no man may join a mage, by GIVE or by TAKE.
     MenIntoAMage,
-}
-
-/// Whether `rules/magic` refuses this `GIVE` of `tag` because the giver is a mage.
-///
-/// `rules/magic`: "mages may not GIVE men at all; once a unit becomes a mage (by studying one of
-/// the Foundations), the unit number is fixed. (The mage may be given to another faction using the
-/// GIVE UNIT order.)" So the refusal is about **men**, and about the item forms of `GIVE` only -
-/// `GIVE UNIT` is the rule's own exception, and TAKE, TRANSPORT and DISTRIBUTE are other orders.
-/// Callers must not put a `Selector::WholeUnit` through here.
-///
-/// A unit holding any catalogue-marked magic skill is already a mage: the derived skills all
-/// require a Foundation to begin, so accepting every magic skill also covers a report that lists a
-/// derived skill without its prerequisites. Without a ruleset nothing can be said, and the answer
-/// is `false` - the same "cannot say is not a refusal" reading [`give_outcome`] takes.
-#[must_use]
-pub fn mage_give_refused(skills: &[Skill], tag: &str, ruleset: Option<&Ruleset>) -> bool {
-    let Some(ruleset) = ruleset else {
-        return false;
-    };
-    ruleset.is_man(tag) && super::magic::is_mage(ruleset, skills)
 }
 
 /// Whether the game refuses this `BUY` of `tag` because the buyer is a mage.
@@ -62,11 +47,11 @@ pub fn mage_give_refused(skills: &[Skill], tag: &str, ruleset: Option<&Ruleset>)
 /// number is fixed." The navigator's New Origins ruling (`ah-ndp9`) reads that as refusing a
 /// mage's recruiting outright, so the order buys nobody and spends nothing.
 ///
-/// Deliberately a second function rather than a rename of [`mage_give_refused`]: the two refusals
-/// have different sources - the rules page states the GIVE half itself, the BUY half is a ruling -
+/// Deliberately its own function rather than a reading of [`GiveRefusal::MageGivesMen`]: the two
+/// refusals have different sources - the rules page states the GIVE half itself, the BUY half is a ruling -
 /// so they may legitimately diverge, and one call site each is cheaper than one function with two
 /// stories. Without a ruleset nothing can be said and the answer is `false`, the same "cannot say
-/// is not a refusal" reading its sibling takes.
+/// is not a refusal" reading [`GiveVerdict::of`] takes.
 #[must_use]
 pub fn mage_recruit_refused(skills: &[Skill], tag: &str, ruleset: Option<&Ruleset>) -> bool {
     let Some(ruleset) = ruleset else {
@@ -132,7 +117,7 @@ impl GiveReach {
     /// receives, and nothing is doubted - the ledger reads exactly as it would with the line
     /// deleted. A unit the report shows elsewhere and a number it never prints alike (`ah-xaem`).
     #[must_use]
-    pub fn gives_nothing(self) -> bool {
+    fn gives_nothing(self) -> bool {
         matches!(self, Self::Nowhere | Self::Unshown)
     }
 }
@@ -388,7 +373,7 @@ pub fn give_endpoint<T>(
 /// never be given across factions; and the catalogue's own "cannot be given to other units" holds
 /// for every target but the discard.
 #[must_use]
-pub fn give_outcome(reach: GiveReach, tag: &str, ruleset: Option<&Ruleset>) -> GiveOutcome {
+fn give_outcome(reach: GiveReach, tag: &str, ruleset: Option<&Ruleset>) -> GiveOutcome {
     let silver = tag.eq_ignore_ascii_case(SILVER_TAG);
     match reach {
         // Unit 0 is not another unit, so no permission applies and even ungiveable goods go.
@@ -427,7 +412,7 @@ mod tests {
         Ruleset::from_json(RULESET).expect("the committed ruleset should be usable")
     }
 
-    /// A skill as a report prints it - only the tag matters to `mage_give_refused`, but the whole
+    /// A skill as a report prints it - only the tag matters to the mage refusals, but the whole
     /// value is built so the test cannot drift from the report model.
     fn skill(name: &str, tag: &str) -> Skill {
         Skill {
@@ -436,6 +421,13 @@ mod tests {
             level: 1,
             points: 30,
         }
+    }
+
+    /// Whether the verdict refuses `tag` because a giver holding `skills` is a mage. Asked of a
+    /// discard, where no other refusal applies, so nothing else can answer in its place.
+    fn mage_give_refused(skills: &[Skill], tag: &str, ruleset: Option<&Ruleset>) -> bool {
+        GiveVerdict::give(GiveReach::Discard, skills, None, ruleset).of(tag, ruleset)
+            == GiveOutcome::Refused(GiveRefusal::MageGivesMen)
     }
 
     /// `rules/magic`: "mages may not GIVE men at all". The three Foundations, and a derived magic
@@ -818,7 +810,7 @@ mod tests {
     }
 
     /// `ah-amkn`: one verdict answers every reach and every refusal, so no surface needs to ask
-    /// `give_outcome` or `mage_give_refused` itself.
+    /// a predicate of its own.
     #[test]
     fn a_verdict_answers_every_reach_and_refusal() {
         let ruleset = ruleset();
@@ -922,7 +914,7 @@ mod tests {
     }
 
     /// Without a catalogue nobody can be called a mage or a man, so neither mage refusal is
-    /// made - the "cannot say is not a refusal" reading `mage_give_refused` always took.
+    /// made - the "cannot say is not a refusal" reading this module has always taken.
     #[test]
     fn a_verdict_without_a_ruleset_refuses_nothing() {
         let mage_receiver = mage();

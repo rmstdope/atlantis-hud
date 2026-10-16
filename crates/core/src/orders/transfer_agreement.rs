@@ -51,7 +51,11 @@ fn report_text() -> String {
 }
 
 fn parsed(ruleset: &Ruleset) -> ParsedReport {
-    let mut parsed = parse_report_full(&report_text());
+    parsed_from(&report_text(), ruleset)
+}
+
+fn parsed_from(text: &str, ruleset: &Ruleset) -> ParsedReport {
+    let mut parsed = parse_report_full(text);
     classify_units(&mut parsed, ruleset);
     parsed
 }
@@ -937,4 +941,101 @@ fn the_surfaces_agree_on_every_give_verdict() {
             "{where_it_is}: the SILVER forecast's gifts and discards"
         );
     }
+}
+
+/// The party a matrix case's one `GIVE` names, read off its order line.
+fn party_of(orders: &str) -> super::forms::Party {
+    use super::forms::Party;
+    let words: Vec<&str> = orders
+        .lines()
+        .find(|line| line.starts_with("GIVE "))
+        .expect("every matrix case is one GIVE")
+        .split_whitespace()
+        .collect();
+    match words[1] {
+        "0" => Party::Discard,
+        "NEW" => Party::New(words[2].to_string()),
+        id => Party::Unit(id.to_string()),
+    }
+}
+
+/// `ah-amkn`: the matrix has a case for every reach and every outcome, and each case's label is
+/// what [`super::targets::GiveVerdict`] really answers for it.
+///
+/// The two `match`es have no wildcard on purpose: a new reach or a new refusal does not compile
+/// here until it is given a number, and then fails until the matrix has a case for it - so a rule
+/// added to the verdict cannot go unchecked across the four surfaces.
+#[test]
+fn the_matrix_covers_every_verdict() {
+    use super::targets::{
+        give_reach, GiveOutcome as O, GiveReach as R, GiveRefusal as F, GiveVerdict,
+    };
+    const REACHES: usize = 5;
+    let reach_number = |reach: R| match reach {
+        R::Ours => 0,
+        R::Discard => 1,
+        R::Foreign => 2,
+        R::Unshown => 3,
+        R::Nowhere => 4,
+    };
+    const OUTCOMES: usize = 7;
+    let outcome_number = |outcome: O| match outcome {
+        O::Moves => 0,
+        O::Uncertain => 1,
+        O::NoTarget => 2,
+        O::Refused(F::CannotChangeHands) => 3,
+        O::Refused(F::MenToAnotherFaction) => 4,
+        O::Refused(F::MageGivesMen) => 5,
+        O::Refused(F::MenIntoAMage) => 6,
+    };
+
+    let ruleset = ruleset();
+    let report = parsed_from(&verdict_report_text(), &ruleset);
+    let unit = |id: &str| {
+        report
+            .units()
+            .find(|unit| unit.unit_id == id)
+            .unwrap_or_else(|| panic!("unit {id} is in the report"))
+    };
+
+    let mut reaches = [false; REACHES];
+    let mut outcomes = [false; OUTCOMES];
+    for case in verdict_cases() {
+        let giver = unit(case.giver);
+        let here = report
+            .regions
+            .iter()
+            .find(|region| region.region_id == giver.region_id)
+            .expect("the giver's region is in the report");
+        let party = party_of(case.orders);
+        let reach = give_reach(
+            &party,
+            case.giver,
+            |id| here.units.iter().any(|unit| unit.unit_id == id && unit.own),
+            |id| here.units.iter().any(|unit| unit.unit_id == id),
+            |id| report.units().any(|unit| unit.unit_id == id),
+        );
+        assert_eq!(reach, case.reach, "{:?}", case.orders);
+        let receiver = match (&party, reach) {
+            (super::forms::Party::Unit(id), R::Ours) => Some(unit(id).skills.as_slice()),
+            _ => None,
+        };
+        let verdict = GiveVerdict::give(reach, &giver.skills, receiver, Some(&ruleset));
+        assert_eq!(
+            verdict.of(case.tag, Some(&ruleset)),
+            case.outcome,
+            "{:?}",
+            case.orders
+        );
+        reaches[reach_number(case.reach)] = true;
+        outcomes[outcome_number(case.outcome)] = true;
+    }
+    assert!(
+        reaches.iter().all(|seen| *seen),
+        "reaches covered: {reaches:?}"
+    );
+    assert!(
+        outcomes.iter().all(|seen| *seen),
+        "outcomes covered: {outcomes:?}"
+    );
 }

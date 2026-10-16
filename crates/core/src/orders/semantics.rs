@@ -8819,7 +8819,7 @@ fn apply(
             if verdict.gives_nothing() {
                 return;
             }
-            // Only ever read for a tag `give_outcome` calls uncertain, and only ever a unit number
+            // Only ever read for a tag the verdict calls uncertain, and only ever a unit number
             // there - but formatted once here rather than per tag of a class.
             let target_label = party_label(to);
             // Unit 0 discards rather than gives, and is not "another unit" - the one shape where
@@ -14342,7 +14342,7 @@ fn dissolution(hex: &Hex<'_>, ordered: &Ordered<'_>) -> Option<Dissolution> {
 /// column, which alone answers for silver, showed the gift leave the giver and arrive nowhere.
 ///
 /// A hex with no own report unit has nobody to revert to, and moves nothing, as the ITEMS preview
-/// does (`ah-ty3s.3`). Silver is never left uncertain by a gift (`targets::give_outcome`: silver
+/// does (`ah-ty3s.3`). Silver is never left uncertain by a gift (`targets::GiveVerdict::of`: silver
 /// to a shown foreign unit moves, `rules/give`, and to an unshown one gives nothing at all,
 /// `ah-xaem`), so the balance read here is a figure, never an `UncertainGive`.
 fn revert_dissolved_forms(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {

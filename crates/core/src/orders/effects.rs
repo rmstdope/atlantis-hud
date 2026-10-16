@@ -12161,7 +12161,7 @@ mod tests {
             );
         }
 
-        /// `give_outcome` answers `NoTarget` for a unit the report never prints, as the engine
+        /// `GiveVerdict::of` answers `NoTarget` for a unit the report never prints, as the engine
         /// finds no target and moves nothing (`ah-xaem`): the giver's row is not answered at all.
         #[test]
         fn a_gift_to_an_unshown_unit_records_no_item_change() {
