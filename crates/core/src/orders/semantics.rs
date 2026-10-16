@@ -73018,7 +73018,9 @@ BUILD
     /// captain sails north, and banker 903 stays behind with $500: the banker pays the study, as
     /// the g5-f21-t24 fixture's Drones (10594) is paid (`a_sharing_passenger_keeps_its_study_loan`),
     /// and none of the upkeep, which `rules/economy_maintenance` shares only "between your units in
-    /// the same region" and `rules/sequenceofevents` assesses after movement (`ah-6cka`).
+    /// the same region" and `rules/sequenceofevents` assesses after movement (`ah-6cka`). Not
+    /// [`traced`]: a unit its fleet carries away ends the month where [`production_region`] says,
+    /// never where the movement trace does ([`SharingReach::ends_at`]).
     #[test]
     fn a_passengers_study_is_lent_by_the_sharer_in_the_hex_it_leaves() {
         let banker = sharing(with_silver(unit("903"), 500));
