@@ -16749,7 +16749,9 @@ fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> Shor
 /// in the Give phase, before CAST, BUY and STUDY - and differ only by what was earned or received
 /// by then (below). `Give` reads the members' `GIVE` lines as they ran instead - what
 /// they gave, less what they asked beyond it - since a gift reaching a member later in the Give
-/// phase funds none of them (`ah-4k84`).
+/// phase funds none of them (`ah-4k84`). A gift to a faction-mate of the hex is counted there
+/// like any other: at that moment the sentence judges the `GIVE` lines themselves, and the gift
+/// is one of the lines that overdrew the unit (`ah-1dep` review).
 ///
 /// `walking`, for a sharing hex, counts a sharer whose month ends elsewhere only for what the hex
 /// had of it (`ah-a68f`); what it sent out of the set is added back on top, as for anyone else.
@@ -17311,8 +17313,9 @@ fn pool_silver_figures(
     // ... and the same gift's other side: what it asked beyond the pool was never silver the
     // members had, but is part of what their orders spend, so it is added to what they can have
     // between the counted units, or a gift far beyond the pool reads as a negative figure
-    // (`ah-j5s1`). A move from a counted unit to one not counted is already whole in
-    // `silver_can_have`'s silver sent out.
+    // (`ah-j5s1`). A move from a counted unit to one not counted is already in
+    // `silver_can_have`'s silver sent out - less what reached a faction-mate of the hex, which is
+    // not spending (`ah-3qmk`, `ah-1dep`).
     let between_counted: BTreeSet<&str> = counted
         .iter()
         .map(|ordered| ordered.unit.unit_id.as_str())
