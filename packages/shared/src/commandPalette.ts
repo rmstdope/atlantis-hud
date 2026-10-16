@@ -3,6 +3,7 @@
  * the arrow keys move the highlight. All plain functions - the component only renders them.
  */
 
+import type { HexNoteRecord, StudyPlanRecord } from "@atlantis/core-client";
 import type { GameDataEntry } from "./gameData";
 import type { HexNode } from "./hexMapModel";
 import type { KnownFaction } from "./paletteFactions";
@@ -27,6 +28,13 @@ export type PaletteEntryKind =
    * The kind label beside the row is what tells them apart.
    */
   | "structure"
+  /**
+   * A note the player wrote (ah-mlls.5): on a hex, or on a mage in the study planner. Two kinds
+   * rather than one `note`, so the kind word says where choosing it goes, and so the best of each
+   * gets its own seat at the top (`filterPalette`, rule 3).
+   */
+  | "hex-note"
+  | "mage-note"
   | "action"
   | "order-help"
   /** One thing in the game data dictionary, named by the tab it opens on. */
@@ -70,6 +78,13 @@ export type PaletteEntry = {
    * like `faction`. `quiet` draws them dim and in italics.
    */
   count?: { text: string; quiet: boolean };
+  /**
+   * Set on a note row only (ah-mlls.5), and what makes it one: `label` then holds the note's whole
+   * text, and `place` is the dimmed second line - the hex or the mage it was written on. A note
+   * row is matched only as consecutive letters and is never listed with nothing typed
+   * (`filterPalette`).
+   */
+  note?: { place: string };
   run: () => void;
 };
 
@@ -110,6 +125,13 @@ export type PaletteInput = {
   /** Every dictionary entry, or [] when the ruleset has not loaded. */
   gameData: readonly GameDataEntry[];
   openGameData: (entryId: string) => void;
+  /**
+   * Every hex note of the open game, placed by `hexNotePaletteRows`. Optional, like `mageNotes`,
+   * so a sibling bead's input needs no edit (docs/retrospectives/ah-mlls.4.md).
+   */
+  hexNotes?: Array<{ noteId: string; regionId: string; text: string; place: string; run: () => void }>;
+  /** Every non-empty note on a mage seen this turn, placed by `mageNotePaletteRows`. */
+  mageNotes?: Array<{ key: string; text: string; place: string; run: () => void }>;
 };
 
 /**
@@ -189,6 +211,22 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       lastSeenTurn: structure.lastSeenTurn,
       run: structure.run
     })),
+    // With the places, since a note is about somewhere; never listed with nothing typed, so where
+    // they sit here only decides ties (ah-mlls.5).
+    ...(input.hexNotes ?? []).map<PaletteEntry>((note) => ({
+      id: `hex-note-${note.noteId}`,
+      kind: "hex-note",
+      label: note.text,
+      note: { place: note.place },
+      run: note.run
+    })),
+    ...(input.mageNotes ?? []).map<PaletteEntry>((note) => ({
+      id: `mage-note-${note.key}`,
+      kind: "mage-note",
+      label: note.text,
+      note: { place: note.place },
+      run: note.run
+    })),
     ...input.actions.map<PaletteEntry>((action) => ({
       id: `action-${action.id}`,
       kind: "action",
@@ -255,6 +293,95 @@ export function settlementPaletteRows(
 }
 
 /**
+ * One palette row per hex note, in the order given (the notes store's, newest first): the note's
+ * text, and its place as `hill (3,29) in Grey Reach · turn 61`. The hex reads as its own palette
+ * row does (`labelFor`); the turn is left off a note stamped 0, which is how a note written before
+ * any report was loaded is stored and why the hex's Notes section hides its stamp too.
+ */
+export function hexNotePaletteRows(
+  notes: readonly HexNoteRecord[],
+  labelFor: (regionId: string) => string
+): Array<{ noteId: string; regionId: string; text: string; place: string }> {
+  return notes.map((note) => ({
+    noteId: note.id,
+    regionId: note.regionId,
+    text: note.text,
+    place: note.turn > 0 ? `${labelFor(note.regionId)} · turn ${note.turn}` : labelFor(note.regionId)
+  }));
+}
+
+/**
+ * One palette row per mage note worth finding: a non-empty note, on a mage the study planner lists
+ * (choosing the row picks him there) and whose unit this turn's report shows. A dead, given-away or
+ * unseen mage's note is left out until he is seen again (ah-mlls.5).
+ */
+export function mageNotePaletteRows(
+  plans: readonly StudyPlanRecord[],
+  groups: ReadonlyArray<{
+    mages: ReadonlyArray<{ key: string; factionId: string; unitId: string; name: string }>;
+  }>,
+  seenUnitIds: ReadonlySet<string>
+): Array<{ key: string; text: string; place: string }> {
+  const mages = new Map(
+    groups.flatMap((group) => group.mages).map((mage) => [mage.key, mage] as const)
+  );
+  return plans.flatMap((plan) => {
+    const text = plan.comment.trim();
+    const mage = mages.get(`${plan.factionId}/${plan.unitId}`);
+    if (text === "" || mage === undefined || !seenUnitIds.has(mage.unitId)) {
+      return [];
+    }
+    return [{ key: mage.key, text, place: `${mage.name} (${mage.unitId}) · study planner` }];
+  });
+}
+
+/** How far into its line a match may start before the line is cut to bring it closer. */
+const SNIPPET_FAR = 30;
+/** How much of the line a cut keeps ahead of the match. */
+const SNIPPET_LEAD = 20;
+
+/**
+ * A note row's top line (ah-mlls.5): the line of the note holding the first case-insensitive
+ * match of `query`, split around it so the match can be drawn bold, in the note's own case.
+ *
+ * A match more than `SNIPPET_FAR` characters into its line would be cut off on a narrow row, so
+ * the line is then started up to `SNIPPET_LEAD` characters before it - at the first word start in
+ * that stretch, when it has one - and `lead` asks for a `…` in front. The end is left whole: the
+ * row cuts it with CSS, wherever the width runs out.
+ */
+export function noteSnippet(
+  text: string,
+  query: string
+): { lead: boolean; before: string; match: string; after: string } {
+  const needle = query.trim().toLowerCase();
+  const at = needle === "" ? -1 : text.toLowerCase().indexOf(needle);
+  if (at === -1) {
+    return { lead: false, before: text.split("\n")[0] ?? "", match: "", after: "" };
+  }
+  const lineStart = text.lastIndexOf("\n", at - 1) + 1;
+  const nextBreak = text.indexOf("\n", at);
+  const lineEnd = nextBreak === -1 ? text.length : nextBreak;
+  const end = Math.min(at + needle.length, lineEnd);
+
+  let start = lineStart;
+  if (at - lineStart > SNIPPET_FAR) {
+    start = at - SNIPPET_LEAD;
+    for (let p = start; p < at; p += 1) {
+      if (/\s/.test(text[p - 1] ?? "")) {
+        start = p;
+        break;
+      }
+    }
+  }
+  return {
+    lead: start > lineStart,
+    before: text.slice(start, at),
+    match: text.slice(at, end),
+    after: text.slice(end, lineEnd)
+  };
+}
+
+/**
  * How well a query fits a label: 0 a prefix, 1 a word start, 2 a substring anywhere, 3 a
  * subsequence - letters in order with gaps, which is how a half-remembered name still finds its
  * unit. Null is no match at all.
@@ -263,7 +390,7 @@ export function settlementPaletteRows(
  * only when nothing matched more strongly, so "mine" does not offer "Magician's Tower" while a
  * Mine is standing on the map.
  */
-function score(label: string, query: string): number | null {
+function score(label: string, query: string, consecutiveOnly = false): number | null {
   const haystack = label.toLowerCase();
   if (haystack.startsWith(query)) {
     return 0;
@@ -271,6 +398,9 @@ function score(label: string, query: string): number | null {
   const at = haystack.indexOf(query);
   if (at !== -1) {
     return /[^a-z0-9]/.test(haystack[at - 1] ?? "") ? 1 : 2;
+  }
+  if (consecutiveOnly) {
+    return null;
   }
   let from = 0;
   for (const letter of query) {
@@ -303,16 +433,20 @@ const SUBSEQUENCE = 3;
  *     others off the first screenful, which was the complaint even before scrolling.
  *
  * An empty query is untouched by all three: it is the whole list, in the order
- * `buildPaletteEntries` built it.
+ * `buildPaletteEntries` built it - less the notes, which are found by a remembered word and would
+ * otherwise push everything else down with their two-line rows (ah-mlls.5).
+ *
+ * A note never matches as a subsequence: across up to 500 characters a typo would find most notes
+ * with nothing on the row to say why.
  */
 export function filterPalette(entries: readonly PaletteEntry[], query: string): PaletteEntry[] {
   const needle = query.trim().toLowerCase();
   if (needle === "") {
-    return [...entries];
+    return entries.filter((entry) => entry.note === undefined);
   }
 
   const scored = entries
-    .map((entry) => ({ entry, fit: score(entry.label, needle) }))
+    .map((entry) => ({ entry, fit: score(entry.label, needle, entry.note !== undefined) }))
     .filter((s): s is { entry: PaletteEntry; fit: number } => s.fit !== null);
 
   // Rule 2. `some` before `filter`, so an all-subsequence result survives intact.

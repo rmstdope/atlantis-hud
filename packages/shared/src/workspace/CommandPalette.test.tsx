@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { PaletteEntry } from "../commandPalette";
-import { CommandPalette } from "./CommandPalette";
+import { CommandPalette, kindLabel, PaletteNoteText } from "./CommandPalette";
 
 /**
  * How a row reads. Static markup only - `packages/shared` has no jsdom (ah-nass), so what the
@@ -162,5 +162,49 @@ describe("an Army row in the palette (ah-mlls.4)", () => {
       /<span[^>]*class="[^"]*italic[^"]*text-ink-dim[^"]*"[^>]*>no units this turn</
     );
     expect(rowOf(draw([iron]), "Iron Guard")).not.toContain("italic");
+  });
+});
+
+describe("a palette row for a note (ah-mlls.5)", () => {
+  const hexNote: PaletteEntry = {
+    id: "hex-note-n1",
+    kind: "hex-note",
+    label: "Scouted turn 61.\nA seam of iron under the ridge.",
+    note: { place: "hill (3,29) in Grey Reach · turn 61" },
+    run: noop
+  };
+  const far: PaletteEntry = {
+    id: "mage-note-95/2214",
+    kind: "mage-note",
+    label: "Needs FIRE 3 before the long winter siege, then switch her to iron-working?",
+    note: { place: "Ulla the Grey (2214) · study planner" },
+    run: noop
+  };
+  const text = (entry: PaletteEntry, query: string) =>
+    renderToStaticMarkup(
+      <PaletteNoteText text={entry.label} place={entry.note?.place ?? ""} query={query} />
+    );
+
+  it("draws the line holding the match, the match in bold", () => {
+    const markup = text(hexNote, "iron");
+    expect(markup).toContain("A seam of <b");
+    expect(markup).toMatch(/<b[^>]*>iron<\/b> under the ridge\./);
+    expect(markup).not.toContain("Scouted");
+  });
+
+  it("starts a far match's line with an ellipsis", () => {
+    expect(text(far, "iron")).toContain("…then switch her to <b");
+  });
+
+  it("puts the place beneath, dimmed", () => {
+    expect(text(hexNote, "iron")).toMatch(
+      /class="[^"]*text-ink-dim[^"]*"[^>]*>hill \(3,29\) in Grey Reach · turn 61</
+    );
+  });
+
+  it("says hex note and mage note as the kind words", () => {
+    expect(kindLabel(hexNote)).toBe("hex note");
+    expect(kindLabel(far)).toBe("mage note");
+    expect(kindLabel(own)).toBe("unit");
   });
 });

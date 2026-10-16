@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   filterPalette,
+  noteSnippet,
   paletteKeyReduce,
   PALETTE_PAGE_ROWS,
   type PaletteEntry
@@ -8,9 +9,52 @@ import {
 import { useEscapeToDismiss } from "./dismissLayer";
 import { factionRow } from "./paletteFactionRow";
 
-/** The kind as the row prints it: `order` for order help, the kind's own name otherwise. */
-function kindLabel(entry: PaletteEntry): string {
-  return entry.kind === "order-help" ? "order" : entry.kind;
+/**
+ * The kind as the row prints it: `order` for order help, `hex note` and `mage note` for the two
+ * kinds of note (ah-mlls.5), the kind's own name otherwise.
+ */
+export function kindLabel(entry: PaletteEntry): string {
+  switch (entry.kind) {
+    case "order-help":
+      return "order";
+    case "hex-note":
+      return "hex note";
+    case "mage-note":
+      return "mage note";
+    default:
+      return entry.kind;
+  }
+}
+
+/**
+ * A note row's text (ah-mlls.5), on two lines where every other row has one: the line of the note
+ * holding what was typed, the match in bold, and beneath it, dimmed, where the note was written.
+ * Each line is cut at its end with `…` on its own, so on a narrow window a hex note's turn is the
+ * first thing lost and its hex the next.
+ */
+export function PaletteNoteText({
+  text,
+  place,
+  query
+}: {
+  text: string;
+  place: string;
+  query: string;
+}) {
+  const snippet = noteSnippet(text, query);
+  return (
+    <span className="mr-auto flex min-w-0 flex-col">
+      <span data-testid="palette-note-line" className="truncate">
+        {snippet.lead ? "…" : ""}
+        {snippet.before}
+        <b className="font-semibold text-ink">{snippet.match}</b>
+        {snippet.after}
+      </span>
+      <span data-testid="palette-note-place" className="truncate text-pane-sm text-ink-dim">
+        {place}
+      </span>
+    </span>
+  );
 }
 
 /**
@@ -21,6 +65,7 @@ function rowTitle(entry: PaletteEntry): string {
   const standing = entry.kind === "faction" ? factionRow(entry) : null;
   return [
     `${entry.label}${standing?.mark ?? ""}`,
+    entry.note?.place,
     entry.faction?.label,
     entry.count?.text,
     entry.lastSeenTurn !== undefined ? `last seen turn ${entry.lastSeenTurn}` : undefined,
@@ -188,10 +233,14 @@ export function CommandPalette({
                       takes any spare room; when room runs short the faction gives way first - its
                       shrink factor dwarfs the label's - down to about a word, and only then does the
                       unit's name shorten. The kind and the history marker never shrink. */}
-                  <span className={`mr-auto min-w-0 truncate ${standing?.labelClassName ?? ""}`}>
-                    {entry.label}
-                    {standing?.mark}
-                  </span>
+                  {entry.note !== undefined ? (
+                    <PaletteNoteText text={entry.label} place={entry.note.place} query={query} />
+                  ) : (
+                    <span className={`mr-auto min-w-0 truncate ${standing?.labelClassName ?? ""}`}>
+                      {entry.label}
+                      {standing?.mark}
+                    </span>
+                  )}
                   {entry.faction ? (
                     <span
                       data-testid="palette-faction"

@@ -3,6 +3,9 @@ import {
   armyCountLabel,
   buildPaletteEntries,
   filterPalette,
+  hexNotePaletteRows,
+  mageNotePaletteRows,
+  noteSnippet,
   paletteKeyReduce,
   settlementPaletteRows,
   type PaletteEntry
@@ -706,5 +709,221 @@ describe("Armies in the palette (ah-mlls.4)", () => {
     );
     const shown = filterPalette(crowd, "seven");
     expect(shown.slice(0, 2).map((entry) => entry.kind)).toContain("army");
+  });
+});
+
+describe("notes in the palette (ah-mlls.5)", () => {
+  const withNotes = (): PaletteEntry[] =>
+    buildPaletteEntries({
+      armies: [],
+      ownUnits: [{ unitId: "2210", name: "Ironside Guard", run: noop }],
+      foreignUnits: [],
+      staleUnits: [],
+      settlements: [],
+      factions: [],
+      regions: [{ regionId: "1:3,29", label: "hill (3,29) in Grey Reach", run: noop }],
+      structures: [],
+      actions: [],
+      orderCommands: [],
+      insertOrder: noop,
+      gameData: [],
+      openGameData: noop,
+      hexNotes: [
+        {
+          noteId: "n1",
+          regionId: "1:3,29",
+          text: "Scouted turn 61.\nA seam of iron under the ridge, iron again.",
+          place: "hill (3,29) in Grey Reach · turn 61",
+          run: noop
+        },
+        {
+          noteId: "n2",
+          regionId: "1:12,34",
+          text: "Iron traders from Akroitos pass here every spring.",
+          place: "plain (12,34) in Hope · turn 66",
+          run: noop
+        }
+      ],
+      mageNotes: [
+        {
+          key: "95/2214",
+          text: "Needs FIRE 3 before the siege, then switch her to iron-working?",
+          place: "Ulla the Grey (2214) · study planner",
+          run: noop
+        }
+      ]
+    });
+
+  it("gives each note its own kind, its whole text as the label and its place beside it", () => {
+    const notes = withNotes().filter((entry) => entry.note !== undefined);
+    expect(notes.map((entry) => [entry.id, entry.kind, entry.note?.place])).toEqual([
+      ["hex-note-n1", "hex-note", "hill (3,29) in Grey Reach · turn 61"],
+      ["hex-note-n2", "hex-note", "plain (12,34) in Hope · turn 66"],
+      ["mage-note-95/2214", "mage-note", "Ulla the Grey (2214) · study planner"]
+    ]);
+    expect(notes[0]?.label).toContain("A seam of iron");
+  });
+
+  it("adds no note rows when the input carries none", () => {
+    expect(entries().some((entry) => entry.note !== undefined)).toBe(false);
+  });
+
+  it("leaves every note out while nothing is typed", () => {
+    expect(filterPalette(withNotes(), "").some((entry) => entry.note !== undefined)).toBe(false);
+    expect(filterPalette(withNotes(), "  ").some((entry) => entry.note !== undefined)).toBe(false);
+  });
+
+  it("finds a note by a word anywhere in it, one row per note however often the word appears", () => {
+    const shown = filterPalette(withNotes(), "iron");
+    expect(shown.filter((entry) => entry.kind === "hex-note").map((entry) => entry.id)).toEqual([
+      "hex-note-n2",
+      "hex-note-n1"
+    ]);
+    expect(shown.filter((entry) => entry.kind === "mage-note")).toHaveLength(1);
+  });
+
+  it("matches a word on a later line of a note", () => {
+    const shown = filterPalette(withNotes(), "ridge");
+    expect(shown.map((entry) => entry.id)).toEqual(["hex-note-n1"]);
+  });
+
+  it("gives the best hex note and the best mage note each a seat at the top", () => {
+    const shown = filterPalette(withNotes(), "iron");
+    expect(shown.slice(0, 3).map((entry) => entry.kind).sort()).toEqual([
+      "hex-note",
+      "mage-note",
+      "unit"
+    ]);
+  });
+
+  it("lists no notes for a typo while other kinds still match their scattered letters", () => {
+    const shown = filterPalette(withNotes(), "irsd");
+    expect(shown.some((entry) => entry.note !== undefined)).toBe(false);
+    expect(shown.map((entry) => entry.label)).toEqual(["Ironside Guard (2210)"]);
+  });
+});
+
+describe("hexNotePaletteRows (ah-mlls.5)", () => {
+  const note = (over: Partial<{ id: string; regionId: string; text: string; turn: number }>) => ({
+    id: "n1",
+    gameId: "g",
+    regionId: "1:3,29",
+    text: "Good pasture; horses cheap.",
+    onMap: true,
+    turn: 58,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+    ...over
+  });
+  const label = (regionId: string) =>
+    regionId === "1:3,29" ? "hill (3,29) in Grey Reach" : "plain (14,36) in Hope";
+
+  it("places a note on its hex, as the hex row reads, and the turn it was written", () => {
+    expect(hexNotePaletteRows([note({})], label)).toEqual([
+      {
+        noteId: "n1",
+        regionId: "1:3,29",
+        text: "Good pasture; horses cheap.",
+        place: "hill (3,29) in Grey Reach · turn 58"
+      }
+    ]);
+  });
+
+  it("leaves the turn off a note stamped before any report was loaded", () => {
+    const [row] = hexNotePaletteRows([note({ regionId: "1:14,36", turn: 0 })], label);
+    expect(row?.place).toBe("plain (14,36) in Hope");
+  });
+
+  it("keeps one row per note, in the order given", () => {
+    const rows = hexNotePaletteRows([note({ id: "a" }), note({ id: "b", turn: 66 })], label);
+    expect(rows.map((row) => [row.noteId, row.place])).toEqual([
+      ["a", "hill (3,29) in Grey Reach · turn 58"],
+      ["b", "hill (3,29) in Grey Reach · turn 66"]
+    ]);
+  });
+});
+
+describe("mageNotePaletteRows (ah-mlls.5)", () => {
+  const plan = (unitId: string, comment: string, factionId = "95") => ({
+    factionId,
+    unitId,
+    goals: [],
+    casts: [],
+    comment,
+    updatedAt: "2026-01-01T00:00:00Z"
+  });
+  const groups = [
+    {
+      mages: [
+        { key: "95/2214", factionId: "95", unitId: "2214", name: "Ulla the Grey" },
+        { key: "95/1988", factionId: "95", unitId: "1988", name: "Bram" }
+      ]
+    },
+    { mages: [{ key: "17/3001", factionId: "17", unitId: "3001", name: "Far Sage" }] }
+  ];
+
+  it("lists a mage's note under his name and the study planner", () => {
+    expect(
+      mageNotePaletteRows([plan("2214", "Needs FIRE 3.")], groups, new Set(["2214"]))
+    ).toEqual([
+      { key: "95/2214", text: "Needs FIRE 3.", place: "Ulla the Grey (2214) · study planner" }
+    ]);
+  });
+
+  it("leaves out an empty note", () => {
+    expect(mageNotePaletteRows([plan("2214", "   ")], groups, new Set(["2214"]))).toEqual([]);
+  });
+
+  it("leaves out a mage this turn's report does not show", () => {
+    expect(
+      mageNotePaletteRows([plan("3001", "Iron", "17")], groups, new Set(["2214"]))
+    ).toEqual([]);
+  });
+
+  it("leaves out a plan whose mage the planner does not list", () => {
+    expect(mageNotePaletteRows([plan("1650", "Iron")], groups, new Set(["1650"]))).toEqual([]);
+  });
+});
+
+describe("noteSnippet (ah-mlls.5)", () => {
+  it("cuts out the line holding the match, keeping the note's own case", () => {
+    expect(noteSnippet("Iron traders pass here.", "iron")).toEqual({
+      lead: false,
+      before: "",
+      match: "Iron",
+      after: " traders pass here."
+    });
+  });
+
+  it("shows a later line when that is where the match is", () => {
+    expect(noteSnippet("Scouted turn 61.\nA seam of iron under the ridge.", "iron")).toEqual({
+      lead: false,
+      before: "A seam of ",
+      match: "iron",
+      after: " under the ridge."
+    });
+  });
+
+  it("starts a little before a match far into its line, at a word", () => {
+    const text = "Needs FIRE 3 before the long winter siege, then switch her to iron-working? Ask.";
+    const snippet = noteSnippet(text, "iron");
+    expect(snippet.lead).toBe(true);
+    expect(snippet.match).toBe("iron");
+    expect(snippet.after).toBe("-working? Ask.");
+    expect(snippet.before.length).toBeLessThanOrEqual(20);
+    expect(snippet.before).toBe("then switch her to ");
+  });
+
+  it("matches the first place the typed text occurs", () => {
+    expect(noteSnippet("ore, then more ore", "ore").before).toBe("");
+  });
+
+  it("returns the first line unmarked when nothing matches", () => {
+    expect(noteSnippet("First line\nSecond", "zzz")).toEqual({
+      lead: false,
+      before: "First line",
+      match: "",
+      after: ""
+    });
   });
 });
