@@ -11,10 +11,10 @@
 //! the factional rule and men forbidden by it. Our report carries our declarations toward other
 //! factions, never theirs toward us, so seeing a foreign target proves location and not
 //! permission, so a visible foreign target's goods are [`GiveOutcome::Uncertain`] rather than a
-//! made-up answer. A number the report never prints may be a hidden Friendly target rather than a
-//! definite miss, and there the projection assumes the gift lands and says what it cannot
-//! establish as the `give-target-not-here` warning instead (`ah-jo6b`); men are the one exception,
-//! and stay uncertain.
+//! made-up answer. A number the report never prints may in principle be a hidden Friendly target,
+//! but the engine finds no such unit in the region and gives nothing, so the projection gives
+//! nothing too and the `give-target-not-here` warning names the number (`ah-xaem`, which reverses
+//! `ah-jo6b`'s assumption that the gift lands).
 
 use super::forms::Party;
 use crate::movement::rules::Ruleset;
@@ -83,9 +83,12 @@ pub enum GiveReach {
     Foreign,
     /// A unit number the whole report never prints. It may not exist, and it may be a unit we
     /// cannot see whose faction has declared us Friendly - `rules/give` allows exactly that gift.
-    /// Neither can be established from a report, so the gift is assumed to land (`ah-jo6b`) and the
-    /// doubt is carried by the `give-target-not-here` warning, which names the number nothing in
-    /// the report matches. Men are the exception and stay [`GiveOutcome::Uncertain`].
+    /// A `GIVE` to it gives nothing, as one to [`Self::Nowhere`] does: the engine looks the target
+    /// up in the giver's region and, finding none, errors "Nonexistant target" before anything
+    /// moves (`Game::DoGiveOrder`, ../Atlantis `runorders.cpp`), and the navigator decided
+    /// (`ah-xaem`, 2026-10-16) to follow the game rather than assume a hidden Friendly target. The
+    /// `give-target-not-here` warning still names the number nothing in the report matches. It is
+    /// kept apart from `Nowhere` for what the other transfer orders and that warning say about it.
     Unshown,
     /// Definitely no target: a unit the report shows somewhere else - `rules/sequenceofevents`
     /// settles gifts in phase 4, before anything moves - a `NEW` alias no `FORM` here creates, and
@@ -93,6 +96,16 @@ pub enum GiveReach {
     /// transfer is void and the giver is not charged either, exactly as `effects::give` returns
     /// early for these without touching it.
     Nowhere,
+}
+
+impl GiveReach {
+    /// Whether a `GIVE` aimed here does nothing at all: the giver is not charged, nobody
+    /// receives, and nothing is doubted - the ledger reads exactly as it would with the line
+    /// deleted. A unit the report shows elsewhere and a number it never prints alike (`ah-xaem`).
+    #[must_use]
+    pub fn gives_nothing(self) -> bool {
+        matches!(self, Self::Nowhere | Self::Unshown)
+    }
 }
 
 /// What one tag of one transfer actually does, once reach and the item are both known.
@@ -253,7 +266,6 @@ pub fn give_outcome(reach: GiveReach, tag: &str, ruleset: Option<&Ruleset>) -> G
     match reach {
         // Unit 0 is not another unit, so no permission applies and even ungiveable goods go.
         GiveReach::Discard => GiveOutcome::Moves,
-        GiveReach::Nowhere => GiveOutcome::NoTarget,
         GiveReach::Ours => match ruleset {
             Some(ruleset) if !ruleset.can_be_given(tag) => {
                 GiveOutcome::Refused(GiveRefusal::CannotChangeHands)
@@ -272,25 +284,9 @@ pub fn give_outcome(reach: GiveReach, tag: &str, ruleset: Option<&Ruleset>) -> G
             _ if silver => GiveOutcome::Moves,
             _ => GiveOutcome::Uncertain,
         },
-        GiveReach::Unshown => match ruleset {
-            Some(ruleset) if !ruleset.can_be_given(tag) => {
-                GiveOutcome::Refused(GiveRefusal::CannotChangeHands)
-            }
-            // Men are the exception and stay unresolved: `rules/give` refuses them "to units in
-            // other factions", and a number the report never prints settles neither whether the
-            // target exists nor whose it is - so saying they are refused would explain a mistyped
-            // number with a faction rule that may have nothing to do with it. With no catalogue
-            // there is no way to know a tag names men, so this arm cannot fire and the gift is
-            // assumed to land like any other - the same optimism the `Ours` arm above already
-            // shows a ruleset-less caller.
-            Some(ruleset) if ruleset.is_man(tag) => GiveOutcome::Uncertain,
-            // Everything else is assumed to land. `rules/give` lets a unit we cannot see receive a
-            // gift once its faction has declared us Friendly, and no report carries that
-            // declaration - so the projection follows the order through and says what cannot be
-            // established as a warning rather than blanking the month (`ah-jo6b`). The warning is
-            // `give-target-not-here`, which names the number nothing in the report matches.
-            _ => GiveOutcome::Moves,
-        },
+        // A number the report never prints gives nothing, men and all (`ah-xaem`): see
+        // [`GiveReach::Unshown`].
+        GiveReach::Nowhere | GiveReach::Unshown => GiveOutcome::NoTarget,
     }
 }
 
@@ -559,46 +555,36 @@ mod tests {
         );
     }
 
-    /// `ah-jo6b`: a number the whole report never prints is assumed to receive the gift. The one
-    /// thing the report can say is that nothing in it matches the number, and
-    /// `give-target-not-here` says it.
+    /// `ah-xaem`: a number the whole report never prints receives nothing, whatever is given and
+    /// with or without a catalogue. The engine finds no such unit in the region and errors
+    /// "Nonexistant target" before it reads the item at all (`Game::DoGiveOrder`, ../Atlantis
+    /// `runorders.cpp`), so neither men nor ungiveable goods are a separate case.
     #[test]
-    fn a_gift_to_an_unshown_number_is_assumed_to_land() {
+    fn a_gift_to_an_unshown_number_gives_nothing() {
         let ruleset = ruleset();
-        assert_eq!(
-            give_outcome(GiveReach::Unshown, "STON", Some(&ruleset)),
-            GiveOutcome::Moves
-        );
-        assert_eq!(
-            give_outcome(GiveReach::Unshown, "SILV", Some(&ruleset)),
-            GiveOutcome::Moves
-        );
-        assert_eq!(
-            give_outcome(GiveReach::Unshown, "SILV", None),
-            GiveOutcome::Moves
-        );
-        // Men stay unresolved.
-        assert_eq!(
-            give_outcome(GiveReach::Unshown, "ORC", Some(&ruleset)),
-            GiveOutcome::Uncertain
-        );
-        // But only with a catalogue to recognise them by: a ruleset-less caller cannot know a tag
-        // names men, so it gets the same optimism `Ours` already gives it rather than a men
-        // exception this table has no way to apply.
-        assert_eq!(
-            give_outcome(GiveReach::Unshown, "ORC", None),
-            GiveOutcome::Moves
-        );
-        assert_eq!(
-            give_outcome(GiveReach::Ours, "ORC", None),
-            GiveOutcome::Moves
-        );
+        for tag in ["STON", "SILV", "ORC", "LION"] {
+            assert_eq!(
+                give_outcome(GiveReach::Unshown, tag, Some(&ruleset)),
+                GiveOutcome::NoTarget,
+                "{tag}"
+            );
+            assert_eq!(
+                give_outcome(GiveReach::Unshown, tag, None),
+                GiveOutcome::NoTarget,
+                "{tag} with no catalogue"
+            );
+        }
+        assert!(GiveReach::Unshown.gives_nothing());
+        assert!(GiveReach::Nowhere.gives_nothing());
+        for reach in [GiveReach::Ours, GiveReach::Foreign, GiveReach::Discard] {
+            assert!(!reach.gives_nothing(), "{reach:?}");
+        }
     }
 
     /// Ordinary goods aimed at a *visible* foreign unit stay uncertain: the silver exemption is
     /// from the *factional* rule alone, and what is missing here is that faction's declaration
     /// toward us. An unshown target is a different case - see
-    /// `a_gift_to_an_unshown_number_is_assumed_to_land`.
+    /// `a_gift_to_an_unshown_number_gives_nothing`.
     #[test]
     fn ordinary_foreign_goods_are_uncertain() {
         let ruleset = ruleset();
@@ -625,10 +611,6 @@ mod tests {
             GiveOutcome::Refused(GiveRefusal::CannotChangeHands)
         );
         assert_eq!(
-            give_outcome(GiveReach::Unshown, "LION", Some(&ruleset)),
-            GiveOutcome::Refused(GiveRefusal::CannotChangeHands)
-        );
-        assert_eq!(
             give_outcome(GiveReach::Ours, "LION", Some(&ruleset)),
             GiveOutcome::Refused(GiveRefusal::CannotChangeHands)
         );
@@ -640,7 +622,7 @@ mod tests {
     }
 
     /// No catalogue at all: our own units keep today's optimism, visible foreign silver is still
-    /// the rules' own exemption, and everything else a foreign or unshown target might receive is
+    /// the rules' own exemption, and everything else a visible foreign target might receive is
     /// uncertain rather than assumed.
     #[test]
     fn without_a_ruleset_only_our_own_and_visible_silver_are_definite() {
@@ -664,11 +646,10 @@ mod tests {
             give_outcome(GiveReach::Foreign, "STON", None),
             GiveOutcome::Uncertain
         );
-        // A number the report never prints is assumed to receive the gift even with no catalogue
-        // to consult (`ah-jo6b`).
+        // A number the report never prints receives nothing, catalogue or not (`ah-xaem`).
         assert_eq!(
             give_outcome(GiveReach::Unshown, "SILV", None),
-            GiveOutcome::Moves
+            GiveOutcome::NoTarget
         );
     }
 }

@@ -3320,16 +3320,15 @@ impl Working {
         // The 1-based document line of the order, so the change it records can name it.
         line: usize,
     ) {
-        use super::targets::{give_endpoint, GiveEndpoint, GiveReach};
+        use super::targets::{give_endpoint, GiveEndpoint};
 
         let region = self.units[giver].unit.region_id.clone();
         let giver_id = self.units[giver].unit.unit_id.clone();
         let GiveEndpoint {
             reach,
-            // `None` for `Discard`, `Foreign` and `Unshown` alike: the goods leave and no row of
-            // ours gains them. `Unshown` moves nothing at all, because `tags_moved` returns no tag
-            // for it - `rules/give` may or may not let the gift through and this column says so
-            // with `+ ?` rather than a figure (`ah-66yi`).
+            // `None` for `Discard` and `Foreign`: the goods leave, or may, and no row of ours
+            // gains them. `Unshown` and `Nowhere` return below without moving anything
+            // (`ah-xaem`).
             row: receiver,
         } = give_endpoint(
             target,
@@ -3344,8 +3343,8 @@ impl Working {
             // the report never prints, which may be a hidden Friendly target (`ah-66yi`).
             |id| self.known_units.contains(id),
         );
-        // Nothing at all: not even the giver loses what it named (`ah-vcp8.2`).
-        if reach == GiveReach::Nowhere {
+        // Nothing at all: not even the giver loses what it named (`ah-vcp8.2`, `ah-xaem`).
+        if reach.gives_nothing() {
             return;
         }
 
@@ -3501,9 +3500,9 @@ impl Working {
             }),
             None => super::targets::party_unit_id(party).map(|unit_id| ItemChangeParty {
                 unit_id,
-                // A target no row of ours holds: a foreign unit the region shows, or a number the
-                // report never prints. `ah-rgkk.2.3` writes that as `unit <id>`, which needs no
-                // name.
+                // A target no row of ours holds: a foreign unit the region shows. (A number the
+                // report never prints gives nothing and never gets here, `ah-xaem`.)
+                // `ah-rgkk.2.3` writes that as `unit <id>`, which needs no name.
                 name: None,
             }),
         };
@@ -8547,26 +8546,16 @@ mod tests {
         assert!(giver.uncounted.is_empty(), "{:?}", giver.uncounted);
     }
 
-    /// A unit number the *whole report* never prints. `rules/give` lets a unit we cannot see
-    /// receive a gift once its faction has declared us Friendly, so this may be a perfectly good
-    /// order - the projection assumes it lands, the stone leaves the giver, and nothing is admitted
-    /// as uncounted (`ah-jo6b`). What the report cannot establish is said by
-    /// `give-target-not-here` instead.
+    /// A unit number the *whole report* never prints. The engine finds no such unit in the
+    /// region and errors "Nonexistant target" before anything moves (`Game::DoGiveOrder`,
+    /// ../Atlantis `runorders.cpp`), so the stone stays and the unchanged row is dropped from the
+    /// response, exactly as for a unit shown elsewhere (`ah-xaem`). `give-target-not-here` still
+    /// names the number.
     #[test]
-    fn an_unshown_number_is_not_a_definite_missing_target() {
+    fn a_gift_to_an_unshown_number_moves_nothing() {
         let response = two_hex_preview("unit 6857\nGIVE 9999 10 STON\n");
-        let giver = row(&response, "1:2,2", "6857").expect("the giver's row is previewed");
 
-        assert_eq!(
-            giver
-                .unit
-                .items
-                .iter()
-                .find(|item| item.tag == "STON")
-                .map(|item| item.amount),
-            Some(5)
-        );
-        assert!(giver.uncounted.is_empty(), "{:?}", giver.uncounted);
+        assert!(row(&response, "1:2,2", "6857").is_none());
     }
 
     /// The control that keeps the case above narrow: `5530` is a unit our own report shows, in the
@@ -8627,8 +8616,8 @@ mod tests {
 
     #[test]
     fn give_beyond_the_hex_or_the_stock_changes_nothing_wrong() {
-        // Unit 555 is nowhere in the report at all, so `rules/give` may or may not let the sword
-        // through - the projection assumes it does, and the sword leaves (`ah-jo6b`).
+        // Unit 555 is nowhere in the report at all, so the engine finds no target and the sword
+        // stays (`ah-xaem`): nothing changes, and no row is answered at all.
         let missing = preview_orders_for_remembered_report(
             &mut ReportCache::new(),
             RULESET,
@@ -8637,17 +8626,14 @@ mod tests {
             "unit 900\nGIVE 555 1 SWOR\n",
         )
         .expect("the ruleset loads");
-        let giver = only_unit(&missing);
-        assert_eq!(
-            giver
-                .unit
-                .items
+        assert!(
+            missing
+                .regions
                 .iter()
-                .find(|item| item.tag == "SWOR")
-                .map(|item| item.amount),
-            Some(2)
+                .flat_map(|region| &region.units)
+                .all(|unit| unit.unit.unit_id != "900"),
+            "{missing:?}"
         );
-        assert!(giver.uncounted.is_empty(), "{:?}", giver.uncounted);
 
         // Giving more than the unit holds empties the stock rather than going negative.
         let drained = preview("unit 900\nGIVE 901 99 SWOR\n");
@@ -11872,22 +11858,19 @@ mod tests {
             assert_eq!(borrower, [(ItemChangeCause::GivenAway, -4, None)]);
         }
 
-        /// A receiver the report never prints keeps its number and no name (`ah-49is`).
+        /// A receiver the report never prints receives nothing, so nobody lends for the gift
+        /// either (`ah-xaem`; it was a loan naming the number alone under `ah-49is`).
         #[test]
-        fn a_loan_for_a_give_to_an_unshown_unit_names_it_without_a_name() {
+        fn a_give_to_an_unshown_unit_borrows_nothing() {
             let response = preview_over(&report_with_a_lender(), "unit 901\nGIVE 4840 14 SWOR\n");
 
-            assert_eq!(
-                loans(&response, "SWOR"),
-                [(
-                    ItemChangeCause::LentForGive,
-                    -10,
-                    Some(ItemChangeParty {
-                        unit_id: "4840".to_string(),
-                        name: None,
-                    }),
-                    Some("901".to_string()),
-                )]
+            assert!(
+                response
+                    .regions
+                    .iter()
+                    .flat_map(|region| &region.units)
+                    .all(|unit| unit.unit.unit_id != "900" && unit.unit.unit_id != "901"),
+                "neither the lender nor the giver changes: {response:?}"
             );
         }
 
@@ -12139,23 +12122,20 @@ mod tests {
             );
         }
 
-        /// `give_outcome` answers `Moves` for a unit the report never prints: the projection
-        /// assumes the gift lands and shows the consequences (`ah-jo6b`), so the swords leave as an
-        /// ordinary item change and the doubt is carried by `give-target-not-here` instead.
+        /// `give_outcome` answers `NoTarget` for a unit the report never prints, as the engine
+        /// finds no target and moves nothing (`ah-xaem`): the giver's row is not answered at all.
         #[test]
-        fn a_gift_to_an_unshown_unit_records_the_item_change() {
+        fn a_gift_to_an_unshown_unit_records_no_item_change() {
             let response = preview_over(&report_with_three(), "unit 900\nGIVE 7777 4 SWOR\n");
 
-            let giver = row_of(&response, "900");
-            assert_eq!(
-                giver
-                    .item_changes
+            assert!(
+                response
+                    .regions
                     .iter()
-                    .map(|change| (change.tag.as_str(), change.delta))
-                    .collect::<Vec<_>>(),
-                vec![("SWOR", -4)]
+                    .flat_map(|region| &region.units)
+                    .all(|unit| unit.unit.unit_id != "900"),
+                "{response:?}"
             );
-            assert!(giver.uncounted.is_empty(), "{:?}", giver.uncounted);
         }
 
         /// `rules/take`: a TAKE is a GIVE with the direction reversed, so the same movement is

@@ -201,11 +201,26 @@ fn a_unit_that_gives_founders_away_is_judged_on_what_it_keeps() {
     on_the_create_line(&text, &result);
 }
 
-/// A GIVE to a unit the report does not show may be refused (`rules/give`), so how many founders
-/// stay is not known: the founding is admitted rather than called short.
+/// Wagons given to another faction's unit may or may not leave (`rules/give`: a target outside
+/// our faction needs a Friendly declaration no report carries), so how many wagons stay is not
+/// known: the founding is admitted rather than called short. Not a number the report never prints:
+/// that receives nothing at all (`ah-xaem`), which would leave this test passing on a founding
+/// that has every wagon it needs.
 #[test]
 fn a_founder_left_uncertain_by_a_give_is_not_called_short() {
-    let text = report(PLAIN, ENOUGH);
-    let result = validate_with(&text, "GIVE 9999 10 ORC\n");
+    let text = report(PLAIN, ENOUGH).replace(
+        "* Settlers (900), ",
+        "- Stranger (7001), Bar (2), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n* Settlers (900), ",
+    );
+    let result = validate_with(&text, "GIVE 7001 10 WAGO\n");
     assert_eq!(findings(&result, CODE), Vec::<String>::new());
+    // Stranger really stands in the hex, so the gift is the uncertain kind and not one that gives
+    // nothing: no warning names it as missing.
+    assert_eq!(
+        findings(&result, "give-target-not-here"),
+        Vec::<String>::new()
+    );
+    // And the control: the same ten wagons definitely gone leave the founding short.
+    let discarded = validate_with(&text, "GIVE 0 10 WAGO\n");
+    assert_eq!(findings(&discarded, CODE).len(), 1, "{discarded:?}");
 }

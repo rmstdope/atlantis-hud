@@ -1356,9 +1356,10 @@ pub struct Lookups<'a> {
     ///
     /// [`GiveReach::Nowhere`] is a unit number the report shows elsewhere, a `NEW` alias no `FORM`
     /// here creates, and a unit giving to itself: the server refuses all three, so the order costs
-    /// this unit nothing (`ah-vcp8.2`). Every other reach settles: `rules/give` exempts silver from
-    /// the factional rule, so a visible foreign gift of it is an expense, and a gift to a unit the
-    /// report never prints is assumed to land and is an expense too (`ah-jo6b.1`).
+    /// this unit nothing (`ah-vcp8.2`). [`GiveReach::Unshown`], a number the report never prints,
+    /// costs nothing too: the engine finds no such target (`ah-xaem`). Every other reach settles:
+    /// `rules/give` exempts silver from the factional rule, so a visible foreign gift of it is an
+    /// expense.
     pub give_reach: &'a dyn Fn(&Party) -> GiveReach,
     /// The target a `GIVE` this month left uncertain named, for an upper-case item tag, or `None`
     /// where this unit's holding of that tag survives its gifts intact (`ah-66yi`).
@@ -2961,13 +2962,13 @@ pub fn forecast_unit(
                 // A target the order cannot reach costs this unit nothing. Before the class branch
                 // below, which defers `GIVE ... ALL ITEMS` against the running total (`ah-vcp8.2`).
                 let reach = (lookups.give_reach)(to);
-                if reach == GiveReach::Nowhere {
+                if reach.gives_nothing() {
                     continue;
                 }
                 // Every silver gift this arm can still see is settled: `rules/give` exempts silver
-                // from the factional rule outright, so a visible foreign target takes it, and a
-                // number the report never prints is assumed to receive it (`ah-jo6b.1`) - the
-                // doubt that used to sit here is now the `give-target-not-here` warning instead.
+                // from the factional rule outright, so a visible foreign target takes it. A number
+                // the report never prints gave nothing above (`ah-xaem`), and what is said about it
+                // is the `give-target-not-here` warning.
                 if let Selector::Class(name) = what {
                     if *amount == (Amount::All { except: 0 }) {
                         match (lookups.class_carries_silver)(name) {
