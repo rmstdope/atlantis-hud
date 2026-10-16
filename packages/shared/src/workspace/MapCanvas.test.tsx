@@ -1288,3 +1288,72 @@ describe("the biome symbols (ah-d9jb.4)", () => {
     expect(roads).toBeGreaterThan(symbols);
   });
 });
+
+describe("the hex coordinates (ah-ezyg)", () => {
+  /** The congested fixture's map, through the probe theme, with the coordinates as asked. */
+  function drawCoords(hexCoordinates: boolean | undefined, step?: number): string {
+    const canvas = (
+      <MapCanvas
+        gameId={null}
+        model={model}
+        theme={probe()}
+        level={1}
+        selectedRegionId={null}
+        selectionEpoch={0}
+        pickEpoch={0}
+        onSelectRegion={() => {}}
+        showStaleness
+        showTextures={false}
+        badges={allBadges(true)}
+        hexCoordinates={hexCoordinates}
+      />
+    );
+    if (step === undefined) {
+      return renderToStaticMarkup(canvas);
+    }
+    return renderWithStoreState(canvas, useWorkspaceStore, {
+      mapView: { ...NO_MAP_VIEW, viewport: { tx: 0, ty: 0, step } }
+    });
+  }
+
+  afterEach(() => {
+    restoreStoresForTest();
+  });
+
+  it("labels every known hex on the level with its x,y once switched on", () => {
+    const svg = drawCoords(true);
+    const onLevel = CONGESTED_HEXES.filter((hex) => hex.coordinate.z === 1);
+
+    expect(svg.match(/data-hex-coords=/g)).toHaveLength(onLevel.length);
+    expect(svg).toMatch(/data-hex-coords="1:7,53"[^>]*>7,53<\/text>/);
+  });
+
+  it("marks a hex whose settlement name the theme writes, so its name carries the coordinates up close", () => {
+    expect(drawCoords(true)).toMatch(/data-hex-coords="1:7,53"[^>]*data-named="true"/);
+  });
+
+  it("draws none while switched off, or when nobody says", () => {
+    expect(drawCoords(false)).not.toContain("data-hex-coords");
+    expect(drawCoords(undefined)).not.toContain("data-hex-coords");
+  });
+
+  it("draws them at close and middle zoom, and none far out though they are on", () => {
+    expect(drawCoords(true, 4)).toContain("data-hex-coords");
+    expect(drawCoords(true, 0)).toContain("data-hex-coords");
+    const far = drawCoords(true, -6);
+
+    expect(far).toContain("map-far");
+    expect(far).not.toContain("data-hex-coords");
+  });
+
+  it("draws them over the theme's marks, inside the world the wrap's copies repeat", () => {
+    const svg = drawCoords(true);
+    const world = svg.indexOf('id="map-world-content"');
+    const marks = svg.indexOf('data-layer="marks"');
+    const coords = svg.indexOf('data-layer="hex-coords"');
+
+    expect(world).toBeGreaterThan(-1);
+    expect(marks).toBeGreaterThan(world);
+    expect(coords).toBeGreaterThan(marks);
+  });
+});

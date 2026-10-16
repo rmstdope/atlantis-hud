@@ -475,6 +475,34 @@
 }
 
 /*
+ * Hex coordinates (ah-ezyg): small plain print just inside each known hex's top edge, and the same
+ * print after a settlement's name where a theme writes one (`.map-coords-tail`, a <tspan> inside the
+ * theme's own name, so every property the name's lettering sets is set back here). Screen-constant
+ * through `--map-scale`, like every other label on the map, and haloed in each look's own mark
+ * ground. Never far out. Up close, the only zoom any theme writes names at, a named hex's top-edge
+ * label gives way to the name that carries its coordinates; at middle zoom it is the only one.
+ */
+.map-coords {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: calc(8px / var(--map-scale, 1));
+  font-weight: normal;
+  font-style: normal;
+  letter-spacing: normal;
+  text-transform: none;
+  fill: var(--map-border-ink, var(--color-ink-soft));
+  paint-order: stroke fill;
+  stroke: var(--map-mark-ground, var(--color-ground));
+  stroke-width: calc(2.2px / var(--map-scale, 1));
+  stroke-linejoin: round;
+  opacity: 1;
+  white-space: pre;
+}
+.map-far .map-coords,
+.map-near .map-coords[data-named] {
+  display: none;
+}
+
+/*
  * The floating panes' ground.
  *
  * How see-through the panes over the map are is a preference, not a design constant: the settings
