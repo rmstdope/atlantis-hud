@@ -60694,6 +60694,33 @@ BUILD
         assert_eq!(silver_at(&ledger, "906", LendingMoment::Transport), 5);
     }
 
+    /// Each sub-phase's receipts are a step of their own, even where nothing ships between them:
+    /// the first's are in the run as the fees were taken, the second's are not (`ah-k719`; `ah-3ffm`
+    /// follow-up review, finding 1).
+    #[test]
+    fn receipts_of_two_sub_phases_are_two_steps_of_the_run() {
+        let hex_region = region(vec![with_silver(unit("906"), 10)]);
+        let ordered = OrderedUnits::read("unit 906\n");
+        let hex = Hex::read(&hex_region, &ordered, &[]);
+        let rules = trident_rules();
+        let mut ledger = ledger_for(&hex, Some(&rules));
+        let receipt = |quantity| SettledShipment {
+            sender: "900".to_string(),
+            sender_label: "Sender (900)".to_string(),
+            target: "906".to_string(),
+            tag: SILVER.to_string(),
+            quantity,
+        };
+        receipt(20).credit_receiver(
+            &mut ledger,
+            StatePhase::Transport,
+            ShipmentPhase::ToQuartermaster,
+        );
+        receipt(50).credit_receiver(&mut ledger, StatePhase::Transport, BETWEEN);
+        assert_eq!(ledger.transport_run.len(), 2);
+        assert_eq!(silver_at(&ledger, "906", LendingMoment::Transport), 30);
+    }
+
     /// A shipment of `sender`'s that has not run: read `Before` it, the purse is the run so far.
     fn unrun(sender: &str) -> ShipmentName {
         ShipmentName {
