@@ -177,11 +177,13 @@ test("the palette finds a faction by name or number and opens its details", asyn
 
   // By number, with the attitude the report declares (Friendly) and the kind word.
   await page.keyboard.press("ControlOrMeta+k");
+  // "22" also finds other factions' units (2209, ...) since ah-mlls.1, so the row is picked by its text.
   await page.getByTestId("palette-input").fill("22");
-  await expect(items.first()).toContainText("Fenris Knights (22)");
-  await expect(items.first()).toContainText("Friendly");
-  await expect(items.first()).toContainText(/faction/i);
-  await page.keyboard.press("Enter");
+  const fenris = items.filter({ hasText: "Fenris Knights (22)" });
+  await expect(fenris).toHaveCount(1);
+  await expect(fenris).toContainText("Friendly");
+  await expect(fenris).toContainText(/faction/i);
+  await fenris.click();
   await expect(page.getByTestId("command-palette")).toHaveCount(0);
   await expect(dossier).toContainText("Fenris Knights");
   await expect(dossier).toContainText("Seen in");
