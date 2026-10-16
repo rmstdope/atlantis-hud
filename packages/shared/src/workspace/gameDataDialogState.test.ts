@@ -115,10 +115,11 @@ describe("the All tab (ah-yu3j.2)", () => {
   it("is first in the tab order, and Left and Right wrap round it", () => {
     expect(stepGameDataTab("all", 1)).toBe("skill");
     expect(stepGameDataTab("skill", -1)).toBe("all");
-    // Terrains is last since ah-yu3j.1, so it sits between Buildings and the wrap back to All.
-    expect(stepGameDataTab("all", -1)).toBe("terrain");
+    // Orders is last since ah-mlls.6, after Terrains, so it sits between them and the wrap back.
+    expect(stepGameDataTab("all", -1)).toBe("order");
     expect(stepGameDataTab("building", 1)).toBe("terrain");
-    expect(stepGameDataTab("terrain", 1)).toBe("all");
+    expect(stepGameDataTab("terrain", 1)).toBe("order");
+    expect(stepGameDataTab("order", 1)).toBe("all");
   });
 
   it("can be chosen like any other tab", () => {
@@ -228,5 +229,52 @@ describe("the Terrains tab (ah-yu3j.1)", () => {
 
   it("lands on the Terrains tab even for a terrain the index does not hold", () => {
     expect(openGameDataDialog(withTerrains, "terrain:nexus").tab).toBe("terrain");
+  });
+});
+
+describe("the Orders tab (ah-mlls.6)", () => {
+  const withOrders = parseGameData(
+    JSON.stringify({
+      ...JSON.parse(RULESET),
+      orders: { GIVE: { forms: ["GIVE [unit] UNIT"], description: ["Gives."], examples: [] } }
+    }),
+    ["STUDY", "GIVE", "END"]
+  );
+  if (withOrders === null) {
+    throw new Error("expected the fixture to parse");
+  }
+
+  it("lists the orders A-Z by keyword, and opens on the first", () => {
+    expect(entriesOf(withOrders, "order").map((entry) => entry.name)).toEqual([
+      "END",
+      "GIVE",
+      "STUDY"
+    ]);
+    expect(selectGameDataTab(withOrders, openGameDataDialog(withOrders, null), "order").selectedId).toBe(
+      "order:END"
+    );
+  });
+
+  it("lands on the Orders tab, on the order, when opened on one from the palette", () => {
+    const opened = openGameDataDialog(withOrders, "order:GIVE");
+    expect(opened).toEqual({ tab: "order", filter: "", selectedId: "order:GIVE", back: [] });
+  });
+
+  it("lands on an order the rules do not describe, too", () => {
+    expect(openGameDataDialog(withOrders, "order:END").selectedId).toBe("order:END");
+    expect(withOrders.detailOf("order:END")?.kind).toBe("absent");
+  });
+
+  it("follows a mention to another order, and back again", () => {
+    const onGive = openGameDataDialog(withOrders, "order:GIVE");
+    const onStudy = selectGameDataEntry(withOrders, onGive, "order:STUDY", { push: true });
+    expect(onStudy).toMatchObject({ tab: "order", selectedId: "order:STUDY", back: ["order:GIVE"] });
+    expect(goBack(withOrders, onStudy)).toMatchObject({ tab: "order", selectedId: "order:GIVE" });
+  });
+
+  it("is part of All, sorted in by keyword", () => {
+    const all = entriesOf(withOrders, "all").map((entry) => entry.name);
+    expect(all.indexOf("GIVE")).toBeGreaterThan(all.indexOf("crossbow"));
+    expect(all.indexOf("GIVE")).toBeLessThan(all.indexOf("Longship"));
   });
 });

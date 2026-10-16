@@ -78,3 +78,26 @@ export function anchoredTableRows(html: string, anchor: string): string[][] {
     [...row[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map((cell) => htmlToText(cell[1]))
   );
 }
+
+/**
+ * The text of one `<pre>` block's inner HTML: markup removed and entities decoded like
+ * `preformattedText`, but as a block on its own - blank lines at either end dropped and the
+ * indentation every line shares removed, so New Origins' six-space margin and New Age's none read
+ * the same while an order nested under `FORM` keeps its own indent.
+ */
+export function preText(inner: string): string {
+  const lines = decodeEntities(inner.replace(/<[^>]*>/g, ""))
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+$/, ""));
+  while (lines.length > 0 && lines[0] === "") {
+    lines.shift();
+  }
+  while (lines.length > 0 && lines[lines.length - 1] === "") {
+    lines.pop();
+  }
+  const margin = Math.min(
+    ...lines.filter((line) => line !== "").map((line) => line.length - line.trimStart().length)
+  );
+  return lines.map((line) => line.slice(Number.isFinite(margin) ? margin : 0)).join("\n");
+}

@@ -468,3 +468,42 @@ fn an_unknown_key_anywhere_in_the_file_is_refused() {
     // And the file as committed still loads - the probes above must not have been the reason.
     Ruleset::from_json(RULESET).expect("the committed file loads");
 }
+
+/// ah-mlls.6: every committed world carries its rules page's order sections, for the game data
+/// dialog. GIVE has five forms in all three (`rules/give`); ANNIHILATE is New Origins' alone and
+/// CAPITAL New Age's (`rules/orders`).
+#[test]
+fn every_committed_world_carries_its_order_sections() {
+    let worlds = [
+        ("New Origins", RULESET, true),
+        (
+            "Arcanum",
+            atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON,
+            false,
+        ),
+        (
+            "Trident",
+            atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+            false,
+        ),
+    ];
+    for (world, json, origins) in worlds {
+        let ruleset = Ruleset::from_json(json).expect("the committed ruleset parses");
+        let give = ruleset
+            .orders
+            .get("GIVE")
+            .unwrap_or_else(|| panic!("{world} carries no GIVE"));
+        assert_eq!(give.forms.len(), 5, "{world}'s GIVE forms");
+        assert!(!give.examples.is_empty(), "{world}'s GIVE examples");
+        assert_eq!(
+            ruleset.orders.contains_key("ANNIHILATE"),
+            origins,
+            "{world}"
+        );
+        assert_eq!(ruleset.orders.contains_key("CAPITAL"), !origins, "{world}");
+        assert!(
+            !ruleset.orders.contains_key("END"),
+            "{world} gives END no section"
+        );
+    }
+}

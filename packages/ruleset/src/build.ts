@@ -35,6 +35,7 @@ import {
   RulesetScrapeError
 } from "./rules";
 import type { FoodMaintenance, RegionResources } from "./rules";
+import { parseOrderReference } from "./orders";
 import type { ItemReference, SkillReference } from "./data";
 
 export type BuildInput = {
@@ -271,6 +272,8 @@ export function buildRuleset(input: BuildInput): Ruleset {
     ungiveableItems: ungiveableItemsOf(items),
     ...resolveRegionResources(regionResources, items),
     maintenance: { perCharacter: fee.perCharacter, perLeader: fee.perLeader, evidence: fee.evidence },
-    factionPoints
+    factionPoints,
+    // For the game data dialog only (ah-mlls.6): what the rules page says about each order.
+    orders: parseOrderReference(input.rulesHtml)
   };
 }

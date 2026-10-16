@@ -10076,5 +10076,1154 @@
       }
     ],
     "evidence": "The faction has 5 Faction Points"
+  },
+  "orders": {
+    "ADDRESS": {
+      "forms": [
+        "ADDRESS [new address]"
+      ],
+      "description": [
+        "Change the email address to which your reports are sent."
+      ],
+      "examples": [
+        {
+          "text": "Change your faction's email address to atlantis@rahul.net.",
+          "order": "ADDRESS atlantis@rahul.net"
+        }
+      ]
+    },
+    "ADVANCE": {
+      "forms": [
+        "ADVANCE [dir] ..."
+      ],
+      "description": [
+        "This is the same as the MOVE order, except that it implies attacks on units which attempt to forbid access. See the MOVE order for details."
+      ],
+      "examples": [
+        {
+          "text": "Move north, then northwest, attacking any units that forbid access to the regions.",
+          "order": "ADVANCE N NW"
+        },
+        {
+          "text": "In order, move north, then enter structure number 1, move through an inner route, and finally move southeast. Will attack any units that forbid access to any of these locations.",
+          "order": "ADVANCE N 1 IN SE"
+        }
+      ]
+    },
+    "ARMOR": {
+      "forms": [
+        "ARMOR [item1] [item2] [item3] [item4]",
+        "ARMOR"
+      ],
+      "description": [
+        "This command allows you to set a list of preferred armor for a unit. After searching for armor on the preferred list, the standard armor precedence takes effect if an armor hasn't been set. The second form clears the preferred armor list."
+      ],
+      "examples": [
+        {
+          "text": "Set the unit to select chain armor before plate armor.",
+          "order": "ARMOR CARM PARM"
+        },
+        {
+          "text": "Clear the preferred armor list.",
+          "order": "ARMOR"
+        }
+      ]
+    },
+    "ASSASSINATE": {
+      "forms": [
+        "ASSASSINATE [unit]"
+      ],
+      "description": [
+        "Attempt to assassinate the specified unit, or one of the unit's people if the unit contains more than one person. The order may only be issued by a one-man unit.",
+        "A unit may only attempt to assassinate a unit which is able to be seen, and which belongs to another player; the world's own inhabitants, such as mayors, town guardsmen and monsters, are not valid targets."
+      ],
+      "examples": [
+        {
+          "text": "Assassinate unit number 177.",
+          "order": "ASSASSINATE 177"
+        }
+      ]
+    },
+    "ATTACK": {
+      "forms": [
+        "ATTACK [unit] ..."
+      ],
+      "description": [
+        "Attack a target unit. If multiple ATTACK orders are given, all of the targets will be attacked."
+      ],
+      "examples": [
+        {
+          "text": "To attack units 17, 431, and 985:",
+          "order": "ATTACK 17\nATTACK 431 985"
+        },
+        {
+          "text": "or:",
+          "order": "ATTACK 17 431 985"
+        }
+      ]
+    },
+    "AUTOTAX": {
+      "forms": [
+        "AUTOTAX [flag]"
+      ],
+      "description": [
+        "AUTOTAX 1 causes the unit to attempt to tax every turn (without requiring the TAX order) until the flag is unset. AUTOTAX 0 unsets the flag."
+      ],
+      "examples": [
+        {
+          "text": "To cause the unit to attempt to tax every turn.",
+          "order": "AUTOTAX 1"
+        }
+      ]
+    },
+    "AVOID": {
+      "forms": [
+        "AVOID [flag]"
+      ],
+      "description": [
+        "AVOID 1 instructs the unit to avoid combat wherever possible. The unit will not enter combat unless it issues an ATTACK order, or the unit's faction is attacked in the unit's hex. AVOID 0 cancels this.",
+        "The Guard and Avoid Combat flags are mutually exclusive; setting one automatically cancels the other."
+      ],
+      "examples": [
+        {
+          "text": "Set the unit to avoid combat when possible.",
+          "order": "AVOID 1"
+        }
+      ]
+    },
+    "BEHIND": {
+      "forms": [
+        "BEHIND [flag]"
+      ],
+      "description": [
+        "BEHIND 1 sets the unit to be behind other units in combat. BEHIND 0 cancels this."
+      ],
+      "examples": [
+        {
+          "text": "Set the unit to be in front in combat.",
+          "order": "BEHIND 0"
+        }
+      ]
+    },
+    "BUILD": {
+      "forms": [
+        "BUILD",
+        "BUILD [object type]",
+        "BUILD [object type] WOOD",
+        "BUILD [object type] STONE",
+        "BUILD HELP [unit]",
+        "BUILD COMPLETE",
+        "BUILD [object type] COMPLETE",
+        "BUILD [object type] WOOD COMPLETE",
+        "BUILD [object type] STONE COMPLETE",
+        "BUILD HELP [unit] COMPLETE"
+      ],
+      "description": [
+        "BUILD given with no parameters causes the unit to perform work on an unfinished ship it possesses, or on the object that it is currently inside. BUILD given with an [object type] (such as \"Tower\" or \"Galleon\") instructs the unit to begin work on a new object of the type given. The final form instructs the unit to assist the target unit in its current building task, even if that task was begun this same turn. This help will be rejected if the unit you are trying to help does not consider you to be friendly.",
+        "Some buildings (such as farms, mines and sawmills) can be built from either wood or stone. By default the unit will use whatever is available, consuming stone before wood. You can specify WOOD or STONE after the object type to restrict which material is used. If the preferred material is not available, the order will fail with an error.",
+        "The variants with COMPLETE instruct the unit to continue with the same build order and repeat it the next month if the built object is not yet complete. In the case of BUILD [object type] COMPLETE, the unit will remain in the current building if it is not complete, and it is the same type as the one specified, otherwise it will start a new object of the type specified."
+      ],
+      "examples": [
+        {
+          "text": "To build a new tower.",
+          "order": "BUILD Tower"
+        },
+        {
+          "text": "To help unit 5789 build a structure.",
+          "order": "BUILD HELP 5789"
+        },
+        {
+          "text": "To start a new castle and continue building until it is complete.",
+          "order": "BUILD Castle COMPLETE"
+        },
+        {
+          "text": "To build a farm using only wood.",
+          "order": "BUILD Farm WOOD"
+        },
+        {
+          "text": "To build a sawmill using only stone, repeating until complete.",
+          "order": "BUILD Sawmill STONE COMPLETE"
+        }
+      ]
+    },
+    "BUY": {
+      "forms": [
+        "BUY [quantity] [item]",
+        "BUY ALL [item]"
+      ],
+      "description": [
+        "Attempt to buy a number of the given item from a city or town marketplace, or to buy new people in any region where people are available for recruiting. If the unit can't afford as many as [quantity], it will attempt to buy as many as it can. If the demand for the item (from all units in the region) is greater than the number available, the available items will be split among the buyers in proportion to the amount each buyer attempted to buy. When buying people, specify the race of the people as the [item], or you may use PEASANT or PEASANTS to recruit whichever race is present in the region. If the second form is specified, the unit will attempt to buy as many as it can afford."
+      ],
+      "examples": [
+        {
+          "text": "Buy one plate armor from the city market.",
+          "order": "BUY 1 \"Plate Armor\""
+        },
+        {
+          "text": "Recruit 5 barbarians into the current unit. (This will dilute the skills that the unit has.)",
+          "order": "BUY 5 barbarians"
+        }
+      ]
+    },
+    "CAPITAL": {
+      "forms": [
+        "CAPITAL"
+      ],
+      "description": [
+        "Designate the city you are standing in as your faction's capital. The issuing unit must be the owner of a finished Palace building in a city. The chosen city becomes your faction's seat of power and the choice is announced publicly. Issue the order again from another city where you own a Palace to move your capital. This order is instant and does not use up the unit's month."
+      ],
+      "examples": [
+        {
+          "text": "Make the city you occupy your faction capital.",
+          "order": "CAPITAL"
+        }
+      ]
+    },
+    "CAST": {
+      "forms": [
+        "CAST [skill] [arguments]"
+      ],
+      "description": [
+        "Cast the given spell. Note that most spell names contain spaces; be sure to enclose the name in quotes! [arguments] depends on which spell you are casting; when you are able to cast a spell, the skill description will tell you the syntax."
+      ],
+      "examples": [
+        {
+          "text": "Cast the spell called \"Super Spell\".",
+          "order": "CAST \"Super Spell\""
+        },
+        {
+          "text": "Cast the fourth-level spell in the \"Super Magic\" skill.",
+          "order": "CAST Super_Magic 4"
+        }
+      ]
+    },
+    "CLAIM": {
+      "forms": [
+        "CLAIM [amount]"
+      ],
+      "description": [
+        "Claim an amount of the faction's unclaimed silver, and give it to the unit issuing the order. The claiming unit may then spend the silver or give it to another unit."
+      ],
+      "examples": [
+        {
+          "text": "Claim 100 silver.",
+          "order": "CLAIM 100"
+        }
+      ]
+    },
+    "CREATE": {
+      "forms": [
+        "CREATE VILLAGE [name]"
+      ],
+      "description": [
+        "Found a new village in the current region. The unit must have at least 1000 people (men or leaders) and 100 wagons; all of these are consumed when the village is created. This is a month-long order.",
+        "Requirements: the region must have no existing settlement, must not be ocean, lake, volcano, or barren terrain, and must be at least 3 hexes away from any other settlement.",
+        "The founding unit's primary race (the man type with the highest count) becomes the dominant race of the region, affecting recruitment and cultural names — unless leaders outnumber the men, in which case the original region race is preserved."
+      ],
+      "examples": [
+        {
+          "text": "Found a village named \"Iron Shore\" in the current region.",
+          "order": "CREATE VILLAGE \"Iron Shore\""
+        }
+      ]
+    },
+    "COMBAT": {
+      "forms": [
+        "COMBAT [spell]"
+      ],
+      "description": [
+        "Set the given spell as the spell that the unit will cast in combat. This order may only be given if the unit can cast the spell in question."
+      ],
+      "examples": [
+        {
+          "text": "Instruct the unit to use the spell \"Super Spell\", when the unit is involved in a battle.",
+          "order": "COMBAT \"Super Spell\""
+        }
+      ]
+    },
+    "CONSUME": {
+      "forms": [
+        "CONSUME UNIT",
+        "CONSUME FACTION",
+        "CONSUME"
+      ],
+      "description": [
+        "The CONSUME order instructs the unit to use food items in preference to silver for maintenance costs. CONSUME UNIT tells the unit to use food items that are in that unit's possession before using silver. CONSUME FACTION tells the unit to use any food items that the faction owns (in the same region as the unit) before using silver. CONSUME tells the unit to use silver before food items (this is the default)."
+      ],
+      "examples": [
+        {
+          "text": "Tell a unit to use food items in the unit's possession for maintenance costs.",
+          "order": "CONSUME UNIT"
+        }
+      ]
+    },
+    "DECLARE": {
+      "forms": [
+        "DECLARE [faction] [attitude]",
+        "DECLARE [faction]",
+        "DECLARE DEFAULT [attitude]"
+      ],
+      "description": [
+        "The first form of the DECLARE order sets the attitude of your faction towards the given faction. The second form cancels any attitude towards the given faction (so your faction's attitude towards that faction will be its default attitude). The third form sets your faction's default attitude."
+      ],
+      "examples": [
+        {
+          "text": "Declare your faction to be hostile to faction 15.",
+          "order": "DECLARE 15 hostile"
+        },
+        {
+          "text": "Set your faction's attitude to faction 15 to its default attitude.",
+          "order": "DECLARE 15"
+        },
+        {
+          "text": "Set your faction's default attitude to friendly.",
+          "order": "DECLARE DEFAULT friendly"
+        }
+      ]
+    },
+    "DESCRIBE": {
+      "forms": [
+        "DESCRIBE UNIT [new description]",
+        "DESCRIBE SHIP [new description]",
+        "DESCRIBE BUILDING [new description]",
+        "DESCRIBE OBJECT [new description]",
+        "DESCRIBE STRUCTURE [new description]"
+      ],
+      "description": [
+        "Change the description of the unit, or of the object the unit is in (of which the unit must be the owner). Descriptions can be of any length, up to the line length your mailer can handle. If no description is given, the description will be cleared out. The last four are completely identical and serve to modify the description of the object you are currently in."
+      ],
+      "examples": [
+        {
+          "text": "Set the unit,s description to read \"Merlin's helper\".",
+          "order": "DESCRIBE UNIT \"Merlin's helper\""
+        }
+      ]
+    },
+    "DESTROY": {
+      "forms": [
+        "DESTROY"
+      ],
+      "description": [
+        "Destroy the object you are in (of which you must be the owner). The order cannot be used at sea."
+      ],
+      "examples": [
+        {
+          "text": "Destroy the current object",
+          "order": "DESTROY"
+        }
+      ]
+    },
+    "ENTER": {
+      "forms": [
+        "ENTER [object]"
+      ],
+      "description": [
+        "Attempt to enter the specified object. If issued from inside another object, the unit will first leave the object it is currently in. The order will only work if the target object is unoccupied, or is owned by a unit in your faction, or is owned by a faction which has declared you Friendly."
+      ],
+      "examples": [
+        {
+          "text": "Enter fleet number 114.",
+          "order": "ENTER 114"
+        }
+      ]
+    },
+    "ENTERTAIN": {
+      "forms": [
+        "ENTERTAIN"
+      ],
+      "description": [
+        "Spend the month entertaining the populace to earn money."
+      ],
+      "examples": [
+        {
+          "text": "Entertain for money.",
+          "order": "ENTERTAIN"
+        }
+      ]
+    },
+    "EXPLORE": {
+      "forms": [
+        "EXPLORE RMAP",
+        "EXPLORE TMAP"
+      ],
+      "description": [
+        "Spend the month studying a map item to gain a lasting benefit. Any unit may use this order; no skill is required.",
+        "EXPLORE RMAP — Study an ancient resource map (RMAP). The unit examines the charts and discovers new resource deposits in the current region, permanently increasing the production of one terrain-appropriate resource (or existing food supply) by 1-2 units. The effect persists indefinitely and survives subsequent turns. The map is consumed when the order executes, even if the region has nothing to chart.",
+        "EXPLORE TMAP — Decipher a treasure map (TMAP). The unit spends the month following the charts to locate a hidden pirate hideout carved into coastal cliffs within a few hexes of the current region. Carrying a compass (COMP) doubles the chance of success. The map is consumed only when a hideout is actually placed; if the charts are read but no site can be found, the map is kept for another attempt. On failure, the salt-stained charts may fall apart. This order can only be used on the surface."
+      ],
+      "examples": [
+        {
+          "text": "Study a resource map to boost production in the current region.",
+          "order": "EXPLORE RMAP"
+        },
+        {
+          "text": "Use a treasure map to locate a pirate hideout.",
+          "order": "EXPLORE TMAP"
+        }
+      ]
+    },
+    "EVICT": {
+      "forms": [
+        "EVICT [unit] ..."
+      ],
+      "description": [
+        "Evict the specified unit from the object of which you are currently the owner. If multiple EVICT orders are given, all of the units will be evicted."
+      ],
+      "examples": [
+        {
+          "text": "Evict units 415 and 698 from an object that this unit owns.",
+          "order": "EVICT 415 698"
+        },
+        {
+          "text": "or",
+          "order": "EVICT 415\nEVICT 698"
+        }
+      ]
+    },
+    "EXCHANGE": {
+      "forms": [
+        "EXCHANGE [unit] [quantity given] [item given] [quantity expected] [item expected]"
+      ],
+      "description": [
+        "This order allows any two units that can see each other, to trade items regardless of faction stances. The orders given by the two units must be complementary. If either unit involved does not have the items it is offering, or if the exchange orders given are not complementary, the exchange is aborted. Men may not be exchanged."
+      ],
+      "examples": [
+        {
+          "text": "Exchange 10 LBOW for 10 SWOR with unit 1310",
+          "order": "EXCHANGE 1310 10 LBOW 10 SWOR"
+        },
+        {
+          "text": "Unit 1310 would issue (assuming the other unit is 3453)",
+          "order": "EXCHANGE 3453 10 SWOR 10 LBOW"
+        }
+      ]
+    },
+    "FACTION": {
+      "forms": [
+        "FACTION [type] [points] ..."
+      ],
+      "description": [
+        "Attempt to change your faction's type. In the order, you can specify up to two faction types (MARTIAL and MAGIC) and the number of faction points to assign to each type; if you are assigning points to only one type, you may omit the type that will not have any points.",
+        "Changing the number of faction points assigned to MAGIC may be tricky. Increasing the MAGIC points will always succeed, but if you decrease the number of points assigned to MAGIC, you must make sure that you have only the number of magic-skilled leaders allowed by the new number of MAGIC points BEFORE you change your point distribution. For example, if you have 3 mages (3 points assigned to MAGIC), but want to use one of those points for something else (change to MAGIC 2), you must first get rid of one of your mages by either giving it to another faction or ordering it to FORGET all its magic skills. If you have too many mages for the number of points you try to assign to MAGIC, the FACTION order will fail. Factions may have the same requirements to disband excess units before changing faction point allocations based on how many apprentices or quartermasters are controlled by the faction and how they are restricted."
+      ],
+      "examples": [
+        {
+          "text": "Assign 4 faction points to MARTIAL, and 1 to MAGIC.",
+          "order": "FACTION MARTIAL 4 MAGIC 1"
+        },
+        {
+          "text": "Become a pure magic faction (assign all points to magic).",
+          "order": "FACTION MAGIC 5"
+        }
+      ]
+    },
+    "FORGET": {
+      "forms": [
+        "FORGET [skill]"
+      ],
+      "description": [
+        "Forget the given skill. This order is useful for a mage, apprentice, or quartermaster who wish to become a normal unit. A common reason for this is to be able to change faction points."
+      ],
+      "examples": [
+        {
+          "text": "Forget knowledge of Mining.",
+          "order": "FORGET Mining"
+        }
+      ]
+    },
+    "FORM": {
+      "forms": [
+        "FORM [alias]"
+      ],
+      "description": [
+        "Form a new unit. The newly created unit will be in your faction, in the same region as the unit which formed it, and in the same structure if any. It will start off, however, with no people or items; you should, in the same month, issue orders to transfer people into the new unit, or have it recruit members. The new unit will inherit its flags from the unit that forms it, such as avoiding, behind, revealing and sharing, with the exception of the guard and autotax flags. If the new unit wants to guard or automatically tax then those flags will have to be explicitly set in its orders.",
+        "The FORM order is followed by a list of orders for the newly created unit. This list is terminated by the END keyword, after which orders for the original unit resume.",
+        "The purpose of the \"alias\" parameter is so that you can refer to the new unit. You will not know the new unit's number until you receive the next turn report. To refer to the new unit in this set of orders, pick an alias number (the only restriction on this is that it must be at least 1, and you should not create two units in the same region in the same month, with the same alias numbers). The new unit can then be referred to as NEW in place of the regular unit number.",
+        "You can refer to newly created units belonging to other factions, if you know what alias number they are, e.g. FACTION 15 NEW 2 will refer to faction 15's newly created unit with alias 2.",
+        "Note: If a unit moves out of the region in which it was formed (by the MOVE order, or otherwise), the alias will no longer work. This is to prevent conflicts with other units that may have the same alias in other regions.",
+        "If the demand for recruits in that region that month is much higher than the supply, it may happen that the new unit does not gain all the recruits you ordered it to buy, or it may not gain any recruits at all. If a new unit gains at least one recruit, the unit will form possessing any unused silver and all the other items it was given. If no recruits are gained at all, the empty unit will be dissolved, and the silver and any other items it was given will revert to the first unit you have in that region."
+      ],
+      "examples": [
+        {
+          "text": "This set of orders for unit 17 would create two new units with alias numbers 1 and 2, name them Merlin's Guards and Merlin's Workers, set the description for Merlin's Workers, have both units recruit men, and have Merlin's Guards study combat. Merlin's Workers will have the default order WORK , as all newly created units do. The unit that created these two then pays them enough money (using the NEW keyword to refer to them by alias numbers) to cover the costs of recruitment and the month's maintenance.",
+          "order": "UNIT 17\nFORM 1\n    NAME UNIT \"Merlin's Guards\"\n    BUY 5 Plainsmen\n    STUDY COMBAT\nEND\nFORM 2\n    NAME UNIT \"Merlin's Workers\"\n    DESCRIBE UNIT \"wearing dirty overalls\"\n    BUY 15 Plainsmen\nEND\nCLAIM 2500\nGIVE NEW 1 1000 silver\nGIVE NEW 2 2000 silver"
+        }
+      ]
+    },
+    "GIVE": {
+      "forms": [
+        "GIVE [unit] [quantity] [item]",
+        "GIVE [unit] ALL [item]",
+        "GIVE [unit] ALL [item] EXCEPT [quantity]",
+        "GIVE [unit] ALL [item class]",
+        "GIVE [unit] UNIT"
+      ],
+      "description": [
+        "The first form of the GIVE order gives a quantity of an item to another unit. The second form of the GIVE order will give all of a given item to another unit. The third form will give all of an item except for a specific quantity to another unit. The fourth form will give all items of a specific type to another unit. The final form of the GIVE order gives the entire unit to the specified unit's faction.",
+        "The classes of items which are acceptable for the fourth form of this order are, NORMAL, ADVANCED, TRADE, MAN or MEN, MONSTER or MONSTERS, MAGIC, WEAPON or WEAPONS, ARMOR, MOUNT or MOUNTS, BATTLE, SPECIAL, TOOL or TOOLS, FOOD, SHIP or SHIPS and ITEM or ITEMS (which is the combination of all of the previous categories).",
+        "A unit may only give items, including silver, to a unit which it is able to see, unless the faction of the target unit has declared you Friendly or better. If the target unit is not a member of your faction, then its faction must have declared you Friendly, with a couple of exceptions. First, silver may be given to any unit, regardless of factional affiliation. Second, men may not be given to units in other factions (you must give the entire unit); the reason for this is to prevent highly skilled units from being sabotaged with a GIVE order.",
+        "Unfinished ships are given like other items, although a unit may only have one unfinished ship of a given type at a time. To give unfinished ships, add the \"UNFINISHED\" keyword to the beginning of the [item] specifier.",
+        "Completed ships which are part of a fleet may be given too; the owner of the fleet they are currently in must issue the GIVE order, and give the ships to the owner of the fleet that should receive the ships. If the recipient is not the owner of a fleet, then a new fleet will be created owned by the recipient.",
+        "There are also a few restrictions on orders given by units who been given to another faction. If the receiving faction is not allied to the giving faction, the unit may not issue the ADVANCE order, or issue any more GIVE orders. Both of these rules are to prevent unfair sabotage tactics.",
+        "If 0 is specified as the unit number, then the items are discarded."
+      ],
+      "examples": [
+        {
+          "text": "Give 10 swords to unit 4573.",
+          "order": "GIVE 4573 10 swords"
+        },
+        {
+          "text": "Give 5 chain armor to the new unit, alias 2, belonging to faction 14.",
+          "order": "GIVE FACTION 14 NEW 2 5 \"Chain armor\""
+        },
+        {
+          "text": "Give control of this unit to the faction owning unit 75.",
+          "order": "GIVE 75 UNIT"
+        },
+        {
+          "text": "Give our unfinished Longship to unit 95.",
+          "order": "GIVE 95 1 UNFINISHED Longship"
+        },
+        {
+          "text": "Transfer 2 Longships to the fleet commanded by unit 83.",
+          "order": "GIVE 83 2 Longships"
+        }
+      ]
+    },
+    "GUARD": {
+      "forms": [
+        "GUARD [flag]"
+      ],
+      "description": [
+        "GUARD 1 sets the unit issuing the order to prevent non-Friendly units from collecting taxes in the region, and to prevent any units not your own from pillaging the region. Guarding units will also attempt to prevent Unfriendly units from entering the region. GUARD 0 cancels Guard status.",
+        "The Guard and Avoid Combat flags are mutually exclusive; setting one automatically cancels the other."
+      ],
+      "examples": [
+        {
+          "text": "Instruct the current unit to be on guard.",
+          "order": "GUARD 1"
+        }
+      ]
+    },
+    "HOLD": {
+      "forms": [
+        "HOLD [flag]"
+      ],
+      "description": [
+        "HOLD 1 instructs the issuing unit to never join a battle in regions the unit is not in. This can be useful if the unit is in a building, and doesn't want to leave the building to join combat. HOLD 0 cancels holding status."
+      ],
+      "examples": [
+        {
+          "text": "Instruct the unit to avoid combat in other regions.",
+          "order": "HOLD 1"
+        }
+      ]
+    },
+    "IDLE": {
+      "forms": [
+        "IDLE"
+      ],
+      "description": [
+        "IDLE instructs the issuing unit to do nothing for the entire month."
+      ],
+      "examples": [
+        {
+          "text": "Instruct the unit to admire the scenery.",
+          "order": "IDLE"
+        }
+      ]
+    },
+    "JOIN": {
+      "forms": [
+        "JOIN [unit]",
+        "JOIN [unit] NOOVERLOAD",
+        "JOIN [unit] MERGE"
+      ],
+      "description": [
+        "Attempt to enter the building or fleet that the specified unit is currently inside. This is particularly useful if you don't know what the building or fleet number will be, as is the case when a new fleet is created.",
+        "If the target unit is not inside a building or fleet, then the unit issuing the JOIN command will leave any building or fleet that they happen to be inside, to be with the target.",
+        "If the NOOVERLOAD flag is specified, and the target unit ends up on board a fleet, then the unit issuing the JOIN command will only attempt to board the fleet if the fleet would be able to sail with the issuing units' weight loaded on board.",
+        "The MERGE flag may only be used by the owner of a fleet, and will cause the entire fleet they command to join the fleet owned by the specified unit - the units on board will move to the other fleet, and all the ships of the fleet will be given to the target fleet. This command will fail if any unit in the fleet to be merged would be denied entry to the target fleet."
+      ],
+      "examples": [
+        {
+          "text": "Instruct the unit to enter the building or fleet that unit 17 is in.",
+          "order": "JOIN 17"
+        }
+      ]
+    },
+    "LEAVE": {
+      "forms": [
+        "LEAVE"
+      ],
+      "description": [
+        "Leave the object you are currently in. If a unit is capable of swimming or flying then this order is usable to leave a boat while at sea."
+      ],
+      "examples": [
+        {
+          "text": "Leave the current object",
+          "order": "LEAVE"
+        }
+      ]
+    },
+    "MOVE": {
+      "forms": [
+        "MOVE [dir] ..."
+      ],
+      "description": [
+        "Attempt to move in the direction(s) specified. If more than one direction is given, the unit will move multiple times, in the order specified by the MOVE order, until no more directions are given, or until one of the moves fails. A move can fail because the unit runs out of movement points, because the unit attempts to move into the ocean, or because the unit attempts to enter a structure, and is rejected.",
+        "Valid directions are:",
+        "1) The compass directions North, Northwest, Southwest, South, Southeast, and Northeast. These can be abbreviated N, NW, SW, S, SE, NE.",
+        "2) A structure number.",
+        "3) OUT, which will leave the structure that the unit is in.",
+        "4) IN, which will move through an inner passage in the structure that the unit is currently in.",
+        "5) PAUSE, which will instruct the unit to spend one movement point admiring the scenery, presumably to coordinate with slower moving companions. This can be abbreviated P.",
+        "Multiple MOVE orders given by one unit will chain together.",
+        "Note that MOVE orders can lead to combat, due to hostile units meeting, or due to an advancing unit being forbidden access to a region. Combat occurs after an antire movement phase has been completed for all regions.",
+        "Example 1: Units 1 and 2 are in Region A, and unit 3 is in Region B. Units 1 and 2 are hostile to unit 3. Both units 1 and 2 move into region B, and attack unit 3. Since combat happens after all movement has been done for the phase, they attack unit 3 at the same time, and the battle is between units 1 and 2, and unit 3.",
+        "Example 2: Same as example 1, except unit 2 is in Region C, instead of region A. Both units move into Region B, and attack unit 3. Because combat happens after all movement has been done for the phase, they still attack unit 3 at the same time, and the battle is still between units 1 and 2, and unit 3."
+      ],
+      "examples": [
+        {
+          "text": "Move N, NE, enter structure 1 and use the passage there",
+          "order": "MOVE N\nMOVE NE 1 IN"
+        },
+        {
+          "text": "or:",
+          "order": "MOVE N NE 1 IN"
+        }
+      ]
+    },
+    "NAME": {
+      "forms": [
+        "NAME UNIT [new name]",
+        "NAME FACTION [new name]",
+        "NAME OBJECT [new name]",
+        "NAME CITY [new name]"
+      ],
+      "description": [
+        "Change the name of the unit, or of your faction, or of the object the unit is in (of which the unit must be the owner). Names can be of any length, up to the line length your mailer can handle. Names may not contain parentheses (square brackets can be used instead if necessary), or any control characters.",
+        "In order to rename a settlement (city, town or village), the unit attempting to rename it must be the owner of a large enough structure located in the city. It requires a tower or better to rename a village, a fort or better to rename a town and a castle or a citadel to rename a city. It also costs $10000 to rename a village, $20000 to rename a town, and $30000 to rename a city."
+      ],
+      "examples": [
+        {
+          "text": "Name your faction \"The Merry Pranksters\".",
+          "order": "NAME FACTION \"The Merry Pranksters\""
+        }
+      ]
+    },
+    "NOAID": {
+      "forms": [
+        "NOAID [flag]"
+      ],
+      "description": [
+        "NOAID 1 indicates that if the unit attacks, or is attacked, it is not to be aided by units in other hexes. NOAID status is very useful for scouts or probing units, who do not wish to drag their nearby armies into battle if they are caught. NOAID 0 cancels this.",
+        "If multiple units are on one side in a battle, they must all have the NOAID flag on, or they will receive aid from other hexes."
+      ],
+      "examples": [
+        {
+          "text": "Set a unit to receive no aid in battle.",
+          "order": "NOAID 1"
+        }
+      ]
+    },
+    "NOCROSS": {
+      "forms": [
+        "NOCROSS [flag]"
+      ],
+      "description": [
+        "NOCROSS 1 indicates that if a unit attempts to cross a body of water then that unit should instead not cross it, regardless of whether the unit otherwise could do so. Units inside a fleet are not affected by this flag (IE, they are able to sail within the fleet). This flag is useful to prevent scouts from accidentally drowning when exploring in games where movement over water is allowed. NOCROSS 0 cancels this."
+      ],
+      "examples": [
+        {
+          "text": "Set a unit to not permit itself to cross water.",
+          "order": "NOCROSS 1"
+        }
+      ]
+    },
+    "OPTION": {
+      "forms": [
+        "OPTION TIMES",
+        "OPTION NOTIMES",
+        "OPTION SHOWATTITUDES",
+        "OPTION DONTSHOWATTITUDES",
+        "OPTION TEMPLATE OFF",
+        "OPTION TEMPLATE SHORT",
+        "OPTION TEMPLATE LONG",
+        "OPTION TEMPLATE MAP"
+      ],
+      "description": [
+        "The OPTION order is used to toggle various settings that affect your reports, and other email details. OPTION TIMES sets it so that your faction receives the times each week (this is the default); OPTION NOTIMES sets it so that your faction is not sent the times.",
+        "OPTION SHOWATTITUDES will cause units shown in your report to have a character placed before their name, which indicates your attitude towards them. These characters are \"!\" for hostile, \"%\" for unfriendly, \"-\" for neutral, \":\" for friendly and \"=\" for allied. OPTION DONTSHOWATTITUDES turns off this additional decoration.",
+        "The OPTION TEMPLATE order toggles the length of the Orders Template that appears at the bottom of a turn report. The OFF setting eliminates the Template altogether, and the SHORT, LONG and MAP settings control how much detail the Template contains. The MAP setting will produce an ascii map of the region and surrounding regions in addition other details.",
+        "For the MAP template, the region identifiers are (there might be additional symbols for unusual/special terrain):",
+        "#### — BLOCKED HEX (Underworld)",
+        "~~~~ — OCEAN HEX",
+        "PLAINS/TUNNELS HEX",
+        "^^^^ — FOREST/UNDERFOREST HEX",
+        "/\\/\\ — MOUNTAIN HEX",
+        "vvvv — SWAMP HEX",
+        "@@@@ — JUNGLE HEX",
+        ".... — DESERT/CAVERN HEX",
+        "'''' — TUNDRA HEX",
+        "!!!! — THE NEXUS"
+      ],
+      "examples": [
+        {
+          "text": "Set your faction to receive the map format order template",
+          "order": "OPTION TEMPLATE MAP"
+        }
+      ]
+    },
+    "PASSWORD": {
+      "forms": [
+        "PASSWORD [password]",
+        "PASSWORD"
+      ],
+      "description": [
+        "The PASSWORD order is used to set your faction's password. If you have a password set, you must specify it on your #ATLANTIS line for the game to accept your orders. This protects you orders from being overwritten, either by accident or intentionally by other players. PASSWORD with no password given clears out your faction's password.",
+        "IMPORTANT: The PASSWORD order does not take effect until the turn is actually run. So if you set your password, and then want to re-submit orders, you should use the old password until the turn has been run."
+      ],
+      "examples": [
+        {
+          "text": "Set the password to \"xyzzy\".",
+          "order": "PASSWORD xyzzy"
+        }
+      ]
+    },
+    "PILLAGE": {
+      "forms": [
+        "PILLAGE"
+      ],
+      "description": [
+        "Use force to extort as much money as possible from the region. Note that the TAX order and the PILLAGE order are mutually exclusive; a unit may only attempt to do one in a turn."
+      ],
+      "examples": [
+        {
+          "text": "Pillage the current hex.",
+          "order": "PILLAGE"
+        }
+      ]
+    },
+    "PREPARE": {
+      "forms": [
+        "PREPARE [item]"
+      ],
+      "description": [
+        "This command allows a mage or apprentice to prepare a battle item (e.g. a Staff of Fire) for use in battle. This allows the unit to override the usual selection of battle items, and also cancels any spells set via the COMBAT order."
+      ],
+      "examples": [
+        {
+          "text": "Select a staff of fire as the preferred battle item.",
+          "order": "PREPARE STAF"
+        }
+      ]
+    },
+    "PRODUCE": {
+      "forms": [
+        "PRODUCE [item]",
+        "PRODUCE [number] [item]"
+      ],
+      "description": [
+        "Spend the month producing the specified item. If a number is given then the unit will attempt to produce exactly that number of items; if this is not possible in one month then the order will carry over to subsequent months. If no number is given then the unit will produce as much as possible of the specified item."
+      ],
+      "examples": [
+        {
+          "text": "Produce as much wood as possible.",
+          "order": "PRODUCE wood"
+        },
+        {
+          "text": "Produce exactly 3 crossbows.",
+          "order": "PRODUCE 3 crossbows"
+        }
+      ]
+    },
+    "PROMOTE": {
+      "forms": [
+        "PROMOTE [unit]"
+      ],
+      "description": [
+        "Promote the specified unit to owner of the object of which you are currently the owner. The target unit must have declared you Friendly."
+      ],
+      "examples": [
+        {
+          "text": "Promote unit 415 to be the owner of the object that this unit owns.",
+          "order": "PROMOTE 415"
+        }
+      ]
+    },
+    "QUEST": {
+      "forms": [
+        "QUEST",
+        "QUEST [tokens]",
+        "QUEST [tokens] RESOURCE",
+        "QUEST [tokens] EQUIPMENT"
+      ],
+      "description": [
+        "Redeem Bounty Tokens at the Town Hall in the current region. The unit must be in a region that has an active Town Hall with a living mayor, and the mayor must regard your faction as at least NEUTRAL. The mayor must also have an outstanding bounty debt to your faction (earned by completing quests).",
+        "The optional tokens argument specifies how many Bounty Tokens to turn in. If omitted, exactly 1 token is spent. The actual number spent is capped by the tokens your unit carries and the total debt the mayor owes your faction.",
+        "The optional category argument controls the reward pool:",
+        "• RESOURCE — reward drawn from the raw materials pool (advanced resources).",
+        "• EQUIPMENT — reward drawn from the weapons and armor pool.",
+        "• No category — the pool is chosen randomly each time: 1-in-3 chance (≈33%) of drawing from the magic pool (artifacts, staves, rings, and other rare items), 2-in-3 chance of drawing from the combined equipment and resource pool.",
+        "Each token provides 1,000 silver of purchasing power, plus a random bonus of up to 500 silver per token. The game selects a random item from the chosen pool whose base price fits within that budget; you receive as many units of it as the budget allows."
+      ],
+      "examples": [
+        {
+          "text": "Turn in 1 Bounty Token (any category).",
+          "order": "QUEST"
+        },
+        {
+          "text": "Turn in 5 tokens (any category; 33% chance of a magic item).",
+          "order": "QUEST 5"
+        },
+        {
+          "text": "Turn in 5 tokens and request raw materials.",
+          "order": "QUEST 5 RESOURCE"
+        },
+        {
+          "text": "Turn in 5 tokens and request weapons or armor.",
+          "order": "QUEST 5 EQUIPMENT"
+        }
+      ]
+    },
+    "QUIT": {
+      "forms": [
+        "QUIT [password]"
+      ],
+      "description": [
+        "Quit the game. On issuing this order, your faction will be completely and permanently destroyed. Note that you must give your password for the quit order to work; this is to provide some safety against accidentally issuing this order.",
+        "Note that although this order affects the faction as a whole, it nevertheless needs to be issued by an individual unit, and so the email containing the command to quit needs to include both #atlantis and unit lines."
+      ],
+      "examples": [
+        {
+          "text": "Quit the game for faction 27 if your password is foobar.",
+          "order": "#atlantis 27 \"foobar\"\nunit 1234\nQUIT \"foobar\"\n#end"
+        }
+      ]
+    },
+    "RESTART": {
+      "forms": [
+        "RESTART [password]"
+      ],
+      "description": [
+        "Similar to the QUIT order, this order will completely and permanently destroy your faction. However, it will begin a brand new faction for you (you will get a separate turn report for the new faction). Note that you must give your password for this order to work, to provide some protection against accidentally issuing this order."
+      ],
+      "examples": [
+        {
+          "text": "Restart faction 27 as a new faction if your password is foobar.",
+          "order": "#atlantis 27 \"foobar\"\nunit 1234\nRESTART \"foobar\"\n#end"
+        }
+      ]
+    },
+    "REVEAL": {
+      "forms": [
+        "REVEAL",
+        "REVEAL UNIT",
+        "REVEAL FACTION"
+      ],
+      "description": [
+        "Cause the unit to either show itself (REVEAL UNIT), or show itself and its faction affiliation (REVEAL FACTION), in the turn report, to all other factions in the region. Used to reveal high stealth scouts, should there be some reason to. REVEAL is used to cancel this."
+      ],
+      "examples": [
+        {
+          "text": "Show the unit to all factions.",
+          "order": "REVEAL UNIT"
+        },
+        {
+          "text": "Show the unit and it's affiliation to all factions.",
+          "order": "REVEAL FACTION"
+        },
+        {
+          "text": "Cancels revealing.",
+          "order": "REVEAL"
+        }
+      ]
+    },
+    "SAIL": {
+      "forms": [
+        "SAIL [dir] ...",
+        "SAIL"
+      ],
+      "description": [
+        "The first form will sail the fleet, which the unit must be the owner of, in the directions given. The second form will cause the unit to aid in the sailing of the fleet, using the Sailing skill. See the section on movement for more information on the mechanics of sailing."
+      ],
+      "examples": [
+        {
+          "text": "Sail north, then northwest.",
+          "order": "SAIL N NW"
+        },
+        {
+          "text": "or:",
+          "order": "SAIL N\nSAIL NW"
+        }
+      ]
+    },
+    "SELL": {
+      "forms": [
+        "SELL [quantity] [item]",
+        "SELL ALL [item]"
+      ],
+      "description": [
+        "Attempt to sell the amount given of the item given. If the unit does not have as many of the item as it is trying to sell, it will attempt to sell all that it has. The second form will attempt to sell all of that item, regardless of how many it has. If more of the item are on sale (by all the units in the region) than are wanted by the region, the number sold per unit will be split up in proportion to the number each unit tried to sell."
+      ],
+      "examples": [
+        {
+          "text": "Sell 10 furs to the market.",
+          "order": "SELL 10 furs"
+        }
+      ]
+    },
+    "SHARE": {
+      "forms": [
+        "SHARE [flag]"
+      ],
+      "description": [
+        "SHARE 1 instructs the unit to share its possessions with any other unit of your faction that needs them. Thus a unit with a supply of silver could automatically provide silver if any of your other units in the same region does not have enough to perform an action, such as studying , buying or producing . SHARE 0 returns a unit to its default selfish state.",
+        "This sharing does not extend to the heat of battle, only to economic actions. So a unit that is sharing will provide silver for buying or studying, and resources for production (for example, if a sharing unit has wood in its inventory, and another unit is producing axes but has no wood, then the sharing unit will automatically supply wood for that production), but will not provide weapons to all units if combat occurs.",
+        "Note that in the case of sharing silver, this can leave the sharing unit without enough funds to pay maintenance, so sharing is to be used with care. You may like to make sure that there is a unit with sufficient funds for maintenance in the same region, and which is not sharing, as those funds will be shared for maintenance, but not for less important purposes."
+      ],
+      "examples": [
+        {
+          "text": "Instruct the unit to share its possessions with other units of the same faction.",
+          "order": "SHARE 1"
+        }
+      ]
+    },
+    "SHOW": {
+      "forms": [
+        "SHOW SKILL [skill] [level]",
+        "SHOW ITEM [item]",
+        "SHOW OBJECT [object]"
+      ],
+      "description": [
+        "The first form of the order shows the skill description for a skill that your faction already possesses. The second form returns some information about an item that is not otherwise apparent on a report, such as the weight. The last form returns some information about an object (such as a ship or a building)."
+      ],
+      "examples": [
+        {
+          "text": "Show the skill report for Mining 3 again.",
+          "order": "SHOW SKILL Mining 3"
+        },
+        {
+          "text": "Show the item information for swords again.",
+          "order": "SHOW ITEM sword"
+        },
+        {
+          "text": "Show the information for towers again.",
+          "order": "SHOW OBJECT tower"
+        }
+      ]
+    },
+    "SPOILS": {
+      "forms": [
+        "SPOILS [type]",
+        "SPOILS"
+      ],
+      "description": [
+        "The SPOILS order determines which types of spoils the unit should take after a battle. The valid values for type are 'NONE', 'WALK', 'RIDE', 'FLY', 'SWIM', 'SAIL' or 'ALL'. The second form is equivalent to 'SPOILS ALL'.",
+        "When this command is issued, the unit is instructed to only pick up combat spoils if they could use the chosen form of movement while carrying the spoils. Thus a unit with SPOILS FLY selected would pick up combat spoils until they reached their flying capacity. If the spoils provide movement capacity themselves, this will be included in the decision of whether or not to take the spoils - so a unit with SPOILS RIDE would always pick up horses. SPOILS SAIL will use the capacity of the fleet the unit is in to determine whether to take spoils or not. SPOILS ALL will allow a unit to collect any spoils which are dropped regardless of weight or capacity. SPOILS NONE will instruct the unit to only collect weightless items, such as silver."
+      ],
+      "examples": [
+        {
+          "text": "Set a unit to only pick up items that it can carry and continue to fly:",
+          "order": "SPOILS FLY"
+        }
+      ]
+    },
+    "STEAL": {
+      "forms": [
+        "STEAL [unit] [item]"
+      ],
+      "description": [
+        "Attempt to steal as much as possible of the specified item from the specified unit. The order may only be issued by a one-man unit.",
+        "A unit may only attempt to steal from a unit which is able to be seen."
+      ],
+      "examples": [
+        {
+          "text": "Steal silver from unit 123.",
+          "order": "STEAL 123 SILVER"
+        },
+        {
+          "text": "Steal wood from unit 321.",
+          "order": "STEAL 321 wood"
+        }
+      ]
+    },
+    "STUDY": {
+      "forms": [
+        "STUDY [skill]",
+        "STUDY [skill] [level]"
+      ],
+      "description": [
+        "Spend the month studying the specified skill. A level may be specified which means that study will be continued from turn to turn until the unit reaches that skill level."
+      ],
+      "examples": [
+        {
+          "text": "Study horse training.",
+          "order": "STUDY \"Horse Training\""
+        },
+        {
+          "text": "Study combat to level 3.",
+          "order": "STUDY combat 3"
+        }
+      ]
+    },
+    "TAKE": {
+      "forms": [
+        "TAKE FROM [unit] [quantity] [item]",
+        "TAKE FROM [unit] ALL [item]",
+        "TAKE FROM [unit] ALL [item] EXCEPT [quantity]",
+        "TAKE FROM [unit] ALL [item class]"
+      ],
+      "description": [
+        "The TAKE order works just like the GIVE order, except that the direction of transfer is reversed, and with the extra condition that a unit may only TAKE from another unit in the same faction. Since that makes TAKE FROM [unit] UNIT pointless, that form of the GIVE order is not supported.",
+        "The TAKE order is primarily intended to make automated delivery caravans less prone to generating errors, as they can use TAKE to collect the appropriate goods only when they are in the right place to collect, so the supplying unit doesn't need to keep trying to GIVE to a unit that is only there some of the time. However, it can be used anywhere you wish to transfer items, ships or men, just as GIVE can."
+      ],
+      "examples": [
+        {
+          "text": "Take 10 swords from unit 4573.",
+          "order": "TAKE FROM 4573 10 swords"
+        },
+        {
+          "text": "See the TURN order for an example of a caravan using TAKE FROM.",
+          "order": null
+        }
+      ]
+    },
+    "TAX": {
+      "forms": [
+        "TAX"
+      ],
+      "description": [
+        "Attempt to collect taxes from the region. Only Martial factions may collect taxes, but only if there are no non-Friendly units on guard. Only combat-ready units may issue this order. Note that the TAX order and the PILLAGE order are mutually exclusive; a unit may only attempt to do one in a turn."
+      ],
+      "examples": [
+        {
+          "text": "Attempt to collect taxes.",
+          "order": "TAX"
+        }
+      ]
+    },
+    "TEACH": {
+      "forms": [
+        "TEACH [unit] ..."
+      ],
+      "description": [
+        "Attempt to teach the specified units whatever skill they are studying that month. A list of several units may be specified. All units to be taught must have declared you Friendly. Subsequent TEACH orders can be used to add units to be taught."
+      ],
+      "examples": [
+        {
+          "text": "Teach new unit 2 and unit 510 whatever they are studying.",
+          "order": "TEACH NEW 2 510"
+        },
+        {
+          "text": "or:",
+          "order": "TEACH NEW 2\nTEACH 510"
+        }
+      ]
+    },
+    "TRANSPORT": {
+      "forms": [
+        "TRANSPORT [unit] [num] [item]",
+        "TRANSPORT [unit] ALL [item]",
+        "TRANSPORT [unit] ALL [item] EXCEPT [amount]"
+      ],
+      "description": [
+        "Transport the specified items to the given target. In the second form all of the specified item is transported. In the last form, all of the specified item except for the specified amount is transported. Long distance transportation of goods between 2 and 3 hexes away has an associated cost. This cost is based on the weight of the items being transported. At higher skill levels of the quartermaster skill, the cost for transporting goods will be less. At higher skill levels of the quartermaster skill, the maximum distance goods can be transported increases over the above. The target of the transport unit must be a unit with the quartermaster skill and must be the owner of a transport structure. For long distance transport between quartermasters, the issuing unit must also be a quartermaster and be the owner of a transport structure.",
+        "For historical reasons, the order DISTRIBUTE can be used in place of TRANSPORT and has the same meaning and syntax."
+      ],
+      "examples": [
+        {
+          "text": "Transport 10 STON to unit 1234",
+          "order": "TRANSPORT 1234 10 STON"
+        },
+        {
+          "text": "Transport all except 10 SWOR to unit 3432",
+          "order": "TRANSPORT 3432 ALL SWOR EXCEPT 10"
+        }
+      ]
+    },
+    "TURN": {
+      "forms": [
+        "TURN"
+      ],
+      "description": [
+        "The TURN order may be used to delay orders by one (or more) turns. By making the TURN order repeating (via '@'), orders inside the TURN/ENDTURN construct will repeat. Multiple TURN orders in a row will execute on successive turns, and if they all repeat, they will form a loop of orders. Each TURN section must be ended by an ENDTURN line."
+      ],
+      "examples": [
+        {
+          "text": "Study combat this month, move north next month, and then in two months, pillage and advance north.",
+          "order": "STUDY COMB\nTURN\n    MOVE N\nENDTURN\nTURN\n    PILLAGE\n    ADVANCE N\nENDTURN"
+        },
+        {
+          "text": "After the turn, the orders for that unit would look as follows in the orders template:",
+          "order": "MOVE N\nTURN\n    PILLAGE\n    ADVANCE N\nENDTURN"
+        },
+        {
+          "text": "Set up a simple cash caravan.",
+          "order": "MOVE N\n@TURN\n    TAKE FROM 13794 1000 SILV\n    MOVE S S S\nENDTURN\n@TURN\n    GIVE 13523 1000 SILV\n    MOVE N N N\nENDTURN"
+        },
+        {
+          "text": "After the turn, the orders for that unit would look as follows in the orders template:",
+          "order": "TAKE FROM 13794 1000 SILV\nMOVE S S S\n@TURN\n    GIVE 13523 1000 SILV\n    MOVE N N N\nENDTURN\n@TURN\n    TAKE FROM 13794 1000 SILV\n    MOVE S S S\nENDTURN"
+        },
+        {
+          "text": "The orders in a TURN block will be inserted into the unit's orders template when there are no month-long orders remaining to be executed. In particular, if the unit does not have enough movement points to cover the full distance of a MOVE or SAIL command, the movement commands will automatically be completed over multiple turns before executing the next TURN block.",
+          "order": null
+        }
+      ]
+    },
+    "WEAPON": {
+      "forms": [
+        "WEAPON [item] ...",
+        "WEAPON"
+      ],
+      "description": [
+        "This command allows you to set a list of preferred weapons for a unit. After searching for weapons on the preferred list, the standard weapon precedence takes effect if a weapon hasn't been set. The second form clears the preferred weapon list."
+      ],
+      "examples": [
+        {
+          "text": "Set the unit to select double bows, then longbows then crossbows",
+          "order": "WEAPON DBOW LBOW XBOW"
+        },
+        {
+          "text": "Clear the preferred weapon list.",
+          "order": "WEAPON"
+        }
+      ]
+    },
+    "WITHDRAW": {
+      "forms": [
+        "WITHDRAW [item]",
+        "WITHDRAW [quantity] [item]"
+      ],
+      "description": [
+        "Use unclaimed funds to acquire basic items that you need. If you do not have sufficient unclaimed, or if you try withdraw any other than a basic item, an error will be given. Withdraw CANNOT be used in the Nexus (to prevent building towers and such there). The first form is the same as WITHDRAW 1 [item] in the second form."
+      ],
+      "examples": [
+        {
+          "text": "Withdraw 5 stone.",
+          "order": "WITHDRAW 5 stone"
+        },
+        {
+          "text": "Withdraw 1 iron.",
+          "order": "WITHDRAW iron"
+        }
+      ]
+    },
+    "WORK": {
+      "forms": [
+        "WORK"
+      ],
+      "description": [
+        "Spend the month performing manual work for wages."
+      ],
+      "examples": [
+        {
+          "text": "Work all month.",
+          "order": "WORK"
+        }
+      ]
+    }
   }
 }

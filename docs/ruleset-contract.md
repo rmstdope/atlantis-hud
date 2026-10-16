@@ -120,6 +120,15 @@ unit more to enter: 2 movement points for forest, mountain, hill, swamp, jungle,
 underforest, tunnels, grotto, deepforest and chasm; 4 movement points for volcano." A volcano at
 four has nowhere to go in a shape that models one premium.
 
+`orders` carries what the rules page says about each order, keyed by its keyword in capitals:
+`forms` (one per `<h4>`), `description` (one string per paragraph; a list item or a table row is a
+paragraph of its own) and `examples` (`{ text, order }`, `order` null for a sentence with no order
+line beneath it). It is read from the order sections of `rules/orders` by
+`packages/ruleset/src/orders.ts`, for the game data dialog only (ah-mlls.6); the core reads nothing
+in it. Which orders a world *has* is the core grammar's (`order_commands`), not this block's: END
+and ENDTURN have no section of their own, and an order the block lacks is one the rules do not
+describe, never one the world does not have.
+
 `skills` is its own block rather than merged into `items` because ten tags mean one thing
 as a skill and another as an item (`FISH`, `HERB`).
 

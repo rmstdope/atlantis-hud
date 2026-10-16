@@ -1061,6 +1061,46 @@ pub struct Ruleset {
     /// report's figures and judges no FACTION order.
     #[serde(default)]
     pub faction_points: Option<FactionPoints>,
+    /// What the rules page says about each order, keyed by its keyword in capitals (`GIVE`), from
+    /// the order sections of `rules/orders`.
+    ///
+    /// Carried for the game data dialog (ah-mlls.6); nothing in the core reads it. Empty for a
+    /// ruleset generated before it was scraped, which reads as "the rules say nothing about this
+    /// order here" - never as "this world has no orders", which is the grammar's to say.
+    #[serde(default)]
+    pub orders: BTreeMap<String, OrderEntry>,
+}
+
+/// One order's section of the rules page, verbatim: every form, the prose, and the examples.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/OrderEntry.ts")
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OrderEntry {
+    /// Each form of the order, one per heading, in page order (`rules/give` has five).
+    pub forms: Vec<String>,
+    /// The prose, one string per paragraph.
+    pub description: Vec<String>,
+    /// The worked examples, in page order.
+    pub examples: Vec<OrderExample>,
+}
+
+/// One worked example of an order: what it does, in the page's words, and the order lines.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/OrderExample.ts")
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OrderExample {
+    pub text: String,
+    /// The order lines beneath the sentence, newlines kept; null when the sentence stands alone
+    /// ("See the TURN order for an example of a caravan using TAKE FROM.", `rules/take`).
+    pub order: Option<String>,
 }
 
 /// One of the classes `GIVE [unit] ALL [item class]` accepts, as `rules/give` enumerates them.

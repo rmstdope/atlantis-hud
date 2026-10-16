@@ -4,7 +4,7 @@
  */
 
 import type { HexNoteRecord, StudyPlanRecord } from "@atlantis/core-client";
-import type { GameDataEntry } from "./gameData";
+import { orderEntryId, type GameDataEntry } from "./gameData";
 import type { HexNode } from "./hexMapModel";
 import type { KnownFaction } from "./paletteFactions";
 
@@ -36,6 +36,7 @@ export type PaletteEntryKind =
   | "hex-note"
   | "mage-note"
   | "action"
+  /** An order of the world's grammar; choosing it opens its game data entry (ah-mlls.6). */
   | "order-help"
   /** One thing in the game data dictionary, named by the tab it opens on. */
   | "skill"
@@ -120,9 +121,12 @@ export type PaletteInput = {
     run: () => void;
   }>;
   actions: Array<{ id: string; label: string; binding?: string; run: () => void }>;
+  /** The world's orders, as the core grammar lists them; each opens its game data entry. */
   orderCommands: readonly string[];
-  insertOrder: (command: string) => void;
-  /** Every dictionary entry, or [] when the ruleset has not loaded. */
+  /**
+   * Every dictionary entry, or [] when the ruleset has not loaded. Its orders are skipped: each is
+   * already a row of `orderCommands`, which keeps the row's old place and look (ah-mlls.6).
+   */
   gameData: readonly GameDataEntry[];
   openGameData: (entryId: string) => void;
   /**
@@ -141,8 +145,9 @@ export type PaletteInput = {
  * `filterPalette` sorts stably, so this one order is also the tie-break between equal matches.
  * Then the towns and cities, then the factions (ah-mlls.3), then places - the hexes, then the
  * structures standing in them -
- * then the app's own actions, then the order vocabulary as a typeable reference, then the game
- * data dictionary.
+ * then the app's own actions, then the order vocabulary, then the game data dictionary. An order
+ * row opens the order's dictionary entry (ah-mlls.6); it used to type the keyword into the orders,
+ * which the navigator gave up so that every palette row does one thing.
  *
  * The dictionary goes last on purpose: it is two hundred and seventy-odd entries, and an empty
  * query should still show the player's own units first. The tag rides in the label so typing
@@ -238,14 +243,20 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       id: `order-${command}`,
       kind: "order-help",
       label: command,
-      run: () => input.insertOrder(command)
+      run: () => input.openGameData(orderEntryId(command))
     })),
-    ...input.gameData.map<PaletteEntry>((entry) => ({
-      id: `data-${entry.id}`,
-      kind: entry.category,
-      label: entry.tag === null ? entry.name : `${entry.name} ${entry.tag}`,
-      run: () => input.openGameData(entry.id)
-    }))
+    ...input.gameData.flatMap<PaletteEntry>((entry) =>
+      entry.category === "order"
+        ? []
+        : [
+            {
+              id: `data-${entry.id}`,
+              kind: entry.category,
+              label: entry.tag === null ? entry.name : `${entry.name} ${entry.tag}`,
+              run: () => input.openGameData(entry.id)
+            }
+          ]
+    )
   ];
 }
 
