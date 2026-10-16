@@ -970,7 +970,7 @@ pub fn review_turn(
         check_transfer_to_itself(hex, &options, &mut findings);
         check_arrivals(hex, &options, &mut findings);
         check_refused_transfers(hex, ruleset, &plurals, &options, &mut findings);
-        check_mage_arrivals(hex, ledger, ruleset, &plurals, &options, &mut findings);
+        check_refused_arrivals(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_withdraw_in_nexus(hex, &options, &mut findings);
         check_explore_below_the_surface(hex, &mut findings);
         check_enter_not_here(hex, &mut findings);
@@ -1754,11 +1754,12 @@ fn market_shares_for(
             //
             // `ordered.unit.skills` - the report's own list - because that is exactly what `buy`
             // and the SILVER column's `purchase` closure both read. Asking `skills_before_the_market`
-            // here instead would re-open the divergence this guard closes.
+            // here instead would re-open the divergence this guard closes. The races, by the same
+            // argument, are `early_men_by_race` on all three: the men after this month's gifts.
             if matches!(side, MarketSide::Buying)
                 && recruit_refused(
                     &ordered.unit.skills,
-                    &ordered.unit.men_by_race,
+                    ordered.early_men_by_race(),
                     &tag,
                     ruleset,
                 )
@@ -2646,7 +2647,7 @@ fn forecast_hex(
             MarketAnswer::Offered(line)
                 if recruit_refused(
                     &ordered.unit.skills,
-                    &ordered.unit.men_by_race,
+                    ordered.early_men_by_race(),
                     &line.tag.to_ascii_uppercase(),
                     ruleset,
                 ) =>
@@ -10068,8 +10069,10 @@ fn buy(
     // mage's recruiting too (`ah-ndp9`). Refused before anything is charged, credited or recorded:
     // the server refuses the order, so no silver leaves. Before the `BUY ALL` deferral as well, so
     // no `BUY ALL` slips past into `settle_buy_all`. A recruit that would mix leaders and normal
-    // men is refused the same way, mage or not (`rules/playing_units`, `ah-u5rz`).
-    if recruit_refused(&actor.unit.skills, &actor.unit.men_by_race, &tag, ruleset) {
+    // men is refused the same way, mage or not (`rules/playing_units`, `ah-u5rz`) - judged on the
+    // men the unit holds once this month's gifts have run, since `rules/sequenceofevents` settles
+    // GIVE before the market and `Game::GetBuyAmount` asks the unit as it then stands.
+    if recruit_refused(&actor.unit.skills, actor.early_men_by_race(), &tag, ruleset) {
         ledger.refused_recruits.push(RefusedRecruit {
             unit_id: who.clone(),
             line: placed.line,
@@ -23177,7 +23180,7 @@ fn named_items(
 /// recruiting and to receiving men. `rules/playing_units` refuses mixing leaders and normal men in
 /// one unit, mage or not (`ah-u5rz`). Works nothing out for itself: `apply_transfers` and `buy`
 /// have already refused, and this turns their records into sentences (`ah-ndp9`).
-fn check_mage_arrivals(
+fn check_refused_arrivals(
     hex: &Hex<'_>,
     ledger: &Ledger<'_>,
     ruleset: Option<&Ruleset>,
@@ -23186,47 +23189,49 @@ fn check_mage_arrivals(
     findings: &mut Vec<Finding>,
 ) {
     let mage_warned = options.emits(codes::MEN_SENT_INTO_A_MAGE);
-    for ordered in hex.units.iter().filter(|_| mage_warned) {
-        for refused in &ordered.refused_transfers {
-            if refused.into_a_mage.is_empty() {
-                continue;
-            }
-            let tail = if refused.moving.is_empty() {
-                "nothing".to_string()
-            } else {
-                format!(
-                    "only {}",
-                    named_items(&refused.moving, hex, ruleset, plurals)
-                )
-            };
-            // The receiver is named for what `data/MANI` makes it, as the BUY refusal below is
-            // (`ah-yvgi`): the mage at the other end of a GIVE, or this unit for a TAKE.
-            let receiver = match &refused.mage_id {
-                Some(id) => hex.find(id),
-                None => Some(ordered),
-            };
-            let what = match (ruleset, receiver) {
-                (Some(ruleset), Some(receiver))
-                    if magic::is_apprentice(ruleset, &receiver.unit.skills) =>
-                {
-                    "an apprentice"
+    if mage_warned {
+        for ordered in &hex.units {
+            for refused in &ordered.refused_transfers {
+                if refused.into_a_mage.is_empty() {
+                    continue;
                 }
-                _ => "a mage",
-            };
-            let head = match (&refused.mage_id, refused.is_give) {
-                (Some(id), true) => format!("unit {id} is {what} and cannot be given men"),
-                _ => format!("this unit is {what} and cannot take on men"),
-            };
-            let placed = ordered
-                .intents
-                .iter()
-                .find(|placed| placed.line == refused.line);
-            findings.push(ordered.finding(
-                hex,
-                codes::MEN_SENT_INTO_A_MAGE,
-                format!("{head}, so this order moves {tail}"),
-                placed,
-            ));
+                let tail = if refused.moving.is_empty() {
+                    "nothing".to_string()
+                } else {
+                    format!(
+                        "only {}",
+                        named_items(&refused.moving, hex, ruleset, plurals)
+                    )
+                };
+                // The receiver is named for what `data/MANI` makes it, as the BUY refusal below is
+                // (`ah-yvgi`): the mage at the other end of a GIVE, or this unit for a TAKE.
+                let receiver = match &refused.mage_id {
+                    Some(id) => hex.find(id),
+                    None => Some(ordered),
+                };
+                let what = match (ruleset, receiver) {
+                    (Some(ruleset), Some(receiver))
+                        if magic::is_apprentice(ruleset, &receiver.unit.skills) =>
+                    {
+                        "an apprentice"
+                    }
+                    _ => "a mage",
+                };
+                let head = match (&refused.mage_id, refused.is_give) {
+                    (Some(id), true) => format!("unit {id} is {what} and cannot be given men"),
+                    _ => format!("this unit is {what} and cannot take on men"),
+                };
+                let placed = ordered
+                    .intents
+                    .iter()
+                    .find(|placed| placed.line == refused.line);
+                findings.push(ordered.finding(
+                    hex,
+                    codes::MEN_SENT_INTO_A_MAGE,
+                    format!("{head}, so this order moves {tail}"),
+                    placed,
+                ));
+            }
         }
     }
 
@@ -23248,7 +23253,7 @@ fn check_mage_arrivals(
         // `data/MANI` makes an apprentice, not a mage, and a leader recruiting normal men (or the
         // reverse) is refused for that too (`rules/playing_units`): the engine reports both, so
         // the warning names both (`ah-yvgi`).
-        let mixing = magic::mixes_leaders(&ordered.unit.men_by_race, &recruit.tag);
+        let mixing = magic::mixes_leaders(ordered.early_men_by_race(), &recruit.tag);
         // A unit that is no mage was refused for mixing alone, and says only that (`ah-u5rz`).
         let (code, message) = match ruleset {
             Some(ruleset) if !magic::is_mage(ruleset, &ordered.unit.skills) => (
@@ -23308,7 +23313,7 @@ fn check_refused_transfers(
     for ordered in &hex.units {
         for refused in &ordered.refused_transfers {
             if refused.refused.is_empty() && refused.refused_to_another_faction.is_empty() {
-                // An `ah-ndp9` record only. `check_mage_arrivals` speaks for it; this check must
+                // An `ah-ndp9` record only. `check_refused_arrivals` speaks for it; this check must
                 // say nothing, and would otherwise build a sentence with no reason in it.
                 continue;
             }

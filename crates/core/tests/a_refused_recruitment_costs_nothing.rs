@@ -278,3 +278,58 @@ fn normal_men_still_recruit_normal_men_and_pay() {
         "no ` + ?` on the ITEMS cell: {uncounted:?}"
     );
 }
+
+/// The engine asks whether a BUY mixes at the market, after `rules/sequenceofevents`' Give phase:
+/// a lone leader that gives its leader away holds no men when its market runs, and recruits the
+/// orcs it buys (`IsLeader` and `IsNormal` are both false in `Game::GetBuyAmount`).
+#[test]
+fn a_leader_given_away_before_the_market_leaves_the_unit_free_to_recruit() {
+    let text = format!(
+        "{}\n* Bran (2391), Foo (1), 1 leaders [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: none.\n",
+        report_text("combat [COMB] 1 (30)").trim_end()
+    );
+    let script = "unit 2390\nGIVE 2391 1 LEAD\nBUY 5 orcs\nunit 2391\n";
+    let review = review_of(&text, script);
+    let rhia = row_of(&review, "2390");
+
+    assert_eq!(rhia.expense, Some(190), "five orcs at $38: {rhia:?}");
+    assert!(
+        !review
+            .findings
+            .iter()
+            .any(|finding| finding.code.as_str() == "leaders-and-men-mixed"),
+        "no leader is left to mix with: {:?}",
+        review.findings
+    );
+}
+
+/// The other way round: a unit handed a leader before the market is refused the orcs it buys.
+#[test]
+fn a_leader_given_in_before_the_market_refuses_the_recruit() {
+    let text = report_with("2 leaders [LEAD]", "combat [COMB] 1 (30)");
+    let script = "unit 2390\nFORM 1\nBUY 5 orcs\nEND\nGIVE NEW 1 1 LEAD\n";
+    let review = review_of(&text, script);
+
+    let mixed: Vec<Option<&str>> = review
+        .findings
+        .iter()
+        .filter(|finding| finding.code.as_str() == "leaders-and-men-mixed")
+        .map(|finding| finding.unit_id.as_deref())
+        .collect();
+    assert_eq!(mixed.len(), 1, "{:?}", review.findings);
+    let formed = review
+        .silver
+        .iter()
+        .find(|row| Some(row.unit_id.as_str()) == mixed[0])
+        .expect("the formed unit has a row");
+    assert_eq!(formed.expense, Some(0), "nothing is charged: {formed:?}");
+    assert_eq!(row_of(&review, "2390").at_month_end, Some(1000));
+}
+
+/// `BUY ALL` is refused before it is deferred to the end of the unit's month, so it is charged
+/// nothing either.
+#[test]
+fn a_leader_who_is_no_mage_buying_all_normal_men_is_refused() {
+    let text = report_text("combat [COMB] 1 (30)");
+    assert_refused_for_mixing(&text, "unit 2390\nBUY ALL orcs\n", "ORC");
+}

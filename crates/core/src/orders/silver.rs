@@ -1294,7 +1294,8 @@ pub enum PurchaseAnswer {
     /// them - the catalogue's name where there is one, the order's own text otherwise.
     NotSold { name: String },
     /// The market sells the goods and the buyer may not have them: the game refuses this unit's
-    /// recruiting, so the order buys nobody and costs nothing (`ah-ndp9`, `ah-jo6b.4`). Resolved
+    /// recruiting - a mage's, or one that would mix leaders and normal men - so the order buys
+    /// nobody and costs nothing (`ah-ndp9`, `ah-jo6b.4`, `ah-u5rz`). Resolved
     /// where the tag is, so the column and the ledger cannot answer one order two ways.
     RecruitsRefused,
 }
@@ -2947,7 +2948,7 @@ pub fn forecast_unit(
                 },
                 // The game refuses the recruiting, so no silver leaves and there is nothing to
                 // doubt: the ledger returns before charging (`semantics::buy`), and the
-                // `MEN_SENT_INTO_A_MAGE` finding already says why. Before the `Amount` split, so a
+                // `MEN_SENT_INTO_A_MAGE` or `LEADERS_AND_MEN_MIXED` finding already says why. Before the `Amount` split, so a
                 // `BUY ALL` is refused too - `buy` refuses it before the deferral, so
                 // `settle_buy_all` never sees it and `facts.settled_buy_all()` carries nothing.
                 PurchaseAnswer::RecruitsRefused => {}
