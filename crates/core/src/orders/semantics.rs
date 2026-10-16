@@ -21937,7 +21937,8 @@ fn push_unless_line_marked(findings: &mut Vec<Finding>, finding: Finding) {
 /// the shipment would draw on it and this walk does not lend a shipment's silver; and never when
 /// the purse cannot be worked out: the sender, or a sharer of its hex, is doubted (the rule of
 /// `a_doubted_sharer_silences_the_stock_it_shares`). A sharer that walks away is gone by TRANSPORT
-/// (`rules/sequenceofevents`) and counts for nothing.
+/// (`rules/sequenceofevents`) and counts for nothing; a sender that walks itself is judged in the
+/// region it ends in, so nothing is claimed for it here.
 fn silver_shortfall_claimable(hex: &Hex<'_>, ledger: &Ledger<'_>, unit_id: &str) -> bool {
     let doubted = ledger.doubted.contains(unit_id)
         || hex
@@ -21954,7 +21955,10 @@ fn silver_shortfall_claimable(hex: &Hex<'_>, ledger: &Ledger<'_>, unit_id: &str)
             .walking
             .arrivals_at(LendingMoment::Transport)
             .is_empty();
-    !doubted && !others_share
+    // TRANSPORT runs after movement, so a sender that walks is read by the region it ends in,
+    // whose sharers this hex does not know.
+    let walks = ledger.relief().walking.leaving.contains(unit_id);
+    !doubted && !others_share && !walks
 }
 
 /// The silver each sender of an exact silver `TRANSPORT` holds as the engine checks every
@@ -56142,6 +56146,33 @@ BUILD
                  the 10 silver ordered"
                     .to_string()
             )]
+        );
+    }
+
+    /// TRANSPORT runs after movement (`rules/sequenceofevents`), so a sender that walks is judged
+    /// by `GetSharedNum` in the region it ends in: 905 walks south to a $50 sharer, and no refusal
+    /// is claimed against the hex it left (`ah-0aqx` second follow-up review, finding 1).
+    #[test]
+    fn a_sender_that_walks_claims_no_cut_or_refusal() {
+        let mut regions = two_senders(vec![with_silver(unit("905"), 5)]);
+        regions.push(region_at(
+            "1:0,2",
+            0,
+            2,
+            vec![sharing(with_silver(unit("950"), 50))],
+        ));
+        let orders = "unit 905\nMOVE S\nTRANSPORT 906 10 SILV\n";
+        let (traced_report, options) = traced(report(regions), orders, &ruleset(), with_map());
+        let review = review_turn(
+            &report(traced_report.regions),
+            orders,
+            Some(&ruleset()),
+            options,
+        );
+        assert!(
+            !claims_a_cut_shipment(&review, "905"),
+            "{:?}",
+            shipment_warnings(&review, "905")
         );
     }
 
