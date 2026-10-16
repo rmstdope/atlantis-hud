@@ -16063,6 +16063,16 @@ impl Lending {
     /// lends nothing for it (`ah-2fn5`). The warning's own readings ([`Sharing::silver_short_at`],
     /// [`sharing_purse_over`]) keep that part as owed on purpose: it is what the cut line was
     /// short, and the line keeps its warning.
+    ///
+    /// TRANSPORT is read as its run ([`Ledger::transport_run`]): once before its first shipment
+    /// and after each step in turn, the step's draws lent on the sharers they were drawn on before
+    /// its fee is judged, `run` being the steps read. So a loan is never paid back by a receipt
+    /// later in the run: loans only accumulate (`ah-qrk0`, `ah-k719`). **A change to how TRANSPORT
+    /// lends is observable only at a shipment** - [`Lending::at_shipment`], or a later shipment's
+    /// verdict - and never at the month's end, whose moment lends again from the positions it is
+    /// given and repairs what TRANSPORT got wrong (`docs/retrospectives/ah-9yvv.md`). A test of
+    /// it reads the purse at a shipment, as `the_purse_lends_a_transport_draw_at_its_own_shipment`
+    /// does (`ah-3ffm`).
     fn settle(
         hex: &Hex<'_>,
         ledger: &Ledger<'_>,
