@@ -12203,7 +12203,11 @@ fn cast(
                 // What a cast consumes leaves at the ceiling, because that is what the ledger was
                 // charged: the ITEMS column, the SILVER column and `not-enough-items` must read one
                 // number (`ah-ofpb.5`, round 1 Q4). `plan.materials` is already `charged` times the
-                // per-item amount - less what a sharer supplied, which is on its row.
+                // per-item amount - less what a sharer supplied, which is on its row. The one
+                // exception is the guard above: an enchantment or transmutation that makes none is
+                // charged one for the warning and shows nothing consumed, so there the warning's
+                // "its orders spend" reads one more than the hover (`ah-ryry`). Do not restore the
+                // movement to make them agree - the game consumes none.
                 delta: -from_caster,
                 cause: ItemChangeCause::CastSpent,
                 phase: StatePhase::Cast,
@@ -36716,6 +36720,28 @@ BUILD
                     ledger.movements
                 );
             });
+        }
+
+        /// `ah-ryry`, the transmutation path of the same guard: `RunTransmutation` consumes one
+        /// source per output made (`data/TRNS`: iron into mithril), so a transmuter holding no
+        /// iron consumes none.
+        #[test]
+        fn a_transmutation_with_no_source_records_no_consumption() {
+            let hex_region = region(vec![with_skill(unit("5"), "TRNS", 1)]);
+            with_ledger(
+                hex_region,
+                "unit 5\nCAST Transmutation mithril\n",
+                |ledger| {
+                    assert!(
+                        ledger
+                            .movements
+                            .iter()
+                            .all(|movement| movement.cause != ItemChangeCause::CastSpent),
+                        "a transmutation that makes nothing consumes nothing: {:?}",
+                        ledger.movements
+                    );
+                },
+            );
         }
 
         /// A level 3 create-runesword mage is 90 x 3 = 270 percent: two runeswords certain and a 70

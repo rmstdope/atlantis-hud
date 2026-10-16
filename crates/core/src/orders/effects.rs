@@ -9605,8 +9605,8 @@ mod tests {
         }
 
         /// `ah-rgkk.3.1`. A cast is charged its materials at the ceiling whether or not the mage
-        /// holds them (`ah-ofpb.5`), so a mage holding none records a change that takes nothing
-        /// away. A row whose every change is one of those has nothing to show.
+        /// holds them (`ah-ofpb.5`), but an enchantment that makes none records no change at all
+        /// (`ah-ryry`), so a mage holding none has nothing to show and earns no row.
         #[test]
         fn a_cast_charged_for_materials_the_mage_has_not_got_earns_no_row() {
             let empty_handed = report_with_an_empty_handed_enchanter();
