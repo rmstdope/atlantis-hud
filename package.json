@@ -9,7 +9,7 @@
     "atlantis": "tsx scripts/atlantis.ts",
     "beads:export": "tsx scripts/beadsExport.ts",
     "generate:biomes": "tsx scripts/genBiomes.ts",
-    "sightings": ".claude/cerebro/scripts/retro-sightings",
+    "sightings": "tsx scripts/cerebro.ts retro-sightings",
     "typecheck": "pnpm -r run typecheck && pnpm run typecheck:tooling && cargo check --workspace",
     "typecheck:tooling": "tsc --noEmit -p tsconfig.tooling.json",
     "test": "tsx scripts/runSuites.ts",

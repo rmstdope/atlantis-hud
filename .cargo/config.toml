@@ -16,10 +16,10 @@
 # other one's, and this fleet runs three or more implementers at once. Parallel builds are worth
 # the disk.
 #
-# The cost is roughly 2-3.5 GB per worktree. `.claude/cerebro/scripts/prune-worktrees.sh` reclaims
+# The cost is roughly 2-3.5 GB per worktree. `.cerebro/cerebro/scripts/prune-worktrees.sh` reclaims
 # a removed worktree's tree as part of removing the worktree itself, and reclaims a long-cold kept
 # tree's `target/` on its own; the `disk_floor_gb` this project declares in
-# .cerebro/project.conf - the floor `.claude/cerebro/scripts/disk-preflight` refuses to start
+# .cerebro/project.conf - the floor `.cerebro/cerebro/scripts/disk-preflight` refuses to start
 # a bead below - is sized for one worktree's build on top of what is already there.
 #
 # The path stays relative on purpose. An absolute one would work on the machine it was written on

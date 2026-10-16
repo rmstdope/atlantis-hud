@@ -33,7 +33,6 @@ packages/browser-core/src/wasm/
 !.claude/skills/
 !.claude/agents/
 !.claude/settings.json
-!.claude/cerebro
 
 # Cerebro's own directory in a consumer. Three things the fleet writes while it runs are ignored:
 # the agents' worktrees, their state files and stop flags, and the planners' scratchpad, the drafts

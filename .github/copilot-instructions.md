@@ -50,10 +50,10 @@ an X-Man:
 
 ```bash
 git submodule update --init --recursive    # once per clone: the launchers live in the submodule
-.claude/cerebro/scripts/launch Cyclops
+.cerebro/cerebro/scripts/launch Cyclops
 ```
 
-Every `.claude/cerebro/…` path below comes from that submodule. On a clone made without
+Every `.cerebro/cerebro/…` path below comes from that submodule. On a clone made without
 `--recurse-submodules` the directory is empty, and each of these commands fails with "No such file
 or directory" rather than anything that names the real cause.
 
@@ -72,7 +72,7 @@ review comments unanswered. A session of its own can simply block until the revi
 **Cerebro orchestrates them without starting them:**
 
 ```bash
-.claude/cerebro/scripts/launch Cerebro
+.cerebro/cerebro/scripts/launch Cerebro
 ```
 
 That session is interactive, runs on Fable, and does nothing until you ask. It cannot start an
@@ -95,7 +95,7 @@ There are no `.log` files any more; they belonged to the `--print` launcher that
 `stream-json` stream. `.cerebro/state/<name>.state.json` is what Cerebro reads instead.
 
 Cerebro also sweeps up after implementers that did not get to the end of their own cleanup, on
-startup and every ten minutes. `.claude/cerebro/scripts/prune-worktrees.sh` removes an agent worktree only when
+startup and every ten minutes. `.cerebro/cerebro/scripts/prune-worktrees.sh` removes an agent worktree only when
 nothing can be lost from it: clean tree, work already on main, untouched for half an hour. Alongside
 it Cerebro checks the claims — a bead left `in_progress` whose work is already on main is a delivered
 bead whose implementer died before closing it, so Cerebro closes it and reports that it had to — and
@@ -107,7 +107,7 @@ sweeps are described in `.claude/agents/orchestrator.md`.
 **The planner is a session too, and it is Xavier:**
 
 ```bash
-.claude/cerebro/scripts/launch Xavier
+.cerebro/cerebro/scripts/launch Xavier
 ```
 
 Interactive, and it has to be: it must put a question and an HTML mockup in front of you and wait
@@ -125,7 +125,7 @@ is a floor under the fleet, not a ceiling on urgent work.
 **User feedback is Moira, and she owns the inbox:**
 
 ```bash
-.claude/cerebro/scripts/launch Moira
+.cerebro/cerebro/scripts/launch Moira
 ```
 
 Interactive for the same reason the planner is — she has to put an issue in front of you and wait.
@@ -156,7 +156,7 @@ she sleeps ten minutes and goes round again.
 **Verification is Psylocke, and closed stops being terminal:**
 
 ```bash
-.claude/cerebro/scripts/launch Psylocke
+.cerebro/cerebro/scripts/launch Psylocke
 ```
 
 Interactive, for the same reason the planner and Moira are — she has to put a running application in
@@ -180,7 +180,7 @@ status comments.
 **Technical debt is Bishop, and it files rather than fixes:**
 
 ```bash
-.claude/cerebro/scripts/launch Forge
+.cerebro/cerebro/scripts/launch Forge
 ```
 
 Unlike the other five, Bishop is not part of the build-review-merge-verify cycle at all — it is the
@@ -193,7 +193,7 @@ finding lands at **P4**, unranked, for Xavier to triage with you like anything e
 Bishop never edits code and never sets a priority itself. It writes the same
 `.cerebro/state/<name>.state.json` file every other agent does, but holds no claim, lease or
 PR, so unlike every other role here it ends its own turn once the sweep is reported rather than
-looping — start it again with `.claude/cerebro/scripts/launch Forge` whenever you want another read.
+looping — start it again with `.cerebro/cerebro/scripts/launch Forge` whenever you want another read.
 
 All six roles are defined in `.claude/agents/`.
 

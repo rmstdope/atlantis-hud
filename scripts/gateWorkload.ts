@@ -14,8 +14,7 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { cerebroScript } from "./cerebro";
 
 export type Workload = "rust" | "non-rust";
 export type WorkloadDecision = { workload: Workload; reason: string };
@@ -75,12 +74,7 @@ export function interpretClassifier(run: { status: number | null; stdout: string
  * the script writes a diagnostic line per path to stderr, which would bury the gate's first line.
  */
 export function classifyPaths(paths: readonly string[], cwd: string): WorkloadDecision {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const run = spawnSync(
-    resolve(here, "..", ".claude", "cerebro", "scripts", "build-workload"),
-    ["--classify", ...paths],
-    { cwd, encoding: "utf8" }
-  );
+  const run = spawnSync(cerebroScript("build-workload"), ["--classify", ...paths], { cwd, encoding: "utf8" });
   if (run.error) {
     return { workload: "rust", reason: `build-workload could not start: ${run.error.message}` };
   }
