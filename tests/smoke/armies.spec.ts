@@ -565,11 +565,18 @@ test("the palette finds an Army by name and choosing it makes it the pane's sour
 }) => {
   await workspace(page);
   await newArmy(page, "Northern Host");
-  await selectUnit(page, OWN_UNIT);
+  // The member stands at (26,52), away from the hex on screen, so a choice that travelled to it
+  // or selected its hex would show below (review, #1618).
+  await page.getByTestId("unit-source-own").click();
+  // The table windows its rows; the filter brings this one into the DOM (as the pick walk does).
+  await page.getByLabel("Filter units").fill("Seven of Eight");
+  await page.getByTestId(`unit-row-${OTHER_OWN_UNIT}`).click();
   await page.getByTestId("add-to-army").click();
   await page.getByTestId("add-to-army-panel").getByText("Northern Host").click();
-  // Back on This hex, so the choice below is what changes the source.
+  // Back on This hex in Inholm, so the choice below is what changes the source.
   await page.getByTestId("unit-source-hex").click();
+  await selectHex(page, "1:7,53");
+  await expect(page.getByTestId("panel-region")).toContainText("Inholm");
   const map = await mapTransform(page);
 
   const row = await findInPalette(page, "north");
@@ -582,7 +589,7 @@ test("the palette finds an Army by name and choosing it makes it the pane's sour
   await expect(page.getByTestId("panel-units")).toContainText("— Northern Host, 1 unit");
   await expect(page.getByTestId(/^unit-source-army-/)).toHaveAttribute("data-selected", "true");
   // The keyboard lands on the Army's first row, so the arrows work at once.
-  await expect(rows(page).first()).toBeFocused();
+  await expect(page.getByTestId(`unit-row-${OTHER_OWN_UNIT}`)).toBeFocused();
   // Neither the map nor the selected hex moves.
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
   expect(await mapTransform(page)).toBe(map);
@@ -619,6 +626,9 @@ test("an empty Army reads no units this turn, and choosing it focuses its rail e
 test("choosing an Army from the palette unfolds a folded units pane", async ({ page }) => {
   await workspace(page);
   await newArmy(page, "Northern Host");
+  await selectUnit(page, OWN_UNIT);
+  await page.getByTestId("add-to-army").click();
+  await page.getByTestId("add-to-army-panel").getByText("Northern Host").click();
   const units = page.getByTestId("panel-units");
   await units.getByRole("button", { expanded: true }).click();
   await expect(units).toHaveAttribute("data-collapsed", "true");
@@ -627,5 +637,7 @@ test("choosing an Army from the palette unfolds a folded units pane", async ({ p
   await page.keyboard.press("Enter");
 
   await expect(units).toHaveAttribute("data-collapsed", "false");
-  await expect(units).toContainText("— Northern Host, 0 units");
+  await expect(units).toContainText("— Northern Host, 1 unit");
+  // The rows remount with the unfold, in the same batch as the source change; focus still lands.
+  await expect(rows(page).first()).toBeFocused();
 });
