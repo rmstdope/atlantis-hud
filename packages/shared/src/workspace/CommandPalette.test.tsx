@@ -262,3 +262,24 @@ describe("a greyed row in the palette (ah-mlls.7)", () => {
     expect(row).not.toContain("palette-unavailable");
   });
 });
+
+describe("the mage sheet row with no mages (ah-mlls.8)", () => {
+  it("can be chosen, and says no mages dim and in italics before the kind", () => {
+    const row = rowOf(
+      draw([
+        {
+          id: "action-export-mage-sheet",
+          kind: "action",
+          label: "Export mage sheet",
+          count: { text: "no mages", quiet: true },
+          run: noop
+        }
+      ]),
+      "Export mage sheet"
+    );
+    expect(row).toMatch(/class="[^"]*italic text-ink-dim[^"]*">no mages</);
+    expect(row.indexOf("no mages")).toBeLessThan(row.indexOf(">action<"));
+    expect(row).not.toContain("aria-disabled");
+    expect(row).toContain('aria-selected="true"');
+  });
+});

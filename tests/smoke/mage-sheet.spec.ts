@@ -62,6 +62,7 @@ test("exports the mage sheet from the palette", async ({ page }) => {
   await expect(row).toHaveAttribute("aria-selected", "false");
   await expect(row).toHaveAttribute("aria-disabled", "true");
   await page.keyboard.press("Enter");
+  await expect(palette).toBeVisible();
   // Playwright will not click an aria-disabled element unforced; a person can, and nothing happens.
   await row.click({ force: true });
   await expect(palette).toBeVisible();
@@ -74,6 +75,7 @@ test("exports the mage sheet from the palette", async ({ page }) => {
   await expect(page.getByTestId("import-status")).toContainText("region");
 
   await page.keyboard.press("ControlOrMeta+k");
+  // TURN_71 has mages (the first walk in this file exports them), so the row carries no remark.
   await page.getByTestId("palette-input").fill("export mage sheet");
   // The only match, so the row Enter runs is this one.
   await expect(page.getByTestId("palette-item")).toHaveCount(1);
