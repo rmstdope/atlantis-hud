@@ -26,6 +26,7 @@ describe("worldBuildInput", () => {
     expect(input.dataHtml).toContain("Skill reports:");
     expect(input.skillUses?.CLEA).toBe("both");
     expect(input.skillUses?.FIRE).toBe("combat");
+    expect(input).toMatchObject({ rulesHtml: "<p>rules</p>", orderLanguage: "new-age-trident", ...SOURCE });
   });
 
   it("passes a data page through with no flags, and carries every other input as given", () => {
