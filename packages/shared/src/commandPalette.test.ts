@@ -529,8 +529,7 @@ describe("game data in the palette", () => {
   });
 
   it("offers no game data when the ruleset has not loaded", () => {
-    const without = build({
-    });
+    const without = build({ gameData: [] });
     expect(without).toEqual([]);
   });
 });
