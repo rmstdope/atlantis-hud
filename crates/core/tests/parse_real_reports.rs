@@ -689,3 +689,53 @@ fn turn_24_reads_the_moves_guards_blocked() {
         ]
     );
 }
+
+/// Faction 95's turn 74 (ah-4b02): its events announce hexes "utterly annihilated", each line
+/// opening with a terrain and a coordinate exactly as a region header does. Those lines are events,
+/// and the attitudes and unclaimed silver printed after them belong to the preamble.
+#[test]
+fn turn_74_keeps_its_preamble_past_events_that_name_a_hex() {
+    let parsed = parse_regions(atlantis_hud_fixtures::G7_F95_T74.text);
+    let header = &parsed.header;
+
+    assert_eq!(header.unclaimed_silver, Some(5866));
+    assert_eq!(
+        header.attitudes.default_attitude.as_deref(),
+        Some("Unfriendly")
+    );
+    let hostile = header
+        .attitudes
+        .levels
+        .iter()
+        .find(|level| level.attitude == "Hostile")
+        .expect("a Hostile level");
+    assert_eq!(
+        hostile
+            .factions
+            .iter()
+            .map(|faction| faction.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Creatures", "The Guardsmen"]
+    );
+    assert!(
+        header.events.iter().any(|event| event.contains(
+            "jungle (15,69) in Crillversqui, contains Iywick [city] has been utterly annihilated"
+        )),
+        "the annihilation is kept as an event"
+    );
+    assert!(
+        header
+            .events
+            .iter()
+            .any(|event| event
+                .contains("The altar in barren (31,47) in The Barrens is fully empowered")),
+        "events after the annihilations are kept too"
+    );
+    assert!(
+        parsed
+            .regions
+            .iter()
+            .all(|region| region.region_id != "1:15,69"),
+        "an annihilation event is not a region the report describes"
+    );
+}
