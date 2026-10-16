@@ -131,7 +131,8 @@ fn a_mage_is_charged_nothing_for_the_recruits_the_game_refuses() {
     assert_eq!(
         refusals,
         vec![(
-            "this unit is a mage and cannot recruit, so this order buys nobody",
+            "this unit is a mage and cannot recruit, and leaders and normal men may not be mixed, so \
+             this order buys nobody",
             Some("2390")
         )]
     );

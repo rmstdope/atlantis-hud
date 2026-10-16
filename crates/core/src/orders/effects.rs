@@ -700,6 +700,15 @@ pub struct ItemChange {
     /// in. `false` on a tag the catalogue does not carry, which is the same answer it gives for a
     /// sword.
     pub is_man: bool,
+    /// The item's plural as the report prints it - `livestock`, not `livestocks` - for a consumer
+    /// that counts these goods (`ah-yvgi`). `None` where the report never showed more than one of
+    /// them, and the consumer falls back to its own plural of `name`. Filled once, as the preview
+    /// is assembled, rather than at every site that records a change.
+    //
+    // `skip_serializing_if` is load-bearing, as on `borrower`: the TypeScript says `plural?:`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub plural: Option<String>,
 }
 
 /// One item a `CAST` order creates this month (`ah-ofpb.5`). `fewest` and `most` are equal when it
@@ -914,6 +923,8 @@ pub fn preview_orders_on_map(
         }
     }
 
+    // The report's own plurals, so a change can be counted the way the game counts it (`ah-yvgi`).
+    let plurals = super::semantics::plurals_in(&report);
     let mut regions: BTreeMap<String, Vec<UnitPreview>> = BTreeMap::new();
     for decided in decided {
         let changes = decided.entry.changes();
@@ -988,7 +999,11 @@ pub fn preview_orders_on_map(
         let item_changes = if dissolving {
             Vec::new()
         } else {
-            entry.item_log.changes().to_vec()
+            let mut changes = entry.item_log.changes().to_vec();
+            for change in &mut changes {
+                change.plural = plurals.get(&change.tag.to_ascii_uppercase()).cloned();
+            }
+            changes
         };
         let transport_sent = entry.transport_sent.clone();
         let transport_received = entry.transport_received.clone();
@@ -2168,6 +2183,7 @@ fn apply_item_movement(
             other: movement.other.clone(),
             borrower: None,
             is_man: ruleset.is_man(&movement.tag),
+            plural: None,
         },
         stock,
     );
@@ -2848,6 +2864,7 @@ impl Working {
                         other: Some(dissolving),
                         borrower: None,
                         is_man: false,
+                        plural: None,
                     },
                     Stock::Moved,
                 );
@@ -2909,6 +2926,7 @@ impl Working {
                         other: None,
                         borrower: None,
                         is_man: false,
+                        plural: None,
                     },
                     Stock::Moved,
                 );
@@ -3445,6 +3463,7 @@ impl Working {
                             // The refusal above already asked the same question of the same tag.
                             borrower: None,
                             is_man: self.ruleset.is_man(&tag),
+                            plural: None,
                         },
                         Stock::Moved,
                     );
@@ -3626,6 +3645,7 @@ impl Working {
                         other: lender_other.clone(),
                         borrower: lender_borrower.clone(),
                         is_man,
+                        plural: None,
                     },
                     Stock::Moved,
                 );
@@ -3651,6 +3671,7 @@ impl Working {
                         other: far_end.clone(),
                         borrower: None,
                         is_man,
+                        plural: None,
                     },
                     Stock::Moved,
                 );
@@ -3668,6 +3689,7 @@ impl Working {
                         other: Some(near_end.clone()),
                         borrower: None,
                         is_man,
+                        plural: None,
                     },
                     Stock::Moved,
                 );
@@ -4213,6 +4235,7 @@ impl Working {
                             }),
                             borrower: None,
                             is_man,
+                            plural: None,
                         },
                         Stock::Moved,
                     );
@@ -4236,6 +4259,7 @@ impl Working {
                                 }),
                                 borrower: None,
                                 is_man,
+                                plural: None,
                             },
                             Stock::Moved,
                         );
@@ -9524,8 +9548,41 @@ mod tests {
                     other: None,
                     borrower: None,
                     is_man: false,
+                    plural: None,
                 }]
             );
+        }
+
+        /// `ah-yvgi`: the silver popup counted `114 livestocks`, adding an `s` to the catalogue's
+        /// singular. The report prints the game's own plural (`114 livestock [LIVE]`), so each
+        /// change carries it for whoever has to count the goods.
+        #[test]
+        fn an_item_change_carries_the_plural_the_report_prints() {
+            let report = [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "  For Sale: 12 horses [HORS] at $10.",
+                "  Wanted: 200 livestock [LIVE] at $21.",
+                "",
+                "* Farmers (900), Foo (1), behind, leader [LEAD], 114 livestock [LIVE], 100 \
+                 silver [SILV]. Weight: 20. Capacity: 0/0/15/0.",
+                "",
+            ]
+            .join("\n");
+            let response = preview_over(&report, "unit 900\nSELL 114 LIVE\nBUY 2 HORS\n");
+            let unit = only_unit(&response);
+            let plural_of = |tag: &str| {
+                unit.item_changes
+                    .iter()
+                    .find(|change| change.tag == tag)
+                    .unwrap_or_else(|| panic!("no {tag} change: {:?}", unit.item_changes))
+                    .plural
+                    .clone()
+            };
+
+            assert_eq!(plural_of("LIVE"), Some("livestock".to_string()));
+            assert_eq!(plural_of("HORS"), Some("horses".to_string()));
         }
 
         /// `ah-rgkk.4.1`, increment 1. A race is people, and the ledger site must ask the ruleset
@@ -11897,6 +11954,7 @@ mod tests {
                     }),
                     borrower: None,
                     is_man: false,
+                    plural: None,
                 }],
             );
 
@@ -11916,6 +11974,7 @@ mod tests {
                     }),
                     borrower: None,
                     is_man: false,
+                    plural: None,
                 }],
             );
         }
@@ -11986,6 +12045,7 @@ mod tests {
                     other: None,
                     borrower: None,
                     is_man: false,
+                    plural: None,
                 }],
             );
         }
@@ -12013,6 +12073,7 @@ mod tests {
                     other: None,
                     borrower: None,
                     is_man: false,
+                    plural: None,
                 }],
             );
         }
@@ -12123,6 +12184,7 @@ mod tests {
                     }),
                     borrower: None,
                     is_man: false,
+                    plural: None,
                 }],
             );
 
@@ -12142,6 +12204,7 @@ mod tests {
                     }),
                     borrower: None,
                     is_man: false,
+                    plural: None,
                 }],
             );
         }
@@ -12171,6 +12234,7 @@ mod tests {
                     }),
                     borrower: None,
                     is_man: false,
+                    plural: None,
                 }],
             );
             assert_eq!(

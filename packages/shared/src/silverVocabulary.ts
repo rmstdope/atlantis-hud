@@ -38,7 +38,9 @@ const SPENDS: Record<NonNullable<UnitSilver["shortOn"]>, string> = {
 };
 
 /**
- * The tail of the `cannot-pay` sentence, per order kind. `give` is not a cost - "it gives away",
+ * The tail of the `cannot-pay` sentence, per order kind. The sentence's figure is the shortfall,
+ * never the cost - "8650 short of what its purchase costs", not "cannot pay the 8650 its purchase
+ * costs" of a 10650 purchase (`ah-yvgi`). `give` is not a cost - "it gives away",
  * not "its X costs" - so these are complete tails rather than a noun interpolated into one
  * template, which would produce `its give costs` and typecheck (`ah-moq3`).
  */
@@ -766,7 +768,7 @@ export const SILVER_NOTES: readonly SilverNote[] = [
     id: "cannot-pay",
     when: ({ silver }) => silver.shortForOrders !== null && silver.shortForOrders > 0,
     say: ({ silver }) =>
-      `This unit cannot pay the ${silver.shortForOrders} ${CANNOT_PAY[silver.shortOn ?? "orders"]}.`,
+      `This unit is ${silver.shortForOrders} short of what ${CANNOT_PAY[silver.shortOn ?? "orders"]}.`,
     example: () => ({
       unit: aReportUnit(),
       silver: aUnitSilver({

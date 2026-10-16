@@ -296,7 +296,7 @@ describe("the silver section", () => {
     // The shortfall still reads first, and the capped count is no longer lost behind it (`ah-x36v`).
     expect(both.silver?.note).toBe(
       [
-        "This unit cannot pay the 200 its production costs.",
+        "This unit is 200 short of what its production costs.",
         "This unit has silver for 1 catapult, not the 2 its skill and tools could make."
       ].join("\n")
     );
@@ -1023,7 +1023,7 @@ describe("the silver section", () => {
 
     expect(summary.silver?.note).toBe(
       [
-        "This unit cannot pay the 50 its study costs.",
+        "This unit is 50 short of what its study costs.",
         "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
       ].join("\n")
     );
@@ -1048,7 +1048,7 @@ describe("the silver section", () => {
     expect(summary.silver?.note).toBe(
       [
         "Wages arrive too late to pay for this month's orders, so this unit is 60 short when it buys.",
-        "This unit cannot pay the 60 its purchase costs.",
+        "This unit is 60 short of what its purchase costs.",
         "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
       ].join("\n")
     );
@@ -1072,12 +1072,36 @@ describe("the silver section", () => {
       ).silver?.note;
 
     const ally = "This unit may avoid starvation if a same-region allied unit is sharing silver or food.";
-    expect(note("study")).toBe(["This unit cannot pay the 50 its study costs.", ally].join("\n"));
-    expect(note("buy")).toBe(["This unit cannot pay the 50 its purchase costs.", ally].join("\n"));
-    expect(note("produce")).toBe(["This unit cannot pay the 50 its production costs.", ally].join("\n"));
-    expect(note("cast")).toBe(["This unit cannot pay the 50 its casting costs.", ally].join("\n"));
-    expect(note("give")).toBe(["This unit cannot pay the 50 it gives away.", ally].join("\n"));
-    expect(note(null)).toBe(["This unit cannot pay the 50 its orders cost.", ally].join("\n"));
+    expect(note("study")).toBe(["This unit is 50 short of what its study costs.", ally].join("\n"));
+    expect(note("buy")).toBe(["This unit is 50 short of what its purchase costs.", ally].join("\n"));
+    expect(note("produce")).toBe(["This unit is 50 short of what its production costs.", ally].join("\n"));
+    expect(note("cast")).toBe(["This unit is 50 short of what its casting costs.", ally].join("\n"));
+    expect(note("give")).toBe(["This unit is 50 short of what it gives away.", ally].join("\n"));
+    expect(note(null)).toBe(["This unit is 50 short of what its orders cost.", ally].join("\n"));
+  });
+
+  // ah-yvgi: Seven of Eight (18642) holds 2000 after CLAIM and BUYs 50 GEM at 213 - a 10650
+  // purchase, 8650 of it uncovered. The figure is the shortfall, never the cost.
+  it("names_a_shortfall_as_a_shortfall_and_not_as_what_the_purchase_costs", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "18642" }),
+      forecast({
+        held: 0,
+        income: 2000,
+        lateIncome: 0,
+        expense: 10650,
+        wantedForOrders: 10650,
+        atMonthEnd: -8650,
+        shortForOrders: 8650,
+        shortOn: "buy"
+      }),
+      true,
+      true
+    );
+
+    const note = summary.silver?.note ?? "";
+    expect(note).not.toContain("cannot pay the 8650");
+    expect(note.split("\n")).toContain("This unit is 8650 short of what its purchase costs.");
   });
 
   it("says_when_a_faction_mate_pays_for_this_units_orders", () => {
@@ -1354,7 +1378,7 @@ describe("the silver section", () => {
     expect(summary.silver?.note).toBe(
       [
         "Wages arrive too late to pay for this month's orders, so this unit is 60 short when it buys.",
-        "This unit cannot pay the 60 its purchase costs.",
+        "This unit is 60 short of what its purchase costs.",
         "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
       ].join("\n")
     );

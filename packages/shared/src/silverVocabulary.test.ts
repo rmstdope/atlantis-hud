@@ -713,7 +713,7 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
       "There is not enough faction food here to feed every unit set to eat it.",
     "wages-too-late":
       "Wages arrive too late to pay for this month's orders, so this unit is 40 short when it buys.",
-    "cannot-pay": "This unit cannot pay the 50 its study costs.",
+    "cannot-pay": "This unit is 50 short of what its study costs.",
     "shared-silver-pays-orders":
       "A faction-mate's silver in this hex pays for this unit's orders.",
     "buy-all-settled":
