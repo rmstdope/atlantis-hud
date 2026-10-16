@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Armies in the palette</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --soft:#a3b0c0; --dim:#8a97a8; --ink:#dbe3ec; --brass:#d9a441; --brassb:#eebe63; --ok:#4fb783; --danger:#d97070; --select:#6fb3ff; --own:#5ec8f0; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 24px 64px; background:var(--ground); color:var(--ink); font:15px/1.55 Georgia, "Times New Roman", serif; }
+  header, main { max-width:1100px; margin:auto; }
+  h1 { margin:0; font-size:26px; } h1 span, h2 { color:var(--brass); }
+  header p { color:var(--soft); max-width:90ch; }
+  h2 { margin:36px 0 0; font-size:18px; }
+  h2 + p { color:var(--soft); font-size:13.5px; margin:4px 0 0; max-width:90ch; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(330px, 1fr)); gap:20px; margin-top:16px; }
+  .card { overflow:hidden; border:1px solid var(--edge); border-radius:9px; background:var(--panel); }
+  .card:target { border-color:var(--brass); box-shadow:0 0 0 2px var(--brass); }
+  .card header { padding:14px 16px 10px; }
+  .card h3 { margin:0; font-size:16px; }
+  .card h3 em { color:var(--brass); font-size:11px; font-style:normal; letter-spacing:.12em; margin-right:7px; }
+  .card header p { margin:6px 0 0; font-size:12.5px; color:var(--soft); }
+  .palette { margin:0 16px 16px; overflow:hidden; border:1px solid var(--edge); border-radius:5px; background:var(--raised); font-family:Arial, sans-serif; font-size:12px; }
+  .query { padding:7px 9px; border-bottom:1px solid var(--edge); color:var(--ink); }
+  .cursor { color:var(--brass); } .ph { color:var(--dim); }
+  .row { display:flex; align-items:baseline; gap:8px; padding:6px 9px; color:var(--soft); }
+  .row + .row { border-top:1px solid #1e2733; }
+  .row.active { background:#26303d; color:var(--ink); }
+  .place { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+  .right { flex:none; margin-left:auto; display:flex; gap:8px; align-items:baseline; }
+  .kind { flex:none; color:var(--dim); font-size:10px; letter-spacing:.08em; text-transform:uppercase; }
+  .count { flex:none; color:var(--soft); font-size:10.5px; white-space:nowrap; }
+  .count.zero { color:var(--dim); font-style:italic; }
+  .faction { flex:none; color:var(--soft); font-size:10.5px; white-space:nowrap; }
+  .empty { padding:9px; color:var(--dim); font-style:italic; }
+  .notes { margin:0; padding:12px 16px 14px 32px; border-top:1px solid var(--edge); color:var(--soft); font-size:12.5px; }
+  .notes li + li { margin-top:4px; } .notes .good { color:var(--ok); } .notes .bad { color:var(--danger); }
+  .state { margin-top:14px; padding:13px 16px; border-left:3px solid var(--brass); border-radius:5px; background:var(--panel); color:var(--soft); font-size:13px; }
+  .state b { color:var(--ink); }
+  /* the app after choosing */
+  .scene { margin:0 16px 16px; border:1px solid var(--edge); border-radius:5px; background:var(--raised); font-family:Arial, sans-serif; font-size:11.5px; overflow:hidden; }
+  .map { height:86px; display:flex; align-items:center; justify-content:center; gap:3px; border-bottom:1px solid var(--edge); color:var(--dim); position:relative; }
+  .hex { width:40px; height:35px; clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%); background:#2a3646; display:inline-block; }
+  .hex.sel { background:var(--brass); } .hex.mem { background:#3a5a73; }
+  .maptag { position:absolute; left:8px; top:6px; font-size:10px; color:var(--dim); }
+  .dock { display:flex; min-height:120px; }
+  .rail { width:118px; flex:none; border-right:1px solid var(--edge); padding:5px; background:#1a202a; }
+  .rail div { padding:2px 5px; border-radius:3px; display:flex; color:var(--soft); }
+  .rail div span { margin-left:auto; color:var(--dim); font-size:10px; }
+  .rail .grp { color:var(--dim); font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; margin-top:6px; }
+  .rail .on { background:#26303d; color:var(--ink); outline:1px solid var(--select); }
+  .rail .new { color:var(--brassb); }
+  .table { flex:1; padding:5px 8px; }
+  .table .th { color:var(--dim); font-size:10px; letter-spacing:.06em; text-transform:uppercase; display:grid; grid-template-columns:1.6fr 1fr .5fr; padding:2px 4px; border-bottom:1px solid var(--edge); }
+  .table .tr { display:grid; grid-template-columns:1.6fr 1fr .5fr; padding:3px 4px; color:var(--soft); }
+  .table .tr.focus { outline:1px solid var(--select); color:var(--ink); background:#232b37; }
+  .table .tr .u { color:var(--own); }
+  .table .tr.gone { color:var(--dim); }
+  .table .tr.gone .u { color:var(--dim); }
+  .table .title { color:var(--ink); margin-bottom:3px; }
+  .collapsed { padding:5px 8px; color:var(--dim); border-top:1px solid var(--edge); }
+  kbd { padding:1px 4px; border:1px solid var(--edge); border-radius:3px; background:var(--raised); color:var(--ink); font:11px monospace; }
+  .narrow { width:300px; }
+</style>
+</head>
+<body><header><h1>Armies in the palette — <span>the words and an empty Army</span></h1>
+<p>You chose: name + count + "army" on the row; choosing shows the Army in the units pane and leaves the map alone; Armies first when nothing is typed. Two last things.</p><p class="lede" style="color:#eebe63;font-style:italic"><strong>Chosen:</strong> every option marked "recommended" — row A (name, count, "army"), choosing A (the units pane shows the Army, map stays), order A (Armies first with nothing typed); words A ("5 units" / "1 unit" / "no units this turn"); empty Army A (focus on the Army in the pane's list).</p></header><main>
+<h2>4 — The words for the count</h2><p>The count is how many of the Army's units this turn's report shows (the same number as in the units pane's list).</p>
+<div class="cards">
+<section class="card" id="words-a"><header><h3><em>A — recommended</em> "5 units" · "1 unit" · "no units this turn"</h3><p>Plain counting; only the empty case says "this turn", because that's when it matters.</p></header>
+<div class="palette"><div class="query"><span class="cursor">|</span></div><div class="row active"><span class="place">Iron Guard</span><span class="right"><span class="count">5 units</span><span class="kind">army</span></span></div><div class="row"><span class="place">Scouts</span><span class="right"><span class="count">1 unit</span><span class="kind">army</span></span></div><div class="row"><span class="place">Reserve</span><span class="right"><span class="count zero">no units this turn</span><span class="kind">army</span></span></div></div>
+<ul class="notes"><li class="good">Reads naturally; "no units this turn" tells you why the Army looks empty.</li><li class="bad">"5 units" doesn't say that 2 more are remembered but not seen.</li></ul></section>
+<section class="card" id="words-b"><header><h3><em>B</em> "5 of 7 seen" · "1 of 1 seen" · "0 of 3 seen"</h3><p>Both numbers: seen this turn, and how many units the Army holds.</p></header>
+<div class="palette"><div class="query"><span class="cursor">|</span></div><div class="row active"><span class="place">Iron Guard</span><span class="right"><span class="count">5 of 7 seen</span><span class="kind">army</span></span></div><div class="row"><span class="place">Scouts</span><span class="right"><span class="count">1 of 1 seen</span><span class="kind">army</span></span></div><div class="row"><span class="place">Reserve</span><span class="right"><span class="count zero">0 of 3 seen</span><span class="kind">army</span></span></div></div>
+<ul class="notes"><li class="good">Shows units that are missing from this turn's report.</li><li class="bad">Longer, and a number the units pane's list doesn't show, so the two disagree in form. An Army with no units at all reads "0 of 0 seen".</li></ul></section>
+</div>
+<h2>5 — Where focus goes when the Army has nothing to show</h2><p>Choosing an Army with no units in it yet (or none in this turn's report and none remembered) — there is no first unit to put focus on.</p>
+<div class="cards">
+<section class="card" id="empty-a"><header><h3><em>A — recommended</em> On the Army in the pane's list</h3><p>The highlighted Army itself takes focus (blue ring), so the arrow keys move between sources and you can rename it straight away, as you would by clicking it there.</p></header>
+<div class="scene"><div class="dock"><div class="rail"><div>This hex<span>3</span></div><div>All my units<span>41</span></div><div>Other factions<span>12</span></div><div class="grp">Armies</div><div>Iron Guard<span>5</span></div><div class="on" style="outline:2px solid var(--select)">Reserve<span>0</span></div><div class="new">+ New Army</div></div><div class="table"><div class="title">Reserve</div><div class="th"><span>Unit</span><span>Where</span><span>Men</span></div><div class="tr gone"><span class="u">(this Army has no units)</span><span></span><span></span></div></div></div></div>
+<ul class="notes"><li class="good">Focus is somewhere useful and visible.</li></ul></section>
+<section class="card" id="empty-b"><header><h3><em>B</em> Back where it was before the palette opened</h3><p>As closing the palette with Esc does.</p></header>
+<div class="scene"><div class="dock"><div class="rail"><div>This hex<span>3</span></div><div>All my units<span>41</span></div><div>Other factions<span>12</span></div><div class="grp">Armies</div><div>Iron Guard<span>5</span></div><div class="on" style="">Reserve<span>0</span></div><div class="new">+ New Army</div></div><div class="table"><div class="title">Reserve</div><div class="th"><span>Unit</span><span>Where</span><span>Men</span></div><div class="tr gone"><span class="u">(this Army has no units)</span><span></span><span></span></div></div></div></div>
+<ul class="notes"><li class="good">Nothing moves under you.</li><li class="bad">The pane changed but focus is elsewhere — the keys don't act on what you just chose.</li></ul></section>
+</div>
+<div class="state">The pane's own text for an empty Army is unchanged from today — whatever it says now, it keeps saying.</div>
+</main></body></html>
