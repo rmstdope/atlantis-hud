@@ -73,8 +73,8 @@ use crate::orders::silver::{
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
-    give_endpoint, give_outcome, mage_give_refused, party_label, party_unit_id, recruit_refused,
-    GiveEndpoint, GiveOutcome, GiveReach, GiveRefusal, GiveVerdict,
+    give_endpoint, party_label, party_unit_id, recruit_refused, GiveEndpoint, GiveOutcome,
+    GiveReach, GiveRefusal, GiveVerdict,
 };
 use crate::orders::transfers::{
     in_report_order, report_order, report_ranks, PendingTransfer, Placement,
@@ -2723,9 +2723,10 @@ fn forecast_hex(
         // Resolving an item an order names is this module's business, and a gift of silver and a
         // priced withdrawal both need it.
         let item_tag = |text: &str| resolve_item(text, hex, ordered, ruleset);
-        // Whether a `GIVE`'s target is one the order can reach at all. Resolving a party against a
-        // hex is this module's business, exactly as `item_tag` is; `silver` holds no hex types.
-        let give_reach_of = |party: &Party| hex.give_endpoint(party, &ordered.unit.unit_id).reach;
+        // Where a `GIVE`'s target stands and what each tag of it does - the verdict the ledger
+        // judges the same order by (`ah-amkn`). Resolving a party against a hex is this module's
+        // business, exactly as `item_tag` is; `silver` holds no hex types.
+        let give_verdict_of = |party: &Party| hex.give_verdict(party, ordered, ruleset).1;
         // The target a `GIVE` this month left uncertain named, for an upper-case tag - so a later
         // order pricing that tag says the month cannot be added up rather than reading the
         // report's old holding (`ah-66yi`).
@@ -2853,7 +2854,7 @@ fn forecast_hex(
                 counted_item: &counted_by_name,
                 counted_or_none: &counted_or_none_by_name,
                 class_carries_silver: &|class: &str| class_carries_silver(class, ruleset),
-                give_reach: &give_reach_of,
+                give_verdict: &give_verdict_of,
                 uncertain_after_gifts: &uncertain_after_gifts,
             },
             match market_purse.adds_for(index) {
@@ -4523,15 +4524,28 @@ fn apply_transfers(
                 GiveReach::Foreign => continue,
             },
         };
+        // Judged once for every tag the transfer names (`ah-amkn`): the giver's skills as this
+        // walk has them now, so a later order in this same document still sees the men, the skills
+        // and the holdings a mage keeps; the receiver's as the report printed them (`ah-ndp9`).
+        let verdict = if transfer.is_give {
+            GiveVerdict::give(
+                receiver.reach,
+                working
+                    .get(&source)
+                    .map_or(&units[source].unit.skills, |state| &state.skills),
+                receiver
+                    .row
+                    .map(|position| units[position].unit.skills.as_slice()),
+                Some(ruleset),
+            )
+        } else {
+            GiveVerdict::take(&units[transfer.actor].unit.skills, Some(ruleset))
+        };
         // A GIVE that cannot be resolved is a no-op exactly as `effects::give` returns early for
         // one: the giver never even loses what it named.
-        if receiver.reach.gives_nothing() {
+        if verdict.gives_nothing() {
             continue;
         }
-        // Unit 0 discards rather than gives, and is not "another unit" - the one shape where the
-        // game hands over even the items it otherwise refuses to move (`rules/give`, epic
-        // decision 9).
-        let discarding = receiver.reach == GiveReach::Discard;
 
         working
             .entry(source)
@@ -4613,6 +4627,7 @@ fn apply_transfers(
                 |item| item.name.clone(),
             );
             let is_man = ruleset.is_man(&tag);
+            let outcome = verdict.of(&tag, Some(ruleset));
             let source_doubted = source_state.doubted;
             let source_skills = source_state.skills.clone();
             // What the source has as the engine counts it for an exact quantity: its own stock and
@@ -4633,28 +4648,23 @@ fn apply_transfers(
                 Amount::All { .. } => transfers::quantity_moved(&transfer.amount, held),
             };
 
-            // `rules/magic`: "mages may not GIVE men at all". Asked against the source's *current*
-            // skills, so a later order in this same document still sees the men, the skills and
-            // the holdings the mage keeps. Deliberately not recorded as a `RefusedTransfer`: this
-            // bead adds no diagnostic, and `check_refused_transfers` must say nothing new.
-            if transfer.is_give && mage_give_refused(&source_skills, &tag, Some(ruleset)) {
+            // `rules/magic`: "mages may not GIVE men at all". Deliberately not recorded as a
+            // `RefusedTransfer`: `check_refused_transfers` says nothing about it. The verdict asks
+            // it ahead of the receiver's refusal, so a mage giving men to a mage stays silent.
+            if outcome == GiveOutcome::Refused(GiveRefusal::MageGivesMen) {
                 continue;
             }
 
             // The mirror of that rule: no man may join a mage either, by GIVE or by TAKE
-            // (`ah-ndp9`). Asked of the receiver's skills as the report printed them, the one
-            // policy this bead applies on every surface. Placed *after* the departure guard on
-            // purpose: a mage giving men to a mage trips both and stays silent, as it does today.
-            if is_man {
+            // (`ah-ndp9`), recorded for `MEN_SENT_INTO_A_MAGE`.
+            if outcome == GiveOutcome::Refused(GiveRefusal::MenIntoAMage) {
                 if let Some(receiver_position) = receiver.row {
-                    if magic::is_mage(ruleset, &units[receiver_position].unit.skills) {
-                        into_a_mage.push((tag.clone(), moved));
-                        if mage_id.is_none() && transfer.is_give {
-                            mage_id = Some(units[receiver_position].unit.unit_id.clone());
-                        }
-                        continue;
+                    into_a_mage.push((tag.clone(), moved));
+                    if mage_id.is_none() && transfer.is_give {
+                        mage_id = Some(units[receiver_position].unit.unit_id.clone());
                     }
                 }
+                continue;
             }
 
             // A gift the source cannot cover is clamped here and is *not* clamped identically by
@@ -4750,15 +4760,10 @@ fn apply_transfers(
             }
 
             // 51 monsters and the imprisoned entity carry `This item cannot be given to other
-            // units.`, and a discard is not another unit (decision 9 above) - so a discard moves
-            // them too, recording nothing, while any other receiver does not.
-            if !discarding {
-                let reach = if transfer.is_give {
-                    receiver.reach
-                } else {
-                    GiveReach::Ours
-                };
-                match give_outcome(reach, &tag, Some(ruleset)) {
+            // units.`, and unit 0 is not another unit (`rules/give`) - so the verdict lets a
+            // discard move them, recording nothing, while any other receiver does not.
+            if verdict.reach() != GiveReach::Discard {
+                match outcome {
                     GiveOutcome::Refused(GiveRefusal::CannotChangeHands) => {
                         refused.push((tag.clone(), moved));
                         continue;
@@ -4767,6 +4772,7 @@ fn apply_transfers(
                         refused_to_another_faction.push((tag.clone(), moved));
                         continue;
                     }
+                    // Settled above, before the receipts.
                     GiveOutcome::Refused(GiveRefusal::MageGivesMen | GiveRefusal::MenIntoAMage) => {
                         continue;
                     }

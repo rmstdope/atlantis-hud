@@ -823,9 +823,8 @@ mod tests {
     fn a_verdict_answers_every_reach_and_refusal() {
         let ruleset = ruleset();
         let rs = Some(&ruleset);
-        let give = |reach, receiver: Option<&[Skill]>| {
-            GiveVerdict::give(reach, &plain(), receiver, rs)
-        };
+        let give =
+            |reach, receiver: Option<&[Skill]>| GiveVerdict::give(reach, &plain(), receiver, rs);
         let plain_receiver = plain();
         let ours = give(GiveReach::Ours, Some(&plain_receiver));
         assert_eq!(ours.of("IRON", rs), GiveOutcome::Moves);
@@ -851,7 +850,11 @@ mod tests {
             let nothing = give(reach, None);
             assert!(nothing.gives_nothing(), "{reach:?}");
             for tag in ["SILV", "IRON", "ORC", "LION"] {
-                assert_eq!(nothing.of(tag, rs), GiveOutcome::NoTarget, "{reach:?} {tag}");
+                assert_eq!(
+                    nothing.of(tag, rs),
+                    GiveOutcome::NoTarget,
+                    "{reach:?} {tag}"
+                );
             }
         }
         for reach in [GiveReach::Ours, GiveReach::Foreign, GiveReach::Discard] {

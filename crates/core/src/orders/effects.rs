@@ -2297,10 +2297,10 @@ struct WorkingUnit {
 struct Transfer<'a> {
     what: &'a super::forms::Selector,
     amount: &'a super::forms::Amount,
-    reach: super::targets::GiveReach,
-    /// `rules/magic` forbids a mage to GIVE men and says nothing about TAKE, so the one rule this
-    /// half applies differently for its two callers needs telling which it is serving (`ah-t8ei`).
-    is_give: bool,
+    /// Where the target stands and what each tag does, judged once by `give` or `take`. It also
+    /// says which of the two this is: `rules/magic` forbids a mage to GIVE men and says nothing
+    /// about TAKE (`ah-t8ei`), and the verdict carries that difference (`ah-amkn`).
+    verdict: super::targets::GiveVerdict,
     /// The 1-based document line of the order responsible.
     line: usize,
     /// The transfer's other end as the order wrote it, for the change on the source's side:
@@ -2464,11 +2464,14 @@ impl WorkingUnit {
     /// `orders::magic` exists for. A formed unit has no original and no skills, so it is never a
     /// mage either way.
     fn is_mage_as_reported(&self, ruleset: &Ruleset) -> bool {
-        let skills = self
-            .original
+        super::magic::is_mage(ruleset, self.reported_skills())
+    }
+
+    /// This unit's skills as the report printed them - none for a unit formed this month.
+    fn reported_skills(&self) -> &[crate::report::model::Skill] {
+        self.original
             .as_ref()
-            .map_or(&[][..], |original| original.skills.as_slice());
-        super::magic::is_mage(ruleset, skills)
+            .map_or(&[][..], |original| original.skills.as_slice())
     }
 
     /// This unit's movement as its items stand right now: the report's own answer while its items
@@ -3338,7 +3341,7 @@ impl Working {
         // The 1-based document line of the order, so the change it records can name it.
         line: usize,
     ) {
-        use super::targets::{give_endpoint, GiveEndpoint};
+        use super::targets::{give_endpoint, GiveEndpoint, GiveVerdict};
 
         let region = self.units[giver].unit.region_id.clone();
         let giver_id = self.units[giver].unit.unit_id.clone();
@@ -3361,8 +3364,16 @@ impl Working {
             // the report never prints, which may be a hidden Friendly target (`ah-66yi`).
             |id| self.known_units.contains(id),
         );
+        // Judged once for every tag the order names (`ah-amkn`): the giver's skills as this walk
+        // has them now, the receiver's as the report printed them (`ah-ndp9`).
+        let verdict = GiveVerdict::give(
+            reach,
+            &self.units[giver].unit.skills,
+            receiver.map(|index| self.units[index].reported_skills()),
+            Some(&self.ruleset),
+        );
         // Nothing at all: not even the giver loses what it named (`ah-vcp8.2`, `ah-xaem`).
-        if reach.gives_nothing() {
+        if verdict.gives_nothing() {
             return;
         }
 
@@ -3372,8 +3383,7 @@ impl Working {
             &Transfer {
                 what,
                 amount,
-                reach,
-                is_give: true,
+                verdict,
                 line,
                 party: target,
             },
@@ -3480,14 +3490,17 @@ impl Working {
             return;
         }
 
+        let verdict = super::targets::GiveVerdict::take(
+            self.units[taker].reported_skills(),
+            Some(&self.ruleset),
+        );
         self.move_between(
             source_index,
             Some(taker),
             &Transfer {
                 what,
                 amount,
-                reach: super::targets::GiveReach::Ours,
-                is_give: false,
+                verdict,
                 line,
                 party: source,
             },
@@ -3503,11 +3516,11 @@ impl Working {
         let &Transfer {
             what,
             amount,
-            reach,
-            is_give,
+            verdict,
             line,
             party,
         } = transfer;
+        let (reach, is_give) = (verdict.reach(), verdict.is_give());
         let line = i64::try_from(line).ok();
         // What the source's change points at: the receiving row where there is one, otherwise
         // whatever unit id the order named. `party_unit_id` answers `None` for `Party::Discard`
@@ -3561,36 +3574,19 @@ impl Working {
         let moving = match amount {
             super::forms::Amount::Exact(_) if !lenders.is_empty() => {
                 let pooled = self.pooled_items(source, &lenders);
-                self.tags_moved_from(&pooled, what, amount, reach)
+                self.tags_moved_from(&pooled, what, amount)
             }
-            _ => self.tags_moved(source, what, amount, reach),
+            _ => self.tags_moved(source, what, amount),
         };
         for (name, tag, moved) in moving {
-            // `rules/magic`: "mages may not GIVE men at all", whatever the target - a discard
-            // included, since `GIVE 0`'s exception is about *transfer* restrictions and this is
-            // not one. Asked here rather than inside `tags_moved`, which `apply_transports` also
-            // calls: the rule is about GIVE alone, which is why a TAKE passes `false` above
-            // (`ah-t8ei`). Per tag, so `ALL ITEMS` still hands over the equipment the mage may
-            // give.
-            if is_give
-                && super::targets::mage_give_refused(
-                    &self.units[source].unit.skills,
-                    &tag,
-                    Some(&self.ruleset),
-                )
-            {
+            // Only what definitely moves (`ah-amkn`): a tag the rules refuse - the catalogue's
+            // "cannot be given", men to another faction, a mage's men (`rules/magic`, a discard
+            // included), men into a mage (`ah-ndp9`) - and a tag whose permission the report cannot
+            // establish (`ah-66yi`) all stay with the source. The second is admitted through the
+            // ledger's `uncounted`, which the preview renders as `+ ?`. Per tag, so `ALL ITEMS`
+            // still hands over what may move, and before anything is debited.
+            if verdict.of(&tag, Some(&self.ruleset)) != super::targets::GiveOutcome::Moves {
                 continue;
-            }
-            // `rules/magic` fixes a mage's unit number, and the navigator's New Origins ruling
-            // says no man may join one - by GIVE, by TAKE or by BUY (`ah-ndp9`). Per tag, so a
-            // mixed `ALL ITEMS` still hands over the equipment; and `continue` before anything is
-            // debited, so the source keeps the men it could not hand over.
-            if let Some(receiver) = receiver {
-                if self.ruleset.is_man(&tag)
-                    && self.units[receiver].is_mage_as_reported(&self.ruleset)
-                {
-                    continue;
-                }
             }
             // Re-resolved by tag rather than kept from the snapshot: an earlier tag in this same
             // loop may have removed an item ahead of this one and shifted every index after it.
@@ -4081,15 +4077,10 @@ impl Working {
                 .get(&pending.sender)
                 .cloned()
                 .unwrap_or_else(Vec::new);
-            // `GiveReach::Discard` bypasses target-specific refusal: `TRANSPORT` has
-            // its own permission gate, `can_be_transported`, checked below - the two lists are
-            // not the same (`IENT` may not be given but may be transported).
-            let moving = self.tags_moved_from(
-                &held,
-                &pending.what,
-                &pending.amount,
-                super::targets::GiveReach::Discard,
-            );
+            // No GIVE permission is asked: `TRANSPORT` has its own gate, `can_be_transported`,
+            // checked below - the two lists are not the same (`IENT` may not be given but may be
+            // transported).
+            let moving = self.tags_moved_from(&held, &pending.what, &pending.amount);
             // An order over goods the sender does not hold has nothing to retain and nothing to
             // explain, whoever it was aimed at.
             if moving.is_empty() {
@@ -4333,16 +4324,15 @@ impl Working {
     /// `GIVE target UNIT` hands over the whole unit rather than anything it holds - ownership is
     /// a different question from what a row shows, and is left to a later issue.
     ///
-    /// `give_outcome` preserves the discard exception, rejects men aimed at another faction, and
-    /// holds back a tag whose permission the report cannot establish (`rules/give`, `ah-66yi`).
+    /// Permission is not asked here: `move_between` asks the transfer's `GiveVerdict` per tag,
+    /// and TRANSPORT has its own gate (`ah-amkn`).
     fn tags_moved(
         &self,
         holder: usize,
         what: &super::forms::Selector,
         amount: &super::forms::Amount,
-        reach: super::targets::GiveReach,
     ) -> Vec<(String, String, i64)> {
-        self.tags_moved_from(&self.units[holder].unit.items, what, amount, reach)
+        self.tags_moved_from(&self.units[holder].unit.items, what, amount)
     }
 
     /// The same question asked of an explicit item list rather than of a row's live holdings, so
@@ -4353,7 +4343,6 @@ impl Working {
         held_items: &[crate::report::model::ItemAmount],
         what: &super::forms::Selector,
         amount: &super::forms::Amount,
-        reach: super::targets::GiveReach,
     ) -> Vec<(String, String, i64)> {
         // The preview has no way to say "cannot be established", so a selector this walk cannot
         // resolve simply moves nothing - which is what each of the early returns this replaced
@@ -4371,15 +4360,6 @@ impl Working {
                 (item.name, item.tag, moved)
             })
             .filter(|(_, _, moved)| *moved > 0)
-            .filter(|(_, tag, _)| {
-                // Only what definitely moves. A tag the rules refuse and a tag whose permission the
-                // report cannot establish both stay with the giver - the second is admitted through
-                // the ledger's `uncounted`, which the preview renders as `+ ?` (`ah-66yi`).
-                matches!(
-                    super::targets::give_outcome(reach, tag, Some(&self.ruleset)),
-                    super::targets::GiveOutcome::Moves
-                )
-            })
             .collect()
     }
 }
