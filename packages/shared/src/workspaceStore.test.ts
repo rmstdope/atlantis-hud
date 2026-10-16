@@ -502,6 +502,61 @@ describe("the biome symbols toggle (ah-d9jb.4)", () => {
   });
 });
 
+describe("hex coordinates on the map (ah-ezyg)", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("starts on, the default the team chose", () => {
+    expect(store().hexCoordinates).toBe(true);
+  });
+
+  it("turns off and on, and the choice is remembered", async () => {
+    store().toggleHexCoordinates();
+    expect(store().hexCoordinates).toBe(false);
+
+    const options = useWorkspaceStore.persist.getOptions();
+    const raw = await options.storage?.getItem(options.name ?? "atlantis-hud-workspace");
+    const persisted = (raw as { state?: Record<string, unknown> } | null)?.state ?? {};
+    expect(persisted.hexCoordinates).toBe(false);
+
+    store().toggleHexCoordinates();
+    expect(store().hexCoordinates).toBe(true);
+  });
+
+  it("is left alone by the badge menu's All and None, and is not a badge", () => {
+    store().toggleHexCoordinates();
+    store().setAllBadges(true);
+    expect(store().hexCoordinates).toBe(false);
+
+    store().toggleHexCoordinates();
+    store().setAllBadges(false);
+    expect(store().hexCoordinates).toBe(true);
+    expect(Object.keys(store().badges)).not.toContain("hexCoordinates");
+  });
+
+  it("comes back off from storage when it was turned off", () => {
+    const merge = useWorkspaceStore.persist.getOptions().merge;
+    const merged = merge?.(
+      { collapsed: {}, layers: {}, badges: {}, hexCoordinates: false },
+      store()
+    ) as ReturnType<typeof store> | undefined;
+
+    expect(merged?.hexCoordinates).toBe(false);
+  });
+
+  it("reads a record written before it existed, or anything that is not a boolean, as on", () => {
+    const merge = useWorkspaceStore.persist.getOptions().merge;
+
+    for (const stored of [{}, { hexCoordinates: "no" }, { hexCoordinates: 0 }, { hexCoordinates: null }]) {
+      const merged = merge?.(
+        { collapsed: {}, layers: {}, badges: {}, ...stored },
+        store()
+      ) as ReturnType<typeof store> | undefined;
+
+      expect(merged?.hexCoordinates, JSON.stringify(stored)).toBe(true);
+    }
+  });
+});
+
 describe("panels and layers", () => {
   beforeEach(resetWorkspaceStore);
 
