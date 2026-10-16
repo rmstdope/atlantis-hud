@@ -2923,3 +2923,22 @@ describe("the unfinished mark", () => {
     expect(cell.indexOf(MARK)).toBeLessThan(cell.indexOf("1 GALL"));
   });
 });
+
+describe("the units filter box (ah-ykac)", () => {
+  it("says it finds units by name, skill or item", () => {
+    const markup = draw(hex({ knowledge: "current", region: region({ units: [unit()] }) }));
+
+    expect(markup).toContain('placeholder="filter by name, skill or item…"');
+    expect(markup).toContain('aria-label="Filter units"');
+  });
+
+  it("shows no hidden-Items line while nothing is typed", () => {
+    const markup = renderWithStoreState(
+      <UnitTableDock hex={hex({ knowledge: "current", region: region({ units: [unit()] }) })} />,
+      useWorkspaceStore,
+      { unitColumnsShown: { ...allColumnsShown(), items: false } }
+    );
+
+    expect(markup).not.toContain("units-items-hidden-line");
+  });
+});

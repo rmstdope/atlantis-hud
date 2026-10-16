@@ -8,6 +8,8 @@ import {
 } from "./structureLabel";
 import { NO_ORDERS_TEMPLATE, type ReportedLongOrder } from "./ordersDocument";
 import { compareUnitIds, idNumber } from "./unitOrder";
+import { filterNeedle, rowMatchesOnItems } from "./unitFilter";
+import { withoutSilver } from "./silverTag";
 
 /**
  * How the units table is ordered, filtered and windowed.
@@ -134,41 +136,59 @@ export function windowRange(
 }
 
 /**
- * Case-insensitive substring match over the fields a player would search by.
+ * Case-insensitive substring match over the fields a player would search by, one field at a time.
+ *
+ * One field at a time because the matched text is marked in its own cell (`ah-ykac`): a needle
+ * straddling two columns would list a row with nothing in it marked.
  *
  * The structure is matched by its whole label - name, number and type - rather than by its id
  * alone: the table shows the name now, and a column showing text the filter cannot find reads as
- * a bug (ah-kdgc).
+ * a bug (ah-kdgc). The faction likewise by the `Name (id)` its cell prints.
  *
  * `skillsText` is what the Skills cell drew, so the filter can find `RIDI 5` or `turn 71` on a row
  * that is showing battle-derived skills rather than its own (`ah-1mpx.6.3`). It defaults to the
  * unit's own report-native skill text, so a unit whose caller passes nothing is still searchable by
  * its skills exactly as it always was.
+ *
+ * `itemsOf` is what the Items cell drew, matched by code and by name and never by amount
+ * (`ah-ykac`). It defaults to the row's own items without silver, which the cell never shows.
  */
 export function filterUnits<T extends ReportUnit>(
   units: T[],
   needle: string,
   structures: StructuresByRegion = new Map(),
-  skillsText: (unit: ReportUnit) => string = defaultSkillsText
+  skillsText: (unit: ReportUnit) => string = defaultSkillsText,
+  itemsOf: (unit: T) => readonly { tag: string; name: string }[] = defaultItems
 ): T[] {
-  const wanted = needle.trim().toLowerCase();
+  const wanted = filterNeedle(needle);
   if (!wanted) {
     return units;
   }
-  return units.filter((unit) =>
-    [
-      unit.name,
-      unit.unitId,
-      unit.factionName ?? "",
-      unit.structureId ?? "",
-      unitStructureLabelIn(structureRegionOf(unit), unit.structureId, structures) ?? "",
-      skillsText(unit)
-    ]
-      .join(" ")
-      .toLowerCase()
-      .includes(wanted)
+  return units.filter(
+    (unit) =>
+      [
+        unit.name,
+        unit.unitId,
+        factionText(unit),
+        unit.structureId ?? "",
+        unitStructureLabelIn(structureRegionOf(unit), unit.structureId, structures) ?? "",
+        skillsText(unit)
+      ].some((field) => field.toLowerCase().includes(wanted)) ||
+      rowMatchesOnItems(itemsOf(unit), wanted)
   );
 }
+
+/**
+ * The Faction cell's own words, `Name (id)`. Empty where the cell reads "not shown" - a name with
+ * no number among them - so the filter never lists a row for text it cannot mark.
+ */
+const factionText = (unit: ReportUnit): string =>
+  unit.factionName === null || unit.factionId === null
+    ? ""
+    : `${unit.factionName} (${unit.factionId})`;
+
+/** `filterUnits`' default `itemsOf`: the row's items as the Items cell lists them, silver left out. */
+const defaultItems = (unit: ReportUnit) => withoutSilver(unit.items);
 
 /** `filterUnits`' default `skillsText`: exactly the report-native text the Skills cell has always shown. */
 const defaultSkillsText = (unit: ReportUnit): string =>

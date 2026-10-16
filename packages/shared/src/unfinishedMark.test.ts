@@ -108,15 +108,20 @@ describe("itemCellParts", () => {
 
   it("marks only the unfinished ship, and leaves silver out as the cell does", () => {
     expect(itemCellParts(items)).toEqual([
-      { text: "85 WOOD", unfinished: false },
-      { text: "1 GALL", unfinished: true },
-      { text: "5 SWOR", unfinished: false }
+      { text: "85 WOOD", unfinished: false, tag: "WOOD", name: "wood" },
+      { text: "1 GALL", unfinished: true, tag: "GALL", name: "unfinished Galleon" },
+      { text: "5 SWOR", unfinished: false, tag: "SWOR", name: "sword" }
     ]);
   });
 
   it("keeps the range a CAST's uncertain creation draws", () => {
     const created = [{ tag: "SWOR", most: 5, fewest: 2 }] as never;
-    expect(itemCellParts(items, created).at(-1)).toEqual({ text: "2-5 SWOR", unfinished: false });
+    expect(itemCellParts(items, created).at(-1)).toEqual({
+      text: "2-5 SWOR",
+      unfinished: false,
+      tag: "SWOR",
+      name: "sword"
+    });
   });
 
   it("is what formatItems joins, so the two cannot drift", () => {
@@ -127,10 +132,10 @@ describe("itemCellParts", () => {
   it("puts a short item first, as a minus figure", () => {
     const short = [{ tag: "FLOA", name: "floater hide", plural: "floater hides", figure: -75 }];
     expect(itemCellParts(items, [], short)).toEqual([
-      { text: "-75 FLOA", unfinished: false, short: true },
-      { text: "85 WOOD", unfinished: false },
-      { text: "1 GALL", unfinished: true },
-      { text: "5 SWOR", unfinished: false }
+      { text: "-75 FLOA", unfinished: false, short: true, tag: "FLOA", name: "floater hide" },
+      { text: "85 WOOD", unfinished: false, tag: "WOOD", name: "wood" },
+      { text: "1 GALL", unfinished: true, tag: "GALL", name: "unfinished Galleon" },
+      { text: "5 SWOR", unfinished: false, tag: "SWOR", name: "sword" }
     ]);
   });
 

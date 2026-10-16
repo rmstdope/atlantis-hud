@@ -316,12 +316,59 @@ describe("filterUnits", () => {
   });
 
   /**
-   * The fields are matched as one joined string, so a needle can straddle two of them. Harmless
-   * for a player typing a name, but it is why the smoke helper asserts it matched exactly one row
-   * before clicking.
+   * One field at a time (`ah-ykac`): the matched text is marked in its cell, and a needle that
+   * straddled two columns would have nowhere to be marked.
    */
-  it("can match across the boundary between two fields", () => {
-    expect(ids(filterUnits(units, "Eight 18642"))).toEqual(["18642"]);
+  it("does not match across the boundary between two fields", () => {
+    expect(ids(filterUnits(units, "Eight 18642"))).toEqual([]);
+  });
+
+  it("does not match a faction name the Faction cell does not show", () => {
+    // A cell with no faction number reads "not shown", so a match there would mark nothing.
+    const unnumbered = [unit("9", false, { factionName: "Quiet Ones", factionId: null })];
+    expect(filterUnits(unnumbered, "Quiet")).toEqual([]);
+  });
+
+  describe("by what a unit carries (ah-ykac)", () => {
+    const carrying = [
+      unit("3825", true, {
+        name: "Farmers",
+        items: [
+          { amount: 40, name: "livestock", tag: "LIVE" },
+          { amount: 1204, name: "silver", tag: "SILV" }
+        ]
+      }),
+      unit("2210", true, { name: "Olive Guard", items: [{ amount: 15, name: "swords", tag: "SWOR" }] }),
+      unit("1904", true, { name: "Smith", items: [{ amount: 3, name: "mithril swords", tag: "MSWO" }] })
+    ];
+
+    it("matches an item's code, and any part of another field as before", () => {
+      expect(ids(filterUnits(carrying, "LIVE"))).toEqual(["3825", "2210"]);
+    });
+
+    it("matches an item's name", () => {
+      expect(ids(filterUnits(carrying, "livestock"))).toEqual(["3825"]);
+    });
+
+    it("matches any part of a name, so a family of items is found at once", () => {
+      expect(ids(filterUnits(carrying, "sword"))).toEqual(["2210", "1904"]);
+    });
+
+    it("does not match silver, which the Items cell never shows", () => {
+      expect(ids(filterUnits(carrying, "SILV"))).toEqual([]);
+    });
+
+    it("does not match an item's amount", () => {
+      expect(ids(filterUnits(carrying, "1204"))).toEqual([]);
+    });
+
+    it("matches what the table says the cell draws, when it says so", () => {
+      // The dock passes the Items cell's own entries - a refused cast's short material included.
+      const drawn = (one: ReportUnit) =>
+        one.unitId === "1904" ? [{ tag: "IRON", name: "iron" }] : [];
+      expect(ids(filterUnits(carrying, "iron", new Map(), undefined, drawn))).toEqual(["1904"]);
+      expect(ids(filterUnits(carrying, "LIVE", new Map(), undefined, drawn))).toEqual(["2210"]);
+    });
   });
 
   it("matches on the unit id", () => {

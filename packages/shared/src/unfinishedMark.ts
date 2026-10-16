@@ -93,7 +93,15 @@ export function isUnfinishedShipName(name: string | undefined): boolean {
  * One entry of the Items cell, whether the unfinished mark goes before it, and - only where it is
  * so - whether it is a material a refused cast leaves the unit short of, drawn red (`ah-44at`).
  */
-export type ItemCellPart = { text: string; unfinished: boolean; short?: true };
+export type ItemCellPart = {
+  text: string;
+  unfinished: boolean;
+  short?: true;
+  /** The item's code, which `text` always ends with - what the units filter marks (`ah-ykac`). */
+  tag: string;
+  /** The item's name, which the units filter also matches though the cell never prints it. */
+  name: string;
+};
 
 /**
  * The Items cell's entries, silver left out, each as `formatItems` writes it.
@@ -115,14 +123,18 @@ export function itemCellParts(
   const shortParts: ItemCellPart[] = short.map((item) => ({
     text: `${item.figure} ${item.tag}`,
     unfinished: false,
-    short: true
+    short: true,
+    tag: item.tag,
+    name: item.name
   }));
   const isShort = (tag: string) => short.some((item) => item.tag === tag);
   return [...shortParts, ...withoutSilver(items).filter((item) => !isShort(item.tag)).map((item) => {
     const gap = shortfall.get(item.tag) ?? 0;
     return {
       text: gap > 0 ? `${item.amount - gap}-${item.amount} ${item.tag}` : `${item.amount} ${item.tag}`,
-      unfinished: isUnfinishedShipName(item.name)
+      unfinished: isUnfinishedShipName(item.name),
+      tag: item.tag,
+      name: item.name
     };
   })];
 }

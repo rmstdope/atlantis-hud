@@ -160,6 +160,8 @@ import { ColumnSplitter } from "./ColumnSplitter";
 import { Absent, SeverityMark, UNIT_LINK_CLASS } from "./primitives";
 import { UnitCellPopup } from "./UnitCellPopup";
 import { UnitTooltip } from "./UnitTooltip";
+import { ItemsHiddenLine, Marked, MarkedItemPart } from "./UnitFilterMarks";
+import { filterNeedle, itemPartsForFilter, itemsHiddenLineShows } from "../unitFilter";
 
 /** Rows built beyond each edge of the viewport, so a flick of the wheel does not show a gap. */
 const OVERSCAN = 6;
@@ -349,6 +351,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   // three cannot fall out of step (ah-1owr.3).
   const order = useMemo(() => orderOf(storedColumnOrder), [storedColumnOrder]);
   const columnsShown = useWorkspaceStore((state) => state.unitColumnsShown);
+  const setColumnShown = useWorkspaceStore((state) => state.setUnitColumnShown);
   // The order actually drawn: the hidden columns taken out (ah-20di). `order` stays the unit of
   // storage and of a reorder commit, so hiding a column never rewrites the stored order.
   const visibleOrder = useMemo(() => shownColumns(order, columnsShown), [order, columnsShown]);
@@ -362,6 +365,10 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   const countUpkeep = useSettingsStore((state) => state.countUpkeep);
   const rowHeight = rowHeightAt(interfaceSize);
   const [filter, setFilter] = useState("");
+  // What the filter compares and marks: trimmed and lowered, `""` when the box is not in use.
+  const needle = filterNeedle(filter);
+  // Where "Show it" sends the keyboard back to (`ah-ykac`).
+  const filterRef = useRef<HTMLInputElement | null>(null);
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
 
   // The Armies are read here rather than passed in, exactly as the two stores above are; `client`
@@ -594,7 +601,13 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   const visible = useMemo(
     () =>
       sortUnits(
-        filterUnits(units, filter, structures, (unit) => unitSkillsCell(unit, derivedSkills)),
+        filterUnits(
+          units,
+          filter,
+          structures,
+          (unit) => unitSkillsCell(unit, derivedSkills),
+          cellItemsOf
+        ),
         effectiveSort,
         structures,
         longOrders,
@@ -1246,6 +1259,11 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   // The source's whole list, not `visible`: the line warns about the list, so a filter that hides
   // every affected row leaves it up and unchanged.
   const unreadWarning = unreadLine(unreadCount(units), units.length);
+  // A listed row that is there for what it carries, while the column that would show it is off.
+  const itemsHiddenLine = useMemo(
+    () => itemsHiddenLineShows(visible, needle, columnsShown.items, cellItemsOf),
+    [visible, needle, columnsShown.items]
+  );
   const foreignEmpty =
     source.kind === "foreign"
       ? foreignEmptyLine({
@@ -1281,11 +1299,12 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         <div className="flex items-center gap-1.5">
           <input
             type="text"
+            ref={filterRef}
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
-            placeholder="filter units…"
+            placeholder="filter by name, skill or item…"
             aria-label="Filter units"
-            className="w-44 rounded border border-edge bg-ground px-2 py-0.5 text-pane text-ink placeholder:text-ink-dim focus:border-select focus:outline-none"
+            className="w-56 rounded border border-edge bg-ground px-2 py-0.5 text-pane text-ink placeholder:text-ink-dim focus:border-select focus:outline-none"
           />
           {canEditArmies ? (
             <ChipPopover
@@ -1369,6 +1388,14 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
               attitude={pin.kind === "hidden" ? null : attitudeToward(attitudes, pin.factionId)}
               onClear={() => setPin(null)}
               buttonRef={unpinRef}
+            />
+          ) : null}
+          {itemsHiddenLine ? (
+            <ItemsHiddenLine
+              onShow={() => {
+                setColumnShown("items", true);
+                filterRef.current?.focus();
+              }}
             />
           ) : null}
           {unreadWarning ? (
@@ -1619,6 +1646,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                   countUpkeep={countUpkeep}
                   derivedSkills={derivedSkills}
                   unitNames={unitNames}
+                  needle={needle}
                   onSelectUnit={onSelectUnit}
                   renderFactionName={renderFactionName}
                   onPinFaction={source.kind === "foreign" ? setPin : undefined}
@@ -2168,6 +2196,12 @@ const EXPLAINED_COLUMNS: readonly DrawnColumnId[] = [
  */
 const PREDICTED = "italic text-brass";
 
+/**
+ * What a row's Items cell draws - the after-orders entries, a refused cast's short material
+ * included, silver left out - which is what the units filter matches (`ah-ykac`).
+ */
+const cellItemsOf = (unit: PreviewedUnit) => itemCellParts(unit.items, unit.created, shortItems(unit));
+
 function UnitRow({
   unit,
   structureLabel,
@@ -2201,7 +2235,8 @@ function UnitRow({
   dimDeparting,
   onRemove,
   derivedSkills,
-  unitNames
+  unitNames,
+  needle
 }: {
   unit: PreviewedUnit;
   /** The columns the header is drawing, so a row's cells can never fall out of step with it. */
@@ -2291,6 +2326,8 @@ function UnitRow({
   derivedSkills: DerivedSkills;
   /** Every row's name by unit number, for a Skills popup naming a giver (`ah-rgkk.2.3`). */
   unitNames: ReadonlyMap<UnitRowKey, string>;
+  /** What the units filter matched, marked in every cell it can be found in (`ah-ykac`). */
+  needle: string;
 }) {
   const skills = unitSkillsCell(unit, derivedSkills);
   // What a refused CAST leaves this unit short of, red and first in the cell (`ah-44at`).
@@ -2445,7 +2482,7 @@ function UnitRow({
           tabIndex={-1}
           className="focus-visible:outline focus-visible:outline-1 focus-visible:outline-select"
         >
-          {unit.unitId}
+          <Marked text={unit.unitId} needle={needle} />
         </button>
       </Td>
     ),
@@ -2455,7 +2492,7 @@ function UnitRow({
           className={nameChange ? PREDICTED : undefined}
           data-predicted={nameChange ? "true" : undefined}
         >
-          {unit.name}
+          <Marked text={unit.name} needle={needle} />
         </span>
         {rememberedTurn !== undefined ? (
           <span className="ml-1 text-pane-sm text-brass/70">last seen turn {rememberedTurn}</span>
@@ -2545,14 +2582,17 @@ function UnitRow({
             <span className="text-ink-dim">not shown</span>
           )
         ) : unit.own ? (
-          `${unit.factionName} (${unit.factionId})`
+          <Marked text={`${unit.factionName} (${unit.factionId})`} needle={needle} />
         ) : renderFactionName ? (
           // Built by the shell, so the row is the only place its press can be stopped.
           <span onPointerDown={(event) => event.stopPropagation()}>
-            {renderFactionName(unit.factionId, `${unit.factionName} (${unit.factionId})`)}
+            {renderFactionName(
+              unit.factionId,
+              <Marked text={`${unit.factionName} (${unit.factionId})`} needle={needle} />
+            )}
           </span>
         ) : (
-          `${unit.factionName} (${unit.factionId})`
+          <Marked text={`${unit.factionName} (${unit.factionId})`} needle={needle} />
         )}
       </Td>
     ),
@@ -2653,7 +2693,7 @@ function UnitRow({
         ) : skills === "" && unread ? (
           <span className="text-warn">{NOT_KNOWN}</span>
         ) : (
-          skills
+          <Marked text={skills} needle={needle} />
         )}
         {explain("skills")}
       </Td>
@@ -2671,11 +2711,19 @@ function UnitRow({
         {unread && items === "" ? (
           <span className="text-warn">could not be read</span>
         ) : (
-          itemParts.map((part, at) => (
+          // Matching items first while the filter is in use, so a long cell's "…" never hides the
+          // mark; the usual order otherwise (`ah-ykac`).
+          itemPartsForFilter(itemParts, needle).map((part, at) => (
             <Fragment key={at}>
               {at > 0 ? ", " : null}
               {part.unfinished ? <UnfinishedMark /> : null}
-              {part.short ? <span className="text-danger">{part.text}</span> : part.text}
+              {part.short ? (
+                <span className="text-danger">
+                  <MarkedItemPart part={part} needle={needle} />
+                </span>
+              ) : (
+                <MarkedItemPart part={part} needle={needle} />
+              )}
             </Fragment>
           ))
         )}
@@ -2702,7 +2750,7 @@ function UnitRow({
         }`}
       >
         {structureFinish === "unfinished" ? <UnfinishedMark /> : null}
-        {structureLabel ?? ""}
+        <Marked text={structureLabel ?? ""} needle={needle} />
         {explain("structure")}
       </Td>
     ),
