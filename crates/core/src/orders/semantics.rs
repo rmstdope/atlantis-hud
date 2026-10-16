@@ -75579,6 +75579,53 @@ BUILD
         );
     }
 
+    /// Silver a `TRANSPORT` ships to a unit arrives after the Give phase and before maintenance
+    /// (`rules/sequenceofevents`), so it is silver the unit can have to pay its upkeep, as a gift
+    /// reverting is. It is booked `Received` rather than `WasGiven` (`ah-9qzs`), and the pool
+    /// reads that cause too, or it forgets the shipment: quartermaster 6 ($30, ten men's upkeep)
+    /// is shipped all of unit 9's $50, leaving nobody beside it to pay the rest
+    /// (`rules/economy_maintenance`), and can have $80 of the $100 its upkeep spends.
+    #[test]
+    fn silver_received_by_transport_is_silver_a_unit_can_have() {
+        let mut quartermaster = with_skill(
+            with_men(with_silver(starving(unit("6")), 30), 10),
+            "QUAM",
+            1,
+        );
+        quartermaster.structure_id = Some("500".to_string());
+        let hex = ReportRegion {
+            structures: vec![Structure {
+                structure_id: "500".to_string(),
+                name: "Caravan".to_string(),
+                kind: "Caravanserai".to_string(),
+                ..Default::default()
+            }],
+            ..region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![quartermaster, with_silver(unit("9"), 50)],
+            )
+        };
+        let findings = check_turn(
+            &report(vec![hex]),
+            "unit 6\nWORK\nunit 9\nTRANSPORT 6 50 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let sentence = findings
+            .iter()
+            .find(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER && finding.unit_id.as_deref() == Some("6")
+            })
+            .map(|finding| finding.message.as_str());
+        assert_eq!(
+            sentence,
+            Some("short $20: this unit can have $80 and its orders and upkeep spend $100"),
+            "{findings:#?}"
+        );
+    }
+
     /// `(short, can have, spend)` from a hex's not-enough-silver sentence.
     fn hex_silver_figures(findings: &[Finding]) -> (i64, i64, i64) {
         let sentence = hex_silver_sentence(findings).expect("the hex is short");

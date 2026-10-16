@@ -11115,7 +11115,14 @@ mod tests {
             let unshown = |orders: &str| only_issue(&kept_everything(orders)).to_unshown;
 
             assert!(unshown("unit 5530\nTRANSPORT 99999 5 STON\n"));
-            assert!(!unshown("unit 5530\nTRANSPORT 7004 5 STON\n"));
+            // 7004 is shown, and reaches the interface as `EligibilityUnknown` exactly as 99999
+            // does: the flag is all that tells the two apart.
+            let shown = kept_everything("unit 5530\nTRANSPORT 7004 5 STON\n");
+            assert_eq!(
+                only_issue(&shown).reason,
+                TransportTargetReason::EligibilityUnknown
+            );
+            assert!(!only_issue(&shown).to_unshown);
             assert!(!unshown("unit 5530\nTRANSPORT 7003 5 STON\n"));
             assert!(!unshown("unit 5530\nTRANSPORT 7001 5 STON\n"));
         }

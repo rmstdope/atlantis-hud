@@ -1930,7 +1930,7 @@ describe("a transport target the report cannot show receiving", () => {
 
   it("says the report cannot show whether a foreign faction accepts transports", () => {
     expect(
-      transportTargetSentence({ to: "7003", amount: 5, tag: "STON", reason: "acceptanceUnknown", orderIndex: 0, toUnshown: true, reach: null })
+      transportTargetSentence({ to: "7003", amount: 5, tag: "STON", reason: "acceptanceUnknown", orderIndex: 0, toUnshown: false, reach: null })
     ).toBe(
       "Could not count 5 STON for unit 7003 because your report does not show whether its faction accepts transports from yours."
     );
