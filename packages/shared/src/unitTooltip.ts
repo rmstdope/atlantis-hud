@@ -168,8 +168,8 @@ function figure(amount: number | null, unknown = "?"): string {
 }
 
 /**
- * The Silver section's five rows and its one explaining line (`ah-1wcw.1`) - six while the Silver
- * column is counting upkeep (`ah-1wcw.4`). `In` splits in two because silver that arrives in the
+ * The Silver section's five rows and its one explaining line (`ah-1wcw.1`), plus the `upkeepRows`
+ * while the Silver column is counting upkeep (`ah-1wcw.4`, `ah-kv6c`). `In` splits in two because silver that arrives in the
  * turn's last phase cannot pay for anything this month's orders spend (`ah-uwa3`).
  *
  * **Every** note that applies, one per line, in `SILVER_NOTES` order: a note that only ever fired
