@@ -213,7 +213,7 @@ export function UnitPanelBody({
             type="button"
             data-testid="unit-magic-tree"
             onClick={() => magicLinkable(mage.tag)}
-            className="bg-transparent p-0 text-left text-accent underline-offset-2 hover:underline"
+            className="bg-transparent p-0 text-left text-select underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-select"
           >
             Show in study tree
           </button>
@@ -317,7 +317,7 @@ export function UnitPanelBody({
             type="button"
             data-testid="unit-events-all"
             onClick={onOpenEvents}
-            className="mt-1 bg-transparent p-0 text-left text-accent underline-offset-2 hover:underline"
+            className="mt-1 bg-transparent p-0 text-left text-select underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-select"
           >
             All {totalEvents} events this turn
           </button>

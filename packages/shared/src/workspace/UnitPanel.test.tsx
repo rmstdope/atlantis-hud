@@ -147,6 +147,8 @@ describe("the study tree door in the unit pane (ah-gjbs.1)", () => {
 
     const html = renderToStaticMarkup(panel);
     expect(html.split('data-testid="unit-magic-tree"').length - 1).toBe(1);
+    // ah-eip5: drawn in map blue - it was `text-accent`, which names no token and drew body ink.
+    expect(html).toMatch(/data-testid="unit-magic-tree"[^>]*class="[^"]*\btext-select\b/u);
     expect(html).toContain("Show in study tree");
     expect(html).toContain("Mage");
 
@@ -377,6 +379,7 @@ describe("the Events section", () => {
     const withEvents = draw({ events: EVENTS, totalEvents: 452, onOpenEvents: () => {} });
     expect(withEvents).toContain("All 452 events this turn");
     expect(withEvents).toContain('data-testid="unit-events-all"');
+    expect(withEvents).toMatch(/data-testid="unit-events-all"[^>]*class="[^"]*\btext-select\b/u);
 
     // The real zero case: a turn with no events at all, which is the only way `totalEvents` can be
     // 0 - `AppShell` derives both from the same array.
