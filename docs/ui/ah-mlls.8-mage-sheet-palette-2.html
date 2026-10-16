@@ -1,0 +1,75 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Mage sheet in the palette</title><style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --soft:#a3b0c0; --dim:#8a97a8; --ink:#dbe3ec; --brass:#d9a441; --brassb:#eebe63; --ok:#4fb783; --danger:#d97070; --select:#6fb3ff; --own:#5ec8f0; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 24px 64px; background:var(--ground); color:var(--ink); font:15px/1.55 Georgia, "Times New Roman", serif; }
+  header, main { max-width:1100px; margin:auto; }
+  h1 { margin:0; font-size:26px; } h1 span, h2 { color:var(--brass); }
+  header p { color:var(--soft); max-width:90ch; }
+  h2 { margin:36px 0 0; font-size:18px; }
+  h2 + p { color:var(--soft); font-size:13.5px; margin:4px 0 0; max-width:90ch; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(330px, 1fr)); gap:20px; margin-top:16px; }
+  .card { overflow:hidden; border:1px solid var(--edge); border-radius:9px; background:var(--panel); }
+  .card:target { border-color:var(--brass); box-shadow:0 0 0 2px var(--brass); }
+  .card header { padding:14px 16px 10px; }
+  .card h3 { margin:0; font-size:16px; }
+  .card h3 em { color:var(--brass); font-size:11px; font-style:normal; letter-spacing:.12em; margin-right:7px; }
+  .card header p { margin:6px 0 0; font-size:12.5px; color:var(--soft); }
+  .palette { margin:0 16px 16px; overflow:hidden; border:1px solid var(--edge); border-radius:5px; background:var(--raised); font-family:Arial, sans-serif; font-size:12px; }
+  .query { padding:7px 9px; border-bottom:1px solid var(--edge); color:var(--ink); }
+  .cursor { color:var(--brass); } .ph { color:var(--dim); }
+  .row { display:flex; align-items:baseline; gap:8px; padding:6px 9px; color:var(--soft); }
+  .row + .row { border-top:1px solid #1e2733; }
+  .row.active { background:#26303d; color:var(--ink); }
+  .place { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+  .right { flex:none; margin-left:auto; display:flex; gap:8px; align-items:baseline; }
+  .kind { flex:none; color:var(--dim); font-size:10px; letter-spacing:.08em; text-transform:uppercase; }
+  .count { flex:none; color:var(--soft); font-size:10.5px; white-space:nowrap; }
+  .count.zero { color:var(--dim); font-style:italic; }
+  .faction { flex:none; color:var(--soft); font-size:10.5px; white-space:nowrap; }
+  .empty { padding:9px; color:var(--dim); font-style:italic; }
+  .notes { margin:0; padding:12px 16px 14px 32px; border-top:1px solid var(--edge); color:var(--soft); font-size:12.5px; }
+  .notes li + li { margin-top:4px; } .notes .good { color:var(--ok); } .notes .bad { color:var(--danger); }
+  .state { margin-top:14px; padding:13px 16px; border-left:3px solid var(--brass); border-radius:5px; background:var(--panel); color:var(--soft); font-size:13px; }
+  .state b { color:var(--ink); }
+  /* the app after choosing */
+  .scene { margin:0 16px 16px; border:1px solid var(--edge); border-radius:5px; background:var(--raised); font-family:Arial, sans-serif; font-size:11.5px; overflow:hidden; }
+  .map { height:86px; display:flex; align-items:center; justify-content:center; gap:3px; border-bottom:1px solid var(--edge); color:var(--dim); position:relative; }
+  .hex { width:40px; height:35px; clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%); background:#2a3646; display:inline-block; }
+  .hex.sel { background:var(--brass); } .hex.mem { background:#3a5a73; }
+  .maptag { position:absolute; left:8px; top:6px; font-size:10px; color:var(--dim); }
+  .dock { display:flex; min-height:120px; }
+  .rail { width:118px; flex:none; border-right:1px solid var(--edge); padding:5px; background:#1a202a; }
+  .rail div { padding:2px 5px; border-radius:3px; display:flex; color:var(--soft); }
+  .rail div span { margin-left:auto; color:var(--dim); font-size:10px; }
+  .rail .grp { color:var(--dim); font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; margin-top:6px; }
+  .rail .on { background:#26303d; color:var(--ink); outline:1px solid var(--select); }
+  .rail .new { color:var(--brassb); }
+  .table { flex:1; padding:5px 8px; }
+  .table .th { color:var(--dim); font-size:10px; letter-spacing:.06em; text-transform:uppercase; display:grid; grid-template-columns:1.6fr 1fr .5fr; padding:2px 4px; border-bottom:1px solid var(--edge); }
+  .table .tr { display:grid; grid-template-columns:1.6fr 1fr .5fr; padding:3px 4px; color:var(--soft); }
+  .table .tr.focus { outline:1px solid var(--select); color:var(--ink); background:#232b37; }
+  .table .tr .u { color:var(--own); }
+  .table .tr.gone { color:var(--dim); }
+  .table .tr.gone .u { color:var(--dim); }
+  .table .title { color:var(--ink); margin-bottom:3px; }
+  .collapsed { padding:5px 8px; color:var(--dim); border-top:1px solid var(--edge); }
+  kbd { padding:1px 4px; border:1px solid var(--edge); border-radius:3px; background:var(--raised); color:var(--ink); font:11px monospace; }
+  .narrow { width:300px; }
+</style>
+<style>.row.off{opacity:.45} .notice{margin:0 16px 16px;padding:8px 10px;border:1px solid var(--edge);border-left:3px solid var(--danger);border-radius:5px;background:var(--raised);font-family:Arial,sans-serif;font-size:12px;color:var(--ink)} .notice small{display:block;color:var(--dim)}</style></head>
+<body><header><h1>Mage sheet in the palette — <span>round 2: the greyed row</span></h1>
+<p class="lede" style="color:#eebe63;font-style:italic"><strong>Chosen so far:</strong> the row says "Export mage sheet" (action); without game data it stays, greyed, with a reason; with no mages it says "no mages" and still works; a failed save behaves as the menu does today.</p>
+<p>Three things about the greyed row.</p><p class="lede" style="color:#eebe63;font-style:italic"><strong>Chosen:</strong> 5A arrows skip it; 6B greyed "needs a report" before any report; 7A "needs the game data".</p></header><main>
+<h2>5 — Moving through a greyed row</h2><p>"exp" typed, no game data loaded. The highlighted row is the lighter band.</p><div class="cards">
+<section class="card" id="keys-a"><header><h3><em>A — recommended</em> Arrows skip it, it can't be chosen</h3><p>↑/↓ jump over it; clicking it or Enter does nothing. Pointing at it shows the reason in full.</p></header><div class="palette"><div class="query">exp<span class="cursor">|</span></div><div class="row active"><span class="place">Export map</span><span class="right"><span class="kind">action</span></span></div><div class="row off"><span class="place">Export mage sheet</span><span class="right"><span class="count zero">needs the game data</span><span class="kind">action</span></span></div></div><ul class="notes"><li class="good">How a greyed item works in every menu, including the Export menu.</li><li class="bad">If it's the only match, nothing is highlighted and Enter does nothing.</li></ul></section>
+<section class="card" id="keys-b"><header><h3><em>B</em> Arrows land on it, Enter does nothing</h3><p>It can be highlighted like any row, but choosing it does nothing and the palette stays open.</p></header><div class="palette"><div class="query">exp<span class="cursor">|</span></div><div class="row "><span class="place">Export map</span><span class="right"><span class="kind">action</span></span></div><div class="row off active"><span class="place">Export mage sheet</span><span class="right"><span class="count zero">needs the game data</span><span class="kind">action</span></span></div></div><ul class="notes"><li class="good">Screen readers and keyboard users reach the reason.</li><li class="bad">A highlighted row that ignores Enter feels broken.</li></ul></section>
+</div>
+<h2>6 — Before any report is loaded</h2><p>Export map isn't offered at all then. Shown with "exp" typed and no report loaded.</p><div class="cards">
+<section class="card" id="norep-a"><header><h3><em>A — recommended</em> Not offered, like Export map</h3><p>Greyed only for the one missing piece you can fix while a turn is open: the game data.</p></header><div class="palette"><div class="query">exp<span class="cursor">|</span></div><div class="empty">nothing matches</div></div><ul class="notes"><li class="good">The two exports appear and disappear together.</li><li class="bad">Someone with no report learns nothing from the palette - but there's nothing to export yet anyway.</li></ul></section>
+<section class="card" id="norep-b"><header><h3><em>B</em> Greyed, "needs a report"</h3><p>Always present; the reason changes with what's missing.</p></header><div class="palette"><div class="query">exp<span class="cursor">|</span></div><div class="row off"><span class="place">Export mage sheet</span><span class="right"><span class="count zero">needs a report</span><span class="kind">action</span></span></div></div><ul class="notes"><li class="good">Always findable.</li><li class="bad">Export map is still hidden then, so the two exports disagree.</li></ul></section>
+</div>
+<h2>7 — The words of the reason</h2><div class="cards">
+<section class="card" id="words-a"><header><h3><em>A — recommended</em> "needs the game data"</h3><p></p></header><div class="palette"><div class="query">exp<span class="cursor">|</span></div><div class="row active"><span class="place">Export map</span><span class="right"><span class="kind">action</span></span></div><div class="row off"><span class="place">Export mage sheet</span><span class="right"><span class="count zero">needs the game data</span><span class="kind">action</span></span></div></div><ul class="notes"><li class="good">Short, and the app calls it "game data" everywhere else.</li><li class="bad">Doesn't say what to do.</li></ul></section>
+<section class="card" id="words-b"><header><h3><em>B</em> "load the game data first"</h3><p></p></header><div class="palette"><div class="query">exp<span class="cursor">|</span></div><div class="row active"><span class="place">Export map</span><span class="right"><span class="kind">action</span></span></div><div class="row off"><span class="place">Export mage sheet</span><span class="right"><span class="count zero">load the game data first</span><span class="kind">action</span></span></div></div><ul class="notes"><li class="good">Says what to do.</li><li class="bad">Longer; more likely to be cut short in a narrow window.</li></ul></section>
+<section class="card" id="words-c"><header><h3><em>C</em> "no game data loaded"</h3><p></p></header><div class="palette"><div class="query">exp<span class="cursor">|</span></div><div class="row active"><span class="place">Export map</span><span class="right"><span class="kind">action</span></span></div><div class="row off"><span class="place">Export mage sheet</span><span class="right"><span class="count zero">no game data loaded</span><span class="kind">action</span></span></div></div><ul class="notes"><li class="good">States the fact plainly.</li><li class="bad">Reads like a status rather than a reason.</li></ul></section>
+</div></main></body></html>
