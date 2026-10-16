@@ -931,6 +931,7 @@ pub fn review_turn(
         );
         check_markets(hex, ruleset, &options, &mut findings);
         check_emptied_sales(hex, ledger, ruleset, &plurals, &options, &mut findings);
+        check_oversold_sales(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_emptied_buys(hex, ledger, ruleset, &plurals, &options, &mut findings);
         let pillaged = own_unit_pillages(hex);
         check_pillaged_tax(hex, pillaged, &options, &mut findings);
@@ -6059,6 +6060,9 @@ struct Ledger<'a> {
     /// total already lives so `check_emptied_sales` need not compute the same fact a second time
     /// (`ah-vw8e`) - which is how this column and that warning drifted apart before (`ah-ycuj`).
     dead_sales: Vec<DeadSale>,
+    /// Every exact `SELL` line that asked for more than the unit could draw on when it ran, for
+    /// `check_oversold_sales` (`ah-q51d`), recorded here for the reason `dead_sales` is.
+    oversold_sales: Vec<OversoldSale>,
     /// Every `BUILD` that spent nothing because the unit had none of the material for it, recorded
     /// where the settlement already knows the recipe, the restriction and what the pool holds, so
     /// `check_build_material` need not read the hex a second time (the reason
@@ -6332,6 +6336,18 @@ struct DeadSale {
     tag: String,
     placed: PlacedIntent,
     sold_before: SoldSoFar,
+}
+
+/// An exact `SELL` line for more than the unit could draw on - its own stock and its sharers' -
+/// when it ran (`ah-q51d`).
+struct OversoldSale {
+    unit_id: String,
+    tag: String,
+    placed: PlacedIntent,
+    /// What the line asked to sell.
+    ordered: i64,
+    /// What the unit could draw on when it ran.
+    can_have: i64,
 }
 
 /// One `BUY ALL` the ledger has read and not yet settled.
@@ -6650,6 +6666,7 @@ fn ledger_for_reaching<'a>(
         shipping_unmeasured: BTreeMap::new(),
         sold: BTreeMap::new(),
         dead_sales: Vec::new(),
+        oversold_sales: Vec::new(),
         build_material_refusals: Vec::new(),
         bought: BTreeMap::new(),
         dead_buys: Vec::new(),
@@ -8288,6 +8305,50 @@ fn check_emptied_sales(
             codes::NOTHING_LEFT_TO_SELL,
             message,
             Some(&dead.placed),
+        ));
+    }
+}
+
+/// An exact `SELL` of more than the unit can draw on (`ah-q51d`). `rules/sell`: "If the unit does
+/// not have as many of the item as it is trying to sell, it will attempt to sell all that it has",
+/// and the turn report carries an error for the line, so it is told here as the overdrawn item it
+/// is. Must run after [`check_emptied_sales`]: a line that warning already explains - its goods
+/// were moved away earlier this month - is not told twice.
+fn check_oversold_sales(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::NOT_ENOUGH_ITEMS) {
+        return;
+    }
+
+    for oversold in &ledger.oversold_sales {
+        let Some(ordered) = hex.find(&oversold.unit_id) else {
+            continue;
+        };
+        let explained = findings.iter().any(|finding| {
+            finding.code == codes::NOTHING_LEFT_TO_SELL
+                && finding.unit_id.as_deref() == Some(oversold.unit_id.as_str())
+                && finding.line == Some(oversold.placed.line)
+        });
+        if explained {
+            continue;
+        }
+        let short = oversold.ordered - oversold.can_have;
+        findings.push(ordered.finding(
+            hex,
+            codes::NOT_ENOUGH_ITEMS,
+            format!(
+                "short {}: this unit can have {} and this order sells {}",
+                counted_item(short, &oversold.tag, hex, ruleset, plurals),
+                oversold.can_have,
+                oversold.ordered,
+            ),
+            Some(&oversold.placed),
         ));
     }
 }
@@ -11802,6 +11863,22 @@ fn sell(
     entry.quantity = entry.quantity.saturating_add(line.quantity);
     if line.quantity > 0 {
         entry.lines += 1;
+    }
+    // `rules/sell`: "If the unit does not have as many of the item as it is trying to sell, it
+    // will attempt to sell all that it has" - which `price_sale_line` already does - and the
+    // engine reports the line as an error (`Game::DoSell`: "SELL: Unit attempted to sell more
+    // than it had."), so the player is told before sending it (`ah-q51d`). `ALL` never asks for
+    // more than there is.
+    if let Amount::Exact(ordered) = *amount {
+        if ordered > remaining_holding {
+            ledger.oversold_sales.push(OversoldSale {
+                unit_id: who.clone(),
+                tag: tag.clone(),
+                placed: placed.clone(),
+                ordered,
+                can_have: remaining_holding.max(0),
+            });
+        }
     }
     if remaining_holding == 0 {
         ledger.dead_sales.push(DeadSale {
