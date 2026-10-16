@@ -21,6 +21,7 @@ export {
   type RoadRule,
   type TerrainCosts
 } from "./rules";
+export { parseOrderReference, type OrderEntry, type OrderExample, type OrderReference } from "./orders";
 export {
   newAgeDataPage,
   newAgeSkillUses,

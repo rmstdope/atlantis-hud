@@ -5,6 +5,7 @@ import type { Gaps } from "./Gaps";
 import type { ItemEntry } from "./ItemEntry";
 import type { Maintenance } from "./Maintenance";
 import type { MovementRules } from "./MovementRules";
+import type { OrderEntry } from "./OrderEntry";
 import type { OrderLanguage } from "./OrderLanguage";
 import type { RiskThresholds } from "./RiskThresholds";
 import type { RulesetSource } from "./RulesetSource";
@@ -79,4 +80,13 @@ maintenance: Maintenance | null,
  * as "this catalogue cannot say what a FACTION order would give" - the app then shows the
  * report's figures and judges no FACTION order.
  */
-factionPoints: FactionPoints | null, };
+factionPoints: FactionPoints | null, 
+/**
+ * What the rules page says about each order, keyed by its keyword in capitals (`GIVE`), from
+ * the order sections of `rules/orders`.
+ *
+ * Carried for the game data dialog (ah-mlls.6); nothing in the core reads it. Empty for a
+ * ruleset generated before it was scraped, which reads as "the rules say nothing about this
+ * order here" - never as "this world has no orders", which is the grammar's to say.
+ */
+orders: { [key in string]: OrderEntry }, };
