@@ -843,8 +843,12 @@ pub enum SilverChangeCause {
     /// The region's wage, from a `WORK` order or from [`UnitSilver::works_by_default`].
     Worked,
     Entertained,
-    /// Silver another unit hands this one by `GIVE` or `TRANSPORT`.
+    /// Silver another unit hands this one by `GIVE`.
     WasGiven,
+    /// Silver another unit's `TRANSPORT` or `DISTRIBUTE` shipped to this one (`rules/transport`).
+    /// The receiving leg of [`Self::Sent`]; the ITEMS ledger books the same move as
+    /// `ItemChangeCause::TransportedIn` (`ah-9qzs`).
+    Received,
     /// Silver given to a unit this month's `FORM` creates, handed to this one because the formed
     /// unit gained nobody: `rules/form` - "the empty unit will be dissolved, and the silver and any
     /// other items it was given will revert to the first unit you have in that region"
@@ -862,6 +866,10 @@ pub enum SilverChangeCause {
     ProductionSpent,
     /// `GIVE` to a unit.
     GaveAway,
+    /// Silver this unit's `TRANSPORT` or `DISTRIBUTE` shipped to another unit
+    /// (`rules/transport`). Kept apart from [`Self::GaveAway`] so the two orders never read as one
+    /// (`ah-9qzs`).
+    Sent,
     /// `GIVE 0 ... SILV`, which destroys it (`rules/give`).
     Discarded,
     /// Silver this unit's `SHARE` flag lent to the hex's purse, to pay for a faction-mate's

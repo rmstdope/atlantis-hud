@@ -17026,7 +17026,9 @@ fn silver_can_have(
                 && moved.phase <= moment.phase()
                 && matches!(
                     moved.cause,
-                    SilverChangeCause::WasGiven | SilverChangeCause::GiftReverted
+                    SilverChangeCause::WasGiven
+                        | SilverChangeCause::Received
+                        | SilverChangeCause::GiftReverted
                 )
                 && !moved
                     .other
@@ -21979,7 +21981,7 @@ impl SettledShipment {
                 phase,
                 &self.sender,
                 amount,
-                SilverChangeCause::GaveAway,
+                SilverChangeCause::Sent,
                 Some(placed),
                 Some(format!("unit {}", self.target)),
             );
@@ -22000,7 +22002,7 @@ impl SettledShipment {
                 phase,
                 &self.target,
                 amount,
-                SilverChangeCause::WasGiven,
+                SilverChangeCause::Received,
                 None,
                 Some(self.sender_label.clone()),
             );
@@ -54811,13 +54813,13 @@ BUILD
         );
         assert!(distributed_receiver.changes.contains(&SilverChange {
             amount: 200,
-            cause: SilverChangeCause::WasGiven,
+            cause: SilverChangeCause::Received,
             line: None,
             other: Some("Unit 900 (900)".to_string()),
         }));
         assert!(distributed_sender.changes.contains(&SilverChange {
             amount: -200,
-            cause: SilverChangeCause::GaveAway,
+            cause: SilverChangeCause::Sent,
             line: Some(2),
             other: Some("unit 901".to_string()),
         }));
@@ -54856,7 +54858,10 @@ BUILD
             receiver
                 .changes
                 .iter()
-                .filter(|change| change.cause == SilverChangeCause::WasGiven)
+                .filter(|change| matches!(
+                    change.cause,
+                    SilverChangeCause::WasGiven | SilverChangeCause::Received
+                ))
                 .collect::<Vec<_>>(),
             [
                 &SilverChange {
@@ -54867,10 +54872,76 @@ BUILD
                 },
                 &SilverChange {
                     amount: 6597,
-                    cause: SilverChangeCause::WasGiven,
+                    cause: SilverChangeCause::Received,
                     line: None,
                     other: Some("Other (2001)".to_string()),
                 },
+            ]
+        );
+    }
+
+    /// A unit that both GIVEs and TRANSPORTs silver to the same receiver books one cause per
+    /// order on each side, never one merged line (`ah-9qzs`): a `GIVE` stays `GaveAway` /
+    /// `WasGiven`, a `TRANSPORT` is `Sent` / `Received`, the words the ITEMS breakdown already
+    /// uses for a shipment.
+    #[test]
+    fn a_give_and_a_transport_of_silver_book_separate_causes() {
+        let mut target = with_skill(unit("2100"), "QUAM", 1);
+        target.name = "QM".to_string();
+        target.structure_id = Some("500".to_string());
+        let mut sender = with_silver(unit("2000"), 10);
+        sender.name = "Njosn".to_string();
+        let mut nearby = region(vec![sender, target]);
+        nearby.structures = vec![Structure {
+            structure_id: "500".to_string(),
+            name: "Caravan".to_string(),
+            kind: "Caravanserai".to_string(),
+            ..Default::default()
+        }];
+
+        let review = review_turn(
+            &report(vec![nearby]),
+            "unit 2000\nGIVE 2100 2 SILV\nTRANSPORT 2100 3 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let causes = |id: &str| {
+            review
+                .silver
+                .iter()
+                .find(|forecast| forecast.unit_id == id)
+                .expect("the unit is forecast")
+                .changes
+                .iter()
+                .filter(|change| {
+                    matches!(
+                        change.cause,
+                        SilverChangeCause::GaveAway
+                            | SilverChangeCause::Sent
+                            | SilverChangeCause::WasGiven
+                            | SilverChangeCause::Received
+                    )
+                })
+                .map(|change| (change.cause, change.amount, change.other.clone()))
+                .collect::<Vec<_>>()
+        };
+
+        let mut sent = causes("2000");
+        sent.sort_by_key(|(_, amount, _)| *amount);
+        assert_eq!(
+            sent,
+            [
+                (SilverChangeCause::Sent, -3, Some("unit 2100".to_string())),
+                (SilverChangeCause::GaveAway, -2, Some("unit 2100".to_string())),
+            ]
+        );
+        let mut received = causes("2100");
+        received.sort_by_key(|(_, amount, _)| *amount);
+        assert_eq!(
+            received,
+            [
+                (SilverChangeCause::WasGiven, 2, Some("Njosn (2000)".to_string())),
+                (SilverChangeCause::Received, 3, Some("Njosn (2000)".to_string())),
             ]
         );
     }
@@ -56031,7 +56102,7 @@ BUILD
             review.silver
         );
         assert_eq!(
-            silver_shipped(&review, &orders, "906"),
+            silver_shipped(&review, "906"),
             5,
             "{:?}",
             shipment_silver(&review, "906")
@@ -56056,13 +56127,13 @@ BUILD
                       unit 906\nTRANSPORT 905 ALL SILV\nunit 901\nTRANSPORT 900 100 SILV\n";
         let review = review_turn(&report(regions), orders, Some(&ruleset()), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "900"),
+            silver_shipped(&review, "900"),
             100,
             "{:?}",
             shipment_silver(&review, "900")
         );
         assert_eq!(
-            silver_shipped(&review, orders, "906"),
+            silver_shipped(&review, "906"),
             5,
             "{:?}",
             shipment_silver(&review, "906")
@@ -56107,7 +56178,7 @@ BUILD
             Some(&ruleset()),
             with_map(),
         );
-        assert_eq!(silver_shipped(&review, &orders, "906"), 5);
+        assert_eq!(silver_shipped(&review, "906"), 5);
         assert_eq!(
             shipment_warnings(&review, "906"),
             vec![(
@@ -56129,7 +56200,7 @@ BUILD
             Some(&ruleset()),
             with_map(),
         );
-        assert_eq!(silver_shipped(&review, &orders, "906"), 0);
+        assert_eq!(silver_shipped(&review, "906"), 0);
         assert_eq!(
             shipment_warnings(&review, "906"),
             vec![(
@@ -56154,7 +56225,7 @@ BUILD
             Some(&ruleset()),
             with_map(),
         );
-        assert_eq!(silver_shipped(&review, orders, "906"), 0);
+        assert_eq!(silver_shipped(&review, "906"), 0);
         assert_eq!(shipment_silver(&review, "906").at_month_end, Some(50));
         assert!(
             !shipment_silver(&review, "905")
@@ -56200,7 +56271,7 @@ BUILD
                 Some(&ruleset()),
                 with_map(),
             );
-            assert_eq!(silver_shipped(&review, &orders, "906"), 5, "{orders}");
+            assert_eq!(silver_shipped(&review, "906"), 5, "{orders}");
             assert!(shipment_warnings(&review, "906").is_empty(), "{orders}");
         }
     }
@@ -56216,7 +56287,7 @@ BUILD
             Some(&ruleset()),
             with_map(),
         );
-        assert_eq!(silver_shipped(&review, &orders, "906"), 5);
+        assert_eq!(silver_shipped(&review, "906"), 5);
         assert_eq!(
             shipment_warnings(&review, "906"),
             vec![
@@ -56263,7 +56334,7 @@ BUILD
                 "{orders}: {:?}",
                 shipment_warnings(&review, "906")
             );
-            assert!(silver_shipped(&review, &orders, "906") > 0, "{orders}");
+            assert!(silver_shipped(&review, "906") > 0, "{orders}");
         }
     }
 
@@ -56309,7 +56380,7 @@ BUILD
             with_map(),
         );
         assert_eq!(
-            silver_shipped(&review, orders, "906"),
+            silver_shipped(&review, "906"),
             10,
             "{:?}",
             shipment_silver(&review, "906")
@@ -56333,7 +56404,7 @@ BUILD
             Some(&ruleset()),
             with_map(),
         );
-        assert_eq!(silver_shipped(&review, orders, "906"), 55);
+        assert_eq!(silver_shipped(&review, "906"), 55);
         assert_eq!(silver_booked(&review, "903", SilverChangeCause::Lent), -50);
         assert_eq!(shipment_silver(&review, "903").at_month_end, Some(0));
         assert_eq!(shipment_silver(&review, "906").at_month_end, Some(0));
@@ -56360,7 +56431,7 @@ BUILD
             Some(&ruleset()),
             with_map(),
         );
-        assert_eq!(silver_shipped(&review, orders, "906"), 0);
+        assert_eq!(silver_shipped(&review, "906"), 0);
         assert_eq!(shipment_silver(&review, "906").at_month_end, Some(5));
         assert_eq!(shipment_silver(&review, "903").at_month_end, Some(50));
         assert_eq!(
@@ -56385,8 +56456,8 @@ BUILD
             Some(&ruleset()),
             with_map(),
         );
-        assert_eq!(silver_shipped(&review, orders, "900"), 40);
-        assert_eq!(silver_shipped(&review, orders, "906"), 15);
+        assert_eq!(silver_shipped(&review, "900"), 40);
+        assert_eq!(silver_shipped(&review, "906"), 15);
         assert_eq!(shipment_silver(&review, "903").at_month_end, Some(0));
         assert!(shipment_warnings(&review, "900").is_empty());
         assert_eq!(
@@ -56411,7 +56482,7 @@ BUILD
         ]);
         let orders = "unit 905\nTRANSPORT 906 10 SILV\n";
         let review = review_turn(&report(regions), orders, Some(&ruleset()), with_map());
-        assert_eq!(silver_shipped(&review, orders, "905"), 10);
+        assert_eq!(silver_shipped(&review, "905"), 10);
         assert_eq!(silver_booked(&review, "903", SilverChangeCause::Lent), -5);
         assert_eq!(shipment_silver(&review, "903").at_month_end, Some(45));
         assert_eq!(shipment_silver(&review, "905").at_month_end, Some(0));
@@ -56432,7 +56503,7 @@ BUILD
             Some(&ruleset()),
             options,
         );
-        assert_eq!(silver_shipped(&review, orders, "906"), 0);
+        assert_eq!(silver_shipped(&review, "906"), 0);
         assert_eq!(
             shipment_warnings(&review, "906"),
             vec![(
@@ -56495,7 +56566,7 @@ BUILD
             "{:?}",
             shipment_warnings(&review, "906")
         );
-        assert_eq!(silver_shipped(&review, orders, "906"), 10);
+        assert_eq!(silver_shipped(&review, "906"), 10);
         assert_eq!(shipment_silver(&review, "903").at_month_end, Some(45));
         assert_eq!(shipment_silver(&review, "906").at_month_end, Some(0));
     }
@@ -56525,7 +56596,7 @@ BUILD
             "{:?}",
             shipment_warnings(&review, "906")
         );
-        assert!(silver_shipped(&review, orders, "906") > 0);
+        assert!(silver_shipped(&review, "906") > 0);
     }
 
     /// A sharing sender drained ahead of the sharer that really lends: 906 ($5, sharing, owner of
@@ -56563,7 +56634,7 @@ BUILD
             "{:?}",
             review.silver
         );
-        assert_eq!(silver_shipped(&review, &orders, "906"), 10);
+        assert_eq!(silver_shipped(&review, "906"), 10);
         assert_eq!(
             shipment_warnings(&review, "906"),
             vec![(
@@ -56600,7 +56671,7 @@ BUILD
         };
         let exact = "unit 900\nTRANSPORT 901 200 SILV\nunit 901\nTRANSPORT 902 200 SILV\n";
         let review = review_turn(&report(regions()), exact, Some(&ruleset()), with_map());
-        assert_eq!(silver_shipped(&review, exact, "901"), 0);
+        assert_eq!(silver_shipped(&review, "901"), 0);
         assert_eq!(
             shipment_warnings(&review, "901"),
             vec![(
@@ -56612,7 +56683,7 @@ BUILD
         );
         let all = "unit 900\nTRANSPORT 901 200 SILV\nunit 901\nTRANSPORT 902 ALL SILV\n";
         let review = review_turn(&report(regions()), all, Some(&ruleset()), with_map());
-        assert_eq!(silver_shipped(&review, all, "901"), 200);
+        assert_eq!(silver_shipped(&review, "901"), 200);
         assert!(shipment_warnings(&review, "901").is_empty());
     }
 
@@ -56631,7 +56702,7 @@ BUILD
             Some(&ruleset()),
             silenced.clone(),
         );
-        assert_eq!(silver_shipped(&review, &cut, "906"), 5);
+        assert_eq!(silver_shipped(&review, "906"), 5);
         assert!(shipment_warnings(&review, "906").is_empty());
         let refused = "unit 906\nTRANSPORT 905 60 SILV\n";
         let review = review_turn(
@@ -56640,7 +56711,7 @@ BUILD
             Some(&ruleset()),
             silenced,
         );
-        assert_eq!(silver_shipped(&review, refused, "906"), 0);
+        assert_eq!(silver_shipped(&review, "906"), 0);
         assert_eq!(shipment_silver(&review, "906").at_month_end, Some(50));
     }
 
@@ -57591,7 +57662,7 @@ BUILD
                       unit 901\nTAX\nTRANSPORT 900 ALL SILV\nunit 902\nBUY 10 grain\n";
         let (review, received) =
             shipped_beyond_baseline(vec![sharing(with_silver(unit("903"), 150))], orders);
-        let shipped = |id: &str| silver_shipped(&review, orders, id);
+        let shipped = |id: &str| silver_shipped(&review, id);
         let tax = shipment_silver(&review, "901")
             .income
             .expect("the taxer's tax is priced");
@@ -57655,7 +57726,7 @@ BUILD
         let taxer = shipment_silver(&review, "901");
         let tax = taxer.income.expect("the taxer's tax is priced");
         assert_eq!(
-            silver_shipped(&review, orders, "901"),
+            silver_shipped(&review, "901"),
             tax - 81,
             "{taxer:?}"
         );
@@ -58245,39 +58316,17 @@ BUILD
         );
     }
 
-    /// What `id`'s `TRANSPORT` orders shipped, off its SILVER column: the `GaveAway` changes whose
-    /// line in `orders` - the document `review` was made from - is a `TRANSPORT`, or its synonym
-    /// `DISTRIBUTE` (`rules/transport`). A `GIVE` books `GaveAway` too, so the column alone cannot
-    /// tell a gift from a shipment; summing both is what sent `ah-mrs0` after the wrong unit
-    /// (`ah-nd0e`).
-    fn silver_shipped(review: &TurnReview, orders: &str, id: &str) -> i64 {
+    /// What `id`'s `TRANSPORT` orders shipped, off its SILVER column: its `Sent` changes, the
+    /// cause a `TRANSPORT` or its synonym `DISTRIBUTE` books (`rules/transport`). A `GIVE` books
+    /// `GaveAway` instead (`ah-9qzs`), so a gift beside a shipment is never summed into it, as it
+    /// once was (`ah-nd0e`).
+    fn silver_shipped(review: &TurnReview, id: &str) -> i64 {
         shipment_silver(review, id)
             .changes
             .iter()
-            .filter(|moved| {
-                moved.cause == SilverChangeCause::GaveAway
-                    && moved
-                        .line
-                        .is_some_and(|line| is_shipment_line(orders, line))
-            })
+            .filter(|moved| moved.cause == SilverChangeCause::Sent)
             .map(|moved| -moved.amount)
             .sum()
-    }
-
-    /// Whether 1-based `line` of `orders` is a `TRANSPORT` or `DISTRIBUTE` (`rules/transport`).
-    fn is_shipment_line(orders: &str, line: i64) -> bool {
-        usize::try_from(line - 1)
-            .ok()
-            .and_then(|index| orders.lines().nth(index))
-            .and_then(|text| {
-                text.trim_start()
-                    .trim_start_matches('@')
-                    .split_whitespace()
-                    .next()
-            })
-            .is_some_and(|word| {
-                word.eq_ignore_ascii_case("TRANSPORT") || word.eq_ignore_ascii_case("DISTRIBUTE")
-            })
     }
 
     /// GIVE runs before TRANSPORT (`rules/sequenceofevents`), so 901's $300 gives $100 and its
@@ -58291,7 +58340,7 @@ BUILD
         let orders = "unit 901\nGIVE 900 100 SILV\nTRANSPORT 900 ALL SILV\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "901"),
+            silver_shipped(&review, "901"),
             200,
             "{:?}",
             shipment_silver(&review, "901")
@@ -58309,7 +58358,7 @@ BUILD
         let orders = "unit 901\nGIVE 900 100 SILV\n@distribute 900 ALL SILV\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "901"),
+            silver_shipped(&review, "901"),
             200,
             "{:?}",
             shipment_silver(&review, "901")
@@ -58334,7 +58383,7 @@ BUILD
         let orders = "unit 903\nBUY 5 grain\nTRANSPORT 900 ALL SILV\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "903"),
+            silver_shipped(&review, "903"),
             10,
             "{:?}",
             shipment_silver(&review, "903")
@@ -58358,7 +58407,7 @@ BUILD
             with_map(),
         );
         assert_eq!(
-            silver_shipped(&review, orders, "903"),
+            silver_shipped(&review, "903"),
             5,
             "{:?}",
             shipment_silver(&review, "903")
@@ -58388,7 +58437,7 @@ BUILD
         let tax = shipment_silver(&review, "901")
             .income
             .expect("the taxer's tax is priced");
-        assert_eq!(silver_shipped(&review, orders, "901"), tax - 10);
+        assert_eq!(silver_shipped(&review, "901"), tax - 10);
     }
 
     /// The engine pays STUDY orders one at a time, walking the region's objects and the units in
@@ -58418,7 +58467,7 @@ BUILD
             "904 alone is short: {second:?}"
         );
         assert_eq!(
-            silver_shipped(&review, orders, "903"),
+            silver_shipped(&review, "903"),
             5,
             "{:?}",
             shipment_silver(&review, "903")
@@ -58443,13 +58492,13 @@ BUILD
                       unit 904\nSTUDY COMB\nTRANSPORT 900 ALL SILV\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "903"),
+            silver_shipped(&review, "903"),
             2,
             "{:?}",
             shipment_silver(&review, "903")
         );
         assert_eq!(
-            silver_shipped(&review, orders, "904"),
+            silver_shipped(&review, "904"),
             5,
             "{:?}",
             shipment_silver(&review, "904")
@@ -58481,7 +58530,7 @@ BUILD
                       unit 903\nSTUDY COMB\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "902"),
+            silver_shipped(&review, "902"),
             140,
             "{:?}",
             shipment_silver(&review, "902")
@@ -58508,7 +58557,7 @@ BUILD
                       unit 903\nSTUDY COMB\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "901"),
+            silver_shipped(&review, "901"),
             140,
             "{:?}",
             shipment_silver(&review, "901")
@@ -58530,7 +58579,7 @@ BUILD
         let orders = "unit 901\nCAST Create_Amulet_Of_Protection\nTRANSPORT 900 ALL SILV\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "901"),
+            silver_shipped(&review, "901"),
             150,
             "{:?}",
             shipment_silver(&review, "901")
@@ -58555,13 +58604,13 @@ BUILD
                       unit 903\nCAST Create_Amulet_Of_Protection\nTRANSPORT 900 ALL SILV\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "903"),
+            silver_shipped(&review, "903"),
             0,
             "{:?}",
             shipment_silver(&review, "903")
         );
         assert_eq!(
-            silver_shipped(&review, orders, "902"),
+            silver_shipped(&review, "902"),
             50,
             "{:?}",
             shipment_silver(&review, "902")
@@ -58591,7 +58640,7 @@ BUILD
                       unit 902\nCAST Create_Ring_Of_Invisibility\nTRANSPORT 900 ALL SILV\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "902"),
+            silver_shipped(&review, "902"),
             500,
             "{:?}",
             shipment_silver(&review, "902")
@@ -58622,7 +58671,7 @@ BUILD
                       unit 902\nTRANSPORT 900 ALL SILV\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "901"),
+            silver_shipped(&review, "901"),
             0,
             "{:?}",
             shipment_silver(&review, "901")
@@ -58642,7 +58691,7 @@ BUILD
             review.findings
         );
         assert_eq!(
-            silver_shipped(&review, orders, "902"),
+            silver_shipped(&review, "902"),
             50,
             "{:?}",
             shipment_silver(&review, "902")
@@ -59176,7 +59225,7 @@ BUILD
                       unit 902\nTRANSPORT 900 ALL SILV\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "901"),
+            silver_shipped(&review, "901"),
             0,
             "{:?}",
             shipment_silver(&review, "901")
@@ -59205,7 +59254,7 @@ BUILD
         let orders = "unit 901\nGIVE 900 100 SILV\nTRANSPORT 900 ALL SILV\nunit 902\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "901"),
+            silver_shipped(&review, "901"),
             0,
             "{:?}",
             shipment_silver(&review, "901")
@@ -59252,7 +59301,7 @@ BUILD
             review.findings
         );
         assert_eq!(
-            silver_shipped(&review, orders, "902"),
+            silver_shipped(&review, "902"),
             100,
             "{:?}",
             shipment_silver(&review, "902")
@@ -59281,8 +59330,8 @@ BUILD
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
             (
-                silver_shipped(&review, orders, "902"),
-                silver_shipped(&review, orders, "905")
+                silver_shipped(&review, "902"),
+                silver_shipped(&review, "905")
             ),
             (100, 0),
             "902: {:?}\n905: {:?}",
@@ -59314,8 +59363,8 @@ BUILD
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
             (
-                silver_shipped(&review, orders, "902"),
-                silver_shipped(&review, orders, "905")
+                silver_shipped(&review, "902"),
+                silver_shipped(&review, "905")
             ),
             (50, 0),
             "902: {:?}\n905: {:?}",
@@ -59350,8 +59399,8 @@ BUILD
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
             (
-                silver_shipped(&review, orders, "902"),
-                silver_shipped(&review, orders, "905")
+                silver_shipped(&review, "902"),
+                silver_shipped(&review, "905")
             ),
             (50, 0),
             "902: {:?}\n905: {:?}",
@@ -59429,7 +59478,7 @@ BUILD
         let walker = shipment_silver(&review, "907");
         assert_eq!(walker.at_month_end, Some(0), "{walker:?}");
         assert_eq!(
-            silver_shipped(&review, orders, "905"),
+            silver_shipped(&review, "905"),
             100,
             "{:?}",
             shipment_silver(&review, "905")
@@ -59453,7 +59502,7 @@ BUILD
              unit 902\nTRANSPORT 900 ALL SILV\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "902"),
+            silver_shipped(&review, "902"),
             0,
             "{:?}",
             shipment_silver(&review, "902")
@@ -60041,7 +60090,7 @@ BUILD
             shipment_silver(&review, "902")
         );
         assert_eq!(
-            silver_shipped(&review, orders, "902"),
+            silver_shipped(&review, "902"),
             0,
             "{:?}",
             shipment_silver(&review, "902")
@@ -60076,7 +60125,7 @@ BUILD
         );
         assert_eq!(silver_booked(&review, "902", SilverChangeCause::Lent), -50);
         assert_eq!(
-            silver_shipped(&review, orders, "902"),
+            silver_shipped(&review, "902"),
             0,
             "{:?}",
             shipment_silver(&review, "902")
@@ -60143,7 +60192,7 @@ BUILD
              unit 903\nGIVE 905 100 SILV\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "902"),
+            silver_shipped(&review, "902"),
             0,
             "{:?}",
             shipment_silver(&review, "902")
@@ -60176,7 +60225,7 @@ BUILD
              unit 903\nGIVE 901 100 SILV\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "902"),
+            silver_shipped(&review, "902"),
             0,
             "{:?}",
             shipment_silver(&review, "902")
@@ -60203,7 +60252,7 @@ BUILD
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(silver_booked(&review, "902", SilverChangeCause::Lent), -150);
         assert_eq!(
-            silver_shipped(&review, orders, "902"),
+            silver_shipped(&review, "902"),
             150,
             "{:?}",
             shipment_silver(&review, "902")
@@ -60235,7 +60284,7 @@ BUILD
             );
             let review = review_turn(&report(vec![region]), &orders, Some(&rules), with_map());
             assert_eq!(
-                silver_shipped(&review, &orders, "902"),
+                silver_shipped(&review, "902"),
                 ships,
                 "refilled: {refill}: {:?}",
                 shipment_silver(&review, "902")
@@ -60262,7 +60311,7 @@ BUILD
              unit 903\nGIVE 902 300 SILV\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "902"),
+            silver_shipped(&review, "902"),
             100,
             "{:?}",
             shipment_silver(&review, "902")
@@ -60283,7 +60332,7 @@ BUILD
             "unit 901\nCAST Create_Amulet_Of_Protection\nSTUDY COMB\nTRANSPORT 900 ALL SILV\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "901"),
+            silver_shipped(&review, "901"),
             140,
             "{:?}",
             shipment_silver(&review, "901")
@@ -60314,7 +60363,7 @@ BUILD
                       unit 903\nBUY 1 grain\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "902"),
+            silver_shipped(&review, "902"),
             135,
             "{:?}",
             shipment_silver(&review, "902")
@@ -60337,7 +60386,7 @@ BUILD
                       unit 903\nSTUDY COMB\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, orders, "902"),
+            silver_shipped(&review, "902"),
             0,
             "{:?}",
             shipment_silver(&review, "902")
@@ -60794,7 +60843,7 @@ BUILD
             let orders = "unit 901\nCAST Summon_Wind\nTRANSPORT 900 ALL SILV\nunit 902\n";
             let review = review_turn(&report, orders, Some(&rules), with_map());
             assert_eq!(
-                silver_shipped(&review, orders, "901"),
+                silver_shipped(&review, "901"),
                 200,
                 "{:?}",
                 shipment_silver(&review, "901")
@@ -61921,7 +61970,7 @@ BUILD
                         "{label}: Lending"
                     );
                     assert_eq!(
-                        silver_shipped(&review, &orders, LENDER),
+                        silver_shipped(&review, LENDER),
                         300 - case.lent,
                         "{label}: TRANSPORT {:?}",
                         silver(&review, LENDER)
@@ -61968,7 +62017,7 @@ BUILD
                         |id: &str| hex.units.iter().position(|o| o.unit.unit_id == id).unwrap();
                     let figures = ids
                         .iter()
-                        .map(|id| (silver_shipped(&review, orders, id), lending.lends[at(id)]))
+                        .map(|id| (silver_shipped(&review, id), lending.lends[at(id)]))
                         .collect();
                     (order, figures)
                 })
