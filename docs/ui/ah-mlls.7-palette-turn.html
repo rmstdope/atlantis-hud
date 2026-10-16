@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Import, Fetch and Send in the palette</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --soft:#a3b0c0; --dim:#8a97a8; --ink:#dbe3ec; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 16px 64px; background:var(--ground); color:var(--ink); font:15px/1.55 Georgia, "Times New Roman", serif; }
+  header.top, main { max-width:1100px; margin:auto; }
+  h1 { margin:0; font-size:26px; } h2 { color:var(--brass); margin:40px 0 0; font-size:18px; }
+  header.top p, h2 + p { color:var(--soft); max-width:90ch; font-size:14px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:20px; margin-top:14px; }
+  .card { overflow:hidden; border:1px solid var(--edge); border-radius:9px; background:var(--panel); }
+  .card:target { border-color:var(--brass); box-shadow:0 0 0 2px var(--brass); }
+  .card header { padding:14px 16px 10px; }
+  .card h3 { margin:0; font-size:16px; }
+  .card h3 em { color:var(--brass); font-size:11px; font-style:normal; letter-spacing:.12em; margin-right:7px; }
+  .card h3 .rec { color:var(--ok); font-size:11px; margin-left:6px; }
+  .card header p { margin:6px 0 0; font-size:12.5px; color:var(--soft); }
+  .palette { margin:0 16px 14px; overflow:hidden; border:1px solid var(--edge); border-radius:5px; background:var(--raised); font-family:Arial, sans-serif; font-size:12px; }
+  .query { padding:7px 9px; border-bottom:1px solid var(--edge); }
+  .cursor { color:var(--brass); } .ph { color:var(--dim); }
+  .row { display:flex; align-items:baseline; gap:8px; padding:6px 9px; color:var(--soft); }
+  .row + .row { border-top:1px solid #1e2733; }
+  .row.active { background:#26303d; color:var(--ink); }
+  .row.off { color:var(--dim); }
+  .place { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+  .why { color:var(--dim); font-size:10.5px; font-style:italic; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  .right { flex:none; margin-left:auto; display:flex; gap:8px; align-items:baseline; }
+  .kind { flex:none; color:var(--dim); font-size:10px; letter-spacing:.08em; text-transform:uppercase; }
+  .more { padding:5px 9px; color:var(--dim); font-size:11px; font-style:italic; border-top:1px solid #1e2733; }
+  .dialog { margin:0 16px 14px; padding:10px 12px; border:1px solid var(--edge); border-radius:5px; background:var(--raised); font-family:Arial, sans-serif; font-size:12px; color:var(--soft); }
+  .dialog b { color:var(--ink); font-weight:normal; display:block; margin-bottom:3px; }
+  .dialog .field { border:1px solid var(--edge); border-radius:3px; padding:3px 6px; margin:4px 0; color:var(--dim); background:var(--panel); }
+  .dialog .radio { margin:2px 0; } .dialog .radio.on { color:var(--ink); }
+  .dialog .btns { display:flex; justify-content:flex-end; gap:6px; margin-top:6px; }
+  .dialog .btns span { border:1px solid var(--edge); border-radius:3px; padding:1px 8px; }
+  .dialog .btns .go { border-color:var(--brass); color:var(--brass); }
+  .arrow { margin:0 16px 6px; color:var(--dim); font-family:Arial, sans-serif; font-size:11px; }
+  .notes { margin:0; padding:10px 16px 14px 32px; border-top:1px solid var(--edge); color:var(--soft); font-size:12.5px; }
+  .notes li + li { margin-top:4px; } .good { color:var(--ok); } .bad { color:var(--danger); }
+  kbd { padding:1px 4px; border:1px solid var(--edge); border-radius:3px; background:var(--raised); color:var(--ink); font:11px monospace; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Import, Fetch and Send from the command palette</h1>
+  <p>Import, Fetch and Send are the buttons you press most often in a turn, and today they are only in the top bar. Here they are also in the command palette (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>K</kbd>). They appear only where the top bar has them: no Fetch or Send for a game the app cannot reach, and on a New Origins game Fetch has only one choice (its window has no "Latest / All" question). Four questions, each with drawn variants.</p>
+</header>
+<main>
+
+<h2>1 · Fetch's two choices</h2>
+<p>On a New Age game, the Fetch window asks for faction and password and then whether to fetch the latest report or every report not yet fetched.</p>
+<div class="cards">
+<section class="card" id="fetch-a">
+  <header><h3><em>A</em>Two rows, each one choice already ticked<span class="rec">recommended</span></h3><p>Each row opens the same Fetch window with that choice already selected. You still give the password and press Fetch.</p></header>
+  <div class="palette">
+    <div class="query">fet<span class="cursor">|</span></div>
+    <div class="row active"><span class="place">Fetch latest report</span><span class="right"><span class="kind">action</span></span></div>
+    <div class="row"><span class="place">Fetch all reports not yet fetched/imported</span><span class="right"><span class="kind">action</span></span></div>
+  </div>
+  <div class="arrow">↓ Enter on the second row</div>
+  <div class="dialog"><b>Fetch from New Age</b><div class="field">Faction number · 12</div><div class="field">Password</div><div class="radio">○ Latest report</div><div class="radio on">● All reports not yet fetched/imported</div><div class="btns"><span>Cancel</span><span class="go">Fetch</span></div></div>
+  <ul class="notes"><li class="good">The palette saves you a click, which is what it is for.</li><li class="bad">Two rows where there was one button.</li></ul>
+</section>
+<section class="card" id="fetch-b">
+  <header><h3><em>B</em>One row, the window asks as today</h3><p>One row, exactly the top bar's button. The window opens on its usual choice and you pick there.</p></header>
+  <div class="palette">
+    <div class="query">fet<span class="cursor">|</span></div>
+    <div class="row active"><span class="place">Fetch reports</span><span class="right"><span class="kind">action</span></span></div>
+  </div>
+  <div class="arrow">↓ Enter</div>
+  <div class="dialog"><b>Fetch from New Age</b><div class="field">Faction number · 12</div><div class="field">Password</div><div class="radio on">● Latest report</div><div class="radio">○ All reports not yet fetched/imported</div><div class="btns"><span>Cancel</span><span class="go">Fetch</span></div></div>
+  <ul class="notes"><li class="good">One row, same as the button.</li><li class="bad">"All reports" still takes a click in the window.</li></ul>
+</section>
+</div>
+
+<h2>2 · When Send or Import can't be used right now</h2>
+<p>The top bar greys Send out when the orders have no <code>#atlantis</code> line, and greys Import out while an import is running. What does the palette do then?</p>
+<div class="cards">
+<section class="card" id="off-a">
+  <header><h3><em>A</em>Shown greyed, with the reason<span class="rec">recommended</span></h3><p>The row is still found, drawn dim, with the top bar's own reason beside it. Enter does nothing; the highlight skips it.</p></header>
+  <div class="palette">
+    <div class="query">sen<span class="cursor">|</span></div>
+    <div class="row off"><span class="place">Send orders</span><span class="why">These orders have no #atlantis line, so the server cannot tell which faction they belong to.</span><span class="right"><span class="kind">action</span></span></div>
+    <div class="row active"><span class="place">Sentinel Watch (204)</span><span class="right"><span class="kind">unit</span></span></div>
+  </div>
+  <ul class="notes"><li class="good">Matches the greyed button, and says why — you are not left wondering where Send went.</li><li class="bad">A row you can see but not choose.</li></ul>
+</section>
+<section class="card" id="off-b">
+  <header><h3><em>B</em>Left out</h3><p>The row is simply not in the list until it can be used.</p></header>
+  <div class="palette">
+    <div class="query">sen<span class="cursor">|</span></div>
+    <div class="row active"><span class="place">Sentinel Watch (204)</span><span class="right"><span class="kind">unit</span></span></div>
+  </div>
+  <ul class="notes"><li class="good">Every row in the list works.</li><li class="bad">Send vanishes without a word; you have to look at the top bar to find out why.</li></ul>
+</section>
+</div>
+
+<h2>3 · Where they sit with nothing typed</h2>
+<p>With nothing typed, the palette leads with your Armies and units, then places, then commands. Typing three letters always brings these rows up.</p>
+<div class="cards">
+<section class="card" id="place-a">
+  <header><h3><em>A</em>With the other commands<span class="rec">recommended</span></h3><p>Same place as Open settings, Export map and the rest — found by typing.</p></header>
+  <div class="palette">
+    <div class="query"><span class="ph">Type a unit, place, command…</span><span class="cursor">|</span></div>
+    <div class="row active"><span class="place">Iron Guard</span><span class="right"><span class="kind">army</span></span></div>
+    <div class="row"><span class="place">Ironhand Smiths (512)</span><span class="right"><span class="kind">unit</span></span></div>
+    <div class="row"><span class="place">Scouts (513)</span><span class="right"><span class="kind">unit</span></span></div>
+    <div class="more">… units, places, then Import, Fetch, Send among the commands</div>
+  </div>
+  <ul class="notes"><li class="good">Your units stay first, as agreed for Armies.</li><li class="bad">Not visible until you type.</li></ul>
+</section>
+<section class="card" id="place-b">
+  <header><h3><em>B</em>At the very top</h3><p>These rows lead the list whenever nothing is typed, above your Armies.</p></header>
+  <div class="palette">
+    <div class="query"><span class="ph">Type a unit, place, command…</span><span class="cursor">|</span></div>
+    <div class="row active"><span class="place">Import reports</span><span class="right"><span class="kind">action</span></span></div>
+    <div class="row"><span class="place">Fetch latest report</span><span class="right"><span class="kind">action</span></span></div>
+    <div class="row"><span class="place">Fetch all reports not yet fetched/imported</span><span class="right"><span class="kind">action</span></span></div>
+    <div class="row"><span class="place">Send orders</span><span class="right"><span class="kind">action</span></span></div>
+    <div class="row"><span class="place">Iron Guard</span><span class="right"><span class="kind">army</span></span></div>
+  </div>
+  <ul class="notes"><li class="good">Ctrl+K, Enter imports.</li><li class="bad">Pushes Armies and units down every time you open the palette to go somewhere.</li></ul>
+</section>
+</div>
+
+<h2>4 · The words on the rows</h2>
+<div class="cards">
+<section class="card" id="words-a">
+  <header><h3><em>A</em>Verb and what it acts on<span class="rec">recommended</span></h3><p>Reads like the palette's other commands (Open settings, Export map).</p></header>
+  <div class="palette">
+    <div class="row"><span class="place">Import reports</span><span class="right"><span class="kind">action</span></span></div>
+    <div class="row"><span class="place">Fetch latest report</span><span class="right"><span class="kind">action</span></span></div>
+    <div class="row"><span class="place">Fetch all reports not yet fetched/imported</span><span class="right"><span class="kind">action</span></span></div>
+    <div class="row"><span class="place">Send orders</span><span class="right"><span class="kind">action</span></span></div>
+  </div>
+  <ul class="notes"><li class="good">Typing "orders" or "report" finds them too.</li></ul>
+</section>
+<section class="card" id="words-b">
+  <header><h3><em>B</em>The top bar's words</h3><p>Exactly what the buttons and the Fetch window say.</p></header>
+  <div class="palette">
+    <div class="row"><span class="place">Import</span><span class="right"><span class="kind">action</span></span></div>
+    <div class="row"><span class="place">Fetch: Latest report</span><span class="right"><span class="kind">action</span></span></div>
+    <div class="row"><span class="place">Fetch: All reports not yet fetched/imported</span><span class="right"><span class="kind">action</span></span></div>
+    <div class="row"><span class="place">Send</span><span class="right"><span class="kind">action</span></span></div>
+  </div>
+  <ul class="notes"><li class="good">Same words as the buttons you know.</li><li class="bad">"Import" alone also matches every "Import orders" or similar later.</li></ul>
+</section>
+</div>
+<h1 style="margin-top:56px">Round 2 — the edges</h1>
+<p style="color:var(--soft);font-size:14px">Settled so far: two Fetch rows, each opening the window with its choice ticked · unavailable rows shown greyed with the reason · placed with the other commands · "Import reports", "Fetch latest report", "Fetch all reports not yet fetched/imported", "Send orders". On a New Origins game only "Fetch latest report" appears.</p>
+
+<h2>5 · Why Import is greyed</h2>
+<p>The top bar greys Import in two cases: an import is already running, or this game's saved data is held open in another Atlantis HUD tab.</p>
+<div class="cards">
+<section class="card" id="import-a">
+  <header><h3><em>A</em>A sentence for each case<span class="rec">recommended</span></h3><p>Says why, the way Send does.</p></header>
+  <div class="palette">
+    <div class="query">imp<span class="cursor">|</span></div>
+    <div class="row off"><span class="place">Import reports</span><span class="why">Importing 3/7… — wait for it to finish.</span><span class="right"><span class="kind">action</span></span></div>
+  </div>
+  <div class="palette">
+    <div class="query">imp<span class="cursor">|</span></div>
+    <div class="row off"><span class="place">Import reports</span><span class="why">This game is open in another Atlantis HUD tab.</span><span class="right"><span class="kind">action</span></span></div>
+  </div>
+  <ul class="notes"><li class="good">The running count tells you it's on its way.</li></ul>
+</section>
+<section class="card" id="import-b">
+  <header><h3><em>B</em>One sentence for both</h3><p>A single, plainer reason.</p></header>
+  <div class="palette">
+    <div class="query">imp<span class="cursor">|</span></div>
+    <div class="row off"><span class="place">Import reports</span><span class="why">Can't import right now.</span><span class="right"><span class="kind">action</span></span></div>
+  </div>
+  <ul class="notes"><li class="bad">Doesn't say what to do about it.</li></ul>
+</section>
+</div>
+
+<h2>6 · A long reason in a narrow window</h2>
+<p>Send's reason is a full sentence. In a narrow window it cannot fit beside the row.</p>
+<div class="cards">
+<section class="card" id="narrow-a">
+  <header><h3><em>A</em>Reason on its own line under the row<span class="rec">recommended</span></h3><p>Always fully readable; the row grows taller.</p></header>
+  <div class="palette" style="max-width:260px">
+    <div class="query">sen<span class="cursor">|</span></div>
+    <div class="row off" style="flex-wrap:wrap"><span class="place">Send orders</span><span class="right"><span class="kind">action</span></span><span class="why" style="white-space:normal;flex-basis:100%">These orders have no #atlantis line, so the server cannot tell which faction they belong to.</span></div>
+  </div>
+  <ul class="notes"><li class="good">Nothing hidden, on any width.</li><li class="bad">The row is two or three lines high.</li></ul>
+</section>
+<section class="card" id="narrow-b">
+  <header><h3><em>B</em>Cut short, whole sentence on hover</h3><p>One line high; the rest on mouse-over, like the top bar's tooltip.</p></header>
+  <div class="palette" style="max-width:260px">
+    <div class="query">sen<span class="cursor">|</span></div>
+    <div class="row off"><span class="place">Send orders</span><span class="why">These orders have no #atl…</span><span class="right"><span class="kind">action</span></span></div>
+  </div>
+  <ul class="notes"><li class="good">Every row stays one line.</li><li class="bad">Keyboard users never see the end of it.</li></ul>
+</section>
+</div>
+
+<h2>7 · After fetching "All reports" from the palette</h2>
+<p>Next time you press the top bar's Fetch button, which choice is ticked?</p>
+<div class="cards">
+<section class="card" id="remember-a">
+  <header><h3><em>A</em>Always "Latest report", as today<span class="rec">recommended</span></h3><p>The palette row only ticks a choice for that one opening.</p></header>
+  <div class="dialog"><b>Fetch from New Age</b><div class="radio on">● Latest report</div><div class="radio">○ All reports not yet fetched/imported</div></div>
+  <ul class="notes"><li class="good">The button behaves exactly as it does today.</li></ul>
+</section>
+<section class="card" id="remember-b">
+  <header><h3><em>B</em>Whatever you chose last</h3><p>The window remembers the last choice, from either door.</p></header>
+  <div class="dialog"><b>Fetch from New Age</b><div class="radio">○ Latest report</div><div class="radio on">● All reports not yet fetched/imported</div></div>
+  <ul class="notes"><li class="bad">A one-off catch-up keeps fetching everything until you notice.</li></ul>
+</section>
+</div>
+</main>
+</body>
+</html>
