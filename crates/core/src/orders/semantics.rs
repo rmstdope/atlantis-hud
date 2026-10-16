@@ -16733,10 +16733,12 @@ fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> Shor
 /// charged the whole ask - was never the members' silver, and is part of what they spend
 /// (`ah-j5s1`); that remainder is added by [`pool_silver_figures`], the one place a gift beyond
 /// the pool is counted (`ah-9bac`), and is always `0` for one unit. Nothing that leaves the set
-/// is taken off here: a `GIVE` out, a discard, or a `TAKE` by an outsider is part of what the orders
-/// spend. The one exception is read by [`pool_silver_figures`]: for the sharing hex's sentence,
-/// silver that reached one of the hex's own units outside the set is still in the hex and is not
-/// spending (`ah-3qmk`), so it is taken off again there.
+/// is taken off: a `GIVE` out, a discard, or a `TAKE` by an outsider is part of what the orders
+/// spend. The one exception is silver that reached one of the hex's own units outside the set: it
+/// is still in the hex and is not spending (`ah-3qmk`), for the unit sentence as for the hex's
+/// (`ah-1dep`), so what reached the mate is taken off again. What such a gift asked beyond that -
+/// a sharer's overdraft the pool could not fund - never reached anyone and stays part of what the
+/// orders spend (`ah-j5s1`).
 ///
 /// Read as the ledger's own Give-phase balance - which has every receipt in, at the amount the
 /// ledger moved, including a gift its giver funded by a `CLAIM` - with what left the set added
@@ -16747,7 +16749,9 @@ fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> Shor
 /// in the Give phase, before CAST, BUY and STUDY - and differ only by what was earned or received
 /// by then (below). `Give` reads the members' `GIVE` lines as they ran instead - what
 /// they gave, less what they asked beyond it - since a gift reaching a member later in the Give
-/// phase funds none of them (`ah-4k84`).
+/// phase funds none of them (`ah-4k84`). A gift to a faction-mate of the hex is counted there
+/// like any other: at that moment the sentence judges the `GIVE` lines themselves, and the gift
+/// is one of the lines that overdrew the unit (`ah-1dep` review).
 ///
 /// `walking`, for a sharing hex, counts a sharer whose month ends elsewhere only for what the hex
 /// had of it (`ah-a68f`); what it sent out of the set is added back on top, as for anyone else.
@@ -16809,6 +16813,17 @@ fn silver_can_have(
         })
         .map(|moved| moved.amount)
         .sum();
+    // ... less what of it reached a faction-mate of the hex outside the set: still in the hex, so
+    // not spent (`ah-3qmk`, `ah-1dep`). What came in from such a mate is already in `held`.
+    let to_mates: i64 = ledger
+        .silver_transfers
+        .iter()
+        .filter(|moved| {
+            hex_mate_transfer(hex, &ids, &moved.from, moved.to.as_deref())
+                == Some(MateTransfer::Out)
+        })
+        .map(|moved| moved.received)
+        .sum();
     // ... and what sharers arriving from other hexes lend here: `rules/share` lends within "the
     // same region", where their month ends, and `rules/sequenceofevents` runs movement after the
     // market, so they lend nothing to a reading taken there (`ah-asdp`).
@@ -16851,7 +16866,7 @@ fn silver_can_have(
         })
         .map(|moved| moved.amount)
         .sum();
-    held + sent_out + arrivals_lend + earned + received
+    held + sent_out - to_mates + arrivals_lend + earned + received
 }
 
 /// The unit id inside a [`SilverMove::other`] label: `<name> (<id>)`, or `unit <id>` for a unit
@@ -17331,29 +17346,14 @@ fn pool_silver_figures(
     // ... and the same gift's other side: what it asked beyond the pool was never silver the
     // members had, but is part of what their orders spend, so it is added to what they can have
     // between the counted units, or a gift far beyond the pool reads as a negative figure
-    // (`ah-j5s1`). A move from a counted unit to one not counted is already whole in
-    // `silver_can_have`'s silver sent out.
+    // (`ah-j5s1`). A move from a counted unit to one not counted is already in
+    // `silver_can_have`'s silver sent out - less what reached a faction-mate of the hex, which is
+    // not spending (`ah-3qmk`, `ah-1dep`).
     let between_counted: BTreeSet<&str> = counted
         .iter()
         .map(|ordered| ordered.unit.unit_id.as_str())
         .collect();
     let can_have = can_have + silver_unfunded_between(ledger, &between_counted);
-    // ... but silver a counted unit gave a faction-mate of the hex the sentence does not count is
-    // still in the hex and is not spent: `silver_can_have` adds every gift out of the set back as
-    // spending, so what reached the mate is taken off again (`ah-3qmk`). What the gift asked
-    // beyond that - a sharer's overdraft the pool could not fund - never reached anyone and stays
-    // part of what the orders spend (`ah-j5s1`). What came in from such a mate is already in the
-    // Give-phase balance `silver_can_have` reads.
-    let can_have = can_have
-        - ledger
-            .silver_transfers
-            .iter()
-            .filter(|moved| {
-                hex_mate_transfer(hex, &between_counted, &moved.from, moved.to.as_deref())
-                    == Some(MateTransfer::Out)
-            })
-            .map(|moved| moved.received)
-            .sum::<i64>();
 
     let upkeep = if moment == ShortfallMoment::MonthEnd {
         counted
@@ -47442,6 +47442,10 @@ BUILD
     /// any. $500 + $200 = $700 against a purse of $600. Before that correction the cast was priced
     /// from the report's opening holding, which is the bug `ah-gdd3.1` exists to fix.
     ///
+    /// The $500 reached unit 6, a faction-mate in the hex, so it is still in the hex and is not
+    /// what the orders spend (`ah-1dep`, after `ah-3qmk`): the mage can have the $100 left and its
+    /// orders spend the cast's $200.
+    ///
     /// The once-per-cast charge itself is pinned by `silver::tests::prices_a_created_artifact_once_per_cast`,
     /// which is where a reader should go for it.
     #[test]
@@ -47459,7 +47463,7 @@ BUILD
         assert_eq!(finding.unit_id.as_deref(), Some("5"));
         assert_eq!(
             finding.message,
-            "short $100: this unit can have $600 and its orders spend $700"
+            "short $100: this unit can have $100 and its orders spend $200"
         );
     }
 
@@ -60147,6 +60151,99 @@ BUILD
                     "the units in this hex are short $200 between them: they can have $200 and \
                   their orders spend $400"
                 ]
+            );
+        }
+
+        /// 901's own sentences under finding `code`.
+        fn unit_901_shortfall(review: &TurnReview, code: &str) -> Vec<String> {
+            review
+                .findings
+                .iter()
+                .filter(|finding| {
+                    finding.code.as_str() == code && finding.unit_id.as_deref() == Some("901")
+                })
+                .map(|finding| finding.message.clone())
+                .collect()
+        }
+
+        /// With nobody sharing, the unit's own sentence reads the gift to faction-mate 902 as the
+        /// hex sentence does once a unit shares: `rules/give` moves the $200 to 902 before the
+        /// cast, so it is still in the hex and not what 901's orders spend (`ah-1dep`, after
+        /// `ah-3qmk`). The shortfall is $200 either way.
+        #[test]
+        fn a_units_own_sentence_does_not_count_a_silver_gift_to_a_faction_mate_as_spending() {
+            let rules = wind_for_silver_and_goods();
+            let report = report(vec![region(vec![
+                with_silver(
+                    with_item(
+                        with_item(
+                            with_skill(unit("901"), "SWIN", 3),
+                            75,
+                            "floater hides",
+                            "FLOA",
+                        ),
+                        75,
+                        "ironwood",
+                        "IRWD",
+                    ),
+                    200,
+                ),
+                unit("902"),
+            ])]);
+            let review = review_turn(
+                &report,
+                "unit 901\nGIVE 902 200 SILV\nCAST Summon_Wind\nunit 902\n",
+                Some(&rules),
+                CheckOptions::default(),
+            );
+            let sentences = unit_901_shortfall(&review, "not-enough-silver");
+            assert_eq!(sentences.len(), 1, "{sentences:?}");
+            assert!(
+                sentences[0]
+                    .starts_with("short $200: this unit can have $0 and its orders spend $200"),
+                "{sentences:?}"
+            );
+        }
+
+        /// A gift to another faction does leave us (`rules/give`: silver may be given to any
+        /// unit), so the unit's own sentence still counts it as spending (`ah-1dep`).
+        #[test]
+        fn a_units_own_sentence_still_counts_a_silver_gift_to_another_faction_as_spending() {
+            let rules = wind_for_silver_and_goods();
+            let report = report(vec![region(vec![
+                with_silver(
+                    with_item(
+                        with_item(
+                            with_skill(unit("901"), "SWIN", 3),
+                            75,
+                            "floater hides",
+                            "FLOA",
+                        ),
+                        75,
+                        "ironwood",
+                        "IRWD",
+                    ),
+                    200,
+                ),
+                ReportUnit {
+                    faction_id: Some("77".to_string()),
+                    faction_name: Some("Rivals".to_string()),
+                    own: false,
+                    ..unit("9001")
+                },
+            ])]);
+            let review = review_turn(
+                &report,
+                "unit 901\nGIVE 9001 200 SILV\nCAST Summon_Wind\n",
+                Some(&rules),
+                CheckOptions::default(),
+            );
+            let sentences = unit_901_shortfall(&review, "not-enough-silver");
+            assert_eq!(sentences.len(), 1, "{sentences:?}");
+            assert!(
+                sentences[0]
+                    .starts_with("short $200: this unit can have $200 and its orders spend $400"),
+                "{sentences:?}"
             );
         }
     }
