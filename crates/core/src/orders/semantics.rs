@@ -61,14 +61,14 @@ use crate::orders::silver::{
     pillage_threshold, plan_production, pool_wants, price_buy_all, price_cast, price_claim,
     price_pillage, price_production, price_purchase, price_sale_line, price_study, price_tax,
     producing_skill, quantity_bought, readiness, readiness_reason, settle_unclaimed, split_pool,
-    tax_overstated_by, taxes, taxing_men, transfer_shape, transmute_argument, unit_upkeep,
-    workforce_for, BuyAllCap, Caster, ContendedPool, FactionFoodPass, FactionPurse, FoodAmount,
-    FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups, MarketFunds, MarketSide,
-    MoneyRead, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare, PoolShares, PoolWants,
-    PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages, SaleAnswer, SettledBuyAll,
-    SettledGift, SharedCast, SharedMarket, ShipmentPriced, SilverChange, SilverChangeCause,
-    SilverDoubt, SilverDraw, SilverFunding, SilverMove, TransferShape, Transmuting, UnitFacts,
-    UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
+    split_pool_against, tax_overstated_by, taxes, taxing_men, transfer_shape, transmute_argument,
+    unit_upkeep, workforce_for, BuyAllCap, Caster, ContendedPool, FactionFoodPass, FactionPurse,
+    FoodAmount, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups, MarketFunds,
+    MarketSide, MoneyRead, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare, PoolShares,
+    PoolWants, PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages, SaleAnswer,
+    SettledBuyAll, SettledGift, SharedCast, SharedMarket, ShipmentPriced, SilverChange,
+    SilverChangeCause, SilverDoubt, SilverDraw, SilverFunding, SilverMove, TransferShape,
+    Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
@@ -1710,6 +1710,15 @@ fn market_shares_for(
     // `BUY ALL` lines are one attempt, not two. Settled after the loop rather than inside it, so
     // the claim does not depend on which line the player typed first (`ah-lauy`).
     let mut unbounded: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
+    // What every seller *attempted* of each tag, before its order is cut to what it holds:
+    // `Game::DoSell` divides the line by this (`GetSellAmount`), so a unit ordering more than it
+    // holds squeezes the others by its whole order while claiming only its holding (`ah-6la1`).
+    let mut attempted_sales: BTreeMap<String, i64> = BTreeMap::new();
+    // What the oversubscription warning states each seller sells, per unit: its order where that
+    // is what squeezes the line, its holding-cut order where the line caps that instead - so a
+    // lone `SELL 200` of 200 into a line of 100 is still told so, and a lone `SELL 200` of 10
+    // into a line of 110, which the game sells in full, is not.
+    let mut stated_sales: BTreeMap<String, Vec<i64>> = BTreeMap::new();
     let sharing_for_sales = Sharing::read(hex);
 
     for (index, ordered) in hex.units.iter().enumerate() {
@@ -1733,7 +1742,7 @@ fn market_shares_for(
             // the goods are unsellable or unpriceable, which the arms already answer for. The
             // pool itself is read again after the loop, once every unit's claims are in
             // (`ah-lauy`); this guard only needs to know one exists.
-            let Some(_pool) = lines
+            let Some(pool) = lines
                 .iter()
                 .find(|line| line.tag.eq_ignore_ascii_case(&tag))
                 .map(|line| line.amount)
@@ -1759,7 +1768,8 @@ fn market_shares_for(
 
             let want = match (&placed.intent, side) {
                 // A unit cannot sell what it does not hold, so asking for more is not a larger
-                // claim on the market. `rules/sequenceofevents` settles GIVE/TAKE before the
+                // claim on the market - though the whole order still squeezes the others, through
+                // `attempted_sales` below (`ah-6la1`). `rules/sequenceofevents` settles GIVE/TAKE before the
                 // market opens, so what it "does not hold" is read as of that phase boundary
                 // rather than the report's own figure (`ah-q7jd`). A second `SELL` of the same
                 // goods can only claim what an earlier line of this unit's own has left (`ah-vw8e`).
@@ -1780,10 +1790,27 @@ fn market_shares_for(
                         0
                     };
                     let holds = (ordered.early_holding(&tag) + lent - already).max(0);
-                    match amount {
-                        Amount::Exact(count) => (*count).min(holds),
-                        Amount::All { except } => (holds - except).max(0),
+                    let (ordered_amount, cut) = match amount {
+                        Amount::Exact(count) => (*count, (*count).min(holds)),
+                        Amount::All { except } => {
+                            let all = (holds - except).max(0);
+                            (all, all)
+                        }
+                    };
+                    // `GetSellAmount` resolves `SELL ALL` to what the unit can sell and caps every
+                    // order at the line's own amount; `DoSell` then cuts it to `GetSharedNum`.
+                    let attempt = ordered_amount.min(pool).max(0);
+                    if attempt > 0 {
+                        *attempted_sales.entry(tag.clone()).or_default() += attempt;
+                        let stated = stated_sales
+                            .entry(tag.clone())
+                            .or_insert_with(|| vec![0; hex.units.len()]);
+                        stated[index] = stated[index].saturating_add(attempt.max(cut));
+                        wants
+                            .entry((tag.clone(), side))
+                            .or_insert_with(|| vec![0; hex.units.len()]);
                     }
+                    attempt.min(cut)
                 }
                 (Intent::Buy { amount, .. }, _) => match amount {
                     Amount::Exact(count) => *count,
@@ -1843,7 +1870,14 @@ fn market_shares_for(
             // Only a line that is genuinely short is an overrun (`ah-t2pn.4`). Unlike the silver
             // pools, one trader is enough: `ah-t2pn.3` settles a market whenever anybody trades,
             // which is what caps a unit ordering `BUY 200` where 100 exist.
-            let wanted: i64 = claims.iter().copied().fold(0, i64::saturating_add);
+            //
+            // A sale is stated, and divided, in what was *ordered*, as `Game::DoSell` divides it
+            // (`ah-6la1`); a purchase in its claims.
+            let stated = match side {
+                MarketSide::Selling => stated_sales.get(&tag).unwrap_or(&claims),
+                MarketSide::Buying => &claims,
+            };
+            let wanted: i64 = stated.iter().copied().fold(0, i64::saturating_add);
             if wanted > pool {
                 overruns.push(PoolOverrun {
                     pool: ContendedPool::Market {
@@ -1852,7 +1886,7 @@ fn market_shares_for(
                     },
                     wanted,
                     available: pool,
-                    claimants: claims
+                    claimants: stated
                         .iter()
                         .enumerate()
                         .filter(|(_, claim)| **claim > 0)
@@ -1860,7 +1894,11 @@ fn market_shares_for(
                         .collect(),
                 });
             }
-            let shares = split_pool(&claims, pool);
+            let attempted = match side {
+                MarketSide::Selling => attempted_sales.get(&tag).copied().unwrap_or(0),
+                MarketSide::Buying => 0,
+            };
+            let shares = split_pool_against(&claims, attempted, pool);
             ((tag, side), shares)
         })
         .collect()
@@ -27185,8 +27223,12 @@ mod tests {
         }
 
         /// `ah-0n2k.2`. An own hex-mate whose line was cut short, ordered to sell the same goods,
-        /// claimed `0` of the line because its goods went with the tail - so what this unit is shown
-        /// earning is the most it can be, not a forecast. The figure itself is kept.
+        /// claims `0` of the line because its goods went with the tail, so the figure is flagged as
+        /// the most it can be. Its *order* is still read, though, and `Game::DoSell` divides the
+        /// line by what was ordered whatever the seller holds (`ah-6la1`): 40 + 40 attempted
+        /// against 40 wanted leaves this unit 20 furs, $480. For an exact `SELL` like this one
+        /// that figure is in fact certain and the flag merely cautious; it is still needed for an
+        /// unread mate's `SELL ALL`, whose attempt cannot be read.
         #[test]
         fn a_seller_beside_an_unread_seller_reads_its_takings_as_a_ceiling() {
             let hex = ReportRegion {
@@ -27209,7 +27251,7 @@ mod tests {
             );
 
             let seller = silver_of(&review, "4329");
-            assert_eq!(seller.income, Some(960));
+            assert_eq!(seller.income, Some(480));
             assert_eq!(seller.doubt, None);
             assert!(seller.income_in_time_at_most);
             assert!(!seller.late_income_at_most);
@@ -32464,8 +32506,12 @@ mod tests {
             assert_eq!(silver_of(&review, "2391").income, Some(30 * 60));
         }
 
-        /// A unit cannot sell what it does not hold, so an order for more is not a larger claim
-        /// on the market and must not squeeze a faction-mate.
+        /// A unit cannot sell what it does not hold, but what it *ordered* still squeezes a
+        /// faction-mate (`ah-6la1`, reversing `ah-t2pn.3`'s reading). `Game::DoSell`
+        /// (`runorders.cpp`) takes its denominator from `GetSellAmount`, the ordered amounts, each
+        /// capped only at the market's own amount, and cuts an order to what the unit holds only
+        /// at that unit's own turn. Here that is 110 + 100 = 210 attempted against 110 wanted:
+        /// 110 * 10 / 210 = 5 for the seller holding ten, and 110 * 100 / 210 = 52 for the other.
         #[test]
         fn a_sellers_claim_is_capped_by_what_it_holds() {
             let review = market_review(
@@ -32475,10 +32521,53 @@ mod tests {
                 "unit 2390\nSELL 200 horse\nunit 2391\nSELL 100 horse\n",
             );
 
-            // 10 + 100 is exactly what the line takes, so nothing is divided. Had the order for
-            // 200 counted as a claim for 200, the pair would have been squeezed to 36 and 73.
-            assert_eq!(silver_of(&review, "2390").income, Some(10 * 60));
-            assert_eq!(silver_of(&review, "2391").income, Some(100 * 60));
+            assert_eq!(silver_of(&review, "2390").income, Some(5 * 60));
+            assert_eq!(silver_of(&review, "2391").income, Some(52 * 60));
+        }
+
+        /// `ah-6la1`. `GetSellAmount` caps every order at the line's own amount before dividing,
+        /// so an order larger than the line claims only the line: 100 + 50 attempted against 100
+        /// wanted is 100 * 100 / 150 = 66 and 100 * 50 / 150 = 33, not the 80 and 20 a claim of
+        /// 200 would win.
+        #[test]
+        fn an_order_larger_than_the_line_claims_only_the_line() {
+            let review = market_review(
+                vec![line(100, 10)],
+                vec![],
+                vec![trader("2390", 200, 0), trader("2391", 50, 0)],
+                "unit 2390\nSELL 200 horse\nunit 2391\nSELL 50 horse\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").income, Some(66 * 10));
+            assert_eq!(silver_of(&review, "2391").income, Some(33 * 10));
+        }
+
+        /// `ah-6la1`, the bead's own hex without the `SHARE` flag that let its Transporter draw on
+        /// the Farmers' stock. 114 wanted; the Farmers order 114 and hold plenty, the Transporter
+        /// orders 50 and holds 36. `Game::DoSell` attempts 114 + 50 = 164, so the Farmers take
+        /// 114 * 114 / 164 = 79, and the Transporter, cut to its 36, takes 114 * 36 / 164 = 25 -
+        /// not the 27 a denominator of 114 + 36 gives it. The warning counts the 164 the game
+        /// does.
+        #[test]
+        fn a_seller_ordering_more_than_it_holds_is_cut_after_the_line_is_divided() {
+            let review = market_review(
+                vec![line(114, 21)],
+                vec![],
+                vec![trader("3493", 290, 0), trader("2418", 36, 0)],
+                "unit 3493\nSELL 114 horse\nunit 2418\nSELL 50 horse\n",
+            );
+
+            assert_eq!(silver_of(&review, "3493").income, Some(79 * 21));
+            assert_eq!(silver_of(&review, "2418").income, Some(25 * 21));
+            let warning = review
+                .findings
+                .iter()
+                .find(|finding| finding.code == codes::REGION_POOL_OVERSUBSCRIBED)
+                .map(|finding| finding.message.as_str());
+            assert_eq!(
+                warning,
+                Some("your units here sell 164 horse between them and this market wants 114")
+            );
         }
 
         /// The second defect this bead fixes, and the navigator's decision of 2026-08-23: the

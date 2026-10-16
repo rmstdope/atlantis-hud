@@ -3637,9 +3637,23 @@ pub fn feed_from_faction_food(claims: &[FoodClaim]) -> FactionFoodPass {
 /// proportional-to-men.
 #[must_use]
 pub fn split_pool(wants: &[i64], pool: i64) -> Vec<i64> {
+    split_pool_against(wants, 0, pool)
+}
+
+/// [`split_pool`], divided by at least `attempted` rather than by the claims alone.
+///
+/// A market sale is the case: `Game::DoSell` (`runorders.cpp`) divides the line by what every
+/// seller *ordered* (`GetSellAmount`), and cuts an order to what its unit holds only afterwards,
+/// at that unit's own turn - so a unit ordering more than it holds claims only its holding, yet
+/// squeezes everybody else by its whole order (`ah-6la1`). Worked through exactly, that walk in
+/// report order gives each seller `pool * claim / attempted` whatever the order, which is why the
+/// split can stay positional. An `attempted` below the claims' own total changes nothing.
+#[must_use]
+pub fn split_pool_against(wants: &[i64], attempted: i64, pool: i64) -> Vec<i64> {
     let clamped: Vec<i64> = wants.iter().map(|want| (*want).max(0)).collect();
     let pool = pool.max(0);
-    let total: i128 = clamped.iter().map(|want| i128::from(*want)).sum();
+    let claimed: i128 = clamped.iter().map(|want| i128::from(*want)).sum();
+    let total = claimed.max(i128::from(attempted));
     if total <= i128::from(pool) {
         // Nothing is contended, so nothing is divided - which is also what keeps a lone taxer,
         // and every hex the region can afford, reading exactly as it did before.
@@ -3724,6 +3738,26 @@ mod split_in_proportion_tests {
 #[cfg(test)]
 mod split_pool_tests {
     use super::*;
+
+    /// `ah-6la1`. A market sale divides by what was attempted, which can exceed what is claimed:
+    /// 110 + 100 attempted against 110, with the first order cut to 10, gives 5 and 52 - and
+    /// never more than the pool, however large the attempt.
+    #[test]
+    fn an_attempt_above_the_claims_divides_by_the_attempt() {
+        assert_eq!(split_pool_against(&[10, 100], 210, 110), vec![5, 52]);
+        for attempted in [0, 110, 111, 210, 10_000] {
+            let shares = split_pool_against(&[10, 100], attempted, 110);
+            assert!(
+                shares.iter().sum::<i64>() <= 110,
+                "{attempted}: the pool is never promised twice: {shares:?}"
+            );
+        }
+        assert_eq!(
+            split_pool_against(&[10, 100], 50, 200),
+            vec![10, 100],
+            "an attempt below the claims changes nothing"
+        );
+    }
 
     #[test]
     fn a_pool_that_covers_every_claim_divides_nothing() {
