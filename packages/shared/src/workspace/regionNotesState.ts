@@ -70,3 +70,31 @@ export function reduce(mode: NotesMode, event: NotesEvent): NotesMode {
       return mode;
   }
 }
+
+/** How long a note chosen in the palette stays outlined in gold (ah-mlls.5). */
+export const NOTE_FLASH_MS = 2000;
+
+/**
+ * How long a palette request to reveal a note is honoured. The panel normally takes it within a
+ * frame of the hex being selected; one it never saw (the panel hidden) is dropped rather than
+ * flashing a note, unasked, whenever the panel next shows that hex.
+ */
+export const REVEAL_WINDOW_MS = 5000;
+
+/** The note on this hex the palette asked to reveal, or null when there is nothing to do here. */
+export function revealDue(
+  reveal: { regionId: string; noteId: string; at: number } | null,
+  regionId: string,
+  notes: ReadonlyArray<{ id: string }>,
+  now: number
+): string | null {
+  if (
+    reveal === null ||
+    reveal.regionId !== regionId ||
+    now - reveal.at > REVEAL_WINDOW_MS ||
+    !notes.some((note) => note.id === reveal.noteId)
+  ) {
+    return null;
+  }
+  return reveal.noteId;
+}

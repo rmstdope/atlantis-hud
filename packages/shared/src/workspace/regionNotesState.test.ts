@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canSave, keyToAction, reduce, type NotesMode } from "./regionNotesState";
+import { canSave, keyToAction, reduce, revealDue, REVEAL_WINDOW_MS, type NotesMode } from "./regionNotesState";
 
 describe("canSave", () => {
   it("refuses empty or whitespace-only text", () => {
@@ -84,5 +84,30 @@ describe("reduce", () => {
 
   it("removed returns to idle", () => {
     expect(reduce({ kind: "removing", noteId: "n1" }, { type: "removed" })).toEqual(idle);
+  });
+});
+
+describe("revealDue (ah-mlls.5)", () => {
+  const notes = [{ id: "a" }, { id: "b" }];
+  const asked = { regionId: "1:7,53", noteId: "b", at: 1000 };
+
+  it("names the note asked for on this hex", () => {
+    expect(revealDue(asked, "1:7,53", notes, 1200)).toBe("b");
+  });
+
+  it("is nothing on another hex", () => {
+    expect(revealDue(asked, "1:8,54", notes, 1200)).toBeNull();
+  });
+
+  it("is nothing when the note is not on the hex", () => {
+    expect(revealDue({ ...asked, noteId: "gone" }, "1:7,53", notes, 1200)).toBeNull();
+  });
+
+  it("is nothing once the request has gone stale", () => {
+    expect(revealDue(asked, "1:7,53", notes, 1000 + REVEAL_WINDOW_MS + 1)).toBeNull();
+  });
+
+  it("is nothing with no request", () => {
+    expect(revealDue(null, "1:7,53", notes, 1200)).toBeNull();
   });
 });

@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CoreClient, HexNoteRecord, OpenedGame } from "@atlantis/core-client";
 import { type HexNotesState, resetHexNotesStore, useHexNotesStore } from "../hexNotesStore";
 import { renderWithStoreState, restoreStoresForTest } from "../testing/storeState";
-import { RegionNotes } from "./RegionNotes";
+import { NoteRow, RegionNotes } from "./RegionNotes";
+import { renderToStaticMarkup } from "react-dom/server";
 
 const GAME = {
   gameFilePath: "g.json",
@@ -98,5 +99,31 @@ describe("the region panel's Notes section", () => {
     );
 
     expect(markup).toBe("");
+  });
+});
+
+describe("a note the palette chose (ah-mlls.5)", () => {
+  const row = (flash: boolean) =>
+    renderToStaticMarkup(
+      <NoteRow
+        note={note()}
+        narrow={false}
+        removing={false}
+        flash={flash}
+        onEdit={() => {}}
+        onRemoveClicked={() => {}}
+        onKeep={() => {}}
+        onRemove={() => {}}
+        onToggleOnMap={() => {}}
+      />
+    );
+
+  it("is outlined in gold while it flashes", () => {
+    expect(row(true)).toMatch(/data-flash="true"[^>]*class="[^"]*outline-brass/);
+  });
+
+  it("carries no outline otherwise", () => {
+    expect(row(false)).not.toContain("outline-brass");
+    expect(row(false)).not.toContain("data-flash");
   });
 });

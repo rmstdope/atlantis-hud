@@ -185,3 +185,20 @@ describe("notesForRegion", () => {
     expect(notesForRegion(notes, "1:7,53").map((n) => n.id)).toEqual(["a", "c"]);
   });
 });
+
+describe("revealing a note (ah-mlls.5)", () => {
+  beforeEach(resetHexNotesStore);
+
+  it("records which note of which hex the palette chose, and when", () => {
+    useHexNotesStore.getState().revealNote("1:7,53", "note-1", 1000);
+    expect(useHexNotesStore.getState().reveal).toEqual({ regionId: "1:7,53", noteId: "note-1", at: 1000 });
+    useHexNotesStore.getState().clearReveal();
+    expect(useHexNotesStore.getState().reveal).toBeNull();
+  });
+
+  it("forgets the request when the game closes", () => {
+    useHexNotesStore.getState().revealNote("1:7,53", "note-1", 1000);
+    useHexNotesStore.getState().clear();
+    expect(useHexNotesStore.getState().reveal).toBeNull();
+  });
+});

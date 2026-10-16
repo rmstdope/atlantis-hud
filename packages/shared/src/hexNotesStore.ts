@@ -46,6 +46,14 @@ export type HexNotesState = {
   requestAdd: { regionId: string } | null;
   requestAddFor: (regionId: string) => void;
   clearRequestAdd: () => void;
+  /**
+   * A note the palette chose (ah-mlls.5): `RegionNotes` on that hex scrolls it into view, outlines
+   * it for a moment and clears this - the same small event as `requestAdd`. `at` is when it was
+   * asked, so a request the panel never saw cannot flash a note long afterwards (`revealDue`).
+   */
+  reveal: { regionId: string; noteId: string; at: number } | null;
+  revealNote: (regionId: string, noteId: string, at?: number) => void;
+  clearReveal: () => void;
 };
 
 export const useHexNotesStore = create<HexNotesState>()((set, get) => ({
@@ -116,14 +124,24 @@ export const useHexNotesStore = create<HexNotesState>()((set, get) => ({
   // `requestAdd` too: a closed game leaves no live editor to open, and a stale request could
   // otherwise pop open unasked in a later game whose regionId happens to collide (region ids are
   // not unique across games).
-  clear: () => set({ gameId: null, status: "idle", notes: [], requestAdd: null }),
+  clear: () => set({ gameId: null, status: "idle", notes: [], requestAdd: null, reveal: null }),
 
   requestAdd: null,
   requestAddFor: (regionId) => set({ requestAdd: { regionId } }),
-  clearRequestAdd: () => set({ requestAdd: null })
+  clearRequestAdd: () => set({ requestAdd: null }),
+
+  reveal: null,
+  revealNote: (regionId, noteId, at = Date.now()) => set({ reveal: { regionId, noteId, at } }),
+  clearReveal: () => set({ reveal: null })
 }));
 
-const DEFAULT_TEST_STATE = { gameId: null, status: "idle" as const, notes: [], requestAdd: null };
+const DEFAULT_TEST_STATE = {
+  gameId: null,
+  status: "idle" as const,
+  notes: [],
+  requestAdd: null,
+  reveal: null
+};
 
 /** Test helper, like `resetWorkspaceStore` (workspaceStore.ts). */
 export function resetHexNotesStore(): void {
