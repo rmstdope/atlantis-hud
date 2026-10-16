@@ -22979,9 +22979,23 @@ fn check_mage_arrivals(
                     named_items(&refused.moving, hex, ruleset, plurals)
                 )
             };
+            // The receiver is named for what `data/MANI` makes it, as the BUY refusal below is
+            // (`ah-yvgi`): the mage at the other end of a GIVE, or this unit for a TAKE.
+            let receiver = match &refused.mage_id {
+                Some(id) => hex.find(id),
+                None => Some(ordered),
+            };
+            let what = match (ruleset, receiver) {
+                (Some(ruleset), Some(receiver))
+                    if magic::is_apprentice(ruleset, &receiver.unit.skills) =>
+                {
+                    "an apprentice"
+                }
+                _ => "a mage",
+            };
             let head = match (&refused.mage_id, refused.is_give) {
-                (Some(id), true) => format!("unit {id} is a mage and cannot be given men"),
-                _ => "this unit is a mage and cannot take on men".to_string(),
+                (Some(id), true) => format!("unit {id} is {what} and cannot be given men"),
+                _ => format!("this unit is {what} and cannot take on men"),
             };
             let placed = ordered
                 .intents
@@ -51436,6 +51450,62 @@ BUILD
         );
     }
 
+    /// `ah-yvgi`: an apprentice leader buying leaders mixes nothing, so only the apprentice half.
+    #[test]
+    fn an_apprentice_leader_buying_leaders_is_told_only_that_an_apprentice_cannot_recruit() {
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "leaders".to_string(),
+                tag: "LEAD".to_string(),
+                price: 100,
+            }],
+            ..region(vec![with_silver(apprentice(3), 1000)])
+        };
+        let findings = check(vec![region], "unit 5\nBUY 1 LEAD\n");
+        let finding = findings
+            .iter()
+            .find(|finding| finding.code == codes::MEN_SENT_INTO_A_MAGE)
+            .unwrap_or_else(|| panic!("no refusal: {:?}", codes(&findings)));
+
+        assert_eq!(
+            finding.message,
+            "this unit is an apprentice and cannot recruit, so this order buys nobody"
+        );
+    }
+
+    /// `ah-yvgi`: manipulation beside a Foundation is a mage, not an apprentice - only a unit
+    /// whose one magic is manipulation is named an apprentice.
+    #[test]
+    fn manipulation_beside_a_foundation_is_still_a_mage() {
+        let mut both = apprentice(3);
+        both.skills.push(Skill {
+            name: "force".to_string(),
+            tag: "FORC".to_string(),
+            level: 1,
+            points: 30,
+        });
+        let region = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "leaders".to_string(),
+                tag: "LEAD".to_string(),
+                price: 100,
+            }],
+            ..region(vec![with_silver(both, 1000)])
+        };
+        let findings = check(vec![region], "unit 5\nBUY 1 LEAD\n");
+        let finding = findings
+            .iter()
+            .find(|finding| finding.code == codes::MEN_SENT_INTO_A_MAGE)
+            .unwrap_or_else(|| panic!("no refusal: {:?}", codes(&findings)));
+
+        assert_eq!(
+            finding.message,
+            "this unit is a mage and cannot recruit, so this order buys nobody"
+        );
+    }
+
     /// `ah-yvgi`: a mage leader buying more leaders mixes nothing, so only the mage half is said.
     #[test]
     fn a_mage_leader_buying_leaders_is_told_only_that_a_mage_cannot_recruit() {
@@ -66357,6 +66427,23 @@ BUILD
         assert_eq!(
             finding.message,
             "unit 900 is a mage and cannot be given men, so this order moves nothing"
+        );
+    }
+
+    /// `ah-yvgi`: `data/MANI` makes an apprentice, and the gift's warning names it as one.
+    #[test]
+    fn the_warning_for_a_gift_into_an_apprentice_names_an_apprentice() {
+        let finding = only(check(
+            vec![region(vec![
+                with_race(unit("1234"), 10, "orcs", "ORC"),
+                with_race(studying_unit("900", "MANI", 1), 1, "leader", "LEAD"),
+            ])],
+            "unit 1234\nGIVE 900 5 ORC\n",
+        ));
+
+        assert_eq!(
+            finding.message,
+            "unit 900 is an apprentice and cannot be given men, so this order moves nothing"
         );
     }
 
