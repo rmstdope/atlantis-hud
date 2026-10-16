@@ -158,7 +158,7 @@ export function filterUnits<T extends ReportUnit>(
   needle: string,
   structures: StructuresByRegion = new Map(),
   skillsText: (unit: ReportUnit) => string = defaultSkillsText,
-  itemsOf: (unit: ReportUnit) => readonly { tag: string; name: string }[] = defaultItems
+  itemsOf: (unit: T) => readonly { tag: string; name: string }[] = defaultItems
 ): T[] {
   const wanted = filterNeedle(needle);
   if (!wanted) {
