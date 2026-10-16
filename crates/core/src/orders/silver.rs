@@ -1109,7 +1109,8 @@ pub enum PoolShare {
     /// it does without contention.
     #[default]
     Uncontended,
-    /// What [`split_pool`] gave this unit.
+    /// What the pool's settlement gave this unit: [`settle_in_report_order`] for `TAX`,
+    /// [`split_pool`] for the wage pools.
     Share(i64),
     /// The hex cannot be settled: some unit contending for this pool has a headcount that is
     /// itself a guess, so no unit's share is a number - including units whose own count is exact.
@@ -3617,7 +3618,7 @@ pub fn feed_from_faction_food(claims: &[FoodClaim]) -> FactionFoodPass {
     }
 }
 
-/// Splits a contended regional pool between the units that asked for it.
+/// Splits a contended regional pool between the units that asked for it, all at once.
 ///
 /// Returns one share per claim, **index-aligned with `wants`** - not keyed by unit id, for the
 /// reason [`feed_from_faction_food`] gives: the division is positional, over the claims as they
@@ -3626,42 +3627,88 @@ pub fn feed_from_faction_food(claims: &[FoodClaim]) -> FactionFoodPass {
 ///
 /// When the pool covers every claim, each unit gets exactly what it asked for and nothing is
 /// divided. When it does not, each gets `pool * wants[i] / total`, **rounded down** - so the
-/// shares never add up to more than the pool, and up to `wants.len() - 1` silver of it goes
-/// unpromised. Understating by a few silver is the safe direction for a figure whose negatives a
-/// player acts on; the alternative is promising money the region does not have, which is the
-/// defect this removes.
+/// shares never add up to more than the pool, and up to `wants.len() - 1` of it goes unpromised.
 ///
-/// The rules state this split for markets outright ("in proportion to the amount each buyer
-/// attempted to buy"). For `TAX` it is the same arithmetic as the rules' own "split evenly among
-/// all taxers", read per man: a taxer's ask is `men * 50`, so proportional-to-ask *is*
-/// proportional-to-men.
+/// Used for the pools the game does not settle by a walk in report order - wages, entertainment
+/// and production. `TAX` and the markets are [`settle_in_report_order`]'s (`ah-alwr`).
 #[must_use]
 pub fn split_pool(wants: &[i64], pool: i64) -> Vec<i64> {
-    split_pool_against(wants, 0, pool)
-}
-
-/// [`split_pool`], divided by at least `attempted` rather than by the claims alone.
-///
-/// A market sale is the case: `Game::DoSell` (`runorders.cpp`) divides the line by what every
-/// seller *ordered* (`GetSellAmount`), and cuts an order to what its unit holds only afterwards,
-/// at that unit's own turn - so a unit ordering more than it holds claims only its holding, yet
-/// squeezes everybody else by its whole order (`ah-6la1`). Worked through exactly, that walk in
-/// report order gives each seller `pool * claim / attempted` whatever the order, which is why the
-/// split can stay positional. An `attempted` below the claims' own total changes nothing.
-#[must_use]
-pub fn split_pool_against(wants: &[i64], attempted: i64, pool: i64) -> Vec<i64> {
     let clamped: Vec<i64> = wants.iter().map(|want| (*want).max(0)).collect();
     let pool = pool.max(0);
-    let claimed: i128 = clamped.iter().map(|want| i128::from(*want)).sum();
-    let total = claimed.max(i128::from(attempted));
+    let total: i128 = clamped.iter().map(|want| i128::from(*want)).sum();
     if total <= i128::from(pool) {
-        // Nothing is contended, so nothing is divided - which is also what keeps a lone taxer,
+        // Nothing is contended, so nothing is divided - which is also what keeps a lone claimant,
         // and every hex the region can afford, reading exactly as it did before.
         return clamped;
     }
     clamped
         .iter()
         .map(|want| i64::try_from(i128::from(pool) * i128::from(*want) / total).unwrap_or(i64::MAX))
+        .collect()
+}
+
+/// How [`settle_in_report_order`] rounds each unit's share before the walk moves on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShareRounding {
+    /// `Game::RunTaxRegion` (`runorders.cpp`) truncates: `(int)(t * wealth / desired)`.
+    Down,
+    /// `Game::DoSell` and `Game::DoBuy` round at random, `(amount * num + getrandom(attempted)) /
+    /// attempted`, which rounds up with probability equal to the fraction. Its most likely
+    /// outcome is the fraction rounded to the nearest whole, and that is what a forecast shows; an
+    /// exact half, where both are equally likely, goes down - the safe direction for a figure a
+    /// player plans on.
+    Nearest,
+}
+
+/// Settles a contended pool the way the engine does for `TAX` and the markets (`ah-alwr`): unit by
+/// unit in report order, each share `left * want / outstanding` rounded per `rounding`, with both
+/// the pool left and the total still outstanding reduced after every unit - so the last claimant
+/// takes the remainder and, when the claims are the whole of what was attempted, the pool is used
+/// to the last item or silver. Rounding every share down on its own instead left the hex trading
+/// one less than the game.
+///
+/// `attempted` is a floor under the outstanding total, for a market sale: `Game::DoSell`
+/// divides by what every seller *ordered* (`GetSellAmount`), and cuts an order to what its unit
+/// holds only at that unit's own turn, subtracting the cut order from `attempted` - so a unit
+/// ordering more than it holds claims only its holding, yet squeezes everybody ahead of it by its
+/// whole order (`ah-6la1`). An `attempted` below the claims' own total changes nothing.
+///
+/// Index-aligned with `wants`, as [`split_pool`] is; the order of `wants` is the report order.
+/// The shares never add up to more than the pool, and none exceeds its own claim.
+#[must_use]
+pub fn settle_in_report_order(
+    wants: &[i64],
+    attempted: i64,
+    pool: i64,
+    rounding: ShareRounding,
+) -> Vec<i64> {
+    let clamped: Vec<i64> = wants.iter().map(|want| (*want).max(0)).collect();
+    let pool = i128::from(pool.max(0));
+    let claimed: i128 = clamped.iter().map(|want| i128::from(*want)).sum();
+    let mut outstanding = claimed.max(i128::from(attempted));
+    if outstanding <= pool {
+        return clamped;
+    }
+    let mut left = pool;
+    clamped
+        .iter()
+        .map(|want| {
+            let want = i128::from(*want);
+            let share = if outstanding > 0 {
+                match rounding {
+                    ShareRounding::Down => left * want / outstanding,
+                    ShareRounding::Nearest => {
+                        (2 * left * want + outstanding - 1) / (2 * outstanding)
+                    }
+                }
+            } else {
+                0
+            }
+            .clamp(0, left.min(want));
+            left -= share;
+            outstanding -= want;
+            i64::try_from(share).unwrap_or(i64::MAX)
+        })
         .collect()
 }
 
@@ -3740,22 +3787,66 @@ mod split_pool_tests {
     use super::*;
 
     /// `ah-6la1`. A market sale divides by what was attempted, which can exceed what is claimed:
-    /// 110 + 100 attempted against 110, with the first order cut to 10, gives 5 and 52 - and
-    /// never more than the pool, however large the attempt.
+    /// 110 + 100 attempted against 110, with the first order cut to 10, gives round(110 * 10 /
+    /// 210) = 5, then 105 * 100 / 200 = 52.5, an even chance in the game, rounded down to 52 -
+    /// and never more than the pool, however large the attempt.
     #[test]
     fn an_attempt_above_the_claims_divides_by_the_attempt() {
-        assert_eq!(split_pool_against(&[10, 100], 210, 110), vec![5, 52]);
+        let nearest = ShareRounding::Nearest;
+        assert_eq!(
+            settle_in_report_order(&[10, 100], 210, 110, nearest),
+            vec![5, 52]
+        );
         for attempted in [0, 110, 111, 210, 10_000] {
-            let shares = split_pool_against(&[10, 100], attempted, 110);
+            let shares = settle_in_report_order(&[10, 100], attempted, 110, nearest);
             assert!(
                 shares.iter().sum::<i64>() <= 110,
                 "{attempted}: the pool is never promised twice: {shares:?}"
             );
         }
         assert_eq!(
-            split_pool_against(&[10, 100], 50, 200),
+            settle_in_report_order(&[10, 100], 50, 200, nearest),
             vec![10, 100],
             "an attempt below the claims changes nothing"
+        );
+    }
+
+    /// `ah-alwr`. The walk uses the whole pool whenever the claims are all that was attempted,
+    /// in either rounding, and never hands a unit more than it claimed.
+    #[test]
+    fn a_walk_in_report_order_uses_the_whole_pool() {
+        for rounding in [ShareRounding::Down, ShareRounding::Nearest] {
+            for (wants, pool) in [
+                (&[114_i64, 36][..], 114_i64),
+                (&[50, 70], 88),
+                (&[2500, 22_250], 22_654),
+                (&[1, 1, 1], 2),
+                (&[7, 0, 3, 9], 11),
+                (&[3000], 2500),
+            ] {
+                let shares = settle_in_report_order(wants, 0, pool, rounding);
+                assert_eq!(
+                    shares.iter().sum::<i64>(),
+                    pool,
+                    "{rounding:?} {wants:?} of {pool}"
+                );
+                assert!(
+                    shares.iter().zip(wants).all(|(share, want)| share <= want),
+                    "{rounding:?} {wants:?} of {pool} gave {shares:?}"
+                );
+            }
+        }
+        assert_eq!(
+            settle_in_report_order(&[2500, 22_250], 0, 22_654, ShareRounding::Down),
+            vec![2288, 20_366]
+        );
+        assert_eq!(
+            settle_in_report_order(&[114, 36], 0, 114, ShareRounding::Nearest),
+            vec![87, 27]
+        );
+        assert_eq!(
+            settle_in_report_order(&[50, 70], 0, 88, ShareRounding::Nearest),
+            vec![37, 51]
         );
     }
 

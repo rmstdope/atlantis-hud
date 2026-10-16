@@ -60,15 +60,16 @@ use crate::orders::silver::{
     food_eaten_by_holder, forecast_unit, late_income, late_income_terms, parse_wage_centis,
     pillage_threshold, plan_production, pool_wants, price_buy_all, price_cast, price_claim,
     price_pillage, price_production, price_purchase, price_sale_line, price_study, price_tax,
-    producing_skill, quantity_bought, readiness, readiness_reason, settle_unclaimed, split_pool,
-    split_pool_against, tax_overstated_by, taxes, taxing_men, transfer_shape, transmute_argument,
-    unit_upkeep, workforce_for, BuyAllCap, Caster, ContendedPool, FactionFoodPass, FactionPurse,
-    FoodAmount, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups, MarketFunds,
-    MarketSide, MoneyRead, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare, PoolShares,
-    PoolWants, PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages, SaleAnswer,
-    SettledBuyAll, SettledGift, SharedCast, SharedMarket, ShipmentPriced, SilverChange,
-    SilverChangeCause, SilverDoubt, SilverDraw, SilverFunding, SilverMove, TransferShape,
-    Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
+    producing_skill, quantity_bought, readiness, readiness_reason, settle_in_report_order,
+    settle_unclaimed, split_pool, tax_overstated_by, taxes, taxing_men, transfer_shape,
+    transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster, ContendedPool,
+    FactionFoodPass, FactionPurse, FoodAmount, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief,
+    Lookups, MarketFunds, MarketSide, MoneyRead, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun,
+    PoolShare, PoolShares, PoolWants, PurchaseAnswer, ReceiptMove, Receipts, RegionShare,
+    RegionWages, SaleAnswer, SettledBuyAll, SettledGift, ShareRounding, SharedCast, SharedMarket,
+    ShipmentPriced, SilverChange, SilverChangeCause, SilverDoubt, SilverDraw, SilverFunding,
+    SilverMove, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
+    Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
@@ -1491,7 +1492,7 @@ struct PoolSettlement {
 ///
 /// Per pool the same three rules: fewer than two units wanting it is not contention and keeps the
 /// arithmetic it always had; any wanting unit with a guessed headcount makes every wanting unit's
-/// share [`PoolShare::Unknowable`]; otherwise [`split_pool`] divides it. A unit not drawing on a
+/// share [`PoolShare::Unknowable`]; otherwise the pool's own `split` divides it. A unit not drawing on a
 /// pool is never touched by somebody else's contention for it.
 ///
 /// `late` is the picture `pool_wants`' `WORK`/`ENTERTAIN` terms need - see [`hex_facts`].
@@ -1515,6 +1516,9 @@ fn pool_shares_for(
         foreign_of: Option<fn(&mut PoolShares) -> &mut bool>,
         pool: Option<i64>,
         names: ContendedPool,
+        /// How the engine divides this pool once it is short: `TAX` walks the taxers in report
+        /// order (`ah-alwr`), the wage pools are split in one go.
+        split: fn(&[i64], i64) -> Vec<i64>,
     }
 
     let nothing = Receipts::default();
@@ -1578,6 +1582,9 @@ fn pool_shares_for(
             // together.
             pool: region.tax_base.filter(|_| !region.pillaged),
             names: ContendedPool::Tax,
+            // `Game::RunTaxRegion` (`runorders.cpp`): unit by unit, truncating, the base and the
+            // outstanding ask both shrinking, so the last taxer takes the remainder.
+            split: |asks, pool| settle_in_report_order(asks, 0, pool, ShareRounding::Down),
         },
         Contended {
             want_of: |want| want.wages,
@@ -1586,6 +1593,7 @@ fn pool_shares_for(
             foreign_of: Some(|into| &mut into.foreign_claimant_wages),
             pool: region.max_wages,
             names: ContendedPool::Wages,
+            split: split_pool,
         },
         Contended {
             want_of: |want| want.entertainment,
@@ -1594,6 +1602,7 @@ fn pool_shares_for(
             foreign_of: Some(|into| &mut into.foreign_claimant_entertainment),
             pool: region.entertainment,
             names: ContendedPool::Entertainment,
+            split: split_pool,
         },
     ];
 
@@ -1605,6 +1614,7 @@ fn pool_shares_for(
         foreign_of,
         pool,
         names,
+        split,
     } in pools
     {
         let wanting: Vec<usize> = (0..hex.units.len())
@@ -1670,7 +1680,7 @@ fn pool_shares_for(
                 claimants: wanting.clone(),
             });
         }
-        for (index, share) in wanting.iter().zip(split_pool(&asks, pool)) {
+        for (index, share) in wanting.iter().zip(split(&asks, pool)) {
             *share_of(&mut shares[*index]) = PoolShare::Share(share);
         }
     }
@@ -1898,7 +1908,9 @@ fn market_shares_for(
                 MarketSide::Selling => attempted_sales.get(&tag).copied().unwrap_or(0),
                 MarketSide::Buying => 0,
             };
-            let shares = split_pool_against(&claims, attempted, pool);
+            // `Game::DoSell` and `Game::DoBuy` walk the traders in report order - the order of
+            // `claims` - so the last one takes what is left (`ah-alwr`).
+            let shares = settle_in_report_order(&claims, attempted, pool, ShareRounding::Nearest);
             ((tag, side), shares)
         })
         .collect()
@@ -26804,8 +26816,27 @@ mod tests {
                 "unit 2390\nTAX\nunit 2391\nTAX\n",
             );
 
+            // 2500 * 500 / 3000 = 416, and the last taxer the remaining 2084 (`ah-alwr`).
             assert_eq!(silver_of(&review, "2390").income, Some(416));
-            assert_eq!(silver_of(&review, "2391").income, Some(2083));
+            assert_eq!(silver_of(&review, "2391").income, Some(2084));
+        }
+
+        /// `ah-alwr`, the bead's own hex: a $22,654 base, Fighters (50 men) ahead of City Guards
+        /// (445) in the report. `Game::RunTaxRegion` (`runorders.cpp`) walks the taxers in report
+        /// order, shrinking the base and the outstanding ask after each, so the last taxer takes
+        /// the remainder and the whole base is collected (`rules/economy_taxingpillaging`: "split
+        /// evenly among all taxers"): 22654 * 2500 / 24750 = 2288 to the Fighters, the other 20366
+        /// to the Guards - not the 20365 a second rounding down leaves.
+        #[test]
+        fn an_oversubscribed_base_is_collected_to_the_last_silver() {
+            let review = tax_review(
+                Some(22_654),
+                vec![taxer("12222", 50), taxer("13303", 445)],
+                "unit 12222\nTAX\nunit 13303\nTAX\n",
+            );
+
+            assert_eq!(silver_of(&review, "12222").income, Some(2288));
+            assert_eq!(silver_of(&review, "13303").income, Some(20_366));
         }
 
         #[test]
@@ -29011,7 +29042,9 @@ mod tests {
                 .find(|unit| unit.unit_id == id)
                 .and_then(|unit| unit.income)
         };
-        assert_eq!(income_of("2390"), Some(126));
+        // 10 and 6 claimed of 6 wanted: 6 * 10 / 16 = 3.75, most often 4 in `Game::DoSell`'s walk,
+        // and the other 2 to 2391 (`ah-alwr`).
+        assert_eq!(income_of("2390"), Some(4 * 42));
 
         let ordered =
             OrderedUnits::read("unit 2390\nSELL ALL FUR\nSELL ALL FUR\nunit 2391\nSELL ALL FUR\n");
@@ -29031,7 +29064,7 @@ mod tests {
             .filter(|movement| movement.unit_id == "2390" && movement.tag == "FUR")
             .map(|movement| -movement.delta)
             .sum();
-        assert_eq!(moved, 3);
+        assert_eq!(moved, 4);
     }
 
     /// `ah-6m7b.3`. The ledger records what each `GIVE ... ALL SILV` actually handed over, so the
@@ -29659,7 +29692,8 @@ mod tests {
             &NO_UNITS_SHOWN,
         );
         let ledger = ledger_for(&hex_with_transfers, Some(&rules));
-        assert_eq!(balance_of(&ledger, "2390", "FUR"), 7);
+        // Ten held, four of them sold in the settled share (`ah-alwr`).
+        assert_eq!(balance_of(&ledger, "2390", "FUR"), 6);
     }
 
     /// `ah-vw8e`, increment 11. The bead's own acceptance, written as a test: a unit whose orders
@@ -32317,7 +32351,7 @@ mod tests {
             assert_eq!(findings.len(), 1, "{:?}", codes(&review.findings));
             assert_eq!(
                 findings[0].message,
-                "an earlier order of its own has already bought all 3 grain it can have here, so this buys nothing"
+                "an earlier order of its own has already bought all 4 grain it can have here, so this buys nothing"
             );
         }
 
@@ -32493,6 +32527,42 @@ mod tests {
             assert_eq!(silver_of(&review, "2391").income, Some(50 * 60));
         }
 
+        /// `ah-alwr`, the bead's own hex: 114 livestock wanted at $21, the Farmers offering 114
+        /// and the Transporter 36. `Game::DoSell` (`runorders.cpp`) walks the sellers in report
+        /// order, rounding each share at random as `(amount * num + random(attempted)) /
+        /// attempted` and shrinking both after it, so the last seller takes the remainder and the
+        /// market takes all 114 (`rules/sell`: "split up in proportion"). 114 * 114 / 150 = 86.64,
+        /// which the game rounds up more often than not: 87 and 27, never the 86 and 27 that
+        /// rounding each share down on its own gives.
+        #[test]
+        fn a_contested_sale_sells_everything_the_market_wants() {
+            let review = market_review(
+                vec![line(114, 21)],
+                vec![],
+                vec![trader("3493", 290, 0), trader("2418", 36, 0)],
+                "unit 3493\nSELL 114 horse\nunit 2418\nSELL 36 horse\n",
+            );
+
+            assert_eq!(silver_of(&review, "3493").income, Some(87 * 21));
+            assert_eq!(silver_of(&review, "2418").income, Some(27 * 21));
+        }
+
+        /// `ah-alwr`, the buying side of the same hex: 88 for sale at $126, BUY 50 then BUY 70.
+        /// `Game::DoBuy` walks the buyers exactly as `DoSell` walks the sellers: 88 * 50 / 120 =
+        /// 36.67, most often 37, and the last buyer the other 51 - all 88 bought.
+        #[test]
+        fn a_contested_purchase_buys_everything_the_market_has() {
+            let review = market_review(
+                vec![],
+                vec![line(88, 126)],
+                vec![trader("1159", 0, 20_000), trader("1161", 0, 20_000)],
+                "unit 1159\nBUY 50 horse\nunit 1161\nBUY 70 horse\n",
+            );
+
+            assert_eq!(silver_of(&review, "1159").expense, Some(37 * 126));
+            assert_eq!(silver_of(&review, "1161").expense, Some(51 * 126));
+        }
+
         #[test]
         fn two_sellers_the_market_can_take_from_are_not_divided() {
             let review = market_review(
@@ -32527,8 +32597,8 @@ mod tests {
 
         /// `ah-6la1`. `GetSellAmount` caps every order at the line's own amount before dividing,
         /// so an order larger than the line claims only the line: 100 + 50 attempted against 100
-        /// wanted is 100 * 100 / 150 = 66 and 100 * 50 / 150 = 33, not the 80 and 20 a claim of
-        /// 200 would win.
+        /// wanted is 100 * 100 / 150 = 66.67, most often 67, and the other 33 to the second seller
+        /// (`ah-alwr`), not the 80 and 20 a claim of 200 would win.
         #[test]
         fn an_order_larger_than_the_line_claims_only_the_line() {
             let review = market_review(
@@ -32538,7 +32608,7 @@ mod tests {
                 "unit 2390\nSELL 200 horse\nunit 2391\nSELL 50 horse\n",
             );
 
-            assert_eq!(silver_of(&review, "2390").income, Some(66 * 10));
+            assert_eq!(silver_of(&review, "2390").income, Some(67 * 10));
             assert_eq!(silver_of(&review, "2391").income, Some(33 * 10));
         }
 
@@ -32572,8 +32642,8 @@ mod tests {
 
         /// The second defect this bead fixes, and the navigator's decision of 2026-08-23: the
         /// settlement applies whenever anyone trades, not only when two units contend, because
-        /// `split_pool` caps a lone claimant exactly as it caps five. Before this, the `BUY` arm
-        /// never consulted `market_has` for an exact amount and charged for all 200.
+        /// `settle_in_report_order` caps a lone claimant exactly as it caps five. Before this, the
+        /// `BUY` arm never consulted `market_has` for an exact amount and charged for all 200.
         #[test]
         fn a_buyer_asking_for_more_than_the_market_has_is_charged_for_what_it_gets() {
             let review = market_review(
