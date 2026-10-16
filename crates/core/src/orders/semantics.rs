@@ -17250,7 +17250,22 @@ fn pool_silver_figures(
             ShortfallMoment::MonthEnd,
         )
     };
-    let (short, moment) = if short_counting_cuts > short {
+    // A month-end reading is taken on balances that still carry each cut `BUY`'s whole ask, which
+    // the market never spent. So it beats the market's only by what is short net of that: once
+    // the cut is undone the wages that come later pay the upkeep it read as short (`ah-s8ud`,
+    // `rules/sequenceofevents`: "Market orders" before WORK and "Maintenance costs are assessed").
+    let month_end_as_cut = if moment == ShortfallMoment::MonthEnd {
+        short
+            - hex
+                .units
+                .iter()
+                .filter(|ordered| !ledger.doubted.contains(&ordered.unit.unit_id))
+                .filter_map(|ordered| ledger.overcharged.get(&ordered.unit.unit_id))
+                .sum::<i64>()
+    } else {
+        short
+    };
+    let (short, moment) = if short_counting_cuts > month_end_as_cut.max(0) {
         (short_counting_cuts, ShortfallMoment::Market)
     } else {
         (short, moment)
@@ -46814,6 +46829,10 @@ BUILD
     }
 
     /// A `SHARE` hex pools orders too, so it keeps the sentence it has always had.
+    ///
+    /// The purse funds the horse in full and the fees are what go short. A horse it cut would be
+    /// short at the market instead: the fees are then paid from the silver the market never spent
+    /// (`ah-s8ud`, `rules/economy_maintenance`).
     #[test]
     fn a_share_hex_keeps_its_orders_and_upkeep_wording() {
         let mut hex_region = region(vec![
@@ -46824,7 +46843,7 @@ BUILD
             amount: 10,
             name: "horse".to_string(),
             tag: "HORS".to_string(),
-            price: 140,
+            price: 100,
         });
 
         let findings: Vec<Finding> = check(vec![hex_region], "unit 7\nBUY 1 horse\n")
