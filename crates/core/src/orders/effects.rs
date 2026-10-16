@@ -9635,6 +9635,63 @@ mod tests {
             );
         }
 
+        /// `ah-ryry`. `data/EARM` makes mithril armor "at a cost of plate armor", and
+        /// `RunEnchant` (`spells.cpp`) makes as many as the shared stock allows and consumes
+        /// exactly that many - none, from none. A mage whose row is on the table for another
+        /// reason must not be shown spending plate armor it never had.
+        #[test]
+        fn an_enchantment_with_nothing_to_enchant_consumes_nothing_on_a_shown_row() {
+            let report = [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "* Enchanter (900), Foo (1), behind, leader [LEAD], 10 fur [FUR]. Weight: 10. \
+                 Capacity: 0/0/15/0. Skills: enchant armor [EARM] 1 (30).",
+                "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                "",
+            ]
+            .join("\n");
+            let response = preview_over(&report, "unit 900\nCAST Enchant_Armor\nGIVE 901 5 FUR\n");
+            let mage = response.regions[0]
+                .units
+                .iter()
+                .find(|unit| unit.unit.unit_id == "900")
+                .expect("the gift keeps the mage's row");
+
+            assert!(
+                !mage.item_changes.iter().any(|change| change.tag == "PARM"),
+                "no plate armor was there to consume: {:?}",
+                mage.item_changes
+            );
+        }
+
+        /// `ah-ryry`, the control: with plate armor to hand the enchantment consumes one per
+        /// item it makes (`RunEnchant`), here all three of the mage's.
+        #[test]
+        fn an_enchantment_consumes_one_plate_armor_per_mithril_armor_made() {
+            let report = [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "* Enchanter (900), Foo (1), behind, leader [LEAD], 3 plate armor [PARM]. \
+                 Weight: 13. Capacity: 0/0/15/0. Skills: enchant armor [EARM] 1 (30).",
+                "",
+            ]
+            .join("\n");
+            let response = preview_over(&report, "unit 900\nCAST Enchant_Armor\n");
+            let mage = only_unit(&response);
+            let spent: Vec<i64> = mage
+                .item_changes
+                .iter()
+                .filter(|change| change.tag == "PARM")
+                .map(|change| change.delta)
+                .collect();
+
+            assert_eq!(spent, vec![-3], "{:?}", mage.item_changes);
+        }
+
         /// Q4's rule, via the existing `take_item`.
         #[test]
         fn a_sold_out_stock_disappears_from_the_previewed_list() {

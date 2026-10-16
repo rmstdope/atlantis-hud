@@ -12190,7 +12190,12 @@ fn cast(
             from_caster,
             placed,
         );
-        if from_caster != 0 {
+        // An enchantment or a transmutation that makes none consumes none (`RunEnchant`,
+        // `RunTransmutation`: `num` items, `num * amt` taken). Its one-item charge above is only
+        // there to keep `not-enough-items` firing (`plan_cast`, R2), so it is never shown in the
+        // ITEMS hover as material the spell used up (`ah-ryry`).
+        let consumes = plan.per_cast || plan.made > 0;
+        if from_caster != 0 && consumes {
             ledger.movements.push(ItemMovement {
                 unit_id: who.clone(),
                 tag: material.tag.to_ascii_uppercase(),
@@ -36699,12 +36704,15 @@ BUILD
                     "a mage with nothing to enchant should record no arrival: {:?}",
                     ledger.movements
                 );
+                // `RunEnchant` consumes one per item made, so none here: the one-item charge that
+                // keeps `not-enough-items` firing is not a movement the ITEMS hover shows
+                // (`ah-ryry`).
                 assert!(
                     ledger
                         .movements
                         .iter()
-                        .any(|movement| movement.tag == "SWOR" && movement.delta == -1),
-                    "the material charge still moves even though nothing arrives: {:?}",
+                        .all(|movement| movement.tag != "SWOR"),
+                    "an enchantment that makes nothing consumes nothing: {:?}",
                     ledger.movements
                 );
             });
