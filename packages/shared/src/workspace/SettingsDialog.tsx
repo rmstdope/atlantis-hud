@@ -679,6 +679,11 @@ export const WARNING_GROUPS: readonly {
           "A GIVE, TAKE or BUY that would add people to a unit that has already begun magic."
       },
       {
+        code: "leaders-and-men-mixed",
+        title: "Leaders and normal men mixed",
+        description: "A BUY that would put leaders and normal men in the same unit."
+      },
+      {
         code: "too-many-trade-regions",
         title: "Taxing and trading in too many regions",
         description: "PRODUCE, TAX and PILLAGE orders in more regions than the faction's allowance permits."

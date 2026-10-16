@@ -59,7 +59,8 @@ export const ADVISORY_CHECK_CODES = [
   "sail-through-neck-of-land",
   "transport-out-of-reach",
   "sail-not-by-owner",
-  "study-gains-nothing"
+  "study-gains-nothing",
+  "leaders-and-men-mixed"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];

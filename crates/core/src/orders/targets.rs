@@ -18,7 +18,7 @@
 
 use super::forms::Party;
 use crate::movement::rules::Ruleset;
-use crate::report::model::Skill;
+use crate::report::model::{ItemAmount, Skill};
 
 /// Silver's tag, the one item `rules/give` exempts from the factional rule.
 const SILVER_TAG: &str = "SILV";
@@ -66,6 +66,28 @@ pub fn mage_recruit_refused(skills: &[Skill], tag: &str, ruleset: Option<&Rulese
         return false;
     };
     ruleset.is_man(tag) && super::magic::is_mage(ruleset, skills)
+}
+
+/// Whether the game refuses this `BUY` of `tag` outright: the buyer is a mage
+/// ([`mage_recruit_refused`]), or the recruits would put leaders and normal men in one unit.
+///
+/// `rules/playing_units`: "Leaders and normal people may not be mixed in the same unit", and the
+/// engine refuses such a `BUY` before anything is paid (`Game::GetBuyAmount`, ../Atlantis
+/// `runorders.cpp`: "BUY: Can't mix leaders and normal men.", `o->num = 0`) - a unit that is no
+/// mage included (`ah-u5rz`). Every surface that prices or counts a `BUY` asks this one question,
+/// so they cannot disagree about who recruits. Without a ruleset nothing can be said and the
+/// answer is `false`.
+#[must_use]
+pub fn recruit_refused(
+    skills: &[Skill],
+    men_by_race: &[ItemAmount],
+    tag: &str,
+    ruleset: Option<&Ruleset>,
+) -> bool {
+    mage_recruit_refused(skills, tag, ruleset)
+        || ruleset.is_some_and(|ruleset| {
+            ruleset.is_man(tag) && super::magic::mixes_leaders(men_by_race, tag)
+        })
 }
 
 /// What a `GIVE`'s target is, as far as the whole report can tell.
@@ -373,6 +395,33 @@ mod tests {
             !mage_recruit_refused(&[skill("force", "FORC")], "ORC", None),
             "without a ruleset nothing can be said"
         );
+    }
+
+    /// `rules/playing_units`: leaders and normal people may not be mixed, so a mundane unit is
+    /// refused a recruit of the other kind - and only of men (`ah-u5rz`).
+    #[test]
+    fn a_recruit_that_mixes_leaders_and_normal_men_is_refused() {
+        let ruleset = ruleset();
+        let combat = [skill("combat", "COMB")];
+        let leaders = [ItemAmount::new(
+            1,
+            "leaders".to_string(),
+            "LEAD".to_string(),
+        )];
+        let orcs = [ItemAmount::new(2, "orcs".to_string(), "ORC".to_string())];
+        assert!(recruit_refused(&combat, &leaders, "ORC", Some(&ruleset)));
+        assert!(recruit_refused(&combat, &orcs, "LEAD", Some(&ruleset)));
+        assert!(!recruit_refused(&combat, &leaders, "LEAD", Some(&ruleset)));
+        assert!(!recruit_refused(&combat, &orcs, "HUMN", Some(&ruleset)));
+        assert!(
+            !recruit_refused(&combat, &leaders, "SWOR", Some(&ruleset)),
+            "equipment mixes nothing"
+        );
+        assert!(
+            recruit_refused(&[skill("force", "FORC")], &leaders, "LEAD", Some(&ruleset)),
+            "a mage is still refused"
+        );
+        assert!(!recruit_refused(&combat, &leaders, "ORC", None));
     }
 
     /// A hex holding two of our own units, one unit we formed here this month, and an ally.

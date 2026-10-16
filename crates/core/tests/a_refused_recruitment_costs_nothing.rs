@@ -10,6 +10,11 @@
 //! `data/items`: `orc [ORC]` and `leader [LEAD]` both carry `kind: man`, and `force [FORC]` is a
 //! Foundation - so the fixture's lone leader with `force [FORC] 1` is a mage the game could
 //! actually produce.
+//!
+//! `ah-u5rz`. A unit that is no mage is refused too when the BUY would mix leaders and normal men:
+//! `rules/playing_units` says *"Leaders and normal people may not be mixed in the same unit"*, and
+//! the engine refuses the order outright (`Game::GetBuyAmount`, ../Atlantis `runorders.cpp`:
+//! "BUY: Can't mix leaders and normal men.", `o->num = 0`).
 
 use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::orders::effects::preview_orders_for_remembered_report;
@@ -25,18 +30,23 @@ use common::ruleset;
 /// headcount off `items.first()`; the region pays `$0`, so no wage moves and the figures below are
 /// the purchase and nothing else.
 fn report_text(skills: &str) -> String {
+    report_with("1 leaders [LEAD]", skills)
+}
+
+/// The same fixture with `men` in place of the lone leader, and leaders on sale beside the orcs.
+fn report_with(men: &str, skills: &str) -> String {
     [
         "Foo (1) Report",
         "",
         "plain (1,1) in Nowhere, 1000 peasants (orcs), $0.",
         "",
-        "  For Sale: 20 orcs [ORC] at $38.",
+        "  For Sale: 20 orcs [ORC] at $38, 5 leaders [LEAD] at $100.",
         "",
         "Exits:",
         "  Southeast : plain (2,2) in Nowhere.",
         "",
         &format!(
-            "* Rhia (2390), Foo (1), 1 leaders [LEAD], 1000 silver [SILV]. Weight: 10. \
+            "* Rhia (2390), Foo (1), {men}, 1000 silver [SILV]. Weight: 10. \
              Capacity: 0/0/15/0. Skills: {skills}."
         ),
         "",
@@ -143,11 +153,103 @@ fn a_mage_is_charged_nothing_for_the_recruits_the_game_refuses() {
     assert_eq!(preview_holding(&text, SCRIPT, "2390", "ORC"), None);
 }
 
-/// The control, so the refusal is not widened to every buyer of men: the same leader without a
-/// Foundation recruits and pays `data/items`' market price for it.
+/// What the game refuses for mixing: nothing is charged, nobody is recruited, and one warning on
+/// the line says why (`ah-u5rz`).
+fn assert_refused_for_mixing(text: &str, script: &str, tag: &str) {
+    let review = review_of(text, script);
+    let rhia = row_of(&review, "2390");
+
+    assert_eq!(rhia.expense, Some(0), "nothing is charged: {rhia:?}");
+    assert_eq!(rhia.at_month_end, Some(1000), "the purse is untouched");
+    assert_eq!(rhia.doubt, None, "a refusal is certain, not doubtful");
+    assert!(
+        !rhia
+            .changes
+            .iter()
+            .any(|change| change.cause == SilverChangeCause::Bought),
+        "no purchase is booked on the hover: {:?}",
+        rhia.changes
+    );
+
+    let refusals: Vec<(&str, &str, Option<&str>)> = review
+        .findings
+        .iter()
+        .filter(|finding| {
+            matches!(
+                finding.code.as_str(),
+                "leaders-and-men-mixed" | "men-sent-into-a-mage"
+            )
+        })
+        .map(|finding| {
+            (
+                finding.code.as_str(),
+                finding.message.as_str(),
+                finding.unit_id.as_deref(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        refusals,
+        vec![(
+            "leaders-and-men-mixed",
+            "leaders and normal men may not be mixed, so this order buys nobody",
+            Some("2390")
+        )]
+    );
+
+    assert_eq!(
+        preview_holding(text, script, "2390", tag),
+        None,
+        "the ITEMS preview recruits nobody"
+    );
+}
+
+/// The bead. A leader who is no mage buying orcs is refused, as the engine refuses it.
 #[test]
-fn a_leader_who_is_no_mage_still_recruits_and_pays() {
+fn a_leader_who_is_no_mage_is_refused_normal_men() {
     let text = report_text("combat [COMB] 1 (30)");
+    assert_refused_for_mixing(&text, SCRIPT, "ORC");
+}
+
+/// The reverse: normal men buying leaders are refused the same way.
+#[test]
+fn normal_men_are_refused_leaders() {
+    let text = report_with("2 orcs [ORC]", "combat [COMB] 1 (30)");
+    assert_refused_for_mixing(&text, "unit 2390\nBUY 2 leaders\n", "LEAD");
+}
+
+/// The control, so the refusal is not widened to every buyer of men: a leader who is no mage
+/// recruits more leaders, and pays the market's price for them.
+#[test]
+fn a_leader_who_is_no_mage_still_recruits_leaders_and_pays() {
+    let text = report_text("combat [COMB] 1 (30)");
+    let script = "unit 2390\nBUY 2 leaders\n";
+    let review = review_of(&text, script);
+    let rhia = row_of(&review, "2390");
+
+    assert_eq!(rhia.expense, Some(200), "two leaders at $100");
+    assert_eq!(rhia.at_month_end, Some(800));
+    assert!(
+        !review.findings.iter().any(|finding| matches!(
+            finding.code.as_str(),
+            "leaders-and-men-mixed" | "men-sent-into-a-mage"
+        )),
+        "a mundane leader is refused nothing"
+    );
+
+    let (leaders, uncounted) = preview_holding(&text, script, "2390", "LEAD")
+        .expect("a leader that recruits has a preview row");
+    assert_eq!(leaders, 3);
+    assert!(
+        uncounted.is_empty(),
+        "no ` + ?` on the ITEMS cell: {uncounted:?}"
+    );
+}
+
+/// The other control: normal men recruit more normal men, and pay for them.
+#[test]
+fn normal_men_still_recruit_normal_men_and_pay() {
+    let text = report_with("2 orcs [ORC]", "combat [COMB] 1 (30)");
     let review = review_of(&text, SCRIPT);
     let rhia = row_of(&review, "2390");
 
@@ -164,13 +266,13 @@ fn a_leader_who_is_no_mage_still_recruits_and_pays() {
         !review
             .findings
             .iter()
-            .any(|finding| finding.code.as_str() == "men-sent-into-a-mage"),
-        "a mundane leader is refused nothing"
+            .any(|finding| finding.code.as_str() == "leaders-and-men-mixed"),
+        "orcs buying orcs mix nothing"
     );
 
     let (orcs, uncounted) = preview_holding(&text, SCRIPT, "2390", "ORC")
-        .expect("a leader that recruits has a preview row");
-    assert_eq!(orcs, 5);
+        .expect("a unit that recruits has a preview row");
+    assert_eq!(orcs, 7);
     assert!(
         uncounted.is_empty(),
         "no ` + ?` on the ITEMS cell: {uncounted:?}"
