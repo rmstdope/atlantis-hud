@@ -107,19 +107,26 @@ export type PaletteAction = {
   run: () => void;
 };
 
+/**
+ * What the palette lists, by source. Every source is optional and an absent one lists nothing, so
+ * a new kind of row is a new optional field here and never a required one: a required field
+ * breaks every caller that predates it, which is how four sibling beads left main red between
+ * them (ah-1xl5; docs/retrospectives/ah-mlls.3.md). The app's own input is assembled in
+ * `workspace/paletteInput.ts`.
+ */
 export type PaletteInput = {
   /** The player's named Armies, in the order the units pane's source rail lists them. */
-  armies: Array<{ armyId: string; name: string; shownCount: number; run: () => void }>;
-  ownUnits: Array<{ unitId: string; name: string; run: () => void }>;
+  armies?: Array<{ armyId: string; name: string; shownCount: number; run: () => void }>;
+  ownUnits?: Array<{ unitId: string; name: string; run: () => void }>;
   /** Other factions' units in this turn's report, in report order. */
-  foreignUnits: Array<{
+  foreignUnits?: Array<{
     regionId: string;
     unitId: string;
     name: string;
     faction: PaletteFaction;
     run: () => void;
   }>;
-  staleUnits: Array<{
+  staleUnits?: Array<{
     regionId: string;
     unitId: string;
     name: string;
@@ -127,30 +134,27 @@ export type PaletteInput = {
     run: () => void;
   }>;
   /** Every settlement on the known map, labelled by `settlementPaletteRows`. */
-  settlements: Array<{ regionId: string; label: string; lastSeenTurn?: number; run: () => void }>;
+  settlements?: Array<{ regionId: string; label: string; lastSeenTurn?: number; run: () => void }>;
   /** Every faction the loaded reports know, in `paletteFactions` order. */
-  factions: Array<KnownFaction & { run: () => void }>;
-  regions: Array<{ regionId: string; label: string; run: () => void }>;
+  factions?: Array<KnownFaction & { run: () => void }>;
+  regions?: Array<{ regionId: string; label: string; run: () => void }>;
   /** Every structure in this turn's report, labelled by `structurePaletteLabel`. */
-  structures: Array<{
+  structures?: Array<{
     structureId: string;
     label: string;
     lastSeenTurn?: number;
     run: () => void;
   }>;
-  actions: PaletteAction[];
+  actions?: PaletteAction[];
   /** The world's orders, as the core grammar lists them; each opens its game data entry. */
-  orderCommands: readonly string[];
+  orderCommands?: readonly string[];
   /**
    * Every dictionary entry, or [] when the ruleset has not loaded. Its orders are skipped: each is
    * already a row of `orderCommands`, which keeps the row's old place and look (ah-mlls.6).
    */
-  gameData: readonly GameDataEntry[];
-  openGameData: (entryId: string) => void;
-  /**
-   * Every hex note of the open game, placed by `hexNotePaletteRows`. Optional, like `mageNotes`,
-   * so a sibling bead's input needs no edit (docs/retrospectives/ah-mlls.4.md).
-   */
+  gameData?: readonly GameDataEntry[];
+  openGameData?: (entryId: string) => void;
+  /** Every hex note of the open game, placed by `hexNotePaletteRows`. */
   hexNotes?: Array<{ noteId: string; regionId: string; text: string; place: string; run: () => void }>;
   /** Every non-empty note on a mage seen this turn, placed by `mageNotePaletteRows`. */
   mageNotes?: Array<{ key: string; text: string; place: string; run: () => void }>;
@@ -172,30 +176,31 @@ export type PaletteInput = {
  * `MITH` finds mithril, and so the palette reads the way the panes already do.
  */
 export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
+  const openGameData = input.openGameData ?? (() => {});
   return [
     // Armies before everything (ah-mlls.4): there are a handful of them, and placed after the
     // player's own units they would sit below dozens of rows until something was typed.
-    ...input.armies.map<PaletteEntry>((army) => ({
+    ...(input.armies ?? []).map<PaletteEntry>((army) => ({
       id: `army-${army.armyId}`,
       kind: "army",
       label: army.name,
       count: armyCountLabel(army.shownCount),
       run: army.run
     })),
-    ...input.ownUnits.map<PaletteEntry>((unit) => ({
+    ...(input.ownUnits ?? []).map<PaletteEntry>((unit) => ({
       id: `unit-${unit.unitId}`,
       kind: "unit",
       label: `${unit.name} (${unit.unitId})`,
       run: unit.run
     })),
-    ...input.foreignUnits.map<PaletteEntry>((unit) => ({
+    ...(input.foreignUnits ?? []).map<PaletteEntry>((unit) => ({
       id: `foreign-unit-${unit.regionId}-${unit.unitId}`,
       kind: "unit",
       label: `${unit.name} (${unit.unitId})`,
       faction: unit.faction,
       run: unit.run
     })),
-    ...input.staleUnits.map<PaletteEntry>((unit) => ({
+    ...(input.staleUnits ?? []).map<PaletteEntry>((unit) => ({
       id: `stale-unit-${unit.regionId}-${unit.unitId}`,
       kind: "unit",
       label: `${unit.name} (${unit.unitId})`,
@@ -204,7 +209,7 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
     })),
     // After every unit and ahead of the hexes: a handful of much-visited places would otherwise
     // sit below hundreds of hexes with nothing typed (ah-mlls.2).
-    ...input.settlements.map<PaletteEntry>((settlement) => ({
+    ...(input.settlements ?? []).map<PaletteEntry>((settlement) => ({
       id: `settlement-${settlement.regionId}`,
       kind: "settlement",
       label: settlement.label,
@@ -213,7 +218,7 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
     })),
     // Right after the towns and cities and ahead of the hexes, so a dozen factions are a short
     // scroll away with nothing typed rather than behind hundreds of hexes (ah-mlls.3).
-    ...input.factions.map<PaletteEntry>((faction) => ({
+    ...(input.factions ?? []).map<PaletteEntry>((faction) => ({
       id: `faction-${faction.factionId}`,
       kind: "faction",
       label: `${faction.name ?? "Unnamed faction"} (${faction.factionId})`,
@@ -221,13 +226,13 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       standing: { own: faction.own, merged: faction.merged, attitude: faction.attitude },
       run: faction.run
     })),
-    ...input.regions.map<PaletteEntry>((region) => ({
+    ...(input.regions ?? []).map<PaletteEntry>((region) => ({
       id: `region-${region.regionId}`,
       kind: "region",
       label: region.label,
       run: region.run
     })),
-    ...input.structures.map<PaletteEntry>((structure) => ({
+    ...(input.structures ?? []).map<PaletteEntry>((structure) => ({
       id: `structure-${structure.structureId}`,
       kind: "structure",
       label: structure.label,
@@ -250,7 +255,7 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       note: { place: note.place },
       run: note.run
     })),
-    ...input.actions.map<PaletteEntry>((action) => ({
+    ...(input.actions ?? []).map<PaletteEntry>((action) => ({
       id: `action-${action.id}`,
       kind: "action",
       label: action.label,
@@ -259,13 +264,13 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       ...(action.count === undefined ? {} : { count: action.count }),
       run: action.run
     })),
-    ...input.orderCommands.map<PaletteEntry>((command) => ({
+    ...(input.orderCommands ?? []).map<PaletteEntry>((command) => ({
       id: `order-${command}`,
       kind: "order-help",
       label: command,
-      run: () => input.openGameData(orderEntryId(command))
+      run: () => openGameData(orderEntryId(command))
     })),
-    ...input.gameData.flatMap<PaletteEntry>((entry) =>
+    ...(input.gameData ?? []).flatMap<PaletteEntry>((entry) =>
       entry.category === "order"
         ? []
         : [
@@ -273,7 +278,7 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
               id: `data-${entry.id}`,
               kind: entry.category,
               label: entry.tag === null ? entry.name : `${entry.name} ${entry.tag}`,
-              run: () => input.openGameData(entry.id)
+              run: () => openGameData(entry.id)
             }
           ]
     )

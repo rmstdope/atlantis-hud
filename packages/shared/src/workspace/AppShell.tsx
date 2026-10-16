@@ -282,18 +282,10 @@ import { buildMagicTree, studyPlannerTree } from "../magicTree";
 import { isApprentice, magesOf, openingMage } from "../magicStanding";
 import { plannerEmptyCopy, plannerGroups, plannerSummaryLine } from "../studyPlanner";
 import { ShortcutHelp } from "./ShortcutHelp";
-import {
-  buildPaletteEntries,
-  hexNotePaletteRows,
-  mageNotePaletteRows,
-  mageSheetPaletteAction,
-  settlementPaletteRows,
-  type PaletteInput
-} from "../commandPalette";
+import type { PaletteInput } from "../commandPalette";
+import { assemblePaletteInput, paletteEntriesFor } from "./paletteInput";
 import { paletteTurnActions, type TurnActionId } from "./paletteTurnActions";
-import { paletteFactions } from "../paletteFactions";
-import { shownMemberCount } from "./armyRows";
-import { structurePaletteLabel, structuresForUnitDock } from "../structureLabel";
+import { structuresForUnitDock } from "../structureLabel";
 import type { Resume, StopKey } from "../diagnosticNav";
 import { resumeWalk, stepDiagnostic, stopKeys } from "../diagnosticNav";
 import { hasOpenDismissLayers } from "../dismissStack";
@@ -303,7 +295,6 @@ import {
   isMacPlatform,
   keyDialogAction,
   matchShortcut,
-  SHORTCUTS,
   type KeyDialogId
 } from "../shortcuts";
 import type { CaretLookup } from "../orderCompletion";
@@ -345,7 +336,7 @@ import {
 } from "../turnReport";
 import { UnitMovementSlot } from "./UnitMovementSlot";
 import { UnitTableDock, type UnitTableDockHandle } from "./UnitTableDock";
-import { foreignSightingsIn, foreignUnitsIn, pinForRow, pinLabel } from "./foreignUnits";
+import { foreignUnitsIn } from "./foreignUnits";
 import { dossierFor } from "../factionDossier";
 import { FloatingFactionDossier, MeasuredFactionDossier } from "./FactionDossierPanel";
 import type { KeepClear, PeekMode } from "./dossierPeek";
@@ -1884,273 +1875,101 @@ export function AppShell({
 
   // Everything the palette lists but the header's Import, Fetch and Send, which are added further
   // down (`paletteEntries`) where the send and fetch state they mirror is declared (ah-mlls.7).
-  const paletteInput = useMemo<PaletteInput>(() => {
-    const mac = isMacPlatform();
-    const helpSpec = SHORTCUTS.find((entry) => entry.id === "help");
-    const gameDataSpec = SHORTCUTS.find((entry) => entry.id === "gameData");
-    const magicTreeSpec = SHORTCUTS.find((entry) => entry.id === "magicTree");
-    const studyPlannerSpec = SHORTCUTS.find((entry) => entry.id === "studyPlanner");
-    return {
-      // Only with a game open, as the rail lists them (ah-mlls.4). Choosing one does what a click
-      // on its rail entry does, and unfolds the pane first: the dock's focus effect needs the
-      // rows rendered, as the dossier's "show their units" line found (`onShowUnits` below).
-      armies: (game ? armies : []).map((army) => ({
-        armyId: army.id,
-        name: army.name,
-        shownCount: shownMemberCount(army, unitsById),
-        run: () => {
-          if (useWorkspaceStore.getState().collapsed.units) {
-            useWorkspaceStore.getState().togglePanel("units");
-          }
-          unitDock.current?.showArmy(army.id);
-        }
-      })),
-      ownUnits: orderedOwnUnitIds.map((unitId) => {
-        const owner = parsed?.regions
-          .flatMap((region) => region.units)
-          .find((candidate) => candidate.unitId === unitId);
-        return { unitId, name: owner?.name ?? unitId, run: () => goToUnit(unitId) };
-      }),
-      // Every other faction's unit standing in a hex seen this turn, in report order (ah-mlls.1).
-      // The owner reads exactly as the Other factions list writes it, and choosing one goes the
-      // same way as choosing an own unit - its hex, its level, and the unit selected there.
-      foreignUnits: (parsed ? foreignSightingsIn(parsed) : []).map(({ regionId, unit: candidate }) => {
-        // Null only for an own unit, which `foreignSightingsIn` never returns.
-        const pin = pinForRow(candidate) ?? ({ kind: "hidden" } as const);
-        return {
-          regionId,
-          unitId: candidate.unitId,
-          name: candidate.name,
-          faction: { label: pinLabel(pin), concealed: pin.kind === "hidden" },
-          run: () => goToUnit(candidate.unitId, "report", regionId)
-        };
-      }),
-      staleUnits: model.hexes.flatMap((hex) =>
-        hex.knowledge !== "stale"
-          ? []
-          : hex.rememberedUnits.map((sighting) => ({
-              regionId: hex.regionId,
-              unitId: sighting.unit.unitId,
-              name: sighting.unit.name,
-              lastSeenTurn: sighting.lastSeenTurn,
-              run: () => selectHex(hex.regionId)
-            }))
-      ),
-      // A settlement goes to its hex exactly as the hex's own row does (ah-mlls.2).
-      settlements: settlementPaletteRows(model.hexes, model.currentTurn).map((row) => ({
-        ...row,
-        run: () => selectHex(row.regionId)
-      })),
-      // Every faction the loaded reports know, opened where the attitudes list opens one: in the
-      // faction popover under the header chip, with ‹ back to the player's own (ah-mlls.3). The
-      // popover's frame takes focus as it mounts, after the palette has unmounted, so focus lands
-      // in the details the player asked for.
-      factions: paletteFactions({ parsed, merged: mergedReports, hexes: model.hexes }).map(
-        (faction) => ({
-          ...faction,
-          run: () => {
-            setDossier(faction.own ? null : { factionId: faction.factionId, from: "attitudes" });
-            setOpenPopover("faction");
-          }
-        })
-      ),
-      regions: model.hexes.map((candidate) => ({
-        regionId: candidate.regionId,
-        label: candidate.label,
-        run: () => selectHex(candidate.regionId)
-      })),
-      // Every structure standing in this turn's report, with the places rather than with the
-      // dictionary's building pages: a structure is somewhere you go, and choosing one goes to
-      // its hex exactly as choosing the hex itself does.
-      structures:
-        model.hexes.length > 0
-          ? model.hexes.flatMap((hex) =>
-              (hex.region?.structures ?? []).map((structure) => ({
-                structureId: `${hex.regionId}-${structure.structureId}`,
-                label: structurePaletteLabel(structure, hexLabel(hex.regionId)),
-                lastSeenTurn: hex.knowledge === "stale" ? (hex.lastSeenTurn ?? undefined) : undefined,
-                run: () => selectHex(hex.regionId)
-              }))
-            )
-          : (parsed?.regions ?? []).flatMap((region) =>
-              region.structures.map((structure) => ({
-                structureId: `${region.regionId}-${structure.structureId}`,
-                label: structurePaletteLabel(structure, hexLabel(region.regionId)),
-                run: () => selectHex(region.regionId)
-              }))
-            ),
-      actions: [
-        { id: "settings", label: "Open settings", run: () => setSettingsOpen(true) },
-        // Only where the picker can actually open: on the gate screen it renders nowhere, and
-        // an openPopover left set would pop the picker uninvited into the next game.
-        ...(game
-          ? [{ id: "switch-game", label: "Switch game", run: () => setOpenPopover("games") }]
-          : []),
+  // Which rows exist is `assemblePaletteInput`'s; this hands it the world and the doors (ah-1xl5).
+  const paletteInput = useMemo<PaletteInput>(
+    () =>
+      assemblePaletteInput(
         {
-          id: "toggle-theme",
-          label: "Toggle theme",
-          run: () => setTheme(theme === "dark" ? "light" : "dark")
-        },
-        {
-          id: "shortcuts",
-          // Named for what it shows and for what a player would type looking for it: somebody
-          // hunting "shortcuts" finds the same entry as somebody hunting "getting around".
-          label: "Getting around (shortcuts and mouse)",
-          binding: helpSpec ? (mac ? helpSpec.mac : helpSpec.other) : undefined,
-          run: () => showOnlyKeyDialog({ id: "help" })
-        },
-        // Only once the ruleset has loaded: the palette already offers no game data at all in
-        // that state, and a door onto seven empty tabs is worse than no door.
-        ...(gameData
-          ? [
-              {
-                id: "browse-game-data",
-                // "Browse" says it opens something to look around in, rather than reading as one
-                // of the ~270 dictionary entries it sits among.
-                label: "Browse game data",
-                binding: gameDataSpec ? (mac ? gameDataSpec.mac : gameDataSpec.other) : undefined,
-                run: () => showOnlyKeyDialog({ id: "gameData", entryId: null })
-              }
-            ]
-          : []),
-        // Gated on the ruleset exactly as the dictionary is: the tree is nothing but the ruleset
-        // read a second way, so with no ruleset there is no door and F3 does nothing.
-        ...(magicTree
-          ? [
-              {
-                id: "magic-study-tree",
-                label: "Magic study tree",
-                binding: magicTreeSpec ? (mac ? magicTreeSpec.mac : magicTreeSpec.other) : undefined,
-                run: () => showOnlyKeyDialog({ id: "magicTree", tag: null })
-              }
-            ]
-          : []),
-        // The same gate again: the planner draws standings, which are the ruleset read a third way.
-        ...(magicTree
-          ? [
-              {
-                id: "study-planner",
-                label: "Study planner",
-                binding: studyPlannerSpec
-                  ? mac
-                    ? studyPlannerSpec.mac
-                    : studyPlannerSpec.other
-                  : undefined,
-                run: () => showOnlyKeyDialog({ id: "studyPlanner" })
-              }
-            ]
-          : []),
-        // Only with a report on screen: an export needs a turn to name itself after and a map to
-        // describe, and neither exists before one is imported.
-        ...(parsed ? [{ id: "export-map", label: "Export map", run: () => openExport() }] : []),
-        // Never hidden, unlike Export map (ah-mlls.8): greyed, it says what is missing. Gated
-        // exactly as the Export menu's item is, and runs the same export.
-        mageSheetPaletteAction({
-          hasReport: parsed !== null,
-          hasGameData: gameData !== null,
+          gameOpen: game !== null,
+          parsed,
+          merged: mergedReports,
+          hexes: model.hexes,
+          currentTurn: model.currentTurn,
+          armies,
+          unitsById,
+          orderedOwnUnitIds,
+          hexLabel,
+          orderCommands,
+          gameDataEntries: gameData?.entries ?? null,
+          magicTreeReady: magicTree !== null,
+          offersProduction,
           mageCount: mages.length,
-          run: () => void exportMageSheet()
-        }),
-        // Only when the turn actually had a battle - as with the chip, a command that opens onto
-        // nothing is worse than no command at all.
-        ...(parsed && parsed.battles.length > 0
-          ? [
-              {
-                id: "open-battles",
-                label: "Open battles",
-                run: () => {
-                  setSelectedBattleIndex(0);
-                  setBattlesOpen(true);
-                }
-              }
-            ]
-          : []),
-        ...(parsed && offersProduction
-          ? [{ id: "open-production", label: "Production", run: () => setProductionOpen(true) }]
-          : []),
-        // Only with a game open and a hex selected: a note needs both to be saved anywhere - ah-o1t.
-        ...(game && selectedRegionId
-          ? [
-              {
-                id: "add-hex-note",
-                label: "Add note to this hex",
-                run: () => {
-                  if (useWorkspaceStore.getState().collapsed.region) {
-                    useWorkspaceStore.getState().togglePanel("region");
-                  }
-                  useHexNotesStore.getState().requestAddFor(selectedRegionId);
-                }
-              }
-            ]
-          : [])
-      ],
-      orderCommands,
-      gameData: gameData?.entries ?? [],
-      openGameData: (entryId) => showOnlyKeyDialog({ id: "gameData", entryId }),
-      // The notes the player wrote (ah-mlls.5), only with a game open and a report loaded. A hex note's place reads as
-      // the hex's own palette row; choosing one goes there as that row does, then asks the Notes
-      // section to bring the note into view.
-      // No report, no map to go to: the acceptance lists nothing then (ah-mlls.5).
-      hexNotes:
-        game && parsed
-        ? hexNotePaletteRows(
-            hexNotes,
-            (regionId) =>
-              model.hexes.find((candidate) => candidate.regionId === regionId)?.label ??
-              hexLabel(regionId)
-          ).map((row) => ({
-            ...row,
-            run: () => {
-              selectHex(row.regionId);
-              useHexNotesStore.getState().revealNote(row.regionId, row.noteId);
+          selectedRegionId,
+          theme,
+          mac: isMacPlatform(),
+          hexNotes,
+          studyPlans,
+          plannerGroups: plannerGroupRows
+        },
+        {
+          // The dock's focus effect needs the rows rendered, as the dossier's "show their units"
+          // line found (`onShowUnits` below), so the pane is unfolded first.
+          showArmy: (armyId) => {
+            if (useWorkspaceStore.getState().collapsed.units) {
+              useWorkspaceStore.getState().togglePanel("units");
             }
-          }))
-        : [],
-      // A mage note only while the planner can open and the mage is in this turn's report.
-      mageNotes:
-        game && magicTree !== null
-          ? mageNotePaletteRows(
-              studyPlans,
-              plannerGroupRows,
-              new Set(
-                (parsed?.regions ?? []).flatMap((region) => region.units.map((unit) => unit.unitId))
-              )
-            ).map((row) => ({
-              ...row,
-              run: () => {
-                showOnlyKeyDialog({ id: "studyPlanner" });
-                revealNonce.current += 1;
-                setStudyPlannerReveal({ mageKey: row.key, nonce: revealNonce.current });
-              }
-            }))
-          : []
-    };
-  }, [
-    hexNotes,
-    studyPlans,
-    plannerGroupRows,
-    armies,
-    unitsById,
-    offersProduction,
-    gameData,
-    orderedOwnUnitIds,
-    parsed,
-    mergedReports,
-    model,
-    goToUnit,
-    hexLabel,
-    selectHex,
-    setTheme,
-    theme,
-    orderCommands,
-    game,
-    selectedRegionId,
-    magicTree,
-    mages,
-    exportMageSheet,
-    openExport,
-    showOnlyKeyDialog
-  ]);
+            unitDock.current?.showArmy(armyId);
+          },
+          goToUnit: (unitId, inRegion) => goToUnit(unitId, "report", inRegion),
+          selectHex,
+          // The popover's frame takes focus as it mounts, after the palette has unmounted, so
+          // focus lands in the details the player asked for.
+          openFaction: (factionId) => {
+            setDossier(factionId === null ? null : { factionId, from: "attitudes" });
+            setOpenPopover("faction");
+          },
+          openSettings: () => setSettingsOpen(true),
+          switchGame: () => setOpenPopover("games"),
+          setTheme,
+          openDialog: showOnlyKeyDialog,
+          openExport: () => openExport(),
+          exportMageSheet: () => void exportMageSheet(),
+          openBattles: () => {
+            setSelectedBattleIndex(0);
+            setBattlesOpen(true);
+          },
+          openProduction: () => setProductionOpen(true),
+          addHexNote: (regionId) => {
+            if (useWorkspaceStore.getState().collapsed.region) {
+              useWorkspaceStore.getState().togglePanel("region");
+            }
+            useHexNotesStore.getState().requestAddFor(regionId);
+          },
+          revealHexNote: (regionId, noteId) => useHexNotesStore.getState().revealNote(regionId, noteId),
+          revealMageNote: (mageKey) => {
+            showOnlyKeyDialog({ id: "studyPlanner" });
+            revealNonce.current += 1;
+            setStudyPlannerReveal({ mageKey, nonce: revealNonce.current });
+          }
+        }
+      ),
+    [
+      hexNotes,
+      studyPlans,
+      plannerGroupRows,
+      armies,
+      unitsById,
+      offersProduction,
+      gameData,
+      orderedOwnUnitIds,
+      parsed,
+      mergedReports,
+      model,
+      goToUnit,
+      hexLabel,
+      selectHex,
+      setTheme,
+      theme,
+      orderCommands,
+      game,
+      selectedRegionId,
+      magicTree,
+      mages,
+      exportMageSheet,
+      openExport,
+      showOnlyKeyDialog
+    ]
+  );
 
   /**
    * Puts a loaded turn on screen - the only place a turn is applied, whichever way it arrived.
@@ -4879,13 +4698,10 @@ export function AppShell({
   };
   const paletteEntries = useMemo(
     () =>
-      buildPaletteEntries({
-        ...paletteInput,
-        actions: [
-          ...turnRows.map((row) => ({ ...row, run: () => runTurnAction.current(row.id) })),
-          ...paletteInput.actions
-        ]
-      }),
+      paletteEntriesFor(
+        paletteInput,
+        turnRows.map((row) => ({ ...row, run: () => runTurnAction.current(row.id) }))
+      ),
     [paletteInput, turnRows]
   );
 

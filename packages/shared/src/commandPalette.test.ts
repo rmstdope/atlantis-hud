@@ -10,12 +10,21 @@ import {
   paletteKeyReduce,
   settleHighlight,
   settlementPaletteRows,
-  type PaletteEntry
+  type PaletteEntry,
+  type PaletteInput
 } from "./commandPalette";
 import type { HexNode } from "./hexMapModel";
 import { structurePaletteLabel } from "./structureLabel";
 
 const noop = () => {};
+
+/**
+ * The one place these tests call `buildPaletteEntries` (ah-1xl5): an input names only the sources
+ * its test is about, so a new kind of row edits no test that predates it.
+ */
+function build(input: PaletteInput = {}): PaletteEntry[] {
+  return buildPaletteEntries(input);
+}
 
 /** A bare entry list, for the rules that are about the shape of a result rather than the palette. */
 function of(...rows: Array<[PaletteEntry["kind"], string]>): PaletteEntry[] {
@@ -23,20 +32,18 @@ function of(...rows: Array<[PaletteEntry["kind"], string]>): PaletteEntry[] {
 }
 
 function entries(
-  gameData?: Parameters<typeof buildPaletteEntries>[0]["gameData"],
-  armies: Parameters<typeof buildPaletteEntries>[0]["armies"] = []
+  gameData?: PaletteInput["gameData"],
+  armies: NonNullable<PaletteInput["armies"]> = []
 ): PaletteEntry[] {
-  return buildPaletteEntries({
+  return build({
     armies,
     ownUnits: [
       { unitId: "18642", name: "Seven of Eight", run: noop },
       { unitId: "13401", name: "Drones", run: noop }
     ],
-    foreignUnits: [],
     staleUnits: [
       { regionId: "1:7,53", unitId: "18642", name: "Seven of Eight", lastSeenTurn: 70, run: noop }
     ],
-    settlements: [],
     factions: [
       { factionId: "95", name: "Borg TNG", own: true, merged: false, attitude: null, run: noop },
       { factionId: "10", name: "Thane's Ring", own: false, merged: false, attitude: "Ally", run: noop }
@@ -58,12 +65,18 @@ function entries(
       { id: "skill:MINI", category: "skill", name: "mining", tag: "MINI" },
       { id: "ship:LONG", category: "ship", name: "Longship", tag: "LONG" },
       { id: "building:MINE", category: "building", name: "Mine", tag: null }
-    ],
-    openGameData: noop
+    ]
   });
 }
 
 describe("buildPaletteEntries", () => {
+  it("builds from an input naming only the sources it has (ah-1xl5)", () => {
+    expect(build({})).toEqual([]);
+    expect(build({ ownUnits: [{ unitId: "518", name: "Wardrobe Guard", run: noop }] })).toEqual([
+      { id: "unit-518", kind: "unit", label: "Wardrobe Guard (518)", run: noop }
+    ]);
+  });
+
   it("lists units, regions, actions, order help and game data, in that reading order", () => {
     const kinds = entries().map((entry) => entry.kind);
     expect(kinds).toEqual([
@@ -124,10 +137,8 @@ describe("buildPaletteEntries", () => {
 
   it("offers a stale unit with its own id, historical marker, and selection callback", () => {
     let selected = false;
-    const stale = buildPaletteEntries({
-      armies: [],
+    const stale = build({
       ownUnits: [{ unitId: "18642", name: "Seven of Eight", run: noop }],
-      foreignUnits: [],
       staleUnits: [
         {
           regionId: "1:7,53",
@@ -138,15 +149,7 @@ describe("buildPaletteEntries", () => {
             selected = true;
           }
         }
-      ],
-      settlements: [],
-      factions: [],
-      regions: [],
-      structures: [],
-      actions: [],
-      orderCommands: [],
-      gameData: [],
-      openGameData: noop
+      ]
     });
 
     const historical = filterPalette(stale, "Historical Seven (18642)")[0];
@@ -166,8 +169,7 @@ describe("buildPaletteEntries", () => {
     const hidden = { label: "Faction not shown", concealed: true };
 
     function withForeign(onRun: (unitId: string) => void = noop): PaletteEntry[] {
-      return buildPaletteEntries({
-        armies: [],
+      return build({
         ownUnits: [{ unitId: "518", name: "Wardrobe Guard", run: noop }],
         foreignUnits: [
           {
@@ -188,14 +190,7 @@ describe("buildPaletteEntries", () => {
         staleUnits: [
           { regionId: "1:9,9", unitId: "2207", name: "Wardens of the Vale", lastSeenTurn: 42, run: noop }
         ],
-        settlements: [],
-        factions: [],
-        regions: [{ regionId: "1:18,52", label: "plain (18,52) in Vale", run: noop }],
-        structures: [],
-        actions: [],
-        orderCommands: [],
-        gameData: [],
-        openGameData: noop
+        regions: [{ regionId: "1:18,52", label: "plain (18,52) in Vale", run: noop }]
       });
     }
 
@@ -286,39 +281,19 @@ describe("factions in the palette (ah-mlls.3)", () => {
   });
 
   it("comes right after the towns and cities", () => {
-    const kinds = buildPaletteEntries({
-      armies: [],
-      ownUnits: [],
-      foreignUnits: [],
-      staleUnits: [],
+    const kinds = build({
       settlements: [{ regionId: "1:12,34", label: "Akroitos [city] · plain (12,34)", run: noop }],
       factions: [{ factionId: "10", name: "Thane's Ring", own: false, merged: false, attitude: null, run: noop }],
-      regions: [{ regionId: "1:12,34", label: "plain (12,34)", run: noop }],
-      structures: [],
-      actions: [],
-      orderCommands: [],
-      gameData: [],
-      openGameData: noop
+      regions: [{ regionId: "1:12,34", label: "plain (12,34)", run: noop }]
     }).map((entry) => entry.kind);
     expect(kinds).toEqual(["settlement", "faction", "region"]);
   });
 
   it("names a nameless faction by its number", () => {
-    const [nameless] = buildPaletteEntries({
-      armies: [],
-      ownUnits: [],
-      foreignUnits: [],
-      staleUnits: [],
-      settlements: [],
+    const [nameless] = build({
       factions: [
         { factionId: "77", name: null, own: false, merged: false, attitude: null, lastSeenTurn: 41, run: noop }
-      ],
-      regions: [],
-      structures: [],
-      actions: [],
-      orderCommands: [],
-      gameData: [],
-      openGameData: noop
+      ]
     });
     expect(nameless).toMatchObject({ label: "Unnamed faction (77)", lastSeenTurn: 41 });
   });
@@ -519,22 +494,11 @@ describe("greyed rows (ah-mlls.7)", () => {
   });
 
   it("carries a greyed action's reason onto its entry, and still finds it by typing", () => {
-    const built = buildPaletteEntries({
-      armies: [],
-      ownUnits: [],
-      foreignUnits: [],
-      staleUnits: [],
-      settlements: [],
-      factions: [],
-      regions: [],
-      structures: [],
+    const built = build({
       actions: [
         { id: "send-orders", label: "Send orders", unavailable: "No #atlantis line.", run: noop },
         { id: "settings", label: "Open settings", run: noop }
-      ],
-      orderCommands: [],
-      gameData: [],
-      openGameData: noop
+      ]
     });
     expect(built[0]?.unavailable).toBe("No #atlantis line.");
     expect(built[1]?.unavailable).toBeUndefined();
@@ -565,20 +529,7 @@ describe("game data in the palette", () => {
   });
 
   it("offers no game data when the ruleset has not loaded", () => {
-    const without = buildPaletteEntries({
-      armies: [],
-      ownUnits: [],
-      foreignUnits: [],
-      staleUnits: [],
-      settlements: [],
-      factions: [],
-      regions: [],
-      structures: [],
-      actions: [],
-      orderCommands: [],
-      gameData: [],
-      openGameData: noop
-    });
+    const without = build({ gameData: [] });
     expect(without).toEqual([]);
   });
 });
@@ -669,10 +620,8 @@ describe("settlementPaletteRows (ah-mlls.2)", () => {
 });
 
 describe("settlements in the palette (ah-mlls.2)", () => {
-  const built = buildPaletteEntries({
-    armies: [],
+  const built = build({
     ownUnits: [{ unitId: "18642", name: "Seven of Eight", run: noop }],
-    foreignUnits: [],
     staleUnits: [
       { regionId: "1:7,53", unitId: "1", name: "Old Scout", lastSeenTurn: 60, run: noop }
     ],
@@ -681,16 +630,11 @@ describe("settlements in the palette (ah-mlls.2)", () => {
       { regionId: "1:9,9", label: "Mudwick [village] · swamp (9,9) in Fen", lastSeenTurn: 64, run: noop },
       { regionId: "1:7,53", label: "Inholm [city] · mountain (7,53) in Inhead", run: noop }
     ],
-    factions: [],
     regions: [
       { regionId: "1:12,34", label: "plain (12,34) in Hope", run: noop },
       { regionId: "1:7,53", label: "mountain (7,53) in Inhead", run: noop }
     ],
-    structures: [{ structureId: "1", label: "Castle [1] · plain (12,34) in Hope", run: noop }],
-    actions: [],
-    orderCommands: [],
-    gameData: [],
-    openGameData: noop
+    structures: [{ structureId: "1", label: "Castle [1] · plain (12,34) in Hope", run: noop }]
   });
 
   it("sits after every unit and ahead of the hexes with nothing typed", () => {
@@ -782,19 +726,9 @@ describe("Armies in the palette (ah-mlls.4)", () => {
 
 describe("notes in the palette (ah-mlls.5)", () => {
   const withNotes = (): PaletteEntry[] =>
-    buildPaletteEntries({
-      armies: [],
+    build({
       ownUnits: [{ unitId: "2210", name: "Ironside Guard", run: noop }],
-      foreignUnits: [],
-      staleUnits: [],
-      settlements: [],
-      factions: [],
       regions: [{ regionId: "1:3,29", label: "hill (3,29) in Grey Reach", run: noop }],
-      structures: [],
-      actions: [],
-      orderCommands: [],
-      gameData: [],
-      openGameData: noop,
       hexNotes: [
         {
           noteId: "n1",
@@ -1003,15 +937,7 @@ describe("noteSnippet (ah-mlls.5)", () => {
 
 describe("an order row (ah-mlls.6)", () => {
   function withOrders(openGameData: (entryId: string) => void): PaletteEntry[] {
-    return buildPaletteEntries({
-      armies: [],
-      ownUnits: [],
-      foreignUnits: [],
-      staleUnits: [],
-      settlements: [],
-      factions: [],
-      regions: [],
-      structures: [],
+    return build({
       actions: [{ id: "theme", label: "Toggle theme", run: noop }],
       orderCommands: ["MOVE", "STUDY"],
       // The dictionary holds the orders too, now that they are game data entries.
@@ -1073,22 +999,8 @@ describe("mageSheetPaletteAction (ah-mlls.8)", () => {
   });
 
   it("reaches the palette as an action row, found by its label alone", () => {
-    const build = (action: ReturnType<typeof make>) =>
-      buildPaletteEntries({
-        armies: [],
-        ownUnits: [],
-        foreignUnits: [],
-        staleUnits: [],
-        settlements: [],
-        factions: [],
-        regions: [],
-        structures: [],
-        actions: [action],
-        orderCommands: [],
-        gameData: [],
-        openGameData: noop
-      });
-    expect(build(make(false, false, 0))).toEqual([
+    const withAction = (action: ReturnType<typeof make>) => build({ actions: [action] });
+    expect(withAction(make(false, false, 0))).toEqual([
       expect.objectContaining({
         id: "action-export-mage-sheet",
         kind: "action",
@@ -1096,7 +1008,7 @@ describe("mageSheetPaletteAction (ah-mlls.8)", () => {
         unavailable: "needs a report"
       })
     ]);
-    const empty = build(make(true, true, 0));
+    const empty = withAction(make(true, true, 0));
     expect(empty[0]?.count).toEqual({ text: "no mages", quiet: true });
     for (const query of ["exp", "mage", "sheet"]) {
       expect(filterPalette(empty, query)).toHaveLength(1);
