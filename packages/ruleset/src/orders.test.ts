@@ -101,6 +101,19 @@ describe("parseOrderReference (rules/orders)", () => {
     expect(ARCANUM.DISTRIBUTE).toBeUndefined();
   });
 
+  it("keeps an order block that comes before any example as a paragraph of the prose (no fixture has one)", () => {
+    const page = `<a name="ordersummary"></a><div class="rule"></div>
+      <h4>WAIT [flag]</h4><p>Waits.</p><pre>
+      WAIT 1
+      </pre><p>Examples:</p><p>Wait once.</p><pre>WAIT 1</pre>
+      <a name="sequenceofevents"></a>`;
+    expect(parseOrderReference(page).WAIT).toEqual({
+      forms: ["WAIT [flag]"],
+      description: ["Waits.", "WAIT 1"],
+      examples: [{ text: "Wait once.", order: "WAIT 1" }]
+    });
+  });
+
   it("stops the run when the page has no order section at all", () => {
     expect(() => parseOrderReference("<html><body><p>Nothing here</p></body></html>")).toThrow(
       RulesetScrapeError

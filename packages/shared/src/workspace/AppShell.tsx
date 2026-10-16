@@ -500,6 +500,9 @@ async function fetchRulesetText(rulesetId: string): Promise<string> {
   return response.text();
 }
 
+/** The order list before the core has answered for the open ruleset; one value, so memos hold. */
+const NO_ORDER_COMMANDS: readonly string[] = [];
+
 export function AppShell({
   client: rawClient,
   platformLabel,
@@ -685,7 +688,13 @@ export function AppShell({
   const [ruleset, setRuleset] = useState<RulesetState>({ status: "loading" });
   // The core's order vocabulary, fetched once for the editor's completion popup. Empty until it
   // arrives - or if it never does, which just leaves the popup with nothing to say.
-  const [orderCommands, setOrderCommands] = useState<readonly string[]>([]);
+  // Kept with the ruleset text it was answered for (ah-mlls.6 review): read against any other text
+  // it is no list at all, so a world switch never shows the previous world's orders, even for the
+  // one render before the effect below has run.
+  const [orderCommandsFor, setOrderCommandsFor] = useState<{
+    rulesetText: string;
+    commands: readonly string[];
+  } | null>(null);
   // Every word the rules know, uppercase, for the Order OCD setting. Keyed on the ruleset as well
   // as the client, since the item and skill half of it comes from there. Empty until it arrives,
   // which simply makes the uppercasing a no-op.
@@ -693,6 +702,10 @@ export function AppShell({
   // The same ruleset as the storage layer wants it: its text once it arrived, `null` while it has
   // not. What gets stored is classified with exactly what the screen was classified with.
   const rulesetText = ruleset.status === "ready" ? ruleset.text : null;
+  const orderCommands =
+    orderCommandsFor !== null && orderCommandsFor.rulesetText === rulesetText
+      ? orderCommandsFor.commands
+      : NO_ORDER_COMMANDS;
 
   // The latest ruleset state, readable from a callback that was created before it changed - the
   // same pattern MapCanvas uses for its viewport, and for the same reason: a closure would capture
@@ -2962,7 +2975,6 @@ export function AppShell({
 
   useEffect(() => {
     let cancelled = false;
-    setOrderCommands([]);
     if (rulesetText === null) {
       return () => {
         cancelled = true;
@@ -2972,7 +2984,7 @@ export function AppShell({
       .then(() => client.orderCommands(rulesetText))
       .then((commands) => {
         if (!cancelled) {
-          setOrderCommands(commands);
+          setOrderCommandsFor({ rulesetText, commands });
         }
       })
       .catch(() => {

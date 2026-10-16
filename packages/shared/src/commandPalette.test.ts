@@ -143,7 +143,7 @@ describe("buildPaletteEntries", () => {
       structures: [],
       actions: [],
       orderCommands: [],
-        gameData: [],
+      gameData: [],
       openGameData: noop
     });
 
@@ -192,7 +192,7 @@ describe("buildPaletteEntries", () => {
         structures: [],
         actions: [],
         orderCommands: [],
-            gameData: [],
+        gameData: [],
         openGameData: noop
       });
     }
@@ -501,7 +501,7 @@ describe("game data in the palette", () => {
       structures: [],
       actions: [],
       orderCommands: [],
-        gameData: [],
+      gameData: [],
       openGameData: noop
     });
     expect(without).toEqual([]);
