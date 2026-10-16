@@ -32,6 +32,7 @@ export function aHexView(overrides: Partial<HexView> = {}): HexView {
     battle: null,
     blocked: null,
     gate: false,
+    coords: null,
     ...overrides
   };
 }

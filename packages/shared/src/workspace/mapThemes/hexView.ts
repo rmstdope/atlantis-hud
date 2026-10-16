@@ -193,6 +193,11 @@ export type HexView = {
   blocked: string | null;
   /** Whether the hex holds a gateway, the magical passage between levels. */
   gate: boolean;
+  /**
+   * The hex's coordinates as the map prints them, `33,25` (ah-ezyg), or null while the switch is
+   * off. Built here so every theme writes the very same text after a settlement's name.
+   */
+  coords: string | null;
 };
 
 /**
@@ -313,6 +318,8 @@ export type HexViewOptions = {
   fogDamping?: number;
   /** The world's water terrains, from the ruleset; `DEFAULT_WATER` when absent (tests, tools). */
   water?: WaterTerrains;
+  /** Print each hex's coordinates (ah-ezyg); off when absent, so tools and tests see no change. */
+  hexCoordinates?: boolean;
 };
 
 /** The shared fade scaled by a theme's damping, to three decimals - the one place this arithmetic lives. */
@@ -582,7 +589,8 @@ export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
     lairs: badges.lairs ? structures.lairs : 0,
     battle: badges.battles ? (options.battles?.get(hex.regionId) ?? null) : null,
     blocked: badges.blocked ? (options.blocked?.get(hex.regionId)?.label ?? null) : null,
-    gate: badges.gate && structures.gates > 0
+    gate: badges.gate && structures.gates > 0,
+    coords: options.hexCoordinates === true ? `${hex.coordinate.x},${hex.coordinate.y}` : null
   };
 }
 
