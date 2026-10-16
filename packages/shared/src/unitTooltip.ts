@@ -6,7 +6,7 @@ import {
   monthLostToAnUnreadLine,
   NOT_KNOWN,
   shareBoundedByAnUnreadUnit,
-  silverWasNeverRead,
+  silverWasNeverRead
 } from "./unitRead";
 
 /**
@@ -79,13 +79,10 @@ export function summariseUnit(
    */
   dissolving: { into: string | null } | null = null,
   /** Whether this unit's hex carries a silver shortfall naming no unit (`ah-5znb`). */
-  hexShort = false,
+  hexShort = false
 ): UnitSummary {
   return {
-    silver:
-      silver === null
-        ? null
-        : summariseSilver(unit, silver, warned, countUpkeep, hexShort),
+    silver: silver === null ? null : summariseSilver(unit, silver, warned, countUpkeep, hexShort),
     note: dissolving
       ? dissolving.into === null
         ? "Gains no recruits, so the game dissolves it. No unit of yours is shown in this hex for its goods to revert to."
@@ -94,14 +91,14 @@ export function summariseUnit(
     title: `${unit.name} (${unit.unitId})`,
     skills: unit.skills.map((skill) => ({
       label: `${skill.name} ${skill.tag}`,
-      value: `${skill.level} (${skill.points})`,
+      value: `${skill.level} (${skill.points})`
     })),
     items: withoutSilver(unit.items)
       .sort((left, right) => right.amount - left.amount)
       .map((item) => ({
         label: `${item.name} ${item.tag}`,
-        value: item.amount.toLocaleString(),
-      })),
+        value: item.amount.toLocaleString()
+      }))
   };
 }
 
@@ -115,11 +112,7 @@ export function summariseUnit(
  * The clamp afterwards is for what neither side can hold. A tooltip taller or wider than the
  * window has nowhere to flip to, and pinning it to the top-left at least shows its beginning.
  */
-export function placeTooltip(
-  pointer: Point,
-  size: Size,
-  viewport: Size,
-): Placement {
+export function placeTooltip(pointer: Point, size: Size, viewport: Size): Placement {
   const along = (start: number, extent: number, limit: number) => {
     const after = start + GAP;
     const placed = after + extent <= limit ? after : start - GAP - extent;
@@ -128,17 +121,12 @@ export function placeTooltip(
 
   return {
     left: along(pointer.x, size.width, viewport.width),
-    top: along(pointer.y, size.height, viewport.height),
+    top: along(pointer.y, size.height, viewport.height)
   };
 }
 
 /** A box something hangs off, in viewport coordinates. */
-export type AnchorBox = {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-};
+export type AnchorBox = { left: number; top: number; width: number; height: number };
 
 /**
  * How close a menu sits to the cell it belongs to. Smaller than `GAP`, which exists to keep a
@@ -158,20 +146,13 @@ const ANCHOR_GAP = 4;
  * The clamp afterwards is for what neither side can hold, and pins the beginning of the menu to
  * the top-left the way `placeTooltip` does.
  */
-export function placeUnderAnchor(
-  anchor: AnchorBox,
-  size: Size,
-  viewport: Size,
-): Placement {
+export function placeUnderAnchor(anchor: AnchorBox, size: Size, viewport: Size): Placement {
   const below = anchor.top + anchor.height + ANCHOR_GAP;
-  const top =
-    below + size.height <= viewport.height
-      ? below
-      : anchor.top - ANCHOR_GAP - size.height;
+  const top = below + size.height <= viewport.height ? below : anchor.top - ANCHOR_GAP - size.height;
 
   return {
     left: Math.max(0, Math.min(anchor.left, viewport.width - size.width)),
-    top: Math.max(0, Math.min(top, viewport.height - size.height)),
+    top: Math.max(0, Math.min(top, viewport.height - size.height))
   };
 }
 
@@ -200,7 +181,7 @@ function summariseSilver(
   silver: UnitSilver,
   warned: boolean,
   countUpkeep: boolean,
-  hexShort: boolean,
+  hexShort: boolean
 ): SilverSummary {
   const end = countUpkeep ? shownEnd(silver) : silver.atMonthEnd;
   // A term this unit's own broken line lost reads the agreed words; every other doubt keeps the
@@ -208,48 +189,30 @@ function summariseSilver(
   const unknown = monthLostToAnUnreadLine(silver) ? NOT_KNOWN : "?";
   // Only where the figure is a number: `? at most` and `not known at most` are both nonsense, and
   // `end` can be null while `income` is not, when the setting counts an upkeep nobody could price.
-  const atMostIf = (
-    text: string,
-    amount: number | null,
-    bounded: boolean,
-  ): string => (amount !== null && bounded ? atMost(text) : text);
+  const atMostIf = (text: string, amount: number | null, bounded: boolean): string =>
+    amount !== null && bounded ? atMost(text) : text;
   const rows: TooltipEntry[] = [
     {
       label: "Held now",
-      value: silverWasNeverRead(silver) ? NOT_KNOWN : String(silver.held),
+      value: silverWasNeverRead(silver) ? NOT_KNOWN : String(silver.held)
     },
     {
       label: "In, in time",
-      value: atMostIf(
-        figure(inTime(silver), unknown),
-        inTime(silver),
-        silver.incomeInTimeAtMost,
-      ),
+      value: atMostIf(figure(inTime(silver), unknown), inTime(silver), silver.incomeInTimeAtMost)
     },
     {
       label: "In, too late",
-      value: atMostIf(
-        figure(silver.lateIncome, unknown),
-        silver.lateIncome,
-        silver.lateIncomeAtMost,
-      ),
+      value: atMostIf(figure(silver.lateIncome, unknown), silver.lateIncome, silver.lateIncomeAtMost)
     },
     { label: "Out", value: figure(silver.expense, unknown) },
     ...(countUpkeep ? upkeepRows(silver, unknown) : []),
     {
       label: "At month end",
-      value: atMostIf(
-        figure(end, unknown),
-        end,
-        shareBoundedByAnUnreadUnit(silver),
-      ),
-    },
+      value: atMostIf(figure(end, unknown), end, shareBoundedByAnUnreadUnit(silver))
+    }
   ];
 
-  return {
-    rows,
-    note: silverNote(unit, silver, warned, countUpkeep, hexShort),
-  };
+  return { rows, note: silverNote(unit, silver, warned, countUpkeep, hexShort) };
 }
 
 /**
@@ -261,19 +224,13 @@ function summariseSilver(
 function upkeepRows(silver: UnitSilver, unknown: string): TooltipEntry[] {
   // The core's `upkeep` is what is left after faction-mates paid their part (`sharedSilverCovered`),
   // so the unit's own fee is the two together; food and the unclaimed fund stay netted out.
-  const own =
-    silver.upkeep === null ? null : silver.upkeep + silver.sharedSilverCovered;
-  const rows: TooltipEntry[] = [
-    { label: "Upkeep", value: figure(own, unknown) },
-  ];
+  const own = silver.upkeep === null ? null : silver.upkeep + silver.sharedSilverCovered;
+  const rows: TooltipEntry[] = [{ label: "Upkeep", value: figure(own, unknown) }];
   if (silver.upkeepLent > 0) {
     rows.push({ label: "Lent for upkeep", value: String(silver.upkeepLent) });
   }
   if (silver.sharedSilverCovered > 0) {
-    rows.push({
-      label: "Was lent for upkeep",
-      value: String(silver.sharedSilverCovered),
-    });
+    rows.push({ label: "Was lent for upkeep", value: String(silver.sharedSilverCovered) });
   }
   return rows;
 }
@@ -300,6 +257,7 @@ function shownEnd(silver: UnitSilver): number | null {
   return silver.atMonthEnd - silver.upkeep - silver.upkeepLent;
 }
 
+
 /**
  * Every explanation that applies, one per line, in `SILVER_NOTES` order.
  *
@@ -313,18 +271,11 @@ function silverNote(
   silver: UnitSilver,
   warned: boolean,
   countUpkeep: boolean,
-  hexShort: boolean,
+  hexShort: boolean
 ): string | null {
   // The Was lent for upkeep row already says what faction-mates paid, so the "upkeep was paid by"
   // sentence leaves that part out, as the silver cell's hover does (`ah-2zku`, `ah-kv6c`).
   const upkeepLinesDrawn = countUpkeep && silver.sharedSilverCovered > 0;
-  const lines = silverNoteLines({
-    unit,
-    silver,
-    warned,
-    countUpkeep,
-    hexShort,
-    upkeepLinesDrawn,
-  });
+  const lines = silverNoteLines({ unit, silver, warned, countUpkeep, hexShort, upkeepLinesDrawn });
   return lines.length > 0 ? lines.join("\n") : null;
 }
