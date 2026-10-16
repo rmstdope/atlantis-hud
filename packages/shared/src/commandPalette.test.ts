@@ -3,8 +3,10 @@ import {
   buildPaletteEntries,
   filterPalette,
   paletteKeyReduce,
+  settlementPaletteRows,
   type PaletteEntry
 } from "./commandPalette";
+import type { HexNode } from "./hexMapModel";
 import { structurePaletteLabel } from "./structureLabel";
 
 const noop = () => {};
@@ -25,6 +27,7 @@ function entries(
     staleUnits: [
       { regionId: "1:7,53", unitId: "18642", name: "Seven of Eight", lastSeenTurn: 70, run: noop }
     ],
+    settlements: [],
     regions: [
       { regionId: "1:7,53", label: "mountain (7,53)", run: noop },
       { regionId: "1:20,40", label: "ocean (20,40) in Atlantis Ocean", run: noop }
@@ -120,6 +123,7 @@ describe("buildPaletteEntries", () => {
           }
         }
       ],
+      settlements: [],
       regions: [],
       structures: [],
       actions: [],
@@ -306,6 +310,7 @@ describe("game data in the palette", () => {
     const without = buildPaletteEntries({
       ownUnits: [],
       staleUnits: [],
+      settlements: [],
       regions: [],
       structures: [],
       actions: [],
@@ -346,5 +351,123 @@ describe("structurePaletteLabel", () => {
         "ocean (1,1)"
       )
     ).toBe("ship [218] · Longship · ocean (1,1)");
+  });
+});
+
+/** A map node with only what the palette reads filled in. */
+function node(
+  regionId: string,
+  label: string,
+  settlement: HexNode["settlement"],
+  knowledge: HexNode["knowledge"] = "current",
+  lastSeenTurn: number | null = 71
+): HexNode {
+  return {
+    regionId,
+    coordinate: { x: 0, y: 0, z: 1 },
+    terrain: "plain",
+    province: "Hope",
+    label,
+    knowledge,
+    lastSeenTurn,
+    ageInTurns: null,
+    settlementName: settlement?.name ?? null,
+    settlement,
+    region: null,
+    rememberedUnits: [],
+    ownUnitCount: 0,
+    foreignUnitCount: 0
+  };
+}
+
+describe("settlementPaletteRows (ah-mlls.2)", () => {
+  const hexes = [
+    node("1:12,34", "plain (12,34) in Hope", { name: "Akroitos", size: "city" }),
+    node("1:12,36", "forest (12,36) in Hope", null),
+    node("1:7,53", "mountain (7,53) in Inhead", { name: "Inholm", size: "city" }, "stale", 68),
+    node("1:9,9", "swamp (9,9) in Fen", { name: "Mudwick", size: "village" }, "named", 64)
+  ];
+
+  it("gives every settlement a row reading name, size, then the hex's own label", () => {
+    expect(settlementPaletteRows(hexes, 71)).toEqual([
+      { regionId: "1:12,34", label: "Akroitos [city] · plain (12,34) in Hope" },
+      { regionId: "1:7,53", label: "Inholm [city] · mountain (7,53) in Inhead", lastSeenTurn: 68 },
+      { regionId: "1:9,9", label: "Mudwick [village] · swamp (9,9) in Fen", lastSeenTurn: 64 }
+    ]);
+  });
+
+  it("marks nothing as earlier-turn when the report has no turn number", () => {
+    expect(settlementPaletteRows([hexes[2]!], null)).toEqual([
+      { regionId: "1:7,53", label: "Inholm [city] · mountain (7,53) in Inhead" }
+    ]);
+  });
+
+  it("offers nothing when no settlement is known", () => {
+    expect(settlementPaletteRows([], 71)).toEqual([]);
+    expect(settlementPaletteRows([hexes[1]!], 71)).toEqual([]);
+  });
+});
+
+describe("settlements in the palette (ah-mlls.2)", () => {
+  const built = buildPaletteEntries({
+    ownUnits: [{ unitId: "18642", name: "Seven of Eight", run: noop }],
+    staleUnits: [
+      { regionId: "1:7,53", unitId: "1", name: "Old Scout", lastSeenTurn: 60, run: noop }
+    ],
+    settlements: [
+      { regionId: "1:12,34", label: "Akroitos [city] · plain (12,34) in Hope", run: noop },
+      { regionId: "1:9,9", label: "Mudwick [village] · swamp (9,9) in Fen", lastSeenTurn: 64, run: noop },
+      { regionId: "1:7,53", label: "Inholm [city] · mountain (7,53) in Inhead", run: noop }
+    ],
+    regions: [
+      { regionId: "1:12,34", label: "plain (12,34) in Hope", run: noop },
+      { regionId: "1:7,53", label: "mountain (7,53) in Inhead", run: noop }
+    ],
+    structures: [{ structureId: "1", label: "Castle [1] · plain (12,34) in Hope", run: noop }],
+    actions: [],
+    orderCommands: [],
+    insertOrder: noop,
+    gameData: [],
+    openGameData: noop
+  });
+
+  it("sits after every unit and ahead of the hexes with nothing typed", () => {
+    expect(built.map((entry) => entry.kind)).toEqual([
+      "unit",
+      "unit",
+      "settlement",
+      "settlement",
+      "settlement",
+      "region",
+      "region",
+      "structure"
+    ]);
+    expect(built[3]).toMatchObject({ id: "settlement-1:9,9", lastSeenTurn: 64 });
+  });
+
+  it("finds a settlement by its name with one row, not a duplicate hex row", () => {
+    expect(filterPalette(built, "akroitos").map((entry) => entry.label)).toEqual([
+      "Akroitos [city] · plain (12,34) in Hope"
+    ]);
+  });
+
+  it("lists every city for 'city' and every village for 'village'", () => {
+    expect(filterPalette(built, "city").map((entry) => entry.id)).toEqual([
+      "settlement-1:12,34",
+      "settlement-1:7,53"
+    ]);
+    expect(filterPalette(built, "village").map((entry) => entry.id)).toEqual([
+      "settlement-1:9,9"
+    ]);
+  });
+
+  it("finds a settlement by its province too, with its best fit given a seat at the top", () => {
+    const shown = filterPalette(built, "hope");
+    expect(shown.map((entry) => entry.kind).slice(0, 3).sort()).toEqual([
+      "region",
+      "settlement",
+      "structure"
+    ]);
+    expect(shown.map((entry) => entry.id)).toContain("settlement-1:12,34");
   });
 });

@@ -282,7 +282,7 @@ import { buildMagicTree, studyPlannerTree } from "../magicTree";
 import { isApprentice, magesOf, openingMage } from "../magicStanding";
 import { plannerEmptyCopy, plannerGroups, plannerSummaryLine } from "../studyPlanner";
 import { ShortcutHelp } from "./ShortcutHelp";
-import { buildPaletteEntries } from "../commandPalette";
+import { buildPaletteEntries, settlementPaletteRows } from "../commandPalette";
 import { structurePaletteLabel, structuresForUnitDock } from "../structureLabel";
 import type { Resume, StopKey } from "../diagnosticNav";
 import { resumeWalk, stepDiagnostic, stopKeys } from "../diagnosticNav";
@@ -1836,6 +1836,11 @@ export function AppShell({
               run: () => selectHex(hex.regionId)
             }))
       ),
+      // A settlement goes to its hex exactly as the hex's own row does (ah-mlls.2).
+      settlements: settlementPaletteRows(model.hexes, model.currentTurn).map((row) => ({
+        ...row,
+        run: () => selectHex(row.regionId)
+      })),
       regions: model.hexes.map((candidate) => ({
         regionId: candidate.regionId,
         label: candidate.label,

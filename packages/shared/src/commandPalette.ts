@@ -4,10 +4,16 @@
  */
 
 import type { GameDataEntry } from "./gameData";
+import type { HexNode } from "./hexMapModel";
 
 export type PaletteEntryKind =
   | "unit"
   | "region"
+  /**
+   * One village, town or city the player knows of (ah-mlls.2), on a row of its own beside its
+   * hex's: the hex row carries no settlement name, so typing a town's name finds exactly one row.
+   */
+  | "settlement"
   /**
    * One structure standing in the world - `Soggy Saw Mill [1]`, not the dictionary's `Mine`.
    *
@@ -48,6 +54,8 @@ export type PaletteInput = {
     lastSeenTurn: number;
     run: () => void;
   }>;
+  /** Every settlement on the known map, labelled by `settlementPaletteRows`. */
+  settlements: Array<{ regionId: string; label: string; lastSeenTurn?: number; run: () => void }>;
   regions: Array<{ regionId: string; label: string; run: () => void }>;
   /** Every structure in this turn's report, labelled by `structurePaletteLabel`. */
   structures: Array<{
@@ -89,6 +97,15 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       lastSeenTurn: unit.lastSeenTurn,
       run: unit.run
     })),
+    // After every unit and ahead of the hexes: a handful of much-visited places would otherwise
+    // sit below hundreds of hexes with nothing typed (ah-mlls.2).
+    ...input.settlements.map<PaletteEntry>((settlement) => ({
+      id: `settlement-${settlement.regionId}`,
+      kind: "settlement",
+      label: settlement.label,
+      lastSeenTurn: settlement.lastSeenTurn,
+      run: settlement.run
+    })),
     ...input.regions.map<PaletteEntry>((region) => ({
       id: `region-${region.regionId}`,
       kind: "region",
@@ -122,6 +139,37 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       run: () => input.openGameData(entry.id)
     }))
   ];
+}
+
+/**
+ * One palette row per hex with a settlement, in the map's hex order: `Akroitos [city] · plain
+ * (12,34) in Hope`. The size is the report's own word (`contains Akroitos [city]`), kept in the
+ * text so typing `city` lists every city; the rest is the hex row's own label, so the two cannot
+ * drift apart.
+ *
+ * A hex not in this turn's report - stale, or only named by a neighbour's exits - carries the turn
+ * it was last seen, which the palette shows as `last seen turn N`.
+ */
+export function settlementPaletteRows(
+  hexes: readonly HexNode[],
+  currentTurn: number | null
+): Array<{ regionId: string; label: string; lastSeenTurn?: number }> {
+  return hexes.flatMap((hex) => {
+    if (hex.settlement === null) {
+      return [];
+    }
+    const label = `${hex.settlement.name} [${hex.settlement.size}] · ${hex.label}`;
+    const earlier =
+      hex.knowledge !== "current" &&
+      currentTurn !== null &&
+      hex.lastSeenTurn !== null &&
+      hex.lastSeenTurn < currentTurn;
+    return [
+      earlier
+        ? { regionId: hex.regionId, label, lastSeenTurn: hex.lastSeenTurn as number }
+        : { regionId: hex.regionId, label }
+    ];
+  });
 }
 
 /**

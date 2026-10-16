@@ -24,7 +24,8 @@ import type {
   MapWall,
   ReportRegion,
   ReportUnit,
-  KnownUnitSighting
+  KnownUnitSighting,
+  SettlementInfo
 } from "@atlantis/core-client";
 
 import { compareUnitIds } from "./unitOrder";
@@ -46,6 +47,8 @@ export type HexNode = {
   /** Turns between `lastSeenTurn` and the current turn. Zero for a hex in this report. */
   ageInTurns: number | null;
   settlementName: string | null;
+  /** The settlement the core knows for this hex - name and the report's size word - if any. */
+  settlement: SettlementInfo | null;
   /** Full detail, present only for a hex that has actually been visited. */
   region: ReportRegion | null;
   /** Historical unit sightings for a stale hex; never counted as current occupants. */
@@ -221,6 +224,7 @@ export function hexNodeOf(hex: KnownMapHex, currentTurn: number | null): HexNode
         ? null
         : Math.max(0, currentTurn - hex.lastSeenTurn),
     settlementName: hex.settlement?.name ?? null,
+    settlement: hex.settlement,
     region: hex.region,
     rememberedUnits: hex.rememberedUnits,
     ...countUnits(hex.region)
