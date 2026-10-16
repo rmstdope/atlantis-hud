@@ -283,6 +283,7 @@ import { isApprentice, magesOf, openingMage } from "../magicStanding";
 import { plannerEmptyCopy, plannerGroups, plannerSummaryLine } from "../studyPlanner";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { buildPaletteEntries, settlementPaletteRows } from "../commandPalette";
+import { shownMemberCount } from "./armyRows";
 import { structurePaletteLabel, structuresForUnitDock } from "../structureLabel";
 import type { Resume, StopKey } from "../diagnosticNav";
 import { resumeWalk, stepDiagnostic, stopKeys } from "../diagnosticNav";
@@ -1819,6 +1820,20 @@ export function AppShell({
     const magicTreeSpec = SHORTCUTS.find((entry) => entry.id === "magicTree");
     const studyPlannerSpec = SHORTCUTS.find((entry) => entry.id === "studyPlanner");
     return buildPaletteEntries({
+      // Only with a game open, as the rail lists them (ah-mlls.4). Choosing one does what a click
+      // on its rail entry does, and unfolds the pane first: the dock's focus effect needs the
+      // rows rendered, as the dossier's "show their units" line found (`onShowUnits` below).
+      armies: (game ? armies : []).map((army) => ({
+        armyId: army.id,
+        name: army.name,
+        shownCount: shownMemberCount(army, unitsById),
+        run: () => {
+          if (useWorkspaceStore.getState().collapsed.units) {
+            useWorkspaceStore.getState().togglePanel("units");
+          }
+          unitDock.current?.showArmy(army.id);
+        }
+      })),
       ownUnits: orderedOwnUnitIds.map((unitId) => {
         const owner = parsed?.regions
           .flatMap((region) => region.units)
@@ -1983,6 +1998,8 @@ export function AppShell({
       openGameData: (entryId) => showOnlyKeyDialog({ id: "gameData", entryId })
     });
   }, [
+    armies,
+    unitsById,
     offersProduction,
     gameData,
     orderedOwnUnitIds,
