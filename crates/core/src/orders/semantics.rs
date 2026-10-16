@@ -74,7 +74,7 @@ use crate::orders::silver::{
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
     give_endpoint, give_outcome, mage_give_refused, party_label, party_unit_id, recruit_refused,
-    GiveEndpoint, GiveOutcome, GiveReach, GiveRefusal,
+    GiveEndpoint, GiveOutcome, GiveReach, GiveRefusal, GiveVerdict,
 };
 use crate::orders::transfers::{
     in_report_order, report_order, report_ranks, PendingTransfer, Placement,
@@ -3770,6 +3770,42 @@ impl<'a> Hex<'a> {
             |id| self.region.units.iter().any(|unit| unit.unit_id == id),
             |id| self.shown_anywhere.contains(id),
         )
+    }
+
+    /// [`Self::give_endpoint`], and the verdict every tag of the `GIVE` is judged by (`ah-amkn`).
+    ///
+    /// The giver's skills are `skills_before_the_market` - the list `apply_transfers` projected
+    /// for this hex, available because `hex_with_transfers` runs before any ledger is built -
+    /// rather than the report's own, which would let the ledger move men that
+    /// `effects::Working::give` and `apply_transfers` both retain for a unit that took a mage's
+    /// men. `None` means the merge was unfollowable, and the reported list is the most that can
+    /// then be said.
+    ///
+    /// **It is the end-of-hex list, not a running one**, where the other two surfaces ask per
+    /// order. So one ordering still differs: a `GIVE` of men written *before* the
+    /// `TAKE FROM <mage>` that brings the magic skill in is moved by `apply_transfers`, which had
+    /// not seen the skill yet, and refused here, which has. Left as it is deliberately - the
+    /// ledger is the stricter of the two, and no surface reads its man-item balance, since upkeep,
+    /// the arrival warnings and `men_after_orders` all come from `apply_transfers`.
+    ///
+    /// The receiver's skills are the report's, as on every other surface (`ah-ndp9`).
+    fn give_verdict(
+        &self,
+        party: &Party,
+        giver: &Ordered<'_>,
+        ruleset: Option<&Ruleset>,
+    ) -> (GiveEndpoint<String>, GiveVerdict) {
+        let endpoint = self.give_endpoint(party, &giver.unit.unit_id);
+        let receiver_skills = endpoint
+            .row
+            .as_deref()
+            .and_then(|id| self.find(id))
+            .map(|receiver| receiver.unit.skills.as_slice());
+        let giver_skills = giver
+            .skills_before_the_market()
+            .unwrap_or(&giver.unit.skills);
+        let verdict = GiveVerdict::give(endpoint.reach, giver_skills, receiver_skills, ruleset);
+        (endpoint, verdict)
     }
 
     fn finding(&self, code: Code, message: String) -> Finding {
@@ -8762,16 +8798,19 @@ fn apply(
         // report-wide in `settle_report_wide`.
         Intent::Transport { .. } => {}
         Intent::Give { to, what, amount } => {
-            let GiveEndpoint {
-                reach,
-                // The goods leave, or may leave, and no row of ours gains them either way.
-                row: receiver,
-            } = hex.give_endpoint(to, who);
+            let (
+                GiveEndpoint {
+                    // The goods leave, or may leave, and no row of ours gains them either way.
+                    row: receiver,
+                    ..
+                },
+                verdict,
+            ) = hex.give_verdict(to, actor, ruleset);
             // Named nowhere in this region: the order does nothing, so the giver is not charged -
             // and nothing is doubted either, because the transfer was followed to the end and its
             // answer is zero. The ledger reads exactly as it would with the line deleted
             // (`ah-vcp8.2`).
-            if reach.gives_nothing() {
+            if verdict.gives_nothing() {
                 return;
             }
             // Only ever read for a tag `give_outcome` calls uncertain, and only ever a unit number
@@ -8791,9 +8830,8 @@ fn apply(
                         &Amount::All { except: 0 },
                         who.clone(),
                         receiver.clone(),
-                        reach,
+                        verdict,
                         Some(target_label.as_str()),
-                        true,
                     );
                 }
             } else {
@@ -8806,9 +8844,8 @@ fn apply(
                     amount,
                     who.clone(),
                     receiver,
-                    reach,
+                    verdict,
                     Some(target_label.as_str()),
-                    true,
                 );
             }
         }
@@ -8841,7 +8878,9 @@ fn apply(
             }
             let source = source.unwrap_or_default();
             // A TAKE has no discard target - the source is always a live unit, so the game's
-            // refusal always applies.
+            // refusal always applies. The taker's skills are the report's, as the receiver's are
+            // for a GIVE (`ah-ndp9`).
+            let verdict = GiveVerdict::take(&actor.unit.skills, ruleset);
             if let Some(tags) = class_tags(ledger, ruleset, &source, what, amount, false) {
                 for tag in tags {
                     transfer(
@@ -8853,9 +8892,8 @@ fn apply(
                         &Amount::All { except: 0 },
                         source.clone(),
                         Some(who.clone()),
-                        GiveReach::Ours,
+                        verdict,
                         None,
-                        false,
                     );
                 }
             } else {
@@ -8868,9 +8906,8 @@ fn apply(
                     amount,
                     source,
                     Some(who.clone()),
-                    GiveReach::Ours,
+                    verdict,
                     None,
-                    false,
                 );
             }
         }
@@ -9355,19 +9392,20 @@ fn transfer(
     amount: &Amount,
     from: String,
     to: Option<String>,
-    // The target reach controls inherent item refusal and the men-to-another-faction rule.
-    reach: GiveReach,
+    // Where the target stands and what every tag of this order does - built once per order by
+    // `Hex::give_verdict` or `GiveVerdict::take`, so this ledger asks the same question the
+    // preview, the walk and the SILVER column ask (`ah-amkn`).
+    verdict: GiveVerdict,
     // How the target reads in the Silver note, for a tag whose permission cannot be established.
     // `None` for a TAKE, which never reaches that outcome.
     target_label: Option<&str>,
-    // Whether this is a GIVE rather than a TAKE. `rules/magic` refuses a mage's men on a GIVE
-    // alone; `rules/take` is a different order and is untouched by that rule.
-    is_give: bool,
 ) {
     // The same reading `silver::forecast_unit` gets, so the two surfaces cannot classify one
     // order two ways (`ah-lu0f`). `Unpriceable` is a whole class of items, or the unit itself:
     // either moves an amount that depends on classifying everything the unit holds, which is not
     // modelled.
+    let reach = verdict.reach();
+    let is_give = verdict.is_give();
     let shape = transfer_shape(what, amount);
     let text = match what {
         Selector::Item(text) | Selector::UnfinishedShip(text) => text,
@@ -9413,33 +9451,17 @@ fn transfer(
         return;
     };
 
-    // `rules/magic`: "mages may not GIVE men at all". Counted and followed to the end exactly as
-    // the outcome table below is - it simply moves nothing, so no balance is touched and neither
-    // `doubted` nor `uncounted` is.
-    //
-    // Asked against `skills_before_the_market` - the list `apply_transfers` projected for this
-    // hex, available because `hex_with_transfers` runs before any ledger is built - rather than
-    // against the report's own `actor.unit.skills`, which would let the ledger move men that
-    // `effects::Working::give` and `apply_transfers` both retain for a unit that took a mage's
-    // men. `None` means the merge was unfollowable, and the reported list is the most that can
-    // then be said.
-    //
-    // **It is the end-of-hex list, not a running one** (`skills_after_gifts` is assigned once,
-    // after `apply_transfers`' whole loop), where the other two surfaces ask per order. So one
-    // ordering still differs: a `GIVE` of men written *before* the `TAKE FROM <mage>` that brings
-    // the magic skill in is moved by `apply_transfers`, which had not seen the skill yet, and
-    // refused here, which has. Left as it is deliberately - the ledger is the stricter of the two,
-    // and no surface reads its man-item balance, since upkeep, the arrival warnings and
-    // `men_after_orders` all come from `apply_transfers`. Closing it means threading a running
-    // skills list into the ledger, which is a larger change than this bead's rule.
-    let holder_skills = actor
-        .skills_before_the_market()
-        .unwrap_or(&actor.unit.skills);
-    if is_give && mage_give_refused(holder_skills, &tag, ledger.ruleset) {
+    let outcome = verdict.of(&tag, ledger.ruleset);
+    // `rules/magic`'s "mages may not GIVE men at all", and `ah-ndp9`'s mirror of it - no man may
+    // join a mage. Counted and followed to the end exactly as the outcome table below is - it
+    // simply moves nothing, so no balance is touched and neither `doubted` nor `uncounted` is.
+    // Whose skills are asked is `Hex::give_verdict`'s business; until `ah-amkn` this ledger
+    // asked only the giver's, and so moved men into a mage the other two surfaces refused.
+    if let GiveOutcome::Refused(GiveRefusal::MageGivesMen | GiveRefusal::MenIntoAMage) = outcome {
         return;
     }
 
-    match give_outcome(reach, &tag, ledger.ruleset) {
+    match outcome {
         // The item is resolved and the transfer *is* counted - it simply moves nothing, exactly as
         // a unit holding none of it would. Neither `doubted` nor `uncounted` is touched: those
         // mark a sum this ledger could not follow, and this one was followed to the end.

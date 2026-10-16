@@ -208,6 +208,12 @@ impl GiveVerdict {
         self.reach
     }
 
+    /// Whether this is a `GIVE` rather than a `TAKE`.
+    #[must_use]
+    pub fn is_give(self) -> bool {
+        self.is_give
+    }
+
     /// Whether the whole line does nothing: the source is not charged, nobody receives, and
     /// nothing is doubted - see [`GiveReach::Unshown`] and [`GiveReach::Nowhere`].
     #[must_use]

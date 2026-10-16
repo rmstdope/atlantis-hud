@@ -615,3 +615,221 @@ fn the_hand_built_gift_of_men_reaches_the_man_tag_exemption() {
     assert_eq!(walk_exemption(smith), None, "the walk followed this gift");
     assert_eq!(smith.walked_men, smith.reported_men - 4);
 }
+
+/// `ah-amkn`'s hex: every party a `GIVE` can name, each holding what a refusal is about.
+///
+/// The smith (900) holds men, iron, silver and lions - `LION` carries the catalogue's "cannot be
+/// given to other units" - and gives in every case but the mage's own. The magus (902) studies a
+/// Foundation, so `rules/magic` makes it a mage. 7001 is another faction's unit standing here;
+/// 950 is ours, but in the other hex.
+fn verdict_report_text() -> String {
+    [
+        "Foo (1) Report",
+        "",
+        "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+        "",
+        "Exits:",
+        "  Southeast : plain (2,2) in Nowhere.",
+        "",
+        "* Smiths (900), Foo (1), behind, 8 orcs [ORC], 20 iron [IRON], 50 silver [SILV], \
+         2 lions [LION]. Weight: 180. Capacity: 0/0/120/0. Skills: weaponsmith [WEAP] 1 (30).",
+        "* Hands (901), Foo (1), orc [ORC]. Weight: 10. Capacity: 0/0/15/0.",
+        "* Magus (902), Foo (1), 2 orcs [ORC], 10 iron [IRON]. Weight: 20. Capacity: 0/0/30/0. \
+         Skills: force [FORC] 1 (30).",
+        "- Stranger (7001), Bar (2), orc [ORC]. Weight: 10. Capacity: 0/0/15/0.",
+        "",
+        "plain (2,2) in Nowhere, 10 peasants (orcs), $5.",
+        "",
+        "Exits:",
+        "  Northwest : plain (1,1) in Nowhere.",
+        "",
+        "* Away (950), Foo (1), orc [ORC]. Weight: 10. Capacity: 0/0/15/0.",
+        "",
+    ]
+    .join("\n")
+}
+
+/// One row of the verdict matrix: an order, the tag it is about, what the verdict says of it,
+/// and how much of that tag the giver ends the Give phase down.
+struct VerdictCase {
+    orders: &'static str,
+    giver: &'static str,
+    tag: &'static str,
+    reach: super::targets::GiveReach,
+    outcome: super::targets::GiveOutcome,
+    giver_delta: i64,
+}
+
+/// Every reach and every refusal kind, each with the goods, the men or the silver it is about.
+fn verdict_cases() -> Vec<VerdictCase> {
+    use super::targets::{GiveOutcome as O, GiveReach as R, GiveRefusal as F};
+    let case = |orders, giver, tag, reach, outcome, giver_delta| VerdictCase {
+        orders,
+        giver,
+        tag,
+        reach,
+        outcome,
+        giver_delta,
+    };
+    vec![
+        case("unit 900\nGIVE 901 15 IRON\n", "900", "IRON", R::Ours, O::Moves, -15),
+        case("unit 900\nGIVE 901 4 ORC\n", "900", "ORC", R::Ours, O::Moves, -4),
+        case("unit 900\nGIVE 901 20 SILV\n", "900", "SILV", R::Ours, O::Moves, -20),
+        case(
+            "unit 900\nGIVE 901 1 LION\n",
+            "900",
+            "LION",
+            R::Ours,
+            O::Refused(F::CannotChangeHands),
+            0,
+        ),
+        case(
+            "unit 900\nGIVE 902 4 ORC\n",
+            "900",
+            "ORC",
+            R::Ours,
+            O::Refused(F::MenIntoAMage),
+            0,
+        ),
+        case("unit 900\nGIVE 902 15 IRON\n", "900", "IRON", R::Ours, O::Moves, -15),
+        case(
+            "unit 902\nGIVE 901 1 ORC\n",
+            "902",
+            "ORC",
+            R::Ours,
+            O::Refused(F::MageGivesMen),
+            0,
+        ),
+        case("unit 902\nGIVE 901 5 IRON\n", "902", "IRON", R::Ours, O::Moves, -5),
+        case(
+            "unit 902\nGIVE 0 1 ORC\n",
+            "902",
+            "ORC",
+            R::Discard,
+            O::Refused(F::MageGivesMen),
+            0,
+        ),
+        case("unit 900\nGIVE 0 1 LION\n", "900", "LION", R::Discard, O::Moves, -1),
+        case("unit 900\nGIVE 0 20 SILV\n", "900", "SILV", R::Discard, O::Moves, -20),
+        case("unit 900\nGIVE 7001 20 SILV\n", "900", "SILV", R::Foreign, O::Moves, -20),
+        case("unit 900\nGIVE 7001 15 IRON\n", "900", "IRON", R::Foreign, O::Uncertain, 0),
+        case(
+            "unit 900\nGIVE 7001 4 ORC\n",
+            "900",
+            "ORC",
+            R::Foreign,
+            O::Refused(F::MenToAnotherFaction),
+            0,
+        ),
+        case(
+            "unit 900\nGIVE 7001 1 LION\n",
+            "900",
+            "LION",
+            R::Foreign,
+            O::Refused(F::CannotChangeHands),
+            0,
+        ),
+        case("unit 900\nGIVE 99999 15 IRON\n", "900", "IRON", R::Unshown, O::NoTarget, 0),
+        case("unit 900\nGIVE 99999 4 ORC\n", "900", "ORC", R::Unshown, O::NoTarget, 0),
+        case("unit 900\nGIVE 99999 20 SILV\n", "900", "SILV", R::Unshown, O::NoTarget, 0),
+        case("unit 900\nGIVE 950 15 IRON\n", "900", "IRON", R::Nowhere, O::NoTarget, 0),
+        case("unit 900\nGIVE 950 20 SILV\n", "900", "SILV", R::Nowhere, O::NoTarget, 0),
+        case("unit 900\nGIVE NEW 5 4 ORC\n", "900", "ORC", R::Nowhere, O::NoTarget, 0),
+    ]
+}
+
+/// The SILVER forecast's own record of what left one unit by gift or discard this month.
+fn silver_given(report_text: &str, orders: &str, unit_id: &str, ruleset: &Ruleset) -> i64 {
+    use super::silver::SilverChangeCause;
+    let mut report = parse_report_full(report_text);
+    classify_units(&mut report, ruleset);
+    let review = super::semantics::review_turn(
+        &report,
+        orders,
+        Some(ruleset),
+        super::semantics::CheckOptions::default(),
+    );
+    review
+        .silver
+        .iter()
+        .find(|row| row.unit_id == unit_id)
+        .map_or(0, |row| {
+            row.changes
+                .iter()
+                .filter(|change| {
+                    matches!(
+                        change.cause,
+                        SilverChangeCause::GaveAway | SilverChangeCause::Discarded
+                    )
+                })
+                .map(|change| change.amount)
+                .sum()
+        })
+}
+
+/// `ah-amkn`: the four surfaces give one answer for every reach and every refusal kind.
+///
+/// Stricter than [`assert_the_surfaces_agree`] in one way on purpose: a man tag is compared
+/// against the ledger too. `Exempt::ManTag` exists for an ordering hazard across several orders
+/// in one hex, and every case here is a single order - so a ledger that moves men the other two
+/// refuse is caught rather than exempted. The giver's movement is also pinned, so four surfaces
+/// agreeing on a wrong answer does not pass.
+#[test]
+fn the_surfaces_agree_on_every_give_verdict() {
+    let ruleset = ruleset();
+    let text = verdict_report_text();
+    for case in verdict_cases() {
+        let where_it_is = format!("{:?} -> {:?}: {:?}", case.reach, case.outcome, case.orders);
+        let compared = compare_one("verdict matrix", &text, case.orders, &ruleset);
+        for unit in &compared {
+            let mut tags = tags_mentioned(unit);
+            tags.insert(case.tag.to_string());
+            for tag in tags {
+                let preview = unit.preview.get(&tag).copied().unwrap_or(0);
+                if let Some(walk) = &unit.walk {
+                    let walk = walk.get(&tag).copied().unwrap_or(0);
+                    assert_eq!(
+                        preview, walk,
+                        "{where_it_is}: unit {} - the preview moved {preview} {tag} and the walk {walk}",
+                        unit.unit_id
+                    );
+                }
+                if !unit.ledger_doubted && !unit.ledger_uncertain_tags.contains(&tag) {
+                    let ledger = unit.ledger.get(&tag).copied().unwrap_or(0);
+                    assert_eq!(
+                        preview, ledger,
+                        "{where_it_is}: unit {} - the preview moved {preview} {tag} and the ledger {ledger}",
+                        unit.unit_id
+                    );
+                }
+            }
+        }
+        let giver = compared
+            .iter()
+            .find(|unit| unit.unit_id == case.giver)
+            .expect("the giver is one of our units");
+        assert_eq!(
+            giver.preview.get(case.tag).copied().unwrap_or(0),
+            case.giver_delta,
+            "{where_it_is}: the giver's {}",
+            case.tag
+        );
+        if case.outcome == super::targets::GiveOutcome::Uncertain {
+            assert!(
+                giver.ledger_uncertain_tags.contains(case.tag),
+                "{where_it_is}: the ledger marks the tag uncertain"
+            );
+        }
+        let silver = silver_given(&text, case.orders, case.giver, &ruleset);
+        // Whatever the target, a gift or a discard of silver is booked against the giver.
+        let expected = if case.tag == "SILV" {
+            case.giver_delta
+        } else {
+            0
+        };
+        assert_eq!(
+            silver, expected,
+            "{where_it_is}: the SILVER forecast's gifts and discards"
+        );
+    }
+}
