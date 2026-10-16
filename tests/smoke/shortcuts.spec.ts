@@ -298,6 +298,38 @@ test("the palette opens the game data dictionary on the thing it named", async (
 });
 
 /**
+ * ah-mlls.6: choosing an order in the palette opens its game data entry on the Orders tab, and no
+ * longer types it into the orders; a mention of another order in the rule is a way across to it.
+ */
+test("the palette opens an order's game data entry", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "WORK");
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("give");
+  const give = page.getByTestId("palette-item").filter({ hasText: /^GIVE/ });
+  await expect(give).toHaveCount(1);
+  await give.click();
+
+  await expect(page.getByTestId("game-data-dialog")).toBeVisible();
+  await expect(page.getByTestId("game-data-tab-order")).toHaveAttribute("aria-selected", "true");
+  const detail = page.getByTestId("game-data-detail");
+  await expect(detail).toContainText("GIVE [unit] ALL [item] EXCEPT [quantity]");
+  await expect(detail).toContainText("Give 10 swords to unit 4573.");
+
+  // rules/give: "the unit may not issue the ADVANCE order".
+  await page.getByTestId("game-data-link-order:ADVANCE").click();
+  await expect(page.getByTestId("game-data-back")).toHaveText("← Back to GIVE");
+  await expect(detail).toContainText("ADVANCE [dir] ...");
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("game-data-dialog")).toHaveCount(0);
+  await expectOrders(page, /^WORK$/);
+});
+
+/**
  * ah-yu3j.1: the Terrains tab, last in the strip, gives a terrain's page from the shipped ruleset,
  * and a resource on it leads to the item, whose page leads back.
  */
