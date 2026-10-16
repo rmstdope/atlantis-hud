@@ -7486,7 +7486,7 @@ pub(crate) fn item_effects(
                 continue;
             };
             let entry = result.entry(key).or_default();
-            for food in foods {
+            for (food, eater) in foods {
                 entry.eaten.push(ItemMovement {
                     unit_id: unit_id.clone(),
                     name: item_name(&food.tag, hex, ruleset),
@@ -7496,7 +7496,7 @@ pub(crate) fn item_effects(
                     phase: StatePhase::Maintenance,
                     line: None,
                     unit_price: None,
-                    other: None,
+                    other: eater,
                     created: None,
                 });
             }
@@ -14113,7 +14113,7 @@ fn eaten_by_group(
     hexes: &[(Hex<'_>, Ledger<'_>)],
     reach: &SharingReach,
     settlement: &ReportWideSettlement,
-) -> BTreeMap<UnitKey, Vec<FoodAmount>> {
+) -> BTreeMap<UnitKey, Vec<(FoodAmount, Option<ItemChangeParty>)>> {
     let key = |(index, unit_id): &Member| unit_key(&hexes[*index].0.region.region_id, unit_id);
     let mut eaten = BTreeMap::new();
     for (Neighbourhood { members, .. }, food_left) in
@@ -14144,14 +14144,34 @@ fn eaten_by_group(
             settled: BTreeMap::new(),
             pool_left: food_left.clone(),
         };
-        for (position, foods) in food_eaten_by_holder(&claims, &pass, &late) {
-            let Some(member) = position
+        let member_at = |position: &str| {
+            position
                 .parse::<usize>()
                 .ok()
                 .and_then(|position| members.get(position))
-            else {
+        };
+        // The eater as the hover names it: its number, and its name from its own hex's rows
+        // (`ah-nzb0`).
+        let party = |(index, unit_id): &Member| ItemChangeParty {
+            unit_id: unit_id.clone(),
+            name: hexes[*index]
+                .0
+                .units
+                .iter()
+                .find(|ordered| ordered.unit.unit_id == *unit_id)
+                .map(|ordered| ordered.unit.name.clone()),
+        };
+        for (position, foods) in food_eaten_by_holder(&claims, &pass, &late) {
+            let Some(member) = member_at(&position) else {
                 continue;
             };
+            let foods = foods
+                .into_iter()
+                .map(|eaten| {
+                    let eater = eaten.eater.as_deref().and_then(member_at).map(party);
+                    (eaten.food, eater)
+                })
+                .collect();
             eaten.insert(key(member), foods);
         }
     }
@@ -23226,16 +23246,18 @@ fn transport_reach_sentence(
         super::transport::OutOfReach::Distance {
             away,
             limit,
-            between_quartermasters,
-        } => {
-            if between_quartermasters {
-                format!("Unit {to} is {away} hexes away and this unit can ship {limit} hexes, so {tail}.")
-            } else {
-                format!(
-                    "Unit {to} is {away} hexes away and takes goods from {limit} hexes, so {tail}."
-                )
-            }
-        }
+            range,
+        } => match range {
+            super::transport::Range::Ships => format!(
+                "Unit {to} is {away} hexes away and this unit can ship {limit} hexes, so {tail}."
+            ),
+            super::transport::Range::Distributes => format!(
+                "Unit {to} is {away} hexes away and this unit distributes to units within {limit} hexes, so {tail}."
+            ),
+            super::transport::Range::Accepts => format!(
+                "Unit {to} is {away} hexes away and takes goods from {limit} hexes, so {tail}."
+            ),
+        },
         super::transport::OutOfReach::DifferentLevel {
             from_level,
             to_level,
@@ -55164,6 +55186,33 @@ BUILD
         assert_eq!(
             finding.message,
             "Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit."
+        );
+    }
+
+    /// `ah-nzb0`: a quartermaster DISTRIBUTEs to an ordinary unit. `rules/economy_transport`:
+    /// "Quartermasters may also TRANSPORT items to any unit within 2 hexes distance from the hex
+    /// containing the quartermaster" - the two hexes are the sender's distribution range, and the
+    /// recipient takes nothing from anywhere, so the sentence must not say it does.
+    #[test]
+    fn a_quartermaster_distributing_too_far_names_its_own_distribution_range() {
+        let mut sender = with_silver(with_skill(unit("900"), "QUAM", 1), 500);
+        sender.structure_id = Some("500".to_string());
+        let mut home = shipping_from(vec![sender]);
+        home.structures = vec![Structure {
+            structure_id: "500".to_string(),
+            name: "Caravan".to_string(),
+            kind: "Caravanserai".to_string(),
+            ..Default::default()
+        }];
+        let finding = only(reach_findings(
+            vec![home, region_at("1:0,6", 0, 6, vec![unit("901")])],
+            "unit 900\nDISTRIBUTE 901 100 SILV\n",
+            with_map(),
+        ));
+
+        assert_eq!(
+            finding.message,
+            "Unit 901 is 3 hexes away and this unit distributes to units within 2 hexes, so 100 SILV stay with this unit."
         );
     }
 

@@ -3539,6 +3539,12 @@ describe("the items popup's cause sentences", () => {
       "2 reverted from a unit that formed with nobody"
     ],
     ["eaten for upkeep", { cause: "eaten-for-upkeep", delta: -2 }, "2 eaten for upkeep"],
+    // `ah-nzb0`: food the faction pool gave up names the unit that ate it.
+    [
+      "eaten for upkeep by another unit",
+      { cause: "eaten-for-upkeep", delta: -1, other: { unitId: "1162", name: "Robin Hood" } },
+      "1 eaten for upkeep by Robin Hood (1162)"
+    ],
     ["a cause it has not been taught", { cause: "unheard-of", delta: 4 }, "gained 4"],
     ["a loss it has not been taught", { cause: "unheard-of", delta: -4 }, "lost 4"]
   ];

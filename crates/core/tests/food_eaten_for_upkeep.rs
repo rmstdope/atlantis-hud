@@ -248,9 +248,13 @@ fn a_short_faction_food_pool_settles_in_report_order() {
     .expect("the committed ruleset loads");
     let granary = common::expect_preview_row(&text, &preview, "900");
     assert_eq!(holding(granary, "GRAI"), 0, "{:?}", granary.unit.items);
+    // One grain each, and each eater named on its own line (`ah-nzb0`).
     assert_eq!(
-        eaten(granary),
-        vec![("GRAI".to_string(), -2)],
+        eaten_by(granary),
+        vec![
+            (Some("901".to_string()), Some("First".to_string()), -1),
+            (Some("902".to_string()), Some("Second".to_string()), -1),
+        ],
         "{:?}",
         granary.item_changes
     );
@@ -383,5 +387,73 @@ fn grain_farmed_this_month_feeds_a_consume_unit_farmer_that_gave_its_grain_away(
         vec![("GRAI".to_string(), -12)],
         "{:?}",
         row.item_changes
+    );
+}
+
+/// Who ate each holder's food, as `(eater unit number, eater name, delta)`.
+fn eaten_by(row: &UnitPreview) -> Vec<(Option<String>, Option<String>, i64)> {
+    row.item_changes
+        .iter()
+        .filter(|change| change.cause == ItemChangeCause::EatenForUpkeep)
+        .map(|change| {
+            (
+                change.other.as_ref().map(|other| other.unit_id.clone()),
+                change.other.as_ref().and_then(|other| other.name.clone()),
+                change.delta,
+            )
+        })
+        .collect()
+}
+
+/// `ah-nzb0`: food the faction pool gives up names the unit that ate it, as every other movement
+/// in the ITEMS hover names the other unit.
+#[test]
+fn faction_food_names_the_unit_that_ate_it() {
+    let text = report(&[
+        "* Granary (900), Foo (1), orc [ORC], 6 grain [GRAI], 10 silver [SILV]. Weight: 40. \
+         Capacity: 0/0/15/0.",
+        "* Eaters (901), Foo (1), consuming faction's food, 10 orcs [ORC]. Weight: 100. \
+         Capacity: 0/0/150/0.",
+    ]);
+
+    let granary = preview_row(&text, "", "900");
+    assert_eq!(
+        eaten_by(&granary),
+        vec![(Some("901".to_string()), Some("Eaters".to_string()), -2)]
+    );
+}
+
+/// A unit eating its own food names nobody: it is the unit whose hover this is.
+#[test]
+fn own_food_eaten_names_no_other_unit() {
+    let text = report(&[
+        "* Eaters (900), Foo (1), consuming unit's food, 10 orcs [ORC], 5 grain [GRAI], \
+         100 silver [SILV]. Weight: 125. Capacity: 0/0/150/0.",
+    ]);
+
+    let row = preview_row(&text, "", "900");
+    assert_eq!(eaten_by(&row), vec![(None, None, -2)]);
+}
+
+/// Two eaters on one holder: each eater's share is its own line, in report order -
+/// `rules/sequenceofevents`: "units that appear higher on the report get precedence".
+#[test]
+fn two_eaters_on_one_holder_are_named_apart() {
+    let text = report(&[
+        "* Granary (900), Foo (1), orc [ORC], 6 grain [GRAI], 10 silver [SILV]. Weight: 40. \
+         Capacity: 0/0/15/0.",
+        "* Hungry (901), Foo (1), consuming faction's food, 10 orcs [ORC]. Weight: 100. \
+         Capacity: 0/0/150/0.",
+        "* Starving (902), Foo (1), consuming faction's food, 5 orcs [ORC]. Weight: 50. \
+         Capacity: 0/0/75/0.",
+    ]);
+
+    let granary = preview_row(&text, "", "900");
+    assert_eq!(
+        eaten_by(&granary),
+        vec![
+            (Some("901".to_string()), Some("Hungry".to_string()), -2),
+            (Some("902".to_string()), Some("Starving".to_string()), -1),
+        ]
     );
 }

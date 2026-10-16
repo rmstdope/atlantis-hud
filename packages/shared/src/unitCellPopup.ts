@@ -626,8 +626,10 @@ function itemCauseClause(change: ItemChange, unit: PreviewedUnit, people: boolea
       return `discarded ${n}`;
     case "gift-reverted":
       return `${n} reverted from a unit that formed with nobody`;
+    // Food the faction pool gave up names the unit that ate it (`ah-nzb0`); a unit's own food
+    // names nobody.
     case "eaten-for-upkeep":
-      return `${n} eaten for upkeep`;
+      return `${n} eaten for upkeep${change.other ? ` by ${party(change.other)}` : ""}`;
     // Required rather than defensive: `ItemChangeCause` is a string union, so a cause from a newer
     // core is compile-time impossible and runtime real, and `ah-rgkk.3.1` asks a reader to treat
     // one as "moved, reason not stated". Deliberately not an exhaustiveness `never`.

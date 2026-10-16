@@ -257,6 +257,10 @@ pub enum TransportTargetReason {
     /// Further than the flat two hexes within which any unit may send to a quartermaster
     /// (`rules/economy_transport`). The target would accept the goods; they cannot get there.
     TooFarToAccept,
+    /// Further than the flat two hexes within which a quartermaster may TRANSPORT (or DISTRIBUTE)
+    /// to any unit (`rules/economy_transport`): the sending quartermaster's own range, not the
+    /// recipient's (`ah-nzb0`).
+    TooFarToDistribute,
     /// Quartermaster to quartermaster, beyond the reach the *sender's* own skill gives it
     /// (`data/quartermaster`: "up to 3 plus (level+1)/3 hexes distant from each other").
     TooFarToShip,
@@ -2923,7 +2927,7 @@ impl Working {
                         cause: movement.cause,
                         line: None,
                         unit_price: None,
-                        other: None,
+                        other: movement.other.clone(),
                         borrower: None,
                         is_man: false,
                         plural: None,
@@ -3978,21 +3982,22 @@ impl Working {
         }
     }
 
+    /// The wire reason for whose limit a refused shipment passed (`ah-nzb0`).
+    fn refusal_reason(range: super::transport::Range) -> TransportTargetReason {
+        match range {
+            super::transport::Range::Accepts => TransportTargetReason::TooFarToAccept,
+            super::transport::Range::Distributes => TransportTargetReason::TooFarToDistribute,
+            super::transport::Range::Ships => TransportTargetReason::TooFarToShip,
+        }
+    }
+
     /// The reason and the reach a refusal's sentence names (`ah-7ale.2.1`, `ah-e07g`).
     fn refusal(
         refused: super::transport::OutOfReach,
     ) -> (TransportTargetReason, Option<TransportReach>) {
         match refused {
-            super::transport::OutOfReach::Distance {
-                away,
-                limit,
-                between_quartermasters,
-            } => {
-                let reason = if between_quartermasters {
-                    TransportTargetReason::TooFarToShip
-                } else {
-                    TransportTargetReason::TooFarToAccept
-                };
+            super::transport::OutOfReach::Distance { away, limit, range } => {
+                let reason = Self::refusal_reason(range);
                 (
                     reason,
                     Some(TransportReach {
@@ -4006,13 +4011,9 @@ impl Working {
             super::transport::OutOfReach::DifferentLevel {
                 from_level,
                 to_level,
-                between_quartermasters,
+                range,
             } => {
-                let reason = if between_quartermasters {
-                    TransportTargetReason::TooFarToShip
-                } else {
-                    TransportTargetReason::TooFarToAccept
-                };
+                let reason = Self::refusal_reason(range);
                 (
                     reason,
                     Some(TransportReach {
