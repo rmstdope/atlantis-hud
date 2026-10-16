@@ -369,7 +369,7 @@ function Links({
                 type="button"
                 data-testid={`game-data-link-${link.id}`}
                 onClick={() => onFollow(link.id)}
-                className="text-left text-accent hover:underline"
+                className={LINK}
               >
                 {link.name}
               </button>
@@ -381,6 +381,13 @@ function Links({
     </section>
   );
 }
+
+/**
+ * Every cross-reference's look: map blue, so a link reads as one in either theme, with a focus ring
+ * for the keyboard. It was `text-accent` (ah-eip5), which names no theme token and drew body ink.
+ */
+const LINK =
+  "text-left text-select underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-select";
 
 const SECTION_HEADING =
   "mb-1 border-b border-brass/60 pb-1 text-pane-xs uppercase tracking-[0.08em] text-brass";
@@ -398,7 +405,7 @@ function FollowLink({
       type="button"
       data-testid={`game-data-link-${reference.id}`}
       onClick={() => onFollow(reference.id)}
-      className="text-left text-accent hover:underline"
+      className={LINK}
     >
       {reference.name}
     </button>
@@ -702,7 +709,7 @@ function Detail({
                 type="button"
                 data-testid={`game-data-link-${buildWith.id}`}
                 onClick={() => onFollow(buildWith.id)}
-                className="text-left text-accent hover:underline"
+                className={LINK}
               >
                 {buildWith.name}
               </button>

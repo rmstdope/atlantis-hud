@@ -1,4 +1,5 @@
 import { aParsedReport, aReportRegion } from "@atlantis/core-client";
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { parseGameData, type GameDataIndex } from "../gameData";
@@ -142,6 +143,27 @@ describe("GameDataDialog", () => {
     // (ah-vwdi, verification failure) - the cap itself is pinned by theme.test.ts.
     expect(html).toContain("max-h-[80vh]");
     expect(html).not.toContain("max-h-[80vh]!");
+  });
+
+  // ah-eip5: every cross-reference was drawn `text-accent`, which names no theme token, so a link
+  // took the body text's colour and only an underline on hover set it apart.
+  it("draws every cross-reference in a defined colour that is not the body text's, with a focus ring", () => {
+    const theme = readFileSync(new URL("../theme.css", import.meta.url), "utf8");
+    const light = theme.slice(theme.indexOf(':root[data-theme="light"]'));
+    // A skill's Produces row, a structure's Built with row and the items it is linked from.
+    const html = markup("skill:MINI") + markup("building:MINE") + markup("equipment:MITH");
+    const links = [...html.matchAll(/<button[^>]*data-testid="game-data-link-[^"]*"[^>]*>/gu)];
+    expect(links.length).toBeGreaterThanOrEqual(3);
+    for (const [link] of links) {
+      const classes = /class="([^"]*)"/u.exec(link)?.[1].split(" ") ?? [];
+      const colours = classes.filter((c) => /^text-[a-z-]+$/u.test(c) && c !== "text-left");
+      expect(colours, link).toHaveLength(1);
+      const token = `--color-${colours[0].slice("text-".length)}:`;
+      expect(theme, `${link} in dark`).toContain(token);
+      expect(light, `${link} in light`).toContain(token);
+      expect(colours[0], link).not.toBe("text-ink");
+      expect(classes, link).toContain("focus-visible:outline");
+    }
   });
 });
 
