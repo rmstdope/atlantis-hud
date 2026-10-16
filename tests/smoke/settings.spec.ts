@@ -736,9 +736,18 @@ test.describe("the Columns tab", () => {
       "Some units are listed for what they carry — the Items column is hidden. Show it"
     );
 
-    // Reached by keyboard, as the agreed experience asks: Tab to it, press Enter.
-    await line.getByRole("button", { name: "Show it", exact: true }).focus();
-    await page.keyboard.press("Enter");
+    // Reached by keyboard, as the agreed experience asks: Tab from the box until it has focus,
+    // then Space (Enter is the native button's other key).
+    const showIt = line.getByRole("button", { name: "Show it", exact: true });
+    await filter.focus();
+    for (let presses = 0; presses < 12; presses += 1) {
+      if (await showIt.evaluate((button) => button === document.activeElement)) {
+        break;
+      }
+      await page.keyboard.press("Tab");
+    }
+    await expect(showIt).toBeFocused();
+    await page.keyboard.press("Space");
 
     await expect(page.getByRole("columnheader", { name: /Items/ })).toBeVisible();
     await expect(line).toHaveCount(0);

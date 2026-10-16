@@ -5,6 +5,7 @@ import {
   itemMatches,
   itemPartsForFilter,
   markSegments,
+  itemsHiddenLineShows,
   rowMatchesOnItems
 } from "./unitFilter";
 import { itemCellParts } from "./unfinishedMark";
@@ -131,5 +132,29 @@ describe("rowMatchesOnItems", () => {
   it("is false otherwise, and for an empty box", () => {
     expect(rowMatchesOnItems(items, "sword")).toBe(false);
     expect(rowMatchesOnItems(items, "")).toBe(false);
+  });
+});
+
+describe("itemsHiddenLineShows", () => {
+  const carried = new Map([
+    ["livestock", [{ tag: "LIVE", name: "livestock" }]],
+    ["none", []]
+  ]);
+  const itemsOf = (row: string) => carried.get(row) ?? [];
+
+  it("shows when the Items column is hidden and a listed row matched on its items", () => {
+    expect(itemsHiddenLineShows(["none", "livestock"], "live", false, itemsOf)).toBe(true);
+  });
+
+  it("does not show while the Items column is drawn", () => {
+    expect(itemsHiddenLineShows(["livestock"], "live", true, itemsOf)).toBe(false);
+  });
+
+  it("does not show when no listed row matched on its items", () => {
+    expect(itemsHiddenLineShows(["none"], "live", false, itemsOf)).toBe(false);
+  });
+
+  it("does not show while the box is empty", () => {
+    expect(itemsHiddenLineShows(["livestock"], "", false, itemsOf)).toBe(false);
   });
 });

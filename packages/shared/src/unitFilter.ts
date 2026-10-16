@@ -75,3 +75,16 @@ export function rowMatchesOnItems(
 ): boolean {
   return items.some((item) => itemMatches(item, needle) !== null);
 }
+
+/**
+ * Whether the line speaking for a hidden Items column shows: the column is off, the box is in use,
+ * and at least one listed row is there for what it carries.
+ */
+export function itemsHiddenLineShows<T>(
+  listed: readonly T[],
+  needle: string,
+  itemsShown: boolean,
+  itemsOf: (row: T) => readonly { tag: string; name: string }[]
+): boolean {
+  return !itemsShown && needle !== "" && listed.some((row) => rowMatchesOnItems(itemsOf(row), needle));
+}

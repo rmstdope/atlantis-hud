@@ -161,7 +161,7 @@ import { Absent, SeverityMark, UNIT_LINK_CLASS } from "./primitives";
 import { UnitCellPopup } from "./UnitCellPopup";
 import { UnitTooltip } from "./UnitTooltip";
 import { ItemsHiddenLine, Marked, MarkedItemPart } from "./UnitFilterMarks";
-import { filterNeedle, itemPartsForFilter, rowMatchesOnItems } from "../unitFilter";
+import { filterNeedle, itemPartsForFilter, itemsHiddenLineShows } from "../unitFilter";
 
 /** Rows built beyond each edge of the viewport, so a flick of the wheel does not show a gap. */
 const OVERSCAN = 6;
@@ -606,9 +606,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
           filter,
           structures,
           (unit) => unitSkillsCell(unit, derivedSkills),
-          // What the Items cell draws: the after-orders entries, a refused cast's short material
-          // included, silver left out (`ah-ykac`).
-          (unit) => itemCellParts(unit.items, unit.created, shortItems(unit))
+          cellItemsOf
         ),
         effectiveSort,
         structures,
@@ -1262,12 +1260,10 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   // every affected row leaves it up and unchanged.
   const unreadWarning = unreadLine(unreadCount(units), units.length);
   // A listed row that is there for what it carries, while the column that would show it is off.
-  const itemsHiddenLine =
-    !columnsShown.items &&
-    needle !== "" &&
-    visible.some((unit) =>
-      rowMatchesOnItems(itemCellParts(unit.items, unit.created, shortItems(unit)), needle)
-    );
+  const itemsHiddenLine = useMemo(
+    () => itemsHiddenLineShows(visible, needle, columnsShown.items, cellItemsOf),
+    [visible, needle, columnsShown.items]
+  );
   const foreignEmpty =
     source.kind === "foreign"
       ? foreignEmptyLine({
@@ -2199,6 +2195,12 @@ const EXPLAINED_COLUMNS: readonly DrawnColumnId[] = [
  * already made, or — for Skills — a study forecast that lands next turn (`ah-qig3`).
  */
 const PREDICTED = "italic text-brass";
+
+/**
+ * What a row's Items cell draws - the after-orders entries, a refused cast's short material
+ * included, silver left out - which is what the units filter matches (`ah-ykac`).
+ */
+const cellItemsOf = (unit: PreviewedUnit) => itemCellParts(unit.items, unit.created, shortItems(unit));
 
 function UnitRow({
   unit,

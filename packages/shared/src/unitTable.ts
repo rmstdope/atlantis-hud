@@ -178,13 +178,14 @@ export function filterUnits<T extends ReportUnit>(
   );
 }
 
-/** The Faction cell's own words, `Name (id)`, or the name alone where the report gave no number. */
+/**
+ * The Faction cell's own words, `Name (id)`. Empty where the cell reads "not shown" - a name with
+ * no number among them - so the filter never lists a row for text it cannot mark.
+ */
 const factionText = (unit: ReportUnit): string =>
-  unit.factionName === null
+  unit.factionName === null || unit.factionId === null
     ? ""
-    : unit.factionId === null
-      ? unit.factionName
-      : `${unit.factionName} (${unit.factionId})`;
+    : `${unit.factionName} (${unit.factionId})`;
 
 /** `filterUnits`' default `itemsOf`: the row's items as the Items cell lists them, silver left out. */
 const defaultItems = (unit: ReportUnit) => withoutSilver(unit.items);

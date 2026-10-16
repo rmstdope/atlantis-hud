@@ -323,6 +323,12 @@ describe("filterUnits", () => {
     expect(ids(filterUnits(units, "Eight 18642"))).toEqual([]);
   });
 
+  it("does not match a faction name the Faction cell does not show", () => {
+    // A cell with no faction number reads "not shown", so a match there would mark nothing.
+    const unnumbered = [unit("9", false, { factionName: "Quiet Ones", factionId: null })];
+    expect(filterUnits(unnumbered, "Quiet")).toEqual([]);
+  });
+
   describe("by what a unit carries (ah-ykac)", () => {
     const carrying = [
       unit("3825", true, {
