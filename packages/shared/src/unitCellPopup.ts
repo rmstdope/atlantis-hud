@@ -159,7 +159,23 @@ export type ColumnPopup = {
   notes: string[];
   /** One amber sentence, or null. */
   warning: string | null;
+  /** Whether this month changes the cell - see `PopupMonth`. The shared sentence follows it. */
+  month: PopupMonth;
 };
+
+/**
+ * What this month does to a cell, as the column's own data says (`ah-v3ro`).
+ *
+ * `changes`: the month's figure differs from the report's, or something this month moved it and
+ * moved it back. `unchanged`: the month was compared with the report and left it alone. `null`:
+ * nothing was compared - no baseline, or a unit whose month the report does not show. Worked out
+ * from what the body was built from, never from what it happened to draw, so a new shape of line
+ * cannot make "Nothing this month changes this." false (`ah-ymms`, `ah-30y0`).
+ */
+export type PopupMonth = "changes" | "unchanged" | null;
+
+/** A month stated from whether anything moved it. */
+const monthOf = (moved: boolean): PopupMonth => (moved ? "changes" : "unchanged");
 
 /** What resting on a cell of this column opens. */
 export type PopupSpec =
@@ -676,15 +692,13 @@ const CAPACITY_LINES: readonly { mode: UnitMovementMode; label: string }[] = [
 
 /**
  * The field of `previewChanges` each column's cell is drawn from, for the columns the orders can
- * change. The two columns with no field - `longOrder` and `silver` - say nothing about a change.
+ * change. The two columns with no field - `longOrder` and `silver` - work out their month themselves.
  */
 const CHANGE_FIELD: Partial<Record<PopupColumn, string>> = {
   men: "men",
   movement: "movement",
-  // `flags` is deliberately absent: `flagsBody` reads its own change, and both behaviours this
-  // table drives are wrong for the column now (`ah-rgkk.5.2`). The no-change sentence would repeat
-  // what eleven lines already say one by one, and the `Was: ...` fallback for an empty body cannot
-  // fire, because this body is never empty.
+  // `flags` is deliberately absent: `flagsBody` reads its own change (`ah-rgkk.5.2`), and the
+  // `Was: ...` fallback for an empty body cannot fire, because this body is never empty.
   skills: "skills",
   items: "items",
   // The report's own field name, which is not the column's: a structure change is recorded
@@ -711,7 +725,7 @@ export function popupForCell(
   const field = CHANGE_FIELD[column];
   const change = field ? changeFor(unit, field) : undefined;
   const notes = [...(body.heading ? [body.heading] : []), ...body.causes, ...body.notes];
-  if (saysNothingChanges(field ? change === undefined : body.unchanged === true, body)) {
+  if (saysNothingChanges(body)) {
     notes.push(`Nothing this month changes ${LISTS.has(column) ? "these" : "this"}.`);
   }
   // A column with nothing left to show - moved out of its structure, its last flag dropped, its
@@ -739,32 +753,22 @@ export function popupForCell(
       title: `${unit.name} (${unit.unitId}) — ${COLUMN_LABELS[column as UnitColumn]?.toLowerCase() ?? column}`,
       lines: body.lines.slice(0, MAX_LINES),
       notes,
-      warning: body.warning ?? null
+      warning: body.warning ?? null,
+      month: body.month
     }
   };
 }
 
 /**
- * Whether a popup ends with "Nothing this month changes this." - decided here and nowhere else
- * (`ah-k52u`).
+ * Whether a popup ends with "Nothing this month changes this." - decided here and nowhere else.
  *
- * `compared` is whether the month's figure was checked against the report and found unmoved: no
- * `previewChanges` entry for a column with a `CHANGE_FIELD`, or the body's own comparison for one
- * without. Even then, movements that net to zero leave no report change while the popup lists
- * them - three orcs given away and three humans recruited (`ah-rgkk.4.2`), ten iron given in and
- * ten spent (`ah-ymms`) - so a body that wrote any cause sentence, or drew any line with a before
- * and after, never gets the sentence. Each column used to opt out by hand, and one forgot.
- *
- * A line drawn as a chain of `steps` is a line with a before and after too: `chainFor` draws one
- * only when the figure moved or this month's STUDY projects it forward, and a study leaves no
- * report change behind - so without this a studied skill sat beside the sentence (`ah-30y0`).
+ * From the body's `month` alone (`ah-v3ro`). It used to be inferred from what the body drew - a
+ * cause, a pair, a chain - and each new shape of line had to be taught to it after shipping a false
+ * sentence: movements netting to zero (`ah-ymms`), then a studied skill's projected step
+ * (`ah-30y0`). A body that words its month line by line (`worded`) never gets it either.
  */
-function saysNothingChanges(compared: boolean, body: Body): boolean {
-  return (
-    compared &&
-    body.causes.length === 0 &&
-    !body.lines.some((line) => line.change || (line.steps?.length ?? 0) > 1)
-  );
+function saysNothingChanges(body: Body): boolean {
+  return body.month === "unchanged" && body.worded !== true;
 }
 
 type Body = {
@@ -773,20 +777,20 @@ type Body = {
   heading?: string;
   /**
    * The sentences saying how this month moved what the column shows, drawn first, ahead of
-   * `notes`. Anything here keeps the shared no-change sentence away (`saysNothingChanges`), so a
-   * movement sentence written into `notes` instead would let the popup list it and then say
-   * nothing changes.
+   * `notes`.
    */
   causes: string[];
   /** Everything else the popup says: what the figures are, what is missing, what is guessed. */
   notes: string[];
   warning?: string | null;
+  /** Whether this month changes the cell, worked out from the body's data (`PopupMonth`). */
+  month: PopupMonth;
   /**
-   * For a column with no `CHANGE_FIELD` entry: its own comparison found the month left it as the
-   * report had it. Only the long order answers this; every other such column says nothing about
-   * a change.
+   * The body already says, line by line or in its own words, whether the month moved it, so the
+   * shared sentence would only repeat it: the flags (`ah-rgkk.5.2`), the silver ledger, and a long
+   * order neither side has.
    */
-  unchanged?: true;
+  worded?: true;
 };
 
 /** What one column has to say, before the shared capping and change sentence are applied. */
@@ -809,7 +813,7 @@ function bodyFor(column: PopupColumn, unit: PreviewedUnit, facts: PopupFacts): B
     case "silver":
       return silverBody(unit, facts);
     default:
-      return { lines: [], causes: [], notes: [] };
+      return { lines: [], causes: [], notes: [], month: null };
   }
 }
 
@@ -847,7 +851,13 @@ function sentence(text: string): string {
 }
 
 /** One race's line, before the total is put above it (`ah-rgkk.4.2`). */
-type RaceLine = { tag: string; line: PopupLine; moved: boolean };
+type RaceLine = {
+  tag: string;
+  line: PopupLine;
+  moved: boolean;
+  /** The report's figure for this race is not the one it stands at now. */
+  differs: boolean;
+};
 
 /**
  * Every `ItemChange` of this unit that moved people, in the month's order.
@@ -916,15 +926,16 @@ function raceLines(unit: PreviewedUnit, reported: ReportedItems | undefined): Ra
     const moved =
       changes.some((entry) => entry.tag === tag) ||
       (before !== undefined && before !== (amount ?? 0));
-    return { tag, line: change ? { ...line, change } : line, moved };
+    return { tag, line: change ? { ...line, change } : line, moved, differs: change !== undefined };
   });
 }
 
 function menBody(unit: PreviewedUnit, facts: PopupFacts): Body {
+  const change = changeFor(unit, CHANGE_FIELD.men!);
   const total: PopupLine = {
     label: "men",
     value: describeMenBriefly(unit),
-    ...markOrQuote(changeFor(unit, CHANGE_FIELD.men!), unit.men)
+    ...markOrQuote(change, unit.men)
   };
   const moved = manChanges(unit);
   const unknown = unit.menOfUnknownSkill ?? [];
@@ -973,6 +984,10 @@ function menBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     lines: [total, ...entries.map((entry) => entry.line)],
     causes,
     notes: why ? [sentence(why)] : [],
+    // Movements that net to zero - three orcs given away and three humans recruited
+    // (`ah-rgkk.4.2`) - leave no report change, and still move the cell; so do races that differ
+    // from the report's while the headcount does not.
+    month: monthOf(change !== undefined || touched || entries.some((entry) => entry.differs)),
     warning:
       unit.menEstimated && (touched || unit.recruitsUnmerged === true)
         ? "This unit's headcount is a guess, so what this month does to it cannot be worked out."
@@ -982,11 +997,16 @@ function menBody(unit: PreviewedUnit, facts: PopupFacts): Body {
 
 function movementBody(unit: PreviewedUnit): Body {
   const movement = unit.movement;
+  const change = changeFor(unit, CHANGE_FIELD.movement!);
   if (movement == null) {
-    return { lines: [], causes: [], notes: ["Movement not disclosed."] };
+    return {
+      lines: [],
+      causes: [],
+      notes: ["Movement not disclosed."],
+      month: monthOf(change !== undefined)
+    };
   }
   const present = presentUnitMovement(movement);
-  const change = changeFor(unit, CHANGE_FIELD.movement!);
   const lines: PopupLine[] = [
     { label: "move", value: present.label, ...movementPair(change, present.label) },
     { label: "weight", value: movement.load.toLocaleString() },
@@ -1021,6 +1041,8 @@ function movementBody(unit: PreviewedUnit): Body {
         ? ["Its load changed this month, but not the mode it travels in.", ...causes]
         : causes,
     notes: [],
+    // The load moving is the month moving the cell, even where the mode stays.
+    month: monthOf(change !== undefined || causes.length > 0),
     warning: movementIsStillTheReport(unit)
       ? "An order this month could not be counted, so these are the report\u2019s own figures, not this month\u2019s."
       : null
@@ -1250,11 +1272,12 @@ function flagsBody(unit: PreviewedUnit): Body {
   }));
 
   return {
-    // This column is deliberately absent from `CHANGE_FIELD` and never answers `unchanged`, so
-    // `popupForCell` never writes the no-change sentence here, whatever these lines carry.
     lines: [...changed, ...rest, ...passengers],
     causes: [],
-    notes: flagNotes(unit)
+    notes: flagNotes(unit),
+    month: monthOf(change !== undefined || moves.size > 0),
+    // Every setting is a line saying whether it moved, so the sentence would repeat eleven of them.
+    worded: true
   };
 }
 
@@ -1276,6 +1299,7 @@ function skillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
 function foreignSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   const change = changeFor(unit, CHANGE_FIELD.skills!);
   const quoted = change ? { why: originalTooltip(change) } : {};
+  const month = monthOf(change !== undefined);
 
   if (unit.skills.length > 0) {
     return {
@@ -1284,13 +1308,19 @@ function foreignSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
         ...entry,
         ...(index === 0 ? quoted : {})
       })),
-      notes: []
+      notes: [],
+      month
     };
   }
 
   const groups = battleSkillGroups(facts.derivedSkills);
   if (groups.length === 0) {
-    return { causes: [], lines: [], notes: ["A report never shows another faction's skills."] };
+    return {
+      causes: [],
+      lines: [],
+      notes: ["A report never shows another faction's skills."],
+      month
+    };
   }
 
   const recovered = groups.flatMap((group) =>
@@ -1308,7 +1338,8 @@ function foreignSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     notes: [
       ...groups.map((group) => battleSkillSource(group, "read")),
       "A report never shows another faction's skills."
-    ]
+    ],
+    month
   };
 }
 
@@ -1572,11 +1603,29 @@ function ownSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     warnings.push(doubtSentence(doubt, study!));
   }
 
+  // A figure that is not the report's, or a study that will move one: a STUDY leaves no report
+  // change behind, so it has to be named here or a studied skill reads as untouched (`ah-30y0`).
+  // One that cannot raise the level moves nothing a player reads (`ah-dpvh`, decision **D**).
+  const figuresMoved =
+    hasReport &&
+    tags.some((tag) => {
+      const before = reportedByTag.get(tag);
+      const now = nowByTag.get(tag);
+      return (before ? figure(before) : null) !== (now ? figure(now) : null);
+    });
+  const month = monthOf(
+    changeFor(unit, CHANGE_FIELD.skills!) !== undefined ||
+      causes.length > 0 ||
+      figuresMoved ||
+      (study !== null && !study.cannotRaiseTheLevel)
+  );
+
   return {
     lines,
     ...(lines.length === 0 ? { heading: "No skills." } : {}),
     causes,
     notes,
+    month,
     warning: warnings.length > 0 ? warnings.join(" ") : null
   };
 }
@@ -1638,6 +1687,9 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     causes,
     notes: [...(told ? told.split("\n") : []), ...(lines.length === 0 ? ["No items."] : [])],
     lines,
+    // Every entry, not only the ones the cap draws: ten iron given in and ten spent leave no report
+    // change, and still move the cell (`ah-ymms`).
+    month: monthOf(change !== undefined || entries.some((entry) => entry.moved)),
     warning: warning.length > 0 ? warning.join(" ") : null
   };
 }
@@ -1676,12 +1728,13 @@ function structureBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   const finishNotes = finish === "unfinished" ? [UNFINISHED_NOTE] : [];
   if (!change) {
     if (facts.structureLabel === null) {
-      return { lines: [], causes: [], notes: ["In no structure."] };
+      return { lines: [], causes: [], notes: ["In no structure."], month: "unchanged" };
     }
     return {
       lines: [{ label: "structure", value: facts.structureLabel, ...marked }],
       causes: finishCauses,
-      notes: [...finishNotes, ...undescribedNotes([[facts.structureLabel, unit.structureId]])]
+      notes: [...finishNotes, ...undescribedNotes([[facts.structureLabel, unit.structureId]])],
+      month: monthOf(finish === "finishing")
     };
   }
   // `Number("")` is 0, and an original the report left empty is it saying "in the open" rather
@@ -1708,13 +1761,19 @@ function structureBody(unit: PreviewedUnit, facts: PopupFacts): Body {
         [before, beforeId],
         [facts.structureLabel, unit.structureId]
       ])
-    ]
+    ],
+    month: "changes"
   };
 }
 
 function longOrderBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   if (!unit.own) {
-    return { causes: [], lines: [], notes: ["Another faction's orders are not in your report."] };
+    return {
+      causes: [],
+      lines: [],
+      notes: ["Another faction's orders are not in your report."],
+      month: null
+    };
   }
   const now = facts.longOrder;
   const line = (label: string, value: string): PopupLine[] => [{ label, value }];
@@ -1731,7 +1790,8 @@ function longOrderBody(unit: PreviewedUnit, facts: PopupFacts): Body {
         reported.kind === "no-template"
           ? "Your report carries no orders template, so there is nothing to compare with."
           : "This unit is not in your report\u2019s orders template, so there is nothing to compare with."
-      ]
+      ],
+      month: null
     };
   }
 
@@ -1742,22 +1802,30 @@ function longOrderBody(unit: PreviewedUnit, facts: PopupFacts): Body {
       ? {
           causes: [],
           lines: [],
-          notes: ["No long order this month.", "Your report arrived with none either."]
+          notes: ["No long order this month.", "Your report arrived with none either."],
+          month: "unchanged",
+          // "...with none either" already says the month left it alone.
+          worded: true
         }
-      : { causes: [], lines: line("was", was), notes: ["No long order this month."] };
+      : {
+          causes: [],
+          lines: line("was", was),
+          notes: ["No long order this month."],
+          month: "changes"
+        };
   }
   if (was === null) {
     return {
       causes: [],
       lines: line("long order", now),
-      notes: ["Your report arrived with no long order for this unit."]
+      notes: ["Your report arrived with no long order for this unit."],
+      month: "changes"
     };
   }
   if (sameLongOrder(was, now)) {
     // This column has no `CHANGE_FIELD` entry and must not gain one - there is no `longOrder`
-    // field in `previewChanges`, so every unit would read unchanged - so it answers for itself,
-    // and `popupForCell` writes the sentence as it does for every other column.
-    return { lines: line("long order", now), causes: [], notes: [], unchanged: true };
+    // field in `previewChanges`, so every unit would read unchanged - so it answers for itself.
+    return { lines: line("long order", now), causes: [], notes: [], month: "unchanged" };
   }
   return {
     causes: [],
@@ -1765,7 +1833,8 @@ function longOrderBody(unit: PreviewedUnit, facts: PopupFacts): Body {
       { label: "was", value: was },
       { label: "long order", value: now }
     ],
-    notes: ["Changed since your report arrived."]
+    notes: ["Changed since your report arrived."],
+    month: "changes"
   };
 }
 
@@ -2068,6 +2137,18 @@ function noStudyFeeSentence(reason: NoStudyFee): string {
  * right density and this being about one cell, which must name causes.
  */
 function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
+  const silver = facts.silver;
+  // Nothing to compare for a unit with no forecast, one the game dissolves, or a month that was
+  // never priced; otherwise any movement, even one netting to zero, is the month moving the cell.
+  const month: PopupMonth =
+    silver === null || facts.dissolving || monthLostToAnUnreadLine(silver)
+      ? null
+      : monthOf(silver.changes.length > 0 || silver.atMonthEnd !== silver.held);
+  // The ledger names every movement as a line of its own, so the shared sentence is never added.
+  return { ...silverLedger(unit, facts), month, worded: true };
+}
+
+function silverLedger(unit: PreviewedUnit, facts: PopupFacts): Omit<Body, "month"> {
   if (facts.dissolving) {
     return {
       causes: [],

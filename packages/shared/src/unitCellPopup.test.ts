@@ -3,7 +3,7 @@ import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import type { PreviewedUnit } from "./unitPreview";
 import { NO_ORDERS_TEMPLATE, type ReportedLongOrder } from "./ordersDocument";
-import { unitNamesByRow, unitRowKey } from "./unitTable";
+import { UNIT_COLUMNS, unitNamesByRow, unitRowKey } from "./unitTable";
 import {
   columnHasPopup,
   popupAsText,
@@ -2250,7 +2250,8 @@ describe("popupAsText", () => {
         }
       ],
       notes: ["was: 36 SILV, 3 GRAI."],
-      warning: "This month is only partly counted."
+      warning: "This month is only partly counted.",
+      month: "changes"
     });
     expect(text).toBe(
       "silver SILV 40, up from 36. grain GRAI 2, down from 3, 1 eaten. was: 36 SILV, 3 GRAI. This month is only partly counted."
@@ -2259,7 +2260,7 @@ describe("popupAsText", () => {
 
   it("says nothing about a change a line does not carry", () => {
     expect(
-      popupAsText({ title: "x", lines: [{ label: "men", value: "12" }], notes: [], warning: null })
+      popupAsText({ title: "x", lines: [{ label: "men", value: "12" }], notes: [], warning: null, month: null })
     ).toBe("men 12.");
   });
 });
@@ -2777,7 +2778,8 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
           }
         ],
         notes: [],
-        warning: null
+        warning: null,
+        month: "changes"
       })
     ).toBe("combat COMB 2 (90), down to 1 (53), 2 (98) next turn.");
     expect(
@@ -2794,7 +2796,8 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
           }
         ],
         notes: [],
-        warning: null
+        warning: null,
+        month: "changes"
       })
     ).toBe("combat COMB 1 (53), 2 (98) next turn if it happens.");
   });
@@ -3801,8 +3804,9 @@ describe("the unfinished mark in the popups", () => {
   });
 });
 
-// ah-k52u: whether a hover adds "Nothing this month changes ..." is decided once, from what the
-// body wrote, so no column can list a movement and then say nothing changes.
+// ah-k52u: whether a hover adds "Nothing this month changes ..." is decided once, so no column can
+// list a movement and then say nothing changes. Since ah-v3ro it is decided from the month each body
+// states rather than from what it wrote (see "the month each column popup states").
 describe("the shared no-change sentence", () => {
   const NOTHING = ["Nothing this month changes this.", "Nothing this month changes these."];
   const item = (overrides: Partial<NonNullable<PreviewedUnit["itemChanges"]>[number]>) =>
@@ -4624,5 +4628,141 @@ describe("silver moved by TRANSPORT", () => {
     expect(popupValueInk({ label: "sent", value: "-5", tone: "down" })).toBe("text-ink-soft");
     expect(popupValueInk({ label: "x", value: "1", struck: true })).toBe("text-ink-dim line-through");
     expect(popupValueInk({ label: "x", value: "1", stress: "aside" })).toBe("text-ink-dim");
+  });
+});
+
+// ah-v3ro: every column's popup states whether this month changes its cell, from the data it was
+// built from - never inferred from what the popup happened to draw - and the shared sentence follows
+// that fact alone. Two shipped false sentences (ah-ymms, ah-30y0) came from drawn shapes the old
+// inference had not been taught.
+describe("the month each column popup states", () => {
+  const NOTHING = ["Nothing this month changes this.", "Nothing this month changes these."];
+  const netZeroIron = [
+    { tag: "IRON", name: "iron", delta: 10, cause: "was-given", line: null, unitPrice: null, other: { unitId: "4686", name: "Unit" }, isMan: false },
+    { tag: "IRON", name: "iron", delta: -10, cause: "production-spent", line: null, unitPrice: null, other: { unitId: "4686", name: "Unit" }, isMan: false }
+  ] as NonNullable<PreviewedUnit["itemChanges"]>;
+  const mani = { name: "manipulation", tag: "MANI", level: 2, points: 90 };
+  const studyMani: StudyForecast = {
+    tag: "MANI",
+    name: "manipulation",
+    levelBefore: 2,
+    pointsBefore: 90,
+    monthsNumerator: 1,
+    monthsDenominator: 1,
+    teachers: [],
+    halvedOutsideABuilding: false,
+    pointsAfter: 120,
+    levelAfter: 2,
+    ceilingLevel: 5,
+    limitingRaces: [],
+    cannotRaiseTheLevel: false,
+    doubts: []
+  };
+  const movement = { status: "walk", load: 10, fly: 0, ride: 0, walk: 20, capacityMode: "walk", swim: { kind: "absent" } } as PreviewedUnit["movement"];
+
+  type Case = { unit: PreviewedUnit; facts: PopupFacts };
+  const changing: Partial<Record<(typeof UNIT_COLUMNS)[number], Case>> = {
+    men: { unit: unit({ men: 3, previewChanges: [{ field: "men", original: "2" }] }), facts: facts() },
+    movement: { unit: unit({ movement, items: [], itemChanges: netZeroIron }), facts: facts() },
+    flags: {
+      unit: unit({ flags: ["guarding"], previewChanges: [{ field: "flags", original: "" }] }),
+      facts: facts()
+    },
+    // Hangaround (8446) in neworigins-3.0.0-g3-f42-t42.rep (ah-30y0): a STUDY and no report change.
+    skills: {
+      unit: unit({ own: true, previewChanges: [], reportedSkills: [mani], skills: [mani], study: studyMani }),
+      facts: facts()
+    },
+    items: { unit: unit({ items: [], itemChanges: netZeroIron }), facts: facts() },
+    structure: {
+      unit: unit({ structureId: "11" }),
+      facts: facts({ structureLabel: "Stockade [11]", structureFinish: "finishing" })
+    },
+    longOrder: {
+      unit: unit({ own: true }),
+      facts: facts({ longOrder: "WORK", reportedLongOrder: reported("TAX") })
+    },
+    silver: {
+      unit: unit({ own: true }),
+      facts: facts({
+        silver: aUnitSilver({ held: 340, atMonthEnd: 320, changes: [{ amount: -20, cause: "studied", line: 3, other: null }] })
+      })
+    }
+  };
+
+  const ownPopups = UNIT_COLUMNS.filter((column) => popupForCell(column, unit(), facts()).kind === "column");
+
+  it("covers every column that opens a popup of its own", () => {
+    expect(Object.keys(changing).sort()).toEqual([...ownPopups].sort());
+  });
+
+  for (const column of ownPopups) {
+    it(`a ${column} cell this month changes is stated as changing, and never says nothing changes`, () => {
+      const c = changing[column]!;
+      const popup = columnPopup(popupForCell(column, c.unit, c.facts));
+      expect(popup.month).toBe("changes");
+      for (const sentence of NOTHING) {
+        expect(popup.notes).not.toContain(sentence);
+      }
+    });
+  }
+
+  const unmoved: readonly { column: (typeof UNIT_COLUMNS)[number]; said: string | null; case: Case }[] = [
+    { column: "men", said: "Nothing this month changes this.", case: { unit: unit(), facts: facts() } },
+    { column: "movement", said: "Nothing this month changes this.", case: { unit: unit({ movement, items: [] }), facts: facts() } },
+    {
+      column: "skills",
+      said: "Nothing this month changes these.",
+      case: { unit: unit({ own: true, previewChanges: [], reportedSkills: [mani], skills: [mani] }), facts: facts() }
+    },
+    { column: "items", said: "Nothing this month changes these.", case: { unit: unit({ items: [{ name: "grain", tag: "GRAI", amount: 8 }] }), facts: facts() } },
+    { column: "structure", said: "Nothing this month changes this.", case: { unit: unit({ structureId: "11" }), facts: facts({ structureLabel: "Stockade [11]" }) } },
+    {
+      column: "longOrder",
+      said: "Nothing this month changes this.",
+      case: { unit: unit({ own: true }), facts: facts({ longOrder: "WORK", reportedLongOrder: reported("WORK") }) }
+    },
+    // Both of these word the month line by line, so the shared sentence would only repeat them.
+    { column: "flags", said: null, case: { unit: unit({ flags: ["guarding"] }), facts: facts() } },
+    {
+      column: "silver",
+      said: null,
+      case: { unit: unit({ own: true }), facts: facts({ silver: aUnitSilver({ held: 340, atMonthEnd: 340 }) }) }
+    },
+    // Already says so in its own words: "Your report arrived with none either."
+    {
+      column: "longOrder",
+      said: null,
+      case: { unit: unit({ own: true }), facts: facts({ longOrder: null, reportedLongOrder: reported(null) }) }
+    }
+  ];
+
+  for (const { column, said, case: c } of unmoved) {
+    it(`an unmoved ${column} cell is stated as unchanged${said ? " and says so" : ""}`, () => {
+      const popup = columnPopup(popupForCell(column, c.unit, c.facts));
+      expect(popup.month).toBe("unchanged");
+      if (said) {
+        expect(popup.notes).toContain(said);
+      } else {
+        for (const sentence of NOTHING) {
+          expect(popup.notes).not.toContain(sentence);
+        }
+      }
+    });
+  }
+
+  it("a month nothing was compared against states no answer and says nothing", () => {
+    const cases: readonly [(typeof UNIT_COLUMNS)[number], Case][] = [
+      ["longOrder", { unit: unit({ own: true }), facts: facts({ longOrder: "WORK" }) }],
+      ["longOrder", { unit: unit({ own: false }), facts: facts() }],
+      ["silver", { unit: unit({ own: false }), facts: facts() }]
+    ];
+    for (const [column, c] of cases) {
+      const popup = columnPopup(popupForCell(column, c.unit, c.facts));
+      expect(popup.month).toBeNull();
+      for (const sentence of NOTHING) {
+        expect(popup.notes).not.toContain(sentence);
+      }
+    }
   });
 });
