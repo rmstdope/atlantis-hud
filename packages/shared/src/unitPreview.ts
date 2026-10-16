@@ -6,6 +6,7 @@ import type {
   ItemChange,
   OrdersPreviewResponse,
   ProducedItem,
+  RefusedCast,
   RegionPreview,
   ReportUnit,
   SkillInfo,
@@ -28,6 +29,7 @@ import {
 import { rowKeyOf } from "./unitTable";
 import { withoutSilver } from "./silverTag";
 import { itemCellParts } from "./unfinishedMark";
+import type { ShortItem } from "./refusedCast";
 import { previewPairs, type PreviewPair } from "./unitPreviewRows";
 
 /**
@@ -74,6 +76,11 @@ export type PreviewedUnit = ReportUnit & {
   built?: BuildSpend[];
   /** What this unit's CAST orders create this month (`ah-ofpb.5`). */
   created?: CreatedItem[];
+  /**
+   * This unit's create-artifact CAST orders the game refuses this month, in document order: what
+   * each would have made and what it is short of (`ah-44at`).
+   */
+  refusedCasts?: RefusedCast[];
   /** What this unit's TRANSPORT/DISTRIBUTE orders send this month, in document order (`ah-bxgs`). */
   transportSent?: TransportSent[];
   /** What arrives at this unit by another unit's TRANSPORT/DISTRIBUTE this month (`ah-bxgs`). */
@@ -314,6 +321,7 @@ function rowFor(previewed: FoldedPreview): PreviewedUnit {
     produced: previewed.produced,
     built: previewed.built,
     created: previewed.created,
+    refusedCasts: previewed.refusedCasts,
     transportSent: previewed.transportSent,
     transportReceived: previewed.transportReceived,
     transportTargetIssues: previewed.transportTargetIssues,
@@ -346,9 +354,10 @@ export function changeFor(
  */
 export function formatItems(
   items: readonly ItemAmount[],
-  created: readonly CreatedItem[] = []
+  created: readonly CreatedItem[] = [],
+  short: readonly ShortItem[] = []
 ): string {
-  return itemCellParts(items, created)
+  return itemCellParts(items, created, short)
     .map((part) => part.text)
     .join(", ");
 }

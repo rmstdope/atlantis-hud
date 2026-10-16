@@ -1,6 +1,7 @@
 import type { CreatedItem, ItemAmount, RegionPreview } from "@atlantis/core-client";
 import { withoutSilver } from "./silverTag";
 import type { StructuresByRegion } from "./structureLabel";
+import type { ShortItem } from "./refusedCast";
 
 /**
  * Which structures and items the Units in hex pane marks as unfinished (`ah-2ql5`).
@@ -88,27 +89,40 @@ export function isUnfinishedShipName(name: string | undefined): boolean {
   );
 }
 
-/** One entry of the Items cell, and whether the unfinished mark goes before it. */
-export type ItemCellPart = { text: string; unfinished: boolean };
+/**
+ * One entry of the Items cell, whether the unfinished mark goes before it, and - only where it is
+ * so - whether it is a material a refused cast leaves the unit short of, drawn red (`ah-44at`).
+ */
+export type ItemCellPart = { text: string; unfinished: boolean; short?: true };
 
 /**
  * The Items cell's entries, silver left out, each as `formatItems` writes it.
  *
- * A `CAST` whose creation is uncertain draws its range, `2-5 SWOR`, exactly as before.
+ * A `CAST` whose creation is uncertain draws its range, `2-5 SWOR`, exactly as before. A material a
+ * refused cast leaves short (`shortItems`) comes first, as a minus figure written as the Silver
+ * cell writes one, so a narrow cell never hides it behind its ellipsis; it replaces that tag's own
+ * entry, so no tag is listed twice (`ah-44at`, Q6 A).
  */
 export function itemCellParts(
   items: readonly ItemAmount[],
-  created: readonly CreatedItem[] = []
+  created: readonly CreatedItem[] = [],
+  short: readonly ShortItem[] = []
 ): ItemCellPart[] {
   const shortfall = new Map<string, number>();
   for (const item of created) {
     shortfall.set(item.tag, (shortfall.get(item.tag) ?? 0) + (item.most - item.fewest));
   }
-  return withoutSilver(items).map((item) => {
+  const shortParts: ItemCellPart[] = short.map((item) => ({
+    text: `${item.figure} ${item.tag}`,
+    unfinished: false,
+    short: true
+  }));
+  const isShort = (tag: string) => short.some((item) => item.tag === tag);
+  return [...shortParts, ...withoutSilver(items).filter((item) => !isShort(item.tag)).map((item) => {
     const gap = shortfall.get(item.tag) ?? 0;
     return {
       text: gap > 0 ? `${item.amount - gap}-${item.amount} ${item.tag}` : `${item.amount} ${item.tag}`,
       unfinished: isUnfinishedShipName(item.name)
     };
-  });
+  })];
 }

@@ -2,6 +2,7 @@ import type {
   ItemChange,
   ItemChangeParty,
   NoStudyFee,
+  RefusedCast,
   SilverChange,
   SkillInfo,
   SkillMerge,
@@ -26,6 +27,7 @@ import {
   type PreviewedUnit
 } from "./unitPreview";
 import { summariseUnit } from "./unitTooltip";
+import { andList, refusedProductReason, shortItems, shortSentence } from "./refusedCast";
 import { isUnfinishedShipName, type StructureFinish } from "./unfinishedMark";
 import {
   silverCauseGroups,
@@ -133,6 +135,12 @@ export type PopupLine = {
    * `popupAsText` reads nothing for it.
    */
   unfinished?: "label" | "value";
+  /**
+   * What a refused CAST would have made (`ah-44at`): the whole line is drawn struck through and
+   * dimmed. Decoration, like `unfinished`: the reason sentence under the lines says it will not be
+   * made, so `popupAsText` reads nothing for it.
+   */
+  struck?: true;
 };
 
 /** What one column's popup shows. */
@@ -316,8 +324,11 @@ function itemLabel(tag: string, unit: PreviewedUnit): string {
   return itemName(tag, unit) ?? tag;
 }
 
-/** One item's line, before the cap: what it is, what it stands at, and where it came from. */
-export type ItemLine = { tag: string; line: PopupLine; moved: boolean };
+/**
+ * One item's line, before the cap: what it is, what it stands at, and where it came from. A struck
+ * line carries the refused cast it stands for, whose reason is its cause sentence (`ah-44at`).
+ */
+export type ItemLine = { tag: string; line: PopupLine; moved: boolean; refused?: RefusedCast };
 
 /**
  * The `items` popup's lines, in the order they are drawn.
@@ -365,7 +376,13 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
     }
   }
 
-  return tags.map((tag) => {
+  // What a refused cast leaves short, and what the report listed for a tag - or, with no `items`
+  // change to say, what the unit holds now, since then the month left the list as it was.
+  const short = new Map(shortItems(unit).map((item) => [item.tag, item.figure]));
+  const reportedOr = (tag: string): number | undefined =>
+    reported === undefined ? held.get(tag)?.amount : reported.get(tag);
+
+  const lines = tags.map((tag) => {
     const item = held.get(tag);
     const name = itemName(tag, unit);
     const before = reported?.get(tag);
@@ -381,11 +398,52 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
       // (`ah-2ql5`): the report's own words lead the line, and the mark goes before them.
       ...(isUnfinishedShipName(name) ? { unfinished: "label" as const } : {})
     };
+    const figure = short.get(tag);
+    if (figure !== undefined) {
+      // A refused cast's short material ends at its red minus figure (`ah-44at`, Q1 A), paired
+      // from what the report listed - which, with no `items` change at all, is what it holds now.
+      const from = reportedOr(tag);
+      return {
+        tag,
+        line: {
+          ...line,
+          value: String(figure),
+          change: { direction: "down" as const, from: from === undefined ? "none" : from.toLocaleString() }
+        },
+        moved: true,
+        amount: figure
+      };
+    }
     const change = changeOf(before, amount, reported);
     return { tag, line: change ? { ...line, change } : line, moved, amount: amount ?? 0 };
   })
     .sort((a, b) => rank(a, monthOrder) - rank(b, monthOrder) || b.amount - a.amount)
-    .map(({ tag, line, moved }) => ({ tag, line, moved }));
+    .map(({ tag, line, moved }): ItemLine => ({ tag, line, moved }));
+
+  // What each refused cast would have made, struck through (`ah-44at`, Q3 B), right after the
+  // month's recorded movements so the cap never drops one ahead of an item the month left alone.
+  const struck: ItemLine[] = (unit.refusedCasts ?? []).flatMap((cast) => {
+    const product = cast.product;
+    if (!product) {
+      return [];
+    }
+    const from = reportedOr(product.tag);
+    return [
+      {
+        tag: product.tag,
+        line: {
+          label: `${itemName(product.tag, unit) ?? product.name} ${product.tag}`,
+          value: rangedValue((from ?? 0) + product.most, product.most - product.fewest),
+          change: { direction: "up", from: from === undefined ? "none" : from.toLocaleString() },
+          struck: true
+        },
+        moved: true,
+        refused: cast
+      }
+    ];
+  });
+  const afterTheMonth = lines.filter((entry) => monthOrder.has(entry.tag)).length;
+  return [...lines.slice(0, afterTheMonth), ...struck, ...lines.slice(afterTheMonth)];
 }
 
 /**
@@ -1305,13 +1363,6 @@ function chainFor(
   return steps.length > 1 ? steps : [];
 }
 
-/** `a`, `a and b`, `a, b and c` - for a clause naming several things. */
-function andList(parts: readonly string[]): string {
-  if (parts.length <= 1) {
-    return parts[0] ?? "";
-  }
-  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
-}
 
 /** The ratios `rules/studying` states in words; anything else is said as a figure. */
 const MONTHS_IN_WORDS: Record<string, string> = {
@@ -1546,6 +1597,8 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   // The sentences follow the changed lines, in the same order, so each is under the figure it
   // explains (decision **S2**).
   const changes = unit.itemChanges ?? [];
+  // Each item named as its own line names it, so a sentence and the line above it agree.
+  const named = (tag: string, fallback: string) => itemName(tag, unit) ?? fallback;
   const causes = entries
     // Only the entries the cap will draw: **S2** promises the prose block can never be longer
     // than the list above it, and a sentence for a figure the reader cannot see breaks that.
@@ -1554,10 +1607,20 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     .map((entry) => {
       // `itemLines` marks a tag moved even when the core recorded no change for it, so `forTag`
       // can be empty here — hence `?.`, not the `!` `movementCauses` may use.
+      if (entry.refused) {
+        return refusedProductReason(entry.refused, named);
+      }
       const forTag = changes.filter((c) => c.tag === entry.tag);
       return itemCauseSentence(itemLabel(entry.tag, unit), forTag, unit, forTag[0]?.isMan);
     })
     .filter((note): note is string => note !== undefined);
+  // Red first, as `silverMarkWarning` puts it, then the partly-counted sentence (`ah-44at`).
+  const warning = [
+    shortSentence(shortItems(unit), named),
+    partlyCounted
+      ? "“+ ?” in the cell: this month is only partly counted, so this list may be short."
+      : null
+  ].filter((part): part is string => part !== null);
 
   return {
     // Off the drawn list rather than off current stock: a unit that gave everything away still
@@ -1565,9 +1628,7 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     causes,
     notes: [...(told ? told.split("\n") : []), ...(lines.length === 0 ? ["No items."] : [])],
     lines,
-    warning: partlyCounted
-      ? "“+ ?” in the cell: this month is only partly counted, so this list may be short."
-      : null
+    warning: warning.length > 0 ? warning.join(" ") : null
   };
 }
 
@@ -2132,6 +2193,10 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
  * it, so this is the part that lives here and is tested.
  */
 export function popupLabelInk(line: PopupLine): string {
+  if (line.struck) {
+    // What a refused cast would have made: struck through and dimmed, whole (`ah-44at`).
+    return "text-ink-dim line-through";
+  }
   return line.stress === "deciding" ? "text-brass" : line.stress === "aside" ? "text-ink-dim" : "";
 }
 

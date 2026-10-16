@@ -42,6 +42,7 @@ import {
   type StructureFinish
 } from "../unfinishedMark";
 import { UnfinishedMark } from "./UnfinishedMark";
+import { shortItems } from "../refusedCast";
 import { describeMenBriefly } from "../unitComposition";
 import {
   atMost,
@@ -2268,9 +2269,11 @@ function UnitRow({
   unitNames: ReadonlyMap<UnitRowKey, string>;
 }) {
   const skills = unitSkillsCell(unit, derivedSkills);
-  const items = formatItems(unit.items, unit.created);
+  // What a refused CAST leaves this unit short of, red and first in the cell (`ah-44at`).
+  const short = shortItems(unit);
+  const items = formatItems(unit.items, unit.created, short);
   // The same entries, so the unfinished mark can sit before an unfinished ship's (`ah-2ql5`).
-  const itemParts = itemCellParts(unit.items, unit.created);
+  const itemParts = itemCellParts(unit.items, unit.created, short);
   const unread = !unitWasFullyRead(unit);
 
   // Which cells the orders changed, so each one can say so and show what the report said.
@@ -2632,9 +2635,10 @@ function UnitRow({
       </Td>
     ),
     items: (
+      // A red figure is this month's too, even where the item list itself did not move (`ah-44at`).
       <Td
-        className={`truncate${itemsChange ? ` ${PREDICTED}` : ""}`}
-        predicted={Boolean(itemsChange)}
+        className={`truncate${itemsChange || short.length > 0 ? ` ${PREDICTED}` : ""}`}
+        predicted={Boolean(itemsChange) || short.length > 0}
       >
         {/*
           Driven off an empty cell rather than off `read`: `formatItems` strips silver, so a unit
@@ -2647,7 +2651,7 @@ function UnitRow({
             <Fragment key={at}>
               {at > 0 ? ", " : null}
               {part.unfinished ? <UnfinishedMark /> : null}
-              {part.text}
+              {part.short ? <span className="text-danger">{part.text}</span> : part.text}
             </Fragment>
           ))
         )}
