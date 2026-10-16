@@ -192,7 +192,10 @@ describe("the guide as agreed (ah-ppit)", () => {
   it("has six headings, in order, each holding its agreed rows in order - 53 in all", () => {
     expect(
       Object.fromEntries(
-        navigationGroups().map((section) => [section.group, section.moves.map((move) => move.description)])
+        navigationGroups().map((section) => [
+          section.group,
+          section.moves.map((move) => move.description)
+        ])
       )
     ).toEqual(AGREED);
     expect(navigationGroups().map((section) => section.group)).toEqual(Object.keys(AGREED));
@@ -227,8 +230,12 @@ describe("the guide as agreed (ah-ppit)", () => {
 
   it("is corrected to what the app does where the drawing differed", () => {
     // Fetch and Send sit after Export in the header, not beside Import.
-    expect(rowOf("Fetch a report from the game server").mouse).toBe("The Fetch button in the bar at the top");
-    expect(rowOf("Send your orders to the game server").mouse).toBe("The Send button in the bar at the top");
+    expect(rowOf("Fetch a report from the game server").mouse).toBe(
+      "The Fetch button in the bar at the top"
+    );
+    expect(rowOf("Send your orders to the game server").mouse).toBe(
+      "The Send button in the bar at the top"
+    );
     // The turns are listed under the Turn chip, and Changes is a dialog.
     expect(rowOf("Compare this turn with an earlier one").mouse).toBe(
       "Click the earlier turn under the Turn chip; the Changes dialog shows the difference"
@@ -244,8 +251,15 @@ describe("the guide as agreed (ah-ppit)", () => {
     });
     expect(rowOf("Select every unit in the list", true).keys).toBe("⌘A");
     expect(rowOf("Undo and redo", true).keys).toBe("⌘Z, ⇧⌘Z");
-    expect(rowOf("Save a hex note - a mage note saves itself as you type", true).keys).toBe("⌘Enter");
-    expect(rowOf("Open the command palette, which finds units, hexes, structures, game data entries, orders, actions and things last seen in older reports", true).keys).toBe("⌘K");
+    expect(rowOf("Save a hex note - a mage note saves itself as you type", true).keys).toBe(
+      "⌘Enter"
+    );
+    expect(
+      rowOf(
+        "Open the command palette, which finds units, hexes, structures, game data entries, orders, actions and things last seen in older reports",
+        true
+      ).keys
+    ).toBe("⌘K");
   });
 });
 
@@ -275,7 +289,9 @@ describe("filterGuide", () => {
     expect(filterGuide(sections, "ARMY").shown).toBe(3);
     const byKey = filterGuide(sections, "shift+f8").sections.flatMap((section) => section.rows);
     expect(byKey.map((row) => row.description)).toEqual(["Jump to the previous problem"]);
-    const byMouse = filterGuide(sections, "badges menu").sections.flatMap((section) => section.rows);
+    const byMouse = filterGuide(sections, "badges menu").sections.flatMap(
+      (section) => section.rows
+    );
     expect(byMouse.map((row) => row.description)).toEqual([
       "Show or hide each kind of mark a hex carries, from settlements to roads"
     ]);
@@ -302,8 +318,12 @@ describe("highlightSegments", () => {
   });
 
   it("is the whole text, unmatched, for an empty filter or no match", () => {
-    expect(highlightSegments("Rename an army", "")).toEqual([{ text: "Rename an army", match: false }]);
-    expect(highlightSegments("Rename an army", "zzz")).toEqual([{ text: "Rename an army", match: false }]);
+    expect(highlightSegments("Rename an army", "")).toEqual([
+      { text: "Rename an army", match: false }
+    ]);
+    expect(highlightSegments("Rename an army", "zzz")).toEqual([
+      { text: "Rename an army", match: false }
+    ]);
   });
 
   it("matches the trimmed filter", () => {

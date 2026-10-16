@@ -51,7 +51,8 @@ export const NAVIGATION_MOVES: readonly NavigationMove[] = [
   {
     id: "palette",
     group: EVERYWHERE,
-    description: "Open the command palette, which finds units, hexes, structures, game data entries, orders, actions and things last seen in older reports",
+    description:
+      "Open the command palette, which finds units, hexes, structures, game data entries, orders, actions and things last seen in older reports",
     mouse: null,
     keys: chord("palette")
   },
@@ -165,7 +166,8 @@ export const NAVIGATION_MOVES: readonly NavigationMove[] = [
   {
     id: "unitSource",
     group: UNITS,
-    description: "Choose what the units list shows: this hex, all my units, other factions, or an army",
+    description:
+      "Choose what the units list shows: this hex, all my units, other factions, or an army",
     mouse: "Click it in the rail beside the list",
     keys: null
   },
@@ -181,7 +183,10 @@ export const NAVIGATION_MOVES: readonly NavigationMove[] = [
     group: UNITS,
     // Mod-click: ⌘ on a Mac, where Ctrl-click is a plain press (UnitTableDock).
     description: "Select several units",
-    mouse: { mac: "⌘-click to add or remove one, Shift-click for a run", other: "Ctrl-click to add or remove one, Shift-click for a run" },
+    mouse: {
+      mac: "⌘-click to add or remove one, Shift-click for a run",
+      other: "Ctrl-click to add or remove one, Shift-click for a run"
+    },
     keys: { mac: "⇧ and the arrows", other: "Shift and the arrows" }
   },
   {
@@ -413,7 +418,10 @@ export const NAVIGATION_MOVES: readonly NavigationMove[] = [
     // The Branches view only: in the Whole graph the arrows pan instead (ah-0unf).
     description: "Walk the magic study tree's skills, and open one in the dictionary",
     mouse: null,
-    keys: { mac: "The arrows, Page Up/Down, Home, End and Enter", other: "The arrows, Page Up/Down, Home, End and Enter" }
+    keys: {
+      mac: "The arrows, Page Up/Down, Home, End and Enter",
+      other: "The arrows, Page Up/Down, Home, End and Enter"
+    }
   },
   {
     id: "magicGraph",
@@ -425,7 +433,8 @@ export const NAVIGATION_MOVES: readonly NavigationMove[] = [
   {
     id: "settings",
     group: PANELS,
-    description: "Open settings: theme, map style, columns, staleness, animation, snippets and this greeting",
+    description:
+      "Open settings: theme, map style, columns, staleness, animation, snippets and this greeting",
     mouse: "The Settings button, top right of the window",
     keys: null
   }
@@ -453,14 +462,18 @@ export function navigationGroups(
   return sections;
 }
 
-
 /** One platform's spelling of a cell. */
 export function spell(value: Spelled, isMac: boolean): string {
   return typeof value === "string" ? value : isMac ? value.mac : value.other;
 }
 
 /** A row as the guide draws it on one platform: every cell already spelled. */
-export type GuideRow = { id: string; description: string; mouse: string | null; keys: string | null };
+export type GuideRow = {
+  id: string;
+  description: string;
+  mouse: string | null;
+  keys: string | null;
+};
 
 export type GuideSection = { group: string; rows: GuideRow[] };
 
@@ -501,11 +514,18 @@ export function filterGuide(
       )
     }))
     .filter((section) => section.rows.length > 0);
-  return { sections: kept, shown: kept.reduce((sum, section) => sum + section.rows.length, 0), total };
+  return {
+    sections: kept,
+    shown: kept.reduce((sum, section) => sum + section.rows.length, 0),
+    total
+  };
 }
 
 /** A cell cut into the runs the filter matched and the runs it did not, casing kept as written. */
-export function highlightSegments(text: string, query: string): Array<{ text: string; match: boolean }> {
+export function highlightSegments(
+  text: string,
+  query: string
+): Array<{ text: string; match: boolean }> {
   const needle = query.trim().toLowerCase();
   if (needle === "") {
     return [{ text, match: false }];

@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ShortcutHelp } from "./ShortcutHelp";
+import { filterGuide, guideRows } from "../navigationGuide";
+import { GuideTable, ShortcutHelp } from "./ShortcutHelp";
 
 /**
  * The overlay a first-time player is greeted by.
@@ -54,5 +55,55 @@ describe("ShortcutHelp", () => {
     const html = markup(false);
     expect(html).toContain('data-testid="shortcut-help-at-startup"');
     expect(html).toContain('data-testid="shortcut-help-close"');
+  });
+
+  it("opens with the caret in the filter rather than on the close button (ah-ppit)", () => {
+    const html = markup(false);
+    expect(html).toMatch(
+      /<input[^>]*data-testid="shortcut-help-filter"[^>]*placeholder="Filter - type a move, a key or a word like “army”"/
+    );
+    expect(html).toMatch(/<input[^>]*data-testid="shortcut-help-filter"[^>]*autofocus/i);
+    expect(html).not.toMatch(/data-testid="shortcut-help-close"[^>]*autofocus/i);
+    // No count until something is typed.
+    expect(html).not.toContain('data-testid="shortcut-help-count"');
+  });
+
+  it("shows all six headings when nothing is typed", () => {
+    const html = markup(false);
+    for (const heading of [
+      "Everywhere",
+      "The map",
+      "Units",
+      "Orders",
+      "Turn",
+      "Panels and windows"
+    ]) {
+      expect(html).toContain(`>${heading}<`);
+    }
+    expect(html).not.toContain("Orders and problems");
+  });
+});
+
+describe("GuideTable", () => {
+  const table = (query: string) =>
+    renderToStaticMarkup(
+      <GuideTable sections={filterGuide(guideRows(false), query).sections} query={query} />
+    );
+
+  it("shows only the matching rows, under their headings, with the match marked", () => {
+    const html = table("army");
+    expect(html).toContain(">Units<");
+    expect(html).not.toContain(">The map<");
+    expect(html).toContain("Rename an <mark");
+    expect(html).toMatch(/<mark[^>]*>army<\/mark>/);
+    expect(html).toContain(">Move<");
+  });
+
+  it("says nothing matches, in place of the table, when nothing does", () => {
+    const html = table("teleport");
+    expect(html).toContain("No move matches “teleport”.");
+    expect(html).toContain("Try a shorter word, or clear the filter.");
+    expect(html).not.toContain(">Move<");
+    expect(html).not.toContain("<table");
   });
 });
