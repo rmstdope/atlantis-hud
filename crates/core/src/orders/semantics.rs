@@ -1749,7 +1749,8 @@ fn market_shares_for(
 
             let want = match (&placed.intent, side) {
                 // A unit cannot sell what it does not hold, so asking for more is not a larger
-                // claim on the market. `rules/sequenceofevents` settles GIVE/TAKE before the
+                // claim on the market - though the whole order still squeezes the others, through
+                // `attempted_sales` below (`ah-6la1`). `rules/sequenceofevents` settles GIVE/TAKE before the
                 // market opens, so what it "does not hold" is read as of that phase boundary
                 // rather than the report's own figure (`ah-q7jd`). A second `SELL` of the same
                 // goods can only claim what an earlier line of this unit's own has left (`ah-vw8e`).
@@ -26987,10 +26988,12 @@ mod tests {
         }
 
         /// `ah-0n2k.2`. An own hex-mate whose line was cut short, ordered to sell the same goods,
-        /// claims `0` of the line because its goods went with the tail - so what this unit is shown
-        /// earning is the most it can be, not a forecast. Its *order* is still read, though, and
-        /// `Game::DoSell` divides the line by what was ordered whatever the seller holds
-        /// (`ah-6la1`): 40 + 40 attempted against 40 wanted leaves this unit 20 furs, $480.
+        /// claims `0` of the line because its goods went with the tail, so the figure is flagged as
+        /// the most it can be. Its *order* is still read, though, and `Game::DoSell` divides the
+        /// line by what was ordered whatever the seller holds (`ah-6la1`): 40 + 40 attempted
+        /// against 40 wanted leaves this unit 20 furs, $480. For an exact `SELL` like this one
+        /// that figure is in fact certain and the flag merely cautious; it is still needed for an
+        /// unread mate's `SELL ALL`, whose attempt cannot be read.
         #[test]
         fn a_seller_beside_an_unread_seller_reads_its_takings_as_a_ceiling() {
             let hex = ReportRegion {

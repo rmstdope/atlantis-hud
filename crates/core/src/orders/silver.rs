@@ -3738,6 +3738,26 @@ mod split_in_proportion_tests {
 mod split_pool_tests {
     use super::*;
 
+    /// `ah-6la1`. A market sale divides by what was attempted, which can exceed what is claimed:
+    /// 110 + 100 attempted against 110, with the first order cut to 10, gives 5 and 52 - and
+    /// never more than the pool, however large the attempt.
+    #[test]
+    fn an_attempt_above_the_claims_divides_by_the_attempt() {
+        assert_eq!(split_pool_against(&[10, 100], 210, 110), vec![5, 52]);
+        for attempted in [0, 110, 111, 210, 10_000] {
+            let shares = split_pool_against(&[10, 100], attempted, 110);
+            assert!(
+                shares.iter().sum::<i64>() <= 110,
+                "{attempted}: the pool is never promised twice: {shares:?}"
+            );
+        }
+        assert_eq!(
+            split_pool_against(&[10, 100], 50, 200),
+            vec![10, 100],
+            "an attempt below the claims changes nothing"
+        );
+    }
+
     #[test]
     fn a_pool_that_covers_every_claim_divides_nothing() {
         assert_eq!(split_pool(&[500, 1000], 2500), vec![500, 1000]);
