@@ -73,8 +73,8 @@ use crate::orders::silver::{
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
-    give_endpoint, give_outcome, mage_give_refused, mage_recruit_refused, party_label,
-    party_unit_id, GiveEndpoint, GiveOutcome, GiveReach, GiveRefusal,
+    give_endpoint, give_outcome, mage_give_refused, party_label, party_unit_id, recruit_refused,
+    GiveEndpoint, GiveOutcome, GiveReach, GiveRefusal,
 };
 use crate::orders::transfers::{
     in_report_order, report_order, report_ranks, PendingTransfer, Placement,
@@ -198,6 +198,9 @@ pub mod codes {
 
     /// A `GIVE`, `TAKE` or `BUY` that would add people to a unit that has already begun magic.
     pub const MEN_SENT_INTO_A_MAGE: Code = Code("men-sent-into-a-mage");
+    /// A `BUY` that would put leaders and normal men in the same unit, which the game refuses
+    /// (`rules/playing_units`, `ah-u5rz`). A mage's refusal says it as part of its own sentence.
+    pub const LEADERS_AND_MEN_MIXED: Code = Code("leaders-and-men-mixed");
     pub const BUILD_OUTSIDE_STRUCTURE: Code = Code("build-outside-structure");
     pub const BUILD_HELP_NOT_BUILDING: Code = Code("build-help-not-building");
     pub const UNIT_DOES_NOTHING: Code = Code("unit-does-nothing");
@@ -280,7 +283,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 57] = [
+    pub const ALL: [Code; 58] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -338,6 +341,7 @@ pub mod codes {
         TRANSPORT_OUT_OF_REACH,
         SAIL_NOT_BY_OWNER,
         STUDY_GAINS_NOTHING,
+        LEADERS_AND_MEN_MIXED,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -970,7 +974,7 @@ pub fn review_turn(
         check_transfer_to_itself(hex, &options, &mut findings);
         check_arrivals(hex, &options, &mut findings);
         check_refused_transfers(hex, ruleset, &plurals, &options, &mut findings);
-        check_mage_arrivals(hex, ledger, ruleset, &plurals, &options, &mut findings);
+        check_refused_arrivals(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_withdraw_in_nexus(hex, &options, &mut findings);
         check_explore_below_the_surface(hex, &mut findings);
         check_enter_not_here(hex, &mut findings);
@@ -1773,9 +1777,15 @@ fn market_shares_for(
             //
             // `ordered.unit.skills` - the report's own list - because that is exactly what `buy`
             // and the SILVER column's `purchase` closure both read. Asking `skills_before_the_market`
-            // here instead would re-open the divergence this guard closes.
+            // here instead would re-open the divergence this guard closes. The races, by the same
+            // argument, are `early_men_by_race` on all three: the men after this month's gifts.
             if matches!(side, MarketSide::Buying)
-                && mage_recruit_refused(&ordered.unit.skills, &tag, ruleset)
+                && recruit_refused(
+                    &ordered.unit.skills,
+                    ordered.early_men_by_race(),
+                    &tag,
+                    ruleset,
+                )
             {
                 continue;
             }
@@ -2689,8 +2699,9 @@ fn forecast_hex(
             // The buyer's own skills, as the report prints them - `actor.unit.skills` is what
             // the ledger's `buy` reads, and the two surfaces must read the same list.
             MarketAnswer::Offered(line)
-                if mage_recruit_refused(
+                if recruit_refused(
                     &ordered.unit.skills,
+                    ordered.early_men_by_race(),
                     &line.tag.to_ascii_uppercase(),
                     ruleset,
                 ) =>
@@ -10168,8 +10179,11 @@ fn buy(
     // `rules/magic` fixes a mage's unit number, and the navigator's New Origins ruling refuses a
     // mage's recruiting too (`ah-ndp9`). Refused before anything is charged, credited or recorded:
     // the server refuses the order, so no silver leaves. Before the `BUY ALL` deferral as well, so
-    // no `BUY ALL` slips past into `settle_buy_all`.
-    if mage_recruit_refused(&actor.unit.skills, &tag, ruleset) {
+    // no `BUY ALL` slips past into `settle_buy_all`. A recruit that would mix leaders and normal
+    // men is refused the same way, mage or not (`rules/playing_units`, `ah-u5rz`) - judged on the
+    // men the unit holds once this month's gifts have run, since `rules/sequenceofevents` settles
+    // GIVE before the market and `Game::GetBuyAmount` asks the unit as it then stands.
+    if recruit_refused(&actor.unit.skills, actor.early_men_by_race(), &tag, ruleset) {
         ledger.refused_recruits.push(RefusedRecruit {
             unit_id: who.clone(),
             line: placed.line,
@@ -23432,12 +23446,14 @@ fn named_items(
     )
 }
 
-/// Every order this month that would have put people into a unit that has already begun magic.
+/// Every order this month that would have put people into a unit that has already begun magic,
+/// and every `BUY` refused for mixing leaders and normal men.
 ///
 /// `rules/magic` fixes a mage's unit number, and the navigator's New Origins ruling extends that to
-/// recruiting and to receiving men. Works nothing out for itself: `apply_transfers` and `buy` have
-/// already refused, and this turns their records into sentences (`ah-ndp9`).
-fn check_mage_arrivals(
+/// recruiting and to receiving men. `rules/playing_units` refuses mixing leaders and normal men in
+/// one unit, mage or not (`ah-u5rz`). Works nothing out for itself: `apply_transfers` and `buy`
+/// have already refused, and this turns their records into sentences (`ah-ndp9`).
+fn check_refused_arrivals(
     hex: &Hex<'_>,
     ledger: &Ledger<'_>,
     ruleset: Option<&Ruleset>,
@@ -23445,51 +23461,50 @@ fn check_mage_arrivals(
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
-    if !options.emits(codes::MEN_SENT_INTO_A_MAGE) {
-        return;
-    }
-
-    for ordered in &hex.units {
-        for refused in &ordered.refused_transfers {
-            if refused.into_a_mage.is_empty() {
-                continue;
-            }
-            let tail = if refused.moving.is_empty() {
-                "nothing".to_string()
-            } else {
-                format!(
-                    "only {}",
-                    named_items(&refused.moving, hex, ruleset, plurals)
-                )
-            };
-            // The receiver is named for what `data/MANI` makes it, as the BUY refusal below is
-            // (`ah-yvgi`): the mage at the other end of a GIVE, or this unit for a TAKE.
-            let receiver = match &refused.mage_id {
-                Some(id) => hex.find(id),
-                None => Some(ordered),
-            };
-            let what = match (ruleset, receiver) {
-                (Some(ruleset), Some(receiver))
-                    if magic::is_apprentice(ruleset, &receiver.unit.skills) =>
-                {
-                    "an apprentice"
+    let mage_warned = options.emits(codes::MEN_SENT_INTO_A_MAGE);
+    if mage_warned {
+        for ordered in &hex.units {
+            for refused in &ordered.refused_transfers {
+                if refused.into_a_mage.is_empty() {
+                    continue;
                 }
-                _ => "a mage",
-            };
-            let head = match (&refused.mage_id, refused.is_give) {
-                (Some(id), true) => format!("unit {id} is {what} and cannot be given men"),
-                _ => format!("this unit is {what} and cannot take on men"),
-            };
-            let placed = ordered
-                .intents
-                .iter()
-                .find(|placed| placed.line == refused.line);
-            findings.push(ordered.finding(
-                hex,
-                codes::MEN_SENT_INTO_A_MAGE,
-                format!("{head}, so this order moves {tail}"),
-                placed,
-            ));
+                let tail = if refused.moving.is_empty() {
+                    "nothing".to_string()
+                } else {
+                    format!(
+                        "only {}",
+                        named_items(&refused.moving, hex, ruleset, plurals)
+                    )
+                };
+                // The receiver is named for what `data/MANI` makes it, as the BUY refusal below is
+                // (`ah-yvgi`): the mage at the other end of a GIVE, or this unit for a TAKE.
+                let receiver = match &refused.mage_id {
+                    Some(id) => hex.find(id),
+                    None => Some(ordered),
+                };
+                let what = match (ruleset, receiver) {
+                    (Some(ruleset), Some(receiver))
+                        if magic::is_apprentice(ruleset, &receiver.unit.skills) =>
+                    {
+                        "an apprentice"
+                    }
+                    _ => "a mage",
+                };
+                let head = match (&refused.mage_id, refused.is_give) {
+                    (Some(id), true) => format!("unit {id} is {what} and cannot be given men"),
+                    _ => format!("this unit is {what} and cannot take on men"),
+                };
+                let placed = ordered
+                    .intents
+                    .iter()
+                    .find(|placed| placed.line == refused.line);
+                findings.push(ordered.finding(
+                    hex,
+                    codes::MEN_SENT_INTO_A_MAGE,
+                    format!("{head}, so this order moves {tail}"),
+                    placed,
+                ));
+            }
         }
     }
 
@@ -23511,21 +23526,37 @@ fn check_mage_arrivals(
         // `data/MANI` makes an apprentice, not a mage, and a leader recruiting normal men (or the
         // reverse) is refused for that too (`rules/playing_units`): the engine reports both, so
         // the warning names both (`ah-yvgi`).
-        let who = match ruleset {
-            Some(ruleset) if magic::is_apprentice(ruleset, &ordered.unit.skills) => "an apprentice",
-            _ => "a mage",
+        let mixing = magic::mixes_leaders(ordered.early_men_by_race(), &recruit.tag);
+        // A unit that is no mage was refused for mixing alone, and says only that (`ah-u5rz`).
+        let (code, message) = match ruleset {
+            Some(ruleset) if !magic::is_mage(ruleset, &ordered.unit.skills) => (
+                codes::LEADERS_AND_MEN_MIXED,
+                "leaders and normal men may not be mixed, so this order buys nobody".to_string(),
+            ),
+            _ => {
+                let who = match ruleset {
+                    Some(ruleset) if magic::is_apprentice(ruleset, &ordered.unit.skills) => {
+                        "an apprentice"
+                    }
+                    _ => "a mage",
+                };
+                let mixing = if mixing {
+                    ", and leaders and normal men may not be mixed"
+                } else {
+                    ""
+                };
+                (
+                    codes::MEN_SENT_INTO_A_MAGE,
+                    format!(
+                        "this unit is {who} and cannot recruit{mixing}, so this order buys nobody"
+                    ),
+                )
+            }
         };
-        let mixing = if magic::mixes_leaders(&ordered.unit.men_by_race, &recruit.tag) {
-            ", and leaders and normal men may not be mixed"
-        } else {
-            ""
-        };
-        findings.push(ordered.finding(
-            hex,
-            codes::MEN_SENT_INTO_A_MAGE,
-            format!("this unit is {who} and cannot recruit{mixing}, so this order buys nobody"),
-            placed,
-        ));
+        if !options.emits(code) {
+            continue;
+        }
+        findings.push(ordered.finding(hex, code, message, placed));
     }
 }
 
@@ -23555,7 +23586,7 @@ fn check_refused_transfers(
     for ordered in &hex.units {
         for refused in &ordered.refused_transfers {
             if refused.refused.is_empty() && refused.refused_to_another_faction.is_empty() {
-                // An `ah-ndp9` record only. `check_mage_arrivals` speaks for it; this check must
+                // An `ah-ndp9` record only. `check_refused_arrivals` speaks for it; this check must
                 // say nothing, and would otherwise build a sentence with no reason in it.
                 continue;
             }
@@ -26087,8 +26118,10 @@ mod tests {
                 tag: "HUMN".to_string(),
                 price: 38,
             }],
+            // Orcs, not a leader: `rules/playing_units` refuses a leader's recruiting of normal
+            // men, and a refused recruit arrives nowhere (`ah-u5rz`).
             ..region(vec![with_silver(
-                with_race(unit("1"), 1, "leaders", "LEAD"),
+                with_race(unit("1"), 1, "orcs", "ORC"),
                 1000,
             )])
         };
@@ -26106,7 +26139,7 @@ mod tests {
         assert!(men[0]
             .men_by_race
             .iter()
-            .any(|race| race.tag.eq_ignore_ascii_case("LEAD")));
+            .any(|race| race.tag.eq_ignore_ascii_case("ORC")));
     }
 
     /// `item_spellings` strips `wood elves` to `wood elv`, which the catalogue's `wood elf` does
@@ -41240,14 +41273,14 @@ BUILD
 
     /// One TEACH eligibility decision, not two, and taken on the right side of the market phase.
     ///
-    /// `rules/sequenceofevents` resolves `BUY` before the month-long phase that teaches, so a
-    /// unit of leaders that buys orcs is no longer all-leaders when it teaches: its `TEACH`
-    /// certainly cannot run, claims no month, and the `STUDY` below it is the order that does.
-    /// The alternative - the filter reading the pre-recruit state while `check_teacher` reads the
-    /// post-recruit one - tells the unit in one breath that it cannot teach and that the teaching
-    /// it cannot do spent its month.
+    /// `rules/sequenceofevents` resolves `BUY` before the month-long phase that teaches, and a
+    /// unit of leaders that buys orcs is refused the purchase (`rules/playing_units`, `ah-u5rz`),
+    /// so it is still all leaders when it teaches: its `TEACH` runs and claims the month, and the
+    /// `STUDY` below it is the second month-long order. Both decisions read the same refused
+    /// recruit - the alternative tells the unit in one breath that it cannot teach and that its
+    /// teaching spent the month, or neither.
     #[test]
-    fn a_teach_the_market_phase_disqualifies_does_not_claim_the_month() {
+    fn a_teach_the_market_phase_leaves_eligible_claims_the_month() {
         let mut hex = region(vec![
             with_leaders(with_skill(with_silver(unit("500"), 100_000), "COMB", 3), 3),
             with_silver(unit("700"), 1_000),
@@ -41268,12 +41301,16 @@ BUILD
             .collect();
 
         assert!(
-            told.contains(&codes::TEACHER_CANNOT_TEACH.as_str()),
-            "the orcs it bought are already there when it teaches: {findings:?}"
+            told.contains(&codes::LEADERS_AND_MEN_MIXED.as_str()),
+            "the orcs are refused: {findings:?}"
         );
         assert!(
-            !told.contains(&codes::TWO_MONTH_LONG_ORDERS.as_str()),
-            "a TEACH that cannot run claims no month, so the STUDY is not discarded: {findings:?}"
+            !told.contains(&codes::TEACHER_CANNOT_TEACH.as_str()),
+            "no orc arrives, so the leaders still teach: {findings:?}"
+        );
+        assert!(
+            told.contains(&codes::TWO_MONTH_LONG_ORDERS.as_str()),
+            "a TEACH that runs claims the month, so the STUDY is discarded: {findings:?}"
         );
     }
 
@@ -50131,12 +50168,11 @@ BUILD
 
     // --- teaching reads the state this month's orders leave, not the report's own (`ah-4a13`) ---
 
-    /// `rules/sequenceofevents` settles `BUY` before `TEACH`, so a teacher that recruits a
-    /// non-leader this month is ineligible from the moment its month runs, exactly as a report
-    /// that already showed the mixed race would be - and the mixed-race message, not the
-    /// report-era one, is what names the recruit.
+    /// `rules/sequenceofevents` settles `BUY` before `TEACH`, and a leader's `BUY` of a
+    /// non-leader is refused (`rules/playing_units`, `ah-u5rz`), so the teacher is still all
+    /// leaders when its month runs: it teaches, and the only warning is the refused recruit's.
     #[test]
-    fn teaching_after_orders_rejects_a_teacher_who_recruits_a_non_leader() {
+    fn teaching_after_orders_keeps_a_teacher_whose_non_leader_recruit_is_refused() {
         let region = ReportRegion {
             for_sale: vec![MarketItem {
                 amount: 20,
@@ -50171,15 +50207,10 @@ BUILD
                 )
             })
             .collect();
-        assert_eq!(teaching.len(), 1, "{findings:?}");
-        assert_eq!(
-            teaching[0].code,
-            codes::TEACHER_CANNOT_TEACH,
-            "no student-check finding follows the ineligible-teacher warning"
-        );
-        assert_eq!(
-            teaching[0].message,
-            "only leaders can teach; this unit also has 1 human"
+        assert!(teaching.is_empty(), "{findings:?}");
+        assert!(
+            codes(&findings).contains(&codes::LEADERS_AND_MEN_MIXED.as_str()),
+            "{findings:?}"
         );
     }
 
@@ -51953,14 +51984,14 @@ BUILD
 
     #[test]
     fn a_recruited_race_limits_study_after_the_market_phase() {
-        // A leader at the human combat ceiling. `data/LEAD` takes a leader to 5, so nothing stops
-        // this unit until the human it buys arrives - and `ah-ndp9` refuses that purchase for a
-        // mage, so this is pinned on a mundane skill instead.
+        // A high elf, which `data/HELF` takes to sailing 5, so nothing stops this unit until the
+        // human it buys arrives: `data/HUMN` stops sailing at 2. Not a leader, since
+        // `rules/playing_units` refuses a leader's recruiting of normal men (`ah-u5rz`).
         // 600 points, so the human that arrives dilutes the pool to 300 each - still level 4, so
         // it is the race ceiling this test is about that speaks, not `arrivals-lower-a-skill`.
-        let leader = with_skill_pts(
-            with_race(with_silver(unit("5"), 1000), 1, "leaders", "LEAD"),
-            "COMB",
+        let elf = with_skill_pts(
+            with_race(with_silver(unit("5"), 1000), 1, "high elves", "HELF"),
+            "SAIL",
             600,
         );
         let region = ReportRegion {
@@ -51970,12 +52001,12 @@ BUILD
                 tag: "HUMN".to_string(),
                 price: 38,
             }],
-            ..region(vec![leader])
+            ..region(vec![elf])
         };
 
         assert_eq!(
-            study_message(check(vec![region], "unit 5\nBUY 1 HUMN\nSTUDY COMB\n")),
-            "the human race cannot learn combat past level 4, and this unit is already there"
+            study_message(check(vec![region], "unit 5\nBUY 1 HUMN\nSTUDY SAIL\n")),
+            "the human race cannot learn sailing past level 2, and this unit is already at level 4"
         );
     }
 
@@ -64521,6 +64552,25 @@ BUILD
                     caravanserai_owner("901", 1, 0, 6),
                 ],
                 orders: "unit 900\nTRANSPORT 901 5 STON\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::LEADERS_AND_MEN_MIXED,
+                // A leader who is no mage buying orcs: `rules/playing_units` (`ah-u5rz`).
+                regions: vec![ReportRegion {
+                    for_sale: vec![MarketItem {
+                        amount: 10,
+                        name: "orcs".to_string(),
+                        tag: "ORC".to_string(),
+                        price: 38,
+                    }],
+                    ..region(vec![with_silver(
+                        with_race(unit("900"), 1, "leaders", "LEAD"),
+                        1000,
+                    )])
+                }],
+                orders: "unit 900\nBUY 1 ORC\n",
                 allowance: None,
                 unclaimed: None,
             },
