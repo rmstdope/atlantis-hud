@@ -16890,6 +16890,48 @@ fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> Shor
     }
 }
 
+/// What a not-enough-silver sentence states for `members` short `short` at `moment`: what they can
+/// have, so what their orders spend, and the month-end upkeep it names. The one answer both
+/// sentences format - a unit's own (a set of one) and a sharing hex's (its counted units) - so what
+/// counts as spending is decided here and cannot differ between a hex where somebody shares and one
+/// where nobody does (`ah-wka4`, after `ah-3qmk` and `ah-1dep` each had to be fixed on both paths).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SilverFigures {
+    figures: ShortfallFigures,
+    upkeep: i64,
+}
+
+/// [`SilverFigures`] for `members`: [`silver_can_have`], plus what their `GIVE`s and `TAKE`s to one
+/// another asked beyond what the source could draw on ([`silver_unfunded_between`]) - never silver
+/// they had, yet part of what their orders spend, or a gift far beyond a sharing hex's pool reads
+/// as a negative figure (`ah-j5s1`). A unit never moves silver to itself, so that is `0` for a set
+/// of one. The upkeep is what the members are left paying ([`unpaid_upkeep`]) when the sentence is
+/// read at the month's end, and nothing at any earlier moment, which settles before maintenance.
+fn silver_figures(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    members: &[&Ordered<'_>],
+    short: i64,
+    moment: ShortfallMoment,
+    walking: Option<&WalkingSilver>,
+) -> SilverFigures {
+    let ids: BTreeSet<&str> = members
+        .iter()
+        .map(|member| member.unit.unit_id.as_str())
+        .collect();
+    let can_have = silver_can_have(hex, ledger, members, moment, walking)
+        + silver_unfunded_between(ledger, &ids);
+    let upkeep = if moment == ShortfallMoment::MonthEnd {
+        ids.iter().map(|who| unpaid_upkeep(ledger, who)).sum()
+    } else {
+        0
+    };
+    SilverFigures {
+        figures: ShortfallFigures { short, can_have },
+        upkeep,
+    }
+}
+
 /// What `members` can have of silver, for a not-enough-silver sentence read at `moment`: the one
 /// answer both the unit sentence (one member) and the sharing hex's sentence (its counted units)
 /// give, so a receipt counted for one is counted for the other (`ah-w2ou`).
@@ -16900,8 +16942,8 @@ fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> Shor
 /// that the direction of transfer is reversed"). Silver moved between two members counts once;
 /// what such a move asked beyond what the receiver was credited - in a sharing hex the source is
 /// charged the whole ask - was never the members' silver, and is part of what they spend
-/// (`ah-j5s1`); that remainder is added by [`pool_silver_figures`], the one place a gift beyond
-/// the pool is counted (`ah-9bac`), and is always `0` for one unit. Nothing that leaves the set
+/// (`ah-j5s1`); that remainder is added by [`silver_figures`], the one place a gift beyond
+/// the pool is counted (`ah-9bac`, `ah-wka4`), and is always `0` for one unit. Nothing that leaves the set
 /// is taken off: a `GIVE` out, a discard, or a `TAKE` by an outsider is part of what the orders
 /// spend. The one exception is silver that reached one of the hex's own units outside the set: it
 /// is still in the hex and is not spending (`ah-3qmk`), for the unit sentence as for the hex's
@@ -16912,7 +16954,7 @@ fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> Shor
 /// Read as the ledger's own Give-phase balance - which has every receipt in, at the amount the
 /// ledger moved, including a gift its giver funded by a `CLAIM` - with what left the set added
 /// back from [`Ledger::silver_transfers`]. Moves between members cancel in the sum, once each
-/// one's unfunded remainder (charged less received) is added back by [`pool_silver_figures`].
+/// one's unfunded remainder (charged less received) is added back by [`silver_figures`].
 ///
 /// `Cast`, `Market`, `Study` and `MonthEnd` start from that same figure - everything above settles
 /// in the Give phase, before CAST, BUY and STUDY - and differ only by what was earned or received
@@ -17512,29 +17554,12 @@ fn pool_silver_figures(
                                 .any(|reduced| reduced.unit_id == o.unit.unit_id))))
         })
         .collect();
-    let can_have = silver_can_have(hex, ledger, &counted, moment, sharing.walking);
-
-    // ... and the same gift's other side: what it asked beyond the pool was never silver the
-    // members had, but is part of what their orders spend, so it is added to what they can have
-    // between the counted units, or a gift far beyond the pool reads as a negative figure
-    // (`ah-j5s1`). A move from a counted unit to one not counted is already in
-    // `silver_can_have`'s silver sent out - less what reached a faction-mate of the hex, which is
-    // not spending (`ah-3qmk`, `ah-1dep`).
-    let between_counted: BTreeSet<&str> = counted
-        .iter()
-        .map(|ordered| ordered.unit.unit_id.as_str())
-        .collect();
-    let can_have = can_have + silver_unfunded_between(ledger, &between_counted);
-
-    let upkeep = if moment == ShortfallMoment::MonthEnd {
-        counted
-            .iter()
-            .map(|o| unpaid_upkeep(ledger, &o.unit.unit_id))
-            .sum()
-    } else {
-        0
-    };
-    Some((ShortfallFigures { short, can_have }, upkeep))
+    // ... and what they can have and spend, from the one function the unit sentence reads too
+    // (`ah-wka4`): a gift between the counted units beyond the pool is part of what they spend,
+    // and a move to a faction-mate of the hex not counted is not spending (`ah-3qmk`, `ah-1dep`).
+    let SilverFigures { figures, upkeep } =
+        silver_figures(hex, ledger, &counted, short, moment, sharing.walking);
+    Some((figures, upkeep))
 }
 
 /// Which way a transfer crossed between a set of counted units and the hex's other units of our
@@ -17804,22 +17829,25 @@ fn report_shortfalls(
             // A GIVE's likewise, which runs before both (`ah-4k84`), and a cut `BUY`'s, at the
             // market (`ah-y70h`).
             let moment = unit_shortfall_moment(ledger, unit_id, short);
-            let (food, upkeep) = if moment == ShortfallMoment::MonthEnd {
-                (
-                    food_counted_in(ledger, unit_id),
-                    unpaid_upkeep(ledger, unit_id),
-                )
+            let food = if moment == ShortfallMoment::MonthEnd {
+                food_counted_in(ledger, unit_id)
             } else {
-                (0, 0)
+                0
             };
             // What the unit can have is the one answer the hex's sentence gives too (`ah-w2ou`):
             // what it was given or took this month counts, exactly as `short` already does
             // through the ledger's own `apply` (M2, `ah-jw85`), and so does what it claimed
-            // (`ah-6ak4`). The food is not silver it can have: it is the part of the fee food
-            // paid, counted on both sides so the sentence states the whole fee.
+            // (`ah-6ak4`). It is the unit as a set of one, read by the function the hex's sentence
+            // reads its counted units with (`ah-wka4`). The food is not silver it can have: it is
+            // the part of the fee food paid, counted on both sides so the sentence states the
+            // whole fee.
+            let SilverFigures {
+                figures: ShortfallFigures { can_have, .. },
+                upkeep,
+            } = silver_figures(hex, ledger, &[ordered], short, moment, None);
             let figures = ShortfallFigures {
                 short,
-                can_have: silver_can_have(hex, ledger, &[ordered], moment, None) + food,
+                can_have: can_have + food,
             };
             let mut finding = ordered.finding(
                 hex,
@@ -61429,6 +61457,130 @@ BUILD
                     .starts_with("short $200: this unit can have $200 and its orders spend $400"),
                 "{sentences:?}"
             );
+        }
+
+        // --- one reading of can-have and spend, with or without a sharer (`ah-wka4`) ---------
+
+        /// Mage 901 gives its $200 to faction-mate 902 and casts a Summon Wind costing $200;
+        /// 903 holds nothing and shares or not. `rules/share` lends only to a unit that "does not
+        /// have enough", so 903 adds nothing either way: the same orders, read with or without it.
+        fn gift_then_cast(third_shares: bool) -> ReportRegion {
+            let third = if third_shares {
+                sharing(unit("903"))
+            } else {
+                unit("903")
+            };
+            region(vec![
+                with_silver(
+                    with_item(
+                        with_item(
+                            with_skill(unit("901"), "SWIN", 3),
+                            75,
+                            "floater hides",
+                            "FLOA",
+                        ),
+                        75,
+                        "ironwood",
+                        "IRWD",
+                    ),
+                    200,
+                ),
+                unit("902"),
+                third,
+            ])
+        }
+
+        /// The orders [`gift_then_cast`] is read with.
+        const GIFT_THEN_CAST: &str =
+            "unit 901\nGIVE 902 200 SILV\nCAST Summon_Wind\nunit 902\nunit 903\n";
+
+        /// The one function both sentences format reads the unit alone exactly as it reads the
+        /// hex's counted units once 903 shares (`ah-wka4`).
+        #[test]
+        fn silver_figures_reads_one_unit_as_the_hex_reads_it_with_a_third_sharer() {
+            let rules = wind_for_silver_and_goods();
+            let read = |third_shares: bool, ids: &[&str]| {
+                let place = gift_then_cast(third_shares);
+                let orders = OrderedUnits::read(GIFT_THEN_CAST);
+                let hex = hex_with_transfers(
+                    &place,
+                    &orders,
+                    &[],
+                    Some(&rules),
+                    &BTreeSet::new(),
+                    &NO_UNITS_SHOWN,
+                );
+                let ledger = ledger_for(&hex, Some(&rules));
+                let members: Vec<&Ordered<'_>> = ids
+                    .iter()
+                    .map(|id| hex.find(id).expect("the unit is in the hex"))
+                    .collect();
+                silver_figures(&hex, &ledger, &members, 200, ShortfallMoment::Cast, None)
+            };
+            let alone = read(false, &["901"]);
+            assert_eq!(
+                alone,
+                SilverFigures {
+                    figures: ShortfallFigures {
+                        short: 200,
+                        can_have: 0
+                    },
+                    upkeep: 0
+                }
+            );
+            assert_eq!(read(true, &["901", "903"]), alone);
+        }
+
+        /// The acceptance of `ah-wka4`, end to end: with nobody sharing 901's own sentence speaks,
+        /// and once 903 shares the hex's does; the short, can-have and spend they state are the
+        /// same three figures, $200, $0 and $200 - the gift to 902 is still in the hex and is not
+        /// spending (`ah-3qmk`, `ah-1dep`; `rules/give`).
+        #[test]
+        fn the_same_orders_read_the_same_with_and_without_a_third_sharer() {
+            let rules = wind_for_silver_and_goods();
+            let figures = |sentence: &str| -> Vec<i64> {
+                sentence
+                    .split('$')
+                    .skip(1)
+                    .map(|rest| {
+                        rest.chars()
+                            .take_while(char::is_ascii_digit)
+                            .collect::<String>()
+                            .parse()
+                            .expect("a figure follows each $")
+                    })
+                    .collect()
+            };
+            let review = |third_shares: bool| {
+                review_turn(
+                    &report(vec![gift_then_cast(third_shares)]),
+                    GIFT_THEN_CAST,
+                    Some(&rules),
+                    CheckOptions::default(),
+                )
+            };
+            let silver_sentences = |review: &TurnReview| -> Vec<String> {
+                review
+                    .findings
+                    .iter()
+                    .filter(|finding| finding.code.as_str() == "not-enough-silver")
+                    .map(|finding| finding.message.clone())
+                    .collect()
+            };
+
+            let alone = silver_sentences(&review(false));
+            assert_eq!(alone.len(), 1, "{alone:?}");
+            assert!(alone[0].starts_with("short $200: this unit"), "{alone:?}");
+
+            let shared = silver_sentences(&review(true));
+            let hex: Vec<&String> = shared
+                .iter()
+                .filter(|sentence| sentence.starts_with("the units in this hex"))
+                .collect();
+            assert_eq!(hex.len(), 1, "{shared:?}");
+
+            assert_eq!(figures(&alone[0])[..3], [200, 0, 200], "{alone:?}");
+            assert_eq!(figures(hex[0])[..3], figures(&alone[0])[..3], "{shared:?}");
         }
 
         // --- what a refused cast tells the ITEMS column (`ah-44at`) ----------------------------
