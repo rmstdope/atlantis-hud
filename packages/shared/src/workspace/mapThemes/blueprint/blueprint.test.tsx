@@ -18,11 +18,15 @@ import {
 } from "../hexView";
 import { blueprint, HATCHES } from "./index";
 import {
+  BESIDE_GAP_PX,
+  besideLine,
   callouts,
   floorPlan,
   hatchStrength,
   markFootprint,
   MOCKUP_RADIUS,
+  noteWidthPx,
+  pairsNote,
   revisionNote,
   STATIONS,
   worksBoxes,
@@ -301,6 +305,34 @@ describe("the revision note", () => {
     expect(revisionNote({ hatched: false, ageInTurns: 8 })).toBeNull();
     expect(revisionNote({ hatched: true, ageInTurns: 0 })).toBeNull();
     expect(revisionNote({ hatched: true, ageInTurns: null })).toBeNull();
+  });
+});
+
+describe("the battle star and the revision note on one line (ah-1n1z)", () => {
+  it("measures the note in the lettering's own advance widths at its 10px size", () => {
+    expect(noteWidthPx("rev. t-2")).toBeCloseTo(34.4, 1);
+    expect(noteWidthPx("rev. t-12")).toBeGreaterThan(noteWidthPx("rev. t-2"));
+    expect(noteWidthPx("rev. t-138")).toBeGreaterThan(noteWidthPx("rev. t-12"));
+  });
+
+  it("pairs them only on a stale hex that also had a battle", () => {
+    const stale = { hatched: true, ageInTurns: 2 };
+    expect(pairsNote({ ...stale, battle: "own" })).toBe(true);
+    expect(pairsNote({ ...stale, battle: "other" })).toBe(true);
+    expect(pairsNote({ ...stale, battle: null })).toBe(false);
+    expect(pairsNote({ hatched: false, ageInTurns: null, battle: "own" })).toBe(false);
+  });
+
+  it("centres the pair: the star moves left by half the gap and note, the note starts a gap past it", () => {
+    for (const note of ["rev. t-2", "rev. t-12", "rev. t-138"]) {
+      const width = noteWidthPx(note);
+      const { starShiftPx, noteShiftPx } = besideLine(note);
+
+      expect(starShiftPx).toBeCloseTo(-(BESIDE_GAP_PX + width) / 2, 6);
+      expect(noteShiftPx - starShiftPx).toBeCloseTo(BESIDE_GAP_PX, 6);
+      // Centred: as far as the star moved left, the note's end reaches right of the star's tip.
+      expect(noteShiftPx + width).toBeCloseTo(-starShiftPx, 6);
+    }
   });
 });
 
