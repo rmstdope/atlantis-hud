@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { HexNode } from "../../../hexMapModel";
 import { FADE_LIMIT, NAMED_FOG_OPACITY } from "../../mapHexView";
+import { HEX_RADIUS } from "../../mapViewport";
 import { TERRAIN_KINDS } from "../terrain";
 import {
   CONGESTED_CENTRE,
@@ -18,6 +19,7 @@ import {
 } from "../hexView";
 import { blueprint, HATCHES } from "./index";
 import {
+  BESIDE_DROP_PX,
   BESIDE_GAP_PX,
   besideLine,
   callouts,
@@ -28,6 +30,7 @@ import {
   noteWidthPx,
   pairsNote,
   revisionNote,
+  STAR_REACH,
   STATIONS,
   worksBoxes,
 } from "./paint";
@@ -151,7 +154,10 @@ describe("terrain as drafting hatches", () => {
     expect(svg).toContain("url(#bp-hatch-lake)");
     expect(svg).toContain("bp-terrain-lake");
     // The sea's wave, flattened: the same tile with a gentler swell.
-    expect({ ...HATCHES.lake, line: undefined }).toEqual({ ...HATCHES.ocean, line: undefined });
+    expect({ ...HATCHES.lake, line: undefined }).toEqual({
+      ...HATCHES.ocean,
+      line: undefined,
+    });
     expect(HATCHES.lake.line).not.toBe(HATCHES.ocean.line);
   });
 
@@ -320,7 +326,9 @@ describe("the battle star and the revision note on one line (ah-1n1z)", () => {
     expect(pairsNote({ ...stale, battle: "own" })).toBe(true);
     expect(pairsNote({ ...stale, battle: "other" })).toBe(true);
     expect(pairsNote({ ...stale, battle: null })).toBe(false);
-    expect(pairsNote({ hatched: false, ageInTurns: null, battle: "own" })).toBe(false);
+    expect(pairsNote({ hatched: false, ageInTurns: null, battle: "own" })).toBe(
+      false,
+    );
   });
 
   it("centres the pair: the star moves left by half the gap and note, the note starts a gap past it", () => {
@@ -333,6 +341,81 @@ describe("the battle star and the revision note on one line (ah-1n1z)", () => {
       // Centred: as far as the star moved left, the note's end reaches right of the star's tip.
       expect(noteShiftPx + width).toBeCloseTo(-starShiftPx, 6);
     }
+  });
+
+  const staleBattle = (changes: Partial<HexView> = {}) =>
+    viewWith({
+      battle: "own",
+      hatched: true,
+      ageInTurns: 2,
+      coords: "32,50",
+      settlement: null,
+      ...changes,
+    });
+  const beside = (svg: string, attribute: string) => {
+    const at = svg.indexOf(attribute);
+    expect(at, attribute).toBeGreaterThan(-1);
+    const open = svg.lastIndexOf('class="bp-beside"', at);
+    return open === -1
+      ? null
+      : svg.slice(svg.lastIndexOf("<", open), svg.indexOf(">", open) + 1);
+  };
+  const room = (svg: string, attribute: string) => {
+    const at = svg.indexOf(attribute);
+    const open = svg.lastIndexOf("data-steps-down", at);
+    return /--mark-room:([^;"]+)/.exec(
+      svg.slice(open, svg.indexOf(">", open)),
+    )?.[1];
+  };
+
+  it("moves either kind of star left by besideLine's shift on a stale hex, and only there", () => {
+    const { starShiftPx } = besideLine("rev. t-2");
+    for (const battle of ["own", "other"] as const) {
+      const wrapper = beside(
+        marks([staleBattle({ battle })]),
+        'data-mark="battle"',
+      );
+      expect(wrapper, battle).toContain(
+        `--beside-x:${Number(starShiftPx.toFixed(3))}px`,
+      );
+    }
+    expect(
+      beside(
+        marks([staleBattle({ hatched: false, ageInTurns: null })]),
+        'data-mark="battle"',
+      ),
+    ).toBeNull();
+  });
+
+  it("letters the note from the star's tip on the star's line, dropping with the star", () => {
+    const view = staleBattle();
+    const svg = terrain([view]);
+    const note = elementWith(svg, 'data-note="rev"');
+    const scale = HEX_RADIUS / MOCKUP_RADIUS;
+
+    expect(note).toContain('text-anchor="start"');
+    expect(note).toContain(`x="${view.at.x + STAR_REACH * scale}"`);
+    expect(note).toContain(`y="${view.at.y + STATIONS.battle.y * scale}"`);
+    const wrapper = beside(svg, 'data-note="rev"');
+    expect(wrapper).toContain(
+      `--beside-x:${Number(besideLine("rev. t-2").noteShiftPx.toFixed(3))}px`,
+    );
+    expect(wrapper).toContain(`--beside-y:${BESIDE_DROP_PX}px`);
+    expect(room(svg, 'data-note="rev"')).toBe(
+      room(marks([view]), 'data-mark="battle"'),
+    );
+  });
+
+  it("leaves the note centred at its own station on a stale hex without a battle", () => {
+    const view = staleBattle({ battle: null });
+    const svg = terrain([view]);
+    const note = elementWith(svg, 'data-note="rev"');
+
+    expect(note).toContain('text-anchor="middle"');
+    expect(note).toContain(
+      `x="${view.at.x + STATIONS.note.x * (HEX_RADIUS / MOCKUP_RADIUS)}"`,
+    );
+    expect(beside(svg, 'data-note="rev"')).toBeNull();
   });
 });
 
@@ -531,6 +614,19 @@ describe("the room its marks take, for the biome symbols to keep clear of", () =
 });
 
 describe("the stylesheet", () => {
+  it("moves a mark sharing a line by its screen px, at close zoom only (ah-1n1z)", () => {
+    const rules = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter(([, selector]) =>
+      selector.includes(".bp-beside"),
+    );
+
+    expect(rules).toHaveLength(1);
+    const [, selector, body] = rules[0];
+    expect(selector.trim()).toBe(".map-theme-blueprint.map-near .bp-beside");
+    expect(body).toMatch(
+      /transform:\s*translate\(\s*calc\(var\(--beside-x[^)]*\)\s*\/\s*var\(--map-scale[^)]*\)\s*\/\s*var\(--beside-unit[^)]*\)\),\s*calc\(var\(--beside-y[^)]*\)\s*\/\s*var\(--map-scale[^)]*\)\s*\/\s*var\(--beside-unit[^)]*\)\)\s*\)/,
+    );
+  });
+
   it("colours the map's own roads, border and wall from the drawing's ink and paper", () => {
     const rule = /\.map-theme-blueprint\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
 
