@@ -9,10 +9,12 @@ import {
   popupAsText,
   popupForCell,
   popupLabelInk,
+  popupValueInk,
   reportedFlags,
   reportedItems,
   type ColumnPopup,
-  type PopupFacts
+  type PopupFacts,
+  uncountedSilverShipments
 } from "./unitCellPopup";
 
 const unit = (overrides: Partial<PreviewedUnit> = {}): PreviewedUnit => ({
@@ -4414,5 +4416,213 @@ describe("a refused cast in the items popup", () => {
     expect(popup.warning).toBe(
       "A red figure in the cell: this unit ends the month 75 floater hides short. “+ ?” in the cell: this month is only partly counted, so this list may be short."
     );
+  });
+});
+
+// `ah-9qzs`: silver a TRANSPORT moves reads the way the ITEMS breakdown words a shipment, apart
+// from a GIVE, and a silver TRANSPORT the forecast cannot count is a dimmed line in no total.
+describe("silver moved by TRANSPORT", () => {
+  type Issue = NonNullable<PreviewedUnit["transportTargetIssues"]>[number];
+  const issue = (overrides: Partial<Issue> = {}): Issue => ({
+    to: "999",
+    amount: 200,
+    tag: "SILV",
+    reason: "eligibilityUnknown",
+    orderIndex: 0,
+    reach: null,
+    toUnshown: true,
+    ...overrides
+  });
+  const silverPopup = (sender: PreviewedUnit, silver: Parameters<typeof aUnitSilver>[0]) =>
+    columnPopup(popupForCell("silver", sender, facts({ silver: aUnitSilver(silver) })));
+
+  it("the sender reads sent, to the unit by number", () => {
+    const popup = silverPopup(unit({ own: true, unitId: "4670", name: "Njosn" }), {
+      held: 5,
+      atMonthEnd: 0,
+      changes: [{ amount: -5, cause: "sent", line: 2, other: "unit 8451" }]
+    });
+    expect(popup.lines.slice(1)).toEqual([{ label: "sent", value: "-5", tone: "down", why: "to unit 8451" }]);
+  });
+
+  it("the receiver reads received, from the sender by name and number", () => {
+    const popup = silverPopup(unit({ own: true, unitId: "8451", name: "Unit" }), {
+      held: 0,
+      atMonthEnd: 5,
+      changes: [{ amount: 5, cause: "received", line: null, other: "Njosn (4670)" }]
+    });
+    expect(popup.lines.slice(1)).toEqual([
+      { label: "received", value: "+5", tone: "up", why: "from Njosn (4670)" }
+    ]);
+  });
+
+  it("a GIVE and a TRANSPORT in one month are two lines on each side, never one", () => {
+    const sender = silverPopup(unit({ own: true }), {
+      held: 5,
+      atMonthEnd: 0,
+      changes: [
+        { amount: -2, cause: "gave-away", line: 2, other: "unit 8451" },
+        { amount: -3, cause: "sent", line: 3, other: "unit 8451" }
+      ]
+    });
+    expect(sender.lines.slice(1)).toEqual([
+      { label: "gave away", value: "-2", tone: "down", why: "to unit 8451" },
+      { label: "sent", value: "-3", tone: "down", why: "to unit 8451" }
+    ]);
+    const receiver = silverPopup(unit({ own: true }), {
+      held: 0,
+      atMonthEnd: 5,
+      changes: [
+        { amount: 2, cause: "was-given", line: 2, other: "Njosn (4670)" },
+        { amount: 3, cause: "received", line: null, other: "Njosn (4670)" }
+      ]
+    });
+    expect(receiver.lines.slice(1)).toEqual([
+      { label: "was given", value: "+2", tone: "up", why: "from Njosn (4670)" },
+      { label: "received", value: "+3", tone: "up", why: "from Njosn (4670)" }
+    ]);
+  });
+
+  it("received silver from two senders is a line per sender", () => {
+    const popup = silverPopup(unit({ own: true }), {
+      held: 0,
+      atMonthEnd: 8,
+      changes: [
+        { amount: 5, cause: "received", line: null, other: "Njosn (4670)" },
+        { amount: 3, cause: "received", line: null, other: "Ship3 (4672)" }
+      ]
+    });
+    expect(popup.lines.slice(1)).toEqual([
+      { label: "received", value: "+5", tone: "up", why: "from Njosn (4670)" },
+      { label: "received", value: "+3", tone: "up", why: "from Ship3 (4672)" }
+    ]);
+  });
+
+  it("a receiver the report does not show is a not counted line saying so", () => {
+    expect(uncountedSilverShipments(unit({ transportTargetIssues: [issue()] }))).toEqual([
+      {
+        label: "not counted",
+        value: "(\u2212200)",
+        why: "sent to unit 999, which your report does not show",
+        uncounted: true
+      }
+    ]);
+  });
+
+  it("another faction's unit that may not accept is a not counted line saying so", () => {
+    for (const reason of ["eligibilityUnknown", "acceptanceUnknown"] as const) {
+      expect(
+        uncountedSilverShipments(
+          unit({ transportTargetIssues: [issue({ to: "5120", reason, toUnshown: false })] })
+        )
+      ).toEqual([
+        {
+          label: "not counted",
+          value: "(\u2212200)",
+          why: "sent to unit 5120, which may not accept it",
+          uncounted: true
+        }
+      ]);
+    }
+  });
+
+  it("a refusal, a reach issue, other goods, several goods or nothing moved draw no line", () => {
+    const none: Issue[] = [
+      issue({ reason: "notQuartermaster", toUnshown: false }),
+      issue({ reason: "notCaravanseraiOwner", toUnshown: false }),
+      issue({ reason: "tooFarToShip", toUnshown: false }),
+      issue({ reason: "distanceUnmeasured", toUnshown: false }),
+      issue({ tag: "STON" }),
+      issue({ tag: "" }),
+      issue({ amount: 0 })
+    ];
+    expect(uncountedSilverShipments(unit({ transportTargetIssues: none }))).toEqual([]);
+    expect(uncountedSilverShipments(unit())).toEqual([]);
+  });
+
+  it("the tag is matched whatever its case, and several lines keep document order", () => {
+    expect(
+      uncountedSilverShipments(
+        unit({
+          transportTargetIssues: [
+            issue({ to: "999", amount: 200, tag: "silv" }),
+            issue({ to: "5120", amount: 30, toUnshown: false, orderIndex: 1 })
+          ]
+        })
+      ).map((line) => line.why)
+    ).toEqual([
+      "sent to unit 999, which your report does not show",
+      "sent to unit 5120, which may not accept it"
+    ]);
+  });
+
+  it("the not counted line sits after the counted lines and before upkeep, month end unchanged", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true, transportTargetIssues: [issue()] }),
+        facts({
+          countUpkeep: true,
+          silver: aUnitSilver({
+            held: 500,
+            atMonthEnd: 480,
+            upkeep: 10,
+            changes: [{ amount: -10, cause: "gave-away", line: 2, other: "unit 8451" }]
+          })
+        })
+      )
+    );
+    expect(popup.lines.map((line) => line.label)).toEqual(["silver", "gave away", "not counted", "upkeep"]);
+    expect(popup.lines[0]).toEqual(
+      columnPopup(
+        popupForCell(
+          "silver",
+          unit({ own: true }),
+          facts({
+            countUpkeep: true,
+            silver: aUnitSilver({
+              held: 500,
+              atMonthEnd: 480,
+              upkeep: 10,
+              changes: [{ amount: -10, cause: "gave-away", line: 2, other: "unit 8451" }]
+            })
+          })
+        )
+      ).lines[0]
+    );
+    expect(popupAsText(popup)).toContain(
+      "not counted (\u2212200), sent to unit 999, which your report does not show."
+    );
+  });
+
+  it("a dissolving unit draws no not counted line", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true, transportTargetIssues: [issue()] }),
+        facts({ dissolving: true, silver: aUnitSilver({ held: 500, atMonthEnd: 500 }) })
+      )
+    );
+    expect(popup.lines).toEqual([]);
+  });
+
+  it("a month that cannot be added up draws no not counted line", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true, transportTargetIssues: [issue()] }),
+        facts({ silver: aUnitSilver({ held: 500, atMonthEnd: null, doubt: "unknown-tax-base" }) })
+      )
+    );
+    expect(popup.lines.map((line) => line.label)).not.toContain("not counted");
+  });
+
+  it("a not counted line is drawn dim and italic on both sides", () => {
+    const [line] = uncountedSilverShipments(unit({ transportTargetIssues: [issue()] }));
+    expect(popupLabelInk(line!)).toBe("text-ink-dim italic");
+    expect(popupValueInk(line!)).toBe("text-ink-dim italic");
+    expect(popupValueInk({ label: "sent", value: "-5", tone: "down" })).toBe("text-ink-soft");
+    expect(popupValueInk({ label: "x", value: "1", struck: true })).toBe("text-ink-dim line-through");
+    expect(popupValueInk({ label: "x", value: "1", stress: "aside" })).toBe("text-ink-dim");
   });
 });
