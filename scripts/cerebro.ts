@@ -1,8 +1,8 @@
 /**
  * Where this repository mounts cerebro, and the one way the consumer reaches its scripts (ah-r5hr).
  *
- * The mount used to be spelled out at every caller. When cerebro moved from `.claude/cerebro` to
- * `.cerebro/cerebro` the consumer's own callers were missed: check:fast's disk preflight and its
+ * The mount used to be spelled out at every caller. When cerebro last moved, to
+ * `.cerebro/cerebro`, the consumer's own callers were missed: check:fast's disk preflight and its
  * workload classifier both spawned scripts that were no longer there, and `pnpm run sightings` ran
  * nothing. Moving the submodule again is now this constant plus `.gitmodules`, and
  * `scripts/cerebro.test.ts` fails if the two disagree or a caller spells the mount itself.
