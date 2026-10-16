@@ -388,7 +388,7 @@ test("ctrl+A picks every row the filter is showing, and typing in the filter nar
   await workspace(page);
   const box = page.getByLabel("Filter units");
 
-  await box.fill("scout");
+  await box.fill("Cartographers");
   const shown = await rows(page).count();
   expect(shown).toBeGreaterThan(2);
 
@@ -397,9 +397,9 @@ test("ctrl+A picks every row the filter is showing, and typing in the filter nar
   await expect(page.getByTestId("unit-bulk-line")).toContainText(`${shown} units picked.`);
 
   // E1: a row that leaves the view leaves the pick, so the count and the wash always agree.
-  // The filter matches one joined string per row - name, unit number, faction - so this narrows
-  // "scout" to the scouts whose unit number starts with a 1.
-  await box.fill("scout 1");
+  // The filter matches each field on its own (`ah-ykac`), so a narrowing has to stay inside one:
+  // the Cartographers' two Town Jugglers are the only jugglers in this hex.
+  await box.fill("juggler");
   const narrowed = await rows(page).count();
   expect(narrowed).toBeGreaterThan(1);
   expect(narrowed).toBeLessThan(shown);
