@@ -22,6 +22,7 @@ function rowTitle(entry: PaletteEntry): string {
   return [
     `${entry.label}${standing?.mark ?? ""}`,
     entry.faction?.label,
+    entry.count?.text,
     entry.lastSeenTurn !== undefined ? `last seen turn ${entry.lastSeenTurn}` : undefined,
     standing?.attitude.word,
     kindLabel(entry)
@@ -199,6 +200,15 @@ export function CommandPalette({
                       }`}
                     >
                       {entry.faction.label}
+                    </span>
+                  ) : null}
+                  {entry.count ? (
+                    <span
+                      className={`shrink-0 whitespace-nowrap text-pane-sm ${
+                        entry.count.quiet ? "italic text-ink-dim" : "text-ink-soft"
+                      }`}
+                    >
+                      {entry.count.text}
                     </span>
                   ) : null}
                   {entry.lastSeenTurn !== undefined ? (

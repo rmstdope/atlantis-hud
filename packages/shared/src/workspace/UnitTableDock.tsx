@@ -218,6 +218,8 @@ const NO_UNITS: ReportUnit[] = [];
 export type UnitTableDockHandle = {
   /** Shows one faction's units: selects `Other factions` and pins it. */
   showForeignFaction(pin: FactionPin): void;
+  /** Shows one Army's units: makes it the source, as its rail entry does (ah-mlls.4). */
+  showArmy(armyId: string): void;
 };
 
 type UnitTableDockProps = {
@@ -395,8 +397,14 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   const refocusWanted = useRef(false);
   // The strip's ✕, so a pin that leaves the table empty has somewhere to put the keyboard.
   const unpinRef = useRef<HTMLButtonElement | null>(null);
-  // Set by `showForeignFaction`; spent by the effect below, once the rows it asks for exist.
-  const focusFirstWanted = useRef(false);
+  // Set by `showForeignFaction` and `showArmy`; spent by the effect below, once the rows it asks
+  // for exist. What it holds is where the keyboard goes instead when there turn out to be none.
+  const focusFirstWanted = useRef<(() => void) | null>(null);
+  // Counts the requests, so one that changes nothing else - the Army already on screen, chosen
+  // again from the palette - still re-runs the effects that spend it.
+  const [focusAsked, setFocusAsked] = useState(0);
+  // The rail and table together, so an empty Army's own rail entry can be found to take the focus.
+  const body = useRef<HTMLDivElement | null>(null);
 
   const regionId = hex?.regionId ?? null;
 
@@ -615,15 +623,31 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   const showForeignFaction = useCallback((next: FactionPin) => {
     setSource(FOREIGN_SOURCE);
     setPin(next);
-    focusFirstWanted.current = true;
+    focusFirstWanted.current = () => unpinRef.current?.focus();
+    setFocusAsked((count) => count + 1);
   }, []);
-  useImperativeHandle(ref, () => ({ showForeignFaction }), [showForeignFaction]);
+
+  /**
+   * Shows one Army's units, for the command palette's Army rows - the same change a click on the
+   * Army's rail entry makes. With no rows to land on, the keyboard goes to that rail entry rather
+   * than staying behind on something the pane no longer shows.
+   */
+  const showArmy = useCallback((armyId: string) => {
+    setSource({ kind: "army", armyId });
+    focusFirstWanted.current = () =>
+      body.current
+        ?.querySelector<HTMLElement>(`[data-testid="unit-source-army-${CSS.escape(armyId)}"]`)
+        ?.focus();
+    setFocusAsked((count) => count + 1);
+  }, []);
+  useImperativeHandle(ref, () => ({ showForeignFaction, showArmy }), [showForeignFaction, showArmy]);
 
   useEffect(() => {
-    if (!focusFirstWanted.current) {
+    const fallback = focusFirstWanted.current;
+    if (!fallback) {
       return;
     }
-    focusFirstWanted.current = false;
+    focusFirstWanted.current = null;
     // The first row *after* sorting and filtering: the row the eye lands on (round 3, Q2). It is
     // also the cursor, so the Unit panel fills in at once.
     const first = visible[0];
@@ -634,9 +658,9 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       // The existing scroll-into-view-then-focus machinery, not a second focus effect.
       refocusWanted.current = true;
     } else {
-      unpinRef.current?.focus();
+      fallback();
     }
-  }, [visible, selectUnit]);
+  }, [visible, selectUnit, focusAsked]);
 
   // E1: the filter narrows the pick, and so does a turn load - `visible` is rebuilt from the new
   // report, so a picked unit the new turn does not mention is dropped, which needs no case of its
@@ -738,7 +762,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       refocusWanted.current = false;
       row.focus();
     }
-  }, [scroller, cursor, start, end]);
+  }, [scroller, cursor, start, end, focusAsked]);
 
   /**
    * The row the pointer has rested on, and where it rested.
@@ -1301,7 +1325,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         </div>
       }
     >
-      <div className="flex h-full min-h-0">
+      <div ref={body} className="flex h-full min-h-0">
         <UnitSourceRail
           source={source}
           onSource={setSource}

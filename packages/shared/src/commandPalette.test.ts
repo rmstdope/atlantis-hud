@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  armyCountLabel,
   buildPaletteEntries,
   filterPalette,
   paletteKeyReduce,
@@ -17,9 +18,11 @@ function of(...rows: Array<[PaletteEntry["kind"], string]>): PaletteEntry[] {
 }
 
 function entries(
-  gameData?: Parameters<typeof buildPaletteEntries>[0]["gameData"]
+  gameData?: Parameters<typeof buildPaletteEntries>[0]["gameData"],
+  armies: Parameters<typeof buildPaletteEntries>[0]["armies"] = []
 ): PaletteEntry[] {
   return buildPaletteEntries({
+    armies,
     ownUnits: [
       { unitId: "18642", name: "Seven of Eight", run: noop },
       { unitId: "13401", name: "Drones", run: noop }
@@ -118,6 +121,7 @@ describe("buildPaletteEntries", () => {
   it("offers a stale unit with its own id, historical marker, and selection callback", () => {
     let selected = false;
     const stale = buildPaletteEntries({
+      armies: [],
       ownUnits: [{ unitId: "18642", name: "Seven of Eight", run: noop }],
       foreignUnits: [],
       staleUnits: [
@@ -160,6 +164,7 @@ describe("buildPaletteEntries", () => {
 
     function withForeign(onRun: (unitId: string) => void = noop): PaletteEntry[] {
       return buildPaletteEntries({
+        armies: [],
         ownUnits: [{ unitId: "518", name: "Wardrobe Guard", run: noop }],
         foreignUnits: [
           {
@@ -280,6 +285,7 @@ describe("factions in the palette (ah-mlls.3)", () => {
 
   it("comes right after the towns and cities", () => {
     const kinds = buildPaletteEntries({
+      armies: [],
       ownUnits: [],
       foreignUnits: [],
       staleUnits: [],
@@ -298,6 +304,7 @@ describe("factions in the palette (ah-mlls.3)", () => {
 
   it("names a nameless faction by its number", () => {
     const [nameless] = buildPaletteEntries({
+      armies: [],
       ownUnits: [],
       foreignUnits: [],
       staleUnits: [],
@@ -486,6 +493,7 @@ describe("game data in the palette", () => {
 
   it("offers no game data when the ruleset has not loaded", () => {
     const without = buildPaletteEntries({
+      armies: [],
       ownUnits: [],
       foreignUnits: [],
       staleUnits: [],
@@ -590,6 +598,7 @@ describe("settlementPaletteRows (ah-mlls.2)", () => {
 
 describe("settlements in the palette (ah-mlls.2)", () => {
   const built = buildPaletteEntries({
+    armies: [],
     ownUnits: [{ unitId: "18642", name: "Seven of Eight", run: noop }],
     foreignUnits: [],
     staleUnits: [
@@ -651,5 +660,51 @@ describe("settlements in the palette (ah-mlls.2)", () => {
       "structure"
     ]);
     expect(shown.map((entry) => entry.id)).toContain("settlement-1:12,34");
+  });
+});
+
+describe("Armies in the palette (ah-mlls.4)", () => {
+  const armies = [
+    { armyId: "a1", name: "Iron Guard", shownCount: 5, run: noop },
+    { armyId: "a2", name: "Seven Seas", shownCount: 1, run: noop },
+    { armyId: "a3", name: "Old Watch", shownCount: 0, run: noop }
+  ];
+
+  it("counts what this turn's report shows, in the words the acceptance fixes", () => {
+    expect(armyCountLabel(5)).toEqual({ text: "5 units", quiet: false });
+    expect(armyCountLabel(1)).toEqual({ text: "1 unit", quiet: false });
+    expect(armyCountLabel(0)).toEqual({ text: "no units this turn", quiet: true });
+  });
+
+  it("lists the Armies first, in the order given, before the player's own units", () => {
+    const built = entries(undefined, armies);
+    expect(built.slice(0, 4).map((entry) => [entry.kind, entry.label])).toEqual([
+      ["army", "Iron Guard"],
+      ["army", "Seven Seas"],
+      ["army", "Old Watch"],
+      ["unit", "Seven of Eight (18642)"]
+    ]);
+    expect(built[0]).toMatchObject({ id: "army-a1", count: { text: "5 units", quiet: false } });
+    expect(built[2]?.count).toEqual({ text: "no units this turn", quiet: true });
+  });
+
+  it("adds nothing when there are no Armies", () => {
+    expect(entries().some((entry) => entry.kind === "army")).toBe(false);
+  });
+
+  it("finds an Army by its own name only - the count is not searched", () => {
+    const shown = filterPalette(entries(undefined, armies), "units");
+    expect(shown.some((entry) => entry.kind === "army")).toBe(false);
+    const iron = filterPalette(entries(undefined, armies), "iron");
+    expect(iron[0]).toMatchObject({ kind: "army", label: "Iron Guard" });
+  });
+
+  it("gives the best-matching Army a seat at the top among many unit matches", () => {
+    const crowd = of(
+      ...Array.from({ length: 30 }, (_, at) => ["unit", `Seven Scouts ${at}`] as [PaletteEntry["kind"], string]),
+      ["army", "Northern Seven"]
+    );
+    const shown = filterPalette(crowd, "seven");
+    expect(shown.slice(0, 2).map((entry) => entry.kind)).toContain("army");
   });
 });
