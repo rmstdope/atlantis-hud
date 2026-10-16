@@ -214,4 +214,13 @@ fn a_founder_left_uncertain_by_a_give_is_not_called_short() {
     );
     let result = validate_with(&text, "GIVE 7001 10 WAGO\n");
     assert_eq!(findings(&result, CODE), Vec::<String>::new());
+    // Stranger really stands in the hex, so the gift is the uncertain kind and not one that gives
+    // nothing: no warning names it as missing.
+    assert_eq!(
+        findings(&result, "give-target-not-here"),
+        Vec::<String>::new()
+    );
+    // And the control: the same ten wagons definitely gone leave the founding short.
+    let discarded = validate_with(&text, "GIVE 0 10 WAGO\n");
+    assert_eq!(findings(&discarded, CODE).len(), 1, "{discarded:?}");
 }

@@ -4673,16 +4673,14 @@ fn apply_transfers(
                                 line: transfer.line,
                             },
                         );
+                        // Never men: with the catalogue this walk always has, men to another
+                        // faction are refused and to an unshown number give nothing (`ah-xaem`),
+                        // so only goods are ever uncertain here.
                         source_state.items_unknowable = true;
-                        if is_man {
-                            // Men that may or may not have left cannot be weighed, so no skill
-                            // reading of this unit survives the gift either.
-                            source_state.doubted = true;
-                        }
                         continue;
                     }
-                    // Unreachable for a GIVE: a `Nowhere` receiver returned above. A TAKE always
-                    // reaches here as `Ours`.
+                    // Unreachable for a GIVE: a receiver that `gives_nothing()` returned above. A
+                    // TAKE always reaches here as `Ours`.
                     GiveOutcome::NoTarget => continue,
                     GiveOutcome::Moves => {}
                 }
@@ -52934,11 +52932,15 @@ BUILD
             );
         }
 
-        /// Where this bead meets `ah-t8ei`: `rules/magic` refuses a mage's gift of men outright
-        /// ("mages may not GIVE men at all"), whatever the target, so that *known* refusal wins over
-        /// this bead's "cannot be told". The mage check sits ahead of the outcome table on all three
-        /// surfaces; put it below and this unit would quietly acquire an uncertain tag, unknowable
-        /// holdings and a `+ ?` for an order the game will simply refuse.
+        /// Where `ah-66yi` meets `ah-t8ei`: `rules/magic` refuses a mage's gift of men outright
+        /// ("mages may not GIVE men at all"), whatever the target. The mage check sits ahead of the
+        /// outcome table on all three surfaces, so the refusal holds even toward one of our own
+        /// units, where the table alone would move the men.
+        ///
+        /// The target is our own unit 2391 so the control can tell: the same men from a unit that
+        /// is not a mage do move. A foreign target refuses men by the factional rule and a number
+        /// the report never prints receives nothing (`ah-xaem`), so neither would show the mage
+        /// check doing anything.
         #[test]
         fn a_mages_gift_of_men_is_refused_rather_than_left_uncertain() {
             let mage = with_skill(
@@ -52949,10 +52951,11 @@ BUILD
             );
 
             with_a_ledger(
-                region(vec![mage]),
-                "unit 2390\nGIVE 9999 ALL ORC\n",
+                region(vec![mage, unit("2391")]),
+                "unit 2390\nGIVE 2391 ALL ORC\n",
                 |ledger| {
                     assert_eq!(balance_of(ledger, "2390", "ORC"), 10);
+                    assert_eq!(balance_of(ledger, "2391", "ORC"), 0);
                     assert!(
                         ledger.state.uncertain.is_empty(),
                         "the refusal is known, so nothing is left unresolved: {:?}",
@@ -52966,24 +52969,16 @@ BUILD
                 },
             );
 
-            // The control: the same men from a unit that is not a mage, to a visible unit of another
-            // faction. They are refused too, but by `rules/give`'s factional rule - so the ledger
-            // reaches the same "followed to its end, nothing moved" answer by the other route, and
-            // the mage check above is not what made it. (A number the report never prints was the
-            // control until `ah-xaem`; it now gives nothing at all, men included.)
+            // The control: the same men from a unit that is not a mage leave.
             with_a_ledger(
                 region(vec![
                     with_race(unit("2390"), 10, "orcs", "ORC"),
-                    an_ally("7001"),
+                    unit("2391"),
                 ]),
-                "unit 2390\nGIVE 7001 ALL ORC\n",
+                "unit 2390\nGIVE 2391 ALL ORC\n",
                 |ledger| {
-                    assert_eq!(balance_of(ledger, "2390", "ORC"), 10);
-                    assert!(
-                        ledger.state.uncertain.is_empty(),
-                        "{:?}",
-                        ledger.state.uncertain
-                    );
+                    assert_eq!(balance_of(ledger, "2390", "ORC"), 0);
+                    assert_eq!(balance_of(ledger, "2391", "ORC"), 10);
                 },
             );
         }

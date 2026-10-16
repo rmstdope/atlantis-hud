@@ -3500,9 +3500,9 @@ impl Working {
             }),
             None => super::targets::party_unit_id(party).map(|unit_id| ItemChangeParty {
                 unit_id,
-                // A target no row of ours holds: a foreign unit the region shows, or a number the
-                // report never prints. `ah-rgkk.2.3` writes that as `unit <id>`, which needs no
-                // name.
+                // A target no row of ours holds: a foreign unit the region shows. (A number the
+                // report never prints gives nothing and never gets here, `ah-xaem`.)
+                // `ah-rgkk.2.3` writes that as `unit <id>`, which needs no name.
                 name: None,
             }),
         };
