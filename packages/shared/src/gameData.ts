@@ -9,7 +9,7 @@
  * types, and names its own `Ruleset` the same as the unrelated one in `./rulesets`.
  */
 
-/** The eight lists the dictionary shows, in tab order. */
+/** The nine lists the dictionary shows, in tab order. */
 export type GameDataCategory =
   | "skill"
   | "man"
@@ -18,7 +18,9 @@ export type GameDataCategory =
   | "monster"
   | "equipment"
   | "building"
-  | "terrain";
+  | "terrain"
+  /** Every order the world's grammar accepts (ah-mlls.6), described from its rules section. */
+  | "order";
 
 /** Tab order, and the order categories are built in. */
 export const GAME_DATA_CATEGORIES: readonly GameDataCategory[] = [
@@ -30,7 +32,9 @@ export const GAME_DATA_CATEGORIES: readonly GameDataCategory[] = [
   "equipment",
   "building",
   // Last, as agreed (ah-yu3j.1): the far right of the strip.
-  "terrain"
+  "terrain",
+  // After Terrains (ah-mlls.6), so that no tab already on the strip moves.
+  "order"
 ];
 
 /** What each tab is called. */
@@ -42,7 +46,8 @@ export const GAME_DATA_CATEGORY_LABELS: Readonly<Record<GameDataCategory, string
   monster: "Monsters",
   equipment: "Equipment",
   building: "Buildings",
-  terrain: "Terrains"
+  terrain: "Terrains",
+  order: "Orders"
 };
 
 /**
@@ -57,7 +62,8 @@ export const GAME_DATA_KIND_WORDS: Readonly<Record<GameDataCategory, string>> = 
   monster: "Monster",
   equipment: "Equipment",
   building: "Building",
-  terrain: "Terrain"
+  terrain: "Terrain",
+  order: "Order"
 };
 
 /** One thing in the dictionary, whatever kind it is. */
@@ -68,9 +74,9 @@ export type GameDataEntry = {
    */
   id: string;
   category: GameDataCategory;
-  /** The display name, e.g. `mining`, `Longship`, `Tower`. */
+  /** The display name, e.g. `mining`, `Longship`, `Tower`, `GIVE`. */
   name: string;
-  /** The four-letter tag, or null for a building or a terrain, which have none. */
+  /** The four-letter tag, or null for a building, a terrain or an order, which have none. */
   tag: string | null;
 };
 
@@ -176,7 +182,20 @@ export type GameDataDetail =
       /** Every monster whose description says it prefers to roam here, by name. */
       roamingMonsters: readonly GameDataReference[];
     }
+  | {
+      kind: "order";
+      entry: GameDataEntry;
+      /** Every form, one per heading of the order's rules section, in page order. */
+      forms: readonly string[];
+      /** The rule's prose, one string per paragraph. */
+      description: readonly string[];
+      /** Each example's sentence and the order lines beneath it; null when it has none. */
+      examples: readonly OrderExample[];
+    }
   | { kind: "absent"; entry: GameDataEntry };
+
+/** One worked example of an order, as `rules/<order>` gives it. */
+export type OrderExample = { text: string; order: string | null };
 
 export type GameDataIndex = {
   entries: readonly GameDataEntry[];
@@ -261,6 +280,9 @@ type RawBuilding = {
 
 const ITEM_KINDS: readonly string[] = ["man", "mount", "monster", "ship", "equipment"];
 
+/** One order's rules section, `packages/ruleset/src/orders.ts`' `OrderEntry`. */
+type RawOrder = { forms?: string[]; description?: string[]; examples?: OrderExample[] };
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -299,6 +321,11 @@ export function roamingTerrainsOf(description: string | null | undefined): strin
     .split(",")
     .map((terrain) => terrain.trim().toLowerCase())
     .filter((terrain) => terrain.length > 0);
+}
+
+/** The dictionary id of an order, from its keyword in any case: `order:GIVE`. */
+export function orderEntryId(keyword: string): string {
+  return `order:${keyword.toUpperCase()}`;
 }
 
 /** The dictionary id of a skill, from the tag a report or the ruleset uses. */
@@ -367,8 +394,18 @@ export function structureEntryId(index: GameDataIndex, kind: string): string {
   return buildingEntryId(kind);
 }
 
-/** Parses the ruleset text. Returns null when the text is not a ruleset at all. */
-export function parseGameData(rulesetText: string): GameDataIndex | null {
+/**
+ * Parses the ruleset text. Returns null when the text is not a ruleset at all.
+ *
+ * `orderCommands` is the world's order vocabulary as the core grammar has it (`order_commands`):
+ * which orders exist is the grammar's to say, and the ruleset's `orders` block only what the rules
+ * page writes about them - END has no section of its own, and is an entry all the same (ah-mlls.6).
+ * Empty until the core has answered, which leaves the Orders tab empty for that moment.
+ */
+export function parseGameData(
+  rulesetText: string,
+  orderCommands: readonly string[] = []
+): GameDataIndex | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(rulesetText);
@@ -486,6 +523,11 @@ export function parseGameData(rulesetText: string): GameDataIndex | null {
     itemsByCategory.set(category, list);
   }
 
+  const rawOrders = (isRecord(parsed.orders) ? parsed.orders : {}) as Record<string, RawOrder>;
+  const orderEntries: GameDataEntry[] = [...new Set(orderCommands.map((c) => c.toUpperCase()))].map(
+    (keyword) => ({ id: orderEntryId(keyword), category: "order", name: keyword, tag: null })
+  );
+
   const buildingEntries: GameDataEntry[] = Object.keys(rawBuildings).map((key) => ({
     id: buildingEntryId(key),
     category: "building",
@@ -501,7 +543,9 @@ export function parseGameData(rulesetText: string): GameDataIndex | null {
           ? buildingEntries
           : category === "terrain"
             ? terrainEntries
-            : (itemsByCategory.get(category) ?? []);
+            : category === "order"
+              ? orderEntries
+              : (itemsByCategory.get(category) ?? []);
     for (const entry of [...list].sort(byName)) {
       add(entry);
     }
@@ -625,8 +669,25 @@ export function parseGameData(rulesetText: string): GameDataIndex | null {
           id,
           category: category as GameDataCategory,
           name: category === "building" ? titleCase(tag ?? "") : (tag ?? ""),
-          tag: category === "building" || category === "terrain" ? null : (tag ?? null)
+          tag:
+            category === "building" || category === "terrain" || category === "order"
+              ? null
+              : (tag ?? null)
         }
+      };
+    }
+    if (entry.category === "order") {
+      // An own-key lookup: a keyword is never a property of the prototype.
+      const order = Object.hasOwn(rawOrders, entry.name) ? rawOrders[entry.name] : undefined;
+      if (order === undefined) {
+        return { kind: "absent", entry };
+      }
+      return {
+        kind: "order",
+        entry,
+        forms: order.forms ?? [],
+        description: order.description ?? [],
+        examples: order.examples ?? []
       };
     }
     if (entry.category === "skill") {

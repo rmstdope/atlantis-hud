@@ -52,7 +52,6 @@ function entries(
       { id: "theme", label: "Toggle theme", run: noop }
     ],
     orderCommands: ["MOVE", "STUDY"],
-    insertOrder: noop,
     gameData: gameData ?? [
       { id: "skill:MINI", category: "skill", name: "mining", tag: "MINI" },
       { id: "ship:LONG", category: "ship", name: "Longship", tag: "LONG" },
@@ -144,8 +143,7 @@ describe("buildPaletteEntries", () => {
       structures: [],
       actions: [],
       orderCommands: [],
-      insertOrder: noop,
-      gameData: [],
+        gameData: [],
       openGameData: noop
     });
 
@@ -194,8 +192,7 @@ describe("buildPaletteEntries", () => {
         structures: [],
         actions: [],
         orderCommands: [],
-        insertOrder: noop,
-        gameData: [],
+            gameData: [],
         openGameData: noop
       });
     }
@@ -298,7 +295,6 @@ describe("factions in the palette (ah-mlls.3)", () => {
       structures: [],
       actions: [],
       orderCommands: [],
-      insertOrder: noop,
       gameData: [],
       openGameData: noop
     }).map((entry) => entry.kind);
@@ -319,7 +315,6 @@ describe("factions in the palette (ah-mlls.3)", () => {
       structures: [],
       actions: [],
       orderCommands: [],
-      insertOrder: noop,
       gameData: [],
       openGameData: noop
     });
@@ -506,8 +501,7 @@ describe("game data in the palette", () => {
       structures: [],
       actions: [],
       orderCommands: [],
-      insertOrder: noop,
-      gameData: [],
+        gameData: [],
       openGameData: noop
     });
     expect(without).toEqual([]);
@@ -620,7 +614,6 @@ describe("settlements in the palette (ah-mlls.2)", () => {
     structures: [{ structureId: "1", label: "Castle [1] · plain (12,34) in Hope", run: noop }],
     actions: [],
     orderCommands: [],
-    insertOrder: noop,
     gameData: [],
     openGameData: noop
   });
@@ -725,7 +718,6 @@ describe("notes in the palette (ah-mlls.5)", () => {
       structures: [],
       actions: [],
       orderCommands: [],
-      insertOrder: noop,
       gameData: [],
       openGameData: noop,
       hexNotes: [
@@ -931,5 +923,46 @@ describe("noteSnippet (ah-mlls.5)", () => {
       match: "",
       after: ""
     });
+  });
+});
+
+describe("an order row (ah-mlls.6)", () => {
+  function withOrders(openGameData: (entryId: string) => void): PaletteEntry[] {
+    return buildPaletteEntries({
+      armies: [],
+      ownUnits: [],
+      foreignUnits: [],
+      staleUnits: [],
+      settlements: [],
+      regions: [],
+      structures: [],
+      actions: [{ id: "theme", label: "Toggle theme", run: noop }],
+      orderCommands: ["MOVE", "STUDY"],
+      // The dictionary holds the orders too, now that they are game data entries.
+      gameData: [
+        { id: "skill:MINI", category: "skill", name: "mining", tag: "MINI" },
+        { id: "order:MOVE", category: "order", name: "MOVE", tag: null },
+        { id: "order:STUDY", category: "order", name: "STUDY", tag: null }
+      ],
+      openGameData
+    });
+  }
+
+  it("opens the order's game data entry rather than typing it", () => {
+    const opened: string[] = [];
+    const study = withOrders((entryId) => opened.push(entryId)).find(
+      (entry) => entry.label === "STUDY"
+    );
+    study?.run();
+    expect(opened).toEqual(["order:STUDY"]);
+  });
+
+  it("lists each order once, as an order, in its old place before the dictionary", () => {
+    expect(withOrders(noop).map((entry) => [entry.kind, entry.label])).toEqual([
+      ["action", "Toggle theme"],
+      ["order-help", "MOVE"],
+      ["order-help", "STUDY"],
+      ["skill", "mining MINI"]
+    ]);
   });
 });

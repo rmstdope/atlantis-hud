@@ -254,9 +254,9 @@ function terrainMarkup(initialEntryId: string | null, sightings = recruits): str
 }
 
 describe("GameDataDialog's terrains (ah-yu3j.1)", () => {
-  it("puts a Terrains tab with its count last in a strip that wraps", () => {
+  it("puts a Terrains tab with its count after Buildings, and only Orders after it (ah-mlls.6)", () => {
     const html = terrainMarkup(null);
-    expect(html).toMatch(/game-data-tab-building"[^>]*>Buildings 0<\/button><button[^>]*game-data-tab-terrain"[^>]*>Terrains 4<\/button><\/div>/);
+    expect(html).toMatch(/game-data-tab-building"[^>]*>Buildings 0<\/button><button[^>]*game-data-tab-terrain"[^>]*>Terrains 4<\/button><button[^>]*game-data-tab-order"[^>]*>Orders 0<\/button><\/div>/);
     expect(html).toMatch(/role="tablist"[^>]*class="[^"]*flex-wrap/);
   });
 
@@ -332,5 +332,122 @@ describe("GameDataDialog's terrains (ah-yu3j.1)", () => {
       <GameDataDialog index={index} initialEntryId={null} onDismiss={() => {}} />
     );
     expect(html).toContain(">Terrains 0</button>");
+  });
+});
+
+describe("an order's entry (ah-mlls.6)", () => {
+  const orders = parseGameData(
+    JSON.stringify({
+      ...JSON.parse(RULESET),
+      orders: {
+        GIVE: {
+          forms: [
+            "GIVE [unit] [quantity] [item]",
+            "GIVE [unit] ALL [item]",
+            "GIVE [unit] ALL [item] EXCEPT [quantity]",
+            "GIVE [unit] ALL [item class]",
+            "GIVE [unit] UNIT"
+          ],
+          description: [
+            "The first form of the GIVE order gives a quantity of an item to another unit.",
+            "See the FORM order for an example."
+          ],
+          examples: [
+            { text: "Give 10 swords to unit 4573.", order: "GIVE 4573 10 swords" },
+            { text: "See the TURN order for an example of a caravan.", order: null }
+          ]
+        },
+        FORM: { forms: ["FORM [alias]"], description: ["Form a new unit."], examples: [] }
+      }
+    }),
+    ["END", "FORM", "GIVE", "TURN"]
+  ) as GameDataIndex;
+
+  const render = (entryId: string) =>
+    renderToStaticMarkup(<GameDataDialog index={orders} initialEntryId={entryId} onDismiss={() => {}} />);
+
+  it("shows Syntax, What it does and Examples, in that order", () => {
+    const html = render("order:GIVE");
+    const at = (word: string) => html.indexOf(`>${word}</h3>`);
+    expect(at("Syntax")).toBeGreaterThan(-1);
+    expect(at("What it does")).toBeGreaterThan(at("Syntax"));
+    expect(at("Examples")).toBeGreaterThan(at("What it does"));
+  });
+
+  it("gives every form a line of its own in one syntax box", () => {
+    const html = render("order:GIVE");
+    expect(html.match(/data-testid="game-data-order-form"/g)).toHaveLength(5);
+    expect(html).toContain("GIVE [unit] ALL [item] EXCEPT [quantity]");
+  });
+
+  it("links a mention of another order, never the entry's own", () => {
+    const html = render("order:GIVE");
+    expect(html).toContain('data-testid="game-data-link-order:FORM"');
+    expect(html).toContain('data-testid="game-data-link-order:TURN"');
+    expect(html).not.toContain('data-testid="game-data-link-order:GIVE"');
+  });
+
+  it("shows each example's sentence with its order beneath, and a sentence alone when it has none", () => {
+    const html = render("order:GIVE");
+    expect(html).toContain("Give 10 swords to unit 4573.");
+    expect(html.match(/data-testid="game-data-order-example"/g)).toHaveLength(2);
+    expect(html.match(/data-testid="game-data-order-line"/g)).toHaveLength(1);
+  });
+
+  it("shows no Examples heading for an order the rules give none for", () => {
+    const html = render("order:FORM");
+    expect(html).toContain(">Syntax</h3>");
+    expect(html).not.toContain(">Examples</h3>");
+  });
+
+  it("says the game data does not describe an order with no section of its own", () => {
+    const html = render("order:END");
+    expect(html).toContain(">END</span>");
+    expect(html).toContain("The game data does not describe this.");
+  });
+
+  it("is the Orders tab, last, with its count and its own filter words", () => {
+    const html = render("order:GIVE");
+    expect(html).toMatch(/aria-selected="true"[^>]*>Orders 4</);
+    expect(html.lastIndexOf('data-testid="game-data-tab-')).toBe(
+      html.indexOf('data-testid="game-data-tab-order"')
+    );
+    expect(html).toContain('placeholder="Filter orders…"');
+  });
+
+  it("carries the kind word Order on the All tab", () => {
+    const html = renderToStaticMarkup(
+      <GameDataList
+        tab="all"
+        entries={entriesOf(orders, "all", "GIVE")}
+        filter="GIVE"
+        selectedId={null}
+        onPick={() => {}}
+      />
+    );
+    expect(html).toContain(">Order</span>");
+  });
+});
+
+describe("an order's multi-line example (ah-mlls.6)", () => {
+  it("draws each line of its own, keeping the indentation the rules give it", () => {
+    const index = parseGameData(
+      JSON.stringify({
+        ...JSON.parse(RULESET),
+        orders: {
+          FORM: {
+            forms: ["FORM [alias]"],
+            description: [],
+            examples: [{ text: "Form a unit.", order: "FORM 1\n    STUDY COMBAT\nEND" }]
+          }
+        }
+      }),
+      ["FORM"]
+    ) as GameDataIndex;
+    const html = renderToStaticMarkup(
+      <GameDataDialog index={index} initialEntryId="order:FORM" onDismiss={() => {}} />
+    );
+    const block = html.slice(html.indexOf('data-testid="game-data-order-line"'));
+    expect(block).toMatch(/>FORM 1<\/p><p[^>]*>    STUDY COMBAT<\/p><p[^>]*>END<\/p>/);
   });
 });

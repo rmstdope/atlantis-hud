@@ -4,7 +4,9 @@ import {
   buildingEntryId,
   GAME_DATA_CATEGORIES,
   GAME_DATA_CATEGORY_LABELS,
+  GAME_DATA_KIND_WORDS,
   itemEntryId,
+  orderEntryId,
   parseGameData,
   roamingTerrainsOf,
   skillEntryId,
@@ -327,8 +329,8 @@ function terrainIndex(text = TERRAIN_RULESET): GameDataIndex {
 }
 
 describe("terrains", () => {
-  it("is the last category, labelled Terrains", () => {
-    expect(GAME_DATA_CATEGORIES[GAME_DATA_CATEGORIES.length - 1]).toBe("terrain");
+  it("is the last category but Orders, labelled Terrains", () => {
+    expect(GAME_DATA_CATEGORIES[GAME_DATA_CATEGORIES.length - 2]).toBe("terrain");
     expect(GAME_DATA_CATEGORY_LABELS.terrain).toBe("Terrains");
   });
 
@@ -497,6 +499,62 @@ describe("the shipped New Origins terrains", () => {
     expect(index.detailOf("terrain:mountain")).toMatchObject({
       movement: { kind: "cost", walk: 2, ride: 2, fly: 1 },
       road: 1
+    });
+  });
+});
+
+describe("the orders (ah-mlls.6)", () => {
+  const give = {
+    forms: ["GIVE [unit] [quantity] [item]", "GIVE [unit] UNIT"],
+    description: ["The first form of the GIVE order gives a quantity of an item to another unit."],
+    examples: [{ text: "Give 10 swords to unit 4573.", order: "GIVE 4573 10 swords" }]
+  };
+  const withOrders = JSON.stringify({ ...JSON.parse(RULESET), orders: { GIVE: give } });
+
+  it("is the last tab, called Orders, its rows kind word Order", () => {
+    expect(GAME_DATA_CATEGORIES.at(-1)).toBe("order");
+    expect(GAME_DATA_CATEGORY_LABELS.order).toBe("Orders");
+    expect(GAME_DATA_KIND_WORDS.order).toBe("Order");
+  });
+
+  it("holds one entry per order the grammar names, A-Z, in capitals and with no tag", () => {
+    const index = parseGameData(withOrders, ["MOVE", "GIVE", "END"]);
+    const orders = index?.entries.filter((entry) => entry.category === "order") ?? [];
+    expect(orders).toEqual([
+      { id: "order:END", category: "order", name: "END", tag: null },
+      { id: "order:GIVE", category: "order", name: "GIVE", tag: null },
+      { id: "order:MOVE", category: "order", name: "MOVE", tag: null }
+    ]);
+    expect(index?.entries.at(-1)?.id).toBe("order:MOVE");
+    expect(orderEntryId("give")).toBe("order:GIVE");
+  });
+
+  it("holds no orders when the grammar's list has not arrived", () => {
+    const index = parseGameData(withOrders);
+    expect(index?.entries.some((entry) => entry.category === "order")).toBe(false);
+  });
+
+  it("details an order from its rules section, verbatim", () => {
+    const index = parseGameData(withOrders, ["GIVE"]);
+    expect(index?.detailOf("order:GIVE")).toEqual({
+      kind: "order",
+      entry: { id: "order:GIVE", category: "order", name: "GIVE", tag: null },
+      ...give
+    });
+  });
+
+  it("reads an order the rules do not describe as absent, under its keyword", () => {
+    const index = parseGameData(withOrders, ["END"]);
+    expect(index?.detailOf("order:END")).toEqual({
+      kind: "absent",
+      entry: { id: "order:END", category: "order", name: "END", tag: null }
+    });
+    // A ruleset scraped before ah-mlls.6 describes none of them, and says so rather than throwing.
+    expect(parseGameData(RULESET, ["GIVE"])?.detailOf("order:GIVE")?.kind).toBe("absent");
+    // An id the index never held still reads as an order, with no tag beside its heading.
+    expect(index?.detailOf("order:XYZZY")).toEqual({
+      kind: "absent",
+      entry: { id: "order:XYZZY", category: "order", name: "XYZZY", tag: null }
     });
   });
 });

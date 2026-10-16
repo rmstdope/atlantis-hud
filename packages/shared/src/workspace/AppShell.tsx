@@ -733,10 +733,11 @@ export function AppShell({
 
   // The game data dictionary, parsed once per ruleset load. `rulesetText` is null both while the
   // ruleset is loading and when it could not be fetched, which is exactly the gate wanted here:
-  // no game data is offered until there is game data to offer.
+  // no game data is offered until there is game data to offer. The orders are the core grammar's
+  // list (ah-mlls.6), which arrives a moment after the ruleset and rebuilds the index once.
   const gameData = useMemo(
-    () => (rulesetText === null ? null : parseGameData(rulesetText)),
-    [rulesetText]
+    () => (rulesetText === null ? null : parseGameData(rulesetText, orderCommands)),
+    [rulesetText, orderCommands]
   );
   // Which terrain words are water in this world, for the map's paint. Memoised so the map's view
   // options are not rebuilt on unrelated renders.
@@ -2025,7 +2026,6 @@ export function AppShell({
           : [])
       ],
       orderCommands,
-      insertOrder: (command) => ordersEditor.current?.insertOrder(command),
       gameData: gameData?.entries ?? [],
       openGameData: (entryId) => showOnlyKeyDialog({ id: "gameData", entryId }),
       // The notes the player wrote (ah-mlls.5), only with a game open and a report loaded. A hex note's place reads as

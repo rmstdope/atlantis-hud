@@ -40,10 +40,11 @@ import {
   stepGameDataTab,
   tabLabel
 } from "./gameDataDialogState";
+import { orderMentions } from "./gameDataOrderText";
 
 /**
- * The game data dictionary: every skill, man, mount, ship, monster, item, structure and terrain
- * the rules pages were scraped for, in eight lists - and All, every list at once (ah-yu3j.2) - with
+ * The game data dictionary: every skill, man, mount, ship, monster, item, structure, terrain and
+ * order the rules pages were scraped for, in nine lists - and All, every list at once (ah-yu3j.2) - with
  * the chosen one read out beside them.
  *
  * `docs/ui/ah-5jkt-dictionary.html` is the design, chosen with the navigator: a type selector
@@ -463,6 +464,110 @@ function buildSkillEntry(
   return entry === undefined ? null : { id, name: entry.name };
 }
 
+/**
+ * Text that may mention other orders, each mention a link (`orderMentions`). The orders are the
+ * index's own, so only a keyword the world's grammar lists is ever linked.
+ */
+function OrderText({
+  text,
+  orders,
+  self,
+  onFollow
+}: {
+  text: string;
+  orders: ReadonlySet<string>;
+  self: string;
+  onFollow: (id: string) => void;
+}) {
+  return (
+    <>
+      {orderMentions(text, orders, self).map((part, at) =>
+        "entryId" in part ? (
+          <FollowLink key={at} reference={{ id: part.entryId, name: part.text }} onFollow={onFollow} />
+        ) : (
+          <span key={at}>{part.text}</span>
+        )
+      )}
+    </>
+  );
+}
+
+/**
+ * Wrapped rather than scrolled sideways in a narrow window, each line's continuation indented two
+ * characters so the start of every form stays visible (agreed for ah-mlls.6).
+ */
+const ORDER_LINE = "m-0 whitespace-pre-wrap break-words pl-[2ch] -indent-[2ch] font-mono";
+
+/**
+ * An order as the rules write it (`docs/ui/ah-mlls.6-orders-in-game-data.html`): every form, the
+ * prose, then the examples - in full, nothing collapsed. Examples are left out when there are none.
+ */
+function OrderDetail({
+  detail,
+  heading,
+  index,
+  onFollow
+}: {
+  detail: Extract<GameDataDetail, { kind: "order" }>;
+  heading: React.ReactNode;
+  index: GameDataIndex;
+  onFollow: (id: string) => void;
+}) {
+  const orders = new Set(
+    index.entries.filter((entry) => entry.category === "order").map((entry) => entry.name)
+  );
+  const self = detail.entry.name;
+  return (
+    <div>
+      {heading}
+      <section className="mt-3">
+        <h3 className={SECTION_HEADING}>Syntax</h3>
+        <div className="rounded border border-edge bg-panel px-2 py-1 text-ink">
+          {detail.forms.map((form, at) => (
+            <p key={at} data-testid="game-data-order-form" className={ORDER_LINE}>
+              {form}
+            </p>
+          ))}
+        </div>
+      </section>
+      <section className="mt-3">
+        <h3 className={SECTION_HEADING}>What it does</h3>
+        {detail.description.map((paragraph, at) => (
+          <p key={at} className="mt-1 text-ink">
+            <OrderText text={paragraph} orders={orders} self={self} onFollow={onFollow} />
+          </p>
+        ))}
+      </section>
+      {detail.examples.length === 0 ? null : (
+        <section className="mt-3">
+          <h3 className={SECTION_HEADING}>Examples</h3>
+          {detail.examples.map((example, at) => (
+            <div key={at} data-testid="game-data-order-example" className="mt-2">
+              <p className="m-0 text-ink">
+                <OrderText text={example.text} orders={orders} self={self} onFollow={onFollow} />
+              </p>
+              {example.order === null ? null : (
+                // One element per line, not one block: a hanging indent only ever hangs a block's
+                // first line, and FORM's example nests orders under it by indentation.
+                <div
+                  data-testid="game-data-order-line"
+                  className="mt-1 rounded border border-edge bg-panel px-2 py-1 text-ink"
+                >
+                  {example.order.split("\n").map((line, row) => (
+                    <p key={row} className={ORDER_LINE}>
+                      {line === "" ? "\u00a0" : line}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
+    </div>
+  );
+}
+
 function Detail({
   detail,
   index,
@@ -490,6 +595,10 @@ function Detail({
         <p className="mt-2 text-ink-dim">The game data does not describe this.</p>
       </div>
     );
+  }
+
+  if (detail.kind === "order") {
+    return <OrderDetail detail={detail} heading={heading} index={index} onFollow={onFollow} />;
   }
 
   if (detail.kind === "skill") {

@@ -38,8 +38,6 @@ export type OrdersEditorHandle = {
    * block-relative lines, exactly as `diagnosticsForUnit` and `diagnosticTargets` speak.
    */
   selectProblem(problem: OrderDiagnostic): void;
-  /** Types a command at the cursor, for the palette's order-help entries. */
-  insertOrder(command: string): void;
 };
 
 type OrdersEditorProps = {
@@ -633,20 +631,6 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
       editor.dispatch({
         selection: { anchor: placed.from, head: placed.to },
         scrollIntoView: true
-      });
-      editor.focus();
-    },
-    insertOrder(command) {
-      const editor = view.current;
-      if (!editor) {
-        return;
-      }
-      const { from, to } = editor.state.selection.main;
-      editor.dispatch({
-        changes: { from, to, insert: command },
-        selection: { anchor: from + command.length },
-        scrollIntoView: true,
-        userEvent: "input"
       });
       editor.focus();
     }
