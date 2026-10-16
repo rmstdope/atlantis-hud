@@ -333,3 +333,109 @@ fn a_leader_who_is_no_mage_buying_all_normal_men_is_refused() {
     let text = report_text("combat [COMB] 1 (30)");
     assert_refused_for_mixing(&text, "unit 2390\nBUY ALL orcs\n", "ORC");
 }
+
+/// `ah-wk49`. A unit with no men that buys both leaders and normal men recruits whichever the
+/// market runs first and is refused the other. The engine's `RunBuyOrders` settles one market line
+/// at a time, in the region's market list - the `For Sale:` order - and `Game::GetBuyAmount` asks
+/// `IsLeader` and `IsNormal` of the unit as the earlier lines left it (../Atlantis
+/// `runorders.cpp`), so the second purchase meets men of the other kind and is refused with "BUY:
+/// Can't mix leaders and normal men." (`rules/playing_units`: leaders and normal people may not be
+/// mixed in the same unit).
+///
+/// The orders write the leaders first on purpose: what decides is the market's order, not the
+/// document's. Returns the formed unit's silver row, the lines of its mixing findings, and the
+/// ITEMS preview's orcs and leaders for it.
+fn formed_unit_buying_both(for_sale: &str) -> (UnitSilver, Vec<Option<usize>>, i64, i64) {
+    let text = report_with("1 leaders [LEAD]", "combat [COMB] 1 (30)")
+        .replace("20 orcs [ORC] at $38, 5 leaders [LEAD] at $100", for_sale);
+    let script = "unit 2390\nFORM 1\nBUY 1 leaders\nBUY 5 orcs\nEND\nGIVE NEW 1 500 SILV\n";
+    let review = review_of(&text, script);
+
+    let formed_id = review
+        .silver
+        .iter()
+        .find(|row| row.unit_id != "2390")
+        .map(|row| row.unit_id.clone())
+        .expect("the formed unit has a silver row");
+    let mixed: Vec<Option<usize>> = review
+        .findings
+        .iter()
+        .filter(|finding| finding.code.as_str() == "leaders-and-men-mixed")
+        .map(|finding| {
+            assert_eq!(finding.unit_id.as_deref(), Some(formed_id.as_str()));
+            finding.line
+        })
+        .collect();
+    // Read off the response directly: `common::preview_row` insists on a unit of the report, and
+    // a formed unit is not one.
+    let template = extract_orders_template(&text)
+        .map(|template| template.text)
+        .unwrap_or_default();
+    let preview = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::RULESET_JSON,
+        &text,
+        "[]",
+        &format!("{template}\n{script}"),
+    )
+    .expect("the committed ruleset loads");
+    let formed = preview
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .find(|unit| unit.unit.unit_id == formed_id)
+        .expect("the formed unit has a preview row");
+    let holding = |tag: &str| -> i64 {
+        formed
+            .unit
+            .items
+            .iter()
+            .filter(|item| item.tag == tag)
+            .map(|item| item.amount)
+            .sum()
+    };
+    (
+        row_of(&review, &formed_id),
+        mixed,
+        holding("ORC"),
+        holding("LEAD"),
+    )
+}
+
+#[test]
+fn orcs_sold_first_recruit_the_orcs_and_refuse_the_leader() {
+    let (row, mixed, orcs, leaders) =
+        formed_unit_buying_both("20 orcs [ORC] at $38, 5 leaders [LEAD] at $100");
+
+    assert_eq!(
+        row.expense,
+        Some(190),
+        "five orcs at $38 and no leader: {row:?}"
+    );
+    assert_eq!(row.at_month_end, Some(310));
+    assert_eq!(
+        mixed.len(),
+        1,
+        "one warning, on the refused leader: {mixed:?}"
+    );
+    assert_eq!((orcs, leaders), (5, 0));
+}
+
+#[test]
+fn leaders_sold_first_recruit_the_leader_and_refuse_the_orcs() {
+    let (row, mixed, orcs, leaders) =
+        formed_unit_buying_both("5 leaders [LEAD] at $100, 20 orcs [ORC] at $38");
+
+    assert_eq!(
+        row.expense,
+        Some(100),
+        "one leader at $100 and no orc: {row:?}"
+    );
+    assert_eq!(row.at_month_end, Some(400));
+    assert_eq!(
+        mixed.len(),
+        1,
+        "one warning, on the refused orcs: {mixed:?}"
+    );
+    assert_eq!((orcs, leaders), (0, 1));
+}
