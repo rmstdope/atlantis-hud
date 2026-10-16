@@ -1110,7 +1110,7 @@ pub enum PoolShare {
     #[default]
     Uncontended,
     /// What the pool's settlement gave this unit: [`settle_in_report_order`] for `TAX`,
-    /// [`split_pool`] for the wage pools.
+    /// [`split_pool`] for the wage pools (`ah-syug`).
     Share(i64),
     /// The hex cannot be settled: some unit contending for this pool has a headcount that is
     /// itself a guess, so no unit's share is a number - including units whose own count is exact.
@@ -3629,8 +3629,10 @@ pub fn feed_from_faction_food(claims: &[FoodClaim]) -> FactionFoodPass {
 /// divided. When it does not, each gets `pool * wants[i] / total`, **rounded down** - so the
 /// shares never add up to more than the pool, and up to `wants.len() - 1` of it goes unpromised.
 ///
-/// Used for the pools the game does not settle by a walk in report order - wages, entertainment
-/// and production. `TAX` and the markets are [`settle_in_report_order`]'s (`ah-alwr`).
+/// Still used for wages, entertainment and production. The game settles those by the same walk
+/// in report order as `TAX` (`Game::RunAProduction`, `monthorders.cpp`), so they drop the same
+/// remainder `ah-alwr` removed from `TAX` and the markets; moving them to
+/// [`settle_in_report_order`] is `ah-syug`.
 #[must_use]
 pub fn split_pool(wants: &[i64], pool: i64) -> Vec<i64> {
     let clamped: Vec<i64> = wants.iter().map(|want| (*want).max(0)).collect();
@@ -3671,9 +3673,15 @@ pub enum ShareRounding {
 /// divides by what every seller *ordered* (`GetSellAmount`), and cuts an order to what its unit
 /// holds only at that unit's own turn, subtracting the cut order from `attempted` - so a unit
 /// ordering more than it holds claims only its holding, yet squeezes everybody ahead of it by its
-/// whole order (`ah-6la1`). An `attempted` below the claims' own total changes nothing.
+/// whole order, and everybody after it by what its holding cut left in `attempted` - which is why
+/// such a line is then not fully used (`ah-6la1`). An `attempted` below the claims' own total
+/// changes nothing.
 ///
 /// Index-aligned with `wants`, as [`split_pool`] is; the order of `wants` is the report order.
+/// That is an approximation of the engine's own order, which walks object membership as it stands
+/// after the instant orders: a `FORM`ed unit, appended here at the end of the hex, joins its
+/// parent's object there, and `ENTER`/`LEAVE` move a unit to the end of its new object. Where
+/// that reorders the claimants, which of them takes the remainder can differ by one.
 /// The shares never add up to more than the pool, and none exceeds its own claim.
 #[must_use]
 pub fn settle_in_report_order(

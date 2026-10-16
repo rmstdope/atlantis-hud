@@ -1516,8 +1516,9 @@ fn pool_shares_for(
         foreign_of: Option<fn(&mut PoolShares) -> &mut bool>,
         pool: Option<i64>,
         names: ContendedPool,
-        /// How the engine divides this pool once it is short: `TAX` walks the taxers in report
-        /// order (`ah-alwr`), the wage pools are split in one go.
+        /// How this pool is divided once it is short: `TAX` walks the taxers in report order as
+        /// the engine does (`ah-alwr`). The wage pools still use `split_pool`, which drops the
+        /// remainder the engine's own walk hands the last unit - `ah-syug`.
         split: fn(&[i64], i64) -> Vec<i64>,
     }
 
