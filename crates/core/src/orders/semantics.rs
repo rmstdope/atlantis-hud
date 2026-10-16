@@ -60647,10 +60647,10 @@ BUILD
     /// TRANSPORT's last sub-phase, after every fee.
     const FROM: ShipmentPhase = ShipmentPhase::FromQuartermaster;
 
-    /// Read outside the purse's fold, a unit's TRANSPORT silver is the run as the fees were taken
-    /// - every shipment of the first two sub-phases and the first's receipts - and not what the
+    /// Read outside the purse's fold, a unit's TRANSPORT silver is the run as the fees were taken:
+    /// every shipment of the first two sub-phases and the first's receipts, and not what the
     /// second's receipts and the third sub-phase moved after them, which no fee or loan can have
-    /// spent: a leaver's before-upkeep reading at the month's end rests on it (`ah-k719`; `ah-3ffm`
+    /// spent. A leaver's before-upkeep reading at the month's end rests on it (`ah-k719`; `ah-3ffm`
     /// review, finding 1).
     #[test]
     fn silver_at_transport_is_the_run_as_the_fees_were_taken() {
