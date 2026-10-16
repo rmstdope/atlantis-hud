@@ -16117,7 +16117,8 @@ impl Lending {
     /// A unit that lent at one moment and was lent at a later one only passed its faction-mates'
     /// silver on: a sharer that paid for a `BUY` and then had its own STUDY paid for lent the
     /// difference, and its column shows that, not both halves (`ah-49j0`). So no unit both lends
-    /// and borrows, and what a borrower is credited is what its own orders overdrew it. What a
+    /// and borrows - but for a Give-phase draw, below - and what a borrower is credited is what
+    /// its own orders overdrew it. What a
     /// unit holds once its lending is carried - its balance less `lends` plus `borrows` - is the
     /// same netted or not.
     ///
@@ -60720,6 +60721,28 @@ BUILD
         assert_eq!(lending.lends, vec![10, 0, 5]);
         assert_eq!(lending.borrows, vec![0, 15, 0]);
         assert!(lending.covered());
+    }
+
+    /// [`Lending::netted`] passes on only what a unit lent beyond its Give-phase draws
+    /// (`ah-d3in`): a sharer a GIVE drained of 100 that also lent 200 later and was lent 10 for its
+    /// own study passed 10 of the 200 on, and keeps the whole Give-phase draw lent.
+    #[test]
+    fn netting_passes_on_only_what_was_lent_after_the_give_phase() {
+        let lending = Lending {
+            lends: vec![300, 405, 100, 50],
+            lent_at_give: vec![100, 405, 100, 0],
+            arrivals_lend: Vec::new(),
+            borrows: vec![10, 2, 300, 20],
+            refused_cast: vec![0; 4],
+            study: vec![StudyOutcome::NoStudy; 4],
+            refused_casts: vec![false; 4],
+            stopped_at: None,
+        }
+        .netted();
+        // Partly passed on; a partial drain (GIVE 13125 in `ah-d3in`'s hex) keeps both rows; all
+        // lent at the Give phase passes nothing on; nothing lent at the Give phase nets as before.
+        assert_eq!(lending.lends, vec![290, 405, 100, 30]);
+        assert_eq!(lending.borrows, vec![0, 2, 300, 0]);
     }
 
     use crate::orders::transport::ShipmentPhase;
