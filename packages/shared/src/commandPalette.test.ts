@@ -22,6 +22,7 @@ function entries(
       { unitId: "18642", name: "Seven of Eight", run: noop },
       { unitId: "13401", name: "Drones", run: noop }
     ],
+    foreignUnits: [],
     staleUnits: [
       { regionId: "1:7,53", unitId: "18642", name: "Seven of Eight", lastSeenTurn: 70, run: noop }
     ],
@@ -109,6 +110,7 @@ describe("buildPaletteEntries", () => {
     let selected = false;
     const stale = buildPaletteEntries({
       ownUnits: [{ unitId: "18642", name: "Seven of Eight", run: noop }],
+      foreignUnits: [],
       staleUnits: [
         {
           regionId: "1:7,53",
@@ -139,6 +141,106 @@ describe("buildPaletteEntries", () => {
     expect(historical.id).not.toBe(stale[0].id);
     historical.run();
     expect(selected).toBe(true);
+  });
+
+  describe("other factions' units seen this turn (ah-mlls.1)", () => {
+    const thanes = { label: "Thane's Ring (10)", concealed: false };
+    const hidden = { label: "Faction not shown", concealed: true };
+
+    function withForeign(onRun: (unitId: string) => void = noop): PaletteEntry[] {
+      return buildPaletteEntries({
+        ownUnits: [{ unitId: "518", name: "Wardrobe Guard", run: noop }],
+        foreignUnits: [
+          {
+            regionId: "1:18,52",
+            unitId: "2207",
+            name: "Wardens of the Vale",
+            faction: thanes,
+            run: () => onRun("2207")
+          },
+          {
+            regionId: "1:18,52",
+            unitId: "3110",
+            name: "Ward Scouts",
+            faction: hidden,
+            run: () => onRun("3110")
+          }
+        ],
+        staleUnits: [
+          { regionId: "1:9,9", unitId: "2207", name: "Wardens of the Vale", lastSeenTurn: 42, run: noop }
+        ],
+        regions: [{ regionId: "1:18,52", label: "plain (18,52) in Vale", run: noop }],
+        structures: [],
+        actions: [],
+        orderCommands: [],
+        insertOrder: noop,
+        gameData: [],
+        openGameData: noop
+      });
+    }
+
+    it("offers another faction's unit as a unit, with its faction beside the label", () => {
+      const chosen: string[] = [];
+      const row = withForeign((unitId) => chosen.push(unitId)).find(
+        (entry) => entry.id === "foreign-unit-1:18,52-2207"
+      );
+      expect(row).toMatchObject({
+        kind: "unit",
+        label: "Wardens of the Vale (2207)",
+        faction: thanes
+      });
+      expect(row?.lastSeenTurn).toBeUndefined();
+      row?.run();
+      expect(chosen).toEqual(["2207"]);
+    });
+
+    it("carries an undisclosed owner as concealed", () => {
+      const row = withForeign().find((entry) => entry.label === "Ward Scouts (3110)");
+      expect(row?.faction).toEqual(hidden);
+    });
+
+    it("lists own units, then this turn's other factions' units, then remembered ones", () => {
+      expect(
+        filterPalette(withForeign(), "")
+          .filter((entry) => entry.kind === "unit")
+          .map((entry) => entry.id)
+      ).toEqual([
+        "unit-518",
+        "foreign-unit-1:18,52-2207",
+        "foreign-unit-1:18,52-3110",
+        "stale-unit-1:9,9-2207"
+      ]);
+    });
+
+    it("breaks a tie between equally good matches in the same order", () => {
+      // "ward" is a prefix of all four unit labels.
+      expect(filterPalette(withForeign(), "ward").map((entry) => entry.id)).toEqual([
+        "unit-518",
+        "foreign-unit-1:18,52-2207",
+        "foreign-unit-1:18,52-3110",
+        "stale-unit-1:9,9-2207"
+      ]);
+    });
+
+    it("finds a foreign unit by its number", () => {
+      expect(filterPalette(withForeign(), "3110")[0]?.label).toBe("Ward Scouts (3110)");
+    });
+
+    it("does not find a unit by its faction's name", () => {
+      expect(filterPalette(withForeign(), "thane").map((entry) => entry.id)).toEqual([]);
+    });
+
+    it("keeps a unit seen now apart from the same unit remembered elsewhere", () => {
+      const rows = withForeign().filter((entry) => entry.label === "Wardens of the Vale (2207)");
+      expect(rows.map((entry) => [entry.faction?.label, entry.lastSeenTurn])).toEqual([
+        ["Thane's Ring (10)", undefined],
+        [undefined, 42]
+      ]);
+    });
+
+    it("gives an own unit no faction", () => {
+      expect(withForeign()[0]?.faction).toBeUndefined();
+    });
   });
 
   it("carries an action's key binding for the popup to show", () => {
@@ -305,6 +407,7 @@ describe("game data in the palette", () => {
   it("offers no game data when the ruleset has not loaded", () => {
     const without = buildPaletteEntries({
       ownUnits: [],
+      foreignUnits: [],
       staleUnits: [],
       regions: [],
       structures: [],
