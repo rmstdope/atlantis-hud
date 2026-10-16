@@ -303,6 +303,20 @@
   display: none;
 }
 
+/*
+ * A battle star and a revision note sharing one line on a stale hex (ah-1n1z, `besideLine` in
+ * paint.ts): each is moved by screen px (`--beside-x`, `--beside-y`), divided here by `--map-scale`
+ * and by how many world units one of the wrapper's own units is (`--beside-unit`, for the star drawn
+ * inside the look's `scale(...)`). Close zoom only: at middle zoom the notes are hidden, so the star
+ * stays centred where it always is.
+ */
+.map-theme-blueprint.map-near .bp-beside {
+  transform: translate(
+    calc(var(--beside-x, 0px) / var(--map-scale, 1) / var(--beside-unit, 1)),
+    calc(var(--beside-y, 0px) / var(--map-scale, 1) / var(--beside-unit, 1))
+  );
+}
+
 /* The map marks' colours and the roads the map draws for every theme. */
 .map-theme-blueprint {
   --map-border-ink: var(--bp-border);

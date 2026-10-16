@@ -615,13 +615,15 @@ describe("the room its marks take, for the biome symbols to keep clear of", () =
 
 describe("the stylesheet", () => {
   it("moves a mark sharing a line by its screen px, at close zoom only (ah-1n1z)", () => {
-    const rules = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter(([, selector]) =>
-      selector.includes(".bp-beside"),
+    const rules = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter(
+      ([, selector]) => selector.includes(".bp-beside"),
     );
 
     expect(rules).toHaveLength(1);
     const [, selector, body] = rules[0];
-    expect(selector.trim()).toBe(".map-theme-blueprint.map-near .bp-beside");
+    expect(selector.split("*/").pop()!.trim()).toBe(
+      ".map-theme-blueprint.map-near .bp-beside",
+    );
     expect(body).toMatch(
       /transform:\s*translate\(\s*calc\(var\(--beside-x[^)]*\)\s*\/\s*var\(--map-scale[^)]*\)\s*\/\s*var\(--beside-unit[^)]*\)\),\s*calc\(var\(--beside-y[^)]*\)\s*\/\s*var\(--map-scale[^)]*\)\s*\/\s*var\(--beside-unit[^)]*\)\)\s*\)/,
     );
