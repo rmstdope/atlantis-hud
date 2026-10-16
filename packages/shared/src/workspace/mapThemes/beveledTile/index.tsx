@@ -32,7 +32,7 @@ import {
   roofAnchors
 } from "./paint";
 import { terrainClassName } from "../terrain";
-import { CoordsTail, StepsDown } from "../hexCoords";
+import { CoordsTail, StepsDown, themeWritesName } from "../hexCoords";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 
@@ -253,7 +253,7 @@ function MarkLayer({ views }: LayerProps) {
               {view.battle && (
                 <StepsDown
                   view={view}
-                  named={view.settlement !== null}
+                  named={themeWritesName(beveledTile)(view)}
                   top={{ y: (battle.y - CHIP_RADIUS - 1) * SCALE }}
                   unit={SCALE}
                 >

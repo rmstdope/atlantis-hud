@@ -2350,35 +2350,47 @@ test("a Blueprint revision note steps down beneath a hex's coordinates, and back
 
   const stepped = map.locator("[data-steps-down] [data-note]").first();
   await expect(stepped).toBeAttached();
-  // The note and the coordinates printed at the top of the same hex.
-  const measure = () =>
-    page.evaluate(() => {
-      // One the player can see: inside the map's own box.
-      const frame = document.querySelector("[data-testid='map-canvas']")!.getBoundingClientRect();
-      const note = [...document.querySelectorAll("[data-steps-down] [data-note]")]
-        .map((element) => element.getBoundingClientRect())
-        .find(
-          (box) =>
-            box.top > frame.top + 40 &&
-            box.bottom < frame.bottom - 40 &&
-            box.left > frame.left + 40 &&
-            box.right < frame.right - 40
-        )!;
-      const centre = note.left + note.width / 2;
-      const label = [...document.querySelectorAll("[data-hex-coords]")]
-        .map((element) => element.getBoundingClientRect())
-        .filter((box) => Math.abs(box.left + box.width / 2 - centre) < 4)
-        // The hex's own label is a few pixels from its note; the next one up the column is a whole
-        // hex away.
-        .sort((a, b) => Math.abs(a.bottom - note.top) - Math.abs(b.bottom - note.top))[0];
-      return { centre, noteTop: note.top, labelBottom: label ? label.bottom : null };
-    });
-  const on = await measure();
+  // A stepped-down mark and the coordinates printed at the top of the same hex: the hex's own
+  // label is a few pixels from its mark, the next one up the column a whole hex away.
+  const measure = (selector: string, inView: boolean) =>
+    page.evaluate(
+      ({ selector, inView }) => {
+        // One the player can see, where asked: inside the map's own box.
+        const frame = document.querySelector("[data-testid='map-canvas']")!.getBoundingClientRect();
+        const mark = [...document.querySelectorAll(selector)]
+          .map((element) => element.getBoundingClientRect())
+          .find(
+            (box) =>
+              !inView ||
+              (box.top > frame.top + 40 &&
+                box.bottom < frame.bottom - 40 &&
+                box.left > frame.left + 40 &&
+                box.right < frame.right - 40)
+          );
+        if (!mark) return null;
+        const centre = mark.left + mark.width / 2;
+        const label = [...document.querySelectorAll("[data-hex-coords]")]
+          .map((element) => element.getBoundingClientRect())
+          .filter((box) => Math.abs(box.left + box.width / 2 - centre) < 4)
+          .sort((a, b) => Math.abs(a.bottom - mark.top) - Math.abs(b.bottom - mark.top))[0];
+        return { centre, noteTop: mark.top, labelBottom: label ? label.bottom : null };
+      },
+      { selector, inView }
+    );
+  const measured = await measure("[data-steps-down] [data-note]", true);
+  expect(measured, "a stepped-down revision note in view").not.toBeNull();
+  const on = measured!;
   expect(on.labelBottom).not.toBeNull();
   // A text box runs past its ink by the font's ascent and descent, so the two boxes may meet by a
   // pixel or two while the lettering itself keeps the gap; before the step-down they overlapped by
   // most of the note's height.
   expect(on.noteTop).toBeGreaterThanOrEqual(on.labelBottom! - 2);
+  // The battle star is drawn inside the look's own `scale(...)`, so its drop is divided back out of
+  // it: an ink-tight box, so no slack.
+  const star = await measure("[data-steps-down]:not([data-named]) [data-mark='battle'] path", false);
+  expect(star, "a stepped-down battle star").not.toBeNull();
+  expect(star!.labelBottom).not.toBeNull();
+  expect(star!.noteTop).toBeGreaterThanOrEqual(star!.labelBottom! - 0.5);
 
   const trigger = page.getByTestId("layer-chips").getByRole("button", { name: "Badges", exact: true });
   await trigger.click();

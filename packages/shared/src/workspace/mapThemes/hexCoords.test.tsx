@@ -138,6 +138,8 @@ describe("a mark in the coordinates' way steps down beneath them (ah-qf24)", () 
     const css = readFileSync(new URL("../../theme.css", import.meta.url), "utf8");
     expect(css).toContain(".map-mid .map-steps-down,\n.map-near .map-steps-down:not([data-named])");
     expect(css).toContain(`(${COORDS_CLEARANCE_PX}px + var(--mark-above, 0px))`);
+    // The drop is in world units, and a look draws inside `scale(unit)`: divided back, never times.
+    expect(css).toMatch(/\)\s*\/\s*var\(--mark-unit, 1\)/);
   });
 
   it("wraps the mark only while its hex carries coordinates", () => {

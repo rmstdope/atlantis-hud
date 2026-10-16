@@ -510,6 +510,23 @@ describe("every mark in the coordinates' way steps down beneath them (ah-qf24)",
     }
   });
 
+  it("steps Beveled Tile's battle chip down beside a settlement's name as well as centred", () => {
+    const theme = getMapTheme("beveled-tile");
+    const named = aHexView({
+      coords: "33,25",
+      battle: "own",
+      settlement: { name: "Kerrin", tier: "town" }
+    });
+    const room = (view: HexView) => /--mark-room:([-\d.]+)px/.exec(drawn(theme, view))?.[1];
+    const beside = wrapped(drawn(theme, named));
+
+    expect(beside).toHaveLength(1);
+    expect(beside[0].slice(0, 400)).toContain('data-chip="battle"');
+    // Both positions share one height, so the chip beside the name has the same room to clear.
+    expect(room(named)).toBeDefined();
+    expect(room(named)).toBe(room(aHexView({ coords: "33,25", battle: "own" })));
+  });
+
   it("tells the stylesheet which hexes carry their coordinates in their name up close", () => {
     const named = aHexView({
       coords: "33,25",
@@ -518,9 +535,13 @@ describe("every mark in the coordinates' way steps down beneath them (ah-qf24)",
     });
     for (const theme of MAP_THEMES) {
       for (const step of wrapped(drawn(theme, named))) {
-        expect(step.slice(0, 200), theme.id).toContain(
-          themeWritesName(theme)(named) ? 'data-named="true"' : "style="
-        );
+        // The wrapper's own attributes, up to the end of its opening tag.
+        const tag = step.slice(0, step.indexOf(">"));
+        if (themeWritesName(theme)(named)) {
+          expect(tag, theme.id).toContain('data-named="true"');
+        } else {
+          expect(tag, theme.id).not.toContain("data-named");
+        }
       }
     }
   });

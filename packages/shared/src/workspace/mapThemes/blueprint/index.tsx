@@ -32,7 +32,7 @@ import {
   STATIONS,
   worksBoxes,
 } from "./paint";
-import { CoordsTail, StepsDown } from "../hexCoords";
+import { CoordsTail, StepsDown, themeWritesName } from "../hexCoords";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 
@@ -333,7 +333,7 @@ function TerrainLayer({ views }: LayerProps) {
           <StepsDown
             key={view.key}
             view={view}
-            named={view.settlement !== null}
+            named={themeWritesName(blueprint)(view)}
             top={{
               y: y - view.at.y,
               abovePx: view.unsurveyed ? NOTE_ABOVE_PX : NOTE_ABOVE_PX + NOTE_TILT_PX
@@ -472,7 +472,7 @@ function MarkLayer({ views }: LayerProps) {
               {view.battle && (
                 <StepsDown
                   view={view}
-                  named={view.settlement !== null}
+                  named={themeWritesName(blueprint)(view)}
                   top={{ y: (STATIONS.battle.y - BATTLE_ROOM) * SCALE }}
                   unit={SCALE}
                 >

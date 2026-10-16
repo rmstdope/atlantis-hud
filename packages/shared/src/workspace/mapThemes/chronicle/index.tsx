@@ -46,7 +46,7 @@ import {
   WASH_VARIANTS,
   workshopRoofs,
 } from "./paint";
-import { CoordsTail, StepsDown } from "../hexCoords";
+import { CoordsTail, StepsDown, themeWritesName } from "../hexCoords";
 
 /** Everything in this theme is drawn at the mockup's radius and shrunk to the map's. */
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
@@ -410,7 +410,7 @@ function MarkLayer({ views }: LayerProps) {
               {view.guard && (
                 <StepsDown
                   view={view}
-                  named={view.settlement !== null}
+                  named={themeWritesName(chronicle)(view)}
                   top={{ y: (ANCHORS.guard.y + GUARD_ROOM.dy - GUARD_ROOM.size) * SCALE }}
                   unit={SCALE}
                 >

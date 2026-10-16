@@ -36,7 +36,7 @@ import {
   STARBURST,
   starburstPoints
 } from "./paint";
-import { CoordsTail, StepsDown } from "../hexCoords";
+import { CoordsTail, StepsDown, themeWritesName } from "../hexCoords";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 
@@ -263,7 +263,7 @@ function MarkLayer({ views }: LayerProps) {
               {view.battle && (
                 <StepsDown
                   view={view}
-                  named={view.settlement !== null}
+                  named={themeWritesName(stainedGlass)(view)}
                   top={{ y: (ANCHORS.battle.y - STARBURST.outer) * SCALE }}
                   unit={SCALE}
                 >

@@ -58,7 +58,7 @@ import {
   unitRow,
   type Bitmap,
 } from "./paint";
-import { CoordsTail, StepsDown } from "../hexCoords";
+import { CoordsTail, StepsDown, themeWritesName } from "../hexCoords";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 
@@ -301,7 +301,7 @@ function Marks({ view }: { view: HexView }) {
           // Its roof reaches the hex's coordinates, so it steps down beneath them (ah-qf24).
           <StepsDown
             view={view}
-            named={view.settlement !== null}
+            named={themeWritesName(eightBitQuest)(view)}
             top={{ y: (STATIONS.buildings.y - spriteRoom(HOUSE, SPRITE_PX)) * SCALE }}
             unit={SCALE}
           >
@@ -404,7 +404,7 @@ function SelectionMark({ view }: { view: HexView | null }) {
       <g transform={`scale(${SCALE})`}>
         <StepsDown
           view={view}
-          named={view?.settlement != null}
+          named={view !== null && themeWritesName(eightBitQuest)(view)}
           top={{ y: (HAND_AT.y - (HAND.length * HAND_PX) / 2) * SCALE }}
           unit={SCALE}
         >
