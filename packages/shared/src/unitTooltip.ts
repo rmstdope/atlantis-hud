@@ -168,8 +168,8 @@ function figure(amount: number | null, unknown = "?"): string {
 }
 
 /**
- * The Silver section's five rows and its one explaining line (`ah-1wcw.1`) - six while the Silver
- * column is counting upkeep (`ah-1wcw.4`). `In` splits in two because silver that arrives in the
+ * The Silver section's five rows and its one explaining line (`ah-1wcw.1`), plus the `upkeepRows`
+ * while the Silver column is counting upkeep (`ah-1wcw.4`, `ah-kv6c`). `In` splits in two because silver that arrives in the
  * turn's last phase cannot pay for anything this month's orders spend (`ah-uwa3`).
  *
  * **Every** note that applies, one per line, in `SILVER_NOTES` order: a note that only ever fired
@@ -205,16 +205,7 @@ function summariseSilver(
       value: atMostIf(figure(silver.lateIncome, unknown), silver.lateIncome, silver.lateIncomeAtMost)
     },
     { label: "Out", value: figure(silver.expense, unknown) },
-    // What the unit paid of faction-mates' upkeep is upkeep it paid, so the rows still add up to
-    // the month end (`ah-2zku`).
-    ...(countUpkeep
-      ? [
-          {
-            label: "Upkeep",
-            value: figure(silver.upkeep === null ? null : silver.upkeep + silver.upkeepLent, unknown)
-          }
-        ]
-      : []),
+    ...(countUpkeep ? upkeepRows(silver, unknown) : []),
     {
       label: "At month end",
       value: atMostIf(figure(end, unknown), end, shareBoundedByAnUnreadUnit(silver))
@@ -222,6 +213,26 @@ function summariseSilver(
   ];
 
   return { rows, note: silverNote(unit, silver, warned, countUpkeep, hexShort) };
+}
+
+/**
+ * The upkeep rows, shown while the Silver column counts upkeep (`ah-1wcw.4`): what the unit's own
+ * men cost, then what it paid of faction-mates' upkeep at step 4 of the payment order
+ * (`rules/economy_maintenance`), each on a row of its own so the first is never read as the
+ * second (`ah-kv6c`). The rows still add up to the month end: `shownEnd` takes off both.
+ */
+function upkeepRows(silver: UnitSilver, unknown: string): TooltipEntry[] {
+  // The core's `upkeep` is what is left after faction-mates paid their part (`sharedSilverCovered`),
+  // so the unit's own fee is the two together; food and the unclaimed fund stay netted out.
+  const own = silver.upkeep === null ? null : silver.upkeep + silver.sharedSilverCovered;
+  const rows: TooltipEntry[] = [{ label: "Upkeep", value: figure(own, unknown) }];
+  if (silver.upkeepLent > 0) {
+    rows.push({ label: "Lent for upkeep", value: String(silver.upkeepLent) });
+  }
+  if (silver.sharedSilverCovered > 0) {
+    rows.push({ label: "Was lent for upkeep", value: String(silver.sharedSilverCovered) });
+  }
+  return rows;
 }
 
 /**
@@ -262,6 +273,9 @@ function silverNote(
   countUpkeep: boolean,
   hexShort: boolean
 ): string | null {
-  const lines = silverNoteLines({ unit, silver, warned, countUpkeep, hexShort });
+  // The Was lent for upkeep row already says what faction-mates paid, so the "upkeep was paid by"
+  // sentence leaves that part out, as the silver cell's hover does (`ah-2zku`, `ah-kv6c`).
+  const upkeepLinesDrawn = countUpkeep && silver.sharedSilverCovered > 0;
+  const lines = silverNoteLines({ unit, silver, warned, countUpkeep, hexShort, upkeepLinesDrawn });
   return lines.length > 0 ? lines.join("\n") : null;
 }

@@ -361,9 +361,9 @@ describe("the silver section", () => {
     ]);
   });
 
-  // `ah-2zku`: a faction-mate's upkeep this unit paid is maintenance it paid, so the rows still
-  // add up and the month end is the cell's.
-  it("counts what a unit paid of a faction-mate's upkeep as its upkeep", () => {
+  // `ah-kv6c`, reversing `ah-2zku`'s folding: Upkeep is what the unit's own men cost, and what it
+  // paid of faction-mates' upkeep is a row of its own - the rows still add up to the month end.
+  it("the_popup_shows_lent_upkeep_on_its_own_row", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
       aUnitSilver({
@@ -384,8 +384,195 @@ describe("the silver section", () => {
       { label: "In, in time", value: "1578" },
       { label: "In, too late", value: "67" },
       { label: "Out", value: "0" },
-      { label: "Upkeep", value: "130" },
+      { label: "Upkeep", value: "30" },
+      { label: "Lent for upkeep", value: "100" },
       { label: "At month end", value: "1515" }
+    ]);
+  });
+
+  // The verification case: 2 orcs at 10 each (`rules/economy_maintenance`, Trident) worked 45 and
+  // lent 25 to faction-mates in the hex.
+  it("the_popup_no_longer_reads_lent_silver_as_the_lenders_own_upkeep", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "3431" }),
+      aUnitSilver({
+        held: 0,
+        income: 45,
+        lateIncome: 45,
+        expense: 0,
+        upkeep: 20,
+        upkeepLent: 25,
+        atMonthEnd: 45
+      }),
+      false,
+      true
+    );
+
+    expect(summary.silver?.rows).toEqual([
+      { label: "Held now", value: "0" },
+      { label: "In, in time", value: "0" },
+      { label: "In, too late", value: "45" },
+      { label: "Out", value: "0" },
+      { label: "Upkeep", value: "20" },
+      { label: "Lent for upkeep", value: "25" },
+      { label: "At month end", value: "0" }
+    ]);
+  });
+
+  // `ah-kv6c`, the mirror: a fed unit's Upkeep is its full own fee, and what faction-mates paid
+  // toward it is a row of its own, so the rows add up to the month end.
+  it("the_popup_shows_a_fed_units_full_upkeep_and_what_was_lent", () => {
+    const fully = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({
+        held: 0,
+        income: 0,
+        lateIncome: 0,
+        expense: 0,
+        upkeep: 0,
+        sharedSilverCovered: 100,
+        atMonthEnd: 0
+      }),
+      false,
+      true
+    );
+    expect(fully.silver?.rows).toEqual([
+      { label: "Held now", value: "0" },
+      { label: "In, in time", value: "0" },
+      { label: "In, too late", value: "0" },
+      { label: "Out", value: "0" },
+      { label: "Upkeep", value: "100" },
+      { label: "Was lent for upkeep", value: "100" },
+      { label: "At month end", value: "0" }
+    ]);
+
+    const partly = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({
+        held: 0,
+        income: 0,
+        lateIncome: 0,
+        expense: 0,
+        upkeep: 50,
+        sharedSilverCovered: 50,
+        atMonthEnd: 0
+      }),
+      // Ending the month at -50, it carries the not-enough-silver finding.
+      true,
+      true
+    );
+    expect(partly.silver?.rows.slice(4)).toEqual([
+      { label: "Upkeep", value: "100" },
+      { label: "Was lent for upkeep", value: "50" },
+      { label: "At month end", value: "-50" }
+    ]);
+    expect(partly.silver?.note ?? "").toContain(
+      "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
+    );
+  });
+
+  // `ah-kv6c`, amended 2026-10-16: each amount is said once. With the Was lent for upkeep row
+  // drawn, "This unit's upkeep was paid by …" leaves out its faction-mate part, as the silver
+  // cell's hover does (`ah-2zku`), and is gone when faction-mates were the only payer. Every other
+  // note is unchanged: these units hold and move nothing, so they keep "Nothing … moves silver."
+  it("the_popup_says_what_faction_mates_paid_only_on_the_was_lent_row", () => {
+    const fed = { held: 0, income: 0, lateIncome: 0, expense: 0, atMonthEnd: 0 };
+    const fully = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({ ...fed, upkeep: 0, sharedSilverCovered: 100 }),
+      false,
+      true
+    );
+    expect(fully.silver?.note).toBe("Nothing this unit is ordered to do moves silver.");
+
+    const partly = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({ ...fed, upkeep: 50, sharedSilverCovered: 50 }),
+      true,
+      true
+    );
+    expect(partly.silver?.note).toBe(
+      [
+        "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
+        "Nothing this unit is ordered to do moves silver."
+      ].join("\n")
+    );
+
+    const mixed = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({ ...fed, upkeep: 0, ownFoodCovered: 20, sharedSilverCovered: 80 }),
+      false,
+      true
+    );
+    expect(mixed.silver?.note).toBe(
+      ["This unit's upkeep was paid by its own food (20).", "Nothing this unit is ordered to do moves silver."].join("\n")
+    );
+  });
+
+  it("the_popup_shows_lent_before_was_lent_when_a_unit_does_both", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({ upkeep: 20, upkeepLent: 15, sharedSilverCovered: 10 }),
+      false,
+      true
+    );
+
+    expect(summary.silver?.rows.map((row) => row.label).slice(4)).toEqual([
+      "Upkeep",
+      "Lent for upkeep",
+      "Was lent for upkeep",
+      "At month end"
+    ]);
+    expect(summary.silver?.rows.slice(4, 7).map((row) => row.value)).toEqual(["30", "15", "10"]);
+  });
+
+  it("the_popup_hides_both_lent_rows_with_the_upkeep_row", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({ upkeep: 20, upkeepLent: 15, sharedSilverCovered: 10 }),
+      false,
+      false
+    );
+
+    expect(summary.silver?.rows.map((row) => row.label)).toEqual([
+      "Held now",
+      "In, in time",
+      "In, too late",
+      "Out",
+      "At month end"
+    ]);
+  });
+
+  it("the_popup_keeps_a_known_lent_amount_beside_an_unpriced_upkeep", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({ upkeep: null, upkeepLent: 25 }),
+      false,
+      true
+    );
+
+    expect(summary.silver?.rows.slice(4)).toEqual([
+      { label: "Upkeep", value: "?" },
+      { label: "Lent for upkeep", value: "25" },
+      { label: "At month end", value: "?" }
+    ]);
+  });
+
+  it("the_popup_adds_no_lent_row_to_a_unit_that_lends_nothing_and_is_lent_nothing", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({ upkeep: 20, upkeepLent: 0, sharedSilverCovered: 0 }),
+      false,
+      true
+    );
+
+    expect(summary.silver?.rows.map((row) => row.label)).toEqual([
+      "Held now",
+      "In, in time",
+      "In, too late",
+      "Out",
+      "Upkeep",
+      "At month end"
     ]);
   });
 
@@ -962,17 +1149,16 @@ describe("the silver section", () => {
   });
 
   it("says_when_a_faction_mate_pays_the_upkeep", () => {
-    // Automatic maintenance sharing, which needs no SHARE flag - so it gets its own sentence
-    // rather than the flag's (`ah-e66j`, round 1).
+    // Automatic maintenance sharing, which needs no SHARE flag (`ah-e66j`, round 1). Since
+    // `ah-kv6c` it is said once, on the Was lent for upkeep row, and in no sentence.
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
       forecast({ upkeep: 0, sharedSilverCovered: 60 }),
       true,
       true
     );
-    expect(summary.silver?.note).toBe(
-      "This unit's upkeep was paid by a faction-mate's silver (60)."
-    );
+    expect(summary.silver?.rows).toContainEqual({ label: "Was lent for upkeep", value: "60" });
+    expect(summary.silver?.note ?? null).toBeNull();
   });
 
   it("says_an_allied_unit_might_yet_cover_unpaid_upkeep", () => {
@@ -1029,8 +1215,10 @@ describe("the silver section", () => {
       false,
       true
     );
-    expect(shared.silver?.note).toBe(
-      "This unit's upkeep was paid by a faction-mate's silver (60)."
+    // Said on the Was lent for upkeep row (`ah-kv6c`), never as the flag's sentence.
+    expect(shared.silver?.rows).toContainEqual({ label: "Was lent for upkeep", value: "60" });
+    expect(shared.silver?.note ?? "").not.toContain(
+      "Shared silver in this hex covers the shortfall."
     );
 
     const flagged = summariseUnit(
@@ -1341,11 +1529,10 @@ describe("the hover says every sentence that holds (ah-x36v)", () => {
       true
     );
 
+    // The upkeep half is said on the Was lent for upkeep row (`ah-kv6c`), the orders half here.
+    expect(summary.silver?.rows).toContainEqual({ label: "Was lent for upkeep", value: "20" });
     expect(summary.silver?.note).toBe(
-      [
-        "This unit's upkeep was paid by a faction-mate's silver (20).",
-        "A faction-mate's silver in this hex pays for this unit's orders."
-      ].join("\n")
+      "A faction-mate's silver in this hex pays for this unit's orders."
     );
   });
 
@@ -1453,12 +1640,14 @@ describe("who paid this unit's upkeep, in one sentence (ah-x36v)", () => {
   });
 
   it("two sources read as a pair", () => {
-    expect(note({ upkeep: 0, factionFoodCovered: 12, sharedSilverCovered: 20 })).toBe(
-      "This unit's upkeep was paid by faction food here (12) and a faction-mate's silver (20)."
+    expect(note({ upkeep: 0, factionFoodCovered: 12, unclaimedCovered: 10 })).toBe(
+      "This unit's upkeep was paid by faction food here (12) and the faction's unclaimed silver (10)."
     );
   });
 
-  it("all four read in the game's payment order", () => {
+  // The popup leaves the faction-mate part to its Was lent for upkeep row (`ah-kv6c`), so the
+  // three it can still name are what it lists.
+  it("every source it names reads in the game's payment order", () => {
     expect(
       note({
         upkeep: 0,
@@ -1468,7 +1657,7 @@ describe("who paid this unit's upkeep, in one sentence (ah-x36v)", () => {
         unclaimedCovered: 10
       })
     ).toBe(
-      "This unit's upkeep was paid by its own food (8), faction food here (12), a faction-mate's silver (20) and the faction's unclaimed silver (10)."
+      "This unit's upkeep was paid by its own food (8), faction food here (12) and the faction's unclaimed silver (10)."
     );
   });
 
@@ -1696,7 +1885,14 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
 
   it.each(DOUBTS)("every note appears when every fact is true (%s)", (doubt) => {
     const silver = everything(doubt);
-    const facts = { unit, silver, warned: false, countUpkeep: true };
+    // The popup draws the Was lent for upkeep row whenever faction-mates paid (`ah-kv6c`).
+    const facts = {
+      unit,
+      silver,
+      warned: false,
+      countUpkeep: true,
+      upkeepLinesDrawn: silver.sharedSilverCovered > 0
+    };
     const expected = SILVER_NOTES.filter((note) => note.when(facts)).map((note) => note.say(facts));
 
     // A case that exercises only a handful of notes would prove nothing about the rest.

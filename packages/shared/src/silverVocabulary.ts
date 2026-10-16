@@ -353,7 +353,8 @@ export type SilverFacts = {
   /**
    * Whether the surface drew a `was lent for upkeep` line, which names what faction-mates' silver
    * paid of this unit's upkeep - so the "upkeep was paid by" sentence leaves that part out
-   * (`ah-2zku`). Absent means no: the whole-unit tooltip draws no lines and keeps it.
+   * (`ah-2zku`), as does the whole-unit tooltip's Was lent for upkeep row (`ah-kv6c`). Absent
+   * means no.
    */
   upkeepLinesDrawn?: boolean;
 };
