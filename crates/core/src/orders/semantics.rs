@@ -60559,64 +60559,65 @@ BUILD
 
     /// The purse lends TRANSPORT one shipment at a time, as the engine runs it (`runorders.cpp`:
     /// `RunTransportOrders` spends a shipment with `ConsumeShared`, then its fee with
-    /// `ConsumeSharedMoney`). Non-sharer 906 ($5) first ships 10 silver, drawing 5 on sharer 903
-    /// ($50; `unit.cpp`: `ConsumeShared` spends the sender's own first), then pays a $45 fee, which
-    /// the purse lends out of what 903 has left. Read at each shipment, never at the month's end:
-    /// the month-end moment lends again and would hide a draw lent at the wrong point of the run
-    /// (`docs/retrospectives/ah-9yvv.md`; `ah-3ffm`).
+    /// `ConsumeSharedMoney`). $0 non-sharer 906 pays a $45 fee, which the purse drains on sharers
+    /// 903 ($40, first) and 904 ($50); then it ships 10 silver it does not have, drawn on 904
+    /// (`unit.cpp`: `ConsumeShared`). Read at each shipment, never at the month's end, which lends
+    /// again and hides a draw lent at the wrong point of the run (`docs/retrospectives/ah-9yvv.md`).
+    /// Lent ahead of its shipment - before the fee, as the old after-fees split's removal did - the
+    /// draw would leave the fee only 35 to drain, and 903 lending 35 of it; lent after the run, the
+    /// fold would lend the send's overdraft once more (`ah-3ffm`).
     #[test]
     fn the_purse_lends_a_transport_draw_at_its_own_shipment() {
         let hex_region = region(vec![
-            sharing(with_silver(unit("903"), 50)),
-            with_silver(unit("906"), 5),
+            sharing(with_silver(unit("903"), 40)),
+            sharing(with_silver(unit("904"), 50)),
+            unit("906"),
         ]);
-        let ordered = OrderedUnits::read("unit 906\nTRANSPORT 905 10 SILV\nTRANSPORT 901 9 FUR\n");
+        let ordered = OrderedUnits::read("unit 906\nTRANSPORT 901 9 FUR\nTRANSPORT 905 10 SILV\n");
         let hex = Hex::read(&hex_region, &ordered, &[]);
         let rules = trident_rules();
         let mut ledger = ledger_for(&hex, Some(&rules));
-        let (lender, sender) = (0, 1);
-        let draw = ShipmentName {
+        let fee = ShipmentName {
             sender: "906".to_string(),
             line: 2,
         };
-        let fee = ShipmentName {
+        let draw = ShipmentName {
             sender: "906".to_string(),
             line: 3,
         };
-        book_shipment(
-            &mut ledger,
-            &draw,
-            vec![(Lender::Unit(lender), 5)],
-            &[("906", -10, SilverChangeCause::Sent)],
-        );
         book_shipment(
             &mut ledger,
             &fee,
             vec![],
             &[("906", -45, SilverChangeCause::Shipped)],
         );
+        book_shipment(
+            &mut ledger,
+            &draw,
+            vec![(Lender::Unit(1), 10)],
+            &[("906", -10, SilverChangeCause::Sent)],
+        );
 
         let at = |point| Lending::at_shipment(&hex, &ledger, point);
-        let before_draw = at(TransportPoint::Before(&draw));
+        let read = |lending: Lending| (lending.lends, lending.borrows);
         assert_eq!(
-            (before_draw.lends[lender], before_draw.borrows[sender]),
-            (0, 0),
-            "nothing is drawn before the shipment runs"
-        );
-        let after_draw = at(TransportPoint::After(&draw));
-        assert_eq!(
-            (after_draw.lends[lender], after_draw.borrows[sender]),
-            (5, 5)
+            read(at(TransportPoint::Before(&fee))),
+            (vec![0, 0, 0], vec![0, 0, 0]),
+            "nothing is lent before the run's first shipment"
         );
         assert_eq!(
-            at(TransportPoint::Before(&fee)).lends[lender],
-            5,
-            "the fee is not lent before it runs"
+            read(at(TransportPoint::After(&fee))),
+            (vec![40, 5, 0], vec![0, 0, 45]),
+            "the fee is drained in order, and the draw is not lent yet"
         );
-        let after_fee = at(TransportPoint::After(&fee));
         assert_eq!(
-            (after_fee.lends[lender], after_fee.borrows[sender]),
-            (50, 50)
+            read(at(TransportPoint::Before(&draw))),
+            read(at(TransportPoint::After(&fee)))
+        );
+        assert_eq!(
+            read(at(TransportPoint::After(&draw))),
+            (vec![40, 15, 0], vec![0, 0, 55]),
+            "the draw is lent on the sharer it was drawn on, once"
         );
     }
 
