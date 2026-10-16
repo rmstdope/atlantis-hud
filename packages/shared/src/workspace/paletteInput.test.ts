@@ -155,6 +155,36 @@ describe("assemblePaletteInput (ah-1xl5)", () => {
     expect(calls).toEqual(["selectHex 1:1,1"]);
   });
 
+  it("lists the known factions, opening another's details or the player's own", () => {
+    const parsed = report([
+      aReportUnit({ unitId: "2207", own: false, factionId: "10", factionName: "Thane's Ring" })
+    ]);
+    const { doors: d, calls } = doors();
+    const factions = assemblePaletteInput(world({ parsed }), d).factions ?? [];
+    expect(factions.map(({ factionId, own }) => [factionId, own])).toEqual([
+      ["95", true],
+      ["10", false]
+    ]);
+    for (const faction of factions) faction.run();
+    expect(calls).toEqual(["openFaction null", "openFaction 10"]);
+  });
+
+  it("lists settlements with the turn a stale one was seen, choosing one selects its hex", () => {
+    const settlement = { name: "Mudwick", size: "village" };
+    const hexes = [
+      aHexNode({ regionId: "1:9,9", knowledge: "stale", lastSeenTurn: 64, settlement, label: "swamp (9,9)" })
+    ];
+    const { doors: d, calls } = doors();
+    const [row] = assemblePaletteInput(world({ hexes, currentTurn: 70 }), d).settlements ?? [];
+    expect(row).toMatchObject({
+      regionId: "1:9,9",
+      label: "Mudwick [village] · swamp (9,9)",
+      lastSeenTurn: 64
+    });
+    row?.run();
+    expect(calls).toEqual(["selectHex 1:9,9"]);
+  });
+
   it("lists every hex as a region, choosing one selects it", () => {
     const { doors: d, calls } = doors();
     const regions =
