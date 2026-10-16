@@ -24,6 +24,7 @@ import { castsPrunedBy } from "../studyCast";
 import type { TeachingRule } from "../teachingPermission";
 import { STUDY_NOTE_MAX_CHARS, noteCountText } from "../studyNote";
 import { createNoteAutosave, type NoteAutosave } from "./studyNoteAutosave";
+import { NOTE_FLASH_MS } from "./regionNotesState";
 import { StudySchedule } from "./StudySchedule";
 import { StudyPlannerOrders } from "./StudyPlannerOrders";
 import { useStudyCastsWriteStore } from "../studyCastsWriteStore";
@@ -76,6 +77,7 @@ export function StudyPlannerDialog({
   onSaveNote,
   onScheduleChange,
   rule,
+  reveal = null,
   onDismiss
 }: {
   groups: readonly PlannerGroup[];
@@ -137,12 +139,21 @@ export function StudyPlannerDialog({
    * computed here: the dialog's `ordersDocument` prop is the Orders tab's.
    */
   rule: TeachingRule;
+  /**
+   * A mage note chosen in the palette (ah-mlls.5): the dialog opens on All mages with this mage
+   * picked, as if the player had picked him, and his note outlined for a moment. Read once, at
+   * mount - `AppShell` keys the dialog so a second choice remounts it.
+   */
+  reveal?: { mageKey: string } | null;
   onDismiss: () => void;
 }) {
   // Opens on the Planner, where the work is done (ah-x9vc), and is remembered no longer than the
   // dialog, exactly as the picked mage is and for the reason ah-lyg6.2.2 gave: a pane that opens
   // differently depending on what you did last time is the less predictable of the two.
-  const [view, setView] = useState<"all" | "schedule" | "orders">("schedule");
+  // A palette reveal (ah-mlls.5) is the one door that opens on All mages instead.
+  const [view, setView] = useState<"all" | "schedule" | "orders">(
+    reveal === null ? "schedule" : "all"
+  );
   const [cellMode, setCellMode] = useState<CellMode>({ kind: "idle" });
   const turns = useMemo(() => scheduleTurns(viewedTurn), [viewedTurn]);
   // Memoized beside `turns` and `flat`: without it every keystroke in the popover - each skill
@@ -221,9 +232,15 @@ export function StudyPlannerDialog({
   // Not remembered between openings, unlike the tree's picked mage: a planner is a list, and
   // reopening it on your strongest mage is the more predictable of the two.
   const [pickedKey, setPickedKey] = useState<string | null>(
-    () => openingPlannerMage(groups, selectedUnitId)?.key ?? null
+    () => reveal?.mageKey ?? openingPlannerMage(groups, selectedUnitId)?.key ?? null
   );
   const picked = flat.find((mage) => mage.key === pickedKey) ?? flat[0] ?? null;
+  // The revealed mage's note flashes once (ah-mlls.5): picking another mage spends the reveal, so
+  // coming back to him does not outline it again.
+  const [flashKey, setFlashKey] = useState<string | null>(reveal?.mageKey ?? null);
+  if (flashKey !== null && picked?.key !== flashKey) {
+    setFlashKey(null);
+  }
 
   // Focus returns where it was summoned from, exactly as `GameDataDialog` does: this opens from F4
   // or from the palette, which itself opens from the orders editor.
@@ -520,6 +537,7 @@ export function StudyPlannerDialog({
             plan={planFor(plans, picked.factionId, picked.unitId)}
             saveError={saveError}
             onSaveNote={(comment) => onSaveNote(picked.factionId, picked.unitId, comment)}
+            flashNote={picked.key === flashKey}
           />
         </div>
       )}
@@ -659,7 +677,8 @@ export function StudyPlannerDetail({
   tree,
   plan,
   saveError,
-  onSaveNote
+  onSaveNote,
+  flashNote = false
 }: {
   mage: PlannerMage;
   /** The turn the plan line names - `turns[0]`, the next one; null before a report is loaded. */
@@ -672,6 +691,8 @@ export function StudyPlannerDetail({
   plan: StudyPlanRecord | null;
   saveError: string | null;
   onSaveNote: (comment: string) => void;
+  /** Outline the note for a moment on mount: the mage note the palette chose (ah-mlls.5). */
+  flashNote?: boolean;
 }) {
   const unreported = unreportedLine(mage);
   const missing = mage.standing.missing;
@@ -716,6 +737,7 @@ export function StudyPlannerDetail({
         comment={plan?.comment ?? ""}
         saveError={saveError}
         onSave={onSaveNote}
+        flash={flashNote}
       />
 
       <div className="mt-3 grid grid-cols-2 gap-3">
@@ -785,13 +807,24 @@ export function StudyPlannerDetail({
 function StudyPlannerNote({
   comment,
   saveError,
-  onSave
+  onSave,
+  flash = false
 }: {
   comment: string;
   saveError: string | null;
   onSave: (comment: string) => void;
+  /** Outlined in gold for `NOTE_FLASH_MS` from mount, never focused: it saves as it is typed. */
+  flash?: boolean;
 }) {
   const [draft, setDraft] = useState(comment);
+  const [flashing, setFlashing] = useState(flash);
+  useEffect(() => {
+    if (!flashing) {
+      return;
+    }
+    const timer = setTimeout(() => setFlashing(false), NOTE_FLASH_MS);
+    return () => clearTimeout(timer);
+  }, [flashing]);
   // `onSave` is a fresh closure on every render, so the autosave reaches it through a ref that is
   // reassigned each time - the same pattern `dismissLayer.ts` uses. A closure captured once at
   // construction would write through a stale one.
@@ -836,7 +869,10 @@ function StudyPlannerNote({
         maxLength={STUDY_NOTE_MAX_CHARS}
         value={draft}
         placeholder="Where his studies are heading."
-        className="w-full rounded border border-edge bg-surface p-1.5 text-pane"
+        data-flash={flashing ? "true" : undefined}
+        className={`w-full rounded border bg-surface p-1.5 text-pane ${
+          flashing ? "border-brass ring-2 ring-brass/35" : "border-edge"
+        }`}
         onChange={(event) => {
           setDraft(event.target.value);
           autosave.current?.typed(event.target.value);

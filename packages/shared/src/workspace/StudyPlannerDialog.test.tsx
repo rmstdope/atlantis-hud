@@ -269,9 +269,14 @@ describe("the All mages view carries no warnings strip", () => {
  * suite proves the switch.
  */
 describe("the Orders tab", () => {
-  const dialog = (plans: StudyPlanRecord[], assumeSheltered = false) =>
+  const dialog = (
+    plans: StudyPlanRecord[],
+    assumeSheltered = false,
+    reveal: { mageKey: string } | null = null
+  ) =>
     renderToStaticMarkup(
       <StudyPlannerDialog orders={orderProcessingFor("neworigins")}
+        reveal={reveal}
         groups={GROUPS}
         summaryLine={null}
         emptyCopy={{ headline: "", detail: "" }}
@@ -328,6 +333,31 @@ describe("the Orders tab", () => {
     expect(markup).toContain('data-testid="study-planner-view-all" aria-selected="false"');
     expect(markup).toContain('data-testid="study-schedule"');
     expect(markup).not.toContain('data-testid="study-planner-list"');
+  });
+
+  it("a_mage_note_chosen_in_the_palette_opens_all_mages_on_him_with_his_note_outlined", () => {
+    // ah-mlls.5: the note is outlined, never focused - it saves as it is typed.
+    const plan = {
+      factionId: "95",
+      unitId: "883",
+      goals: [],
+      casts: [],
+      comment: "iron-working next",
+      updatedAt: "2026-01-01T00:00:00Z"
+    };
+    const markup = dialog([plan], false, { mageKey: "95/883" });
+
+    expect(markup).toContain('data-testid="study-planner-view-all" aria-selected="true"');
+    expect(markup).toContain('data-testid="study-planner-list"');
+    expect(markup).toMatch(/data-testid="study-planner-mage-95\/883" aria-selected="true"/);
+    const note = markup.slice(markup.indexOf('data-testid="study-planner-note"'));
+    expect(note).toMatch(/<textarea[^>]*data-flash="true"[^>]*class="[^"]*border-brass/);
+    expect(note).toContain("iron-working next");
+  });
+
+  it("an_ordinary_opening_outlines_no_note", () => {
+    const markup = dialog([]);
+    expect(markup).not.toContain("data-flash");
   });
 
   it("the_view_tabs_look_pressable_and_the_open_one_is_marked", () => {
