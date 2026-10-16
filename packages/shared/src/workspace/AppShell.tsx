@@ -4883,7 +4883,7 @@ export function AppShell({
         ...paletteInput,
         actions: [
           ...turnRows.map((row) => ({ ...row, run: () => runTurnAction.current(row.id) })),
-          ...paletteInput.actions
+          ...(paletteInput.actions ?? [])
         ]
       }),
     [paletteInput, turnRows]
