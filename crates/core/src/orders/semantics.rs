@@ -6032,6 +6032,12 @@ struct Ledger<'a> {
     /// was left as the line ran, or refused outright before shipping began (`ah-0aqx`). Said on
     /// the sender's own line by [`report_shortfalls`].
     cut_shipments: Vec<CutShipment>,
+    /// What each exact silver shipment drew on the hex's sharers beyond its sender's own silver,
+    /// in settlement order (`runorders.cpp`: `RunTransportOrders` checks the amount against
+    /// `GetSharedNum` and spends it with `ConsumeShared`; `rules/share`; `ah-9yvv`). Booked as it
+    /// runs, so a later line reads what an earlier one left, and lent by the purse's TRANSPORT
+    /// moment ([`Lending::settle`]) on the sharer it was drawn on.
+    shipment_draws: Vec<ShipmentDraw>,
     /// Which of the two unmeasurable causes each of this hex's units met, by unit number
     /// (`ah-7ale.5`). Not gated on the Transport warning: it is what makes the month read `?`, and
     /// no figure may claim to be certain when it is not.
@@ -6216,6 +6222,20 @@ struct CutShipment {
     refused: bool,
     /// The order's line, where the warning is anchored.
     placed: PlacedIntent,
+}
+
+/// What one exact silver shipment drew on one sharer ([`Ledger::shipment_draws`], `ah-9yvv`).
+#[derive(Debug, Clone)]
+struct ShipmentDraw {
+    /// The sender, which spent the silver.
+    borrower: String,
+    /// The sharer it was drawn on: a unit of the hex, or a sharer that walked in.
+    lender: Lender,
+    amount: i64,
+    /// Drawn once every fee had been judged ([`Ledger::fees_judged`]). Such a shipment is not in
+    /// the sender's TRANSPORT-moment silver ([`silver_at`]), so its draw is lent after the
+    /// moment's fees are; one drawn before is in it, as an overdraft the draw answers.
+    after_fees: bool,
 }
 
 /// A `BUY` line with nothing left to buy, and the limit its own earlier lines had emptied.
@@ -6547,6 +6567,7 @@ fn ledger_for_reaching<'a>(
         fees_judged: false,
         silver_at_transport_check: BTreeMap::new(),
         cut_shipments: Vec::new(),
+        shipment_draws: Vec::new(),
         shipping_unmeasured: BTreeMap::new(),
         sold: BTreeMap::new(),
         dead_sales: Vec::new(),
@@ -16074,7 +16095,46 @@ impl Lending {
         // nothing, and a later STUDY is judged on its own fee against what the pool still holds
         // (`ah-szu0`).
         let mut unpaid = vec![0_i64; hex.units.len()];
+        // What each exact silver shipment drew on a sharer as it ran, lent on that sharer
+        // ([`Ledger::shipment_draws`], `ah-9yvv`). One drawn before the fees were judged sits in its
+        // sender's TRANSPORT position as an overdraft, so it is lent before the moment's fold, which
+        // then finds nothing more to lend for it; one drawn after is not in that position, so it is
+        // lent once the fold has lent for the fees, which it cannot have paid for.
+        let lend_draws = |purse: &mut Lending, after_fees: bool| {
+            for draw in ledger
+                .shipment_draws
+                .iter()
+                .filter(|draw| draw.after_fees == after_fees)
+            {
+                let Some(borrower) = hex
+                    .units
+                    .iter()
+                    .position(|ordered| ordered.unit.unit_id == draw.borrower)
+                    .filter(|&index| judged(index))
+                else {
+                    continue;
+                };
+                purse.borrows[borrower] += draw.amount;
+                match draw.lender {
+                    Lender::Unit(index) => purse.lends[index] += draw.amount,
+                    Lender::Arrival(index) => {
+                        if let Some(lent) = purse.arrivals_lend.get_mut(index) {
+                            *lent += draw.amount;
+                        }
+                    }
+                }
+            }
+        };
+        let mut draws_after_fees_due = false;
         for &moment in moments {
+            if draws_after_fees_due {
+                lend_draws(&mut purse, true);
+                draws_after_fees_due = false;
+            }
+            if moment == LendingMoment::Transport {
+                lend_draws(&mut purse, false);
+                draws_after_fees_due = true;
+            }
             if moment == LendingMoment::Cast {
                 // The casts are judged one at a time, in region order, each against what the
                 // pool holds as its turn comes (`runorders.cpp`: `RunCastOrders`; `spells.cpp`:
@@ -16299,6 +16359,10 @@ impl Lending {
             for (borrowed, need) in purse.borrows.iter_mut().zip(needs) {
                 *borrowed += need;
             }
+        }
+
+        if draws_after_fees_due {
+            lend_draws(&mut purse, true);
         }
 
         // A judged student the purse lent nothing to paid its whole fee from its own silver.
@@ -21976,34 +22040,24 @@ fn push_unless_line_marked(findings: &mut Vec<Finding>, finding: Finding) {
 }
 
 /// Whether a cut or a refusal of `unit_id`'s exact silver shipment can be claimed: only where the
-/// sender's own reading is the engine's `Unit::GetSharedNum` (`unit.cpp`), which counts the unit
-/// and every sharing faction-mate in the region whatever its own flag (`ah-0aqx`). So never when
-/// another unit pools silver here at TRANSPORT - a sharer that stays, or one that walks in - since
-/// the shipment would draw on it and this walk does not lend a shipment's silver; and never when
-/// the purse cannot be worked out: the sender, or a sharer of its hex, is doubted (the rule of
-/// `a_doubted_sharer_silences_the_stock_it_shares`). A sharer that walks away is gone by TRANSPORT
-/// (`rules/sequenceofevents`) and counts for nothing; a sender that walks itself is judged in the
-/// region it ends in, so nothing is claimed for it here.
+/// walk reads the engine's `Unit::GetSharedNum` (`unit.cpp`) for it - the sender's own silver and
+/// what the sharers staying here or walking in can lend it ([`shipment_lenders`], `ah-0aqx`,
+/// `ah-9yvv`). So never when the purse cannot be worked out: the sender, a sharer of its hex, or a
+/// sharer walking in is doubted (the rule of `a_doubted_sharer_silences_the_stock_it_shares`;
+/// `ah-9yvv` review, finding 1). A sharer that walks
+/// away is gone by TRANSPORT (`rules/sequenceofevents`) and counts for nothing; a sender that
+/// walks itself is judged in the region it ends in, so nothing is claimed for it here.
 fn silver_shortfall_claimable(hex: &Hex<'_>, ledger: &Ledger<'_>, unit_id: &str) -> bool {
     let doubted = ledger.doubted.contains(unit_id)
         || hex
             .units
             .iter()
-            .any(|other| other.shares() && ledger.doubted.contains(&other.unit.unit_id));
-    let sharing = Sharing::for_silver(hex, ledger);
-    let others_share = hex
-        .units
-        .iter()
-        .any(|other| other.unit.unit_id != unit_id && sharing.pools_silver(other))
-        || !ledger
-            .relief()
-            .walking
-            .arrivals_at(LendingMoment::Transport)
-            .is_empty();
+            .any(|other| other.shares() && ledger.doubted.contains(&other.unit.unit_id))
+        || ledger.relief().walking.arrival_doubted;
     // TRANSPORT runs after movement, so a sender that walks is read by the region it ends in,
     // whose sharers this hex does not know.
     let walks = ledger.relief().walking.leaving.contains(unit_id);
-    !doubted && !others_share && !walks
+    !doubted && !walks
 }
 
 /// The silver each sender of an exact silver `TRANSPORT` holds as the engine checks every
@@ -22027,11 +22081,88 @@ fn snapshot_transport_check(hex: &Hex<'_>, ledger: &mut Ledger<'_>, ruleset: Opt
         if !ships_exact_silver || !silver_shortfall_claimable(hex, ledger, sender) {
             continue;
         }
-        let held = ledger.transport_holding(hex, sender, SILVER).max(0);
+        let held = ledger.transport_holding(hex, sender, SILVER).max(0)
+            + shipment_lenders(ledger, hex, sender)
+                .iter()
+                .map(|(_, left)| left)
+                .sum::<i64>();
         ledger
             .silver_at_transport_check
             .insert(sender.to_string(), held);
     }
+}
+
+/// The sharers an exact silver shipment by `sender` can draw on as it runs, beyond the sender's own
+/// silver, each with what it still has (`unit.cpp`: `GetSharedNum` counts every sharing
+/// faction-mate in the region, and `ConsumeShared` draws on them; `ah-9yvv`). Drained in the purse's
+/// own order, the one its fee fold uses ([`Lending::settle`]): the hex's sharers in report order,
+/// then the sharers that walked in. The engine walks the region's objects instead, and an arrival
+/// joins the open ground, ahead of any structure, so where a staying sharer is inside a structure
+/// the engine may draw on an arrival first: the total drawn is the same, only which sharer's row
+/// shows the loan can differ (`ah-9yvv` review, finding 3).
+/// Read on the same stock [`shipping_purse`] judges a fee on, which carries every fee and every
+/// earlier draw already lent at TRANSPORT ([`Lending::through`]), so nothing is drawn twice. Empty
+/// where silver does not pool here, or the pool or the sender cannot be read.
+fn shipment_lenders(ledger: &Ledger<'_>, hex: &Hex<'_>, sender: &str) -> Vec<(Lender, i64)> {
+    let sharing = Sharing::for_silver(hex, ledger);
+    if sharing.reading(SILVER, ledger.ruleset) != Reading::Pooled {
+        return Vec::new();
+    }
+    let lending = Lending::through(hex, ledger, StatePhase::Transport);
+    let lent_by_arrivals = lending.arrivals_lend.clone();
+    let stock = SharerStock::carrying(ledger, hex, StatePhase::Transport, SILVER, |_, _| lending);
+    let Some((stock, at)) =
+        SharerStock::spender_in(ledger, hex, StatePhase::Transport, sender, SILVER, stock)
+    else {
+        return Vec::new();
+    };
+    let staying = hex
+        .report_order()
+        .into_iter()
+        .filter(|&index| index != at && sharing.pools_silver(&hex.units[index]))
+        .map(|index| (Lender::Unit(index), stock.position(index)));
+    let arriving = ledger
+        .relief()
+        .walking
+        .arrivals_at(LendingMoment::Transport)
+        .iter()
+        .enumerate()
+        .map(|(index, arrival)| {
+            (
+                Lender::Arrival(index),
+                arrival.lends - lent_by_arrivals.get(index).copied().unwrap_or(0),
+            )
+        });
+    staying
+        .chain(arriving)
+        .filter(|(_, left)| *left > 0)
+        .collect()
+}
+
+/// `drawn` - what a shipment moves beyond its sender's own silver - laid on `lenders` in order,
+/// each up to what it has ([`Ledger::shipment_draws`], `ah-9yvv`).
+fn shipment_draws_for(
+    sender: &str,
+    lenders: &[(Lender, i64)],
+    drawn: i64,
+    after_fees: bool,
+) -> Vec<ShipmentDraw> {
+    let mut owing = drawn.max(0);
+    let mut draws = Vec::new();
+    for &(lender, left) in lenders {
+        if owing == 0 {
+            break;
+        }
+        let amount = left.min(owing);
+        owing -= amount;
+        draws.push(ShipmentDraw {
+            borrower: sender.to_string(),
+            lender,
+            amount,
+            after_fees,
+        });
+    }
+    draws
 }
 
 /// What each unit in this hex pays to ship goods this month, by unit number (`ah-7ale.3`).
@@ -22168,7 +22299,6 @@ fn shipping_bills(
                 .unwrap_or_default();
             let conditional = acceptance == super::transport::Acceptance::AcceptanceUnknown;
             let held = (ledger.transport_holding(hex, sender, &tag) + arrived - already).max(0);
-            let quantity = super::transfers::quantity_moved(amount, held);
             // An exact silver ask the sender cannot meet (`ah-0aqx`, `runorders.cpp`). Refused
             // outright where it exceeds what was held as shipping began (`CheckTransportOrders`:
             // `o->type = NORDERS`); otherwise cut to what is left as it runs (`RunTransportOrders`:
@@ -22179,6 +22309,21 @@ fn shipping_bills(
                 }
                 _ => None,
             };
+            // `GetSharedNum` counts the sharers too, and `ConsumeShared` spends the sender's own
+            // silver first and draws the rest on them (`unit.cpp`; `rules/share`; `ah-9yvv`). `ALL`
+            // ships the sender's own alone (`amt = u->items.GetNum`).
+            let lenders = if asked.is_some() {
+                shipment_lenders(ledger, hex, sender)
+            } else {
+                Vec::new()
+            };
+            let can_have = held + lenders.iter().map(|(_, left)| left).sum::<i64>();
+            let quantity = match asked {
+                Some(asked) => asked.clamp(0, can_have),
+                None => super::transfers::quantity_moved(amount, held),
+            };
+            let mut draws =
+                shipment_draws_for(sender, &lenders, quantity - held, ledger.fees_judged);
             if let Some(asked) = asked {
                 if let Some(&check) = ledger.silver_at_transport_check.get(sender) {
                     if asked > check {
@@ -22201,7 +22346,7 @@ fn shipping_bills(
                 .map(|asked| CutShipment {
                     unit_id: sender.to_string(),
                     ordered: asked,
-                    can_have: held,
+                    can_have,
                     moved: quantity,
                     refused: false,
                     placed: placed.clone(),
@@ -22217,6 +22362,7 @@ fn shipping_bills(
                     unmeasured.world_wrap = true;
                     if !conditional {
                         ledger.cut_shipments.extend(cut.take());
+                        ledger.shipment_draws.append(&mut draws);
                         delivered.push(settle_shipment_delivery(
                             ledger,
                             settled_at,
@@ -22236,6 +22382,7 @@ fn shipping_bills(
                 ) => {
                     if !conditional {
                         ledger.cut_shipments.extend(cut.take());
+                        ledger.shipment_draws.append(&mut draws);
                         delivered.push(settle_shipment_delivery(
                             ledger,
                             settled_at,
@@ -22276,6 +22423,7 @@ fn shipping_bills(
                             None,
                         );
                         ledger.cut_shipments.extend(cut.take());
+                        ledger.shipment_draws.append(&mut draws);
                         delivered.push(settle_shipment_delivery(
                             ledger,
                             settled_at,
@@ -56138,35 +56286,135 @@ BUILD
             .any(|(_, message)| message.contains("silver ordered"))
     }
 
-    /// `Unit::GetSharedNum` (`unit.cpp`) counts every sharing faction-mate's silver in the region
-    /// whatever the sender's own flag, and `ConsumeShared` draws on them; this walk does not lend
-    /// a shipment's silver, so beside another sharer it claims neither a cut nor a refusal - one
-    /// line or two, one sender or two (`ah-0aqx` review, finding 1 and follow-up finding 1).
+    /// The `ah-9yvv` hex: [`non_sharing_sender`] with 906 holding $5 beside 905 and a $50 sharer
+    /// 903.
+    fn short_sender_beside_a_sharer() -> Vec<ReportRegion> {
+        non_sharing_sender(5, vec![unit("905"), sharing(with_silver(unit("903"), 50))])
+    }
+
+    /// `runorders.cpp`, `RunTransportOrders`: an exact amount is checked against
+    /// `Unit::GetSharedNum` - the sender's own silver and every sharing faction-mate's in the
+    /// region, whatever the sender's own flag (`unit.cpp`) - and `ConsumeShared` spends the
+    /// sender's own first and draws the rest on the sharers (`rules/share`: a sharer supplies
+    /// "any other unit of your faction that needs them"). So a $5 non-sharer beside a $50 sharer
+    /// ships all 10 of `TRANSPORT 905 10 SILV`: the sharer's row lends 5 and ends at 45, the
+    /// sender's is lent 5 and ends at 0, and nothing is warned (`ah-9yvv`).
     #[test]
-    fn a_sender_beside_another_sharer_claims_no_cut_or_refusal() {
-        for orders in [
-            "unit 906\nTRANSPORT 905 10 SILV\n",
-            "unit 906\nTRANSPORT 905 10 SILV\nTRANSPORT 905 50 SILV\n",
-            "unit 900\nTRANSPORT 905 40 SILV\nunit 906\nTRANSPORT 905 40 SILV\n",
-        ] {
-            let review = review_turn(
-                &report(non_sharing_sender(
-                    5,
-                    vec![unit("905"), sharing(with_silver(unit("903"), 50))],
-                )),
-                orders,
-                Some(&ruleset()),
-                with_map(),
-            );
-            for id in ["900", "906"] {
-                assert!(
-                    !claims_a_cut_shipment(&review, id),
-                    "{orders}: {:?}",
-                    shipment_warnings(&review, id)
-                );
-            }
-            assert_eq!(silver_shipped(&review, orders, "906"), 5, "{orders}");
-        }
+    fn a_short_sender_draws_the_rest_of_an_exact_silver_shipment_on_a_sharer() {
+        let orders = "unit 906\nTRANSPORT 905 10 SILV\n";
+        let review = review_turn(
+            &report(short_sender_beside_a_sharer()),
+            orders,
+            Some(&ruleset()),
+            with_map(),
+        );
+        assert_eq!(
+            silver_shipped(&review, orders, "906"),
+            10,
+            "{:?}",
+            shipment_silver(&review, "906")
+        );
+        assert_eq!(silver_booked(&review, "903", SilverChangeCause::Lent), -5);
+        assert_eq!(shipment_silver(&review, "903").at_month_end, Some(45));
+        assert_eq!(silver_booked(&review, "906", SilverChangeCause::WasLent), 5);
+        assert_eq!(shipment_silver(&review, "906").at_month_end, Some(0));
+        assert!(shipment_warnings(&review, "906").is_empty());
+    }
+
+    /// The draw is booked as it runs, so a second line reads what the first left: `GetSharedNum`
+    /// is $55 at the check, so neither line is refused, and the second's 50 finds $45 left and is
+    /// cut to it - the sharer counted once (`ah-9yvv`).
+    #[test]
+    fn a_second_exact_silver_line_reads_what_the_first_draw_left() {
+        let orders = "unit 906\nTRANSPORT 905 10 SILV\nTRANSPORT 905 50 SILV\n";
+        let review = review_turn(
+            &report(short_sender_beside_a_sharer()),
+            orders,
+            Some(&ruleset()),
+            with_map(),
+        );
+        assert_eq!(silver_shipped(&review, orders, "906"), 55);
+        assert_eq!(silver_booked(&review, "903", SilverChangeCause::Lent), -50);
+        assert_eq!(shipment_silver(&review, "903").at_month_end, Some(0));
+        assert_eq!(shipment_silver(&review, "906").at_month_end, Some(0));
+        assert_eq!(
+            shipment_warnings(&review, "906"),
+            vec![(
+                Some(3),
+                "short $5 when this order runs: this unit can have $45 then, so it ships 45 of the \
+                 50 silver ordered"
+                    .to_string()
+            )]
+        );
+    }
+
+    /// `CheckTransportOrders` reads `GetSharedNum` too, so in a pooled hex an ask above the
+    /// sender's and the sharers' silver together is refused outright, and nobody's silver moves
+    /// (`ah-9yvv`, extending `ah-0aqx`'s refusal).
+    #[test]
+    fn an_exact_silver_shipment_above_the_pooled_purse_is_refused() {
+        let orders = "unit 906\nTRANSPORT 905 60 SILV\n";
+        let review = review_turn(
+            &report(short_sender_beside_a_sharer()),
+            orders,
+            Some(&ruleset()),
+            with_map(),
+        );
+        assert_eq!(silver_shipped(&review, orders, "906"), 0);
+        assert_eq!(shipment_silver(&review, "906").at_month_end, Some(5));
+        assert_eq!(shipment_silver(&review, "903").at_month_end, Some(50));
+        assert_eq!(
+            shipment_warnings(&review, "906"),
+            vec![(
+                Some(2),
+                "short $5 when shipping begins: this unit can have $55 then, so it ships none of \
+                 the 60 silver ordered"
+                    .to_string()
+            )]
+        );
+    }
+
+    /// Two senders on one sharer: 900 ($0) runs first and draws $40, so 906's 40 finds its own $5
+    /// and the sharer's $10 left and is cut to 15 (`ah-9yvv`).
+    #[test]
+    fn two_senders_drawing_on_one_sharer_each_read_what_the_other_left() {
+        let orders = "unit 900\nTRANSPORT 905 40 SILV\nunit 906\nTRANSPORT 905 40 SILV\n";
+        let review = review_turn(
+            &report(short_sender_beside_a_sharer()),
+            orders,
+            Some(&ruleset()),
+            with_map(),
+        );
+        assert_eq!(silver_shipped(&review, orders, "900"), 40);
+        assert_eq!(silver_shipped(&review, orders, "906"), 15);
+        assert_eq!(shipment_silver(&review, "903").at_month_end, Some(0));
+        assert!(shipment_warnings(&review, "900").is_empty());
+        assert_eq!(
+            shipment_warnings(&review, "906"),
+            vec![(
+                Some(4),
+                "short $25 when this order runs: this unit can have $15 then, so it ships 15 of \
+                 the 40 silver ordered"
+                    .to_string()
+            )]
+        );
+    }
+
+    /// A non-quartermaster sending to a quartermaster ships in the first TRANSPORT phase
+    /// (`rules/sequenceofevents`), before any fee is judged: the draw is lent once there too,
+    /// never again by the purse's TRANSPORT moment (`ah-9yvv`).
+    #[test]
+    fn a_draw_in_the_first_transport_phase_is_lent_once() {
+        let regions = two_senders(vec![
+            with_silver(unit("905"), 5),
+            sharing(with_silver(unit("903"), 50)),
+        ]);
+        let orders = "unit 905\nTRANSPORT 906 10 SILV\n";
+        let review = review_turn(&report(regions), orders, Some(&ruleset()), with_map());
+        assert_eq!(silver_shipped(&review, orders, "905"), 10);
+        assert_eq!(silver_booked(&review, "903", SilverChangeCause::Lent), -5);
+        assert_eq!(shipment_silver(&review, "903").at_month_end, Some(45));
+        assert_eq!(shipment_silver(&review, "905").at_month_end, Some(0));
     }
 
     /// A sharer that walks away is gone by TRANSPORT (`rules/sequenceofevents`), so `GetSharedNum`
@@ -56224,7 +56472,7 @@ BUILD
     }
 
     /// A sharer that walks in lends at TRANSPORT (`GetSharedNum` is 55), so no refusal is claimed
-    /// (follow-up finding 3).
+    /// (follow-up finding 3), and the shipment draws its other 5 on the arrival (`ah-9yvv`).
     #[test]
     fn a_sharer_that_walks_in_leaves_the_shipment_unrefused() {
         let mut regions = non_sharing_sender(5, vec![unit("905")]);
@@ -56247,7 +56495,96 @@ BUILD
             "{:?}",
             shipment_warnings(&review, "906")
         );
+        assert_eq!(silver_shipped(&review, orders, "906"), 10);
+        assert_eq!(shipment_silver(&review, "903").at_month_end, Some(45));
+        assert_eq!(shipment_silver(&review, "906").at_month_end, Some(0));
+    }
+
+    /// A sharer that walks in with goods the walk cannot account for leaves the pool unreadable
+    /// (`Sharing::pool_trusted`), so `GetSharedNum` cannot be worked out: no cut or refusal is
+    /// claimed, and the shipment keeps the sender's own reading (`ah-9yvv` review, finding 1).
+    #[test]
+    fn a_doubted_arriving_sharer_leaves_a_short_silver_shipment_unclaimed() {
+        let mut regions = non_sharing_sender(5, vec![unit("905")]);
+        regions.push(region_at(
+            "1:0,2",
+            0,
+            2,
+            vec![sharing(with_silver(unit("903"), 50))],
+        ));
+        let orders = "unit 903\nSELL 5 xyzzy\nMOVE N\nunit 906\nTRANSPORT 905 10 SILV\n";
+        let (traced_report, options) = traced(report(regions), orders, &ruleset(), with_map());
+        let review = review_turn(
+            &report(traced_report.regions),
+            orders,
+            Some(&ruleset()),
+            options,
+        );
+        assert!(
+            !claims_a_cut_shipment(&review, "906"),
+            "{:?}",
+            shipment_warnings(&review, "906")
+        );
         assert!(silver_shipped(&review, orders, "906") > 0);
+    }
+
+    /// A sharing sender drained ahead of the sharer that really lends: 906 ($5, sharing, owner of
+    /// structure 401) and 903 ($50, sharing, in structure 402 after it, so drained after it). The purse lends 900's $45 fee
+    /// out of 906's 5 and 903's 40 in drain order (`unit.cpp`: `ConsumeShared`), and then 906's
+    /// `TRANSPORT 905 10 SILV` runs in the third phase with nothing of its own and draws all 10 on
+    /// 903. That draw comes after the fee, so the fee is never lent out of it: 903 has nothing
+    /// left, 906's second line finds nothing and is cut to none, and both end at 0. Lent before
+    /// the fee instead, the draw would leave 906 lending 15 of the fee and 903 holding 10 the
+    /// second line would ship (`ah-9yvv` review, finding 2).
+    #[test]
+    fn a_draw_after_the_fees_is_never_lent_toward_a_fee() {
+        let mut regions = two_senders(vec![unit("905")]);
+        let sender = regions[0]
+            .units
+            .iter_mut()
+            .find(|unit| unit.unit_id == "906")
+            .expect("two_senders has 906");
+        *sender = sharing(with_silver(sender.clone(), 5));
+        let mut lender = sharing(with_silver(unit("903"), 50));
+        lender.region_id = regions[0].region_id.clone();
+        lender.structure_id = Some("402".to_string());
+        regions[0].structures.push(Structure {
+            structure_id: "402".to_string(),
+            name: "Hut".to_string(),
+            kind: "Tower".to_string(),
+            ..Default::default()
+        });
+        regions[0].units.push(lender);
+        let orders = format!("{UNPAID}unit 906\nTRANSPORT 905 10 SILV\nTRANSPORT 905 10 SILV\n");
+        let review = review_turn(&report(regions), &orders, Some(&ruleset()), with_map());
+        assert_eq!(
+            shipment_silver(&review, "900").shipping.len(),
+            1,
+            "{:?}",
+            review.silver
+        );
+        assert_eq!(silver_shipped(&review, &orders, "906"), 10);
+        assert_eq!(
+            shipment_warnings(&review, "906"),
+            vec![(
+                Some(5),
+                "short $10 when this order runs: this unit can have $0 then, so it ships none of \
+                 the 10 silver ordered"
+                    .to_string()
+            )]
+        );
+        assert_eq!(
+            shipment_silver(&review, "903").at_month_end,
+            Some(0),
+            "{:?}",
+            shipment_silver(&review, "903")
+        );
+        assert_eq!(
+            shipment_silver(&review, "906").at_month_end,
+            Some(0),
+            "{:?}",
+            shipment_silver(&review, "906")
+        );
     }
 
     /// `CheckTransportOrders` judges every shipment before any runs, so a $0 quartermaster cannot
