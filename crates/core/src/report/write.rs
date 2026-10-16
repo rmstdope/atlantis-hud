@@ -11,6 +11,7 @@
 
 use std::collections::BTreeSet;
 
+use super::item_text::write_item_amount;
 use super::model::{Exit, ItemAmount, MarketItem, ReportRegion, ReportUnit, Settlement, Structure};
 use super::unwrap::WRAP_COLUMN;
 
@@ -263,7 +264,7 @@ fn item_list(items: &[ItemAmount]) -> String {
     }
     items
         .iter()
-        .map(|item| format!("{} {} [{}]", item.amount, item.name, item.tag))
+        .map(write_item_amount)
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -275,10 +276,13 @@ fn market_list(items: &[MarketItem]) -> String {
     items
         .iter()
         .map(|item| {
-            format!(
-                "{} {} [{}] at ${}",
-                item.amount, item.name, item.tag, item.price
-            )
+            let text = write_item_amount(&ItemAmount {
+                amount: item.amount,
+                name: item.name.clone(),
+                tag: item.tag.clone(),
+                needs: None,
+            });
+            format!("{text} at ${}", item.price)
         })
         .collect::<Vec<_>>()
         .join(", ")
@@ -315,22 +319,6 @@ fn structure_line(structure: &Structure) -> String {
     line
 }
 
-/// One held item as the engine's `Item::Report` writes it, the inverse of `parse_item_amount`.
-///
-/// An illusion is read as its own item, `illusory balrog [IBALR]` (`data/IBALR`), but the engine
-/// writes it under the real item's name and tag with ` (illusion)` appended
-/// (`../Atlantis/items.cpp`), and so does the export, so it reads like the owner's report and the
-/// parser reads it back as the illusion (`ah-nm65`).
-fn item_text(item: &ItemAmount) -> String {
-    match (
-        item.name.strip_prefix("illusory "),
-        item.tag.strip_prefix('I'),
-    ) {
-        (Some(name), Some(tag)) => format!("{} {name} [{tag}] (illusion)", item.amount),
-        _ => format!("{} {} [{}]", item.amount, item.name, item.tag),
-    }
-}
-
 /// One unit line: the head sentence, then the labelled sections the parser splits on.
 fn unit_line(unit: &ReportUnit) -> String {
     let mut head = format!(
@@ -347,14 +335,7 @@ fn unit_line(unit: &ReportUnit) -> String {
         head.push_str(&format!(", {flag}"));
     }
     for item in &unit.items {
-        match item.needs {
-            // The engine's `Item::Report` form for an unfinished ship, which `parse_item_amount`
-            // reads back (`ah-uxmh`).
-            Some(needs) => {
-                head.push_str(&format!(", {} [{}] (needs {needs})", item.name, item.tag));
-            }
-            None => head.push_str(&format!(", {}", item_text(item))),
-        }
+        head.push_str(&format!(", {}", write_item_amount(item)));
     }
     head.push('.');
 
@@ -568,6 +549,35 @@ mod tests {
         assert_eq!(round_trip(&region, &ExportContent::default()), region);
     }
 
+    /// Every item the export writes - a unit's, a product, a market entry - is written as the
+    /// engine's `ItemString` prints it (`../Atlantis/items.cpp`, `market.cpp`, `production.cpp`):
+    /// an amount of one bare, never `1 hill dwarf` (`ah-lmfc`).
+    #[test]
+    fn writes_every_item_as_the_engine_prints_it() {
+        let mut region = region_of(SETTLED);
+        region.products.push(ItemAmount {
+            amount: 1,
+            name: "mithril".to_string(),
+            tag: "MITH".to_string(),
+            needs: None,
+        });
+        region.for_sale[0].amount = 1;
+        region.for_sale[0].name = "hill dwarf".to_string();
+
+        let written = write_region(&region, &ExportContent::default());
+
+        for line in [
+            "- Unit (5812), Wanderers (83), avoiding, behind, hill dwarf [HDWA].",
+            "  For Sale: hill dwarf [HDWA] at $77.",
+            // The products line wraps before it, so only the item's own text is looked for.
+            " mithril [MITH].",
+        ] {
+            assert!(written.contains(line), "missing `{line}` in\n{written}");
+        }
+        assert!(!written.contains("1 mithril"), "{written}");
+        assert_eq!(round_trip(&region, &ExportContent::default()), region);
+    }
+
     /**
      * A merged sighting can name a structure the region does not carry - the ally's report saw the
      * unit and not the building it stood in. Written outdoors rather than dropped: a unit that
@@ -673,9 +683,7 @@ mod tests {
         let line = unit_line(&unit);
 
         assert!(
-            line.contains(
-                ", 1 balrog [BALR], 1 balrog [BALR] (illusion), 3 imps [IMP] (illusion)."
-            ),
+            line.contains(", balrog [BALR], balrog [BALR] (illusion), 3 imps [IMP] (illusion)."),
             "{line}"
         );
         assert!(!line.contains("illusory"), "{line}");
