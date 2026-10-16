@@ -5,6 +5,7 @@ import {
   filterPalette,
   hexNotePaletteRows,
   mageNotePaletteRows,
+  mageSheetPaletteAction,
   noteSnippet,
   paletteKeyReduce,
   settleHighlight,
@@ -1039,5 +1040,67 @@ describe("an order row (ah-mlls.6)", () => {
       ["order-help", "STUDY"],
       ["skill", "mining MINI"]
     ]);
+  });
+});
+
+describe("mageSheetPaletteAction (ah-mlls.8)", () => {
+  const make = (hasReport: boolean, hasGameData: boolean, mageCount: number) =>
+    mageSheetPaletteAction({ hasReport, hasGameData, mageCount, run: noop });
+
+  it("is greyed with needs a report before any report, game data or not", () => {
+    for (const hasGameData of [false, true]) {
+      const action = make(false, hasGameData, 0);
+      expect(action.label).toBe("Export mage sheet");
+      expect(action.unavailable).toBe("needs a report");
+      expect(action.count).toBeUndefined();
+    }
+  });
+
+  it("is greyed with needs the game data when a report has no ruleset", () => {
+    expect(make(true, false, 3).unavailable).toBe("needs the game data");
+  });
+
+  it("stays choosable with a dim no mages when the faction has none", () => {
+    const action = make(true, true, 0);
+    expect(action.unavailable).toBeUndefined();
+    expect(action.count).toEqual({ text: "no mages", quiet: true });
+  });
+
+  it("carries no remark when there are mages", () => {
+    const action = make(true, true, 6);
+    expect(action.unavailable).toBeUndefined();
+    expect(action.count).toBeUndefined();
+  });
+
+  it("reaches the palette as an action row, found by its label alone", () => {
+    const build = (action: ReturnType<typeof make>) =>
+      buildPaletteEntries({
+        armies: [],
+        ownUnits: [],
+        foreignUnits: [],
+        staleUnits: [],
+        settlements: [],
+        factions: [],
+        regions: [],
+        structures: [],
+        actions: [action],
+        orderCommands: [],
+        gameData: [],
+        openGameData: noop
+      });
+    expect(build(make(false, false, 0))).toEqual([
+      expect.objectContaining({
+        id: "action-export-mage-sheet",
+        kind: "action",
+        label: "Export mage sheet",
+        unavailable: "needs a report"
+      })
+    ]);
+    const empty = build(make(true, true, 0));
+    expect(empty[0]?.count).toEqual({ text: "no mages", quiet: true });
+    for (const query of ["exp", "mage", "sheet"]) {
+      expect(filterPalette(empty, query)).toHaveLength(1);
+    }
+    expect(filterPalette(empty, "no mages")).toHaveLength(0);
   });
 });
