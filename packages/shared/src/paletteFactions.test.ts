@@ -144,6 +144,18 @@ describe("paletteFactions", () => {
     expect(rows).toEqual([{ factionId: "77", name: null, own: false, merged: false, attitude: null, lastSeenTurn: 40 }]);
   });
 
+  it("counts a unit only the ally saw, in a hex the player's own report covers too, as this turn's", () => {
+    const rows = paletteFactions({
+      parsed: report(),
+      merged: [],
+      hexes: [
+        merged("1:7,53", [["2", "44", "Wanderers"], ["303", "70", "Far Riders"]]),
+        stale("1:1,1", [["9", "70", "Far Riders", 41]])
+      ]
+    });
+    expect(rows.find((row) => row.factionId === "70")?.lastSeenTurn).toBeUndefined();
+  });
+
   it("lists nothing with no report loaded, whatever memory holds", () => {
     expect(paletteFactions({ parsed: null, merged: [], hexes: [] })).toEqual([]);
     expect(paletteFactions({ parsed: null, merged: [], hexes: [stale("1:1,1", [["9", "58", "G", 41]])] })).toEqual([]);

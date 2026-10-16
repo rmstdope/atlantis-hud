@@ -174,6 +174,22 @@ describe("dossierFor with memory (ah-mlls.3)", () => {
     ]);
   });
 
+  it("counts a unit only the ally saw in a hex this turn's report covers too", () => {
+    const shared = [
+      ...memory,
+      {
+        regionId: "1:7,53",
+        knowledge: "current" as const,
+        rememberedUnits: [],
+        region: region("1:7,53", [["101", "Scout", "2"], ["303", "Rider", "58"]])
+      }
+    ];
+    const dossier = dossierFor(report(), ATTITUDES, "58", shared);
+    expect(dossier.lastSeen).toEqual([]);
+    expect(dossier.hexes).toEqual([{ regionId: "1:7,53", unitCount: 1 }]);
+    expect(dossierFor(report(), ATTITUDES, "2", shared).hexes[0]).toEqual({ regionId: "1:7,53", unitCount: 2 });
+  });
+
   it("names a merged ally by its merge record when nothing else names it, as the palette does", () => {
     expect(dossierFor(report(), ATTITUDES, "60", [], [{ mergedFactionId: "60", mergedFactionName: "Kin" }]).name).toBe("Kin");
   });

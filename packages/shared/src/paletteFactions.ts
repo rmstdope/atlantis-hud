@@ -26,12 +26,22 @@ export type MemoryHex = {
 /**
  * Units on this turn's map that `parsed` does not hold - those a merged ally's report shows - so
  * "seen this turn" means the map the player is looking at, not just their own report.
+ *
+ * Hexes the player's own report covers too are not skipped: the merge adds every unit of the
+ * ally's that the player's report lacks, in shared hexes as well (`merge_units`, merge.rs), so a
+ * unit only the ally could see is found by its id being absent from the player's region.
  */
 export function mergedUnits(parsed: ParsedReport, hexes: readonly MemoryHex[]): ReportUnit[] {
-  const own = new Set(parsed.regions.map((region) => region.regionId));
-  return hexes.flatMap((hex) =>
-    hex.knowledge === "current" && !own.has(hex.regionId) ? [...(hex.region?.units ?? [])] : []
+  const own = new Map(
+    parsed.regions.map((region) => [region.regionId, new Set(region.units.map((unit) => unit.unitId))])
   );
+  return hexes.flatMap((hex) => {
+    if (hex.knowledge !== "current") {
+      return [];
+    }
+    const seen = own.get(hex.regionId);
+    return (hex.region?.units ?? []).filter((unit) => !seen?.has(unit.unitId));
+  });
 }
 
 export type KnownFaction = {
