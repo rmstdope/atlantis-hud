@@ -11,7 +11,7 @@
  * than as a confusing "nothing was loaded" a role can't diagnose on its own.
  *
  * Parses `.cerebro/project.conf` directly rather than shelling out to
- * `.claude/cerebro/scripts/project-conf` — that script lives in the submodule, which is empty in a
+ * cerebro's `project-conf` script — that script lives in the submodule, which is empty in a
  * clone made without `--recurse-submodules`, and a gate that fails on a missing submodule reports
  * the wrong thing.
  */
@@ -24,7 +24,7 @@ const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 
 /**
  * The value declared for `key` in `.cerebro/project.conf`, or `undefined` if the key is absent.
- * Mirrors `.claude/cerebro/scripts/project-conf`'s own format: `key value`, the value running to
+ * Mirrors cerebro's `project-conf` script's own format: `key value`, the value running to
  * the end of the line, and everything from a `#` on stripped first, at any column.
  */
 function projectConfValue(key: string): string | undefined {

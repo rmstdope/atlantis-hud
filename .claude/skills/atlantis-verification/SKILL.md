@@ -11,7 +11,7 @@ the first thing they see is a running shell and a script that already works.
 
 ## What the project already declares, and what this skill must never repeat
 
-`.claude/cerebro/scripts/project-conf` already carries the facts a shared harness can know, and this
+`.cerebro/cerebro/scripts/project-conf` already carries the facts a shared harness can know, and this
 skill never restates them:
 
 - `launch_targets`, and `launch_<name>` / `launch_<name>_port` for each — the command that starts a

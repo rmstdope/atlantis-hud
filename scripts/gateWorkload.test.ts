@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
+import { cerebroScript } from "./cerebro";
 
 import {
   changedPaths,
@@ -173,7 +174,7 @@ describe("changedPaths", () => {
  * scripts/verificationSkill.test.ts). Where it is absent these two cases are skipped rather than
  * failed: the fallback they would then observe is decideWorkload's fail-closed rust, tested above.
  */
-const BUILD_WORKLOAD = join(process.cwd(), ".claude", "cerebro", "scripts", "build-workload");
+const BUILD_WORKLOAD = cerebroScript("build-workload");
 
 describe.skipIf(!existsSync(BUILD_WORKLOAD))("classifyPaths", () => {
   it("classifies a TypeScript-only change as non-rust", () => {

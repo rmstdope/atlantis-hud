@@ -1,9 +1,9 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
-import { LEGS, type Leg, runLeg, summarizeGate } from "./runGate";
+import { LEGS, type Leg, runLeg, runPreflight, summarizeGate } from "./runGate";
 
 /**
  * `summarizeGate` decides what `pnpm run check:fast` prints and exits with, once every leg has
@@ -112,5 +112,51 @@ describe("the gate's rust legs", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.text).toContain("fmt SKIP");
+  });
+});
+
+/**
+ * The disk preflight is reported and never fatal - but only once it has run. ah-r5hr: after cerebro
+ * moved, the preflight's path pointed at nothing, check:fast printed ENOENT and passed anyway, and
+ * the guard against a full disk silently stopped running (docs/retrospectives/ah-nr13.md).
+ */
+describe("runPreflight", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function script(body: string): string {
+    const dir = mkdtempSync(join(tmpdir(), "atlantis-preflight-test-"));
+    dirs.push(dir);
+    const path = join(dir, "disk-preflight");
+    writeFileSync(path, `#!/bin/sh\n${body}\n`);
+    chmodSync(path, 0o755);
+    return path;
+  }
+
+  it("fails the gate when the preflight cannot start", () => {
+    const missing = join(tmpdir(), "atlantis-no-such-dir", "disk-preflight");
+    const { text, result } = runPreflight(missing);
+
+    expect(result).toEqual({ name: "disk-preflight", passed: false });
+    expect(text).toContain("could not start");
+    const summary = summarizeGate([result, { name: "lint", passed: true }]);
+    expect(summary.exitCode).toBe(1);
+    expect(summary.text).toContain("disk-preflight FAIL");
+  });
+
+  it("fails the gate when the preflight is killed", () => {
+    const { result } = runPreflight(script("kill -9 $$"));
+
+    expect(result).toEqual({ name: "disk-preflight", passed: false });
+  });
+
+  it("passes a preflight that ran, whatever it said about the disk", () => {
+    const { text, result } = runPreflight(script('echo "disk: 3 GB free, below the floor"; exit 1'));
+
+    expect(result).toEqual({ name: "disk-preflight", passed: true });
+    expect(text).toBe("disk: 3 GB free, below the floor");
   });
 });

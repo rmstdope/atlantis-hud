@@ -18,8 +18,9 @@
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { cerebroScript } from "./cerebro";
 import { type LegResult, summarizeLegs } from "./summarizeLegs";
 import { GATE_WORKLOAD_ENV, decideWorkload, describeWorkload, planLegs } from "./gateWorkload";
 import { SUITE_RESULTS_ENV, readSuiteDetail } from "./suiteHandoff";
@@ -97,36 +98,45 @@ export function runLeg(leg: Leg, handoffPath: string): LegResult {
 }
 
 /**
- * The disk, reported and never fatal.
+ * The disk, reported and never fatal - once it has run.
  *
  * A full disk is a fact about the machine, not a verdict on the code, and the whole of ah-tn2z is
  * that conflating them skipped fmt and clippy exactly when somebody was most likely to push
  * anyway. It runs first so it is read before the output that matters, and its exit code is
  * deliberately ignored - the cargo legs may well fail on a genuinely full disk, which is honest;
  * what must not happen is their being skipped in silence.
+ *
+ * A preflight that could not start, or was killed, is a different thing: the guard did not run at
+ * all. ah-r5hr: after cerebro moved, this path pointed at nothing and check:fast printed ENOENT and
+ * passed for weeks (docs/retrospectives/ah-nr13.md). So that case comes back as a failed result,
+ * which the gate summarises with the legs - every leg still runs, and the gate exits non-zero.
+ *
+ * The check is cerebro's, and the floor it reads is this project's own `disk_floor_gb` in
+ * .cerebro/project.conf (ah-qled.7.2).
  */
-function reportDisk(): void {
-  // The check is cerebro's, and the floor it reads is this project's own `disk_floor_gb` in
-  // .cerebro/project.conf (ah-qled.7.2). It used to be scripts/diskPreflight.ts, reached
-  // through this package's own tsx - which meant a consumer of the fleet without a JavaScript
-  // toolchain had an agent instruction it could not run.
-  const here = dirname(fileURLToPath(import.meta.url));
-  const run = spawnSync(resolve(here, "..", ".claude", "cerebro", "scripts", "disk-preflight"), [], {
-    encoding: "utf8"
-  });
+export function runPreflight(script: string = cerebroScript("disk-preflight")): {
+  text: string;
+  result: LegResult;
+} {
+  const run = spawnSync(script, [], { encoding: "utf8" });
 
   // Said out loud for the same reason runLeg says it: a preflight that could not start (ENOENT on
   // the script, in a clone made without the submodule) or was killed leaves empty stdout, which
-  // would otherwise be reported as the preflight
-  // having nothing to say - hiding the real failure behind a sentence about the disk.
+  // would otherwise be reported as the preflight having nothing to say.
   if (run.error) {
     process.stderr.write(`runGate: the disk preflight could not start: ${run.error.message}\n`);
   } else if (run.signal) {
     process.stderr.write(`runGate: the disk preflight was killed by signal ${run.signal}\n`);
   }
 
+  const passed = run.error === undefined && run.signal === null;
   const said = (run.stdout ?? "").trim();
-  process.stdout.write(said === "" ? "disk: the preflight said nothing.\n" : `${said}\n`);
+  const text = !passed
+    ? `disk: the preflight could not start or was killed (${script}).`
+    : said === ""
+      ? "disk: the preflight said nothing."
+      : said;
+  return { text, result: { name: "disk-preflight", passed } };
 }
 
 const invokedDirectly =
@@ -144,7 +154,8 @@ if (invokedDirectly) {
     process.exit(0);
   }
 
-  reportDisk();
+  const preflight = runPreflight();
+  process.stdout.write(`${preflight.text}\n`);
   process.stdout.write(workloadLine);
   // Before the legs run, not in any cleanup path: runLeg spreads process.env into every child, so
   // this is what reaches runSuites inside the test leg.
@@ -153,9 +164,13 @@ if (invokedDirectly) {
   // a shared path would have one gate reporting another's verdict. No try/finally - process.exit
   // does not run finally blocks, so the cleanup that matters would be the one that never fired.
   const handoffDir = mkdtempSync(join(tmpdir(), "atlantis-gate-"));
-  const results = planned.map(({ leg, skip }) =>
-    skip ? { name: leg.name, passed: true, skipped: true } : runLeg(leg, join(handoffDir, "suites.json"))
-  );
+  // The preflight's result leads the summary, so one that could not start fails the gate by name.
+  const results = [
+    preflight.result,
+    ...planned.map(({ leg, skip }) =>
+      skip ? { name: leg.name, passed: true, skipped: true } : runLeg(leg, join(handoffDir, "suites.json"))
+    )
+  ];
   rmSync(handoffDir, { recursive: true, force: true });
   const { exitCode, text } = summarizeGate(results);
   process.stdout.write(`${text}\n`);
