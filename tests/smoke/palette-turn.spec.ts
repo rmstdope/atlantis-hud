@@ -22,6 +22,9 @@ const TURN_71 = readReport("g7f95t71");
 const NO_ATLANTIS_LINE =
   "These orders have no #atlantis line, so the server cannot tell which faction they belong to.";
 
+/** How long the stand-in world takes to answer a sign-in; set per test to hold a fetch mid-run. */
+let loginDelayMs = 0;
+
 async function search(page: Page, query: string) {
   await page.keyboard.press("ControlOrMeta+k");
   await page.getByTestId("palette-input").fill(query);
@@ -50,10 +53,14 @@ test.describe("on a New Age game", () => {
   test.beforeEach(async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "web", "the browser transport is only there in the web bundle");
 
+    loginDelayMs = 0;
     await page.route("https://atlantis-newage.com/**", async (route) => {
       const url = route.request().url();
       const headers = { "access-control-allow-origin": "*" };
       if (url.includes("/auth/login")) {
+        if (loginDelayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, loginDelayMs));
+        }
         await route.fulfill({
           status: 200,
           headers: { ...headers, "content-type": "application/json" },
@@ -103,6 +110,24 @@ test.describe("on a New Age game", () => {
     await expect(page.getByTestId("newage-fetch-scope-this-turn")).toBeChecked();
   });
 
+  test("does nothing from over a running fetch, as the covered header cannot", async ({ page }) => {
+    loginDelayMs = 3000;
+    await page.getByTestId("fetch-control").click();
+    await page.getByTestId("newage-faction-number").fill("95");
+    await page.getByTestId("newage-password").fill("right");
+    await page.getByTestId("newage-fetch-confirm").click();
+    await expect(page.getByTestId("newage-fetch-working")).toBeVisible();
+
+    await search(page, "fetch latest");
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("command-palette")).toHaveCount(0);
+
+    // Still the run, not the form again: the row did not reset the window under it.
+    await expect(page.getByTestId("newage-fetch-working")).toBeVisible();
+    await expect(page.getByTestId("newage-password")).toHaveCount(0);
+    await expect(page.getByTestId("import-status")).toContainText("11 regions");
+  });
+
   test("lists Send greyed with the header's own reason, and choosing it does nothing", async ({
     page
   }) => {
@@ -115,6 +140,11 @@ test.describe("on a New Age game", () => {
     await expect(send).toHaveAttribute("aria-disabled", "true");
     await expect(send).toHaveAttribute("aria-selected", "false");
     await expect(send.getByTestId("palette-unavailable")).toHaveText(NO_ATLANTIS_LINE);
+    // The arrows never put the highlight on it.
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowUp");
+    await page.keyboard.press("End");
+    await expect(send).toHaveAttribute("aria-selected", "false");
 
     await page.keyboard.press("Enter");
     // Forced: Playwright waits for an aria-disabled element to become enabled before clicking it,

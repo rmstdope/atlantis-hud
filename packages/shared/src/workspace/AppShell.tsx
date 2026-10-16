@@ -4807,6 +4807,17 @@ export function AppShell({
   // are rebuilt on every render.
   const runTurnAction = useRef<(id: TurnActionId) => void>(() => {});
   runTurnAction.current = (id) => {
+    // The palette can be summoned over an open Fetch or Send window, whose backdrop covers the
+    // header; the header's buttons cannot be pressed then, so the rows do nothing either. Otherwise
+    // a Fetch row would reset a running fetch to its form, and Send would stack over Fetch.
+    if (
+      fetchPhase !== null ||
+      originsPhase !== null ||
+      sendPhase !== null ||
+      newAgeSendPhase !== null
+    ) {
+      return;
+    }
     switch (id) {
       case "import-reports":
         importInput.current?.click();
