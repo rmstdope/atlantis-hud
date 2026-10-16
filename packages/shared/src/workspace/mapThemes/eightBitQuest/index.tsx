@@ -426,5 +426,6 @@ export const eightBitQuest: MapTheme = {
   RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer,
   markFootprint,
+  nameLine: (view) => view.settlement ? { y: NAME_Y * SCALE, fontPx: 7 } : null,
   SelectionMark,
 };

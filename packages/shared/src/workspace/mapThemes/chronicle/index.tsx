@@ -886,4 +886,6 @@ export const chronicle: MapTheme = {
   RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer,
   markFootprint,
+  nameLine: (view) =>
+    view.settlement ? { y: (ANCHORS.settlement.y + NAME_DROP) * SCALE, fontPx: 12 } : null,
 };

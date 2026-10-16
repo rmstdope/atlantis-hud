@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { CONGESTED_HEXES } from "./congestedFixture";
@@ -41,7 +42,8 @@ const dummy: MapTheme = {
   ),
   RoadLayer: () => <g data-dummy="roads" />,
   MarkLayer: () => <g data-dummy="marks" />,
-  markFootprint: () => []
+  markFootprint: () => [],
+  nameLine: () => null
 };
 
 describe("the map theme registry", () => {
@@ -519,6 +521,47 @@ describe("every mark in the coordinates' way steps down beneath them (ah-qf24)",
         expect(step.slice(0, 200), theme.id).toContain(
           themeWritesName(theme)(named) ? 'data-named="true"' : "style="
         );
+      }
+    }
+  });
+});
+
+describe("where each look letters a settlement's name, for the note pin to clear (ah-qf24)", () => {
+  const named = aHexView({ coords: "33,25", settlement: { name: "Kerrin", tier: "town" } });
+  const city = aHexView({ coords: "33,25", settlement: { name: "Kerrin", tier: "city" } });
+  const unnamed = aHexView({ coords: "33,25" });
+  const camel = (id: string) => id.replace(/-(\w)/g, (_, letter: string) => letter.toUpperCase());
+
+  it("is given exactly where the look writes the name", () => {
+    for (const theme of MAP_THEMES) {
+      for (const view of [named, city, unnamed]) {
+        expect(theme.nameLine(view) !== null, theme.id).toBe(themeWritesName(theme)(view));
+      }
+    }
+  });
+
+  it("is the baseline and the lettering size the look draws the name with", () => {
+    for (const theme of MAP_THEMES) {
+      const css = readFileSync(new URL(`./${camel(theme.id)}/theme.css`, import.meta.url), "utf8");
+      for (const view of [named, city]) {
+        const line = theme.nameLine(view);
+        if (line === null) continue;
+        const markup = renderToStaticMarkup(
+          <svg>
+            <theme.MarkLayer views={[view]} />
+          </svg>
+        );
+        const text = /<text([^>]*)>Kerrin<tspan/i.exec(markup)?.[1] ?? "";
+        expect(text, theme.id).not.toBe("");
+        expect(Number(/\by="([-\d.]+)"/.exec(text)?.[1]), theme.id).toBeCloseTo(line.y, 3);
+        const sizes = (/class="([^"]*)"/.exec(text)?.[1] ?? "")
+          .split(" ")
+          .map((name) =>
+            new RegExp(`\\.${name}\\s*\\{[^}]*font-size:\\s*calc\\(([\\d.]+)px`).exec(css)?.[1]
+          )
+          .filter((size): size is string => size !== undefined);
+        expect(sizes.length, theme.id).toBeGreaterThan(0);
+        expect(line.fontPx, theme.id).toBe(Number(sizes[sizes.length - 1]));
       }
     }
   });

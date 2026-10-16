@@ -17,6 +17,12 @@ import type { ComponentType } from "react";
 import type { MarkSpot } from "./biomeSymbols";
 import type { HexView } from "./hexView";
 
+/**
+ * A settlement name's line: its baseline in world units from the hex's centre, and the screen size
+ * of its lettering in px (every name is screen-constant, through `--map-scale`).
+ */
+export type NameLine = { y: number; fontPx: number };
+
 /** What every theme layer receives: the prepared hexes of one knowledge bucket, and nothing else. */
 export type LayerProps = { views: HexView[] };
 
@@ -58,6 +64,12 @@ export type MapTheme = {
    * that has a settlement. Read through `themeWritesName`, never directly.
    */
   writesName?: (view: HexView) => boolean;
+  /**
+   * Where this theme letters the hex's settlement name: null exactly where it writes none
+   * (`themeWritesName`). The note pin drops beneath this line up close, where the name carries the
+   * hex's coordinates (ah-qf24). Read off the same constants the name's `<text>` is drawn with.
+   */
+  nameLine: (view: HexView) => NameLine | null;
   /**
    * What marks the selected hex, drawn about the hex's centre in world units, in place of the map's
    * own selection ring. Optional: without one the map draws its white ring. A theme that supplies

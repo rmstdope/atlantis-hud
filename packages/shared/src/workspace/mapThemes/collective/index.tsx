@@ -473,6 +473,7 @@ export const collective: MapTheme = {
   RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer,
   markFootprint,
+  nameLine: (view) => view.settlement ? { y: STATIONS.name.y * SCALE, fontPx: 9 } : null,
   SelectionMark,
   Overlay
 };

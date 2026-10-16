@@ -49,7 +49,8 @@ function probe(): MapTheme {
     ),
     RoadLayer: mark("roads"),
     MarkLayer: mark("marks"),
-    markFootprint: () => []
+    markFootprint: () => [],
+    nameLine: () => null
   };
 }
 
@@ -596,7 +597,7 @@ describe("what the map hands a theme", () => {
     expect(draw()).toContain("map-theme-probe");
   });
 
-  it("asks nothing of a theme beyond the three layers and its footprint, defs being optional", () => {
+  it("asks nothing of a theme beyond the three layers, its footprint and its name line, defs being optional", () => {
     const bare: MapTheme = {
       id: "bare",
       label: "Bare",
@@ -604,7 +605,8 @@ describe("what the map hands a theme", () => {
       TerrainLayer: () => null,
       RoadLayer: () => null,
       MarkLayer: () => null,
-      markFootprint: () => []
+      markFootprint: () => [],
+      nameLine: () => null
     };
 
     expect(() => draw(bare)).not.toThrow();

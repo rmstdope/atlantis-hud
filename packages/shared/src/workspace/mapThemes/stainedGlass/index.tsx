@@ -376,6 +376,7 @@ export const stainedGlass: MapTheme = {
   RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer,
   markFootprint,
+  nameLine: (view) => view.settlement ? { y: NAME_Y * SCALE, fontPx: 9 } : null,
   SelectionMark,
   Overlay
 };
