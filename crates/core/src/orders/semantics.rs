@@ -4731,6 +4731,9 @@ fn apply_transfers(
                         refused_to_another_faction.push((tag.clone(), moved));
                         continue;
                     }
+                    GiveOutcome::Refused(GiveRefusal::MageGivesMen | GiveRefusal::MenIntoAMage) => {
+                        continue;
+                    }
                     // `rules/give` may or may not let these goods through, and no report can say
                     // which. They stay where the report put them, this unit's holdings stop being
                     // something any check may reason from, and the tag is remembered so the Silver
