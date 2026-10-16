@@ -494,7 +494,6 @@
   stroke: var(--map-mark-ground, var(--color-ground));
   stroke-width: calc(2.2px / var(--map-scale, 1));
   stroke-linejoin: round;
-  opacity: 1;
   white-space: pre;
 }
 .map-far .map-coords,
