@@ -21930,34 +21930,31 @@ fn push_unless_line_marked(findings: &mut Vec<Finding>, finding: Finding) {
     }
 }
 
-/// Whether `unit_id`'s silver purse cannot be worked out: it, or a sharer of its hex, is
-/// doubted - the rule the cut-goods sentence reads (`a_doubted_sharer_silences_the_stock_it_shares`).
-/// No cut or refusal is claimed for such a sender (`ah-0aqx`).
-fn silver_purse_unknowable(hex: &Hex<'_>, ledger: &Ledger<'_>, unit_id: &str) -> bool {
-    ledger.doubted.contains(unit_id)
+/// Whether a cut or a refusal of `unit_id`'s exact silver shipment can be claimed: only where the
+/// sender's own reading is the engine's `Unit::GetSharedNum` (`unit.cpp`), which counts the unit
+/// and every sharing faction-mate in the region whatever its own flag (`ah-0aqx`). So never when
+/// another unit pools silver here at TRANSPORT - a sharer that stays, or one that walks in - since
+/// the shipment would draw on it and this walk does not lend a shipment's silver; and never when
+/// the purse cannot be worked out: the sender, or a sharer of its hex, is doubted (the rule of
+/// `a_doubted_sharer_silences_the_stock_it_shares`). A sharer that walks away is gone by TRANSPORT
+/// (`rules/sequenceofevents`) and counts for nothing.
+fn silver_shortfall_claimable(hex: &Hex<'_>, ledger: &Ledger<'_>, unit_id: &str) -> bool {
+    let doubted = ledger.doubted.contains(unit_id)
         || hex
             .units
             .iter()
-            .any(|other| other.shares() && ledger.doubted.contains(&other.unit.unit_id))
-}
-
-/// What `sender` can ship of silver as the engine reads it, `Unit::GetSharedNum` (`unit.cpp`):
-/// its own, and every sharing faction-mate's in the hex whatever its own flag - each as
-/// [`Ledger::transport_holding`] reads it, so what earlier shipments, fees and loans took is
-/// already out (`ah-0aqx` review, finding 1).
-fn shared_silver_at_transport(hex: &Hex<'_>, ledger: &Ledger<'_>, sender: &str) -> i64 {
-    let own = ledger.transport_holding(hex, sender, SILVER).max(0);
-    let sharers: i64 = hex
+            .any(|other| other.shares() && ledger.doubted.contains(&other.unit.unit_id));
+    let sharing = Sharing::for_silver(hex, ledger);
+    let others_share = hex
         .units
         .iter()
-        .filter(|other| other.unit.unit_id != sender && other.shares())
-        .map(|other| {
-            ledger
-                .transport_holding(hex, &other.unit.unit_id, SILVER)
-                .max(0)
-        })
-        .sum();
-    own + sharers
+        .any(|other| other.unit.unit_id != unit_id && sharing.pools_silver(other))
+        || !ledger
+            .relief()
+            .walking
+            .arrivals_at(LendingMoment::Transport)
+            .is_empty();
+    !doubted && !others_share
 }
 
 /// The silver each sender of an exact silver `TRANSPORT` holds as the engine checks every
@@ -21978,10 +21975,10 @@ fn snapshot_transport_check(hex: &Hex<'_>, ledger: &mut Ledger<'_>, ruleset: Opt
                     .is_some_and(|tag| tag.eq_ignore_ascii_case(SILVER))
             )
         });
-        if !ships_exact_silver || silver_purse_unknowable(hex, ledger, sender) {
+        if !ships_exact_silver || !silver_shortfall_claimable(hex, ledger, sender) {
             continue;
         }
-        let held = shared_silver_at_transport(hex, ledger, sender);
+        let held = ledger.transport_holding(hex, sender, SILVER).max(0);
         ledger
             .silver_at_transport_check
             .insert(sender.to_string(), held);
@@ -22121,16 +22118,7 @@ fn shipping_bills(
                 .copied()
                 .unwrap_or_default();
             let conditional = acceptance == super::transport::Acceptance::AcceptanceUnknown;
-            // An exact silver line draws on the faction's sharers too (`GetSharedNum`); `ALL`
-            // ships the unit's own (`u->items.GetNum`), as does every other good here.
-            let exact_silver = matches!(amount, Amount::Exact(_))
-                && tag.eq_ignore_ascii_case(SILVER)
-                && !silver_purse_unknowable(hex, ledger, sender);
-            let held = if exact_silver {
-                shared_silver_at_transport(hex, ledger, sender)
-            } else {
-                (ledger.transport_holding(hex, sender, &tag) + arrived - already).max(0)
-            };
+            let held = (ledger.transport_holding(hex, sender, &tag) + arrived - already).max(0);
             let quantity = super::transfers::quantity_moved(amount, held);
             // An exact silver ask the sender cannot meet (`ah-0aqx`, `runorders.cpp`). Refused
             // outright where it exceeds what was held as shipping began (`CheckTransportOrders`:
@@ -22158,7 +22146,9 @@ fn shipping_bills(
                 }
             }
             let mut cut = asked
-                .filter(|asked| quantity < *asked && !silver_purse_unknowable(hex, ledger, sender))
+                .filter(|asked| {
+                    quantity < *asked && silver_shortfall_claimable(hex, ledger, sender)
+                })
                 .map(|asked| CutShipment {
                     unit_id: sender.to_string(),
                     ordered: asked,
@@ -56078,39 +56068,108 @@ BUILD
         }
     }
 
-    /// `Unit::GetSharedNum` (`unit.cpp`) counts every sharing faction-mate's silver in the region
-    /// whatever the sender's own flag, and `ConsumeShared` draws the rest from them (`rules/share`:
-    /// a sharer supplies "any other unit of your faction that needs them"). So non-sharing 906's $5
-    /// and sharer 903's $50 meet `TRANSPORT 905 10 SILV` in full: 10 ship, 903 lends 5, and nothing
-    /// is said (`ah-0aqx` review, finding 1).
-    #[test]
-    fn a_non_sharing_sender_ships_silver_a_sharing_mate_lends_it() {
-        let mut regions = two_senders(vec![unit("905"), sharing(with_silver(unit("903"), 50))]);
+    /// [`two_senders`]' hex with 906 holding `silver` and not sharing, beside `mates`.
+    fn non_sharing_sender(silver: i64, mates: Vec<ReportUnit>) -> Vec<ReportRegion> {
+        let mut regions = two_senders(mates);
         let sender = regions[0]
             .units
             .iter_mut()
             .find(|unit| unit.unit_id == "906")
             .expect("two_senders has 906");
-        *sender = with_silver(sender.clone(), 5);
-        let orders = "unit 906\nTRANSPORT 905 10 SILV\n";
-        let review = review_turn(&report(regions), orders, Some(&ruleset()), with_map());
+        *sender = with_silver(sender.clone(), silver);
+        regions
+    }
+
+    /// Whether any of `id`'s warnings is a cut or a refused shipment's sentence.
+    fn claims_a_cut_shipment(review: &TurnReview, id: &str) -> bool {
+        shipment_warnings(review, id)
+            .iter()
+            .any(|(_, message)| message.contains("silver ordered"))
+    }
+
+    /// `Unit::GetSharedNum` (`unit.cpp`) counts every sharing faction-mate's silver in the region
+    /// whatever the sender's own flag, and `ConsumeShared` draws on them; this walk does not lend
+    /// a shipment's silver, so beside another sharer it claims neither a cut nor a refusal - one
+    /// line or two, one sender or two (`ah-0aqx` review, finding 1 and follow-up finding 1).
+    #[test]
+    fn a_sender_beside_another_sharer_claims_no_cut_or_refusal() {
+        for orders in [
+            "unit 906\nTRANSPORT 905 10 SILV\n",
+            "unit 906\nTRANSPORT 905 10 SILV\nTRANSPORT 905 50 SILV\n",
+            "unit 900\nTRANSPORT 905 40 SILV\nunit 906\nTRANSPORT 905 40 SILV\n",
+        ] {
+            let review = review_turn(
+                &report(non_sharing_sender(
+                    5,
+                    vec![unit("905"), sharing(with_silver(unit("903"), 50))],
+                )),
+                orders,
+                Some(&ruleset()),
+                with_map(),
+            );
+            for id in ["900", "906"] {
+                assert!(
+                    !claims_a_cut_shipment(&review, id),
+                    "{orders}: {:?}",
+                    shipment_warnings(&review, id)
+                );
+            }
+            assert_eq!(silver_shipped(&review, orders, "906"), 5, "{orders}");
+        }
+    }
+
+    /// A sharer that walks away is gone by TRANSPORT (`rules/sequenceofevents`), so `GetSharedNum`
+    /// is 906's own $5 and `TRANSPORT 905 10 SILV` is refused at the check (follow-up finding 2).
+    #[test]
+    fn a_sharer_that_walks_away_leaves_the_shipment_refused() {
+        let mut regions =
+            non_sharing_sender(5, vec![unit("905"), sharing(with_silver(unit("903"), 50))]);
+        regions.push(region_at("1:0,2", 0, 2, vec![]));
+        let orders = "unit 903\nMOVE S\nunit 906\nTRANSPORT 905 10 SILV\n";
+        let (traced_report, options) = traced(report(regions), orders, &ruleset(), with_map());
+        let review = review_turn(
+            &report(traced_report.regions),
+            orders,
+            Some(&ruleset()),
+            options,
+        );
+        assert_eq!(silver_shipped(&review, orders, "906"), 0);
         assert_eq!(
-            silver_shipped(&review, orders, "906"),
-            10,
-            "{:?}",
-            shipment_silver(&review, "906")
+            shipment_warnings(&review, "906"),
+            vec![(
+                Some(4),
+                "short $5 when shipping begins: this unit can have $5 then, so it ships none of \
+                 the 10 silver ordered"
+                    .to_string()
+            )]
+        );
+    }
+
+    /// A sharer that walks in lends at TRANSPORT (`GetSharedNum` is 55), so no refusal is claimed
+    /// (follow-up finding 3).
+    #[test]
+    fn a_sharer_that_walks_in_leaves_the_shipment_unrefused() {
+        let mut regions = non_sharing_sender(5, vec![unit("905")]);
+        regions.push(region_at(
+            "1:0,2",
+            0,
+            2,
+            vec![sharing(with_silver(unit("903"), 50))],
+        ));
+        let orders = "unit 903\nMOVE N\nunit 906\nTRANSPORT 905 10 SILV\n";
+        let (traced_report, options) = traced(report(regions), orders, &ruleset(), with_map());
+        let review = review_turn(
+            &report(traced_report.regions),
+            orders,
+            Some(&ruleset()),
+            options,
         );
         assert!(
-            shipment_warnings(&review, "906").is_empty(),
+            !claims_a_cut_shipment(&review, "906"),
             "{:?}",
             shipment_warnings(&review, "906")
         );
-        assert_eq!(
-            shipment_silver(&review, "903").at_month_end,
-            Some(45),
-            "{:?}",
-            shipment_silver(&review, "903")
-        );
+        assert!(silver_shipped(&review, orders, "906") > 0);
     }
 
     /// `CheckTransportOrders` judges every shipment before any runs, so a $0 quartermaster cannot
