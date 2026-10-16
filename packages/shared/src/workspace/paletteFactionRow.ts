@@ -1,6 +1,6 @@
 /**
  * How one faction row of the command palette reads (ah-mlls.3): the attitude word and its colour,
- * the merged-ally mark, and the hover text.
+ * and the merged-ally mark. The hover text is `rowTitle`'s, shared with every row.
  *
  * A pure function rather than a test on `CommandPalette`, because `packages/shared` has no jsdom
  * (`testing/README.md`, ah-nass).
@@ -15,8 +15,6 @@ export type FactionRow = {
   mark: string;
   /** The friend-or-foe word. Colour is never the only signal: the word is always there. */
   attitude: { word: string; className: string };
-  /** The whole row as text, so a name the window shortened can still be read on hover. */
-  title: string;
 };
 
 /**
@@ -36,22 +34,15 @@ function attitudeClass(word: string): string {
 }
 
 export function factionRow(entry: PaletteEntry): FactionRow {
-  const faction = entry.faction ?? { own: false, merged: false, attitude: null };
+  const faction = entry.standing ?? { own: false, merged: false, attitude: null };
   const attitude = faction.own
     ? { word: "your faction", className: "text-brass" }
     : faction.attitude === null
       ? { word: "not declared", className: "text-ink-dim italic" }
       : { word: faction.attitude, className: attitudeClass(faction.attitude) };
-  const mark = faction.merged ? " ⌂" : "";
-  const title = [
-    `${entry.label}${mark}`,
-    ...(entry.lastSeenTurn === undefined ? [] : [`last seen turn ${entry.lastSeenTurn}`]),
-    attitude.word
-  ].join(" · ");
   return {
     labelClassName: faction.merged ? "text-brass-bright" : undefined,
-    mark,
-    attitude,
-    title
+    mark: faction.merged ? " ⌂" : "",
+    attitude
   };
 }

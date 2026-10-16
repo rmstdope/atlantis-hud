@@ -49,6 +49,35 @@ test("the palette opens on Mod+K, finds a unit, and Enter goes to it", async ({ 
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 });
 
+/**
+ * ah-mlls.1: another faction's unit seen this turn is found by name or number, names its owner
+ * beside the kind, and choosing it selects it in its hex. `g7f95t71` has AactLO (10541) of Archon
+ * Dominion (53) in the swamp at (10,50) in Cebo, and scoutLOS (15982), whose owner is not shown.
+ */
+test("the palette finds another faction's unit and goes to it", async ({ page }) => {
+  await loadReport(page);
+  const items = page.getByTestId("palette-item");
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("AactLO");
+  await expect(items.first()).toContainText("AactLO (10541)");
+  await expect(items.first().getByTestId("palette-faction")).toHaveText("Archon Dominion (53)");
+  await expect(items.first()).toContainText("unit");
+  await page.keyboard.press("Enter");
+
+  await expect(page.getByTestId("command-palette")).toHaveCount(0);
+  await expect(page.getByTestId("panel-unit")).toContainText("AactLO");
+  await expect(page.getByTestId("panel-region")).toContainText("(10,50)");
+
+  // The owner is shown when the report does not name it, and the faction's name finds nothing.
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("15982");
+  await expect(items.first()).toContainText("scoutLOS (15982)");
+  await expect(items.first().getByTestId("palette-faction")).toHaveText("Faction not shown");
+  await page.getByTestId("palette-input").fill("Archon Dominion");
+  await expect(items.filter({ hasText: "AactLO" })).toHaveCount(0);
+});
+
 test("the palette goes to a structure's hex, and tells one from a dictionary page", async ({
   page
 }) => {
@@ -68,6 +97,23 @@ test("the palette goes to a structure's hex, and tells one from a dictionary pag
   const items = page.getByTestId("palette-item");
   await expect(items.filter({ hasText: "structure" }).first()).toBeVisible();
   await expect(items.filter({ hasText: "building" }).first()).toBeVisible();
+});
+
+/** ah-mlls.2: a settlement has a palette row of its own, found by name, that goes to its hex. */
+test("the palette finds a settlement by name and goes to its hex", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("Inholm");
+  // Picked by kind, not position: units named after the town (Inholm Militia, Inholm Guards) are
+  // equally good matches and may lead the list.
+  const row = page.getByTestId("palette-item").filter({ hasText: "settlement" });
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText("Inholm [city] · ");
+  await row.click();
+
+  await expect(page.getByTestId("command-palette")).toHaveCount(0);
+  await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 });
 
 test("the palette finds historical units and map objects", async ({ page }) => {

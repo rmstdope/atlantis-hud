@@ -34,7 +34,7 @@ export function mergedUnits(parsed: ParsedReport, hexes: readonly MemoryHex[]): 
   );
 }
 
-export type PaletteFaction = {
+export type KnownFaction = {
   factionId: string;
   /** Null when nothing loaded names them; the row then reads `Unnamed faction (<id>)`. */
   name: string | null;
@@ -62,7 +62,7 @@ export function paletteFactions(input: {
   parsed: ParsedReport | null;
   merged: readonly { mergedFactionId: string; mergedFactionName: string }[];
   hexes: readonly MemoryHex[];
-}): PaletteFaction[] {
+}): KnownFaction[] {
   const { parsed } = input;
   // No report, no rows: memory alone has no turn to be "earlier" than (ah-mlls.3, the states).
   if (parsed === null) {

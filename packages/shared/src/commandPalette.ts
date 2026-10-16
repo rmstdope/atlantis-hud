@@ -4,13 +4,19 @@
  */
 
 import type { GameDataEntry } from "./gameData";
-import type { PaletteFaction } from "./paletteFactions";
+import type { HexNode } from "./hexMapModel";
+import type { KnownFaction } from "./paletteFactions";
 
 export type PaletteEntryKind =
   | "unit"
   /** A faction the loaded reports know (ah-mlls.3); choosing one opens its details. */
   | "faction"
   | "region"
+  /**
+   * One village, town or city the player knows of (ah-mlls.2), on a row of its own beside its
+   * hex's: the hex row carries no settlement name, so typing a town's name finds exactly one row.
+   */
+  | "settlement"
   /**
    * One structure standing in the world - `Soggy Saw Mill [1]`, not the dictionary's `Mine`.
    *
@@ -31,24 +37,45 @@ export type PaletteEntryKind =
   | "building"
   | "terrain";
 
+/**
+ * Who owns another faction's unit, as the row shows it beside the kind: `Thane's Ring (10)`, or
+ * `Faction not shown` with `concealed` set when the report does not say (`rules/stealthobs`).
+ */
+export type PaletteFaction = { label: string; concealed: boolean };
+
 export type PaletteEntry = {
   id: string;
   kind: PaletteEntryKind;
+  /** What a query is matched against - and the only thing (`filterPalette`). */
   label: string;
+  /**
+   * The owner of another faction's unit seen this turn, absent for every other row. Shown, never
+   * searched (ah-mlls.1): typing a faction's name must not flood the list with all its units, so
+   * it is kept out of `label` on purpose.
+   */
+  faction?: PaletteFaction;
   /** The report turn of a historical map result, absent for current entries. */
   lastSeenTurn?: number;
   /** The key chord shown beside an action, where one exists. */
   binding?: string;
   /**
-   * What a faction row draws beside its label (ah-mlls.3). Kept out of `label` on purpose: the
+   * What a `faction` row draws beside its label (ah-mlls.3). Kept out of `label` on purpose: the
    * label is the only text searched, and typing "ally" must not list every ally.
    */
-  faction?: Pick<PaletteFaction, "own" | "merged" | "attitude">;
+  standing?: Pick<KnownFaction, "own" | "merged" | "attitude">;
   run: () => void;
 };
 
 export type PaletteInput = {
   ownUnits: Array<{ unitId: string; name: string; run: () => void }>;
+  /** Other factions' units in this turn's report, in report order. */
+  foreignUnits: Array<{
+    regionId: string;
+    unitId: string;
+    name: string;
+    faction: PaletteFaction;
+    run: () => void;
+  }>;
   staleUnits: Array<{
     regionId: string;
     unitId: string;
@@ -56,8 +83,10 @@ export type PaletteInput = {
     lastSeenTurn: number;
     run: () => void;
   }>;
+  /** Every settlement on the known map, labelled by `settlementPaletteRows`. */
+  settlements: Array<{ regionId: string; label: string; lastSeenTurn?: number; run: () => void }>;
   /** Every faction the loaded reports know, in `paletteFactions` order. */
-  factions: Array<PaletteFaction & { run: () => void }>;
+  factions: Array<KnownFaction & { run: () => void }>;
   regions: Array<{ regionId: string; label: string; run: () => void }>;
   /** Every structure in this turn's report, labelled by `structurePaletteLabel`. */
   structures: Array<{
@@ -76,7 +105,11 @@ export type PaletteInput = {
 
 /**
  * Everything the palette can offer, in reading order: the player's units first because going to
- * one is the palette's daily use, then the factions, then places - the hexes, then the structures standing in them -
+ * one is the palette's daily use, then other factions' units seen this turn, then units only
+ * remembered from older reports - what is true this turn before what was true once (ah-mlls.1).
+ * `filterPalette` sorts stably, so this one order is also the tie-break between equal matches.
+ * Then the towns and cities, then the factions (ah-mlls.3), then places - the hexes, then the
+ * structures standing in them -
  * then the app's own actions, then the order vocabulary as a typeable reference, then the game
  * data dictionary.
  *
@@ -92,6 +125,13 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       label: `${unit.name} (${unit.unitId})`,
       run: unit.run
     })),
+    ...input.foreignUnits.map<PaletteEntry>((unit) => ({
+      id: `foreign-unit-${unit.regionId}-${unit.unitId}`,
+      kind: "unit",
+      label: `${unit.name} (${unit.unitId})`,
+      faction: unit.faction,
+      run: unit.run
+    })),
     ...input.staleUnits.map<PaletteEntry>((unit) => ({
       id: `stale-unit-${unit.regionId}-${unit.unitId}`,
       kind: "unit",
@@ -99,14 +139,23 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       lastSeenTurn: unit.lastSeenTurn,
       run: unit.run
     })),
-    // After the units and ahead of the hexes, so a dozen factions are a short scroll away with
-    // nothing typed rather than behind hundreds of hexes (ah-mlls.3).
+    // After every unit and ahead of the hexes: a handful of much-visited places would otherwise
+    // sit below hundreds of hexes with nothing typed (ah-mlls.2).
+    ...input.settlements.map<PaletteEntry>((settlement) => ({
+      id: `settlement-${settlement.regionId}`,
+      kind: "settlement",
+      label: settlement.label,
+      lastSeenTurn: settlement.lastSeenTurn,
+      run: settlement.run
+    })),
+    // Right after the towns and cities and ahead of the hexes, so a dozen factions are a short
+    // scroll away with nothing typed rather than behind hundreds of hexes (ah-mlls.3).
     ...input.factions.map<PaletteEntry>((faction) => ({
       id: `faction-${faction.factionId}`,
       kind: "faction",
       label: `${faction.name ?? "Unnamed faction"} (${faction.factionId})`,
       ...(faction.lastSeenTurn === undefined ? {} : { lastSeenTurn: faction.lastSeenTurn }),
-      faction: { own: faction.own, merged: faction.merged, attitude: faction.attitude },
+      standing: { own: faction.own, merged: faction.merged, attitude: faction.attitude },
       run: faction.run
     })),
     ...input.regions.map<PaletteEntry>((region) => ({
@@ -142,6 +191,37 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       run: () => input.openGameData(entry.id)
     }))
   ];
+}
+
+/**
+ * One palette row per hex with a settlement, in the map's hex order: `Akroitos [city] · plain
+ * (12,34) in Hope`. The size is the report's own word (`contains Akroitos [city]`), kept in the
+ * text so typing `city` lists every city; the rest is the hex row's own label, so the two cannot
+ * drift apart.
+ *
+ * A hex not in this turn's report - stale, or only named by a neighbour's exits - carries the turn
+ * it was last seen, which the palette shows as `last seen turn N`.
+ */
+export function settlementPaletteRows(
+  hexes: readonly HexNode[],
+  currentTurn: number | null
+): Array<{ regionId: string; label: string; lastSeenTurn?: number }> {
+  return hexes.flatMap((hex) => {
+    if (hex.settlement === null) {
+      return [];
+    }
+    const label = `${hex.settlement.name} [${hex.settlement.size}] · ${hex.label}`;
+    const earlier =
+      hex.knowledge !== "current" &&
+      currentTurn !== null &&
+      hex.lastSeenTurn !== null &&
+      hex.lastSeenTurn < currentTurn;
+    return [
+      earlier
+        ? { regionId: hex.regionId, label, lastSeenTurn: hex.lastSeenTurn as number }
+        : { regionId: hex.regionId, label }
+    ];
+  });
 }
 
 /**

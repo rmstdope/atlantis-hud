@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { PaletteEntry } from "../commandPalette";
 import { factionRow } from "./paletteFactionRow";
 
-function entry(faction: NonNullable<PaletteEntry["faction"]>, lastSeenTurn?: number): PaletteEntry {
+function entry(standing: NonNullable<PaletteEntry["standing"]>, lastSeenTurn?: number): PaletteEntry {
   return {
     id: "faction-10",
     kind: "faction",
     label: "Thane's Ring (10)",
-    faction,
+    standing,
     ...(lastSeenTurn === undefined ? {} : { lastSeenTurn }),
     run: () => {}
   };
@@ -53,14 +53,5 @@ describe("factionRow", () => {
     expect(row.mark).toBe(" ⌂");
     expect(row.labelClassName).toBe("text-brass-bright");
     expect(factionRow(entry({ own: false, merged: false, attitude: "Ally" })).mark).toBe("");
-  });
-
-  it("titles the row with its full text, for a name the window cut short", () => {
-    expect(factionRow(entry({ own: false, merged: true, attitude: "Neutral" }, 41)).title).toBe(
-      "Thane's Ring (10) ⌂ · last seen turn 41 · Neutral"
-    );
-    expect(factionRow(entry({ own: true, merged: false, attitude: null })).title).toBe(
-      "Thane's Ring (10) · your faction"
-    );
   });
 });

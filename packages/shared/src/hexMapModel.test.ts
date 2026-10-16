@@ -150,6 +150,7 @@ describe("converting the known map", () => {
     expect(node.label).toBe("mountain (7,53) in Inhead");
     expect(node.ageInTurns).toBe(0);
     expect(node.settlementName).toBe("Inholm");
+    expect(node.settlement).toEqual({ name: "Inholm", size: "city" });
     expect(node.ownUnitCount).toBe(1);
     expect(node.foreignUnitCount).toBe(1);
   });
@@ -177,6 +178,7 @@ describe("converting the known map", () => {
     expect(node.ownUnitCount).toBe(0);
     expect(node.foreignUnitCount).toBe(0);
     expect(node.settlementName).toBe("Foo");
+    expect(node.settlement).toEqual({ name: "Foo", size: "village" });
   });
 
   it("age is unknown when the report has no turn number", () => {

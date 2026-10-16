@@ -16,9 +16,22 @@
 import type { ParsedReport, ReportUnit } from "@atlantis/core-client";
 import { type FactionPin, type UnitSource } from "./unitSource";
 
+/**
+ * Every unit in the report that is not yours, with the hex it stands in, in report order. The
+ * one place "not yours" is decided: the `Other factions` source reads the units, and the command
+ * palette needs the hex too, to go there (ah-mlls.1).
+ */
+export function foreignSightingsIn(
+  parsed: ParsedReport
+): Array<{ regionId: string; unit: ReportUnit }> {
+  return parsed.regions.flatMap((region) =>
+    region.units.filter((unit) => !unit.own).map((unit) => ({ regionId: region.regionId, unit }))
+  );
+}
+
 /** Every unit in the report that is not yours, in report order. The `Other factions` source. */
 export function foreignUnitsIn(parsed: ParsedReport): ReportUnit[] {
-  return parsed.regions.flatMap((region) => region.units.filter((unit) => !unit.own));
+  return foreignSightingsIn(parsed).map(({ unit }) => unit);
 }
 
 /**

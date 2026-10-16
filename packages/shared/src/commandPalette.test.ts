@@ -3,8 +3,10 @@ import {
   buildPaletteEntries,
   filterPalette,
   paletteKeyReduce,
+  settlementPaletteRows,
   type PaletteEntry
 } from "./commandPalette";
+import type { HexNode } from "./hexMapModel";
 import { structurePaletteLabel } from "./structureLabel";
 
 const noop = () => {};
@@ -22,9 +24,11 @@ function entries(
       { unitId: "18642", name: "Seven of Eight", run: noop },
       { unitId: "13401", name: "Drones", run: noop }
     ],
+    foreignUnits: [],
     staleUnits: [
       { regionId: "1:7,53", unitId: "18642", name: "Seven of Eight", lastSeenTurn: 70, run: noop }
     ],
+    settlements: [],
     factions: [
       { factionId: "95", name: "Borg TNG", own: true, merged: false, attitude: null, run: noop },
       { factionId: "10", name: "Thane's Ring", own: false, merged: false, attitude: "Ally", run: noop }
@@ -115,6 +119,7 @@ describe("buildPaletteEntries", () => {
     let selected = false;
     const stale = buildPaletteEntries({
       ownUnits: [{ unitId: "18642", name: "Seven of Eight", run: noop }],
+      foreignUnits: [],
       staleUnits: [
         {
           regionId: "1:7,53",
@@ -126,6 +131,7 @@ describe("buildPaletteEntries", () => {
           }
         }
       ],
+      settlements: [],
       factions: [],
       regions: [],
       structures: [],
@@ -148,6 +154,108 @@ describe("buildPaletteEntries", () => {
     expect(selected).toBe(true);
   });
 
+  describe("other factions' units seen this turn (ah-mlls.1)", () => {
+    const thanes = { label: "Thane's Ring (10)", concealed: false };
+    const hidden = { label: "Faction not shown", concealed: true };
+
+    function withForeign(onRun: (unitId: string) => void = noop): PaletteEntry[] {
+      return buildPaletteEntries({
+        ownUnits: [{ unitId: "518", name: "Wardrobe Guard", run: noop }],
+        foreignUnits: [
+          {
+            regionId: "1:18,52",
+            unitId: "2207",
+            name: "Wardens of the Vale",
+            faction: thanes,
+            run: () => onRun("2207")
+          },
+          {
+            regionId: "1:18,52",
+            unitId: "3110",
+            name: "Ward Scouts",
+            faction: hidden,
+            run: () => onRun("3110")
+          }
+        ],
+        staleUnits: [
+          { regionId: "1:9,9", unitId: "2207", name: "Wardens of the Vale", lastSeenTurn: 42, run: noop }
+        ],
+        settlements: [],
+        factions: [],
+        regions: [{ regionId: "1:18,52", label: "plain (18,52) in Vale", run: noop }],
+        structures: [],
+        actions: [],
+        orderCommands: [],
+        insertOrder: noop,
+        gameData: [],
+        openGameData: noop
+      });
+    }
+
+    it("offers another faction's unit as a unit, with its faction beside the label", () => {
+      const chosen: string[] = [];
+      const row = withForeign((unitId) => chosen.push(unitId)).find(
+        (entry) => entry.id === "foreign-unit-1:18,52-2207"
+      );
+      expect(row).toMatchObject({
+        kind: "unit",
+        label: "Wardens of the Vale (2207)",
+        faction: thanes
+      });
+      expect(row?.lastSeenTurn).toBeUndefined();
+      row?.run();
+      expect(chosen).toEqual(["2207"]);
+    });
+
+    it("carries an undisclosed owner as concealed", () => {
+      const row = withForeign().find((entry) => entry.label === "Ward Scouts (3110)");
+      expect(row?.faction).toEqual(hidden);
+    });
+
+    it("lists own units, then this turn's other factions' units, then remembered ones", () => {
+      expect(
+        filterPalette(withForeign(), "")
+          .filter((entry) => entry.kind === "unit")
+          .map((entry) => entry.id)
+      ).toEqual([
+        "unit-518",
+        "foreign-unit-1:18,52-2207",
+        "foreign-unit-1:18,52-3110",
+        "stale-unit-1:9,9-2207"
+      ]);
+    });
+
+    it("breaks a tie between equally good matches in the same order", () => {
+      // "ward" is a prefix of all four unit labels.
+      expect(filterPalette(withForeign(), "ward").map((entry) => entry.id)).toEqual([
+        "unit-518",
+        "foreign-unit-1:18,52-2207",
+        "foreign-unit-1:18,52-3110",
+        "stale-unit-1:9,9-2207"
+      ]);
+    });
+
+    it("finds a foreign unit by its number", () => {
+      expect(filterPalette(withForeign(), "3110")[0]?.label).toBe("Ward Scouts (3110)");
+    });
+
+    it("does not find a unit by its faction's name", () => {
+      expect(filterPalette(withForeign(), "thane").map((entry) => entry.id)).toEqual([]);
+    });
+
+    it("keeps a unit seen now apart from the same unit remembered elsewhere", () => {
+      const rows = withForeign().filter((entry) => entry.label === "Wardens of the Vale (2207)");
+      expect(rows.map((entry) => [entry.faction?.label, entry.lastSeenTurn])).toEqual([
+        ["Thane's Ring (10)", undefined],
+        [undefined, 42]
+      ]);
+    });
+
+    it("gives an own unit no faction", () => {
+      expect(withForeign()[0]?.faction).toBeUndefined();
+    });
+  });
+
   it("carries an action's key binding for the popup to show", () => {
     const action = entries().find((entry) => entry.label === "Open settings");
     expect(action?.binding).toBe("⌘,");
@@ -166,14 +274,34 @@ describe("factions in the palette (ah-mlls.3)", () => {
     expect(faction).toMatchObject({
       kind: "faction",
       label: "Thane's Ring (10)",
-      faction: { own: false, merged: false, attitude: "Ally" }
+      standing: { own: false, merged: false, attitude: "Ally" }
     });
+  });
+
+  it("comes right after the towns and cities", () => {
+    const kinds = buildPaletteEntries({
+      ownUnits: [],
+      foreignUnits: [],
+      staleUnits: [],
+      settlements: [{ regionId: "1:12,34", label: "Akroitos [city] · plain (12,34)", run: noop }],
+      factions: [{ factionId: "10", name: "Thane's Ring", own: false, merged: false, attitude: null, run: noop }],
+      regions: [{ regionId: "1:12,34", label: "plain (12,34)", run: noop }],
+      structures: [],
+      actions: [],
+      orderCommands: [],
+      insertOrder: noop,
+      gameData: [],
+      openGameData: noop
+    }).map((entry) => entry.kind);
+    expect(kinds).toEqual(["settlement", "faction", "region"]);
   });
 
   it("names a nameless faction by its number", () => {
     const [nameless] = buildPaletteEntries({
       ownUnits: [],
+      foreignUnits: [],
       staleUnits: [],
+      settlements: [],
       factions: [
         { factionId: "77", name: null, own: false, merged: false, attitude: null, lastSeenTurn: 41, run: noop }
       ],
@@ -359,7 +487,9 @@ describe("game data in the palette", () => {
   it("offers no game data when the ruleset has not loaded", () => {
     const without = buildPaletteEntries({
       ownUnits: [],
+      foreignUnits: [],
       staleUnits: [],
+      settlements: [],
       factions: [],
       regions: [],
       structures: [],
@@ -401,5 +531,125 @@ describe("structurePaletteLabel", () => {
         "ocean (1,1)"
       )
     ).toBe("ship [218] · Longship · ocean (1,1)");
+  });
+});
+
+/** A map node with only what the palette reads filled in. */
+function node(
+  regionId: string,
+  label: string,
+  settlement: HexNode["settlement"],
+  knowledge: HexNode["knowledge"] = "current",
+  lastSeenTurn: number | null = 71
+): HexNode {
+  return {
+    regionId,
+    coordinate: { x: 0, y: 0, z: 1 },
+    terrain: "plain",
+    province: "Hope",
+    label,
+    knowledge,
+    lastSeenTurn,
+    ageInTurns: null,
+    settlementName: settlement?.name ?? null,
+    settlement,
+    region: null,
+    rememberedUnits: [],
+    ownUnitCount: 0,
+    foreignUnitCount: 0
+  };
+}
+
+describe("settlementPaletteRows (ah-mlls.2)", () => {
+  const hexes = [
+    node("1:12,34", "plain (12,34) in Hope", { name: "Akroitos", size: "city" }),
+    node("1:12,36", "forest (12,36) in Hope", null),
+    node("1:7,53", "mountain (7,53) in Inhead", { name: "Inholm", size: "city" }, "stale", 68),
+    node("1:9,9", "swamp (9,9) in Fen", { name: "Mudwick", size: "village" }, "named", 64)
+  ];
+
+  it("gives every settlement a row reading name, size, then the hex's own label", () => {
+    expect(settlementPaletteRows(hexes, 71)).toEqual([
+      { regionId: "1:12,34", label: "Akroitos [city] · plain (12,34) in Hope" },
+      { regionId: "1:7,53", label: "Inholm [city] · mountain (7,53) in Inhead", lastSeenTurn: 68 },
+      { regionId: "1:9,9", label: "Mudwick [village] · swamp (9,9) in Fen", lastSeenTurn: 64 }
+    ]);
+  });
+
+  it("marks nothing as earlier-turn when the report has no turn number", () => {
+    expect(settlementPaletteRows([hexes[2]!], null)).toEqual([
+      { regionId: "1:7,53", label: "Inholm [city] · mountain (7,53) in Inhead" }
+    ]);
+  });
+
+  it("offers nothing when no settlement is known", () => {
+    expect(settlementPaletteRows([], 71)).toEqual([]);
+    expect(settlementPaletteRows([hexes[1]!], 71)).toEqual([]);
+  });
+});
+
+describe("settlements in the palette (ah-mlls.2)", () => {
+  const built = buildPaletteEntries({
+    ownUnits: [{ unitId: "18642", name: "Seven of Eight", run: noop }],
+    foreignUnits: [],
+    staleUnits: [
+      { regionId: "1:7,53", unitId: "1", name: "Old Scout", lastSeenTurn: 60, run: noop }
+    ],
+    settlements: [
+      { regionId: "1:12,34", label: "Akroitos [city] · plain (12,34) in Hope", run: noop },
+      { regionId: "1:9,9", label: "Mudwick [village] · swamp (9,9) in Fen", lastSeenTurn: 64, run: noop },
+      { regionId: "1:7,53", label: "Inholm [city] · mountain (7,53) in Inhead", run: noop }
+    ],
+    factions: [],
+    regions: [
+      { regionId: "1:12,34", label: "plain (12,34) in Hope", run: noop },
+      { regionId: "1:7,53", label: "mountain (7,53) in Inhead", run: noop }
+    ],
+    structures: [{ structureId: "1", label: "Castle [1] · plain (12,34) in Hope", run: noop }],
+    actions: [],
+    orderCommands: [],
+    insertOrder: noop,
+    gameData: [],
+    openGameData: noop
+  });
+
+  it("sits after every unit and ahead of the hexes with nothing typed", () => {
+    expect(built.map((entry) => entry.kind)).toEqual([
+      "unit",
+      "unit",
+      "settlement",
+      "settlement",
+      "settlement",
+      "region",
+      "region",
+      "structure"
+    ]);
+    expect(built[3]).toMatchObject({ id: "settlement-1:9,9", lastSeenTurn: 64 });
+  });
+
+  it("finds a settlement by its name with one row, not a duplicate hex row", () => {
+    expect(filterPalette(built, "akroitos").map((entry) => entry.label)).toEqual([
+      "Akroitos [city] · plain (12,34) in Hope"
+    ]);
+  });
+
+  it("lists every city for 'city' and every village for 'village'", () => {
+    expect(filterPalette(built, "city").map((entry) => entry.id)).toEqual([
+      "settlement-1:12,34",
+      "settlement-1:7,53"
+    ]);
+    expect(filterPalette(built, "village").map((entry) => entry.id)).toEqual([
+      "settlement-1:9,9"
+    ]);
+  });
+
+  it("finds a settlement by its province too, with its best fit given a seat at the top", () => {
+    const shown = filterPalette(built, "hope");
+    expect(shown.map((entry) => entry.kind).slice(0, 3).sort()).toEqual([
+      "region",
+      "settlement",
+      "structure"
+    ]);
+    expect(shown.map((entry) => entry.id)).toContain("settlement-1:12,34");
   });
 });

@@ -282,7 +282,7 @@ import { buildMagicTree, studyPlannerTree } from "../magicTree";
 import { isApprentice, magesOf, openingMage } from "../magicStanding";
 import { plannerEmptyCopy, plannerGroups, plannerSummaryLine } from "../studyPlanner";
 import { ShortcutHelp } from "./ShortcutHelp";
-import { buildPaletteEntries } from "../commandPalette";
+import { buildPaletteEntries, settlementPaletteRows } from "../commandPalette";
 import { paletteFactions } from "../paletteFactions";
 import { structurePaletteLabel, structuresForUnitDock } from "../structureLabel";
 import type { Resume, StopKey } from "../diagnosticNav";
@@ -336,7 +336,7 @@ import {
 } from "../turnReport";
 import { UnitMovementSlot } from "./UnitMovementSlot";
 import { UnitTableDock, type UnitTableDockHandle } from "./UnitTableDock";
-import { foreignUnitsIn } from "./foreignUnits";
+import { foreignSightingsIn, foreignUnitsIn, pinForRow, pinLabel } from "./foreignUnits";
 import { dossierFor } from "../factionDossier";
 import { FloatingFactionDossier, MeasuredFactionDossier } from "./FactionDossierPanel";
 import type { KeepClear, PeekMode } from "./dossierPeek";
@@ -1826,6 +1826,20 @@ export function AppShell({
           .find((candidate) => candidate.unitId === unitId);
         return { unitId, name: owner?.name ?? unitId, run: () => goToUnit(unitId) };
       }),
+      // Every other faction's unit standing in a hex seen this turn, in report order (ah-mlls.1).
+      // The owner reads exactly as the Other factions list writes it, and choosing one goes the
+      // same way as choosing an own unit - its hex, its level, and the unit selected there.
+      foreignUnits: (parsed ? foreignSightingsIn(parsed) : []).map(({ regionId, unit: candidate }) => {
+        // Null only for an own unit, which `foreignSightingsIn` never returns.
+        const pin = pinForRow(candidate) ?? ({ kind: "hidden" } as const);
+        return {
+          regionId,
+          unitId: candidate.unitId,
+          name: candidate.name,
+          faction: { label: pinLabel(pin), concealed: pin.kind === "hidden" },
+          run: () => goToUnit(candidate.unitId, "report", regionId)
+        };
+      }),
       staleUnits: model.hexes.flatMap((hex) =>
         hex.knowledge !== "stale"
           ? []
@@ -1837,6 +1851,11 @@ export function AppShell({
               run: () => selectHex(hex.regionId)
             }))
       ),
+      // A settlement goes to its hex exactly as the hex's own row does (ah-mlls.2).
+      settlements: settlementPaletteRows(model.hexes, model.currentTurn).map((row) => ({
+        ...row,
+        run: () => selectHex(row.regionId)
+      })),
       // Every faction the loaded reports know, opened where the attitudes list opens one: in the
       // faction popover under the header chip, with ‹ back to the player's own (ah-mlls.3). The
       // popover's frame takes focus as it mounts, after the palette has unmounted, so focus lands
