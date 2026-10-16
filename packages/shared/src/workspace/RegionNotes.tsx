@@ -5,7 +5,14 @@ import { notesForRegion, useHexNotesStore } from "../hexNotesStore";
 import { isMacPlatform } from "../shortcuts";
 import { RAIL_LEFT_DEFAULT_REM } from "./panelLayout";
 import { Absent, Section } from "./primitives";
-import { canSave, keyToAction, reduce, type NotesMode } from "./regionNotesState";
+import {
+  canSave,
+  keyToAction,
+  NOTE_FLASH_MS,
+  reduce,
+  revealDue,
+  type NotesMode
+} from "./regionNotesState";
 import { useWorkspaceStore } from "../workspaceStore";
 
 /**
@@ -36,10 +43,15 @@ export function RegionNotes({
   const notes = useMemo(() => notesForRegion(allNotes, regionId), [allNotes, regionId]);
   const requestAdd = useHexNotesStore((state) => state.requestAdd);
   const clearRequestAdd = useHexNotesStore((state) => state.clearRequestAdd);
+  const reveal = useHexNotesStore((state) => state.reveal);
+  const clearReveal = useHexNotesStore((state) => state.clearReveal);
   const leftRailWidthRem = useWorkspaceStore((state) => state.leftRailWidthRem);
 
   const [mode, setMode] = useState<NotesMode>({ kind: "idle" });
   const [error, setError] = useState<string | null>(null);
+  /** The note the palette chose, outlined for `NOTE_FLASH_MS` (ah-mlls.5). */
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const section = useRef<HTMLDivElement | null>(null);
 
   // A hex change unmounts this component (a fresh `regionId` prop is a fresh mount from React's
   // point of view only if the caller keys it; here the parent simply re-renders with new props,
@@ -69,6 +81,34 @@ export function RegionNotes({
       clearRequestAdd();
     }
   }, [requestAdd, regionId, clearRequestAdd, mode]);
+
+  // A note chosen in the palette (ah-mlls.5): brought into view and outlined for a moment, never
+  // opened for editing. Only once the notes are on screen - `status` "ready" - or there would be
+  // nothing to scroll to.
+  useEffect(() => {
+    if (status !== "ready") {
+      return;
+    }
+    const noteId = revealDue(reveal, regionId, notes, Date.now());
+    if (reveal !== null && reveal.regionId === regionId) {
+      clearReveal();
+    }
+    if (noteId === null) {
+      return;
+    }
+    setFlashId(noteId);
+  }, [reveal, regionId, notes, status, clearReveal]);
+
+  useEffect(() => {
+    if (flashId === null) {
+      return;
+    }
+    section.current
+      ?.querySelector(`[data-note-id="${CSS.escape(flashId)}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+    const timer = setTimeout(() => setFlashId(null), NOTE_FLASH_MS);
+    return () => clearTimeout(timer);
+  }, [flashId]);
 
   if (!game) {
     return null;
@@ -146,7 +186,7 @@ export function RegionNotes({
   };
 
   return (
-    <div data-testid="region-notes">
+    <div data-testid="region-notes" ref={section}>
       <Section title="Notes" count={status === "ready" ? notes.length : undefined}>
         <div className="mb-1 flex flex-wrap items-center justify-end gap-2">
           {status === "ready" ? (
@@ -192,6 +232,7 @@ export function RegionNotes({
                   note={note}
                   narrow={narrow}
                   removing={mode.kind === "removing" && mode.noteId === note.id}
+                  flash={flashId === note.id}
                   onEdit={() =>
                     setMode(reduce(mode, { type: "edit-note-clicked", noteId: note.id, text: note.text }))
                   }
@@ -271,10 +312,12 @@ function NoteEditor({
   );
 }
 
-function NoteRow({
+/** One note, read-only until clicked. Exported for its static test. */
+export function NoteRow({
   note,
   narrow,
   removing,
+  flash = false,
   onEdit,
   onRemoveClicked,
   onKeep,
@@ -284,6 +327,8 @@ function NoteRow({
   note: HexNoteRecord;
   narrow: boolean;
   removing: boolean;
+  /** Outlined in gold: the note the palette just chose (ah-mlls.5). An outline, so nothing moves. */
+  flash?: boolean;
   onEdit: () => void;
   onRemoveClicked: () => void;
   onKeep: () => void;
@@ -291,7 +336,12 @@ function NoteRow({
   onToggleOnMap: () => void;
 }) {
   return (
-    <div data-testid="region-note" data-note-id={note.id} className="mb-1.5">
+    <div
+      data-testid="region-note"
+      data-note-id={note.id}
+      data-flash={flash ? "true" : undefined}
+      className={`mb-1.5 ${flash ? "rounded outline outline-2 outline-offset-2 outline-brass" : ""}`}
+    >
       <button
         type="button"
         disabled={removing}

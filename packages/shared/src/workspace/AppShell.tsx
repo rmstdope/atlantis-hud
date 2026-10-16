@@ -282,7 +282,12 @@ import { buildMagicTree, studyPlannerTree } from "../magicTree";
 import { isApprentice, magesOf, openingMage } from "../magicStanding";
 import { plannerEmptyCopy, plannerGroups, plannerSummaryLine } from "../studyPlanner";
 import { ShortcutHelp } from "./ShortcutHelp";
-import { buildPaletteEntries, settlementPaletteRows } from "../commandPalette";
+import {
+  buildPaletteEntries,
+  hexNotePaletteRows,
+  mageNotePaletteRows,
+  settlementPaletteRows
+} from "../commandPalette";
 import { paletteFactions } from "../paletteFactions";
 import { shownMemberCount } from "./armyRows";
 import { structurePaletteLabel, structuresForUnitDock } from "../structureLabel";
@@ -786,6 +791,17 @@ export function AppShell({
    * pane picks its own opening mage.
    */
   const [studyPlannerOpen, setStudyPlannerOpen] = useState<boolean>(false);
+  /**
+   * The mage note the palette chose (ah-mlls.5), which opens the planner on All mages with him
+   * picked. `nonce` keys the dialog, so choosing a note while it is open remounts it on that mage.
+   * Null for every other way in, which is what keeps an ordinary opening on the Planner.
+   */
+  const [studyPlannerReveal, setStudyPlannerReveal] = useState<
+    { mageKey: string; nonce: number } | null
+  >(null);
+  // A counter of its own: the reveal itself is reset to null on the way in (`showOnlyKeyDialog`),
+  // so a nonce derived from it would be 1 every time and a second reveal would not remount.
+  const revealNonce = useRef(0);
   const [assumeMagesSheltered, setAssumeMagesSheltered] = useState(false);
   /**
    * The tree's view choice and the graph's pan and zoom, remembered for the app session.
@@ -1709,6 +1725,7 @@ export function AppShell({
       setGameDataOpen(shown.id === "gameData" ? { entryId: shown.entryId } : null);
       setMagicTreeOpen(shown.id === "magicTree" ? { tag: shown.tag } : null);
       setStudyPlannerOpen(shown.id === "studyPlanner");
+      setStudyPlannerReveal(null);
     },
     []
   );
@@ -1742,6 +1759,7 @@ export function AppShell({
           case "studyPlanner":
             if (!show || magicTree !== null) {
               setStudyPlannerOpen(show);
+              setStudyPlannerReveal(null);
             }
             break;
         }
@@ -2009,9 +2027,49 @@ export function AppShell({
       orderCommands,
       insertOrder: (command) => ordersEditor.current?.insertOrder(command),
       gameData: gameData?.entries ?? [],
-      openGameData: (entryId) => showOnlyKeyDialog({ id: "gameData", entryId })
+      openGameData: (entryId) => showOnlyKeyDialog({ id: "gameData", entryId }),
+      // The notes the player wrote (ah-mlls.5), only with a game open and a report loaded. A hex note's place reads as
+      // the hex's own palette row; choosing one goes there as that row does, then asks the Notes
+      // section to bring the note into view.
+      // No report, no map to go to: the acceptance lists nothing then (ah-mlls.5).
+      hexNotes:
+        game && parsed
+        ? hexNotePaletteRows(
+            hexNotes,
+            (regionId) =>
+              model.hexes.find((candidate) => candidate.regionId === regionId)?.label ??
+              hexLabel(regionId)
+          ).map((row) => ({
+            ...row,
+            run: () => {
+              selectHex(row.regionId);
+              useHexNotesStore.getState().revealNote(row.regionId, row.noteId);
+            }
+          }))
+        : [],
+      // A mage note only while the planner can open and the mage is in this turn's report.
+      mageNotes:
+        game && magicTree !== null
+          ? mageNotePaletteRows(
+              studyPlans,
+              plannerGroupRows,
+              new Set(
+                (parsed?.regions ?? []).flatMap((region) => region.units.map((unit) => unit.unitId))
+              )
+            ).map((row) => ({
+              ...row,
+              run: () => {
+                showOnlyKeyDialog({ id: "studyPlanner" });
+                revealNonce.current += 1;
+                setStudyPlannerReveal({ mageKey: row.key, nonce: revealNonce.current });
+              }
+            }))
+          : []
     });
   }, [
+    hexNotes,
+    studyPlans,
+    plannerGroupRows,
     armies,
     unitsById,
     offersProduction,
@@ -5581,9 +5639,6 @@ export function AppShell({
   // is: they belong to the application, whichever screen is up.
   const keyboardPanels = (
     <>
-      {paletteOpen ? (
-        <CommandPalette entries={paletteEntries} onDismiss={() => setPaletteOpen(false)} />
-      ) : null}
       {helpOpen ? <ShortcutHelp isMac={isMacPlatform()} onDismiss={() => setHelpOpen(false)} /> : null}
       {gameDataOpen !== null && gameData !== null ? (
         <GameDataDialog
@@ -5595,6 +5650,8 @@ export function AppShell({
       ) : null}
       {studyPlannerOpen && studyTree !== null ? (
         <StudyPlannerDialog
+          key={studyPlannerReveal?.nonce ?? 0}
+          reveal={studyPlannerReveal}
           groups={plannerGroupRows}
           seats={shelter}
           structureNames={shelterNamesByKey}
@@ -5624,7 +5681,10 @@ export function AppShell({
           }
           onScheduleChange={(change) => void reshapeStudySchedule(change)}
           rule={teachingRule}
-          onDismiss={() => setStudyPlannerOpen(false)}
+          onDismiss={() => {
+            setStudyPlannerOpen(false);
+            setStudyPlannerReveal(null);
+          }}
         />
       ) : null}
       {magicTreeOpen !== null && magicTree !== null ? (
@@ -5647,6 +5707,12 @@ export function AppShell({
           label={hexLabel}
           reportLoaded={parsed !== null}
         />
+      ) : null}
+      {/* Last, so the palette draws over a key dialog it was summoned above (ah-mlls.5): they
+          share the z-40 layer, and with the palette first an open study planner covered it -
+          its rows could be reached by keyboard but not clicked. */}
+      {paletteOpen ? (
+        <CommandPalette entries={paletteEntries} onDismiss={() => setPaletteOpen(false)} />
       ) : null}
     </>
   );
