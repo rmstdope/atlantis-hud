@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildRuleset, type Ruleset } from "./build";
-import { catalogueInput, regenerateArguments, WORLDS, worldById } from "./worlds";
+import { regenerateArguments, WORLDS, worldBuildInput, worldById } from "./worlds";
 
 const read = (relative: string) =>
   readFileSync(fileURLToPath(new URL(`../../../${relative}`, import.meta.url)), "utf8");
@@ -19,17 +19,17 @@ describe("the committed rulesets", () => {
   it.each([...WORLDS])(
     "$id is exactly what the scraper produces from its committed fixtures",
     (world) => {
-      const catalogue = catalogueInput(world.catalogueSource, read(world.catalogueFixture));
       const committed = JSON.parse(read(world.rulesetPath)) as Ruleset;
 
-      const built = buildRuleset({
-        rulesHtml: read(world.rulesFixture),
-        ...catalogue,
-        rulesUrl: committed.source.rulesUrl,
-        dataUrl: committed.source.dataUrl,
-        orderLanguage: world.orderLanguage,
-        fetchedAt: committed.source.fetchedAt
-      });
+      const built = buildRuleset(
+        worldBuildInput({
+          catalogueSource: world.catalogueSource,
+          orderLanguage: world.orderLanguage,
+          rulesHtml: read(world.rulesFixture),
+          catalogue: read(world.catalogueFixture),
+          source: committed.source
+        })
+      );
 
       // Runnable as-is from the repository root; `cli.test.ts` proves it rebuilds this file.
       const regenerate =
