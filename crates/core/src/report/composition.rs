@@ -106,30 +106,15 @@ mod tests {
             .expect("the fixture ruleset is valid");
 
         let items = vec![
-            ItemAmount {
-                amount: 10,
-                name: "orcs".to_string(),
-                tag: "ORC".to_string(),
-                needs: None,
-            },
-            ItemAmount {
-                amount: 3,
-                name: "swords".to_string(),
-                tag: "SWOR".to_string(),
-                needs: None,
-            },
+            ItemAmount::new(10, "orcs".to_string(), "ORC".to_string()),
+            ItemAmount::new(3, "swords".to_string(), "SWOR".to_string()),
         ];
 
         let (by_race, total) = men_in(&items, &ruleset);
 
         assert_eq!(
             by_race,
-            vec![ItemAmount {
-                amount: 10,
-                name: "orcs".to_string(),
-                tag: "ORC".to_string(),
-                needs: None,
-            }]
+            vec![ItemAmount::new(10, "orcs".to_string(), "ORC".to_string())]
         );
         assert_eq!(total, 10);
     }

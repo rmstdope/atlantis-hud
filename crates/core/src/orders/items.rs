@@ -108,11 +108,8 @@ mod tests {
     fn held(items: &[(i64, &str, &str)]) -> Vec<ItemAmount> {
         items
             .iter()
-            .map(|(amount, name, tag)| ItemAmount {
-                amount: *amount,
-                name: (*name).to_string(),
-                tag: (*tag).to_string(),
-                needs: None,
+            .map(|(amount, name, tag)| {
+                ItemAmount::new(*amount, (*name).to_string(), (*tag).to_string())
             })
             .collect()
     }

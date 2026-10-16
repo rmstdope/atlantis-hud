@@ -3992,12 +3992,7 @@ fn move_holding(state: &mut Working, tag: &str, name: &str, delta: i64) {
         None => {
             state.held.insert(
                 tag.to_string(),
-                ItemAmount {
-                    amount: delta,
-                    name: name.to_string(),
-                    tag: tag.to_string(),
-                    needs: None,
-                },
+                ItemAmount::new(delta, name.to_string(), tag.to_string()),
             );
             state.arrived.push(tag.to_string());
         }
@@ -4134,12 +4129,7 @@ fn holding_items(unit: &ReportUnit, state: &Working) -> Vec<ItemAmount> {
                 .held
                 .get(&tag)
                 .filter(|entry| entry.amount > 0)
-                .map(|entry| ItemAmount {
-                    amount: entry.amount,
-                    name: item.name.clone(),
-                    tag: item.tag.clone(),
-                    needs: None,
-                })
+                .map(|entry| ItemAmount::new(entry.amount, item.name.clone(), item.tag.clone()))
         })
         .collect();
     for tag in &state.arrived {
@@ -4930,12 +4920,7 @@ fn apply_transfers(
                 None => {
                     receiver.held.insert(
                         offer.give_tag.clone(),
-                        ItemAmount {
-                            amount: offer.give_amount,
-                            name,
-                            tag,
-                            needs: None,
-                        },
+                        ItemAmount::new(offer.give_amount, name, tag),
                     );
                     receiver.arrived.push(offer.give_tag.clone());
                 }
@@ -5031,12 +5016,11 @@ fn recruited_people(
             // missing the one tag that failed to resolve.
             return None;
         };
-        people.push(ItemAmount {
-            amount: *amount,
-            name: entry.name.clone(),
-            tag: entry.tag.clone(),
-            needs: None,
-        });
+        people.push(ItemAmount::new(
+            *amount,
+            entry.name.clone(),
+            entry.tag.clone(),
+        ));
     }
     Some(people)
 }
@@ -5639,12 +5623,7 @@ impl PhaseState {
                 per_phase[slot]
                     .entry(unit_id.as_str())
                     .or_default()
-                    .push(ItemAmount {
-                        amount,
-                        name,
-                        tag: tag.clone(),
-                        needs: None,
-                    });
+                    .push(ItemAmount::new(amount, name, tag.clone()));
             }
         }
         per_phase
@@ -10641,12 +10620,11 @@ fn produce(
                     .push(placed.line);
                 return;
             };
-            pooled.push(ItemAmount {
-                amount: available,
-                name: item_name(&tag, hex, ruleset),
+            pooled.push(ItemAmount::new(
+                available,
+                item_name(&tag, hex, ruleset),
                 tag,
-                needs: None,
-            });
+            ));
         }
         ledger
             .production_materials
@@ -12027,12 +12005,7 @@ fn cast(
         .collect();
     for (tag, amount) in ledger.state.holdings_at(StatePhase::Cast, who) {
         if amount > 0 && !held.iter().any(|own| own.tag.eq_ignore_ascii_case(&tag)) {
-            held.push(ItemAmount {
-                amount,
-                name: item_name(&tag, hex, ruleset),
-                tag,
-                needs: None,
-            });
+            held.push(ItemAmount::new(amount, item_name(&tag, hex, ruleset), tag));
         }
     }
     let mut goods_lent = false;
@@ -12063,12 +12036,7 @@ fn cast(
         {
             Some(own) => own.amount = own.amount.saturating_add(lends).max(0),
             None if lends < 0 => {}
-            None => held.push(ItemAmount {
-                amount: lends,
-                name: item_name(&tag, hex, ruleset),
-                tag,
-                needs: None,
-            }),
+            None => held.push(ItemAmount::new(lends, item_name(&tag, hex, ruleset), tag)),
         }
     }
     if lent_silver != 0 || goods_lent {
@@ -25838,12 +25806,7 @@ mod tests {
     fn a_gift_by_the_reports_plural_of_a_multi_word_race_is_followed() {
         let held: BTreeMap<String, ItemAmount> = [(
             "WELF".to_string(),
-            ItemAmount {
-                amount: 5,
-                name: "wood elves".to_string(),
-                tag: "WELF".to_string(),
-                needs: None,
-            },
+            ItemAmount::new(5, "wood elves".to_string(), "WELF".to_string()),
         )]
         .into_iter()
         .collect();
@@ -32838,12 +32801,7 @@ mod tests {
         }
 
         fn product(amount: i64, name: &str, tag: &str) -> ItemAmount {
-            ItemAmount {
-                amount,
-                name: name.to_string(),
-                tag: tag.to_string(),
-                needs: None,
-            }
+            ItemAmount::new(amount, name.to_string(), tag.to_string())
         }
 
         /// A hex whose `Products` line states exactly these amounts, and nothing else.
@@ -33611,12 +33569,7 @@ BUILD
         #[test]
         fn a_trident_producer_cannot_build_with_what_it_produces() {
             let hex_region = ReportRegion {
-                products: vec![ItemAmount {
-                    amount: 100,
-                    name: "wood".to_string(),
-                    tag: "WOOD".to_string(),
-                    needs: None,
-                }],
+                products: vec![ItemAmount::new(100, "wood".to_string(), "WOOD".to_string())],
                 ..region(vec![with_skill(
                     with_skill(with_men(unit("900"), 10), "LUMB", 1),
                     "FARM",
@@ -33968,12 +33921,7 @@ BUILD Stockade
         #[test]
         fn a_trident_primary_producer_does_not_feed_a_manufacturer_below_it() {
             let hex_region = ReportRegion {
-                products: vec![ItemAmount {
-                    amount: 100,
-                    name: "wood".to_string(),
-                    tag: "WOOD".to_string(),
-                    needs: None,
-                }],
+                products: vec![ItemAmount::new(100, "wood".to_string(), "WOOD".to_string())],
                 ..region(vec![
                     sharing(with_skill(with_men(unit("900"), 10), "LUMB", 1)),
                     with_skill(with_men(unit("901"), 5), "CARP", 1),
@@ -34317,12 +34265,7 @@ BUILD
             // for the netting to get wrong - which is exactly how the first draft of this test
             // passed against the very code it was written to catch.
             let hex_region = ReportRegion {
-                products: vec![ItemAmount {
-                    amount: 100,
-                    name: "wood".to_string(),
-                    tag: "WOOD".to_string(),
-                    needs: None,
-                }],
+                products: vec![ItemAmount::new(100, "wood".to_string(), "WOOD".to_string())],
                 ..region(vec![
                     sharing(with_item(
                         with_skill(with_men(unit("900"), 10), "LUMB", 1),
@@ -37627,12 +37570,11 @@ BUILD
         #[test]
         fn an_abandoned_unfinished_ship_records_why_it_was_left() {
             let mut hex_region = region(vec![with_men(unit("900"), 10)]);
-            hex_region.units[0].items.push(ItemAmount {
-                amount: 1,
-                name: "unfinished Cog".to_string(),
-                tag: "COG".to_string(),
-                needs: None,
-            });
+            hex_region.units[0].items.push(ItemAmount::new(
+                1,
+                "unfinished Cog".to_string(),
+                "COG".to_string(),
+            ));
             with_ledger(hex_region, "unit 900\nMOVE N\n", |ledger| {
                 let left = ledger
                     .movements
@@ -37652,12 +37594,11 @@ BUILD
         fn an_unfinished_ship_is_kept_by_a_captain_whose_sail_is_refused_land_to_land() {
             let mut captain = with_men(unit("900"), 10);
             captain.skills.push(sail(4));
-            captain.items.push(ItemAmount {
-                amount: 1,
-                name: "unfinished Cog".to_string(),
-                tag: "COG".to_string(),
-                needs: None,
-            });
+            captain.items.push(ItemAmount::new(
+                1,
+                "unfinished Cog".to_string(),
+                "COG".to_string(),
+            ));
             with_ledger(
                 landlocked_fleet(vec![captain]),
                 "unit 900\nSAIL N\n",
@@ -37893,12 +37834,11 @@ BUILD
         #[test]
         fn a_bare_build_by_a_unit_holding_an_unfinished_ship_cannot_be_counted() {
             let mut hex_region = report_with_a_builder();
-            hex_region.units[0].items.push(ItemAmount {
-                amount: 1,
-                name: "unfinished Cog".to_string(),
-                tag: "COG".to_string(),
-                needs: None,
-            });
+            hex_region.units[0].items.push(ItemAmount::new(
+                1,
+                "unfinished Cog".to_string(),
+                "COG".to_string(),
+            ));
             with_ledger(hex_region, "unit 900\nBUILD\n", |ledger| {
                 assert_eq!(
                     ledger.uncounted.get("900").map(Vec::as_slice),
@@ -39042,12 +38982,7 @@ BUILD
                 // fixtures feed themselves: the flag and the grain pay the fee in food, so no
                 // fixture's *silver* moves and every existing assertion still means what it did.
                 flags: vec!["consuming unit's food".to_string()],
-                items: vec![ItemAmount {
-                    amount: 1,
-                    name: "grain".to_string(),
-                    tag: "GRAI".to_string(),
-                    needs: None,
-                }],
+                items: vec![ItemAmount::new(1, "grain".to_string(), "GRAI".to_string())],
                 ..Default::default()
             },
             1,
@@ -39071,12 +39006,11 @@ BUILD
     }
 
     fn with_silver(mut unit: ReportUnit, amount: i64) -> ReportUnit {
-        unit.items.push(ItemAmount {
+        unit.items.push(ItemAmount::new(
             amount,
-            name: "silver".to_string(),
-            tag: SILVER.to_string(),
-            needs: None,
-        });
+            "silver".to_string(),
+            SILVER.to_string(),
+        ));
         unit
     }
 
@@ -39093,12 +39027,8 @@ BUILD
     fn with_item(mut unit: ReportUnit, amount: i64, name: &str, tag: &str) -> ReportUnit {
         unit.items
             .retain(|item| !item.tag.eq_ignore_ascii_case(tag));
-        unit.items.push(ItemAmount {
-            amount,
-            name: name.to_string(),
-            tag: tag.to_string(),
-            needs: None,
-        });
+        unit.items
+            .push(ItemAmount::new(amount, name.to_string(), tag.to_string()));
         unit
     }
 
@@ -39137,12 +39067,11 @@ BUILD
             if men == 0 {
                 vec![]
             } else {
-                vec![ItemAmount {
-                    amount: men,
-                    name: "human".to_string(),
-                    tag: "HUMN".to_string(),
-                    needs: None,
-                }]
+                vec![ItemAmount::new(
+                    men,
+                    "human".to_string(),
+                    "HUMN".to_string(),
+                )]
             },
         );
         // More men owe more maintenance, so a fixture that feeds itself has to feed all of them -
@@ -39162,12 +39091,7 @@ BUILD
             if men == 0 {
                 vec![]
             } else {
-                vec![ItemAmount {
-                    amount: men,
-                    name: name.to_string(),
-                    tag: tag.to_string(),
-                    needs: None,
-                }]
+                vec![ItemAmount::new(men, name.to_string(), tag.to_string())]
             },
         );
         with_men_grain(unit, men)
@@ -47299,18 +47223,8 @@ BUILD
                 with_people(
                     with_silver(starving(unit(id)), silver),
                     vec![
-                        ItemAmount {
-                            amount: 1,
-                            name: "leader".to_string(),
-                            tag: "LEAD".to_string(),
-                            needs: None,
-                        },
-                        ItemAmount {
-                            amount: 5,
-                            name: "human".to_string(),
-                            tag: "HUMN".to_string(),
-                            needs: None,
-                        },
+                        ItemAmount::new(1, "leader".to_string(), "LEAD".to_string()),
+                        ItemAmount::new(5, "human".to_string(), "HUMN".to_string()),
                     ],
                 ),
                 grain,
@@ -47830,12 +47744,11 @@ BUILD
     fn with_leaders(unit: ReportUnit, count: i64) -> ReportUnit {
         with_people(
             unit,
-            vec![ItemAmount {
-                amount: count,
-                name: "leader".to_string(),
-                tag: "LEAD".to_string(),
-                needs: None,
-            }],
+            vec![ItemAmount::new(
+                count,
+                "leader".to_string(),
+                "LEAD".to_string(),
+            )],
         )
     }
 
@@ -51367,12 +51280,7 @@ BUILD
         let men = races.iter().map(|(amount, _, _)| *amount).sum();
         let people = races
             .into_iter()
-            .map(|(amount, name, race)| ItemAmount {
-                amount,
-                name: name.to_string(),
-                tag: race.to_string(),
-                needs: None,
-            })
+            .map(|(amount, name, race)| ItemAmount::new(amount, name.to_string(), race.to_string()))
             .collect();
         with_men_grain(with_people(studying_unit(id, tag, level), people), men)
     }
@@ -51473,11 +51381,8 @@ BUILD
             let people: Vec<ItemAmount> = case
                 .races
                 .iter()
-                .map(|(amount, name, tag)| ItemAmount {
-                    amount: *amount,
-                    name: (*name).to_string(),
-                    tag: (*tag).to_string(),
-                    needs: None,
+                .map(|(amount, name, tag)| {
+                    ItemAmount::new(*amount, (*name).to_string(), (*tag).to_string())
                 })
                 .collect();
             let subject = with_silver(
@@ -64430,12 +64335,7 @@ BUILD
                 name: "Sea Rovers".to_string(),
                 ..with_people(
                     region.units[0].clone(),
-                    vec![ItemAmount {
-                        amount: 1,
-                        name: race.0.to_string(),
-                        tag: race.1.to_string(),
-                        needs: None,
-                    }],
+                    vec![ItemAmount::new(1, race.0.to_string(), race.1.to_string())],
                 )
             };
             region
@@ -65973,12 +65873,7 @@ BUILD
             capacity: Some("0/0/45/0".to_string()),
             ..unfed(with_people(
                 unit("2871"),
-                vec![ItemAmount {
-                    amount: 3,
-                    name: "humans".to_string(),
-                    tag: "HUMN".to_string(),
-                    needs: None,
-                }],
+                vec![ItemAmount::new(3, "humans".to_string(), "HUMN".to_string())],
             ))
         };
         let tamers = with_item(unit("2442"), 4, "horses", "HORS");
@@ -66148,24 +66043,9 @@ BUILD
     fn produces(units: Vec<ReportUnit>) -> ReportRegion {
         ReportRegion {
             products: vec![
-                ItemAmount {
-                    amount: 40,
-                    name: "grain".to_string(),
-                    tag: "GRAI".to_string(),
-                    needs: None,
-                },
-                ItemAmount {
-                    amount: 20,
-                    name: "wood".to_string(),
-                    tag: "WOOD".to_string(),
-                    needs: None,
-                },
-                ItemAmount {
-                    amount: 10,
-                    name: "furs".to_string(),
-                    tag: "FUR".to_string(),
-                    needs: None,
-                },
+                ItemAmount::new(40, "grain".to_string(), "GRAI".to_string()),
+                ItemAmount::new(20, "wood".to_string(), "WOOD".to_string()),
+                ItemAmount::new(10, "furs".to_string(), "FUR".to_string()),
             ],
             ..region(units)
         }
@@ -68872,12 +68752,7 @@ BUILD
     }
 
     fn one_product(amount: i64, name: &str, tag: &str) -> Vec<ItemAmount> {
-        vec![ItemAmount {
-            amount,
-            name: name.to_string(),
-            tag: tag.to_string(),
-            needs: None,
-        }]
+        vec![ItemAmount::new(amount, name.to_string(), tag.to_string())]
     }
 
     /// **`gh-679`.** The reported month: the destination the boat is sailing to does produce fish,
@@ -72705,12 +72580,11 @@ BUILD
                 .iter_mut()
                 .find(|unit| unit.unit_id == "901")
                 .expect("the passenger");
-            passenger.items.push(ItemAmount {
-                amount: 1,
-                name: "unfinished Cog".to_string(),
-                tag: "COG".to_string(),
-                needs: None,
-            });
+            passenger.items.push(ItemAmount::new(
+                1,
+                "unfinished Cog".to_string(),
+                "COG".to_string(),
+            ));
             let orders = orders.replace("unit 901\nBUILD Palace\n", "");
             let effects =
                 item_effects(&report, &orders, Some(&trident()), &CheckOptions::default());
@@ -73011,12 +72885,11 @@ BUILD
     fn stone_quarried_where_the_fleet_lands_does_not_supply_the_passenger() {
         let quarrier = sharing(with_skill(with_men(unit("902"), 10), "QUAR", 3));
         let mut harbour = settled(region_at("1:7,53", 7, 53, vec![quarrier]));
-        harbour.products = vec![ItemAmount {
-            amount: 100,
-            name: "stone".to_string(),
-            tag: "STON".to_string(),
-            needs: None,
-        }];
+        harbour.products = vec![ItemAmount::new(
+            100,
+            "stone".to_string(),
+            "STON".to_string(),
+        )];
         let (report, mut orders) = passenger_palace(open_sea(vec![]), harbour, None);
         orders.push_str("unit 902\nPRODUCE stone\n");
 

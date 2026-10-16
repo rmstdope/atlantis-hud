@@ -408,30 +408,10 @@ mod tests {
 
     fn holdings() -> Vec<ItemAmount> {
         vec![
-            ItemAmount {
-                amount: 20,
-                name: "iron".to_string(),
-                tag: "IRON".to_string(),
-                needs: None,
-            },
-            ItemAmount {
-                amount: 8,
-                name: "orcs".to_string(),
-                tag: "ORC".to_string(),
-                needs: None,
-            },
-            ItemAmount {
-                amount: 3,
-                name: "swords".to_string(),
-                tag: "SWOR".to_string(),
-                needs: None,
-            },
-            ItemAmount {
-                amount: 1,
-                name: "unfinished Longship".to_string(),
-                tag: "LONG".to_string(),
-                needs: None,
-            },
+            ItemAmount::new(20, "iron".to_string(), "IRON".to_string()),
+            ItemAmount::new(8, "orcs".to_string(), "ORC".to_string()),
+            ItemAmount::new(3, "swords".to_string(), "SWOR".to_string()),
+            ItemAmount::new(1, "unfinished Longship".to_string(), "LONG".to_string()),
         ]
     }
 

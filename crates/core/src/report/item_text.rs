@@ -115,12 +115,7 @@ fn read_plain(text: &str) -> Option<ItemAmount> {
         return None;
     }
 
-    Some(ItemAmount {
-        amount,
-        name,
-        tag,
-        needs: None,
-    })
+    Some(ItemAmount::new(amount, name, tag))
 }
 
 /// Reads one item as the report prints it, by the first form in [`ITEM_FORMS`] that reads it.
@@ -146,10 +141,8 @@ mod tests {
 
     fn item(amount: i64, name: &str, tag: &str, needs: Option<i64>) -> ItemAmount {
         ItemAmount {
-            amount,
-            name: name.to_string(),
-            tag: tag.to_string(),
             needs,
+            ..ItemAmount::new(amount, name, tag)
         }
     }
 

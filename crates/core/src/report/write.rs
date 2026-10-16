@@ -276,12 +276,11 @@ fn market_list(items: &[MarketItem]) -> String {
     items
         .iter()
         .map(|item| {
-            let text = write_item_amount(&ItemAmount {
-                amount: item.amount,
-                name: item.name.clone(),
-                tag: item.tag.clone(),
-                needs: None,
-            });
+            let text = write_item_amount(&ItemAmount::new(
+                item.amount,
+                item.name.clone(),
+                item.tag.clone(),
+            ));
             format!("{text} at ${}", item.price)
         })
         .collect::<Vec<_>>()
@@ -555,12 +554,11 @@ mod tests {
     #[test]
     fn writes_every_item_as_the_engine_prints_it() {
         let mut region = region_of(SETTLED);
-        region.products.push(ItemAmount {
-            amount: 1,
-            name: "mithril".to_string(),
-            tag: "MITH".to_string(),
-            needs: None,
-        });
+        region.products.push(ItemAmount::new(
+            1,
+            "mithril".to_string(),
+            "MITH".to_string(),
+        ));
         region.for_sale[0].amount = 1;
         region.for_sale[0].name = "hill dwarf".to_string();
 
@@ -630,12 +628,8 @@ mod tests {
     /// 33)`, so a reparse keeps what it still needs (`ah-uxmh`).
     #[test]
     fn writes_what_an_unfinished_ship_still_needs_so_a_reparse_reads_it_back() {
-        let ship = ItemAmount {
-            amount: 1,
-            name: "unfinished Galleon".to_string(),
-            tag: "GALL".to_string(),
-            needs: Some(33),
-        };
+        let ship =
+            ItemAmount::new(1, "unfinished Galleon".to_string(), "GALL".to_string()).with_needs(33);
         let unit = ReportUnit {
             unit_id: "3173".to_string(),
             name: "Shipbuilders".to_string(),
@@ -663,11 +657,8 @@ mod tests {
     /// a reparse still reads the illusion, not a second real balrog (`ah-nm65`, `ah-qrlx`).
     #[test]
     fn writes_an_illusion_in_the_engine_s_own_form_so_a_reparse_reads_it_back() {
-        let item = |amount, name: &str, tag: &str| ItemAmount {
-            amount,
-            name: name.to_string(),
-            tag: tag.to_string(),
-            needs: None,
+        let item = |amount, name: &str, tag: &str| {
+            ItemAmount::new(amount, name.to_string(), tag.to_string())
         };
         let unit = ReportUnit {
             unit_id: "1160".to_string(),

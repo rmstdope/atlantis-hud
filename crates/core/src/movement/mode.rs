@@ -972,23 +972,21 @@ mod tests {
     fn item_movement_requires_a_complete_inventory_and_some_people() {
         let unit = ReportUnit {
             men: 1,
-            items: vec![crate::report::model::ItemAmount {
-                amount: 1,
-                name: "horse".to_string(),
-                tag: "HORS".to_string(),
-                needs: None,
-            }],
+            items: vec![crate::report::model::ItemAmount::new(
+                1,
+                "horse".to_string(),
+                "HORS".to_string(),
+            )],
             ..Default::default()
         };
         assert!(unit_movement_from_items(&unit, &ruleset()).is_none());
         let unknown = ReportUnit {
             men: 0,
-            items: vec![crate::report::model::ItemAmount {
-                amount: 1,
-                name: "unknown".to_string(),
-                tag: "ZZZZ".to_string(),
-                needs: None,
-            }],
+            items: vec![crate::report::model::ItemAmount::new(
+                1,
+                "unknown".to_string(),
+                "ZZZZ".to_string(),
+            )],
             ..Default::default()
         };
         assert!(unit_movement_from_items(&unknown, &ruleset()).is_none());
@@ -997,11 +995,12 @@ mod tests {
     fn holding(items: &[(i64, &str)]) -> Vec<crate::report::model::ItemAmount> {
         items
             .iter()
-            .map(|(amount, tag)| crate::report::model::ItemAmount {
-                amount: *amount,
-                name: tag.to_lowercase(),
-                tag: (*tag).to_string(),
-                needs: None,
+            .map(|(amount, tag)| {
+                crate::report::model::ItemAmount::new(
+                    *amount,
+                    tag.to_lowercase(),
+                    (*tag).to_string(),
+                )
             })
             .collect()
     }
@@ -1073,18 +1072,16 @@ mod tests {
         let unit = ReportUnit {
             men: 50,
             items: vec![
-                crate::report::model::ItemAmount {
-                    amount: 50,
-                    name: "lizardmen".to_string(),
-                    tag: "LIZA".to_string(),
-                    needs: None,
-                },
-                crate::report::model::ItemAmount {
-                    amount: 7500,
-                    name: "silver".to_string(),
-                    tag: "SILV".to_string(),
-                    needs: None,
-                },
+                crate::report::model::ItemAmount::new(
+                    50,
+                    "lizardmen".to_string(),
+                    "LIZA".to_string(),
+                ),
+                crate::report::model::ItemAmount::new(
+                    7500,
+                    "silver".to_string(),
+                    "SILV".to_string(),
+                ),
             ],
             ..Default::default()
         };
@@ -1104,18 +1101,16 @@ mod tests {
         let with_turtle = |men: i64| ReportUnit {
             men,
             items: vec![
-                crate::report::model::ItemAmount {
-                    amount: men,
-                    name: "lizardmen".to_string(),
-                    tag: "LIZA".to_string(),
-                    needs: None,
-                },
-                crate::report::model::ItemAmount {
-                    amount: 1,
-                    name: "giant turtle".to_string(),
-                    tag: "TURT".to_string(),
-                    needs: None,
-                },
+                crate::report::model::ItemAmount::new(
+                    men,
+                    "lizardmen".to_string(),
+                    "LIZA".to_string(),
+                ),
+                crate::report::model::ItemAmount::new(
+                    1,
+                    "giant turtle".to_string(),
+                    "TURT".to_string(),
+                ),
             ],
             ..Default::default()
         };
@@ -1141,12 +1136,11 @@ mod tests {
     fn a_unit_with_no_swimming_capacity_cannot_swim() {
         let leader = ReportUnit {
             men: 1,
-            items: vec![crate::report::model::ItemAmount {
-                amount: 1,
-                name: "leader".to_string(),
-                tag: "LEAD".to_string(),
-                needs: None,
-            }],
+            items: vec![crate::report::model::ItemAmount::new(
+                1,
+                "leader".to_string(),
+                "LEAD".to_string(),
+            )],
             ..Default::default()
         };
         assert_eq!(
@@ -1157,12 +1151,11 @@ mod tests {
 
         let lizardman = ReportUnit {
             men: 1,
-            items: vec![crate::report::model::ItemAmount {
-                amount: 1,
-                name: "lizardman".to_string(),
-                tag: "LIZA".to_string(),
-                needs: None,
-            }],
+            items: vec![crate::report::model::ItemAmount::new(
+                1,
+                "lizardman".to_string(),
+                "LIZA".to_string(),
+            )],
             ..Default::default()
         };
         assert_eq!(
@@ -1183,24 +1176,13 @@ mod tests {
         let unit = ReportUnit {
             men: 1,
             items: vec![
-                crate::report::model::ItemAmount {
-                    amount: 1,
-                    name: "leader".to_string(),
-                    tag: "LEAD".to_string(),
-                    needs: None,
-                },
-                crate::report::model::ItemAmount {
-                    amount: 1,
-                    name: "giant turtle".to_string(),
-                    tag: "TURT".to_string(),
-                    needs: None,
-                },
-                crate::report::model::ItemAmount {
-                    amount: 4,
-                    name: "wood".to_string(),
-                    tag: "WOOD".to_string(),
-                    needs: None,
-                },
+                crate::report::model::ItemAmount::new(1, "leader".to_string(), "LEAD".to_string()),
+                crate::report::model::ItemAmount::new(
+                    1,
+                    "giant turtle".to_string(),
+                    "TURT".to_string(),
+                ),
+                crate::report::model::ItemAmount::new(4, "wood".to_string(), "WOOD".to_string()),
             ],
             ..Default::default()
         };
@@ -1219,18 +1201,12 @@ mod tests {
         let unit = ReportUnit {
             men: 1,
             items: vec![
-                crate::report::model::ItemAmount {
-                    amount: 1,
-                    name: "lizardman".to_string(),
-                    tag: "LIZA".to_string(),
-                    needs: None,
-                },
-                crate::report::model::ItemAmount {
-                    amount: 1,
-                    name: "unknown".to_string(),
-                    tag: "ZZZZ".to_string(),
-                    needs: None,
-                },
+                crate::report::model::ItemAmount::new(
+                    1,
+                    "lizardman".to_string(),
+                    "LIZA".to_string(),
+                ),
+                crate::report::model::ItemAmount::new(1, "unknown".to_string(), "ZZZZ".to_string()),
             ],
             ..Default::default()
         };
@@ -1993,12 +1969,7 @@ mod tests {
     // ------------------------------------------------------------ carrying after transfers
 
     fn held(amount: i64, tag: &str) -> crate::report::model::ItemAmount {
-        crate::report::model::ItemAmount {
-            amount,
-            name: tag.to_ascii_lowercase(),
-            tag: tag.to_string(),
-            needs: None,
-        }
+        crate::report::model::ItemAmount::new(amount, tag.to_ascii_lowercase(), tag.to_string())
     }
 
     /// The ah-o6qy riders: printed `Weight: 30` for three humans, stepping off as one human and

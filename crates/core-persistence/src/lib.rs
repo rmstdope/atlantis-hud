@@ -3487,12 +3487,7 @@ mod tests {
             own: true,
             region_id: "1:7,53".to_string(),
             flags: vec!["behind".to_string()],
-            items: vec![ItemAmount {
-                amount: 57,
-                name: "grain".to_string(),
-                tag: "GRAI".to_string(),
-                needs: None,
-            }],
+            items: vec![ItemAmount::new(57, "grain".to_string(), "GRAI".to_string())],
             skills: vec![Skill {
                 name: "combat".to_string(),
                 tag: "COMB".to_string(),
@@ -3660,12 +3655,7 @@ mod tests {
                 own: false,
                 on_guard: false,
                 flags: vec![],
-                items: vec![ItemAmount {
-                    amount: 1,
-                    name: "leader".to_string(),
-                    tag: "LEAD".to_string(),
-                    needs: None,
-                }],
+                items: vec![ItemAmount::new(1, "leader".to_string(), "LEAD".to_string())],
                 skills: vec![Skill {
                     name: "force".to_string(),
                     tag: "FORC".to_string(),
