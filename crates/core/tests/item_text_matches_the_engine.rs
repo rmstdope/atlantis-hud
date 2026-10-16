@@ -49,5 +49,8 @@ fn every_unit_item_list_in_the_fixtures_writes_back_verbatim() {
     // The corpus has to exercise every form in the table, or this proves less than it says.
     assert!(checked > 1000, "only {checked} unit lines checked");
     assert!(illusions > 0, "no illusion in the corpus was checked");
-    assert!(unfinished > 0, "no unfinished ship in the corpus was checked");
+    assert!(
+        unfinished > 0,
+        "no unfinished ship in the corpus was checked"
+    );
 }

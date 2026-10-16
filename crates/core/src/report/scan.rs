@@ -5,8 +5,9 @@
 
 use std::collections::BTreeSet;
 
+use super::item_text::parse_item_amount;
 use super::level;
-use super::model::{CombatSpell, Coordinate, ItemAmount, MarketItem, Settlement, Skill};
+use super::model::{CombatSpell, Coordinate, MarketItem, Settlement, Skill};
 
 /// One character of the input, with the bracket depth on either side of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -290,61 +291,6 @@ pub fn parse_settlement(input: &str) -> Option<Settlement> {
     })
 }
 
-/// Splits `230 crossbows [XBOW]` into its amount, name and tag.
-///
-/// A bare `leader [LEAD]` means one. An unfinished ship's trailing `(needs 33)` - the engine's
-/// `Item::Report` form for one, giving the work still to do - is read into `needs` (`ah-uxmh`).
-/// An illusion's trailing `(illusion)` - `Item::Report` again, written to whoever sees true - names
-/// its own item, read as the data page names it: `balrog [BALR] (illusion)` is `illusory balrog
-/// [IBALR]` (`data/IBALR`, `ah-qrlx`).
-#[must_use]
-pub fn parse_item_amount(input: &str) -> Option<ItemAmount> {
-    let text = input.trim().trim_end_matches('.');
-    if let Some(real) = text.strip_suffix(" (illusion)") {
-        let item = parse_item_amount(real)?;
-        return Some(ItemAmount {
-            name: format!("illusory {}", item.name),
-            tag: format!("I{}", item.tag),
-            ..item
-        });
-    }
-    let (text, needs) = match text
-        .strip_suffix(')')
-        .and_then(|rest| rest.rsplit_once(" (needs "))
-    {
-        Some((item, needs)) => match needs.trim().parse::<i64>() {
-            Ok(needs) => (item.trim_end(), Some(needs)),
-            Err(_) => (text, None),
-        },
-        None => (text, None),
-    };
-    let open = text.rfind('[')?;
-    let close = text.rfind(']')?;
-    if close < open {
-        return None;
-    }
-
-    let tag = text[open + 1..close].to_string();
-    let head = text[..open].trim();
-    let (amount, name) = match head.split_once(' ') {
-        Some((first, rest)) if first.chars().all(|c| c.is_ascii_digit()) && !first.is_empty() => {
-            (first.parse::<i64>().unwrap_or(1), rest.trim().to_string())
-        }
-        _ => (1, head.to_string()),
-    };
-
-    if name.is_empty() {
-        return None;
-    }
-
-    Some(ItemAmount {
-        amount,
-        name,
-        tag,
-        needs,
-    })
-}
-
 /// Splits `138 grain [GRAI] at $24` into an item and its price.
 #[must_use]
 pub fn parse_market_item(input: &str) -> Option<MarketItem> {
@@ -591,67 +537,6 @@ mod tests {
                 name: "Inholm".to_string(),
                 size: "city".to_string()
             })
-        );
-    }
-
-    #[test]
-    fn treats_an_unquantified_item_as_one() {
-        let single = parse_item_amount("leader [LEAD]").expect("item");
-        assert_eq!((single.amount, single.tag.as_str()), (1, "LEAD"));
-
-        let many = parse_item_amount("230 crossbows [XBOW]").expect("item");
-        assert_eq!((many.amount, many.name.as_str()), (230, "crossbows"));
-    }
-
-    /// The engine's `Item::Report` writes an unfinished ship as `unfinished <name> [<tag>] (needs
-    /// <num>)`, the work still to do (`ah-uxmh`). One ship, with what it still needs.
-    #[test]
-    fn reads_what_an_unfinished_ship_still_needs() {
-        let ship = parse_item_amount("unfinished Galleon [GALL] (needs 33)").expect("item");
-        assert_eq!(
-            ship,
-            ItemAmount {
-                amount: 1,
-                name: "unfinished Galleon".to_string(),
-                tag: "GALL".to_string(),
-                needs: Some(33),
-            }
-        );
-        assert_eq!(
-            parse_item_amount("230 crossbows [XBOW]")
-                .expect("item")
-                .needs,
-            None
-        );
-    }
-
-    /// The engine's `Item::Report` writes an illusion under its real item's name and tag with
-    /// ` (illusion)` appended, for its owner and for an observer with true sight
-    /// (`../Atlantis/items.cpp`, `unit.cpp`'s `items.Report(obs, truesight, 0)`). It is its
-    /// own item, `illusory balrog [IBALR], weight 1` (`data/IBALR`), and is read as that, or it
-    /// weighs as a real balrog (`data/BALR`, weight 250) and the two lines share one tag
-    /// (`ah-qrlx`).
-    #[test]
-    fn reads_an_illusion_as_its_illusory_item() {
-        assert_eq!(
-            parse_item_amount("balrog [BALR] (illusion)"),
-            Some(ItemAmount {
-                amount: 1,
-                name: "illusory balrog".to_string(),
-                tag: "IBALR".to_string(),
-                needs: None,
-            })
-        );
-        let imps = parse_item_amount("3 imps [IMP] (illusion)").expect("item");
-        assert_eq!(
-            (imps.amount, imps.name.as_str(), imps.tag.as_str()),
-            (3, "illusory imps", "IIMP")
-        );
-        // A foreign unit's, as `neworigins-3.0.0-g3-f42-t82.rep` shows zZZ (12730).
-        let demons = parse_item_amount("3 demons [DEMO] (illusion).").expect("item");
-        assert_eq!(
-            (demons.amount, demons.name.as_str(), demons.tag.as_str()),
-            (3, "illusory demons", "IDEMO")
         );
     }
 

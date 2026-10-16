@@ -164,7 +164,10 @@ mod tests {
     #[test]
     fn plain_items_read_and_write_as_the_engine_prints_them() {
         both_ways("leader [LEAD]", &item(1, "leader", "LEAD", None));
-        both_ways("230 crossbows [XBOW]", &item(230, "crossbows", "XBOW", None));
+        both_ways(
+            "230 crossbows [XBOW]",
+            &item(230, "crossbows", "XBOW", None),
+        );
     }
 
     /// The engine's `Item::Report` writes an unfinished ship as `unfinished <name> [<tag>] (needs

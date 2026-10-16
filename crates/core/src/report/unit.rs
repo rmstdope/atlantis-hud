@@ -10,10 +10,10 @@
 //!
 //! Foreign units are usually terser, and may conceal their faction entirely.
 
+use super::item_text::parse_item_amount;
 use super::model::{ItemAmount, ReportUnit, Skill, UnitRead};
 use super::scan::{
-    next_top_level_field, parse_combat_spell, parse_item_amount, parse_skill, split_leading_id,
-    split_top_level,
+    next_top_level_field, parse_combat_spell, parse_skill, split_leading_id, split_top_level,
 };
 
 /// Labelled sections a unit line may carry after its head.
