@@ -137,3 +137,55 @@ fn the_sharers_silver_paying_an_outsiders_upkeep_is_a_line_on_the_payer() {
         "{lent:?}"
     );
 }
+
+/// A purse the market drains leaves the fees unpaid all the same (review of PR #1597): 3431's $90
+/// buys one of four wood at $81, and the $9 left cannot pay the two units' $100 of upkeep. Nothing
+/// is earned, since both PRODUCE. `rules/economy_maintenance`: a unit that ends the month without
+/// its maintenance "has a 33 percent chance of starving to death". The market alone is short $234,
+/// more than the $91 of fees, but the fees still go unpaid: so the sentence keeps its upkeep, and
+/// is short the unbought wood ($243) and the unpaid fees ($91): $334.
+#[test]
+fn a_cut_buy_does_not_hide_upkeep_that_goes_unpaid() {
+    const DRAINED: &str = "Bog Brawlers (5) Report
+
+jungle (38,34) in Mordur Canopy, contains Brackford [city], 8647
+  peasants (orcs), $21790.
+------------------------------------------------------------
+  The weather was clear last month; it will be clear next month.
+  Wages: $22.6 (Max: $4358).
+  For Sale: 28 wood [WOOD] at $81.
+  Entertainment available: $1175.
+  Products: 65 grain [GRAI], 27 wood [WOOD], 8 herbs [HERB], 8 furs
+    [FUR].
+
+* Unit (3431), Bog Brawlers (5), behind, revealing faction, holding,
+  sharing, consuming unit's food, 5 orcs [ORC], 90 silver [SILV].
+  Weight: 50. Capacity: 0/0/75/0. Skills: herb lore [HERB] 2 (90).
+* Unit (4682), Bog Brawlers (5), behind, revealing faction, holding,
+  consuming unit's food, 5 orcs [ORC]. Weight: 50. Capacity: 0/0/75/0.
+  Skills: hunting [HUNT] 2 (90).
+
+";
+    let ruleset = common::trident_ruleset();
+    let mut parsed = parse_report_full(DRAINED);
+    classify_units(&mut parsed, &ruleset);
+    let review = review_turn(
+        &parsed,
+        "unit 3431\nPRODUCE HERB\nunit 4682\nPRODUCE FUR\nBUY 4 WOOD\n",
+        Some(&ruleset),
+        CheckOptions::default(),
+    );
+    let found: Vec<&str> = review
+        .findings
+        .iter()
+        .filter(|finding| finding.unit_id.is_none() && finding.code.as_str() == "not-enough-silver")
+        .map(|finding| finding.message.as_str())
+        .collect();
+    assert_eq!(
+        found,
+        vec![
+            "the units in this hex are short $334 between them: they can have $90 and their \
+             orders and upkeep spend $424"
+        ]
+    );
+}
