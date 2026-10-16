@@ -26,7 +26,7 @@ const ATTITUDES: DeclaredAttitudes = {
 
 function report(attitudes: DeclaredAttitudes | null = ATTITUDES): ParsedReport {
   return aParsedReport({
-    header: { ...aReportHeaderInfo({ factionId: "95", factionName: "Borg TNG" }), attitudes },
+    header: { ...aReportHeaderInfo({ factionId: "95", factionName: "Borg TNG" }), attitudes: attitudes ?? undefined },
     regions: [
       region("1:7,53", [
         ["1", "95", "Borg TNG"],

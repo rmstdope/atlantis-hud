@@ -1,4 +1,5 @@
 import type { DeclaredAttitudes, ParsedReport } from "@atlantis/core-client";
+import type { MemoryHex } from "./paletteFactions";
 
 /** One hex a faction has been seen in this turn, and how many of its units stand there. */
 export type DossierHex = {
@@ -13,6 +14,14 @@ export type DossierUnit = {
   regionId: string;
 };
 
+/** One hex older reports remember the faction's units in (ah-mlls.3). */
+export type LastSeenHex = {
+  regionId: string;
+  /** The latest turn one of their units was remembered there. */
+  lastSeenTurn: number;
+  unitCount: number;
+};
+
 /** Everything this turn's report knows about one faction. */
 export type FactionDossier = {
   id: string;
@@ -23,6 +32,11 @@ export type FactionDossier = {
   /** Hexes holding at least one of their units, in report order. */
   hexes: DossierHex[];
   units: DossierUnit[];
+  /**
+   * Where memory last saw their units, most recent first - filled only when none of their units is
+   * in this turn's report, which is when the panel says `Last seen` instead of `Seen in`.
+   */
+  lastSeen: LastSeenHex[];
 };
 
 /**
@@ -38,7 +52,8 @@ export type FactionDossier = {
 export function dossierFor(
   parsed: ParsedReport,
   attitudes: DeclaredAttitudes | null,
-  factionId: string
+  factionId: string,
+  memory: readonly MemoryHex[] = []
 ): FactionDossier {
   const hexes: DossierHex[] = [];
   const units: DossierUnit[] = [];
@@ -57,13 +72,51 @@ export function dossierFor(
     }
   }
 
+  const recalled = units.length === 0 ? recall(memory, factionId) : { name: null, lastSeen: [] };
+
   return {
     id: factionId,
-    name: declaredName(attitudes, factionId) ?? reportName ?? factionId,
+    // "Unnamed faction" rather than the bare number, so the panel reads as the palette row that
+    // opened it does: `Unnamed faction (95)` (ah-mlls.3).
+    name: declaredName(attitudes, factionId) ?? reportName ?? recalled.name ?? "Unnamed faction",
     attitude: attitudeToward(attitudes, factionId),
     hexes,
-    units
+    units,
+    lastSeen: recalled.lastSeen
   };
+}
+
+/**
+ * What memory holds of a faction: the hexes older reports remember its units in, and a name.
+ *
+ * Stale hexes only - a hex this turn's report covers is read from the report, and its remembered
+ * units are no longer where they were. Sorted most recent first; a stable sort keeps map order
+ * among hexes of the same turn.
+ */
+function recall(
+  memory: readonly MemoryHex[],
+  factionId: string
+): { name: string | null; lastSeen: LastSeenHex[] } {
+  let name: string | null = null;
+  const lastSeen: LastSeenHex[] = [];
+  for (const hex of memory) {
+    if (hex.knowledge !== "stale") {
+      continue;
+    }
+    const theirs = hex.rememberedUnits.filter((sighting) => sighting.unit.factionId === factionId);
+    if (theirs.length === 0) {
+      continue;
+    }
+    for (const sighting of theirs) {
+      name ??= sighting.unit.factionName;
+    }
+    lastSeen.push({
+      regionId: hex.regionId,
+      lastSeenTurn: Math.max(...theirs.map((sighting) => sighting.lastSeenTurn)),
+      unitCount: theirs.length
+    });
+  }
+  return { name, lastSeen: lastSeen.sort((a, b) => b.lastSeenTurn - a.lastSeenTurn) };
 }
 
 /** The name the attitudes block prints for the faction, which is the one the reader clicked. */

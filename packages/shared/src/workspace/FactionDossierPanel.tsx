@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { FactionDossier } from "../factionDossier";
 import { placeTooltip, type Point } from "../unitTooltip";
@@ -22,6 +22,14 @@ function sameBox(a: KeepClear | null, b: KeepClear | null): boolean {
 
 /** Said under *Seen in*, so an empty list reads as "we cannot see" rather than "they have none". */
 export const SEEN_IN_LIMIT = "Where their units are this turn. Earlier turns are not remembered.";
+
+/** `1 unit`, `2 units`. */
+function units(count: number): string {
+  return `${count} unit${count === 1 ? "" : "s"}`;
+}
+
+/** Said under *Last seen*, for a faction none of whose units this turn's report shows (ah-mlls.3). */
+export const LAST_SEEN_CAPTION = "None of their units is in this turn's report.";
 
 /**
  * Everything this turn's report knows about one foreign faction, opened by clicking its name in the
@@ -87,6 +95,29 @@ export function FactionDossierPanel({
   onBack?: () => void;
   onDismiss: () => void;
 }) {
+  // A plain function rather than a component, so the rows stay in the element tree the tests walk
+  // by calling this panel directly. Both lists go to a hex the same way, by pointer and by focus.
+  const hexRow = (testId: string, regionId: string, detail: ReactNode) => (
+    <button
+      type="button"
+      data-testid={testId}
+      aria-label={`go to ${labelFor(regionId)}`}
+      onPointerEnter={() => onHoverHex(regionId)}
+      onPointerLeave={() => onHoverHex(null)}
+      onFocus={() => onFocusHex(regionId)}
+      onBlur={() => onFocusHex(null)}
+      onClick={() => {
+        onSelectHex(regionId);
+        onDismiss();
+      }}
+      className="flex w-full items-baseline gap-2 rounded px-1 text-left hover:bg-panel"
+    >
+      <span className="text-ink">{labelFor(regionId)}</span>
+      <span className="flex-1" />
+      <span className="text-ink-soft">{detail}</span>
+    </button>
+  );
+
   return (
     <PopoverFrame
       testId="faction-dossier"
@@ -128,37 +159,39 @@ export function FactionDossierPanel({
           {dossier.attitude ?? "not declared"}
         </p>
 
-        <div className="mt-2 text-brass">Seen in</div>
-        <p className="text-ink-dim">{SEEN_IN_LIMIT}</p>
-        {dossier.hexes.length === 0 ? (
-          <p className="text-ink-dim italic">no hex of theirs is in this report</p>
+        {dossier.lastSeen.length > 0 ? (
+          <>
+            <div className="mt-2 text-brass">Last seen</div>
+            <p className="text-ink-dim">{LAST_SEEN_CAPTION}</p>
+            <ul className="mt-1 list-none">
+              {dossier.lastSeen.map((hex) => (
+                <li key={hex.regionId}>
+                  {hexRow(`dossier-last-seen-${hex.regionId}`, hex.regionId, (
+                    <>
+                      <span className="text-brass-bright">turn {hex.lastSeenTurn}</span> ·{" "}
+                      {units(hex.unitCount)}
+                    </>
+                  ))}
+                </li>
+              ))}
+            </ul>
+          </>
         ) : (
-          <ul className="mt-1 list-none">
-            {dossier.hexes.map((hex) => (
-              <li key={hex.regionId}>
-                <button
-                  type="button"
-                  data-testid={`dossier-hex-${hex.regionId}`}
-                  aria-label={`go to ${labelFor(hex.regionId)}`}
-                  onPointerEnter={() => onHoverHex(hex.regionId)}
-                  onPointerLeave={() => onHoverHex(null)}
-                  onFocus={() => onFocusHex(hex.regionId)}
-                  onBlur={() => onFocusHex(null)}
-                  onClick={() => {
-                    onSelectHex(hex.regionId);
-                    onDismiss();
-                  }}
-                  className="flex w-full items-baseline gap-2 rounded px-1 text-left hover:bg-panel"
-                >
-                  <span className="text-ink">{labelFor(hex.regionId)}</span>
-                  <span className="flex-1" />
-                  <span className="text-ink-soft">
-                    {hex.unitCount} unit{hex.unitCount === 1 ? "" : "s"}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <>
+            <div className="mt-2 text-brass">Seen in</div>
+            <p className="text-ink-dim">{SEEN_IN_LIMIT}</p>
+            {dossier.hexes.length === 0 ? (
+              <p className="text-ink-dim italic">no hex of theirs is in this report</p>
+            ) : (
+              <ul className="mt-1 list-none">
+                {dossier.hexes.map((hex) => (
+                  <li key={hex.regionId}>
+                    {hexRow(`dossier-hex-${hex.regionId}`, hex.regionId, units(hex.unitCount))}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
 
         {onShowUnits && unitCount > 0 ? (

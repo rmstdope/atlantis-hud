@@ -18,7 +18,8 @@ const DOSSIER: FactionDossier = {
     { unitId: "101", name: "Scout", regionId: "1:7,53" },
     { unitId: "102", name: "Guard", regionId: "1:7,53" },
     { unitId: "104", name: "Trader", regionId: "1:8,54" }
-  ]
+  ],
+  lastSeen: []
 };
 
 const panel = (overrides: Partial<Parameters<typeof FactionDossierPanel>[0]> = {}) => (
@@ -167,6 +168,37 @@ describe("a hovered row peeks; a focused row settles", () => {
     expect(onHoverHex.mock.calls).toEqual([["1:7,53"], [null]]);
     expect(onFocusHex.mock.calls).toEqual([["1:7,53"], [null]]);
   });
-
 });
 
+describe("a faction from an earlier turn (ah-mlls.3)", () => {
+  const earlier: FactionDossier = {
+    ...DOSSIER,
+    hexes: [],
+    units: [],
+    lastSeen: [
+      { regionId: "1:12,34", lastSeenTurn: 41, unitCount: 2 },
+      { regionId: "1:9,9", lastSeenTurn: 39, unitCount: 1 }
+    ]
+  };
+  const markup = draw({ dossier: earlier, unitCount: 0, onShowUnits: () => {} });
+
+  it("says Last seen and why only old hexes are listed, in place of Seen in", () => {
+    expect(markup).toContain("Last seen");
+    expect(markup).toContain("None of their units is in this turn&#x27;s report.");
+    expect(markup).not.toContain("Seen in");
+  });
+
+  it("lists each remembered hex with its turn and unit count", () => {
+    expect(markup).toContain("hex 1:12,34");
+    expect(markup).toMatch(/turn 41<\/span> · 2 units/);
+    expect(markup).toMatch(/turn 39<\/span> · 1 unit</);
+  });
+
+  it("makes each remembered hex a row that goes there", () => {
+    expect(markup).toContain('data-testid="dossier-last-seen-1:12,34"');
+  });
+
+  it("offers no list of their units", () => {
+    expect(markup).not.toContain("dossier-show-units");
+  });
+});

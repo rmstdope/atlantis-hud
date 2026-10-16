@@ -2,6 +2,19 @@ import type { DeclaredAttitudes, ParsedReport, ReportRegion } from "@atlantis/co
 import { aParsedReport, aReportRegion, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import { dossierFor } from "./factionDossier";
+import type { MemoryHex } from "./paletteFactions";
+
+/** A stale hex remembering units, each as `[unitId, factionId, factionName, turn]`. */
+function remembered(regionId: string, units: [string, string, string | null, number][]): MemoryHex {
+  return {
+    regionId,
+    knowledge: "stale",
+    rememberedUnits: units.map(([unitId, factionId, factionName, lastSeenTurn]) => ({
+      unit: aReportUnit({ unitId, name: `Unit ${unitId}`, regionId, factionId, factionName, own: false }),
+      lastSeenTurn
+    }))
+  };
+}
 
 /** A region holding the units given, each as `[unitId, name, factionId]`. */
 function region(regionId: string, units: [string, string, string | null][]): ReportRegion {
@@ -104,5 +117,41 @@ describe("dossierFor", () => {
     expect(dossier.hexes).toEqual([]);
     expect(dossier.units).toEqual([]);
     expect(dossier.id).toBe("77");
+  });
+
+  it("names a faction nobody named as unnamed, not by its bare number", () => {
+    expect(dossierFor(report(), ATTITUDES, "77").name).toBe("Unnamed faction");
+  });
+});
+
+describe("dossierFor with memory (ah-mlls.3)", () => {
+  const memory = [
+    remembered("1:1,1", [["201", "58", "Greenhollow", 39]]),
+    remembered("1:2,2", [
+      ["202", "58", "Greenhollow", 41],
+      ["203", "58", "Greenhollow", 41]
+    ]),
+    remembered("1:3,3", [["204", "58", "Greenhollow", 41], ["205", "2", "Faction 2", 40]]),
+    { ...remembered("1:4,4", [["206", "58", "Greenhollow", 43]]), knowledge: "current" as const }
+  ];
+
+  it("lists where a faction with no unit this turn was last seen, newest first", () => {
+    expect(dossierFor(report(), ATTITUDES, "58", memory).lastSeen).toEqual([
+      { regionId: "1:2,2", lastSeenTurn: 41, unitCount: 2 },
+      { regionId: "1:3,3", lastSeenTurn: 41, unitCount: 1 },
+      { regionId: "1:1,1", lastSeenTurn: 39, unitCount: 1 }
+    ]);
+  });
+
+  it("takes the name memory gives when this turn names nobody", () => {
+    expect(dossierFor(report(), ATTITUDES, "58", memory).name).toBe("Greenhollow");
+  });
+
+  it("remembers nothing for a faction with a unit in this turn's report", () => {
+    expect(dossierFor(report(), ATTITUDES, "2", memory).lastSeen).toEqual([]);
+  });
+
+  it("remembers nothing without memory", () => {
+    expect(dossierFor(report(), ATTITUDES, "58").lastSeen).toEqual([]);
   });
 });
