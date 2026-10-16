@@ -17753,11 +17753,53 @@ fn report_shortfalls(
         findings.push(finding);
     }
 
+    let pooled = pool_shortfalls(hex, ledger, &sharing, &verdicts);
+
+    // A shipment refused for its fee is told on its own line even when nothing else says so
+    // (`ah-2pbd`): the unit sentence and the hex's pool markers carry the refusal only when the
+    // month ends short, and silver arriving later in the TRANSPORT phases can pay the month's end
+    // without making the refused shipment any less refused.
+    if options.emits(codes::NOT_ENOUGH_SILVER) {
+        let pool_short = pooled.iter().any(|shortfall| shortfall.tag == SILVER);
+        for refused in &ledger.refused_shipments {
+            let told = pool_short
+                || verdicts.iter().any(|verdict| {
+                    matches!(
+                        verdict,
+                        Verdict::UnitShort { unit_id, tag, .. }
+                            if unit_id == &refused.unit_id && tag == SILVER
+                    )
+                });
+            if told {
+                continue;
+            }
+            let Some(ordered) = hex.find(&refused.unit_id) else {
+                continue;
+            };
+            let placed = ordered
+                .intents
+                .iter()
+                .find(|placed| i64::try_from(placed.line).ok() == Some(refused.line));
+            findings.push(ordered.finding(
+                hex,
+                codes::NOT_ENOUGH_SILVER,
+                format!(
+                    "this TRANSPORT will be refused: its fee is ${} and only ${} is left to pay it \
+                     then, so it ships none of the {} ordered",
+                    refused.cost,
+                    refused.available,
+                    counted_item(refused.ordered, &refused.tag, hex, ruleset, plurals),
+                ),
+                placed,
+            ));
+        }
+    }
+
     for PoolShortfall {
         tag,
         figures,
         upkeep,
-    } in pool_shortfalls(hex, ledger, &sharing, &verdicts)
+    } in pooled
     {
         // ... and a pointer on every order line that claims against that pool (`ah-eurs`). The
         // hex finding is right to be hex-anchored (`ah-sdda`), but it reaches no editor, so the
@@ -22041,7 +22083,8 @@ fn shipping_bills(
                     }
                     // Judged before anything is booked: a shipment is all or nothing, so a
                     // refusal must leave no `Shipped` move behind (`ah-7ale.4`).
-                    if cost <= shipping_purse(ledger, hex, ordered, ruleset) {
+                    let purse = shipping_purse(ledger, hex, ordered, ruleset);
+                    if cost <= purse {
                         move_silver(
                             ledger,
                             settled_at,
@@ -22085,6 +22128,7 @@ fn shipping_bills(
                                 tag: tag.clone(),
                                 ordered: quantity,
                                 cost,
+                                available: purse.max(0),
                             },
                         ));
                     }
@@ -55910,6 +55954,93 @@ BUILD
                 .find(|finding| finding.code.as_str() == "not-enough-silver")
                 .and_then(|finding| finding.line),
             Some(2)
+        );
+    }
+
+    /// `ah-2pbd`: a shipment refused for its fee is refused whether or not the month ends short.
+    /// Unit 902 sends $100 to 900 in the same TRANSPORT phase, after 900's own shipments
+    /// (`rules/sequenceofevents`: "units that appear higher on the report get precedence"), so
+    /// the month's end is paid for and no shortfall sentence carries the refusal - the refused
+    /// line has to say it itself.
+    #[test]
+    fn a_shipment_refused_for_its_fee_is_marked_though_the_month_ends_paid() {
+        let regions = || {
+            let mut regions = two_shipments_from_900(60);
+            // Quartermaster 3, so it reaches 900 four hexes away (`data/quartermaster`).
+            regions[2] = caravanserai_owner("902", 3, 0, 8);
+            regions[2].units[0] = with_silver(regions[2].units[0].clone(), 1000);
+            regions
+        };
+        let orders = "unit 900\nTRANSPORT 901 9 FUR\nTRANSPORT 902 9 FUR\n\
+                      unit 902\nTRANSPORT 900 100 SILV\n";
+
+        let silver = sender_silver(regions(), orders, with_map());
+        assert_eq!(
+            shipped(&silver).len(),
+            1,
+            "the second shipment is refused: {silver:#?}"
+        );
+        let findings = unpaid_findings(regions(), orders);
+        // The month's end is paid, so nothing about the hex or the unit's month is short: the one
+        // silver finding is the refused line's own.
+        let marked: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    || finding.code == codes::PART_OF_HEX_SHORTFALL
+            })
+            .collect();
+        assert_eq!(marked.len(), 1, "{findings:#?}");
+        assert_eq!(marked[0].code, codes::NOT_ENOUGH_SILVER);
+        assert_eq!(marked[0].unit_id.as_deref(), Some("900"));
+        assert_eq!(marked[0].line, Some(3));
+        assert_eq!(
+            marked[0].message,
+            "this TRANSPORT will be refused: its fee is $45 and only $15 is left to pay it then, \
+             so it ships none of the 9 furs ordered"
+        );
+    }
+
+    /// `ah-2pbd`, as Psylocke met it: the sender holds nothing and borrows the fee from a sharing
+    /// mate's SHARE purse, which pays the first fee and has $5 left for the second. Silver that
+    /// arrives later in the TRANSPORT phase pays the month's end, so the hex is not short either.
+    #[test]
+    fn a_shipment_the_share_purse_cannot_pay_for_is_marked_though_the_hex_ends_paid() {
+        let regions = || {
+            let mut regions = two_shipments_from_900(0);
+            let mut mate = sharing(with_silver(unit("903"), 50));
+            mate.region_id = regions[0].region_id.clone();
+            regions[0].units.push(mate);
+            // Quartermaster 3, so it reaches 900 four hexes away (`data/quartermaster`).
+            regions[2] = caravanserai_owner("902", 3, 0, 8);
+            regions[2].units[0] = with_silver(regions[2].units[0].clone(), 1000);
+            regions
+        };
+        let orders = "unit 900\nTRANSPORT 901 9 FUR\nTRANSPORT 902 9 FUR\n\
+                      unit 902\nTRANSPORT 900 100 SILV\n";
+
+        let silver = sender_silver(regions(), orders, with_map());
+        assert_eq!(
+            shipped(&silver).len(),
+            1,
+            "the second shipment is refused: {silver:#?}"
+        );
+        let findings = unpaid_findings(regions(), orders);
+        let marked: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    || finding.code == codes::PART_OF_HEX_SHORTFALL
+            })
+            .collect();
+        assert_eq!(marked.len(), 1, "{findings:#?}");
+        assert_eq!(marked[0].code, codes::NOT_ENOUGH_SILVER);
+        assert_eq!(marked[0].unit_id.as_deref(), Some("900"));
+        assert_eq!(marked[0].line, Some(3));
+        assert_eq!(
+            marked[0].message,
+            "this TRANSPORT will be refused: its fee is $45 and only $5 is left to pay it then, \
+             so it ships none of the 9 furs ordered"
         );
     }
 
