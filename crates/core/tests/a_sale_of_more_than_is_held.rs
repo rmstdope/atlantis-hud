@@ -27,13 +27,18 @@ fn orders(faction: &str, unit: &str, line: &str) -> String {
 
 /// The `not-enough-items` findings on the order's one `SELL` line (line 4 of [`orders`]).
 fn oversold(review: &TurnReview, unit: &str) -> Vec<Finding> {
+    oversold_on(review, unit, 4)
+}
+
+/// The `not-enough-items` findings `unit` carries on order line `line`.
+fn oversold_on(review: &TurnReview, unit: &str, line: usize) -> Vec<Finding> {
     review
         .findings
         .iter()
         .filter(|finding| {
             finding.code.as_str() == "not-enough-items"
                 && finding.unit_id.as_deref() == Some(unit)
-                && finding.line == Some(4)
+                && finding.line == Some(line)
         })
         .cloned()
         .collect()
@@ -165,4 +170,57 @@ fn selling_all_is_never_warned() {
     ]);
     let review = review_of(&text, &orders("1", "900", "SELL ALL FUR"));
     assert!(oversold(&review, "900").is_empty());
+}
+
+/// `Game::GetSellAmount` cuts every line to what the market wants before `Game::DoSell` compares it
+/// with what the unit can draw on (`../Atlantis/runorders.cpp`), so a line the market alone caps
+/// is not an error (review of PR #1661, finding 1).
+#[test]
+fn a_line_the_market_caps_is_measured_after_the_cap() {
+    let text = fur_market(&[
+        "* Traders (900), Foo (1), 10 orcs [ORC], 100 silver [SILV], 120 furs [FUR]. Weight: 220. Capacity: 0/0/150/0.",
+    ]);
+    let review = review_of(&text, &orders("1", "900", "SELL 150 FUR"));
+    assert!(
+        oversold(&review, "900").is_empty(),
+        "{:#?}",
+        oversold(&review, "900")
+    );
+
+    let short = fur_market(&[
+        "* Traders (900), Foo (1), 10 orcs [ORC], 100 silver [SILV], 36 furs [FUR]. Weight: 136. Capacity: 0/0/150/0.",
+    ]);
+    let review = review_of(&short, &orders("1", "900", "SELL 150 FUR"));
+    let found = oversold(&review, "900");
+    assert_eq!(found.len(), 1, "{:#?}", review.findings);
+    assert_eq!(
+        found[0].message,
+        "short 64 furs: this unit can have 36 and this order sells 100 - the most this market takes"
+    );
+}
+
+/// A sharer whose stock cannot be read lends an unknown amount, so what the seller can have is not
+/// established and nothing is claimed about it - the posture the cut `GIVE` already takes
+/// (`a_doubted_sharer_silences_the_stock_it_shares`; review of PR #1661, finding 2).
+#[test]
+fn a_doubted_sharer_silences_the_warning() {
+    let text = fur_market(&[
+        // The sharer first: the walk follows the report, so its doubt is in place when 900 sells.
+        "* Keepers (901), Foo (1), sharing, 10 orcs [ORC], 10 furs [FUR]. Weight: 110. Capacity: 0/0/150/0.",
+        "* Traders (900), Foo (1), 10 orcs [ORC], 100 silver [SILV], 36 furs [FUR]. Weight: 136. Capacity: 0/0/150/0.",
+    ]);
+    let script = "#atlantis 1 \"<password>\"\n\nunit 901\nSELL 1 FOOBAR\nunit 900\nSELL 40 FUR\n";
+    let review = review_of(&text, script);
+    let warned: Vec<&Finding> = review
+        .findings
+        .iter()
+        .filter(|finding| {
+            finding.code.as_str() == "not-enough-items" && finding.unit_id.as_deref() == Some("900")
+        })
+        .collect();
+    assert!(warned.is_empty(), "{warned:#?}");
+
+    // The same month with the sharer readable is covered, and silent, for the ordinary reason.
+    let readable = "#atlantis 1 \"<password>\"\n\nunit 901\n\nunit 900\nSELL 40 FUR\n";
+    assert!(oversold_on(&review_of(&text, readable), "900", 6).is_empty());
 }

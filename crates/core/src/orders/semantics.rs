@@ -6344,8 +6344,10 @@ struct OversoldSale {
     unit_id: String,
     tag: String,
     placed: PlacedIntent,
-    /// What the line asked to sell.
-    ordered: i64,
+    /// What the line asks to sell once the engine has cut it to what the market wants.
+    attempted: i64,
+    /// Whether that cut changed the written figure.
+    capped: bool,
     /// What the unit could draw on when it ran.
     can_have: i64,
 }
@@ -8330,6 +8332,11 @@ fn check_oversold_sales(
         let Some(ordered) = hex.find(&oversold.unit_id) else {
             continue;
         };
+        // A transfer this walk could not follow leaves the holding read off the report, so what
+        // the unit can have is exactly what cannot be said - `check_emptied_sales`'s posture.
+        if ordered.holdings_unknown() {
+            continue;
+        }
         let explained = findings.iter().any(|finding| {
             finding.code == codes::NOTHING_LEFT_TO_SELL
                 && finding.unit_id.as_deref() == Some(oversold.unit_id.as_str())
@@ -8338,15 +8345,20 @@ fn check_oversold_sales(
         if explained {
             continue;
         }
-        let short = oversold.ordered - oversold.can_have;
+        let short = oversold.attempted - oversold.can_have;
         findings.push(ordered.finding(
             hex,
             codes::NOT_ENOUGH_ITEMS,
             format!(
-                "short {}: this unit can have {} and this order sells {}",
+                "short {}: this unit can have {} and this order sells {}{}",
                 counted_item(short, &oversold.tag, hex, ruleset, plurals),
                 oversold.can_have,
-                oversold.ordered,
+                oversold.attempted,
+                if oversold.capped {
+                    " - the most this market takes"
+                } else {
+                    ""
+                },
             ),
             Some(&oversold.placed),
         ));
@@ -11868,14 +11880,25 @@ fn sell(
     // will attempt to sell all that it has" - which `price_sale_line` already does - and the
     // engine reports the line as an error (`Game::DoSell`: "SELL: Unit attempted to sell more
     // than it had."), so the player is told before sending it (`ah-q51d`). `ALL` never asks for
-    // more than there is.
-    if let Amount::Exact(ordered) = *amount {
-        if ordered > remaining_holding {
+    // more than there is. The engine first cuts the line to what the market wants
+    // (`Game::GetSellAmount`: `if (m->amount != -1 && o->num > m->amount) o->num = m->amount;`),
+    // so that cut figure, not the written one, is what is measured against the holding.
+    //
+    // A sharer whose stock cannot be read lends an unknown amount, so what this unit can have is
+    // not established and nothing is said about it - the cut `GIVE`'s posture ("a doubted sharer
+    // silences the stock it shares").
+    let sharing = Sharing::read(hex);
+    let sharers_unreadable =
+        sharing.reading(&tag, ledger.ruleset) == Reading::Pooled && !sharing.pool_trusted(ledger);
+    if let (&Amount::Exact(written), false) = (amount, sharers_unreadable) {
+        let attempted = written.min(demand.amount);
+        if attempted > remaining_holding {
             ledger.oversold_sales.push(OversoldSale {
                 unit_id: who.clone(),
                 tag: tag.clone(),
                 placed: placed.clone(),
-                ordered,
+                attempted,
+                capped: attempted < written,
                 can_have: remaining_holding.max(0),
             });
         }
