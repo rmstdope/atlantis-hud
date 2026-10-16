@@ -17760,7 +17760,10 @@ fn report_shortfalls(
     // month ends short, and silver arriving later in the TRANSPORT phases can pay the month's end
     // without making the refused shipment any less refused.
     if options.emits(codes::NOT_ENOUGH_SILVER) {
-        let pool_short = pooled.iter().any(|shortfall| shortfall.tag == SILVER);
+        // The pool's markers tell it only while their own code is on: silencing one of the two
+        // never silences the other (`ah-eurs`).
+        let pool_short = options.emits(codes::PART_OF_HEX_SHORTFALL)
+            && pooled.iter().any(|shortfall| shortfall.tag == SILVER);
         for refused in &ledger.refused_shipments {
             let told = pool_short
                 || verdicts.iter().any(|verdict| {
@@ -55867,6 +55870,33 @@ BUILD
                 .any(|finding| finding.code.as_str() == "not-enough-silver"
                     && finding.unit_id.as_deref() == Some("900")),
             "{findings:#?}"
+        );
+    }
+
+    /// `ah-2pbd`, review finding 1: with the pool's line markers switched off, the refused line is
+    /// still told under `not-enough-silver` - silencing one code never silences the other.
+    #[test]
+    fn a_pooled_hex_without_its_markers_still_marks_the_refused_shipment() {
+        let mut regions = unpaid_shipping(20);
+        regions[0].units[0] = sharing(regions[0].units[0].clone());
+        let mut options = with_map();
+        options
+            .disabled
+            .insert(codes::PART_OF_HEX_SHORTFALL.as_str().to_string());
+        let findings = review_turn(&report(regions), UNPAID, Some(&ruleset()), options).findings;
+        let marked: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("900")
+            })
+            .collect();
+        assert_eq!(marked.len(), 1, "{findings:#?}");
+        assert_eq!(marked[0].line, Some(2));
+        assert_eq!(
+            marked[0].message,
+            "this TRANSPORT will be refused: its fee is $45 and only $20 is left to pay it then, \
+             so it ships none of the 9 furs ordered"
         );
     }
 
