@@ -2498,6 +2498,32 @@ test("the unit table filters", async ({ page }) => {
 });
 
 /**
+ * `ah-ykac`: the box finds a unit by what it carries. In 1:7,53 two units hold turtles [TURT], and
+ * one of them lists picks first - so while the filter is in use its turtles must lead the cell,
+ * where a narrow column's "…" cannot hide the mark.
+ */
+test("the unit table filters by what units carry, and marks what it found", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const rows = page.locator("[data-testid^='unit-row-']");
+  await page.getByLabel("Filter units").fill("turt");
+
+  await expect(rows).toHaveCount(2);
+  for (const id of ["2184", "13722"]) {
+    const row = page.getByTestId(`unit-row-${id}`);
+    const items = row.locator("td", { has: page.locator("mark", { hasText: "TURT" }) });
+    await expect(items).toHaveCount(1);
+    // textContent, not innerText: a clipped cell reads "" under WebKit's driver.
+    expect(await items.evaluate((cell) => cell.textContent ?? "")).toMatch(/^\s*\d+ TURT/);
+  }
+
+  // Clearing the box puts the cell's own order back and takes the marks away.
+  await page.getByLabel("Filter units").fill("");
+  await expect(page.locator("[data-testid^='unit-row-'] mark")).toHaveCount(0);
+});
+
+/**
  * Issue #8 asks that the interface stay interactive while the core works, and names a worker as the
  * way to get there. Measurement said otherwise, so this test is the evidence that stands in its
  * place.

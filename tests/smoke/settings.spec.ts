@@ -714,6 +714,43 @@ test.describe("the Columns tab", () => {
     await expect(page.getByRole("columnheader", { name: /Structure/ })).toBeVisible();
   });
 
+  test("a hidden Items column offers to show itself when the filter matched on what units carry", async ({
+    page
+  }) => {
+    await loadReport(page);
+    await selectHex(page, "1:7,53");
+
+    await page.getByTestId("settings-indicator").click();
+    await page.getByTestId("settings-tab-columns").click();
+    await page.getByTestId("settings-column-items").uncheck();
+    await page.keyboard.press("Escape");
+
+    const line = page.getByTestId("units-items-hidden-line");
+    const filter = page.getByLabel("Filter units");
+    // A name match alone says nothing: the row's reason is in plain sight.
+    await filter.fill("Seven of Eight");
+    await expect(line).toHaveCount(0);
+
+    await filter.fill("TURT");
+    await expect(line).toHaveText(
+      "Some units are listed for what they carry — the Items column is hidden. Show it"
+    );
+
+    // Reached by keyboard, as the agreed experience asks: Tab to it, press Enter.
+    await line.getByRole("button", { name: "Show it" }).focus();
+    await page.keyboard.press("Enter");
+
+    await expect(page.getByRole("columnheader", { name: /Items/ })).toBeVisible();
+    await expect(line).toHaveCount(0);
+    await expect(filter).toBeFocused();
+
+    // The same persistent setting as the Columns tab.
+    await page.reload();
+    await expect(page.getByTestId("import-status")).toContainText("restored");
+    await selectHex(page, "1:7,53");
+    await expect(page.getByRole("columnheader", { name: /Items/ })).toBeVisible();
+  });
+
   /**
    * The restore above runs only if the test got that far. `test:smoke` runs one worker and
    * localStorage persists across the tests in a file, so a failure partway would leave a column
