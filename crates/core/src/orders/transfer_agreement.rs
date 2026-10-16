@@ -471,7 +471,8 @@ fn the_three_surfaces_agree_on_every_transfer_in_the_corpus() {
 ///
 /// Re-measured 2026-09-09 (`ah-jo6b.1`): `LedgerDoubted` is now **0**. All nine came from
 /// `SilverDoubt::GiveTargetUncertain` on gifts to a unit number the report never prints, and that
-/// doubt no longer exists - the projection assumes such a gift lands. Its floor is therefore
+/// doubt no longer exists - the projection assumed such a gift lands, and since `ah-xaem` it gives
+/// nothing. Its floor is therefore
 /// dropped rather than lowered: a floor over zero would fail today and one at zero would assert
 /// nothing. `LedgerUncertain` went to **0** with it and for the same reason - the five it counted
 /// were unshown-target gifts too, not the visible-foreign ones expected.

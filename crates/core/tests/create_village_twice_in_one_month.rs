@@ -86,6 +86,23 @@ fn report_with_orcs(settlers: &[(i32, i32, u32, i64)]) -> String {
     lines.join("\n")
 }
 
+/// `text` with another faction's unit, Stranger (7001), standing beside Settlers (900).
+///
+/// `rules/give`: a target outside our faction needs its faction to have declared us Friendly, and
+/// no report carries that, so ordinary goods given to it may or may not leave. Wagons, because men
+/// are refused another faction outright, and a number the report never prints receives nothing at
+/// all (`ah-xaem`).
+fn with_a_stranger_beside_900(text: &str) -> String {
+    let at = text
+        .find("* Settlers (900), ")
+        .expect("Settlers (900) stands in the report");
+    format!(
+        "{}- Stranger (7001), Bar (2), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n{}",
+        &text[..at],
+        &text[at..]
+    )
+}
+
 fn script(text: &str, founders: &[u32]) -> String {
     let template = extract_orders_template(text)
         .map(|template| template.text)
@@ -219,13 +236,13 @@ fn a_refused_founding_refuses_nobody_else() {
 
 #[test]
 fn a_founding_that_may_not_happen_leaves_the_later_one_admitted() {
-    // Men given to a unit no report shows may or may not leave (`rules/give`, `ah-66yi`), so
+    // Wagons given to another faction's unit may or may not leave (`rules/give`, `ah-66yi`), so
     // (10,8)'s founding is admitted rather than counted, and whether (10,10)'s is refused cannot be
     // said either.
-    let text = report(&[(10, 8, 900), (10, 10, 901)]);
+    let text = with_a_stranger_beside_900(&report(&[(10, 8, 900), (10, 10, 901)]));
     let orders = script(&text, &[900, 901]).replace(
         &format!("unit 900\n{CREATE}\n"),
-        &format!("unit 900\n{CREATE}\nGIVE 9999 10 ORC\n"),
+        &format!("unit 900\n{CREATE}\nGIVE 7001 10 WAGO\n"),
     );
     let preview = preview_orders_for_remembered_report(
         &mut ReportCache::new(),
@@ -271,13 +288,17 @@ fn a_founding_that_may_not_happen_leaves_the_later_one_admitted() {
 /// a later founding, even when an earlier founding may refuse it.
 #[test]
 fn a_founder_short_of_people_refuses_nobody() {
-    // (10,8) may found (men given to a unit no report shows); (10,10) has 500 orcs and never
+    // (10,8) may found (wagons given to another faction's unit); (10,10) has 500 orcs and never
     // founds (`newage trident rules/create_village`: "at least 1000 people"); (10,14) is three
     // hexes from (10,8) and two from (10,10), so it founds.
-    let text = report_with_orcs(&[(10, 8, 900, 1005), (10, 10, 901, 500), (10, 14, 902, 1005)]);
+    let text = with_a_stranger_beside_900(&report_with_orcs(&[
+        (10, 8, 900, 1005),
+        (10, 10, 901, 500),
+        (10, 14, 902, 1005),
+    ]));
     let orders = script(&text, &[900, 901, 902]).replace(
         &format!("unit 900\n{CREATE}\n"),
-        &format!("unit 900\n{CREATE}\nGIVE 9999 10 ORC\n"),
+        &format!("unit 900\n{CREATE}\nGIVE 7001 10 WAGO\n"),
     );
     let preview = preview_orders_for_remembered_report(
         &mut ReportCache::new(),

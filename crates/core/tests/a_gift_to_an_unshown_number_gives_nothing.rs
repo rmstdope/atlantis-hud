@@ -1,11 +1,11 @@
-//! `ah-jo6b.1`. A `GIVE` to a unit number the whole report never prints is assumed to land, and
-//! both surfaces price the month from what is left.
+//! `ah-xaem`, which reverses `ah-jo6b.1`. A `GIVE` to a unit number the whole report never prints
+//! gives nothing, and both surfaces price the month as though the line were not there.
 //!
-//! `rules/give`: *"A unit may only give items, including silver, to a unit which it is able to see,
-//! unless the faction of the target unit has declared you Friendly or better."* No report carries
-//! another faction's declaration toward us, so a number the report never prints may be a perfectly
-//! good target. The projection follows the order through and says what it cannot establish - that
-//! nothing in the report matches the number - as `give-target-not-here`.
+//! The engine looks the target up in the giver's region and, finding none, errors "Nonexistant
+//! target" before anything moves (`Game::DoGiveOrder`, ../Atlantis `runorders.cpp`). `rules/give`
+//! lets a unit we cannot see receive a gift once its faction has declared us Friendly, but the
+//! navigator decided on 2026-10-16 to follow the game for a number nothing in the report matches.
+//! The one thing still said about it is `give-target-not-here`.
 //!
 //! `data/carpenter`: a catapult [CATP] is made from *"250 wood [WOOD], 30 ironwood [IRWD], 80 furs
 //! [FUR] and 3000 silver [SILV] at a rate of 1 per 4 man-months"* at carpenter level 4 - hence four
@@ -95,32 +95,26 @@ fn preview_holding(text: &str, script: &str, unit_id: &str, tag: &str) -> (i64, 
     )
 }
 
-/// The whole bead on one row. Tam gives away 50 of the 250 wood a catapult needs, to a number the
-/// report never prints. The gift is assumed to land, so the run is short of wood and makes nothing;
-/// the silver is neither spent on it nor blanked; and the player is told that nothing in the report
-/// matches unit 1.
+/// The whole bead on one row. Tam is told to give away 50 of the 250 wood a catapult needs, to a
+/// number the report never prints. Nothing leaves, so the catapult is made and paid for exactly as
+/// in the control below; and the player is still told that nothing in the report matches unit 1.
 #[test]
-fn a_gift_to_an_unshown_number_lands_and_the_month_is_priced_from_what_is_left() {
+fn a_gift_to_an_unshown_number_gives_nothing_and_the_month_is_priced_without_it() {
     let text = report_text();
     let script = "unit 2391\nCLAIM 500\nGIVE 1 50 WOOD\nPRODUCE catapult\n";
     let review = review_of(&text, script);
     let tam = row_of(&review, "2391");
 
     assert_eq!(tam.doubt, None, "nothing is blanked: {tam:?}");
-    assert_eq!(
-        tam.at_month_end,
-        Some(4300),
-        "3,800 held plus the 500 claimed, and nothing for a catapult that cannot be made"
-    );
-    assert_eq!(tam.produced, 0);
-    assert_eq!(
-        tam.production_capped_by,
-        Some(ProductionCap::Materials),
-        "the 50 wood left, so 200 remain against a recipe wanting 250"
-    );
+    assert_eq!(tam.produced, 1, "all 250 wood are still there");
+    assert_eq!(tam.production_capped_by, Some(ProductionCap::Silver));
+    assert_eq!(tam.at_month_end, Some(1300), "3,800 + 500 - 3,000");
 
     let (wood, uncounted) = preview_holding(&text, script, "2391", "WOOD");
-    assert_eq!(wood, 200, "the ITEMS surface agrees the wood left");
+    assert_eq!(
+        wood, 0,
+        "the ITEMS surface agrees: the wood all goes into the catapult"
+    );
     assert!(
         uncounted.is_empty(),
         "no ` + ?` on the ITEMS cell: {uncounted:?}"
@@ -139,11 +133,11 @@ fn a_gift_to_an_unshown_number_lands_and_the_month_is_priced_from_what_is_left()
 }
 
 /// The control, so the fixture above is not passing for the wrong reason: with the `GIVE` removed
-/// Tam has all 250 wood, makes the catapult, and pays `data/carpenter`'s 3,000 silver for it.
+/// Tam has all 250 wood, makes the catapult, and pays `data/carpenter`'s 3,000 silver for it - the
+/// very figures the gift above must leave untouched.
 ///
 /// The cap is [`ProductionCap::Silver`] rather than `None`: 4,300 silver buys exactly one catapult
-/// at 3,000 each, so money is what stops a second. What matters to this control is that it is *not*
-/// `Materials` - that cap is the gift's doing, and it is gone with the gift.
+/// at 3,000 each, so money is what stops a second.
 #[test]
 fn without_the_gift_the_same_unit_makes_its_catapult() {
     let text = report_text();

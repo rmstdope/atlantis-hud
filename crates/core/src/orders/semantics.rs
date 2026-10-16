@@ -4415,7 +4415,7 @@ fn apply_transfers(
         };
         // A GIVE that cannot be resolved is a no-op exactly as `effects::give` returns early for
         // one: the giver never even loses what it named.
-        if receiver.reach == GiveReach::Nowhere {
+        if receiver.reach.gives_nothing() {
             continue;
         }
         // Unit 0 discards rather than gives, and is not "another unit" - the one shape where the
@@ -8585,7 +8585,7 @@ fn apply(
             // and nothing is doubted either, because the transfer was followed to the end and its
             // answer is zero. The ledger reads exactly as it would with the line deleted
             // (`ah-vcp8.2`).
-            if reach == GiveReach::Nowhere {
+            if reach.gives_nothing() {
                 return;
             }
             // Only ever read for a tag `give_outcome` calls uncertain, and only ever a unit number
@@ -13944,8 +13944,8 @@ fn dissolution(hex: &Hex<'_>, ordered: &Ordered<'_>) -> Option<Dissolution> {
 ///
 /// A hex with no own report unit has nobody to revert to, and moves nothing, as the ITEMS preview
 /// does (`ah-ty3s.3`). Silver is never left uncertain by a gift (`targets::give_outcome`: silver
-/// to a shown foreign unit moves, `rules/give`, and to an unshown one is assumed to land,
-/// `ah-jo6b`), so the balance read here is a figure, never an `UncertainGive`.
+/// to a shown foreign unit moves, `rules/give`, and to an unshown one gives nothing at all,
+/// `ah-xaem`), so the balance read here is a figure, never an `UncertainGive`.
 fn revert_dissolved_forms(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     for ordered in &hex.units {
         // A unit not known to dissolve keeps its silver where it is, and one with nobody to
@@ -21804,11 +21804,11 @@ fn check_transfer_targets(
             ) {
                 // In this hex, ours or anyone's, or a deliberate discard: nothing to say.
                 (GiveReach::Ours | GiveReach::Foreign | GiveReach::Discard, _) => continue,
-                // A GIVE to a number the whole report never prints now warns like the rest. The
-                // projection assumes the gift lands and shows the consequences (`ah-jo6b`), so the
-                // one thing left to tell the player is that nothing in the report matches the
-                // number - which may be a typo, or a unit we simply cannot see whose faction has
-                // declared us Friendly (`rules/give`).
+                // A GIVE to a number the whole report never prints warns like the rest. The
+                // projection gives nothing, as the engine finds no such target (`ah-xaem`), so the
+                // player is told that nothing in the report matches the number - which may be a
+                // typo, or a unit we cannot see whose faction has declared us Friendly
+                // (`rules/give`).
                 (GiveReach::Unshown | GiveReach::Nowhere, _) => {}
             }
 
@@ -52702,9 +52702,8 @@ BUILD
         );
     }
 
-    /// `ah-jo6b`: the projection assumes the gift lands, so what is left to tell the player is that
-    /// nothing in the report matches the number. This reverses `ah-66yi`, which reversed the
-    /// original answer.
+    /// `ah-jo6b`, kept by `ah-xaem`: what the player is told is that nothing in the report matches
+    /// the number (the projection now gives nothing for it, following the engine).
     #[test]
     fn a_gift_to_a_unit_in_no_region_says_so() {
         let finding = only(check(
@@ -52882,11 +52881,12 @@ BUILD
             assert_eq!(silver.expense, Some(100));
         }
 
-        /// The other case: a number the report never prints. The projection assumes the gift lands
-        /// (`ah-jo6b`), so the silver is spent like any other gift and nothing is blanked - what
-        /// the report cannot establish is said by `give-target-not-here` instead.
+        /// The other case: a number the report never prints. The engine finds no such unit and
+        /// gives nothing ("Nonexistant target", `Game::DoGiveOrder`, ../Atlantis `runorders.cpp`),
+        /// so nothing is spent and nothing is blanked (`ah-xaem`) - `give-target-not-here` names
+        /// the number instead.
         #[test]
-        fn silver_to_an_unshown_target_is_spent() {
+        fn silver_to_an_unshown_target_is_not_spent() {
             let review = reviewed(
                 vec![region(vec![with_silver(unit("2390"), 500)])],
                 "unit 2390\nGIVE 9999 100 SILV\n",
@@ -52894,7 +52894,7 @@ BUILD
 
             let silver = silver_for(&review, "2390");
             assert_eq!(silver.doubt, None, "{silver:?}");
-            assert_eq!(silver.expense, Some(100));
+            assert_eq!(silver.expense, Some(0), "{silver:?}");
         }
 
         /// A later *exact* transfer of the same tag draws on a balance this ledger has marked
@@ -52966,24 +52966,21 @@ BUILD
                 },
             );
 
-            // The control: the same target and the same men from a unit that is not a mage, where
-            // the gift really is unresolved and this bead's `+ ?` is what the row shows.
+            // The control: the same men from a unit that is not a mage, to a visible unit of another
+            // faction. They are refused too, but by `rules/give`'s factional rule - so the ledger
+            // reaches the same "followed to its end, nothing moved" answer by the other route, and
+            // the mage check above is not what made it. (A number the report never prints was the
+            // control until `ah-xaem`; it now gives nothing at all, men included.)
             with_a_ledger(
-                region(vec![with_race(unit("2390"), 10, "orcs", "ORC")]),
-                "unit 2390\nGIVE 9999 ALL ORC\n",
+                region(vec![
+                    with_race(unit("2390"), 10, "orcs", "ORC"),
+                    an_ally("7001"),
+                ]),
+                "unit 2390\nGIVE 7001 ALL ORC\n",
                 |ledger| {
-                    assert_eq!(
-                        ledger.uncounted.get("2390").map(Vec::as_slice),
-                        Some([2].as_slice())
-                    );
-                    // Asserted here and not only above: without it, an uncertain path that stopped
-                    // recording `uncertain_balance` at all would leave the mage assertion vacuous
-                    // and this test green while pinning nothing.
+                    assert_eq!(balance_of(ledger, "2390", "ORC"), 10);
                     assert!(
-                        ledger
-                            .state
-                            .uncertain
-                            .contains_key(&("2390".to_string(), "ORC".to_string())),
+                        ledger.state.uncertain.is_empty(),
                         "{:?}",
                         ledger.state.uncertain
                     );
@@ -62949,8 +62946,8 @@ BUILD
                 code: codes::GIVE_TARGET_NOT_HERE,
                 regions: vec![region(vec![with_silver(unit("5"), 1000)])],
                 // A `NEW` alias no `FORM` here creates: a definite no-op. A plain unit number the
-                // report never prints reaches the same code by a different route now, the gift
-                // being assumed to land and the warning naming what cannot be matched (`ah-jo6b`).
+                // report never prints reaches the same code by a different route, the gift giving
+                // nothing and the warning naming what cannot be matched (`ah-xaem`).
                 orders: "unit 5\nGIVE NEW 7 500 SILV\n",
                 allowance: None,
                 unclaimed: None,

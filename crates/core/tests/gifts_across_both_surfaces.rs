@@ -421,14 +421,14 @@ fn an_unpriceable_later_order_no_longer_hides_the_size_of_the_gift() {
 /// now applied to the whole of the Give phase rather than to the phases after it.
 ///
 /// The later order used to be a `GIVE` to a unit number the report never prints; that no longer
-/// doubts, because the projection assumes such a gift lands (`ah-jo6b.1`). The doubt here is now a
-/// gift of a whole item class the committed catalogue cannot expand - `MAGIC` parses as a class
+/// doubts (`ah-jo6b.1`), and since `ah-xaem` such a gift gives nothing at all. The doubt here is a
+/// discard of a whole item class the committed catalogue cannot expand - `MAGIC` parses as a class
 /// but has no `itemClasses` entry - which leaves `ah-6m7b.3`'s property tested on a doubt that
 /// still exists.
 #[test]
 fn a_doubt_raised_by_a_later_gift_no_longer_hides_this_ones_size() {
     let text = report(QUIET, &[], &[&giver(300)]);
-    let script = "unit 900\nGIVE 0 ALL SILV\nGIVE 9999 ALL MAGIC\n";
+    let script = "unit 900\nGIVE 0 ALL SILV\nGIVE 0 ALL MAGIC\n";
     let unit = row_of(&review_of(&text, script), "900");
 
     assert_eq!(unit.doubt, Some(SilverDoubt::GivesAWholeClass));
