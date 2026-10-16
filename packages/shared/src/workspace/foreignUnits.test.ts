@@ -3,6 +3,7 @@ import { aParsedReport, aReportRegion, aReportUnit } from "@atlantis/core-client
 import type { ReportUnit } from "@atlantis/core-client";
 import {
   foreignEmptyLine,
+  foreignSightingsIn,
   foreignUnitsIn,
   pinForRow,
   pinLabel,
@@ -47,6 +48,22 @@ describe("which units the Other factions source holds", () => {
     });
 
     expect(foreignUnitsIn(parsed).map((unit) => unit.unitId)).toEqual(["9", "1", "5"]);
+  });
+
+  it("foreignSightingsIn pairs each foreign unit with the hex it stands in (ah-mlls.1)", () => {
+    const parsed = aParsedReport({
+      regions: [
+        aReportRegion({ units: [mine("1"), theirs("2")] }),
+        aReportRegion({ coordinate: { x: 8, y: 54, z: 1 }, units: [concealed("3")] })
+      ]
+    });
+
+    expect(
+      foreignSightingsIn(parsed).map(({ regionId, unit }) => [regionId, unit.unitId])
+    ).toEqual([
+      [parsed.regions[0].regionId, "2"],
+      ["1:8,54", "3"]
+    ]);
   });
 
   it("foreignUnitsIn returns nothing for a report of only my own units", () => {

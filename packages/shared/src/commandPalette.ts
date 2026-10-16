@@ -34,10 +34,23 @@ export type PaletteEntryKind =
   | "building"
   | "terrain";
 
+/**
+ * Who owns another faction's unit, as the row shows it beside the kind: `Thane's Ring (10)`, or
+ * `Faction not shown` with `concealed` set when the report does not say (`rules/stealthobs`).
+ */
+export type PaletteFaction = { label: string; concealed: boolean };
+
 export type PaletteEntry = {
   id: string;
   kind: PaletteEntryKind;
+  /** What a query is matched against - and the only thing (`filterPalette`). */
   label: string;
+  /**
+   * The owner of another faction's unit seen this turn, absent for every other row. Shown, never
+   * searched (ah-mlls.1): typing a faction's name must not flood the list with all its units, so
+   * it is kept out of `label` on purpose.
+   */
+  faction?: PaletteFaction;
   /** The report turn of a historical map result, absent for current entries. */
   lastSeenTurn?: number;
   /** The key chord shown beside an action, where one exists. */
@@ -47,6 +60,14 @@ export type PaletteEntry = {
 
 export type PaletteInput = {
   ownUnits: Array<{ unitId: string; name: string; run: () => void }>;
+  /** Other factions' units in this turn's report, in report order. */
+  foreignUnits: Array<{
+    regionId: string;
+    unitId: string;
+    name: string;
+    faction: PaletteFaction;
+    run: () => void;
+  }>;
   staleUnits: Array<{
     regionId: string;
     unitId: string;
@@ -74,7 +95,10 @@ export type PaletteInput = {
 
 /**
  * Everything the palette can offer, in reading order: the player's units first because going to
- * one is the palette's daily use, then places - the hexes, then the structures standing in them -
+ * one is the palette's daily use, then other factions' units seen this turn, then units only
+ * remembered from older reports - what is true this turn before what was true once (ah-mlls.1).
+ * `filterPalette` sorts stably, so this one order is also the tie-break between equal matches.
+ * Then places - the hexes, then the structures standing in them -
  * then the app's own actions, then the order vocabulary as a typeable reference, then the game
  * data dictionary.
  *
@@ -88,6 +112,13 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       id: `unit-${unit.unitId}`,
       kind: "unit",
       label: `${unit.name} (${unit.unitId})`,
+      run: unit.run
+    })),
+    ...input.foreignUnits.map<PaletteEntry>((unit) => ({
+      id: `foreign-unit-${unit.regionId}-${unit.unitId}`,
+      kind: "unit",
+      label: `${unit.name} (${unit.unitId})`,
+      faction: unit.faction,
       run: unit.run
     })),
     ...input.staleUnits.map<PaletteEntry>((unit) => ({

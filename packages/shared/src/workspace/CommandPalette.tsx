@@ -7,6 +7,26 @@ import {
 } from "../commandPalette";
 import { useEscapeToDismiss } from "./dismissLayer";
 
+/** The kind as the row prints it: `order` for order help, the kind's own name otherwise. */
+function kindLabel(entry: PaletteEntry): string {
+  return entry.kind === "order-help" ? "order" : entry.kind;
+}
+
+/**
+ * Everything the row says, for its hover text: a long label or faction is cut short with "…"
+ * on a narrow row, and this is where the whole of it can still be read (ah-mlls.1).
+ */
+function rowTitle(entry: PaletteEntry): string {
+  return [
+    entry.label,
+    entry.faction?.label,
+    entry.lastSeenTurn !== undefined ? `last seen turn ${entry.lastSeenTurn}` : undefined,
+    kindLabel(entry)
+  ]
+    .filter((part) => part !== undefined)
+    .join(" · ");
+}
+
 /**
  * The command palette: one input over everything reachable by name.
  *
@@ -152,24 +172,37 @@ export function CommandPalette({
                   setIndex(at);
                 }}
                 onClick={() => run(entry)}
-                className={`flex w-full items-baseline justify-between gap-2 rounded px-2 py-1 text-left ${
+                title={rowTitle(entry)}
+                className={`flex w-full items-baseline gap-2 rounded px-2 py-1 text-left ${
                   at === active ? "bg-edge/40 text-ink" : "text-ink-soft"
                 }`}
               >
-                <span className="min-w-0 truncate">{entry.label}</span>
-                <span className="flex shrink-0 items-baseline gap-2">
-                  {entry.lastSeenTurn !== undefined ? (
-                    <span className="text-pane-sm text-brass-bright">
-                      last seen turn {entry.lastSeenTurn}
-                    </span>
-                  ) : null}
-                  <span className="text-pane-sm uppercase tracking-[0.08em] text-ink-dim">
-                    {entry.kind === "order-help" ? "order" : entry.kind}
+                {/* One flat row so each piece shrinks on its own terms (ah-mlls.1): the auto margin
+                    takes any spare room; when room runs short the faction gives way first - its
+                    shrink factor dwarfs the label's - down to about a word, and only then does the
+                    unit's name shorten. The kind and the history marker never shrink. */}
+                <span className="mr-auto min-w-0 truncate">{entry.label}</span>
+                {entry.faction ? (
+                  <span
+                    data-testid="palette-faction"
+                    className={`min-w-[6ch] shrink-[1000] truncate text-pane-sm ${
+                      entry.faction.concealed ? "italic text-ink-dim" : "text-ink-soft"
+                    }`}
+                  >
+                    {entry.faction.label}
                   </span>
-                  {entry.binding ? (
-                    <span className="font-mono text-pane-sm text-ink-dim">{entry.binding}</span>
-                  ) : null}
+                ) : null}
+                {entry.lastSeenTurn !== undefined ? (
+                  <span className="shrink-0 whitespace-nowrap text-pane-sm text-brass-bright">
+                    last seen turn {entry.lastSeenTurn}
+                  </span>
+                ) : null}
+                <span className="shrink-0 whitespace-nowrap text-pane-sm uppercase tracking-[0.08em] text-ink-dim">
+                  {kindLabel(entry)}
                 </span>
+                {entry.binding ? (
+                  <span className="shrink-0 font-mono text-pane-sm text-ink-dim">{entry.binding}</span>
+                ) : null}
               </button>
             </li>
           ))}

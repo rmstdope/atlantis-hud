@@ -48,6 +48,35 @@ test("the palette opens on Mod+K, finds a unit, and Enter goes to it", async ({ 
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 });
 
+/**
+ * ah-mlls.1: another faction's unit seen this turn is found by name or number, names its owner
+ * beside the kind, and choosing it selects it in its hex. `g7f95t71` has AactLO (10541) of Archon
+ * Dominion (53) in the swamp at (10,50) in Cebo, and scoutLOS (15982), whose owner is not shown.
+ */
+test("the palette finds another faction's unit and goes to it", async ({ page }) => {
+  await loadReport(page);
+  const items = page.getByTestId("palette-item");
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("AactLO");
+  await expect(items.first()).toContainText("AactLO (10541)");
+  await expect(items.first().getByTestId("palette-faction")).toHaveText("Archon Dominion (53)");
+  await expect(items.first()).toContainText("unit");
+  await page.keyboard.press("Enter");
+
+  await expect(page.getByTestId("command-palette")).toHaveCount(0);
+  await expect(page.getByTestId("panel-unit")).toContainText("AactLO");
+  await expect(page.getByTestId("panel-region")).toContainText("(10,50)");
+
+  // The owner is shown when the report does not name it, and the faction's name finds nothing.
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("15982");
+  await expect(items.first()).toContainText("scoutLOS (15982)");
+  await expect(items.first().getByTestId("palette-faction")).toHaveText("Faction not shown");
+  await page.getByTestId("palette-input").fill("Archon Dominion");
+  await expect(items.filter({ hasText: "AactLO" })).toHaveCount(0);
+});
+
 test("the palette goes to a structure's hex, and tells one from a dictionary page", async ({
   page
 }) => {
