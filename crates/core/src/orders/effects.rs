@@ -9548,7 +9548,7 @@ mod tests {
                     other: None,
                     borrower: None,
                     is_man: false,
-                    plural: None,
+                    plural: Some("horses".to_string()),
                 }]
             );
         }
@@ -11954,7 +11954,7 @@ mod tests {
                     }),
                     borrower: None,
                     is_man: false,
-                    plural: None,
+                    plural: Some("swords".to_string()),
                 }],
             );
 
@@ -11974,7 +11974,7 @@ mod tests {
                     }),
                     borrower: None,
                     is_man: false,
-                    plural: None,
+                    plural: Some("swords".to_string()),
                 }],
             );
         }
@@ -12045,7 +12045,7 @@ mod tests {
                     other: None,
                     borrower: None,
                     is_man: false,
-                    plural: None,
+                    plural: Some("swords".to_string()),
                 }],
             );
         }
@@ -12073,7 +12073,7 @@ mod tests {
                     other: None,
                     borrower: None,
                     is_man: false,
-                    plural: None,
+                    plural: Some("silver".to_string()),
                 }],
             );
         }
@@ -12184,7 +12184,7 @@ mod tests {
                     }),
                     borrower: None,
                     is_man: false,
-                    plural: None,
+                    plural: Some("swords".to_string()),
                 }],
             );
 
@@ -12204,7 +12204,7 @@ mod tests {
                     }),
                     borrower: None,
                     is_man: false,
-                    plural: None,
+                    plural: Some("swords".to_string()),
                 }],
             );
         }
@@ -12234,7 +12234,7 @@ mod tests {
                     }),
                     borrower: None,
                     is_man: false,
-                    plural: None,
+                    plural: Some("swords".to_string()),
                 }],
             );
             assert_eq!(
