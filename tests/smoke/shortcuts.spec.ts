@@ -29,7 +29,8 @@ const HISTORICAL_F42_T40 = F42_T40.replace(
   "+ Bog [1] : Bog, closed to player units.",
   `+ Bog [1] : Bog, closed to player units.
 
-- Historical Scout (99999), The Disinherited Knights (42), avoiding, behind, gnoll [GNOL].`
+- Historical Scout (99999), The Disinherited Knights (42), avoiding, behind, gnoll [GNOL].
+- Drover (99998), Greenhollow Traders (58), avoiding, behind, gnoll [GNOL].`
 );
 
 test("the palette opens on Mod+K, finds a unit, and Enter goes to it", async ({ page }) => {
@@ -146,6 +147,76 @@ test("the palette finds historical units and map objects", async ({ page }) => {
   await expect(page.getByTestId("palette-item").first()).toContainText("last seen turn 41");
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("command-palette")).toHaveCount(0);
+  await expect(page.getByTestId("panel-region")).toContainText("Last seen turn 41");
+});
+
+/**
+ * ah-mlls.3: factions in the palette. One walk for all three routes, because a walk's cost is its
+ * boot: a faction in this turn's report, the player's own, and one known only from an earlier turn
+ * (Greenhollow Traders, planted in the turn-40 Bog and absent from turn 42).
+ */
+test("the palette finds a faction by name or number and opens its details", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Faction palette smoke");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+  await page.setInputFiles('input[type="file"]', {
+    name: "f42-t42.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(F42_T42, "utf8")
+  });
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*43\b/);
+  await page.setInputFiles('input[type="file"]', {
+    name: "f42-t40.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(HISTORICAL_F42_T40, "utf8")
+  });
+  await expect(page.getByTestId("import-status")).toContainText("stored for history");
+
+  const items = page.getByTestId("palette-item");
+  const dossier = page.getByTestId("faction-dossier");
+
+  // By number, with the attitude the report declares (Friendly) and the kind word.
+  await page.keyboard.press("ControlOrMeta+k");
+  // "22" also finds other factions' units (2209, ...) since ah-mlls.1, so the row is picked by its text.
+  await page.getByTestId("palette-input").fill("22");
+  const fenris = items.filter({ hasText: "Fenris Knights (22)" });
+  await expect(fenris).toHaveCount(1);
+  await expect(fenris).toContainText("Friendly");
+  await expect(fenris).toContainText(/faction/i);
+  await fenris.click();
+  await expect(page.getByTestId("command-palette")).toHaveCount(0);
+  await expect(dossier).toContainText("Fenris Knights");
+  await expect(dossier).toContainText("Seen in");
+  await expect(dossier).toBeFocused();
+  // The same panel as the attitudes list opens, so ‹ goes to the player's own faction.
+  await page.getByTestId("dossier-back").click();
+  await expect(page.getByTestId("faction-panel")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("faction-panel")).toHaveCount(0);
+
+  // The player's own faction opens their own faction panel.
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("Disinherited Knights (42)");
+  const own = items.first();
+  await expect(own).toContainText("your faction");
+  await own.click();
+  await expect(page.getByTestId("faction-panel")).toBeFocused();
+  await page.keyboard.press("Escape");
+
+  // A faction only an earlier report remembers says when, and its details say where.
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("Greenhollow");
+  await expect(items.first()).toContainText("Greenhollow Traders (58)");
+  await expect(items.first()).toContainText("last seen turn 41");
+  await page.keyboard.press("Enter");
+  await expect(dossier).toContainText("Last seen");
+  await expect(dossier).toContainText("None of their units is in this turn's report.");
+  await expect(dossier).not.toContainText("Seen in");
+  await expect(dossier).not.toContainText("in the list");
+  const row = dossier.getByTestId(/^dossier-last-seen-/);
+  await expect(row).toContainText("turn 41 · 1 unit");
+  await row.click();
+  await expect(dossier).toHaveCount(0);
   await expect(page.getByTestId("panel-region")).toContainText("Last seen turn 41");
 });
 

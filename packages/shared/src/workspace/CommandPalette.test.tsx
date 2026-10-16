@@ -82,6 +82,50 @@ describe("a palette row for another faction's unit (ah-mlls.1)", () => {
   });
 });
 
+describe("a palette row for a faction (ah-mlls.3)", () => {
+  const yours: PaletteEntry = {
+    id: "faction-95",
+    kind: "faction",
+    label: "Borg TNG (95)",
+    standing: { own: true, merged: false, attitude: null },
+    run: noop
+  };
+  const ally: PaletteEntry = {
+    id: "faction-31",
+    kind: "faction",
+    label: "Thornwood (31)",
+    standing: { own: false, merged: true, attitude: "Ally" },
+    run: noop
+  };
+  const earlier: PaletteEntry = {
+    id: "faction-58",
+    kind: "faction",
+    label: "Greenhollow (58)",
+    lastSeenTurn: 41,
+    standing: { own: false, merged: false, attitude: "Neutral" },
+    run: noop
+  };
+  const markup = draw([yours, ally, earlier]);
+
+  it("draws your faction, or the attitude, just before the kind", () => {
+    expect(markup).toMatch(/>your faction<\/span><span[^>]*>faction<\/span>/);
+    expect(markup).toMatch(/class="[^"]*text-ok[^"]*">Ally<\/span>/);
+  });
+
+  it("marks a merged ally's name in brass with the house mark", () => {
+    expect(markup).toMatch(/class="[^"]*text-brass-bright[^"]*">Thornwood \(31\) ⌂</);
+  });
+
+  it("dates an earlier-turn faction ahead of its attitude, which never shortens", () => {
+    expect(markup).toMatch(/last seen turn 41<\/span><span class="shrink-0[^"]*">Neutral<\/span>/);
+  });
+
+  it("shows the full row text on hover", () => {
+    expect(markup).toContain('title="Greenhollow (58) · last seen turn 41 · Neutral · faction"');
+    expect(markup).toContain('title="Thornwood (31) ⌂ · Ally · faction"');
+  });
+});
+
 describe("an Army row in the palette (ah-mlls.4)", () => {
   const iron: PaletteEntry = {
     id: "army-a1",

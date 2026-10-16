@@ -6,6 +6,7 @@ import {
   type PaletteEntry
 } from "../commandPalette";
 import { useEscapeToDismiss } from "./dismissLayer";
+import { factionRow } from "./paletteFactionRow";
 
 /** The kind as the row prints it: `order` for order help, the kind's own name otherwise. */
 function kindLabel(entry: PaletteEntry): string {
@@ -17,11 +18,13 @@ function kindLabel(entry: PaletteEntry): string {
  * on a narrow row, and this is where the whole of it can still be read (ah-mlls.1).
  */
 function rowTitle(entry: PaletteEntry): string {
+  const standing = entry.kind === "faction" ? factionRow(entry) : null;
   return [
-    entry.label,
+    `${entry.label}${standing?.mark ?? ""}`,
     entry.faction?.label,
     entry.count?.text,
     entry.lastSeenTurn !== undefined ? `last seen turn ${entry.lastSeenTurn}` : undefined,
+    standing?.attitude.word,
     kindLabel(entry)
   ]
     .filter((part) => part !== undefined)
@@ -157,65 +160,80 @@ export function CommandPalette({
           aria-label="matches"
           className="m-0 mt-1 max-h-[70vh] list-none overflow-y-auto p-0"
         >
-          {shown.map((entry, at) => (
-            <li key={entry.id} role="presentation">
-              <button
-                type="button"
-                role="option"
-                aria-selected={at === active}
-                data-testid="palette-item"
-                // Selection follows the pointer the way it follows the arrows - but on real
-                // movement only. `pointerenter` also fires when a row scrolls *under* a
-                // stationary mouse, so on an uncapped list (ah-yk6b) arrowing down would scroll
-                // a row beneath the pointer and hand the highlight straight back to it.
-                onPointerMove={() => {
-                  byKeyboard.current = false;
-                  setIndex(at);
-                }}
-                onClick={() => run(entry)}
-                title={rowTitle(entry)}
-                className={`flex w-full items-baseline gap-2 rounded px-2 py-1 text-left ${
-                  at === active ? "bg-edge/40 text-ink" : "text-ink-soft"
-                }`}
-              >
-                {/* One flat row so each piece shrinks on its own terms (ah-mlls.1): the auto margin
-                    takes any spare room; when room runs short the faction gives way first - its
-                    shrink factor dwarfs the label's - down to about a word, and only then does the
-                    unit's name shorten. The kind and the history marker never shrink. */}
-                <span className="mr-auto min-w-0 truncate">{entry.label}</span>
-                {entry.faction ? (
-                  <span
-                    data-testid="palette-faction"
-                    className={`min-w-[6ch] shrink-[1000] truncate text-pane-sm ${
-                      entry.faction.concealed ? "italic text-ink-dim" : "text-ink-soft"
-                    }`}
-                  >
-                    {entry.faction.label}
+          {shown.map((entry, at) => {
+            // A faction row's attitude, house mark and colour (ah-mlls.3); null on every other row.
+            const standing = entry.kind === "faction" ? factionRow(entry) : null;
+            return (
+              <li key={entry.id} role="presentation">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={at === active}
+                  data-testid="palette-item"
+                  // Selection follows the pointer the way it follows the arrows - but on real
+                  // movement only. `pointerenter` also fires when a row scrolls *under* a
+                  // stationary mouse, so on an uncapped list (ah-yk6b) arrowing down would scroll
+                  // a row beneath the pointer and hand the highlight straight back to it.
+                  onPointerMove={() => {
+                    byKeyboard.current = false;
+                    setIndex(at);
+                  }}
+                  onClick={() => run(entry)}
+                  title={rowTitle(entry)}
+                  className={`flex w-full items-baseline gap-2 rounded px-2 py-1 text-left ${
+                    at === active ? "bg-edge/40 text-ink" : "text-ink-soft"
+                  }`}
+                >
+                  {/* One flat row so each piece shrinks on its own terms (ah-mlls.1): the auto margin
+                      takes any spare room; when room runs short the faction gives way first - its
+                      shrink factor dwarfs the label's - down to about a word, and only then does the
+                      unit's name shorten. The kind and the history marker never shrink. */}
+                  <span className={`mr-auto min-w-0 truncate ${standing?.labelClassName ?? ""}`}>
+                    {entry.label}
+                    {standing?.mark}
                   </span>
-                ) : null}
-                {entry.count ? (
-                  <span
-                    className={`shrink-0 whitespace-nowrap text-pane-sm ${
-                      entry.count.quiet ? "italic text-ink-dim" : "text-ink-soft"
-                    }`}
-                  >
-                    {entry.count.text}
+                  {entry.faction ? (
+                    <span
+                      data-testid="palette-faction"
+                      className={`min-w-[6ch] shrink-[1000] truncate text-pane-sm ${
+                        entry.faction.concealed ? "italic text-ink-dim" : "text-ink-soft"
+                      }`}
+                    >
+                      {entry.faction.label}
+                    </span>
+                  ) : null}
+                  {entry.count ? (
+                    <span
+                      className={`shrink-0 whitespace-nowrap text-pane-sm ${
+                        entry.count.quiet ? "italic text-ink-dim" : "text-ink-soft"
+                      }`}
+                    >
+                      {entry.count.text}
+                    </span>
+                  ) : null}
+                  {entry.lastSeenTurn !== undefined ? (
+                    <span className="shrink-0 whitespace-nowrap text-pane-sm text-brass-bright">
+                      last seen turn {entry.lastSeenTurn}
+                    </span>
+                  ) : null}
+                  {/* The friend-or-foe word never shortens: the faction's name gives way instead. */}
+                  {standing ? (
+                    <span
+                      className={`shrink-0 whitespace-nowrap text-pane-sm ${standing.attitude.className}`}
+                    >
+                      {standing.attitude.word}
+                    </span>
+                  ) : null}
+                  <span className="shrink-0 whitespace-nowrap text-pane-sm uppercase tracking-[0.08em] text-ink-dim">
+                    {kindLabel(entry)}
                   </span>
-                ) : null}
-                {entry.lastSeenTurn !== undefined ? (
-                  <span className="shrink-0 whitespace-nowrap text-pane-sm text-brass-bright">
-                    last seen turn {entry.lastSeenTurn}
-                  </span>
-                ) : null}
-                <span className="shrink-0 whitespace-nowrap text-pane-sm uppercase tracking-[0.08em] text-ink-dim">
-                  {kindLabel(entry)}
-                </span>
-                {entry.binding ? (
-                  <span className="shrink-0 font-mono text-pane-sm text-ink-dim">{entry.binding}</span>
-                ) : null}
-              </button>
-            </li>
-          ))}
+                  {entry.binding ? (
+                    <span className="shrink-0 font-mono text-pane-sm text-ink-dim">{entry.binding}</span>
+                  ) : null}
+                </button>
+              </li>
+            );
+          })}
           {shown.length === 0 ? (
             <li className="px-2 py-1 text-ink-dim">nothing matches</li>
           ) : null}

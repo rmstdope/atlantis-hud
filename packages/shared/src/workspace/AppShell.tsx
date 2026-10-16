@@ -283,6 +283,7 @@ import { isApprentice, magesOf, openingMage } from "../magicStanding";
 import { plannerEmptyCopy, plannerGroups, plannerSummaryLine } from "../studyPlanner";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { buildPaletteEntries, settlementPaletteRows } from "../commandPalette";
+import { paletteFactions } from "../paletteFactions";
 import { shownMemberCount } from "./armyRows";
 import { structurePaletteLabel, structuresForUnitDock } from "../structureLabel";
 import type { Resume, StopKey } from "../diagnosticNav";
@@ -1870,6 +1871,19 @@ export function AppShell({
         ...row,
         run: () => selectHex(row.regionId)
       })),
+      // Every faction the loaded reports know, opened where the attitudes list opens one: in the
+      // faction popover under the header chip, with ‹ back to the player's own (ah-mlls.3). The
+      // popover's frame takes focus as it mounts, after the palette has unmounted, so focus lands
+      // in the details the player asked for.
+      factions: paletteFactions({ parsed, merged: mergedReports, hexes: model.hexes }).map(
+        (faction) => ({
+          ...faction,
+          run: () => {
+            setDossier(faction.own ? null : { factionId: faction.factionId, from: "attitudes" });
+            setOpenPopover("faction");
+          }
+        })
+      ),
       regions: model.hexes.map((candidate) => ({
         regionId: candidate.regionId,
         label: candidate.label,
@@ -2004,6 +2018,7 @@ export function AppShell({
     gameData,
     orderedOwnUnitIds,
     parsed,
+    mergedReports,
     model,
     goToUnit,
     hexLabel,
@@ -4038,8 +4053,14 @@ export function AppShell({
     () =>
       dossier === null || parsed === null
         ? null
-        : dossierFor(parsed, parsed.header.attitudes ?? null, dossier.factionId),
-    [dossier, parsed]
+        : dossierFor(
+            parsed,
+            parsed.header.attitudes ?? null,
+            dossier.factionId,
+            model.hexes,
+            mergedReports
+          ),
+    [dossier, parsed, model, mergedReports]
   );
 
   // Memoised and gated on the dossier being open, exactly as `tradeArrow` is: a closed panel must

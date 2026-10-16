@@ -5,11 +5,14 @@
 
 import type { GameDataEntry } from "./gameData";
 import type { HexNode } from "./hexMapModel";
+import type { KnownFaction } from "./paletteFactions";
 
 export type PaletteEntryKind =
   /** One of the player's named Armies (ah-mlls.4); choosing it makes it the units pane's source. */
   | "army"
   | "unit"
+  /** A faction the loaded reports know (ah-mlls.3); choosing one opens its details. */
+  | "faction"
   | "region"
   /**
    * One village, town or city the player knows of (ah-mlls.2), on a row of its own beside its
@@ -58,6 +61,11 @@ export type PaletteEntry = {
   /** The key chord shown beside an action, where one exists. */
   binding?: string;
   /**
+   * What a `faction` row draws beside its label (ah-mlls.3). Kept out of `label` on purpose: the
+   * label is the only text searched, and typing "ally" must not list every ally.
+   */
+  standing?: Pick<KnownFaction, "own" | "merged" | "attitude">;
+  /**
    * Words drawn before the kind word - an Army's `5 units` (ah-mlls.4). Shown, never searched,
    * like `faction`. `quiet` draws them dim and in italics.
    */
@@ -86,6 +94,8 @@ export type PaletteInput = {
   }>;
   /** Every settlement on the known map, labelled by `settlementPaletteRows`. */
   settlements: Array<{ regionId: string; label: string; lastSeenTurn?: number; run: () => void }>;
+  /** Every faction the loaded reports know, in `paletteFactions` order. */
+  factions: Array<KnownFaction & { run: () => void }>;
   regions: Array<{ regionId: string; label: string; run: () => void }>;
   /** Every structure in this turn's report, labelled by `structurePaletteLabel`. */
   structures: Array<{
@@ -107,7 +117,8 @@ export type PaletteInput = {
  * their units because going to one is the palette's daily use, then other factions' units seen this turn, then units only
  * remembered from older reports - what is true this turn before what was true once (ah-mlls.1).
  * `filterPalette` sorts stably, so this one order is also the tie-break between equal matches.
- * Then places - the hexes, then the structures standing in them -
+ * Then the towns and cities, then the factions (ah-mlls.3), then places - the hexes, then the
+ * structures standing in them -
  * then the app's own actions, then the order vocabulary as a typeable reference, then the game
  * data dictionary.
  *
@@ -154,6 +165,16 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       label: settlement.label,
       lastSeenTurn: settlement.lastSeenTurn,
       run: settlement.run
+    })),
+    // Right after the towns and cities and ahead of the hexes, so a dozen factions are a short
+    // scroll away with nothing typed rather than behind hundreds of hexes (ah-mlls.3).
+    ...input.factions.map<PaletteEntry>((faction) => ({
+      id: `faction-${faction.factionId}`,
+      kind: "faction",
+      label: `${faction.name ?? "Unnamed faction"} (${faction.factionId})`,
+      ...(faction.lastSeenTurn === undefined ? {} : { lastSeenTurn: faction.lastSeenTurn }),
+      standing: { own: faction.own, merged: faction.merged, attitude: faction.attitude },
+      run: faction.run
     })),
     ...input.regions.map<PaletteEntry>((region) => ({
       id: `region-${region.regionId}`,
