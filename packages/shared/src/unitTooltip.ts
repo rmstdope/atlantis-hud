@@ -222,9 +222,15 @@ function summariseSilver(
  * second (`ah-kv6c`). The rows still add up to the month end: `shownEnd` takes off both.
  */
 function upkeepRows(silver: UnitSilver, unknown: string): TooltipEntry[] {
-  const rows: TooltipEntry[] = [{ label: "Upkeep", value: figure(silver.upkeep, unknown) }];
+  // The core's `upkeep` is what is left after faction-mates paid their part (`sharedSilverCovered`),
+  // so the unit's own fee is the two together; food and the unclaimed fund stay netted out.
+  const own = silver.upkeep === null ? null : silver.upkeep + silver.sharedSilverCovered;
+  const rows: TooltipEntry[] = [{ label: "Upkeep", value: figure(own, unknown) }];
   if (silver.upkeepLent > 0) {
     rows.push({ label: "Lent for upkeep", value: String(silver.upkeepLent) });
+  }
+  if (silver.sharedSilverCovered > 0) {
+    rows.push({ label: "Was lent for upkeep", value: String(silver.sharedSilverCovered) });
   }
   return rows;
 }

@@ -419,6 +419,58 @@ describe("the silver section", () => {
     ]);
   });
 
+  // `ah-kv6c`, the mirror: a fed unit's Upkeep is its full own fee, and what faction-mates paid
+  // toward it is a row of its own, so the rows add up to the month end.
+  it("the_popup_shows_a_fed_units_full_upkeep_and_what_was_lent", () => {
+    const fully = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({
+        held: 0,
+        income: 0,
+        lateIncome: 0,
+        expense: 0,
+        upkeep: 0,
+        sharedSilverCovered: 100,
+        atMonthEnd: 0
+      }),
+      false,
+      true
+    );
+    expect(fully.silver?.rows).toEqual([
+      { label: "Held now", value: "0" },
+      { label: "In, in time", value: "0" },
+      { label: "In, too late", value: "0" },
+      { label: "Out", value: "0" },
+      { label: "Upkeep", value: "100" },
+      { label: "Was lent for upkeep", value: "100" },
+      { label: "At month end", value: "0" }
+    ]);
+
+    const partly = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({
+        held: 0,
+        income: 0,
+        lateIncome: 0,
+        expense: 0,
+        upkeep: 50,
+        sharedSilverCovered: 50,
+        atMonthEnd: 0
+      }),
+      // Ending the month at -50, it carries the not-enough-silver finding.
+      true,
+      true
+    );
+    expect(partly.silver?.rows.slice(4)).toEqual([
+      { label: "Upkeep", value: "100" },
+      { label: "Was lent for upkeep", value: "50" },
+      { label: "At month end", value: "-50" }
+    ]);
+    expect(partly.silver?.note ?? "").toContain(
+      "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
+    );
+  });
+
   // `ah-e23d.2`. A foreign player that may share the pool leaves every figure plain - the
   // navigator chose the note alone - and the note says why the figure may be less.
   it("the_silver_section_leaves_a_foreign_sharers_figures_plain_and_says_why", () => {
