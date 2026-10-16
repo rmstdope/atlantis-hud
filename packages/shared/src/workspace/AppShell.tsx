@@ -799,6 +799,9 @@ export function AppShell({
   const [studyPlannerReveal, setStudyPlannerReveal] = useState<
     { mageKey: string; nonce: number } | null
   >(null);
+  // A counter of its own: the reveal itself is reset to null on the way in (`showOnlyKeyDialog`),
+  // so a nonce derived from it would be 1 every time and a second reveal would not remount.
+  const revealNonce = useRef(0);
   const [assumeMagesSheltered, setAssumeMagesSheltered] = useState(false);
   /**
    * The tree's view choice and the graph's pan and zoom, remembered for the app session.
@@ -2025,10 +2028,12 @@ export function AppShell({
       insertOrder: (command) => ordersEditor.current?.insertOrder(command),
       gameData: gameData?.entries ?? [],
       openGameData: (entryId) => showOnlyKeyDialog({ id: "gameData", entryId }),
-      // The notes the player wrote (ah-mlls.5), only with a game open. A hex note's place reads as
+      // The notes the player wrote (ah-mlls.5), only with a game open and a report loaded. A hex note's place reads as
       // the hex's own palette row; choosing one goes there as that row does, then asks the Notes
       // section to bring the note into view.
-      hexNotes: game
+      // No report, no map to go to: the acceptance lists nothing then (ah-mlls.5).
+      hexNotes:
+        game && parsed
         ? hexNotePaletteRows(
             hexNotes,
             (regionId) =>
@@ -2055,10 +2060,8 @@ export function AppShell({
               ...row,
               run: () => {
                 showOnlyKeyDialog({ id: "studyPlanner" });
-                setStudyPlannerReveal((previous) => ({
-                  mageKey: row.key,
-                  nonce: (previous?.nonce ?? 0) + 1
-                }));
+                revealNonce.current += 1;
+                setStudyPlannerReveal({ mageKey: row.key, nonce: revealNonce.current });
               }
             }))
           : []
@@ -5636,9 +5639,6 @@ export function AppShell({
   // is: they belong to the application, whichever screen is up.
   const keyboardPanels = (
     <>
-      {paletteOpen ? (
-        <CommandPalette entries={paletteEntries} onDismiss={() => setPaletteOpen(false)} />
-      ) : null}
       {helpOpen ? <ShortcutHelp isMac={isMacPlatform()} onDismiss={() => setHelpOpen(false)} /> : null}
       {gameDataOpen !== null && gameData !== null ? (
         <GameDataDialog
@@ -5707,6 +5707,12 @@ export function AppShell({
           label={hexLabel}
           reportLoaded={parsed !== null}
         />
+      ) : null}
+      {/* Last, so the palette draws over a key dialog it was summoned above (ah-mlls.5): they
+          share the z-40 layer, and with the palette first an open study planner covered it -
+          its rows could be reached by keyboard but not clicked. */}
+      {paletteOpen ? (
+        <CommandPalette entries={paletteEntries} onDismiss={() => setPaletteOpen(false)} />
       ) : null}
     </>
   );

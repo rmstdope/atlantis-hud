@@ -110,6 +110,24 @@ test("a mage note opens the planner on All mages with that mage picked and his n
   await expect(note).toHaveValue("Gate Lore before the siege, then quartzite wards.");
   await expect(note).not.toHaveAttribute("data-flash", /.*/, { timeout: 5000 });
 
+  // Leaving All mages and coming back does not outline it again.
+  await page.getByTestId("study-planner-view-schedule").click();
+  await page.getByTestId("study-planner-view-all").click();
+  await expect(note).not.toHaveAttribute("data-flash", /.*/);
+
+  // A second mage note chosen with the planner still open lands on that mage.
+  await page.getByTestId("study-planner-mage-95/12878").click();
+  await note.fill("Two of Seven wants quartzite too.");
+  await page.getByTestId(`study-planner-mage-95/${MAGE}`).click();
+  await search(page, "wants quartzite");
+  await page.getByTestId("palette-item").filter({ hasText: "mage note" }).click();
+  await expect(page.getByTestId("study-planner-mage-95/12878")).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
+  await expect(note).toHaveAttribute("data-flash", "true");
+  await expect(note).toHaveValue("Two of Seven wants quartzite too.");
+
   // Opening it the ordinary way afterwards still lands on the Planner.
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("study-planner-dialog")).toBeHidden();

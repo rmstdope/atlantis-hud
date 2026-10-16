@@ -796,6 +796,12 @@ describe("notes in the palette (ah-mlls.5)", () => {
     ]);
   });
 
+  it("ranks a note's substring match as any other kind's, so it outranks scattered letters", () => {
+    // Rule 2 as it already stands: a note is one more row whose text holds the word.
+    const shown = filterPalette(withNotes(), "seam");
+    expect(shown.map((entry) => entry.id)).toEqual(["hex-note-n1"]);
+  });
+
   it("lists no notes for a typo while other kinds still match their scattered letters", () => {
     const shown = filterPalette(withNotes(), "irsd");
     expect(shown.some((entry) => entry.note !== undefined)).toBe(false);

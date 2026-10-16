@@ -538,6 +538,7 @@ export function StudyPlannerDialog({
             saveError={saveError}
             onSaveNote={(comment) => onSaveNote(picked.factionId, picked.unitId, comment)}
             flashNote={picked.key === flashKey}
+            onFlashEnd={() => setFlashKey(null)}
           />
         </div>
       )}
@@ -678,7 +679,8 @@ export function StudyPlannerDetail({
   plan,
   saveError,
   onSaveNote,
-  flashNote = false
+  flashNote = false,
+  onFlashEnd
 }: {
   mage: PlannerMage;
   /** The turn the plan line names - `turns[0]`, the next one; null before a report is loaded. */
@@ -693,6 +695,8 @@ export function StudyPlannerDetail({
   onSaveNote: (comment: string) => void;
   /** Outline the note for a moment on mount: the mage note the palette chose (ah-mlls.5). */
   flashNote?: boolean;
+  /** The outline has run its course: the dialog spends the reveal so a remount cannot repeat it. */
+  onFlashEnd?: () => void;
 }) {
   const unreported = unreportedLine(mage);
   const missing = mage.standing.missing;
@@ -738,6 +742,7 @@ export function StudyPlannerDetail({
         saveError={saveError}
         onSave={onSaveNote}
         flash={flashNote}
+        onFlashEnd={onFlashEnd}
       />
 
       <div className="mt-3 grid grid-cols-2 gap-3">
@@ -808,13 +813,15 @@ function StudyPlannerNote({
   comment,
   saveError,
   onSave,
-  flash = false
+  flash = false,
+  onFlashEnd
 }: {
   comment: string;
   saveError: string | null;
   onSave: (comment: string) => void;
   /** Outlined in gold for `NOTE_FLASH_MS` from mount, never focused: it saves as it is typed. */
   flash?: boolean;
+  onFlashEnd?: () => void;
 }) {
   const [draft, setDraft] = useState(comment);
   const [flashing, setFlashing] = useState(flash);
@@ -822,8 +829,14 @@ function StudyPlannerNote({
     if (!flashing) {
       return;
     }
-    const timer = setTimeout(() => setFlashing(false), NOTE_FLASH_MS);
+    const latestEnd = onFlashEnd;
+    const timer = setTimeout(() => {
+      setFlashing(false);
+      latestEnd?.();
+    }, NOTE_FLASH_MS);
     return () => clearTimeout(timer);
+    // `onFlashEnd` is a fresh closure each render; the timer is armed once per flash.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flashing]);
   // `onSave` is a fresh closure on every render, so the autosave reaches it through a ref that is
   // reassigned each time - the same pattern `dismissLayer.ts` uses. A closure captured once at
