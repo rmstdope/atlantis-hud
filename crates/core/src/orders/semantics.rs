@@ -822,8 +822,10 @@ pub fn review_turn(
 
     let production = production_shares_for(&hexes, ruleset);
 
-    // A sharer lends its material where its month ends, not where it is listed (`ah-7r9p`).
-    let departing = departing_sharers(&hexes, report, ruleset, &options.month_end);
+    // Which hex's purse each unit lends to and claims on, once for every reader (`ah-mnvp`) ...
+    let membership = PurseMembership::read(&hexes, report, ruleset, &options.month_end);
+    // ... so a sharer lends its material where its month ends, not where it is listed (`ah-7r9p`).
+    let departing = membership.departing_sharers();
     // ... and a passenger builds where its fleet lands (`ah-i6d0`).
     let away = away_builders(&hexes, report, ruleset, &departing);
     let price = |hex: &Hex<'_>, reach: MonthLongReach| {
@@ -855,9 +857,9 @@ pub fn review_turn(
         .collect();
     lend_to_month_end_hexes(&mut hexes, &departing, &away, price);
     // Who can share with whom once movement ends: one answer for every consumer (`ah-oby0`).
-    let reach = SharingReach::read(&hexes, report, &options.month_end);
+    let reach = SharingReach::read(&hexes, &membership);
     // A sharer's silver pays a shipment where its month ends (`ah-wyj8`) ...
-    lend_walking_sharers_silver(&mut hexes, &reach, StatePhase::Transport);
+    lend_walking_sharers_silver(&mut hexes, &membership, StatePhase::Transport);
 
     // Shipping, then maintenance's steps 4 to 7, in the one order `REPORT_WIDE_STEPS` states.
     let month_end = settle_report_wide(
@@ -876,9 +878,9 @@ pub fn review_turn(
     // ... and a STUDY, judged on what the settled month leaves it - once on each surface's
     // settlement of maintenance ([`UpkeepReliefs`], `ah-ayg7`).
     read_as_warning(&mut hexes, |hexes| {
-        lend_walking_sharers_silver(hexes, &reach, StatePhase::Maintenance)
+        lend_walking_sharers_silver(hexes, &membership, StatePhase::Maintenance)
     });
-    lend_walking_sharers_silver(&mut hexes, &reach, StatePhase::Maintenance);
+    lend_walking_sharers_silver(&mut hexes, &membership, StatePhase::Maintenance);
 
     let mut lent_across: Vec<(UnitKey, i64)> = Vec::new();
     for (index, priced) in hexes.iter_mut().enumerate() {
@@ -919,7 +921,7 @@ pub fn review_turn(
         // actually happen (`ah-0wpn`).
         let departed = departures_after_load_checks(hex, ledger, ruleset);
         check_region_pools(hex, &overruns, ruleset, &plurals, &options, &mut findings);
-        let ends_elsewhere = ends_elsewhere(hex, index, &reach);
+        let ends_elsewhere = membership.of(index).ends_elsewhere();
         check_resources(
             hex,
             ledger,
@@ -7396,7 +7398,8 @@ pub(crate) fn item_effects(
     // are only known once step 4 has lent what it lends (`ah-q490`).
     let shipping = ruleset.map(|rules| super::transport::Shipping::read(report, rules, options));
     // The same cross-hex lending `review_turn` settles, so the ITEMS column agrees with Problems.
-    let departing = departing_sharers(&hexes, report, ruleset, &options.month_end);
+    let membership = PurseMembership::read(&hexes, report, ruleset, &options.month_end);
+    let departing = membership.departing_sharers();
     // ... and a passenger builds where its fleet lands (`ah-i6d0`).
     let away = away_builders(&hexes, report, ruleset, &departing);
     let price = |hex: &Hex<'_>, reach: MonthLongReach| {
@@ -7424,9 +7427,9 @@ pub(crate) fn item_effects(
         })
         .collect();
     lend_to_month_end_hexes(&mut priced, &departing, &away, price);
-    let reach = SharingReach::read(&priced, report, &options.month_end);
+    let reach = SharingReach::read(&priced, &membership);
     // The same shipping purse `review_turn` settles against (`ah-wyj8`).
-    lend_walking_sharers_silver(&mut priced, &reach, StatePhase::Transport);
+    lend_walking_sharers_silver(&mut priced, &membership, StatePhase::Transport);
     let month_end = settle_report_wide(
         &mut priced,
         &ReportWideInputs {
@@ -8055,22 +8058,6 @@ fn check_resources(
         ends_elsewhere,
         findings,
     );
-}
-
-/// The units of `hexes[index]` that end the month in another hex, and where - [`SharingReach`]'s
-/// answer, the one maintenance itself is settled by. A unit that stays is not in it.
-fn ends_elsewhere(
-    hex: &Hex<'_>,
-    index: usize,
-    reach: &SharingReach,
-) -> BTreeMap<String, Coordinate> {
-    hex.units
-        .iter()
-        .filter_map(|ordered| {
-            let at = reach.of(index, &ordered.unit.unit_id)?.at;
-            (at != hex.region.coordinate).then(|| (ordered.unit.unit_id.clone(), at))
-        })
-        .collect()
 }
 
 // --- markets: a BUY or SELL naming what this hex does not trade --------------------------------
@@ -13643,6 +13630,168 @@ fn pair_upkeep_transfers(
 /// not name a unit across hexes (`ah-9o0c.3`).
 type Member = (usize, String);
 
+/// **The one answer to "which hex's `SHARE` purse does this unit lend to and claim on, at this
+/// moment"** (`ah-mnvp`): where each of our units ends the month, read once per check from
+/// [`SharingReach::ends_at`] - the movement trace for a walker, the fleet's arrival for a
+/// passenger - and the moment rule every purse reader asks rather than working out for itself.
+/// Three fixes in a row (`ah-6cka` twice, `ah-6y6e`) had each taught one more reader about the
+/// walker before this existed.
+///
+/// Built before any ledger, since the month-long pools withhold their leaving sharers as they are
+/// priced (`ah-7r9p`); [`SharingReach::read`] groups by it, [`lend_walking_sharers_silver`] lends
+/// by it, and each ledger keeps its own hex's half in [`WalkingSilver::members`].
+///
+/// Index-aligned with the entry point's hexes.
+#[derive(Debug, Clone, Default)]
+struct PurseMembership {
+    hexes: Vec<HexMembership>,
+}
+
+/// One hex's half of [`PurseMembership`]: the units listed in it whose month ends in another
+/// region. A unit not in it stays. Keyed by unit id: one unit number is one row in a region block
+/// (`parse_region_block` refuses a repeat, `ah-bm0d`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct HexMembership {
+    leavers: BTreeMap<String, Leaver>,
+}
+
+/// A unit that ends its month outside the hex it is listed in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Leaver {
+    /// Where its month ends.
+    at: Coordinate,
+    /// Whether it carries the `SHARE` flag, so lends to some purse at all.
+    shares: bool,
+}
+
+/// How a unit's silver position counts against the purse of the hex it is listed in, at one
+/// moment ([`HexMembership::claim_here`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PurseClaim {
+    /// Its whole position: what it is short then, the purse answers for.
+    Whole,
+    /// At most what it owed at the moment named - as TRANSPORT settled, the last moment before
+    /// maintenance: its upkeep falls due where it ends the month (`ah-6cka`). Measured there and
+    /// not as it left, so its STUDY and TRANSPORT stay claims here (`docs/retrospectives/ah-6cka.md`).
+    AtMostWhatItOwedAt(LendingMoment),
+}
+
+impl PurseMembership {
+    fn read(
+        hexes: &[Hex<'_>],
+        report: &ParsedReport,
+        ruleset: Option<&Ruleset>,
+        month_end: &super::transport::MonthEndHexes,
+    ) -> Self {
+        let regions: HashMap<Coordinate, &ReportRegion> = report
+            .regions
+            .iter()
+            .map(|region| (region.coordinate, region))
+            .collect();
+        Self {
+            hexes: hexes
+                .iter()
+                .map(|hex| HexMembership {
+                    leavers: hex
+                        .units
+                        .iter()
+                        .filter_map(|ordered| {
+                            let at =
+                                SharingReach::ends_at(hex, ordered, ruleset, &regions, month_end);
+                            (at != hex.region.coordinate).then(|| {
+                                (
+                                    ordered.unit.unit_id.clone(),
+                                    Leaver {
+                                        at,
+                                        shares: ordered.shares(),
+                                    },
+                                )
+                            })
+                        })
+                        .collect(),
+                })
+                .collect(),
+        }
+    }
+
+    /// `hexes[index]`'s half of the record.
+    fn of(&self, index: usize) -> &HexMembership {
+        &self.hexes[index]
+    }
+
+    /// Each hex's sharers whose month ends in another hex, with the hex it ends in, index-aligned
+    /// with the hexes: the sharers its month-long pools withhold and lend onward (`ah-7r9p`).
+    fn departing_sharers(&self) -> Vec<BTreeMap<String, Coordinate>> {
+        self.hexes
+            .iter()
+            .map(|hex| {
+                hex.leavers
+                    .iter()
+                    .filter(|(_, leaver)| leaver.shares)
+                    .map(|(unit_id, leaver)| (unit_id.clone(), leaver.at))
+                    .collect()
+            })
+            .collect()
+    }
+}
+
+impl HexMembership {
+    /// Where the unit numbered `unit_id` ends the month; `here` is the hex it is listed in.
+    fn ends_at(&self, here: Coordinate, unit_id: &str) -> Coordinate {
+        self.leavers.get(unit_id).map_or(here, |leaver| leaver.at)
+    }
+
+    /// The units listed here that end the month in another hex, and where: the hex's units
+    /// maintenance itself is not settled in. A unit that stays is not in it.
+    fn ends_elsewhere(&self) -> BTreeMap<String, Coordinate> {
+        self.leavers
+            .iter()
+            .map(|(unit_id, leaver)| (unit_id.clone(), leaver.at))
+            .collect()
+    }
+
+    /// Whether the unit numbered `unit_id` ends its month in another region.
+    fn leaves(&self, unit_id: &str) -> bool {
+        self.leavers.contains_key(unit_id)
+    }
+
+    /// Whether a sharing unit numbered `unit_id` ends its month in another region.
+    fn sharer_leaves(&self, unit_id: &str) -> bool {
+        self.leavers
+            .get(unit_id)
+            .is_some_and(|leaver| leaver.shares)
+    }
+
+    /// Whether the unit numbered `unit_id`, `SHARE` set or not as `shares` says, lends to this
+    /// hex's silver purse at `moment`. Before movement every sharer listed here does; after it only
+    /// one whose month ends here: `rules/sequenceofevents` processes "ADVANCE, MOVE and SAIL
+    /// orders" after the market and before month-long orders, TRANSPORT and maintenance, and
+    /// `rules/share` lends to "any other unit of your faction ... in the same region" (`ah-wyj8`).
+    fn sharer_lends_here(&self, unit_id: &str, shares: bool, moment: LendingMoment) -> bool {
+        shares && (Self::before_movement(moment) || !self.leaves(unit_id))
+    }
+
+    /// How the unit numbered `unit_id` claims on this hex's purse at `moment`. Every unit listed
+    /// here claims its whole position until the month's end - a leaver's STUDY and TRANSPORT
+    /// included, which is today's behaviour rather than a rule (`docs/retrospectives/ah-6cka.md`;
+    /// pinned by `a_walkers_transport_is_lent_by_the_sharer_in_the_hex_it_leaves` and
+    /// `a_passengers_study_is_lent_by_the_sharer_in_the_hex_it_leaves`). At the month's end a
+    /// leaver claims only what it owed before maintenance: `rules/sequenceofevents` assesses
+    /// maintenance after movement, and `rules/economy_maintenance` shares for it "between your
+    /// units in the same region" (`ah-6cka`).
+    fn claim_here(&self, unit_id: &str, moment: LendingMoment) -> PurseClaim {
+        if moment == LendingMoment::MonthEnd && self.leaves(unit_id) {
+            PurseClaim::AtMostWhatItOwedAt(LendingMoment::Transport)
+        } else {
+            PurseClaim::Whole
+        }
+    }
+
+    fn before_movement(moment: LendingMoment) -> bool {
+        matches!(moment, LendingMoment::Cast | LendingMoment::Movement)
+    }
+}
+
 /// Faction-mates that end the month in one region: who a `SHARE` consumer may pool with.
 struct Neighbourhood {
     /// The region they end the month in.
@@ -13653,10 +13802,11 @@ struct Neighbourhood {
 
 /// **The one answer to "which faction-mates can this unit share with this month, and where"**
 /// (`ah-oby0`). Every consumer of sharing reads it - maintenance steps 2 and 4 to 7 through
-/// [`SharingReach::read`], and the material `BUILD` and `PRODUCE` draw on through
-/// [`SharingReach::ends_at`] in [`departing_sharers`] (`ah-7r9p`), which has to answer before any
-/// ledger exists - rather than by writing its own month-end grouping: four bug fixes were paid
-/// for exactly that (`ah-bwxp.1`, `ah-n3qb`, `ah-21r0`, `ah-z1f5`).
+/// [`SharingReach::read`], and the material `BUILD` and `PRODUCE` draw on and the silver purses
+/// through [`PurseMembership`], which reads [`SharingReach::ends_at`] once, before any ledger
+/// exists (`ah-7r9p`, `ah-mnvp`), and which [`SharingReach::read`] groups by - rather than by
+/// writing its own month-end grouping: four bug fixes were paid for exactly that (`ah-bwxp.1`,
+/// `ah-n3qb`, `ah-21r0`, `ah-z1f5`).
 ///
 /// A unit is placed in the region it **ends** the month in. `rules/sequenceofevents` processes
 /// "ADVANCE, MOVE and SAIL orders" before "BUILD orders" and before "Maintenance costs are
@@ -13685,24 +13835,17 @@ struct SharingReach {
 }
 
 impl SharingReach {
-    fn read(
-        hexes: &[(Hex<'_>, Ledger<'_>)],
-        report: &ParsedReport,
-        month_end: &super::transport::MonthEndHexes,
-    ) -> Self {
-        let regions: HashMap<Coordinate, &ReportRegion> = report
-            .regions
-            .iter()
-            .map(|region| (region.coordinate, region))
-            .collect();
+    /// Groups `hexes`' units by where [`PurseMembership`] says each ends the month.
+    fn read(hexes: &[(Hex<'_>, Ledger<'_>)], membership: &PurseMembership) -> Self {
         let mut reach = Self {
             neighbourhoods: Vec::new(),
             of: HashMap::new(),
         };
         let mut by_place: HashMap<Coordinate, usize> = HashMap::new();
-        for (index, (hex, ledger)) in hexes.iter().enumerate() {
+        for (index, (hex, _)) in hexes.iter().enumerate() {
+            let members = membership.of(index);
             for ordered in &hex.units {
-                let at = Self::ends_at(hex, ordered, ledger.ruleset, &regions, month_end);
+                let at = members.ends_at(hex.region.coordinate, &ordered.unit.unit_id);
                 let member: Member = (index, ordered.unit.unit_id.clone());
                 let position = *by_place.entry(at).or_insert_with(|| {
                     reach.neighbourhoods.push(Neighbourhood {
@@ -15079,16 +15222,17 @@ impl<'a> Sharing<'a> {
         }
     }
 
-    /// Whether `ordered` ends its month in another region ([`WalkingSilver::leaving`]). Only the
+    /// Whether `ordered` ends its month in another region ([`HexMembership::leaves`]). Only the
     /// month-long silver reading knows; the others pool the hex as listed.
     fn leaves(&self, ordered: &Ordered<'_>) -> bool {
         self.walking
-            .is_some_and(|walking| walking.leaving.contains(&ordered.unit.unit_id))
+            .is_some_and(|walking| walking.members.leaves(&ordered.unit.unit_id))
     }
 
     /// `position`, a unit's silver position in this pool at `moment`, as far as the pool answers
-    /// for it: at the month's end a unit that has left is owed for no more than it owed before
-    /// maintenance, `before_upkeep` - its upkeep falls due where it ends the month
+    /// for it - [`HexMembership::claim_here`]'s answer, with `owed_at` reading the unit's position
+    /// at the moment a capped claim is measured at. At the month's end a unit that has left is owed
+    /// for no more than it owed as TRANSPORT settled: its upkeep falls due where it ends the month
     /// (`rules/sequenceofevents`), and `rules/economy_maintenance` shares for it "between your
     /// units in the same region" and "this will not happen between units in different regions"
     /// (`ah-6cka`). What its STUDY or TRANSPORT draws on this pool is left as it was.
@@ -15097,21 +15241,30 @@ impl<'a> Sharing<'a> {
         ordered: &Ordered<'_>,
         moment: LendingMoment,
         position: i64,
-        before_upkeep: impl FnOnce() -> i64,
+        owed_at: impl FnOnce(LendingMoment) -> i64,
     ) -> i64 {
-        if moment == LendingMoment::MonthEnd && self.leaves(ordered) {
-            position.max(before_upkeep().min(0))
-        } else {
-            position
+        let claim = self.walking.map_or(PurseClaim::Whole, |walking| {
+            walking.members.claim_here(&ordered.unit.unit_id, moment)
+        });
+        match claim {
+            PurseClaim::Whole => position,
+            PurseClaim::AtMostWhatItOwedAt(then) => position.max(owed_at(then).min(0)),
         }
     }
 
-    /// Whether `ordered` is inside this hex's silver pool: a sharer that ends its month here.
+    /// Whether `ordered` is inside this hex's silver pool: a sharer that ends its month here
+    /// ([`HexMembership::sharer_lends_here`]). The month-long reading's own rows are read after
+    /// movement - STUDY's moment stands for every one of them - and what a leaving sharer lent
+    /// before it left is [`WalkingSilver::departing`]'s figure, not its row. A reading with no
+    /// walkers pools the hex as listed.
     fn pools_silver(&self, ordered: &Ordered<'_>) -> bool {
-        ordered.shares()
-            && !self
-                .walking
-                .is_some_and(|walking| walking.departing.contains_key(&ordered.unit.unit_id))
+        self.walking.map_or(ordered.shares(), |walking| {
+            walking.members.sharer_lends_here(
+                &ordered.unit.unit_id,
+                ordered.shares(),
+                LendingMoment::Study,
+            )
+        })
     }
 
     /// What this hex's sharers that walk away lent its units before they left, and what the
@@ -15244,9 +15397,8 @@ impl<'a> Sharing<'a> {
                     return -held;
                 }
                 let who = &ordered.unit.unit_id;
-                let held = self.position_here(ordered, moment, held, || {
-                    silver_at(ledger, who, LendingMoment::Transport)
-                });
+                let held =
+                    self.position_here(ordered, moment, held, |then| silver_at(ledger, who, then));
                 if cast_refused(index) {
                     (-held).max(0).max(drawn)
                 } else {
@@ -15329,12 +15481,11 @@ struct WalkingSilver {
     /// whatever order it iterates them - the same reason `forecast_hex` drains in hex order. The
     /// hex's total is exact either way; only which unit a shortfall is laid on can differ.
     departing: BTreeMap<String, i64>,
-    /// Every unit listed in this hex whose month ends in another region, sharer or not
-    /// ([`SharingReach`]). Its upkeep is no claim on this hex's silver pool
-    /// ([`Sharing::position_here`]): `rules/economy_maintenance` shares "between your units in the
-    /// same region" and "this will not happen between units in different regions", and
-    /// `rules/sequenceofevents` assesses maintenance after movement (`ah-6cka`).
-    leaving: BTreeSet<String>,
+    /// This hex's half of [`PurseMembership`]: which of its units end the month in another
+    /// region, so which lend to and claim on its silver pool at each moment
+    /// ([`Sharing::pools_silver`], [`Sharing::position_here`]). Empty until
+    /// [`lend_walking_sharers_silver`] has run, which pools the hex as listed.
+    members: HexMembership,
     /// The sharers ending their month here from another hex, each with what it lends at each
     /// [`LendingMoment`]: its [`silver_at`] then, less what it lent before it left. Indexed by
     /// the moment; read through [`WalkingSilver::arrivals_at`].
@@ -15415,7 +15566,7 @@ fn maintenance_settled(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
 /// report-wide steps settle shipping, `Maintenance` once they have settled the month (`ah-wyj8`).
 fn lend_walking_sharers_silver(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
-    reach: &SharingReach,
+    membership: &PurseMembership,
     phase: StatePhase,
 ) {
     let by_place: HashMap<Coordinate, usize> = hexes
@@ -15424,18 +15575,13 @@ fn lend_walking_sharers_silver(
         .map(|(index, (hex, _))| (hex.region.coordinate, index))
         .collect();
     let mut departing: Vec<BTreeMap<String, i64>> = vec![BTreeMap::new(); hexes.len()];
-    let mut leaving: Vec<BTreeSet<String>> = vec![BTreeSet::new(); hexes.len()];
     let mut arrivals: Vec<[Vec<ArrivingSilver>; LendingMoment::COUNT]> =
         vec![Default::default(); hexes.len()];
     let mut doubted: Vec<bool> = vec![false; hexes.len()];
 
     for (index, (hex, ledger)) in hexes.iter().enumerate() {
         let here = hex.region.coordinate;
-        let ends_at = |ordered: &Ordered<'_>| {
-            reach
-                .of(index, &ordered.unit.unit_id)
-                .map_or(here, |neighbourhood| neighbourhood.at)
-        };
+        let members = membership.of(index);
         // A unit's silver at `moment` with what the Give phase drew for it and on it as each line
         // ran ([`Ledger::silver_fundings`]), which its ledger row nets away once it receives silver
         // (`ah-9udi`): a sharer drained then has nothing left to lend before it walks or where it
@@ -15443,16 +15589,10 @@ fn lend_walking_sharers_silver(
         let held_at = |who: &str, moment: LendingMoment| {
             silver_at(ledger, who, moment) + gift_drawn_by(ledger, who) - gift_lent_by(ledger, who)
         };
-        leaving[index] = hex
-            .units
-            .iter()
-            .filter(|ordered| ends_at(ordered) != here)
-            .map(|ordered| ordered.unit.unit_id.clone())
-            .collect();
         let walkers: Vec<&Ordered<'_>> = hex
             .units
             .iter()
-            .filter(|ordered| ordered.shares() && ends_at(ordered) != here)
+            .filter(|ordered| members.sharer_leaves(&ordered.unit.unit_id))
             .collect();
         if walkers.is_empty() {
             continue;
@@ -15495,7 +15635,7 @@ fn lend_walking_sharers_silver(
             // draws.
             departing[index].insert(who.clone(), gift_lent_by(ledger, who) + more);
 
-            let Some(&arrives) = by_place.get(&ends_at(walker)) else {
+            let Some(&arrives) = by_place.get(&members.ends_at(here, who)) else {
                 continue;
             };
             doubted[arrives] |= ledger.doubted.contains(who);
@@ -15541,7 +15681,7 @@ fn lend_walking_sharers_silver(
             // still unpaid (`ah-qrk0`).
             let before = WalkingSilver {
                 departing: departing[index].clone(),
-                leaving: leaving[index].clone(),
+                members: membership.of(index).clone(),
                 ..WalkingSilver::default()
             };
             let pool = Sharing::with_walking(hex, &before);
@@ -15558,7 +15698,7 @@ fn lend_walking_sharers_silver(
         }
         let walking = &mut ledger.relief_mut().walking;
         walking.departing = std::mem::take(&mut departing[index]);
-        walking.leaving = std::mem::take(&mut leaving[index]);
+        walking.members = membership.of(index).clone();
         walking.arrival_doubted = doubted[index];
         walking.arrivals[LendingMoment::Study as usize] = at_study;
         walking.arrivals[LendingMoment::MonthEnd as usize] = at_month_end;
@@ -16335,7 +16475,7 @@ impl Lending {
                     &hex.units[index],
                     at,
                     own(index, at, read) + carried + refused_shipments(index),
-                    || own(index, LendingMoment::Transport, fees_taken) + carried,
+                    |then| own(index, then, fees_taken) + carried,
                 )
             };
             let needs: Vec<i64> = (0..hex.units.len())
@@ -16758,7 +16898,7 @@ fn sharing_purse_over(
             &hex.units[index],
             LendingMoment::MonthEnd,
             own(index, LendingMoment::MonthEnd),
-            || own(index, LendingMoment::Transport),
+            |then| own(index, then),
         )
     };
     let coverage_for = |outcome| {
@@ -17211,7 +17351,7 @@ fn silver_can_have(
     let staying = || {
         ids.iter()
             .copied()
-            .filter(|&who| !walking.is_some_and(|walking| walking.departing.contains_key(who)))
+            .filter(|&who| !walking.is_some_and(|walking| walking.members.sharer_leaves(who)))
     };
     let earned: i64 = staying()
         .map(|who| silver_earned_by(hex, ledger, who, moment.phase()))
@@ -17399,8 +17539,8 @@ fn judge_shortfalls(
             // between units in different regions"). That rest is its own shortfall (`ah-6cka`).
             let (short, own_short) = if pooled && tag == SILVER && sharing.leaves(ordered) {
                 let owed_here =
-                    (-sharing.position_here(ordered, LendingMoment::MonthEnd, balance, || {
-                        silver_at(ledger, who, LendingMoment::Transport)
+                    (-sharing.position_here(ordered, LendingMoment::MonthEnd, balance, |then| {
+                        silver_at(ledger, who, then)
                     }))
                     .max(0)
                     .min(short);
@@ -19626,39 +19766,6 @@ struct ArrivalDebit {
     cause: ItemChangeCause,
     /// The unit whose order consumed it, named on the supplier's movement as an in-hex debit is.
     actor: ItemChangeParty,
-}
-
-/// Each hex's sharers whose month ends in another hex, with the hex it ends in, index-aligned with
-/// `hexes`.
-///
-/// Where a unit ends the month is [`SharingReach::ends_at`]'s answer - the movement trace for a
-/// walker, the fleet's arrival for a passenger - the one every other consumer of sharing reads
-/// (`ah-oby0`), so a sharer is lent where it is fed. Read here rather than through
-/// [`SharingReach::read`] because the pools have to be withheld before any ledger exists.
-fn departing_sharers(
-    hexes: &[Hex<'_>],
-    report: &ParsedReport,
-    ruleset: Option<&Ruleset>,
-    month_end: &super::transport::MonthEndHexes,
-) -> Vec<BTreeMap<String, Coordinate>> {
-    let regions: HashMap<Coordinate, &ReportRegion> = report
-        .regions
-        .iter()
-        .map(|region| (region.coordinate, region))
-        .collect();
-    hexes
-        .iter()
-        .map(|hex| {
-            hex.units
-                .iter()
-                .filter(|ordered| ordered.shares())
-                .filter_map(|ordered| {
-                    let at = SharingReach::ends_at(hex, ordered, ruleset, &regions, month_end);
-                    (at != hex.region.coordinate).then(|| (ordered.unit.unit_id.clone(), at))
-                })
-                .collect()
-        })
-        .collect()
 }
 
 /// The hex's own departing sharers, as [`ledger_for_reaching`] takes them.
@@ -22280,7 +22387,7 @@ fn silver_shortfall_claimable(hex: &Hex<'_>, ledger: &Ledger<'_>, unit_id: &str)
         || ledger.relief().walking.arrival_doubted;
     // TRANSPORT runs after movement, so a sender that walks is read by the region it ends in,
     // whose sharers this hex does not know.
-    let walks = ledger.relief().walking.leaving.contains(unit_id);
+    let walks = ledger.relief().walking.members.leaves(unit_id);
     !doubted && !walks
 }
 
@@ -44353,16 +44460,20 @@ BUILD
     ) -> Vec<(Coordinate, Vec<String>)> {
         let ordered = OrderedUnits::read(orders);
         let rules = ruleset();
-        let hexes: Vec<(Hex<'_>, Ledger<'_>)> = report
+        let hexes: Vec<Hex<'_>> = report
             .regions
             .iter()
-            .map(|region| {
-                let hex = Hex::read(region, &ordered, &[]);
+            .map(|region| Hex::read(region, &ordered, &[]))
+            .collect();
+        let membership = PurseMembership::read(&hexes, report, Some(&rules), month_end);
+        let hexes: Vec<(Hex<'_>, Ledger<'_>)> = hexes
+            .into_iter()
+            .map(|hex| {
                 let ledger = ledger_for(&hex, Some(&rules));
                 (hex, ledger)
             })
             .collect();
-        SharingReach::read(&hexes, report, month_end)
+        SharingReach::read(&hexes, &membership)
             .neighbourhoods()
             .iter()
             .map(|neighbourhood| {
@@ -56954,6 +57065,43 @@ BUILD
         );
     }
 
+    /// `ah-mnvp`: a walker's TRANSPORT draws on the purse of the hex it is listed in. 905 holds $5,
+    /// walks south and ships $10; sharer 903 stays behind with $50 and lends it the other $5. This
+    /// is the behaviour `docs/retrospectives/ah-6cka.md` found no core test pinned - questionable by
+    /// `rules/sequenceofevents` (TRANSPORT after movement) and `rules/share` ("in the same region"),
+    /// but the one the share purse has today, and the one `PurseMembership::claim_here` says - so a
+    /// change to which hex a leaver claims on fails here before it fails in the smoke suite. Traced,
+    /// so the month end is the movement trace's.
+    #[test]
+    fn a_walkers_transport_is_lent_by_the_sharer_in_the_hex_it_leaves() {
+        let mut regions = non_sharing_sender(
+            5,
+            vec![
+                with_silver(unit("905"), 5),
+                sharing(with_silver(unit("903"), 50)),
+            ],
+        );
+        regions.push(region_at("1:0,2", 0, 2, vec![]));
+        let orders = "unit 905\nMOVE S\nTRANSPORT 906 10 SILV\n";
+        let (traced_report, options) = traced(report(regions), orders, &ruleset(), with_map());
+        assert_eq!(
+            options.month_end.get("905"),
+            Some(&Coordinate { x: 0, y: 2, z: 1 }),
+            "the walker leaves"
+        );
+        let review = review_turn(
+            &report(traced_report.regions),
+            orders,
+            Some(&ruleset()),
+            options,
+        );
+        let walker = shipment_silver(&review, "905");
+        assert_eq!(silver_shipped(&review, "905"), 10, "{walker:?}");
+        assert_eq!(walker.borrowed_for_orders, 5, "{walker:?}");
+        assert_eq!(silver_booked(&review, "903", SilverChangeCause::Lent), -5);
+        assert!(shipment_warnings(&review, "905").is_empty());
+    }
+
     /// A sharer that walks in lends at TRANSPORT (`GetSharedNum` is 55), so no refusal is claimed
     /// (follow-up finding 3), and the shipment draws its other 5 on the arrival (`ah-9yvv`).
     #[test]
@@ -61283,11 +61431,9 @@ BUILD
             let hex = Hex::read(&hex_region, &ordered, &[]);
             let rules = trident_rules();
             let mut ledger = ledger_for(&hex, Some(&rules));
-            ledger
-                .relief_mut()
-                .walking
-                .departing
-                .insert("903".to_string(), 0);
+            let walking = &mut ledger.relief_mut().walking;
+            walking.departing.insert("903".to_string(), 0);
+            walking.members = HexMembership::leaving("903", Coordinate { x: 0, y: 2, z: 1 });
             let (held, drained) = silver_stock_at_transport(&hex, &ledger);
             assert_eq!(drained, vec![0, 0, 0], "{order}");
             assert_eq!(held["903"], 150, "{order}: the walker lent nothing");
@@ -62687,11 +62833,9 @@ BUILD
             let rules = trident_rules();
             let mut ledger = ledger_for(&hex, Some(&rules));
             if walker {
-                ledger
-                    .relief_mut()
-                    .walking
-                    .departing
-                    .insert("4".to_string(), 0);
+                let walking = &mut ledger.relief_mut().walking;
+                walking.departing.insert("4".to_string(), 0);
+                walking.members = HexMembership::leaving("4", Coordinate { x: 0, y: 2, z: 1 });
             }
             let index = hex
                 .units
@@ -73017,6 +73161,58 @@ BUILD
             .collect()
     }
 
+    /// `ah-mnvp`: a sailing passenger's STUDY draws on the purse of the hex it is listed in, while
+    /// its upkeep does not. Passenger 901 holds nothing, studies aboard longship 329 as its
+    /// captain sails north, and banker 903 stays behind with $500: the banker pays the study, as
+    /// the g5-f21-t24 fixture's Drones (10594) is paid (`a_sharing_passenger_keeps_its_study_loan`),
+    /// and none of the upkeep, which `rules/economy_maintenance` shares only "between your units in
+    /// the same region" and `rules/sequenceofevents` assesses after movement (`ah-6cka`). Not
+    /// [`traced`]: a unit its fleet carries away ends the month where [`production_region`] says,
+    /// never where the movement trace does ([`SharingReach::ends_at`]).
+    #[test]
+    fn a_passengers_study_is_lent_by_the_sharer_in_the_hex_it_leaves() {
+        let banker = sharing(with_silver(unit("903"), 500));
+        let (report, _) = passenger_palace(
+            open_sea(vec![banker]),
+            region_at("1:7,53", 7, 53, vec![]),
+            None,
+        );
+        let orders = "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 903\n";
+        let review = review_turn(&report, orders, Some(&trident()), CheckOptions::default());
+        let silver = |id: &str| {
+            review
+                .silver
+                .iter()
+                .find(|forecast| forecast.unit_id == id)
+                .cloned()
+                .unwrap_or_else(|| panic!("no forecast for {id}"))
+        };
+        let passenger = silver("901");
+        let fee = passenger.wanted_for_orders.expect("the study is priced");
+        assert!(fee > 0, "{passenger:?}");
+        assert_eq!(passenger.borrowed_for_orders, fee, "{passenger:?}");
+        assert_eq!(passenger.shared_silver_covered, 0, "{passenger:?}");
+        assert_eq!(passenger.upkeep_lent, 0, "{passenger:?}");
+        assert_eq!(silver("903").at_month_end, Some(500 - fee));
+        // Its one shortfall is its upkeep, counted where it ends the month; none of it is the
+        // study the banker paid.
+        let upkeep = passenger.upkeep.expect("the passenger's upkeep is priced");
+        let short: Vec<&str> = review
+            .findings
+            .iter()
+            .filter(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("901")
+            })
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(short.len(), 1, "{short:?}");
+        assert!(
+            short[0].starts_with(&format!("short ${upkeep}:")),
+            "{short:?}"
+        );
+    }
+
     /// The bead's regression: a sharer staying in the open sea the fleet leaves holds wood, and so
     /// does one in the region it lands in. The passenger makes its wagons where it lands, so the
     /// wood is drawn there and the sharer left behind keeps its own.
@@ -73931,6 +74127,104 @@ BUILD
             } == UnitItemEffects::default()),
             "a refused site spends and moves nothing: {effects:?}"
         );
+    }
+
+    // --- which hex's purse a unit lends to and claims on (`ah-mnvp`) ---------------------------
+
+    impl HexMembership {
+        /// A hex whose one leaver is sharer `unit_id`, ending its month at `at`: what a test
+        /// building one ledger by hand gives its [`WalkingSilver::members`] in place of the trace.
+        fn leaving(unit_id: &str, at: Coordinate) -> Self {
+            Self {
+                leavers: [(unit_id.to_string(), Leaver { at, shares: true })].into(),
+            }
+        }
+    }
+
+    /// Sharer 7 and non-sharer 5 walk south out of (7,53); sharer 8 stays. The membership record
+    /// is read from `month_end` as the movement trace fills it.
+    fn walkers_membership() -> HexMembership {
+        let region = region_at(
+            "1:7,53",
+            7,
+            53,
+            vec![
+                sharing(with_silver(unit("7"), 500)),
+                sharing(unit("8")),
+                unit("5"),
+            ],
+        );
+        let ordered = OrderedUnits::read("unit 7\nMOVE S\nunit 5\nMOVE S\nunit 8\n");
+        let hex = Hex::read(&region, &ordered, &[]);
+        let mut month_end = super::super::transport::MonthEndHexes::new();
+        month_end.insert("7".to_string(), SOUTH_OF_7_53);
+        month_end.insert("5".to_string(), SOUTH_OF_7_53);
+        let report = ParsedReport {
+            regions: vec![region.clone()],
+            ..Default::default()
+        };
+        PurseMembership::read(std::slice::from_ref(&hex), &report, None, &month_end)
+            .of(0)
+            .clone()
+    }
+
+    const SOUTH_OF_7_53: Coordinate = Coordinate { x: 7, y: 55, z: 1 };
+
+    const AFTER_MOVEMENT: [LendingMoment; 3] = [
+        LendingMoment::Study,
+        LendingMoment::Transport,
+        LendingMoment::MonthEnd,
+    ];
+
+    #[test]
+    fn the_membership_record_places_each_unit_where_its_month_ends() {
+        let members = walkers_membership();
+        let here = Coordinate { x: 7, y: 53, z: 1 };
+        assert_eq!(members.ends_at(here, "7"), SOUTH_OF_7_53);
+        assert_eq!(members.ends_at(here, "5"), SOUTH_OF_7_53);
+        assert_eq!(members.ends_at(here, "8"), here);
+        assert!(members.leaves("7") && members.leaves("5") && !members.leaves("8"));
+    }
+
+    /// `rules/sequenceofevents` runs "ADVANCE, MOVE and SAIL orders" after the market and before
+    /// month-long orders, TRANSPORT and maintenance; `rules/share` lends "in the same region".
+    #[test]
+    fn a_leaving_sharer_lends_where_it_is_listed_until_movement_and_not_after() {
+        let members = walkers_membership();
+        for moment in [LendingMoment::Cast, LendingMoment::Movement] {
+            assert!(members.sharer_lends_here("7", true, moment), "{moment:?}");
+        }
+        for moment in AFTER_MOVEMENT {
+            assert!(!members.sharer_lends_here("7", true, moment), "{moment:?}");
+            assert!(members.sharer_lends_here("8", true, moment), "{moment:?}");
+        }
+        assert!(!members.sharer_lends_here("5", false, LendingMoment::Movement));
+    }
+
+    /// What `a_walkers_transport_is_lent_by_the_sharer_in_the_hex_it_leaves` and
+    /// `a_passengers_study_is_lent_by_the_sharer_in_the_hex_it_leaves` pin end to end: a leaver
+    /// claims on the hex it is listed in for its STUDY and TRANSPORT, and at the month's end only
+    /// for what it owed before maintenance (`ah-6cka`).
+    #[test]
+    fn a_leaver_claims_where_it_is_listed_but_not_for_its_upkeep() {
+        let members = walkers_membership();
+        for unit_id in ["7", "5"] {
+            for moment in [
+                LendingMoment::Cast,
+                LendingMoment::Movement,
+                LendingMoment::Study,
+                LendingMoment::Transport,
+            ] {
+                assert_eq!(members.claim_here(unit_id, moment), PurseClaim::Whole);
+            }
+            assert_eq!(
+                members.claim_here(unit_id, LendingMoment::MonthEnd),
+                PurseClaim::AtMostWhatItOwedAt(LendingMoment::Transport)
+            );
+        }
+        for moment in AFTER_MOVEMENT {
+            assert_eq!(members.claim_here("8", moment), PurseClaim::Whole);
+        }
     }
 
     // --- silver a sharer lends where its month ends (`ah-wyj8`) --------------------------------
