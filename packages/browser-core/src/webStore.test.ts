@@ -4,8 +4,8 @@
  * Only the merged-report store is covered here, because it is the one this file's contract gained
  * with issue #53 and the one a mistake in would be silent: a merge that is not recorded still grows
  * the map, so nothing visibly fails - the player just cannot see whose eyes they are looking
- * through after a reload. The IndexedDB half cannot be reached from vitest, which has no
- * `indexedDB`; its upgrade path is proved in the Playwright suite instead.
+ * through after a reload. The IndexedDB half, and its upgrade path, is `webStore.indexeddb.test.ts`,
+ * against `fake-indexeddb` and the real core.
  */
 
 import { describe, expect, it } from "vitest";

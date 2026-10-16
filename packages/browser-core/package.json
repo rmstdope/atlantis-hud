@@ -17,6 +17,7 @@
   "devDependencies": {
     "@atlantis/fixtures": "workspace:*",
     "@atlantis/shared": "workspace:*",
-    "@types/node": "^22.10.2"
+    "@types/node": "^22.10.2",
+    "fake-indexeddb": "6.2.5"
   }
 }

@@ -6,7 +6,8 @@
  * the other tab keeps its connection - which, for a tab from an older build, is for ever. So the
  * wait is bounded by a clock rather than by an event.
  *
- * Kept apart from the store and given a timer seam so it can be tested: vitest has no IndexedDB.
+ * Kept apart from the store and given a timer seam so the wait can be tested without another tab
+ * holding a real connection open.
  */
 
 import {
