@@ -15982,6 +15982,12 @@ enum Lender {
 struct Lending {
     /// What each unit lent its faction-mates' orders.
     lends: Vec<i64>,
+    /// The part of `lends` the Give phase drew on each unit as a faction-mate's GIVE or TAKE ran
+    /// ([`Ledger::silver_fundings`]). Gone before the unit's own orders run (`unit.cpp`:
+    /// `ConsumeShared`), so [`Lending::netted`] never passes it on against what the unit is lent
+    /// later: a sharer a GIVE drains and whose STUDY the purse then pays lent the whole draw and
+    /// was lent the fee, as its column reads it (`ah-d3in`).
+    lent_at_give: Vec<i64>,
     /// What each arriving sharer lent here.
     arrivals_lend: Vec<i64>,
     /// What each unit's orders drew out of its faction-mates' pockets: its own overdraft, sharer
@@ -16019,6 +16025,7 @@ impl Lending {
     fn nothing(hex: &Hex<'_>, ledger: &Ledger<'_>) -> Self {
         Self {
             lends: vec![0; hex.units.len()],
+            lent_at_give: vec![0; hex.units.len()],
             arrivals_lend: vec![
                 0;
                 ledger
@@ -16113,9 +16120,20 @@ impl Lending {
     /// and borrows, and what a borrower is credited is what its own orders overdrew it. What a
     /// unit holds once its lending is carried - its balance less `lends` plus `borrows` - is the
     /// same netted or not.
+    ///
+    /// What the Give phase drew on a unit ([`Lending::lent_at_give`]) is never netted: it left
+    /// before any order of the unit's own could spend it, and the column already reads the unit's
+    /// silver from that point on without it (`forecast_unit`, `ah-fj2l`). Netting it against a
+    /// later loan would leave the borrower's fee unlent while its silver is still counted gone,
+    /// a STUDY the purse pays shown as one the unit cannot (`ah-d3in`).
     fn netted(mut self) -> Self {
-        for (lent, borrowed) in self.lends.iter_mut().zip(self.borrows.iter_mut()) {
-            let passed_on = (*lent).min(*borrowed);
+        for ((lent, borrowed), at_give) in self
+            .lends
+            .iter_mut()
+            .zip(self.borrows.iter_mut())
+            .zip(&self.lent_at_give)
+        {
+            let passed_on = (*lent - at_give).max(0).min(*borrowed);
             *lent -= passed_on;
             *borrowed -= passed_on;
         }
@@ -16234,6 +16252,7 @@ impl Lending {
                     {
                         purse.borrows[borrower] += draw.amount;
                         purse.lends[lender] += draw.amount;
+                        purse.lent_at_give[lender] += draw.amount;
                     }
                 }
             }
