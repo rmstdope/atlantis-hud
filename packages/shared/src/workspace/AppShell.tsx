@@ -335,7 +335,7 @@ import {
 } from "../turnReport";
 import { UnitMovementSlot } from "./UnitMovementSlot";
 import { UnitTableDock, type UnitTableDockHandle } from "./UnitTableDock";
-import { foreignUnitsIn, pinForRow, pinLabel } from "./foreignUnits";
+import { foreignSightingsIn, foreignUnitsIn, pinForRow, pinLabel } from "./foreignUnits";
 import { dossierFor } from "../factionDossier";
 import { FloatingFactionDossier, MeasuredFactionDossier } from "./FactionDossierPanel";
 import type { KeepClear, PeekMode } from "./dossierPeek";
@@ -1828,21 +1828,17 @@ export function AppShell({
       // Every other faction's unit standing in a hex seen this turn, in report order (ah-mlls.1).
       // The owner reads exactly as the Other factions list writes it, and choosing one goes the
       // same way as choosing an own unit - its hex, its level, and the unit selected there.
-      foreignUnits: (parsed?.regions ?? []).flatMap((region) =>
-        region.units
-          .filter((candidate) => !candidate.own)
-          .map((candidate) => {
-            // Null only for an own unit, which the filter above has already left out.
-            const pin = pinForRow(candidate) ?? ({ kind: "hidden" } as const);
-            return {
-              regionId: region.regionId,
-              unitId: candidate.unitId,
-              name: candidate.name,
-              faction: { label: pinLabel(pin), concealed: pin.kind === "hidden" },
-              run: () => goToUnit(candidate.unitId, "report", region.regionId)
-            };
-          })
-      ),
+      foreignUnits: (parsed ? foreignSightingsIn(parsed) : []).map(({ regionId, unit: candidate }) => {
+        // Null only for an own unit, which `foreignSightingsIn` never returns.
+        const pin = pinForRow(candidate) ?? ({ kind: "hidden" } as const);
+        return {
+          regionId,
+          unitId: candidate.unitId,
+          name: candidate.name,
+          faction: { label: pinLabel(pin), concealed: pin.kind === "hidden" },
+          run: () => goToUnit(candidate.unitId, "report", regionId)
+        };
+      }),
       staleUnits: model.hexes.flatMap((hex) =>
         hex.knowledge !== "stale"
           ? []

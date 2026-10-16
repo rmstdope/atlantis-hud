@@ -66,7 +66,7 @@ test("the palette finds another faction's unit and goes to it", async ({ page })
 
   await expect(page.getByTestId("command-palette")).toHaveCount(0);
   await expect(page.getByTestId("panel-unit")).toContainText("AactLO");
-  await expect(page.getByTestId("panel-region")).toContainText("Cebo");
+  await expect(page.getByTestId("panel-region")).toContainText("(10,50)");
 
   // The owner is shown when the report does not name it, and the faction's name finds nothing.
   await page.keyboard.press("ControlOrMeta+k");
