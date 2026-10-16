@@ -1,14 +1,19 @@
+import { readFileSync } from "node:fs";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ROW_PITCH } from "../mapViewport";
 import { aHexView } from "./hexViewFixture";
 import {
+  COORDS_CLEARANCE_PX,
   COORDS_TOP_INSET,
   CoordsTail,
   coordsTopY,
   drawsHexCoordinates,
-  HexCoordsLayer
+  HexCoordsLayer,
+  markRoom,
+  stepDownBy,
+  StepsDown
 } from "./hexCoords";
 import { radii } from "./geometry";
 import type { HexView } from "./hexView";
@@ -100,5 +105,71 @@ describe("the coordinates after a settlement's name", () => {
 
   it("add nothing while the switch is off", () => {
     expect(renderToStaticMarkup(<CoordsTail coords={null} />)).toBe("");
+  });
+});
+
+describe("a mark in the coordinates' way steps down beneath them (ah-qf24)", () => {
+  const coordsTop = -ROW_PITCH + radii(COORDS_TOP_INSET);
+
+  it("measures how far below the coordinates' top a mark already begins", () => {
+    expect(markRoom({ y: coordsTop + 3 })).toBeCloseTo(3);
+    expect(markRoom({ y: coordsTop })).toBeCloseTo(0);
+  });
+
+  it("drops by nothing when the mark already sits clear, at the closest zoom", () => {
+    expect(stepDownBy({ y: coordsTop + COORDS_CLEARANCE_PX }, 1)).toBe(0);
+    expect(stepDownBy({ y: coordsTop + 10 }, 4)).toBe(0);
+  });
+
+  it("drops just far enough to clear the coordinates, further the further out the zoom", () => {
+    const top = { y: coordsTop + 1 };
+    expect(stepDownBy(top, 4)).toBeCloseTo(COORDS_CLEARANCE_PX / 4 - 1);
+    expect(stepDownBy(top, 1)).toBeCloseTo(COORDS_CLEARANCE_PX - 1);
+    expect(stepDownBy(top, 0.7)).toBeGreaterThan(stepDownBy(top, 1));
+  });
+
+  it("counts screen-constant lettering reaching above the mark's anchor", () => {
+    expect(stepDownBy({ y: coordsTop + 1, abovePx: 8 }, 2)).toBeCloseTo(
+      (COORDS_CLEARANCE_PX + 8) / 2 - 1
+    );
+  });
+
+  it("is the clearance the stylesheet steps marks down by, in the bands the coordinates show", () => {
+    const css = readFileSync(new URL("../../theme.css", import.meta.url), "utf8");
+    expect(css).toContain(".map-mid .map-steps-down,\n.map-near .map-steps-down:not([data-named])");
+    expect(css).toContain(`(${COORDS_CLEARANCE_PX}px + var(--mark-above, 0px))`);
+  });
+
+  it("wraps the mark only while its hex carries coordinates", () => {
+    const mark = <circle data-mark="battle" r={2} />;
+    const plain = draw(
+      <StepsDown view={PLAIN} named={false} top={{ y: coordsTop + 1, abovePx: 7 }}>
+        {mark}
+      </StepsDown>
+    );
+    expect(plain).toContain('class="map-steps-down"');
+    expect(plain).toContain("data-steps-down");
+    expect(plain).toContain("--mark-room:1px");
+    expect(plain).toContain("--mark-above:7px");
+    expect(plain).not.toContain("data-named");
+    expect(plain).toContain('data-mark="battle"');
+
+    const named = draw(
+      <StepsDown view={NAMED} named top={{ y: coordsTop + 1 }}>
+        {mark}
+      </StepsDown>
+    );
+    expect(named).toContain('data-named="true"');
+    expect(named).toContain("--mark-above:0px");
+
+    for (const view of [OFF, null]) {
+      const bare = draw(
+        <StepsDown view={view} named={false} top={{ y: coordsTop }}>
+          {mark}
+        </StepsDown>
+      );
+      expect(bare).not.toContain("data-steps-down");
+      expect(bare).toContain('data-mark="battle"');
+    }
   });
 });
