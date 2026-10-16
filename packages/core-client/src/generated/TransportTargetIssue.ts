@@ -34,4 +34,11 @@ orderIndex: number,
  * The distance and the limit, for the two reach refusals. `None` for every other reason,
  * whose sentence names no number (`ah-7ale.2.1`).
  */
-reach: TransportReach | null, };
+reach: TransportReach | null, 
+/**
+ * The order named a unit number that appears nowhere in the report, as
+ * [`TransportSent::to_unshown`] says for a shipment. `false` for a unit the report shows,
+ * whatever its verdict: the SILVER working tells "your report does not show" apart from "may
+ * not accept it" by this, since both reach it as `EligibilityUnknown` (`ah-9qzs`).
+ */
+toUnshown: boolean, };

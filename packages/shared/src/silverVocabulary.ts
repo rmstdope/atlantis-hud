@@ -1196,12 +1196,14 @@ export const SILVER_CAUSE_LABELS: Readonly<Record<Exclude<SilverChangeCause, "to
   worked: "worked",
   entertained: "entertained",
   "was-given": "was given",
+  received: "received",
   took: "took",
   bought: "bought",
   studied: "studied",
   "cast-spent": "paid to cast",
   "production-spent": "spent producing",
   "gave-away": "gave away",
+  sent: "sent",
   discarded: "given to nobody",
   lent: "lent",
   "was-taken": "was taken",
@@ -1223,8 +1225,8 @@ export function silverCauseLabel(cause: string): string {
 }
 
 /**
- * The causes that moved this unit's silver, one group per cause, except gifts which are grouped by
- * giver. Each group stays in the position of its first entry - the turn's own order, because
+ * The causes that moved this unit's silver, one group per cause, except gifts and shipments
+ * received, which are grouped by sender. Each group stays in the position of its first entry - the turn's own order, because
  * `UnitSilver.changes` is in it.
  *
  * `took` and `took-unshown` merge into one group, keyed `took`: they are one event to a reader, and
@@ -1235,7 +1237,8 @@ export function silverCauseGroups(changes: readonly SilverChange[]): SilverCause
   const byCause = new Map<string, Map<string, SilverCauseGroup>>();
   for (const change of changes) {
     const key = change.cause === "took-unshown" ? "took" : change.cause;
-    const source = key === "was-given" ? (change.other ?? "") : "";
+    // A gift or a shipment received is a line per sender, so two senders never read as one.
+    const source = key === "was-given" || key === "received" ? (change.other ?? "") : "";
     let bySource = byCause.get(key);
     if (!bySource) {
       bySource = new Map();

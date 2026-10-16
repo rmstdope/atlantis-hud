@@ -141,6 +141,12 @@ export type PopupLine = {
    * made, so `popupAsText` reads nothing for it.
    */
   struck?: true;
+  /**
+   * Silver a TRANSPORT would send that the forecast could not count (`ah-9qzs`): the whole line is
+   * drawn dimmed and italic, and it is in no total. Decoration, like `struck`: its label already
+   * says "not counted", so `popupAsText` reads nothing for it.
+   */
+  uncounted?: true;
 };
 
 /** What one column's popup shows. */
@@ -1876,7 +1882,7 @@ function silverCauseWhy(
   const others = (entries: readonly SilverChange[]): string[] =>
     entries.map((entry) => entry.other).filter((other): other is string => other !== null);
 
-  if (group.cause === "was-given") {
+  if (group.cause === "was-given" || group.cause === "received") {
     const from = others(group.entries);
     if (from.length > 0) {
       parts.push(`from ${andList(from)}`);
@@ -1890,7 +1896,7 @@ function silverCauseWhy(
     if (unshown.length > 0) {
       parts.push(`from ${andList(unshown)}, which your report does not show`);
     }
-  } else if (group.cause === "gave-away") {
+  } else if (group.cause === "gave-away" || group.cause === "sent") {
     const to = others(group.entries);
     if (to.length > 0) {
       parts.push(`to ${andList(to)}`);
@@ -2137,6 +2143,12 @@ function silverBody(unit: PreviewedUnit, facts: PopupFacts): Body {
       ...(conditionalWhy === undefined ? {} : { why: conditionalWhy })
     });
   }
+  // What a TRANSPORT would send but the forecast kept with this unit, after every counted line and
+  // before maintenance, which `rules/sequenceofevents` runs after transport (`ah-9qzs`).
+  // A doubted month lists no working at all (`silver.changes` is empty), so it has none either.
+  if (silver.doubt === null) {
+    lines.push(...uncountedSilverShipments(unit));
+  }
   // Directly above the upkeep row: what faction-mates paid of this unit's fee, or what it paid of
   // theirs (`ah-2zku`).
   for (const group of upkeepShares) {
@@ -2201,7 +2213,52 @@ export function popupLabelInk(line: PopupLine): string {
     // What a refused cast would have made: struck through and dimmed, whole (`ah-44at`).
     return "text-ink-dim line-through";
   }
+  if (line.uncounted) {
+    // Silver the forecast could not count, set apart from every counted line (`ah-9qzs`).
+    return UNCOUNTED_INK;
+  }
   return line.stress === "deciding" ? "text-brass" : line.stress === "aside" ? "text-ink-dim" : "";
+}
+
+/** How a line's value is drawn, on the right: the counterpart of `popupLabelInk`. */
+export function popupValueInk(line: PopupLine): string {
+  if (line.struck) {
+    return "text-ink-dim line-through";
+  }
+  if (line.uncounted) {
+    return UNCOUNTED_INK;
+  }
+  return line.stress === "aside" ? "text-ink-dim" : "text-ink-soft";
+}
+
+const UNCOUNTED_INK = "text-ink-dim italic";
+
+/**
+ * One dimmed `not counted` line per silver TRANSPORT the forecast could not count, in document
+ * order (`ah-9qzs`, the agreed words): a target the report does not show, or another faction's
+ * unit whose eligibility or acceptance it cannot settle (`rules/transport`). The forecast keeps
+ * that silver with the sender, so the line is in no total; its amount is the issue's, the same
+ * figure the "Could not count ..." sentence beneath the unit states.
+ *
+ * A certain refusal, a reach issue, other goods, an order over several tags (empty `tag`) or one
+ * that moves nothing draws no line.
+ */
+export function uncountedSilverShipments(unit: PreviewedUnit): PopupLine[] {
+  return (unit.transportTargetIssues ?? [])
+    .filter(
+      (issue) =>
+        issue.tag.toUpperCase() === "SILV" &&
+        issue.amount > 0 &&
+        (issue.reason === "eligibilityUnknown" || issue.reason === "acceptanceUnknown")
+    )
+    .map((issue) => ({
+      label: "not counted",
+      value: `(\u2212${issue.amount})`,
+      why: `sent to unit ${issue.to}, ${
+        issue.toUnshown ? "which your report does not show" : "which may not accept it"
+      }`,
+      uncounted: true
+    }));
 }
 
 export function popupAsText(popup: ColumnPopup): string {

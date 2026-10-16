@@ -1,5 +1,5 @@
 import type { ColumnPopup, PopupLine, PopupStep } from "../unitCellPopup";
-import { popupLabelInk } from "../unitCellPopup";
+import { popupLabelInk, popupValueInk } from "../unitCellPopup";
 import type { Point } from "../unitTooltip";
 import { UnfinishedMark } from "./UnfinishedMark";
 import { TooltipPortal } from "./TooltipPortal";
@@ -79,9 +79,7 @@ export function PopupLineLabel({ line }: { line: PopupLine }) {
 export function PopupLineValue({ line }: { line: PopupLine }) {
   return (
     <span
-      className={`tabular-nums ${
-        line.struck ? "text-ink-dim line-through" : line.stress === "aside" ? "text-ink-dim" : "text-ink-soft"
-      }`}
+      className={`tabular-nums ${popupValueInk(line)}`}
     >
       {line.unfinished === "value" ? <UnfinishedMark /> : null}
       {line.steps ? (
