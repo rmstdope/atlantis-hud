@@ -4017,8 +4017,14 @@ export function AppShell({
     () =>
       dossier === null || parsed === null
         ? null
-        : dossierFor(parsed, parsed.header.attitudes ?? null, dossier.factionId, model.hexes),
-    [dossier, parsed, model]
+        : dossierFor(
+            parsed,
+            parsed.header.attitudes ?? null,
+            dossier.factionId,
+            model.hexes,
+            mergedReports
+          ),
+    [dossier, parsed, model, mergedReports]
   );
 
   // Memoised and gated on the dossier being open, exactly as `tradeArrow` is: a closed panel must

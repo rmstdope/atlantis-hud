@@ -1,5 +1,5 @@
 import type { DeclaredAttitudes, ParsedReport } from "@atlantis/core-client";
-import type { MemoryHex } from "./paletteFactions";
+import { mergedUnits, type MemoryHex } from "./paletteFactions";
 
 /** One hex a faction has been seen in this turn, and how many of its units stand there. */
 export type DossierHex = {
@@ -53,7 +53,8 @@ export function dossierFor(
   parsed: ParsedReport,
   attitudes: DeclaredAttitudes | null,
   factionId: string,
-  memory: readonly MemoryHex[] = []
+  memory: readonly MemoryHex[] = [],
+  merged: readonly { mergedFactionId: string; mergedFactionName: string }[] = []
 ): FactionDossier {
   const hexes: DossierHex[] = [];
   const units: DossierUnit[] = [];
@@ -72,13 +73,38 @@ export function dossierFor(
     }
   }
 
-  const recalled = units.length === 0 ? recall(memory, factionId) : { name: null, lastSeen: [] };
+  // A merged ally's report puts units on this turn's map that `parsed` never holds. They count
+  // as seen this turn - for "Seen in" and for the Last-seen gate - but not toward `units`, which
+  // the dock's list of their units is counted from.
+  let mergedName: string | null = null;
+  for (const unit of mergedUnits(parsed, memory)) {
+    if (unit.factionId !== factionId) {
+      continue;
+    }
+    mergedName ??= unit.factionName;
+    const hex = hexes.find((candidate) => candidate.regionId === unit.regionId);
+    if (hex) {
+      hex.unitCount += 1;
+    } else {
+      hexes.push({ regionId: unit.regionId, unitCount: 1 });
+    }
+  }
+
+  const recalled = hexes.length === 0 ? recall(memory, factionId) : { name: null, lastSeen: [] };
+  const recordName = merged.find((record) => record.mergedFactionId === factionId)?.mergedFactionName ?? null;
 
   return {
     id: factionId,
     // "Unnamed faction" rather than the bare number, so the panel reads as the palette row that
     // opened it does: `Unnamed faction (95)` (ah-mlls.3).
-    name: declaredName(attitudes, factionId) ?? reportName ?? recalled.name ?? "Unnamed faction",
+    // The palette's order exactly (`paletteFactions`), so a row and the panel it opens agree.
+    name:
+      declaredName(attitudes, factionId) ??
+      reportName ??
+      mergedName ??
+      recordName ??
+      recalled.name ??
+      "Unnamed faction",
     attitude: attitudeToward(attitudes, factionId),
     hexes,
     units,

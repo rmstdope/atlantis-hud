@@ -5,17 +5,34 @@
  * can only render statically (`testing/README.md`, ah-nass).
  */
 
-import type { KnownUnitSighting, ParsedReport } from "@atlantis/core-client";
+import type { KnownUnitSighting, ParsedReport, ReportUnit } from "@atlantis/core-client";
 import { ATLACLIENT_SOURCE_ID } from "./atlaClientImport";
 import { attitudeToward } from "./factionDossier";
 import type { HexKnowledge } from "./hexMapModel";
 
-/** The part of a map hex that remembers units, which is all either reader of memory needs. */
+/** The part of a map hex that holds units, which is all either reader of the map needs. */
 export type MemoryHex = {
   regionId: string;
   knowledge: HexKnowledge;
   rememberedUnits: readonly KnownUnitSighting[];
+  /**
+   * This turn's detail, for a `current` hex. A merged ally's hexes reach this turn's map only here:
+   * the merge writes them into the stored map (`crates/core/src/report/merge.rs`), never into
+   * `parsed`, so a reader of `parsed.regions` alone misses the units they show.
+   */
+  region?: { units: readonly ReportUnit[] } | null;
 };
+
+/**
+ * Units on this turn's map that `parsed` does not hold - those a merged ally's report shows - so
+ * "seen this turn" means the map the player is looking at, not just their own report.
+ */
+export function mergedUnits(parsed: ParsedReport, hexes: readonly MemoryHex[]): ReportUnit[] {
+  const own = new Set(parsed.regions.map((region) => region.regionId));
+  return hexes.flatMap((hex) =>
+    hex.knowledge === "current" && !own.has(hex.regionId) ? [...(hex.region?.units ?? [])] : []
+  );
+}
 
 export type PaletteFaction = {
   factionId: string;
@@ -47,8 +64,12 @@ export function paletteFactions(input: {
   hexes: readonly MemoryHex[];
 }): PaletteFaction[] {
   const { parsed } = input;
-  const attitudes = parsed?.header.attitudes ?? null;
-  const ownId = parsed?.header.factionId ?? null;
+  // No report, no rows: memory alone has no turn to be "earlier" than (ah-mlls.3, the states).
+  if (parsed === null) {
+    return [];
+  }
+  const attitudes = parsed.header.attitudes ?? null;
+  const ownId = parsed.header.factionId ?? null;
   const order: string[] = [];
   const names = new Map<string, string | null>();
   const mergedIds = new Set<string>();
@@ -65,19 +86,17 @@ export function paletteFactions(input: {
   };
 
   if (ownId !== null) {
-    note(ownId, parsed?.header.factionName ?? null);
+    note(ownId, parsed.header.factionName ?? null);
   }
   for (const level of attitudes?.levels ?? []) {
     for (const faction of level.factions) {
       note(faction.id, faction.name);
     }
   }
-  for (const region of parsed?.regions ?? []) {
-    for (const unit of region.units) {
-      if (unit.factionId !== null) {
-        note(unit.factionId, unit.factionName);
-        thisTurnUnits.add(unit.factionId);
-      }
+  for (const unit of [...parsed.regions.flatMap((region) => region.units), ...mergedUnits(parsed, input.hexes)]) {
+    if (unit.factionId !== null) {
+      note(unit.factionId, unit.factionName);
+      thisTurnUnits.add(unit.factionId);
     }
   }
   for (const record of input.merged) {

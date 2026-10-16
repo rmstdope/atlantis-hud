@@ -151,6 +151,33 @@ describe("dossierFor with memory (ah-mlls.3)", () => {
     expect(dossierFor(report(), ATTITUDES, "2", memory).lastSeen).toEqual([]);
   });
 
+  it("treats a unit on this turn's map through a merged report as seen this turn", () => {
+    const withMerged = [
+      ...memory,
+      {
+        regionId: "1:5,5",
+        knowledge: "current" as const,
+        rememberedUnits: [],
+        region: region("1:5,5", [["301", "Drover", "58"]])
+      }
+    ];
+    const dossier = dossierFor(report(), ATTITUDES, "58", withMerged);
+    expect(dossier.lastSeen).toEqual([]);
+    expect(dossier.hexes).toEqual([{ regionId: "1:5,5", unitCount: 1 }]);
+  });
+
+  it("does not count a merged hex twice when this turn's report covers it too", () => {
+    const covered = [{ regionId: "1:8,54", knowledge: "current" as const, rememberedUnits: [], region: region("1:8,54", [["104", "Trader", "2"]]) }];
+    expect(dossierFor(report(), ATTITUDES, "2", covered).hexes).toEqual([
+      { regionId: "1:7,53", unitCount: 2 },
+      { regionId: "1:8,54", unitCount: 1 }
+    ]);
+  });
+
+  it("names a merged ally by its merge record when nothing else names it, as the palette does", () => {
+    expect(dossierFor(report(), ATTITUDES, "60", [], [{ mergedFactionId: "60", mergedFactionName: "Kin" }]).name).toBe("Kin");
+  });
+
   it("remembers nothing without memory", () => {
     expect(dossierFor(report(), ATTITUDES, "58").lastSeen).toEqual([]);
   });

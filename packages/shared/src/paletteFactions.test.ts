@@ -51,6 +51,11 @@ function stale(regionId: string, units: [string, string | null, string | null, n
   };
 }
 
+/** A hex this turn's map shows through a merged ally's report, units as `[unitId, factionId, factionName]`. */
+function merged(regionId: string, units: [string, string, string | null][]): MemoryHex {
+  return { regionId, knowledge: "current", rememberedUnits: [], region: region(regionId, units.map(([u, f, n]) => [u, f, n])) };
+}
+
 describe("paletteFactions", () => {
   it("lists own faction first, then declared, then unit owners, then merged, then memory-only, once each", () => {
     const rows = paletteFactions({
@@ -132,14 +137,29 @@ describe("paletteFactions", () => {
 
   it("adds nothing for a unit concealing its faction, and leaves a nameless faction nameless", () => {
     const rows = paletteFactions({
-      parsed: null,
+      parsed: aParsedReport({ header: { ...aReportHeaderInfo(), factionId: null } }),
       merged: [],
       hexes: [stale("1:1,1", [["9", null, null, 41], ["8", "77", null, 40]])]
     });
     expect(rows).toEqual([{ factionId: "77", name: null, own: false, merged: false, attitude: null, lastSeenTurn: 40 }]);
   });
 
-  it("lists nothing with no report and no memory", () => {
+  it("lists nothing with no report loaded, whatever memory holds", () => {
     expect(paletteFactions({ parsed: null, merged: [], hexes: [] })).toEqual([]);
+    expect(paletteFactions({ parsed: null, merged: [], hexes: [stale("1:1,1", [["9", "58", "G", 41]])] })).toEqual([]);
+  });
+
+  it("counts a faction seen only through a merged ally's report as this turn's", () => {
+    const rows = paletteFactions({
+      parsed: report(),
+      merged: [{ mergedFactionId: "60", mergedFactionName: "Kin" }],
+      hexes: [
+        merged("1:5,5", [["301", "70", "Far Riders"], ["302", "60", "Kin"]]),
+        stale("1:1,1", [["9", "70", "Far Riders", 41], ["8", "60", "Kin", 40]])
+      ]
+    });
+    expect(rows.map((row) => row.factionId)).toEqual(["95", "10", "31", "44", "70", "60"]);
+    expect(rows.find((row) => row.factionId === "70")?.lastSeenTurn).toBeUndefined();
+    expect(rows.find((row) => row.factionId === "60")?.lastSeenTurn).toBeUndefined();
   });
 });
