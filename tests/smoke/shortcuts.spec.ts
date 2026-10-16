@@ -69,6 +69,21 @@ test("the palette goes to a structure's hex, and tells one from a dictionary pag
   await expect(items.filter({ hasText: "building" }).first()).toBeVisible();
 });
 
+/** ah-mlls.2: a settlement has a palette row of its own, found by name, that goes to its hex. */
+test("the palette finds a settlement by name and goes to its hex", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("Inholm");
+  const first = page.getByTestId("palette-item").first();
+  await expect(first).toContainText("Inholm [city] · ");
+  await expect(first).toContainText("settlement");
+  await page.keyboard.press("Enter");
+
+  await expect(page.getByTestId("command-palette")).toHaveCount(0);
+  await expect(page.getByTestId("panel-region")).toContainText("Inholm");
+});
+
 test("the palette finds historical units and map objects", async ({ page }) => {
   await clearGames(page);
   await createGame(page, "Historical palette smoke");
