@@ -12271,7 +12271,12 @@ fn cast(
             from_caster,
             placed,
         );
-        if from_caster != 0 {
+        // An enchantment or a transmutation that makes none consumes none (`RunEnchant`,
+        // `RunTransmutation`: `num` items, `num * amt` taken). Its one-item charge above is only
+        // there to keep `not-enough-items` firing (`plan_cast`, R2), so it is never shown in the
+        // ITEMS hover as material the spell used up (`ah-ryry`).
+        let consumes = plan.per_cast || plan.made > 0;
+        if from_caster != 0 && consumes {
             ledger.movements.push(ItemMovement {
                 unit_id: who.clone(),
                 tag: material.tag.to_ascii_uppercase(),
@@ -12279,7 +12284,11 @@ fn cast(
                 // What a cast consumes leaves at the ceiling, because that is what the ledger was
                 // charged: the ITEMS column, the SILVER column and `not-enough-items` must read one
                 // number (`ah-ofpb.5`, round 1 Q4). `plan.materials` is already `charged` times the
-                // per-item amount - less what a sharer supplied, which is on its row.
+                // per-item amount - less what a sharer supplied, which is on its row. The one
+                // exception is the guard above: an enchantment or transmutation that makes none is
+                // charged one for the warning and shows nothing consumed, so there the warning's
+                // "its orders spend" reads one more than the hover (`ah-ryry`). Do not restore the
+                // movement to make them agree - the game consumes none.
                 delta: -from_caster,
                 cause: ItemChangeCause::CastSpent,
                 phase: StatePhase::Cast,
@@ -36934,15 +36943,40 @@ BUILD
                     "a mage with nothing to enchant should record no arrival: {:?}",
                     ledger.movements
                 );
+                // `RunEnchant` consumes one per item made, so none here: the one-item charge that
+                // keeps `not-enough-items` firing is not a movement the ITEMS hover shows
+                // (`ah-ryry`).
                 assert!(
                     ledger
                         .movements
                         .iter()
-                        .any(|movement| movement.tag == "SWOR" && movement.delta == -1),
-                    "the material charge still moves even though nothing arrives: {:?}",
+                        .all(|movement| movement.tag != "SWOR"),
+                    "an enchantment that makes nothing consumes nothing: {:?}",
                     ledger.movements
                 );
             });
+        }
+
+        /// `ah-ryry`, the transmutation path of the same guard: `RunTransmutation` consumes one
+        /// source per output made (`data/TRNS`: iron into mithril), so a transmuter holding no
+        /// iron consumes none.
+        #[test]
+        fn a_transmutation_with_no_source_records_no_consumption() {
+            let hex_region = region(vec![with_skill(unit("5"), "TRNS", 1)]);
+            with_ledger(
+                hex_region,
+                "unit 5\nCAST Transmutation mithril\n",
+                |ledger| {
+                    assert!(
+                        ledger
+                            .movements
+                            .iter()
+                            .all(|movement| movement.cause != ItemChangeCause::CastSpent),
+                        "a transmutation that makes nothing consumes nothing: {:?}",
+                        ledger.movements
+                    );
+                },
+            );
         }
 
         /// A level 3 create-runesword mage is 90 x 3 = 270 percent: two runeswords certain and a 70
