@@ -6,6 +6,7 @@ import {
   type PaletteEntry
 } from "../commandPalette";
 import { useEscapeToDismiss } from "./dismissLayer";
+import { factionRow } from "./paletteFactionRow";
 
 /**
  * The command palette: one input over everything reachable by name.
@@ -136,43 +137,57 @@ export function CommandPalette({
           aria-label="matches"
           className="m-0 mt-1 max-h-[70vh] list-none overflow-y-auto p-0"
         >
-          {shown.map((entry, at) => (
-            <li key={entry.id} role="presentation">
-              <button
-                type="button"
-                role="option"
-                aria-selected={at === active}
-                data-testid="palette-item"
-                // Selection follows the pointer the way it follows the arrows - but on real
-                // movement only. `pointerenter` also fires when a row scrolls *under* a
-                // stationary mouse, so on an uncapped list (ah-yk6b) arrowing down would scroll
-                // a row beneath the pointer and hand the highlight straight back to it.
-                onPointerMove={() => {
-                  byKeyboard.current = false;
-                  setIndex(at);
-                }}
-                onClick={() => run(entry)}
-                className={`flex w-full items-baseline justify-between gap-2 rounded px-2 py-1 text-left ${
-                  at === active ? "bg-edge/40 text-ink" : "text-ink-soft"
-                }`}
-              >
-                <span className="min-w-0 truncate">{entry.label}</span>
-                <span className="flex shrink-0 items-baseline gap-2">
-                  {entry.lastSeenTurn !== undefined ? (
-                    <span className="text-pane-sm text-brass-bright">
-                      last seen turn {entry.lastSeenTurn}
-                    </span>
-                  ) : null}
-                  <span className="text-pane-sm uppercase tracking-[0.08em] text-ink-dim">
-                    {entry.kind === "order-help" ? "order" : entry.kind}
+          {shown.map((entry, at) => {
+            const faction = entry.kind === "faction" ? factionRow(entry) : null;
+            return (
+              <li key={entry.id} role="presentation">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={at === active}
+                  data-testid="palette-item"
+                  // Selection follows the pointer the way it follows the arrows - but on real
+                  // movement only. `pointerenter` also fires when a row scrolls *under* a
+                  // stationary mouse, so on an uncapped list (ah-yk6b) arrowing down would scroll
+                  // a row beneath the pointer and hand the highlight straight back to it.
+                  onPointerMove={() => {
+                    byKeyboard.current = false;
+                    setIndex(at);
+                  }}
+                  onClick={() => run(entry)}
+                  title={faction?.title}
+                  className={`flex w-full items-baseline justify-between gap-2 rounded px-2 py-1 text-left ${
+                    at === active ? "bg-edge/40 text-ink" : "text-ink-soft"
+                  }`}
+                >
+                  {/* The name is what shortens in a narrow window; the date, the attitude and the
+                      kind word on the right are shrink-0 and always stay whole (ah-mlls.3). */}
+                  <span className={`min-w-0 truncate ${faction?.labelClassName ?? ""}`}>
+                    {entry.label}
+                    {faction?.mark}
                   </span>
-                  {entry.binding ? (
-                    <span className="font-mono text-pane-sm text-ink-dim">{entry.binding}</span>
-                  ) : null}
-                </span>
-              </button>
-            </li>
-          ))}
+                  <span className="flex shrink-0 items-baseline gap-2">
+                    {entry.lastSeenTurn !== undefined ? (
+                      <span className="text-pane-sm text-brass-bright">
+                        last seen turn {entry.lastSeenTurn}
+                      </span>
+                    ) : null}
+                    {faction ? (
+                      <span className={`text-pane-sm ${faction.attitude.className}`}>
+                        {faction.attitude.word}
+                      </span>
+                    ) : null}
+                    <span className="text-pane-sm uppercase tracking-[0.08em] text-ink-dim">
+                      {entry.kind === "order-help" ? "order" : entry.kind}
+                    </span>
+                    {entry.binding ? (
+                      <span className="font-mono text-pane-sm text-ink-dim">{entry.binding}</span>
+                    ) : null}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
           {shown.length === 0 ? (
             <li className="px-2 py-1 text-ink-dim">nothing matches</li>
           ) : null}
