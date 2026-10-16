@@ -32,4 +32,12 @@ export {
   type NewAgeSkill,
   type NewAgeSkillLevel
 } from "./newage";
-export { catalogueDataPage, catalogueInput, WORLDS, worldById, type CatalogueSource, type ScrapedWorld } from "./worlds";
+export {
+  catalogueDataPage,
+  WORLDS,
+  worldBuildInput,
+  worldById,
+  type CatalogueSource,
+  type ScrapedWorld,
+  type WorldSources
+} from "./worlds";

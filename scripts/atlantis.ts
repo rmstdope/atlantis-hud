@@ -21,7 +21,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import { pid } from "node:process";
 import { fileURLToPath } from "node:url";
 import type { Ruleset, ScrapedWorld } from "@atlantis/ruleset";
-import { buildRuleset, catalogueDataPage, catalogueInput, preformattedText, WORLDS, worldById } from "@atlantis/ruleset";
+import { buildRuleset, catalogueDataPage, preformattedText, WORLDS, worldBuildInput, worldById } from "@atlantis/ruleset";
 import type { RefreshOutcome, WorldRefresh } from "./atlantisRefresh";
 import {
   dataEntries,
@@ -367,14 +367,15 @@ function compareCollection(
 /** Compares one world's committed ruleset to what its own committed sources generate. */
 function verifyWorld(world: ScrapedWorld, io: Io): boolean {
   const committed = JSON.parse(io.readFile(world.rulesetPath)) as Ruleset;
-  const built = buildRuleset({
-    rulesHtml: io.readFile(world.rulesFixture),
-    ...catalogueInput(world.catalogueSource, io.readFile(world.catalogueFixture)),
-    rulesUrl: committed.source.rulesUrl,
-    dataUrl: committed.source.dataUrl,
-    orderLanguage: world.orderLanguage,
-    fetchedAt: committed.source.fetchedAt
-  });
+  const built = buildRuleset(
+    worldBuildInput({
+      catalogueSource: world.catalogueSource,
+      orderLanguage: world.orderLanguage,
+      rulesHtml: io.readFile(world.rulesFixture),
+      catalogue: io.readFile(world.catalogueFixture),
+      source: committed.source
+    })
+  );
 
   const disagreements: string[] = [];
   let anyDisagree = false;

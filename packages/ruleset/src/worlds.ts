@@ -9,6 +9,7 @@
 import { newAgeDataPage, newAgeSkillUses, parseNewAgeDatabase } from "./newage";
 import type { SkillUse } from "./generated/SkillUse";
 import type { OrderLanguage } from "./generated/OrderLanguage";
+import type { BuildInput } from "./build";
 
 /** Where a world's catalogue comes from: an HTML data page, or a JSON database. */
 export type CatalogueSource = "data-page" | "database";
@@ -77,11 +78,9 @@ export function catalogueDataPage(source: CatalogueSource, catalogue: string): s
 
 /**
  * What `buildRuleset` reads from a world's catalogue: the data page, and - for a world serving a
- * JSON database - how each spell is used, from the database's own flags. Spread into the build by
- * the CLI, `atlantis verify` and the committed-ruleset test alike, so none of them can drop the
- * flags the others use.
+ * JSON database - how each spell is used, from the database's own flags.
  */
-export function catalogueInput(
+function catalogueInput(
   source: CatalogueSource,
   catalogue: string
 ): { dataHtml: string; skillUses?: Record<string, SkillUse> } {
@@ -90,6 +89,34 @@ export function catalogueInput(
   }
   const database = parseNewAgeDatabase(catalogue);
   return { dataHtml: newAgeDataPage(database), skillUses: newAgeSkillUses(database) };
+}
+
+/** Everything a world's ruleset is built from, as its caller has it in hand. */
+export type WorldSources = {
+  catalogueSource: CatalogueSource;
+  orderLanguage: OrderLanguage;
+  rulesHtml: string;
+  /** The catalogue as served: an HTML data page, or a New Age JSON database. */
+  catalogue: string;
+  /** What the ruleset's `source` block will say: fetched now, or carried from a committed file. */
+  source: { rulesUrl: string; dataUrl: string; fetchedAt: string };
+};
+
+/**
+ * The whole `BuildInput` for a world, from its sources. The scrape CLI, `atlantis verify` and the
+ * committed-ruleset test each pass this straight to `buildRuleset`, so a new build input is added
+ * here once and reaches all three - none of them can drop one the others use.
+ */
+export function worldBuildInput(sources: WorldSources): BuildInput {
+  const { rulesUrl, dataUrl, fetchedAt } = sources.source;
+  return {
+    rulesHtml: sources.rulesHtml,
+    ...catalogueInput(sources.catalogueSource, sources.catalogue),
+    rulesUrl,
+    dataUrl,
+    orderLanguage: sources.orderLanguage,
+    fetchedAt
+  };
 }
 
 /** The world with this id, or `null`. */

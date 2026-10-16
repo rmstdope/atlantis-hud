@@ -32,7 +32,7 @@ import { isAbsolute, resolve } from "node:path";
 import { argv, exit, pid } from "node:process";
 import { pathToFileURL } from "node:url";
 import { buildRuleset } from "./build";
-import { catalogueInput } from "./worlds";
+import { worldBuildInput } from "./worlds";
 import type { OrderLanguage } from "./generated/OrderLanguage";
 import { RulesetScrapeError } from "./rules";
 
@@ -154,14 +154,15 @@ export async function main(): Promise<void> {
     : { rulesUrl, dataUrl: catalogueUrl, fetchedAt: new Date().toISOString() };
 
   const [rulesHtml, catalogueText] = await Promise.all([load(rulesUrl), load(catalogueUrl)]);
-  const catalogue = catalogueInput(databaseUrl ? "database" : "data-page", catalogueText);
-
-  const ruleset = buildRuleset({
-    rulesHtml,
-    ...catalogue,
-    ...source,
-    orderLanguage: orderLanguage as OrderLanguage
-  });
+  const ruleset = buildRuleset(
+    worldBuildInput({
+      catalogueSource: databaseUrl ? "database" : "data-page",
+      orderLanguage: orderLanguage as OrderLanguage,
+      rulesHtml,
+      catalogue: catalogueText,
+      source
+    })
+  );
 
   // pathToFileURL rather than hand-building `file://${cwd()}`: a working directory containing a
   // `#` or `?` silently truncates a hand-built URL, writing to a different directory entirely.
