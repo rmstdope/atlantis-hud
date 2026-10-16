@@ -10,9 +10,9 @@ mountain (43,81) in Derngill, contains Onthead [city], 10418 peasants
 ------------------------------------------------------------
 
 - L Justinian (7310), Mantzikert (39), behind, revealing faction,
-  sharing, consuming faction's food, 1 leader [LEAD]. Weight: 10.
+  sharing, consuming faction's food, leader [LEAD]. Weight: 10.
   Capacity: 0/0/15/0. Skills: force [FORC] 2 (120).
 - L Phocas (7722), Mantzikert (39), behind, revealing faction,
-  sharing, consuming faction's food, 1 leader [LEAD]. Weight: 10.
+  sharing, consuming faction's food, leader [LEAD]. Weight: 10.
   Capacity: 0/0/15/0. Skills: force [FORC] 1 (60).
 

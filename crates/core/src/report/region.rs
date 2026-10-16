@@ -16,13 +16,14 @@
 //!   - Eastern Watch (14353), on guard, Elder Tree Forests (32), 120 hill dwarves [HDWA].
 //! ```
 
+use super::item_text::parse_item_amount;
 use super::model::{
     Exit, ItemAmount, MarketItem, ReportRegion, Structure, UnitRead, UnreadableKind,
     UnreadableLine, VesselEntry,
 };
 use super::scan::{
-    is_none_list, parse_coordinate, parse_item_amount, parse_market_item, parse_money,
-    parse_settlement, split_top_level,
+    is_none_list, parse_coordinate, parse_market_item, parse_money, parse_settlement,
+    split_top_level,
 };
 use super::unit::parse_unit;
 use super::unwrap::LogicalLine;
