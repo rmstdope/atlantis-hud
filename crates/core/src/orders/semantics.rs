@@ -1733,6 +1733,9 @@ fn market_shares_for(
     // lone `SELL 200` of 200 into a line of 100 is still told so, and a lone `SELL 200` of 10
     // into a line of 110, which the game sells in full, is not.
     let mut stated_sales: BTreeMap<String, Vec<i64>> = BTreeMap::new();
+    // What every buyer's bounded orders ask for as written, before `GetBuyAmount` cuts each to
+    // the line: what the oversubscription warning states, as `stated_sales` is for a seller.
+    let mut stated_buys: BTreeMap<String, Vec<i64>> = BTreeMap::new();
     let sharing_for_sales = Sharing::read(hex);
 
     for (index, ordered) in hex.units.iter().enumerate() {
@@ -1827,7 +1830,22 @@ fn market_shares_for(
                     attempt.min(cut)
                 }
                 (Intent::Buy { amount, .. }, _) => match amount {
-                    Amount::Exact(count) => *count,
+                    // `Game::GetBuyAmount` cuts the order to the line's own amount before
+                    // `Game::DoBuy` divides the line by it, so a `BUY 200` where 100 are for sale
+                    // squeezes the others by 100, not 200 (`ah-s4hy`). The warning still states
+                    // the order as written: overshooting a stated number is a real mistake.
+                    Amount::Exact(count) => {
+                        let stated = stated_buys
+                            .entry(tag.clone())
+                            .or_insert_with(|| vec![0; hex.units.len()]);
+                        stated[index] = stated[index].saturating_add((*count).max(0));
+                        // Settled even when the cut leaves nothing: a line of none for sale
+                        // buys none, rather than falling back to the order (`ah-s4hy`).
+                        wants
+                            .entry((tag.clone(), side))
+                            .or_insert_with(|| vec![0; hex.units.len()]);
+                        (*count).min(pool)
+                    }
                     // An unbounded order attempts to buy everything there is, so that is what it
                     // contends for. What it can afford is not known until the deferred pass, which
                     // runs after this settlement must. Recorded rather than added: see
@@ -1874,10 +1892,14 @@ fn market_shares_for(
             // claims the line rather than the line plus three (`ah-lauy`). A unit that writes
             // `BUY 200` where 100 exist still overruns: a stated number that overshoots is a real
             // mistake, and an unbounded line states no number at all.
+            let mut stated_buying = stated_buys.get(&tag).cloned();
             if matches!(side, MarketSide::Buying) {
                 if let Some(buyers) = unbounded.get(&tag) {
                     for index in buyers {
                         claims[*index] = claims[*index].max(pool);
+                        if let Some(stated) = stated_buying.as_mut() {
+                            stated[*index] = stated[*index].max(pool);
+                        }
                     }
                 }
             }
@@ -1889,7 +1911,7 @@ fn market_shares_for(
             // (`ah-6la1`); a purchase in its claims.
             let stated = match side {
                 MarketSide::Selling => stated_sales.get(&tag).unwrap_or(&claims),
-                MarketSide::Buying => &claims,
+                MarketSide::Buying => stated_buying.as_ref().unwrap_or(&claims),
             };
             let wanted: i64 = stated.iter().copied().fold(0, i64::saturating_add);
             if wanted > pool {
@@ -32884,6 +32906,24 @@ mod tests {
             assert_eq!(silver_of(&review, "2390").expense, Some(6000));
         }
 
+        /// `ah-s4hy`, the buying twin of `ah-6la1`. `Game::GetBuyAmount` (`runorders.cpp`) cuts
+        /// every order to the line's own amount - "BUY: Unit attempted to buy more than were for
+        /// sale." - before `Game::DoBuy` divides the line by the cut orders. BUY 200 then BUY 50
+        /// against 100 for sale is therefore 100 + 50 attempted: 100 * 100 / 150 = 66.67, most
+        /// often 67, and the last buyer the other 33 - not the 80 and 20 a claim of 200 wins.
+        #[test]
+        fn a_purchase_larger_than_the_line_claims_only_the_line() {
+            let review = market_review(
+                vec![],
+                vec![line(100, 10)],
+                vec![trader("2390", 0, 20_000), trader("2391", 0, 20_000)],
+                "unit 2390\nBUY 200 horse\nunit 2391\nBUY 50 horse\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").expense, Some(67 * 10));
+            assert_eq!(silver_of(&review, "2391").expense, Some(33 * 10));
+        }
+
         #[test]
         fn two_buyers_split_what_the_market_has() {
             let review = market_review(
@@ -35239,6 +35279,9 @@ BUILD
                             .find(|m| m.unit_id == id && m.tag == "HORS")
                             .cloned()
                     };
+                    // `Game::GetBuyAmount` cuts the BUY 20 to the line's 12 before dividing
+                    // (`ah-s4hy`): 12 * 12 / 22 = 6.55, most often 7, and the last buyer the
+                    // other 5 (`ah-alwr`).
                     assert_eq!(
                         movement_for("2390"),
                         Some(ItemMovement {
@@ -35247,7 +35290,7 @@ BUILD
                                 "2390",
                                 "HORS",
                                 "horse",
-                                8,
+                                7,
                                 ItemChangeCause::Bought,
                                 StatePhase::Market,
                                 Some(2),
@@ -35262,7 +35305,7 @@ BUILD
                                 "2391",
                                 "HORS",
                                 "horse",
-                                4,
+                                5,
                                 ItemChangeCause::Bought,
                                 StatePhase::Market,
                                 Some(4),
