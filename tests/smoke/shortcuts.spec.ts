@@ -466,6 +466,56 @@ test("Mod+/ shows how to get around, with the mouse as well as the keyboard", as
 });
 
 /**
+ * ah-ppit: the guide's filter. Opened to be typed into, it narrows every heading at once, says how
+ * many rows are left, says so when none is, and Escape clears it before it closes the guide.
+ */
+test("the guide's filter narrows the moves, and Escape clears it before closing", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  await page.keyboard.press("ControlOrMeta+/");
+  const help = page.getByTestId("shortcut-help");
+  const filter = page.getByTestId("shortcut-help-filter");
+  await expect(filter).toBeFocused();
+  await expect(page.getByTestId("shortcut-help-count")).toHaveCount(0);
+
+  await page.keyboard.type("army");
+  await expect(page.getByTestId("shortcut-help-count")).toHaveText("3 of 53");
+  const body = page.getByTestId("shortcut-help-body");
+  await expect(body).toContainText("Units");
+  await expect(body).not.toContainText("The map");
+  await expect(body.locator("mark").first()).toHaveText("army");
+
+  await filter.fill("teleport");
+  await expect(page.getByTestId("shortcut-help-count")).toHaveText("0 of 53");
+  await expect(page.getByTestId("shortcut-help-empty")).toContainText(
+    "No move matches “teleport”."
+  );
+  await expect(page.getByTestId("shortcut-help-empty")).toContainText(
+    "Try a shorter word, or clear the filter."
+  );
+  await expect(body.locator("table")).toHaveCount(0);
+
+  // Escape with text typed clears it and keeps the guide open; the next one closes it.
+  await page.keyboard.press("Escape");
+  await expect(help).toBeVisible();
+  await expect(filter).toHaveValue("");
+  await expect(page.getByTestId("shortcut-help-count")).toHaveCount(0);
+  await expect(body).toContainText("Panels and windows");
+
+  await page.keyboard.type("army");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await expect(help).toHaveCount(0);
+
+  // Every opening starts with the whole guide: nothing about the filter is kept.
+  await page.keyboard.press("ControlOrMeta+/");
+  await expect(filter).toHaveValue("");
+  await expect(body).toContainText("Everywhere");
+});
+
+/**
  * The gestures the overlay now advertises, done for real. A cheat sheet that describes a gesture
  * the application does not have is worse than no cheat sheet, and only this can tell.
  */
