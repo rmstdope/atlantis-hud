@@ -41,7 +41,7 @@ function seed(version: number, storeNames: readonly string[], rows: Rows): Promi
     const request = indexedDB.open(gameDatabaseName(DB), version);
     request.onupgradeneeded = () => {
       for (const collection of gameCollections) {
-        if (storeNames.includes(collection.name)) {
+        if ((storeNames as readonly string[]).includes(collection.name)) {
           request.result.createObjectStore(collection.name, { keyPath: [...collection.keyPath] });
         }
       }
@@ -94,13 +94,30 @@ function onDisk(storeName: string): Promise<{ version: number; stores: string[];
 
 const ALL_STORES = gameCollections.map((collection) => collection.name);
 
+/**
+ * The stores versions 6 and 7 had, spelled out rather than read from `gameCollections`: that list
+ * grows with every bump, and an old seed holding a store its version never had would skip the
+ * upgrade's create step for it.
+ */
+const V6_STORES = [
+  "importedTurns",
+  "orderDrafts",
+  "regionSightings",
+  "mergedReports",
+  "hexNotes",
+  "armies",
+  "alliedMages",
+  "studyPlans"
+] as const;
+const V7_STORES = V6_STORES;
+
 function turn(turnNumber: number) {
   return {
     ...BASE,
     factionId: "95",
     turnNumber,
     rawReport: `report ${String(turnNumber)}`,
-    parsedPayloadJson: "{}",
+    parsedPayloadJson: JSON.stringify({ turnHeader: { turnNumber, season: "December" } }),
     warningsPayloadJson: "[]",
     importedAt: STAMP,
     updatedAt: STAMP
@@ -150,10 +167,10 @@ describe("upgrading a game stored before the engine's turn count (ah-m6pw)", () 
   /**
    * Three adjacent turns in every store keyed by turn: moving 70 up lands on the key 71 held a
    * moment ago, and 71 on 72's. Only a walk from the top down keeps one row from overwriting the
-   * next (`rewriteStore`), so a lost or doubled row here is that walk broken.
+   * next (`rewriteStore`): a rewrite from the bottom up leaves one row where there were three.
    */
   it("moves every turn one up, without one turn's move landing on the next", async () => {
-    await seed(6, ALL_STORES, {
+    await seed(6, V6_STORES, {
       importedTurns: [turn(70), turn(71), turn(72)],
       orderDrafts: [draft(70), draft(71), draft(72)],
       mergedReports: [merge(70), merge(71), merge(72)],
@@ -164,10 +181,18 @@ describe("upgrading a game stored before the engine's turn count (ah-m6pw)", () 
     const store = createIndexedDbWebStore(await realCore());
 
     const turns = byTurn(await store.getImportedTurns(DB, GAME));
-    expect(turns.map((row) => [row.turnNumber, row.rawReport])).toEqual([
-      [71, "report 70"],
-      [72, "report 71"],
-      [73, "report 72"]
+    // The key and the report's own header move together, or the turn on screen and the stored
+    // turn disagree.
+    expect(
+      turns.map((row) => [
+        row.turnNumber,
+        (JSON.parse(row.parsedPayloadJson) as { turnHeader: { turnNumber: number } }).turnHeader.turnNumber,
+        row.rawReport
+      ])
+    ).toEqual([
+      [71, 71, "report 70"],
+      [72, 72, "report 71"],
+      [73, 73, "report 72"]
     ]);
     const drafts = byTurn(await store.getOrderDrafts(DB, GAME));
     expect(drafts.map((row) => [row.turnNumber, row.orderText])).toEqual([
@@ -187,12 +212,19 @@ describe("upgrading a game stored before the engine's turn count (ah-m6pw)", () 
    * count; a hex seen earlier just moves.
    */
   it("caps an AtlaClient hex at the newest report, and moves the older one", async () => {
-    await seed(6, ALL_STORES, {
+    await seed(6, V6_STORES, {
       importedTurns: [turn(71)],
-      mergedReports: [merge(71, "atlaclient")],
+      mergedReports: [merge(71, "73"), merge(71, "atlaclient")],
       regionSightings: [sighting("1:1,1", 72), sighting("1:2,2", 70)]
     });
     const store = createIndexedDbWebStore(await realCore());
+
+    // Two merges sharing a turn, told apart only by whose report it was: both move, neither is lost.
+    const merges = await store.getAllMergedReports(DB, GAME);
+    expect(merges.map((row) => `${String(row.turnNumber)} ${row.mergedFactionId}`).sort()).toEqual([
+      "72 73",
+      "72 atlaclient"
+    ]);
 
     const sightings = await store.getAllRegionSightings(DB, GAME);
     expect(
@@ -207,7 +239,7 @@ describe("upgrading a game stored before the engine's turn count (ah-m6pw)", () 
 
 describe("upgrading a game stored on the engine's count, before the AtlaClient cap (ah-vtgk)", () => {
   it("caps the hex, and moves no turn", async () => {
-    await seed(7, ALL_STORES, {
+    await seed(7, V7_STORES, {
       importedTurns: [turn(72)],
       orderDrafts: [draft(72)],
       mergedReports: [merge(72, "atlaclient")],
