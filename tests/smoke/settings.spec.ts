@@ -737,7 +737,7 @@ test.describe("the Columns tab", () => {
     );
 
     // Reached by keyboard, as the agreed experience asks: Tab to it, press Enter.
-    await line.getByRole("button", { name: "Show it" }).focus();
+    await line.getByRole("button", { name: "Show it", exact: true }).focus();
     await page.keyboard.press("Enter");
 
     await expect(page.getByRole("columnheader", { name: /Items/ })).toBeVisible();
