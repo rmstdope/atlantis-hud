@@ -934,6 +934,7 @@ describe("an order row (ah-mlls.6)", () => {
       foreignUnits: [],
       staleUnits: [],
       settlements: [],
+      factions: [],
       regions: [],
       structures: [],
       actions: [{ id: "theme", label: "Toggle theme", run: noop }],
