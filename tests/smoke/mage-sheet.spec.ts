@@ -44,6 +44,50 @@ test("writes every mage out as a sheet an ally can read", async ({ page }, testI
 });
 
 /**
+ * The same export from the command palette (ah-mlls.8). Before a report the row is listed greyed
+ * with its reason and Enter leaves the palette open; with one, Enter saves the sheet the Export
+ * menu's item saves. Only the shell can show the save actually happening.
+ */
+test("exports the mage sheet from the palette", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Palette sheet game");
+
+  const palette = page.getByTestId("command-palette");
+  await page.keyboard.press("ControlOrMeta+k");
+  // Its whole label, so it is the only match and Enter has nothing else to run.
+  await page.getByTestId("palette-input").fill("export mage sheet");
+  await expect(page.getByTestId("palette-item")).toHaveCount(1);
+  const row = page.getByTestId("palette-item");
+  await expect(row).toContainText("needs a report");
+  await expect(row).toHaveAttribute("aria-selected", "false");
+  await expect(row).toHaveAttribute("aria-disabled", "true");
+  await page.keyboard.press("Enter");
+  await expect(palette).toBeVisible();
+  // Playwright will not click an aria-disabled element unforced; a person can, and nothing happens.
+  await row.click({ force: true });
+  await expect(palette).toBeVisible();
+  // And the press left focus in the input, so typing and the arrows still work.
+  await expect(page.getByTestId("palette-input")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(palette).toHaveCount(0);
+
+  await importReport(page, "turn-71.rep", TURN_71);
+  await expect(page.getByTestId("import-status")).toContainText("region");
+
+  await page.keyboard.press("ControlOrMeta+k");
+  // TURN_71 has mages (the first walk in this file exports them), so the row carries no remark.
+  await page.getByTestId("palette-input").fill("export mage sheet");
+  // The only match, so the row Enter runs is this one.
+  await expect(page.getByTestId("palette-item")).toHaveCount(1);
+  await expect(page.getByTestId("palette-item").first()).toHaveText(/^Export mage sheet\s*action$/iu);
+  const downloading = page.waitForEvent("download");
+  await page.keyboard.press("Enter");
+  const download = await downloading;
+  await expect(palette).toHaveCount(0);
+  expect(download.suggestedFilename()).toMatch(/^mages-.+-turn-72\.txt$/u);
+});
+
+/**
  * Reading a sheet back in, in the other faction's workspace (`ah-lyg6.1.2.2`).
  *
  * The one thing that proves the marker in `crates/core/src/report/export.rs` and the one in

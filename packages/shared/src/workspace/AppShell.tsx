@@ -286,6 +286,7 @@ import {
   buildPaletteEntries,
   hexNotePaletteRows,
   mageNotePaletteRows,
+  mageSheetPaletteAction,
   settlementPaletteRows,
   type PaletteInput
 } from "../commandPalette";
@@ -1077,6 +1078,39 @@ export function AppShell({
     setExportError(null);
     setExportOpen(true);
   }, []);
+
+  /**
+   * Writes every mage the faction has out as a report fragment an ally can read back
+   * (`ah-lyg6.1.1`).
+   *
+   * The ruleset is what tells a mage from a woodcutter, so the entry that fires this is off
+   * without one; `mages` would otherwise be empty and the sheet a silent lie.
+   *
+   * Declared up here, beside `openExport`, for the same reason: the command palette's entries
+   * name it (ah-mlls.8), and they are built during render.
+   */
+  const exportMageSheet = useCallback(async () => {
+    if (!rawReport) {
+      return;
+    }
+    setExportError(null);
+    await runReported(
+      async () => {
+        // A cancelled save is silent, exactly as the exporters beside it behave.
+        await deliverMageSheetExport(
+          client,
+          saveTextFile,
+          rawReport,
+          mages.map((mage) => mage.unitId),
+          parsed?.header.factionName ?? null,
+          parsed?.header.factionId ?? null,
+          parsed?.header.turnNumber ?? null
+        );
+      },
+      setExportError,
+      { busy: setExportBusy }
+    );
+  }, [client, mages, parsed, rawReport, saveTextFile]);
 
   // The F8 walk's stop and its pending cross-unit landing.
   //
@@ -2009,6 +2043,14 @@ export function AppShell({
         // Only with a report on screen: an export needs a turn to name itself after and a map to
         // describe, and neither exists before one is imported.
         ...(parsed ? [{ id: "export-map", label: "Export map", run: () => openExport() }] : []),
+        // Never hidden, unlike Export map (ah-mlls.8): greyed, it says what is missing. Gated
+        // exactly as the Export menu's item is, and runs the same export.
+        mageSheetPaletteAction({
+          hasReport: parsed !== null,
+          hasGameData: gameData !== null,
+          mageCount: mages.length,
+          run: () => void exportMageSheet()
+        }),
         // Only when the turn actually had a battle - as with the chip, a command that opens onto
         // nothing is worse than no command at all.
         ...(parsed && parsed.battles.length > 0
@@ -2104,6 +2146,8 @@ export function AppShell({
     game,
     selectedRegionId,
     magicTree,
+    mages,
+    exportMageSheet,
     openExport,
     showOnlyKeyDialog
   ]);
@@ -5336,36 +5380,6 @@ export function AppShell({
     },
     [client, level, parsed, rawReport, rememberedJson, saveTextFile]
   );
-
-  /**
-   * Writes every mage the faction has out as a report fragment an ally can read back
-   * (`ah-lyg6.1.1`).
-   *
-   * The ruleset is what tells a mage from a woodcutter, so the entry that fires this is off
-   * without one; `mages` would otherwise be empty and the sheet a silent lie.
-   */
-  const exportMageSheet = useCallback(async () => {
-    if (!rawReport) {
-      return;
-    }
-    setExportError(null);
-    await runReported(
-      async () => {
-        // A cancelled save is silent, exactly as the exporters beside it behave.
-        await deliverMageSheetExport(
-          client,
-          saveTextFile,
-          rawReport,
-          mages.map((mage) => mage.unitId),
-          parsed?.header.factionName ?? null,
-          parsed?.header.factionId ?? null,
-          parsed?.header.turnNumber ?? null
-        );
-      },
-      setExportError,
-      { busy: setExportBusy }
-    );
-  }, [client, mages, parsed, rawReport, saveTextFile]);
 
   // Its own state rather than the existing `exportError`, which is drawn only inside
   // `MapExportDialog`: an error reported into that one while the planner is open would be shown

@@ -237,6 +237,9 @@ export function CommandPalette({
                     byKeyboard.current = false;
                     setIndex(at);
                   }}
+                  // A press on a greyed row must not take focus from the input (ah-mlls.8): the
+                  // palette stays open, and typing and the arrows must go on working.
+                  onMouseDown={greyed ? (event) => event.preventDefault() : undefined}
                   onClick={() => run(entry)}
                   title={rowTitle(entry)}
                   className={`flex w-full items-baseline gap-2 rounded px-2 py-1 text-left ${

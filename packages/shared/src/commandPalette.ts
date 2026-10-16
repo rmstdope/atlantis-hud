@@ -95,6 +95,18 @@ export type PaletteEntry = {
   run: () => void;
 };
 
+/** An app command, as `PaletteInput.actions` takes it. */
+export type PaletteAction = {
+  id: string;
+  label: string;
+  binding?: string;
+  /** Why the action is greyed right now, or absent when it can be chosen (ah-mlls.7). */
+  unavailable?: string;
+  /** A dim remark on the right, as an Army's count is drawn - the mage sheet's "no mages" (ah-mlls.8). */
+  count?: { text: string; quiet: boolean };
+  run: () => void;
+};
+
 export type PaletteInput = {
   /** The player's named Armies, in the order the units pane's source rail lists them. */
   armies: Array<{ armyId: string; name: string; shownCount: number; run: () => void }>;
@@ -126,14 +138,7 @@ export type PaletteInput = {
     lastSeenTurn?: number;
     run: () => void;
   }>;
-  actions: Array<{
-    id: string;
-    label: string;
-    binding?: string;
-    /** Why the action is greyed right now, or absent when it can be chosen (ah-mlls.7). */
-    unavailable?: string;
-    run: () => void;
-  }>;
+  actions: PaletteAction[];
   /** The world's orders, as the core grammar lists them; each opens its game data entry. */
   orderCommands: readonly string[];
   /**
@@ -251,6 +256,7 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       label: action.label,
       binding: action.binding,
       ...(action.unavailable === undefined ? {} : { unavailable: action.unavailable }),
+      ...(action.count === undefined ? {} : { count: action.count }),
       run: action.run
     })),
     ...input.orderCommands.map<PaletteEntry>((command) => ({
@@ -272,6 +278,33 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
           ]
     )
   ];
+}
+
+/**
+ * The palette's "Export mage sheet" row (ah-mlls.8): the same export as the Export menu's item,
+ * gated the same way - a report to name the sheet after and the game data to tell a mage from a
+ * woodcutter. Unlike the commands that come and go with what is loaded, it is never hidden: greyed,
+ * it says what is missing, and a missing report is named first, since loading one comes first.
+ *
+ * With no mages it can still be chosen, as the menu's item can, and says so beforehand.
+ */
+export function mageSheetPaletteAction(input: {
+  hasReport: boolean;
+  hasGameData: boolean;
+  mageCount: number;
+  run: () => void;
+}): PaletteAction {
+  const row = { id: "export-mage-sheet", label: "Export mage sheet", run: input.run };
+  if (!input.hasReport) {
+    return { ...row, unavailable: "needs a report" };
+  }
+  if (!input.hasGameData) {
+    return { ...row, unavailable: "needs the game data" };
+  }
+  if (input.mageCount === 0) {
+    return { ...row, count: { text: "no mages", quiet: true } };
+  }
+  return row;
 }
 
 /**
