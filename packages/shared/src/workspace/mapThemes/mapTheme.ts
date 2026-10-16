@@ -53,6 +53,12 @@ export type MapTheme = {
    */
   markFootprint: (view: HexView) => MarkSpot[];
   /**
+   * Whether this theme writes the hex's settlement name, which is where the hex's coordinates go
+   * instead of its top edge (ah-ezyg). Optional: without one, a theme writes the name of every hex
+   * that has a settlement. Read through `themeWritesName`, never directly.
+   */
+  writesName?: (view: HexView) => boolean;
+  /**
    * What marks the selected hex, drawn about the hex's centre in world units, in place of the map's
    * own selection ring. Optional: without one the map draws its white ring. A theme that supplies
    * one owns making the selection unmistakable on every terrain it paints, at every zoom.

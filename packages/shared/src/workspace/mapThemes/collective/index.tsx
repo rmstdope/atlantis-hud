@@ -39,6 +39,7 @@ import {
   STATIONS,
   terrainCode
 } from "./paint";
+import { CoordsTail } from "../hexCoords";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 
@@ -376,6 +377,7 @@ function MarkLayer({ views }: LayerProps) {
                 textAnchor="middle"
               >
                 {view.settlement.name.toUpperCase()}
+                <CoordsTail coords={view.coords} />
               </text>
             )}
           </g>

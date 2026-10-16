@@ -29,6 +29,7 @@ import {
   markFootprint
 } from "./paint";
 import { terrainClassName } from "../terrain";
+import { CoordsTail } from "../hexCoords";
 
 /** Everything in this theme is drawn at the proposal's radius and shrunk to the map's. */
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
@@ -390,6 +391,7 @@ function MarkLayer({ views }: LayerProps) {
                 textAnchor="middle"
               >
                 {view.settlement.name}
+                <CoordsTail coords={view.coords} />
               </text>
             )}
             {shields.map((shield) => (
