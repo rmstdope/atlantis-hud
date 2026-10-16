@@ -1,0 +1,51 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Option A — the star and the note share one line</title>
+<link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0b2547;--panel:#123a6a;--ink:#e9f3ff;--dim:#9ccaff;--accent:#ff6b5b}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,'Segoe UI',sans-serif;padding:20px 16px 40px}
+h1{font-size:20px;margin:0 0 4px}.sub{color:var(--dim);max-width:860px}
+.rule{background:var(--panel);border-left:3px solid var(--accent);padding:10px 14px;max-width:860px;margin:14px 0 22px}
+.hexes{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-end}figure{margin:0;text-align:center;max-width:300px}figcaption{font-size:11px;color:var(--dim);margin-top:4px}
+.today figcaption{color:#ffb3aa}
+</style></head><body><h1>Option A — the star and the note share one line</h1><p class="sub">On a stale hex with a battle, the star moves left and the revision note is written beside it, the pair centred under the coordinates. Everywhere else nothing moves.</p><div class="rule"><b>Recommended.</b> Standard map labelling: a label that collides is placed beside its symbol, and here the note dates the battle too (&ldquo;this battle, two turns old&rdquo;). <b>Cost:</b> on the smallest close-zoom hexes the pair nearly fills the hex&rsquo;s width, and the star is no longer centred on these hexes.</div>
+<p class="sub" style="font-size:12px">Hexes drawn at 1.7&times; life size so the lettering can be judged.</p><div class="hexes" id="h"></div>
+<script>
+const MODE='beside';
+const SQ=Math.sqrt(3)/2;
+function pts(R){const p=[];for(let i=0;i<6;i++){const a=Math.PI/3*i;p.push((R*Math.cos(a)).toFixed(1)+','+(R*Math.sin(a)).toFixed(1));}return p.join(' ');}
+function star(cx,cy,k,own){let d='';for(let i=0;i<16;i++){const a=i*Math.PI/8-Math.PI/2,r=(i%2?2.6:6.5)*k;d+=(i?'L':'M')+(cx+r*Math.cos(a)).toFixed(1)+','+(cy+r*Math.sin(a)).toFixed(1);}
+ return `<path d="${d}Z" fill="none" stroke="${own?'#ff6b5b':'#c8a8b4'}" stroke-width="1.4" stroke-linejoin="round" ${own?'':'stroke-dasharray="2 1.5"'}/>`;}
+const LBL='font-family="Architects Daughter,Comic Sans MS,cursive" font-size="10" fill="#e9f3ff" fill-opacity=".9" stroke="#123f73" stroke-width="2.4" paint-order="stroke"';
+function note(x,y,anchor){return `<text x="${x}" y="${y}" text-anchor="${anchor||'middle'}" transform="rotate(-12 ${x} ${y})" ${LBL}>rev. t-2</text>`;}
+const NOTE_W=38;
+function hatch(R){let s='<g stroke="#e9f3ff" stroke-opacity=".22" stroke-width="1">';for(let x=-2*R;x<2*R;x+=7)s+=`<line x1="${x}" y1="${-R}" x2="${x+R}" y2="${R}"/>`;return s+'</g>';}
+function hex(o){
+ const R=o.R,k=R/32,W=2*R+16,H=2*R*SQ+16;
+ let s=`<svg width="${W*1.7}" height="${H*1.7}" viewBox="${-W/2} ${-H/2} ${W} ${H}"><defs><clipPath id="c${R}${o.id}"><polygon points="${pts(R)}"/></clipPath></defs>`;
+ s+=`<polygon points="${pts(R)}" fill="#123f73"/><g clip-path="url(#c${R}${o.id})">${hatch(R)}</g><polygon points="${pts(R)}" fill="none" stroke="#6d9bd3" stroke-width="1.2"/>`;
+ const cTop=-R*SQ+R*0.06;
+ if(o.coords) s+=`<text x="0" y="${cTop}" dy="0.8em" text-anchor="middle" font-family="Helvetica Neue,Arial" font-size="8" fill="#6d9bd3" stroke="#123f73" stroke-width="2.2" paint-order="stroke">${o.label||'32,50'}</text>`;
+ if(o.town){ s+=`<g stroke="#e9f3ff" stroke-width="1.2" fill="#123f73"><rect x="${-9*k}" y="${-8*k}" width="${18*k}" height="${12*k}"/><line x1="${-9*k}" y1="${-2*k}" x2="${9*k}" y2="${-2*k}"/><line x1="0" y1="${-8*k}" x2="0" y2="${4*k}"/></g>`;}
+ // where the star's centre sits today (stepped down beneath the coordinates when they show)
+ const starTop=o.coords?Math.max(cTop+9,-28*k):-28*k, sy=starTop+7*k;
+ const noteBase=o.coords?Math.max(cTop+9+12,-20*k):-20*k;
+ const m=o.today?'today':MODE;
+ if(!o.battle){ s+=note(0,noteBase); }
+ else if(m==='today'){ s+=star(0,sy,k,o.own)+note(0,noteBase); }
+ else if(m==='beside'){ const tot=13*k+4+NOTE_W,x0=-tot/2; s+=star(x0+6.5*k,sy,k,o.own)+note(x0+13*k+4,sy+3.5,'start'); }
+ else if(m==='below'){ s+=star(0,sy,k,o.own)+note(0,sy+6.5*k+13); }
+ else if(m==='corner'){ s+=star(-19*k,-5*k,k,o.own)+note(0,noteBase); }
+ return s+'</svg>';
+}
+const F=[
+ {today:1,R:70,coords:1,battle:1,own:1,c:'today: the star sits on &ldquo;rev. t-2&rdquo;'},
+ {R:70,coords:1,battle:1,own:1,c:'largest close-zoom hex, coordinates on'},
+ {R:42,coords:1,battle:1,own:1,c:'smallest close-zoom hex, coordinates on'},
+ {R:70,coords:0,battle:1,own:1,c:'coordinates off'},
+ {R:70,coords:1,battle:1,own:0,c:'a battle you were not in (dashed star)'},
+ {R:70,coords:1,battle:1,own:1,town:1,c:'a stale battle hex with a town'},
+ {R:70,coords:1,battle:0,label:'31,51',c:'neighbour (31,51), no battle: unchanged'},
+];
+document.getElementById('h').innerHTML=F.map((o,i)=>`<figure class="${o.today?'today':''}">${hex({...o,id:i})}<figcaption>${o.c}</figcaption></figure>`).join('');
+</script></body></html>
