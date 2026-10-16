@@ -1,0 +1,26 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Named hex: mark stays</title><style>
+:root{--bg:#14171c;--panel:#1d2128;--ink:#e6e6e6;--dim:#9aa3ad;--accent:#e8b84a}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,'Segoe UI',sans-serif;padding:20px 16px 40px}
+h1{font-size:20px;margin:0 0 4px}.sub{color:var(--dim);max-width:820px}
+.rule{background:var(--panel);border-left:3px solid var(--accent);padding:10px 14px;max-width:820px;margin:14px 0 22px}
+.hexes{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-end}figure{margin:0;text-align:center;max-width:230px}figcaption{font-size:11px;color:var(--dim);margin-top:4px}
+.mag{transform-origin:center bottom}
+</style></head><body><h1>Option A — on a named hex the battle mark stays where its look draws it</h1><p class="sub">Up close, a hex with a settlement name carries its coordinates after the name, so its top edge is empty. Here the battle mark only steps down on hexes whose coordinates are actually printed at the top edge; on a named hex it stays in its usual place. (Drawn with the name at the bottom for clarity; Beveled Tile itself letters it near the top, beside the battle mark, which is unchanged.)</p><div class="rule"><b>A mark only moves when something is actually in its way.</b> <b>Cost:</b> battle marks sit at slightly different heights on named and unnamed hexes.</div><div class="hexes" id="h"></div>
+<script>
+const SQ=Math.sqrt(3)/2;
+function pts(R){const p=[];for(let i=0;i<6;i++){const a=Math.PI/3*i;p.push((R*Math.cos(a)).toFixed(1)+','+(R*Math.sin(a)).toFixed(1));}return p.join(' ');}
+const LOOK={beveled:{fill:'#5c5f67',rim:'#7b7e86',ink:'#f1dc98',halo:'#3d3f44'},eight:{fill:'#c02bbf',rim:'#f2b632',ink:'#ffffff',halo:'#000'}};
+function coords(L,t,y){return `<text x="0" y="${y}" dy="0.8em" text-anchor="middle" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" fill="${L.ink}" stroke="${L.halo}" stroke-width="2.4" paint-order="stroke">${t}</text>`;}
+function battle(x,y,r){return `<circle cx="${x}" cy="${y}" r="${r}" fill="#d23c3c" stroke="#7a1d1d" stroke-width="${r/8}"/><path d="M${x-r*.45} ${y-r*.45}l${r*.9} ${r*.9}M${x+r*.45} ${y-r*.45}l${-r*.9} ${r*.9}" stroke="#fff" stroke-width="${r/4.5}" stroke-linecap="round"/>`;}
+function hand(x,y,s){return `<g transform="translate(${x},${y}) scale(${s})"><path d="M-3 -9h4v6h4v3h2v6l-3 4h-7l-3-5v-5h3z" fill="#fff" stroke="#000" stroke-width="1"/></g>`;}
+function medallion(R){return `<circle cx="0" cy="${R*0.08}" r="${R*0.24}" fill="#2a2c30"/><path d="M${-R*.12} ${R*.08}h${R*.24}M0 ${R*-.04}v${R*.24}" stroke="#e1b84a" stroke-width="${R*.05}"/>`;}
+function svg(R,body,look){const L=LOOK[look];const W=2*R+14,H=2*R*SQ+14;const k=R<40?2:1;let s=`<svg width="${W*k}" height="${H*k}" viewBox="${-W/2} ${-H/2} ${W} ${H}"><polygon points="${pts(R)}" fill="${L.fill}" stroke="#222" stroke-width="1.5"/>`;
+ if(look==='beveled')s+=`<polygon points="${pts(R*0.9)}" fill="none" stroke="${L.rim}" stroke-width="${Math.max(1.5,R*0.05)}"/>`;
+ if(look==='eight'){for(let x=-R;x<R;x+=R/5)for(let y=-R;y<R;y+=R/5)if(((x+y)/(R/5)|0)%2===0)s+=`<rect x="${x}" y="${y}" width="${R/5}" height="${R/5}" fill="#111" clip-path="url(#k${R})"/>`; s+=`<polygon points="${pts(R)}" fill="none" stroke="${L.rim}" stroke-width="2.5"/><defs><clipPath id="k${R}"><polygon points="${pts(R)}"/></clipPath></defs>`;}
+ return s+body(L)+'</svg>';}
+const topY=R=>-R*SQ+R*0.06;
+
+function named(R,L,moved){const t=topY(R);const r=R*11/70;const y=moved?Math.max(-R*25.76/46,t+7+2+r):-R*25.76/46;return medallion(R)+battle(0,y,r)+`<text x="0" y="${R*0.62}" text-anchor="middle" font-family="Georgia,serif" font-size="10" font-weight="700" fill="#f4e3a6" stroke="#2a2c30" stroke-width="2" paint-order="stroke">Kerrin<tspan font-family="Helvetica Neue,Arial" font-size="8" font-weight="400"> 33,25</tspan></text>`;}
+function plain(R,L){const t=topY(R);const r=R*11/70;return battle(0,Math.max(-R*25.76/46,t+7+2+r),r)+coords(L,'32,50',t);}
+document.getElementById('h').innerHTML=`<figure>${svg(70,L=>named(70,L,false),'beveled')}<figcaption>named hex, close zoom</figcaption></figure><figure>${svg(70,L=>plain(70,L),'beveled')}<figcaption>unnamed hex, close zoom</figcaption></figure>`;
+</script></body></html>
