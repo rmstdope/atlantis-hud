@@ -561,7 +561,8 @@ export const WARNING_GROUPS: readonly {
       {
         code: "not-enough-silver",
         title: "Overspent silver",
-        description: "Orders spend more silver than the unit or the hex holds."
+        description:
+          "Orders spend more silver than the unit or the hex holds. Also covers a silver shipment cut short."
       },
       {
         code: "not-enough-items",
