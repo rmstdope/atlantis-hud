@@ -25,6 +25,10 @@ function entries(
     staleUnits: [
       { regionId: "1:7,53", unitId: "18642", name: "Seven of Eight", lastSeenTurn: 70, run: noop }
     ],
+    factions: [
+      { factionId: "95", name: "Borg TNG", own: true, merged: false, attitude: null, run: noop },
+      { factionId: "10", name: "Thane's Ring", own: false, merged: false, attitude: "Ally", run: noop }
+    ],
     regions: [
       { regionId: "1:7,53", label: "mountain (7,53)", run: noop },
       { regionId: "1:20,40", label: "ocean (20,40) in Atlantis Ocean", run: noop }
@@ -55,6 +59,8 @@ describe("buildPaletteEntries", () => {
       "unit",
       "unit",
       "unit",
+      "faction",
+      "faction",
       "region",
       "region",
       "structure",
@@ -120,6 +126,7 @@ describe("buildPaletteEntries", () => {
           }
         }
       ],
+      factions: [],
       regions: [],
       structures: [],
       actions: [],
@@ -144,6 +151,53 @@ describe("buildPaletteEntries", () => {
   it("carries an action's key binding for the popup to show", () => {
     const action = entries().find((entry) => entry.label === "Open settings");
     expect(action?.binding).toBe("⌘,");
+  });
+});
+
+describe("factions in the palette (ah-mlls.3)", () => {
+  it("puts the factions after the units and ahead of the hexes", () => {
+    const kinds = entries().map((entry) => entry.kind);
+    expect(kinds.lastIndexOf("unit")).toBeLessThan(kinds.indexOf("faction"));
+    expect(kinds.lastIndexOf("faction")).toBeLessThan(kinds.indexOf("region"));
+  });
+
+  it("labels a faction with its name and number, and carries what its row draws", () => {
+    const faction = entries().find((entry) => entry.id === "faction-10");
+    expect(faction).toMatchObject({
+      kind: "faction",
+      label: "Thane's Ring (10)",
+      faction: { own: false, merged: false, attitude: "Ally" }
+    });
+  });
+
+  it("names a nameless faction by its number", () => {
+    const [nameless] = buildPaletteEntries({
+      ownUnits: [],
+      staleUnits: [],
+      factions: [
+        { factionId: "77", name: null, own: false, merged: false, attitude: null, lastSeenTurn: 41, run: noop }
+      ],
+      regions: [],
+      structures: [],
+      actions: [],
+      orderCommands: [],
+      insertOrder: noop,
+      gameData: [],
+      openGameData: noop
+    });
+    expect(nameless).toMatchObject({ label: "Unnamed faction (77)", lastSeenTurn: 41 });
+  });
+
+  it("finds a faction by its number", () => {
+    expect(filterPalette(entries(), "10")[0]?.id).toBe("faction-10");
+  });
+
+  it("finds a faction by its name", () => {
+    expect(filterPalette(entries(), "thane").map((entry) => entry.id)).toContain("faction-10");
+  });
+
+  it("does not search the attitude, so typing ally lists no ally", () => {
+    expect(filterPalette(entries(), "ally").map((entry) => entry.kind)).not.toContain("faction");
   });
 });
 
@@ -193,7 +247,7 @@ describe("filterPalette", () => {
   });
 
   it("shows everything, in reading order, for an empty query", () => {
-    expect(filterPalette(entries(), "")).toHaveLength(14);
+    expect(filterPalette(entries(), "")).toHaveLength(16);
   });
 
   it("returns every match, with no cap", () => {
@@ -306,6 +360,7 @@ describe("game data in the palette", () => {
     const without = buildPaletteEntries({
       ownUnits: [],
       staleUnits: [],
+      factions: [],
       regions: [],
       structures: [],
       actions: [],

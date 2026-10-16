@@ -4,9 +4,12 @@
  */
 
 import type { GameDataEntry } from "./gameData";
+import type { PaletteFaction } from "./paletteFactions";
 
 export type PaletteEntryKind =
   | "unit"
+  /** A faction the loaded reports know (ah-mlls.3); choosing one opens its details. */
+  | "faction"
   | "region"
   /**
    * One structure standing in the world - `Soggy Saw Mill [1]`, not the dictionary's `Mine`.
@@ -36,6 +39,11 @@ export type PaletteEntry = {
   lastSeenTurn?: number;
   /** The key chord shown beside an action, where one exists. */
   binding?: string;
+  /**
+   * What a faction row draws beside its label (ah-mlls.3). Kept out of `label` on purpose: the
+   * label is the only text searched, and typing "ally" must not list every ally.
+   */
+  faction?: Pick<PaletteFaction, "own" | "merged" | "attitude">;
   run: () => void;
 };
 
@@ -48,6 +56,8 @@ export type PaletteInput = {
     lastSeenTurn: number;
     run: () => void;
   }>;
+  /** Every faction the loaded reports know, in `paletteFactions` order. */
+  factions: Array<PaletteFaction & { run: () => void }>;
   regions: Array<{ regionId: string; label: string; run: () => void }>;
   /** Every structure in this turn's report, labelled by `structurePaletteLabel`. */
   structures: Array<{
@@ -66,7 +76,7 @@ export type PaletteInput = {
 
 /**
  * Everything the palette can offer, in reading order: the player's units first because going to
- * one is the palette's daily use, then places - the hexes, then the structures standing in them -
+ * one is the palette's daily use, then the factions, then places - the hexes, then the structures standing in them -
  * then the app's own actions, then the order vocabulary as a typeable reference, then the game
  * data dictionary.
  *
@@ -88,6 +98,16 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       label: `${unit.name} (${unit.unitId})`,
       lastSeenTurn: unit.lastSeenTurn,
       run: unit.run
+    })),
+    // After the units and ahead of the hexes, so a dozen factions are a short scroll away with
+    // nothing typed rather than behind hundreds of hexes (ah-mlls.3).
+    ...input.factions.map<PaletteEntry>((faction) => ({
+      id: `faction-${faction.factionId}`,
+      kind: "faction",
+      label: `${faction.name ?? "Unnamed faction"} (${faction.factionId})`,
+      ...(faction.lastSeenTurn === undefined ? {} : { lastSeenTurn: faction.lastSeenTurn }),
+      faction: { own: faction.own, merged: faction.merged, attitude: faction.attitude },
+      run: faction.run
     })),
     ...input.regions.map<PaletteEntry>((region) => ({
       id: `region-${region.regionId}`,
