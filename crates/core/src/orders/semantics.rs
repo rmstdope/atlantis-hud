@@ -17250,11 +17250,44 @@ fn pool_silver_figures(
             ShortfallMoment::MonthEnd,
         )
     };
-    let (short, moment) = if short_counting_cuts > short {
-        (short_counting_cuts, ShortfallMoment::Market)
+    // A month-end reading is taken on balances that still carry each cut `BUY`'s whole ask, which
+    // the market never spent (`ah-s8ud`). Taken off again, what is left is the upkeep the month
+    // really leaves unpaid (`rules/sequenceofevents`: "Market orders" before WORK and "Maintenance
+    // costs are assessed"). Where that is nothing, the wages paid every fee and the hex is short
+    // only what its market could not fund, so the market's reading stands, however much larger the
+    // whole-ask month end read. Where fees do go unpaid, the month end keeps its reading, which is
+    // then the unbought ask and the unpaid fees together: a unit without its maintenance may starve
+    // (`rules/economy_maintenance`), so the sentence never drops it for the market's.
+    //
+    // A sharer's overcharge is all inside the pool's reading; anyone else's only as far as its own
+    // month-end overdraft reaches, the way the reading counts it, so no more is taken off than the
+    // reading put in. Study and Cast readings are left alone: [`silver_short_counting_cuts`] reads
+    // its Study moment on the same whole-ask balances, so those two compare like with like.
+    let month_end_unpaid = if moment == ShortfallMoment::MonthEnd {
+        short
+            - hex
+                .units
+                .iter()
+                .filter(|ordered| !ledger.doubted.contains(&ordered.unit.unit_id))
+                .map(|ordered| {
+                    let id = &ordered.unit.unit_id;
+                    let overcharged = ledger.overcharged.get(id).copied().unwrap_or_default();
+                    if sharing.pools_silver(ordered) {
+                        overcharged
+                    } else {
+                        overcharged.min((-relieved_balance(ledger, id, SILVER)).max(0))
+                    }
+                })
+                .sum::<i64>()
     } else {
-        (short, moment)
+        short
     };
+    let (short, moment) =
+        if short_counting_cuts > short || (short_counting_cuts > 0 && month_end_unpaid <= 0) {
+            (short_counting_cuts, ShortfallMoment::Market)
+        } else {
+            (short, moment)
+        };
     // A gift between the hex's units beyond the pool, counted on both sides of the sentence here
     // and nowhere else. The engine cuts such a gift to what the pool holds as it runs
     // (`runorders.cpp` `DoGiveOrder`, `GetSharedNum`): the giver is charged the whole ask and the
@@ -46814,6 +46847,10 @@ BUILD
     }
 
     /// A `SHARE` hex pools orders too, so it keeps the sentence it has always had.
+    ///
+    /// The purse funds the horse in full and the fees are what go short. A horse it cut would be
+    /// short at the market instead: the fees are then paid from the silver the market never spent
+    /// (`ah-s8ud`, `rules/economy_maintenance`).
     #[test]
     fn a_share_hex_keeps_its_orders_and_upkeep_wording() {
         let mut hex_region = region(vec![
@@ -46824,7 +46861,7 @@ BUILD
             amount: 10,
             name: "horse".to_string(),
             tag: "HORS".to_string(),
-            price: 140,
+            price: 100,
         });
 
         let findings: Vec<Finding> = check(vec![hex_region], "unit 7\nBUY 1 horse\n")
