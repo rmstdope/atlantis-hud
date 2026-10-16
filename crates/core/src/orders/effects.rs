@@ -316,6 +316,12 @@ pub struct TransportTargetIssue {
     /// The distance and the limit, for the two reach refusals. `None` for every other reason,
     /// whose sentence names no number (`ah-7ale.2.1`).
     pub reach: Option<TransportReach>,
+    /// The order named a unit number that appears nowhere in the report, as
+    /// [`TransportSent::to_unshown`] says for a shipment. `false` for a unit the report shows,
+    /// whatever its verdict: the SILVER working tells "your report does not show" apart from "may
+    /// not accept it" by this, since both reach it as `EligibilityUnknown` (`ah-9qzs`).
+    #[serde(default)]
+    pub to_unshown: bool,
 }
 
 /// Why men joined a unit this month, in `rules/sequenceofevents` order (`ah-rgkk.2.1`).
@@ -4083,6 +4089,7 @@ impl Working {
                         reason,
                         order_index: index,
                         reach: None,
+                        to_unshown: pending.to_unshown,
                     },
                 ));
                 continue;
@@ -4102,6 +4109,7 @@ impl Working {
                         reason,
                         order_index: index,
                         reach: reach_opt,
+                        to_unshown: pending.to_unshown,
                     },
                 ));
                 continue;
@@ -4128,6 +4136,7 @@ impl Working {
                             reason: TransportTargetReason::DistanceUnmeasured,
                             order_index: index,
                             reach: None,
+                            to_unshown: pending.to_unshown,
                         },
                     ));
                 }
@@ -11063,6 +11072,7 @@ mod tests {
                     reason: TransportTargetReason::NotCaravanseraiOwner,
                     order_index: 0,
                     reach: None,
+                    to_unshown: false,
                 }
             );
         }
@@ -11092,8 +11102,22 @@ mod tests {
                     reason: TransportTargetReason::EligibilityUnknown,
                     order_index: 0,
                     reach: None,
+                    to_unshown: true,
                 }
             );
+        }
+
+        // Both an absent unit and a foreign Caravanserai owner whose skills are never disclosed are
+        // `EligibilityUnknown`, and the SILVER working words the two apart (`ah-9qzs`): the issue
+        // says which, as `TransportSent::to_unshown` already does for a shipment.
+        #[test]
+        fn a_target_issue_says_whether_the_report_shows_the_target() {
+            let unshown = |orders: &str| only_issue(&kept_everything(orders)).to_unshown;
+
+            assert!(unshown("unit 5530\nTRANSPORT 99999 5 STON\n"));
+            assert!(!unshown("unit 5530\nTRANSPORT 7004 5 STON\n"));
+            assert!(!unshown("unit 5530\nTRANSPORT 7003 5 STON\n"));
+            assert!(!unshown("unit 5530\nTRANSPORT 7001 5 STON\n"));
         }
 
         // `rules/com_attitudes` prints the attitudes we declare toward other factions, never
@@ -11112,6 +11136,7 @@ mod tests {
                     reason: TransportTargetReason::AcceptanceUnknown,
                     order_index: 0,
                     reach: None,
+                    to_unshown: false,
                 }
             );
         }
@@ -11146,6 +11171,7 @@ mod tests {
                     reason: TransportTargetReason::NotCaravanseraiOwner,
                     order_index: 0,
                     reach: None,
+                    to_unshown: false,
                 }
             );
             // No row of ours gains anything: 7001 is not our unit.
@@ -11165,6 +11191,7 @@ mod tests {
                     reason: TransportTargetReason::NotCaravanseraiOwner,
                     order_index: 0,
                     reach: None,
+                    to_unshown: false,
                 }
             );
         }
@@ -11191,6 +11218,7 @@ mod tests {
                     reason: TransportTargetReason::NotCaravanseraiOwner,
                     order_index: 0,
                     reach: None,
+                    to_unshown: false,
                 }
             );
         }
@@ -11231,6 +11259,7 @@ mod tests {
                     reason: TransportTargetReason::NotCaravanseraiOwner,
                     order_index: 1,
                     reach: None,
+                    to_unshown: false,
                 }]
             );
         }
@@ -11252,6 +11281,7 @@ mod tests {
                     reason: TransportTargetReason::NotCaravanseraiOwner,
                     order_index: 0,
                     reach: None,
+                    to_unshown: false,
                 }]
             );
             assert_eq!(
@@ -13831,6 +13861,7 @@ mod tests {
                     from_level: None,
                     to_level: None
                 }),
+                to_unshown: false,
             }]
         );
         // The agreed record: "the forecast keeps the goods *and their weight*", so what the sender
@@ -13874,6 +13905,7 @@ mod tests {
                 reason: TransportTargetReason::DistanceUnmeasured,
                 order_index: 0,
                 reach: None,
+                to_unshown: false,
             }]
         );
 
@@ -14119,6 +14151,7 @@ mod tests {
                     from_level: None,
                     to_level: None
                 }),
+                to_unshown: false,
             }]
         );
 
@@ -14227,6 +14260,7 @@ mod tests {
                     from_level: None,
                     to_level: None
                 }),
+                to_unshown: false,
             }]
         );
     }
@@ -14254,6 +14288,7 @@ mod tests {
                     from_level: Some(1),
                     to_level: Some(2),
                 }),
+                to_unshown: false,
             }]
         );
         assert_eq!(reach_held(&response, "900", "FUR"), 9);
