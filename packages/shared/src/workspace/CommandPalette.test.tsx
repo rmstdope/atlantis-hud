@@ -81,3 +81,42 @@ describe("a palette row for another faction's unit (ah-mlls.1)", () => {
     expect(rowOf(draw([own]), "Wardrobe Guard (518)")).not.toContain("palette-faction");
   });
 });
+
+describe("an Army row in the palette (ah-mlls.4)", () => {
+  const iron: PaletteEntry = {
+    id: "army-a1",
+    kind: "army",
+    label: "Iron Guard",
+    count: { text: "5 units", quiet: false },
+    run: noop
+  };
+  const watch: PaletteEntry = {
+    id: "army-a3",
+    kind: "army",
+    label: "Old Watch",
+    count: { text: "no units this turn", quiet: true },
+    run: noop
+  };
+
+  it("draws its name, then its count, then the kind word", () => {
+    const row = rowOf(draw([iron]), "Iron Guard");
+    const count = row.indexOf(">5 units<");
+    expect(count).toBeGreaterThan(-1);
+    expect(row.indexOf(">army<")).toBeGreaterThan(count);
+  });
+
+  it("never lets the count shorten", () => {
+    expect(rowOf(draw([iron]), "Iron Guard")).toMatch(/class="[^"]*shrink-0[^"]*">5 units</);
+  });
+
+  it("shows its full text on hover", () => {
+    expect(rowOf(draw([iron]), "Iron Guard")).toContain('title="Iron Guard · 5 units · army"');
+  });
+
+  it("draws an empty count dim and in italics, and a full one plain", () => {
+    expect(rowOf(draw([watch]), "Old Watch")).toMatch(
+      /<span[^>]*class="[^"]*italic[^"]*text-ink-dim[^"]*"[^>]*>no units this turn</
+    );
+    expect(rowOf(draw([iron]), "Iron Guard")).not.toContain("italic");
+  });
+});

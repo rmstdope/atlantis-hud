@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
-import { loadReport, selectHex, selectUnit } from "./gameSetup";
+import { loadReport, mapTransform, selectHex, selectUnit } from "./gameSetup";
 
 /**
  * Armies, as a player assembles them (`ah-1mpx.2`).
@@ -551,4 +551,81 @@ test("ctrl-clicking rows across hexes builds a pick and never moves the map", as
 
   await expect(page.getByTestId("unit-bulk-line")).toContainText("2 units picked.");
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
+});
+
+/** An Army's row in the command palette (ah-mlls.4), found by typing its name. */
+async function findInPalette(page: Page, query: string) {
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill(query);
+  return page.getByTestId("palette-item").first();
+}
+
+test("the palette finds an Army by name and choosing it makes it the pane's source", async ({
+  page
+}) => {
+  await workspace(page);
+  await newArmy(page, "Northern Host");
+  await selectUnit(page, OWN_UNIT);
+  await page.getByTestId("add-to-army").click();
+  await page.getByTestId("add-to-army-panel").getByText("Northern Host").click();
+  // Back on This hex, so the choice below is what changes the source.
+  await page.getByTestId("unit-source-hex").click();
+  const map = await mapTransform(page);
+
+  const row = await findInPalette(page, "north");
+  await expect(row).toContainText("Northern Host");
+  await expect(row).toContainText("1 unit");
+  await expect(row).toContainText(/army/i);
+  await page.keyboard.press("Enter");
+
+  await expect(page.getByTestId("command-palette")).toHaveCount(0);
+  await expect(page.getByTestId("panel-units")).toContainText("— Northern Host, 1 unit");
+  await expect(page.getByTestId(/^unit-source-army-/)).toHaveAttribute("data-selected", "true");
+  // The keyboard lands on the Army's first row, so the arrows work at once.
+  await expect(rows(page).first()).toBeFocused();
+  // Neither the map nor the selected hex moves.
+  await expect(page.getByTestId("panel-region")).toContainText("Inholm");
+  expect(await mapTransform(page)).toBe(map);
+});
+
+test("a member's name does not find its Army in the palette", async ({ page }) => {
+  await workspace(page);
+  await newArmy(page, "Northern Host");
+  await selectUnit(page, OWN_UNIT);
+  await page.getByTestId("add-to-army").click();
+  await page.getByTestId("add-to-army-panel").getByText("Northern Host").click();
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("Seven of Eight");
+  await expect(page.getByTestId("palette-item").first()).toBeVisible();
+  await expect(page.getByTestId("palette-item").filter({ hasText: "Northern Host" })).toHaveCount(0);
+});
+
+test("an empty Army reads no units this turn, and choosing it focuses its rail entry", async ({
+  page
+}) => {
+  await workspace(page);
+  await newArmy(page, "Coastal Watch");
+
+  const row = await findInPalette(page, "coastal");
+  await expect(row).toContainText("no units this turn");
+  await page.keyboard.press("Enter");
+
+  const entry = page.getByTestId(/^unit-source-army-/);
+  await expect(entry).toHaveAttribute("data-selected", "true");
+  await expect(entry).toBeFocused();
+});
+
+test("choosing an Army from the palette unfolds a folded units pane", async ({ page }) => {
+  await workspace(page);
+  await newArmy(page, "Northern Host");
+  const units = page.getByTestId("panel-units");
+  await units.getByRole("button", { expanded: true }).click();
+  await expect(units).toHaveAttribute("data-collapsed", "true");
+
+  await findInPalette(page, "northern");
+  await page.keyboard.press("Enter");
+
+  await expect(units).toHaveAttribute("data-collapsed", "false");
+  await expect(units).toContainText("— Northern Host, 0 units");
 });

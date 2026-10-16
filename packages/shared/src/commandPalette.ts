@@ -7,6 +7,8 @@ import type { GameDataEntry } from "./gameData";
 import type { HexNode } from "./hexMapModel";
 
 export type PaletteEntryKind =
+  /** One of the player's named Armies (ah-mlls.4); choosing it makes it the units pane's source. */
+  | "army"
   | "unit"
   | "region"
   /**
@@ -55,10 +57,17 @@ export type PaletteEntry = {
   lastSeenTurn?: number;
   /** The key chord shown beside an action, where one exists. */
   binding?: string;
+  /**
+   * Words drawn before the kind word - an Army's `5 units` (ah-mlls.4). Shown, never searched,
+   * like `faction`. `quiet` draws them dim and in italics.
+   */
+  count?: { text: string; quiet: boolean };
   run: () => void;
 };
 
 export type PaletteInput = {
+  /** The player's named Armies, in the order the units pane's source rail lists them. */
+  armies: Array<{ armyId: string; name: string; shownCount: number; run: () => void }>;
   ownUnits: Array<{ unitId: string; name: string; run: () => void }>;
   /** Other factions' units in this turn's report, in report order. */
   foreignUnits: Array<{
@@ -94,8 +103,8 @@ export type PaletteInput = {
 };
 
 /**
- * Everything the palette can offer, in reading order: the player's units first because going to
- * one is the palette's daily use, then other factions' units seen this turn, then units only
+ * Everything the palette can offer, in reading order: the player's named Armies (ah-mlls.4), then
+ * their units because going to one is the palette's daily use, then other factions' units seen this turn, then units only
  * remembered from older reports - what is true this turn before what was true once (ah-mlls.1).
  * `filterPalette` sorts stably, so this one order is also the tie-break between equal matches.
  * Then places - the hexes, then the structures standing in them -
@@ -108,6 +117,15 @@ export type PaletteInput = {
  */
 export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
   return [
+    // Armies before everything (ah-mlls.4): there are a handful of them, and placed after the
+    // player's own units they would sit below dozens of rows until something was typed.
+    ...input.armies.map<PaletteEntry>((army) => ({
+      id: `army-${army.armyId}`,
+      kind: "army",
+      label: army.name,
+      count: armyCountLabel(army.shownCount),
+      run: army.run
+    })),
     ...input.ownUnits.map<PaletteEntry>((unit) => ({
       id: `unit-${unit.unitId}`,
       kind: "unit",
@@ -170,6 +188,18 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       run: () => input.openGameData(entry.id)
     }))
   ];
+}
+
+/**
+ * How an Army row counts its units: how many of its members this turn's report shows, the same
+ * number the units pane's source rail prints beside it (`shownMemberCount`). None reads as words
+ * rather than a zero, quiet, because an Army whose units are only remembered is not empty.
+ */
+export function armyCountLabel(shown: number): { text: string; quiet: boolean } {
+  if (shown === 0) {
+    return { text: "no units this turn", quiet: true };
+  }
+  return { text: `${shown} unit${shown === 1 ? "" : "s"}`, quiet: false };
 }
 
 /**
