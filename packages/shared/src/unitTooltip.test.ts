@@ -471,6 +471,73 @@ describe("the silver section", () => {
     );
   });
 
+  it("the_popup_shows_lent_before_was_lent_when_a_unit_does_both", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({ upkeep: 20, upkeepLent: 15, sharedSilverCovered: 10 }),
+      false,
+      true
+    );
+
+    expect(summary.silver?.rows.map((row) => row.label).slice(4)).toEqual([
+      "Upkeep",
+      "Lent for upkeep",
+      "Was lent for upkeep",
+      "At month end"
+    ]);
+    expect(summary.silver?.rows.slice(4, 7).map((row) => row.value)).toEqual(["30", "15", "10"]);
+  });
+
+  it("the_popup_hides_both_lent_rows_with_the_upkeep_row", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({ upkeep: 20, upkeepLent: 15, sharedSilverCovered: 10 }),
+      false,
+      false
+    );
+
+    expect(summary.silver?.rows.map((row) => row.label)).toEqual([
+      "Held now",
+      "In, in time",
+      "In, too late",
+      "Out",
+      "At month end"
+    ]);
+  });
+
+  it("the_popup_keeps_a_known_lent_amount_beside_an_unpriced_upkeep", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({ upkeep: null, upkeepLent: 25 }),
+      false,
+      true
+    );
+
+    expect(summary.silver?.rows.slice(4)).toEqual([
+      { label: "Upkeep", value: "?" },
+      { label: "Lent for upkeep", value: "25" },
+      { label: "At month end", value: "?" }
+    ]);
+  });
+
+  it("the_popup_adds_no_lent_row_to_a_unit_that_lends_nothing_and_is_lent_nothing", () => {
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      aUnitSilver({ upkeep: 20, upkeepLent: 0, sharedSilverCovered: 0 }),
+      false,
+      true
+    );
+
+    expect(summary.silver?.rows.map((row) => row.label)).toEqual([
+      "Held now",
+      "In, in time",
+      "In, too late",
+      "Out",
+      "Upkeep",
+      "At month end"
+    ]);
+  });
+
   // `ah-e23d.2`. A foreign player that may share the pool leaves every figure plain - the
   // navigator chose the note alone - and the note says why the figure may be less.
   it("the_silver_section_leaves_a_foreign_sharers_figures_plain_and_says_why", () => {
