@@ -17,6 +17,12 @@ import type { ComponentType } from "react";
 import type { MarkSpot } from "./biomeSymbols";
 import type { HexView } from "./hexView";
 
+/**
+ * A settlement name's line: its baseline in world units from the hex's centre, and the screen size
+ * of its lettering in px (every name is screen-constant, through `--map-scale`).
+ */
+export type NameLine = { y: number; fontPx: number };
+
 /** What every theme layer receives: the prepared hexes of one knowledge bucket, and nothing else. */
 export type LayerProps = { views: HexView[] };
 
@@ -59,11 +65,19 @@ export type MapTheme = {
    */
   writesName?: (view: HexView) => boolean;
   /**
+   * Where this theme letters the hex's settlement name: null exactly where it writes none
+   * (`themeWritesName`). The note pin drops beneath this line up close, where the name carries the
+   * hex's coordinates (ah-qf24). Read off the same constants the name's `<text>` is drawn with.
+   */
+  nameLine: (view: HexView) => NameLine | null;
+  /**
    * What marks the selected hex, drawn about the hex's centre in world units, in place of the map's
    * own selection ring. Optional: without one the map draws its white ring. A theme that supplies
-   * one owns making the selection unmistakable on every terrain it paints, at every zoom.
+   * one owns making the selection unmistakable on every terrain it paints, at every zoom. `view` is
+   * the selected hex's, null for a hex the map holds no view of; a part drawn in the coordinates'
+   * way steps down beneath them through `StepsDown` (ah-qf24).
    */
-  SelectionMark?: ComponentType;
+  SelectionMark?: ComponentType<{ view: HexView | null }>;
   /**
    * One effect over the whole visible map - a scan line, a glint - drawn in screen space above the
    * world and never taking a pointer. Optional, and only drawn while the map may animate.

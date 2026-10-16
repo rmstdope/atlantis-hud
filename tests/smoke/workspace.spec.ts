@@ -2326,6 +2326,93 @@ test("hex coordinates are printed on the map by default, join a settlement's nam
 });
 
 /**
+ * A mark a map look draws where the coordinates go steps down beneath them (ah-qf24), and back
+ * when they are switched off. Blueprint letters `TBD` on every never-surveyed sheet right at the top
+ * edge, so it is the look that shows it on any report. The drop itself is CSS worked out from
+ * `--map-scale`, which only a real engine can prove.
+ */
+test("a Blueprint revision note steps down beneath a hex's coordinates, and back when they are switched off", async ({
+  page
+}) => {
+  await loadReport(page);
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-map-theme").selectOption("blueprint");
+  await page.keyboard.press("Escape");
+
+  const map = page.getByTestId("map-canvas");
+  const svg = page.locator("[data-testid='map-canvas'] svg").first();
+  await expect(svg).toHaveClass(/map-theme-blueprint/);
+  for (let step = 0; step < 16; step += 1) {
+    if (((await svg.getAttribute("class")) ?? "").includes("map-near")) break;
+    await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+  }
+  await expect(svg).toHaveClass(/map-near/);
+
+  const stepped = map.locator("[data-steps-down] [data-note]").first();
+  await expect(stepped).toBeAttached();
+  // A stepped-down mark and the coordinates printed at the top of the same hex: the hex's own
+  // label is a few pixels from its mark, the next one up the column a whole hex away.
+  const measure = (selector: string, inView: boolean) =>
+    page.evaluate(
+      ({ selector, inView }) => {
+        // One the player can see, where asked: inside the map's own box.
+        const frame = document.querySelector("[data-testid='map-canvas']")!.getBoundingClientRect();
+        const mark = [...document.querySelectorAll(selector)]
+          .map((element) => element.getBoundingClientRect())
+          .find(
+            (box) =>
+              !inView ||
+              (box.top > frame.top + 40 &&
+                box.bottom < frame.bottom - 40 &&
+                box.left > frame.left + 40 &&
+                box.right < frame.right - 40)
+          );
+        if (!mark) return null;
+        const centre = mark.left + mark.width / 2;
+        const label = [...document.querySelectorAll("[data-hex-coords]")]
+          .map((element) => element.getBoundingClientRect())
+          .filter((box) => Math.abs(box.left + box.width / 2 - centre) < 4)
+          .sort((a, b) => Math.abs(a.bottom - mark.top) - Math.abs(b.bottom - mark.top))[0];
+        return { centre, noteTop: mark.top, labelBottom: label ? label.bottom : null };
+      },
+      { selector, inView }
+    );
+  const measured = await measure("[data-steps-down] [data-note]", true);
+  expect(measured, "a stepped-down revision note in view").not.toBeNull();
+  const on = measured!;
+  expect(on.labelBottom).not.toBeNull();
+  // A text box runs past its ink by the font's ascent and descent, so the two boxes may meet by a
+  // pixel or two while the lettering itself keeps the gap; before the step-down they overlapped by
+  // most of the note's height.
+  expect(on.noteTop).toBeGreaterThanOrEqual(on.labelBottom! - 2);
+  // The battle star is drawn inside the look's own `scale(...)`, so its drop is divided back out of
+  // it: an ink-tight box, so no slack.
+  const star = await measure("[data-steps-down]:not([data-named]) [data-mark='battle'] path", false);
+  expect(star, "a stepped-down battle star").not.toBeNull();
+  expect(star!.labelBottom).not.toBeNull();
+  expect(star!.noteTop).toBeGreaterThanOrEqual(star!.labelBottom! - 0.5);
+
+  const trigger = page.getByTestId("layer-chips").getByRole("button", { name: "Badges", exact: true });
+  await trigger.click();
+  await page
+    .getByTestId("badge-menu")
+    .getByRole("checkbox", { name: "Hex coordinates", exact: true })
+    .uncheck();
+  await expect(map.locator("[data-hex-coords]")).toHaveCount(0);
+  await expect(map.locator("[data-steps-down]")).toHaveCount(0);
+  // The same note, found again as the nearest one in its column, is back up at its usual place.
+  const offTop = await page.evaluate(({ centre, top }) => {
+    const same = [...document.querySelectorAll("[data-note]")]
+      .map((element) => element.getBoundingClientRect())
+      .filter((box) => Math.abs(box.left + box.width / 2 - centre) < 1)
+      .sort((a, b) => Math.abs(a.top - top) - Math.abs(b.top - top))[0];
+    return same ? same.top : null;
+  }, { centre: on.centre, top: on.noteTop });
+  expect(offTop).not.toBeNull();
+  expect(offTop!).toBeLessThan(on.noteTop - 1);
+});
+
+/**
  * Region decorations are on by default, like every other badge, so a player who has never opened
  * the Badges menu already sees province names on the map. Turning the badge off is the one
  * documented way to lose them, and the choice is a preference like the rest of the set.

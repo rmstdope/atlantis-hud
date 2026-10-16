@@ -32,7 +32,7 @@ import {
   roofAnchors
 } from "./paint";
 import { terrainClassName } from "../terrain";
-import { CoordsTail } from "../hexCoords";
+import { CoordsTail, StepsDown, themeWritesName } from "../hexCoords";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 
@@ -246,18 +246,28 @@ function MarkLayer({ views }: LayerProps) {
                 />
               )}
 
-              {/* Last turn's battle: the viewer's own fight reddened, one they watched greyed. */}
+              {/*
+                Last turn's battle: the viewer's own fight reddened, one they watched greyed. Steps
+                down beneath the hex's coordinates (ah-qf24), beside the name as well as centred.
+              */}
               {view.battle && (
-                <g data-chip="battle" data-battle={view.battle} transform={at(battle)}>
-                  <circle
-                    r={CHIP_RADIUS}
-                    className={view.battle === "own" ? "bt-chip-battle" : "bt-chip-battle-other"}
-                  />
-                  <g className="bt-chip-ink" strokeWidth={1.5} strokeLinecap="round" fill="none">
-                    <line x1={-3.2} y1={-3.2} x2={3.2} y2={3.2} />
-                    <line x1={3.2} y1={-3.2} x2={-3.2} y2={3.2} />
+                <StepsDown
+                  view={view}
+                  named={themeWritesName(beveledTile)(view)}
+                  top={{ y: (battle.y - CHIP_RADIUS - 1) * SCALE }}
+                  unit={SCALE}
+                >
+                  <g data-chip="battle" data-battle={view.battle} transform={at(battle)}>
+                    <circle
+                      r={CHIP_RADIUS}
+                      className={view.battle === "own" ? "bt-chip-battle" : "bt-chip-battle-other"}
+                    />
+                    <g className="bt-chip-ink" strokeWidth={1.5} strokeLinecap="round" fill="none">
+                      <line x1={-3.2} y1={-3.2} x2={3.2} y2={3.2} />
+                      <line x1={3.2} y1={-3.2} x2={-3.2} y2={3.2} />
+                    </g>
                   </g>
-                </g>
+                </StepsDown>
               )}
 
               {chips.map((chip) => (
@@ -352,5 +362,6 @@ export const beveledTile: MapTheme = {
   TerrainLayer,
   RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer,
-  markFootprint
+  markFootprint,
+  nameLine: (view) => view.settlement ? { y: NAME_Y * SCALE, fontPx: 10 } : null,
 };

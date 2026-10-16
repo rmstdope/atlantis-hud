@@ -27,10 +27,11 @@ import {
   settlementBox,
   SETTLEMENT_Y,
   STATIONS,
-  markFootprint
+  markFootprint,
+  BATTLE_ROOM
 } from "./paint";
 import { terrainClassName } from "../terrain";
-import { CoordsTail } from "../hexCoords";
+import { CoordsTail, StepsDown, themeWritesName } from "../hexCoords";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 
@@ -238,28 +239,38 @@ function MarkLayer({ views }: LayerProps) {
                 </Badge>
               )}
 
-              {/* Last turn's battle: the viewer's own fight lit, one they only watched muted. */}
+              {/*
+                Last turn's battle: the viewer's own fight lit, one they only watched muted. Steps
+                down beneath the hex's coordinates (ah-qf24).
+              */}
               {view.battle && (
-                <g
-                  className={view.battle === "own" ? "hud-battle" : "hud-battle-other"}
-                  data-station="battle"
-                  data-battle={view.battle}
-                  transform={at(STATIONS.battle)}
+                <StepsDown
+                  view={view}
+                  named={themeWritesName(tacticalHud)(view)}
+                  top={{ y: (STATIONS.battle.y - BATTLE_ROOM) * SCALE }}
+                  unit={SCALE}
                 >
-                  <path
-                    d="M0,-8 L8,6 H-8 Z"
-                    className="hud-badge"
-                    strokeWidth={1.4}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                  <path
-                    d="M-2.8,-1.5 L2.8,3.5 M2.8,-1.5 L-2.8,3.5"
-                    fill="none"
-                    strokeWidth={1.4}
-                    strokeLinecap="round"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                </g>
+                  <g
+                    className={view.battle === "own" ? "hud-battle" : "hud-battle-other"}
+                    data-station="battle"
+                    data-battle={view.battle}
+                    transform={at(STATIONS.battle)}
+                  >
+                    <path
+                      d="M0,-8 L8,6 H-8 Z"
+                      className="hud-badge"
+                      strokeWidth={1.4}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                    <path
+                      d="M-2.8,-1.5 L2.8,3.5 M2.8,-1.5 L-2.8,3.5"
+                      fill="none"
+                      strokeWidth={1.4}
+                      strokeLinecap="round"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  </g>
+                </StepsDown>
               )}
 
               {/* Reserved: no report read yet says a hex holds a gate the parser missed. */}
@@ -379,5 +390,6 @@ export const tacticalHud: MapTheme = {
   TerrainLayer,
   RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer,
-  markFootprint
+  markFootprint,
+  nameLine: (view) => view.settlement ? { y: NAME_Y * SCALE, fontPx: 8.5 } : null,
 };

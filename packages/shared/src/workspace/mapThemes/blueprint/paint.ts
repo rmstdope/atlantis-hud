@@ -205,13 +205,16 @@ export function hatchStrength(
  * guard is a dash-dot perimeter round the rim and claims nothing. The near-zoom notes drawn by the
  * terrain layer (rev. / TBD) are claimed with them.
  */
+/** How far the battle starburst's room reaches from its station, in mockup units. */
+export const BATTLE_ROOM = 7;
+
 export function markFootprint(view: HexView): MarkSpot[] {
   const spots: MarkSpot[] = [];
   const claim = (at: { x: number; y: number }, size: number) =>
     spots.push(markSpot(at, size, MOCKUP_RADIUS));
 
   if (view.battle) {
-    claim(STATIONS.battle, 7);
+    claim(STATIONS.battle, BATTLE_ROOM);
   }
   if (view.units.monster > 0) {
     claim(STATIONS.monster, 8);

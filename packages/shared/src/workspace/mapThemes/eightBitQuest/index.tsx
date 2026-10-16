@@ -45,6 +45,7 @@ import {
   SHAFT,
   showsQuestion,
   SPRITE_PX,
+  spriteRoom,
   STATIONS,
   TILE_BLOCK,
   TILE_SIZE,
@@ -57,7 +58,7 @@ import {
   unitRow,
   type Bitmap,
 } from "./paint";
-import { CoordsTail } from "../hexCoords";
+import { CoordsTail, StepsDown, themeWritesName } from "../hexCoords";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 
@@ -297,7 +298,15 @@ function Marks({ view }: { view: HexView }) {
           />
         )}
         {view.buildings > 0 && (
-          <Sprite mark="buildings" at={STATIONS.buildings} bitmap={HOUSE} />
+          // Its roof reaches the hex's coordinates, so it steps down beneath them (ah-qf24).
+          <StepsDown
+            view={view}
+            named={themeWritesName(eightBitQuest)(view)}
+            top={{ y: (STATIONS.buildings.y - spriteRoom(HOUSE, SPRITE_PX)) * SCALE }}
+            unit={SCALE}
+          >
+            <Sprite mark="buildings" at={STATIONS.buildings} bitmap={HOUSE} />
+          </StepsDown>
         )}
         {view.guard && (
           <Sprite
@@ -383,7 +392,7 @@ function MarkLayer({ views }: LayerProps) {
  * pointing hand above it. Replaces the map's white ring; drawn in the mockup's coordinates and scaled
  * once, like a hex.
  */
-function SelectionMark() {
+function SelectionMark({ view }: { view: HexView | null }) {
   return (
     <g data-selection="cursor" className="eb-layer">
       {/* Dims rather than vanishing, so the selection is never gone; the hand is what blinks. */}
@@ -391,10 +400,18 @@ function SelectionMark() {
         <polygon points={HEX_POINTS} className="eb-select-casing" fill="none" strokeWidth={6} vectorEffect="non-scaling-stroke" />
         <polygon points={HEX_POINTS} className="eb-select" fill="none" strokeWidth={3} vectorEffect="non-scaling-stroke" />
       </g>
+      {/* The hand points from where the hex's coordinates go, so it steps down beneath them (ah-qf24). */}
       <g transform={`scale(${SCALE})`}>
-        <g className="eb-blink" transform={at(HAND_AT)}>
-          <Pixels bitmap={HAND} px={HAND_PX} />
-        </g>
+        <StepsDown
+          view={view}
+          named={view !== null && themeWritesName(eightBitQuest)(view)}
+          top={{ y: (HAND_AT.y - (HAND.length * HAND_PX) / 2) * SCALE }}
+          unit={SCALE}
+        >
+          <g className="eb-blink" transform={at(HAND_AT)}>
+            <Pixels bitmap={HAND} px={HAND_PX} />
+          </g>
+        </StepsDown>
       </g>
     </g>
   );
@@ -409,5 +426,6 @@ export const eightBitQuest: MapTheme = {
   RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer,
   markFootprint,
+  nameLine: (view) => view.settlement ? { y: NAME_Y * SCALE, fontPx: 7 } : null,
   SelectionMark,
 };

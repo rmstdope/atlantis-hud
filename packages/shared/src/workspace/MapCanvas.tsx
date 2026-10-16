@@ -90,6 +90,8 @@ import {
   drawsNotes,
   noteTagLayout,
   notePins,
+  notePinY,
+  pinLine,
   wrapNoteLines,
   PIN_OFFSET,
   PIN_SCALE,
@@ -778,6 +780,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     () => timed("build hex views", () => buildHexViews(onLevel, viewOptions)),
     [onLevel, viewOptions]
   );
+  // Every hex's prepared view by its region id, for the map-owned marks drawn over a hex - the note
+  // pins and a theme's selection mark - that need to know what the hex prints (ah-qf24).
+  const viewsByKey = useMemo(() => new Map(allViews.map((view) => [view.key, view])), [allViews]);
   const texturePatterns = useMemo(() => {
     const patterns = new Map<string, NonNullable<HexView["texture"]>>();
     for (const view of allViews) {
@@ -1472,6 +1477,13 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     return coordinate?.z === level ? coordinate : null;
   }, [selectedRegionId, level]);
 
+  // The selected hex's prepared view, for a theme's own selection mark (ah-qf24); null for a hex
+  // the map holds no view of.
+  const selectedView = useMemo(
+    () => (selectedAt === null ? null : (viewsByKey.get(selectedRegionId ?? "") ?? null)),
+    [viewsByKey, selectedAt, selectedRegionId]
+  );
+
   const highlightedAt = useMemo(() => {
     const coordinate = highlightedRegionId === null ? null : parseRegionId(highlightedRegionId);
     return coordinate && coordinate.z === level ? coordinate : null;
@@ -1821,7 +1833,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                 className={selectionEpoch > 0 ? "map-selection-pulse" : undefined}
               >
                 {theme.SelectionMark ? (
-                  <theme.SelectionMark />
+                  <theme.SelectionMark view={selectedView} />
                 ) : (
                   <>
                 <polygon
@@ -2061,8 +2073,21 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
               <g data-testid="map-notes">
                 {notePinsOnLevel.map((pin) => {
                   const scale = 1 / scaleOf(view.step);
+                  // Dropped just clear of the line above it while the hex prints its coordinates
+                  // (ah-qf24): the coordinates at the top edge, or the name that carries them.
+                  const hex = viewsByKey.get(pin.regionId) ?? null;
+                  const pinY = notePinY({
+                    scale: scaleOf(view.step),
+                    line: pinLine({
+                      band,
+                      coords: hex !== null && hex.coords !== null,
+                      named: hex === null ? null : theme.nameLine(hex),
+                      scale: scaleOf(view.step)
+                    }),
+                    badge: pin.notes.length > 1
+                  });
                   const at = `translate(${pin.x + PIN_OFFSET.x * HEX_RADIUS},${
-                    pin.y + PIN_OFFSET.y * HEX_RADIUS
+                    pin.y + pinY
                   }) scale(${scale})`;
                   const isOpen = openNotesId === pin.regionId;
                   return (

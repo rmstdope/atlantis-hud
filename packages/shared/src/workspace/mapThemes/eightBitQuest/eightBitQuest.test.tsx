@@ -16,6 +16,7 @@ import {
   type HexView,
   type HexViewOptions,
 } from "../hexView";
+import { aHexView } from "../hexViewFixture";
 import { eightBitQuest } from "./index";
 import {
   BOAT,
@@ -650,13 +651,40 @@ describe("the zoom bands", () => {
     const Mark = eightBitQuest.SelectionMark!;
     const svg = renderToStaticMarkup(
       <svg>
-        <Mark />
+        <Mark view={null} />
       </svg>
     );
     expect(svg).toContain('data-selection="cursor"');
     expect(svg).toContain('class="eb-blink-soft"');
     expect(svg).toContain('class="eb-select"');
     expect(/eb-blink-soft[^{]*\{[^}]*\}[\s\S]*?@keyframes eb-blink-soft\s*\{[\s\S]*?opacity: 0\.4/.test(CSS)).toBe(true);
+  });
+
+  it("points its hand from beneath the selected hex's coordinates, the outline staying put (ah-qf24)", () => {
+    const Mark = eightBitQuest.SelectionMark!;
+    const draw = (view: HexView | null) =>
+      renderToStaticMarkup(
+        <svg>
+          <Mark view={view} />
+        </svg>
+      );
+    const shown = draw(aHexView({ coords: "32,50" }));
+    const steps = shown.split("data-steps-down");
+    expect(steps).toHaveLength(2);
+    // The outline comes before the wrapper; inside it is the blinking hand alone.
+    expect(steps[0]).toContain('class="eb-select"');
+    expect(steps[1]).toContain('class="eb-blink"');
+    expect(steps[1]).not.toContain("eb-select");
+    expect(shown).not.toContain("data-named");
+
+    const named = draw(aHexView({ coords: "33,25", settlement: { name: "Kerrin", tier: "town" } }));
+    expect(named).toContain('data-named="true"');
+
+    for (const view of [aHexView({ coords: null }), null]) {
+      const plain = draw(view);
+      expect(plain).not.toContain("data-steps-down");
+      expect(plain).toContain('class="eb-blink"');
+    }
   });
 
   it("colours the map's own roads tan on black", () => {

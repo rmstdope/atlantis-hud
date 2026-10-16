@@ -36,7 +36,7 @@ import {
   STARBURST,
   starburstPoints
 } from "./paint";
-import { CoordsTail } from "../hexCoords";
+import { CoordsTail, StepsDown, themeWritesName } from "../hexCoords";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
 
@@ -256,21 +256,31 @@ function MarkLayer({ views }: LayerProps) {
                 </Glyph>
               )}
 
-              {/* Last turn's battle: red and gold for your own fight, a muted burst for one seen. */}
+              {/*
+                Last turn's battle: red and gold for your own fight, a muted burst for one seen. Steps
+                down beneath the hex's coordinates (ah-qf24).
+              */}
               {view.battle && (
-                <g
-                  className={`sg-mark sg-minor ${view.battle === "own" ? "sg-battle" : "sg-battle-other"}`}
-                  data-mark="battle"
-                  data-battle={view.battle}
-                  transform={at(ANCHORS.battle)}
+                <StepsDown
+                  view={view}
+                  named={themeWritesName(stainedGlass)(view)}
+                  top={{ y: (ANCHORS.battle.y - STARBURST.outer) * SCALE }}
+                  unit={SCALE}
                 >
-                  <polygon
-                    points={BURST}
-                    strokeWidth={1}
-                    strokeLinejoin="round"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                </g>
+                  <g
+                    className={`sg-mark sg-minor ${view.battle === "own" ? "sg-battle" : "sg-battle-other"}`}
+                    data-mark="battle"
+                    data-battle={view.battle}
+                    transform={at(ANCHORS.battle)}
+                  >
+                    <polygon
+                      points={BURST}
+                      strokeWidth={1}
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  </g>
+                </StepsDown>
               )}
 
               <Settlement view={view} />
@@ -366,6 +376,7 @@ export const stainedGlass: MapTheme = {
   RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer,
   markFootprint,
+  nameLine: (view) => view.settlement ? { y: NAME_Y * SCALE, fontPx: 9 } : null,
   SelectionMark,
   Overlay
 };

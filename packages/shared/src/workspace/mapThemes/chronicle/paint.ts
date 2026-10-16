@@ -252,6 +252,9 @@ export function washVariant(key: string): number {
  * name is drawn at a constant size on screen, so its room is a fair middle of how wide a name runs
  * at the zooms the symbols are shown at.
  */
+/** The guard banner's room, about a point along its flag rather than its pole, in mockup units. */
+export const GUARD_ROOM = { dx: 4, dy: -2, size: 7 };
+
 export function markFootprint(view: HexView): MarkSpot[] {
   const spots: MarkSpot[] = [];
   const claim = (at: { x: number; y: number }, size: number) =>
@@ -268,7 +271,7 @@ export function markFootprint(view: HexView): MarkSpot[] {
   }
   if (view.guard) {
     // The banner flies east of its pole, so its room is centred along the flag.
-    claim({ x: ANCHORS.guard.x + 4, y: ANCHORS.guard.y - 2 }, 7);
+    claim({ x: ANCHORS.guard.x + GUARD_ROOM.dx, y: ANCHORS.guard.y + GUARD_ROOM.dy }, GUARD_ROOM.size);
   }
   if (view.battle) {
     claim(ANCHORS.battle, 6);

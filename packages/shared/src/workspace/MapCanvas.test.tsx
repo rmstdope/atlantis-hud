@@ -49,7 +49,8 @@ function probe(): MapTheme {
     ),
     RoadLayer: mark("roads"),
     MarkLayer: mark("marks"),
-    markFootprint: () => []
+    markFootprint: () => [],
+    nameLine: () => null
   };
 }
 
@@ -596,7 +597,7 @@ describe("what the map hands a theme", () => {
     expect(draw()).toContain("map-theme-probe");
   });
 
-  it("asks nothing of a theme beyond the three layers and its footprint, defs being optional", () => {
+  it("asks nothing of a theme beyond the three layers, its footprint and its name line, defs being optional", () => {
     const bare: MapTheme = {
       id: "bare",
       label: "Bare",
@@ -604,7 +605,8 @@ describe("what the map hands a theme", () => {
       TerrainLayer: () => null,
       RoadLayer: () => null,
       MarkLayer: () => null,
-      markFootprint: () => []
+      markFootprint: () => [],
+      nameLine: () => null
     };
 
     expect(() => draw(bare)).not.toThrow();
@@ -821,7 +823,7 @@ describe("a theme's own selection mark and map-wide effect", () => {
   }
   const marked: MapTheme = {
     ...probe(),
-    SelectionMark: () => <g data-probe="selection" />,
+    SelectionMark: ({ view }) => <g data-probe="selection" data-view={view?.key ?? "none"} />,
     Overlay: () => <rect data-probe="overlay" />
   };
 
@@ -830,6 +832,8 @@ describe("a theme's own selection mark and map-wide effect", () => {
     const ring = svg.slice(svg.indexOf('data-testid="map-selection-ring"'));
 
     expect(ring).toContain('data-probe="selection"');
+    // Handed the selected hex's own view, so a part in the coordinates' way can step down (ah-qf24).
+    expect(ring).toContain('data-view="1:7,53"');
     // Still inside the pulse group, so a fresh selection replays the lock-on with the theme's mark.
     expect(ring.indexOf("map-selection-pulse")).toBeLessThan(ring.indexOf('data-probe="selection"'));
     expect(svg).not.toContain("stroke-selection-ring");
@@ -1291,7 +1295,11 @@ describe("the biome symbols (ah-d9jb.4)", () => {
 
 describe("the hex coordinates (ah-ezyg)", () => {
   /** The congested fixture's map, through the probe theme, with the coordinates as asked. */
-  function drawCoords(hexCoordinates: boolean | undefined, step?: number): string {
+  function drawCoords(
+    hexCoordinates: boolean | undefined,
+    step?: number,
+    notes: HexNoteRecord[] = []
+  ): string {
     const canvas = (
       <MapCanvas
         gameId={null}
@@ -1306,6 +1314,7 @@ describe("the hex coordinates (ah-ezyg)", () => {
         showTextures={false}
         badges={allBadges(true)}
         hexCoordinates={hexCoordinates}
+        notes={notes}
       />
     );
     if (step === undefined) {
@@ -1330,6 +1339,20 @@ describe("the hex coordinates (ah-ezyg)", () => {
 
   it("marks a hex whose settlement name the theme writes, so its name carries the coordinates up close", () => {
     expect(drawCoords(true)).toMatch(/data-hex-coords="1:7,53"[^>]*data-named="true"/);
+  });
+
+  it("drops a note pin beneath the coordinates printed at its hex's top edge (ah-qf24)", () => {
+    const pinY = (svg: string) =>
+      Number(/translate\([-\d.]+,([-\d.]+)\) scale\([^)]*\)"><g[^>]*data-testid="map-note-pin"/.exec(svg)?.[1]);
+    const notes = [note({ id: "newest" }), note({ id: "older" })];
+    // Close zoom, where the probe theme letters no name, so the coordinates hold the top edge.
+    const on = pinY(drawCoords(true, 4, notes));
+    const off = pinY(drawCoords(false, 4, notes));
+
+    expect(Number.isFinite(on) && Number.isFinite(off)).toBe(true);
+    expect(on).toBeGreaterThan(off);
+    // Far out the coordinates are not printed, and the pin is not drawn either.
+    expect(drawCoords(true, -6, notes)).not.toContain("map-note-pin");
   });
 
   it("draws none while switched off, or when nobody says", () => {

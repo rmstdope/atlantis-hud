@@ -320,6 +320,10 @@ export const emblemAndDots: MapTheme = {
   RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer,
   markFootprint,
+  nameLine: (view) =>
+    emblemFor(view) === "settlement" && view.settlement !== null
+      ? { y: NAME_Y * SCALE, fontPx: 9.5 }
+      : null,
   // The name is written only under a settlement emblem: a gate or a battle outranks it, and then
   // the hex's coordinates stay at its top edge (ah-ezyg).
   writesName: (view) => emblemFor(view) === "settlement" && view.settlement !== null

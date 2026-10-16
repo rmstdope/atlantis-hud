@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { HexNoteRecord } from "@atlantis/core-client";
 import { hexToPixel } from "../hexMapModel";
-import { HEX_RADIUS } from "./mapViewport";
+import { HEX_RADIUS, ROW_PITCH } from "./mapViewport";
+import { radii } from "./mapThemes/geometry";
+import { COORDS_TOP_INSET } from "./mapThemes/hexCoords";
 import {
   BADGE,
   drawsNotes,
   noteTagLayout,
   notePins,
+  notePinY,
   PIN_H,
+  PIN_OFFSET,
+  pinLine,
   PIN_SCALE,
   PIN_W,
   TAG,
@@ -152,5 +157,79 @@ describe("drawsNotes", () => {
   it("draws at mid and near with the badge on", () => {
     expect(drawsNotes("mid", true)).toBe(true);
     expect(drawsNotes("near", true)).toBe(true);
+  });
+});
+
+describe("the note pin keeps clear of the line above it (ah-qf24)", () => {
+  const today = PIN_OFFSET.y * HEX_RADIUS;
+  const coordsTop = -ROW_PITCH + radii(COORDS_TOP_INSET);
+  const topName = { y: -0.5 * HEX_RADIUS, fontPx: 10 };
+  const lowName = { y: 0.75 * HEX_RADIUS, fontPx: 9 };
+  /** Where the pin's top is drawn, in world units: the badge with several notes, the glyph alone. */
+  const pinTop = (y: number, scale: number, badge: boolean) =>
+    y + (badge ? BADGE.cy - BADGE.r : -PIN_H / 2) / scale;
+
+  it("sits where it does today with coordinates off, or far out", () => {
+    for (const band of ["near", "mid", "far"] as const) {
+      expect(pinLine({ band, coords: false, named: null, scale: 2 })).toBeNull();
+    }
+    expect(pinLine({ band: "far", coords: true, named: null, scale: 0.5 })).toBeNull();
+    expect(notePinY({ scale: 2, line: null, badge: true })).toBe(today);
+  });
+
+  it("is in the way of the coordinates at the top edge of an unnamed hex, and at middle zoom", () => {
+    const near = pinLine({ band: "near", coords: true, named: null, scale: 2 })!;
+    expect(near.top).toBeCloseTo(coordsTop);
+    expect(near.bottom).toBeCloseTo(coordsTop + 7 / 2);
+    // At middle zoom the names are hidden, so a named hex's coordinates are back at the top edge.
+    expect(pinLine({ band: "mid", coords: true, named: topName, scale: 1 })!.top).toBeCloseTo(
+      coordsTop
+    );
+  });
+
+  it("is in the way of the name and its coordinates on a named hex up close", () => {
+    const line = pinLine({ band: "near", coords: true, named: topName, scale: 2 })!;
+    expect(line.top).toBeLessThan(topName.y);
+    expect(line.bottom).toBeGreaterThan(topName.y);
+  });
+
+  it("drops its count badge just clear of the coordinates, further the further out", () => {
+    for (const scale of [4, 2.5, 1.68]) {
+      const line = pinLine({ band: "near", coords: true, named: null, scale })!;
+      const y = notePinY({ scale, line, badge: true });
+      expect(y, `scale ${scale}`).toBeGreaterThanOrEqual(today);
+      expect(pinTop(y, scale, true), `scale ${scale}`).toBeCloseTo(line.bottom + 2 / scale);
+    }
+    const at = (scale: number) =>
+      notePinY({
+        scale,
+        line: pinLine({ band: "near", coords: true, named: null, scale }),
+        badge: true
+      });
+    expect(at(1.68)).toBeGreaterThan(at(4));
+  });
+
+  it("drops beneath a name lettered near the top, and not for one lettered low in the hex", () => {
+    const scale = 2;
+    const top = pinLine({ band: "near", coords: true, named: topName, scale })!;
+    expect(pinTop(notePinY({ scale, line: top, badge: true }), scale, true)).toBeCloseTo(
+      top.bottom + 2 / scale
+    );
+    const low = pinLine({ band: "near", coords: true, named: lowName, scale });
+    expect(notePinY({ scale, line: low, badge: true })).toBe(today);
+  });
+
+  it("drops less with a single note, whose glyph is its top", () => {
+    const scale = 2;
+    const line = pinLine({ band: "near", coords: true, named: null, scale })!;
+    const one = notePinY({ scale, line, badge: false });
+    expect(one).toBeLessThan(notePinY({ scale, line, badge: true }));
+    expect(pinTop(one, scale, false)).toBeCloseTo(line.bottom + 2 / scale);
+  });
+
+  it("never drops below its hex's centre", () => {
+    const scale = 0.7;
+    const line = pinLine({ band: "mid", coords: true, named: null, scale })!;
+    expect(notePinY({ scale, line, badge: true })).toBe(0);
   });
 });

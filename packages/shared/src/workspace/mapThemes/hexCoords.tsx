@@ -14,6 +14,7 @@
  * wraps carry the same numbers the hex itself does - the ones the rulers give.
  */
 
+import type { CSSProperties, ReactNode } from "react";
 import { ROW_PITCH, type ZoomBand } from "../mapViewport";
 import { radii } from "./geometry";
 import type { HexView } from "./hexView";
@@ -81,5 +82,79 @@ export function CoordsTail({ coords }: { coords: string | null }) {
     <tspan className="map-coords map-coords-tail" data-coords-tail>
       {` ${coords}`}
     </tspan>
+  );
+}
+
+/**
+ * A mark in the coordinates' way (ah-qf24; agreed mockups `docs/ui/ah-qf24-*.html`).
+ *
+ * The coordinates keep the top edge, and whatever a look draws there steps down beneath them, just
+ * far enough to clear them, and only on a hex whose coordinates are actually printed at its top
+ * edge. The print is screen-constant, so the drop grows as the map zooms out, and zoom only moves
+ * `--map-scale` on the map's root, never a render: the drop itself is worked out in CSS
+ * (`theme.css`, `.map-steps-down`) from the room the mark already has, which is all React states.
+ * `stepDownBy` mirrors that rule so its arithmetic can be tested.
+ */
+
+/** How far below the coordinates' top a mark must begin, in screen px: 7 for the print, 2 for the gap. */
+export const COORDS_CLEARANCE_PX = 9;
+
+/**
+ * Where a mark in the coordinates' way begins: `y` in world units from the hex's centre, and
+ * `abovePx`, how many screen px a screen-constant mark (lettering) reaches above that.
+ */
+export type MarkTop = { y: number; abovePx?: number };
+
+/** The top edge of the coordinates, in world units from the hex's centre. */
+const COORDS_TOP = -ROW_PITCH + radii(COORDS_TOP_INSET);
+
+/** How far below the coordinates' top the mark already begins, in world units. */
+export function markRoom(top: MarkTop): number {
+  return top.y - COORDS_TOP;
+}
+
+/** How far the CSS rule drops the mark at `scale`, in world units: never up, only down. */
+export function stepDownBy(top: MarkTop, scale: number): number {
+  return Math.max(0, (COORDS_CLEARANCE_PX + (top.abovePx ?? 0)) / scale - markRoom(top));
+}
+
+const px = (value: number) => `${Number(value.toFixed(3))}px`;
+
+/**
+ * Wraps a mark a look draws in the coordinates' way. A group of its own with no `transform`
+ * attribute, since the CSS transform that steps it down would replace one. `named` is whether the
+ * look writes this hex's name, which is where its coordinates go up close; the band rule in
+ * `theme.css` reads it exactly as `.map-coords[data-named]` does. `unit` is how many world units
+ * one of the wrapper's own units is, for a look that draws its marks inside a `scale(...)` group;
+ * `top` is in world units whatever it is. Without coordinates, nothing.
+ */
+export function StepsDown({
+  view,
+  named,
+  top,
+  unit = 1,
+  children
+}: {
+  view: HexView | null;
+  named: boolean;
+  top: MarkTop;
+  unit?: number;
+  children: ReactNode;
+}) {
+  if (view === null || view.coords === null) return <>{children}</>;
+  const style = {
+    "--mark-room": px(markRoom(top)),
+    "--mark-above": px(top.abovePx ?? 0),
+    "--mark-unit": Number(unit.toFixed(5))
+  } as CSSProperties;
+  return (
+    <g
+      className="map-steps-down"
+      data-steps-down=""
+      data-named={named ? "true" : undefined}
+      style={style}
+    >
+      {children}
+    </g>
   );
 }

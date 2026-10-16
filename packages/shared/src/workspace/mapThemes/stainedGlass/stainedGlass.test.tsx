@@ -426,7 +426,7 @@ describe("the selected hex, and the map-wide effect", () => {
     const Mark = stainedGlass.SelectionMark!;
     const svg = renderToStaticMarkup(
       <svg>
-        <Mark />
+        <Mark view={null} />
       </svg>
     );
     expect(svg).toContain('data-selection="halo"');

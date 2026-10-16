@@ -432,5 +432,7 @@ export const cartographersTable: MapTheme = {
   TerrainLayer,
   RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer,
-  markFootprint
+  markFootprint,
+  nameLine: (view) =>
+    view.settlement ? { y: nameLift(view.settlement.tier) * SCALE, fontPx: 10 } : null,
 };

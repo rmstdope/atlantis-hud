@@ -9,7 +9,10 @@
 
 import type { HexNoteRecord } from "@atlantis/core-client";
 import { hexToPixel, parseRegionId } from "../hexMapModel";
-import { HEX_RADIUS } from "./mapViewport";
+import { HEX_RADIUS, ROW_PITCH, type ZoomBand } from "./mapViewport";
+import { radii } from "./mapThemes/geometry";
+import { COORDS_TOP_INSET } from "./mapThemes/hexCoords";
+import type { NameLine } from "./mapThemes/mapTheme";
 
 /** Where a pin goes: the hex centre in world units, and what it stands for. */
 export type NotePin = { regionId: string; x: number; y: number; notes: HexNoteRecord[] };
@@ -65,6 +68,69 @@ export const TAG = {
 
 /** The pin origin, as fractions of `HEX_RADIUS` from the hex centre: upper-right, off the marks. */
 export const PIN_OFFSET = { x: 0.55, y: -0.55 };
+
+/**
+ * A line of print the pin must keep below (ah-qf24; `docs/ui/ah-qf24-note-pin.html`): its top and
+ * bottom in world units from the hex's centre.
+ */
+export type PinLine = { top: number; bottom: number };
+
+/** How tall the coordinates' print is on screen, and the gap the pin keeps below a line, in px. */
+const COORDS_PRINT_PX = 7;
+const PIN_GAP_PX = 2;
+
+/**
+ * The line in the pin's way while the hex prints its coordinates: at close zoom on a hex whose name
+ * the look writes, the name with its coordinates after it (the top edge is empty there); anywhere
+ * else the coordinates at the top edge. Nothing with the coordinates off or far out, where they are
+ * not printed. A name's box is its lettering's reach above and below the baseline, with its halo.
+ */
+export function pinLine({
+  band,
+  coords,
+  named,
+  scale
+}: {
+  band: ZoomBand;
+  /** Whether this hex prints its coordinates. */
+  coords: boolean;
+  /** Where the look letters this hex's name, or null where it writes none. */
+  named: NameLine | null;
+  scale: number;
+}): PinLine | null {
+  if (!coords || band === "far") return null;
+  if (band === "near" && named !== null) {
+    return {
+      top: named.y - (0.8 * named.fontPx) / scale,
+      bottom: named.y + (0.25 * named.fontPx + 1) / scale
+    };
+  }
+  const top = -ROW_PITCH + radii(COORDS_TOP_INSET);
+  return { top, bottom: top + COORDS_PRINT_PX / scale };
+}
+
+/**
+ * The pin's y from its hex's centre, in world units. It stays in its upper-right corner, and drops
+ * just far enough that its top - the count badge with several notes, the glyph with one - clears the
+ * line above it. It does not drop for a line that starts below the pin (a name lettered low in the
+ * hex), and never drops below the hex's centre, which on the smallest middle-zoom hexes is as far
+ * as the corner reaches.
+ */
+export function notePinY({
+  scale,
+  line,
+  badge
+}: {
+  scale: number;
+  line: PinLine | null;
+  /** Whether the pin carries a count badge, which is then its top. */
+  badge: boolean;
+}): number {
+  const today = PIN_OFFSET.y * HEX_RADIUS;
+  if (line === null || line.top >= today + PIN_H / 2 / scale) return today;
+  const pinTop = badge ? BADGE.cy - BADGE.r : -PIN_H / 2;
+  return Math.min(0, Math.max(today, line.bottom + (PIN_GAP_PX - pinTop) / scale));
+}
 
 /**
  * Word-wraps one note for its tag: at most `maxChars` per line, at most `maxLines` lines, the last

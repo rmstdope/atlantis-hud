@@ -1,12 +1,13 @@
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { CONGESTED_HEXES } from "./congestedFixture";
 import { FADE_LIMIT, NAMED_FOG_OPACITY } from "../mapHexView";
-import { HEX_RADIUS } from "../mapViewport";
+import { HEX_RADIUS, ROW_PITCH } from "../mapViewport";
 import { allBadges, buildHexViews, dampFog, type HexView } from "./hexView";
 import { aHexView } from "./hexViewFixture";
 import type { LayerProps, MapTheme } from "./mapTheme";
-import { themeWritesName } from "./hexCoords";
+import { COORDS_CLEARANCE_PX, COORDS_TOP_INSET, themeWritesName } from "./hexCoords";
 import {
   DEFAULT_MAP_THEME_ID,
   getMapTheme,
@@ -41,7 +42,8 @@ const dummy: MapTheme = {
   ),
   RoadLayer: () => <g data-dummy="roads" />,
   MarkLayer: () => <g data-dummy="marks" />,
-  markFootprint: () => []
+  markFootprint: () => [],
+  nameLine: () => null
 };
 
 describe("the map theme registry", () => {
@@ -419,6 +421,169 @@ describe("the coordinates joining a settlement's name, in every theme (ah-ezyg)"
   it("never print coordinates on a hex the theme names nothing in", () => {
     for (const theme of MAP_THEMES) {
       expect(marks(theme, aHexView({ coords: "33,25" })), theme.id).not.toContain("33,25");
+    }
+  });
+});
+
+describe("every mark in the coordinates' way steps down beneath them (ah-qf24)", () => {
+  /**
+   * Where the coordinates sit at the closest zoom (scale 4, a hex 72 screen px across its radius),
+   * in fractions of the radius: from just inside the top edge down by the clearance, and as wide as
+   * a five-character print and its halo (about 22 screen px). A mark whose footprint reaches into
+   * this box is in the coordinates' way. A settlement and its name are the hex's own centre-piece
+   * and never step down, and a hex with a settlement is written up by name in most looks anyway.
+   */
+  const CLOSEST_SCALE = 4;
+  const top = -(ROW_PITCH / HEX_RADIUS) + COORDS_TOP_INSET;
+  const box = {
+    left: -11 / (HEX_RADIUS * CLOSEST_SCALE),
+    right: 11 / (HEX_RADIUS * CLOSEST_SCALE),
+    top,
+    bottom: top + COORDS_CLEARANCE_PX / (HEX_RADIUS * CLOSEST_SCALE)
+  };
+  const inTheWay = (spot: { x: number; y: number; r: number }) => {
+    const dx = spot.x - Math.min(box.right, Math.max(box.left, spot.x));
+    const dy = spot.y - Math.min(box.bottom, Math.max(box.top, spot.y));
+    return Math.hypot(dx, dy) < spot.r;
+  };
+
+  /** Everything an unnamed hex can carry, stale, so Blueprint letters its revision note too. */
+  const crowded = (coords: string | null) =>
+    aHexView({
+      coords,
+      battle: "own",
+      units: { own: 3, foreign: 2, monster: 1 },
+      guard: "own",
+      ships: 2,
+      buildings: 2,
+      shafts: 1,
+      lairs: 1,
+      gate: true,
+      knowledge: "stale",
+      hatched: true,
+      fogOpacity: 0.3,
+      ageInTurns: 8
+    });
+  const drawn = (theme: MapTheme, view: HexView) =>
+    renderToStaticMarkup(
+      <svg>
+        <theme.TerrainLayer views={[view]} />
+        <theme.MarkLayer views={[view]} />
+      </svg>
+    );
+  const wrapped = (markup: string) => markup.split("data-steps-down").slice(1);
+
+  /** What steps down in each look, by the attribute that names it. */
+  const STEPS_DOWN: Record<string, string[]> = {
+    "cartographers-table": [],
+    "tactical-hud": ['data-station="battle"'],
+    "miniature-world": [],
+    "emblem-and-dots": [],
+    "beveled-tile": ['data-chip="battle"'],
+    collective: ['data-mark="battle"'],
+    chronicle: ['data-mark="guard"'],
+    blueprint: ['data-note="rev"', 'data-mark="battle"'],
+    "stained-glass": ['data-mark="battle"'],
+    "eight-bit-quest": ['data-mark="buildings"']
+  };
+
+  it("names every look", () => {
+    expect(Object.keys(STEPS_DOWN).sort()).toEqual(MAP_THEMES.map((theme) => theme.id).sort());
+  });
+
+  it("wraps exactly the marks whose footprint reaches the coordinates at the closest zoom", () => {
+    for (const theme of MAP_THEMES) {
+      const view = crowded("32,50");
+      const steps = wrapped(drawn(theme, view));
+      expect(steps.length, theme.id).toBe(theme.markFootprint(view).filter(inTheWay).length);
+      expect(steps.length, theme.id).toBe(STEPS_DOWN[theme.id].length);
+      STEPS_DOWN[theme.id].forEach((mark, index) => {
+        // The wrapper's own first child is the mark it steps down.
+        expect(steps[index].slice(0, 400), `${theme.id}: ${mark}`).toContain(mark);
+      });
+    }
+  });
+
+  it("wraps nothing on a hex without coordinates", () => {
+    for (const theme of MAP_THEMES) {
+      expect(drawn(theme, crowded(null)), theme.id).not.toContain("data-steps-down");
+    }
+  });
+
+  it("steps Beveled Tile's battle chip down beside a settlement's name as well as centred", () => {
+    const theme = getMapTheme("beveled-tile");
+    const named = aHexView({
+      coords: "33,25",
+      battle: "own",
+      settlement: { name: "Kerrin", tier: "town" }
+    });
+    const room = (view: HexView) => /--mark-room:([-\d.]+)px/.exec(drawn(theme, view))?.[1];
+    const beside = wrapped(drawn(theme, named));
+
+    expect(beside).toHaveLength(1);
+    expect(beside[0].slice(0, 400)).toContain('data-chip="battle"');
+    // Both positions share one height, so the chip beside the name has the same room to clear.
+    expect(room(named)).toBeDefined();
+    expect(room(named)).toBe(room(aHexView({ coords: "33,25", battle: "own" })));
+  });
+
+  it("tells the stylesheet which hexes carry their coordinates in their name up close", () => {
+    const named = aHexView({
+      coords: "33,25",
+      battle: "own",
+      settlement: { name: "Kerrin", tier: "town" }
+    });
+    for (const theme of MAP_THEMES) {
+      for (const step of wrapped(drawn(theme, named))) {
+        // The wrapper's own attributes, up to the end of its opening tag.
+        const tag = step.slice(0, step.indexOf(">"));
+        if (themeWritesName(theme)(named)) {
+          expect(tag, theme.id).toContain('data-named="true"');
+        } else {
+          expect(tag, theme.id).not.toContain("data-named");
+        }
+      }
+    }
+  });
+});
+
+describe("where each look letters a settlement's name, for the note pin to clear (ah-qf24)", () => {
+  const named = aHexView({ coords: "33,25", settlement: { name: "Kerrin", tier: "town" } });
+  const city = aHexView({ coords: "33,25", settlement: { name: "Kerrin", tier: "city" } });
+  const unnamed = aHexView({ coords: "33,25" });
+  const camel = (id: string) => id.replace(/-(\w)/g, (_, letter: string) => letter.toUpperCase());
+
+  it("is given exactly where the look writes the name", () => {
+    for (const theme of MAP_THEMES) {
+      for (const view of [named, city, unnamed]) {
+        expect(theme.nameLine(view) !== null, theme.id).toBe(themeWritesName(theme)(view));
+      }
+    }
+  });
+
+  it("is the baseline and the lettering size the look draws the name with", () => {
+    for (const theme of MAP_THEMES) {
+      const css = readFileSync(new URL(`./${camel(theme.id)}/theme.css`, import.meta.url), "utf8");
+      for (const view of [named, city]) {
+        const line = theme.nameLine(view);
+        if (line === null) continue;
+        const markup = renderToStaticMarkup(
+          <svg>
+            <theme.MarkLayer views={[view]} />
+          </svg>
+        );
+        const text = /<text([^>]*)>Kerrin<tspan/i.exec(markup)?.[1] ?? "";
+        expect(text, theme.id).not.toBe("");
+        expect(Number(/\by="([-\d.]+)"/.exec(text)?.[1]), theme.id).toBeCloseTo(line.y, 3);
+        const sizes = (/class="([^"]*)"/.exec(text)?.[1] ?? "")
+          .split(" ")
+          .map((name) =>
+            new RegExp(`\\.${name}\\s*\\{[^}]*font-size:\\s*calc\\(([\\d.]+)px`).exec(css)?.[1]
+          )
+          .filter((size): size is string => size !== undefined);
+        expect(sizes.length, theme.id).toBeGreaterThan(0);
+        expect(line.fontPx, theme.id).toBe(Number(sizes[sizes.length - 1]));
+      }
     }
   });
 });

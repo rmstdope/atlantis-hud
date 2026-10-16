@@ -21,6 +21,7 @@ import { roadLayer, type RoadStyle } from "../roadLayer";
 import type { LayerProps, MapTheme } from "../mapTheme";
 import { terrainClassName, TERRAIN_KINDS, type TerrainPaint } from "../terrain";
 import {
+  BATTLE_ROOM,
   callouts,
   floorPlan,
   hatchStrength,
@@ -31,9 +32,16 @@ import {
   STATIONS,
   worksBoxes,
 } from "./paint";
-import { CoordsTail } from "../hexCoords";
+import { CoordsTail, StepsDown, themeWritesName } from "../hexCoords";
 
 const SCALE = HEX_RADIUS / MOCKUP_RADIUS;
+
+/**
+ * How far the revision note's lettering reaches above its baseline, in screen px: the 10px note's
+ * capitals and their halo, and for a `rev.` note the further rise of its tilted end.
+ */
+const NOTE_ABOVE_PX = 8.5;
+const NOTE_TILT_PX = 3.5;
 
 /** The hexagon's corners relative to its centre, in world units. */
 const CORNERS = HEX_POINTS.split(" ").map(
@@ -321,21 +329,31 @@ function TerrainLayer({ views }: LayerProps) {
         const x = view.at.x + STATIONS.note.x * SCALE;
         const y = view.at.y + STATIONS.note.y * SCALE;
         return (
-          <text
+          // The note sits where the hex's coordinates go, so it steps down beneath them (ah-qf24).
+          <StepsDown
             key={view.key}
-            className={`bp-label bp-note ${view.unsurveyed ? "bp-note-tbd" : "bp-note-rev"}`}
-            data-note={view.unsurveyed ? "tbd" : "rev"}
-            x={x}
-            y={y}
-            textAnchor="middle"
-            transform={
-              view.unsurveyed
-                ? undefined
-                : `rotate(-12 ${x.toFixed(2)} ${y.toFixed(2)})`
-            }
+            view={view}
+            named={themeWritesName(blueprint)(view)}
+            top={{
+              y: y - view.at.y,
+              abovePx: view.unsurveyed ? NOTE_ABOVE_PX : NOTE_ABOVE_PX + NOTE_TILT_PX
+            }}
           >
-            {note}
-          </text>
+            <text
+              className={`bp-label bp-note ${view.unsurveyed ? "bp-note-tbd" : "bp-note-rev"}`}
+              data-note={view.unsurveyed ? "tbd" : "rev"}
+              x={x}
+              y={y}
+              textAnchor="middle"
+              transform={
+                view.unsurveyed
+                  ? undefined
+                  : `rotate(-12 ${x.toFixed(2)} ${y.toFixed(2)})`
+              }
+            >
+              {note}
+            </text>
+          </StepsDown>
         );
       })}
     </g>
@@ -452,23 +470,30 @@ function MarkLayer({ views }: LayerProps) {
             )}
             <g transform={`scale(${SCALE})`}>
               {view.battle && (
-                <g
-                  className={`bp-mark ${view.battle === "own" ? "bp-battle" : "bp-battle-other"}`}
-                  data-mark="battle"
-                  data-battle={view.battle}
-                  transform={at(STATIONS.battle)}
+                <StepsDown
+                  view={view}
+                  named={themeWritesName(blueprint)(view)}
+                  top={{ y: (STATIONS.battle.y - BATTLE_ROOM) * SCALE }}
+                  unit={SCALE}
                 >
-                  <path
-                    d={STARBURST}
-                    fill="none"
-                    strokeWidth={1.4}
-                    strokeLinejoin="round"
-                    strokeDasharray={
-                      view.battle === "own" ? undefined : "2 1.5"
-                    }
-                    vectorEffect="non-scaling-stroke"
-                  />
-                </g>
+                  <g
+                    className={`bp-mark ${view.battle === "own" ? "bp-battle" : "bp-battle-other"}`}
+                    data-mark="battle"
+                    data-battle={view.battle}
+                    transform={at(STATIONS.battle)}
+                  >
+                    <path
+                      d={STARBURST}
+                      fill="none"
+                      strokeWidth={1.4}
+                      strokeLinejoin="round"
+                      strokeDasharray={
+                        view.battle === "own" ? undefined : "2 1.5"
+                      }
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  </g>
+                </StepsDown>
               )}
 
               {view.units.monster > 0 && (
@@ -681,4 +706,5 @@ export const blueprint: MapTheme = {
   RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer,
   markFootprint,
+  nameLine: (view) => view.settlement ? { y: NAME_Y * SCALE, fontPx: 12 } : null,
 };
