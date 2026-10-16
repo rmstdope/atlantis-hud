@@ -78,7 +78,11 @@ export function PopupLineLabel({ line }: { line: PopupLine }) {
  */
 export function PopupLineValue({ line }: { line: PopupLine }) {
   return (
-    <span className={`tabular-nums ${line.stress === "aside" ? "text-ink-dim" : "text-ink-soft"}`}>
+    <span
+      className={`tabular-nums ${
+        line.struck ? "text-ink-dim line-through" : line.stress === "aside" ? "text-ink-dim" : "text-ink-soft"
+      }`}
+    >
       {line.unfinished === "value" ? <UnfinishedMark /> : null}
       {line.steps ? (
         line.steps.map((step, index) => (
@@ -94,7 +98,10 @@ export function PopupLineValue({ line }: { line: PopupLine }) {
         <>
           {line.change.from}
           <span className="mx-1 text-ink-dim">→</span>
-          <span className={line.change.direction === "up" ? "text-ok" : "text-danger"}>
+          {/* A struck line is what will not happen, so its after takes no colour (`ah-44at`). */}
+          <span
+            className={line.struck ? undefined : line.change.direction === "up" ? "text-ok" : "text-danger"}
+          >
             {line.value}
           </span>
         </>

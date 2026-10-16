@@ -4168,3 +4168,251 @@ describe("upkeep a faction-mate paid, for a unit that shares nothing", () => {
     );
   });
 });
+
+// `ah-44at`: a CAST the game refuses reads the way a refused STUDY does. `data/SWIN` level 3 makes
+// a Cloudship [CLOU] "at a cost of 75 floater hides [FLOA] and 75 ironwood [IRWD]"; the worked
+// example is Ivanhoe (683), holding 75 ironwood and no hides, with nobody to lend him any.
+describe("a refused cast in the items popup", () => {
+  type Change = NonNullable<PreviewedUnit["itemChanges"]>[number];
+  type Refused = NonNullable<PreviewedUnit["refusedCasts"]>[number];
+  const spent = (tag: string, name: string, delta: number, line = 3): Change => ({
+    tag,
+    name,
+    delta,
+    cause: "cast-spent",
+    line,
+    unitPrice: null,
+    other: null,
+    isMan: false
+  });
+  const cloudship = (short: Refused["short"], silverShort = 0): Refused => ({
+    product: { tag: "CLOU", name: "Cloudship", fewest: 0, most: 1 },
+    silverShort,
+    short
+  });
+  const FLOA = (amount: number) => ({ tag: "FLOA", name: "floater hide", plural: "floater hides", amount });
+  const IRWD = (amount: number) => ({ tag: "IRWD", name: "ironwood", plural: "ironwood", amount });
+  // Every `spent` name below is what the core emits: the catalogue's singular (`item_name`).
+  const ivanhoe = (overrides: Partial<PreviewedUnit>) =>
+    unit({ unitId: "683", name: "Ivanhoe", ...overrides });
+  const popupOf = (overrides: Partial<PreviewedUnit>) =>
+    columnPopup(popupForCell("items", ivanhoe(overrides), facts()));
+  const STRUCK_CLOUDSHIP = {
+    label: "Cloudship CLOU",
+    value: "0-1",
+    change: { direction: "up", from: "none" },
+    struck: true
+  };
+
+  it("ends the missing material red, strikes the product through and says why", () => {
+    const popup = popupOf({
+      items: [{ name: "ironwood", tag: "IRWD", amount: 75 }],
+      previewChanges: [{ field: "items", original: "9571 SILV, 75 IRWD" }],
+      itemChanges: [spent("FLOA", "floater hide", -75)],
+      refusedCasts: [cloudship([FLOA(75)])]
+    });
+    expect(popup.lines).toEqual([
+      { label: "floater hides FLOA", value: "-75", change: { direction: "down", from: "none" } },
+      STRUCK_CLOUDSHIP,
+      { label: "ironwood IRWD", value: "75" }
+    ]);
+    expect(popup.notes).toEqual([
+      "floater hides: consumed 75 by a spell.",
+      "Cloudship: not created — the cast is 75 floater hides short."
+    ]);
+    expect(popup.warning).toBe(
+      "A red figure in the cell: this unit ends the month 75 floater hides short."
+    );
+  });
+
+  it("names a single missing item in the singular", () => {
+    const popup = popupOf({
+      items: [],
+      previewChanges: [{ field: "items", original: "" }],
+      itemChanges: [spent("FLOA", "floater hide", -1)],
+      refusedCasts: [cloudship([FLOA(1)])]
+    });
+    expect(popup.lines[0]?.label).toBe("floater hide FLOA");
+    expect(popup.notes[0]).toBe("floater hide: consumed 1 by a spell.");
+    expect(popup.warning).toBe("A red figure in the cell: this unit ends the month 1 floater hide short.");
+  });
+
+  it("groups a large red figure as the figure it is paired with", () => {
+    const popup = popupOf({
+      items: [],
+      previewChanges: [{ field: "items", original: "2000 FLOA" }],
+      itemChanges: [spent("FLOA", "floater hide", -3500)],
+      refusedCasts: [cloudship([FLOA(1500)])]
+    });
+    expect(popup.lines[0]).toMatchObject({
+      value: (-1500).toLocaleString(),
+      change: { direction: "down", from: (2000).toLocaleString() }
+    });
+  });
+
+  it("pairs from what the report listed when the items list did not change", () => {
+    const popup = popupOf({
+      items: [{ name: "ironwood", tag: "IRWD", amount: 75 }],
+      itemChanges: [spent("FLOA", "floater hide", -75)],
+      refusedCasts: [cloudship([FLOA(75)])]
+    });
+    expect(popup.lines[0]).toEqual({
+      label: "floater hides FLOA",
+      value: "-75",
+      change: { direction: "down", from: "none" }
+    });
+    expect(popup.lines[1]).toEqual(STRUCK_CLOUDSHIP);
+  });
+
+  it("ends a partly held material at its shortfall", () => {
+    const popup = popupOf({
+      items: [{ name: "ironwood", tag: "IRWD", amount: 75 }],
+      previewChanges: [{ field: "items", original: "50 FLOA, 75 IRWD" }],
+      itemChanges: [spent("FLOA", "floater hide", -75)],
+      refusedCasts: [cloudship([FLOA(25)])]
+    });
+    expect(popup.lines[0]).toEqual({
+      label: "floater hides FLOA",
+      value: "-25",
+      change: { direction: "down", from: "50" }
+    });
+    expect(popup.notes[1]).toBe("Cloudship: not created — the cast is 25 floater hides short.");
+    expect(popup.warning).toBe(
+      "A red figure in the cell: this unit ends the month 25 floater hides short."
+    );
+  });
+
+  it("names every short material in one red sentence, in the order of the lines", () => {
+    const popup = popupOf({
+      items: [],
+      previewChanges: [{ field: "items", original: "" }],
+      itemChanges: [spent("FLOA", "floater hide", -75), spent("IRWD", "ironwood", -75)],
+      refusedCasts: [cloudship([FLOA(75), IRWD(75)])]
+    });
+    expect(popup.lines.map((line) => `${line.label} ${line.value}`)).toEqual([
+      "floater hides FLOA -75",
+      "ironwood IRWD -75",
+      "Cloudship CLOU 0-1"
+    ]);
+    expect(popup.notes).toEqual([
+      "floater hides: consumed 75 by a spell.",
+      "ironwood: consumed 75 by a spell.",
+      "Cloudship: not created — the cast is 75 floater hides and 75 ironwood short."
+    ]);
+    expect(popup.warning).toBe(
+      "A red figure in the cell: this unit ends the month 75 floater hides and 75 ironwood short."
+    );
+  });
+
+  it("strikes a cast refused for silver through, naming the silver, and leaves its goods alone", () => {
+    const popup = popupOf({
+      items: [
+        { name: "floater hides", tag: "FLOA", amount: 75 },
+        { name: "ironwood", tag: "IRWD", amount: 75 }
+      ],
+      previewChanges: [{ field: "items", original: "75 FLOA, 75 IRWD" }],
+      refusedCasts: [cloudship([], 200)]
+    });
+    expect(popup.lines).toEqual([
+      STRUCK_CLOUDSHIP,
+      { label: "floater hides FLOA", value: "75" },
+      { label: "ironwood IRWD", value: "75" }
+    ]);
+    expect(popup.notes).toEqual(["Cloudship: not created — the cast is 200 silver short."]);
+    expect(popup.warning).toBeNull();
+  });
+
+  it("names the silver for a cast short of both, and still ends the material red", () => {
+    const popup = popupOf({
+      items: [{ name: "ironwood", tag: "IRWD", amount: 75 }],
+      previewChanges: [{ field: "items", original: "75 IRWD" }],
+      itemChanges: [spent("FLOA", "floater hide", -75)],
+      refusedCasts: [cloudship([FLOA(75)], 200)]
+    });
+    expect(popup.lines[0]?.value).toBe("-75");
+    expect(popup.notes[1]).toBe("Cloudship: not created — the cast is 200 silver short.");
+    expect(popup.warning).toBe(
+      "A red figure in the cell: this unit ends the month 75 floater hides short."
+    );
+  });
+
+  it("leaves a cast that goes ahead as it is today", () => {
+    const popup = popupOf({
+      items: [{ name: "Cloudship", tag: "CLOU", amount: 1 }],
+      previewChanges: [{ field: "items", original: "75 FLOA, 75 IRWD" }],
+      created: [{ fewest: 0, most: 1, tag: "CLOU", summoned: false }],
+      itemChanges: [
+        spent("FLOA", "floater hide", -75),
+        spent("IRWD", "ironwood", -75),
+        { ...spent("CLOU", "Cloudship", 1), cause: "cast-created" }
+      ]
+    });
+    expect(popup.lines.some((line) => line.struck)).toBe(false);
+    expect(popup.lines.some((line) => line.value.startsWith("-"))).toBe(false);
+    expect(popup.notes).toContain("Cloudship: created 0-1 by casting.");
+    expect(popup.warning).toBeNull();
+  });
+
+  it("strikes only the refused one of two casts of the same product", () => {
+    const popup = popupOf({
+      items: [{ name: "Cloudship", tag: "CLOU", amount: 1 }],
+      previewChanges: [{ field: "items", original: "75 FLOA, 75 IRWD" }],
+      created: [{ fewest: 0, most: 1, tag: "CLOU", summoned: false }],
+      itemChanges: [
+        spent("FLOA", "floater hide", -75),
+        spent("IRWD", "ironwood", -75),
+        { ...spent("CLOU", "Cloudship", 1), cause: "cast-created" },
+        spent("FLOA", "floater hide", -75, 4)
+      ],
+      refusedCasts: [cloudship([FLOA(75)])]
+    });
+    const cloudships = popup.lines.filter((line) => line.label === "Cloudship CLOU");
+    expect(cloudships).toEqual([
+      { label: "Cloudship CLOU", value: "0-1", change: { direction: "up", from: "none" } },
+      STRUCK_CLOUDSHIP
+    ]);
+  });
+
+  it("gives a unit with nothing left its red line and sentences, never 'No items.'", () => {
+    const popup = popupOf({
+      items: [],
+      previewChanges: [{ field: "items", original: "" }],
+      itemChanges: [spent("FLOA", "floater hide", -75)],
+      refusedCasts: [cloudship([FLOA(75)])]
+    });
+    expect(popup.lines).toHaveLength(2);
+    expect(popup.notes).not.toContain("No items.");
+    expect(popup.warning).not.toBeNull();
+  });
+
+  it("keeps the red and struck lines inside the cap on a crowded unit", () => {
+    const many = Array.from({ length: 20 }, (_, index) => ({
+      name: `good ${index}`,
+      tag: `G${index}`,
+      amount: 100 + index
+    }));
+    const popup = popupOf({
+      items: many,
+      previewChanges: [
+        { field: "items", original: many.map((item) => `${item.amount} ${item.tag}`).join(", ") }
+      ],
+      itemChanges: [spent("FLOA", "floater hide", -75)],
+      refusedCasts: [cloudship([FLOA(75)])]
+    });
+    expect(popup.lines[0]?.value).toBe("-75");
+    expect(popup.lines[1]?.struck).toBe(true);
+  });
+
+  it("says the red sentence before the partly-counted one", () => {
+    const popup = popupOf({
+      items: [],
+      previewChanges: [{ field: "items", original: "" }],
+      uncounted: ["buy all HORS"],
+      itemChanges: [spent("FLOA", "floater hide", -75)],
+      refusedCasts: [cloudship([FLOA(75)])]
+    });
+    expect(popup.warning).toBe(
+      "A red figure in the cell: this unit ends the month 75 floater hides short. “+ ?” in the cell: this month is only partly counted, so this list may be short."
+    );
+  });
+});

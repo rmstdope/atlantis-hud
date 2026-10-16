@@ -119,6 +119,11 @@ pub struct UnitPreview {
     /// the column can show a chance creation as a range. Empty for a unit not casting, and for one
     /// whose cast creates nothing an item catalogue can carry (`ah-ofpb.5`).
     pub created: Vec<CreatedItem>,
+    /// This unit's create-artifact `CAST` orders the game refuses this month, in document order:
+    /// what each would have made and what it is short of, so the ITEMS column can end the short
+    /// material red and strike the product through (`ah-44at`). Empty for a unit whose every cast
+    /// goes ahead.
+    pub refused_casts: Vec<RefusedCast>,
     /// One line of what this unit's `TRANSPORT`/`DISTRIBUTE` orders send this month, in document
     /// order. Empty for a unit that sent nothing (`ah-bxgs`).
     pub transport_sent: Vec<TransportSent>,
@@ -706,6 +711,50 @@ pub struct CreatedItem {
     pub summoned: bool,
 }
 
+/// One create-artifact `CAST` the game refuses this month (`ah-44at`): `RunCreateArtifact`
+/// (`spells.cpp`) checks every input before it consumes any, so it takes nothing and makes
+/// nothing. An enchantment or a transmutation makes what its stock allows and is never one of
+/// these (`ah-j5p8`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub struct RefusedCast {
+    /// What it would have made, or `None` for a spell that makes nothing an item catalogue
+    /// carries.
+    pub product: Option<RefusedProduct>,
+    /// The silver the purse cannot pay. `0` when the cast is refused for a material alone; a cast
+    /// short of both is refused for its silver (`CastOutcome::settle`).
+    pub silver_short: i64,
+    /// Each material neither the caster nor its sharers cover, in the spell's cost order.
+    pub short: Vec<ShortMaterial>,
+}
+
+/// What a refused cast would have made: the mage's level alone decides the range.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub struct RefusedProduct {
+    pub tag: String,
+    /// The catalogue's display name.
+    pub name: String,
+    pub fewest: i64,
+    pub most: i64,
+}
+
+/// How much of one material a refused cast is short of.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub struct ShortMaterial {
+    pub tag: String,
+    /// The catalogue's display name, the singular.
+    pub name: String,
+    /// The report's own plural, as `counted_item` reads it, or `name` where the report shows
+    /// nobody holding more than one (`ah-rsdz`): what a sentence counting other than one names.
+    pub plural: String,
+    pub amount: i64,
+}
+
 /// Every previewed unit standing in (or bound for) one region.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -918,6 +967,11 @@ pub fn preview_orders_on_map(
         } else {
             entry.created.clone()
         };
+        let refused_casts = if dissolving {
+            Vec::new()
+        } else {
+            entry.refused_casts.clone()
+        };
         let study = if dissolving {
             None
         } else {
@@ -983,6 +1037,7 @@ pub fn preview_orders_on_map(
                     produced: produced.clone(),
                     built: built.clone(),
                     created: created.clone(),
+                    refused_casts: refused_casts.clone(),
                     item_changes: item_changes.clone(),
                     transport_sent: transport_sent.clone(),
                     transport_received: transport_received.clone(),
@@ -1014,6 +1069,7 @@ pub fn preview_orders_on_map(
                     produced,
                     built,
                     created,
+                    refused_casts: refused_casts.clone(),
                     item_changes,
                     transport_sent,
                     transport_received,
@@ -1044,6 +1100,7 @@ pub fn preview_orders_on_map(
                     produced,
                     built,
                     created,
+                    refused_casts: refused_casts.clone(),
                     item_changes,
                     transport_sent,
                     transport_received,
@@ -1929,6 +1986,11 @@ impl Decided {
             // on the units table for orders with no effect at all, which is the leak
             // `tests/orders_preview.rs` guards against.
             || (lives && self.entry.item_log.moved_stock())
+            // A refused create-artifact cast moves no stock either, but it does have something to
+            // show: the material it is short of ends red and its product is struck through
+            // (`ah-44at`). An enchantment is never refused outright, so the standing `@cast earm`
+            // rows `tests/orders_preview.rs` keeps out stay out.
+            || (lives && !self.entry.refused_casts.is_empty())
     }
 }
 
@@ -2167,6 +2229,9 @@ struct WorkingUnit {
     /// What this unit's `CAST` orders create this month. Written once by `apply_item_effects`
     /// (`ah-ofpb.5`).
     created: Vec<CreatedItem>,
+    /// This unit's `CAST` orders the game refuses. Written once by `apply_item_effects`
+    /// (`ah-44at`).
+    refused_casts: Vec<RefusedCast>,
     /// Every item this month's orders move on this row, and whether stock moved (`ah-z9g8`).
     item_log: super::item_change_log::ItemChangeLog,
     /// What this unit's `TRANSPORT`/`DISTRIBUTE` orders send this month. Written once by
@@ -2587,6 +2652,7 @@ impl Working {
                 produced: Vec::new(),
                 built: Vec::new(),
                 created: Vec::new(),
+                refused_casts: Vec::new(),
                 item_log: super::item_change_log::ItemChangeLog::default(),
                 transport_sent: Vec::new(),
                 transport_received: Vec::new(),
@@ -2913,6 +2979,7 @@ impl Working {
                 })
                 .collect();
             unit.built = effect.built.clone();
+            unit.refused_casts = effect.refused_casts.clone();
             unit.created = effect
                 .moved
                 .iter()
@@ -2981,6 +3048,7 @@ impl Working {
             produced: Vec::new(),
             built: Vec::new(),
             created: Vec::new(),
+            refused_casts: Vec::new(),
             item_log: super::item_change_log::ItemChangeLog::default(),
             transport_sent: Vec::new(),
             transport_received: Vec::new(),

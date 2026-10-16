@@ -318,6 +318,7 @@ describe("battle-derived skills in the unit pane (ah-1mpx.6.3)", () => {
       produced: [],
       built: [],
       created: [],
+      refusedCasts: [],
       transportSent: [],
       transportReceived: [],
       transportTargetIssues: [],

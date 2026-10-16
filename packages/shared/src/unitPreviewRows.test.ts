@@ -23,6 +23,7 @@ const previewedRow = (
   produced: [],
   built: [],
   created: [],
+  refusedCasts: [],
   transportSent: [],
   transportReceived: [],
   transportTargetIssues: [],

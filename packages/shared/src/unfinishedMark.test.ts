@@ -122,4 +122,33 @@ describe("itemCellParts", () => {
   it("is what formatItems joins, so the two cannot drift", () => {
     expect(formatItems(items)).toBe("85 WOOD, 1 GALL, 5 SWOR");
   });
+
+  // `ah-44at`: a refused CAST's short material ends red, ahead of the usual order (Q6 A).
+  it("puts a short item first, as a minus figure", () => {
+    const short = [{ tag: "FLOA", name: "floater hide", plural: "floater hides", figure: -75 }];
+    expect(itemCellParts(items, [], short)).toEqual([
+      { text: "-75 FLOA", unfinished: false, short: true },
+      { text: "85 WOOD", unfinished: false },
+      { text: "1 GALL", unfinished: true },
+      { text: "5 SWOR", unfinished: false }
+    ]);
+  });
+
+  it("never lists a short tag twice", () => {
+    const short = [{ tag: "WOOD", name: "wood", plural: "wood", figure: -10 }];
+    expect(itemCellParts(items, [], short).map((part) => part.text)).toEqual([
+      "-10 WOOD",
+      "1 GALL",
+      "5 SWOR"
+    ]);
+  });
+
+  it("keeps several short items in the order they are given", () => {
+    const short = [
+      { tag: "IRWD", name: "ironwood", plural: "ironwood", figure: -75 },
+      { tag: "FLOA", name: "floater hide", plural: "floater hides", figure: -75 }
+    ];
+    expect(itemCellParts([], [], short).map((part) => part.text)).toEqual(["-75 IRWD", "-75 FLOA"]);
+    expect(formatItems([], [], short)).toBe("-75 IRWD, -75 FLOA");
+  });
 });

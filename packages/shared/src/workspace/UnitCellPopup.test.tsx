@@ -18,6 +18,23 @@ describe("PopupLineValue", () => {
     expect(markup).toMatch(/text-danger[^>]*>2</);
   });
 
+  // `ah-44at`: what a refused cast would have made is struck through and dimmed, whole (Q3 B).
+  it("a struck line is drawn through and dim, with no up or down colour", () => {
+    const line: PopupLine = {
+      label: "Cloudship CLOU",
+      value: "0-1",
+      change: { direction: "up", from: "none" },
+      struck: true
+    };
+    const value = draw(line);
+    expect(value).toMatch(/line-through[^"]*text-ink-dim|text-ink-dim[^"]*line-through/);
+    expect(value).toMatch(/none[\s\S]*→[\s\S]*0-1/);
+    expect(value).not.toContain("text-ok");
+    const label = renderToStaticMarkup(<PopupLineLabel line={line} />);
+    expect(label).toContain("line-through");
+    expect(label).toContain("text-ink-dim");
+  });
+
   it("a figure that did not move is drawn on its own", () => {
     const markup = draw({ label: "silver", value: "40" });
     expect(markup).not.toContain("→");

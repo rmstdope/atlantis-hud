@@ -114,6 +114,7 @@ describe("the units pane on an empty hex", () => {
             produced: [],
             built: [],
             created: [],
+            refusedCasts: [],
             transportSent: [],
             transportReceived: [],
             transportTargetIssues: [],
@@ -207,6 +208,7 @@ describe("a unit carried away by a sailing fleet", () => {
         produced: [],
         built: [],
         created: [],
+        refusedCasts: [],
         transportSent: [],
         transportReceived: [],
         transportTargetIssues: [],
@@ -346,6 +348,7 @@ describe("the structure column", () => {
             produced: [],
             built: [],
             created: [],
+            refusedCasts: [],
             transportSent: [],
             transportReceived: [],
             transportTargetIssues: [],
@@ -1009,6 +1012,7 @@ describe("the items column", () => {
         produced: [],
         built: [],
         created: [],
+        refusedCasts: [],
         transportSent: [],
         transportReceived: [],
         transportTargetIssues: [],
@@ -1039,6 +1043,39 @@ describe("the items column", () => {
     expect(markup).toContain('data-predicted="true"');
     expect(markup).toContain("italic text-brass");
     expect(markup).toContain("5 GRAI");
+  });
+
+  // `ah-44at`: a refused CAST's short material ends red and leads the cell (Q1 A, Q6 A).
+  it("draws a refused cast's short material red, ahead of everything else", () => {
+    const mage = { unitId: "1", items: [{ amount: 75, name: "ironwood", tag: "IRWD" }] };
+    const markup = draw(
+      hex({ region: region({ units: [unit(mage)] }) }),
+      previewOf(mage, {
+        itemChanges: [
+          {
+            tag: "FLOA",
+            name: "floater hides",
+            delta: -75,
+            cause: "cast-spent",
+            line: 3,
+            unitPrice: null,
+            other: null,
+            isMan: false
+          }
+        ],
+        refusedCasts: [
+          {
+            product: { tag: "CLOU", name: "Cloudship", fewest: 0, most: 1 },
+            silverShort: 0,
+            short: [{ tag: "FLOA", name: "floater hide", plural: "floater hides", amount: 75 }]
+          }
+        ]
+      })
+    );
+
+    expect(markup).toMatch(/<span class="text-danger">-75 FLOA<\/span>, 75 IRWD/);
+    // The cell never shows the product of a refused cast (Q3 B).
+    expect(markup).not.toContain("CLOU</");
   });
 
   it("marks a cell whose month could not be fully counted, upright when nothing was projected", () => {
@@ -1227,6 +1264,7 @@ describe("what the skills column marks (ah-z73s.1, ah-qig3)", () => {
         produced: [],
         built: [],
         created: [],
+        refusedCasts: [],
         transportSent: [],
         transportReceived: [],
         transportTargetIssues: [],
@@ -1739,6 +1777,7 @@ describe("All my units shows the coming month (ah-tguk)", () => {
     produced: [],
     built: [],
     created: [],
+    refusedCasts: [],
     transportSent: [],
     transportReceived: [],
     transportTargetIssues: [],
@@ -2374,6 +2413,7 @@ describe("a row the game dissolves", () => {
     produced: [],
     built: [],
     created: [],
+    refusedCasts: [],
     transportSent: [],
     transportReceived: [],
     transportTargetIssues: [],
@@ -2582,6 +2622,7 @@ describe("the skills cell's hidden sentence names where men came from (ah-rgkk.2
             produced: [],
             built: [],
             created: [],
+            refusedCasts: [],
             transportSent: [],
             transportReceived: [],
             transportTargetIssues: [],
@@ -2818,6 +2859,7 @@ describe("the unfinished mark", () => {
           }
         ],
         created: [],
+        refusedCasts: [],
         transportSent: [],
         transportReceived: [],
         transportTargetIssues: [],
