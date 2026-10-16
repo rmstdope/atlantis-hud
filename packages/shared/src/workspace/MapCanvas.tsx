@@ -1472,6 +1472,14 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     return coordinate?.z === level ? coordinate : null;
   }, [selectedRegionId, level]);
 
+  // The selected hex's prepared view, for a theme's own selection mark (ah-qf24); null for a hex
+  // the map holds no view of.
+  const selectedView = useMemo(
+    () =>
+      selectedAt === null ? null : (allViews.find((view) => view.key === selectedRegionId) ?? null),
+    [allViews, selectedAt, selectedRegionId]
+  );
+
   const highlightedAt = useMemo(() => {
     const coordinate = highlightedRegionId === null ? null : parseRegionId(highlightedRegionId);
     return coordinate && coordinate.z === level ? coordinate : null;
@@ -1821,7 +1829,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
                 className={selectionEpoch > 0 ? "map-selection-pulse" : undefined}
               >
                 {theme.SelectionMark ? (
-                  <theme.SelectionMark />
+                  <theme.SelectionMark view={selectedView} />
                 ) : (
                   <>
                 <polygon

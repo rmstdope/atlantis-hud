@@ -821,7 +821,7 @@ describe("a theme's own selection mark and map-wide effect", () => {
   }
   const marked: MapTheme = {
     ...probe(),
-    SelectionMark: () => <g data-probe="selection" />,
+    SelectionMark: ({ view }) => <g data-probe="selection" data-view={view?.key ?? "none"} />,
     Overlay: () => <rect data-probe="overlay" />
   };
 
@@ -830,6 +830,8 @@ describe("a theme's own selection mark and map-wide effect", () => {
     const ring = svg.slice(svg.indexOf('data-testid="map-selection-ring"'));
 
     expect(ring).toContain('data-probe="selection"');
+    // Handed the selected hex's own view, so a part in the coordinates' way can step down (ah-qf24).
+    expect(ring).toContain('data-view="1:7,53"');
     // Still inside the pulse group, so a fresh selection replays the lock-on with the theme's mark.
     expect(ring.indexOf("map-selection-pulse")).toBeLessThan(ring.indexOf('data-probe="selection"'));
     expect(svg).not.toContain("stroke-selection-ring");

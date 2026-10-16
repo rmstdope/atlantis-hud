@@ -446,7 +446,7 @@ describe("the selected hex, and the map-wide effect", () => {
     const Mark = collective.SelectionMark!;
     const svg = renderToStaticMarkup(
       <svg>
-        <Mark />
+        <Mark view={null} />
       </svg>
     );
     expect(svg).toContain('data-selection="brackets"');

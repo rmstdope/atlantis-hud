@@ -392,7 +392,7 @@ function MarkLayer({ views }: LayerProps) {
  * pointing hand above it. Replaces the map's white ring; drawn in the mockup's coordinates and scaled
  * once, like a hex.
  */
-function SelectionMark() {
+function SelectionMark({ view }: { view: HexView | null }) {
   return (
     <g data-selection="cursor" className="eb-layer">
       {/* Dims rather than vanishing, so the selection is never gone; the hand is what blinks. */}
@@ -400,10 +400,18 @@ function SelectionMark() {
         <polygon points={HEX_POINTS} className="eb-select-casing" fill="none" strokeWidth={6} vectorEffect="non-scaling-stroke" />
         <polygon points={HEX_POINTS} className="eb-select" fill="none" strokeWidth={3} vectorEffect="non-scaling-stroke" />
       </g>
+      {/* The hand points from where the hex's coordinates go, so it steps down beneath them (ah-qf24). */}
       <g transform={`scale(${SCALE})`}>
-        <g className="eb-blink" transform={at(HAND_AT)}>
-          <Pixels bitmap={HAND} px={HAND_PX} />
-        </g>
+        <StepsDown
+          view={view}
+          named={view?.settlement != null}
+          top={{ y: (HAND_AT.y - (HAND.length * HAND_PX) / 2) * SCALE }}
+          unit={SCALE}
+        >
+          <g className="eb-blink" transform={at(HAND_AT)}>
+            <Pixels bitmap={HAND} px={HAND_PX} />
+          </g>
+        </StepsDown>
       </g>
     </g>
   );

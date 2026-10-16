@@ -61,9 +61,11 @@ export type MapTheme = {
   /**
    * What marks the selected hex, drawn about the hex's centre in world units, in place of the map's
    * own selection ring. Optional: without one the map draws its white ring. A theme that supplies
-   * one owns making the selection unmistakable on every terrain it paints, at every zoom.
+   * one owns making the selection unmistakable on every terrain it paints, at every zoom. `view` is
+   * the selected hex's, null for a hex the map holds no view of; a part drawn in the coordinates'
+   * way steps down beneath them through `StepsDown` (ah-qf24).
    */
-  SelectionMark?: ComponentType;
+  SelectionMark?: ComponentType<{ view: HexView | null }>;
   /**
    * One effect over the whole visible map - a scan line, a glint - drawn in screen space above the
    * world and never taking a pointer. Optional, and only drawn while the map may animate.
