@@ -159,7 +159,12 @@ export type ColumnPopup = {
   notes: string[];
   /** One amber sentence, or null. */
   warning: string | null;
-  /** Whether this month changes the cell - see `PopupMonth`. The shared sentence follows it. */
+  /**
+   * Whether this month changes the cell - see `PopupMonth`. The shared no-change sentence is added
+   * only for `unchanged`, and not even then where the popup words its month itself (the flags, the
+   * silver ledger, a long order neither side has), so `unchanged` alone does not mean the popup
+   * says nothing changes.
+   */
   month: PopupMonth;
 };
 

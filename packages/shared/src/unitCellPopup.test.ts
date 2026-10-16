@@ -4751,6 +4751,18 @@ describe("the month each column popup states", () => {
     });
   }
 
+  // A row with no skills preview draws no chain, so the old inference saw nothing move and wrote
+  // the sentence beside a study; the month is the study's, chain or not.
+  it("a study on a row with no skills preview still states that the month changes it", () => {
+    const popup = columnPopup(
+      popupForCell("skills", unit({ own: true, previewChanges: [], skills: [mani], study: studyMani }), facts())
+    );
+    expect(popup.month).toBe("changes");
+    for (const sentence of NOTHING) {
+      expect(popup.notes).not.toContain(sentence);
+    }
+  });
+
   it("a month nothing was compared against states no answer and says nothing", () => {
     const cases: readonly [(typeof UNIT_COLUMNS)[number], Case][] = [
       ["longOrder", { unit: unit({ own: true }), facts: facts({ longOrder: "WORK" }) }],
