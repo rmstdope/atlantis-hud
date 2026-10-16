@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Option B &mdash; whenever the forecast cannot tell</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:20px; margin-top:14px; align-items:start; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 12px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:6px; }
+  .tip .hd { color:var(--ink); font-size:12.5px; margin-bottom:6px; border-bottom:1px solid var(--edge-soft); padding-bottom:5px;}
+  .il { font-size:12px; color:var(--ink-soft); padding:3px 0; border-bottom:1px solid var(--edge-soft); display:flex; justify-content:space-between; gap:12px;}
+  .il:last-child { border-bottom:0; }
+  .il .k { color:var(--ink); }
+  .il .v { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ink); white-space:nowrap;}
+  .il .s { display:block; color:var(--ink-dim); font-size:11px; font-style:italic; margin-top:2px; font-family:Georgia,serif;}
+  .il.newline { background:rgba(79,183,131,.09); border-left:2px solid var(--ok); padding-left:7px; }
+  .il.badline { background:rgba(217,112,112,.09); border-left:2px solid var(--danger); padding-left:7px; }
+  .note { font-size:11.5px; color:var(--ink-soft); font-style:italic; padding-top:7px; margin-top:5px; border-top:1px solid var(--edge-soft); font-family:Georgia,serif;}
+  .note.newline { background:rgba(79,183,131,.09); border-left:2px solid var(--ok); padding-left:7px; }
+  .cap { color:var(--ink-soft); font-size:12.5px; margin-top:12px; } .cap b { color:var(--ink); }
+  .bad { color:var(--danger); } .good { color:var(--ok); } .dim { color:var(--ink-dim); }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; white-space:nowrap; }
+</style>
+<style>.il.dimline{opacity:.6;font-style:italic;border-left:2px dashed var(--ink-dim);padding-left:7px}</style></head><body><header><h1><span>Option B &mdash; whenever the forecast cannot tell</span></h1><p>A dimmed, uncounted line appears for every silver TRANSPORT the forecast could not count: a receiver your report does not show, or another faction&rsquo;s unit that may not accept it.</p></header><main><section><h2 class="rule"><em>State</em> receiver not in your report</h2><p>Njosn writes <code>TRANSPORT 999 200 SILV</code>. Month end stays 500; the bracketed line is in no total.</p><div class="tips"><div class="tip"><div class="sect">Silver</div><div class="hd">Njosn (4670)</div><div class="il dimline"><span class="k">not counted<span class="s">sent to unit 999, which your report does not show</span></span><span class="v">(&minus;200)</span></div><div class="il "><span class="k">At month end<span class="s"></span></span><span class="v">500</span></div><div class="note">Beneath the unit, as today: &ldquo;Could not count 200 silver for unit 999 because your report does not show whether it is an eligible transport target.&rdquo;</div></div></div></section><section><h2 class="rule"><em>State</em> receiver is another faction&rsquo;s Caravanserai owner</h2><p>Same order. The same kind of dimmed line, with the reason the report gives.</p><div class="tips"><div class="tip"><div class="sect">Silver</div><div class="hd">Njosn (4670)</div><div class="il dimline"><span class="k">not counted<span class="s">sent to unit 5120, which may not accept it</span></span><span class="v">(&minus;200)</span></div><div class="il "><span class="k">At month end<span class="s"></span></span><span class="v">500</span></div><div class="note">Beneath the unit, as today: &ldquo;Could not count 200 silver for unit 5120 &hellip;&rdquo;</div></div></div></section><section><h2 class="rule"><em>State</em> receiver certainly refuses (not a quartermaster)</h2><p>The game will refuse this for certain, so there is no line, as agreed.</p><div class="tips"><div class="tip"><div class="sect">Silver</div><div class="hd">Njosn (4670)</div><div class="il "><span class="k">At month end<span class="s"></span></span><span class="v">500</span></div></div></div></section></main></body></html>
