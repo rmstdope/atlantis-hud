@@ -469,5 +469,12 @@ fn a_first_line_the_unit_cannot_afford_leaves_the_second_free_to_recruit() {
     let both = formed_unit_buying_both("5 leaders [LEAD] at $100, 20 orcs [ORC] at $38", 50);
 
     assert_eq!(both.mixed, vec![], "no leader arrives to mix with");
+    assert_eq!(
+        both.row.expense,
+        Some(38),
+        "one orc at $38, and nothing for the leader: {:?}",
+        both.row
+    );
+    assert_eq!(both.row.at_month_end, Some(12));
     assert_eq!((both.orcs, both.leaders), (1, 0));
 }
