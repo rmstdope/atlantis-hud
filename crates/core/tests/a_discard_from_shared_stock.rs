@@ -135,10 +135,20 @@ fn a_discard_beyond_even_the_shared_stock_carries_both_warnings() {
         .filter(|finding| finding.code.as_str() != "discard-from-shared-stock")
         .collect();
     assert_eq!(with_both, short, "the shortage warnings are unchanged");
-    assert!(
-        short.iter().any(|finding| finding.unit_id.as_deref() == Some("12878")
-            || finding.unit_id.is_none()),
-        "and there is one: {short:?}"
+    // Today's shortage warning here is the hex's, since the swords are shared: the agreed
+    // experience keeps it unchanged, and Problems lists it beside the new one.
+    let hex_short: Vec<_> = short
+        .iter()
+        .filter(|finding| finding.code.as_str() == "not-enough-items")
+        .map(|finding| (finding.unit_id.as_deref(), finding.message.as_str()))
+        .collect();
+    assert_eq!(
+        hex_short,
+        [(
+            None,
+            "the units in this hex are short 30 swords between them: they can have 60 and their \
+             orders spend 90"
+        )]
     );
 }
 
@@ -178,13 +188,16 @@ fn a_discard_partly_its_own_counts_only_what_the_mates_lose() {
 }
 
 /// What the agreed experience leaves unwarned: the unit holds everything it discards; `ALL` is
-/// only what it holds; men are disbanded from its own count; silver keeps its own words.
+/// only what it holds; men are disbanded from its own count (two leaders, where Two of Seven holds
+/// one and sharers hold more); the dragons the engine releases come from its own stock (it holds
+/// 3, sharers hold more); silver keeps its own words.
 #[test]
 fn a_discard_that_reaches_no_faction_mate_says_nothing_new() {
     for orders in [
         "unit 12880\nGIVE 0 20 SWOR\n",
         "unit 12878\nGIVE 0 ALL SWOR\n",
-        "unit 12878\nGIVE 0 1 LEAD\n",
+        "unit 12878\nGIVE 0 2 LEAD\n",
+        "unit 12878\nGIVE 0 4 DRAG\n",
         "unit 12878\nGIVE 0 100000 SILV\n",
     ] {
         let findings = findings(orders, CheckOptions::default());
