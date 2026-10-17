@@ -623,7 +623,10 @@ export type RowMonth = {
   home: string;
   longOrder: string | null;
   silver: UnitSilver | null;
-  /** A silver finding names this unit. Never without a forecast to explain it. */
+  /**
+   * A silver finding names this unit, or the game refuses one of its orders for want of silver
+   * (`ah-rjz2`). Never without a forecast to explain it.
+   */
   warned: boolean;
   /** The hex is short of silver with nobody named. Never without a forecast. */
   hexShort: boolean;
@@ -647,7 +650,12 @@ export function rowMonth(row: KeyedRow & { own: boolean }, lookups: RowLookups):
     home,
     longOrder,
     silver,
-    warned: silver !== null && (lookups.silverWarnings?.has(unitRowKey(home, row.unitId)) ?? false),
+    // A refused order marks the cell too: in a pooled hex its finding names the hex, not the unit
+    // (`ah-rjz2`).
+    warned:
+      silver !== null &&
+      ((lookups.silverWarnings?.has(unitRowKey(home, row.unitId)) ?? false) ||
+        (silver.refused ?? []).length > 0),
     hexShort: silver !== null && (lookups.silverShortHexes?.has(home) ?? false),
     reportedLongOrder: lookups.getReportedLongOrder?.(unit) ?? NO_ORDERS_TEMPLATE
   };

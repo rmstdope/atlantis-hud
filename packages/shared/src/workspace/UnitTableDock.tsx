@@ -43,7 +43,7 @@ import {
   type StructureFinish
 } from "../unfinishedMark";
 import { UnfinishedMark } from "./UnfinishedMark";
-import { shortItems } from "../refusedCast";
+import { itemsRefused } from "../refusedCast";
 import { describeMenBriefly } from "../unitComposition";
 import {
   atMost,
@@ -2249,10 +2249,10 @@ const EXPLAINED_COLUMNS: readonly DrawnColumnId[] = [
 const PREDICTED = "italic text-brass";
 
 /**
- * What a row's Items cell draws - the after-orders entries, a refused cast's short material
- * included, silver left out - which is what the units filter matches (`ah-ykac`).
+ * What a row's Items cell draws - the after-orders entries, silver left out - which is what the
+ * units filter matches (`ah-ykac`).
  */
-const cellItemsOf = (unit: PreviewedUnit) => itemCellParts(unit.items, unit.created, shortItems(unit));
+const cellItemsOf = (unit: PreviewedUnit) => itemCellParts(unit.items, unit.created);
 
 function UnitRow({
   unit,
@@ -2385,11 +2385,11 @@ function UnitRow({
   // A unit filled in from a merged faction's own report (`ah-oqxn`): it reads like one of ours -
   // skills, silver among its items - but has no month of ours to price and no orders to write.
   const mergedFrom = mergedFromOf(unit);
-  // What a refused CAST leaves this unit short of, red and first in the cell (`ah-44at`).
-  const short = shortItems(unit);
-  const items = formatItems(unit.items, unit.created, short, { withSilver: mergedFrom !== null });
+  // A CAST the game refuses for a material leaves the cell an amber ⚠, first (`ah-rjz2`, Q6 A).
+  const itemsWarned = itemsRefused(unit);
+  const items = formatItems(unit.items, unit.created, { withSilver: mergedFrom !== null });
   // The same entries, so the unfinished mark can sit before an unfinished ship's (`ah-2ql5`).
-  const itemParts = itemCellParts(unit.items, unit.created, short, { withSilver: mergedFrom !== null });
+  const itemParts = itemCellParts(unit.items, unit.created, { withSilver: mergedFrom !== null });
   const unread = !unitWasFullyRead(unit);
 
   // Which cells the orders changed, so each one can say so and show what the report said.
@@ -2822,11 +2822,16 @@ function UnitRow({
       </Td>
     ),
     items: (
-      // A red figure is this month's too, even where the item list itself did not move (`ah-44at`).
-      <Td
-        className={`truncate${itemsChange || short.length > 0 ? ` ${PREDICTED}` : ""}`}
-        predicted={Boolean(itemsChange) || short.length > 0}
-      >
+      <Td className={`truncate${itemsChange ? ` ${PREDICTED}` : ""}`} predicted={Boolean(itemsChange)}>
+        {/*
+          A refused CAST's ⚠ leads the cell, ahead of every item, so a narrow column or the
+          ellipsis never hides it (`ah-rjz2`, Q6 A).
+        */}
+        {itemsWarned ? (
+          <span data-testid="items-refused" className="mr-1">
+            <SeverityMark severity="warning" />
+          </span>
+        ) : null}
         {/*
           Driven off an empty cell rather than off `read`: `formatItems` strips silver, so a unit
           that read only its silver has nothing to put in front of a bare `· and more`.
@@ -2840,13 +2845,7 @@ function UnitRow({
             <Fragment key={at}>
               {at > 0 ? ", " : null}
               {part.unfinished ? <UnfinishedMark /> : null}
-              {part.short ? (
-                <span className="text-danger">
-                  <MarkedItemPart part={part} needle={needle} />
-                </span>
-              ) : (
-                <MarkedItemPart part={part} needle={needle} />
-              )}
+              <MarkedItemPart part={part} needle={needle} />
             </Fragment>
           ))
         )}

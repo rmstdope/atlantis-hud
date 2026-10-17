@@ -115,13 +115,13 @@ describe("itemCellParts", () => {
   });
 
   it("keeps silver where the report listed it when asked to (ah-oqxn)", () => {
-    expect(itemCellParts(items, [], [], { withSilver: true }).map((part) => part.text)).toEqual([
+    expect(itemCellParts(items, [], { withSilver: true }).map((part) => part.text)).toEqual([
       "85 WOOD",
       "300 SILV",
       "1 GALL",
       "5 SWOR"
     ]);
-    expect(formatItems(items, [], [], { withSilver: true })).toBe("85 WOOD, 300 SILV, 1 GALL, 5 SWOR");
+    expect(formatItems(items, [], { withSilver: true })).toBe("85 WOOD, 300 SILV, 1 GALL, 5 SWOR");
   });
 
   it("keeps the range a CAST's uncertain creation draws", () => {
@@ -138,32 +138,4 @@ describe("itemCellParts", () => {
     expect(formatItems(items)).toBe("85 WOOD, 1 GALL, 5 SWOR");
   });
 
-  // `ah-44at`: a refused CAST's short material ends red, ahead of the usual order (Q6 A).
-  it("puts a short item first, as a minus figure", () => {
-    const short = [{ tag: "FLOA", name: "floater hide", plural: "floater hides", figure: -75 }];
-    expect(itemCellParts(items, [], short)).toEqual([
-      { text: "-75 FLOA", unfinished: false, short: true, tag: "FLOA", name: "floater hide" },
-      { text: "85 WOOD", unfinished: false, tag: "WOOD", name: "wood" },
-      { text: "1 GALL", unfinished: true, tag: "GALL", name: "unfinished Galleon" },
-      { text: "5 SWOR", unfinished: false, tag: "SWOR", name: "sword" }
-    ]);
-  });
-
-  it("never lists a short tag twice", () => {
-    const short = [{ tag: "WOOD", name: "wood", plural: "wood", figure: -10 }];
-    expect(itemCellParts(items, [], short).map((part) => part.text)).toEqual([
-      "-10 WOOD",
-      "1 GALL",
-      "5 SWOR"
-    ]);
-  });
-
-  it("keeps several short items in the order they are given", () => {
-    const short = [
-      { tag: "IRWD", name: "ironwood", plural: "ironwood", figure: -75 },
-      { tag: "FLOA", name: "floater hide", plural: "floater hides", figure: -75 }
-    ];
-    expect(itemCellParts([], [], short).map((part) => part.text)).toEqual(["-75 IRWD", "-75 FLOA"]);
-    expect(formatItems([], [], short)).toBe("-75 IRWD, -75 FLOA");
-  });
 });
