@@ -5489,7 +5489,14 @@ fn apply_transfers(
     // what the exchange moved (`ah-mw1r.2`). Silver is not recorded here: the ledger records both
     // legs itself.
     let offers = &exchanges.offers;
-    for (first, second) in complementary_pairs(offers) {
+    // Pair by pair as the engine's walk reaches them, as the ledger's `settle_exchanges` does
+    // (`ah-6cni`): the partner's holding read at a pair's first line, the first side's at its
+    // second, where both sides move.
+    let pairs = complementary_pairs(offers);
+    let mut partner_checks: Vec<Option<Result<i64, UncertainGive>>> =
+        pairs.iter().map(|_| None).collect();
+    for (pair, completes) in exchange_walk(&pairs) {
+        let (first, second) = pairs[pair];
         let (one, other) = (&offers[first], &offers[second]);
         let holds = |offer: &ExchangeOffer| -> Result<i64, UncertainGive> {
             if let Some(uncertain) = working
@@ -5555,7 +5562,14 @@ fn apply_transfers(
                 .sum();
             Ok(own.max(0).saturating_add(lent))
         };
-        let (held, other_held) = (holds(one), holds(other));
+        if !completes {
+            partner_checks[pair] = Some(holds(other));
+            continue;
+        }
+        let other_held = partner_checks[pair]
+            .take()
+            .expect("the walk reaches a pair's first line before its second");
+        let held = holds(one);
         let doubt = held.as_ref().err().or(other_held.as_ref().err()).cloned();
         match exchange_verdict((one, held), (other, other_held)) {
             ExchangeVerdict::Moves => {}
@@ -10693,6 +10707,31 @@ fn complementary_pairs(offers: &[ExchangeOffer]) -> Vec<(usize, usize)> {
     pairs
 }
 
+/// The engine's walk over `pairs`, as `(pair, completes)` in the order it reaches each line: the
+/// units in report order and each unit's lines as written - the order of [`exchange_offers`], whose
+/// indices `pairs` holds (`runorders.cpp` `DoExchangeOrders`; `ah-6cni`).
+///
+/// At a pair's first line `DoExchangeOrder` checks that the *partner* holds what it offers
+/// (`GetSharedNum`) and moves nothing; at its second (`completes`) it checks the first side's
+/// holding and, both checks passed, moves both sides (`ConsumeShared`). So a pair completed earlier
+/// in the walk can pay for, or drain, a pair completed later, whatever order the lines are written.
+///
+/// Not followed: the engine walks the object lists as they stand at EXCHANGE time, so a unit that
+/// ENTERs, LEAVEs, is PROMOTEd or EVICTed, JOINs, or is FORMed into a structure is reached in a
+/// different place than its report line (`ah-fyyk`).
+fn exchange_walk(pairs: &[(usize, usize)]) -> Vec<(usize, bool)> {
+    let mut visits: Vec<(usize, usize, bool)> = pairs
+        .iter()
+        .enumerate()
+        .flat_map(|(pair, &(first, second))| [(first, pair, false), (second, pair, true)])
+        .collect();
+    visits.sort_unstable();
+    visits
+        .into_iter()
+        .map(|(_, pair, completes)| (pair, completes))
+        .collect()
+}
+
 /// Whether a pair of exchange lines goes ahead, given what each side holds of what it offers once
 /// every GIVE and TAKE has run - `Err` where that holding is itself in doubt.
 #[derive(Debug, PartialEq, Eq)]
@@ -10725,7 +10764,8 @@ fn exchange_verdict<E>(
 /// involved does not have the items it is offering, or if the exchange orders given are not
 /// complementary, the exchange is aborted." What each side holds is its own balance once every
 /// GIVE and TAKE has run, together with what its `SHARE` faction-mates in the hex lend it - the
-/// engine's `GetSharedNum` and `ConsumeShared` (`ah-80mj`). A matched pair moves both items, recorded as a gift each way on the
+/// engine's `GetSharedNum` and `ConsumeShared` (`ah-80mj`), read when the engine's walk reads it
+/// ([`exchange_walk`], `ah-6cni`). A matched pair moves both items, recorded as a gift each way on the
 /// line that hands it over; a pair whose holding is in doubt marks both lines uncounted and every
 /// tag it might move uncertain; anything else moves nothing.
 fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
@@ -10751,7 +10791,11 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     let offers = &read.offers;
     let pairs = complementary_pairs(offers);
     record_unanswered_exchanges(ledger, hex, &read, &pairs);
-    for &(first, second) in &pairs {
+    // The partner's holding as the walk read it at each pair's first line.
+    let mut partner_checks: Vec<Option<Result<i64, UncertainGive>>> =
+        pairs.iter().map(|_| None).collect();
+    for (pair, completes) in exchange_walk(&pairs) {
+        let (first, second) = pairs[pair];
         let (one, other) = (&offers[first], &offers[second]);
         // What a side has as the engine counts an offer, `GetSharedNum`: its own stock and what
         // its `SHARE` faction-mates in the hex still lend it, off the one reading every spend from
@@ -10797,7 +10841,14 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
                 .max(0)
                 .saturating_add(lenders.iter().map(|(_, lends)| lends).sum::<i64>()))
         };
-        let (held, other_held) = (holds(one), holds(other));
+        if !completes {
+            partner_checks[pair] = Some(holds(other));
+            continue;
+        }
+        let other_held = partner_checks[pair]
+            .take()
+            .expect("the walk reaches a pair's first line before its second");
+        let held = holds(one);
         let doubt = held.as_ref().err().or(other_held.as_ref().err()).cloned();
         let known = [
             (one, held.as_ref().ok().copied()),
@@ -10909,13 +10960,13 @@ fn record_unanswered_exchanges(
 }
 
 /// Records a complementary pair aborted because a side is short of what it offers - but only
-/// where some short side's item no other `EXCHANGE` line of ours in the hex trades, with any
-/// partner. The engine settles exchanges as it walks the units in report order (`runorders.cpp`
-/// `DoExchangeOrders`), not in the order the lines are written as [`settle_exchanges`] does, and
-/// an exchange with another faction is not followed at all; so where another exchange could hand
-/// the short side (or a sharer lending to it) that item, or take it, whether this pair aborts is
-/// not certain and is not told (reviews of PR #1699, `ah-6cni`). Saying nothing there is a missed
-/// warning, never a false one.
+/// where some short side's item no other `EXCHANGE` line in the hex trades, with any partner.
+/// [`settle_exchanges`] follows the engine's report-order walk ([`exchange_walk`], `ah-6cni`), but
+/// an exchange with another faction is not followed at all, and a line whose goods nothing can
+/// name is not paired; so where another exchange could hand the short side (or a sharer lending to
+/// it) that item, or take it, whether this pair aborts is not certain and is not told (reviews of
+/// PR #1699); nor is a unit that moves before EXCHANGE reached where the walk puts it (`ah-fyyk`).
+/// Saying nothing there is a missed warning, never a false one.
 fn record_short_exchange(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
@@ -11045,7 +11096,9 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
         .known_balance_at(StatePhase::Give, &giver.unit_id, tag)
     {
         Ok(own) => exchange_draw(ledger, hex, &giver.unit_id, tag, own),
-        // Unreachable: a pair moves only once both sides' holdings were read as known.
+        // A pair moves only once both sides' holdings were read as known, but the partner's was
+        // read at the pair's first line and a pair completed since may have left it in doubt: its
+        // offer is then charged whole, as an unknown holding cannot be cut (`ah-fyyk`).
         Err(_) => (amount, Vec::new()),
     };
     let own_sold = amount.min(own.max(0));
@@ -12250,9 +12303,10 @@ fn per_skill_destroy(
 /// knowable from the report. Only [`owner_when_promotions_run`] can transfer it:
 /// `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`) runs one `PROMOTE` per object, its
 /// owner's (`Object::GetOwner`), and errors every other unit's "PROMOTE: Must be owner", so the
-/// unit it promotes hands nothing on again (`ah-c1p2`). Among that owner's `PROMOTE`s the first
-/// naming a unit in the structure is taken, as `movement::fleet::fleet_owner` takes it - a known
-/// gap, since the engine keeps only the last one written (`ah-nhgo`).
+/// unit it promotes hands nothing on again (`ah-c1p2`). Of that owner's `PROMOTE`s only the last
+/// written is kept (`ProcessPromoteOrder` overwrites `u->promote`), and it promotes nobody when it
+/// names a unit not in the structure (`Do1PromoteOrder`: "PROMOTE: Can't find target.") - the
+/// rule `movement::fleet::fleet_owner` follows (`ah-nhgo`).
 fn structure_owner_after_promotes(hex: &Hex<'_>, structure_id: &str) -> Option<String> {
     let owner = owner_when_promotions_run(hex, structure_id)?;
     let promoted = hex
@@ -12262,9 +12316,11 @@ fn structure_owner_after_promotes(hex: &Hex<'_>, structure_id: &str) -> Option<S
         .and_then(|promoter| {
             promoter
                 .promotes
-                .iter()
+                .last()
                 .map(|promote| &promote.target)
-                .find(|target| *target != &owner && unit_is_in_structure(hex, target, structure_id))
+                .filter(|target| {
+                    *target != &owner && unit_is_in_structure(hex, target, structure_id)
+                })
         });
     Some(promoted.cloned().unwrap_or(owner))
 }
@@ -41488,8 +41544,11 @@ BUILD
             );
         }
 
+        /// Of the owner's several `PROMOTE`s only the last is kept (`ah-nhgo`;
+        /// `ProcessPromoteOrder` overwrites `u->promote`), so 901, named last, owns the Palace
+        /// when `DESTROY` runs and its replacement is built.
         #[test]
-        fn an_owner_can_promote_only_once_before_replacement_destroy() {
+        fn the_owners_last_promote_decides_who_destroys_before_a_replacement() {
             let mut replacement_site = region(vec![
                 in_structure(unit("900"), "4"),
                 in_structure(
@@ -41514,7 +41573,7 @@ BUILD
             });
             with_trident_ledger(
                 replacement_site,
-                "unit 900\nPROMOTE 901\nPROMOTE 902\nunit 901\nDESTROY\nBUILD Palace\nunit 902\n",
+                "unit 900\nPROMOTE 902\nPROMOTE 901\nunit 901\nDESTROY\nBUILD Palace\nunit 902\n",
                 |ledger| {
                     assert!(ledger.build_placement_refusals.is_empty());
                     assert!(ledger.movements.contains(&movement(

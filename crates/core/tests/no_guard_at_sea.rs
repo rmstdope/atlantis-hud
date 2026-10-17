@@ -8,6 +8,8 @@
 //! Ocean (44,12) of the committed turn 42: Longship [329] carries Sailors (11125) and (12590), two
 //! centaurs of The Disinherited Knights (`neworigins-3.0.0-g3-f42-t42.rep:2280`).
 
+use std::collections::BTreeSet;
+
 use atlantis_hud_core::orders::semantics::{codes, review_turn, CheckOptions, Finding};
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
@@ -29,6 +31,11 @@ fn orders(line: &str) -> String {
 
 /// Every finding at ocean (44,12), with `hex-unguarded` switched on as the player had it.
 fn at_sea(orders: &str) -> Vec<Finding> {
+    at_sea_with(orders, Default::default())
+}
+
+/// Every finding at ocean (44,12), with only the codes in `disabled` switched off.
+fn at_sea_with(orders: &str, disabled: BTreeSet<String>) -> Vec<Finding> {
     let ruleset = ruleset();
     let mut parsed = parse_report_full(atlantis_hud_fixtures::G3_F42_T42.text);
     classify_units(&mut parsed, &ruleset);
@@ -39,7 +46,7 @@ fn at_sea(orders: &str) -> Vec<Finding> {
         .map(|region| region.region_id.clone())
         .expect("the fixture shows ocean (44,12)");
     let options = CheckOptions {
-        disabled: Default::default(),
+        disabled,
         ..CheckOptions::default()
     };
     review_turn(&parsed, orders, Some(&ruleset), options)
@@ -72,6 +79,20 @@ fn guard_1_at_sea_is_refused_because_it_is_at_sea() {
     assert_eq!(
         refusals,
         ["cannot guard: guarding at sea is not possible"],
+        "{findings:#?}"
+    );
+}
+
+/// Settings > Warnings says "Guards that cannot take watch" covers a unit at sea too (`ah-ah66`), so
+/// switching it off silences this refusal as well as the one about taxing.
+#[test]
+fn switching_off_guards_that_cannot_take_watch_silences_the_refusal_at_sea() {
+    let disabled = BTreeSet::from([codes::GUARD_WITHOUT_TAX_ABILITY.to_string()]);
+    let findings = at_sea_with(&orders("GUARD 1"), disabled);
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.code != codes::GUARD_WITHOUT_TAX_ABILITY),
         "{findings:#?}"
     );
 }
