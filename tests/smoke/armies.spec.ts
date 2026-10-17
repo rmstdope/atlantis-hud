@@ -830,6 +830,24 @@ test("no hover popup from the table is drawn over an open Add to army list", asy
   await page.waitForTimeout(HOVER_DELAY_MS * 2);
   await expect(page.getByTestId("add-to-army-panel")).toBeVisible();
   await expect(popups).toHaveCount(0);
+
+  // And the bulk line's, with two rows picked.
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("add-to-army-panel")).toHaveCount(0);
+  await rows(page).nth(0).click();
+  await rows(page).nth(1).click({ modifiers: ["Shift"] });
+  await page.getByTestId("bulk-add").click();
+  await expect(page.getByTestId("add-to-army-panel")).toBeVisible();
+  await rows(page).nth(2).locator('td[data-column="men"]').hover();
+  await page.waitForTimeout(HOVER_DELAY_MS * 2);
+  await expect(page.getByTestId("add-to-army-panel")).toBeVisible();
+  await expect(popups).toHaveCount(0);
+
+  // Closed again, the table's popups come back.
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("add-to-army-panel")).toHaveCount(0);
+  await rows(page).nth(3).locator('td[data-column="name"]').hover();
+  await expect(page.getByTestId("unit-tooltip")).toBeVisible();
 });
 
 test("a list that fits is drawn as it always was", async ({ page }) => {
