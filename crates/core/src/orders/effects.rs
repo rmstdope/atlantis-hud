@@ -11102,7 +11102,9 @@ mod tests {
                     .regions
                     .iter()
                     .flat_map(|region| region.units.iter())
-                    .all(|unit| unit.uncounted.is_empty() && unit.new_ship.is_none()),
+                    .all(|unit| unit.uncounted.is_empty()
+                        && unit.new_ship.is_none()
+                        && unit.built.is_empty()),
                 "{:?}",
                 response.regions
             );
@@ -11154,6 +11156,101 @@ mod tests {
             let drones = unit(&response, "900");
             assert_eq!(drones.uncounted.len(), 1, "{:?}", drones.uncounted);
             assert_eq!(drones.new_ship, None);
+        }
+
+        /// The engine's fleet flies only when every hull does (`../Atlantis/object.cpp`
+        /// `Object::FleetCapacity`: "Fleets are assumed to be flying, at least until we find any
+        /// non-flying vessels in them"), and `CreateShip` compares the new ship against that. So a
+        /// Longship joins a fleet of a Longship and a Balloon, and a Balloon does not.
+        #[test]
+        fn a_mixed_fleet_takes_a_sailing_ship_and_not_a_flying_one() {
+            let mixed = "+ Ship [250] : Fleet, 1 Longship, 1 Balloon.";
+            assert_eq!(
+                outcome(mixed, "unit 900\nBUILD Longship\n"),
+                (Some(NewShipOutcome::JoinsFleet), vec![])
+            );
+            let builder = format!("  {DRONES}")
+                .replace("shipbuilding [SHIP] 3 (180)", "shipbuilding [SHIP] 4 (300)")
+                .replace(
+                    "10 goblins [GBLN].",
+                    "10 goblins [GBLN], 20 floater hides [FLOA].",
+                );
+            let response = preview_over(&coast(&builder, mixed), "unit 900\nBUILD Balloon\n");
+            assert_eq!(
+                unit(&response, "900")
+                    .new_ship
+                    .as_ref()
+                    .map(|ship| ship.outcome),
+                Some(NewShipOutcome::NewFleet)
+            );
+        }
+
+        const HELPER: &str = "* Helper (902), Foo (1), behind, 4 goblins [GBLN], 10 wood [WOOD]. \
+             Weight: 140. Capacity: 0/0/60/0. Skills: shipbuilding [SHIP] 3 (180).";
+
+        /// `RunBuildShipOrder`'s `maxbuild < 1` branch: helpers that laid all the work leave the
+        /// founder only "the finishing touches", and `CreateShip` runs whatever the founder's own
+        /// level - so a founder below it still ends the month aboard the new ship. The helper's
+        /// 12 units of work cover the Longship's 10.
+        #[test]
+        fn a_founder_below_the_level_boards_the_ship_its_helpers_finish() {
+            let builder =
+                DRONES.replace("shipbuilding [SHIP] 3 (180)", "shipbuilding [SHIP] 0 (0)");
+            for orders in [
+                "unit 900\nBUILD Longship\nunit 902\nBUILD HELP 900\n",
+                "unit 902\nBUILD HELP 900\nunit 900\nBUILD Longship\n",
+            ] {
+                let response = preview_over(&coast(&builder, HELPER), orders);
+                let drones = unit(&response, "900");
+                assert!(drones.built.is_empty(), "{orders}: {:?}", drones.built);
+                assert_eq!(
+                    drones.new_ship.as_ref().map(|ship| ship.outcome),
+                    Some(NewShipOutcome::NewFleet),
+                    "{orders}"
+                );
+            }
+        }
+
+        /// The same, with the helpers' work short of the Galleon's 75: the founder holds it
+        /// unfinished, though it laid none of the work itself.
+        #[test]
+        fn a_founder_below_the_level_holds_the_ship_its_helpers_begin() {
+            let builder =
+                DRONES.replace("shipbuilding [SHIP] 3 (180)", "shipbuilding [SHIP] 0 (0)");
+            let response = preview_over(
+                &coast(&builder, HELPER),
+                "unit 900\nBUILD Galleon\nunit 902\nBUILD HELP 900\n",
+            );
+            let drones = unit(&response, "900");
+            assert_eq!(holds(drones, "GALL"), Some(1), "{:?}", drones.unit.items);
+            assert_eq!(
+                drones.new_ship.as_ref().map(|ship| ship.outcome),
+                Some(NewShipOutcome::Unfinished)
+            );
+        }
+
+        /// A helper walked after the founder whose skills this month's gifts leave unknowable
+        /// leaves how much work the ship got unknown: the founder's row says it cannot be counted
+        /// rather than silently showing no ship.
+        #[test]
+        fn a_doubted_helper_leaves_the_founders_ship_uncounted() {
+            let builder =
+                DRONES.replace("10 goblins [GBLN].", "10 goblins [GBLN], 75 wood [WOOD].");
+            // The founder first in the report, so the walk prices it before the helper doubts.
+            let report =
+                coast(&format!("{builder}\n{HELPER}"), "").replace("behind, sharing,", "behind,");
+            let response = preview_over(
+                &report,
+                "unit 900\nBUILD Galleon\nunit 902\nTAKE FROM 999 5 GBLN\nBUILD HELP 900\n",
+            );
+            let drones = unit(&response, "900");
+            assert_eq!(drones.new_ship, None);
+            assert_eq!(
+                drones.uncounted,
+                vec!["BUILD Galleon".to_string()],
+                "{:?}",
+                drones.uncounted
+            );
         }
     }
 

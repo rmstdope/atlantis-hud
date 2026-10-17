@@ -11708,18 +11708,13 @@ struct NewShipFounding {
     joins_fleet: bool,
 }
 
-/// Whether a ship of this kind flies: the catalogue's own sentence, "This is a flying 'ship'",
-/// read as [`crate::movement::mode::fleet_flies`] reads every hull.
-fn ship_flies(item: &crate::movement::rules::ItemEntry) -> bool {
-    crate::movement::mode::ship_flies(item)
-}
-
 /// The new ship `kind` names, built for `owner` - the founder, or the unit a `BUILD HELP` helps.
 ///
 /// `../Atlantis/parseorders.cpp` `ProcessBuildOrder` refuses one "in an ocean" and, for a ship that
 /// does not fly, one in a "non-coastal or lakeside region" (`ARegion::IsCoastalOrLakeside`: a
 /// neighbour of ocean type, which a lake is). `CreateShip` then adds a finished ship to the
-/// founder's fleet when both sail or both fly, and otherwise makes a new fleet - New Origins'
+/// founder's fleet when both sail or both fly - a fleet flying only when every hull does
+/// ([`crate::movement::mode::fleet_counts_as_flying`]) - and otherwise makes a new fleet - New Origins'
 /// engine always, and New Age's under `NO_CROSS_JOIN` (`../atlantis-newage/neworigins/rules.cpp`),
 /// so one reading serves every world.
 ///
@@ -11753,7 +11748,7 @@ fn new_ship_task(
     if ruleset.is_water(&region.terrain) {
         return NewShipLookup::Refused;
     }
-    let flies = ship_flies(item);
+    let flies = crate::movement::mode::ship_flies(item);
     if !flies {
         if region.exits.is_empty() {
             return NewShipLookup::Unknown;
@@ -11782,7 +11777,7 @@ fn new_ship_task(
             {
                 false
             } else {
-                match crate::movement::mode::fleet_flies(structure, Some(ruleset)) {
+                match crate::movement::mode::fleet_counts_as_flying(structure, Some(ruleset)) {
                     Some(fleet_flies) => fleet_flies == flies,
                     None => return NewShipLookup::Unknown,
                 }
@@ -11815,7 +11810,17 @@ fn settle_new_ships(ledger: &mut Ledger<'_>) {
             owner: founding.founder.clone(),
             tag: founding.tag.clone(),
         };
+        // A builder of it priced uncounted leaves the work it got unknown - one walked after the
+        // founder included, which the founder's own pricing could not yet see - so the founder's
+        // row says it cannot be counted rather than showing no ship at all.
         if ledger.build_doubted.contains(&site) {
+            let lines = ledger
+                .uncounted
+                .entry(founding.founder.clone())
+                .or_default();
+            if !lines.contains(&founding.line) {
+                lines.push(founding.line);
+            }
             continue;
         }
         let laid = ledger.build_laid.get(&site).copied().unwrap_or(0);
