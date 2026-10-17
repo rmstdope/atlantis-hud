@@ -64,11 +64,14 @@ export function GameGate({
         />
       </header>
 
+      {/* Scrolls itself (ah-gmg8): the page cannot, so in a short window the form would otherwise
+          be cut off below Create game. `m-auto` centres the card while it fits and, unlike
+          `items-center`, lets it start at the top - rather than above it - once it does not. */}
       <main
         data-testid="game-gate"
-        className="flex min-h-0 flex-1 items-center justify-center p-6"
+        className="flex min-h-0 flex-1 overflow-y-auto p-6"
       >
-        <div className="w-80 rounded border border-brass/60 bg-panel-raised p-4 shadow-xl">
+        <div className="m-auto w-80 rounded border border-brass/60 bg-panel-raised p-4 shadow-xl">
           <h1 className="mb-1 text-pane-lg text-brass">No game yet</h1>
           <p className="mb-3 text-pane text-ink-soft">
             Every turn you load belongs to a game. Name one to begin.

@@ -341,3 +341,55 @@ test("renaming to another game's name only warns", async ({ page }) => {
   await expect(rows.nth(0)).toContainText("Alpha");
   await expect(rows.nth(1)).toContainText("Alpha");
 });
+
+/**
+ * A long Games menu scrolls within itself, and the app never slides off-screen (ah-gmg8).
+ *
+ * Found with about seventy games in an 806 px window: the picker had no height cap, so it grew
+ * past the bottom edge, and pressing "+ New game…" focused the form below the fold - the browser
+ * scrolled the page (whose `overflow: hidden` still lets script and focus scroll it) to reach it,
+ * dragging the header and the map off the top of the window. A short window stands in for the
+ * seventy games here: the menu outgrows it the same way with a handful.
+ */
+test("a menu taller than the window scrolls inside itself, never the page", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Game 1");
+  for (let index = 2; index <= 8; index += 1) {
+    await page.getByTestId("game-indicator").click();
+    await page.getByTestId("new-game").click();
+    await createGame(page, `Game ${index}`);
+  }
+
+  const height = 360;
+  await page.setViewportSize({ width: 1000, height });
+
+  /** How far the page has been scrolled, wherever the browser chose to scroll it. */
+  const pageScroll = () =>
+    page.evaluate(() =>
+      [document.scrollingElement, document.documentElement, document.body, document.getElementById("root")]
+        .map((element) => element?.scrollTop ?? 0)
+        .reduce((total, value) => total + value, 0)
+    );
+
+  await page.getByTestId("game-indicator").click();
+  const picker = page.getByTestId("game-picker");
+  await expect(picker).toBeVisible();
+  await page.getByTestId("new-game").click();
+
+  // What focusing a field, or a screen reader reaching it, does: bring it into view. The browser
+  // scrolls whichever ancestor can scroll - before the fix that was #root, by about 490 px here.
+  const submit = page.getByRole("button", { name: "Create game", exact: true });
+  await submit.evaluate((element) => element.scrollIntoView({ block: "nearest" }));
+  expect(await pageScroll()).toBe(0);
+  const indicator = await page.getByTestId("game-indicator").boundingBox();
+  expect(indicator?.y ?? -1).toBeGreaterThanOrEqual(0);
+
+  // The menu fits the window, and the form is in it.
+  const box = await picker.boundingBox();
+  expect((box?.y ?? 0) + (box?.height ?? Infinity)).toBeLessThanOrEqual(height);
+  await expect(submit).toBeInViewport();
+
+  // The form is reachable by scrolling the menu, and filling it in moves nothing else.
+  await createGame(page, "Game 9");
+  expect(await pageScroll()).toBe(0);
+});
