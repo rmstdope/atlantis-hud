@@ -24523,17 +24523,18 @@ fn check_transport_reach(
                     };
                     (
                         codes::TRANSPORT_OUT_OF_REACH,
-                        transport_reach_sentence(&id, refused, goods().as_ref()),
+                        transport_reach_sentence(&id, *order, refused, goods().as_ref()),
                     )
                 }
                 refused @ (super::transport::Acceptance::NotQuartermaster
                 | super::transport::Acceptance::NotCaravanseraiOwner
-                | super::transport::Acceptance::SenderOwnsNoCaravanserai)
+                | super::transport::Acceptance::SenderOwnsNoCaravanserai
+                | super::transport::Acceptance::SenderNotQuartermaster)
                     if target_on && !judged.unsettled =>
                 {
                     (
                         codes::TRANSPORT_TARGET_REFUSED,
-                        transport_target_sentence(&id, refused, goods().as_ref()),
+                        transport_target_sentence(&id, *order, refused, goods().as_ref()),
                     )
                 }
                 _ => continue,
@@ -25416,6 +25417,7 @@ fn unlent_silver_at(ledger: &Ledger<'_>, unit_id: &str, phase: StatePhase) -> i6
 /// full so neither can drift unnoticed.
 fn transport_reach_sentence(
     to: &str,
+    order: super::transport::ShipmentOrder,
     refusal: super::transport::OutOfReach,
     goods: Option<&(i64, String)>,
 ) -> String {
@@ -25426,7 +25428,7 @@ fn transport_reach_sentence(
             let verb = if *moved == 1 { "stays" } else { "stay" };
             format!("{moved} {tag} {verb} with this unit")
         }
-        None => "this TRANSPORT moves nothing".to_string(),
+        None => format!("this {} moves nothing", order.word()),
     };
 
     match refusal {
@@ -25463,6 +25465,7 @@ fn transport_reach_sentence(
 /// them in full so neither can drift unnoticed.
 fn transport_target_sentence(
     to: &str,
+    order: super::transport::ShipmentOrder,
     refused: super::transport::Acceptance,
     goods: Option<&(i64, String)>,
 ) -> String {
@@ -25474,11 +25477,15 @@ fn transport_target_sentence(
         super::transport::Acceptance::SenderOwnsNoCaravanserai => {
             "This unit owns no Caravanserai when the shipments run".to_string()
         }
+        // A DISTRIBUTE asks its sender for the skill, never its target (`ah-lis2`).
+        super::transport::Acceptance::SenderNotQuartermaster => {
+            "This unit is not a quartermaster".to_string()
+        }
         _ => format!("Unit {to} does not own a Caravanserai"),
     };
     match goods {
         Some((moved, tag)) => format!("{who}, so {moved} {tag} stay with this unit."),
-        None => format!("{who}, so this TRANSPORT moves nothing."),
+        None => format!("{who}, so this {} moves nothing.", order.word()),
     }
 }
 
@@ -59487,9 +59494,6 @@ BUILD
         for orders in [
             "unit 900\nTRANSPORT 901 ALL STON\n",
             "unit 900\nTRANSPORT 901 5 HORS\n",
-            // The synonym reaches the sentence too: the grammar treats `DISTRIBUTE` as `TRANSPORT`
-            // under another name, and the tail says `TRANSPORT` either way (`ah-7ale.2.2.1`).
-            "unit 900\nDISTRIBUTE 901 ALL STON\n",
         ] {
             let finding = only(reach_findings(regions(), orders, with_map()));
             assert_eq!(
@@ -59498,6 +59502,43 @@ BUILD
                 "{orders}"
             );
         }
+        // A DISTRIBUTE from the same sender is refused for the sender, who is no quartermaster
+        // (`CheckTransportOrders`, `ah-lis2`), and the tail names the order as it was written.
+        let finding = only(
+            check_turn(
+                &report(regions()),
+                "unit 900\nDISTRIBUTE 901 ALL STON\n",
+                Some(&ruleset()),
+                with_map(),
+            )
+            .into_iter()
+            .filter(|finding| finding.code == codes::TRANSPORT_TARGET_REFUSED)
+            .collect(),
+        );
+        assert_eq!(
+            finding.message,
+            "This unit is not a quartermaster, so this DISTRIBUTE moves nothing."
+        );
+    }
+
+    /// A quartermaster owning a Caravanserai may DISTRIBUTE to any unit within the flat reach
+    /// (`rules/economy_transport`); past it, the sentence with no goods to name calls the order by
+    /// the word it was written with (`ah-lis2`).
+    #[test]
+    fn a_distribute_out_of_reach_is_not_called_a_transport() {
+        let mut sender = caravanserai_owner("900", 1, 0, 0);
+        sender.units[0] = with_item(sender.units[0].clone(), 5, "stone", "STON");
+        let regions = vec![sender, region_at("1:0,6", 0, 6, vec![unit("901")])];
+
+        let finding = only(reach_findings(
+            regions,
+            "unit 900\nDISTRIBUTE 901 ALL STON\n",
+            with_map(),
+        ));
+        assert_eq!(
+            finding.message,
+            "Unit 901 is 3 hexes away and this unit distributes to units within 2 hexes, so this DISTRIBUTE moves nothing."
+        );
     }
 
     // --- what a shipment costs (`ah-7ale.3`) ---------------------------------------------------
@@ -59558,7 +59599,7 @@ BUILD
     /// `rules/transport`: DISTRIBUTE has TRANSPORT's syntax and meaning, so it transports silver
     /// to an eligible nearby quartermaster.
     #[test]
-    fn a_distributed_silver_updates_both_forecasts() {
+    fn a_transported_silver_updates_both_forecasts() {
         let mut target = with_skill(unit("901"), "QUAM", 1);
         target.structure_id = Some("500".to_string());
         let sender = with_silver(unit("900"), 500);
@@ -59576,9 +59617,9 @@ BUILD
             Some(&ruleset()),
             CheckOptions::default(),
         );
-        let distributed = review_turn(
+        let transported = review_turn(
             &report(vec![nearby]),
-            "unit 900\nDISTRIBUTE 901 200 SILV\n",
+            "unit 900\nTRANSPORT 901 200 SILV\n",
             Some(&ruleset()),
             CheckOptions::default(),
         );
@@ -59592,32 +59633,32 @@ BUILD
             .iter()
             .find(|forecast| forecast.unit_id == "901")
             .expect("the receiver is forecast");
-        let distributed_sender = distributed
+        let transported_sender = transported
             .silver
             .iter()
             .find(|forecast| forecast.unit_id == "900")
             .expect("the sender is forecast");
-        let distributed_receiver = distributed
+        let transported_receiver = transported
             .silver
             .iter()
             .find(|forecast| forecast.unit_id == "901")
             .expect("the receiver is forecast");
 
         assert_eq!(
-            distributed_sender.at_month_end,
+            transported_sender.at_month_end,
             baseline_sender.at_month_end.map(|silver| silver - 200)
         );
         assert_eq!(
-            distributed_receiver.at_month_end,
+            transported_receiver.at_month_end,
             baseline_receiver.at_month_end.map(|silver| silver + 200)
         );
-        assert!(distributed_receiver.changes.contains(&SilverChange {
+        assert!(transported_receiver.changes.contains(&SilverChange {
             amount: 200,
             cause: SilverChangeCause::Received,
             line: None,
             other: Some("Unit 900 (900)".to_string()),
         }));
-        assert!(distributed_sender.changes.contains(&SilverChange {
+        assert!(transported_sender.changes.contains(&SilverChange {
             amount: -200,
             cause: SilverChangeCause::Sent,
             line: Some(2),
@@ -59901,14 +59942,14 @@ BUILD
         }];
 
         let baseline = sender_silver(vec![nearby.clone()], "unit 900\n", CheckOptions::default());
-        let distributed = sender_silver(
+        let transported = sender_silver(
             vec![nearby],
-            "unit 900\nDISTRIBUTE 901 200 SILV\nDISTRIBUTE 901 200 SILV\n",
+            "unit 900\nTRANSPORT 901 200 SILV\nTRANSPORT 901 200 SILV\n",
             CheckOptions::default(),
         );
 
         assert_eq!(
-            distributed.at_month_end,
+            transported.at_month_end,
             baseline.at_month_end.map(|silver| silver - 400)
         );
     }
@@ -63426,21 +63467,23 @@ BUILD
         );
     }
 
-    /// `DISTRIBUTE` is `TRANSPORT` by another name (`rules/transport`), and a repeating `@`
+    /// `DISTRIBUTE` is a shipment as `TRANSPORT` is (`rules/transport`), and a repeating `@`
     /// order is the same order, so the helper reads that shipment too (`ah-nd0e` review,
-    /// finding 1).
+    /// finding 1). The distributor is a quartermaster owning its Caravanserai, as
+    /// `CheckTransportOrders` asks of a DISTRIBUTE's issuer (`ah-lis2`).
     #[test]
     fn silver_shipped_reads_a_repeating_distribute_as_a_shipment() {
         let rules = trident_rules();
         let mut region = caravanserai_owner("900", 1, 0, 0);
-        region.units.push(with_silver(unit("901"), 300));
-        let orders = "unit 901\nGIVE 900 100 SILV\n@distribute 900 ALL SILV\n";
+        region.units[0] = with_silver(region.units[0].clone(), 300);
+        region.units.push(unit("901"));
+        let orders = "unit 900\nGIVE 901 100 SILV\n@distribute 901 ALL SILV\n";
         let review = review_turn(&report(vec![region]), orders, Some(&rules), with_map());
         assert_eq!(
-            silver_shipped(&review, "901"),
+            silver_shipped(&review, "900"),
             200,
             "{:?}",
-            shipment_silver(&review, "901")
+            shipment_silver(&review, "900")
         );
     }
 

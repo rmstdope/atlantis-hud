@@ -648,6 +648,9 @@ export function hasUncertainTransport(unit: PreviewedUnit | undefined): boolean 
  */
 export function transportTargetSentence(issue: TransportTargetIssue): string {
   const goods = issue.tag === "" ? null : `${issue.amount} ${issue.tag}`;
+  // The word the line was written with, for a sentence that names the order rather than the goods
+  // (`ah-lis2`), as `transport_target_sentence` does.
+  const order = issue.distribute === true ? "this DISTRIBUTE" : "this TRANSPORT";
   // The reach refusals are the only reasons that name a distance, and the agreed record
   // writes "1 IRON stays" against "5 STON stay", so the verb agrees with the count. The four
   // reasons below keep their unconditional "stay": they were agreed as they stand (`ah-7ale.2.1`).
@@ -688,24 +691,30 @@ export function transportTargetSentence(issue: TransportTargetIssue): string {
   switch (issue.reason) {
     case "notQuartermaster":
       return goods === null
-        ? `Unit ${issue.to} is not a quartermaster, so this TRANSPORT moves nothing.`
+        ? `Unit ${issue.to} is not a quartermaster, so ${order} moves nothing.`
         : `Unit ${issue.to} is not a quartermaster, so ${goods} stay with this unit.`;
     case "notCaravanseraiOwner":
       return goods === null
-        ? `Unit ${issue.to} does not own a Caravanserai, so this TRANSPORT moves nothing.`
+        ? `Unit ${issue.to} does not own a Caravanserai, so ${order} moves nothing.`
         : `Unit ${issue.to} does not own a Caravanserai, so ${goods} stay with this unit.`;
     case "senderOwnsNoCaravanserai":
       // The sender's own refusal (`ah-1jl9`), in the words of `transport_target_sentence` in
       // `crates/core/src/orders/semantics.rs`.
       return goods === null
-        ? "This unit owns no Caravanserai when the shipments run, so this TRANSPORT moves nothing."
+        ? `This unit owns no Caravanserai when the shipments run, so ${order} moves nothing.`
         : `This unit owns no Caravanserai when the shipments run, so ${goods} stay with this unit.`;
+    case "senderNotQuartermaster":
+      // `CheckTransportOrders` asks a DISTRIBUTE's sender for the skill, never its target
+      // (`ah-lis2`), in the words of `transport_target_sentence`.
+      return goods === null
+        ? `This unit is not a quartermaster, so ${order} moves nothing.`
+        : `This unit is not a quartermaster, so ${goods} stay with this unit.`;
     case "eligibilityUnknown":
-      return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show whether it is an eligible transport target.`;
+      return `Could not count ${goods ?? order} for unit ${issue.to} because your report does not show whether it is an eligible transport target.`;
     case "distanceUnmeasured":
-      return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show how far the world reaches around, so the distance cannot be worked out. Enter the map's width under Settings › Per game › Map to count it.`;
+      return `Could not count ${goods ?? order} for unit ${issue.to} because your report does not show how far the world reaches around, so the distance cannot be worked out. Enter the map's width under Settings › Per game › Map to count it.`;
     case "acceptanceUnknown":
-      return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show whether its faction accepts transports from yours.`;
+      return `Could not count ${goods ?? order} for unit ${issue.to} because your report does not show whether its faction accepts transports from yours.`;
     case "tooFarToAccept":
     case "tooFarToDistribute":
     case "tooFarToShip": {
@@ -722,7 +731,7 @@ export function transportTargetSentence(issue: TransportTargetIssue): string {
             return `takes goods from ${limit} hexes`;
         }
       };
-      const tail = goods === null ? "this TRANSPORT moves nothing" : `${goods} ${verb} with this unit`;
+      const tail = goods === null ? `${order} moves nothing` : `${goods} ${verb} with this unit`;
       const reach = issue.reach;
       if (reach !== null && reach.away != null && reach.limit != null) {
         return `Unit ${issue.to} is ${reach.away} hexes away and ${range(reach.limit)}, so ${tail}.`;

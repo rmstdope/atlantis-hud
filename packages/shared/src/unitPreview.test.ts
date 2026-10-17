@@ -1956,6 +1956,26 @@ describe("a transport target the report cannot show receiving", () => {
     ).toBe("This unit owns no Caravanserai when the shipments run, so this TRANSPORT moves nothing.");
   });
 
+  // `ah-lis2`: `CheckTransportOrders` refuses a DISTRIBUTE from a unit that is not a quartermaster
+  // with "DISTRIBUTE: Unit is not a quartermaster" - the sender's fault, whoever the target is -
+  // and a sentence with no amount names the order the line was written with.
+  it("says the sender of a DISTRIBUTE is not a quartermaster, and calls the order a DISTRIBUTE", () => {
+    expect(
+      transportTargetSentence({ to: "1162", amount: 100, tag: "SILV", reason: "senderNotQuartermaster", orderIndex: 0, toUnshown: false, unsettled: false, reach: null, distribute: true })
+    ).toBe("This unit is not a quartermaster, so 100 SILV stay with this unit.");
+    expect(
+      transportTargetSentence({ to: "1162", amount: 0, tag: "", reason: "senderNotQuartermaster", orderIndex: 0, toUnshown: false, unsettled: false, reach: null, distribute: true })
+    ).toBe("This unit is not a quartermaster, so this DISTRIBUTE moves nothing.");
+    expect(
+      transportTargetSentence({ to: "1162", amount: 0, tag: "", reason: "senderOwnsNoCaravanserai", orderIndex: 0, toUnshown: false, unsettled: false, reach: null, distribute: true })
+    ).toBe("This unit owns no Caravanserai when the shipments run, so this DISTRIBUTE moves nothing.");
+    expect(
+      transportTargetSentence({ to: "1162", amount: 0, tag: "", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null, distribute: true })
+    ).toBe(
+      "Could not count this DISTRIBUTE for unit 1162 because your report does not show whether it is an eligible transport target."
+    );
+  });
+
   it("says the report cannot show whether an unseen target is eligible", () => {
     expect(
       transportTargetSentence({ to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null })
