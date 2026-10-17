@@ -404,3 +404,24 @@ export async function waitForStableBox(page: Page, panel: string) {
     })
     .toBe(true);
 }
+
+/**
+ * Stop the clock, so a debounce cannot write on its own.
+ *
+ * `pauseAt` refuses a time that is already past, and the clock goes on running while the
+ * instruction is in flight - so the target is taken a little ahead of the clock's own `now`, and
+ * retried with more room if the round trip outran even that. The small fast-forward this costs
+ * fires only timers already due within it; callers freeze before anything is owed to a debounce,
+ * so nothing it could fire can write. Needs `page.clock.install()` and `resume()` before the
+ * first navigation.
+ */
+export const freezeClock = async (page: Page): Promise<void> => {
+  for (let margin = 100; ; margin *= 4) {
+    try {
+      await page.clock.pauseAt((await page.evaluate(() => Date.now())) + margin);
+      return;
+    } catch (error) {
+      if (margin >= 2000) throw error;
+    }
+  }
+};
