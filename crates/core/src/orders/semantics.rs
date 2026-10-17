@@ -17127,6 +17127,17 @@ impl WalkingSilver {
             .sum()
     }
 
+    /// What a reading that already hands back `unit_id`'s refused STUDY fee
+    /// ([`Lending::refused`]) must take off again, since [`WalkingSilver::study_claimed_elsewhere`]
+    /// moves that same claim out of the hex too (`ah-q1zz` review, finding 3): the claim, where
+    /// the purse its fleet arrives at refused it; `0` otherwise.
+    fn refused_elsewhere(&self, unit_id: &str) -> i64 {
+        self.studies_elsewhere
+            .get(unit_id)
+            .filter(|elsewhere| matches!(elsewhere.outcome, Some(StudyOutcome::Refused { .. })))
+            .map_or(0, |elsewhere| elsewhere.need)
+    }
+
     /// What `unit_id`'s STUDY asks of the purse where its fleet arrives, at `moment`: none of it
     /// is this hex's to answer for once it has sailed (`ah-q1zz`).
     fn study_claimed_elsewhere(&self, unit_id: &str, moment: LendingMoment) -> i64 {
@@ -17288,6 +17299,10 @@ fn lend_walking_sharers_silver(
         }
         walking.arriving_students.clear();
         walking.studies_elsewhere.clear();
+        // Uncapped for now, so whether the hex pools its silver reads this call's arrivals when
+        // the studies are sent (`ah-q1zz` review, finding 4); capped below, once the studies
+        // sent here are known.
+        walking.arrivals[LendingMoment::MonthEnd as usize] = month_end.clone();
         at_month_end.push(month_end);
     }
 
@@ -18843,13 +18858,17 @@ fn sharing_purse_over(
     // The warning's month-end reading, on the column's figures - less the casts and studies the
     // engine refuses, which take nothing (`ah-li7l`, `ah-szu0`), an arriving passenger's
     // included (`ah-q1zz`).
+    let walking = &ledger.relief().walking;
     if sharing.silver_short_reading(
         hex,
         ledger,
         LendingMoment::MonthEnd,
-        |index| own(index, LendingMoment::MonthEnd) + lending.refused(index),
+        |index| {
+            own(index, LendingMoment::MonthEnd) + lending.refused(index)
+                - walking.refused_elsewhere(&hex.units[index].unit.unit_id)
+        },
         |index| lending.refused_casts[index],
-    ) - lending.refused_to_arriving_students(&ledger.relief().walking)
+    ) - lending.refused_to_arriving_students(walking)
         > 0
     {
         // Short only at the month's end: what the purse paid as each order ran stays paid, since
@@ -78208,6 +78227,45 @@ BUILD
             silver_of(&review, "902").at_month_end,
             Some(1),
             "the resident lends nothing"
+        );
+    }
+
+    /// `ah-q1zz` review, finding 4: where the fleet lands beside a unit of ours that does not
+    /// share, the sharing captain arriving with it lends the study fee - and so the purse there
+    /// pools when the studies are sent, at TRANSPORT as at the month's end.
+    #[test]
+    fn a_passengers_study_is_lent_by_its_sharing_captain_where_they_land() {
+        let banker = sharing(with_silver(unit("903"), 500));
+        let resident = unit("902");
+        let (mut report, _) = passenger_palace(
+            open_sea(vec![banker]),
+            region_at("1:7,53", 7, 53, vec![resident]),
+            None,
+        );
+        let captain = report
+            .regions
+            .iter_mut()
+            .flat_map(|region| region.units.iter_mut())
+            .find(|unit| unit.unit_id == "4022")
+            .expect("passenger_palace lists 4022");
+        *captain = sharing(with_silver(captain.clone(), 500));
+        let orders = "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 903\nunit 902\n";
+        let review = review_turn(&report, orders, Some(&trident()), CheckOptions::default());
+        let passenger = silver_of(&review, "901");
+        let fee = passenger.wanted_for_orders.expect("the study is priced");
+        assert_eq!(passenger.borrowed_for_orders, fee, "{passenger:?}");
+        assert_eq!(
+            silver_of(&review, "903").at_month_end,
+            Some(500),
+            "the banker lends nothing"
+        );
+        let captain = silver_of(&review, "4022");
+        assert!(
+            captain
+                .changes
+                .iter()
+                .any(|change| change.cause == SilverChangeCause::Lent && change.amount == -fee),
+            "{captain:?}"
         );
     }
 

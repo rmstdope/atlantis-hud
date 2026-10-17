@@ -113,6 +113,13 @@ fn the_resident_lends_the_passengers_study_fee_where_it_arrives() {
     for (captain, resident, passenger) in [("10575", "9508", "10594"), ("10584", "9506", "10599")] {
         let captain = row_of(&review, captain);
         let resident = row_of(&review, resident);
+        let short: Vec<_> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.unit_id.as_deref() == Some(passenger))
+            .map(|finding| (finding.code, finding.message.as_str()))
+            .collect();
+        assert!(short.is_empty(), "the study is paid: {short:?}");
         let passenger = row_of(&review, passenger);
         assert_eq!(passenger.borrowed_for_orders, 200, "{passenger:#?}");
         assert_eq!(
