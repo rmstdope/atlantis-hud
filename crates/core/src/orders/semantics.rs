@@ -4413,8 +4413,9 @@ fn held_by(
 
 /// The `GIVE <party> UNIT` a unit writes, as the doubt it leaves a sharer's lending in: the gift
 /// runs before `EXCHANGE` (`rules/sequenceofevents`) and, if taken, puts the unit in another
-/// faction, which the engine's `GetSharedNum` does not lend from; whether it is taken the report
-/// cannot say (`rules/give`; `ah-80mj`).
+/// faction, which the engine's `GetSharedNum` does not lend from; whether another faction's unit
+/// takes it the report cannot say (`rules/give`; `ah-80mj`). A gift to our own unit or to unit 0,
+/// which the engine also refuses, is still doubted here (`ah-839x`).
 ///
 /// `reach` says where each target stands. One the gift cannot land on - a unit the report shows in
 /// another hex, or a number it never prints ([`GiveReach::gives_nothing`]) - leaves no doubt: the
