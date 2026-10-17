@@ -4866,12 +4866,15 @@ fn apply_transfers(
         let tags = match tags {
             Moves::Tags(tags) => tags,
             Moves::Unknowable => {
-                // A named item or ship that resolves to nothing moves nothing; only a selector
-                // that names goods without listing them may have moved some (`ah-84b1`).
-                let unfollowed = !matches!(
-                    &*transfer.what,
-                    Selector::Item(_) | Selector::UnfinishedShip(_)
-                );
+                // A named item or ship that resolves to nothing moves nothing - unless the
+                // source's own goods could not be followed, when it may hold the item after all.
+                // A selector that names goods without listing them may have moved some
+                // (`ah-84b1`).
+                let unfollowed = source_state.goods_unfollowed
+                    || !matches!(
+                        &*transfer.what,
+                        Selector::Item(_) | Selector::UnfinishedShip(_)
+                    );
                 source_state.items_unknowable = true;
                 source_state.goods_unfollowed |= unfollowed;
                 if let Some(receiver_position) = receiver.row {
@@ -5162,9 +5165,12 @@ fn apply_transfers(
                     .get(tag.as_str())
                     .map_or(0, |item| item.amount)
                     .max(0);
+                // Every sharer the engine's `ConsumeShared` reaches, in report order, and not only
+                // those the walk draws on: one it cannot follow may hold some after all and be
+                // drawn on first (`ah-84b1`).
+                lender_unknowable |= unfollowed(lender_state);
                 let take = remaining.min(has);
                 if take > 0 {
-                    lender_unknowable |= unfollowed(lender_state);
                     draws.push((lender, take));
                 }
                 move_holding(lender_state, &tag, &name, -take);
@@ -55447,6 +55453,61 @@ BUILD
     }
 
     /// The agreed sentence, its three shapes (`ah-84b1`).
+    /// Whether a discard-from-shared-stock warning sits anywhere in `orders`' findings.
+    fn warns_of_a_shared_discard(regions: Vec<ReportRegion>, orders: &str) -> bool {
+        codes(&check(regions, orders)).contains(&"discard-from-shared-stock")
+    }
+
+    /// A unit whose goods cannot be followed (it was given `ALL ADVANCED`, a class the data page
+    /// never lists) may hold mithril swords after all, so its `GIVE 7 ALL MSWO` may really move
+    /// some to sharer 7, and a later discard drawing on 7 cannot say who lost what (`ah-84b1`).
+    #[test]
+    fn a_give_from_goods_that_cannot_be_followed_silences_the_discard_it_feeds() {
+        let regions = || {
+            vec![region(vec![
+                unit("5"),
+                unit("6"),
+                sharing(with_item(unit("7"), 5, "mithril sword", "MSWO")),
+                sharing(with_item(unit("8"), 10, "mithril sword", "MSWO")),
+                unit("9"),
+            ])]
+        };
+        assert!(
+            warns_of_a_shared_discard(
+                regions(),
+                "unit 6\nGIVE 7 ALL MSWO\nunit 9\nGIVE 0 10 MSWO\n"
+            ),
+            "a give of nothing leaves the discard told"
+        );
+        assert!(!warns_of_a_shared_discard(
+            regions(),
+            "unit 5\nGIVE 6 ALL ADVANCED\nunit 6\nGIVE 7 ALL MSWO\nunit 9\nGIVE 0 10 MSWO\n"
+        ));
+    }
+
+    /// `ConsumeShared` draws on the sharers in report order, so a sharer the walk cannot follow
+    /// comes first even where the walk thinks it holds none: it may hold some, and then the
+    /// warning would name the wrong faction-mate (`ah-84b1`).
+    #[test]
+    fn a_sharer_that_cannot_be_followed_ahead_of_the_draw_silences_the_discard() {
+        let regions = || {
+            vec![region(vec![
+                unit("5"),
+                sharing(unit("6")),
+                sharing(with_item(unit("8"), 10, "mithril sword", "MSWO")),
+                unit("9"),
+            ])]
+        };
+        assert!(warns_of_a_shared_discard(
+            regions(),
+            "unit 9\nGIVE 0 5 MSWO\n"
+        ));
+        assert!(!warns_of_a_shared_discard(
+            regions(),
+            "unit 5\nGIVE 6 ALL ADVANCED\nunit 9\nGIVE 0 5 MSWO\n"
+        ));
+    }
+
     #[test]
     fn a_shared_discard_sentence_names_each_mate_in_draw_order() {
         let one = [("Four of Seven (12880)".to_string(), 30)];
