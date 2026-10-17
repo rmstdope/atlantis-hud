@@ -176,6 +176,10 @@ pub mod codes {
     /// A `GIVE` or `TAKE` naming the unit that wrote it. The game refuses it, so the line moves
     /// nothing (`ah-qwz7`).
     pub const TRANSFER_TO_ITSELF: Code = Code("transfer-to-itself");
+    /// A numbered `GIVE 0` that discards more than the unit holds, so the game makes it up from its
+    /// sharing faction-mates' stock (`rules/give`, `rules/share`; the engine's Give 0 branch checks
+    /// `GetSharedNum` and draws through `ConsumeShared`, `runorders.cpp`; `ah-84b1`).
+    pub const DISCARD_FROM_SHARED_STOCK: Code = Code("discard-from-shared-stock");
     pub const NOT_TRADED_HERE: Code = Code("not-traded-here");
     pub const UNIT_OVERLOADED: Code = Code("unit-overloaded");
     pub const TOO_MANY_QUARTERMASTERS: Code = Code("too-many-quartermasters");
@@ -282,7 +286,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 58] = [
+    pub const ALL: [Code; 59] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -341,6 +345,7 @@ pub mod codes {
         SAIL_NOT_BY_OWNER,
         STUDY_GAINS_NOTHING,
         LEADERS_AND_MEN_MIXED,
+        DISCARD_FROM_SHARED_STOCK,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -973,6 +978,7 @@ pub fn review_turn(
         check_transfer_to_itself(hex, &options, &mut findings);
         check_arrivals(hex, &options, &mut findings);
         check_refused_transfers(hex, ruleset, &plurals, &options, &mut findings);
+        check_discards_from_shared_stock(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_refused_arrivals(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_withdraw_in_nexus(hex, &options, &mut findings);
         check_explore_below_the_surface(hex, &mut findings);
@@ -3624,6 +3630,9 @@ struct Ordered<'a> {
     /// because that is the unit the finding is about: for a `TAKE` the goods are the source's and
     /// the mistake is the taker's.
     refused_transfers: Vec<RefusedTransfer>,
+    /// Every `GIVE 0` line in this unit's own block that its sharing faction-mates' stock made up
+    /// (`ah-84b1`). Written by `apply_transfers`; empty for nearly every unit.
+    shared_discards: Vec<SharedDiscard>,
     /// The unit's headcount once this month's gifts, takes and recruits have run.
     ///
     /// Written by `apply_transfers` and then by `apply_recruits`; equal to `unit.men` until one
@@ -3710,6 +3719,7 @@ impl<'a> Hex<'a> {
                     holdings_after_gifts: HoldingsAfterGifts::Unchanged,
                     uncertain_after_gifts: BTreeMap::new(),
                     refused_transfers: Vec::new(),
+                    shared_discards: Vec::new(),
                     men_after_orders: unit.men,
                     arrivals: Arrivals::default(),
                     transfer_receipts: Receipts::default(),
@@ -3744,6 +3754,7 @@ impl<'a> Hex<'a> {
                     holdings_after_gifts: HoldingsAfterGifts::Unchanged,
                     uncertain_after_gifts: BTreeMap::new(),
                     refused_transfers: Vec::new(),
+                    shared_discards: Vec::new(),
                     men_after_orders: formed.unit.men,
                     arrivals: Arrivals::default(),
                     transfer_receipts: Receipts::default(),
@@ -4200,6 +4211,24 @@ struct RefusedTransfer {
     moving: Vec<(String, i64)>,
 }
 
+/// A numbered `GIVE 0` of goods its unit made up from its sharing faction-mates' stock
+/// (`ah-84b1`). Recorded by [`apply_transfers`], whose walk drains the sharers in report order as
+/// the engine's `ConsumeShared` does; `check_discards_from_shared_stock` formats it and works
+/// nothing out for itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SharedDiscard {
+    /// The line the order sits on, looked up in the actor's own `intents` to anchor the finding.
+    line: usize,
+    /// Upper-case canonical tag.
+    tag: String,
+    /// What the line asked to discard.
+    ordered: i64,
+    /// What the unit itself held of it as the line ran.
+    own: i64,
+    /// Each faction-mate drawn on, by position in the hex's units, with how many, in draw order.
+    draws: Vec<(usize, i64)>,
+}
+
 /// One unit's people and goods once this month's GIVE and TAKE orders have run.
 ///
 /// The mirror of [`SkillsAfterGifts`] and deliberately independent of it: what arrives can be
@@ -4389,6 +4418,8 @@ fn apply_transfers(
     // accumulated rather than written straight onto `units`: the loop below holds `units`
     // immutably. Published onto `Ordered::transfer_receipts` alongside the rest (`ah-3mwm`).
     let mut receipts_by_position: BTreeMap<usize, Receipts> = BTreeMap::new();
+    // Accumulated for the same reason, and published onto `Ordered::shared_discards` (`ah-84b1`).
+    let mut shared_discards_by_position: Vec<(usize, SharedDiscard)> = Vec::new();
 
     for transfer in &transfers {
         if !transfer.is_give
@@ -4870,8 +4901,13 @@ fn apply_transfers(
             // The source's own stock first, then the sharers' in report order: the engine's
             // `Unit::ConsumeShared` (`ah-0mch`).
             let own = moved.min(held.max(0));
+            // Whether what the walk knows of the source can be trusted, read before the draws
+            // below re-borrow `working` (`ah-84b1`).
+            let source_unknowable = source_state.items_unknowable || source_state.doubted;
             move_holding(source_state, &tag, &name, -own);
             let mut remaining = moved - own;
+            let mut draws: Vec<(usize, i64)> = Vec::new();
+            let mut lender_unknowable = false;
             for lender in lenders {
                 if remaining <= 0 {
                     break;
@@ -4885,8 +4921,36 @@ fn apply_transfers(
                     .map_or(0, |item| item.amount)
                     .max(0);
                 let take = remaining.min(has);
+                if take > 0 {
+                    lender_unknowable |= lender_state.items_unknowable || lender_state.doubted;
+                    draws.push((lender, take));
+                }
                 move_holding(lender_state, &tag, &name, -take);
                 remaining -= take;
+            }
+            // A numbered discard its sharing faction-mates made up (`ah-84b1`). `ALL` is only what
+            // the unit holds (`runorders.cpp`'s Give 0 branch), and men never reach `lenders`.
+            // Silver keeps the SILVER column's words, and the monsters the engine releases come
+            // from the unit's own stock alone, so neither is told. Nor is a draw on stock this walk
+            // cannot vouch for: who lost what cannot then be said.
+            if discarding
+                && matches!(&*transfer.amount, Amount::Exact(_))
+                && !draws.is_empty()
+                && !tag.eq_ignore_ascii_case(SILVER)
+                && ruleset.can_be_given(&tag)
+                && !source_unknowable
+                && !lender_unknowable
+            {
+                shared_discards_by_position.push((
+                    transfer.actor,
+                    SharedDiscard {
+                        line: transfer.line,
+                        tag: tag.clone(),
+                        ordered: requested,
+                        own,
+                        draws,
+                    },
+                ));
             }
         }
 
@@ -5051,6 +5115,10 @@ fn apply_transfers(
 
     for (position, refused) in refused_by_position {
         units[position].refused_transfers.push(refused);
+    }
+
+    for (position, discard) in shared_discards_by_position {
+        units[position].shared_discards.push(discard);
     }
 
     for (position, receipts) in receipts_by_position {
@@ -23498,6 +23566,93 @@ fn check_transfer_to_itself(hex: &Hex<'_>, options: &CheckOptions, findings: &mu
             ));
         }
     }
+}
+
+/// A numbered `GIVE 0` its sharing faction-mates' stock made up, told on its own line, naming each
+/// faction-mate whose goods go, in the order the game draws on them (`ah-84b1`; `rules/give`,
+/// `rules/share`). Pushed whatever else marks the line: the agreed exception to one warning per
+/// line, so a discard beyond even the shared stock keeps its shortage warning beside this one.
+fn check_discards_from_shared_stock(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    ruleset: Option<&Ruleset>,
+    plurals: &Plurals,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::DISCARD_FROM_SHARED_STOCK) {
+        return;
+    }
+    for ordered in &hex.units {
+        for discard in &ordered.shared_discards {
+            // A doubted unit's stock cannot be vouched for, so neither can who lost what: the rule
+            // of `a_doubted_sharer_silences_the_stock_it_shares`, which the cut-transfer warning
+            // keeps too.
+            let doubted = std::iter::once(ordered.unit)
+                .chain(
+                    discard
+                        .draws
+                        .iter()
+                        .map(|&(position, _)| hex.units[position].unit),
+                )
+                .any(|unit| ledger.doubted.contains(&unit.unit_id));
+            if doubted {
+                continue;
+            }
+            let Some(placed) = ordered
+                .intents
+                .iter()
+                .find(|placed| placed.line == discard.line)
+            else {
+                continue;
+            };
+            let mates: Vec<(String, i64)> = discard
+                .draws
+                .iter()
+                .map(|&(position, count)| (party_name(hex.units[position].unit), count))
+                .collect();
+            let first = discard.draws.first().map_or(0, |&(_, count)| count);
+            findings.push(ordered.finding(
+                hex,
+                codes::DISCARD_FROM_SHARED_STOCK,
+                shared_discard_sentence(
+                    &counted_item(first, &discard.tag, hex, ruleset, plurals),
+                    &mates,
+                    discard.own,
+                    discard.ordered,
+                ),
+                Some(placed),
+            ));
+        }
+    }
+}
+
+/// A unit as the hover names a party: `<Name> (<id>)`, or `unit <id>` when no name is known.
+fn party_name(unit: &ReportUnit) -> String {
+    if unit.name.trim().is_empty() {
+        format!("unit {}", unit.unit_id)
+    } else {
+        format!("{} ({})", unit.name, unit.unit_id)
+    }
+}
+
+/// The agreed sentence (`ah-84b1`): `first` is the first faction-mate's count with its noun
+/// (`30 swords`), `mates` every faction-mate drawn on with its count, in draw order.
+fn shared_discard_sentence(first: &str, mates: &[(String, i64)], own: i64, ordered: i64) -> String {
+    let mut taken = String::new();
+    for (index, (mate, count)) in mates.iter().enumerate() {
+        if index == 0 {
+            taken.push_str(&format!("{first} from {mate}'s"));
+        } else {
+            taken.push_str(&format!(" and {count} from {mate}'s"));
+        }
+    }
+    let holds = if own <= 0 {
+        "none".to_string()
+    } else {
+        format!("only {own} of the {ordered}")
+    };
+    format!("This discard takes {taken} shared stock: this unit holds {holds}.")
 }
 
 /// `1 man` or `5 men`.
@@ -42628,10 +42783,13 @@ BUILD
             }]
         );
 
-        let finding = only(check_ignoring_transfer_targets(
-            vec![region(units())],
-            "unit 5\nGIVE 0 30 swords\n",
-        ));
+        // The discard's own line also names whose swords go (`ah-84b1`), beside this.
+        let finding = only(
+            check_ignoring_transfer_targets(vec![region(units())], "unit 5\nGIVE 0 30 swords\n")
+                .into_iter()
+                .filter(|finding| finding.code != codes::DISCARD_FROM_SHARED_STOCK)
+                .collect(),
+        );
         assert_eq!(
             finding.message,
             "the units in this hex are short 10 swords between them: they can have 20 \
@@ -49369,9 +49527,11 @@ BUILD
             sharing(with_item(unit("7"), 10, "sword", "SWOR")),
         ])];
 
+        // Nothing is short, so the one thing said is that unit 7's swords go (`ah-84b1`).
+        let findings = check_ignoring_transfer_targets(regions, "unit 5\nGIVE 0 10 swords\n");
         assert_eq!(
-            check_ignoring_transfer_targets(regions, "unit 5\nGIVE 0 10 swords\n"),
-            vec![],
+            codes(&findings),
+            ["discard-from-shared-stock"],
             "unit 7 shares its swords, so unit 5 can give away 10 of them"
         );
     }
@@ -54136,6 +54296,37 @@ BUILD
                 "unit 8443\nGIVE 3247 30 GRAI\n",
             )),
             Vec::<&str>::new()
+        );
+    }
+
+    /// The agreed sentence, its three shapes (`ah-84b1`).
+    #[test]
+    fn a_shared_discard_sentence_names_each_mate_in_draw_order() {
+        let one = [("Four of Seven (12880)".to_string(), 30)];
+        assert_eq!(
+            shared_discard_sentence("30 swords", &one, 0, 30),
+            "This discard takes 30 swords from Four of Seven (12880)'s shared stock: this unit \
+             holds none."
+        );
+        assert_eq!(
+            shared_discard_sentence(
+                "1 sword",
+                &[("Four of Seven (12880)".to_string(), 1)],
+                10,
+                11
+            ),
+            "This discard takes 1 sword from Four of Seven (12880)'s shared stock: this unit \
+             holds only 10 of the 11."
+        );
+        let three = [
+            ("Four of Seven (12880)".to_string(), 20),
+            ("Five of Seven (12881)".to_string(), 10),
+            ("unit 12882".to_string(), 5),
+        ];
+        assert_eq!(
+            shared_discard_sentence("20 swords", &three, 0, 35),
+            "This discard takes 20 swords from Four of Seven (12880)'s and 10 from Five of Seven \
+             (12881)'s and 5 from unit 12882's shared stock: this unit holds none."
         );
     }
 
@@ -64638,6 +64829,16 @@ BUILD
                 code: codes::TAKE_FROM_ANOTHER_FACTION,
                 regions: vec![region(vec![unit("5"), foreign_guard("7")])],
                 orders: "unit 5\nTAKE FROM 7 1 HUMN\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::DISCARD_FROM_SHARED_STOCK,
+                regions: vec![region(vec![
+                    unit("5"),
+                    sharing(with_item(unit("7"), 10, "sword", "SWOR")),
+                ])],
+                orders: "unit 5\nGIVE 0 10 SWOR\n",
                 allowance: None,
                 unclaimed: None,
             },

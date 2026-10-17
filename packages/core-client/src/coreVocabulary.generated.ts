@@ -60,7 +60,8 @@ export const ADVISORY_CHECK_CODES = [
   "transport-out-of-reach",
   "sail-not-by-owner",
   "study-gains-nothing",
-  "leaders-and-men-mixed"
+  "leaders-and-men-mixed",
+  "discard-from-shared-stock"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];
