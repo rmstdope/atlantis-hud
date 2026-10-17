@@ -216,8 +216,8 @@ Exits:\n\x20\x20South : ocean (1,1) in Sea.\n\n";
 
 #[test]
 fn an_overloaded_walker_that_sails_is_not_refused_for_its_legs() {
+    // No `!warned` here: `unit-overloaded` reads MOVE alone, so it could not fire for a SAIL.
     let orders = "unit 901\nGIVE 900 2 GEM\nunit 900\nSAIL N\n";
-    assert!(!warned(AT_SEA, orders, "900"));
     let rows = rows_of(AT_SEA, orders);
     assert!(
         rows.iter()
@@ -246,4 +246,79 @@ fn an_overloaded_walker_aboard_a_priceable_fleet_stays_when_it_walks() {
         "{rows:?}"
     );
     assert!(!traced_in(&report, OVERLOADED));
+}
+
+/// The walker holds an item the ruleset cannot price, so its capacity cannot be rebuilt from its
+/// items; the check then reads the printed `Capacity:` line, and so must the refusal. Given gems
+/// past 15, it is warned about and stays.
+#[test]
+fn an_overloaded_walker_beside_an_unpriceable_item_stays() {
+    let report = REPORT.replace(
+        "* Walker (900), Foo (1), human [HUMN], 4 gem [GEM]. Weight: 14.",
+        "* Walker (900), Foo (1), human [HUMN], 3 gem [GEM], widget [WDGT]. Weight: 14.",
+    );
+    assert!(warned(&report, OVERLOADED, "900"));
+    let rows = rows_of(&report, OVERLOADED);
+    assert!(!rows.is_empty());
+    assert!(
+        rows.iter().all(|(region, status, to)| region == "1:1,1"
+            && *status == UnitPreviewStatus::Present
+            && to.is_none()),
+        "{rows:?}"
+    );
+    assert!(!traced_in(&report, OVERLOADED));
+}
+
+/// An order of the walker's whose effect on its items cannot be counted - it gives away all its
+/// magic items and holds none - changes nothing about its load, and the check does not doubt it
+/// for that: the walker given gems past 15 is still warned about, and still stays.
+#[test]
+fn an_uncounted_order_does_not_excuse_an_overloaded_walker() {
+    let orders = "unit 901\nGIVE 900 2 GEM\nunit 900\nGIVE 901 ALL MAGIC\nMOVE N\n";
+    assert!(warned(REPORT, orders, "900"));
+    let rows = rows_of(REPORT, orders);
+    assert!(!rows.is_empty());
+    assert!(
+        rows.iter().all(|(region, status, to)| region == "1:1,1"
+            && *status == UnitPreviewStatus::Present
+            && to.is_none()),
+        "{rows:?}"
+    );
+    assert!(!traced_in(REPORT, orders));
+}
+
+/// A refused MOVE never runs, so its OUT step does not take the walker off the longship it stands
+/// in either.
+#[test]
+fn a_refused_move_out_leaves_the_walker_aboard() {
+    let report = REPORT.replace(
+        "* Walker (900),",
+        "+ Ship [329] : Longship; Load: 0/150; Sailors: 0/4; MaxSpeed: 4.\n\x20\x20* Walker (900),",
+    );
+    let orders = "unit 901\nGIVE 900 2 GEM\nunit 900\nMOVE OUT N\n";
+    assert!(warned(&report, orders, "900"));
+    let response = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::RULESET_JSON,
+        &report,
+        "[]",
+        orders,
+    )
+    .expect("the ruleset loads");
+    let walker = response
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .find(|row| row.unit.unit_id == "900")
+        .expect("the gift changes its items");
+    assert_eq!(walker.status, UnitPreviewStatus::Present);
+    assert_eq!(walker.unit.structure_id.as_deref(), Some("329"));
+    assert!(
+        !walker
+            .changes
+            .iter()
+            .any(|change| change.field == "structureId"),
+        "{:?}",
+        walker.changes
+    );
 }

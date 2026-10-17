@@ -1217,6 +1217,12 @@ fn settle(
     // ENTER and LEAVE orders `visit` already settled, so they are composed on top of that answer
     // here. After the walk, because a `FORM` reads its parent's structure mid-walk and
     // `rules/sequenceofevents` creates every formed unit long before any movement (`ah-ehgy`).
+    // Kept so a MOVE the game refuses for overload can be put back where its boardings found it.
+    let before_boardings: Vec<Option<String>> = working
+        .units
+        .iter()
+        .map(|unit| unit.unit.structure_id.clone())
+        .collect();
     apply_movement_boardings(&mut working.units);
     // What `BUY`, `SELL`, `WITHDRAW` and `TAKE` do to each unit's item list, read from the same
     // ledger the Silver column and the shortfall warnings settle an oversubscribed market line
@@ -1263,8 +1269,16 @@ fn settle(
         .iter()
         .map(|working_unit| working_unit.movement_now(ruleset))
         .collect();
-    for working_unit in &mut working.units {
+    // An overloaded walker "cannot issue a MOVE order" at all (`rules/movement_normal`), so its
+    // order's OUT or structure-number steps never run either: it stays in the structure it stood in
+    // (`ah-586v`).
+    for (working_unit, before) in working.units.iter_mut().zip(before_boardings) {
         working_unit.refused_overloaded = working_unit.refused_as_overloaded(ruleset);
+        if working_unit.refused_overloaded {
+            working_unit.unit.structure_id = before;
+            working_unit.move_origin_cause = None;
+            working_unit.move_destination = None;
+        }
     }
     working.apply_item_effects(&item_effects, MonthPart::MonthLong);
     // Last of all, because `rules/sequenceofevents` runs TRANSPORT in the month's final phases -
@@ -2568,21 +2582,21 @@ impl WorkingUnit {
 
     /// Whether the game refuses this unit's own `MOVE` or `ADVANCE` because it is overloaded:
     /// `rules/movement_normal` - "Otherwise the unit cannot issue a MOVE order" - so it stays
-    /// where it is all month (`ah-586v`). Judged on [`Self::carrying`], the load and allowance the
-    /// `unit-overloaded` check reads too (`movement::mode::carrying_after_transfers`), with the
-    /// check's own allowance - the best of flying, riding and walking - so the units list, the map
-    /// and the warning agree. A unit whose items this month leaves alone is judged by the report's
-    /// own printed movement instead, the game's word for it, exactly as `movement_now` reads it.
+    /// where it is all month (`ah-586v`). The same question `semantics::movement_overload` asks
+    /// for the `unit-overloaded` warning, answered the same way so the units list, the map and the
+    /// warning agree: the load and allowance from `movement::mode::carrying_after_transfers`, the
+    /// allowance the best of flying, riding and walking, and the report's printed `Capacity:` line
+    /// where the ruleset cannot price what the unit holds. A unit whose items this month leaves
+    /// alone is judged by the report's own printed movement, the game's word for it, exactly as
+    /// `movement_now` reads it. Where the load or the allowance cannot be told, the ordered
+    /// departure stands, as the check stays silent then too.
     ///
     /// Never a `SAIL`: a fleet is judged by what its hull carries (`rules/movement_sailing`), not
-    /// by the unit's own legs. And on any doubt - an order whose effect was not counted, a
-    /// creation of uncertain size, an item or capacity the ruleset cannot price - the ordered
-    /// departure stands, as the check stays silent then too.
+    /// by the unit's own legs.
     fn refused_as_overloaded(&self, ruleset: &Ruleset) -> bool {
         if self.move_steps.is_none() || self.move_command.as_deref() == Some("SAIL") {
             return false;
         }
-        // Items unchanged: the report's own line is the game's answer, as in `movement_now`.
         if !self.formed
             && self
                 .original
@@ -2594,22 +2608,18 @@ impl WorkingUnit {
                 .movement
                 .is_some_and(|movement| movement.status == UnitMovementStatus::Overloaded);
         }
-        if !self.uncounted.is_empty()
-            || self
-                .created
-                .iter()
-                .any(|created| created.fewest != created.most)
-        {
+        let Some(carrying) = self.carrying(ruleset) else {
             return false;
-        }
-        self.carrying(ruleset).is_some_and(|carrying| {
-            match (carrying.weight, carrying.capacities) {
-                (Some(weight), Some(capacity)) => {
-                    weight > capacity.fly.max(capacity.ride).max(capacity.walk)
-                }
-                _ => false,
-            }
-        })
+        };
+        let allowance = carrying
+            .capacities
+            .map(|capacity| capacity.fly.max(capacity.ride).max(capacity.walk))
+            .or_else(|| {
+                self.original
+                    .as_ref()
+                    .and_then(crate::movement::mode::best_allowance)
+            });
+        matches!((carrying.weight, allowance), (Some(weight), Some(allowance)) if weight > allowance)
     }
 
     fn refresh_movement(&mut self, ruleset: &Ruleset) {
