@@ -18,7 +18,7 @@
 
 use std::borrow::Cow;
 use std::cell::OnceCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -871,7 +871,15 @@ pub fn review_turn(
         withdrawal_allowances,
     );
 
-    let production = production_shares_for(&hexes, ruleset);
+    // FACTION runs in the first batch of instant orders (`rules/sequenceofevents`), so the region
+    // limit it applies is the one this month's production is refused against (`ah-gcrc`).
+    let (faction, failures) = faction_orders(report, &ordered, ruleset);
+    let applied = faction.applied.as_ref().map(|applied| &applied.limits);
+    let production = production_shares_refusing(
+        &hexes,
+        ruleset,
+        refused_producers(report, &hexes, ruleset, applied),
+    );
 
     // Which hex's purse each unit lends to and claims on, once for every reader (`ah-mnvp`) ...
     let membership = PurseMembership::read(&hexes, report, ruleset, &options.month_end);
@@ -1048,8 +1056,6 @@ pub fn review_turn(
     // line afterwards, so these findings land beside the per-hex ones rather than after them.
     // FACTION is settled first: it runs in the first batch of instant orders
     // (`rules/sequenceofevents`), so the split it applies is what every limit below judges against.
-    let (faction, failures) = faction_orders(report, &ordered, ruleset);
-    let applied = faction.applied.as_ref().map(|applied| &applied.limits);
     check_faction_orders(&failures, &options, &mut findings);
     check_faction(report, &hexes, ruleset, applied, &options, &mut findings);
     check_upkeep_fund(report, &month_end.fund, &options, &mut findings);
@@ -2140,9 +2146,22 @@ fn a_foreign_player_unit_in(region: &ReportRegion) -> bool {
 #[derive(Debug, Default)]
 struct ProductionShares {
     by_origin: HashMap<Coordinate, Vec<BTreeMap<String, ProductionRegionAnswer>>>,
+    /// The producers the faction's region limit refuses, by report-origin coordinate and unit id
+    /// ([`refused_producers`], `ah-gcrc`). They claim nothing from any `Products` line, and every
+    /// `PRODUCE` of theirs - primary or manufacturing - reads [`RegionShare::Refused`].
+    refused: RefusedProducers,
 }
 
+/// [`ProductionShares::refused`]: `(report-origin coordinate, unit id)`.
+type RefusedProducers = HashSet<(Coordinate, String)>;
+
 impl ProductionShares {
+    /// Whether the faction's region limit refuses every `PRODUCE` of `unit_id`, listed in the hex
+    /// at `origin` (`ah-gcrc`).
+    fn refuses(&self, origin: Coordinate, unit_id: &str) -> bool {
+        self.refused.contains(&(origin, unit_id.to_string()))
+    }
+
     /// Whether a foreign player unit may share the pool the unit at `actor_index` of the hex at
     /// `origin` produces from (`ah-e23d.2`). A unit has one settled `PRODUCE` at most - the first,
     /// as [`production_shares_for`] reads it - so any answer it has is that one.
@@ -2204,6 +2223,18 @@ struct ProductionClaim {
 /// headcount is handled by [`region_share_of`], and the navigator chose against any finding at all
 /// (`ah-256d`, 2026-08-29), so nothing is reported and there is no overruns argument.
 fn production_shares_for(hexes: &[Hex<'_>], ruleset: Option<&Ruleset>) -> ProductionShares {
+    production_shares_refusing(hexes, ruleset, RefusedProducers::new())
+}
+
+/// [`production_shares_for`], with the producers the faction's region limit refuses taken out
+/// first (`ah-gcrc`): `ValidProd` deletes a refused unit's order while
+/// `FindAttemptedProd` is still counting claimants (`../Atlantis` `monthorders.cpp`), so it takes
+/// no share of the region's yield from anybody else.
+fn production_shares_refusing(
+    hexes: &[Hex<'_>],
+    ruleset: Option<&Ruleset>,
+    refused: RefusedProducers,
+) -> ProductionShares {
     let by_coordinate: HashMap<Coordinate, &ReportRegion> = hexes
         .iter()
         .map(|hex| (hex.region.coordinate, hex.region))
@@ -2218,6 +2249,7 @@ fn production_shares_for(hexes: &[Hex<'_>], ruleset: Option<&Ruleset>) -> Produc
                 )
             })
             .collect(),
+        refused,
     };
     // Keyed by where the goods come from rather than by who asks for them - the destination's own
     // producers and every visible arrival draw on one line, so they have to meet in one group.
@@ -2225,6 +2257,9 @@ fn production_shares_for(hexes: &[Hex<'_>], ruleset: Option<&Ruleset>) -> Produc
 
     for hex in hexes {
         for (actor_index, ordered) in hex.units.iter().enumerate() {
+            if settled.refuses(hex.region.coordinate, &ordered.unit.unit_id) {
+                continue;
+            }
             let Some(placed) = ordered
                 .intents
                 .iter()
@@ -2443,6 +2478,11 @@ fn region_share_of(
     production: &ProductionShares,
     ruleset: Option<&Ruleset>,
 ) -> RegionShare {
+    // Asked before the recipe: the region limit refuses manufacturing as well as primary
+    // production (`monthorders.cpp` `RunUnitProduce` and `ValidProd`, `ah-gcrc`).
+    if production.refuses(hex.region.coordinate, &ordered.unit.unit_id) {
+        return RegionShare::Refused;
+    }
     let Some(tag) = production_tag_of(hex, ordered, item, ruleset) else {
         return RegionShare::Unlimited;
     };
@@ -7863,8 +7903,16 @@ pub(crate) fn item_effects(
     // Every hex before any ledger, and one settlement for all of them: a passenger produces where
     // its vessel arrives, so the pool it draws on is in another hex's `Products` line. Settling
     // this per hex here would leave the ITEMS cell disagreeing with the SILVER cell beside it,
-    // which reads the report-wide answer (`ah-k43x`).
-    let production = production_shares_for(&hexes, ruleset);
+    // which reads the report-wide answer (`ah-k43x`). The producers the faction's region limit
+    // refuses are taken out first, against the limit this month's FACTION applies, as
+    // `review_turn` does (`ah-gcrc`).
+    let (faction, _) = faction_orders(report, &ordered, ruleset);
+    let applied = faction.applied.as_ref().map(|applied| &applied.limits);
+    let production = production_shares_refusing(
+        &hexes,
+        ruleset,
+        refused_producers(report, &hexes, ruleset, applied),
+    );
 
     // Every ledger before any is consumed, so shipping settles across every hex exactly as
     // `review_turn` settles it - through the same driver (`ah-7ale.4`). Through maintenance, as
@@ -11267,6 +11315,11 @@ fn produce(
         standing.production,
         ruleset,
     );
+    // The faction's region limit refuses the order outright: nothing is spent, nothing is made,
+    // and the region-limit warning is what says so (`ah-gcrc`).
+    if region == RegionShare::Refused {
+        return;
+    }
     // Every phase `rules/sequenceofevents` runs before "Manufacturing PRODUCE orders ... are
     // processed" has been applied to this unit by the phase-major dispatch, and `PhaseState::apply`
     // writes each delta forward, so this balance is the whole answer. Wages never enter it: `pay_wages`
@@ -25650,6 +25703,9 @@ fn earlier_anchor<'a, 'b>(
 struct RegionLimit {
     allowance: i64,
     used: usize,
+    /// The regions the game refuses, as [`hex_label`] names them, in the order it reaches them
+    /// ([`region_refusals`]).
+    refused_in: Vec<String>,
     kinds: &'static str,
     may: &'static str,
     may_not: &'static str,
@@ -25686,9 +25742,14 @@ fn push_region_finding(
     } else {
         let excess = used - allowance;
         let regions = if excess == 1 { "region's" } else { "regions'" };
+        let named = if limit.refused_in.is_empty() {
+            String::new()
+        } else {
+            format!(": {}", limit.refused_in.join(", "))
+        };
         format!(
             "{kinds} orders in {used} regions; this faction may {may} in {allowance}, so {excess} \
-             {regions} {refused} will be refused"
+             {regions} {refused} will be refused{named}"
         )
     };
     findings.push(ordered.finding(hex, codes::TOO_MANY_TRADE_REGIONS, message, Some(placed)));
@@ -25717,16 +25778,16 @@ struct RegionUse<'a, 'b> {
 
 /// Every use of a tax or trade slot this month's orders make. The one walk both the region-limit
 /// warning and the Production window read, so the two cannot disagree about what uses a slot.
-fn region_uses<'a, 'b>(
-    hexes: &'a [(Hex<'b>, Ledger<'_>)],
+fn region_uses<'a, 'b: 'a>(
+    hexes: impl Iterator<Item = &'a Hex<'b>> + Clone,
     ruleset: Option<&Ruleset>,
 ) -> Vec<RegionUse<'a, 'b>> {
     let by_coordinate: HashMap<Coordinate, &'b ReportRegion> = hexes
-        .iter()
-        .map(|(hex, _)| (hex.region.coordinate, hex.region))
+        .clone()
+        .map(|hex| (hex.region.coordinate, hex.region))
         .collect();
     let mut uses = Vec::new();
-    for (hex, _) in hexes {
+    for hex in hexes {
         for ordered_unit in hex
             .units
             .iter()
@@ -25786,16 +25847,216 @@ fn region_uses<'a, 'b>(
     uses
 }
 
+/// The regions the faction's region limit refuses this month, each list in the order the game
+/// reaches them (`ah-gcrc`).
+///
+/// The engine records every region taxed or pillaged first, in the tax phase, and only then walks
+/// the month's production (`../Atlantis` `runorders.cpp` `ActivityCheck(..., TAX)`, then
+/// `monthorders.cpp` `RunMonthOrders` -> `RunUnitProduce` / `ValidProd`). Each phase walks the
+/// game's region list, and a region already recorded costs nothing more (`IsActivityRecorded`;
+/// pooled, any activity recorded there counts). A region reached once the allowance is spent is
+/// refused: "PRODUCE: Faction can't produce in that many regions." The report prints the regions
+/// in that same list's order (`faction.cpp` `present_regions`), so report order is the order here.
+/// Within the tax phase every PILLAGE runs before any TAX (`runorders.cpp`: `RunPillageOrders`,
+/// then `RunTaxOrders`), so pillaged regions are walked before taxed ones.
+///
+/// Only a use that reaches `ActivityCheck` is walked: [`reaches_activity_check`].
+#[derive(Debug, Default)]
+struct RegionRefusals<'b> {
+    taxing: Vec<&'b ReportRegion>,
+    producing: Vec<&'b ReportRegion>,
+}
+
+fn region_refusals<'b>(
+    report: &ParsedReport,
+    uses: &[RegionUse<'_, 'b>],
+    allowances: RegionAllowances,
+    ruleset: Option<&Ruleset>,
+) -> RegionRefusals<'b> {
+    let position: HashMap<&str, usize> = report
+        .regions
+        .iter()
+        .enumerate()
+        .map(|(index, region)| (region.region_id.as_str(), index))
+        .collect();
+    // Every distinct region the uses of `wanted` kinds are made in, in report order.
+    let regions_of = |wanted: fn(RegionUseKind) -> bool| {
+        let mut regions: Vec<&'b ReportRegion> = Vec::new();
+        for used in uses
+            .iter()
+            .filter(|used| wanted(used.kind) && reaches_activity_check(used, ruleset))
+        {
+            if let Some(region) = used.region {
+                if !regions
+                    .iter()
+                    .any(|seen| seen.region_id == region.region_id)
+                {
+                    regions.push(region);
+                }
+            }
+        }
+        regions.sort_by_key(|region| {
+            position
+                .get(region.region_id.as_str())
+                .copied()
+                .unwrap_or(usize::MAX)
+        });
+        regions
+    };
+    let pillaging = regions_of(|kind| kind == RegionUseKind::Pillage);
+    let taxing = regions_of(|kind| matches!(kind, RegionUseKind::Tax | RegionUseKind::TaxByFlag));
+    let producing = regions_of(|kind| kind == RegionUseKind::Produce);
+    // Walks `regions` against one counter, recording what fits and returning what does not.
+    let walk =
+        |recorded: &mut Vec<&'b ReportRegion>, regions: Vec<&'b ReportRegion>, allowance: i64| {
+            let mut refused = Vec::new();
+            for region in regions {
+                if recorded
+                    .iter()
+                    .any(|seen| seen.region_id == region.region_id)
+                {
+                    continue;
+                }
+                if i64::try_from(recorded.len()).unwrap_or(i64::MAX) < allowance {
+                    recorded.push(region);
+                } else {
+                    refused.push(region);
+                }
+            }
+            refused
+        };
+    match allowances {
+        RegionAllowances::Pooled(allowance) => {
+            let mut recorded = Vec::new();
+            let mut refused = walk(&mut recorded, pillaging, allowance);
+            refused.extend(walk(&mut recorded, taxing, allowance));
+            let producing = walk(&mut recorded, producing, allowance);
+            RegionRefusals {
+                taxing: refused,
+                producing,
+            }
+        }
+        RegionAllowances::Separate { tax, trade } => RegionRefusals {
+            taxing: tax.map_or_else(Vec::new, |allowance| {
+                let mut recorded = Vec::new();
+                let mut refused = walk(&mut recorded, pillaging, allowance);
+                refused.extend(walk(&mut recorded, taxing, allowance));
+                refused
+            }),
+            producing: trade.map_or_else(Vec::new, |allowance| {
+                walk(&mut Vec::new(), producing, allowance)
+            }),
+        },
+    }
+}
+
+/// Whether the engine reaches `ActivityCheck` for this use, so that it can spend a region at all.
+///
+/// The engine refuses some orders before it asks about the region limit, and a refused order
+/// records nothing (`ah-gcrc`). Judged here as far as the report can say:
+///
+/// - PRODUCE (`../Atlantis` `monthorders.cpp` `RunUnitProduce` and `ValidProd`): "Can't produce
+///   that" for goods nothing can resolve or no skill makes, for an unreadable order, and for raw
+///   goods the producing region does not yield; "isn't skilled enough" below the recipe's level.
+/// - TAX and PILLAGE (`runorders.cpp` `CountTaxes` and the pillage walk): "No population to tax",
+///   and a unit with no combat-ready men ("Unit cannot tax", "Not a combat ready unit"), read
+///   through the same [`readiness`] `tax-without-combat-ready-men` reads.
+///
+/// Anything it cannot judge is counted, as the warning always counted it. The warning's own count
+/// is unchanged; this only decides which regions the walk refuses. TAX and PILLAGE in a guarded
+/// hex are counted too: a guard refuses them first only when *its* attitude to us is neutral or
+/// worse (`aregion.cpp` `ARegion::CanTax`), which the report does not show - on
+/// `neworigins-3.0.0-g5-f21-t24` two taxed hexes have a foreign guard, and turn 25 shows both
+/// taxed.
+fn reaches_activity_check(used: &RegionUse<'_, '_>, ruleset: Option<&Ruleset>) -> bool {
+    match used.kind {
+        RegionUseKind::Tax | RegionUseKind::TaxByFlag | RegionUseKind::Pillage => {
+            if used.hex.region.population.is_some_and(|people| people < 1) {
+                return false;
+            }
+            let nothing = Receipts::default();
+            let facts = unit_facts(used.hex, used.ordered, &nothing, None, ruleset);
+            readiness(&facts, ruleset).is_none_or(|readiness| readiness.ready > 0)
+        }
+        RegionUseKind::Produce => {
+            let Some(Intent::Produce { item, .. }) = used.placed.map(|placed| &placed.intent)
+            else {
+                // `MonthLong("PRODUCE")`: nothing the engine can make of it.
+                return false;
+            };
+            let Some(ruleset) = ruleset else {
+                return true;
+            };
+            let settled = used.ordered.after_the_market();
+            let Some(tag) = resolve_item(item, used.hex, used.ordered, Some(ruleset)) else {
+                return false;
+            };
+            let Some((skill, recipe)) = producing_skill(Some(ruleset), &tag, settled.skills) else {
+                return false;
+            };
+            // Raw goods come from the region the unit produces in, which for a passenger is where
+            // its vessel arrives - `used.region`, as `produce-not-here` judges it.
+            if recipe.inputs.is_empty()
+                && used.region.is_some_and(|region| {
+                    !region
+                        .products
+                        .iter()
+                        .any(|product| product.tag.eq_ignore_ascii_case(&tag))
+                })
+            {
+                return false;
+            }
+            settled.skills.is_none_or(|skills| {
+                let level = level_in(skills, &skill.tag);
+                level > 0 && level >= recipe.level
+            })
+        }
+    }
+}
+
+/// Every own unit whose `PRODUCE` the faction's region limit refuses this month, by report-origin
+/// coordinate and unit id, for [`production_shares_refusing`] (`ah-gcrc`). Empty for a report
+/// that prints no region limit.
+fn refused_producers(
+    report: &ParsedReport,
+    hexes: &[Hex<'_>],
+    ruleset: Option<&Ruleset>,
+    applied: Option<&FactionLimits>,
+) -> RefusedProducers {
+    let Some(allowances) = region_allowances(report, applied) else {
+        return RefusedProducers::new();
+    };
+    let uses = region_uses(hexes.iter(), ruleset);
+    let refused = region_refusals(report, &uses, allowances, ruleset).producing;
+    uses.iter()
+        .filter(|used| used.kind == RegionUseKind::Produce)
+        .filter(|used| {
+            used.region.is_some_and(|region| {
+                refused
+                    .iter()
+                    .any(|other| other.region_id == region.region_id)
+            })
+        })
+        .map(|used| {
+            (
+                used.hex.region.coordinate,
+                used.ordered.unit.unit_id.clone(),
+            )
+        })
+        .collect()
+}
+
 /// `PRODUCE: Faction can't produce in that many regions.` A faction may only tax and trade in so
 /// many regions a month (rules/tablefactionpoints). PRODUCE, TAX - an order or the taxing flag -
 /// and PILLAGE use up a region; BUY, SELL and TRANSPORT never do. Order one region too many and the
 /// engine refuses that whole region's orders.
 ///
-/// Which region loses is the engine's business and not knowable from here, so the warning names
-/// the count and the allowance and never a hex. It belongs to the faction rather than to any one
-/// region, and every finding needs a hex - a hexless one is dropped by the client on purpose
-/// (`orderEditor.ts:194`). So it lands on the first line in the document that counts toward the
-/// limit it warns about: one line for one mistake, on something the player can click.
+/// Which region loses is the engine's walk, and [`region_refusals`] follows it, so the warning
+/// names the regions refused after the count and the allowance (`ah-gcrc`). It belongs to the
+/// faction rather than to any one region, and every finding needs a hex - a hexless one is dropped
+/// by the client on purpose (`orderEditor.ts:194`). So it lands on the first line in the document
+/// that counts toward the limit it warns about: one line for one mistake, on something the player
+/// can click.
 fn check_trade_regions(
     report: &ParsedReport,
     hexes: &[(Hex<'_>, Ledger<'_>)],
@@ -25818,7 +26079,8 @@ fn check_trade_regions(
     let mut first_produce: Option<RegionAnchor<'_, '_>> = None;
     let mut first_tax_or_pillage: Option<RegionAnchor<'_, '_>> = None;
 
-    for used in region_uses(hexes, ruleset) {
+    let uses = region_uses(hexes.iter().map(|(hex, _)| hex), ruleset);
+    for used in &uses {
         let anchor = used.placed.map(|placed| (used.hex, used.ordered, placed));
         match used.kind {
             RegionUseKind::Produce => {
@@ -25835,6 +26097,19 @@ fn check_trade_regions(
             }
         }
     }
+    let refusals = region_refusals(report, &uses, allowances, ruleset);
+    // One name per region: a region several walks refuse - its PILLAGE and its TAX, or its TAX
+    // and its PRODUCE on a pooled counter - is still one region refused.
+    let labels = |regions: &[&ReportRegion]| -> Vec<String> {
+        let mut named: Vec<String> = Vec::new();
+        for region in regions {
+            let label = hex_label(&region.terrain, region.coordinate);
+            if !named.contains(&label) {
+                named.push(label);
+            }
+        }
+        named
+    };
 
     match allowances {
         RegionAllowances::Pooled(allowance) => push_region_finding(
@@ -25842,6 +26117,7 @@ fn check_trade_regions(
             &RegionLimit {
                 allowance,
                 used: producing.union(&taxing).count(),
+                refused_in: labels(&[refusals.taxing, refusals.producing].concat()),
                 kinds: "PRODUCE, TAX and PILLAGE",
                 may: "tax and trade",
                 may_not: "tax or trade",
@@ -25856,6 +26132,7 @@ fn check_trade_regions(
                     &RegionLimit {
                         allowance,
                         used: producing.len(),
+                        refused_in: labels(&refusals.producing),
                         kinds: "PRODUCE",
                         may: "trade",
                         may_not: "trade",
@@ -25870,6 +26147,7 @@ fn check_trade_regions(
                     &RegionLimit {
                         allowance,
                         used: taxing.len(),
+                        refused_in: labels(&refusals.taxing),
                         kinds: "TAX and PILLAGE",
                         may: "tax",
                         may_not: "tax",
@@ -25915,7 +26193,7 @@ fn production_overview(
         .collect();
 
     let mut grouped: HashMap<&str, Vec<RegionUse<'_, '_>>> = HashMap::new();
-    for used in region_uses(hexes, ruleset) {
+    for used in region_uses(hexes.iter().map(|(hex, _)| hex), ruleset) {
         if let Some(region) = used.region {
             grouped
                 .entry(region.region_id.as_str())
@@ -71967,18 +72245,20 @@ BUILD
     #[test]
     fn pillaging_counts_toward_a_pooled_regions_counter() {
         let regions = vec![
-            region_at("1:7,53", 7, 53, vec![unit("5")]),
-            region_at("1:8,53", 8, 53, vec![unit("6")]),
+            grain_region("1:7,53", 7, 53, vec![farmer("5")]),
+            grain_region("1:8,53", 8, 53, vec![farmer("6")]),
             region_at("1:9,53", 9, 53, vec![with_skill(unit("7"), "COMB", 1)]),
         ];
         let orders = "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nPILLAGE\n";
         let findings = check_trade(regions, orders, "Regions", 2);
 
+        // The pillaged region, listed last, is recorded first (`RunPillageOrders` runs in the tax
+        // phase), so the second producing region is the one refused.
         assert_eq!(codes(&findings), ["too-many-trade-regions"]);
         assert_eq!(
             findings[0].message,
             "PRODUCE, TAX and PILLAGE orders in 3 regions; this faction may tax and trade in 2, so \
-             1 region's orders will be refused"
+             1 region's orders will be refused: mountain (8,53)"
         );
     }
 
@@ -72079,7 +72359,7 @@ BUILD
         assert_eq!(
             findings[0].message,
             "TAX and PILLAGE orders in 2 regions; this faction may tax in 1, so 1 region's taxing \
-             will be refused"
+             will be refused: mountain (7,53)"
         );
     }
 
@@ -72128,7 +72408,7 @@ BUILD
         assert_eq!(
             findings[1].message,
             "TAX and PILLAGE orders in 2 regions; this faction may tax in 1, so 1 region's taxing \
-             will be refused"
+             will be refused: mountain (9,53)"
         );
     }
 
@@ -72189,15 +72469,17 @@ BUILD
     #[test]
     fn a_sailing_passenger_uses_the_destination_trade_region() {
         let mut regions = fleet_sailing_north(one_product(50, "fish", "FISH"));
-        regions[0].units.push(unit("5"));
+        regions[0].units.push(farmer("5"));
+        regions[0].products = one_product(100, "grain", "GRAI");
         let orders = "unit 5\nPRODUCE grain\nunit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n";
         let findings = check_trade(regions, orders, "Trade Regions", 1);
 
+        // The fisherman produces where the fleet arrives, the ocean listed after the home hex.
         assert_eq!(codes(&findings), ["too-many-trade-regions"]);
         assert_eq!(
             findings[0].message,
             "PRODUCE orders in 2 regions; this faction may trade in 1, so 1 region's production \
-             will be refused"
+             will be refused: ocean (7,51)"
         );
     }
 
@@ -72265,18 +72547,18 @@ BUILD
     #[test]
     fn two_regions_too_many_reads_as_a_plural() {
         let regions = vec![
-            region_at("1:6,53", 6, 53, vec![unit("4")]),
-            region_at("1:7,53", 7, 53, vec![unit("5")]),
-            region_at("1:8,53", 8, 53, vec![unit("6")]),
-            region_at("1:9,53", 9, 53, vec![unit("7")]),
+            grain_region("1:6,53", 6, 53, vec![farmer("4")]),
+            grain_region("1:7,53", 7, 53, vec![farmer("5")]),
+            grain_region("1:8,53", 8, 53, vec![farmer("6")]),
+            grain_region("1:9,53", 9, 53, vec![farmer("7")]),
         ];
         let orders = "unit 4\nPRODUCE grain\nunit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\n\
                       unit 7\nPRODUCE grain\n";
         let findings = check_trade(regions, orders, "Trade Regions", 2);
 
-        assert!(findings[0]
-            .message
-            .ends_with("so 2 regions' production will be refused"));
+        assert!(findings[0].message.ends_with(
+            "so 2 regions' production will be refused: mountain (8,53), mountain (9,53)"
+        ));
     }
 
     #[test]
@@ -72295,6 +72577,256 @@ BUILD
             "PRODUCE, TAX and PILLAGE orders in 3 regions; this faction may tax and trade in 2, so \
              1 region's orders will be refused"
         );
+    }
+
+    // --- what the region limit refuses, in the forecast (`ah-gcrc`) -------------------------------
+
+    /// A region yielding grain, with own units in it.
+    fn grain_region(id: &str, x: i32, y: i32, units: Vec<ReportUnit>) -> ReportRegion {
+        ReportRegion {
+            products: one_product(100, "grain", "GRAI"),
+            ..region_at(id, x, y, units)
+        }
+    }
+
+    fn farmer(id: &str) -> ReportUnit {
+        with_skill(with_men(unit(id), 5), "FARM", 1)
+    }
+
+    /// What the SILVER column says `unit_id` produces this month.
+    fn produced_by(review: &TurnReview, unit_id: &str) -> i64 {
+        review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == unit_id)
+            .unwrap_or_else(|| panic!("unit {unit_id} has a SILVER row"))
+            .produced
+    }
+
+    fn review_trade(
+        regions: Vec<ReportRegion>,
+        orders: &str,
+        entries: &[(&str, i64)],
+    ) -> TurnReview {
+        review_turn(
+            &report_with_statuses(entries, regions),
+            orders,
+            Some(&ruleset()),
+            disabling_all(TRADE_TEST_DISABLED),
+        )
+    }
+
+    /// `ValidProd` refuses a region reached once a separate trade counter is spent, and the
+    /// regions are reached in report order.
+    #[test]
+    fn a_separate_trade_counter_refuses_the_later_regions_production() {
+        let regions = vec![
+            grain_region("1:7,53", 7, 53, vec![farmer("5")]),
+            grain_region("1:8,53", 8, 53, vec![farmer("6")]),
+        ];
+        let review = review_trade(
+            regions,
+            "unit 6\nPRODUCE grain\nunit 5\nPRODUCE grain\n",
+            &[("Tax Regions", 5), ("Trade Regions", 1)],
+        );
+
+        assert!(produced_by(&review, "5") > 0, "the first region fits");
+        assert_eq!(produced_by(&review, "6"), 0, "the second region is refused");
+        assert_eq!(
+            trade_findings(&review.findings)[0].message,
+            "PRODUCE orders in 2 regions; this faction may trade in 1, so 1 region's production \
+             will be refused: mountain (8,53)"
+        );
+    }
+
+    /// Pooled, every taxed region is recorded before any production is reached, so a TAX listed
+    /// last still costs the production listed between.
+    #[test]
+    fn a_pooled_counter_records_the_taxing_first() {
+        let regions = vec![
+            grain_region("1:7,53", 7, 53, vec![farmer("5")]),
+            grain_region("1:8,53", 8, 53, vec![farmer("6")]),
+            region_at("1:9,53", 9, 53, vec![with_skill(unit("7"), "COMB", 1)]),
+        ];
+        let review = review_trade(
+            regions,
+            "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nTAX\n",
+            &[("Regions", 2)],
+        );
+
+        assert!(produced_by(&review, "5") > 0);
+        assert_eq!(produced_by(&review, "6"), 0);
+        assert_eq!(
+            trade_findings(&review.findings)[0].message,
+            "PRODUCE, TAX and PILLAGE orders in 3 regions; this faction may tax and trade in 2, so \
+             1 region's orders will be refused: mountain (8,53)"
+        );
+    }
+
+    /// A pooled region already recorded by a TAX costs no second slot (`IsActivityRecorded`), so
+    /// producing there is never refused.
+    #[test]
+    fn producing_in_a_region_already_taxed_is_not_refused() {
+        let regions = vec![grain_region(
+            "1:7,53",
+            7,
+            53,
+            vec![with_skill(unit("5"), "COMB", 1), farmer("6")],
+        )];
+        let review = review_trade(
+            regions,
+            "unit 5\nTAX\nunit 6\nPRODUCE grain\n",
+            &[("Regions", 1)],
+        );
+
+        assert!(trade_findings(&review.findings).is_empty());
+        assert!(produced_by(&review, "6") > 0);
+    }
+
+    /// A PRODUCE the engine refuses for want of skill never reaches `ActivityCheck`, so it spends
+    /// no region and the later region still fits - though the warning still counts both.
+    #[test]
+    fn an_unskilled_produce_spends_no_region_the_walk_refuses() {
+        let regions = vec![
+            grain_region("1:7,53", 7, 53, vec![unit("5")]),
+            grain_region("1:8,53", 8, 53, vec![farmer("6")]),
+        ];
+        let review = review_trade(
+            regions,
+            "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\n",
+            &[("Trade Regions", 1)],
+        );
+
+        assert!(produced_by(&review, "6") > 0);
+        let warnings = trade_findings(&review.findings);
+        assert_eq!(
+            warnings[0].message,
+            "PRODUCE orders in 2 regions; this faction may trade in 1, so 1 region's production \
+             will be refused"
+        );
+    }
+
+    /// `RunUnitProduce` refuses a manufacturing PRODUCE in a refused region before it consumes
+    /// anything: no sword is made and no iron is spent, in either column.
+    #[test]
+    fn a_refused_manufacturer_spends_no_material_and_makes_nothing() {
+        let regions = vec![
+            grain_region("1:7,53", 7, 53, vec![farmer("5")]),
+            region_at(
+                "1:8,53",
+                8,
+                53,
+                vec![with_item(
+                    with_skill(with_men(unit("6"), 8), "WEAP", 1),
+                    20,
+                    "iron",
+                    "IRON",
+                )],
+            ),
+        ];
+        let orders = "unit 5\nPRODUCE grain\nunit 6\nPRODUCE sword\n";
+        let entries = [("Trade Regions", 1)];
+        let review = review_trade(regions.clone(), orders, &entries);
+        assert_eq!(produced_by(&review, "6"), 0);
+
+        let effects = item_effects(
+            &report_with_statuses(&entries, regions),
+            orders,
+            Some(&ruleset()),
+            &disabling_all(TRADE_TEST_DISABLED),
+        );
+        let moved = effects
+            .get(&unit_key("1:8,53", "6"))
+            .map(|effects| effects.moved.clone())
+            .unwrap_or_default();
+        assert!(moved.is_empty(), "{moved:?}");
+    }
+
+    /// A region two walks refuse - its PILLAGE and then its TAX - is one region, named once.
+    #[test]
+    fn a_region_refused_by_its_pillage_and_its_tax_is_named_once() {
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![with_skill(unit("5"), "COMB", 1)]),
+            region_at(
+                "1:8,53",
+                8,
+                53,
+                vec![
+                    with_skill(unit("6"), "COMB", 1),
+                    with_skill(unit("7"), "COMB", 1),
+                ],
+            ),
+        ];
+        let review = review_trade(
+            regions,
+            "unit 5\nPILLAGE\nunit 6\nPILLAGE\nunit 7\nTAX\n",
+            &[("Regions", 1)],
+        );
+
+        assert!(trade_findings(&review.findings)[0]
+            .message
+            .ends_with("orders will be refused: mountain (8,53)"));
+    }
+
+    /// Pooled, a region refused for its TAX is refused for its PRODUCE too: named once, and its
+    /// production dropped.
+    #[test]
+    fn a_region_refused_for_its_tax_and_its_produce_is_named_once() {
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![with_skill(unit("5"), "COMB", 1)]),
+            grain_region(
+                "1:8,53",
+                8,
+                53,
+                vec![with_skill(unit("6"), "COMB", 1), farmer("7")],
+            ),
+        ];
+        let review = review_trade(
+            regions,
+            "unit 5\nTAX\nunit 6\nTAX\nunit 7\nPRODUCE grain\n",
+            &[("Regions", 1)],
+        );
+
+        assert!(trade_findings(&review.findings)[0]
+            .message
+            .ends_with("orders will be refused: mountain (8,53)"));
+        assert_eq!(produced_by(&review, "7"), 0);
+    }
+
+    /// "PRODUCE: Can't produce that." comes before the region check for raw goods the region does
+    /// not yield, so such an order spends no region.
+    #[test]
+    fn producing_raw_goods_the_region_lacks_spends_no_region() {
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![farmer("5")]),
+            grain_region("1:8,53", 8, 53, vec![farmer("6")]),
+        ];
+        let review = review_trade(
+            regions,
+            "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\n",
+            &[("Trade Regions", 1)],
+        );
+
+        assert!(produced_by(&review, "6") > 0);
+    }
+
+    /// A TAX by a unit with no combat-ready men is refused before the region check ("TAX: Unit
+    /// cannot tax."), so it spends no region and names none.
+    #[test]
+    fn a_tax_with_no_combat_ready_men_spends_no_region() {
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![unit("5")]),
+            region_at("1:8,53", 8, 53, vec![with_skill(unit("6"), "COMB", 1)]),
+        ];
+        let findings = check_trade_statuses(
+            regions,
+            "unit 5\nTAX\nunit 6\nTAX\n",
+            &[("Tax Regions", 1), ("Trade Regions", 5)],
+        );
+
+        assert!(trade_findings(&findings)[0]
+            .message
+            .ends_with("1 region's taxing will be refused"));
     }
 
     /// The same, for a flag this month's orders set rather than one the report printed
