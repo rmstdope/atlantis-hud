@@ -38816,17 +38816,21 @@ BUILD
             });
         }
 
+        /// A recipe of alternatives is counted, drawing the first alternative it holds
+        /// (`ah-opzd`): eight cooks at level 1, five grain, five batches.
         #[test]
-        fn a_produce_of_a_recipe_of_alternatives_cannot_be_counted() {
-            let hex_region = region(vec![with_skill(with_men(unit("2391"), 8), "WEAP", 1)]);
-            with_ledger(hex_region, "unit 2391\nPRODUCE meal\n", |ledger| {
-                assert_eq!(
-                    ledger.uncounted.get("2391").map(Vec::as_slice),
-                    Some([2].as_slice())
-                );
+        fn a_produce_of_a_recipe_of_alternatives_is_counted() {
+            let cook = with_item(
+                with_skill(with_men(unit("2391"), 8), "COOK", 1),
+                5,
+                "grain",
+                "GRAI",
+            );
+            with_ledger(region(vec![cook]), "unit 2391\nPRODUCE meal\n", |ledger| {
+                assert!(!ledger.uncounted.contains_key("2391"));
                 assert!(
-                    ledger.movements.is_empty(),
-                    "a recipe of alternatives records no movement"
+                    !ledger.movements.is_empty(),
+                    "the grain the cooks eat is a movement"
                 );
             });
         }
@@ -47182,17 +47186,27 @@ BUILD
         assert_eq!(forecast.expense, None);
     }
 
-    /// Cooking states "any of grain, livestock and fish"; which the engine takes cannot be told,
-    /// so nothing is priced rather than all three being charged.
+    /// Cooking states "any of grain, livestock and fish": one of them per batch, and the engine
+    /// takes them in the recipe's order (`monthorders.cpp`'s `ORINPUTS` arm), so the run is
+    /// priced rather than doubted (`ah-opzd`). Ten men at `cooking 2` make one meal each
+    /// (`data/COOK`: "skill level divided by 2, rounded up"), and three grain is all they have.
     #[test]
-    fn a_recipe_of_alternatives_is_doubted_rather_than_guessed() {
-        let forecast = forecast_with_ruleset(
-            vec![region(vec![carpenters(100_000, 9999)])],
-            "unit 12881\nPRODUCE meals\n",
+    fn a_recipe_of_alternatives_is_priced() {
+        let cooks = with_skill(
+            with_item(carpenters(100_000, 9999), 3, "grain", "GRAI"),
+            "COOK",
+            2,
         );
+        let forecast =
+            forecast_with_ruleset(vec![region(vec![cooks])], "unit 12881\nPRODUCE meals\n");
 
-        assert_eq!(forecast.doubt, Some(SilverDoubt::UnpricedProduction));
-        assert_eq!(forecast.expense, None);
+        assert_eq!(forecast.doubt, None);
+        assert_eq!(forecast.expense, Some(0));
+        assert_eq!(forecast.produced, 3);
+        assert_eq!(
+            forecast.production_capped_by,
+            Some(crate::orders::silver::ProductionCap::Materials)
+        );
     }
 
     /// `ah-gdd3.2`. GIVE settles before manufacturing whatever order the two are written in, so a

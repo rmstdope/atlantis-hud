@@ -747,9 +747,15 @@ pub struct Production {
     #[serde(default)]
     pub man_months: Option<u32>,
     /// How many the recipe makes per `man_months`. `None` both for a ruleset generated before this
-    /// was scraped and for cooking, whose output the page states as a formula.
+    /// was scraped and for a formula the scraper could not read.
     #[serde(default)]
     pub outputs: Option<u32>,
+    /// Whether each man's output scales with his skill level instead of the usual man-months -
+    /// cooking's "a number of meals [MEAL] equal to their skill level" (`newage arcanum
+    /// data/COOK`) or "equal to skill level divided by 2, rounded up" (`data/COOK`). `None` for
+    /// every other recipe and for a ruleset generated before this was scraped (`ah-opzd`).
+    #[serde(default)]
+    pub skill_output: Option<SkillOutput>,
     /// Whether a unit at this level can also tell whether a region holds this item at all, as
     /// `data/skills` states it: `A unit with this skill is able to determine if a region contains
     /// floater hides.` Nine recipes carry it in every committed world; every other recipe is
@@ -757,6 +763,36 @@ pub struct Production {
     /// reads as "this catalogue cannot say", the same direction `damages_enemies` takes.
     #[serde(default)]
     pub reveals_region: bool,
+}
+
+/// How a recipe whose output the data page states as a formula of the producer's level scales.
+///
+/// The engine (`monthorders.cpp`, `RunUnitProduce`, items flagged `SKILLOUT` / `SKILLOUT_HALF`)
+/// runs one batch per man, whatever his level or tools, and multiplies each batch's `outputs` by
+/// the factor this names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../ruleset/src/generated/SkillOutput.ts")
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum SkillOutput {
+    /// "equal to their skill level" - `newage arcanum data/COOK`.
+    Level,
+    /// "equal to skill level divided by 2, rounded up" - `data/COOK`.
+    HalfLevelRoundedUp,
+}
+
+impl SkillOutput {
+    /// What one batch's output is multiplied by, for a producer at `level`.
+    #[must_use]
+    pub fn factor(self, level: i64) -> i64 {
+        match self {
+            Self::Level => level,
+            Self::HalfLevelRoundedUp => (level + 1) / 2,
+        }
+    }
 }
 
 /// A skill a unit must already have, at a level, before it may begin to study another.
@@ -2460,6 +2496,7 @@ mod tests {
         assert!(!production.inputs_are_alternatives);
         assert_eq!(production.man_months, None);
         assert_eq!(production.outputs, None);
+        assert_eq!(production.skill_output, None);
     }
 
     /// A ruleset cached before `ah-ofpb.3` carries a `cast` with `costs` and `transmute` and no

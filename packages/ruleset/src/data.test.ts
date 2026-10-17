@@ -1113,6 +1113,7 @@ describe("parseSkillReference", () => {
       inputsAreAlternatives: false,
       manMonths: 1,
       outputs: 1,
+      skillOutput: null,
       revealsRegion: false
     });
   });
@@ -1253,15 +1254,41 @@ describe("parseSkillReference", () => {
     ]);
   });
 
-  it("reads cooking's formula output as unknown rather than one", () => {
+  it("reads cooking's output as half the cook's level, rounded up, per man", () => {
     const skills = parseSkillReference(DATA_HTML);
 
-    // "a number of meals [MEAL] equal to skill level divided by 2, rounded up" - a formula, and
-    // this type does not model formulae. A 1 would be wrong at every level above 2.
+    // data/COOK: "a number of meals [MEAL] equal to skill level divided by 2, rounded up ... at a
+    // rate of 1 per man-month" - the rate's 1, scaled by the formula (ah-opzd).
     expect(skills.COOK.produces.find((p) => p.tag === "MEAL")).toMatchObject({
-      outputs: null,
+      outputs: 1,
+      skillOutput: "half-level-rounded-up",
       manMonths: 1
     });
+  });
+
+  it("reads an output equal to the cook's skill level", () => {
+    // newage arcanum data/COOK: "a number of meals [MEAL] equal to their skill level from any of
+    // grain [GRAI] ... at a rate of 1 per man-month".
+    const html =
+      "<html><body><pre>cooking [COOK] 1: A unit with this skill may PRODUCE a number of meals " +
+      "[MEAL] equal to their skill level from any of grain [GRAI], livestock [LIVE] and fish " +
+      "[FISH] at a rate of 1 per man-month. This skill costs 10 silver per month of study." +
+      "</pre></body></html>";
+
+    expect(parseSkillReference(html).COOK.produces).toMatchObject([
+      { tag: "MEAL", outputs: 1, skillOutput: "level", inputsAreAlternatives: true }
+    ]);
+  });
+
+  it("leaves a formula it cannot read as unknown rather than one", () => {
+    const html =
+      "<html><body><pre>cookery [COOX] 1: A unit with this skill may PRODUCE a number of " +
+      "meals [MEAL] equal to the square of skill level from any of grain [GRAI] at a rate of 1 " +
+      "per man-month. This skill costs 10 silver per month of study.</pre></body></html>";
+
+    expect(parseSkillReference(html).COOX.produces).toMatchObject([
+      { tag: "MEAL", outputs: null, skillOutput: null }
+    ]);
   });
 
   it('reads cooking\'s product from a sentence that says "from" twice', () => {
@@ -1285,7 +1312,13 @@ describe("parseSkillReference", () => {
     const produced = parseSkillReference(html).COOX.produces;
 
     expect(produced).toMatchObject([
-      { tag: "MEAL", outputs: null, inputsAreAlternatives: true, inputs: [{ tag: "GRAI", amount: 1 }] }
+      {
+        tag: "MEAL",
+        outputs: 1,
+        skillOutput: "level",
+        inputsAreAlternatives: true,
+        inputs: [{ tag: "GRAI", amount: 1 }]
+      }
     ]);
   });
 

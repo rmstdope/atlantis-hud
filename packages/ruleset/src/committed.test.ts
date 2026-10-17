@@ -203,6 +203,7 @@ describe("the committed rulesets", () => {
       inputsAreAlternatives: false,
       manMonths: 4,
       outputs: 1,
+      skillOutput: null,
       revealsRegion: false
     });
     expect(carpenter.find((p) => p.tag === "STED")).toEqual({
@@ -217,6 +218,7 @@ describe("the committed rulesets", () => {
       inputsAreAlternatives: false,
       manMonths: 4,
       outputs: 1,
+      skillOutput: null,
       revealsRegion: false
     });
   });

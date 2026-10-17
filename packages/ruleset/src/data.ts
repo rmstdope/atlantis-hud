@@ -815,6 +815,27 @@ const ANY_OF = /^any of /i;
 /** `a number of meals [MEAL] equal to skill level divided by 2, rounded up` - a formula, not a count. */
 const FORMULA_OUTPUT = /\bequal to\b/i;
 /**
+ * The two formulae the committed worlds state, both cooking's (`ah-opzd`): `data/COOK`'s "equal to
+ * skill level divided by 2, rounded up" and `newage arcanum data/COOK`'s "equal to their skill
+ * level". Any other formula is left unread - `outputs: null` - rather than guessed at.
+ */
+const HALF_LEVEL_OUTPUT = /\bequal to (?:their )?skill level divided by 2, rounded up\b/i;
+const LEVEL_OUTPUT = /\bequal to (?:their )?skill level\b(?! divided)/i;
+
+/** What a production's head says about its output: a count of one, a level formula, or unread. */
+function readOutput(head: string): Pick<Production, "outputs" | "skillOutput"> {
+  if (!FORMULA_OUTPUT.test(head)) {
+    return { outputs: 1, skillOutput: null };
+  }
+  if (HALF_LEVEL_OUTPUT.test(head)) {
+    return { outputs: 1, skillOutput: "half-level-rounded-up" };
+  }
+  if (LEVEL_OUTPUT.test(head)) {
+    return { outputs: 1, skillOutput: "level" };
+  }
+  return { outputs: null, skillOutput: null };
+}
+/**
  * `data/skills`' one wording for a resource a skill can detect: `A unit with this skill is able to
  * determine if a region contains floater hides.` Nine skill levels carry it across all three
  * committed worlds, and each of those paragraphs states exactly one production.
@@ -879,7 +900,7 @@ function readProduction(tag: string, paragraph: string, level: number): Producti
       inputs,
       inputsAreAlternatives,
       manMonths: manMonths === undefined ? 1 : Number.parseInt(manMonths, 10),
-      outputs: FORMULA_OUTPUT.test(head) ? null : 1,
+      ...readOutput(head),
       revealsRegion: false
     });
   }

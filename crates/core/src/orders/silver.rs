@@ -1071,7 +1071,7 @@ pub enum SilverDoubt {
     /// [`SilverDoubt::GivesAWholeClass`], whose sentence spoke of goods (`ah-6c76`).
     GivesItselfAway,
     /// `PRODUCE` of something the ruleset prices nowhere - an unknown item, an item no skill
-    /// makes, a recipe stating alternatives rather than requirements, or no ruleset at all.
+    /// makes, a recipe whose output formula the ruleset could not read, or no ruleset at all.
     UnpricedProduction,
     /// More units are set to eat the hex's faction food than that food can feed, so which of them
     /// eats - and therefore what each pays - cannot be determined.
@@ -5453,8 +5453,8 @@ fn pooled_materials(
 ///
 /// Returns the plan as well as the price because the two surfaces need different parts of it: the
 /// ledger charges `plan.materials` tag by tag, and the column names what is made. `None` for the
-/// plan means the ruleset prices it nowhere - an unknown item, an item no skill makes, a recipe of
-/// alternatives rather than requirements - which is a doubt on both surfaces.
+/// plan means the ruleset prices it nowhere - an unknown item, an item no skill makes, a recipe
+/// whose output formula the ruleset could not read - which is a doubt on both surfaces.
 ///
 /// The caller resolves the item to a recipe, because the column has a `Lookups` closure and the
 /// ledger has the hex; [`plan_production`] is the shared part and stays the only recipe reader.
@@ -5844,10 +5844,21 @@ pub struct ProductionPlan {
 /// contract rather than a conversion either of them needs.
 ///
 /// `None` when the recipe cannot be applied at all: a recipe stating no man-months or no outputs
-/// (a ruleset scraped before `ah-19l2.1`, or cooking, whose page states a formula), or one whose
-/// inputs are alternatives rather than requirements - cooking's "any of grain, livestock and
-/// fish" consumes *one* of the three, and reading it as three requirements would debit all three.
-/// Each of those is a `?` in the column rather than an invented number.
+/// (a ruleset scraped before `ah-19l2.1`, or a formula the scraper could not read). That is a `?`
+/// in the column rather than an invented number.
+///
+/// **The run is counted in batches**, as the engine counts it (`monthorders.cpp`,
+/// `RunUnitProduce`'s `maxproduced`): a batch eats one set of inputs and yields `outputs` items.
+/// For an ordinary recipe the men make `man-months / man_months` batches. For a recipe whose
+/// [`SkillOutput`](crate::movement::rules::SkillOutput) is stated - cooking, `data/COOK` - the men
+/// make one batch each, whatever their level or tools, and each batch yields `outputs` times the
+/// level factor, which is how "Unit (184): Produces 120 meals" comes from 30 men at `cooking 4`
+/// in Arcanum (`ah-opzd`). A numbered request bounds the *batches*, as the engine's
+/// `maxproduced > o->target` does.
+///
+/// **Inputs that are alternatives** - cooking's "any of grain, livestock and fish" - bound the run
+/// by their sum, and are drawn in the order the recipe lists them, each exhausted before the next
+/// is touched: the engine's `ORINPUTS` arm.
 ///
 /// **`requested` is the number a `PRODUCE <number> <item>` names**, and `None` the unbounded form.
 /// `rules/produce` says a numbered order attempts exactly that many and carries what it cannot
@@ -5866,9 +5877,6 @@ pub fn plan_production(
     requested: Option<i64>,
     region: RegionShare,
 ) -> Option<ProductionPlan> {
-    if recipe.inputs_are_alternatives {
-        return None;
-    }
     let man_months = i64::from(recipe.man_months.filter(|months| *months > 0)?);
     let outputs = i64::from(recipe.outputs.filter(|made| *made > 0)?);
 
@@ -5889,16 +5897,27 @@ pub fn plan_production(
         return Some(ProductionPlan::default());
     }
 
-    let wanted = (work.man_months() / man_months) * outputs;
+    // How many batches the men could run, and what one batch yields (`ah-opzd`).
+    let (batches, per_batch) = match recipe.skill_output {
+        Some(scaling) => (
+            work.men.max(0),
+            outputs.saturating_mul(scaling.factor(work.level)),
+        ),
+        None => (work.man_months() / man_months, outputs),
+    };
+    let wanted = batches.saturating_mul(per_batch);
     if wanted <= 0 {
         return Some(ProductionPlan::default());
     }
+    // A cap counted in batches, as the items it would let the run make.
+    let items = |batches: i64| batches.saturating_mul(per_batch);
 
     // What the order actually asks for this month: the number a `PRODUCE <number> <item>` names,
     // or - for the unbounded form - everything the men could make, which is what keeps every
     // unnumbered figure and sentence exactly as it was (`ah-6x5u`). Clamped at zero so a count no
-    // grammar can write cannot make a negative run.
-    let target = requested.unwrap_or(wanted).max(0);
+    // grammar can write cannot make a negative run. The number bounds batches, as the engine
+    // reads it, which is the same thing wherever a batch yields one.
+    let target = requested.map_or(wanted, |asked| items(asked.max(0)));
 
     let holding = |tag: &str| -> i64 {
         held.iter()
@@ -5918,16 +5937,20 @@ pub fn plan_production(
         .collect();
 
     let by_silver = if silver_each > 0 {
-        silver_available.max(0) / silver_each
+        items(silver_available.max(0) / silver_each)
     } else {
         i64::MAX
     };
-    let by_materials = materials_each
+    let sets = materials_each
         .iter()
         .filter(|input| input.amount > 0)
-        .map(|input| holding(&input.tag) / input.amount)
-        .min()
-        .unwrap_or(i64::MAX);
+        .map(|input| holding(&input.tag) / input.amount);
+    let by_materials = if recipe.inputs_are_alternatives {
+        sets.reduce(i64::saturating_add)
+    } else {
+        sets.min()
+    }
+    .map_or(i64::MAX, items);
 
     let by_region = match region {
         RegionShare::Unlimited => i64::MAX,
@@ -5936,11 +5959,14 @@ pub fn plan_production(
         RegionShare::Share(share) => share.max(0),
     };
 
-    let made = target
+    // Whole batches only: every cap but the region's is one already, and a batch is never split.
+    let made = (target
         .min(wanted)
         .min(by_silver)
         .min(by_materials)
-        .min(by_region);
+        .min(by_region)
+        / per_batch)
+        * per_batch;
     // The region is named first when it ties, because it is the only one of the four the unit
     // cannot fix by carrying more - "buy more iron" is wasted advice about a hex that has none
     // left. In this ruleset it can never tie with the two holdings: every recipe drawing on a pool
@@ -5966,14 +5992,33 @@ pub fn plan_production(
         Some(ProductionCap::Workforce)
     };
 
+    let run = made / per_batch;
+    let materials = if recipe.inputs_are_alternatives {
+        // Each alternative in the recipe's order, exhausted before the next is touched.
+        let mut left = run;
+        materials_each
+            .iter()
+            .filter(|input| input.amount > 0)
+            .filter_map(|input| {
+                let drawn = left.min(holding(&input.tag) / input.amount);
+                left -= drawn;
+                (drawn > 0).then(|| {
+                    ItemAmount::new(drawn * input.amount, input.tag.clone(), input.tag.clone())
+                })
+            })
+            .collect()
+    } else {
+        materials_each
+            .iter()
+            .map(|input| ItemAmount::new(run * input.amount, input.tag.clone(), input.tag.clone()))
+            .collect()
+    };
+
     Some(ProductionPlan {
         made,
         wanted,
-        silver: made * silver_each,
-        materials: materials_each
-            .iter()
-            .map(|input| ItemAmount::new(made * input.amount, input.tag.clone(), input.tag.clone()))
-            .collect(),
+        silver: run * silver_each,
+        materials,
         capped_by,
     })
 }
@@ -6346,6 +6391,7 @@ mod production_tests {
             inputs_are_alternatives: false,
             man_months: Some(4),
             outputs: Some(1),
+            skill_output: None,
             reveals_region: false,
         }
     }
@@ -6494,6 +6540,7 @@ mod production_tests {
             inputs_are_alternatives: false,
             man_months: Some(3),
             outputs: Some(1),
+            skill_output: None,
             reveals_region: false,
         }
     }
@@ -6554,6 +6601,7 @@ mod production_tests {
             inputs_are_alternatives: false,
             man_months: Some(1),
             outputs: Some(1),
+            skill_output: None,
             reveals_region: false,
         }
     }
@@ -6832,6 +6880,7 @@ mod production_tests {
             inputs_are_alternatives: false,
             man_months: Some(1),
             outputs: Some(1),
+            skill_output: None,
             reveals_region: false,
         };
         let plan = plan_production(
@@ -6864,6 +6913,7 @@ mod production_tests {
             inputs_are_alternatives: false,
             man_months: Some(1),
             outputs: Some(1),
+            skill_output: None,
             reveals_region: false,
         }
     }
@@ -7002,35 +7052,90 @@ mod production_tests {
         assert_eq!(plan.capped_by, Some(ProductionCap::Region));
     }
 
-    /// Cooking says "any of grain, livestock and fish", and which the engine takes cannot be told -
-    /// so nothing is priced rather than all three being debited.
-    #[test]
-    fn a_recipe_of_alternatives_is_not_priced() {
-        let meals = Production {
+    /// `data/COOK` (New Origins): "equal to skill level divided by 2, rounded up from any of grain
+    /// [GRAI], livestock [LIVE] and fish [FISH] at a rate of 1 per man-month".
+    fn meals() -> Production {
+        Production {
             tag: "MEAL".to_string(),
             level: 1,
             inputs: vec![input("GRAI", 1), input("LIVE", 1), input("FISH", 1)],
             inputs_are_alternatives: true,
             man_months: Some(1),
             outputs: Some(1),
+            skill_output: Some(crate::movement::rules::SkillOutput::HalfLevelRoundedUp),
             reveals_region: false,
-        };
-        assert_eq!(
-            plan_production(
-                &meals,
-                Workforce {
-                    men: 5,
-                    level: 1,
-                    tool_bonus: 0,
-                    tools: 0,
-                },
-                &held(&[("GRAI", 99)]),
-                0,
-                None,
-                RegionShare::Unlimited,
-            ),
-            None
-        );
+        }
+    }
+
+    fn five_cooks(level: i64) -> Workforce {
+        Workforce {
+            men: 5,
+            level,
+            // The engine's `SKILLOUT` arm reads neither: one batch per man (`ah-opzd`).
+            tool_bonus: 3,
+            tools: 5,
+        }
+    }
+
+    /// One batch per man, each eating one of the alternatives in the recipe's order - grain, then
+    /// livestock, then fish - and each yielding ceil(level / 2) meals (`monthorders.cpp`'s
+    /// `ORINPUTS` and `SKILLOUT_HALF` arms).
+    #[test]
+    fn a_cook_draws_its_alternatives_in_order_and_makes_its_levels_worth() {
+        let plan = plan_production(
+            &meals(),
+            five_cooks(3),
+            &held(&[("FISH", 9), ("GRAI", 2), ("LIVE", 1)]),
+            0,
+            None,
+            RegionShare::Unlimited,
+        )
+        .expect("cooking is priced");
+        assert_eq!(plan.made, 10);
+        assert_eq!(plan.wanted, 10);
+        assert_eq!(plan.silver, 0);
+        assert_eq!(plan.capped_by, None);
+        let drawn: Vec<(&str, i64)> = plan
+            .materials
+            .iter()
+            .map(|item| (item.tag.as_str(), item.amount))
+            .collect();
+        assert_eq!(drawn, vec![("GRAI", 2), ("LIVE", 1), ("FISH", 2)]);
+    }
+
+    /// The alternatives bound the run by their sum, in whole batches.
+    #[test]
+    fn a_cook_short_of_food_is_capped_by_materials() {
+        let plan = plan_production(
+            &meals(),
+            five_cooks(4),
+            &held(&[("LIVE", 3)]),
+            0,
+            None,
+            RegionShare::Unlimited,
+        )
+        .expect("cooking is priced");
+        assert_eq!(plan.made, 6);
+        assert_eq!(plan.wanted, 10);
+        assert_eq!(plan.capped_by, Some(ProductionCap::Materials));
+    }
+
+    /// A numbered order bounds the batches, as the engine's `maxproduced > o->target` does: two
+    /// batches at two meals each.
+    #[test]
+    fn a_numbered_cook_is_bounded_in_batches() {
+        let plan = plan_production(
+            &meals(),
+            five_cooks(3),
+            &held(&[("GRAI", 99)]),
+            0,
+            Some(2),
+            RegionShare::Unlimited,
+        )
+        .expect("cooking is priced");
+        assert_eq!(plan.made, 4);
+        assert_eq!(plan.capped_by, None);
+        assert_eq!(plan.materials[0].amount, 2);
     }
 
     /// A ruleset scraped before `ah-19l2.1` states neither rate nor output, and a default of 1

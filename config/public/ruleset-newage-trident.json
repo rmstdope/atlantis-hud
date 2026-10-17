@@ -7174,6 +7174,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7188,6 +7189,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7206,6 +7208,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 2,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7224,6 +7227,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7242,6 +7246,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 2,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7260,6 +7265,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7278,6 +7284,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 3,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7296,6 +7303,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 2,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7314,6 +7322,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 4,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7332,6 +7341,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 4,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7350,6 +7360,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 3,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         }
       ],
@@ -7433,6 +7444,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7447,6 +7459,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7461,6 +7474,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7475,6 +7489,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7501,6 +7516,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 5,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7527,6 +7543,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 5,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         }
       ],
@@ -7593,7 +7610,8 @@
           ],
           "inputsAreAlternatives": true,
           "manMonths": 1,
-          "outputs": null,
+          "outputs": 1,
+          "skillOutput": "level",
           "revealsRegion": false
         }
       ],
@@ -7658,6 +7676,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7667,6 +7686,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         }
       ],
@@ -7699,6 +7719,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7713,6 +7734,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7722,6 +7744,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": true
         }
       ],
@@ -7763,6 +7786,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         }
       ],
@@ -7807,6 +7831,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7821,6 +7846,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7835,6 +7861,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7844,6 +7871,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": true
         }
       ],
@@ -7876,6 +7904,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7885,6 +7914,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7894,6 +7924,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": true
         }
       ],
@@ -7930,6 +7961,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -7939,6 +7971,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": true
         }
       ],
@@ -7993,6 +8026,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8002,6 +8036,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": true
         },
         {
@@ -8011,6 +8046,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": true
         }
       ],
@@ -8047,6 +8083,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8056,6 +8093,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": true
         },
         {
@@ -8065,6 +8103,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": true
         }
       ],
@@ -8119,6 +8158,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8128,6 +8168,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": true
         }
       ],
@@ -8301,6 +8342,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8315,6 +8357,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8329,6 +8372,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8343,6 +8387,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8357,6 +8402,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 1,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8371,6 +8417,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 2,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8389,6 +8436,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 2,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8407,6 +8455,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 2,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8425,6 +8474,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 2,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8439,6 +8489,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 2,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8457,6 +8508,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 2,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8475,6 +8527,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 2,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8493,6 +8546,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 2,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8511,6 +8565,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 2,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8529,6 +8584,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 2,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8547,6 +8603,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 2,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8569,6 +8626,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 3,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8587,6 +8645,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 3,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8605,6 +8664,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 3,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         },
         {
@@ -8623,6 +8683,7 @@
           "inputsAreAlternatives": false,
           "manMonths": 3,
           "outputs": 1,
+          "skillOutput": null,
           "revealsRegion": false
         }
       ],
