@@ -12,6 +12,7 @@ use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::orders::effects::{
     preview_orders_for_remembered_report, ItemChangeCause, UnitPreview,
 };
+use atlantis_hud_core::orders::request::{validate_orders_request, ValidateOrdersRequest};
 use atlantis_hud_core::orders::semantics::{check_turn, CheckOptions};
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
@@ -207,4 +208,86 @@ fn a_discard_that_reaches_no_faction_mate_says_nothing_new() {
             .collect();
         assert!(told.is_empty(), "{orders:?}: {told:?}");
     }
+}
+
+/// Two of Seven (12878)'s own block from the report's orders template: every one of its
+/// `@give 0 all <item>` lines names a good it does not hold, so each moves nothing.
+const TEMPLATE_BLOCK: &str = "@STUDY FORC\n@CAST eswo\n@GIVE 2396 ALL MSWO\n@COMBAT STOR\n\
+    @give 0 all hors\n@give 0 all fur\n@give 0 all lass\n@give 0 all herb\n@give 0 all ston\n\
+    @give 0 all iron\n@give 0 all wood\n@give 0 all spea\n@give 0 all came\n";
+
+/// The fixture's own regions as the remembered map the app keeps, so the request carries what the
+/// web shell's does: where each unit ends the month, and the sites and walls built from it.
+fn remembered_map() -> String {
+    let parsed = parse_report_full(&the_report());
+    let stored: Vec<atlantis_hud_core::report::merge::StoredSighting> =
+        atlantis_hud_core::report::sighting::region_sightings(&parsed, 71)
+            .iter()
+            .map(Into::into)
+            .collect();
+    serde_json::to_string(&atlantis_hud_core::report::sighting::remembered_regions(
+        stored,
+    ))
+    .expect("the remembered map serialises")
+}
+
+/// The case the failed verification found (2026-10-17): the player adds the discard to the block
+/// the template gave them, and the web shell validates through `validate_orders_request`. A give
+/// naming a good the unit does not hold moves nothing, so it cannot make who lost what unknowable.
+/// Asked with no remembered map and with the fixture's own, since the verification suspected the
+/// options a remembered map brings.
+#[test]
+fn the_template_s_own_discards_do_not_silence_the_warning() {
+    for remembered in ["[]".to_string(), remembered_map()] {
+        let result = validate_orders_request(
+            &mut ReportCache::new(),
+            &ValidateOrdersRequest {
+                raw_orders: format!(
+                    "#atlantis 95\nunit 12878\n{TEMPLATE_BLOCK}GIVE 0 30 SWOR\n#end\n"
+                ),
+                ruleset_json: Some(atlantis_hud_fixtures::RULESET_JSON.to_string()),
+                raw_report: Some(the_report()),
+                disabled_codes: None,
+                map_json: None,
+                known_passages_json: None,
+                remembered_json: Some(remembered),
+            },
+        );
+        let told: Vec<_> = result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == "discard-from-shared-stock")
+            .map(|diagnostic| {
+                (
+                    diagnostic.unit_id.as_deref(),
+                    diagnostic.line_start,
+                    diagnostic.message.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            told,
+            [(
+                Some("12878"),
+                Some(16),
+                "This discard takes 30 swords from Four of Seven (12880)'s shared stock: this \
+                 unit holds none."
+            )]
+        );
+    }
+}
+
+/// What a class the data page never lists the members of moves cannot be said (`ADVANCED`,
+/// `transfers::class_members`), so after one the discard's draws cannot be vouched for either.
+#[test]
+fn a_class_the_walk_cannot_list_still_silences_it() {
+    let findings = findings(
+        "unit 12878\nGIVE 0 ALL ADVANCED\nGIVE 0 30 SWOR\n",
+        CheckOptions::default(),
+    );
+    let told: Vec<_> = findings
+        .iter()
+        .filter(|finding| finding.code.as_str() == "discard-from-shared-stock")
+        .collect();
+    assert!(told.is_empty(), "{told:?}");
 }
