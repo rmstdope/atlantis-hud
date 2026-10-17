@@ -95,8 +95,13 @@ fn a_give_the_sharer_need_not_fund_leaves_its_study_alone() {
 /// reads the 413 gone from the Give phase on, and the SHARE purse, which lends the whole draw and
 /// never nets it against the study fee it lends back. A change to either alone - the column
 /// counting the draw differently, or the purse netting it - breaks one of these while the other
-/// still holds, so they are asserted together, with the findings the warning reads off the same
-/// purse.
+/// still holds, so they are asserted together.
+///
+/// The findings are asserted with them, as no `not-enough-silver` on 13403, but that part guards
+/// against a false warning rather than catching a reader change: the warning judges the hex's
+/// pool as a whole, which here holds the 20000, so none reached 13403 under any of the four
+/// mutations tried on this bead - the purse netting the draw, the purse skipping the Give phase,
+/// the column ignoring what was lent at it, or `GiveDraws::lent_by` reading nothing (PR #1675).
 #[test]
 fn a_drained_sharers_column_loan_and_findings_agree() {
     let review = review(20000);

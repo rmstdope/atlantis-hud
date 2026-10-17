@@ -16577,11 +16577,10 @@ impl Lending {
     /// same netted or not.
     ///
     /// What the Give phase drew on a unit ([`Lending::lent_at_give`], from [`GiveDraws`]) is never
-    /// netted: it left
-    /// before any order of the unit's own could spend it, and the column already reads the unit's
-    /// silver from that point on without it (`forecast_unit`, `ah-fj2l`). Netting it against a
-    /// later loan would leave the borrower's fee unlent while its silver is still counted gone,
-    /// a STUDY the purse pays shown as one the unit cannot (`ah-d3in`).
+    /// netted: it left before any order of the unit's own could spend it, and the column already
+    /// reads the unit's silver from that point on without it (`forecast_unit`, `ah-fj2l`). Netting
+    /// it against a later loan would leave the borrower's fee unlent while its silver is still
+    /// counted gone, a STUDY the purse pays shown as one the unit cannot (`ah-d3in`).
     fn netted(mut self) -> Self {
         for ((lent, borrowed), at_give) in self
             .lends
@@ -63939,7 +63938,7 @@ BUILD
                 let region = region();
                 let ordered = OrderedUnits::read(ORDERS);
                 let hex = Hex::read(&region, &ordered, &[]);
-                let ledger = ledger_for(&hex, Some(&rules));
+                let mut ledger = ledger_for(&hex, Some(&rules));
                 let draws = GiveDraws::of(&ledger);
                 assert_eq!(draws.each().collect::<Vec<_>>(), vec![("901", "905", 100)]);
                 assert_eq!(
@@ -63950,6 +63949,25 @@ BUILD
                     ),
                     (100, 100, 0)
                 );
+                // Judged when read: a side doubted after the transfer ran drops the draw from
+                // both readings, though the record keeps it.
+                for doubted in ["905", "901"] {
+                    let mut later = ledger.doubted.clone();
+                    later.insert(doubted.to_string());
+                    let kept = std::mem::replace(&mut ledger.doubted, later);
+                    let draws = GiveDraws::of(&ledger);
+                    assert_eq!(
+                        (
+                            draws.each().count(),
+                            draws.drawn_by("901"),
+                            draws.lent_by("905")
+                        ),
+                        (0, 0, 0),
+                        "{doubted} doubted"
+                    );
+                    assert_eq!(ledger.silver_fundings["901"][0].draws.len(), 1);
+                    ledger.doubted = kept;
+                }
             }
 
             /// The SILVER column reads the record's verdict that the pool paid the GIVE in full,
