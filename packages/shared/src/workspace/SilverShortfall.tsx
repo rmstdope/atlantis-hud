@@ -22,7 +22,7 @@ export function SilverShortfall({ unitId, amount }: { unitId: string; amount: nu
     setForm("long");
   }, [amount, width]);
 
-  // Step narrower while the cell overflows; settles in at most two steps.
+  // Step narrower while the cell overflows; settles in at most two steps, each a change of `form`.
   useLayoutEffect(() => {
     const cell = ref.current?.closest("td");
     if (!cell) {
@@ -32,7 +32,7 @@ export function SilverShortfall({ unitId, amount }: { unitId: string; amount: nu
     if (next !== form) {
       setForm(next);
     }
-  });
+  }, [form, amount, width]);
 
   useEffect(() => {
     const cell = ref.current?.closest("td");
