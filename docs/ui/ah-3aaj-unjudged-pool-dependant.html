@@ -1,0 +1,26 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Option A — a dim ?</title><style>
+:root{--bg:#fff;--ink:#1f2328;--dim:#8b949e;--red:#cf222e;--line:#d0d7de;--panel:#f6f8fa;--warn:#9a6700}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1117;--ink:#e6edf3;--dim:#7d8590;--red:#f85149;--line:#30363d;--panel:#161b22;--warn:#d29922}}
+body{background:var(--bg);color:var(--ink);font:14px system-ui;margin:24px;max-width:900px}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid var(--line);padding:4px 8px;text-align:left}
+.num{text-align:right;font-variant-numeric:tabular-nums;width:90px}.dim{color:var(--dim)}.red{color:var(--red)}
+.tag{font-size:11px;color:var(--dim);margin-left:6px}tr.other td{border-top:2px solid var(--line)}
+.pop{border:1px solid var(--line);background:var(--panel);padding:10px 12px;max-width:380px;margin:12px 0 0 auto;border-radius:6px;font-size:13px}
+.ph{font-weight:600;margin-bottom:4px}.muted{color:var(--dim)}.note{background:var(--panel);padding:10px 12px;border-left:3px solid var(--warn)}
+small a{color:inherit}</style></head><body>
+<h2>Option A — a dim ?</h2><p class="note">The dependant's figure becomes a dim <b>?</b> — the same mark the column already uses for &ldquo;this month could not be priced&rdquo;. The amount it would be short on its own moves into the hover.</p>
+<p>Unit table, Silver column. The grey notes after names are only for this drawing.</p>
+<table><tr><th>Unit</th><th>Name</th><th>Hex</th><th>Long order</th><th class="num">Silver</th></tr><tr><td>433</td><td>Woodsmen <span class="tag">relies on the shared pool</span></td><td>forest (2,18)</td><td>STUDY COMB</td><td class="num"><span class="dim">?</span></td></tr>
+<tr><td>508</td><td>Scouts <span class="tag">relies on the shared pool</span></td><td>forest (2,18)</td><td>STUDY COMB</td><td class="num"><span class="dim">?</span></td></tr>
+<tr><td>184</td><td>Cooks <span class="tag">sharer, month uncertain</span></td><td>forest (2,18)</td><td>STUDY COMB</td><td class="num"><span class="dim">?</span></td></tr>
+<tr><td>591</td><td>Miners <span class="tag">relies on the shared pool, ends in credit, orders outrun it</span></td><td>forest (2,18)</td><td>BUY 5 IRON</td><td class="num">40</td></tr>
+<tr><td>1201</td><td>Guards</td><td>forest (2,18)</td><td>STUDY COMB</td><td class="num">120</td></tr>
+<tr class="other"><td>2210</td><td>Traders <span class="tag">elsewhere, pool fully known</span></td><td>plain (7,20)</td><td>BUY 10 HORS</td><td class="num red">-80</td></tr></table>
+<p style="margin-top:20px">Resting the pointer on 433's Silver figure:</p><div class="pop"><div class="ph">Silver · 433 Woodsmen</div>
+<p>Shared silver in this hex could not be added up, because a sharing unit's month is uncertain, so whether it covers this unit's shortfall cannot be said.</p>
+<p class="muted">On its own purse this unit would end the month at -500.</p></div>
+<p style="margin-top:20px">Resting the pointer on 591's Silver figure (it used to read <b>40 <span class="red">95 short</span></b>):</p>
+<div class="pop"><div class="ph">Silver · 591 Miners</div>
+<p>Shared silver in this hex could not be added up, because a sharing unit's month is uncertain, so whether it covers this unit's shortfall cannot be said.</p>
+<p class="muted">On its own purse this unit would be 95 short of paying for its orders.</p></div>
+</body></html>
