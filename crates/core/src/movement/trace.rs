@@ -636,8 +636,10 @@ mod tests {
         assert_eq!(path.months[1].ends_at, at(4, 4));
     }
 
-    /// An overloaded unit's order is still drawn - the route is what the orders say - but its
-    /// timing is unknowable, which the empty months and absent mode both say.
+    /// An overloaded unit's order is still walked - the route is what the orders say - but its
+    /// timing is unknowable, which the empty months and absent mode both say. Whether the game
+    /// refuses it outright is the settle's question, not the trace's
+    /// (`WorkingUnit::refused_as_overloaded`, `ah-586v`).
     #[test]
     fn an_overloaded_unit_gets_a_path_with_no_months() {
         let report = corridor(&["plain", "plain"]);

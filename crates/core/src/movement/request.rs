@@ -286,6 +286,10 @@ fn trace_orders(
     // itself a review finding of `ah-0x6x` (`ah-y1yr`). Costs nothing when no block waits.
     let ordered = OrderedUnits::of_month(&report, orders_document, Some(ruleset.as_ref()));
     let formed;
+    // The game refuses an overloaded walker its MOVE outright (`rules/movement_normal`), so the
+    // map draws no route for it, agreeing with the `unit-overloaded` warning and the units list
+    // (`ah-586v`, the navigator's choice over a dotted line).
+    let mut refused_as_overloaded = false;
     let (unit, own, own_is_sail) =
         match report.units().find(|unit| unit.unit_id == unit_id).cloned() {
             Some(unit) => (
@@ -309,6 +313,7 @@ fn trace_orders(
             ) {
                 Some(found) => {
                     formed = found;
+                    refused_as_overloaded = formed.refused_as_overloaded;
                     (
                         formed.unit.clone(),
                         formed.move_steps.as_deref(),
@@ -343,14 +348,17 @@ fn trace_orders(
         .unit_id
         .starts_with(crate::orders::effects::FORMED_ID_PREFIX)
     {
-        if let Some(movement) = crate::orders::effects::settled_movement(
+        if let Some(settled) = crate::orders::effects::settled_movement(
             &report,
             &ruleset,
             orders_document,
             &ordered,
             unit_id,
         ) {
-            unit.movement = Some(movement);
+            refused_as_overloaded = settled.refused_as_overloaded;
+            if let Some(movement) = settled.movement {
+                unit.movement = Some(movement);
+            }
         }
     }
 
@@ -359,9 +367,12 @@ fn trace_orders(
         .with_passages(crate::movement::passages::known_passages_from_json(
             passages_json,
         )?);
-    Ok(MoveOrderTraceResponse {
-        path: trace_move(&map, &ruleset, &unit, steps, Some(&ordered)),
-    })
+    let path = if refused_as_overloaded {
+        None
+    } else {
+        trace_move(&map, &ruleset, &unit, steps, Some(&ordered))
+    };
+    Ok(MoveOrderTraceResponse { path })
 }
 
 /// Parses a report and counts each unit's men against the catalogue.

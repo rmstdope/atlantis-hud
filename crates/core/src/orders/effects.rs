@@ -1229,6 +1229,12 @@ fn settle(
     // ENTER and LEAVE orders `visit` already settled, so they are composed on top of that answer
     // here. After the walk, because a `FORM` reads its parent's structure mid-walk and
     // `rules/sequenceofevents` creates every formed unit long before any movement (`ah-ehgy`).
+    // Kept so a MOVE the game refuses for overload can be put back where its boardings found it.
+    let before_boardings: Vec<Option<String>> = working
+        .units
+        .iter()
+        .map(|unit| unit.unit.structure_id.clone())
+        .collect();
     apply_movement_boardings(&mut working.units);
     // What `BUY`, `SELL`, `WITHDRAW` and `TAKE` do to each unit's item list, read from the same
     // ledger the Silver column and the shortfall warnings settle an oversubscribed market line
@@ -1275,6 +1281,17 @@ fn settle(
         .iter()
         .map(|working_unit| working_unit.movement_now(ruleset))
         .collect();
+    // An overloaded walker "cannot issue a MOVE order" at all (`rules/movement_normal`), so its
+    // order's OUT or structure-number steps never run either: it stays in the structure it stood in
+    // (`ah-586v`).
+    for (working_unit, before) in working.units.iter_mut().zip(before_boardings) {
+        working_unit.refused_overloaded = working_unit.refused_as_overloaded(ruleset);
+        if working_unit.refused_overloaded {
+            working_unit.unit.structure_id = before;
+            working_unit.move_origin_cause = None;
+            working_unit.move_destination = None;
+        }
+    }
     working.apply_item_effects(&item_effects, MonthPart::MonthLong);
     // Last of all, because `rules/sequenceofevents` runs TRANSPORT in the month's final phases -
     // after the market, after movement, after production. A sale takes its goods first, and
@@ -1407,6 +1424,8 @@ pub(crate) struct FormedAsOrdered {
     pub(crate) move_steps: Option<Vec<crate::movement::orders::MoveStep>>,
     /// `WorkingUnit::move_command == Some("SAIL")`.
     pub(crate) sails: bool,
+    /// `WorkingUnit::refused_as_overloaded`: the game refuses its MOVE outright (`ah-586v`).
+    pub(crate) refused_as_overloaded: bool,
 }
 
 /// One unit this month's `FORM` creates, as the whole month's orders leave it.
@@ -1457,21 +1476,31 @@ pub(crate) fn formed_unit_as_ordered(
     })?;
     Some(FormedAsOrdered {
         sails: entry.move_command.as_deref() == Some("SAIL"),
+        refused_as_overloaded: entry.refused_overloaded,
         move_steps: entry.move_steps,
         unit: entry.unit,
     })
 }
 
+/// A unit the report prints, as the settle leaves it before movement.
+pub(crate) struct SettledMovement {
+    /// The settled row's movement, weighed as it holds things after GIVE, TAKE and the market.
+    pub(crate) movement: Option<crate::report::model::UnitMovement>,
+    /// `WorkingUnit::refused_as_overloaded`: the game refuses its MOVE outright (`ah-586v`).
+    pub(crate) refused_as_overloaded: bool,
+}
+
 /// How a unit the report prints moves once this month's orders before movement have run: the
 /// settled row's movement, weighed as it holds things after GIVE, TAKE and the market
-/// (`rules/sequenceofevents`). `None` when the settle has no row for it.
+/// (`rules/sequenceofevents`), and whether that load refuses its MOVE. `None` when the settle has
+/// no row for it.
 pub(crate) fn settled_movement(
     report: &crate::report::ParsedReport,
     ruleset: &std::sync::Arc<crate::movement::rules::Ruleset>,
     orders_document: &str,
     ordered: &crate::movement::fleet::OrderedUnits,
     unit_id: &str,
-) -> Option<crate::report::model::UnitMovement> {
+) -> Option<SettledMovement> {
     let (units, _) = settle(
         report,
         ruleset,
@@ -1483,7 +1512,10 @@ pub(crate) fn settled_movement(
     units
         .into_iter()
         .find(|entry| !entry.formed && entry.unit.unit_id == unit_id)
-        .and_then(|entry| entry.unit.movement)
+        .map(|entry| SettledMovement {
+            refused_as_overloaded: entry.refused_overloaded,
+            movement: entry.unit.movement,
+        })
 }
 
 /// What validation measures a shipment with: how far the reports have shown the world, and where
@@ -1796,6 +1828,10 @@ fn decide_movement(
             None => entry.move_steps.as_deref(),
         };
 
+        // An overloaded walker is refused its MOVE outright (`rules/movement_normal`): it stays,
+        // as the `unit-overloaded` warning says, rather than reading its unknown speed as a
+        // departure to nowhere nameable (`ah-586v`).
+        let traced_steps = traced_steps.filter(|_| !entry.refused_overloaded);
         if let Some(steps) = traced_steps {
             match trace_move(map, ruleset, &entry.unit, steps, Some(ordered)) {
                 // The first month's end is where the unit stands when the next report is written;
@@ -2210,6 +2246,11 @@ struct WorkingUnit {
     /// The movement command as written, upper-cased: `MOVE`, `ADVANCE` or `SAIL`. Kept beside
     /// `move_steps` so a rendered order clause names the word the player actually typed.
     move_command: Option<String>,
+    /// Whether the game refuses this unit's own MOVE because it is overloaded as it steps off
+    /// ([`WorkingUnit::refused_as_overloaded`], `ah-586v`). Judged in `settle` at the moment the
+    /// unit is weighed for its walk, before any TRANSPORT reaches it; read by the preview and the
+    /// map trace.
+    refused_overloaded: bool,
     /// The 1-based line of the `FORM` that created this row, or `None` for a report unit. Read
     /// through [`WorkingUnit::key`].
     form_line: Option<usize>,
@@ -2554,6 +2595,48 @@ impl WorkingUnit {
         ))
     }
 
+    /// Whether the game refuses this unit's own `MOVE` or `ADVANCE` because it is overloaded:
+    /// `rules/movement_normal` - "Otherwise the unit cannot issue a MOVE order" - so it stays
+    /// where it is all month (`ah-586v`). The same question `semantics::movement_overload` asks
+    /// for the `unit-overloaded` warning, answered the same way so the units list, the map and the
+    /// warning agree: the load and allowance from `movement::mode::carrying_after_transfers`, the
+    /// allowance the best of flying, riding and walking, and the report's printed `Capacity:` line
+    /// where the ruleset cannot price what the unit holds. A unit whose items this month leaves
+    /// alone is judged by the report's own printed movement, the game's word for it, exactly as
+    /// `movement_now` reads it. Where the load or the allowance cannot be told, the ordered
+    /// departure stands, as the check stays silent then too.
+    ///
+    /// Never a `SAIL`: a fleet is judged by what its hull carries (`rules/movement_sailing`), not
+    /// by the unit's own legs.
+    fn refused_as_overloaded(&self, ruleset: &Ruleset) -> bool {
+        if self.move_steps.is_none() || self.move_command.as_deref() == Some("SAIL") {
+            return false;
+        }
+        if !self.formed
+            && self
+                .original
+                .as_ref()
+                .is_some_and(|original| self.unit.items == original.items)
+        {
+            return self
+                .unit
+                .movement
+                .is_some_and(|movement| movement.status == UnitMovementStatus::Overloaded);
+        }
+        let Some(carrying) = self.carrying(ruleset) else {
+            return false;
+        };
+        let allowance = carrying
+            .capacities
+            .map(|capacity| capacity.fly.max(capacity.ride).max(capacity.walk))
+            .or_else(|| {
+                self.original
+                    .as_ref()
+                    .and_then(crate::movement::mode::best_allowance)
+            });
+        matches!((carrying.weight, allowance), (Some(weight), Some(allowance)) if weight > allowance)
+    }
+
     fn refresh_movement(&mut self, ruleset: &Ruleset) {
         self.unit.movement = self.movement_now(ruleset);
     }
@@ -2676,6 +2759,7 @@ impl Working {
                 formed: false,
                 move_steps: None,
                 move_command: None,
+                refused_overloaded: false,
                 form_line: None,
                 move_origin_cause: None,
                 move_destination: None,
@@ -3074,6 +3158,7 @@ impl Working {
             formed: true,
             move_steps: None,
             move_command: None,
+            refused_overloaded: false,
             form_line: Some(form_line),
             move_origin_cause: None,
             move_destination: None,
