@@ -262,3 +262,29 @@ fn a_chain_written_against_report_order_is_not_warned_on_the_wrong_lines() {
     );
     assert!(findings.is_empty(), "{findings:?}");
 }
+
+/// Maurice names Ivanhoe's new unit the long way, `FACTION 1 NEW 1` - our own faction, so the game
+/// resolves it to that unit and the exchange may go ahead. Which unit such a line names is not
+/// followed here, so the new unit is not told it has no answer (delta review on PR #1699).
+#[test]
+fn an_answer_naming_a_new_unit_by_faction_is_not_called_missing() {
+    let findings = findings_of(
+        "FORM 1\nEXCHANGE 1160 2 HORS 200 SILV\nEND",
+        "EXCHANGE FACTION 1 NEW 1 200 SILV 2 HORS",
+    );
+    assert!(findings.is_empty(), "{findings:?}");
+}
+
+/// An item the game will not let change hands aborts the line offering or expecting it, named on
+/// that line (the engine's `DoExchangeOrder`: "EXCHANGE: Can't trade ...").
+#[test]
+fn an_exchange_of_an_item_the_game_will_not_trade_is_warned() {
+    let findings = findings_of(IVANHOE_OFFERS, "EXCHANGE 683 200 SILV 1 LION");
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding.unit_id.as_deref() == Some("1160")
+                && finding.message == "EXCHANGE will be aborted: the game will not trade LION"),
+        "{findings:?}"
+    );
+}
