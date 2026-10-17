@@ -3329,7 +3329,9 @@ impl Working {
         } else if command.is("transport") || command.is("distribute") {
             // `rules/transport`: "the order DISTRIBUTE can be used in place of TRANSPORT and has
             // the same meaning and syntax", which is why one arm serves both and why the grammar
-            // gives them one shared `TRANSPORT_FORMS` (`ah-bxgs`).
+            // gives them one shared `TRANSPORT_FORMS` (`ah-bxgs`). The word still rides along:
+            // `CheckTransportOrders` asks a DISTRIBUTE's issuer for a transport structure
+            // whatever the target (`ah-g4bz`).
             let order = super::transport::ShipmentOrder::from_command(command.is("distribute"));
             self.transport(order, active, arguments, line);
         }

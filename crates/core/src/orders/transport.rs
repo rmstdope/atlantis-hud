@@ -520,7 +520,8 @@ pub(crate) enum Acceptance {
     NotQuartermaster,
     NotCaravanseraiOwner,
     /// The sender is a quartermaster that owns no Caravanserai when the shipments run, and the
-    /// shipment needs one: to a unit that is no quartermaster, or beyond the flat reach.
+    /// shipment needs one: every DISTRIBUTE (`ah-g4bz`), and a TRANSPORT to a unit that is no
+    /// quartermaster or beyond the flat reach.
     /// `CheckTransportOrders` blames the sender for a DISTRIBUTE ("Unit does not own transport
     /// structure.") and the distance for a TRANSPORT ("Recipient ... is too far away.", its range
     /// capped at `LOCAL_TRANSPORT`); the sentence names the sender's missing Caravanserai for
@@ -975,11 +976,13 @@ impl Shipping {
                 Acceptance::NotQuartermaster | Acceptance::NotCaravanseraiOwner => {
                     facts.is_some_and(|facts| !facts.own) || self.unsettled.contains(target)
                 }
-                // The sender's own month can undo it, and so can the target's: a target that ends
-                // the month a quartermaster owning a Caravanserai accepts from anybody within the
-                // flat reach.
+                // The sender's own month can undo it. A TRANSPORT's target's can too: a target that
+                // ends the month a quartermaster owning a Caravanserai accepts from anybody within
+                // the flat reach. A DISTRIBUTE's cannot, since `CheckTransportOrders` never asks a
+                // DISTRIBUTE's target about its skill or structure (`ah-g4bz`).
                 Acceptance::SenderOwnsNoCaravanserai => {
-                    self.unsettled.contains(sender) || self.unsettled.contains(target)
+                    self.unsettled.contains(sender)
+                        || (order == ShipmentOrder::Transport && self.unsettled.contains(target))
                 }
                 _ => false,
             },
@@ -1591,6 +1594,40 @@ mod tests {
     fn at(mut facts: TargetFacts, coordinate: crate::report::model::Coordinate) -> TargetFacts {
         facts.coordinate = coordinate;
         facts
+    }
+
+    /// `CheckTransportOrders` asks a DISTRIBUTE's issuer for a transport structure and never asks
+    /// its target about skill or structure, so the target's month cannot undo the refusal; only
+    /// the sender's can. A TRANSPORT's target month still can (`ah-g4bz`).
+    #[test]
+    fn only_the_senders_month_unsettles_a_refused_distribute() {
+        let mut shipping = shipping(
+            &[("900", 1), ("901", 1)],
+            vec![
+                ("900", at(facts(true, true, false, true), hex(0, 0))),
+                ("901", at(facts(true, false, false, true), hex(0, 1))),
+            ],
+            &[],
+        );
+        shipping.unsettled.insert("901".to_string());
+
+        let distributed = shipping.judge(ShipmentOrder::Distribute, "900", Some(hex(0, 0)), "901");
+        assert_eq!(distributed.acceptance, Acceptance::SenderOwnsNoCaravanserai);
+        assert!(!distributed.unsettled, "901's month cannot undo it");
+        let transported = shipping.judge(ShipmentOrder::Transport, "900", Some(hex(0, 0)), "901");
+        assert_eq!(transported.acceptance, Acceptance::SenderOwnsNoCaravanserai);
+        assert!(
+            transported.unsettled,
+            "901 may end the month able to accept"
+        );
+
+        shipping.unsettled.insert("900".to_string());
+        assert!(
+            shipping
+                .judge(ShipmentOrder::Distribute, "900", Some(hex(0, 0)), "901")
+                .unsettled,
+            "900's own month can"
+        );
     }
 
     /// `ah-s79p`: a unit this month's FORM creates is judged on what the engine knows of it, by the
