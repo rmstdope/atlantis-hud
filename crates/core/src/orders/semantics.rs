@@ -17379,15 +17379,20 @@ struct ArrivingStudent {
     need: i64,
     /// The fee its STUDY was charged ([`studied_fee`]).
     fee: i64,
+    /// The passenger as [`unit_label`] names it, for the landing hex's sentence (`ah-1uja`).
+    label: String,
 }
 
 /// One of a hex's passengers whose STUDY is judged where its fleet arrives (`ah-q1zz`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct StudyElsewhere {
     /// What its STUDY asked of a purse: [`ArrivingStudent::need`].
     need: i64,
     /// How the purse where it arrives settled it; `None` until it has.
     outcome: Option<StudyOutcome>,
+    /// The hex its fleet lands in, as [`hex_label`] names it - what its STUDY line's marker
+    /// points at when that purse refuses it (`ah-1uja`).
+    landing: String,
 }
 
 /// One sharer arriving in a hex, and the silver it lends there.
@@ -17437,6 +17442,14 @@ impl WalkingSilver {
             .get(unit_id)
             .filter(|elsewhere| matches!(elsewhere.outcome, Some(StudyOutcome::Refused { .. })))
             .map_or(0, |elsewhere| elsewhere.need)
+    }
+
+    /// The hex `unit_id`'s fleet lands in, where its STUDY was sent to be judged
+    /// ([`send_studies_where_fleets_arrive`]); `None` for a unit whose STUDY is this hex's own.
+    fn landing_of(&self, unit_id: &str) -> Option<&str> {
+        self.studies_elsewhere
+            .get(unit_id)
+            .map(|elsewhere| elsewhere.landing.as_str())
     }
 
     /// What `unit_id`'s STUDY asks of the purse where its fleet arrives, at `moment`: none of it
@@ -17702,7 +17715,9 @@ fn send_studies_where_fleets_arrive(
         purse_settles(hex, ledger)
             && (purse_settles(there, there_ledger) || nothing_is_shared(there, there_ledger))
     });
-    for (index, who, _) in &sent {
+    for (index, who, arrives) in &sent {
+        let there = hexes[*arrives].0.region;
+        let landing = hex_label(&there.terrain, there.coordinate);
         hexes[*index]
             .1
             .relief_mut()
@@ -17713,6 +17728,7 @@ fn send_studies_where_fleets_arrive(
                 StudyElsewhere {
                     need: 0,
                     outcome: None,
+                    landing,
                 },
             );
     }
@@ -17745,6 +17761,7 @@ fn send_studies_where_fleets_arrive(
                 unit: unit_key(&hex.region.region_id, who),
                 need,
                 fee: studied_fee(ledger, who),
+                label: unit_label(hex, who),
             });
         }
         let walking = &mut hexes[index].1.relief_mut().walking;
@@ -19935,6 +19952,9 @@ struct PoolShortfall {
     tag: String,
     figures: ShortfallFigures,
     upkeep: i64,
+    /// The passengers sailing in whose STUDY is part of what the sentence says is spent
+    /// (`ah-1uja`). Always `None` for an item.
+    arriving_study: Option<ArrivingStudyShare>,
 }
 
 /// The pooled tags this hex is short of, from the `DeferredToPool` verdicts.
@@ -20006,6 +20026,13 @@ fn pool_shortfalls(
                 claimed,
                 short_counting_cuts,
             )
+            .map(|(figures, upkeep, moment)| {
+                (
+                    figures,
+                    upkeep,
+                    ArrivingStudyShare::of(sharing.walking, moment),
+                )
+            })
         } else {
             let short = claimed - sharing.pool(ledger, &tag);
             // What the pool's members and its borrowers hold of it, so the message can say "they
@@ -20036,18 +20063,72 @@ fn pool_shortfalls(
                 )
                 .sum();
             let can_have = counted.iter().map(|o| o.holding(&tag)).sum::<i64>() + with_mates;
-            (short > 0).then_some((ShortfallFigures { short, can_have }, 0))
+            (short > 0).then_some((ShortfallFigures { short, can_have }, 0, None))
         };
-        let Some((figures, upkeep)) = found else {
+        let Some((figures, upkeep, arriving_study)) = found else {
             continue;
         };
         shortfalls.push(PoolShortfall {
             tag,
             figures,
             upkeep,
+            arriving_study,
         });
     }
     shortfalls
+}
+
+/// The passengers sailing into a hex whose STUDY is part of what its silver sentence says its
+/// orders spend (`ah-1uja`): how much of that spending is theirs, and who they are, in the order
+/// they reach the purse.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ArrivingStudyShare {
+    total: i64,
+    names: Vec<String>,
+}
+
+impl ArrivingStudyShare {
+    /// The share of a sentence read at `moment`, or `None` when no passenger's STUDY is in it:
+    /// only [`Sharing::silver_short_reading`] after movement counts them
+    /// ([`WalkingSilver::study_claims_crossed_at`]), and only for what each asks of the purse -
+    /// its `need`, so the share is never more than the spending it is part of.
+    fn of(walking: Option<&WalkingSilver>, moment: ShortfallMoment) -> Option<Self> {
+        if !matches!(moment, ShortfallMoment::Study | ShortfallMoment::MonthEnd) {
+            return None;
+        }
+        let students: Vec<&ArrivingStudent> = walking?
+            .arriving_students
+            .iter()
+            .filter(|student| student.need > 0)
+            .collect();
+        if students.is_empty() {
+            return None;
+        }
+        Some(Self {
+            total: students.iter().map(|student| student.need).sum(),
+            names: students
+                .iter()
+                .map(|student| student.label.clone())
+                .collect(),
+        })
+    }
+}
+
+/// The clause a sharing hex's silver sentence ends with when passengers sailing in study there
+/// (`ah-1uja`): one figure, the names joined "A and B" / "A, B and C", and a count past three.
+fn arriving_study_clause(share: &ArrivingStudyShare) -> String {
+    let total = share.total;
+    match share.names.as_slice() {
+        [one] => format!(", ${total} of it on the STUDY of {one}, arriving by sea"),
+        [first @ .., last] if share.names.len() <= 3 => format!(
+            ", ${total} of it on the studies of {} and {last}, arriving by sea",
+            first.join(", ")
+        ),
+        names => format!(
+            ", ${total} of it on the studies of {} units arriving by sea",
+            names.len()
+        ),
+    }
 }
 
 /// A sharing hex's silver figures, from this one function (`ah-9bac`): what it is short, what its
@@ -20064,7 +20145,7 @@ fn pool_silver_figures(
     silver_by_moment: bool,
     claimed: i64,
     short_counting_cuts: i64,
-) -> Option<(ShortfallFigures, i64)> {
+) -> Option<(ShortfallFigures, i64, ShortfallMoment)> {
     // The moment the sentence is read at is the one whose reading set `short` (`ah-w2ou`).
     let (short, moment) = if silver_by_moment {
         let at_month_end = sharing.silver_short_at(hex, ledger, LendingMoment::MonthEnd);
@@ -20165,7 +20246,7 @@ fn pool_silver_figures(
     // and a move to a faction-mate of the hex not counted is not spending (`ah-3qmk`, `ah-1dep`).
     let SilverFigures { figures, upkeep } =
         silver_figures(hex, ledger, &counted, short, moment, sharing.walking);
-    Some((figures, upkeep))
+    Some((figures, upkeep, moment))
 }
 
 /// Which way a transfer crossed between a set of counted units and the hex's other units of our
@@ -20308,6 +20389,8 @@ fn report_shortfalls(
     let verdicts = judge_shortfalls(hex, ledger, &sharing, ruleset);
     // How each unit's STUDY went, the one reading every surface takes (`ah-2f77`).
     let studies = study_settlement(hex, ledger);
+    // Where a passenger's STUDY was judged, when that was the hex its fleet lands in (`ah-1uja`).
+    let landing_of = |who: &str| ledger.relief().walking.landing_of(who);
     let study_of = |who: &str| {
         hex.units
             .iter()
@@ -20546,10 +20629,41 @@ fn report_shortfalls(
         }
     }
 
+    // A passenger whose STUDY the purse where its fleet lands refused (`ah-q1zz`) is marked on
+    // its STUDY line here, in the hex it sails from, whether or not this hex is short: the hex
+    // that is short is the one it names (`ah-1uja`).
+    if options.emits(codes::PART_OF_HEX_SHORTFALL) {
+        for (ordered, study) in hex.units.iter().zip(&studies) {
+            if !matches!(study, StudyOutcome::Refused { .. }) {
+                continue;
+            }
+            let Some(landing) = landing_of(&ordered.unit.unit_id) else {
+                continue;
+            };
+            let Some(placed) = ordered
+                .intents
+                .iter()
+                .find(|placed| matches!(placed.intent, Intent::Study { .. }))
+            else {
+                continue;
+            };
+            findings.push(ordered.finding(
+                hex,
+                codes::PART_OF_HEX_SHORTFALL,
+                format!(
+                    "The hex where the fleet lands, {landing}, is short of silver between its \
+                     units, so this STUDY is refused. See Problems for {landing}."
+                ),
+                Some(placed),
+            ));
+        }
+    }
+
     for PoolShortfall {
         tag,
         figures,
         upkeep,
+        arriving_study,
     } in pooled
     {
         // ... and a pointer on every order line that claims against that pool (`ah-eurs`). The
@@ -20647,7 +20761,11 @@ fn report_shortfalls(
             } else {
                 Vec::new()
             };
-            for (ordered, placed) in &refused_studies {
+            // A passenger refused where its fleet lands is marked below, naming that hex.
+            for (ordered, placed) in refused_studies
+                .iter()
+                .filter(|(ordered, _)| landing_of(&ordered.unit.unit_id).is_none())
+            {
                 findings.push(ordered.finding(
                     hex,
                     codes::PART_OF_HEX_SHORTFALL,
@@ -20758,13 +20876,17 @@ fn report_shortfalls(
         let message = if tag == SILVER {
             format!(
                 "the units in this hex are short ${short} between them: they can have ${can_have} \
-                 and their {} spend ${}",
+                 and their {} spend ${}{}",
                 if upkeep > 0 {
                     "orders and upkeep"
                 } else {
                     "orders"
                 },
                 figures.spend(),
+                arriving_study
+                    .as_ref()
+                    .map(arriving_study_clause)
+                    .unwrap_or_default(),
             )
         } else {
             let short_of = counted_item(short, &tag, hex, ruleset, plurals);
@@ -78924,6 +79046,189 @@ BUILD
         );
     }
 
+    /// The markers `review` puts on unit `id`'s lines.
+    fn markers_on(review: &TurnReview, id: &str) -> Vec<String> {
+        review
+            .findings
+            .iter()
+            .filter(|finding| {
+                finding.code == codes::PART_OF_HEX_SHORTFALL
+                    && finding.unit_id.as_deref() == Some(id)
+            })
+            .map(|finding| finding.message.clone())
+            .collect()
+    }
+
+    /// The hex warning `review` raises in `region_id` about silver short between its units.
+    fn hex_silver_warning(review: &TurnReview, region_id: &str) -> Option<String> {
+        review
+            .findings
+            .iter()
+            .find(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.is_none()
+                    && finding.region_id == region_id
+            })
+            .map(|finding| finding.message.clone())
+    }
+
+    const LANDING_REFUSES_STUDY: &str =
+        "The hex where the fleet lands, mountain (7,53), is short of \
+        silver between its units, so this STUDY is refused. See Problems for mountain (7,53).";
+
+    /// `ah-1uja`: a passenger whose STUDY the purse where its fleet lands refuses is told so on
+    /// its STUDY line, naming that hex - the hex it sails from is not short at all.
+    #[test]
+    fn a_passenger_whose_landing_hex_refuses_its_study_is_told_so_on_its_study_line() {
+        let review = a_passenger_studying_between_two_sharers(1);
+        assert_eq!(markers_on(&review, "901"), vec![LANDING_REFUSES_STUDY]);
+        let marker = review
+            .findings
+            .iter()
+            .find(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL)
+            .expect("the marker");
+        assert_eq!(marker.region_id, "1:7,55", "under the hex it sails from");
+        assert!(marker.line.is_some(), "on its STUDY line: {marker:?}");
+    }
+
+    /// `ah-1uja`: where the hex the passenger sails from is short too, its STUDY line still names
+    /// the hex that refused it, and only that.
+    #[test]
+    fn a_passenger_refused_where_it_lands_while_its_own_hex_is_short_gets_one_marker() {
+        let banker = sharing(unit("903"));
+        let stayer = unit("904");
+        let resident = sharing(with_silver(unit("902"), 1));
+        let (report, _) = passenger_palace(
+            open_sea(vec![banker, stayer]),
+            region_at("1:7,53", 7, 53, vec![resident]),
+            None,
+        );
+        let orders =
+            "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 903\nunit 904\nSTUDY COMB\nunit 902\n";
+        let review = review_turn(&report, orders, Some(&trident()), CheckOptions::default());
+        assert_eq!(markers_on(&review, "901"), vec![LANDING_REFUSES_STUDY]);
+        assert_eq!(
+            markers_on(&review, "904"),
+            vec![
+                "This hex is short of silver between its units, so this STUDY is refused. See \
+                 Problems for the hex."
+            ],
+        );
+    }
+
+    /// `ah-1uja`: the landing hex's warning says how much of its spending is the STUDY of the
+    /// passenger sailing in, since no unit listed there is doing it.
+    #[test]
+    fn the_landing_hex_warning_names_the_passenger_whose_study_it_refuses() {
+        let review = a_passenger_studying_between_two_sharers(1);
+        let fee = silver_of(&review, "901")
+            .wanted_for_orders
+            .expect("the study is priced");
+        let warning = hex_silver_warning(&review, "1:7,53").expect("the landing hex is short");
+        assert!(
+            warning.starts_with("the units in this hex are short $")
+                && warning.ends_with(&format!(
+                    " and their orders spend ${}, ${fee} of it on the STUDY of Unit 901 (901), \
+                     arriving by sea",
+                    // The resident's own upkeep, paid out of its $1 at the month's end.
+                    fee + 1
+                )),
+            "{warning}"
+        );
+        assert_eq!(hex_silver_warning(&review, "1:7,55"), None);
+    }
+
+    /// `ah-1uja`: the clause explains the spending, so it is there when the passenger's STUDY is
+    /// paid and a resident's is the one refused - and the passenger's line has no marker.
+    #[test]
+    fn the_landing_hex_warning_names_a_paid_passenger_while_a_resident_is_refused() {
+        let fee = silver_of(&a_passenger_studying_between_two_sharers(1), "901")
+            .wanted_for_orders
+            .expect("the study is priced");
+        let resident = sharing(with_silver(unit("902"), fee));
+        let student = with_men(unit("905"), 20);
+        let (report, _) = passenger_palace(
+            open_sea(vec![sharing(with_silver(unit("903"), 500))]),
+            region_at("1:7,53", 7, 53, vec![resident, student]),
+            None,
+        );
+        let orders = "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 903\nunit 902\nunit 905\n\
+                      STUDY COMB\n";
+        let review = review_turn(&report, orders, Some(&trident()), CheckOptions::default());
+        assert!(
+            silver_of(&review, "905").wanted_for_orders > Some(fee),
+            "the resident asks more than the purse holds"
+        );
+        assert_eq!(silver_of(&review, "901").borrowed_for_orders, fee);
+        assert_eq!(markers_on(&review, "901"), Vec::<String>::new());
+        assert_eq!(markers_on(&review, "905").len(), 1);
+        let warning = hex_silver_warning(&review, "1:7,53").expect("the landing hex is short");
+        assert!(
+            warning.ends_with(&format!(
+                ", ${fee} of it on the STUDY of Unit 901 (901), arriving by sea"
+            )),
+            "{warning}"
+        );
+    }
+
+    /// `ah-1uja`: two passengers share one figure and are both named.
+    #[test]
+    fn the_landing_hex_warning_names_two_passengers_with_one_figure() {
+        let (mut report, _) = passenger_palace(
+            open_sea(vec![sharing(with_silver(unit("903"), 500))]),
+            region_at("1:7,53", 7, 53, vec![sharing(with_silver(unit("902"), 1))]),
+            None,
+        );
+        let second = ReportUnit {
+            structure_id: Some("329".to_string()),
+            region_id: "1:7,55".to_string(),
+            ..with_men(unit("905"), 3)
+        };
+        report.regions[1].units.push(second);
+        let orders = "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 905\nSTUDY COMB\nunit 903\n\
+                      unit 902\n";
+        let review = review_turn(&report, orders, Some(&trident()), CheckOptions::default());
+        let fees: i64 = ["901", "905"]
+            .iter()
+            .map(|id| silver_of(&review, id).wanted_for_orders.expect("priced"))
+            .sum();
+        let warning = hex_silver_warning(&review, "1:7,53").expect("the landing hex is short");
+        assert!(
+            warning.ends_with(&format!(
+                ", ${fees} of it on the studies of Unit 901 (901) and Unit 905 (905), arriving by \
+                 sea"
+            )),
+            "{warning}"
+        );
+        assert_eq!(markers_on(&review, "905"), vec![LANDING_REFUSES_STUDY]);
+    }
+
+    /// `ah-1uja`: how the clause names one, two, three, and four or more passengers.
+    #[test]
+    fn the_arriving_study_clause_lists_three_names_and_counts_four() {
+        let share = |total, names: &[&str]| ArrivingStudyShare {
+            total,
+            names: names.iter().map(|name| name.to_string()).collect(),
+        };
+        assert_eq!(
+            arriving_study_clause(&share(50, &["Drones (901)"])),
+            ", $50 of it on the STUDY of Drones (901), arriving by sea"
+        );
+        assert_eq!(
+            arriving_study_clause(&share(80, &["Drones (901)", "Scouts (905)"])),
+            ", $80 of it on the studies of Drones (901) and Scouts (905), arriving by sea"
+        );
+        assert_eq!(
+            arriving_study_clause(&share(90, &["Drones (901)", "Scouts (905)", "Bees (906)"])),
+            ", $90 of it on the studies of Drones (901), Scouts (905) and Bees (906), arriving by \
+             sea"
+        );
+        assert_eq!(
+            arriving_study_clause(&share(160, &["A (1)", "B (2)", "C (3)", "D (4)"])),
+            ", $160 of it on the studies of 4 units arriving by sea"
+        );
+    }
+
     /// `ah-q1zz` review, finding 4: where the fleet lands beside a unit of ours that does not
     /// share, the sharing captain arriving with it lends the study fee - and so the purse there
     /// pools when the studies are sent, at TRANSPORT as at the month's end.
@@ -82496,7 +82801,7 @@ BUILD
         let ledger = ledger_for(&hex, Some(&rules));
         let sharing = Sharing::for_silver(&hex, &ledger);
         let cuts = silver_short_counting_cuts(&hex, &ledger, &sharing);
-        let (figures, upkeep) =
+        let (figures, upkeep, _) =
             pool_silver_figures(&hex, &ledger, &sharing, false, 0, cuts).expect("the hex is short");
         assert_eq!(
             figures,
