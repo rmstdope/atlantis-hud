@@ -26897,8 +26897,9 @@ fn check_trade_regions(
 
 /// The Production window's facts: every region this month's orders use a slot in.
 ///
-/// Read off the same [`region_uses`] walk the region-limit warning counts, so the window and the
-/// warning cannot disagree about which orders use a slot.
+/// Read off the same [`region_uses`] walk the region-limit warning counts, through the same
+/// [`reaches_activity_check`], so the window and the warning cannot disagree about which orders
+/// use a slot (`ah-lb2o`).
 fn production_overview(
     report: &ParsedReport,
     hexes: &[(Hex<'_>, Ledger<'_>)],
@@ -27103,8 +27104,14 @@ fn worked_region(
     WorkedRegion {
         region_id: region.region_id.clone(),
         orders,
-        uses_tax_slot: uses.iter().any(|used| !is_produce(&used)),
-        uses_trade_slot: uses.iter().any(|used| is_produce(&used)),
+        // A slot is used only by what reaches `ActivityCheck`, as the warning counts it
+        // (`ah-lb2o`); the region stays listed with its orders either way.
+        uses_tax_slot: uses
+            .iter()
+            .any(|used| !is_produce(&used) && reaches_activity_check(used, ruleset)),
+        uses_trade_slot: uses
+            .iter()
+            .any(|used| is_produce(&used) && reaches_activity_check(used, ruleset)),
         tax: WorkedTax {
             base,
             taxed,
@@ -73914,6 +73921,43 @@ BUILD
         );
     }
 
+    /// The Production window counts slots as the warning does (`ah-lb2o`): a region whose only
+    /// orders the engine refuses before `ActivityCheck` is still listed, but uses no slot.
+    #[test]
+    fn the_production_window_counts_only_the_slots_the_limit_sees() {
+        let regions = vec![
+            grain_region("1:7,53", 7, 53, vec![with_men(unit("5"), 5)]),
+            grain_region("1:8,53", 8, 53, vec![farmer("6")]),
+            region_at("1:9,53", 9, 53, vec![with_men(unit("7"), 5)]),
+        ];
+        let review = review_trade(
+            regions,
+            "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nTAX\n",
+            &[("Regions", 5)],
+        );
+
+        let slots: Vec<(&str, bool, bool)> = review
+            .production
+            .regions
+            .iter()
+            .map(|region| {
+                (
+                    region.region_id.as_str(),
+                    region.uses_trade_slot,
+                    region.uses_tax_slot,
+                )
+            })
+            .collect();
+        assert_eq!(
+            slots,
+            [
+                ("1:7,53", false, false),
+                ("1:8,53", true, false),
+                ("1:9,53", false, false)
+            ]
+        );
+    }
+
     /// Only the uses that reach `ActivityCheck` are counted, and the warning sits on the first of
     /// those: the unskilled producer listed first is neither counted nor the anchor (`ah-lb2o`).
     #[test]
@@ -75664,13 +75708,10 @@ BUILD
                     formed_by: "1922".to_string()
                 })
             );
-            assert!(
-                finding.message.starts_with(
-                    "TAX and PILLAGE orders in 2 regions; this faction may tax in 1, so 1 region's \
-                     taxing will be refused"
-                ),
-                "{}",
-                finding.message
+            assert_eq!(
+                finding.message,
+                "TAX and PILLAGE orders in 2 regions; this faction may tax in 1, so 1 region's \
+                 taxing will be refused: mountain (8,53)"
             );
         }
 
@@ -75693,12 +75734,8 @@ BUILD
                     .entries,
             );
 
-            let review = review_turn(
-                &report,
-                "unit 1922\nFORM 1\nSTUDY QUAM\nEND\nFORM 2\nPRODUCE grain\nEND\n",
-                Some(&ruleset()),
-                CheckOptions::default(),
-            );
+            let orders = "unit 1922\nFORM 1\nSTUDY QUAM\nEND\nFORM 2\nPRODUCE grain\nEND\n";
+            let review = review_turn(&report, orders, Some(&ruleset()), CheckOptions::default());
 
             assert!(
                 !review
@@ -75707,6 +75744,10 @@ BUILD
                     .any(|finding| finding.code == codes::TOO_MANY_QUARTERMASTERS),
                 "a dissolved formed unit spends no quartermaster allowance"
             );
+            // A formed unit has no skills, so its PRODUCE never reaches the region check staffed
+            // or not, and the warning is quiet either way (`ah-lb2o`). The Production window still
+            // lists every region an order is made in, so it is where dissolution shows: the
+            // dissolved unit's region is not listed, and the staffed control's is.
             assert!(
                 !review
                     .findings
@@ -75714,6 +75755,18 @@ BUILD
                     .any(|finding| finding.code == codes::TOO_MANY_TRADE_REGIONS),
                 "a dissolved formed unit spends no trade region"
             );
+            assert!(
+                review.production.regions.is_empty(),
+                "a dissolved formed unit makes no order in any region: {:?}",
+                review.production.regions
+            );
+            let staffed = review_turn(
+                &report,
+                &format!("{orders}GIVE NEW 2 1 HUMN\n"),
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            assert_eq!(staffed.production.regions.len(), 1, "a staffed one does");
         }
 
         /// A nested `FORM`'s parent is the *outer* formed unit's synthetic id, which the report's
