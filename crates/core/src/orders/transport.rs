@@ -940,7 +940,8 @@ impl Shipping {
         let target_qm = facts.is_some_and(|facts| facts.quartermaster);
         // The long reach is the transport structure's owner's alone: `CheckTransportOrders` gives
         // anyone else `LOCAL_TRANSPORT` and refuses a TRANSPORT beyond it ("Recipient ... is too
-        // far away."), so a quartermaster that owns none ships like anybody (`ah-1jl9`).
+        // far away."), so a quartermaster that owns none ships like anybody (`ah-1jl9`). A
+        // DISTRIBUTE never gets it: that branch asks for `o->type == O_TRANSPORT` (`ah-4g2l`).
         let reach = reach_for(
             order,
             sender_can_distribute,
@@ -957,10 +958,8 @@ impl Shipping {
                     to,
                     arrival: {
                         let settled = arrival(reach, from, to, self.geometry, &self.shown);
-                        // `rules/economy_transport`: a quartermaster "may also TRANSPORT items to
-                        // any unit within 2 hexes" - its own range when the target is no
-                        // quartermaster (`ah-nzb0`), and for every DISTRIBUTE, which never gets the
-                        // longer reach (`ah-4g2l`).
+                        // A quartermaster's flat reach to a target that is no quartermaster, and
+                        // every DISTRIBUTE's, is the sender's own range (`ah-nzb0`, `ah-1d3i`).
                         if sender_qm && (!target_qm || order == ShipmentOrder::Distribute) {
                             settled.distributed()
                         } else {
@@ -1709,6 +1708,31 @@ mod tests {
         assert_eq!(
             judged(ShipmentOrder::Distribute, "901"),
             Acceptance::Eligible
+        );
+    }
+
+    /// `ah-1d3i` review, finding 4: a TRANSPORT from a Caravanserai owner to another faction's
+    /// unit that owns no Caravanserai is refused like anybody's (`CheckTransportOrders` asks every
+    /// TRANSPORT's target), and left unsettled, since that faction's orders are not ours to read.
+    #[test]
+    fn a_transport_from_a_caravanserai_owner_to_a_foreign_non_owner_is_refused_unsettled() {
+        let shipping = shipping(
+            &[("900", 1)],
+            vec![
+                ("900", at(facts(true, true, true, true), hex(0, 0))),
+                ("901", at(facts(false, false, false, true), hex(0, 1))),
+            ],
+            &[],
+        );
+
+        let judged = shipping.judge(ShipmentOrder::Transport, "900", Some(hex(0, 0)), "901");
+        assert_eq!(judged.acceptance, Acceptance::NotCaravanseraiOwner);
+        assert!(judged.unsettled, "another faction's month is never settled");
+        assert_eq!(
+            shipping
+                .judge(ShipmentOrder::Distribute, "900", Some(hex(0, 0)), "901")
+                .acceptance,
+            Acceptance::AcceptanceUnknown
         );
     }
 
