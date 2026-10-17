@@ -27838,17 +27838,27 @@ fn region_refusals<'b>(
 /// - TAX and PILLAGE (`runorders.cpp` `CountTaxes` and the pillage walk): "No population to tax",
 ///   and a unit with no combat-ready men ("Unit cannot tax", "Not a combat ready unit"), read
 ///   through the same [`readiness`] `tax-without-combat-ready-men` reads.
+/// - PILLAGE in a hex another faction guards (`runorders.cpp` `CountPillagers`, "PILLAGE: A unit
+///   is on guard.", and `aregion.cpp` `ARegion::CanPillage`): a guard blocks it "regardless of
+///   your attitude" (`rules/economy_taxingpillaging`).
 ///
 /// Anything it cannot judge is counted. Both the regions the walk refuses and the warning's own
-/// count read it (`ah-lb2o`), so the warning says exactly what the limit does. TAX and PILLAGE in
-/// a guarded hex are counted too: a guard refuses them first only when *its* attitude to us is
-/// neutral or worse (`aregion.cpp` `ARegion::CanTax`), which the report does not show - on
+/// count read it (`ah-lb2o`), so the warning says exactly what the limit does. TAX in a guarded
+/// hex is counted: a guard refuses it first only when *its* attitude to us is neutral or worse
+/// (`aregion.cpp` `ARegion::CanTax`), which the report does not show - on
 /// `neworigins-3.0.0-g5-f21-t24` two taxed hexes have a foreign guard, and turn 25 shows both
 /// taxed.
 fn reaches_activity_check(used: &RegionUse<'_, '_>, ruleset: Option<&Ruleset>) -> bool {
     match used.kind {
         RegionUseKind::Tax | RegionUseKind::TaxByFlag | RegionUseKind::Pillage => {
             if used.hex.region.population.is_some_and(|people| people < 1) {
+                return false;
+            }
+            // A foreign guard blocks every other faction's PILLAGE "regardless of your attitude"
+            // (`rules/economy_taxingpillaging`), and the engine refuses it before `ActivityCheck`
+            // (`ah-lb2o`). A guarded TAX is blocked only unless the guard's faction has declared
+            // ours Friendly (same rule), which our report does not state, so it still counts.
+            if matches!(used.kind, RegionUseKind::Pillage) && foreign_unit_guards(used.hex) {
                 return false;
             }
             let nothing = Receipts::default();
@@ -75422,6 +75432,46 @@ BUILD
                 ("1:9,53", false, false)
             ]
         );
+    }
+
+    /// A foreign guard refuses every other faction's PILLAGE before `ActivityCheck`, whatever its
+    /// attitude (`rules/economy_taxingpillaging`: "Units on guard will also block PILLAGE orders
+    /// issued by other factions in the same region, regardless of your attitude"), so that hex
+    /// spends no region: the TAX in the next hex keeps the one slot, and the window counts the
+    /// guarded hex as using none (`ah-lb2o`).
+    #[test]
+    fn a_pillage_a_foreign_guard_refuses_spends_no_region() {
+        let regions = vec![
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![
+                    with_skill(with_men(unit("5"), 5), "COMB", 1),
+                    foreign_guard("14"),
+                ],
+            ),
+            region_at(
+                "1:8,53",
+                8,
+                53,
+                vec![with_skill(with_men(unit("6"), 5), "COMB", 1)],
+            ),
+        ];
+        let review = review_trade(regions, "unit 5\nPILLAGE\nunit 6\nTAX\n", &[("Regions", 1)]);
+
+        assert!(
+            trade_findings(&review.findings).is_empty(),
+            "{:?}",
+            trade_findings(&review.findings)
+        );
+        let slots: Vec<(&str, bool)> = review
+            .production
+            .regions
+            .iter()
+            .map(|region| (region.region_id.as_str(), region.uses_tax_slot))
+            .collect();
+        assert_eq!(slots, [("1:7,53", false), ("1:8,53", true)]);
     }
 
     /// Only the uses that reach `ActivityCheck` are counted, and the warning sits on the first of

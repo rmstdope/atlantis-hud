@@ -61,10 +61,14 @@ export function activatesRow(key: string): boolean {
 
 const hexes = (count: number) => (count === 1 ? "hex" : "hexes");
 
-/** How many regions this turn's orders use: all of them against a pooled limit, else each slot. */
+/**
+ * How many regions this turn's orders use: against a pooled limit, every region using either slot;
+ * else each slot. A listed region using neither (its orders refused before the limit) counts
+ * nowhere, as in the region-limit warning (ah-lb2o).
+ */
 export function regionsUsed(overview: ProductionOverview): { pooled: number; tax: number; trade: number } {
   return {
-    pooled: overview.regions.length,
+    pooled: overview.regions.filter((region) => region.usesTaxSlot || region.usesTradeSlot).length,
     tax: overview.regions.filter((region) => region.usesTaxSlot).length,
     trade: overview.regions.filter((region) => region.usesTradeSlot).length
   };
