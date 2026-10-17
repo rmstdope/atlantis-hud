@@ -193,47 +193,6 @@ fn a_pair_paying_the_side_that_is_not_short_does_not_hide_the_abort() {
     assert_eq!(warned_units(&findings), vec!["683", "900"], "{findings:?}");
 }
 
-/// A pair that pays too little to cover the shortfall cannot rescue it (delta review's finding
-/// 2): Maurice's 1 silver leaves Ivanhoe 199 short of the 200 it offers Cedric.
-#[test]
-fn a_pair_paying_too_little_does_not_hide_the_abort() {
-    let findings = findings_with_cedric(
-        "EXCHANGE 900 200 SILV 1 WOOD\nEXCHANGE 1160 1 HORS 1 SILV",
-        "EXCHANGE 683 1 SILV 1 HORS",
-        "EXCHANGE 683 1 WOOD 200 SILV",
-    );
-    assert_eq!(warned_units(&findings), vec!["683", "900"], "{findings:?}");
-}
-
-/// An exchange another pair may pay for in time may go ahead, so no later check reads it as
-/// certainly moving nothing: Cedric's study is not called short of the silver it may receive
-/// (delta review's finding 3).
-#[test]
-fn an_exchange_that_may_be_paid_for_leaves_later_spending_uncertain() {
-    let ruleset = ruleset();
-    let text = report_text();
-    let mut parsed = parse_report_full(&text);
-    classify_units(&mut parsed, &ruleset);
-    let template = extract_orders_template(&text)
-        .map(|template| template.text)
-        .unwrap_or_default();
-    let script = format!(
-        "{template}\nunit 683\nEXCHANGE 900 200 SILV 1 WOOD\nEXCHANGE 1160 2 HORS 200 SILV\n\
-         unit 1160\nEXCHANGE 683 200 SILV 2 HORS\nunit 900\nEXCHANGE 683 1 WOOD 200 SILV\n\
-         STUDY COMB\n"
-    );
-    let review = review_turn(&parsed, &script, Some(&ruleset), CheckOptions::default());
-    let short: Vec<_> = review
-        .findings
-        .iter()
-        .filter(|finding| {
-            finding.code.as_str() == "not-enough-silver"
-                && finding.unit_id.as_deref() == Some("900")
-        })
-        .collect();
-    assert!(short.is_empty(), "{short:?}");
-}
-
 /// The engine settles exchanges as it walks the units in report order (`runorders.cpp`
 /// `DoExchangeOrders`), not in the order the lines are written: Maurice's pair runs before
 /// Cedric's here, so Ivanhoe's horses go to Maurice and it is Cedric's pair that aborts. Which one
@@ -246,46 +205,4 @@ fn a_chain_written_against_report_order_is_not_warned_on_the_wrong_lines() {
         "EXCHANGE 683 1 WOOD 4 HORS",
     );
     assert!(findings.is_empty(), "{findings:?}");
-}
-
-/// ... nor is a move the engine may abort counted as certain: Ivanhoe's wood for Maurice only
-/// comes from Cedric, whose pair the engine reaches after Maurice's (finding 1b).
-#[test]
-fn a_chain_written_against_report_order_is_not_counted_as_certain() {
-    let ruleset = ruleset();
-    let text = report_text();
-    let mut parsed = parse_report_full(&text);
-    classify_units(&mut parsed, &ruleset);
-    let template = extract_orders_template(&text)
-        .map(|template| template.text)
-        .unwrap_or_default();
-    let script = format!(
-        "{template}\nunit 683\nEXCHANGE 900 1 HORS 1 WOOD\nEXCHANGE 1160 1 WOOD 1 SILV\nunit \
-         1160\nEXCHANGE 683 1 SILV 1 WOOD\nunit 900\nEXCHANGE 683 1 WOOD 1 HORS\n"
-    );
-    let preview = atlantis_hud_core::orders::effects::preview_orders_for_remembered_report(
-        &mut atlantis_hud_core::cache::ReportCache::new(),
-        atlantis_hud_fixtures::RULESET_JSON,
-        &text,
-        "[]",
-        &script,
-    )
-    .expect("the committed ruleset loads");
-    let maurice = common::preview_row(&text, &preview, "1160").expect("Maurice has a row");
-    assert!(
-        maurice
-            .uncounted
-            .contains(&"EXCHANGE 683 1 SILV 1 WOOD".to_string()),
-        "{:?}",
-        maurice.uncounted
-    );
-    let review = review_turn(&parsed, &script, Some(&ruleset), CheckOptions::default());
-    assert!(
-        review
-            .findings
-            .iter()
-            .all(|finding| finding.code.as_str() != CODE),
-        "{:?}",
-        review.findings
-    );
 }

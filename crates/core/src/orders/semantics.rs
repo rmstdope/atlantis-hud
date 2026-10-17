@@ -877,21 +877,23 @@ pub fn review_turn(
     let withdrawal_allowances = unclaimed_plan
         .as_ref()
         .map(|plan| &plan.withdrawal_allowances);
+    // FACTION runs in the first batch of instant orders (`rules/sequenceofevents`), so the region
+    // limit it applies is the one this month's taxing and production are refused against
+    // (`ah-gcrc`, `ah-p0xm`).
+    let (faction, failures) = faction_orders(report, &ordered, ruleset);
+    let applied = faction.applied.as_ref().map(|applied| &applied.limits);
     settle_recruits_before_production(
         &mut hexes,
+        report,
         ruleset,
+        applied,
         &claim_allowances,
         withdrawal_allowances,
     );
-
-    // FACTION runs in the first batch of instant orders (`rules/sequenceofevents`), so the region
-    // limit it applies is the one this month's production is refused against (`ah-gcrc`).
-    let (faction, failures) = faction_orders(report, &ordered, ruleset);
-    let applied = faction.applied.as_ref().map(|applied| &applied.limits);
     let production = production_shares_refusing(
         &hexes,
         ruleset,
-        refused_producers(report, &hexes, ruleset, applied),
+        region_limit_refusals(report, &hexes, ruleset, applied),
     );
 
     // Which hex's purse each unit lends to and claims on, once for every reader (`ah-mnvp`) ...
@@ -1007,7 +1009,8 @@ pub fn review_turn(
         check_emptied_sales(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_oversold_sales(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_emptied_buys(hex, ledger, ruleset, &plurals, &options, &mut findings);
-        let pillaged = own_unit_pillages(hex);
+        // A pillage the region limit refuses empties nothing (`ah-p0xm`).
+        let pillaged = own_unit_pillages(hex) && !production.refuses_taxing(hex.region.coordinate);
         check_pillaged_tax(hex, pillaged, &options, &mut findings);
         check_guarded_tax(
             hex,
@@ -2165,16 +2168,35 @@ struct ProductionShares {
     /// ([`refused_producers`], `ah-gcrc`). They claim nothing from any `Products` line, and every
     /// `PRODUCE` of theirs - primary or manufacturing - reads [`RegionShare::Refused`].
     refused: RefusedProducers,
+    /// The hexes whose TAX and PILLAGE the faction's region limit refuses, by coordinate
+    /// ([`region_limit_refusals`], `ah-p0xm`). Carried here because this is what both ledgers and
+    /// the SILVER column are already handed; nobody in such a hex collects tax or pillage.
+    refused_taxing: HashSet<Coordinate>,
 }
 
 /// [`ProductionShares::refused`]: `(report-origin coordinate, unit id)`.
 type RefusedProducers = HashSet<(Coordinate, String)>;
+
+/// What the faction's region limit refuses this month ([`region_limit_refusals`]).
+#[derive(Debug, Default)]
+struct RegionLimitRefusals {
+    /// [`ProductionShares::refused`] (`ah-gcrc`).
+    producers: RefusedProducers,
+    /// [`ProductionShares::refused_taxing`] (`ah-p0xm`).
+    taxing: HashSet<Coordinate>,
+}
 
 impl ProductionShares {
     /// Whether the faction's region limit refuses every `PRODUCE` of `unit_id`, listed in the hex
     /// at `origin` (`ah-gcrc`).
     fn refuses(&self, origin: Coordinate, unit_id: &str) -> bool {
         self.refused.contains(&(origin, unit_id.to_string()))
+    }
+
+    /// Whether the faction's region limit refuses every TAX and PILLAGE in the hex at `origin`:
+    /// "TAX: Faction can't tax that many regions." (`../Atlantis` `runorders.cpp`, `ah-p0xm`).
+    fn refuses_taxing(&self, origin: Coordinate) -> bool {
+        self.refused_taxing.contains(&origin)
     }
 
     /// Whether a foreign player unit may share the pool the unit at `actor_index` of the hex at
@@ -2237,8 +2259,9 @@ struct ProductionClaim {
 /// [`PoolShare::Unknowable`] has no counterpart here, and neither does [`PoolOverrun`]: a guessed
 /// headcount is handled by [`region_share_of`], and the navigator chose against any finding at all
 /// (`ah-256d`, 2026-08-29), so nothing is reported and there is no overruns argument.
+#[cfg(test)]
 fn production_shares_for(hexes: &[Hex<'_>], ruleset: Option<&Ruleset>) -> ProductionShares {
-    production_shares_refusing(hexes, ruleset, RefusedProducers::new())
+    production_shares_refusing(hexes, ruleset, RegionLimitRefusals::default())
 }
 
 /// [`production_shares_for`], with the producers the faction's region limit refuses taken out
@@ -2248,7 +2271,7 @@ fn production_shares_for(hexes: &[Hex<'_>], ruleset: Option<&Ruleset>) -> Produc
 fn production_shares_refusing(
     hexes: &[Hex<'_>],
     ruleset: Option<&Ruleset>,
-    refused: RefusedProducers,
+    refused: RegionLimitRefusals,
 ) -> ProductionShares {
     let by_coordinate: HashMap<Coordinate, &ReportRegion> = hexes
         .iter()
@@ -2264,7 +2287,8 @@ fn production_shares_refusing(
                 )
             })
             .collect(),
-        refused,
+        refused: refused.producers,
+        refused_taxing: refused.taxing,
     };
     // Keyed by where the goods come from rather than by who asks for them - the destination's own
     // producers and every visible arrival draw on one line, so they have to meet in one group.
@@ -2932,7 +2956,17 @@ fn forecast_hex(
 
     // A region's pools are shared, so who else in this hex draws on them has to be settled before
     // any one unit can be priced against them (`ah-t2pn`).
-    let settled = pool_shares_for(hex, region, Some(&phases), ruleset);
+    // A hex whose taxing the region limit refuses has no tax pool to share: nobody collects from
+    // it, so nobody contends for it (`ah-p0xm`).
+    let pools = if production.refuses_taxing(hex.region.coordinate) {
+        RegionWages {
+            tax_base: None,
+            ..region
+        }
+    } else {
+        region
+    };
+    let settled = pool_shares_for(hex, pools, Some(&phases), ruleset);
     let shares = settled.shares;
     overruns.extend(settled.overruns);
 
@@ -3131,6 +3165,7 @@ fn forecast_hex(
             PoolShares {
                 foreign_claimant_production: production
                     .foreign_sharer_for(hex.region.coordinate, index),
+                taxing_refused: production.refuses_taxing(hex.region.coordinate),
                 ..shares[index]
             },
             claim_purse_for(
@@ -5280,76 +5315,64 @@ fn apply_transfers(
     // what the exchange moved (`ah-mw1r.2`). Silver is not recorded here: the ledger records both
     // legs itself.
     let offers = &exchanges.offers;
-    let pairs = complementary_pairs(offers);
-    // Every pair's holdings are read before any pair settles: see [`settled_exchange_verdict`].
-    let read_before: Vec<_> = pairs
-        .iter()
-        .map(|&(first, second)| {
-            let (one, other) = (&offers[first], &offers[second]);
-            let holds = |offer: &ExchangeOffer| -> Result<i64, UncertainGive> {
-                if let Some(uncertain) = working
-                    .get(&offer.unit)
-                    .and_then(|state| state.uncertain_after_gifts.get(&offer.give_tag))
-                {
-                    return Err(uncertain.clone());
-                }
-                // A theft of the offered goods leaves the holding in doubt, exactly as the ledger's
-                // `Steal` arm marks the stolen tag - this walk follows no STEAL otherwise, and the two
-                // settlements must reach the same verdict (`ah-mw1r.1`, `ah-mw1r.2`).
-                let stolen =
-                    units[offer.unit]
-                        .intents
-                        .iter()
-                        .find_map(|placed| match &placed.intent {
-                            Intent::Steal { from, item }
-                                if ruleset.find_item(item).is_some_and(|entry| {
-                                    entry.tag.eq_ignore_ascii_case(&offer.give_tag)
-                                }) =>
-                            {
-                                Some(UncertainGive {
-                                    target: party_label(from),
-                                    line: placed.line,
-                                })
-                            }
-                            _ => None,
-                        });
-                // What the unit has as the engine counts an offer: its own stock and its `SHARE`
-                // faction-mates' in the hex (`GetSharedNum` in `Game::DoExchangeOrder`; `ah-80mj`).
-                // A sharer whose stock a gift left in doubt leaves the offer in doubt too, as the
-                // ledger's `SharerStock` refuses to read such a pool.
-                if let Some(uncertain) = stolen {
-                    return Err(uncertain);
-                }
-                let own = held_by(&working, units, offer.unit, &offer.give_tag);
-                if own >= offer.give_amount {
-                    return Ok(own);
-                }
-                let lenders = lending_sharers(units, offer.unit);
-                if let Some(uncertain) = lenders.iter().find_map(|&lender| {
-                    working
-                        .get(&lender)
-                        .and_then(|state| state.uncertain_after_gifts.get(&offer.give_tag))
-                        .cloned()
-                        .or_else(|| gives_itself_away(&units[lender]))
-                }) {
-                    return Err(uncertain);
-                }
-                let lent: i64 = lenders
-                    .into_iter()
-                    .map(|lender| held_by(&working, units, lender, &offer.give_tag).max(0))
-                    .sum();
-                Ok(own.max(0).saturating_add(lent))
-            };
-            [holds(one), holds(other)]
-        })
-        .collect();
-    for (index, (&(first, second), [held, other_held])) in
-        pairs.iter().zip(&read_before).enumerate()
-    {
+    for (first, second) in complementary_pairs(offers) {
         let (one, other) = (&offers[first], &offers[second]);
-        let SettledExchange { verdict, doubt, .. } =
-            settled_exchange_verdict(units, offers, &pairs, index, [held, other_held]);
-        match verdict {
+        let holds = |offer: &ExchangeOffer| -> Result<i64, UncertainGive> {
+            if let Some(uncertain) = working
+                .get(&offer.unit)
+                .and_then(|state| state.uncertain_after_gifts.get(&offer.give_tag))
+            {
+                return Err(uncertain.clone());
+            }
+            // A theft of the offered goods leaves the holding in doubt, exactly as the ledger's
+            // `Steal` arm marks the stolen tag - this walk follows no STEAL otherwise, and the two
+            // settlements must reach the same verdict (`ah-mw1r.1`, `ah-mw1r.2`).
+            let stolen = units[offer.unit]
+                .intents
+                .iter()
+                .find_map(|placed| match &placed.intent {
+                    Intent::Steal { from, item }
+                        if ruleset.find_item(item).is_some_and(|entry| {
+                            entry.tag.eq_ignore_ascii_case(&offer.give_tag)
+                        }) =>
+                    {
+                        Some(UncertainGive {
+                            target: party_label(from),
+                            line: placed.line,
+                        })
+                    }
+                    _ => None,
+                });
+            // What the unit has as the engine counts an offer: its own stock and its `SHARE`
+            // faction-mates' in the hex (`GetSharedNum` in `Game::DoExchangeOrder`; `ah-80mj`).
+            // A sharer whose stock a gift left in doubt leaves the offer in doubt too, as the
+            // ledger's `SharerStock` refuses to read such a pool.
+            if let Some(uncertain) = stolen {
+                return Err(uncertain);
+            }
+            let own = held_by(&working, units, offer.unit, &offer.give_tag);
+            if own >= offer.give_amount {
+                return Ok(own);
+            }
+            let lenders = lending_sharers(units, offer.unit);
+            if let Some(uncertain) = lenders.iter().find_map(|&lender| {
+                working
+                    .get(&lender)
+                    .and_then(|state| state.uncertain_after_gifts.get(&offer.give_tag))
+                    .cloned()
+                    .or_else(|| gives_itself_away(&units[lender]))
+            }) {
+                return Err(uncertain);
+            }
+            let lent: i64 = lenders
+                .into_iter()
+                .map(|lender| held_by(&working, units, lender, &offer.give_tag).max(0))
+                .sum();
+            Ok(own.max(0).saturating_add(lent))
+        };
+        let (held, other_held) = (holds(one), holds(other));
+        let doubt = held.as_ref().err().or(other_held.as_ref().err()).cloned();
+        match exchange_verdict((one, held), (other, other_held)) {
             ExchangeVerdict::Moves => {}
             ExchangeVerdict::Aborted => continue,
             ExchangeVerdict::Uncertain => {
@@ -6405,7 +6428,7 @@ struct Ledger<'a> {
     /// check naming why goods are gone blames only an exchange that went ahead (`ah-mw1r.2`).
     pub(crate) exchanged_away: BTreeSet<(String, usize, String)>,
     /// `(unit, line, why)` of every `EXCHANGE` line between two of our units here that the game
-    /// will abort, in the order [`settle_exchanges`] found them (`ah-p5ow`).
+    /// will certainly abort, in the order [`settle_exchanges`] found them (`ah-p5ow`).
     aborted_exchanges: Vec<(String, usize, String)>,
     /// Lines whose effect on a unit's items could not be counted at all, by unit, in document
     /// order (`ah-agbm`).
@@ -6986,11 +7009,26 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
 /// `ProductionShares` and its final ledger from that post-recruit state after this returns.
 fn settle_recruits_before_production(
     hexes: &mut [Hex<'_>],
+    report: &ParsedReport,
     ruleset: Option<&Ruleset>,
+    // The region limit this month's FACTION applies (`faction_orders`).
+    applied: Option<&FactionLimits>,
     claim_allowances: &ClaimAllowances,
     withdrawal_allowances: WithdrawalAllowances<'_>,
 ) {
-    let provisional = production_shares_for(hexes, ruleset);
+    // The hexes whose TAX and PILLAGE the faction's region limit refuses. The tax phase runs
+    // before BUY (`rules/sequenceofevents`), so tax the game never collects pays for no recruit
+    // (`ah-p0xm`). Production runs after the market, so its refusals do not matter here. Settled
+    // here rather than by each caller, so every caller's recruits agree.
+    let taxing_refused = region_limit_refusals(report, hexes, ruleset, applied).taxing;
+    let provisional = production_shares_refusing(
+        hexes,
+        ruleset,
+        RegionLimitRefusals {
+            taxing: taxing_refused,
+            ..RegionLimitRefusals::default()
+        },
+    );
     for hex in hexes.iter_mut() {
         let foreign_unit_ids = hex
             .region
@@ -7191,6 +7229,9 @@ fn ledger_for_reaching<'a>(
     };
 
     let pillaged = own_unit_pillages(hex);
+    // "TAX: Faction can't tax that many regions." - the faction's region limit refuses every TAX
+    // and PILLAGE here, so nobody in the hex collects either (`ah-p0xm`).
+    let taxing_refused = production.refuses_taxing(hex.region.coordinate);
     // The same settlement the Silver column reads, so both surfaces charge for goods that exist
     // (`ah-lu0f.2`). The overruns are discarded: the silver pass records them already, and
     // emitting them here as well would duplicate every `region-pool-oversubscribed` finding.
@@ -7207,7 +7248,11 @@ fn ledger_for_reaching<'a>(
     // combat-ready sum alone (`ah-1ad6.2`, `ah-lu0f.3`).
     let region = region_wages(hex, ruleset);
     let nothing = Receipts::default();
-    let market_tax = market_tax_for(hex, region, ruleset);
+    let mut market_tax = market_tax_for(hex, region, ruleset);
+    // A refused taxer's balance never holds the tax, so the market has none of it to withhold.
+    if taxing_refused {
+        market_tax.fill(MarketTax::default());
+    }
     // Kept as its own vector because `credit_tax`, `settle_buy_all` and `HexStanding` all take a
     // bare `i64` and none of them has anything to do with the purse (`ah-ud89.2`).
     let tax_overstated: Vec<i64> = market_tax.iter().map(|tax| tax.overstated).collect();
@@ -7244,7 +7289,7 @@ fn ledger_for_reaching<'a>(
         }
         for &index in &report_order {
             let ordered = &hex.units[index];
-            if phase == StatePhase::Tax {
+            if phase == StatePhase::Tax && !taxing_refused {
                 let facts = unit_facts(hex, ordered, &nothing, None, ruleset);
                 credit_tax(
                     &mut ledger,
@@ -7842,9 +7887,13 @@ pub(crate) fn month_long_teachers(
         report.header.unclaimed_silver,
         ruleset,
     );
+    let (faction, _) = faction_orders(report, &ordered, ruleset);
+    let applied = faction.applied.as_ref().map(|applied| &applied.limits);
     settle_recruits_before_production(
         &mut hexes,
+        report,
         ruleset,
+        applied,
         &claim_allowances,
         unclaimed_plan
             .as_ref()
@@ -7924,9 +7973,14 @@ pub(crate) fn item_effects(
     let withdrawal_allowances = unclaimed_plan
         .as_ref()
         .map(|plan| &plan.withdrawal_allowances);
+    // The limit this month's FACTION applies, as `review_turn` reads it (`ah-gcrc`, `ah-p0xm`).
+    let (faction, _) = faction_orders(report, &ordered, ruleset);
+    let applied = faction.applied.as_ref().map(|applied| &applied.limits);
     settle_recruits_before_production(
         &mut hexes,
+        report,
         ruleset,
+        applied,
         &claim_allowances,
         withdrawal_allowances,
     );
@@ -7935,14 +7989,11 @@ pub(crate) fn item_effects(
     // its vessel arrives, so the pool it draws on is in another hex's `Products` line. Settling
     // this per hex here would leave the ITEMS cell disagreeing with the SILVER cell beside it,
     // which reads the report-wide answer (`ah-k43x`). The producers the faction's region limit
-    // refuses are taken out first, against the limit this month's FACTION applies, as
-    // `review_turn` does (`ah-gcrc`).
-    let (faction, _) = faction_orders(report, &ordered, ruleset);
-    let applied = faction.applied.as_ref().map(|applied| &applied.limits);
+    // refuses are taken out first.
     let production = production_shares_refusing(
         &hexes,
         ruleset,
-        refused_producers(report, &hexes, ruleset, applied),
+        region_limit_refusals(report, &hexes, ruleset, applied),
     );
 
     // Every ledger before any is consumed, so shipping settles across every hex exactly as
@@ -9427,6 +9478,11 @@ fn apply(
         // exists). The two differ only in how they express the doubt - a typed variant there, the
         // unit's sums no longer trusted here.
         Intent::Pillage => {
+            // "PILLAGE: Faction can't tax that many regions." - refused outright, so it earns
+            // nothing and nothing is doubted (`ah-p0xm`).
+            if standing.production.refuses_taxing(hex.region.coordinate) {
+                return;
+            }
             // This unit's own combat ready men, which is its weight in the share (`ah-q6bt`, D1).
             // `readiness` is an early term and reads no late picture, so `None` here is the same
             // `None` `pillagers_in` counted with.
@@ -10413,87 +10469,17 @@ enum ExchangeVerdict {
     Uncertain,
 }
 
-/// What [`settled_exchange_verdict`] makes of one pair.
-struct SettledExchange {
-    verdict: ExchangeVerdict,
-    /// What an [`ExchangeVerdict::Uncertain`] is doubted on.
-    doubt: Option<UncertainGive>,
-    /// For an [`ExchangeVerdict::Aborted`]: each side certainly short, and the most it can hold of
-    /// what it offers.
-    short: Vec<(usize, i64)>,
-}
-
-/// The verdict on `pairs[index]`, from what each side holds of what it offers once every GIVE and
-/// TAKE has run and **before any exchange of the hex** - `Err` where that holding is in doubt.
-///
-/// The engine settles each exchange as it walks the units in report order (`runorders.cpp`
-/// `DoExchangeOrders`), checking each side's holding as it goes - not in the order the lines are
-/// written. Rather than follow that walk, a side whose offered item another pair of the hex could
-/// hand it or take from it is read conservatively, as uncertain; a side is certainly short - and
-/// the abort is told (`ah-p5ow`) - only when even everything other pairs could hand it would not
-/// cover what it offers (`rules/exchange`: "If either unit involved does not have the items it is
-/// offering ... the exchange is aborted"; reviews of PR #1699). A certainly short side aborts the
-/// pair whatever the other side's doubt. Both settlements call this, so they reach one verdict.
-fn settled_exchange_verdict(
-    units: &[Ordered<'_>],
-    offers: &[ExchangeOffer],
-    pairs: &[(usize, usize)],
-    index: usize,
-    held: [&Result<i64, UncertainGive>; 2],
-) -> SettledExchange {
-    let (first, second) = pairs[index];
-    let mut short = Vec::new();
-    let mut doubt = None;
-    let mut entangled = None;
-    for (side, (offer, held)) in [&offers[first], &offers[second]]
-        .into_iter()
-        .zip(held)
-        .enumerate()
-    {
-        let others = || {
-            pairs
-                .iter()
-                .enumerate()
-                .filter(|&(at, _)| at != index)
-                .flat_map(|(_, &(a, b))| [&offers[a], &offers[b]])
-        };
-        let paying: Vec<&ExchangeOffer> = others()
-            .filter(|paying| paying.partner == offer.unit && paying.give_tag == offer.give_tag)
-            .collect();
-        let draining = others()
-            .find(|draining| draining.unit == offer.unit && draining.give_tag == offer.give_tag);
-        match held {
-            Err(uncertain) => {
-                doubt = doubt.or_else(|| Some(uncertain.clone()));
-            }
-            Ok(held) => {
-                let at_most = held
-                    .max(&0)
-                    .saturating_add(paying.iter().map(|paying| paying.give_amount).sum::<i64>());
-                if at_most < offer.give_amount {
-                    short.push((side, at_most));
-                } else if let Some(touching) = paying.first().copied().or(draining) {
-                    entangled = entangled.or_else(|| {
-                        Some(UncertainGive {
-                            target: format!("unit {}", units[touching.unit].unit.unit_id),
-                            line: touching.line,
-                        })
-                    });
-                }
-            }
-        }
-    }
-    let (verdict, doubt) = if !short.is_empty() {
-        (ExchangeVerdict::Aborted, None)
-    } else if let Some(doubt) = doubt.or(entangled) {
-        (ExchangeVerdict::Uncertain, Some(doubt))
+fn exchange_verdict<E>(
+    one: (&ExchangeOffer, Result<i64, E>),
+    other: (&ExchangeOffer, Result<i64, E>),
+) -> ExchangeVerdict {
+    let short = |(offer, held): &(&ExchangeOffer, Result<i64, E>)| matches!(held, Ok(held) if *held < offer.give_amount);
+    if short(&one) || short(&other) {
+        ExchangeVerdict::Aborted
+    } else if one.1.is_err() || other.1.is_err() {
+        ExchangeVerdict::Uncertain
     } else {
-        (ExchangeVerdict::Moves, None)
-    };
-    SettledExchange {
-        verdict,
-        doubt,
-        short,
+        ExchangeVerdict::Moves
     }
 }
 
@@ -10529,91 +10515,61 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     let offers = &read.offers;
     let pairs = complementary_pairs(offers);
     record_unanswered_exchanges(ledger, hex, &read, &pairs);
-    // Every pair's holdings are read before any pair settles: see [`settled_exchange_verdict`].
-    let read_before: Vec<_> = pairs
-        .iter()
-        .map(|&(first, second)| {
-            let (one, other) = (&offers[first], &offers[second]);
-            // What a side has as the engine counts an offer, `GetSharedNum`: its own stock and what
-            // its `SHARE` faction-mates in the hex still lend it, off the one reading every spend from
-            // the pool takes ([`SharerStock`]; `ah-80mj`).
-            let holds = |offer: &ExchangeOffer| -> Result<i64, UncertainGive> {
-                let who = &hex.units[offer.unit].unit.unit_id;
-                let own = ledger
-                    .state
-                    .known_balance_at(StatePhase::Give, who, &offer.give_tag)
-                    .map_err(Clone::clone)?;
-                let lenders: Vec<&str> = hex
-                    .units
-                    .iter()
-                    .filter(|other| other.shares() && other.unit.unit_id != *who)
-                    .map(|other| other.unit.unit_id.as_str())
-                    .collect();
-                // Its own stock is read first, so a sharer is only asked about what it lends.
-                if lenders.is_empty() || own >= offer.give_amount {
-                    return Ok(own);
-                }
-                // A sharer whose stock a gift left in doubt leaves the offer in doubt too: whether it
-                // still lends enough is the answer the report cannot give.
-                for lender in lenders {
-                    ledger
-                        .state
-                        .known_balance_at(StatePhase::Give, lender, &offer.give_tag)
-                        .map_err(Clone::clone)?;
-                }
-                if let Some(uncertain) = hex
-                    .units
-                    .iter()
-                    .filter(|other| other.shares() && other.unit.unit_id != *who)
-                    .find_map(gives_itself_away)
-                {
-                    return Err(uncertain);
-                }
-                let (own, lenders) = exchange_draw(ledger, hex, who, &offer.give_tag, own);
-                Ok(own
-                    .max(0)
-                    .saturating_add(lenders.iter().map(|(_, lends)| lends).sum::<i64>()))
-            };
-            [holds(one), holds(other)]
-        })
-        .collect();
-    for (index, (&(first, second), [held, other_held])) in
-        pairs.iter().zip(&read_before).enumerate()
-    {
+    for &(first, second) in &pairs {
         let (one, other) = (&offers[first], &offers[second]);
-        let SettledExchange {
-            verdict,
-            doubt,
-            short,
-        } = settled_exchange_verdict(&hex.units, offers, &pairs, index, [held, other_held]);
-        match verdict {
+        // What a side has as the engine counts an offer, `GetSharedNum`: its own stock and what
+        // its `SHARE` faction-mates in the hex still lend it, off the one reading every spend from
+        // the pool takes ([`SharerStock`]; `ah-80mj`).
+        let holds = |offer: &ExchangeOffer| -> Result<i64, UncertainGive> {
+            let who = &hex.units[offer.unit].unit.unit_id;
+            let own = ledger
+                .state
+                .known_balance_at(StatePhase::Give, who, &offer.give_tag)
+                .map_err(Clone::clone)?;
+            let lenders: Vec<&str> = hex
+                .units
+                .iter()
+                .filter(|other| other.shares() && other.unit.unit_id != *who)
+                .map(|other| other.unit.unit_id.as_str())
+                .collect();
+            // Its own stock is read first, so a sharer is only asked about what it lends.
+            if lenders.is_empty() || own >= offer.give_amount {
+                return Ok(own);
+            }
+            // A sharer whose stock a gift left in doubt leaves the offer in doubt too: whether it
+            // still lends enough is the answer the report cannot give.
+            for lender in lenders {
+                ledger
+                    .state
+                    .known_balance_at(StatePhase::Give, lender, &offer.give_tag)
+                    .map_err(Clone::clone)?;
+            }
+            if let Some(uncertain) = hex
+                .units
+                .iter()
+                .filter(|other| other.shares() && other.unit.unit_id != *who)
+                .find_map(gives_itself_away)
+            {
+                return Err(uncertain);
+            }
+            let (own, lenders) = exchange_draw(ledger, hex, who, &offer.give_tag, own);
+            Ok(own
+                .max(0)
+                .saturating_add(lenders.iter().map(|(_, lends)| lends).sum::<i64>()))
+        };
+        let (held, other_held) = (holds(one), holds(other));
+        let doubt = held.as_ref().err().or(other_held.as_ref().err()).cloned();
+        let known = [
+            (one, held.as_ref().ok().copied()),
+            (other, other_held.as_ref().ok().copied()),
+        ];
+        match exchange_verdict((one, held), (other, other_held)) {
             ExchangeVerdict::Moves => {
                 hand_over(ledger, hex, one);
                 hand_over(ledger, hex, other);
             }
             ExchangeVerdict::Aborted => {
-                // Who is short, as each line will say it.
-                let short: Vec<String> = short
-                    .iter()
-                    .map(|&(side, at_most)| {
-                        let offer = [one, other][side];
-                        format!(
-                            "{} will hold only {} of the {} {} it offers",
-                            unit_label(hex, &hex.units[offer.unit].unit.unit_id),
-                            at_most,
-                            offer.give_amount,
-                            offer.give_tag
-                        )
-                    })
-                    .collect();
-                let why = short.join("; ");
-                for offer in [one, other] {
-                    ledger.aborted_exchanges.push((
-                        hex.units[offer.unit].unit.unit_id.clone(),
-                        offer.line,
-                        why.clone(),
-                    ));
-                }
+                record_short_exchange(ledger, hex, offers, &pairs, (first, second), known);
             }
             ExchangeVerdict::Uncertain => {
                 let doubt = doubt.expect("an uncertain verdict has a doubted side");
@@ -10622,22 +10578,11 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
                 // `GIVE` marks its giver (`transfer`, `GiveOutcome::Uncertain`).
                 for offer in [one, other] {
                     for unit in [offer.unit, offer.partner] {
-                        let unit_id = &hex.units[unit].unit.unit_id;
                         ledger
                             .state
                             .uncertain
-                            .entry((unit_id.clone(), offer.give_tag.clone()))
+                            .entry((hex.units[unit].unit.unit_id.clone(), offer.give_tag.clone()))
                             .or_insert_with(|| doubt.clone());
-                        // Only silver doubts a unit's sums. Further than `transfer` goes for a
-                        // GIVE, which doubts only the giver: here the receiver is doubted too,
-                        // since its later spending would otherwise be judged against a purse the
-                        // exchange may or may not fill (a false `not-enough-silver`, reviews of
-                        // PR #1699). The price is the one `transfer` avoids for a receiver: a
-                        // doubted receiver that SHAREs leaves the hex's purse untrusted
-                        // (`Sharing::pool_trusted`).
-                        if offer.give_tag.eq_ignore_ascii_case(SILVER) {
-                            ledger.doubted.insert(unit_id.clone());
-                        }
                     }
                     mark_uncounted(ledger, &hex.units[offer.unit].unit.unit_id, offer.line);
                 }
@@ -10646,11 +10591,11 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     }
 }
 
-/// Records every offer [`complementary_pairs`] left without a partner line: the game aborts it, since
-/// "the orders given by the two units must be complementary" (`rules/exchange`; `ah-p5ow`). The
-/// partner's own unpaired line toward this unit, where it wrote one, is named so the player sees
-/// what does not match. Nothing is said where the partner wrote a line whose goods nothing can name:
-/// whether that one matches cannot be said.
+/// Records every offer [`complementary_pairs`] left without a partner line: the game aborts it
+/// whatever order it reaches the lines in, since "the orders given by the two units must be
+/// complementary" (`rules/exchange`; `ah-p5ow`). The partner's own unpaired line toward this unit,
+/// where it wrote one, is named so the player sees what does not match. Nothing is said where the
+/// partner wrote a line whose goods nothing can name: whether that one matches cannot be said.
 fn record_unanswered_exchanges(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
@@ -10695,6 +10640,59 @@ fn record_unanswered_exchanges(
             hex.units[offer.unit].unit.unit_id.clone(),
             offer.line,
             why,
+        ));
+    }
+}
+
+/// Records a complementary pair aborted because a side is short of what it offers - but only
+/// where no other pair of the hex moves that item. The engine settles exchanges as it walks the
+/// units in report order (`runorders.cpp` `DoExchangeOrders`), not in the order the lines are
+/// written as [`settle_exchanges`] does, so where another exchange could hand the short side (or a
+/// sharer lending to it) that item, or take it, whether this pair aborts is not certain and is not
+/// told (reviews of PR #1699). Saying nothing there is a missed warning, never a false one.
+fn record_short_exchange(
+    ledger: &mut Ledger<'_>,
+    hex: &Hex<'_>,
+    offers: &[ExchangeOffer],
+    pairs: &[(usize, usize)],
+    pair: (usize, usize),
+    known: [(&ExchangeOffer, Option<i64>); 2],
+) {
+    let short: Vec<(&ExchangeOffer, i64)> = known
+        .into_iter()
+        .filter_map(|(offer, held)| {
+            held.filter(|held| *held < offer.give_amount)
+                .map(|held| (offer, held))
+        })
+        .collect();
+    let chained = short.iter().any(|(offer, _)| {
+        pairs
+            .iter()
+            .filter(|&&other| other != pair)
+            .flat_map(|&(a, b)| [&offers[a], &offers[b]])
+            .any(|moving| moving.give_tag == offer.give_tag)
+    });
+    if short.is_empty() || chained {
+        return;
+    }
+    let why = short
+        .iter()
+        .map(|(offer, held)| {
+            format!(
+                "{} will hold only {} of the {} {} it offers",
+                unit_label(hex, &hex.units[offer.unit].unit.unit_id),
+                held.max(&0),
+                offer.give_amount,
+                offer.give_tag
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    for offer in [&offers[pair.0], &offers[pair.1]] {
+        ledger.aborted_exchanges.push((
+            hex.units[offer.unit].unit.unit_id.clone(),
+            offer.line,
+            why.clone(),
         ));
     }
 }
@@ -26290,20 +26288,27 @@ fn reaches_activity_check(used: &RegionUse<'_, '_>, ruleset: Option<&Ruleset>) -
 }
 
 /// Every own unit whose `PRODUCE` the faction's region limit refuses this month, by report-origin
-/// coordinate and unit id, for [`production_shares_refusing`] (`ah-gcrc`). Empty for a report
-/// that prints no region limit.
-fn refused_producers(
+/// coordinate and unit id (`ah-gcrc`), and every hex whose TAX and PILLAGE it refuses (`ah-p0xm`),
+/// for [`production_shares_refusing`]. Empty for a report that prints no region limit.
+fn region_limit_refusals(
     report: &ParsedReport,
     hexes: &[Hex<'_>],
     ruleset: Option<&Ruleset>,
     applied: Option<&FactionLimits>,
-) -> RefusedProducers {
+) -> RegionLimitRefusals {
     let Some(allowances) = region_allowances(report, applied) else {
-        return RefusedProducers::new();
+        return RegionLimitRefusals::default();
     };
     let uses = region_uses(hexes.iter(), ruleset);
-    let refused = region_refusals(report, &uses, allowances, ruleset).producing;
-    uses.iter()
+    let RegionRefusals {
+        taxing,
+        producing: refused,
+    } = region_refusals(report, &uses, allowances, ruleset);
+    // A TAX or PILLAGE is made in the hex it is ordered in (`region_uses`), so the refused region
+    // is the hex.
+    let taxing = taxing.iter().map(|region| region.coordinate).collect();
+    let producers = uses
+        .iter()
         .filter(|used| used.kind == RegionUseKind::Produce)
         .filter(|used| {
             used.region.is_some_and(|region| {
@@ -26318,7 +26323,8 @@ fn refused_producers(
                 used.ordered.unit.unit_id.clone(),
             )
         })
-        .collect()
+        .collect();
+    RegionLimitRefusals { producers, taxing }
 }
 
 /// `PRODUCE: Faction can't produce in that many regions.` A faction may only tax and trade in so
@@ -73083,6 +73089,294 @@ BUILD
         );
 
         assert!(produced_by(&review, "6") > 0);
+    }
+
+    /// A region with silver to tax and pillage, and own units in it.
+    fn taxable_region(id: &str, x: i32, y: i32, units: Vec<ReportUnit>) -> ReportRegion {
+        ReportRegion {
+            tax_base: Some(400),
+            ..region_at(id, x, y, units)
+        }
+    }
+
+    fn fighter(id: &str) -> ReportUnit {
+        with_skill(with_men(unit(id), 5), "COMB", 1)
+    }
+
+    /// `unit_id`'s SILVER row: its income, and whether its hover lists a `cause` line.
+    fn income_of(review: &TurnReview, unit_id: &str, cause: SilverChangeCause) -> (i64, bool) {
+        let row = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == unit_id)
+            .unwrap_or_else(|| panic!("unit {unit_id} has a SILVER row"));
+        (
+            row.income.expect("the income is priced"),
+            row.changes.iter().any(|change| change.cause == cause),
+        )
+    }
+
+    /// The tax phase refuses "TAX: Faction can't tax that many regions." once a separate tax
+    /// counter is spent (`../Atlantis` `runorders.cpp` `RunTaxOrders` -> `ActivityCheck`), so the
+    /// refused region's taxer collects nothing (`ah-p0xm`).
+    #[test]
+    fn a_refused_regions_taxer_is_forecast_no_tax() {
+        let regions = vec![
+            taxable_region("1:7,53", 7, 53, vec![fighter("5")]),
+            taxable_region("1:8,53", 8, 53, vec![fighter("6")]),
+        ];
+        let review = review_trade(
+            regions,
+            "unit 5\nTAX\nunit 6\nTAX\n",
+            &[("Tax Regions", 1), ("Trade Regions", 5)],
+        );
+
+        assert!(trade_findings(&review.findings)[0]
+            .message
+            .ends_with("taxing will be refused: mountain (8,53)"));
+        let (income, line) = income_of(&review, "5", SilverChangeCause::Taxed);
+        assert!(income > 0 && line, "the first region fits");
+        assert_eq!(
+            income_of(&review, "6", SilverChangeCause::Taxed),
+            (0, false),
+            "the second region is refused"
+        );
+    }
+
+    /// A refused taxer collects a certain nothing, so the column does not doubt it for a tax base
+    /// the report does not state (`ah-p0xm`).
+    #[test]
+    fn a_refused_regions_taxer_is_not_doubted_for_its_tax_base() {
+        let regions = vec![
+            taxable_region("1:7,53", 7, 53, vec![fighter("5")]),
+            region_at("1:8,53", 8, 53, vec![fighter("6")]),
+        ];
+        let review = review_trade(
+            regions,
+            "unit 5\nTAX\nunit 6\nTAX\n",
+            &[("Tax Regions", 1), ("Trade Regions", 5)],
+        );
+
+        let row = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "6")
+            .expect("unit 6 has a SILVER row");
+        assert_eq!((row.income, row.doubt), (Some(0), None));
+    }
+
+    /// BUY runs after TAX (`rules/sequenceofevents`), so a refused taxer with no silver of its own
+    /// cannot pay for recruits with the tax it never collects: they never arrive, so they dilute
+    /// none of its skills (`ah-p0xm`).
+    #[test]
+    fn a_refused_regions_tax_buys_no_recruits() {
+        let review = |entries: &[(&str, i64)]| {
+            let taxer = with_named_skill_pts(fighter("6"), "lumberjack", "LUMB", 30);
+            let regions = vec![
+                taxable_region("1:7,53", 7, 53, vec![fighter("5")]),
+                ReportRegion {
+                    for_sale: vec![MarketItem {
+                        amount: 20,
+                        name: "men".to_string(),
+                        tag: "HUMN".to_string(),
+                        price: 38,
+                    }],
+                    ..taxable_region("1:8,53", 8, 53, vec![taxer])
+                },
+            ];
+            review_trade(regions, "unit 5\nTAX\nunit 6\nTAX\nBUY 4 HUMN\n", entries)
+        };
+        let diluted = |review: &TurnReview| {
+            review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::ARRIVALS_LOWER_A_SKILL)
+        };
+
+        assert!(
+            diluted(&review(&[("Tax Regions", 5)])),
+            "with room to tax, the tax pays for the men"
+        );
+        let refused = review(&[("Tax Regions", 1), ("Trade Regions", 5)]);
+        assert!(!diluted(&refused), "{:?}", refused.findings);
+    }
+
+    /// A refused hex's taxers share no pool and meet no pillage - the game refuses both before
+    /// either matters - so Problems tells them neither story, only the region limit's (`ah-p0xm`).
+    #[test]
+    fn a_refused_hex_is_neither_oversubscribed_nor_pillaged() {
+        let told = |orders: &str| {
+            let regions = vec![
+                taxable_region("1:7,53", 7, 53, vec![fighter("5")]),
+                taxable_region(
+                    "1:8,53",
+                    8,
+                    53,
+                    vec![fighter("6"), fighter("7"), fighter("8")],
+                ),
+            ];
+            let review = review_turn(
+                &report_with_statuses(&[("Tax Regions", 1), ("Trade Regions", 5)], regions),
+                orders,
+                Some(&ruleset()),
+                disabling_all(&[]),
+            );
+            assert_eq!(trade_findings(&review.findings).len(), 1);
+            review
+                .findings
+                .into_iter()
+                .filter(|finding| {
+                    finding.code == codes::REGION_POOL_OVERSUBSCRIBED
+                        || finding.code == codes::TAXED_A_PILLAGED_HEX
+                })
+                .collect::<Vec<_>>()
+        };
+
+        // Three 5-man taxers ask $750 of a $400 base.
+        let oversubscribed = told("unit 5\nTAX\nunit 6\nTAX\nunit 7\nTAX\nunit 8\nTAX\n");
+        assert!(oversubscribed.is_empty(), "{oversubscribed:?}");
+        // PILLAGE is walked first, so (7,53)'s pillage takes the one region and (8,53)'s is refused.
+        let pillaged = told("unit 5\nPILLAGE\nunit 6\nTAX\nunit 7\nTAX\nunit 8\nPILLAGE\n");
+        assert!(pillaged.is_empty(), "{pillaged:?}");
+    }
+
+    /// The same for a refused pillager, whose share the column would otherwise doubt for want of
+    /// a tax base (`ah-p0xm`).
+    #[test]
+    fn a_refused_regions_pillager_is_not_doubted_for_its_tax_base() {
+        let regions = vec![
+            taxable_region("1:7,53", 7, 53, vec![fighter("5")]),
+            region_at("1:8,53", 8, 53, vec![fighter("6")]),
+        ];
+        let review = review_trade(
+            regions,
+            "unit 5\nPILLAGE\nunit 6\nPILLAGE\n",
+            &[("Tax Regions", 1), ("Trade Regions", 5)],
+        );
+
+        let row = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "6")
+            .expect("unit 6 has a SILVER row");
+        assert_eq!((row.income, row.doubt), (Some(0), None));
+    }
+
+    /// A unit taxing by its flag alone is refused like one with a `TAX` line (`ah-fvzu`).
+    #[test]
+    fn a_refused_regions_flagged_taxer_is_forecast_no_tax() {
+        let mut flagged = fighter("6");
+        flagged.flags.push("taxing".to_string());
+        let regions = vec![
+            taxable_region("1:7,53", 7, 53, vec![fighter("5")]),
+            taxable_region("1:8,53", 8, 53, vec![flagged]),
+        ];
+        let review = review_trade(
+            regions,
+            "unit 5\nTAX\nunit 6\n",
+            &[("Tax Regions", 1), ("Trade Regions", 5)],
+        );
+
+        assert!(trade_findings(&review.findings)[0]
+            .message
+            .ends_with("taxing will be refused: mountain (8,53)"));
+        assert_eq!(
+            income_of(&review, "6", SilverChangeCause::Taxed),
+            (0, false)
+        );
+    }
+
+    /// Three taxers asking $750 of a $400 base would have their market purse cut by the tax the
+    /// settlement says they will not collect - but a refused taxer's balance never held any tax,
+    /// so nothing is withheld from the silver it does hold (`ah-p0xm`).
+    #[test]
+    fn a_refused_taxers_own_silver_still_buys() {
+        let shopper = with_silver(fighter("6"), 100);
+        let regions = vec![
+            taxable_region("1:7,53", 7, 53, vec![fighter("5")]),
+            ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 20,
+                    name: "men".to_string(),
+                    tag: "HUMN".to_string(),
+                    price: 38,
+                }],
+                ..taxable_region("1:8,53", 8, 53, vec![shopper, fighter("7"), fighter("8")])
+            },
+        ];
+        let review = review_trade(
+            regions,
+            "unit 5\nTAX\nunit 6\nTAX\nBUY 2 HUMN\nunit 7\nTAX\nunit 8\nTAX\n",
+            &[("Tax Regions", 1), ("Trade Regions", 5)],
+        );
+
+        let short: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .collect();
+        assert!(short.is_empty(), "{short:?}");
+        let row = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "6")
+            .expect("unit 6 has a SILVER row");
+        assert_eq!(row.expense, Some(76));
+    }
+
+    /// The guard is asked before the region limit ("TAX: A unit is on guard." precedes
+    /// `ActivityCheck`, `../Atlantis` `runorders.cpp`), so a refused hex's guard is still named on
+    /// its TAX line - and a pillage the limit refuses no longer hides it (`ah-p0xm`).
+    #[test]
+    fn a_refused_guarded_hex_still_names_the_guard() {
+        let regions = vec![
+            taxable_region("1:7,53", 7, 53, vec![fighter("5")]),
+            taxable_region(
+                "1:8,53",
+                8,
+                53,
+                vec![foreign_guard("9"), fighter("6"), fighter("8")],
+            ),
+        ];
+        let review = review_turn(
+            &report_with_statuses(&[("Tax Regions", 1), ("Trade Regions", 5)], regions),
+            "unit 5\nPILLAGE\nunit 6\nTAX\nunit 8\nPILLAGE\n",
+            Some(&ruleset()),
+            disabling_all(&[]),
+        );
+
+        let on_the_tax_line: Vec<&str> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.unit_id.as_deref() == Some("6"))
+            .map(|finding| finding.code.as_str())
+            .collect();
+        assert_eq!(on_the_tax_line, vec![codes::TAXED_A_GUARDED_HEX.as_str()]);
+    }
+
+    /// The same for PILLAGE, which `RunPillageOrders` checks against the same tax counter.
+    #[test]
+    fn a_refused_regions_pillager_is_forecast_no_pillage() {
+        let regions = vec![
+            taxable_region("1:7,53", 7, 53, vec![fighter("5")]),
+            taxable_region("1:8,53", 8, 53, vec![fighter("6")]),
+        ];
+        let review = review_trade(
+            regions,
+            "unit 5\nPILLAGE\nunit 6\nPILLAGE\n",
+            &[("Tax Regions", 1), ("Trade Regions", 5)],
+        );
+
+        assert!(trade_findings(&review.findings)[0]
+            .message
+            .ends_with("taxing will be refused: mountain (8,53)"));
+        let (income, line) = income_of(&review, "5", SilverChangeCause::Pillaged);
+        assert!(income > 0 && line, "the first region fits");
+        assert_eq!(
+            income_of(&review, "6", SilverChangeCause::Pillaged),
+            (0, false),
+            "the second region is refused"
+        );
     }
 
     /// A TAX by a unit with no combat-ready men is refused before the region check ("TAX: Unit
