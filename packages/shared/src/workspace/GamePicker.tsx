@@ -9,6 +9,7 @@ import { describeError } from "./shellAction";
 import { useEscapeToDismiss } from "./dismissLayer";
 import { GameForm } from "./GameForm";
 import { PopoverFrame } from "./popover";
+import { POPOVER_BODY_MAX_H } from "./primitives";
 
 /**
  * The one panel behind a game row's `✕` (ah-58n): Delete, Reset or Cancel.
@@ -309,307 +310,312 @@ export function GamePicker({
   };
 
   return (
-    <PopoverFrame testId="game-picker" label="Games" align="left" width="w-72" padding="p-2">
-      {currentGame ? (
-        <div role="tablist" aria-label="Game picker tabs" className="mb-1.5 flex gap-1">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "games"}
-            data-testid="game-picker-tab-games"
-            onClick={() => setTab("games")}
-            className={`rounded border px-2 py-0.5 ${
-              tab === "games"
-                ? "border-brass bg-panel text-brass"
-                : "border-edge bg-panel-raised text-ink-soft hover:border-brass"
-            }`}
-          >
-            Games
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "settings"}
-            data-testid="game-picker-tab-settings"
-            onClick={() => setTab("settings")}
-            className={`rounded border px-2 py-0.5 ${
-              tab === "settings"
-                ? "border-brass bg-panel text-brass"
-                : "border-edge bg-panel-raised text-ink-soft hover:border-brass"
-            }`}
-          >
-            This game
-          </button>
-        </div>
-      ) : null}
+    <PopoverFrame testId="game-picker" label="Games" align="left" width="w-72">
+      {/* Capped and scrolling (ah-gmg8): a player with dozens of games had a menu taller than the
+          window, and "+ New game…" with its form fell off the bottom of it. The padding is in here
+          rather than on the frame so the scrollbar runs along the frame's edge. */}
+      <div data-testid="game-picker-body" className={`${POPOVER_BODY_MAX_H} overflow-y-auto p-2`}>
+        {currentGame ? (
+          <div role="tablist" aria-label="Game picker tabs" className="mb-1.5 flex gap-1">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "games"}
+              data-testid="game-picker-tab-games"
+              onClick={() => setTab("games")}
+              className={`rounded border px-2 py-0.5 ${
+                tab === "games"
+                  ? "border-brass bg-panel text-brass"
+                  : "border-edge bg-panel-raised text-ink-soft hover:border-brass"
+              }`}
+            >
+              Games
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "settings"}
+              data-testid="game-picker-tab-settings"
+              onClick={() => setTab("settings")}
+              className={`rounded border px-2 py-0.5 ${
+                tab === "settings"
+                  ? "border-brass bg-panel text-brass"
+                  : "border-edge bg-panel-raised text-ink-soft hover:border-brass"
+              }`}
+            >
+              This game
+            </button>
+          </div>
+        ) : null}
 
-      {tab === "settings" && currentGame ? (
-        <div data-testid="game-settings-panel">
-          <dl className="flex flex-col gap-1">
-            {isRenaming ? (
-              <div className="flex flex-col gap-1">
-                <dt className="text-ink-soft">Name</dt>
-                <dd className="flex flex-col gap-1">
-                  <input
-                    ref={renameInputRef}
-                    data-testid="game-rename-input"
-                    aria-label="game name"
-                    value={renaming ?? ""}
-                    disabled={busy}
-                    autoFocus
-                    onChange={(event) => {
-                      setRenaming(event.target.value);
-                      setRenameError(null);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        void saveRename();
-                      }
-                      if (event.key === "Escape") {
-                        // Stop the *React* event here, before it reaches the picker's own
-                        // `document` Escape listener (React dispatches from the root container,
-                        // below `document` in the bubble path) - otherwise cancelling the edit
-                        // also closes the whole picker.
-                        event.stopPropagation();
-                        cancelRename();
-                      }
-                    }}
-                    className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
-                  />
-                  {renameError ? (
-                    <p data-testid="game-rename-error" role="alert" className="text-danger">
-                      {renameError}
-                    </p>
-                  ) : null}
-                  {duplicate ? (
-                    <p data-testid="game-rename-warning" className="text-warn">
-                      Another game is already called “{duplicate}”.
-                    </p>
-                  ) : null}
-                  <div className="flex justify-end gap-1.5">
+        {tab === "settings" && currentGame ? (
+          <div data-testid="game-settings-panel">
+            <dl className="flex flex-col gap-1">
+              {isRenaming ? (
+                <div className="flex flex-col gap-1">
+                  <dt className="text-ink-soft">Name</dt>
+                  <dd className="flex flex-col gap-1">
+                    <input
+                      ref={renameInputRef}
+                      data-testid="game-rename-input"
+                      aria-label="game name"
+                      value={renaming ?? ""}
+                      disabled={busy}
+                      autoFocus
+                      onChange={(event) => {
+                        setRenaming(event.target.value);
+                        setRenameError(null);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          void saveRename();
+                        }
+                        if (event.key === "Escape") {
+                          // Stop the *React* event here, before it reaches the picker's own
+                          // `document` Escape listener (React dispatches from the root container,
+                          // below `document` in the bubble path) - otherwise cancelling the edit
+                          // also closes the whole picker.
+                          event.stopPropagation();
+                          cancelRename();
+                        }
+                      }}
+                      className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
+                    />
+                    {renameError ? (
+                      <p data-testid="game-rename-error" role="alert" className="text-danger">
+                        {renameError}
+                      </p>
+                    ) : null}
+                    {duplicate ? (
+                      <p data-testid="game-rename-warning" className="text-warn">
+                        Another game is already called “{duplicate}”.
+                      </p>
+                    ) : null}
+                    <div className="flex justify-end gap-1.5">
+                      <button
+                        type="button"
+                        data-testid="game-rename-save"
+                        disabled={busy}
+                        onClick={() => void saveRename()}
+                        className="rounded border border-brass px-2 py-0.5 text-brass disabled:opacity-50"
+                      >
+                        {busy ? "Saving…" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="game-rename-cancel"
+                        disabled={busy}
+                        onClick={cancelRename}
+                        className="rounded border border-edge px-2 py-0.5 text-ink disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </dd>
+                </div>
+              ) : (
+                <div className="flex items-baseline justify-between gap-2">
+                  <dt className="text-ink-soft">Name</dt>
+                  <dd className="flex min-w-0 items-baseline gap-1.5">
+                    <span className="truncate text-ink">{currentGame.metadata.gameName}</span>
                     <button
                       type="button"
-                      data-testid="game-rename-save"
+                      ref={renameLinkRef}
+                      data-testid="rename-game"
                       disabled={busy}
-                      onClick={() => void saveRename()}
-                      className="rounded border border-brass px-2 py-0.5 text-brass disabled:opacity-50"
+                      onClick={() => {
+                        setRenaming(currentGame.metadata.gameName);
+                        setRenameError(null);
+                      }}
+                      className="text-brass hover:underline disabled:opacity-50"
                     >
-                      {busy ? "Saving…" : "Save"}
+                      Rename
+                    </button>
+                  </dd>
+                </div>
+              )}
+              <div className="flex items-baseline justify-between gap-2">
+                <dt className="text-ink-soft">Ruleset</dt>
+                <dd className="text-ink">{currentGame.metadata.rulesetId}</dd>
+              </div>
+            </dl>
+
+            <div className="mt-2 border-t border-edge pt-2">
+              <button
+                type="button"
+                data-testid="export-game"
+                disabled={busy || isRenaming}
+                onClick={() => onExport(currentGame.metadata.gameId)}
+                className="w-full rounded border border-edge bg-panel px-2 py-1 text-left text-brass hover:border-brass disabled:opacity-50"
+              >
+                Export game backup…
+              </button>
+              <button
+                ref={importButtonRef}
+                type="button"
+                data-testid="import-game"
+                disabled={busy || isRenaming}
+                onClick={() => importRef.current?.click()}
+                className="mt-1.5 w-full rounded border border-edge bg-panel px-2 py-1 text-left text-brass hover:border-brass disabled:opacity-50"
+              >
+                Import game backup…
+              </button>
+              <input
+                ref={importRef}
+                data-testid="import-game-input"
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={onPickImport}
+              />
+              {pendingImport ? (
+                <div data-testid="game-import-confirm" className="mt-1.5 rounded border border-danger/40 p-1.5">
+                  <p className="text-ink-soft">
+                    “{pendingImport.gameName}” is already here. Replace it with the backup, or import the
+                    backup as a second game?
+                  </p>
+                  <p className="mt-1 text-ink-soft">Replacing erases its current turns, orders and remembered map.</p>
+                  <div className="mt-1.5 flex justify-end gap-1.5">
+                    <button
+                      type="button"
+                      data-testid="game-import-replace"
+                      disabled={busy}
+                      onClick={() => {
+                        onImport(pendingImport.file, "replace");
+                        setPendingImport(null);
+                      }}
+                      className="rounded border border-danger px-2 py-0.5 text-danger disabled:opacity-50"
+                    >
+                      Replace
                     </button>
                     <button
                       type="button"
-                      data-testid="game-rename-cancel"
+                      data-testid="game-import-keep-both"
                       disabled={busy}
-                      onClick={cancelRename}
-                      className="rounded border border-edge px-2 py-0.5 text-ink disabled:opacity-50"
+                      onClick={() => {
+                        onImport(pendingImport.file, "copy");
+                        setPendingImport(null);
+                      }}
+                      className="rounded border border-brass px-2 py-0.5 text-brass disabled:opacity-50"
+                    >
+                      Keep both
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="game-import-cancel"
+                      autoFocus
+                      onClick={() => {
+                        setPendingImport(null);
+                        importButtonRef.current?.focus();
+                      }}
+                      className="rounded border border-edge px-2 py-0.5 text-ink"
                     >
                       Cancel
                     </button>
                   </div>
-                </dd>
-              </div>
-            ) : (
-              <div className="flex items-baseline justify-between gap-2">
-                <dt className="text-ink-soft">Name</dt>
-                <dd className="flex min-w-0 items-baseline gap-1.5">
-                  <span className="truncate text-ink">{currentGame.metadata.gameName}</span>
-                  <button
-                    type="button"
-                    ref={renameLinkRef}
-                    data-testid="rename-game"
-                    disabled={busy}
-                    onClick={() => {
-                      setRenaming(currentGame.metadata.gameName);
-                      setRenameError(null);
-                    }}
-                    className="text-brass hover:underline disabled:opacity-50"
-                  >
-                    Rename
-                  </button>
-                </dd>
-              </div>
-            )}
-            <div className="flex items-baseline justify-between gap-2">
-              <dt className="text-ink-soft">Ruleset</dt>
-              <dd className="text-ink">{currentGame.metadata.rulesetId}</dd>
-            </div>
-          </dl>
-
-          <div className="mt-2 border-t border-edge pt-2">
-            <button
-              type="button"
-              data-testid="export-game"
-              disabled={busy || isRenaming}
-              onClick={() => onExport(currentGame.metadata.gameId)}
-              className="w-full rounded border border-edge bg-panel px-2 py-1 text-left text-brass hover:border-brass disabled:opacity-50"
-            >
-              Export game backup…
-            </button>
-            <button
-              ref={importButtonRef}
-              type="button"
-              data-testid="import-game"
-              disabled={busy || isRenaming}
-              onClick={() => importRef.current?.click()}
-              className="mt-1.5 w-full rounded border border-edge bg-panel px-2 py-1 text-left text-brass hover:border-brass disabled:opacity-50"
-            >
-              Import game backup…
-            </button>
-            <input
-              ref={importRef}
-              data-testid="import-game-input"
-              type="file"
-              accept=".json"
-              className="hidden"
-              onChange={onPickImport}
-            />
-            {pendingImport ? (
-              <div data-testid="game-import-confirm" className="mt-1.5 rounded border border-danger/40 p-1.5">
-                <p className="text-ink-soft">
-                  “{pendingImport.gameName}” is already here. Replace it with the backup, or import the
-                  backup as a second game?
-                </p>
-                <p className="mt-1 text-ink-soft">Replacing erases its current turns, orders and remembered map.</p>
-                <div className="mt-1.5 flex justify-end gap-1.5">
-                  <button
-                    type="button"
-                    data-testid="game-import-replace"
-                    disabled={busy}
-                    onClick={() => {
-                      onImport(pendingImport.file, "replace");
-                      setPendingImport(null);
-                    }}
-                    className="rounded border border-danger px-2 py-0.5 text-danger disabled:opacity-50"
-                  >
-                    Replace
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="game-import-keep-both"
-                    disabled={busy}
-                    onClick={() => {
-                      onImport(pendingImport.file, "copy");
-                      setPendingImport(null);
-                    }}
-                    className="rounded border border-brass px-2 py-0.5 text-brass disabled:opacity-50"
-                  >
-                    Keep both
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="game-import-cancel"
-                    autoFocus
-                    onClick={() => {
-                      setPendingImport(null);
-                      importButtonRef.current?.focus();
-                    }}
-                    className="rounded border border-edge px-2 py-0.5 text-ink"
-                  >
-                    Cancel
-                  </button>
                 </div>
-              </div>
-            ) : (
-              <p className="mt-1.5 text-ink-soft">
-                Import creates a new game; if it is already here you are asked whether to replace it.
-              </p>
-            )}
+              ) : (
+                <p className="mt-1.5 text-ink-soft">
+                  Import creates a new game; if it is already here you are asked whether to replace it.
+                </p>
+              )}
+            </div>
           </div>
-        </div>
-      ) : (
-        <>
-          <ul className="flex flex-col">
-            {sorted.map((game) => {
-              const gameId = game.metadata.gameId;
-              const current = gameId === currentGameId;
+        ) : (
+          <>
+            <ul className="flex flex-col">
+              {sorted.map((game) => {
+                const gameId = game.metadata.gameId;
+                const current = gameId === currentGameId;
 
-              return (
-                <li key={gameId} data-testid={`game-row-${gameId}`} data-current={current}>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => onOpen(gameId)}
-                      className={`flex-1 truncate rounded px-1.5 py-1 text-left disabled:opacity-50 ${
-                        current ? "text-brass" : "text-ink hover:bg-panel"
-                      }`}
-                    >
-                      <span aria-hidden>{current ? "● " : "○ "}</span>
-                      {game.metadata.gameName}
-                    </button>
-                    <button
-                      type="button"
-                      ref={(element) => {
-                        if (element) {
-                          removeButtons.current.set(gameId, element);
-                        } else {
-                          removeButtons.current.delete(gameId);
-                        }
-                      }}
-                      disabled={busy}
-                      aria-label={`remove ${game.metadata.gameName}`}
-                      onClick={() => {
-                        setRemovalFailure(null);
-                        setConfirmingRemovalOf(gameId);
-                      }}
-                      className="rounded px-1.5 py-1 text-ink-dim hover:text-danger disabled:opacity-50"
-                    >
-                      ✕
-                    </button>
-                  </div>
+                return (
+                  <li key={gameId} data-testid={`game-row-${gameId}`} data-current={current}>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => onOpen(gameId)}
+                        className={`flex-1 truncate rounded px-1.5 py-1 text-left disabled:opacity-50 ${
+                          current ? "text-brass" : "text-ink hover:bg-panel"
+                        }`}
+                      >
+                        <span aria-hidden>{current ? "● " : "○ "}</span>
+                        {game.metadata.gameName}
+                      </button>
+                      <button
+                        type="button"
+                        ref={(element) => {
+                          if (element) {
+                            removeButtons.current.set(gameId, element);
+                          } else {
+                            removeButtons.current.delete(gameId);
+                          }
+                        }}
+                        disabled={busy}
+                        aria-label={`remove ${game.metadata.gameName}`}
+                        onClick={() => {
+                          setRemovalFailure(null);
+                          setConfirmingRemovalOf(gameId);
+                        }}
+                        className="rounded px-1.5 py-1 text-ink-dim hover:text-danger disabled:opacity-50"
+                      >
+                        ✕
+                      </button>
+                    </div>
 
-                  {confirmingRemovalOf === gameId ? (
-                    (() => {
-                      // One reading of the failure state for this row, so the message shown and the
-                      // action Try again repeats can never come from different rows.
-                      const failed = removalFailure?.gameId === gameId ? removalFailure : null;
-                      return (
-                        <RemoveGameConfirm
-                          gameId={gameId}
-                          gameName={game.metadata.gameName}
-                          busy={busy}
-                          failure={failed?.message ?? null}
-                          onDelete={() => void removeGame(gameId, game.metadata.gameName, "delete")}
-                          onReset={() => void removeGame(gameId, game.metadata.gameName, "reset")}
-                          onRetry={() => {
-                            if (failed) {
-                              void removeGame(gameId, game.metadata.gameName, failed.action);
-                            }
-                          }}
-                          onCancel={() => closeRemoval(gameId)}
-                        />
-                      );
-                    })()
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
+                    {confirmingRemovalOf === gameId ? (
+                      (() => {
+                        // One reading of the failure state for this row, so the message shown and the
+                        // action Try again repeats can never come from different rows.
+                        const failed = removalFailure?.gameId === gameId ? removalFailure : null;
+                        return (
+                          <RemoveGameConfirm
+                            gameId={gameId}
+                            gameName={game.metadata.gameName}
+                            busy={busy}
+                            failure={failed?.message ?? null}
+                            onDelete={() => void removeGame(gameId, game.metadata.gameName, "delete")}
+                            onReset={() => void removeGame(gameId, game.metadata.gameName, "reset")}
+                            onRetry={() => {
+                              if (failed) {
+                                void removeGame(gameId, game.metadata.gameName, failed.action);
+                              }
+                            }}
+                            onCancel={() => closeRemoval(gameId)}
+                          />
+                        );
+                      })()
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
 
-          <div className="mt-1.5 border-t border-edge pt-1.5">
-            {creating ? (
-              <GameForm busy={busy} error={error} onCreate={onCreate} />
-            ) : (
-              <button
-                type="button"
-                data-testid="new-game"
-                disabled={busy}
-                onClick={() => setCreating(true)}
-                className="w-full rounded px-1.5 py-1 text-left text-brass hover:bg-panel disabled:opacity-50"
-              >
-                + New game…
-              </button>
-            )}
-          </div>
-        </>
-      )}
+            <div className="mt-1.5 border-t border-edge pt-1.5">
+              {creating ? (
+                <GameForm busy={busy} error={error} onCreate={onCreate} />
+              ) : (
+                <button
+                  type="button"
+                  data-testid="new-game"
+                  disabled={busy}
+                  onClick={() => setCreating(true)}
+                  className="w-full rounded px-1.5 py-1 text-left text-brass hover:bg-panel disabled:opacity-50"
+                >
+                  + New game…
+                </button>
+              )}
+            </div>
+          </>
+        )}
 
-      {error && !creating ? (
-        <p data-testid="game-picker-error" role="alert" className="mt-1.5 text-danger">
-          {error}
-        </p>
-      ) : null}
+        {error && !creating ? (
+          <p data-testid="game-picker-error" role="alert" className="mt-1.5 text-danger">
+            {error}
+          </p>
+        ) : null}
+      </div>
     </PopoverFrame>
   );
 }

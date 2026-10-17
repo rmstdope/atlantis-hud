@@ -609,6 +609,12 @@ html {
 /*
  * The app is a fixed workspace, not a document: the map fills the window and the panels float over
  * it, so the page itself must never scroll.
+ *
+ * `clip`, not `hidden` (ah-gmg8). `hidden` only hides the scrollbar: the element is still a scroll
+ * container, so anything taller than the window - a long menu - makes it scrollable, and focusing a
+ * field below the fold, or `scrollIntoView`, scrolls it and slides the whole app off the top of the
+ * window with no way back. `clip` makes it no scroll container at all. `hidden` stays as the
+ * fallback for an engine without `clip`; on `html` the viewport reads `clip` as `hidden` anyway.
  */
 html,
 body,
@@ -616,6 +622,7 @@ body,
   height: 100%;
   margin: 0;
   overflow: hidden;
+  overflow: clip;
   background: var(--color-ground);
   color: var(--color-ink);
   font-family: var(--font-mono);
