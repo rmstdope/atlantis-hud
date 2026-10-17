@@ -639,7 +639,9 @@ function itemCauseClause(change: ItemChange, unit: PreviewedUnit, people: boolea
       // `ah-rgkk.3.2` reserves a null party for a GIVE to a foreign faction that names no unit.
       return change.other ? `gave ${n} to ${party(change.other)}` : `gave ${n} to another faction`;
     // A sharer's goods paid for another unit's GIVE (newage trident `rules/share`): the sharer
-    // lent them for that GIVE and gave nothing itself (`ah-49is`, the agreed words).
+    // lent them for that GIVE and gave nothing itself (`ah-49is`, the agreed words). The same
+    // words cover a sharer's part of another unit's matched EXCHANGE, handed to its partner
+    // (`rules/exchange`, `ah-yf72`).
     case "lent-for-give":
       return `lent ${n}${change.borrower ? ` for ${party(change.borrower)}` : ""} to give to ${lentReceiver(change.other)}`;
     // A sharer's goods made up another unit's numbered GIVE 0 (`rules/give`,
