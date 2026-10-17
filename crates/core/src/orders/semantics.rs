@@ -825,6 +825,20 @@ pub fn review_turn(
             })
         })
         .collect();
+    // How a warning sentence names each unit: `<name> (<id>)`, or `new unit <alias>` for one this
+    // month's FORM creates, as `teaching_ordered_label` names it (`ah-m1th`).
+    let unit_labels: BTreeMap<UnitKey, String> = hexes
+        .iter()
+        .flat_map(|hex| {
+            hex.units.iter().map(|unit| {
+                let label = unit.formed.as_ref().map_or_else(
+                    || format!("{} ({})", unit.unit.name, unit.unit.unit_id),
+                    |formed| format!("new unit {}", formed.alias),
+                );
+                (unit_key(&hex.region.region_id, &unit.unit.unit_id), label)
+            })
+        })
+        .collect();
 
     // Silver receipts come from the settlement those hexes just ran, so every hex has to exist
     // before any of them can be priced - the same reason the ledgers below are built in two
@@ -1042,7 +1056,7 @@ pub fn review_turn(
     check_draws_leave_upkeep_unpaid(
         unclaimed_plan.as_ref(),
         &month_end.fund,
-        &unit_names,
+        &unit_labels,
         &options,
         &mut findings,
     );
@@ -2536,26 +2550,20 @@ struct UnclaimedSilverPlan {
     draws: Vec<FundDraw>,
 }
 
-/// One order line that took silver from the faction's unclaimed fund, where a finding about it
-/// is anchored.
+/// One order line that took silver from the faction's unclaimed fund: the finding about it,
+/// anchored and still without its message. Built by [`Ordered::finding`], as every other per-unit
+/// finding is, so a draw in a `FORM` block names its `NEW` alias in Problems.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct FundDraw {
-    region_id: String,
-    unit_id: String,
-    line: usize,
-    column_start: usize,
-    column_end: usize,
-}
+struct FundDraw(Finding);
 
 impl FundDraw {
     fn of(hex: &Hex<'_>, unit: &Ordered<'_>, placed: &PlacedIntent) -> Self {
-        Self {
-            region_id: hex.region.region_id.clone(),
-            unit_id: unit.unit.unit_id.clone(),
-            line: placed.line,
-            column_start: placed.column_start,
-            column_end: placed.column_end,
-        }
+        Self(unit.finding(
+            hex,
+            codes::DRAW_LEAVES_UPKEEP_UNPAID,
+            String::new(),
+            Some(placed),
+        ))
     }
 }
 
@@ -2606,7 +2614,7 @@ fn claim_grants(hexes: &[Hex<'_>], unclaimed: Option<i64>) -> Option<Vec<ClaimGr
             }
         }
     }
-    claims.sort_by_key(|(_, draw, _)| draw.line);
+    claims.sort_by_key(|(_, draw, _)| draw.0.line);
     Some(
         claims
             .into_iter()
@@ -2710,7 +2718,10 @@ fn unclaimed_silver_plan(
                     detail: Some(format!("{count} {item}")),
                 });
                 withdrawal_allowances.insert((key.clone(), placed.line));
-                draws.push(FundDraw::of(hex, unit, placed));
+                // `WITHDRAW 0 grain` is accepted and takes nothing, so it drew nothing either.
+                if amount > 0 {
+                    draws.push(FundDraw::of(hex, unit, placed));
+                }
             }
         }
     }
@@ -25902,7 +25913,7 @@ fn check_upkeep_fund(
 fn check_draws_leave_upkeep_unpaid(
     plan: Option<&UnclaimedSilverPlan>,
     settlement: &UpkeepSettlement,
-    unit_names: &BTreeMap<UnitKey, String>,
+    unit_labels: &BTreeMap<UnitKey, String>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
@@ -25925,10 +25936,9 @@ fn check_draws_leave_upkeep_unpaid(
         .relying
         .iter()
         .map(|claim| {
-            let name = unit_names
+            unit_labels
                 .get(&unit_key(&claim.region_id, &claim.unit_id))
-                .map_or_else(|| format!("Unit {}", claim.unit_id), Clone::clone);
-            format!("{name} ({})", claim.unit_id)
+                .map_or_else(|| format!("unit {}", claim.unit_id), Clone::clone)
         })
         .collect();
     let message = format!(
@@ -25937,17 +25947,10 @@ fn check_draws_leave_upkeep_unpaid(
         named_units(&names)
     );
 
-    for draw in &plan.draws {
+    for FundDraw(draw) in &plan.draws {
         findings.push(Finding {
-            code: codes::DRAW_LEAVES_UPKEEP_UNPAID,
             message: message.clone(),
-            region_id: draw.region_id.clone(),
-            unit_id: Some(draw.unit_id.clone()),
-            line: Some(draw.line),
-            column_start: Some(draw.column_start),
-            column_end: Some(draw.column_end),
-            formed: None,
-            counted_in: None,
+            ..draw.clone()
         });
     }
 }
@@ -48047,6 +48050,64 @@ BUILD
         in_the_nexus[0].terrain = "nexus".to_string();
         let nexus = check_with_purse(Some(100), in_the_nexus, "unit 5\nWITHDRAW 1 grain\n");
         assert_eq!(draw_warnings(&nexus), [], "{nexus:?}");
+    }
+
+    /// `WITHDRAW 0 grain` is accepted and costs nothing, so it took nothing and is not warned,
+    /// as a CLAIM capped to nothing is not.
+    #[test]
+    fn draw_leaves_upkeep_unpaid_ignores_a_withdrawal_of_nothing() {
+        let findings = check_with_purse(
+            Some(100),
+            a_drawer_and_a_unit_relying_on_the_fund(16),
+            "unit 5\nWITHDRAW 0 grain\n",
+        );
+        assert_eq!(draw_warnings(&findings), [], "{findings:?}");
+    }
+
+    /// A draw in a FORM block is the new unit's, and Problems names it by the alias the player
+    /// wrote - the `formed` subject every other per-unit finding carries.
+    #[test]
+    fn draw_leaves_upkeep_unpaid_names_a_formed_drawer_by_its_alias() {
+        let findings = check_with_purse(
+            Some(100),
+            a_drawer_and_a_unit_relying_on_the_fund(6),
+            "unit 5\nFORM 1\nCLAIM 100\nEND\n",
+        );
+        let warning = findings
+            .iter()
+            .find(|finding| finding.code == codes::DRAW_LEAVES_UPKEEP_UNPAID)
+            .unwrap_or_else(|| panic!("the CLAIM is warned: {findings:?}"));
+        assert_eq!(warning.line, Some(3));
+        assert_eq!(
+            warning.formed,
+            Some(FormedSubject {
+                alias: "1".to_string(),
+                formed_by: "5".to_string(),
+            })
+        );
+    }
+
+    /// A unit this month's FORM creates is named as `new unit <alias>` in the sentence, as a TEACH
+    /// warning names one.
+    #[test]
+    fn draw_leaves_upkeep_unpaid_names_a_formed_unit_relying_on_the_fund_by_its_alias() {
+        // 7 gives one of its six penniless men to a new unit, so 7 owes $50 and the new unit $10,
+        // and both fall to the fund.
+        let findings = check_with_purse(
+            Some(100),
+            a_drawer_and_a_unit_relying_on_the_fund(6),
+            "unit 5\nCLAIM 100\nunit 7\nFORM 1\nEND\nGIVE NEW 1 1 HUMN\n",
+        );
+        let sentences: Vec<String> = draw_warnings(&findings)
+            .into_iter()
+            .map(|(_, message)| message)
+            .collect();
+        assert_eq!(sentences.len(), 1, "{findings:?}");
+        assert!(
+            sentences[0].ends_with("Unit 7 (7) and new unit 1."),
+            "{}",
+            sentences[0]
+        );
     }
 
     #[test]

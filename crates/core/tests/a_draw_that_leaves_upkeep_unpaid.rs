@@ -63,23 +63,31 @@ fn the_withdrawal_that_drains_the_fund_is_warned_on_its_line() {
     );
 }
 
+/// Option A: nothing is added to the units left short. Gunkgrip's own findings are exactly what
+/// they are with the new warning taken out of the same run.
 #[test]
 fn the_units_left_short_keep_their_own_warnings_unchanged() {
     let (orders, _) = orders(true);
     let all = findings(&orders);
-    let gunkgrip: Vec<&Finding> = all
+    let of_gunkgrip = |findings: &[Finding]| -> Vec<Finding> {
+        findings
+            .iter()
+            .filter(|finding| finding.unit_id.as_deref() == Some("202"))
+            .cloned()
+            .collect()
+    };
+    let without_the_draw_warning: Vec<Finding> = all
         .iter()
-        .filter(|finding| finding.unit_id.as_deref() == Some("202"))
+        .filter(|finding| finding.code.as_str() != DRAW)
+        .cloned()
         .collect();
+    let gunkgrip = of_gunkgrip(&all);
+    assert_eq!(gunkgrip, of_gunkgrip(&without_the_draw_warning));
     assert!(
         gunkgrip
             .iter()
             .any(|finding| finding.code.as_str() == "upkeep-exceeds-unclaimed"),
         "Gunkgrip is still told it goes short: {gunkgrip:?}"
-    );
-    assert!(
-        gunkgrip.iter().all(|finding| finding.code.as_str() != DRAW),
-        "nothing new is added to the short unit: {gunkgrip:?}"
     );
 }
 
