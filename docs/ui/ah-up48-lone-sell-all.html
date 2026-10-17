@@ -1,0 +1,36 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--ok:#4fb783;--danger:#d97070}
+*{box-sizing:border-box;margin:0}body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:32px 16px 64px}
+main{max-width:1100px;margin:0 auto}h1{font-size:24px}h1 span{color:var(--brass)}p.lead{color:var(--ink-soft);margin:10px 0 18px;max-width:95ch;font-size:14px}
+h3{margin:28px 0 6px;font-size:12px;letter-spacing:1.8px;text-transform:uppercase;color:var(--brass)}
+code{font-family:Menlo,monospace;color:#eebe63;font-size:12.5px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px}
+.card{background:var(--panel);border:1px solid var(--edge);border-radius:6px;padding:12px 14px;font-family:system-ui,sans-serif;font-size:12.5px}
+.cap{color:var(--ink-dim);font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;margin-bottom:8px}
+pre{font-family:Menlo,monospace;font-size:12px;color:var(--ink-soft);white-space:pre-wrap;line-height:1.7}
+pre b{color:var(--ink);font-weight:normal}pre u{text-decoration:none;border-bottom:2px wavy var(--brass)}
+.warn{background:var(--raised);border-left:3px solid var(--brass);padding:7px 11px;margin-top:8px;color:var(--ink)}
+.quiet{background:transparent;border-left:3px solid var(--edge);padding:7px 11px;margin-top:8px;color:var(--ink-dim);font-style:italic}
+.badge{display:inline-block;background:var(--brass);color:#111;border-radius:9px;padding:0 7px;font-weight:bold;font-size:11px}
+.badge.zero{background:var(--edge);color:var(--ink-dim)}
+.none{color:var(--ink-dim);font-style:italic;margin-top:8px}
+ul{margin:10px 0 0 18px;color:var(--ink-soft);font-size:13px}
+.tag{display:inline-block;background:#f5f5f5;color:#111;padding:2px 8px;font:bold 12px system-ui;margin-bottom:8px}
+</style>
+<title>Lone SELL ALL — silent</title></head><body><main><span class="tag">Option A — say nothing (recommended)</span>
+<h1>A lone <span>SELL ALL</span> over what the market wants is simply accepted</h1>
+<p class="lead">Lonthax: Unit (8333) holds 316 grain and is the only one of your units selling grain here. The market wants 196. The game sells 196 and the other 120 stay with the unit — that is what “sell all” means to a player. The order line carries no mark and nothing is added to “To check”.</p>
+<div class="grid"><div class="card"><div class="cap">Today</div><pre><b>unit 8333</b>
+<u>SELL ALL GRAI</u></pre><div class="warn">this unit sells 316 grain and this market wants 196</div>
+<div style="margin-top:8px">To check <span class="badge">1</span></div></div>
+<div class="card"><div class="cap">After — Option A</div><pre><b>unit 8333</b>
+SELL ALL GRAI</pre><div class="none">(no mark, no message)</div>
+<div style="margin-top:8px">To check <span class="badge zero">0</span></div>
+<div style="margin-top:8px;color:var(--ink-soft)">The silver and items columns already show the sale of 196 and the 120 kept, as today.</div></div></div>
+<h3>Several sellers still warn</h3><div class="card"><div class="cap">Two of your units sell in the same market — unchanged in every option</div>
+<pre><b>unit 8333</b>  SELL ALL GRAI    <span style="color:var(--ink-dim)">316 grain</span>
+<b>unit 8340</b>  SELL ALL GRAI    <span style="color:var(--ink-dim)">90 grain</span></pre>
+<div class="warn">your units here sell 406 grain between them and this market wants 196</div>
+<div style="margin-top:8px">To check <span class="badge">2</span> — one for each seller, as today.</div></div>
+<ul><li>Cost: nothing on the order line tells a player that 120 grain will be left over — they read it from the items column.</li></ul></main></body></html>
