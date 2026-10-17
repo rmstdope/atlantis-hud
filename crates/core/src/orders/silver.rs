@@ -369,6 +369,12 @@ pub struct UnitSilver {
     /// A tag rather than a word: how it is said is the interface's business, and the core has no
     /// opinion about English.
     pub short_on: Option<SilverSpender>,
+    /// The exact `BUY` the shortfall bites on, where [`Self::short_on`] is `Buy` because of one
+    /// (`ah-ottr`): what it ordered, what the ledger let it buy, and the order's count named for
+    /// the hover - "8650 short: it buys 9 of the 50 gems ordered". `rules/buy`: a unit that "can't
+    /// afford as many as [quantity] ... will attempt to buy as many as it can". `None` wherever
+    /// `short_on` is not `Buy`, and where a `BUY ALL` is what named it.
+    pub short_buy: Option<ShortBuy>,
     /// What this unit owes in maintenance this month, in silver, after any food it will spend on
     /// it. `None` when it cannot be priced - an estimated headcount, or a report that never said
     /// what the unit is made of.
@@ -782,6 +788,21 @@ pub struct SharedCast {
     /// The caster's own goods with every other sharer's added in, men excepted: what the
     /// spell's materials are counted against.
     pub held: Vec<ItemAmount>,
+}
+
+/// The exact `BUY` a unit's shortfall bites on, as [`UnitSilver::short_buy`] reports it (`ah-ottr`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct ShortBuy {
+    /// The count the order wrote: `BUY 50 GEM` is 50.
+    pub ordered: i64,
+    /// What the ledger bought on that line: its `Bought` spend divided by the price. `0` for a
+    /// purchase the unit can pay none of.
+    pub bought: i64,
+    /// `ordered`, counted and named the way a finding names an item - "50 gems". The interface
+    /// cannot pluralise it: the unit may hold none of the goods yet (`Lookups::counted_item`).
+    pub ordered_named: String,
 }
 
 /// One priced shipment, as the SILVER hover's aside and the editor's note state it (`ah-7ale.3`).
@@ -2362,6 +2383,7 @@ pub fn forecast_unit(
             at_month_end: None,
             short_for_orders: None,
             short_on: None,
+            short_buy: None,
             upkeep,
             doubt: Some(if money_read == MoneyRead::MoneyLost {
                 SilverDoubt::SilverNeverRead
@@ -2437,6 +2459,7 @@ pub fn forecast_unit(
             at_month_end: None,
             short_for_orders: None,
             short_on: None,
+            short_buy: None,
             upkeep,
             doubt: Some(SilverDoubt::EstimatedMen),
             doubt_subject: None,
@@ -2504,6 +2527,8 @@ pub fn forecast_unit(
     // What the exact buys asked to spend, whatever the unit could pay for. `short_for_orders` and
     // the shortfall warning are measured against this (`ah-omn7`).
     let mut market_demand = 0i64;
+    // The exact `BUY` that first named `Buy` as what the unit is short on (`ah-ottr`).
+    let mut short_buy: Option<ShortBuy> = None;
     // A `TAKE FROM <unit> ALL <class>` is in this unit's own block, but the ledger's own
     // `transfer` returns early for a class selector, so its balance never carries the take and
     // this column will not open its market pass on a figure the two surfaces disagree about
@@ -2975,7 +3000,17 @@ pub fn forecast_unit(
                         // the order the purse ran dry for later in the month is (`ah-4j5f`), the
                         // same reading a silver gift the pool paid gets (`ah-ub3y`).
                         let line = placed.line as i64;
-                        if wanted > 0 && exact_market_spend(&moves, &[line]) < wanted {
+                        let spent = exact_market_spend(&moves, &[line]);
+                        if wanted > 0 && spent < wanted {
+                            // First-wins, like `spent_on`: only the line that names `Buy` says
+                            // how many it buys (`ah-ottr`).
+                            if spent_on.is_none() && price > 0 {
+                                short_buy = tag.as_ref().map(|tag| ShortBuy {
+                                    ordered: *count,
+                                    bought: spent / price,
+                                    ordered_named: (lookups.counted_item)(*count, tag),
+                                });
+                            }
                             spent_on = spent_on.or(Some(SilverSpender::Buy));
                         }
                         exact_buy_lines.push(line);
@@ -3353,6 +3388,9 @@ pub fn forecast_unit(
         at_month_end,
         short_for_orders,
         short_on: spent_on.filter(|_| short_for_orders.is_some_and(|short| short > 0)),
+        short_buy: short_buy.filter(|_| {
+            spent_on == Some(SilverSpender::Buy) && short_for_orders.is_some_and(|short| short > 0)
+        }),
         upkeep,
         doubt,
         doubt_subject: doubt_subject.filter(|_| {
