@@ -109,3 +109,15 @@ fn a_transport_to_the_same_unit_still_blames_the_target() {
         )]
     );
 }
+
+/// A sender studying the skill this month may be a quartermaster when the shipments run
+/// (`rules/sequenceofevents` processes STUDY before TRANSPORT), so its own month leaves the refusal
+/// unsettled and the order carries no warning; the preview still holds the doubt (`ah-lis2` review,
+/// finding 1).
+#[test]
+fn a_sender_studying_the_skill_is_not_warned() {
+    assert_eq!(
+        refusals(&orders("STUDY QUAM\nDISTRIBUTE 1162 100 SILV")),
+        vec![]
+    );
+}

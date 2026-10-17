@@ -965,8 +965,12 @@ impl Shipping {
         // whoever its target is: `CheckTransportOrders` asks its issuer for a transport structure
         // unconditionally (`ah-g4bz`).
         let sender_without_caravanserai = sender_qm && !sender_can_distribute;
-        // The engine asks a DISTRIBUTE's issuer for the skill first of all, whatever the target
-        // (`ah-lis2`) - when the catalogue names a quartermaster skill for our report to show.
+        // A DISTRIBUTE's issuer must hold the skill whatever the target (`ah-lis2`) - when the
+        // catalogue names a quartermaster skill for our report to show. `CheckTransportOrders`
+        // asks about the target's existence, its attitude and the distance before it asks this,
+        // but each of those only refuses a refusal already certain here, so this answer comes
+        // first on purpose: it is the one the player can act on, and it turns what would be a
+        // gap in the report (an unshown or foreign target) into the certainty it is.
         let sender_not_quartermaster =
             order == ShipmentOrder::Distribute && !sender_qm && self.quartermasters.skill_known();
         let acceptance = match acceptance(sender_can_distribute, facts) {
@@ -1051,7 +1055,8 @@ pub(crate) struct Judged {
     pub target_shown: bool,
     /// A refusal `acceptance` reads off the report that the month may undo: the target belongs to
     /// another faction, or its own orders this month could make it eligible
-    /// ([`Shipping::read_orders`], `ah-kjjv`). `false` for every other answer. Meaningful only on a
+    /// ([`Shipping::read_orders`], `ah-kjjv`) - or, for a refusal that is the sender's own, the
+    /// sender's orders could (`ah-1jl9`, `ah-lis2`). `false` for every other answer. Meaningful only on a
     /// `Shipping` that has read the month's orders; every caller does, straight after `read`.
     pub unsettled: bool,
     pub acceptance: Acceptance,

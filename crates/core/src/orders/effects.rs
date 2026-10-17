@@ -350,8 +350,9 @@ pub struct TransportTargetIssue {
     /// whose orders we cannot read, or one of ours whose own orders this month could make it
     /// eligible before TRANSPORT runs (`transport::Judged::unsettled`, `ah-kjjv`). The order
     /// carries no warning for it and the SILVER working does not state it; `false` for every
-    /// reason but `NotQuartermaster`, `NotCaravanseraiOwner` and `SenderOwnsNoCaravanserai` - the
-    /// last unsettled when the sender's own month is (`ah-1jl9`).
+    /// reason but `NotQuartermaster`, `NotCaravanseraiOwner`, `SenderOwnsNoCaravanserai` and
+    /// `SenderNotQuartermaster` - the last two unsettled when the sender's own month is
+    /// (`ah-1jl9`, `ah-lis2`).
     #[serde(default)]
     pub unsettled: bool,
     /// The line was written as DISTRIBUTE rather than TRANSPORT, so a sentence that names the
