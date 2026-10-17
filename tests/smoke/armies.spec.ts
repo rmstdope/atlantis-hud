@@ -931,3 +931,103 @@ test("the bulk line's list is kept inside the window too", async ({ page }) => {
   await expect(page.getByTestId("add-to-army-new")).toBeInViewport();
   await expect(panel.getByText("into…")).toBeInViewport();
 });
+
+/**
+ * ah-9r8k. In a short window the right column's panels run down over the units dock's title bar,
+ * and the orders splitter, which stands above the panels so it can be grabbed, stood above the
+ * dock's Add to army button too: a click on the button's lower half resized the orders panel.
+ */
+test("in a short window every point of Add to army is the button's, and the orders splitter still drags", async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1200, height: 350 });
+  await workspace(page);
+  await newArmy(page, "Northern Host");
+  await selectUnit(page, OWN_UNIT);
+
+  const button = page.getByTestId("add-to-army");
+  await expect(button).toBeInViewport();
+  const at = (await button.boundingBox())!;
+
+  // The layout this guards: the orders splitter's strip crosses the button's rows.
+  const grip = page.getByTestId("panel-splitter");
+  const strip = (await grip.boundingBox())!;
+  expect(strip.y).toBeLessThan(at.y + at.height);
+  expect(strip.y + strip.height).toBeGreaterThan(at.y);
+
+  // Every point of the button, top to bottom, is the button's own.
+  const covered = await page.evaluate(
+    ({ x, y, width, height }) => {
+      const misses: string[] = [];
+      const button = document.querySelector('[data-testid="add-to-army"]');
+      for (let dy = 1; dy < height - 1; dy += 1) {
+        for (const fx of [0.2, 0.5, 0.8]) {
+          const top = document.elementFromPoint(x + width * fx, y + dy);
+          if (!top || !button?.contains(top)) {
+            misses.push(`${Math.round(dy)}:${top?.getAttribute("data-testid") ?? top?.tagName}`);
+          }
+        }
+      }
+      return misses;
+    },
+    at
+  );
+  expect(covered).toEqual([]);
+
+  // Nor does the strip take any of the dock beside the button - the units filter box among it.
+  const dock = (await page.locator('[data-map-overlay="bottom"]').boundingBox())!;
+  const stolen = await page.evaluate(
+    ({ strip, dock }) => {
+      const grip = document.querySelector('[data-testid="panel-splitter"]');
+      const hits: number[] = [];
+      const top = Math.max(strip.y, dock.y);
+      const bottom = Math.min(strip.y + strip.height, dock.y + dock.height);
+      for (let y = top + 0.5; y < bottom; y += 1) {
+        for (let x = strip.x + 1; x < strip.x + strip.width - 1; x += 4) {
+          const hit = document.elementFromPoint(x, y);
+          if (hit && grip?.contains(hit)) {
+            hits.push(Math.round(x));
+          }
+        }
+      }
+      return hits;
+    },
+    { strip, dock }
+  );
+  expect(stolen).toEqual([]);
+
+  // So a click low on the button opens the list.
+  await page.mouse.click(at.x + at.width / 2, at.y + at.height - 3);
+  await expect(page.getByTestId("add-to-army-panel")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("add-to-army-panel")).toHaveCount(0);
+
+  // The splitter still resizes from its own strip wherever that strip is clear of the dock. At
+  // this height the whole strip lies over the dock (and its orders panel under it), so it is
+  // checked where the column has room again.
+  await page.setViewportSize({ width: 1200, height: 720 });
+  await expect(grip).toBeInViewport();
+  const clear = (await grip.boundingBox())!;
+  const free = await page.evaluate(
+    ({ x, y, width, height }) => {
+      const grip = document.querySelector('[data-testid="panel-splitter"]');
+      for (let fx = 0.05; fx <= 0.95; fx += 0.05) {
+        const px = x + width * fx;
+        const py = y + height / 2;
+        const top = document.elementFromPoint(px, py);
+        if (top && grip?.contains(top)) {
+          return { x: px, y: py };
+        }
+      }
+      return null;
+    },
+    clear
+  );
+  expect(free, "expected some point of the orders splitter to be grabbable").not.toBeNull();
+  const before = await grip.getAttribute("aria-valuenow");
+  await page.mouse.move(free!.x, free!.y);
+  await page.mouse.down();
+  await page.mouse.move(free!.x, free!.y - 40, { steps: 4 });
+  await page.mouse.up();
+  await expect(grip).not.toHaveAttribute("aria-valuenow", before!);
+});
