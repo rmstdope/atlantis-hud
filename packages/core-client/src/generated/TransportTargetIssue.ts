@@ -41,4 +41,12 @@ reach: TransportReach | null,
  * whatever its verdict: the SILVER working tells "your report does not show" apart from "may
  * not accept it" by this, since both reach it as `EligibilityUnknown` (`ah-9qzs`).
  */
-toUnshown: boolean, };
+toUnshown: boolean, 
+/**
+ * A refusal the report shows but the month may undo: the target is another faction's unit,
+ * whose orders we cannot read, or one of ours whose own orders this month could make it
+ * eligible before TRANSPORT runs (`transport::Judged::unsettled`, `ah-kjjv`). The order
+ * carries no warning for it and the SILVER working does not state it; `false` for every
+ * reason but `NotQuartermaster` and `NotCaravanseraiOwner`.
+ */
+unsettled: boolean, };

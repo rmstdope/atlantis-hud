@@ -4528,6 +4528,7 @@ describe("silver moved by TRANSPORT", () => {
     orderIndex: 0,
     reach: null,
     toUnshown: true,
+    unsettled: false,
     ...overrides
   });
   const silverPopup = (sender: PreviewedUnit, silver: Parameters<typeof aUnitSilver>[0]) =>
@@ -4690,6 +4691,66 @@ describe("silver moved by TRANSPORT", () => {
     expect(popupAsText(popup)).toContain(
       "not counted (\u2212200), sent to unit 999, which your report does not show."
     );
+  });
+
+  // ah-kjjv: a refusal the report proves keeps the silver with the sender, and the Silver hover
+  // says why in the sentence the unit's own explanation uses - before, only the Items hover did.
+  it("a silver TRANSPORT the target refuses says why the silver stays", () => {
+    const popup = silverPopup(
+      unit({
+        own: true,
+        transportTargetIssues: [
+          issue({ to: "1162", amount: 100, reason: "notQuartermaster", toUnshown: false }),
+          issue({ to: "1163", amount: 5, reason: "notCaravanseraiOwner", toUnshown: false, orderIndex: 1 })
+        ]
+      }),
+      { held: 500, atMonthEnd: 500 }
+    );
+    expect(popup.notes).toContain("Unit 1162 is not a quartermaster, so 100 SILV stay with this unit.");
+    expect(popup.notes).toContain("Unit 1163 does not own a Caravanserai, so 5 SILV stay with this unit.");
+    expect(popupAsText(popup)).toContain("Unit 1162 is not a quartermaster, so 100 SILV stay with this unit.");
+  });
+
+  it("a silver TRANSPORT the map proves out of reach says why the silver stays too", () => {
+    const popup = silverPopup(
+      unit({
+        own: true,
+        transportTargetIssues: [
+          issue({
+            to: "901",
+            amount: 100,
+            reason: "tooFarToAccept",
+            toUnshown: false,
+            reach: { away: 3, limit: 2, fromLevel: null, toLevel: null }
+          })
+        ]
+      }),
+      { held: 500, atMonthEnd: 500 }
+    );
+    expect(popup.notes).toContain(
+      "Unit 901 is 3 hexes away and takes goods from 2 hexes, so 100 SILV stay with this unit."
+    );
+  });
+
+  it("a refusal of other goods, or one the report cannot settle, adds no silver sentence", () => {
+    const popup = silverPopup(
+      unit({
+        own: true,
+        transportTargetIssues: [
+          issue({ to: "1162", tag: "STON", reason: "notQuartermaster", toUnshown: false }),
+          issue({ to: "5120", reason: "acceptanceUnknown", toUnshown: false }),
+          issue({ to: "5121", reason: "distanceUnmeasured", toUnshown: false }),
+          // A target studying the quartermaster skill this month, or another faction's: the
+          // month may undo the refusal, so the hover does not state it (ah-kjjv).
+          issue({ to: "5122", reason: "notQuartermaster", toUnshown: false, unsettled: true })
+        ]
+      }),
+      { held: 500, atMonthEnd: 500 }
+    );
+    expect(popup.notes.join(" ")).not.toContain("1162");
+    expect(popup.notes.join(" ")).not.toContain("5120");
+    expect(popup.notes.join(" ")).not.toContain("5121");
+    expect(popup.notes.join(" ")).not.toContain("5122");
   });
 
   it("a dissolving unit draws no not counted line", () => {
