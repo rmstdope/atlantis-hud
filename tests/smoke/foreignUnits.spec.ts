@@ -227,7 +227,7 @@ test("a merged report fills in its faction's own units, and its skills carry int
   await expect(row).toContainText("43 SILV");
   await expect(row).not.toContainText("not disclosed");
 
-  await row.getByRole("button", { name: `unit ${DRONES}` }).click();
+  await row.getByRole("button", { name: `unit ${DRONES}`, exact: true }).click();
   await expect(page.getByTestId("merged-band")).toHaveText(
     /^From Borg \(62\)'s own report for turn \d+\. You can't write orders for this unit\.$/u
   );

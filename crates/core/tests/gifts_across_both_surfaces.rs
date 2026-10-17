@@ -18,7 +18,7 @@ use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::orders::effects::preview_orders_for_remembered_report;
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions, TurnReview};
 use atlantis_hud_core::orders::silver::{
-    ProductionCap, SilverChangeCause, SilverDoubt, SilverSpender, UnitSilver,
+    ProductionCap, SilverChangeCause, SilverDoubt, UnitSilver,
 };
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
@@ -292,16 +292,18 @@ fn giving_all_silver_away_is_not_charged_for_this_months_cast() {
             Some(ProductionCap::Silver),
             "{script:?}"
         );
-        // `plan_cast` charges a mage that cannot afford even one for one anyway, which is the
-        // shipped reading and not this bead's to change.
+        // `plan_cast` charges a mage that cannot afford even one for one anyway, and the warning
+        // keeps that charge; the column hands it back, since the refused cast takes nothing
+        // (`ah-rjz2`).
         assert_eq!(
             unit.expense,
-            Some(400),
-            "{script:?}: 200 given away and 200 charged for the cast"
+            Some(200),
+            "{script:?}: 200 given away, and the refused cast takes nothing"
         );
-        assert_eq!(unit.at_month_end, Some(-200), "{script:?}");
-        assert_eq!(unit.short_for_orders, Some(200), "{script:?}");
-        assert_eq!(unit.short_on, Some(SilverSpender::Cast), "{script:?}");
+        assert_eq!(unit.at_month_end, Some(0), "{script:?}");
+        assert_eq!(unit.short_for_orders, Some(0), "{script:?}");
+        assert_eq!(unit.short_on, None, "{script:?}");
+        assert_eq!(unit.refused.len(), 1, "{script:?}: the cast is refused");
     }
 }
 

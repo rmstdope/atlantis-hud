@@ -10,6 +10,10 @@ import type { ShortMaterial } from "./ShortMaterial";
  */
 export type RefusedCast = { 
 /**
+ * The 1-based document line of the refused `CAST` (`ah-rjz2`).
+ */
+line: number, 
+/**
  * What it would have made, or `None` for a spell that makes nothing an item catalogue
  * carries.
  */

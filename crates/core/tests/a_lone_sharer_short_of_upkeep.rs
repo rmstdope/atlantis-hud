@@ -36,8 +36,9 @@ fn a_lone_sharer_that_cannot_pay_is_warned_against_its_hex() {
         .iter()
         .find(|silver| silver.unit_id == "684")
         .expect("684 has a forecast");
+    // 684 cannot pay for its study, so the study is refused and takes nothing (`ah-rjz2`).
     assert!(
-        forecast.at_month_end.expect("priced") < 0,
+        forecast.at_month_end.expect("priced") >= 0 && forecast.refused.len() == 1,
         "684 cannot pay for its study: {forecast:?}"
     );
 
