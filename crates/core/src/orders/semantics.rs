@@ -21790,6 +21790,46 @@ fn arrives_by_sea(hex: &Hex<'_>, ordered: &Ordered<'_>, ruleset: Option<&Ruleset
     })
 }
 
+/// `ENTERTAIN` by a unit that has no entertainment level to be paid on (`ah-sej1`).
+///
+/// The engine parses ENTERTAIN into a `PRODUCE` of silver by the entertainment skill
+/// (`Game::ProcessEntertainOrder`, ../Atlantis `parseorders.cpp`) and pays each entertainer
+/// `men * level` of the region's demand (`Game::ValidProd`, `monthorders.cpp`), where the level is
+/// `Unit::GetSkill(S_ENTERTAINMENT)` - the `entertainment` attribute, the larger of ENTE and five
+/// times PHEN (`unit.cpp`, `gamedata.cpp`). So a unit with neither earns nothing, and since its month
+/// order exists it is not set to work either: the month is lost. Under `produce-without-skill`
+/// because that is what the engine runs it as, and so one switch covers both.
+fn check_entertainment_skill(
+    hex: &Hex<'_>,
+    ordered: &Ordered<'_>,
+    ruleset: &Ruleset,
+    findings: &mut Vec<Finding>,
+) {
+    let Some(placed) = ordered
+        .intents
+        .iter()
+        .find(|placed| matches!(placed.intent, Intent::Entertain))
+    else {
+        return;
+    };
+    // Doubted skills say nothing either way.
+    let Some(skills) = ordered.after_the_market().skills else {
+        return;
+    };
+    if level_in(skills, "ENTE") > 0 || level_in(skills, "PHEN") > 0 {
+        return;
+    }
+    let name = ruleset
+        .find_skill("ENTE")
+        .map_or_else(|| "entertainment".to_string(), |entry| entry.name.clone());
+    findings.push(ordered.finding(
+        hex,
+        codes::PRODUCE_WITHOUT_SKILL,
+        format!("cannot entertain: needs {name} 1, has no {name}"),
+        Some(placed),
+    ));
+}
+
 /// Both ways a `PRODUCE` order makes nothing: the unit cannot make the item anywhere, or not here.
 ///
 /// Two codes rather than one because they are separately toggleable and separately true, and a
@@ -21815,6 +21855,9 @@ fn check_production(
     }
 
     for ordered in &hex.units {
+        if says_skill {
+            check_entertainment_skill(hex, ordered, ruleset, findings);
+        }
         // One warning per unit, on the first PRODUCE in the block, as the BUILD checks do. A
         // PRODUCE is month-long, so a unit has at most one that matters anyway.
         let Some(placed) = ordered
@@ -29592,6 +29635,30 @@ mod tests {
                 "a unit drawing on another pool is not contending"
             );
             assert_eq!(entertaining.late_income, Some(200));
+        }
+
+        /// An entertainer with no level to be paid on asks the pool for nothing, so a contested
+        /// pool is no doubt about its takings: it earns a certain nothing (`ah-sej1`).
+        #[test]
+        fn an_unskilled_entertainer_is_not_doubted_by_a_contested_entertainment_pool() {
+            let mut guessed = entertainer("2391", 60, 2);
+            guessed.men_estimated = true;
+            let review = wage_review(
+                "$12.0",
+                Some(1200),
+                Some(200),
+                vec![entertainer("2390", 5, 2), guessed, worker("2392", 5)],
+                "unit 2390\nENTERTAIN\nunit 2391\nENTERTAIN\nunit 2392\nENTERTAIN\n",
+            );
+
+            assert_eq!(
+                silver_of(&review, "2390").doubt,
+                Some(SilverDoubt::ContestedRegionPool),
+                "the skilled entertainer contends, or the assertion below is vacuous"
+            );
+            let unskilled = silver_of(&review, "2392");
+            assert_eq!(unskilled.doubt, None);
+            assert_eq!(unskilled.late_income, Some(0));
         }
 
         /// What separates this doubt from `EstimatedMen`'s whole-unit early return: the unit's
@@ -69462,6 +69529,30 @@ BUILD
             findings[0].message,
             "cannot produce catapult: needs carpenter 4, has carpenter 2"
         );
+    }
+
+    #[test]
+    fn an_entertainer_with_no_entertainment_is_told_so() {
+        let findings = check(vec![region(vec![unit("4021")])], "unit 4021\nENTERTAIN\n");
+
+        assert_eq!(produce_codes(&findings), ["produce-without-skill"]);
+        assert_eq!(
+            findings[0].message,
+            "cannot entertain: needs entertainment 1, has no entertainment"
+        );
+    }
+
+    #[test]
+    fn an_entertainer_with_entertainment_or_phantasmal_entertainment_is_not_marked() {
+        // `entertainment` is the larger of ENTE and five times PHEN (../Atlantis `gamedata.cpp`,
+        // `Unit::GetAttribute` in `unit.cpp`), so either is a level the engine pays on.
+        for tag in ["ENTE", "PHEN"] {
+            let findings = check(
+                vec![region(vec![with_skill(unit("4021"), tag, 1)])],
+                "unit 4021\nENTERTAIN\n",
+            );
+            assert!(produce_codes(&findings).is_empty(), "{tag}: {findings:?}");
+        }
     }
 
     #[test]

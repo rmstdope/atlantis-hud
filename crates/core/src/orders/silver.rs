@@ -2325,6 +2325,7 @@ pub fn forecast_unit(
     let mine = readiness(&facts, ruleset).map(|read| read.ready);
     let shipping_unmeasured = facts.shipping_unmeasured;
     let transport_warning = facts.transport_warning;
+    let wants_entertainment = pool_wants(&facts, region, ruleset).entertainment > 0;
     let UnitFacts {
         unit_id,
         region_id,
@@ -3179,7 +3180,9 @@ pub fn forecast_unit(
             Intent::Work if shares.wages == PoolShare::Unknowable => {
                 income_doubt = income_doubt.or(Some(SilverDoubt::ContestedRegionPool));
             }
-            Intent::Entertain if shares.entertainment == PoolShare::Unknowable => {
+            Intent::Entertain
+                if wants_entertainment && shares.entertainment == PoolShare::Unknowable =>
+            {
                 income_doubt = income_doubt.or(Some(SilverDoubt::ContestedRegionPool));
             }
             _ => {}
@@ -3269,9 +3272,12 @@ pub fn forecast_unit(
         || intents
             .iter()
             .any(|placed| matches!(placed.intent, Intent::Work));
-    let draws_entertainment = intents
-        .iter()
-        .any(|placed| matches!(placed.intent, Intent::Entertain));
+    // Only an entertainer with a level to be paid on asks the pool for anything; one with none
+    // earns nothing whoever else is here, so there is no share to bound (`ah-sej1`).
+    let draws_entertainment = wants_entertainment
+        && intents
+            .iter()
+            .any(|placed| matches!(placed.intent, Intent::Entertain));
     let late_income_at_most = late_income.is_some()
         && ((shares.unread_claimant_wages && draws_wages)
             || (shares.unread_claimant_entertainment && draws_entertainment));
