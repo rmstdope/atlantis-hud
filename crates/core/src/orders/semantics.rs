@@ -28,7 +28,8 @@ use super::effects::{self, ItemChangeCause, ItemChangeParty};
 use super::forms::{Amount, Party, Selector};
 use super::grammar::names_peasants;
 use super::intents::{
-    read_formed, read_intents, spends_the_month, FormedBlock, Intent, PlacedIntent, UnitIntents,
+    read_formed, read_intents, spends_the_month, FormedBlock, Intent, PlacedIntent, PlacedPromote,
+    UnitIntents,
 };
 use super::phases::{self, StatePhase};
 use super::standing::{self, Boarding};
@@ -300,6 +301,14 @@ pub mod codes {
     /// not complementary, the exchange is aborted."; `ah-p5ow`). Always on: the bead asks for the
     /// warning and gives it no switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
     pub const EXCHANGE_ABORTED: Code = Code("exchange-aborted");
+    /// A `PROMOTE` by a unit that does not own its structure when promotions run.
+    /// `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`) runs one `PROMOTE` per object, its
+    /// owner's once ENTER and LEAVE have run (`Object::GetOwner`), and errors every other unit's
+    /// "PROMOTE: Must be owner" - including the unit that owner promotes (`ah-c1p2`;
+    /// `rules/promote`: "Promote the specified unit to owner of the object of which you are
+    /// currently the owner"). Always on: the bead asks for the warning and gives it no switch, so
+    /// it is in [`ALWAYS_ON`] and not in [`ALL`].
+    pub const PROMOTE_NOT_OWNER: Code = Code("promote-not-owner");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -393,7 +402,7 @@ pub mod codes {
 
     /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
     /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
-    pub const ALWAYS_ON: [Code; 11] = [
+    pub const ALWAYS_ON: [Code; 12] = [
         MOVE_INTO_A_WALL,
         FACTION_ORDER_WILL_FAIL,
         UNKNOWN_SKILL,
@@ -405,6 +414,7 @@ pub mod codes {
         LEAVE_REFUSED_AT_SEA,
         TRANSPORT_TARGET_REFUSED,
         EXCHANGE_ABORTED,
+        PROMOTE_NOT_OWNER,
     ];
 }
 
@@ -1052,6 +1062,7 @@ pub fn review_turn(
         check_enter_not_here(hex, &mut findings);
         check_exchanges_aborted(hex, ledger, &mut findings);
         check_leave_refused_at_sea(hex, &mut findings);
+        check_promote_not_owner(hex, &fleet_orders, &mut findings);
         check_village_site(hex, ledger, ruleset, &mut findings);
         check_withdraw_not_a_basic_item(hex, ruleset, &options, &mut findings);
         check_cast_material(hex, ruleset, &options, &mut findings);
@@ -3598,7 +3609,7 @@ struct UnitOrders {
     /// one wins - which is what the server would do.
     flag_changes: Vec<FlagChange>,
     destroys_structure: bool,
-    promotes_units: Vec<String>,
+    promotes: Vec<PlacedPromote>,
     /// STUDY lines naming a skill nothing knows (`study::names_no_skill`), taken out of `intents`
     /// because they set no month-long order, and kept for the `unknown-skill` warning (`ah-9199`).
     unknown_studies: Vec<PlacedIntent>,
@@ -3651,7 +3662,7 @@ impl OrderedUnits {
             unread,
             flag_changes,
             destroys_structure,
-            promotes_units,
+            promotes,
         } in read_intents(source, ruleset)
         {
             let entry = by_unit.entry(unit_id).or_insert_with(|| UnitOrders {
@@ -3660,7 +3671,7 @@ impl OrderedUnits {
                 unread: false,
                 flag_changes: Vec::new(),
                 destroys_structure: false,
-                promotes_units: Vec::new(),
+                promotes: Vec::new(),
                 unknown_studies: Vec::new(),
             });
             let mut intents = intents;
@@ -3673,7 +3684,7 @@ impl OrderedUnits {
             entry.flag_changes.extend(flag_changes);
             entry.unread |= !unread.is_empty();
             entry.destroys_structure |= destroys_structure;
-            entry.promotes_units.extend(promotes_units);
+            entry.promotes.extend(promotes);
         }
         Self { by_unit }
     }
@@ -3876,8 +3887,8 @@ struct Ordered<'a> {
     flags: Vec<String>,
     /// Whether this unit has a syntactically valid `DESTROY` order this month.
     destroys_structure: bool,
-    /// The units named by syntactically valid `PROMOTE` orders this month.
-    promotes_units: Vec<String>,
+    /// The syntactically valid `PROMOTE` orders this month, in the order written.
+    promotes: Vec<PlacedPromote>,
     /// The intents that can actually execute this month: every order that does not spend the
     /// month, plus the one month claim that wins (`ah-rzkm`), so every projection and every
     /// specialized check describes the executable month.
@@ -4013,8 +4024,7 @@ impl<'a> Hex<'a> {
                         orders.map_or(&[][..], |orders| orders.flag_changes.as_slice()),
                     ),
                     destroys_structure: orders.is_some_and(|orders| orders.destroys_structure),
-                    promotes_units: orders
-                        .map_or_else(Vec::new, |orders| orders.promotes_units.clone()),
+                    promotes: orders.map_or_else(Vec::new, |orders| orders.promotes.clone()),
                     intents: orders.map_or_else(Vec::new, |orders| orders.intents.clone()),
                     all_intents: orders.map_or(&[][..], |orders| orders.intents.as_slice()),
                     teaching_eligible: None,
@@ -4047,7 +4057,7 @@ impl<'a> Hex<'a> {
                     key: formed.block.key(),
                     flags: flags_after_orders(&formed.unit.flags, &formed.block.flag_changes),
                     destroys_structure: formed.block.destroys_structure,
-                    promotes_units: formed.block.promotes_units.clone(),
+                    promotes: formed.block.promotes.clone(),
                     intents: formed.block.intents.clone(),
                     all_intents: &formed.block.intents,
                     teaching_eligible: None,
@@ -11968,9 +11978,11 @@ fn per_skill_destroy(
 
 /// The owner that can execute `DESTROY` after this turn's `PROMOTE` orders, when ownership is
 /// knowable from the report. A unit that leaves the structure cannot promote its ownership, and
-/// only the owner at each point in the report-order pass can transfer ownership.
+/// only the report's owner can transfer it: `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`)
+/// runs one `PROMOTE` per object, its owner's (`Object::GetOwner`), and errors every other unit's
+/// "PROMOTE: Must be owner", so the unit it promotes hands nothing on again (`ah-c1p2`).
 fn structure_owner_after_promotes(hex: &Hex<'_>, structure_id: &str) -> Option<String> {
-    let mut owner = hex
+    let owner = hex
         .region
         .units
         .iter()
@@ -11978,24 +11990,20 @@ fn structure_owner_after_promotes(hex: &Hex<'_>, structure_id: &str) -> Option<S
         .unit_id
         .clone();
 
-    for promoter in &hex.units {
-        if promoter.unit.unit_id != owner {
-            continue;
-        }
-        if structure_after_orders(promoter) != Some(structure_id) {
-            continue;
-        }
-        for target in &promoter.promotes_units {
-            if target == &owner {
-                continue;
-            }
-            if unit_is_in_structure(hex, target, structure_id) {
-                owner = target.clone();
-                break;
-            }
-        }
-    }
-    Some(owner)
+    let promoted = hex
+        .units
+        .iter()
+        .find(|promoter| {
+            promoter.unit.unit_id == owner && structure_after_orders(promoter) == Some(structure_id)
+        })
+        .and_then(|promoter| {
+            promoter
+                .promotes
+                .iter()
+                .map(|promote| &promote.target)
+                .find(|target| *target != &owner && unit_is_in_structure(hex, target, structure_id))
+        });
+    Some(promoted.cloned().unwrap_or(owner))
 }
 
 /// Whether a unit is still in a structure after this month's ENTER/LEAVE projection.
@@ -13871,6 +13879,90 @@ fn check_leave_refused_at_sea(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
             format!("LEAVE will be refused at sea: {why}, so it stays aboard"),
             Some(placed),
         ));
+    }
+}
+
+/// A formed unit known to gain nobody is deleted before anything moves, so it neither owns a
+/// structure nor has a course to be overruled (`ah-877p`, `crate::movement::fleet::FormedCrew`).
+/// Every reported unit survives.
+fn survives_forming(ordered: &Ordered<'_>) -> bool {
+    ordered.formed.is_none() || !ordered.after_the_market().gained_nobody()
+}
+
+/// This hex's surviving formed units, where they stand once ENTER and LEAVE have run, as the
+/// fleet module's ownership walk takes them.
+fn formed_crews(hex: &Hex<'_>) -> Vec<crate::movement::fleet::FormedCrew> {
+    hex.units
+        .iter()
+        .filter(|ordered| ordered.formed.is_some() && survives_forming(ordered))
+        .map(|ordered| crate::movement::fleet::FormedCrew {
+            unit_id: ordered.unit.unit_id.clone(),
+            region_id: hex.region.region_id.clone(),
+            key: ordered.key.clone(),
+            structure_id: structure_after_orders(ordered).map(str::to_string),
+        })
+        .collect()
+}
+
+/// The `PROMOTE` the game refuses because its writer does not own its structure when promotions
+/// run (`ah-c1p2`). `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`) runs one `PROMOTE` per
+/// object, its owner's once ENTER and LEAVE have run (`Object::GetOwner`), and errors every other
+/// unit's "PROMOTE: Must be owner" - the unit that owner promotes among them, so a chain hands the
+/// structure on once. The owner is read as [`crate::movement::fleet::occupants_after_boarding`]
+/// reads it. The engine keeps one `PROMOTE` per unit (`ProcessPromoteOrder` overwrites
+/// `u->promote`), so one warning per unit, on the last line written. A unit in no structure is not
+/// this warning's business, and a formed unit's `PROMOTE` is not followed by the ownership walk,
+/// so neither is warned. Always on (`codes::ALWAYS_ON`), so no option is read.
+fn check_promote_not_owner(hex: &Hex<'_>, fleet_orders: &FleetOrders, findings: &mut Vec<Finding>) {
+    let formed = formed_crews(hex);
+    for ordered in hex.units.iter().filter(|ordered| ordered.formed.is_none()) {
+        let Some(promote) = ordered.promotes.last() else {
+            continue;
+        };
+        let Some(structure_id) = fleet_orders.structure_of(ordered.unit) else {
+            continue;
+        };
+        let occupants = crate::movement::fleet::occupants_after_boarding(
+            hex.region,
+            fleet_orders,
+            &formed,
+            structure_id,
+        );
+        let Some(owner_id) = occupants.first() else {
+            continue;
+        };
+        if owner_id == &ordered.unit.unit_id {
+            continue;
+        }
+        let owner = hex
+            .region
+            .units
+            .iter()
+            .chain(
+                hex.units
+                    .iter()
+                    .filter(|ordered| ordered.formed.is_some())
+                    .map(|ordered| ordered.unit),
+            )
+            .find(|unit| &unit.unit_id == owner_id)
+            .map_or_else(
+                || format!("unit {owner_id}"),
+                |unit| format!("{} ({})", unit.name, unit.unit_id),
+            );
+        findings.push(Finding {
+            line: Some(promote.line),
+            column_start: Some(promote.column_start),
+            column_end: Some(promote.column_end),
+            ..ordered.finding(
+                hex,
+                codes::PROMOTE_NOT_OWNER,
+                format!(
+                    "PROMOTE will be refused: {owner} owns [{structure_id}] when promotions run, \
+                     not this unit, so nothing changes"
+                ),
+                None,
+            )
+        });
     }
 }
 
@@ -25185,23 +25277,8 @@ fn check_fleet_course(
         return;
     };
 
-    // A formed unit known to gain nobody is deleted before anything moves, so it neither owns a
-    // hull nor has a course to be overruled (`ah-877p`, `crate::movement::fleet::FormedCrew`).
-    let survives = |ordered: &&Ordered<'_>| {
-        ordered.formed.is_none() || !ordered.after_the_market().gained_nobody()
-    };
-    let formed: Vec<crate::movement::fleet::FormedCrew> = hex
-        .units
-        .iter()
-        .filter(|ordered| ordered.formed.is_some())
-        .filter(survives)
-        .map(|ordered| crate::movement::fleet::FormedCrew {
-            unit_id: ordered.unit.unit_id.clone(),
-            region_id: hex.region.region_id.clone(),
-            key: ordered.key.clone(),
-            structure_id: structure_after_orders(ordered).map(str::to_string),
-        })
-        .collect();
+    let survives = |ordered: &&Ordered<'_>| survives_forming(ordered);
+    let formed = formed_crews(hex);
 
     for fleet in &hex.region.structures {
         // The same predicate the map applies, so the pane can never warn about a hull the map
@@ -39849,8 +39926,12 @@ BUILD
             );
         }
 
+        /// `ah-c1p2`: `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`) runs only the
+        /// `PROMOTE` of the owner at the time (`Object::GetOwner`) and errors every other unit's
+        /// "PROMOTE: Must be owner", so 901's `PROMOTE 900` does not hand the Palace back: 901 owns
+        /// it, its DESTROY runs, and its BUILD may replace it.
         #[test]
-        fn mutually_promoting_owners_are_processed_once_in_report_order() {
+        fn only_the_owners_promote_runs_so_a_promote_back_changes_nothing() {
             let mut replacement_site = region(vec![
                 in_structure(unit("900"), "4"),
                 in_structure(
@@ -39876,17 +39957,8 @@ BUILD
                 replacement_site,
                 "unit 900\nPROMOTE 901\nunit 901\nPROMOTE 900\nDESTROY\nBUILD Palace\n",
                 |ledger| {
-                    assert_eq!(
-                        ledger.build_placement_refusals["901"],
-                        vec![effects::BuildPlacementRefusal {
-                            line: 6,
-                            building: "Palace".to_string(),
-                            reason: effects::BuildPlacementRefusalReason::DuplicateInRegion,
-                            material: Some("stone".to_string()),
-                            landing: None,
-                        }]
-                    );
-                    assert_eq!(balance_of(ledger, "901", "STON"), 120);
+                    assert!(ledger.build_placement_refusals.is_empty());
+                    assert_eq!(balance_of(ledger, "901", "STON"), 90);
                 },
             );
         }
@@ -55532,6 +55604,73 @@ BUILD
         );
     }
 
+    /// `ah-c1p2`: `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`) runs one `PROMOTE` per
+    /// object, the one its owner wrote once ENTER and LEAVE have run (`Object::GetOwner`), and
+    /// errors every other unit's "PROMOTE: Must be owner". 900 owns [1] and promotes 901, so
+    /// 901's own `PROMOTE` is refused and changes nothing; the owner's is not warned.
+    #[test]
+    fn a_promote_by_a_unit_that_does_not_own_its_structure_is_warned() {
+        let findings = check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("1", "Castle")],
+                ..region(vec![
+                    in_structure(unit("900"), "1"),
+                    in_structure(unit("901"), "1"),
+                    in_structure(unit("902"), "1"),
+                ])
+            }],
+            "unit 900\nPROMOTE 901\nunit 901\nPROMOTE 902\nunit 902\n",
+        );
+        let refused: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "promote-not-owner")
+            .collect();
+        assert_eq!(refused.len(), 1, "{findings:?}");
+        assert_eq!(refused[0].unit_id.as_deref(), Some("901"));
+        assert_eq!(refused[0].line, Some(4));
+        assert_eq!(
+            refused[0].message,
+            "PROMOTE will be refused: Unit 900 (900) owns [1] when promotions run, not this \
+             unit, so nothing changes"
+        );
+    }
+
+    /// `ah-c1p2`: the owner is read once ENTER and LEAVE have run, so a unit that boards an
+    /// empty structure owns it and its `PROMOTE` is not warned; one that boards behind the owner
+    /// is.
+    #[test]
+    fn a_promote_reads_the_owner_after_boarding() {
+        let promote_findings = |orders: &str| -> Vec<String> {
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_of_kind("1", "Castle")],
+                    ..region(vec![
+                        in_structure(unit("900"), "1"),
+                        unit("901"),
+                        unit("902"),
+                    ])
+                }],
+                orders,
+            )
+            .into_iter()
+            .filter(|finding| finding.code.as_str() == "promote-not-owner")
+            .map(|finding| finding.unit_id.unwrap_or_default())
+            .collect()
+        };
+        assert_eq!(
+            promote_findings(
+                "unit 900\nLEAVE\nunit 901\nENTER 1\nPROMOTE 902\nunit 902\nENTER 1\n"
+            ),
+            Vec::<String>::new(),
+            "900 left, so 901 owns [1] when promotions run"
+        );
+        assert_eq!(
+            promote_findings("unit 901\nENTER 1\nPROMOTE 902\nunit 902\nENTER 1\n"),
+            vec!["901".to_string()],
+            "900 stayed, so it still owns [1]"
+        );
+    }
+
     /// Entering shelters the mage, but a Tower seats none, so the study is halved regardless.
     #[test]
     fn a_mage_entering_a_tower_is_still_halved() {
@@ -57945,6 +58084,24 @@ BUILD
             "unit 900\nTRANSPORT 901 100 SILV\nunit 902\nPROMOTE 901\n",
         )
         .is_empty());
+        // (c') `ah-c1p2`: only the owner's PROMOTE runs (`Game::RunPromoteOrders`, ../Atlantis
+        // `runorders.cpp`), so when 902 promotes 901 and 901 promotes 903, 901 owns the
+        // Caravanserai at TRANSPORT time and 903 does not: the goods stay with the sender.
+        let mut chained = caravanserai_owner("902", 1, 0, 0);
+        for heir_id in ["901", "903"] {
+            let mut heir = with_skill(unit(heir_id), "QUAM", 1);
+            heir.structure_id = Some("500".to_string());
+            chained.units.push(heir);
+        }
+        chained.units.insert(0, sender());
+        let finding = only(target_findings(
+            vec![chained],
+            "unit 900\nTRANSPORT 903 100 SILV\nunit 902\nPROMOTE 901\nunit 901\nPROMOTE 903\n",
+        ));
+        assert_eq!(
+            finding.message,
+            "Unit 903 does not own a Caravanserai, so 100 SILV stay with this unit."
+        );
         // (d) A PROMOTE from a unit that owns nothing hands nothing over (`Do1PromoteOrder` runs
         // only the owner's): a refusal the month cannot undo.
         let finding = only(target_findings(

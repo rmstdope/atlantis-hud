@@ -490,10 +490,12 @@ pub struct FormedCrew {
 /// last: `rules/promote` promotes a unit "to owner of the object of which you are currently the
 /// owner", so once one has run that unit owns the object no longer and its later `PROMOTE`s hand
 /// on nothing. One naming a unit that is not aboard promotes nobody and leaves the next to run.
-/// The walk then continues from the new owner, so a hull promoted on twice in one month ends with
-/// the unit actually holding it. A formed owner's own `PROMOTE`, and a `PROMOTE` naming a formed
-/// unit, are not followed: `promotes_of` records only a reported unit's block. `None` when no unit
-/// can be named at all.
+/// Only that owner's `PROMOTE` runs (`ah-c1p2`): `Game::RunPromoteOrders` (../Atlantis
+/// `runorders.cpp`) runs one per object, written by its owner once ENTER and LEAVE have run
+/// (`Object::GetOwner`), and errors every other unit's "PROMOTE: Must be owner" - so the unit it
+/// promotes does not hand the hull on again that month. A formed owner's own `PROMOTE`, and a
+/// `PROMOTE` naming a formed unit, are not followed: `promotes_of` records only a reported unit's
+/// block. `None` when no unit can be named at all.
 #[must_use]
 pub fn fleet_owner(
     region: &ReportRegion,
@@ -518,6 +520,38 @@ pub fn occupants_after_promotes(
     formed: &[FormedCrew],
     structure_id: &str,
 ) -> Vec<String> {
+    let mut occupants = occupants_after_boarding(region, ordered, formed, structure_id);
+    // One `PROMOTE` per object, its owner's (`Game::RunPromoteOrders`): the unit it promotes does
+    // not run its own that month (`ah-c1p2`).
+    let Some(owner) = occupants.first().cloned() else {
+        return occupants;
+    };
+    let aboard = |unit: &&ReportUnit| ordered.structure_of(unit) == Some(structure_id);
+    let promoted = ordered.promotes_of(&owner).iter().find(|target| {
+        region
+            .units
+            .iter()
+            .any(|unit| &unit.unit_id == *target && aboard(&unit))
+    });
+    if let Some(next) = promoted.cloned() {
+        // `Do1PromoteOrder`: the target is taken off the object's list and put back at its head.
+        occupants.retain(|unit| unit != &next);
+        occupants.insert(0, next);
+    }
+    occupants
+}
+
+/// Everyone standing in a structure once this month's ENTER and LEAVE have run and before any
+/// `PROMOTE`, owner first, as unit ids - the list `Game::RunPromoteOrders` asks for its owner, by
+/// the rules [`fleet_owner`] states. Its first entry is the one unit whose `PROMOTE` runs
+/// (`ah-c1p2`).
+#[must_use]
+pub fn occupants_after_boarding(
+    region: &ReportRegion,
+    ordered: &OrderedUnits,
+    formed: &[FormedCrew],
+    structure_id: &str,
+) -> Vec<String> {
     let listed_under = |unit: &ReportUnit| unit.structure_id.as_deref() == Some(structure_id);
     let aboard = |unit: &&ReportUnit| ordered.structure_of(unit) == Some(structure_id);
     let stayed = region
@@ -533,37 +567,11 @@ pub fn occupants_after_promotes(
     let formed_aboard = formed.iter().filter(|crew| {
         crew.region_id == region.region_id && crew.structure_id.as_deref() == Some(structure_id)
     });
-    let mut occupants: Vec<String> = stayed
+    stayed
         .chain(boarded)
         .map(|unit| unit.unit_id.clone())
         .chain(formed_aboard.map(|crew| crew.unit_id.clone()))
-        .collect();
-
-    // Each promotion is followed in turn, so a hull handed on twice in one month ends with the
-    // unit actually holding it. `seen` bounds the walk: a document can name a cycle.
-    let mut seen: BTreeSet<String> = BTreeSet::new();
-    while let Some(owner) = occupants.first().cloned() {
-        if !seen.insert(owner.clone()) {
-            break;
-        }
-        let Some(next) = ordered
-            .promotes_of(&owner)
-            .iter()
-            .find(|target| {
-                region
-                    .units
-                    .iter()
-                    .any(|unit| &unit.unit_id == *target && aboard(&unit))
-            })
-            .cloned()
-        else {
-            break;
-        };
-        // `Do1PromoteOrder`: the target is taken off the object's list and put back at its head.
-        occupants.retain(|unit| unit != &next);
-        occupants.insert(0, next);
-    }
-    occupants
+        .collect()
 }
 
 /// Who owns a hull, and the course that owner set.
@@ -1174,10 +1182,13 @@ mod tests {
 
     /// Among several `PROMOTE`s from one owner the first valid one written takes the hull: once it
     /// has run the owner no longer owns the object, so its later ones hand on nothing, and one
-    /// naming a unit that is not aboard promotes nobody and leaves the next to run. The walk then
-    /// continues from the new owner, so a hull promoted on twice ends with the unit holding it.
+    /// naming a unit that is not aboard promotes nobody and leaves the next to run. Only the
+    /// owner's `PROMOTE` runs at all (`ah-c1p2`): `Game::RunPromoteOrders` (../Atlantis
+    /// `runorders.cpp`) runs one per object, the one its owner wrote (`Object::GetOwner`), and
+    /// errors every other unit's "PROMOTE: Must be owner" - so a promoted unit's own `PROMOTE`
+    /// hands on nothing that month.
     #[test]
-    fn the_first_promote_takes_the_hull_and_the_walk_goes_on_from_there() {
+    fn the_first_promote_takes_the_hull_and_the_promoted_units_own_promote_does_not_run() {
         assert_eq!(
             scene_owner("unit 900\nPROMOTE 901\nPROMOTE 902\n", "329"),
             Some("901".to_string()),
@@ -1185,8 +1196,8 @@ mod tests {
         );
         assert_eq!(
             scene_owner("unit 900\nPROMOTE 901\nunit 901\nPROMOTE 902\n", "329"),
-            Some("902".to_string()),
-            "the hull was handed on twice, and ends with the unit holding it"
+            Some("901".to_string()),
+            "901 did not own the hull when PROMOTEs ran, so its PROMOTE is refused"
         );
         assert_eq!(
             scene_owner("unit 900\nPROMOTE 903\nPROMOTE 901\n", "329"),

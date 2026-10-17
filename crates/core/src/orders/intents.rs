@@ -238,6 +238,19 @@ pub struct PlacedIntent {
     pub keyword: &'static str,
 }
 
+/// A syntactically valid `PROMOTE`, where it was written. `PROMOTE` is an instant/free order and
+/// no [`Intent`], so it is carried on its own; its line is what the `promote-not-owner` warning
+/// sits on (`ah-c1p2`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlacedPromote {
+    /// The unit it names: a unit number, or `new-<alias>` for a unit formed this month.
+    pub target: String,
+    pub line: usize,
+    /// The span of the order's keyword, counted as [`super::lexer::Token`] counts.
+    pub column_start: usize,
+    pub column_end: usize,
+}
+
 /// One unit's block, read.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnitIntents {
@@ -274,11 +287,11 @@ pub struct UnitIntents {
     /// BUILD projection because `rules/sequenceofevents` settles it before new structures are
     /// laid down.
     pub destroys_structure: bool,
-    /// The units named by syntactically valid `PROMOTE` orders in this month's block.
+    /// The syntactically valid `PROMOTE` orders in this month's block, in the order written.
     ///
     /// `PROMOTE` is also an instant/free order. Its target matters to the BUILD projection because
     /// `rules/sequenceofevents` settles ownership changes before `DESTROY`.
-    pub promotes_units: Vec<String>,
+    pub promotes: Vec<PlacedPromote>,
 }
 
 impl UnitIntents {
@@ -333,7 +346,7 @@ pub fn read_intents(source: &str, ruleset: Option<&Ruleset>) -> Vec<UnitIntents>
                     unread: Vec::new(),
                     flag_changes: Vec::new(),
                     destroys_structure: false,
-                    promotes_units: Vec::new(),
+                    promotes: Vec::new(),
                 });
             }
         }
@@ -362,7 +375,12 @@ pub fn read_intents(source: &str, ruleset: Option<&Ruleset>) -> Vec<UnitIntents>
                 unit.destroys_structure |=
                     is_valid_destroy_order(line.command, line.arguments, ruleset);
                 if let Some(target) = promoted_unit(line.command, line.arguments, ruleset) {
-                    unit.promotes_units.push(target);
+                    unit.promotes.push(PlacedPromote {
+                        target,
+                        line: line.number,
+                        column_start: line.command.column_start,
+                        column_end: line.command.column_end,
+                    });
                 }
             }
         }
@@ -435,8 +453,8 @@ pub struct FormedBlock {
     pub flag_changes: Vec<FlagChange>,
     /// Whether this formed unit's block contains a syntactically valid `DESTROY` order.
     pub destroys_structure: bool,
-    /// The units named by syntactically valid `PROMOTE` orders in this formed unit's block.
-    pub promotes_units: Vec<String>,
+    /// The syntactically valid `PROMOTE` orders in this formed unit's block, in the order written.
+    pub promotes: Vec<PlacedPromote>,
 }
 
 impl FormedBlock {
@@ -596,7 +614,7 @@ impl<'a, 'r> FormReader<'a, 'r> {
             unread: Vec::new(),
             flag_changes: Vec::new(),
             destroys_structure: false,
-            promotes_units: Vec::new(),
+            promotes: Vec::new(),
         });
         self.forms.open(Some(index));
     }
@@ -622,7 +640,12 @@ impl<'a, 'r> FormReader<'a, 'r> {
         }
         block.destroys_structure |= is_valid_destroy_order(command, arguments, self.ruleset);
         if let Some(target) = promoted_unit(command, arguments, self.ruleset) {
-            block.promotes_units.push(target);
+            block.promotes.push(PlacedPromote {
+                target,
+                line: line_number,
+                column_start: command.column_start,
+                column_end: command.column_end,
+            });
         }
     }
 }
@@ -1204,7 +1227,16 @@ mod tests {
     #[test]
     fn a_valid_promote_target_is_carried_separately_from_month_intents() {
         let unit = only_unit("unit 5\nPROMOTE 7\n");
-        assert_eq!(unit.promotes_units, vec!["7".to_string()], "{unit:?}");
+        assert_eq!(
+            unit.promotes,
+            vec![PlacedPromote {
+                target: "7".to_string(),
+                line: 2,
+                column_start: 0,
+                column_end: 7,
+            }],
+            "{unit:?}"
+        );
         assert!(unit.intents.is_empty(), "{unit:?}");
         assert!(unit.unread.is_empty(), "{unit:?}");
     }
@@ -1212,7 +1244,12 @@ mod tests {
     #[test]
     fn a_new_promote_target_is_carried_as_the_formed_unit_id() {
         let unit = only_unit("unit 5\nPROMOTE NEW 2\n");
-        assert_eq!(unit.promotes_units, vec!["new-2".to_string()], "{unit:?}");
+        let targets: Vec<&str> = unit
+            .promotes
+            .iter()
+            .map(|one| one.target.as_str())
+            .collect();
+        assert_eq!(targets, ["new-2"], "{unit:?}");
         assert!(unit.intents.is_empty(), "{unit:?}");
         assert!(unit.unread.is_empty(), "{unit:?}");
     }
