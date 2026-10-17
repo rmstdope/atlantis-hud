@@ -154,7 +154,14 @@ fn seeker_if_changed(ruleset: &str, region: &str, order: &str) -> Seeker {
 }
 
 fn findings(region: &str, order: &str) -> Vec<Finding> {
-    let ruleset = trident_ruleset();
+    findings_under(trident_ruleset(), region, order)
+}
+
+fn findings_under(
+    ruleset: atlantis_hud_core::movement::rules::Ruleset,
+    region: &str,
+    order: &str,
+) -> Vec<Finding> {
     let text = report_in(region);
     let mut parsed = parse_report_full(&text);
     classify_units(&mut parsed, &ruleset);
@@ -245,6 +252,34 @@ fn quest_without_a_town_hall_hands_in_nothing() {
     let seeker = seeker_if_changed(TRIDENT, SURFACE, "QUEST 3 DISCOUNT");
     assert_eq!(seeker.held("BNTY"), 5);
     assert!(seeker.uncounted.is_empty(), "{:?}", seeker.uncounted);
+}
+
+/// `ah-o6o2`. `newage arcanum rules/quest` and `newage trident rules/quest`: "The unit must be in
+/// a region that has an active Town Hall with a living mayor", so a QUEST anywhere else is lost.
+#[test]
+fn quest_without_a_town_hall_is_warned_in_both_worlds() {
+    let arcanum = atlantis_hud_core::movement::rules::Ruleset::from_json(ARCANUM)
+        .expect("the committed Arcanum ruleset loads");
+    for (world, ruleset) in [("trident", trident_ruleset()), ("arcanum", arcanum)] {
+        let findings = findings_under(ruleset, SURFACE, "QUEST 3\nWORK");
+        assert_eq!(
+            findings
+                .iter()
+                .map(|finding| (finding.code.as_str(), finding.message.as_str()))
+                .collect::<Vec<_>>(),
+            vec![(
+                "quest-without-a-town-hall",
+                "QUEST will be refused: there is no Town Hall here"
+            )],
+            "{world}: {findings:?}"
+        );
+    }
+}
+
+#[test]
+fn quest_at_a_town_hall_is_not_warned() {
+    let findings = findings(TOWN, "QUEST 3\nWORK");
+    assert!(findings.is_empty(), "{findings:?}");
 }
 
 #[test]
