@@ -661,6 +661,12 @@ export const WARNING_GROUPS: readonly {
           "A GIVE or TAKE naming the unit that wrote it, which the game will refuse."
       },
       {
+        code: "discard-from-shared-stock",
+        title: "Discards from shared stock",
+        description:
+          "A GIVE 0 that discards more than the unit holds, so the game throws away goods its sharing faction-mates hold."
+      },
+      {
         code: "arrivals-lower-a-skill",
         title: "Arrivals that lower a skill",
         description:

@@ -55,6 +55,25 @@ describe("the warnings tab's coverage of the core's codes", () => {
   });
 
   /**
+   * `ah-84b1`. The words and the position are the navigator's decision: Orders, immediately after
+   * "Transfers a unit writes to itself", on by default like every other entry.
+   */
+  it("offers the shared-stock discard advisory right after the self-transfer one", () => {
+    const orders = WARNING_GROUPS.find((group) => group.heading === "Orders");
+    if (!orders) {
+      throw new Error("the Orders group is missing");
+    }
+    const at = orders.entries.findIndex((entry) => entry.code === "discard-from-shared-stock");
+    expect(orders.entries[at - 1]?.code).toBe("transfer-to-itself");
+    expect(orders.entries[at]).toEqual({
+      code: "discard-from-shared-stock",
+      title: "Discards from shared stock",
+      description:
+        "A GIVE 0 that discards more than the unit holds, so the game throws away goods its sharing faction-mates hold."
+    });
+  });
+
+  /**
    * `ah-7ale.2.2.1`. The words, the heading and the position are the navigator's decision, recorded
    * in the family's agreed experience: a Transport group of its own, last, because no existing
    * group fits a shipment the game will not carry.
