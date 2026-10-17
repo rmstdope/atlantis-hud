@@ -2571,7 +2571,7 @@ pub fn forecast_unit(
     let mut cast: Option<CastPlan> = None;
     // What this unit's earlier `BUY` lines have already taken out of its settled charge ceiling,
     // per canonical tag. A block may name the same goods twice, and the second line can only buy
-    // what the first left - of the market line and of this unit's share of it alike (`ah-lauy`).
+    // what the first left - of the market line and of this unit's ceiling on it alike (`ah-lauy`).
     let mut bought: BTreeMap<String, i64> = BTreeMap::new();
     // What each `BUY ALL` settled to, for the hover - read off the ledger's own settlement below,
     // in document order.

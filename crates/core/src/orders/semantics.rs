@@ -1790,7 +1790,7 @@ fn pool_shares_for(
 /// Two values because a `BUY` asks two questions of the settlement, and cutting one of them to
 /// the buyer's purse once silenced every purse warning (`ah-s4hy`, docs/retrospectives/ah-s4hy.md).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct MarketShare {
+struct MarketShare {
     /// What the trader receives (`BUY`) or sells (`SELL`): the game's own division of the line,
     /// `Game::DoBuy` and `Game::DoSell` dividing it by the orders `GetBuyAmount` and
     /// `GetSellAmount` cut (`runorders.cpp`, `ah-s4hy`, `ah-6la1`). A line's goods never add up to
@@ -1818,7 +1818,7 @@ impl MarketShare {
 
 /// [`market_shares_for`]'s answer: keyed by canonical tag and side, each vector index-aligned with
 /// `hex.units`.
-pub(crate) type MarketShares = BTreeMap<(String, MarketSide), Vec<MarketShare>>;
+type MarketShares = BTreeMap<(String, MarketSide), Vec<MarketShare>>;
 
 /// Every own unit's claim on each of this hex's market lines, settled (`ah-t2pn.3`).
 ///
@@ -11141,7 +11141,7 @@ fn buy(
         // What this hex's other own buyers left of the line. `None` where nothing was settled, and
         // `settle_buy_all` then falls back to the line itself (`ah-t2pn.3`). `BUY ALL` is settled
         // once the unit's whole month is counted - see `Ledger::buy_all`.
-        let share = standing.charge_ceiling_of(&tag);
+        let ceiling = standing.charge_ceiling_of(&tag);
         ledger
             .buy_all
             .entry(who.clone())
@@ -11150,7 +11150,7 @@ fn buy(
                 placed: placed.clone(),
                 tag,
                 price: offer.price,
-                share,
+                share: ceiling,
                 market_has: offer.amount,
             });
         return;
@@ -11216,15 +11216,15 @@ fn buy(
     // `Game::GetBuyAmount` counts this order as an attempt of its own, so it enlarged the share
     // its earlier lines spent, and deleting it is no free fix.
     if bought == 0 && ceiling == 0 && already > 0 {
-        if let Some(share) = standing
+        if let Some(ceiling) = standing
             .charge_ceiling_of(&tag)
-            .filter(|share| *share >= offer.amount)
+            .filter(|ceiling| *ceiling >= offer.amount)
         {
             ledger.dead_buys.push(DeadBuy {
                 unit_id: who.clone(),
                 tag: tag.clone(),
                 placed: placed.clone(),
-                available: share,
+                available: ceiling,
                 market_has: offer.amount,
             });
         }
