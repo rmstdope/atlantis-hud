@@ -34,6 +34,7 @@ fn report_text() -> String {
          0/0/85/0.",
         "* Maurice de Bracy (1160), Foo (1), leader [LEAD], 400 silver [SILV]. Weight: 10. \
          Capacity: 0/0/15/0.",
+        "* Cedric (900), Foo (1), leader [LEAD], 5 wood [WOOD]. Weight: 260. Capacity: 0/0/15/0.",
         "- Mark (7001), Bar (2), 5 orcs [ORC], 900 silver [SILV], 4 swords [SWOR].",
         "",
     ]
@@ -41,6 +42,10 @@ fn report_text() -> String {
 }
 
 fn findings_of(ivanhoe: &str, maurice: &str) -> Vec<Finding> {
+    findings_with_cedric(ivanhoe, maurice, "")
+}
+
+fn findings_with_cedric(ivanhoe: &str, maurice: &str, cedric: &str) -> Vec<Finding> {
     let ruleset = ruleset();
     let text = report_text();
     let mut parsed = parse_report_full(&text);
@@ -48,7 +53,8 @@ fn findings_of(ivanhoe: &str, maurice: &str) -> Vec<Finding> {
     let template = extract_orders_template(&text)
         .map(|template| template.text)
         .unwrap_or_default();
-    let script = format!("{template}\nunit 683\n{ivanhoe}\nunit 1160\n{maurice}\n");
+    let script =
+        format!("{template}\nunit 683\n{ivanhoe}\nunit 1160\n{maurice}\nunit 900\n{cedric}\n");
     review_turn(&parsed, &script, Some(&ruleset), CheckOptions::default())
         .findings
         .into_iter()
@@ -127,5 +133,49 @@ fn an_exchange_a_side_cannot_cover_is_warned_on_both_lines() {
                 && finding.message.contains("400")
         ),
         "{findings:?}"
+    );
+}
+
+/// Silver given to Ivanhoe earlier in the Give phase pays for its offer: `rules/sequenceofevents`
+/// runs EXCHANGE after GIVE, so nothing is short and nothing is warned.
+#[test]
+fn an_offer_covered_by_an_earlier_gift_is_not_warned() {
+    let findings = findings_of(
+        "EXCHANGE 1160 50 SILV 2 HORS",
+        "GIVE 683 50 SILV\nEXCHANGE 683 2 HORS 50 SILV",
+    );
+    // Maurice holds no horses: that pair is aborted, but for Maurice's shortfall, not Ivanhoe's.
+    assert!(
+        findings
+            .iter()
+            .all(|finding| !finding.message.contains("Ivanhoe (683) will hold")),
+        "{findings:?}"
+    );
+}
+
+/// Ivanhoe offers Cedric silver it only gets from Maurice, by another exchange written after it.
+/// The game settles a pair as it reaches the second unit of it in report order, so Maurice's pair
+/// (listed before Cedric) pays Ivanhoe in time and both go ahead: no "will be aborted" is said
+/// (reviewer's finding 1 on PR #1699).
+#[test]
+fn an_offer_paid_for_by_another_exchange_is_not_warned_short() {
+    let findings = findings_with_cedric(
+        "EXCHANGE 900 200 SILV 1 WOOD\nEXCHANGE 1160 2 HORS 200 SILV",
+        "EXCHANGE 683 200 SILV 2 HORS",
+        "EXCHANGE 683 1 WOOD 200 SILV",
+    );
+    assert!(findings.is_empty(), "{findings:?}");
+}
+
+/// Maurice did answer, but with men, which `rules/exchange` refuses ("Men may not be
+/// exchanged."): the warning says so rather than that he wrote nothing (reviewer's finding 3).
+#[test]
+fn an_answer_the_game_refuses_is_named_as_such() {
+    let findings = findings_of(IVANHOE_OFFERS, "EXCHANGE 683 200 SILV 1 LEAD");
+    assert_eq!(warned_units(&findings), vec!["683"], "{findings:?}");
+    assert!(
+        !findings[0].message.contains("has no EXCHANGE"),
+        "{}",
+        findings[0].message
     );
 }

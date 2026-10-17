@@ -10295,6 +10295,9 @@ struct ExchangeOffers {
     offers: Vec<ExchangeOffer>,
     /// `(unit, line)` of a line whose goods nothing can name: whether it matches cannot be said.
     unnamed: Vec<(usize, usize)>,
+    /// `(unit, partner)` of a line dropped for trading men or goods the game will not hand over,
+    /// so the line it was meant to answer is not told that nothing answered it (`ah-p5ow`).
+    refused: Vec<(usize, usize)>,
 }
 
 /// Reads every `EXCHANGE` between two of our units in one hex.
@@ -10337,6 +10340,7 @@ fn exchange_offers(
             );
             let refused = |tag: &str| ruleset.is_man(tag) || !ruleset.can_be_given(tag);
             if refused(&give_tag) || refused(&expect_tag) {
+                read.refused.push((unit, partner));
                 continue;
             }
             read.offers.push(ExchangeOffer {
@@ -10443,7 +10447,7 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     let offers = &read.offers;
     let pairs = complementary_pairs(offers);
     record_unanswered_exchanges(ledger, hex, &read, &pairs);
-    for (first, second) in pairs {
+    for &(first, second) in &pairs {
         let (one, other) = (&offers[first], &offers[second]);
         // What a side has as the engine counts an offer, `GetSharedNum`: its own stock and what
         // its `SHARE` faction-mates in the hex still lend it, off the one reading every spend from
@@ -10497,6 +10501,23 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
                 hand_over(ledger, hex, other);
             }
             ExchangeVerdict::Aborted => {
+                // A short side another pair here pays in what it offers may be paid in time: the
+                // engine settles a pair as it reaches its second unit in report order, not in the
+                // order the lines are written, so this abort is not certain and is not told
+                // (reviewer's finding 1 on PR #1699).
+                let paid_by_another_pair = |offer: &ExchangeOffer| {
+                    pairs
+                        .iter()
+                        .filter(|&&pair| pair != (first, second))
+                        .any(|&(a, b)| {
+                            [&offers[a], &offers[b]].iter().any(|paying| {
+                                paying.partner == offer.unit && paying.give_tag == offer.give_tag
+                            })
+                        })
+                };
+                if paid_by_another_pair(one) || paid_by_another_pair(other) {
+                    continue;
+                }
                 // Who is short, as each line will say it.
                 let short: Vec<String> = [(one, known.0), (other, known.1)]
                     .into_iter()
@@ -10564,7 +10585,14 @@ fn record_unanswered_exchanges(
         let answer = offers.iter().enumerate().find(|(other, answer)| {
             !paired.contains(other) && answer.unit == offer.partner && answer.partner == offer.unit
         });
+        let refused = read
+            .refused
+            .iter()
+            .any(|&(unit, partner)| unit == offer.partner && partner == offer.unit);
         let why = match answer {
+            None if refused => {
+                format!("{partner} answers with men or goods the game will not hand over")
+            }
             Some((_, answer)) => format!(
                 "{partner} offers {} {} for {} {}, not {} {} for {} {}",
                 answer.give_amount,
@@ -13610,13 +13638,6 @@ fn hand_in(
     });
 }
 
-/// The `ENTER` that decides where a unit ends up, when it names a structure the report does not
-/// show in this hex (`ah-5maa`). The engine keeps only a block's last ENTER (`parseorders.cpp`
-/// `ProcessEnterOrder` overwrites `u->enter`), and its `Do1EnterOrder` finds no such object and
-/// refuses it ("ENTER: Can't enter that."), so the unit stays where it was; an earlier ENTER the
-/// last one replaces never runs and is not warned. `rules/sequenceofevents` runs ENTER before any
-/// movement, so nothing arriving later that month can be entered by one. Always on
-/// (`codes::ALWAYS_ON`), so no option is read.
 /// Always on (`codes::EXCHANGE_ABORTED`), so no option is read. `settle_exchanges` already moves
 /// nothing for these lines; this says so to the player, on each line involved (`ah-p5ow`).
 fn check_exchanges_aborted(hex: &Hex<'_>, ledger: &Ledger<'_>, findings: &mut Vec<Finding>) {
@@ -13638,6 +13659,13 @@ fn check_exchanges_aborted(hex: &Hex<'_>, ledger: &Ledger<'_>, findings: &mut Ve
     }
 }
 
+/// The `ENTER` that decides where a unit ends up, when it names a structure the report does not
+/// show in this hex (`ah-5maa`). The engine keeps only a block's last ENTER (`parseorders.cpp`
+/// `ProcessEnterOrder` overwrites `u->enter`), and its `Do1EnterOrder` finds no such object and
+/// refuses it ("ENTER: Can't enter that."), so the unit stays where it was; an earlier ENTER the
+/// last one replaces never runs and is not warned. `rules/sequenceofevents` runs ENTER before any
+/// movement, so nothing arriving later that month can be entered by one. Always on
+/// (`codes::ALWAYS_ON`), so no option is read.
 fn check_enter_not_here(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
     for ordered in &hex.units {
         if !boarding_refused(ordered) {
