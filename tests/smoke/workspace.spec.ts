@@ -5714,6 +5714,94 @@ test("the silver column forecasts our own units and sorts on the figure", async 
   expect([...figures].sort((left, right) => left - right)).toEqual(figures);
 });
 
+/**
+ * `ah-ottr`, found verifying `ah-yvgi`: 18642 claims 2000 and orders 50 gems, of which its silver
+ * buys 9 (`rules/buy`: "it will attempt to buy as many as it can"). Its month ends in credit, so
+ * the figure is not red; the shortfall is written beside it and opens the hover in red. A narrow
+ * column shortens the shortfall, never the figure - the one thing here only a browser can show.
+ */
+test("a unit that cannot pay for its purchase shows the shortfall beside its figure", async ({
+  page
+}) => {
+  // Wide enough for the Silver column's default share to hold `33  8650 short` in full.
+  await page.setViewportSize({ width: 2400, height: 900 });
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "@claim 50\n@study obse\nCLAIM 2000\nBUY 50 GEM\n");
+
+  const cell = page.getByTestId(`unit-row-${OWN_UNIT}`).locator('td[data-column="silver"]');
+  const shortfall = page.getByTestId(`silver-shortfall-${OWN_UNIT}`);
+  await expect(shortfall).toBeVisible();
+  // What is on screen, not what is in the DOM: clipping never changes `textContent`. The shortfall
+  // must sit wholly inside the cell, and the figure is "whole" while its box is not truncating it.
+  const layout = () =>
+    cell.evaluate(async (node) => {
+      // Two frames: the cell's resize is observed, re-measured and redrawn before this reads it.
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      const box = node.getBoundingClientRect();
+      const figure = node.querySelector<HTMLElement>("[data-silver-figure]")!;
+      const short = node.querySelector<HTMLElement>("[data-testid^='silver-shortfall-']")!;
+      const mark = short.getBoundingClientRect();
+      return {
+        figureWhole: figure.scrollWidth <= figure.clientWidth,
+        figureText: (figure.textContent ?? "").trim(),
+        shortInside: mark.width > 0 && mark.left >= box.left - 0.5 && mark.right <= box.right + 0.5,
+        form: short.dataset.form
+      };
+    });
+
+  await expect.poll(async () => (await layout()).form).toBe("long");
+  const wide = await layout();
+  expect(wide.figureText).toMatch(/^\d+$/);
+  expect(wide.figureWhole).toBe(true);
+  expect(wide.shortInside).toBe(true);
+  await expect(shortfall.locator("[aria-hidden]")).toHaveText(/^\d+ short$/);
+  await expect(cell).not.toHaveClass(/text-danger/);
+
+  await cell.hover();
+  const alert = page.getByTestId("unit-cell-popup-alert");
+  await expect(alert).toHaveText(/^\d+ short: it buys 9 of the 50 gems ordered\.$/);
+  await expect(page.getByTestId("unit-cell-popup")).not.toContainText("A red figure in the cell");
+  await page.mouse.move(0, 0);
+
+  // Narrowing the window a little at a time: the shortfall gives way to the arrow and the number
+  // first, with the figure still whole, and only then to the arrow alone - which stays in view.
+  // Stepped rather than set, because what width each form needs depends on this machine's fonts.
+  // Read until two reads agree, so a step is judged only once its re-measuring has finished.
+  const settled = async () => {
+    let last = await layout();
+    await expect
+      .poll(async () => {
+        const now = await layout();
+        const same = now.form === last.form && now.shortInside === last.shortInside;
+        last = now;
+        return same;
+      })
+      .toBe(true);
+    return last;
+  };
+  // One step narrower until the form is no longer `from`.
+  const narrowPast = async (from: string) => {
+    let now = await settled();
+    for (let width = page.viewportSize()!.width; width >= 400 && now.form === from; width -= 40) {
+      await page.setViewportSize({ width, height: 900 });
+      now = await settled();
+    }
+    return now;
+  };
+  const narrow = await narrowPast("long");
+  expect(narrow.form).toBe("short");
+  expect(narrow.figureWhole).toBe(true);
+  expect(narrow.shortInside).toBe(true);
+  await expect(shortfall.locator("[aria-hidden]")).toHaveText(/^\u25be\d+$/);
+
+  const narrowest = await narrowPast("short");
+  expect(narrowest.form).toBe("cut");
+  expect(narrowest.shortInside).toBe(true);
+  await expect(shortfall.locator("[aria-hidden]")).toHaveText("\u25be\u2026");
+});
+
 test("a row in All my units takes the map to the unit's hex", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");

@@ -1,4 +1,4 @@
-import type { ReportUnit, StudyDoubt, StudyForecast } from "@atlantis/core-client";
+import type { ReportUnit, StudyDoubt, StudyForecast, UnitSilver } from "@atlantis/core-client";
 import { aReportUnit, aUnitSilver } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import type { PreviewedUnit } from "./unitPreview";
@@ -1986,17 +1986,82 @@ describe("the column popups", () => {
     expect(popup.warning).toBe("A red figure in the cell: this unit ends the month 60 short.");
   });
 
-  it("the silver popup explains a red figure whose orders cannot be paid", () => {
-    const popup = columnPopup(
-      popupForCell(
-        "silver",
-        unit({ own: true }),
-        facts({ silver: aUnitSilver({ held: 100, atMonthEnd: 40, shortForOrders: 95 }) })
-      )
-    );
-    expect(popup.warning).toBe(
-      "A red figure in the cell: this unit cannot pay for its own orders out of silver that reaches it in time."
-    );
+  // `ah-ottr`: the red figure is gone for a unit in credit, so its footnote goes too, and the
+  // reason opens the popup in red instead.
+  describe("a unit whose orders cannot be paid", () => {
+    const silverPopup = (silver: Partial<UnitSilver>, silverWarned = false) =>
+      columnPopup(
+        popupForCell(
+          "silver",
+          unit({ own: true }),
+          facts({ silver: aUnitSilver(silver), silverWarned, countUpkeep: false })
+        )
+      );
+
+    it("opens with how many a cut purchase buys of how many were ordered", () => {
+      const popup = silverPopup({
+        held: 0,
+        atMonthEnd: 33,
+        shortForOrders: 8650,
+        shortOn: "buy",
+        shortBuy: { ordered: 50, bought: 9, orderedNamed: "50 gems" }
+      });
+      expect(popup.alert).toBe("8650 short: it buys 9 of the 50 gems ordered.");
+      expect(popup.warning).toBeNull();
+      expect(popup.notes.join(" ")).not.toContain("short of what");
+    });
+
+    it("says a purchase it can pay none of buys none", () => {
+      const popup = silverPopup({
+        held: 120,
+        atMonthEnd: 120,
+        shortForOrders: 2010,
+        shortOn: "buy",
+        shortBuy: { ordered: 10, bought: 0, orderedNamed: "10 gems" }
+      });
+      expect(popup.alert).toBe("2010 short: it buys none of the 10 gems ordered.");
+    });
+
+    it("keeps today's sentence, moved to the top, for any other order", () => {
+      const said = (shortOn: UnitSilver["shortOn"]) =>
+        silverPopup({ held: 100, atMonthEnd: 12, shortForOrders: 38, shortOn }).alert;
+      expect(said("study")).toBe("38 short of what its study costs.");
+      expect(said("produce")).toBe("38 short of what its production costs.");
+      expect(said("cast")).toBe("38 short of what its casting costs.");
+      expect(said("give")).toBe("38 short of what it gives away.");
+      expect(said(null)).toBe("38 short of what its orders cost.");
+      // A purchase the core could not tie to one line is named the plain way.
+      expect(said("buy")).toBe("38 short of what its purchase costs.");
+    });
+
+    it("drops the lower shortfall sentence and the red-figure footnote", () => {
+      const popup = silverPopup({ held: 100, atMonthEnd: 12, shortForOrders: 38, shortOn: "study" });
+      expect(popup.notes).not.toContain("This unit is 38 short of what its study costs.");
+      expect(popup.warning).toBeNull();
+    });
+
+    it("says both amounts for a unit in debt that is also short, once", () => {
+      const popup = silverPopup({ held: 40, atMonthEnd: -50, shortForOrders: 30, shortOn: "study" });
+      expect(popup.alert).toBe("Ends the month 50 short, and 30 short of what its study costs.");
+      expect(popup.warning).toBeNull();
+    });
+
+    it("still explains the warning mark, and nothing else, below", () => {
+      const popup = silverPopup({ held: 100, atMonthEnd: 12, shortForOrders: 38, shortOn: "study" }, true);
+      expect(popup.warning).toBe(
+        "⚠ in the cell: a check warns about this unit's money. Select the unit to read it in the Problems panel."
+      );
+    });
+
+    it("is read first by a screen reader", () => {
+      const popup = silverPopup({ held: 100, atMonthEnd: 12, shortForOrders: 38, shortOn: "study" });
+      expect(popupAsText(popup).startsWith("38 short of what its study costs. ")).toBe(true);
+    });
+
+    it("has no first line when nothing is short", () => {
+      expect(silverPopup({ held: 100, atMonthEnd: 100, shortForOrders: 0 }).alert).toBeNull();
+      expect(silverPopup({ held: 0, atMonthEnd: -60, shortForOrders: 0 }).alert).toBeNull();
+    });
   });
 
   it("the silver popup explains the warning mark", () => {
@@ -2357,6 +2422,7 @@ describe("popupAsText", () => {
       ],
       notes: ["was: 36 SILV, 3 GRAI."],
       warning: "This month is only partly counted.",
+      alert: null,
       month: "changes"
     });
     expect(text).toBe(
@@ -2366,7 +2432,7 @@ describe("popupAsText", () => {
 
   it("says nothing about a change a line does not carry", () => {
     expect(
-      popupAsText({ title: "x", lines: [{ label: "men", value: "12" }], notes: [], warning: null, month: null })
+      popupAsText({ title: "x", lines: [{ label: "men", value: "12" }], notes: [], warning: null, alert: null, month: null })
     ).toBe("men 12.");
   });
 });
@@ -2885,6 +2951,7 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
         ],
         notes: [],
         warning: null,
+        alert: null,
         month: "changes"
       })
     ).toBe("combat COMB 2 (90), down to 1 (53), 2 (98) next turn.");
@@ -2903,6 +2970,7 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
         ],
         notes: [],
         warning: null,
+        alert: null,
         month: "changes"
       })
     ).toBe("combat COMB 1 (53), 2 (98) next turn if it happens.");

@@ -91,6 +91,7 @@ export type { SettlementInfo } from "./SettlementInfo";
 export type { SharedSilverCoverage } from "./SharedSilverCoverage";
 export type { ShelterSeat } from "./ShelterSeat";
 export type { ShipmentPriced } from "./ShipmentPriced";
+export type { ShortBuy } from "./ShortBuy";
 export type { ShortMaterial } from "./ShortMaterial";
 export type { SilverChange } from "./SilverChange";
 export type { SilverChangeCause } from "./SilverChangeCause";

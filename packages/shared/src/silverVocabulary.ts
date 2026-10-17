@@ -44,7 +44,13 @@ const SPENDS: Record<NonNullable<UnitSilver["shortOn"]>, string> = {
  * not "its X costs" - so these are complete tails rather than a noun interpolated into one
  * template, which would produce `its give costs` and typecheck (`ah-moq3`).
  */
-const CANNOT_PAY: Record<NonNullable<UnitSilver["shortOn"]> | "orders", string> = {
+/**
+ * The `cannot-pay` note's id: the Silver popup leaves it out when its red first line already says
+ * the shortfall (`ah-ottr`), and names it through this so the two cannot drift apart.
+ */
+export const CANNOT_PAY_NOTE = "cannot-pay";
+
+export const CANNOT_PAY: Record<NonNullable<UnitSilver["shortOn"]> | "orders", string> = {
   study: "its study costs",
   buy: "its purchase costs",
   produce: "its production costs",
@@ -790,7 +796,7 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   // Named by the order it bites on, because the reader can act on knowing which one the game will
   // refuse (`ah-moq3`). Below `wages-too-late`, so the more specific case still wins.
   {
-    id: "cannot-pay",
+    id: CANNOT_PAY_NOTE,
     when: ({ silver }) => silver.shortForOrders !== null && silver.shortForOrders > 0,
     say: ({ silver }) =>
       `This unit is ${silver.shortForOrders} short of what ${CANNOT_PAY[silver.shortOn ?? "orders"]}.`,
@@ -1286,9 +1292,13 @@ export function silverCauseGroups(changes: readonly SilverChange[]): SilverCause
  */
 export function silverNoteLines(
   facts: SilverFacts,
-  drawn: readonly SilverCauseGroup[] = []
+  drawn: readonly SilverCauseGroup[] = [],
+  omit: readonly string[] = []
 ): string[] {
-  return SILVER_NOTES.filter((note) => !(note.restatedBy?.(drawn) ?? false))
+  // `omit`: notes a surface already says elsewhere - the Silver popup's red first line restates
+  // `cannot-pay` (`ah-ottr`).
+  return SILVER_NOTES.filter((note) => !omit.includes(note.id))
+    .filter((note) => !(note.restatedBy?.(drawn) ?? false))
     .filter((note) => note.when(facts))
     .flatMap((note) => note.say(facts).split("\n"));
 }

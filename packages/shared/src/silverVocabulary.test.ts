@@ -10,6 +10,7 @@ import {
   silverCauseGroups,
   silverCauseLabel,
   silverNoteLines,
+  CANNOT_PAY_NOTE,
   type SilverCauseGroup,
   type SilverFacts
 } from "./silverVocabulary";
@@ -852,6 +853,20 @@ describe("what a drawn cause line already says", () => {
     const sentence = "Includes 25 given by Quartermaster (18500) in this hex.";
     expect(silverNoteLines(facts, drawn)).not.toContain(sentence);
     expect(silverNoteLines(facts)).toContain(sentence);
+  });
+
+  // `ah-ottr`: the Silver popup's red first line says the shortfall, so it leaves this note out.
+  it("leaves out a note a surface names to omit, and only that one", () => {
+    const note = SILVER_NOTES.find((n) => n.id === CANNOT_PAY_NOTE);
+    if (!note) {
+      throw new Error("cannot-pay is missing");
+    }
+    const facts = note.example();
+    const sentence = "This unit is 50 short of what its study costs.";
+    expect(silverNoteLines(facts)).toContain(sentence);
+    const omitted = silverNoteLines(facts, [], [CANNOT_PAY_NOTE]);
+    expect(omitted).not.toContain(sentence);
+    expect(omitted).toEqual(silverNoteLines(facts).filter((line) => line !== sentence));
   });
 
   const RESTATED: [string, SilverCauseGroup[]][] = [

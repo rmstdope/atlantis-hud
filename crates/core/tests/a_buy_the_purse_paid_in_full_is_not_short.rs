@@ -74,6 +74,8 @@ fn a_purchase_the_purse_paid_in_full_is_not_what_the_buyer_is_short_on() {
         Some(SilverSpender::Study),
         "the study is what falls short, not the purchase the purse paid: {reginald:?}"
     );
+    // Nor does the hover say how many the purchase buys: it bought every one (`ah-ottr`).
+    assert_eq!(reginald.short_buy, None, "{reginald:?}");
 }
 
 /// The purchase is still named where it is the order the purse cannot pay: a `BUY 88` the hex

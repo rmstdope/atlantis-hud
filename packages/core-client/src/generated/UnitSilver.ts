@@ -5,6 +5,7 @@ import type { NoStudyFee } from "./NoStudyFee";
 import type { ProductionCap } from "./ProductionCap";
 import type { SharedSilverCoverage } from "./SharedSilverCoverage";
 import type { ShipmentPriced } from "./ShipmentPriced";
+import type { ShortBuy } from "./ShortBuy";
 import type { SilverChange } from "./SilverChange";
 import type { SilverDoubt } from "./SilverDoubt";
 import type { SilverSpender } from "./SilverSpender";
@@ -85,6 +86,14 @@ shortForOrders: number | null,
  * opinion about English.
  */
 shortOn: SilverSpender | null, 
+/**
+ * The exact `BUY` the shortfall bites on, where [`Self::short_on`] is `Buy` because of one
+ * (`ah-ottr`): what it ordered, what the ledger let it buy, and the order's count named for
+ * the hover - "8650 short: it buys 9 of the 50 gems ordered". `rules/buy`: a unit that "can't
+ * afford as many as [quantity] ... will attempt to buy as many as it can". `None` wherever
+ * `short_on` is not `Buy`, and where a `BUY ALL` is what named it.
+ */
+shortBuy: ShortBuy | null, 
 /**
  * What this unit owes in maintenance this month, in silver, after any food it will spend on
  * it. `None` when it cannot be priced - an estimated headcount, or a report that never said

@@ -89,6 +89,7 @@ import {
   unitRefOf,
   unitRowSelector,
   silverIsRed,
+  silverShortfall,
   silverShownUI,
   type ShownSilver,
   type ColumnShares,
@@ -160,6 +161,7 @@ import type { ReportedLongOrder } from "../ordersDocument";
 import { ColumnReorderHandle } from "./ColumnReorderHandle";
 import { ColumnSplitter } from "./ColumnSplitter";
 import { Absent, SeverityMark, UNIT_LINK_CLASS } from "./primitives";
+import { SilverShortfall } from "./SilverShortfall";
 import { UnitCellPopup } from "./UnitCellPopup";
 import { UnitTooltip } from "./UnitTooltip";
 import { ItemsHiddenLine, Marked, MarkedItemPart } from "./UnitFilterMarks";
@@ -2410,6 +2412,18 @@ function UnitRow({
   // The money itself was never read, so the cell says so in words. The other read-doubt keeps the
   // dim `?`, which already means exactly "this month could not be priced" (`ah-l09a.4`).
   const moneyNotKnown = silverWasNeverRead(silver);
+  // What this unit's orders are short of, written beside a figure that is not negative
+  // (`ah-ottr`, choice N1). A dissolving unit has no month end to write it beside.
+  const shortfall = dissolving || moneyNotKnown ? null : silverShortfall(shownNumeric, silver);
+  const shortfallMark =
+    shortfall === null ? null : (
+      <SilverShortfall
+        unitId={unit.unitId}
+        amount={shortfall}
+        // What sits beside it: a new figure, or the ⚠ arriving, changes what fits.
+        beside={`${warned ? "!" : ""}${silverFigure(shownSilver, shareBoundedByAnUnreadUnit(silver))}`}
+      />
+    );
   const figure = moneyNotKnown ? (
     <span className="text-warn">{NOT_KNOWN}</span>
   ) : dissolving ? (
@@ -2422,6 +2436,47 @@ function UnitRow({
   ) : (
     silverFigure(shownSilver, shareBoundedByAnUnreadUnit(silver))
   );
+  // The figure as the cell draws it: the ⚠ button that selects the unit, or the plain figure.
+  const silverFigureCell = warned ? (
+      <button
+        type="button"
+        data-testid={`unit-silver-${unit.unitId}`}
+        onPointerDown={(event) => event.stopPropagation()}
+        // `home`, not the hex the row stands in: there an arrival's number may name a unit
+        // formed in that hex, and the finding this button explains is anchored where the
+        // report lists the unit (`ah-xu6v`).
+        onClick={() => onSelectUnit?.(unit.unitId, home)}
+        className={`inline-flex items-center gap-0.5${shortfall !== null ? " min-w-0" : ""} ${UNIT_LINK_CLASS}`}
+      >
+        <span className="sr-only">unit {unit.unitId} </span>
+        <SeverityMark severity="warning" />
+        {shortfall !== null ? (
+          // Only the digits truncate: the ⚠ stays, and nothing outside the button clips its focus
+          // ring (`ah-ottr`).
+          <span data-silver-figure className="min-w-0 truncate">
+            {figure}
+          </span>
+        ) : (
+          figure
+        )}
+      </button>
+    ) : (
+      <span
+        className={
+          // `silverIsDim(null)` is true, so without the first term the amber words would sit
+          // inside a dim wrapper.
+          // A short `0` is a number to act on, so it is not dimmed (`ah-ottr`).
+          !moneyNotKnown &&
+          !silverIsRed(shownNumeric, silver) &&
+          shortfall === null &&
+          silverIsDim(shownSilver)
+            ? "text-ink-dim"
+            : undefined
+        }
+      >
+        {figure}
+      </span>
+    );
 
   /**
    * Every cell, keyed the same way the header's dispatch is, so reordering the columns never means
@@ -2796,9 +2851,10 @@ function UnitRow({
         {explain("longOrder")}
       </Td>
     ),
-    // What this unit is expected to hold when the month ends (ah-1wcw.1). Red is this unit,
-    // counted alone, in trouble: ending below zero, or unable to pay for its own orders out of
-    // silver that reaches it in time (ah-uwa3). ⚠ is a silver finding that names this unit -
+    // What this unit is expected to hold when the month ends (ah-1wcw.1). Red is this unit ending
+    // the month below zero, and only that (ah-ottr); a unit in credit that cannot pay for its own
+    // orders out of silver reaching it in time (ah-uwa3) keeps a plain figure and writes
+    // `<N> short` after it, outside the ⚠ button. ⚠ is a silver finding that names this unit -
     // `not-enough-silver`, which pools across the hex's sharing units, or `upkeep-exceeds-unclaimed`
     // (ah-fjty). The two mean different things on purpose, so a ⚠
     // on a positive figure is not a contradiction - the hover explains it.
@@ -2806,7 +2862,7 @@ function UnitRow({
       <Td
         className={`text-right tabular-nums${
           !dissolving && silverIsRed(shownNumeric, silver) ? " text-danger" : ""
-        }`}
+        }${shortfall !== null ? " whitespace-nowrap" : ""}`}
       >
         {silver === null ? (
           mergedFrom ? (
@@ -2814,32 +2870,20 @@ function UnitRow({
           ) : (
             ""
           )
-        ) : warned ? (
-          <button
-            type="button"
-            data-testid={`unit-silver-${unit.unitId}`}
-            onPointerDown={(event) => event.stopPropagation()}
-            // `home`, not the hex the row stands in: there an arrival's number may name a unit
-            // formed in that hex, and the finding this button explains is anchored where the
-            // report lists the unit (`ah-xu6v`).
-            onClick={() => onSelectUnit?.(unit.unitId, home)}
-            className={`inline-flex items-center gap-0.5 ${UNIT_LINK_CLASS}`}
-          >
-            <span className="sr-only">unit {unit.unitId} </span>
-            <SeverityMark severity="warning" />
-            {figure}
-          </button>
+        ) : shortfallMark === null ? (
+          silverFigureCell
         ) : (
-          <span
-            className={
-              // `silverIsDim(null)` is true, so without the first term the amber words would sit
-              // inside a dim wrapper.
-              !moneyNotKnown && !silverIsRed(shownNumeric, silver) && silverIsDim(shownSilver)
-                ? "text-ink-dim"
-                : undefined
-            }
-          >
-            {figure}
+          // One row, so a narrow column cuts the figure only after the shortfall has shrunk to
+          // `▾…` (`ah-ottr`): the shortfall never shrinks, the figure truncates.
+          <span className="inline-flex max-w-full items-baseline">
+            {warned ? (
+              silverFigureCell
+            ) : (
+              <span data-silver-figure className="min-w-0 truncate">
+                {silverFigureCell}
+              </span>
+            )}
+            {shortfallMark}
           </span>
         )}
         {explain("silver")}
