@@ -109,8 +109,9 @@ fn the_seam_reads_the_give_phase_of_a_hand_built_hex() {
 
 /// Every item this month's transfers move into or out of one unit, netted per upper-case tag.
 ///
-/// The six transfer causes and no others - `LentForGive` among them, a sharer's part of another
-/// unit's GIVE (`ah-49is`). `GiftReverted` is deliberately excluded: it is
+/// The seven transfer causes and no others - `LentForGive` among them, a sharer's part of another
+/// unit's GIVE (`ah-49is`), and `LentForDiscard`, its part of another unit's `GIVE 0`
+/// (`ah-84b1`). `GiftReverted` is deliberately excluded: it is
 /// `rules/form`'s dissolution reverting goods to another unit, not a Give-phase transfer, and
 /// neither of the other two surfaces records it as one.
 ///
@@ -143,6 +144,7 @@ fn preview_transfers(report_text: &str, orders: &str) -> BTreeMap<String, BTreeM
                         | ItemChangeCause::Took
                         | ItemChangeCause::WasTakenFrom
                         | ItemChangeCause::Discarded
+                        | ItemChangeCause::LentForDiscard
                 ) {
                     continue;
                 }
@@ -170,7 +172,7 @@ struct Compared {
     formed: bool,
     men_estimated: bool,
     reported_men: i64,
-    /// The preview: `UnitPreview::item_changes` whose cause is one of the six transfer causes,
+    /// The preview: `UnitPreview::item_changes` whose cause is one of the seven transfer causes,
     /// netted per tag.
     preview: BTreeMap<String, i64>,
     /// The walk: `walked_items` minus `reported_items`, per tag. `None` where the walk answered
@@ -436,6 +438,23 @@ fn the_three_surfaces_agree_on_a_hand_built_gift() {
         for case in compare_one("hand-built", &text, orders, &ruleset) {
             assert_the_surfaces_agree(&case, &ruleset);
         }
+    }
+
+    // A discard its unit holds none of, made up from a sharing faction-mate's iron: the smith's
+    // row lends for it (`ItemChangeCause::LentForDiscard`, `ah-84b1`), and the three surfaces must
+    // still agree that the smith loses the 20.
+    let sharing = text.replace(
+        "Smiths (900), Foo (1), behind,",
+        "Smiths (900), Foo (1), behind, sharing,",
+    );
+    assert_ne!(sharing, text, "the smith is made a sharer");
+    for case in compare_one(
+        "hand-built, sharing",
+        &sharing,
+        "unit 901\nGIVE 0 20 IRON\n",
+        &ruleset,
+    ) {
+        assert_the_surfaces_agree(&case, &ruleset);
     }
 }
 

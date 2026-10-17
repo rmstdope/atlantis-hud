@@ -616,6 +616,10 @@ function itemCauseClause(change: ItemChange, unit: PreviewedUnit, people: boolea
     // lent them for that GIVE and gave nothing itself (`ah-49is`, the agreed words).
     case "lent-for-give":
       return `lent ${n}${change.borrower ? ` for ${party(change.borrower)}` : ""} to give to ${lentReceiver(change.other)}`;
+    // A sharer's goods made up another unit's numbered GIVE 0 (`rules/give`,
+    // `rules/share`): lent for that discard, in the same family as a loan for a GIVE (`ah-84b1`).
+    case "lent-for-discard":
+      return `lent ${n}${change.borrower ? ` for ${party(change.borrower)}` : ""} to discard`;
     case "was-given":
       return `given ${n}${change.other ? ` by ${party(change.other)}` : ""}`;
     case "took":
