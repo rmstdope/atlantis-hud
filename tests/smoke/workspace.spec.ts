@@ -5002,7 +5002,7 @@ test("movement capacity updates in the unit list and detail", async ({ page }) =
   await expect(panel).toContainText("Walking");
   await expect(row).not.toHaveAttribute("data-preview-status", /.+/);
 
-  await page.setViewportSize({ width: 700, height: 800 });
+  await page.setViewportSize({ width: 1000, height: 900 });
   const table = page.getByRole("grid");
   const before = await row.boundingBox();
   const tableBox = await table.boundingBox();
@@ -5712,6 +5712,52 @@ test("the silver column forecasts our own units and sorts on the figure", async 
     .map(Number);
   expect(figures.length).toBeGreaterThan(0);
   expect([...figures].sort((left, right) => left - right)).toEqual(figures);
+});
+
+/**
+ * `ah-ottr`, found verifying `ah-yvgi`: 18642 claims 2000 and orders 50 gems, of which its silver
+ * buys 9 (`rules/buy`: "it will attempt to buy as many as it can"). Its month ends in credit, so
+ * the figure is not red; the shortfall is written beside it and opens the hover in red. A narrow
+ * column shortens the shortfall, never the figure - the one thing here only a browser can show.
+ */
+test("a unit that cannot pay for its purchase shows the shortfall beside its figure", async ({
+  page
+}) => {
+  // Wide enough for the Silver column's default share to hold `33  8650 short` in full.
+  await page.setViewportSize({ width: 2400, height: 900 });
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "@claim 50\n@study obse\nCLAIM 2000\nBUY 50 GEM\n");
+
+  const cell = page.getByTestId(`unit-row-${OWN_UNIT}`).locator('td[data-column="silver"]');
+  const shortfall = page.getByTestId(`silver-shortfall-${OWN_UNIT}`);
+  await expect(shortfall).toBeVisible();
+  // The figure alone: the cell's text without its explanation and without the shortfall.
+  const figureOf = () =>
+    cell.evaluate((node) => {
+      const copy = node.cloneNode(true) as HTMLElement;
+      for (const part of copy.querySelectorAll("[data-explains], [data-testid^='silver-shortfall-']")) {
+        part.remove();
+      }
+      return (copy.textContent ?? "").trim();
+    });
+  const figure = await figureOf();
+  expect(figure).toMatch(/^\d+$/);
+  await expect(shortfall.locator("[aria-hidden]")).toHaveText(/^\d+ short$/);
+  await expect(cell).not.toHaveClass(/text-danger/);
+
+  await cell.hover();
+  const alert = page.getByTestId("unit-cell-popup-alert");
+  await expect(alert).toHaveText(/^\d+ short: it buys 9 of the 50 gems ordered\.$/);
+  await expect(page.getByTestId("unit-cell-popup")).not.toContainText("A red figure in the cell");
+
+  // Narrowed until the long form no longer fits: the arrow form takes its place, figure intact.
+  await page.mouse.move(0, 0);
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await expect(shortfall).toHaveAttribute("data-form", /short|cut/);
+  expect(await figureOf()).toBe(figure);
+  await expect(shortfall.locator("[aria-hidden]")).toContainText("▾");
 });
 
 test("a row in All my units takes the map to the unit's hex", async ({ page }) => {
