@@ -46,8 +46,8 @@ export function foreignReportPromptCopy(prompt: ForeignReportPromptCopy): string
         `the same turn as your own report for ${viewerFactionLabel}.`
     );
     paragraphs.push(
-      `Merge adds everywhere ${incomingFactionLabel} went to your map and leaves you ` +
-        `playing ${viewerFactionLabel}.`
+      `Merge adds everywhere ${incomingFactionLabel} went to your map, and what its report says ` +
+        `about its own units, and leaves you playing ${viewerFactionLabel}.`
     );
   } else {
     paragraphs.push(

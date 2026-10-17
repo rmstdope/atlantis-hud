@@ -29,6 +29,12 @@ export type DerivedSkill = {
   coordinate: Coordinate | null;
   /** The battle's terrain, when its headline named one: `ocean`. */
   terrain: string | null;
+  /**
+   * Set when the skill came from a merged faction's own report rather than a battle roster - that
+   * faction's label, `Borg (62)` - and absent for a battle (`ah-oqxn`). `turn` is then the merged
+   * turn, and `coordinate` and `terrain` are null.
+   */
+  from?: string;
 };
 
 /** Unit number to the skills recovered for it, in the order stated by `withRosterSkills`. */
@@ -175,7 +181,10 @@ function withObserved(
  * this from a turn's report rather than from an Army snapshot, and neither carries anything the
  * predicate needs beyond these three fields.
  */
-export type SkillBearingUnit = Pick<ReportUnit, "unitId" | "own" | "skills">;
+export type SkillBearingUnit = Pick<ReportUnit, "unitId" | "own" | "skills"> & {
+  /** Set on a unit filled in from a merged faction's own report (`mergedUnits.ts`). */
+  mergedFrom?: unknown;
+};
 
 /**
  * The skills this unit exports that are not its own, or `[]`.
@@ -196,7 +205,10 @@ export function derivedSkillsFor(
   derived: DerivedSkills,
   unit: SkillBearingUnit
 ): readonly DerivedSkill[] {
-  if (unit.own || unit.skills.length > 0) {
+  // A unit filled in from its own faction's report is as fully known as one of ours: that report
+  // wins for its turn, so nothing recovered is laid on top of it - not even when it has no skills,
+  // which its report states as `none` (`ah-oqxn`).
+  if (unit.own || unit.skills.length > 0 || unit.mergedFrom !== undefined) {
     return [];
   }
   return derived.get(unit.unitId) ?? [];

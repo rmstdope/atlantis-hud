@@ -31,6 +31,13 @@ describe("asking what to do with another faction's report", () => {
     expect(prose()).toContain("leaves you playing Borg TNG (95)");
   });
 
+  it("says the merged report's own units come with the map (ah-oqxn)", () => {
+    expect(foreignReportPromptCopy({ ...base, incomingFactionLabel: "Borg (62)", viewerFactionLabel: "Mantzikert (39)" })[1]).toBe(
+      "Merge adds everywhere Borg (62) went to your map, and what its report says about its own " +
+        "units, and leaves you playing Mantzikert (39)."
+    );
+  });
+
   it("always says what switching costs, because it is the choice that cannot be undone", () => {
     expect(prose()).toContain("the map, the units and the orders all become Borg (73)’s");
     expect(prose({ canMerge: false, incomingTurn: 2 })).toContain(

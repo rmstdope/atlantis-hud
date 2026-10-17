@@ -114,6 +114,16 @@ describe("itemCellParts", () => {
     ]);
   });
 
+  it("keeps silver where the report listed it when asked to (ah-oqxn)", () => {
+    expect(itemCellParts(items, [], [], { withSilver: true }).map((part) => part.text)).toEqual([
+      "85 WOOD",
+      "300 SILV",
+      "1 GALL",
+      "5 SWOR"
+    ]);
+    expect(formatItems(items, [], [], { withSilver: true })).toBe("85 WOOD, 300 SILV, 1 GALL, 5 SWOR");
+  });
+
   it("keeps the range a CAST's uncertain creation draws", () => {
     const created = [{ tag: "SWOR", most: 5, fewest: 2 }] as never;
     expect(itemCellParts(items, created).at(-1)).toEqual({

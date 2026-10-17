@@ -211,6 +211,15 @@ describe("derivedSkillsFor", () => {
     expect(derivedSkillsFor(derived, aMember({ own: true }))).toEqual([]);
   });
 
+  it("answers nothing for a unit filled in from its own faction's merged report, even with no skills (ah-oqxn)", () => {
+    expect(
+      derivedSkillsFor(derived, {
+        ...aReportUnit({ unitId: "4839", own: false, skills: [] }),
+        mergedFrom: { factionLabel: "Borg (62)", turn: 17 }
+      })
+    ).toEqual([]);
+  });
+
   it("answers nothing for a member that has skills of its own", () => {
     expect(
       derivedSkillsFor(

@@ -1,4 +1,5 @@
 import type { ReportUnit, UnitSilver } from "@atlantis/core-client";
+import { mergedFromOf } from "./mergedFrom";
 import { withoutSilver } from "./silverTag";
 import { silverNoteLines } from "./silverVocabulary";
 import {
@@ -93,7 +94,9 @@ export function summariseUnit(
       label: `${skill.name} ${skill.tag}`,
       value: `${skill.level} (${skill.points})`
     })),
-    items: withoutSilver(unit.items)
+    // A unit filled in from a merged faction's own report has no Silver column to say its silver
+    // in, so the card lists it among the items, as the table's cell does (`ah-oqxn`).
+    items: (mergedFromOf(unit) === null ? withoutSilver(unit.items) : [...unit.items])
       .sort((left, right) => right.amount - left.amount)
       .map((item) => ({
         label: `${item.name} ${item.tag}`,
