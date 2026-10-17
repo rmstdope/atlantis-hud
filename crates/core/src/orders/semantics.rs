@@ -19192,6 +19192,15 @@ fn report_shortfalls(
     let mut maintenance_short: i64 = 0;
 
     let verdicts = judge_shortfalls(hex, ledger, &sharing, ruleset);
+    // How each unit's STUDY went, the one reading every surface takes (`ah-2f77`).
+    let studies = study_settlement(hex, ledger);
+    let study_of = |who: &str| {
+        hex.units
+            .iter()
+            .position(|ordered| ordered.unit.unit_id == who)
+            .and_then(|index| studies.get(index).copied())
+            .unwrap_or_default()
+    };
 
     // A `TAKE` its source could not cover, said to the taker at its own line (`ah-759k`). Its
     // figures are the line's: what the source had and what was asked.
@@ -19308,11 +19317,21 @@ fn report_shortfalls(
                         )
                     }),
             );
-            let bought = if cut.is_empty() {
+            let mut bought = if cut.is_empty() {
                 String::new()
             } else {
                 format!(", so it {}", cut.join(" and "))
             };
+            // A STUDY the unit cannot pay for is refused outright (`monthorders.cpp`:
+            // `Do1StudyOrder`, "STUDY: Not enough funds."), and the sentence says so rather than
+            // leaving it to be inferred (`ah-wr2w`).
+            if matches!(study_of(unit_id), StudyOutcome::Refused { .. }) {
+                bought.push_str(if bought.is_empty() {
+                    ", so its STUDY is refused"
+                } else {
+                    " and its STUDY is refused"
+                });
+            }
             // The food that paid part of the fee is counted in on both sides, so the sentence
             // states the whole fee (`ah-pyiy`).
             //
@@ -19494,18 +19513,41 @@ fn report_shortfalls(
                     placed,
                 ));
             }
-            // How each unit's STUDY went, the one reading every surface takes (`ah-2f77`).
-            let studies = if tag == SILVER {
-                study_settlement(hex, ledger)
+            // A STUDY the pool could not pay for is refused (`monthorders.cpp`: `Do1StudyOrder`,
+            // "STUDY: Not enough funds.") and marked on its own line the same way, whoever studies:
+            // a sharer claims nothing against the pool, so no other marker would reach its line
+            // (`ah-wr2w`).
+            let refused_studies: Vec<(&Ordered<'_>, &PlacedIntent)> = if tag == SILVER {
+                hex.units
+                    .iter()
+                    .zip(&studies)
+                    .filter(|(_, study)| matches!(study, StudyOutcome::Refused { .. }))
+                    .filter_map(|(ordered, _)| {
+                        ordered
+                            .intents
+                            .iter()
+                            .find(|placed| matches!(placed.intent, Intent::Study { .. }))
+                            .map(|placed| (ordered, placed))
+                    })
+                    .collect()
             } else {
                 Vec::new()
             };
-            let study_of = |who: &str| {
-                hex.units
+            for (ordered, placed) in &refused_studies {
+                findings.push(ordered.finding(
+                    hex,
+                    codes::PART_OF_HEX_SHORTFALL,
+                    format!(
+                        "This hex is short of {name} between its units, so this STUDY is \
+                         refused. See Problems for the hex."
+                    ),
+                    Some(placed),
+                ));
+            }
+            let study_refused = |who: &str| {
+                refused_studies
                     .iter()
-                    .position(|ordered| ordered.unit.unit_id == who)
-                    .and_then(|index| studies.get(index).copied())
-                    .unwrap_or_default()
+                    .any(|(ordered, _)| ordered.unit.unit_id == who)
             };
             for verdict in &verdicts {
                 let Verdict::DeferredToPool {
@@ -19527,6 +19569,7 @@ fn report_shortfalls(
                 // would say the same thing twice.
                 if cut.iter().any(|reduced| &reduced.unit_id == unit_id)
                     || refused.iter().any(|refused| &refused.unit_id == unit_id)
+                    || study_refused(unit_id)
                 {
                     continue;
                 }
@@ -19560,6 +19603,7 @@ fn report_shortfalls(
                             && claimant_cast_overdraft(ledger, who, LendingMoment::MonthEnd) <= 0)
                         || cut.iter().any(|reduced| &reduced.unit_id == who)
                         || refused.iter().any(|refused| &refused.unit_id == who)
+                        || study_refused(who)
                         || verdicts.iter().any(|verdict| {
                             matches!(
                                 verdict,
@@ -19726,6 +19770,35 @@ fn report_shortfalls(
                     counted_item(shipment.ordered, SILVER, hex, ruleset, plurals),
                 ),
                 Some(&shipment.placed),
+            );
+            push_unless_line_marked(findings, finding);
+        }
+    }
+
+    // A STUDY refused for want of funds (`monthorders.cpp`: `Do1StudyOrder`, "STUDY: Not enough
+    // funds."), said on its own line wherever nothing above already marks it - the unit's own
+    // sentence sits at the first order to draw on its silver, which is often a BUY (`ah-wr2w`).
+    if options.emits(codes::NOT_ENOUGH_SILVER) {
+        for (ordered, study) in hex.units.iter().zip(&studies) {
+            let StudyOutcome::Refused { fee, short } = *study else {
+                continue;
+            };
+            let Some(placed) = ordered
+                .intents
+                .iter()
+                .find(|placed| matches!(placed.intent, Intent::Study { .. }))
+            else {
+                continue;
+            };
+            let finding = ordered.finding(
+                hex,
+                codes::NOT_ENOUGH_SILVER,
+                format!(
+                    "this STUDY will be refused: it costs ${fee} and only ${} is left to pay it \
+                     then",
+                    (fee - short).max(0),
+                ),
+                Some(placed),
             );
             push_unless_line_marked(findings, finding);
         }
@@ -45670,9 +45743,11 @@ BUILD
             with_silver(unit("7"), 500),
         ])];
 
+        // The refused STUDY is marked on its own line, and the shortfall is the hex's
+        // (`ah-wr2w`).
         assert_eq!(
             codes(&check(regions, "unit 5\nSTUDY combat\n")),
-            ["not-enough-silver"]
+            ["part-of-hex-shortfall", "not-enough-silver"]
         );
     }
 
@@ -45685,7 +45760,8 @@ BUILD
             sharing(with_silver(unit("7"), 30)),
         ])];
 
-        let finding = only(check(regions, "unit 5\nSTUDY combat\n"));
+        // Beside it, the refused STUDY is marked on its own line (`ah-wr2w`).
+        let finding = hex_anchored(check(regions, "unit 5\nSTUDY combat\n"));
         assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert_eq!(
             finding.unit_id, None,
@@ -61031,7 +61107,9 @@ BUILD
             silver_shortfall_messages(&review),
             vec![(
                 Some("902".to_string()),
-                "short $2: this unit can have $8 and its orders spend $10".to_string()
+                "short $2: this unit can have $8 and its orders spend $10, so its STUDY is \
+                 refused"
+                    .to_string()
             )],
         );
     }
@@ -61723,6 +61801,125 @@ BUILD
             messages[0].starts_with("the units in this hex are short $22 between them")
                 && messages[0].ends_with("spend $30"),
             "{messages:?}"
+        );
+    }
+
+    /// The sentences told on one unit's order line.
+    fn line_messages(review: &TurnReview, unit_id: &str, line: usize) -> Vec<String> {
+        review
+            .findings
+            .iter()
+            .filter(|finding| {
+                finding.unit_id.as_deref() == Some(unit_id) && finding.line == Some(line)
+            })
+            .map(|finding| finding.message.clone())
+            .collect()
+    }
+
+    /// `ah-wr2w`: a unit that shares its silver and studies what it cannot pay for, with nobody
+    /// else in the hex to lend, is refused its STUDY (`monthorders.cpp`: `Do1StudyOrder`, "STUDY:
+    /// Not enough funds."; `ah-li7l`): 902's $8 cannot pay combat's $10 ("Most skills cost $10 per
+    /// person per month to study", `rules/skills_studying` in Trident). A sharer claims nothing
+    /// against the pool, so the hex's pointer never reached its line, and the STUDY line said
+    /// nothing at all while only the hex's problem told the shortfall. The line now says the study
+    /// is refused.
+    #[test]
+    fn a_sharing_student_nobody_can_pay_for_is_told_on_its_study_line() {
+        let review = review_turn(
+            &report(vec![region(vec![sharing(with_silver(unit("902"), 8))])]),
+            "unit 902\nSTUDY COMB\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            line_messages(&review, "902", 2),
+            vec![
+                "This hex is short of silver between its units, so this STUDY is refused. See \
+                 Problems for the hex."
+                    .to_string()
+            ],
+            "{:#?}",
+            review.findings
+        );
+    }
+
+    /// The same student where nothing pools: the unit's own sentence already sits on its STUDY
+    /// line, and it now says the study is refused rather than leaving that to be inferred
+    /// (`ah-wr2w`).
+    #[test]
+    fn a_student_nobody_can_pay_for_where_nothing_pools_is_told_on_its_study_line() {
+        let review = review_turn(
+            &report(vec![region(vec![with_silver(unit("902"), 8)])]),
+            "unit 902\nSTUDY COMB\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            line_messages(&review, "902", 2),
+            vec![
+                "short $2: this unit can have $8 and its orders spend $10, so its STUDY is refused"
+                    .to_string()
+            ],
+            "{:#?}",
+            review.findings
+        );
+    }
+
+    /// The same, with a BUY ahead of the STUDY: market orders run before month-long ones
+    /// (`rules/sequenceofevents`), so the unit's own sentence sits on the BUY line, the first order
+    /// to draw on its silver. The STUDY line is told on its own: 902 buys one grain at $5 with its
+    /// $8 and has $3 left for combat's $10 (review of PR #1703, finding 1).
+    #[test]
+    fn a_refused_study_behind_a_buy_is_told_on_its_own_line() {
+        let hex = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 5,
+            }],
+            ..region(vec![
+                with_silver(unit("902"), 8),
+                with_silver(unit("903"), 100),
+            ])
+        };
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 902\nBUY 1 grain\nSTUDY COMB\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            line_messages(&review, "902", 3),
+            vec![
+                "this STUDY will be refused: it costs $10 and only $3 is left to pay it then"
+                    .to_string()
+            ],
+            "{:#?}",
+            review.findings
+        );
+    }
+
+    /// A GIVE cut short and a refused STUDY in one sentence: the clauses are joined, never a second
+    /// "so" (review of PR #1703, finding 2). 902 has $8, asks to give 20 and gives the 8
+    /// (`Game::DoGiveOrder`, `ah-4k84`), so nothing is left for combat's $10.
+    #[test]
+    fn a_cut_give_and_a_refused_study_share_one_sentence() {
+        let review = review_turn(
+            &report(vec![region(vec![
+                with_silver(unit("902"), 8),
+                with_silver(unit("903"), 100),
+            ])]),
+            "unit 902\nGIVE 903 20 SILV\nSTUDY COMB\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        let sentences = line_messages(&review, "902", 2);
+        assert_eq!(sentences.len(), 1, "{:#?}", review.findings);
+        assert!(
+            sentences[0]
+                .ends_with(", so it gives 8 of the 20 silver ordered and its STUDY is refused"),
+            "{sentences:?}"
         );
     }
 
@@ -67445,8 +67642,11 @@ BUILD
                 &report(regions),
                 orders,
                 Some(&ruleset()),
+                // The pointer on unit 5's refused STUDY line is a code of its own, silenced on
+                // its own (`ah-eurs`, `ah-wr2w`).
                 disabling_all(&[
                     codes::NOT_ENOUGH_SILVER,
+                    codes::PART_OF_HEX_SHORTFALL,
                     codes::GIVE_TARGET_NOT_HERE,
                     codes::UNIT_DOES_NOTHING,
                 ]),
@@ -78846,12 +79046,21 @@ BUILD
             ],
             "sharer 8's STUDY has nothing left to pay for it"
         );
-        // Unit 5's BUY was paid while sharer 8 still held its $100, so its line is not pointed at.
-        assert!(
-            !review
-                .findings
-                .iter()
-                .any(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL),
+        // Unit 5's BUY was paid while sharer 8 still held its $100, so its line is not pointed
+        // at; sharer 8's refused STUDY is, on its own line (`ah-wr2w`).
+        let pointed: Vec<(Option<&str>, &str)> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL)
+            .map(|finding| (finding.unit_id.as_deref(), finding.message.as_str()))
+            .collect();
+        assert_eq!(
+            pointed,
+            vec![(
+                Some("8"),
+                "This hex is short of silver between its units, so this STUDY is refused. See \
+                 Problems for the hex."
+            )],
             "{:#?}",
             review.findings
         );
@@ -79162,7 +79371,9 @@ BUILD
             silver_shortfalls_beside_a_shipper(unit("6"), STUDY_THEN_SHIPMENT),
             vec![(
                 Some("6".to_string()),
-                "short $10: this unit can have $0 and its orders spend $10".to_string()
+                "short $10: this unit can have $0 and its orders spend $10, so its STUDY is \
+                 refused"
+                    .to_string()
             )],
             "unit 6 holds $0 when STUDY runs; the $100 shipped after it cannot pay"
         );
@@ -79176,7 +79387,9 @@ BUILD
             silver_shortfalls_beside_a_shipper(starving(unit("6")), STUDY_THEN_SHIPMENT),
             vec![(
                 Some("6".to_string()),
-                "short $10: this unit can have $0 and its orders spend $10".to_string()
+                "short $10: this unit can have $0 and its orders spend $10, so its STUDY is \
+                 refused"
+                    .to_string()
             )],
         );
     }
