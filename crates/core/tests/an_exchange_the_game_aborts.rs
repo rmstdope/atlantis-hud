@@ -233,3 +233,59 @@ fn an_exchange_that_may_be_paid_for_leaves_later_spending_uncertain() {
         .collect();
     assert!(short.is_empty(), "{short:?}");
 }
+
+/// The engine settles exchanges as it walks the units in report order (`runorders.cpp`
+/// `DoExchangeOrders`), not in the order the lines are written: Maurice's pair runs before
+/// Cedric's here, so Ivanhoe's horses go to Maurice and it is Cedric's pair that aborts. Which one
+/// is not told as certain (third review's finding 1a on PR #1699).
+#[test]
+fn a_chain_written_against_report_order_is_not_warned_on_the_wrong_lines() {
+    let findings = findings_with_cedric(
+        "EXCHANGE 900 4 HORS 1 WOOD\nEXCHANGE 1160 4 HORS 1 SILV",
+        "EXCHANGE 683 1 SILV 4 HORS",
+        "EXCHANGE 683 1 WOOD 4 HORS",
+    );
+    assert!(findings.is_empty(), "{findings:?}");
+}
+
+/// ... nor is a move the engine may abort counted as certain: Ivanhoe's wood for Maurice only
+/// comes from Cedric, whose pair the engine reaches after Maurice's (finding 1b).
+#[test]
+fn a_chain_written_against_report_order_is_not_counted_as_certain() {
+    let ruleset = ruleset();
+    let text = report_text();
+    let mut parsed = parse_report_full(&text);
+    classify_units(&mut parsed, &ruleset);
+    let template = extract_orders_template(&text)
+        .map(|template| template.text)
+        .unwrap_or_default();
+    let script = format!(
+        "{template}\nunit 683\nEXCHANGE 900 1 HORS 1 WOOD\nEXCHANGE 1160 1 WOOD 1 SILV\nunit \
+         1160\nEXCHANGE 683 1 SILV 1 WOOD\nunit 900\nEXCHANGE 683 1 WOOD 1 HORS\n"
+    );
+    let preview = atlantis_hud_core::orders::effects::preview_orders_for_remembered_report(
+        &mut atlantis_hud_core::cache::ReportCache::new(),
+        atlantis_hud_fixtures::RULESET_JSON,
+        &text,
+        "[]",
+        &script,
+    )
+    .expect("the committed ruleset loads");
+    let maurice = common::preview_row(&text, &preview, "1160").expect("Maurice has a row");
+    assert!(
+        maurice
+            .uncounted
+            .contains(&"EXCHANGE 683 1 SILV 1 WOOD".to_string()),
+        "{:?}",
+        maurice.uncounted
+    );
+    let review = review_turn(&parsed, &script, Some(&ruleset), CheckOptions::default());
+    assert!(
+        review
+            .findings
+            .iter()
+            .all(|finding| finding.code.as_str() != CODE),
+        "{:?}",
+        review.findings
+    );
+}

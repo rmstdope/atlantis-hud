@@ -5281,64 +5281,74 @@ fn apply_transfers(
     // legs itself.
     let offers = &exchanges.offers;
     let pairs = complementary_pairs(offers);
-    for (index, &(first, second)) in pairs.iter().enumerate() {
-        let (one, other) = (&offers[first], &offers[second]);
-        let holds = |offer: &ExchangeOffer| -> Result<i64, UncertainGive> {
-            if let Some(uncertain) = working
-                .get(&offer.unit)
-                .and_then(|state| state.uncertain_after_gifts.get(&offer.give_tag))
-            {
-                return Err(uncertain.clone());
-            }
-            // A theft of the offered goods leaves the holding in doubt, exactly as the ledger's
-            // `Steal` arm marks the stolen tag - this walk follows no STEAL otherwise, and the two
-            // settlements must reach the same verdict (`ah-mw1r.1`, `ah-mw1r.2`).
-            let stolen = units[offer.unit]
-                .intents
-                .iter()
-                .find_map(|placed| match &placed.intent {
-                    Intent::Steal { from, item }
-                        if ruleset.find_item(item).is_some_and(|entry| {
-                            entry.tag.eq_ignore_ascii_case(&offer.give_tag)
-                        }) =>
-                    {
-                        Some(UncertainGive {
-                            target: party_label(from),
-                            line: placed.line,
-                        })
-                    }
-                    _ => None,
-                });
-            // What the unit has as the engine counts an offer: its own stock and its `SHARE`
-            // faction-mates' in the hex (`GetSharedNum` in `Game::DoExchangeOrder`; `ah-80mj`).
-            // A sharer whose stock a gift left in doubt leaves the offer in doubt too, as the
-            // ledger's `SharerStock` refuses to read such a pool.
-            if let Some(uncertain) = stolen {
-                return Err(uncertain);
-            }
-            let own = held_by(&working, units, offer.unit, &offer.give_tag);
-            if own >= offer.give_amount {
-                return Ok(own);
-            }
-            let lenders = lending_sharers(units, offer.unit);
-            if let Some(uncertain) = lenders.iter().find_map(|&lender| {
-                working
-                    .get(&lender)
+    // Every pair's holdings are read before any pair settles: see [`settled_exchange_verdict`].
+    let read_before: Vec<_> = pairs
+        .iter()
+        .map(|&(first, second)| {
+            let (one, other) = (&offers[first], &offers[second]);
+            let holds = |offer: &ExchangeOffer| -> Result<i64, UncertainGive> {
+                if let Some(uncertain) = working
+                    .get(&offer.unit)
                     .and_then(|state| state.uncertain_after_gifts.get(&offer.give_tag))
-                    .cloned()
-                    .or_else(|| gives_itself_away(&units[lender]))
-            }) {
-                return Err(uncertain);
-            }
-            let lent: i64 = lenders
-                .into_iter()
-                .map(|lender| held_by(&working, units, lender, &offer.give_tag).max(0))
-                .sum();
-            Ok(own.max(0).saturating_add(lent))
-        };
-        let (held, other_held) = (holds(one), holds(other));
-        let (verdict, doubt) =
-            settled_exchange_verdict(units, offers, &pairs, index, held, other_held);
+                {
+                    return Err(uncertain.clone());
+                }
+                // A theft of the offered goods leaves the holding in doubt, exactly as the ledger's
+                // `Steal` arm marks the stolen tag - this walk follows no STEAL otherwise, and the two
+                // settlements must reach the same verdict (`ah-mw1r.1`, `ah-mw1r.2`).
+                let stolen =
+                    units[offer.unit]
+                        .intents
+                        .iter()
+                        .find_map(|placed| match &placed.intent {
+                            Intent::Steal { from, item }
+                                if ruleset.find_item(item).is_some_and(|entry| {
+                                    entry.tag.eq_ignore_ascii_case(&offer.give_tag)
+                                }) =>
+                            {
+                                Some(UncertainGive {
+                                    target: party_label(from),
+                                    line: placed.line,
+                                })
+                            }
+                            _ => None,
+                        });
+                // What the unit has as the engine counts an offer: its own stock and its `SHARE`
+                // faction-mates' in the hex (`GetSharedNum` in `Game::DoExchangeOrder`; `ah-80mj`).
+                // A sharer whose stock a gift left in doubt leaves the offer in doubt too, as the
+                // ledger's `SharerStock` refuses to read such a pool.
+                if let Some(uncertain) = stolen {
+                    return Err(uncertain);
+                }
+                let own = held_by(&working, units, offer.unit, &offer.give_tag);
+                if own >= offer.give_amount {
+                    return Ok(own);
+                }
+                let lenders = lending_sharers(units, offer.unit);
+                if let Some(uncertain) = lenders.iter().find_map(|&lender| {
+                    working
+                        .get(&lender)
+                        .and_then(|state| state.uncertain_after_gifts.get(&offer.give_tag))
+                        .cloned()
+                        .or_else(|| gives_itself_away(&units[lender]))
+                }) {
+                    return Err(uncertain);
+                }
+                let lent: i64 = lenders
+                    .into_iter()
+                    .map(|lender| held_by(&working, units, lender, &offer.give_tag).max(0))
+                    .sum();
+                Ok(own.max(0).saturating_add(lent))
+            };
+            [holds(one), holds(other)]
+        })
+        .collect();
+    for (index, (&(first, second), [held, other_held])) in
+        pairs.iter().zip(&read_before).enumerate()
+    {
+        let (one, other) = (&offers[first], &offers[second]);
+        let SettledExchange { verdict, doubt, .. } =
+            settled_exchange_verdict(units, offers, &pairs, index, [held, other_held]);
         match verdict {
             ExchangeVerdict::Moves => {}
             ExchangeVerdict::Aborted => continue,
@@ -10403,75 +10413,87 @@ enum ExchangeVerdict {
     Uncertain,
 }
 
-fn exchange_verdict<E>(
-    one: (&ExchangeOffer, Result<i64, E>),
-    other: (&ExchangeOffer, Result<i64, E>),
-) -> ExchangeVerdict {
-    let short = |(offer, held): &(&ExchangeOffer, Result<i64, E>)| matches!(held, Ok(held) if *held < offer.give_amount);
-    if short(&one) || short(&other) {
-        ExchangeVerdict::Aborted
-    } else if one.1.is_err() || other.1.is_err() {
-        ExchangeVerdict::Uncertain
-    } else {
-        ExchangeVerdict::Moves
-    }
+/// What [`settled_exchange_verdict`] makes of one pair.
+struct SettledExchange {
+    verdict: ExchangeVerdict,
+    /// What an [`ExchangeVerdict::Uncertain`] is doubted on.
+    doubt: Option<UncertainGive>,
+    /// For an [`ExchangeVerdict::Aborted`]: each side certainly short, and the most it can hold of
+    /// what it offers.
+    short: Vec<(usize, i64)>,
 }
 
-/// [`exchange_verdict`] for `pairs[index]` among every pair of the hex, with the doubt an
-/// [`ExchangeVerdict::Uncertain`] carries.
+/// The verdict on `pairs[index]`, from what each side holds of what it offers once every GIVE and
+/// TAKE has run and **before any exchange of the hex** - `Err` where that holding is in doubt.
 ///
-/// A side short of what it offers may be paid it in time by another pair of the hex: the engine
-/// settles each exchange as it walks the units in report order (`runorders.cpp`
-/// `DoExchangeOrders`), not in the order the lines are written. Rather than follow that walk, a
-/// short side that other pairs could pay enough of the offered item is read conservatively, as
-/// uncertain; the abort is certain - and is told (`ah-p5ow`) - only when some short side has no
-/// such pair (reviews of PR #1699). Both settlements call this, so they reach one verdict.
+/// The engine settles each exchange as it walks the units in report order (`runorders.cpp`
+/// `DoExchangeOrders`), checking each side's holding as it goes - not in the order the lines are
+/// written. Rather than follow that walk, a side whose offered item another pair of the hex could
+/// hand it or take from it is read conservatively, as uncertain; a side is certainly short - and
+/// the abort is told (`ah-p5ow`) - only when even everything other pairs could hand it would not
+/// cover what it offers (`rules/exchange`: "If either unit involved does not have the items it is
+/// offering ... the exchange is aborted"; reviews of PR #1699). A certainly short side aborts the
+/// pair whatever the other side's doubt. Both settlements call this, so they reach one verdict.
 fn settled_exchange_verdict(
     units: &[Ordered<'_>],
     offers: &[ExchangeOffer],
     pairs: &[(usize, usize)],
     index: usize,
-    held: Result<i64, UncertainGive>,
-    other_held: Result<i64, UncertainGive>,
-) -> (ExchangeVerdict, Option<UncertainGive>) {
+    held: [&Result<i64, UncertainGive>; 2],
+) -> SettledExchange {
     let (first, second) = pairs[index];
-    let (one, other) = (&offers[first], &offers[second]);
-    let doubt = held.as_ref().err().or(other_held.as_ref().err()).cloned();
-    let known = [
-        (one, held.as_ref().ok().copied()),
-        (other, other_held.as_ref().ok().copied()),
-    ];
-    let verdict = exchange_verdict((one, held), (other, other_held));
-    if verdict != ExchangeVerdict::Aborted {
-        return (verdict, doubt);
-    }
-    let mut rescue = None;
-    for (offer, held) in known {
-        let Some(held) = held.filter(|held| *held < offer.give_amount) else {
-            continue;
+    let mut short = Vec::new();
+    let mut doubt = None;
+    let mut entangled = None;
+    for (side, (offer, held)) in [&offers[first], &offers[second]]
+        .into_iter()
+        .zip(held)
+        .enumerate()
+    {
+        let others = || {
+            pairs
+                .iter()
+                .enumerate()
+                .filter(|&(at, _)| at != index)
+                .flat_map(|(_, &(a, b))| [&offers[a], &offers[b]])
         };
-        let paying: Vec<&ExchangeOffer> = pairs
-            .iter()
-            .enumerate()
-            .filter(|&(at, _)| at != index)
-            .flat_map(|(_, &(a, b))| [&offers[a], &offers[b]])
+        let paying: Vec<&ExchangeOffer> = others()
             .filter(|paying| paying.partner == offer.unit && paying.give_tag == offer.give_tag)
             .collect();
-        let could_receive: i64 = paying.iter().map(|paying| paying.give_amount).sum();
-        let Some(first_paying) = paying.first() else {
-            return (ExchangeVerdict::Aborted, None);
-        };
-        if held.max(0).saturating_add(could_receive) < offer.give_amount {
-            return (ExchangeVerdict::Aborted, None);
+        let draining = others()
+            .find(|draining| draining.unit == offer.unit && draining.give_tag == offer.give_tag);
+        match held {
+            Err(uncertain) => {
+                doubt = doubt.or_else(|| Some(uncertain.clone()));
+            }
+            Ok(held) => {
+                let at_most = held
+                    .max(&0)
+                    .saturating_add(paying.iter().map(|paying| paying.give_amount).sum::<i64>());
+                if at_most < offer.give_amount {
+                    short.push((side, at_most));
+                } else if let Some(touching) = paying.first().copied().or(draining) {
+                    entangled = entangled.or_else(|| {
+                        Some(UncertainGive {
+                            target: format!("unit {}", units[touching.unit].unit.unit_id),
+                            line: touching.line,
+                        })
+                    });
+                }
+            }
         }
-        rescue.get_or_insert_with(|| UncertainGive {
-            target: format!("unit {}", units[first_paying.unit].unit.unit_id),
-            line: first_paying.line,
-        });
     }
-    match rescue {
-        Some(rescue) => (ExchangeVerdict::Uncertain, doubt.or(Some(rescue))),
-        None => (ExchangeVerdict::Aborted, None),
+    let (verdict, doubt) = if !short.is_empty() {
+        (ExchangeVerdict::Aborted, None)
+    } else if let Some(doubt) = doubt.or(entangled) {
+        (ExchangeVerdict::Uncertain, Some(doubt))
+    } else {
+        (ExchangeVerdict::Moves, None)
+    };
+    SettledExchange {
+        verdict,
+        doubt,
+        short,
     }
 }
 
@@ -10507,55 +10529,63 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     let offers = &read.offers;
     let pairs = complementary_pairs(offers);
     record_unanswered_exchanges(ledger, hex, &read, &pairs);
-    for (index, &(first, second)) in pairs.iter().enumerate() {
-        let (one, other) = (&offers[first], &offers[second]);
-        // What a side has as the engine counts an offer, `GetSharedNum`: its own stock and what
-        // its `SHARE` faction-mates in the hex still lend it, off the one reading every spend from
-        // the pool takes ([`SharerStock`]; `ah-80mj`).
-        let holds = |offer: &ExchangeOffer| -> Result<i64, UncertainGive> {
-            let who = &hex.units[offer.unit].unit.unit_id;
-            let own = ledger
-                .state
-                .known_balance_at(StatePhase::Give, who, &offer.give_tag)
-                .map_err(Clone::clone)?;
-            let lenders: Vec<&str> = hex
-                .units
-                .iter()
-                .filter(|other| other.shares() && other.unit.unit_id != *who)
-                .map(|other| other.unit.unit_id.as_str())
-                .collect();
-            // Its own stock is read first, so a sharer is only asked about what it lends.
-            if lenders.is_empty() || own >= offer.give_amount {
-                return Ok(own);
-            }
-            // A sharer whose stock a gift left in doubt leaves the offer in doubt too: whether it
-            // still lends enough is the answer the report cannot give.
-            for lender in lenders {
-                ledger
+    // Every pair's holdings are read before any pair settles: see [`settled_exchange_verdict`].
+    let read_before: Vec<_> = pairs
+        .iter()
+        .map(|&(first, second)| {
+            let (one, other) = (&offers[first], &offers[second]);
+            // What a side has as the engine counts an offer, `GetSharedNum`: its own stock and what
+            // its `SHARE` faction-mates in the hex still lend it, off the one reading every spend from
+            // the pool takes ([`SharerStock`]; `ah-80mj`).
+            let holds = |offer: &ExchangeOffer| -> Result<i64, UncertainGive> {
+                let who = &hex.units[offer.unit].unit.unit_id;
+                let own = ledger
                     .state
-                    .known_balance_at(StatePhase::Give, lender, &offer.give_tag)
+                    .known_balance_at(StatePhase::Give, who, &offer.give_tag)
                     .map_err(Clone::clone)?;
-            }
-            if let Some(uncertain) = hex
-                .units
-                .iter()
-                .filter(|other| other.shares() && other.unit.unit_id != *who)
-                .find_map(gives_itself_away)
-            {
-                return Err(uncertain);
-            }
-            let (own, lenders) = exchange_draw(ledger, hex, who, &offer.give_tag, own);
-            Ok(own
-                .max(0)
-                .saturating_add(lenders.iter().map(|(_, lends)| lends).sum::<i64>()))
-        };
-        let (held, other_held) = (holds(one), holds(other));
-        let known = (
-            held.as_ref().ok().copied(),
-            other_held.as_ref().ok().copied(),
-        );
-        let (verdict, doubt) =
-            settled_exchange_verdict(&hex.units, offers, &pairs, index, held, other_held);
+                let lenders: Vec<&str> = hex
+                    .units
+                    .iter()
+                    .filter(|other| other.shares() && other.unit.unit_id != *who)
+                    .map(|other| other.unit.unit_id.as_str())
+                    .collect();
+                // Its own stock is read first, so a sharer is only asked about what it lends.
+                if lenders.is_empty() || own >= offer.give_amount {
+                    return Ok(own);
+                }
+                // A sharer whose stock a gift left in doubt leaves the offer in doubt too: whether it
+                // still lends enough is the answer the report cannot give.
+                for lender in lenders {
+                    ledger
+                        .state
+                        .known_balance_at(StatePhase::Give, lender, &offer.give_tag)
+                        .map_err(Clone::clone)?;
+                }
+                if let Some(uncertain) = hex
+                    .units
+                    .iter()
+                    .filter(|other| other.shares() && other.unit.unit_id != *who)
+                    .find_map(gives_itself_away)
+                {
+                    return Err(uncertain);
+                }
+                let (own, lenders) = exchange_draw(ledger, hex, who, &offer.give_tag, own);
+                Ok(own
+                    .max(0)
+                    .saturating_add(lenders.iter().map(|(_, lends)| lends).sum::<i64>()))
+            };
+            [holds(one), holds(other)]
+        })
+        .collect();
+    for (index, (&(first, second), [held, other_held])) in
+        pairs.iter().zip(&read_before).enumerate()
+    {
+        let (one, other) = (&offers[first], &offers[second]);
+        let SettledExchange {
+            verdict,
+            doubt,
+            short,
+        } = settled_exchange_verdict(&hex.units, offers, &pairs, index, [held, other_held]);
         match verdict {
             ExchangeVerdict::Moves => {
                 hand_over(ledger, hex, one);
@@ -10563,17 +10593,17 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
             }
             ExchangeVerdict::Aborted => {
                 // Who is short, as each line will say it.
-                let short: Vec<String> = [(one, known.0), (other, known.1)]
-                    .into_iter()
-                    .filter_map(|(offer, held)| match held {
-                        Some(held) if held < offer.give_amount => Some(format!(
+                let short: Vec<String> = short
+                    .iter()
+                    .map(|&(side, at_most)| {
+                        let offer = [one, other][side];
+                        format!(
                             "{} will hold only {} of the {} {} it offers",
                             unit_label(hex, &hex.units[offer.unit].unit.unit_id),
-                            held.max(0),
+                            at_most,
                             offer.give_amount,
                             offer.give_tag
-                        )),
-                        _ => None,
+                        )
                     })
                     .collect();
                 let why = short.join("; ");
@@ -10598,9 +10628,13 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
                             .uncertain
                             .entry((unit_id.clone(), offer.give_tag.clone()))
                             .or_insert_with(|| doubt.clone());
-                        // Only silver doubts a unit's sums, as an uncertain `GIVE` of it does
-                        // (`transfer`): its later spending is not judged against a purse the
-                        // exchange may or may not fill (delta review's finding 3 on PR #1699).
+                        // Only silver doubts a unit's sums. Further than `transfer` goes for a
+                        // GIVE, which doubts only the giver: here the receiver is doubted too,
+                        // since its later spending would otherwise be judged against a purse the
+                        // exchange may or may not fill (a false `not-enough-silver`, reviews of
+                        // PR #1699). The price is the one `transfer` avoids for a receiver: a
+                        // doubted receiver that SHAREs leaves the hex's purse untrusted
+                        // (`Sharing::pool_trusted`).
                         if offer.give_tag.eq_ignore_ascii_case(SILVER) {
                             ledger.doubted.insert(unit_id.clone());
                         }
