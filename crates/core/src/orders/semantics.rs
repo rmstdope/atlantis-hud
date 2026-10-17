@@ -1721,6 +1721,26 @@ fn market_shares_for(
     ruleset: Option<&Ruleset>,
     overruns: &mut Vec<PoolOverrun>,
 ) -> BTreeMap<(String, MarketSide), Vec<i64>> {
+    market_shares_sized(hex, ruleset, overruns, &|_, _| None, None)
+}
+
+/// [`market_shares_for`], with every `BUY` cut to what its unit can pay before the line is divided
+/// (`ah-s4hy`): `afford(index, tag)` is how many of `tag` the unit at `index` can pay for, or
+/// `None` where that is not known, which leaves its orders uncut - this module's accept-on-doubt
+/// policy. `Game::GetBuyAmount` (`runorders.cpp`) cuts each order to `GetSharedMoney() / price`,
+/// and sizes a `BUY ALL` as exactly that, before `Game::DoBuy` divides the line by the cut orders.
+/// The purse is only known inside the ledger's market pass, which re-settles each item's buyers
+/// through here before applying them.
+///
+/// `only`, when given, settles that one line and skips every other: the market pass sizes one
+/// item at a time on the per-keystroke path, and needs nothing else (`ah-s4hy`, review finding 3).
+fn market_shares_sized(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    overruns: &mut Vec<PoolOverrun>,
+    afford: &dyn Fn(usize, &str) -> Option<i64>,
+    only: Option<(&str, MarketSide)>,
+) -> BTreeMap<(String, MarketSide), Vec<i64>> {
     let mut wants: BTreeMap<(String, MarketSide), Vec<i64>> = BTreeMap::new();
     // A unit's `SELL` lines draw on one stock, so a second line for the same goods can only claim
     // what the first left. Without this a unit writing `SELL ALL FUR` twice claims twenty of a line
@@ -1741,6 +1761,12 @@ fn market_shares_for(
     // lone `SELL 200` of 200 into a line of 100 is still told so, and a lone `SELL 200` of 10
     // into a line of 110, which the game sells in full, is not.
     let mut stated_sales: BTreeMap<String, Vec<i64>> = BTreeMap::new();
+    // What every buyer's bounded orders ask for as written, before `GetBuyAmount` cuts each to
+    // the line: what the oversubscription warning states, as `stated_sales` is for a seller.
+    let mut stated_buys: BTreeMap<String, Vec<i64>> = BTreeMap::new();
+    // What every buyer's bounded orders claim once each is cut to the line, but not yet to its
+    // purse: the most the line could give it, were it able to pay (`ah-s4hy`).
+    let mut line_buys: BTreeMap<String, Vec<i64>> = BTreeMap::new();
     let sharing_for_sales = Sharing::read(hex);
     // Which recruits the game refuses, judged line by line in the market's order (`ah-wk49`).
     let refused_recruits = refused_recruits_in_market_order(hex, ruleset);
@@ -1762,6 +1788,9 @@ fn market_shares_for(
             let Some(tag) = market_item_tag(lines, text, hex, ordered, ruleset) else {
                 continue;
             };
+            if only.is_some_and(|(only, of)| of != side || !only.eq_ignore_ascii_case(&tag)) {
+                continue;
+            }
             // A tag this market has no line for has no pool, so there is nothing to divide - and
             // the goods are unsellable or unpriceable, which the arms already answer for. The
             // pool itself is read again after the loop, once every unit's claims are in
@@ -1836,7 +1865,29 @@ fn market_shares_for(
                     attempt.min(cut)
                 }
                 (Intent::Buy { amount, .. }, _) => match amount {
-                    Amount::Exact(count) => *count,
+                    // `Game::GetBuyAmount` cuts the order to the line's own amount before
+                    // `Game::DoBuy` divides the line by it, so a `BUY 200` where 100 are for sale
+                    // squeezes the others by 100, not 200 (`ah-s4hy`). The warning still states
+                    // the order as written: overshooting a stated number is a real mistake.
+                    Amount::Exact(count) => {
+                        let stated = stated_buys
+                            .entry(tag.clone())
+                            .or_insert_with(|| vec![0; hex.units.len()]);
+                        stated[index] = stated[index].saturating_add((*count).max(0));
+                        // Settled even when the cut leaves nothing: a line of none for sale
+                        // buys none, rather than falling back to the order (`ah-s4hy`).
+                        wants
+                            .entry((tag.clone(), side))
+                            .or_insert_with(|| vec![0; hex.units.len()]);
+                        let on_the_line = (*count).min(pool);
+                        if on_the_line > 0 {
+                            let line = line_buys
+                                .entry(tag.clone())
+                                .or_insert_with(|| vec![0; hex.units.len()]);
+                            line[index] = line[index].saturating_add(on_the_line);
+                        }
+                        on_the_line.min(afford(index, &tag).unwrap_or(i64::MAX))
+                    }
                     // An unbounded order attempts to buy everything there is, so that is what it
                     // contends for. What it can afford is not known until the deferred pass, which
                     // runs after this settlement must. Recorded rather than added: see
@@ -1883,10 +1934,22 @@ fn market_shares_for(
             // claims the line rather than the line plus three (`ah-lauy`). A unit that writes
             // `BUY 200` where 100 exist still overruns: a stated number that overshoots is a real
             // mistake, and an unbounded line states no number at all.
+            let mut stated_buying = stated_buys.get(&tag).cloned();
+            let mut on_the_line = line_buys
+                .get(&tag)
+                .cloned()
+                .unwrap_or_else(|| vec![0; hex.units.len()]);
             if matches!(side, MarketSide::Buying) {
                 if let Some(buyers) = unbounded.get(&tag) {
                     for index in buyers {
-                        claims[*index] = claims[*index].max(pool);
+                        on_the_line[*index] = on_the_line[*index].max(pool);
+                        // `GetBuyAmount` sizes a `BUY ALL` as what the unit can pay, capped at
+                        // the line (`ah-s4hy`).
+                        let attempt = pool.min(afford(*index, &tag).unwrap_or(i64::MAX));
+                        claims[*index] = claims[*index].max(attempt);
+                        if let Some(stated) = stated_buying.as_mut() {
+                            stated[*index] = stated[*index].max(pool);
+                        }
                     }
                 }
             }
@@ -1898,7 +1961,7 @@ fn market_shares_for(
             // (`ah-6la1`); a purchase in its claims.
             let stated = match side {
                 MarketSide::Selling => stated_sales.get(&tag).unwrap_or(&claims),
-                MarketSide::Buying => &claims,
+                MarketSide::Buying => stated_buying.as_ref().unwrap_or(&claims),
             };
             let wanted: i64 = stated.iter().copied().fold(0, i64::saturating_add);
             if wanted > pool {
@@ -1923,10 +1986,58 @@ fn market_shares_for(
             };
             // `Game::DoSell` and `Game::DoBuy` walk the traders in report order - the order of
             // `claims` - so the last one takes what is left (`ah-alwr`).
-            let shares = settle_in_report_order(&claims, attempted, pool, ShareRounding::Nearest);
+            let mut shares =
+                settle_in_report_order(&claims, attempted, pool, ShareRounding::Nearest);
+            if matches!(side, MarketSide::Buying) {
+                leave_the_line_to_whoever_got_all_it_can_pay(
+                    &mut shares,
+                    &claims,
+                    &on_the_line,
+                    pool,
+                );
+            }
             ((tag, side), shares)
         })
         .collect()
+}
+
+/// A buyer the line gave everything its purse-cut claim asked for was stopped by its purse, not by
+/// the market, so its share is raised back to what the line leaves it once every other buyer has
+/// theirs - never above its order cut to the line (`ah-s4hy`).
+///
+/// The division itself is the game's: `Game::GetBuyAmount` cuts each order to what its unit can
+/// pay before `Game::DoBuy` divides, so the others are squeezed only by what this buyer can pay.
+/// But a share is also what `buy` and the SILVER column charge the order *against*: cut to the
+/// purse, it would never exceed the purse, and the `not-enough-silver` warning the game's own
+/// "BUY: Unit attempted to buy more than it could afford." stands behind would go quiet - and a
+/// lone `BUY ALL` stopped by its silver would read as stopped by a neighbour. Each caller still
+/// cuts the purchase to the same purse, so what the buyer gets is unchanged by the raise.
+///
+/// Where nothing was cut by a purse, `claims` and `on_the_line` agree and every share is left as
+/// it was: one that got its whole claim got its whole order, which is all the line can leave it.
+///
+/// **A raised share is a ceiling, not a slice of the line**, so where two or more buyers are
+/// stopped by their purses the shares can add up to more than the line (`ah-s4hy`, review finding
+/// 1): each is raised against what the *others actually get*, never against another's raise. A
+/// running total would be a partition, but it would hand the line to whichever purse-stopped buyer
+/// comes first and charge the next one only what it can pay - silencing its `not-enough-silver`
+/// for an order the game equally tells it it cannot afford. What every buyer gets is the
+/// purse-cut division either way.
+fn leave_the_line_to_whoever_got_all_it_can_pay(
+    shares: &mut [i64],
+    claims: &[i64],
+    on_the_line: &[i64],
+    pool: i64,
+) {
+    let total: i64 = shares.iter().copied().fold(0, i64::saturating_add);
+    for (index, share) in shares.iter_mut().enumerate() {
+        let line = on_the_line.get(index).copied().unwrap_or(0);
+        let claim = claims.get(index).copied().unwrap_or(0);
+        if line > claim && *share >= claim {
+            let others = total.saturating_sub(*share);
+            *share = (*share).max(line.min(pool.saturating_sub(others)));
+        }
+    }
 }
 
 /// What one region's monthly yield leaves one unit's `PRODUCE`, and what that region calls the
@@ -2662,7 +2773,13 @@ fn forecast_hex(
 
     // A market line is shared the same way, and the rules say so outright: oversupply and
     // oversubscription split in proportion to what each unit tried to trade (`ah-t2pn.3`).
-    let market_shares = market_shares_for(hex, ruleset, overruns);
+    let mut market_shares = market_shares_for(hex, ruleset, overruns);
+    // Each line's buyers as the ITEMS ledger's market pass divided them, once it knew what each
+    // could pay (`ah-s4hy`): the warnings above state the orders as written, the division is the
+    // ledger's.
+    for (tag, sized) in &ledger.sized_buys {
+        market_shares.insert((tag.clone(), MarketSide::Buying), sized.clone());
+    }
 
     // The hex's own `Products` line is shared the same way, but who draws on it is a report-wide
     // question - a passenger produces where its vessel arrives - so the settlement is handed in
@@ -6072,6 +6189,10 @@ struct Ledger<'a> {
     /// pricing the line a second time (`ah-6m7b.2`). Written by `settle_buy_all`; empty for a unit
     /// that wrote none and for a doubted one, which `settle_buy_all` skips.
     pub(crate) settled_buy_all: BTreeMap<String, Vec<SettledBuyAll>>,
+    /// Each market line's buyers, divided as the market pass sized them against the purse the
+    /// line found, by upper-case tag and index-aligned with `hex.units` (`ah-s4hy`). The SILVER
+    /// column reads these in place of its own up-front settlement, which cannot know the purse.
+    pub(crate) sized_buys: BTreeMap<String, Vec<i64>>,
 
     /// What each unit's `GIVE ... ALL SILV` lines actually handed over, in document order - given
     /// to the SILVER column through [`PhaseFacts::gifts`] so it books the ledger's answer instead
@@ -6755,6 +6876,7 @@ fn ledger_for_reaching<'a>(
         build_placement_refusals: BTreeMap::new(),
         buy_all: BTreeMap::new(),
         settled_buy_all: BTreeMap::new(),
+        sized_buys: BTreeMap::new(),
         settled_gifts: BTreeMap::new(),
         shared_casts: BTreeMap::new(),
         unfunded: BTreeMap::new(),
@@ -6798,7 +6920,10 @@ fn ledger_for_reaching<'a>(
     // This computes the settlement a second time for the hex. Accepted rather than overlooked -
     // the two passes are separate entry points, and threading one computation between them means
     // restructuring both together.
-    let market_shares = market_shares_for(hex, ruleset, &mut Vec::new());
+    //
+    // Mutable because the market pass re-settles each item's buyers against the purse as it
+    // reaches them (`ah-s4hy`).
+    let mut market_shares = market_shares_for(hex, ruleset, &mut Vec::new());
     // Once per hex, not once per intent - `apply` runs per intent and this path runs on every
     // keystroke, so a city of forty units would otherwise walk its own units forty times for the
     // combat-ready sum alone (`ah-1ad6.2`, `ah-lu0f.3`).
@@ -6958,6 +7083,46 @@ fn ledger_for_reaching<'a>(
             // What every unit spent on the items settled so far is gone from the purse
             // (`ConsumeSharedMoney`) by the time this one is sized.
             ledger.market_purse.spent = market_spent(&ledger, hex);
+            // `Game::GetBuyAmount` cuts every order for this item to what its unit can pay
+            // before `Game::DoBuy` divides the line, so a buyer who cannot pay for its order
+            // squeezes the others only by what it can (`ah-s4hy`). Sized here, against the purse
+            // as this item finds it, and kept for the SILVER column so both surfaces divide the
+            // line alike.
+            if let Some(line) = item {
+                let offer = &hex.region.for_sale[line];
+                let tag = offer.tag.to_ascii_uppercase();
+                let afford: Vec<Option<i64>> = hex
+                    .units
+                    .iter()
+                    .enumerate()
+                    .map(|(index, ordered)| {
+                        match market_funds(
+                            &ledger,
+                            &ordered.unit.unit_id,
+                            index,
+                            tax_overstated.get(index).copied().unwrap_or(0),
+                        ) {
+                            MarketFunds::Silver(silver) if offer.price > 0 => {
+                                Some(silver.max(0) / offer.price)
+                            }
+                            _ => None,
+                        }
+                    })
+                    .collect();
+                let key = (tag.clone(), MarketSide::Buying);
+                if let Some(sized) = market_shares_sized(
+                    hex,
+                    ruleset,
+                    &mut Vec::new(),
+                    &|index, _| afford.get(index).copied().flatten(),
+                    Some((&tag, MarketSide::Buying)),
+                )
+                .remove(&key)
+                {
+                    ledger.sized_buys.insert(tag.clone(), sized.clone());
+                    market_shares.insert(key, sized);
+                }
+            }
             for buy in &buys[start..end] {
                 let ordered = &hex.units[buy.unit];
                 apply(
@@ -10302,64 +10467,7 @@ fn buy(
     // buyer is cut on account of a neighbour's order for it (`ah-szye`). What earlier market lines
     // spent is gone, though: the purse shrinks between items (`ah-zus2`). An untrusted purse
     // leaves the line uncapped, which is the behaviour before `ah-szye`.
-    let overcharged = ledger.overcharged.get(who).copied().unwrap_or(0);
-    // A neighbour's sale nobody can price leaves the line uncapped too (`ah-9n7l.1`).
-    let shared = if ledger
-        .market_purse
-        .a_neighbours_sale_is_doubted(standing.actor_index)
-    {
-        None
-    } else {
-        ledger.market_purse.adds_for(standing.actor_index)
-    };
-    let funds = match (
-        shared,
-        ledger
-            .state
-            .known_balance_at(StatePhase::Market, who, SILVER),
-    ) {
-        // What an earlier line was charged beyond what it spent is still in the unit's hands, and
-        // this line may spend it (`ah-omn7`).
-        (Some(shared), Ok(silver)) => MarketFunds::Silver(
-            silver
-                .saturating_add(overcharged)
-                .max(0)
-                // The settled purse: what this unit will actually hold once its faction-mates'
-                // claim on the region's tax pool is settled against it (`ah-ud89.4`). The ledger's
-                // own balance stays hopeful - `credit_tax` still passes `PoolShare::Uncontended` -
-                // so every `not-enough-silver` finding reads exactly the balance it reads today.
-                //
-                // Subtracted **after** the pre-existing clamp and **before** `shared`, which is
-                // `settle_buy_all`'s shape too (`ah-ud89.2`): a purse `rules/share` lends from
-                // *other* units cannot refill the hole this unit's own settlement just made, or
-                // one unit's two `BUY` forms would read one purse two ways. The clamp itself does
-                // not move, so a unit nobody contends with - overstatement `0` - is funded to the
-                // silver it is funded to today.
-                //
-                // The SILVER column subtracts *before* its own clamp instead - its clamp cannot
-                // rise above the month's `Sold` credit (`ah-6m7b.5.3`) and is left below the
-                // subtraction rather than between the two. The two can only disagree
-                // where a unit's Market-phase balance is below its overstatement, and no report
-                // reaches that state - see the argument at the column's `opening`.
-                .saturating_sub(standing.overstated_tax())
-                // The rest of this unit's hopeful tax, when it shares in a hex whose pool could
-                // not be settled at all: the purse lends silver in hand, so the buyer spends
-                // silver in hand (`ah-3c2t.1`). `0` in every other hex, and kept beside
-                // `overstated_tax` because it is the same kind of term.
-                .saturating_sub(
-                    ledger
-                        .market_purse
-                        .also_withholds_from(standing.actor_index),
-                )
-                // What this unit borrowed from the purse on earlier market lines. Its own balance
-                // is clamped at nothing above, so the debt would otherwise vanish and the purse
-                // be spent twice (`ah-zus2`). `0` before the first item and in a hex that shares
-                // nothing.
-                .saturating_sub(ledger.market_purse.borrowed_by(standing.actor_index))
-                .saturating_add(shared),
-        ),
-        _ => MarketFunds::Unmeasured,
-    };
+    let funds = market_funds(ledger, who, standing.actor_index, standing.overstated_tax());
     let line = price_purchase(*count, offer.price, allowed, funds);
     let claimed = quantity_bought(*count, allowed);
     let bought = line.quantity;
@@ -10409,6 +10517,75 @@ fn buy(
             other: None,
             created: None,
         });
+    }
+}
+
+/// What one unit can pay for a bounded `BUY` at the market, as the line being sized finds it.
+///
+/// Read by `buy` to cut a line to what the unit can pay, and by the market pass before each item
+/// is sized, since `Game::GetBuyAmount` (`runorders.cpp`) cuts every order to
+/// `GetSharedMoney() / price` before `Game::DoBuy` divides the line (`ah-s4hy`). Nothing within
+/// one item decrements the purse it reads (`ah-szye`), so read before the item's first line it is
+/// the figure every line of that item is sized against.
+fn market_funds(
+    ledger: &Ledger<'_>,
+    who: &str,
+    actor_index: usize,
+    overstated_tax: i64,
+) -> MarketFunds {
+    let overcharged = ledger.overcharged.get(who).copied().unwrap_or(0);
+    // A neighbour's sale nobody can price leaves the line uncapped too (`ah-9n7l.1`).
+    let shared = if ledger
+        .market_purse
+        .a_neighbours_sale_is_doubted(actor_index)
+    {
+        None
+    } else {
+        ledger.market_purse.adds_for(actor_index)
+    };
+    match (
+        shared,
+        ledger
+            .state
+            .known_balance_at(StatePhase::Market, who, SILVER),
+    ) {
+        // What an earlier line was charged beyond what it spent is still in the unit's hands, and
+        // this line may spend it (`ah-omn7`).
+        (Some(shared), Ok(silver)) => MarketFunds::Silver(
+            silver
+                .saturating_add(overcharged)
+                .max(0)
+                // The settled purse: what this unit will actually hold once its faction-mates'
+                // claim on the region's tax pool is settled against it (`ah-ud89.4`). The ledger's
+                // own balance stays hopeful - `credit_tax` still passes `PoolShare::Uncontended` -
+                // so every `not-enough-silver` finding reads exactly the balance it reads today.
+                //
+                // Subtracted **after** the pre-existing clamp and **before** `shared`, which is
+                // `settle_buy_all`'s shape too (`ah-ud89.2`): a purse `rules/share` lends from
+                // *other* units cannot refill the hole this unit's own settlement just made, or
+                // one unit's two `BUY` forms would read one purse two ways. The clamp itself does
+                // not move, so a unit nobody contends with - overstatement `0` - is funded to the
+                // silver it is funded to today.
+                //
+                // The SILVER column subtracts *before* its own clamp instead - its clamp cannot
+                // rise above the month's `Sold` credit (`ah-6m7b.5.3`) and is left below the
+                // subtraction rather than between the two. The two can only disagree
+                // where a unit's Market-phase balance is below its overstatement, and no report
+                // reaches that state - see the argument at the column's `opening`.
+                .saturating_sub(overstated_tax)
+                // The rest of this unit's hopeful tax, when it shares in a hex whose pool could
+                // not be settled at all: the purse lends silver in hand, so the buyer spends
+                // silver in hand (`ah-3c2t.1`). `0` in every other hex, and kept beside
+                // `overstated_tax` because it is the same kind of term.
+                .saturating_sub(ledger.market_purse.also_withholds_from(actor_index))
+                // What this unit borrowed from the purse on earlier market lines. Its own balance
+                // is clamped at nothing above, so the debt would otherwise vanish and the purse
+                // be spent twice (`ah-zus2`). `0` before the first item and in a hex that shares
+                // nothing.
+                .saturating_sub(ledger.market_purse.borrowed_by(actor_index))
+                .saturating_add(shared),
+        ),
+        _ => MarketFunds::Unmeasured,
     }
 }
 
@@ -33086,6 +33263,86 @@ mod tests {
             assert_eq!(silver_of(&review, "2390").expense, Some(6000));
         }
 
+        /// `ah-s4hy`, the buying twin of `ah-6la1`. `Game::GetBuyAmount` (`runorders.cpp`) cuts
+        /// every order to the line's own amount - "BUY: Unit attempted to buy more than were for
+        /// sale." - before `Game::DoBuy` divides the line by the cut orders. BUY 200 then BUY 50
+        /// against 100 for sale is therefore 100 + 50 attempted: 100 * 100 / 150 = 66.67, most
+        /// often 67, and the last buyer the other 33 - not the 80 and 20 a claim of 200 wins.
+        #[test]
+        fn a_purchase_larger_than_the_line_claims_only_the_line() {
+            let review = market_review(
+                vec![],
+                vec![line(100, 10)],
+                vec![trader("2390", 0, 20_000), trader("2391", 0, 20_000)],
+                "unit 2390\nBUY 200 horse\nunit 2391\nBUY 50 horse\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").expense, Some(67 * 10));
+            assert_eq!(silver_of(&review, "2391").expense, Some(33 * 10));
+        }
+
+        /// `ah-s4hy`, the purse half. `Game::GetBuyAmount` also cuts every order to what its unit
+        /// can pay - "BUY: Unit attempted to buy more than it could afford." - before `DoBuy`
+        /// divides. $600 at $60 is ten horses, so BUY 100 then BUY 50 against 100 for sale is
+        /// 10 + 50 attempted, short of the line: `DoBuy` raises the denominator to the line's 100,
+        /// and both buyers get everything they can take - 10 and 50, not the 10 and 33 a claim of
+        /// 100 leaves the second.
+        #[test]
+        fn a_purchase_its_unit_cannot_pay_for_claims_only_what_it_can() {
+            let review = market_review(
+                vec![],
+                vec![line(100, 60)],
+                vec![trader("2390", 0, 600), trader("2391", 0, 20_000)],
+                "unit 2390\nBUY 100 horse\nunit 2391\nBUY 50 horse\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").expense, Some(10 * 60));
+            assert_eq!(silver_of(&review, "2391").expense, Some(50 * 60));
+            // The game still tells the poorer unit "BUY: Unit attempted to buy more than it could
+            // afford.", and so does the review: its order is charged against the 50 the line
+            // leaves it, not cut to the ten it can pay for (review finding 2).
+            let short = |id: &str| {
+                review.findings.iter().any(|finding| {
+                    finding.code == codes::NOT_ENOUGH_SILVER
+                        && finding.unit_id.as_deref() == Some(id)
+                })
+            };
+            assert!(short("2390"), "{:?}", review.findings);
+            assert!(!short("2391"), "{:?}", review.findings);
+        }
+
+        /// `ah-s4hy`, a line still short once the purse has cut an order: $600 at $10 is 60, so
+        /// BUY 100 and BUY 100 against 100 for sale is 60 + 100 attempted. `DoBuy` gives the
+        /// poorer buyer 100 * 60 / 160 = 37.5 - 37 here - and the last buyer the other 63, where
+        /// claims of 100 each split the line 50 / 50.
+        #[test]
+        fn a_line_still_short_after_the_purse_cut_is_divided_by_the_cut_orders() {
+            let review = market_review(
+                vec![],
+                vec![line(100, 10)],
+                vec![trader("2390", 0, 600), trader("2391", 0, 20_000)],
+                "unit 2390\nBUY 100 horse\nunit 2391\nBUY 100 horse\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").expense, Some(37 * 10));
+            assert_eq!(silver_of(&review, "2391").expense, Some(63 * 10));
+        }
+
+        /// The same for `BUY ALL`, which `GetBuyAmount` sizes as `GetSharedMoney() / price`,
+        /// capped at the line (`ah-s4hy`): ten horses for $600, not the whole line of 100.
+        #[test]
+        fn a_buy_all_claims_only_what_its_unit_can_pay_for() {
+            let review = market_review(
+                vec![],
+                vec![line(100, 60)],
+                vec![trader("2390", 0, 600), trader("2391", 0, 20_000)],
+                "unit 2390\nBUY ALL horse\nunit 2391\nBUY 50 horse\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").expense, Some(10 * 60));
+            assert_eq!(silver_of(&review, "2391").expense, Some(50 * 60));
+        }
+
         #[test]
         fn two_buyers_split_what_the_market_has() {
             let review = market_review(
@@ -35492,6 +35749,9 @@ BUILD
                             .find(|m| m.unit_id == id && m.tag == "HORS")
                             .cloned()
                     };
+                    // `Game::GetBuyAmount` cuts the BUY 20 to the line's 12 before dividing
+                    // (`ah-s4hy`): 12 * 12 / 22 = 6.55, most often 7, and the last buyer the
+                    // other 5 (`ah-alwr`).
                     assert_eq!(
                         movement_for("2390"),
                         Some(ItemMovement {
@@ -35500,7 +35760,7 @@ BUILD
                                 "2390",
                                 "HORS",
                                 "horse",
-                                8,
+                                7,
                                 ItemChangeCause::Bought,
                                 StatePhase::Market,
                                 Some(2),
@@ -35515,7 +35775,7 @@ BUILD
                                 "2391",
                                 "HORS",
                                 "horse",
-                                4,
+                                5,
                                 ItemChangeCause::Bought,
                                 StatePhase::Market,
                                 Some(4),
