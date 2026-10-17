@@ -38828,10 +38828,16 @@ BUILD
             );
             with_ledger(region(vec![cook]), "unit 2391\nPRODUCE meal\n", |ledger| {
                 assert!(!ledger.uncounted.contains_key("2391"));
-                assert!(
-                    !ledger.movements.is_empty(),
-                    "the grain the cooks eat is a movement"
-                );
+                let net = |tag: &str| -> i64 {
+                    ledger
+                        .movements
+                        .iter()
+                        .filter(|movement| movement.tag == tag)
+                        .map(|movement| movement.delta)
+                        .sum()
+                };
+                assert_eq!(net("GRAI"), -5, "{:?}", ledger.movements);
+                assert_eq!(net("MEAL"), 5, "{:?}", ledger.movements);
             });
         }
 

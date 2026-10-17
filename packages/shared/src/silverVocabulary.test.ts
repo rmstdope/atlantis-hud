@@ -208,6 +208,16 @@ describe("productionStatusSentence, numbered (ah-6x5u)", () => {
     );
   });
 
+  it("shows a cook's whole batches, more than requested, with nothing carried over", () => {
+    // ah-opzd, the navigator's choice (2026-10-17): a numbered PRODUCE of meals caps batches as
+    // the engine does (monthorders.cpp), so 10 requested at 4 meals a batch makes 40.
+    expect(
+      productionStatusSentence(
+        numbered({ produced: 40, producedName: "meal", productionWanted: 120, productionRequested: 10 })
+      )
+    ).toBe("Requested: 10 meals. This month: 40.");
+  });
+
   it("says none rather than 0 for a month that makes nothing", () => {
     expect(
       productionStatusSentence(

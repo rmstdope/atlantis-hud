@@ -5941,10 +5941,12 @@ pub fn plan_production(
     } else {
         i64::MAX
     };
+    // Clamped at zero: a running balance can carry a deficit (`subtract_running`), and summed
+    // across alternatives one would cancel another's stock.
     let sets = materials_each
         .iter()
         .filter(|input| input.amount > 0)
-        .map(|input| holding(&input.tag) / input.amount);
+        .map(|input| holding(&input.tag).max(0) / input.amount);
     let by_materials = if recipe.inputs_are_alternatives {
         sets.reduce(i64::saturating_add)
     } else {
@@ -6000,7 +6002,7 @@ pub fn plan_production(
             .iter()
             .filter(|input| input.amount > 0)
             .filter_map(|input| {
-                let drawn = left.min(holding(&input.tag) / input.amount);
+                let drawn = left.min(holding(&input.tag).max(0) / input.amount);
                 left -= drawn;
                 (drawn > 0).then(|| {
                     ItemAmount::new(drawn * input.amount, input.tag.clone(), input.tag.clone())
@@ -7118,6 +7120,28 @@ mod production_tests {
         assert_eq!(plan.made, 6);
         assert_eq!(plan.wanted, 10);
         assert_eq!(plan.capped_by, Some(ProductionCap::Materials));
+    }
+
+    /// A deficit carried on one alternative neither cancels another's stock nor lets the draw
+    /// take more of it than the run needs.
+    #[test]
+    fn a_deficit_on_one_alternative_is_not_drawn_against() {
+        let plan = plan_production(
+            &meals(),
+            five_cooks(1),
+            &held(&[("GRAI", -3), ("FISH", 4)]),
+            0,
+            None,
+            RegionShare::Unlimited,
+        )
+        .expect("cooking is priced");
+        assert_eq!(plan.made, 4);
+        let drawn: Vec<(&str, i64)> = plan
+            .materials
+            .iter()
+            .map(|item| (item.tag.as_str(), item.amount))
+            .collect();
+        assert_eq!(drawn, vec![("FISH", 4)]);
     }
 
     /// A numbered order bounds the batches, as the engine's `maxproduced > o->target` does: two
