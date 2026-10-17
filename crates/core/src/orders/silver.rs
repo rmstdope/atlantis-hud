@@ -632,7 +632,9 @@ pub struct UnitSilver {
     /// [`Self::shared_silver_coverage`], which carries the explicit result for known shortfalls.
     pub pool_doubted: bool,
     /// What the hex's `SHARE` pool judged about this unit's silver shortfall. Absent when this
-    /// unit has no known shortfall in a shared hex.
+    /// unit has no known shortfall in a shared hex. Where the pool could not be added up, a unit
+    /// in credit but short for its orders is `Unjudged` too, since the purse might have lent it
+    /// the difference (`ah-3aaj`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub shared_silver_coverage: Option<SharedSilverCoverage>,

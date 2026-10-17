@@ -50,6 +50,21 @@ const SPENDS: Record<NonNullable<UnitSilver["shortOn"]>, string> = {
  */
 export const CANNOT_PAY_NOTE = "cannot-pay";
 
+/**
+ * Why a shortfall resting on a hex's shared silver cannot be judged (`ah-pbxj`). One constant,
+ * because the Silver popup opens with it where the cell no longer claims the shortfall (`ah-3aaj`)
+ * and the note below says it everywhere else - the two must read word for word alike.
+ */
+export const SHARED_SILVER_UNJUDGED =
+  "Shared silver in this hex could not be added up, because a sharing unit's month is uncertain, so whether it covers this unit's shortfall cannot be said.";
+
+/** The notes that say again, as certain, what the Silver popup's opening lines say (`ah-3aaj`). */
+export const RESTATED_BY_UNJUDGED_POOL: readonly string[] = [
+  "shared-silver-unjudged",
+  "wages-too-late",
+  CANNOT_PAY_NOTE
+];
+
 export const CANNOT_PAY: Record<NonNullable<UnitSilver["shortOn"]> | "orders", string> = {
   study: "its study costs",
   buy: "its purchase costs",
@@ -454,8 +469,7 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       silver.atMonthEnd !== null &&
       silver.atMonthEnd < 0 &&
       silver.sharedSilverCoverage === "unjudged",
-    say: () =>
-      "Shared silver in this hex could not be added up, because a sharing unit's month is uncertain, so whether it covers this unit's shortfall cannot be said.",
+    say: () => SHARED_SILVER_UNJUDGED,
     example: () => ({
       unit: aReportUnit(),
       silver: aUnitSilver({

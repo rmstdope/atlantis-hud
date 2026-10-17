@@ -2175,9 +2175,99 @@ describe("the column popups", () => {
   };
 
   it("a short unit beside a doubted sharer is told the pool could not be added up, first", () => {
+    // `ah-3aaj` moved the sentence from the notes to the popup's opening lines.
     const notes = doubtedPoolNotes(-10);
-    expect(notes[0]).toBe(UNJUDGED);
+    expect(notes).not.toContain(UNJUDGED);
     expect(notes).not.toContain("Shared silver in this hex covers the shortfall.");
+  });
+
+  // ah-3aaj: the cell no longer claims the shortfall, so the hover opens with why and gives the
+  // amount on the unit's own purse, and says nothing else that calls the shortfall certain.
+  const unjudgedPopup = (silver: Partial<UnitSilver>, silverWarned = false) =>
+    columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({ poolDoubted: true, sharedSilverCoverage: "unjudged", ...silver }),
+          silverWarned,
+          countUpkeep: true
+        })
+      )
+    );
+
+  it("a dependant that would end the month in debt opens with the sentence and its own figure", () => {
+    const popup = unjudgedPopup({ held: 0, expense: 500, atMonthEnd: -500, upkeep: 0 });
+    expect(popup.caveat).toEqual([
+      UNJUDGED,
+      "On its own purse this unit would end the month at -500."
+    ]);
+    expect(popup.alert).toBeNull();
+    expect(popup.notes).not.toContain(UNJUDGED);
+    // The cell is not red, so the popup does not explain a red figure.
+    expect(popup.warning).toBeNull();
+    expect(popupAsText(popup).startsWith(`${UNJUDGED} On its own purse`)).toBe(true);
+  });
+
+  it("a dependant in debt for its orders as well keeps one own-purse line, and no red line", () => {
+    const popup = unjudgedPopup({
+      held: 0,
+      expense: 500,
+      atMonthEnd: -500,
+      upkeep: 0,
+      shortForOrders: 30,
+      shortOn: "study"
+    });
+    expect(popup.caveat).toEqual([
+      UNJUDGED,
+      "On its own purse this unit would end the month at -500."
+    ]);
+    expect(popup.alert).toBeNull();
+    expect(popup.notes.some((note) => note.includes("30 short"))).toBe(false);
+  });
+
+  it("a dependant in credit but short for its orders gives the shortfall on its own purse", () => {
+    const popup = unjudgedPopup({
+      held: 135,
+      expense: 95,
+      atMonthEnd: 40,
+      upkeep: 0,
+      shortForOrders: 95,
+      shortOn: "buy",
+      lateIncome: 60
+    });
+    expect(popup.caveat).toEqual([
+      UNJUDGED,
+      "On its own purse this unit would be 95 short of paying for its orders."
+    ]);
+    expect(popup.alert).toBeNull();
+    expect(popup.notes.some((note) => note.includes("95 short"))).toBe(false);
+  });
+
+  it("a dependant in credit and not short has no opening lines", () => {
+    const popup = unjudgedPopup({ held: 40, atMonthEnd: 40, upkeep: 0 });
+    expect(popup.caveat ?? []).toEqual([]);
+  });
+
+  it("the ⚠ sentence stays beside the opening lines", () => {
+    const popup = unjudgedPopup({ held: 0, expense: 500, atMonthEnd: -500, upkeep: 0 }, true);
+    expect(popup.warning).toBe(
+      "⚠ in the cell: a check warns about this unit's money. Select the unit to read it in the Problems panel."
+    );
+  });
+
+  it("a judged pool keeps its red first line and has no opening lines", () => {
+    const popup = unjudgedPopup({
+      held: 135,
+      expense: 95,
+      atMonthEnd: 40,
+      upkeep: 0,
+      shortForOrders: 95,
+      shortOn: "buy",
+      sharedSilverCoverage: "shortfall"
+    });
+    expect(popup.caveat ?? []).toEqual([]);
+    expect(popup.alert).not.toBeNull();
   });
 
   it("a shortfall judgement gets no unjudged-pool note when a warning is also present", () => {

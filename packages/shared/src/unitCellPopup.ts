@@ -36,6 +36,8 @@ import { newShipStructureNote } from "./newShip";
 import {
   CANNOT_PAY,
   CANNOT_PAY_NOTE,
+  RESTATED_BY_UNJUDGED_POOL,
+  SHARED_SILVER_UNJUDGED,
   silverCauseGroups,
   silverCauseLabel,
   silverNoteLines,
@@ -51,6 +53,7 @@ import {
 } from "./unitRead";
 import {
   COLUMN_LABELS,
+  poolLeavesShortfallOpen,
   silverIsRed,
   silverShownUI,
   unitRowKey,
@@ -170,6 +173,12 @@ export type ColumnPopup = {
    * Silver cell's shortfall and what it does to the order. Every other column leaves it null.
    */
   alert: string | null;
+  /**
+   * Lines drawn directly under the title, in the alert's place, or absent (`ah-3aaj`): why the
+   * Silver cell claims no shortfall - the first in ordinary ink - and the amount on the unit's own
+   * purse in the dim ink beneath. Never drawn beside an alert.
+   */
+  caveat?: readonly string[];
   /**
    * Whether this month changes the cell - see `PopupMonth`. The shared no-change sentence is added
    * only for `unchanged`, and not even then where the popup words its month itself (the flags, the
@@ -797,6 +806,7 @@ export function popupForCell(
       notes,
       warning: body.warning ?? null,
       alert: body.alert ?? null,
+      ...(body.caveat && body.caveat.length > 0 ? { caveat: body.caveat } : {}),
       month: body.month
     }
   };
@@ -828,6 +838,8 @@ type Body = {
   warning?: string | null;
   /** The red first line - see `ColumnPopup.alert`. */
   alert?: string | null;
+  /** The opening lines - see `ColumnPopup.caveat`. */
+  caveat?: readonly string[];
   /** Whether this month changes the cell, worked out from the body's data (`PopupMonth`). */
   month: PopupMonth;
   /**
@@ -2199,6 +2211,28 @@ export function silverAlert(silver: UnitSilver, shown: number | null): string | 
 }
 
 /**
+ * The Silver popup's opening lines where a pool left the unit's shortfall unjudged, so the cell
+ * draws neither red nor `<N> short` (`ah-3aaj`): why, then what the unit's own purse comes to.
+ * Empty where the cell is unchanged - a judged pool, or a unit neither in debt nor short.
+ */
+export function silverCaveat(silver: UnitSilver, shown: number | null): string[] {
+  if (!poolLeavesShortfallOpen(silver)) {
+    return [];
+  }
+  if (shown !== null && shown < 0) {
+    return [SHARED_SILVER_UNJUDGED, `On its own purse this unit would end the month at ${shown}.`];
+  }
+  const short = silver.shortForOrders ?? 0;
+  if (short > 0) {
+    return [
+      SHARED_SILVER_UNJUDGED,
+      `On its own purse this unit would be ${short} short of paying for its orders.`
+    ];
+  }
+  return [];
+}
+
+/**
  * The amber sentence(s) explaining the cell's marks (decision **W1**), or `null`.
  *
  * Red first, because it is the figure itself; the two are joined into one paragraph for a unit that
@@ -2363,12 +2397,15 @@ function silverLedger(unit: PreviewedUnit, facts: PopupFacts): Omit<Body, "month
     countUpkeep: facts.countUpkeep,
     upkeepLinesDrawn: paidByMates > 0
   };
-  const alert = silverAlert(silver, shownNumeric);
+  // Where the cell claims no shortfall, the opening lines say why and give the amount, and
+  // nothing lower down calls it certain again (`ah-3aaj`).
+  const caveat = silverCaveat(silver, shownNumeric);
+  const alert = caveat.length > 0 ? null : silverAlert(silver, shownNumeric);
   // The first line says the shortfall, so the lower sentence that said it goes (`ah-ottr`).
   const notes = silverNoteLines(
     noteFacts,
     [...groups, ...upkeepShares],
-    alert === null ? [] : [CANNOT_PAY_NOTE]
+    caveat.length > 0 ? RESTATED_BY_UNJUDGED_POOL : alert === null ? [] : [CANNOT_PAY_NOTE]
   );
   if (silver.doubt !== null) {
     // Above the doubt's own sentence, which says *why* it could not be added up.
@@ -2387,7 +2424,8 @@ function silverLedger(unit: PreviewedUnit, facts: PopupFacts): Omit<Body, "month
     lines,
     notes,
     warning: silverMarkWarning(silver, shownNumeric, facts.silverWarned),
-    alert
+    alert,
+    caveat
   };
 }
 
@@ -2508,8 +2546,9 @@ export function popupAsText(popup: ColumnPopup): string {
     return `${parts.join(", ")}.`;
   });
 
-  // The red first line first, as it is drawn (`ah-ottr`).
+  // The red first line first, as it is drawn (`ah-ottr`), or the opening lines in its place.
   return [
+    ...(popup.caveat ?? []),
     ...(popup.alert ? [popup.alert] : []),
     ...lines,
     ...popup.notes,

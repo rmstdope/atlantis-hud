@@ -25,6 +25,9 @@ import {
   dragColumnShare,
   dropBoundaryX,
   orderOf,
+  poolLeavesShortfallOpen,
+  silverCellShown,
+  silverSortValue,
   silverIsRed,
   silverShortfall,
   shortfallText,
@@ -712,6 +715,53 @@ describe("silverShortfall", () => {
     expect(silverShortfall(40, forecast({ shortForOrders: 0 }))).toBeNull();
     expect(silverShortfall(40, forecast({ shortForOrders: null }))).toBeNull();
     expect(silverShortfall(null, null)).toBeNull();
+  });
+});
+
+// `ah-3aaj`: where the hex's shared silver could not be added up, a dependant's own shortfall is
+// not a certain one, so the cell claims none.
+describe("a shortfall a pool left unjudged", () => {
+  const forecast = (overrides: Partial<UnitSilver>): UnitSilver =>
+    aUnitSilver({ regionId: "1:2,18", ...overrides });
+  const unjudgedFields = { poolDoubted: true, sharedSilverCoverage: "unjudged" as const };
+  const unjudged = forecast(unjudgedFields);
+
+  it("is read from the forecast's own unjudged coverage, and nothing else", () => {
+    expect(poolLeavesShortfallOpen(unjudged)).toBe(true);
+    expect(poolLeavesShortfallOpen(forecast({ sharedSilverCoverage: "shortfall" }))).toBe(false);
+    expect(poolLeavesShortfallOpen(forecast({ sharedSilverCoverage: "covered" }))).toBe(false);
+    // A doubted pool alone says nothing about this unit: the core marks the units it could not judge.
+    expect(poolLeavesShortfallOpen(forecast({ poolDoubted: true }))).toBe(false);
+    expect(poolLeavesShortfallOpen(null)).toBe(false);
+  });
+
+  it("draws a negative figure as the dim ? rather than red", () => {
+    expect(silverIsRed(-500, unjudged)).toBe(false);
+    expect(silverCellShown({ kind: "single", value: -500 }, unjudged)).toEqual({ kind: "unknown" });
+    expect(silverCellShown({ kind: "pair", low: -20, high: 30 }, unjudged)).toEqual({ kind: "unknown" });
+  });
+
+  it("keeps a figure in credit, and drops its short mark", () => {
+    const short = forecast({ sharedSilverCoverage: "unjudged", shortForOrders: 95 });
+    expect(silverCellShown({ kind: "single", value: 40 }, short)).toEqual({ kind: "single", value: 40 });
+    expect(silverShortfall(40, short)).toBeNull();
+  });
+
+  // Review of PR #1726, finding 1: a `?` sorts as one, not on the figure it hides (as the
+  // dissolving dash does, `ah-ty3s.3`).
+  it("sorts the ? with the other unpriced rows rather than on the hidden figure", () => {
+    expect(silverSortValue(forecast({ atMonthEnd: -500, ...unjudgedFields }), true)).toBeNull();
+    expect(silverSortValue(forecast({ atMonthEnd: 40, shortForOrders: 95, ...unjudgedFields }), true)).toBe(40);
+    expect(silverSortValue(forecast({ atMonthEnd: -100, sharedSilverCoverage: "shortfall" }), true)).toBe(-100);
+    expect(silverSortValue(null, true)).toBeNull();
+  });
+
+  it("leaves a judged pool's red figure and short mark as they were", () => {
+    const judged = forecast({ sharedSilverCoverage: "shortfall", shortForOrders: 95 });
+    expect(silverIsRed(-500, judged)).toBe(true);
+    expect(silverCellShown({ kind: "single", value: -500 }, judged)).toEqual({ kind: "single", value: -500 });
+    expect(silverShortfall(40, judged)).toBe(95);
+    expect(silverCellShown(null, null)).toBeNull();
   });
 });
 

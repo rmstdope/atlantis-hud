@@ -88,7 +88,9 @@ import {
   rowMonth,
   unitRefOf,
   unitRowSelector,
+  silverCellShown,
   silverIsRed,
+  silverSortValue,
   silverShortfall,
   silverShownUI,
   type ShownSilver,
@@ -588,18 +590,11 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         // A dissolving row prints no month end, so it sorts as having none: a column that
         // printed a dash and sorted on a figure is the defect the dash exists to avoid
         // (`ah-ty3s.3`, decision **S1**).
-        .map((entry) => {
-          const shown = dissolves(entry)
-            ? null
-            : silverShownUI(rowMonth(entry, { getSilver }).silver, countUpkeep);
-          const numeric =
-            shown === null || shown.kind === "unknown"
-              ? null
-              : shown.kind === "single"
-                ? shown.value
-                : shown.low;
-          return [rowKeyOf(entry), numeric];
-        })
+        // A `?` sorts as one too, whatever figure a pool left unjudged hides (`ah-3aaj`).
+        .map((entry) => [
+          rowKeyOf(entry),
+          dissolves(entry) ? null : silverSortValue(rowMonth(entry, { getSilver }).silver, countUpkeep)
+        ])
     );
   }, [units, effectiveSort.column, getSilver, countUpkeep]);
   const visible = useMemo(
@@ -2453,6 +2448,9 @@ function UnitRow({
       : shownSilver.kind === "single"
         ? shownSilver.value
         : shownSilver.low;
+  // What the cell draws: the dim `?` where a pool left a debt unjudged (`ah-3aaj`). The figure
+  // itself (`shownNumeric`) still decides red and the shortfall, which say nothing there either.
+  const cellShown = silverCellShown(shownSilver, silver);
   // A dissolving unit will not exist at month end, so the column shows no figure for it - the dash
   // is written explicitly rather than taken from `silverFigure(null)`, whose `?` means "could not
   // be priced", a different sentence (`ah-ty3s.3`, decision **S1**).
@@ -2468,7 +2466,7 @@ function UnitRow({
         unitId={unit.unitId}
         amount={shortfall}
         // What sits beside it: a new figure, or the ⚠ arriving, changes what fits.
-        beside={`${warned ? "!" : ""}${silverFigure(shownSilver, shareBoundedByAnUnreadUnit(silver))}`}
+        beside={`${warned ? "!" : ""}${silverFigure(cellShown, shareBoundedByAnUnreadUnit(silver))}`}
       />
     );
   const figure = moneyNotKnown ? (
@@ -2481,7 +2479,7 @@ function UnitRow({
       </span>
     </>
   ) : (
-    silverFigure(shownSilver, shareBoundedByAnUnreadUnit(silver))
+    silverFigure(cellShown, shareBoundedByAnUnreadUnit(silver))
   );
   // The figure as the cell draws it: the ⚠ button that selects the unit, or the plain figure.
   const silverFigureCell = warned ? (
@@ -2516,7 +2514,7 @@ function UnitRow({
           !moneyNotKnown &&
           !silverIsRed(shownNumeric, silver) &&
           shortfall === null &&
-          silverIsDim(shownSilver)
+          silverIsDim(cellShown)
             ? "text-ink-dim"
             : undefined
         }

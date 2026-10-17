@@ -450,7 +450,9 @@ shippingTargetUnshown: boolean,
 poolDoubted: boolean, 
 /**
  * What the hex's `SHARE` pool judged about this unit's silver shortfall. Absent when this
- * unit has no known shortfall in a shared hex.
+ * unit has no known shortfall in a shared hex. Where the pool could not be added up, a unit
+ * in credit but short for its orders is `Unjudged` too, since the purse might have lent it
+ * the difference (`ah-3aaj`).
  */
 sharedSilverCoverage?: SharedSilverCoverage, 
 /**

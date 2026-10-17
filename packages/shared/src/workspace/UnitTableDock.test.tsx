@@ -939,6 +939,39 @@ describe("the Silver column", () => {
     expect(markup).not.toContain("unit-silver-1");
   });
 
+  // `ah-3aaj`: where the hex's shared silver could not be added up, a dependant's shortfall is
+  // not certain, so its cell claims none - a dim `?` for debt, no `short` mark for credit.
+  const unjudged = { poolDoubted: true, sharedSilverCoverage: "unjudged" as const };
+
+  it("a_dependant_of_an_unjudged_pool_in_debt_shows_a_dim_question_mark", () => {
+    const cell = silverCell(drawSilver(forecast({ atMonthEnd: -500, ...unjudged })));
+    expect(cell).toContain('<span class="text-ink-dim">?</span>');
+    expect(cell).not.toContain("-500");
+    expect(drawSilver(forecast({ atMonthEnd: -500, ...unjudged }))).not.toContain(
+      "text-right tabular-nums text-danger"
+    );
+  });
+
+  it("a_warned_dependant_of_an_unjudged_pool_wraps_the_question_mark_in_its_warning", () => {
+    const cell = silverCell(drawSilver(forecast({ atMonthEnd: -500, ...unjudged }), ["1"]));
+    expect(cell).toContain("unit-silver-1");
+    expect(cell.indexOf("⚠")).toBeLessThan(cell.indexOf("?"));
+    expect(cell).not.toContain("-500");
+  });
+
+  it("a_dependant_of_an_unjudged_pool_in_credit_drops_its_short_mark", () => {
+    const cell = silverCell(drawSilver(forecast({ atMonthEnd: 40, shortForOrders: 95, ...unjudged })));
+    expect(cell).toContain(">40<");
+    expect(cell).not.toContain("short");
+    expect(cell).not.toContain("silver-shortfall-1");
+  });
+
+  it("a_dependant_of_a_judged_pool_keeps_its_red_figure", () => {
+    const markup = drawSilver(forecast({ atMonthEnd: -500, sharedSilverCoverage: "shortfall" }));
+    expect(markup).toContain("text-right tabular-nums text-danger");
+    expect(silverCell(markup)).toContain("-500");
+  });
+
   it("a_unit_with_no_forecast_shows_nothing", () => {
     const markup = drawSilver(null);
     expect(markup).not.toContain("unit-silver-1");

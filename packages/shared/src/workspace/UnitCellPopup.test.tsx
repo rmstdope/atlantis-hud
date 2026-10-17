@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { PopupLine } from "../unitCellPopup";
-import { PopupLineLabel, PopupLineValue } from "./UnitCellPopup";
+import { PopupCaveat, PopupLineLabel, PopupLineValue } from "./UnitCellPopup";
 
 const draw = (line: PopupLine) => renderToStaticMarkup(<PopupLineValue line={line} />);
 
@@ -121,5 +121,20 @@ describe("the unfinished mark on a popup line", () => {
     const line: PopupLine = { label: "wood WOOD", value: "85" };
     expect(draw(line)).not.toContain(MARK);
     expect(renderToStaticMarkup(<PopupLineLabel line={line} />)).not.toContain(MARK);
+  });
+});
+
+// `ah-3aaj`: the Silver popup's opening lines - the first in ordinary ink, the rest dim.
+describe("PopupCaveat", () => {
+  it("draws the first line in ordinary ink and the next in the dim ink", () => {
+    const markup = renderToStaticMarkup(<PopupCaveat caveat={["Why.", "How much."]} />);
+    expect(markup).toMatch(/<p[^>]*>Why\.<\/p>/);
+    expect(markup).not.toMatch(/text-ink-dim[^>]*>Why\./);
+    expect(markup).toMatch(/text-ink-dim[^>]*>How much\./);
+    expect(markup.indexOf("Why.")).toBeLessThan(markup.indexOf("How much."));
+  });
+
+  it("draws nothing without lines", () => {
+    expect(renderToStaticMarkup(<PopupCaveat caveat={undefined} />)).toBe("");
   });
 });

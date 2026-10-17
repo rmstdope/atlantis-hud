@@ -35,6 +35,8 @@ export function UnitCellPopup({
     >
       <p className="m-0 font-medium text-brass">{popup.title}</p>
 
+      <PopupCaveat caveat={popup.caveat} />
+
       {/* The Silver cell's shortfall, in red, before the lines (`ah-ottr`). */}
       {popup.alert ? (
         <p data-testid="unit-cell-popup-alert" className="m-0 mb-1 text-pane-sm font-medium text-danger">
@@ -57,6 +59,31 @@ export function UnitCellPopup({
 
       {popup.warning ? <p className="m-0 mt-1 text-pane-sm text-warn">{popup.warning}</p> : null}
     </TooltipPortal>
+  );
+}
+
+/**
+ * The Silver popup's opening lines (`ah-3aaj`): why the cell claims no shortfall, in ordinary ink,
+ * then the amount on the unit's own purse in the dim ink. Exported for the same reason
+ * `PopupLineValue` is.
+ */
+export function PopupCaveat({ caveat }: { caveat: readonly string[] | undefined }) {
+  if (!caveat || caveat.length === 0) {
+    return null;
+  }
+  return (
+    <>
+      {caveat.map((line, index) => (
+        <p
+          key={index}
+          className={`m-0 text-pane-sm${index === 0 ? "" : " text-ink-dim"}${
+            index === caveat.length - 1 ? " mb-1" : ""
+          }`}
+        >
+          {line}
+        </p>
+      ))}
+    </>
   );
 }
 
