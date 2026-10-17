@@ -26492,8 +26492,9 @@ fn region_after<'a>(
 /// run before `check_movement`).
 ///
 /// The verdict is [`overload`], the one the preview's settle reads too (`ah-v0e3`); this supplies
-/// only its input, the ledger's load and the report's printed line. `None` - no ruleset, an
-/// unpriceable item and no printed capacity - is "cannot say", never "not overloaded".
+/// only its input, the ledger's load and the report's printed line. `None` is both "not
+/// overloaded" and "cannot say" (no ruleset, an unpriceable item and no printed capacity), and
+/// every caller lets the ordered move stand on either.
 fn movement_overload(
     ordered: &Ordered<'_>,
     ledger: &Ledger<'_>,

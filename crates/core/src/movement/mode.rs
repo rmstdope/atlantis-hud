@@ -244,7 +244,14 @@ fn mobility_for_capacities(weight: i64, capacity: Capacities) -> Mobility {
 #[must_use]
 pub fn best_allowance(unit: &ReportUnit) -> Option<i64> {
     let capacity = unit.capacity.as_deref().and_then(parse_capacities)?;
-    Some(capacity.fly.max(capacity.ride).max(capacity.walk))
+    Some(best_of(capacity))
+}
+
+/// The best of flying, riding and walking, the allowance both [`best_allowance`] and [`overload`]
+/// compare a unit's weight to.
+#[must_use]
+pub fn best_of(capacity: Capacities) -> i64 {
+    capacity.fly.max(capacity.ride).max(capacity.walk)
 }
 
 /// What a bag of items can carry, per movement mode.
@@ -419,7 +426,7 @@ pub struct Overload {
 pub fn overload(carrying: Carrying, printed: Option<&ReportUnit>) -> Option<Overload> {
     let allowance = carrying
         .capacities
-        .map(|capacity| capacity.fly.max(capacity.ride).max(capacity.walk))
+        .map(best_of)
         .or_else(|| printed.and_then(best_allowance))?;
     let weight = carrying.weight?;
     (weight > allowance).then_some(Overload { weight, allowance })
