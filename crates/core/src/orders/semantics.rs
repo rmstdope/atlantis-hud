@@ -28,8 +28,8 @@ use super::effects::{self, ItemChangeCause, ItemChangeParty};
 use super::forms::{Amount, Party, Selector};
 use super::grammar::names_peasants;
 use super::intents::{
-    read_formed, read_intents, spends_the_month, FormedBlock, Intent, PlacedIntent, PlacedPromote,
-    UnitIntents,
+    read_formed, read_intents, spends_the_month, FormedBlock, Intent, PlacedEvict, PlacedIntent,
+    PlacedPromote, UnitIntents,
 };
 use super::phases::{self, StatePhase};
 use super::standing::{self, Boarding};
@@ -309,6 +309,12 @@ pub mod codes {
     /// currently the owner"). Always on: the bead asks for the warning and gives it no switch, so
     /// it is in [`ALWAYS_ON`] and not in [`ALL`].
     pub const PROMOTE_NOT_OWNER: Code = Code("promote-not-owner");
+    /// An `EVICT` the game refuses: `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`) runs
+    /// only each object's owner's EVICT, once PROMOTE has run, and errors every other unit's
+    /// "EVICT: Must be owner", or "EVICT: Can only evict inside structures." for one standing in
+    /// none (`ah-0ace`; `rules/evict`: "Evict the specified unit from the object of which you are
+    /// currently the owner"). Always on, as [`PROMOTE_NOT_OWNER`] is.
+    pub const EVICT_REFUSED: Code = Code("evict-refused");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -402,7 +408,7 @@ pub mod codes {
 
     /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
     /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
-    pub const ALWAYS_ON: [Code; 12] = [
+    pub const ALWAYS_ON: [Code; 13] = [
         MOVE_INTO_A_WALL,
         FACTION_ORDER_WILL_FAIL,
         UNKNOWN_SKILL,
@@ -415,6 +421,7 @@ pub mod codes {
         TRANSPORT_TARGET_REFUSED,
         EXCHANGE_ABORTED,
         PROMOTE_NOT_OWNER,
+        EVICT_REFUSED,
     ];
 }
 
@@ -1066,6 +1073,7 @@ pub fn review_turn(
         check_exchanges_aborted(hex, ledger, &mut findings);
         check_leave_refused_at_sea(hex, &mut findings);
         check_promote_not_owner(hex, &mut findings);
+        check_evict_refused(hex, &mut findings);
         check_village_site(hex, ledger, ruleset, &mut findings);
         check_withdraw_not_a_basic_item(hex, ruleset, &options, &mut findings);
         check_cast_material(hex, ruleset, &options, &mut findings);
@@ -3677,6 +3685,7 @@ struct UnitOrders {
     flag_changes: Vec<FlagChange>,
     destroys_structure: bool,
     promotes: Vec<PlacedPromote>,
+    evicts: Vec<PlacedEvict>,
     /// STUDY lines naming a skill nothing knows (`study::names_no_skill`), taken out of `intents`
     /// because they set no month-long order, and kept for the `unknown-skill` warning (`ah-9199`).
     unknown_studies: Vec<PlacedIntent>,
@@ -3730,6 +3739,7 @@ impl OrderedUnits {
             flag_changes,
             destroys_structure,
             promotes,
+            evicts,
         } in read_intents(source, ruleset)
         {
             let entry = by_unit.entry(unit_id).or_insert_with(|| UnitOrders {
@@ -3739,6 +3749,7 @@ impl OrderedUnits {
                 flag_changes: Vec::new(),
                 destroys_structure: false,
                 promotes: Vec::new(),
+                evicts: Vec::new(),
                 unknown_studies: Vec::new(),
             });
             let mut intents = intents;
@@ -3752,6 +3763,7 @@ impl OrderedUnits {
             entry.unread |= !unread.is_empty();
             entry.destroys_structure |= destroys_structure;
             entry.promotes.extend(promotes);
+            entry.evicts.extend(evicts);
         }
         Self { by_unit }
     }
@@ -3961,6 +3973,8 @@ struct Ordered<'a> {
     destroys_structure: bool,
     /// The syntactically valid `PROMOTE` orders this month, in the order written.
     promotes: Vec<PlacedPromote>,
+    /// Every unit this month's `EVICT` orders name, in the order written (`ah-0ace`).
+    evicts: Vec<PlacedEvict>,
     /// The intents that can actually execute this month: every order that does not spend the
     /// month, plus the one month claim that wins (`ah-rzkm`), so every projection and every
     /// specialized check describes the executable month.
@@ -4097,6 +4111,7 @@ impl<'a> Hex<'a> {
                     ),
                     destroys_structure: orders.is_some_and(|orders| orders.destroys_structure),
                     promotes: orders.map_or_else(Vec::new, |orders| orders.promotes.clone()),
+                    evicts: orders.map_or_else(Vec::new, |orders| orders.evicts.clone()),
                     intents: orders.map_or_else(Vec::new, |orders| orders.intents.clone()),
                     all_intents: orders.map_or(&[][..], |orders| orders.intents.as_slice()),
                     teaching_eligible: None,
@@ -4130,6 +4145,7 @@ impl<'a> Hex<'a> {
                     flags: flags_after_orders(&formed.unit.flags, &formed.block.flag_changes),
                     destroys_structure: formed.block.destroys_structure,
                     promotes: formed.block.promotes.clone(),
+                    evicts: formed.block.evicts.clone(),
                     intents: formed.block.intents.clone(),
                     all_intents: &formed.block.intents,
                     teaching_eligible: None,
@@ -4160,14 +4176,22 @@ impl<'a> Hex<'a> {
                 .map(|unit| unit.unit_id.clone())
                 .collect(),
         );
-        Self {
+        let mut hex = Self {
             region,
             units,
             shown_anywhere,
             village_site: VillageSite::Unsure,
             beaten_foundings: BTreeMap::new(),
             staying_fleets: BTreeSet::new(),
+        };
+        let evicted = evictions(&hex);
+        if !evicted.is_empty() {
+            let standing = Arc::new((*standing).clone().with_evictions(evicted));
+            for ordered in &mut hex.units {
+                ordered.hex = Arc::clone(&standing);
+            }
         }
+        hex
     }
 
     fn find(&self, unit_id: &str) -> Option<&Ordered<'a>> {
@@ -7884,7 +7908,9 @@ fn month_long_walk(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<usize> {
 ///
 /// Known gap: PROMOTE (`Do1PromoteOrder` puts the promoted unit first in its structure) and EVICT
 /// (`Do1EvictOrder` appends the evicted unit to the units outside) also reorder units before the
-/// walk, and neither is modelled here; nor is an ENTER the engine refuses into a structure the hex
+/// walk, and neither reordering is modelled here - an evicted unit is walked outside
+/// ([`structure_after_orders`], `ah-0ace`), but where its boardings would have placed it in the
+/// walk; nor is an ENTER the engine refuses into a structure the hex
 /// does have (`CanEnter`, `ForbiddenBy`), which moves nothing but is walked here as a move. A LEAVE
 /// it refuses at sea is not walked as one (`ah-djst`).
 fn walk_after_boarding(hex: &Hex<'_>) -> Vec<usize> {
@@ -12224,9 +12250,55 @@ fn owner_when_promotions_run(hex: &Hex<'_>, structure_id: &str) -> Option<String
         .find(|ordered| {
             ordered.formed.is_some()
                 && !ordered.after_the_market().gained_nobody()
-                && structure_after_orders(ordered) == Some(structure_id)
+                && structure_after_boarding(ordered) == Some(structure_id)
         })
         .map(|ordered| ordered.unit.unit_id.clone())
+}
+
+/// Every unit of ours a structure's owner EVICTs this month, with that owner (`ah-0ace`).
+///
+/// `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`) runs each object's owner's PROMOTE,
+/// then each object's owner's EVICT - the owner as the PROMOTE left it, which is
+/// [`structure_owner_after_promotes`] - and errors every other unit's ("EVICT: Must be owner",
+/// [`check_evict_refused`]). `Do1EvictOrder` moves each target standing in that object to the
+/// region's dummy, unless the object is a fleet at sea and the target cannot really swim
+/// ([`standing::eviction_refused_at_sea`]). `movement::fleet::OrderedUnits` reads the same rule
+/// out of the orders document for the preview and the map. A formed owner's EVICT, and an EVICT
+/// naming a formed unit, are not followed; a unit of another faction stays where the report shows
+/// it, though the game evicts it and `movement::fleet` follows that (a known divergence: every
+/// check here reads a foreign unit's structure from the report). Known gap: an owner that EVICTs
+/// itself leaves the structure to the next occupant, whose DESTROY then runs, but
+/// [`structure_owner_after_promotes`] - the owner [`AfterDestroy`] reads - still names it.
+fn evictions(hex: &Hex<'_>) -> BTreeMap<String, String> {
+    let mut evicted = BTreeMap::new();
+    if hex.units.iter().all(|ordered| ordered.evicts.is_empty()) {
+        return evicted;
+    }
+    for structure in &hex.region.structures {
+        let structure_id = structure.structure_id.as_str();
+        let Some(owner_id) = structure_owner_after_promotes(hex, structure_id) else {
+            continue;
+        };
+        let Some(owner) = hex
+            .units
+            .iter()
+            .find(|ordered| ordered.formed.is_none() && ordered.unit.unit_id == owner_id)
+        else {
+            continue;
+        };
+        for target in hex.units.iter().filter(|ordered| {
+            ordered.formed.is_none()
+                && owner
+                    .evicts
+                    .iter()
+                    .any(|evict| evict.target == ordered.unit.unit_id)
+                && structure_after_boarding(ordered) == Some(structure_id)
+                && !ordered.hex.eviction_refused(leaver(ordered))
+        }) {
+            evicted.insert(target.unit.unit_id.clone(), owner_id.clone());
+        }
+    }
+    evicted
 }
 
 /// Whether a unit is still in a structure after this month's ENTER/LEAVE projection.
@@ -12236,7 +12308,7 @@ fn unit_is_in_structure(hex: &Hex<'_>, unit_id: &str, structure_id: &str) -> boo
         .iter()
         .find(|ordered| ordered.unit.unit_id == unit_id)
     {
-        return structure_after_orders(ordered) == Some(structure_id);
+        return structure_after_boarding(ordered) == Some(structure_id);
     }
     hex.region
         .units
@@ -14132,7 +14204,7 @@ fn check_promote_not_owner(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
         let Some(promote) = ordered.promotes.last() else {
             continue;
         };
-        let Some(structure_id) = structure_after_orders(ordered) else {
+        let Some(structure_id) = structure_after_boarding(ordered) else {
             continue;
         };
         let Some(owner_id) = owner_when_promotions_run(hex, structure_id) else {
@@ -14175,6 +14247,70 @@ fn check_promote_not_owner(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
             )
         });
     }
+}
+
+/// The `EVICT` the game refuses because its writer does not own a structure when evictions run
+/// (`ah-0ace`, [`codes::EVICT_REFUSED`]). The owner is [`structure_owner_after_promotes`], the one
+/// [`evictions`] runs the EVICT of. One warning per unit, on its last `EVICT` line: the engine
+/// refuses the unit's EVICTs together. A formed unit's `EVICT` is not followed by [`evictions`],
+/// so it is not warned about either. Always on (`codes::ALWAYS_ON`), so no option is read.
+fn check_evict_refused(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
+    for ordered in hex.units.iter().filter(|ordered| ordered.formed.is_none()) {
+        let Some(evict) = ordered.evicts.last() else {
+            continue;
+        };
+        let message = match structure_after_boarding(ordered) {
+            None => "EVICT will be refused: this unit stands in no structure when evictions run, \
+                     so nothing changes"
+                .to_string(),
+            Some(structure_id) => {
+                let Some(owner_id) = structure_owner_after_promotes(hex, structure_id) else {
+                    continue;
+                };
+                if owner_id == ordered.unit.unit_id {
+                    continue;
+                }
+                format!(
+                    "EVICT will be refused: {} owns {} when evictions run, not this unit, so \
+                     nothing changes",
+                    shown_unit_label(hex, &owner_id),
+                    named_structure(hex, structure_id)
+                )
+            }
+        };
+        findings.push(Finding {
+            line: Some(evict.line),
+            column_start: Some(evict.column_start),
+            column_end: Some(evict.column_end),
+            ..ordered.finding(hex, codes::EVICT_REFUSED, message, None)
+        });
+    }
+}
+
+/// `Name (id)` for a unit this region shows, ours or not, or `unit <id>` for one it does not.
+fn shown_unit_label(hex: &Hex<'_>, unit_id: &str) -> String {
+    hex.region
+        .units
+        .iter()
+        .chain(hex.units.iter().map(|ordered| ordered.unit))
+        .find(|unit| unit.unit_id == unit_id)
+        .map_or_else(
+            || format!("unit {unit_id}"),
+            |unit| format!("{} ({})", unit.name, unit.unit_id),
+        )
+}
+
+/// A structure as the fleet and structure sentences name it, or `[id]` for one this region's
+/// report does not list.
+fn named_structure(hex: &Hex<'_>, structure_id: &str) -> String {
+    hex.region
+        .structures
+        .iter()
+        .find(|structure| structure.structure_id == structure_id)
+        .map_or_else(
+            || format!("[{structure_id}]"),
+            crate::movement::mode::fleet_label,
+        )
 }
 
 /// Always on (`codes::ALWAYS_ON`), so no option is read.
@@ -24107,7 +24243,19 @@ fn is_aboard(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 /// The rule itself lives in [`super::standing`], which is the one place it is stated; this is the
 /// adapter that reads it out of parsed intents. An ENTER of a structure the hex does not have is
 /// refused and moves nothing (`ah-5maa`), and so is a LEAVE the game refuses at sea (`ah-djst`).
+///
+/// A unit its structure's owner EVICTs this month stands outside ([`evictions`], `ah-0ace`): the
+/// EVICTs run right after ENTER and LEAVE, before anything else a block can ask for.
 fn structure_after_orders<'a>(ordered: &'a Ordered<'_>) -> Option<&'a str> {
+    if ordered.formed.is_none() && ordered.hex.evicted_by(&ordered.unit.unit_id).is_some() {
+        return None;
+    }
+    structure_after_boarding(ordered)
+}
+
+/// Where the unit stands once ENTER and LEAVE have run and before any `EVICT`: the list
+/// `Game::RunPromoteOrders` asks each structure's owner of, for its PROMOTE and then its EVICT.
+fn structure_after_boarding<'a>(ordered: &'a Ordered<'_>) -> Option<&'a str> {
     ordered.hex.standing_after(
         ordered.unit.structure_id.as_deref(),
         ordered.intents.iter().filter_map(boarding_of),

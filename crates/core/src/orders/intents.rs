@@ -251,6 +251,12 @@ pub struct PlacedPromote {
     pub column_end: usize,
 }
 
+/// One unit an `EVICT` line names, placed on that line: the same shape as a [`PlacedPromote`],
+/// since an `EVICT` is a free order naming units too (`rules/evict`: "EVICT [unit] ..."). One
+/// entry per unit, so `EVICT 415 698` is two. Its line is what the `evict-refused` warning sits on
+/// (`ah-0ace`).
+pub type PlacedEvict = PlacedPromote;
+
 /// One unit's block, read.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnitIntents {
@@ -292,6 +298,9 @@ pub struct UnitIntents {
     /// `PROMOTE` is also an instant/free order. Its target matters to the BUILD projection because
     /// `rules/sequenceofevents` settles ownership changes before `DESTROY`.
     pub promotes: Vec<PlacedPromote>,
+    /// Every unit the block's syntactically valid `EVICT` orders name, in the order written
+    /// (`rules/evict`: "If multiple EVICT orders are given, all of the units will be evicted").
+    pub evicts: Vec<PlacedEvict>,
 }
 
 impl UnitIntents {
@@ -347,6 +356,7 @@ pub fn read_intents(source: &str, ruleset: Option<&Ruleset>) -> Vec<UnitIntents>
                     flag_changes: Vec::new(),
                     destroys_structure: false,
                     promotes: Vec::new(),
+                    evicts: Vec::new(),
                 });
             }
         }
@@ -382,6 +392,16 @@ pub fn read_intents(source: &str, ruleset: Option<&Ruleset>) -> Vec<UnitIntents>
                         column_end: line.command.column_end,
                     });
                 }
+                unit.evicts.extend(
+                    evicted_units(line.command, line.arguments, ruleset)
+                        .into_iter()
+                        .map(|target| PlacedEvict {
+                            target,
+                            line: line.number,
+                            column_start: line.command.column_start,
+                            column_end: line.command.column_end,
+                        }),
+                );
             }
         }
         // A TURN block holds next month's orders, which this reader deliberately skips - so a unit
@@ -455,6 +475,8 @@ pub struct FormedBlock {
     pub destroys_structure: bool,
     /// The syntactically valid `PROMOTE` orders in this formed unit's block, in the order written.
     pub promotes: Vec<PlacedPromote>,
+    /// The units this formed unit's `EVICT` orders name, read as [`UnitIntents::evicts`].
+    pub evicts: Vec<PlacedEvict>,
 }
 
 impl FormedBlock {
@@ -615,6 +637,7 @@ impl<'a, 'r> FormReader<'a, 'r> {
             flag_changes: Vec::new(),
             destroys_structure: false,
             promotes: Vec::new(),
+            evicts: Vec::new(),
         });
         self.forms.open(Some(index));
     }
@@ -647,6 +670,16 @@ impl<'a, 'r> FormReader<'a, 'r> {
                 column_end: command.column_end,
             });
         }
+        block.evicts.extend(
+            evicted_units(command, arguments, self.ruleset)
+                .into_iter()
+                .map(|target| PlacedEvict {
+                    target,
+                    line: line_number,
+                    column_start: command.column_start,
+                    column_end: command.column_end,
+                }),
+        );
     }
 }
 
@@ -753,6 +786,36 @@ pub(crate) fn promoted_unit(
         forms::Party::New(alias) => Some(format!("new-{alias}")),
         forms::Party::Foreign { .. } | forms::Party::Discard => None,
     }
+}
+
+/// The units a syntactically valid `EVICT` order names, in the order written: `rules/evict`'s
+/// "EVICT [unit] ...", read as the grammar reads it (`Arg::Repeat(&Arg::Unit)`, so trailing text
+/// is ignored). A unit formed this month is `new-<alias>`, as [`promoted_unit`] names one; a unit
+/// of another faction's `NEW` is not followed. Empty for any other order.
+pub(crate) fn evicted_units(
+    command: &Token,
+    arguments: &[Token],
+    ruleset: Option<&Ruleset>,
+) -> Vec<String> {
+    if !command.text.eq_ignore_ascii_case("EVICT") {
+        return Vec::new();
+    }
+    let Some(mut rest) = super::grammar::consumed_arguments(command, arguments, ruleset) else {
+        return Vec::new();
+    };
+    let mut targets = Vec::new();
+    while let Some((target, after)) = forms::read_party(rest) {
+        match target {
+            forms::Party::Unit(unit_id) => targets.push(unit_id),
+            forms::Party::New(alias) => targets.push(format!("new-{alias}")),
+            forms::Party::Foreign { .. } | forms::Party::Discard => {}
+        }
+        if after.len() == rest.len() {
+            break;
+        }
+        rest = after;
+    }
+    targets
 }
 
 /// One order line, as an intent - or nothing, for an order no check reads and for one whose shape

@@ -1320,6 +1320,29 @@ fn settle(
     // ENTER and LEAVE orders `visit` already settled, so they are composed on top of that answer
     // here. After the walk, because a `FORM` reads its parent's structure mid-walk and
     // `rules/sequenceofevents` creates every formed unit long before any movement (`ah-ehgy`).
+    // `Game::RunPromoteOrders` runs each structure's owner's EVICT right after ENTER and LEAVE, and
+    // `Do1EvictOrder` puts each target outside, before anything moves (`rules/evict`, `ah-0ace`).
+    // Who is evicted is `movement::fleet::OrderedUnits`' answer, so every surface reads one.
+    for unit in &mut working.units {
+        if unit.formed {
+            continue;
+        }
+        let Some(owner_id) = ordered.evicted_by(&unit.unit) else {
+            continue;
+        };
+        let owner = report
+            .regions
+            .iter()
+            .filter(|region| region.region_id == unit.unit.region_id)
+            .flat_map(|region| region.units.iter())
+            .find(|candidate| candidate.unit_id == owner_id)
+            .map_or_else(
+                || format!("unit {owner_id}"),
+                |candidate| format!("{} ({})", candidate.name, candidate.unit_id),
+            );
+        unit.unit.structure_id = None;
+        unit.evicted_cause = Some(format!("EVICT by {owner}"));
+    }
     // Kept so a MOVE the game refuses for overload can be put back where its boardings found it.
     let before_boardings: Vec<Option<String>> = working
         .units
@@ -2368,6 +2391,9 @@ struct WorkingUnit {
     /// `MOVE OUT`/`MOVE 12`/... when a step of the movement order set this unit's structure in the
     /// hex it started in. Read by `changes()`.
     move_origin_cause: Option<String>,
+    /// `EVICT by <owner>` when its structure's owner evicted this unit this month (`ah-0ace`).
+    /// Read by `changes()`, after a movement step's cause, which runs later.
+    evicted_cause: Option<String>,
     /// Where the movement order leaves this unit once it is out of its starting hex, with the
     /// order that put it there. Read when the arriving row is built.
     move_destination: Option<MoveDestination>,
@@ -2522,6 +2548,9 @@ impl WorkingUnit {
     /// no LEAVE beside it.
     fn structure_change_cause(&self) -> Option<String> {
         if let Some(cause) = &self.move_origin_cause {
+            return Some(cause.clone());
+        }
+        if let Some(cause) = &self.evicted_cause {
             return Some(cause.clone());
         }
         if let Some(BoardingOrder::Enter(id)) = self
@@ -2877,6 +2906,7 @@ impl Working {
                 fleet_stays: false,
                 form_line: None,
                 move_origin_cause: None,
+                evicted_cause: None,
                 move_destination: None,
                 reported: unit.structure_id.clone(),
                 placed_in: unit.structure_id.clone(),
@@ -3281,6 +3311,7 @@ impl Working {
             fleet_stays: false,
             form_line: Some(form_line),
             move_origin_cause: None,
+            evicted_cause: None,
             move_destination: None,
             reported,
             placed_in,
