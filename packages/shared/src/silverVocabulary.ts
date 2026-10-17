@@ -1039,7 +1039,11 @@ export const SILVER_NOTES: readonly SilverNote[] = [
     // unit's own orders left it short, and the sentence is about whether a faction-mate paid at
     // all - a sharer that overspends included (`ah-3c2t.2`, `ah-0nwd`).
     when: ({ silver }) => silver.borrowedForOrders > 0,
-    say: () => "A faction-mate's silver in this hex pays for this unit's orders.",
+    // A STUDY lent where the passenger's fleet lands is not lent "in this hex" (`ah-kjq5`).
+    say: ({ silver }) =>
+      silver.borrowedWhereFleetLands === undefined
+        ? "A faction-mate's silver in this hex pays for this unit's orders."
+        : `A faction-mate's silver where its fleet lands, in ${silver.borrowedWhereFleetLands}, pays for this unit's orders.`,
     example: () => ({
       unit: aReportUnit(),
       silver: aUnitSilver({ sharedSilverForOrders: 50, borrowedForOrders: 50, upkeep: 0 }),

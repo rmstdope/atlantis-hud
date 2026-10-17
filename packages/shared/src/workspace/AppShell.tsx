@@ -6358,7 +6358,12 @@ export function AppShell({
           ) : null}
           <div
             ref={unitsSlotRef}
-            className={unitsSlotClass(collapsed, unitsHeightRem != null)}
+            // `relative z-10`, the splitters' own layer, and later in the document than any of them
+            // (ah-9r8k). In a short window the right column runs down over the dock's title bar;
+            // the panels there already paint under the dock, but the orders splitter's `z-10` lifted
+            // it over the dock too, and a click on Add to army resized the orders panel. Every
+            // popup the dock opens is portalled, so this layer caps none of them.
+            className={`relative z-10 ${unitsSlotClass(collapsed, unitsHeightRem != null)}`}
             style={unitsSlotStyle(collapsed, unitsHeightRem) ?? undefined}
             data-map-overlay="bottom"
           >

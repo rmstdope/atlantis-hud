@@ -2022,6 +2022,53 @@ function conditionalShippingClause(shipping: UnitSilver["shipping"]): string | u
 }
 
 /**
+ * The `lent` / `was lent` clause (`ah-kjq5`, `docs/ui/ah-kjq5-loan-across-a-sailing.html`). A loan
+ * inside one hex keeps today's words; one across a fleet's move carries a `place` and names the
+ * other unit and the hex it is in - the lender's passengers each with the hex it sails from, the
+ * passenger's lenders together with the one hex its fleet lands in. Both together read the in-hex
+ * part first.
+ */
+function loanClause(group: SilverCauseGroup): string {
+  const inHex = group.entries.some((entry) => entry.place === undefined);
+  const across = group.entries.filter(
+    (entry): entry is SilverChange & { other: string; place: string } =>
+      entry.place !== undefined && entry.other !== null
+  );
+  const clauses: string[] = [];
+  if (group.cause === "lent") {
+    if (inHex) {
+      clauses.push("to a faction-mate's orders in this hex");
+    }
+    const passengers = [
+      ...new Set(across.map((entry) => `${entry.other}, arriving by fleet from ${entry.place}`))
+    ];
+    if (passengers.length > 0) {
+      clauses.push(`to ${serialList(passengers)}`);
+    }
+  } else {
+    if (inHex) {
+      clauses.push("by your units in this hex");
+    }
+    const lenders = [...new Set(across.map((entry) => entry.other))];
+    if (lenders.length > 0) {
+      clauses.push(`by ${andList(lenders)}, where its fleet lands in ${across[0].place}`);
+    }
+  }
+  return serialList(clauses);
+}
+
+/**
+ * `andList` for phrases that carry commas of their own: a comma before the last "and" too, so
+ * "A, arriving by fleet from P, and B, arriving by fleet from Q" reads as two parties.
+ */
+function serialList(parts: readonly string[]): string {
+  if (parts.length <= 1) {
+    return parts[0] ?? "";
+  }
+  return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+}
+
+/**
  * The dim clause beside one cause's amount: the other unit, what the market settled, why there was
  * no order, and whether the money arrives too late - joined with `", "`, no full stop.
  *
@@ -2064,10 +2111,8 @@ function silverCauseWhy(
     if (to.length > 0) {
       parts.push(`to ${andList(to)}`);
     }
-  } else if (group.cause === "lent") {
-    parts.push("to a faction-mate's orders in this hex");
-  } else if (group.cause === "was-lent") {
-    parts.push("by your units in this hex");
+  } else if (group.cause === "lent" || group.cause === "was-lent") {
+    parts.push(loanClause(group));
   } else if (group.cause === "was-lent-for-upkeep") {
     // `rules/economy_maintenance`: "Silver from other faction units in the same region" pays what
     // the unit's own silver could not (`ah-2zku`).

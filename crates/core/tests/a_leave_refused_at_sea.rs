@@ -314,3 +314,43 @@ fn a_leave_by_a_unit_with_no_stated_movement_says_nothing_shows_it_can_swim_or_f
         found[0].0
     );
 }
+
+// `ah-q4kp`. A PROMOTE written with LEAVE is warned when the LEAVE runs - the unit then stands in
+// no structure when promotions run (`rules/sequenceofevents`) - but not at sea, where the refused
+// LEAVE keeps the owner aboard and its PROMOTE runs.
+
+const PROMOTE_REFUSED: &str = "promote-not-owner";
+
+fn promote_refusals(result: &OrderValidationResult) -> Vec<Option<usize>> {
+    result
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code == PROMOTE_REFUSED)
+        .map(|diagnostic| diagnostic.line_start)
+        .collect()
+}
+
+const OWNER_LEAVES_AND_PROMOTES: &str = "#atlantis 1\nunit 900\nLEAVE\nPROMOTE 901\n#end\n";
+
+#[test]
+fn a_promote_with_a_leave_refused_at_sea_is_not_warned() {
+    let result = validate(&at_sea(), OWNER_LEAVES_AND_PROMOTES);
+
+    assert!(
+        promote_refusals(&result).is_empty(),
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn a_promote_with_a_leave_on_a_coast_is_warned_on_its_line() {
+    let result = validate(&report("plain", &[]), OWNER_LEAVES_AND_PROMOTES);
+
+    assert_eq!(
+        promote_refusals(&result),
+        vec![Some(4)],
+        "{:#?}",
+        result.diagnostics
+    );
+}
