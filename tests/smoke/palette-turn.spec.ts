@@ -178,6 +178,7 @@ test.describe("on a New Age game", () => {
     // event never came. The search's own round trips settle the interception before the press.
     const chooser = page.waitForEvent("filechooser");
     await search(page, "import reports");
+    await expect(row(page, "Import reports")).not.toHaveAttribute("aria-disabled", "true");
     await page.keyboard.press("Enter");
     const picker = await chooser;
     expect(picker.isMultiple()).toBe(true);
