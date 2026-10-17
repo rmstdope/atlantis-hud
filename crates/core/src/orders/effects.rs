@@ -1864,8 +1864,15 @@ fn decide_movement(
                             ends_at = Some(month_end);
                             status = UnitPreviewStatus::Departing;
                         }
-                        // A round trip is not a departure, so only the other changes count.
-                        Some(_) => {}
+                        // A round trip is not a departure, so only the other changes count. It is
+                        // still a walk: every step stands the unit in the open of the hex it enters
+                        // (`monthorders.cpp` `DoAMoveOrder`), so where it ends the month is recorded,
+                        // which is how the transport check knows it left its structure (`ah-1jl9`).
+                        Some(back) => {
+                            if path.months.first().is_some_and(|month| month.steps > 0) {
+                                ends_at = Some(back);
+                            }
+                        }
                         // The report never said how the unit travels, so the trace cannot say
                         // where the month ends: a departure to nowhere nameable.
                         None => status = UnitPreviewStatus::Departing,
@@ -13928,6 +13935,47 @@ mod tests {
             .find(|unit| unit.unit_id == unit_id)
             .expect("the report shows the unit")
             .clone()
+    }
+
+    /// A walk out of the hex and back is still a walk: every step stands the walker in the open of
+    /// the hex it enters (`monthorders.cpp` `DoAMoveOrder`, `Unit::MoveUnit(newreg->GetDummy())`),
+    /// so it comes home owning no Caravanserai and is shipped nothing (`ah-1jl9`).
+    #[test]
+    fn a_quartermaster_that_walks_out_and_back_owns_its_caravanserai_no_longer() {
+        let report = moving_reach_report((0, 0), (0, 4), true);
+        let orders = "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S N\n";
+        let response = reach_preview(&report, orders, FLAT_MAP);
+
+        assert_eq!(reach_held(&response, "900", "STON"), 5);
+        let issues = &reach_unit(&response, "900").transport_target_issues;
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(
+            issues[0].reason,
+            TransportTargetReason::NotCaravanseraiOwner
+        );
+    }
+
+    /// A walker entering a Caravanserai somebody already stands in is appended behind them
+    /// (`Unit::MoveUnit`), so the first unit there still owns it (`Object::GetOwner`, `ah-1jl9`).
+    #[test]
+    fn a_quartermaster_that_walks_into_an_owned_caravanserai_owns_nothing() {
+        let report = moving_reach_report((0, 0), (0, 2), true).replace(
+            "  South : plain (0,6) in Nowhere.\n\n",
+            "  South : plain (0,6) in Nowhere.\n\n+ Post Two [2] : Caravanserai.\n  \
+             * Keeper (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+             Skills: quartermaster [QUAM] 1 (450).\n\n",
+        );
+        assert!(report.contains("Keeper (902)"), "the destination is owned");
+        let orders = "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S 2\n";
+        let response = reach_preview(&report, orders, FLAT_MAP);
+
+        assert_eq!(reach_held(&response, "900", "STON"), 5);
+        let issues = &reach_unit(&response, "900").transport_target_issues;
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(
+            issues[0].reason,
+            TransportTargetReason::NotCaravanseraiOwner
+        );
     }
 
     /// `rules/sequenceofevents` moves every unit before TRANSPORT, so a quartermaster that walks

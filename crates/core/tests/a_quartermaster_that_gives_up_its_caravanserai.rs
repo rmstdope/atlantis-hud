@@ -157,14 +157,20 @@ fn assert_trader_no_longer_owns(orders: &str) {
             "the Trader receives nothing"
         );
         assert_eq!(row.transport_sent, vec![], "the Trader distributes nothing");
-        let refused: Vec<&str> = row
+        // A sender that owns no Caravanserai can only ship to a quartermaster that owns one
+        // (`rules/transport`), which neither recipient is - the reason the row already gives for
+        // a quartermaster standing outside any structure.
+        let refused: Vec<(&str, TransportTargetReason)> = row
             .transport_target_issues
             .iter()
-            .map(|issue| issue.to.as_str())
+            .map(|issue| (issue.to.as_str(), issue.reason))
             .collect();
         assert_eq!(
             refused,
-            vec!["1162", "12127"],
+            vec![
+                ("1162", TransportTargetReason::NotQuartermaster),
+                ("12127", TransportTargetReason::NotQuartermaster),
+            ],
             "each DISTRIBUTE is explained on the Trader's row"
         );
     }

@@ -59084,6 +59084,34 @@ BUILD
         );
     }
 
+    /// The long reach between quartermasters is the transport structure's owner's alone:
+    /// `CheckTransportOrders` gives any other sender `LOCAL_TRANSPORT` and refuses a TRANSPORT
+    /// beyond it ("Unit does not own transport structure."). Here 899 is listed first inside the
+    /// sender's Caravanserai, so the quartermaster 900 ships no farther than anybody (`ah-1jl9`).
+    #[test]
+    fn a_quartermaster_that_owns_no_caravanserai_ships_only_the_flat_reach() {
+        let mut regions = priced_shipping(
+            5,
+            &[(5, "stone", "STON")],
+            vec![caravanserai_owner("901", 1, 0, 6)],
+        );
+        let mut owner = unit("899");
+        owner.structure_id = Some("400".to_string());
+        owner.region_id = regions[0].region_id.clone();
+        regions[0].units.insert(0, owner);
+
+        let finding = only(traced_reach_findings(
+            regions,
+            "unit 900\nTRANSPORT 901 5 STON\n",
+            with_map(),
+        ));
+        assert!(
+            finding.message.starts_with("Unit 901 is 3 hexes away"),
+            "{}",
+            finding.message
+        );
+    }
+
     /// The same across units in a sharing hex: one sharer's refused $65 shipment leaves the $60
     /// pool whole, so a sharing mate's $30 shipment still pays from it.
     #[test]
@@ -59106,9 +59134,17 @@ BUILD
             "furs",
             "FUR",
         ));
-        mate.structure_id = Some("400".to_string());
+        // A Caravanserai of its own: the long reach is the owner's alone, and 900 owns 400
+        // (`CheckTransportOrders`, `ah-1jl9`).
+        mate.structure_id = Some("401".to_string());
         mate.region_id = regions[0].region_id.clone();
         regions[0].units.push(mate);
+        regions[0].structures.push(Structure {
+            structure_id: "401".to_string(),
+            name: "Second Caravan".to_string(),
+            kind: "Caravanserai".to_string(),
+            ..Default::default()
+        });
         let orders = "unit 900\nTRANSPORT 901 13 FUR\nunit 903\nTRANSPORT 901 6 FUR\n";
 
         let forecast = review_turn(&report(regions), orders, Some(&ruleset()), with_map()).silver;

@@ -433,11 +433,14 @@ fn caravanserai_owners_at_transport(
                 .steps_for(&key)
                 .filter(|_| !ordered.sails_a_course(&key))
                 .map(|steps| super::standing::standing_through_move(before.as_deref(), steps));
+            // A unit the trace walked at least one step has a month end, even one back in the hex
+            // it set out from: every step stands it in the open of the hex it enters (`ah-1jl9`).
+            let walked = month_end.contains_key(&unit.unit_id);
             let hex = standing_at(month_end, &unit.unit_id, region.coordinate);
             let structure = match moved {
-                Some(moved) if hex != region.coordinate => moved.destination,
+                Some(moved) if walked => moved.destination,
                 Some(moved) => moved.origin,
-                None if hex != region.coordinate => None,
+                None if walked => None,
                 None => before,
             };
             standing.insert(unit.unit_id.as_str(), (hex, structure));
@@ -874,7 +877,14 @@ impl Shipping {
                 .get(sender)
                 .is_some_and(|facts| facts.caravanserai_owner);
         let target_qm = facts.is_some_and(|facts| facts.quartermaster);
-        let reach = reach_for(sender_qm, target_qm, self.quartermasters.level(sender));
+        // The long reach is the transport structure's owner's alone: `CheckTransportOrders` gives
+        // anyone else `LOCAL_TRANSPORT` and refuses a TRANSPORT beyond it ("Unit does not own
+        // transport structure."), so a quartermaster that owns none ships like anybody (`ah-1jl9`).
+        let reach = reach_for(
+            sender_can_distribute,
+            target_qm,
+            self.quartermasters.level(sender),
+        );
         let measured = match (reach, sender_reported, facts) {
             (Some(reach), Some(reported), Some(facts)) => {
                 let from = standing_at(&self.month_end, sender, reported);
