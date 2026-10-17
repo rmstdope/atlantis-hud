@@ -1662,6 +1662,31 @@ describe("formatItems and itemsTooltip", () => {
     );
   });
 
+  // `ah-ywyf`: a new ship's spend reads in the building words, with the ship's name.
+  it("words the hover for a unit beginning a new ship, as for a new building", () => {
+    const row = previewedUnit({
+      items: [{ amount: 10, name: "goblins", tag: "GBLN" }],
+      built: [
+        {
+          materials: [{ amount: 10, tag: "WOOD", name: "wood" }],
+          amount: 10,
+          place: "Longship",
+          founding: true,
+          helping: null,
+          couldDo: 30,
+          cappedBy: "needs",
+          finishes: null
+        }
+      ],
+      newShip: { name: "Longship", tag: "LONG", outcome: "new-fleet" }
+    });
+
+    expect(itemsTooltip(row)).toBe(
+      "Spends 10 WOOD on a new Longship this month.\n" +
+        "A new Longship needs 10 units of work, not the 30 its men could do."
+    );
+  });
+
   it("words the hover for a unit helping another build", () => {
     const row = previewedUnit({
       items: [{ amount: 120, name: "wood", tag: "WOOD" }],

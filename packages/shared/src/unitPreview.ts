@@ -4,6 +4,7 @@ import type {
   FieldChange,
   ItemAmount,
   ItemChange,
+  NewShip,
   OrdersPreviewResponse,
   ProducedItem,
   RefusedCast,
@@ -74,6 +75,8 @@ export type PreviewedUnit = ReportUnit & {
   produced?: ProducedItem[];
   /** What this unit's BUILD orders spend this month (`ah-ofpb.2`). */
   built?: BuildSpend[];
+  /** The ship this unit's founding BUILD begins this month, and what becomes of it (`ah-ywyf`). */
+  newShip?: NewShip;
   /** What this unit's CAST orders create this month (`ah-ofpb.5`). */
   created?: CreatedItem[];
   /**
@@ -320,6 +323,7 @@ function rowFor(previewed: FoldedPreview): PreviewedUnit {
     takenUnshown: previewed.takenUnshown,
     produced: previewed.produced,
     built: previewed.built,
+    newShip: previewed.newShip,
     created: previewed.created,
     refusedCasts: previewed.refusedCasts,
     transportSent: previewed.transportSent,

@@ -3897,6 +3897,91 @@ describe("the unfinished mark in the popups", () => {
   });
 });
 
+// `ah-ywyf`: a ship a founding BUILD begins this month, in the Structure and Items hovers.
+describe("a new ship in the popups", () => {
+  const NEW_SHIP = "Ship [new] · Longship";
+
+  it("says a new ship is finished with this unit aboard", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "structure",
+        unit({ newShip: { name: "Longship", tag: "LONG", outcome: "new-fleet" } }),
+        facts({ structureLabel: NEW_SHIP })
+      )
+    );
+    expect(popup.lines).toEqual([{ label: "structure", value: NEW_SHIP }]);
+    expect(popup.notes).toEqual(["Finished this month: a new Longship, with this unit aboard."]);
+  });
+
+  it("shows only the new ship, even for a builder leaving a building for it", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "structure",
+        unit({
+          structureId: "4",
+          previewChanges: [{ field: "structureId", original: "", cause: "ENTER 4" }],
+          newShip: { name: "Longship", tag: "LONG", outcome: "new-fleet" }
+        }),
+        facts({ structureLabel: NEW_SHIP })
+      )
+    );
+    expect(popup.lines).toEqual([{ label: "structure", value: NEW_SHIP }]);
+  });
+
+  it("says a new ship joins the fleet the unit is aboard", () => {
+    const FLEET = "Ship [250] · Longship";
+    const popup = columnPopup(
+      popupForCell(
+        "structure",
+        unit({
+          structureId: "250",
+          newShip: { name: "Longship", tag: "LONG", outcome: "joins-fleet" }
+        }),
+        facts({ structureLabel: FLEET })
+      )
+    );
+    expect(popup.lines).toEqual([{ label: "structure", value: FLEET }]);
+    expect(popup.notes).toEqual(["Finished this month: a new Longship joins this fleet."]);
+  });
+
+  it("says a ship started this month is still unfinished, under the mark", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [
+            { amount: 10, name: "goblins", tag: "GBLN" },
+            { amount: 1, name: "unfinished Galleon", tag: "GALL" }
+          ],
+          previewChanges: [{ field: "items", original: "10 GBLN" }],
+          newShip: { name: "Galleon", tag: "GALL", outcome: "unfinished" },
+          itemChanges: [
+            {
+              tag: "GALL",
+              name: "unfinished Galleon",
+              delta: 1,
+              cause: "ship-started",
+              line: 2,
+              unitPrice: null,
+              other: null,
+              isMan: false
+            }
+          ]
+        }),
+        facts()
+      )
+    );
+    const ship = popup.lines.find((line) => line.label === "unfinished Galleon GALL");
+    expect(ship).toMatchObject({
+      value: "1",
+      unfinished: "label",
+      change: { direction: "up", from: "none" }
+    });
+    expect(popup.notes).toContain("Started this month: still unfinished.");
+    expect(popup.notes.some((note) => note.startsWith("unfinished Galleon:"))).toBe(false);
+  });
+});
+
 // ah-k52u: whether a hover adds "Nothing this month changes ..." is decided once, so no column can
 // list a movement and then say nothing changes. Since ah-v3ro it is decided from the month each body
 // states rather than from what it wrote (see "the month each column popup states").
