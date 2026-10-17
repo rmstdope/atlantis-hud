@@ -50,4 +50,9 @@ toUnshown: boolean,
  * reason but `NotQuartermaster`, `NotCaravanseraiOwner` and `SenderOwnsNoCaravanserai` - the
  * last unsettled when the sender's own month is (`ah-1jl9`).
  */
-unsettled: boolean, };
+unsettled: boolean, 
+/**
+ * The line was written as DISTRIBUTE rather than TRANSPORT, so a sentence that names the
+ * order calls it by the word the player wrote (`ah-lis2`). Absent for a TRANSPORT.
+ */
+distribute?: boolean, };

@@ -1,0 +1,111 @@
+//! `ah-lis2`. A DISTRIBUTE from a unit that is not a quartermaster is refused for the sender's
+//! missing skill, not for anything about its target.
+//!
+//! `rules/transport` calls DISTRIBUTE a synonym of TRANSPORT, but the engine does not treat it as
+//! one: `../Atlantis` `runorders.cpp` `CheckTransportOrders` asks a TRANSPORT's *target* for the
+//! quartermaster skill and a transport structure, and asks a DISTRIBUTE's *issuer* instead -
+//! "DISTRIBUTE: Unit is not a quartermaster" - whatever the target is.
+//!
+//! `mountain (36,4)` of the committed turn 42 holds Ivanhoe, son of Cedric (683) and Robin Hood
+//! (1162), both ours and neither a quartermaster (`neworigins-3.0.0-g3-f42-t42.rep:1352`, `:1489`).
+//! Before the fix both the order and the unit preview blamed Robin Hood.
+
+use atlantis_hud_core::cache::ReportCache;
+use atlantis_hud_core::orders::effects::{
+    preview_orders_for_remembered_report, TransportTargetReason,
+};
+use atlantis_hud_core::orders::semantics::{codes, review_turn, CheckOptions};
+use atlantis_hud_core::report::{classify_units, parse_report_full};
+
+mod common;
+use common::ruleset;
+
+fn orders(line: &str) -> String {
+    format!("#atlantis 42 \"<password>\"\n\nunit 683\n{line}\n")
+}
+
+/// The refusal warnings at the order lines, as (unit, line, message).
+fn refusals(orders: &str) -> Vec<(Option<String>, Option<usize>, String)> {
+    let ruleset = ruleset();
+    let mut parsed = parse_report_full(atlantis_hud_fixtures::G3_F42_T42.text);
+    classify_units(&mut parsed, &ruleset);
+    review_turn(&parsed, orders, Some(&ruleset), CheckOptions::default())
+        .findings
+        .into_iter()
+        .filter(|finding| finding.code == codes::TRANSPORT_TARGET_REFUSED)
+        .map(|finding| (finding.unit_id, finding.line, finding.message))
+        .collect()
+}
+
+#[test]
+fn ivanhoes_distribute_names_his_own_missing_skill_at_the_order() {
+    assert_eq!(
+        refusals(&orders("DISTRIBUTE 1162 100 SILV")),
+        vec![(
+            Some("683".to_string()),
+            Some(4),
+            "This unit is not a quartermaster, so 100 SILV stay with this unit.".to_string()
+        )]
+    );
+}
+
+#[test]
+fn a_distribute_with_no_amount_to_name_is_not_called_a_transport() {
+    assert_eq!(
+        refusals(&orders("DISTRIBUTE 1162 ALL SILV")),
+        vec![(
+            Some("683".to_string()),
+            Some(4),
+            "This unit is not a quartermaster, so this DISTRIBUTE moves nothing.".to_string()
+        )]
+    );
+}
+
+#[test]
+fn ivanhoes_distribute_names_his_own_missing_skill_in_the_preview() {
+    let response = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::RULESET_JSON,
+        atlantis_hud_fixtures::G3_F42_T42.text,
+        "[]",
+        &orders("DISTRIBUTE 1162 100 SILV"),
+    )
+    .expect("the ruleset loads");
+    let issues: Vec<_> = response
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .filter(|row| row.unit.unit_id == "683")
+        .flat_map(|row| row.transport_target_issues.iter())
+        .map(|issue| {
+            (
+                issue.to.as_str(),
+                issue.amount,
+                issue.reason,
+                issue.distribute,
+            )
+        })
+        .collect();
+    assert_eq!(
+        issues,
+        vec![(
+            "1162",
+            100,
+            TransportTargetReason::SenderNotQuartermaster,
+            true
+        )]
+    );
+}
+
+/// The TRANSPORT that `ah-kjjv` pinned still blames the target: only a DISTRIBUTE asks the sender.
+#[test]
+fn a_transport_to_the_same_unit_still_blames_the_target() {
+    assert_eq!(
+        refusals(&orders("TRANSPORT 1162 100 SILV")),
+        vec![(
+            Some("683".to_string()),
+            Some(4),
+            "Unit 1162 is not a quartermaster, so 100 SILV stay with this unit.".to_string()
+        )]
+    );
+}

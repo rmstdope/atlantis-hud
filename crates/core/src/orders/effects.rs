@@ -264,6 +264,10 @@ pub enum TransportTargetReason {
     /// chose to name the sender's missing Caravanserai for both, since that is what the player
     /// can fix (`ah-1jl9`).
     SenderOwnsNoCaravanserai,
+    /// A DISTRIBUTE from a unit that is not a quartermaster. `CheckTransportOrders` refuses it with
+    /// "DISTRIBUTE: Unit is not a quartermaster" whoever the target is, since a DISTRIBUTE asks its
+    /// issuer rather than its target (`ah-lis2`).
+    SenderNotQuartermaster,
     /// The report does not show the target at all, or shows a foreign Caravanserai owner whose
     /// skills it never discloses: no evidence either way.
     EligibilityUnknown,
@@ -350,6 +354,11 @@ pub struct TransportTargetIssue {
     /// last unsettled when the sender's own month is (`ah-1jl9`).
     #[serde(default)]
     pub unsettled: bool,
+    /// The line was written as DISTRIBUTE rather than TRANSPORT, so a sentence that names the
+    /// order calls it by the word the player wrote (`ah-lis2`). Absent for a TRANSPORT.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(as = "Option<bool>", optional))]
+    pub distribute: bool,
 }
 
 /// Why men joined a unit this month, in `rules/sequenceofevents` order (`ah-rgkk.2.1`).
@@ -4055,6 +4064,9 @@ impl Working {
             Acceptance::SenderOwnsNoCaravanserai => {
                 TransportTargetOutcome::Refused(TransportTargetReason::SenderOwnsNoCaravanserai)
             }
+            Acceptance::SenderNotQuartermaster => {
+                TransportTargetOutcome::Refused(TransportTargetReason::SenderNotQuartermaster)
+            }
             Acceptance::EligibilityUnknown => {
                 TransportTargetOutcome::Refused(TransportTargetReason::EligibilityUnknown)
             }
@@ -4346,6 +4358,7 @@ impl Working {
                         reach: None,
                         to_unshown: pending.to_unshown,
                         unsettled: verdict.unsettled,
+                        distribute: pending.order == super::transport::ShipmentOrder::Distribute,
                     },
                 ));
                 continue;
@@ -4367,6 +4380,7 @@ impl Working {
                         reach: reach_opt,
                         to_unshown: pending.to_unshown,
                         unsettled: false,
+                        distribute: pending.order == super::transport::ShipmentOrder::Distribute,
                     },
                 ));
                 continue;
@@ -4395,6 +4409,8 @@ impl Working {
                             reach: None,
                             to_unshown: pending.to_unshown,
                             unsettled: false,
+                            distribute: pending.order
+                                == super::transport::ShipmentOrder::Distribute,
                         },
                     ));
                 }
@@ -11581,27 +11597,28 @@ mod tests {
             assert_eq!(fur, Some(5), "0 held, 5 arrived, within the same hex");
         }
 
+        /// `rules/transport` calls DISTRIBUTE a synonym of TRANSPORT, but `CheckTransportOrders`
+        /// (`../Atlantis/runorders.cpp`) asks a DISTRIBUTE's issuer for the quartermaster skill and
+        /// refuses one from Sender, who has none, whoever the target is (`ah-lis2`).
         #[test]
-        fn distribute_is_transport_under_another_name() {
+        fn a_distribute_from_a_unit_that_is_no_quartermaster_moves_nothing() {
             let response = two_hex_preview("unit 5530\nDISTRIBUTE 6857 30 STON\n");
 
             let sender = sender_row(&response);
-            let sent_stone = sender
-                .unit
-                .items
-                .iter()
-                .find(|item| item.tag == "STON")
-                .map(|item| item.amount);
-            assert_eq!(sent_stone, Some(10));
-
-            let receiver = receiver_row(&response).expect("the receiver is previewed");
-            let held_stone = receiver
-                .unit
-                .items
-                .iter()
-                .find(|item| item.tag == "STON")
-                .map(|item| item.amount);
-            assert_eq!(held_stone, Some(45));
+            assert_eq!(held(sender, "STON"), Some(40), "the stone stays");
+            assert!(sender.transport_sent.is_empty());
+            assert_eq!(
+                sender
+                    .transport_target_issues
+                    .iter()
+                    .map(|issue| (issue.to.as_str(), issue.reason, issue.distribute))
+                    .collect::<Vec<_>>(),
+                vec![("6857", TransportTargetReason::SenderNotQuartermaster, true)]
+            );
+            assert!(
+                receiver_row(&response).is_none_or(|receiver| held(receiver, "STON") == Some(15)),
+                "nothing arrives"
+            );
         }
 
         #[test]
@@ -11932,6 +11949,7 @@ mod tests {
                     reach: None,
                     to_unshown: false,
                     unsettled: false,
+                    distribute: false,
                 }
             );
         }
@@ -11994,6 +12012,7 @@ mod tests {
                     reach: None,
                     to_unshown: true,
                     unsettled: false,
+                    distribute: false,
                 }
             );
         }
@@ -12036,6 +12055,7 @@ mod tests {
                     reach: None,
                     to_unshown: false,
                     unsettled: false,
+                    distribute: false,
                 }
             );
         }
@@ -12116,14 +12136,18 @@ mod tests {
                     reach: None,
                     to_unshown: false,
                     unsettled: true,
+                    distribute: false,
                 }
             );
             // No row of ours gains anything: 7001 is not our unit.
             assert!(row(&response, "1:2,2", "7001").is_none());
         }
 
+        /// The target 7001 would refuse a TRANSPORT, but a DISTRIBUTE is refused for its sender
+        /// before the target is asked anything (`ah-lis2`, `CheckTransportOrders`): Sender is no
+        /// quartermaster, which its own month alone could change.
         #[test]
-        fn distribute_is_refused_by_a_target_exactly_as_transport_is() {
+        fn a_distribute_is_refused_for_its_sender_before_its_target_is_asked() {
             let sender = kept_everything("unit 5530\nDISTRIBUTE 7001 5 STON\n");
 
             assert_eq!(
@@ -12132,11 +12156,12 @@ mod tests {
                     to: "7001".to_string(),
                     amount: 5,
                     tag: "STON".to_string(),
-                    reason: TransportTargetReason::NotCaravanseraiOwner,
+                    reason: TransportTargetReason::SenderNotQuartermaster,
                     order_index: 0,
                     reach: None,
                     to_unshown: false,
-                    unsettled: true,
+                    unsettled: false,
+                    distribute: true,
                 }
             );
         }
@@ -12165,6 +12190,7 @@ mod tests {
                     reach: None,
                     to_unshown: false,
                     unsettled: true,
+                    distribute: false,
                 }
             );
         }
@@ -12207,6 +12233,7 @@ mod tests {
                     reach: None,
                     to_unshown: false,
                     unsettled: true,
+                    distribute: false,
                 }]
             );
         }
@@ -12230,6 +12257,7 @@ mod tests {
                     reach: None,
                     to_unshown: false,
                     unsettled: true,
+                    distribute: false,
                 }]
             );
             assert_eq!(
@@ -14877,6 +14905,7 @@ mod tests {
                 }),
                 to_unshown: false,
                 unsettled: false,
+                distribute: false,
             }]
         );
         // The agreed record: "the forecast keeps the goods *and their weight*", so what the sender
@@ -14922,6 +14951,7 @@ mod tests {
                 reach: None,
                 to_unshown: false,
                 unsettled: false,
+                distribute: false,
             }]
         );
 
@@ -15202,6 +15232,7 @@ mod tests {
                 }),
                 to_unshown: false,
                 unsettled: false,
+                distribute: false,
             }]
         );
 
@@ -15312,6 +15343,7 @@ mod tests {
                 }),
                 to_unshown: false,
                 unsettled: false,
+                distribute: false,
             }]
         );
     }
@@ -15341,6 +15373,7 @@ mod tests {
                 }),
                 to_unshown: false,
                 unsettled: false,
+                distribute: false,
             }]
         );
         assert_eq!(reach_held(&response, "900", "FUR"), 9);

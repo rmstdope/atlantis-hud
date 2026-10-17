@@ -498,6 +498,14 @@ impl ShipmentOrder {
             Self::Transport
         }
     }
+
+    /// The order's own word, as a sentence about the line names it (`ah-lis2`).
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Transport => "TRANSPORT",
+            Self::Distribute => "DISTRIBUTE",
+        }
+    }
 }
 
 /// Whether the game will let this target receive the goods, and why not when it will not.
@@ -528,6 +536,11 @@ pub(crate) enum Acceptance {
     /// both, the navigator's choice (`ah-1jl9`). Set by [`Shipping::judge`] over [`acceptance`]'s
     /// answer, which knows nothing of distance.
     SenderOwnsNoCaravanserai,
+    /// A DISTRIBUTE whose sender is not a quartermaster. `CheckTransportOrders` asks a
+    /// DISTRIBUTE's issuer, never its target, and refuses this one with "DISTRIBUTE: Unit is not a
+    /// quartermaster" whoever the target is (`ah-lis2`). A TRANSPORT from the same unit is judged
+    /// on its target, as `rules/transport` describes. Set by [`Shipping::judge`].
+    SenderNotQuartermaster,
     EligibilityUnknown,
     AcceptanceUnknown,
 }
@@ -952,7 +965,12 @@ impl Shipping {
         // whoever its target is: `CheckTransportOrders` asks its issuer for a transport structure
         // unconditionally (`ah-g4bz`).
         let sender_without_caravanserai = sender_qm && !sender_can_distribute;
+        // The engine asks a DISTRIBUTE's issuer for the skill first of all, whatever the target
+        // (`ah-lis2`) - when the catalogue names a quartermaster skill for our report to show.
+        let sender_not_quartermaster =
+            order == ShipmentOrder::Distribute && !sender_qm && self.quartermasters.skill_known();
         let acceptance = match acceptance(sender_can_distribute, facts) {
+            _ if sender_not_quartermaster => Acceptance::SenderNotQuartermaster,
             _ if sender_without_caravanserai && order == ShipmentOrder::Distribute => {
                 Acceptance::SenderOwnsNoCaravanserai
             }
@@ -984,6 +1002,8 @@ impl Shipping {
                     self.unsettled.contains(sender)
                         || (order == ShipmentOrder::Transport && self.unsettled.contains(target))
                 }
+                // Only the sender's own month - a STUDY of the skill - can undo it.
+                Acceptance::SenderNotQuartermaster => self.unsettled.contains(sender),
                 _ => false,
             },
             acceptance,
