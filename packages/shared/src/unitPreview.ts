@@ -610,10 +610,11 @@ export function transportSentences(
 }
 
 /**
- * Whether a target issue is a gap in the report rather than a refusal it can prove (`ah-64wm`).
+ * Whether a target issue is a gap in the report (`ah-64wm`), or a refusal this month's orders may
+ * undo (`unsettled`, `ah-nsz8`), rather than a refusal the report can prove.
  *
- * A definite refusal is a fact the hover states and the cell need say nothing more about; a gap is
- * what the ` ?` mark is for - the month could not be fully counted.
+ * A definite refusal is a fact the hover states and the cell need say nothing more about; a gap or
+ * an unsettled refusal is what the ` ?` mark is for - the month could not be fully counted.
  */
 export function transportTargetUncertain(issue: TransportTargetIssue): boolean {
   // A refusal this month's orders may undo (`unsettled`, `ah-kjjv`) is no fact either: LEAVE,
@@ -624,7 +625,8 @@ export function transportTargetUncertain(issue: TransportTargetIssue): boolean {
 
 /**
  * Whether this row's item list may be wrong because of a transport: a target the report cannot settle
- * (`ah-64wm`), or a distance the map cannot measure (`ah-7ale.5`). What the ITEMS cell's ` ?` is
+ * (`ah-64wm`), a refusal this month's orders may undo (`ah-nsz8`), or a distance the map cannot
+ * measure (`ah-7ale.5`). What the ITEMS cell's ` ?` is
  * drawn from.
  */
 export function hasUncertainTransport(unit: PreviewedUnit | undefined): boolean {

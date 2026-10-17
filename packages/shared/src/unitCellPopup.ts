@@ -1691,9 +1691,9 @@ function ownSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
 /**
  * What the unit holds, and everything today's ITEMS hover says about how the figure was reached.
  *
- * The amber sentence explains the cell's `?` in general terms, because both of its causes - an
- * order that could not be read, and a TRANSPORT whose target the report cannot settle (`ah-64wm`)
- * - leave the month partly counted; which one it was is in the notes, where `itemsTooltip` already
+ * The amber sentence explains the cell's `?` in general terms, because all of its causes - an
+ * order that could not be read, a TRANSPORT whose target the report cannot settle (`ah-64wm`), and
+ * one whose refusal this month's orders may undo (`ah-nsz8`) - leave the month partly counted; which one it was is in the notes, where `itemsTooltip` already
  * words it.
  */
 function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
@@ -2472,9 +2472,9 @@ export function refusedSilverShipments(unit: PreviewedUnit): string[] {
       (issue) =>
         issue.tag.toUpperCase() === "SILV" &&
         issue.amount > 0 &&
+        // `transportTargetUncertain` also excludes an `unsettled` refusal (`ah-nsz8`).
         !transportTargetUncertain(issue) &&
-        issue.reason !== "distanceUnmeasured" &&
-        !issue.unsettled
+        issue.reason !== "distanceUnmeasured"
     )
     .sort((left, right) => left.orderIndex - right.orderIndex)
     .map(transportTargetSentence);
