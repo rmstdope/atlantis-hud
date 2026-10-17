@@ -14388,8 +14388,9 @@ struct Neighbourhood {
 /// - a unit nothing can follow: where it stands. "Cannot say" is not a destination.
 struct SharingReach {
     /// In report order, and each one's members in the region's order once movement is over
-    /// ([`SharingReach::read`]), so lending and eating follow the engine's walk of the region. Told apart by region alone: [`Hex::read`] lists only our own units, so
-    /// every neighbourhood is already faction-mates (`rules/share`: "your faction"), and a unit
+    /// ([`SharingReach::read`]), so lending and eating follow the engine's walk of the region.
+    /// Told apart by region alone: [`Hex::read`] lists only our own units, so every neighbourhood
+    /// is already faction-mates (`rules/share`: "your faction"), and a unit
     /// whose faction number the report did not give is not cut off from its hex-mates.
     neighbourhoods: Vec<Neighbourhood>,
     /// Which neighbourhood each unit is in.
@@ -14427,9 +14428,12 @@ impl SharingReach {
         // A walker joins the end of the region's first object, the units outside any structure
         // (`monthorders.cpp`: `MoveUnit(newreg->GetDummy())`), and an arriving fleet is appended
         // after every object already there (`object.cpp`: `Object::MoveObject`). So: residents
-        // outside a structure, walkers, residents inside one, fleet crews (`ah-fpyo`). Stable, so
-        // each rank keeps report order - for two fleets arriving together, report order stands in
-        // for the order they arrive in, which moves phase by phase and is not read here.
+        // outside a structure, walkers, residents inside one, fleet crews (`ah-fpyo`). Inside or
+        // outside is read after this month's ENTER and LEAVE, which run before movement
+        // (`rules/sequenceofevents`; [`structure_after_orders`]). Stable, so each rank keeps report
+        // order - which for several walkers or fleets arriving together stands in for the order
+        // movement brings them in, phase by phase, which is not read here; nor is where a LEAVE
+        // or an ENTER puts a resident among the others of its rank.
         for neighbourhood in &mut reach.neighbourhoods {
             neighbourhood.members.sort_by_key(|(index, unit_id)| {
                 let (hex, _) = &hexes[*index];
@@ -14444,7 +14448,7 @@ impl SharingReach {
                         .units
                         .iter()
                         .find(|ordered| ordered.unit.unit_id == *unit_id)
-                        .is_some_and(|ordered| ordered.unit.structure_id.is_some());
+                        .is_some_and(|ordered| structure_after_orders(ordered).is_some());
                     if in_structure {
                         2
                     } else {
@@ -45652,6 +45656,39 @@ BUILD
             vec![(
                 Coordinate { x: 7, y: 51, z: 1 },
                 vec!["1795".to_string(), "4021".to_string(), "1796".to_string()]
+            )]
+        );
+    }
+
+    /// `ah-fpyo` delta review, finding 1: inside or outside is where a resident stands once this
+    /// month's ENTER and LEAVE have run (`rules/sequenceofevents` runs both before movement), not
+    /// where the report found it. A resident that LEAVEs its building stands outside before the
+    /// walker joins; one that ENTERs stands inside after it.
+    #[test]
+    fn the_sharing_reach_ranks_a_resident_by_where_its_enter_or_leave_puts_it() {
+        let leaving = ReportUnit {
+            structure_id: Some("12".to_string()),
+            ..with_silver(unit("1796"), 500)
+        };
+        let entering = with_silver(unit("1795"), 500);
+        let (mut report, orders, options) = a_walkers_turn(vec![], vec![leaving, entering], true);
+        let tower = report
+            .regions
+            .iter_mut()
+            .find(|region| region.region_id == "1:7,51")
+            .expect("the walker's destination");
+        tower.structures.push(Structure {
+            structure_id: "12".to_string(),
+            ..Default::default()
+        });
+        let orders = orders
+            .replace("unit 1796\n", "unit 1796\nLEAVE\n")
+            .replace("unit 1795\n", "unit 1795\nENTER 12\n");
+        assert_eq!(
+            neighbourhoods(&report, &orders, &options.month_end),
+            vec![(
+                Coordinate { x: 7, y: 51, z: 1 },
+                vec!["1796".to_string(), "4021".to_string(), "1795".to_string()]
             )]
         );
     }
