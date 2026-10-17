@@ -626,7 +626,7 @@ export const WARNING_GROUPS: readonly {
       {
         code: "guard-without-tax-ability",
         title: "Guards that cannot take watch",
-        description: "A GUARD 1 order given to a unit that cannot tax and therefore cannot guard."
+        description: "A GUARD 1 order given to a unit that cannot guard: one that cannot tax, or one at sea."
       },
       {
         code: "hex-unguarded",

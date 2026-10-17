@@ -381,9 +381,11 @@ describe("the Warnings settings tab", () => {
     expect(html).toContain(
       "A GIVE or TAKE naming items that cannot change hands, or men given to another faction."
     );
+    // One switch covers every reason a GUARD cannot take watch, the sea included (`ah-ah66`).
     expect(html).toContain(
-      "A GUARD 1 order given to a unit that cannot tax and therefore cannot guard."
+      "A GUARD 1 order given to a unit that cannot guard: one that cannot tax, or one at sea."
     );
+    expect(html).not.toContain("cannot tax and therefore cannot guard");
     expect(html).toContain(
       "A TAKE naming a visible unit from another faction, which the game will refuse."
     );
