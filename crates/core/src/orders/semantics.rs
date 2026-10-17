@@ -61,15 +61,14 @@ use crate::orders::silver::{
     pillage_threshold, plan_production, pool_wants, price_buy_all, price_cast, price_claim,
     price_pillage, price_production, price_purchase, price_sale_line, price_study, price_tax,
     producing_skill, quantity_bought, readiness, readiness_reason, settle_in_report_order,
-    settle_unclaimed, split_pool, tax_overstated_by, taxes, taxing_men, transfer_shape,
-    transmute_argument, unit_upkeep, workforce_for, BuyAllCap, Caster, ContendedPool,
-    FactionFoodPass, FactionPurse, FoodAmount, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief,
-    Lookups, MarketFunds, MarketSide, MoneyRead, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun,
-    PoolShare, PoolShares, PoolWants, PurchaseAnswer, ReceiptMove, Receipts, RegionShare,
-    RegionWages, SaleAnswer, SettledBuyAll, SettledGift, ShareRounding, SharedCast, SharedMarket,
-    ShipmentPriced, SilverChange, SilverChangeCause, SilverDoubt, SilverDraw, SilverFunding,
-    SilverMove, TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement,
-    Workforce,
+    settle_unclaimed, tax_overstated_by, taxes, taxing_men, transfer_shape, transmute_argument,
+    unit_upkeep, workforce_for, BuyAllCap, Caster, ContendedPool, FactionFoodPass, FactionPurse,
+    FoodAmount, FoodClaim, LateFacts, LateFoodClaim, LateFoodRelief, Lookups, MarketFunds,
+    MarketSide, MoneyRead, PhaseFacts, PhaseSilver, Pillagers, PoolOverrun, PoolShare, PoolShares,
+    PoolWants, PurchaseAnswer, ReceiptMove, Receipts, RegionShare, RegionWages, SaleAnswer,
+    SettledBuyAll, SettledGift, ShareRounding, SharedCast, SharedMarket, ShipmentPriced,
+    SilverChange, SilverChangeCause, SilverDoubt, SilverDraw, SilverFunding, SilverMove,
+    TransferShape, Transmuting, UnitFacts, UnitSilver, UpkeepClaim, UpkeepSettlement, Workforce,
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
@@ -1523,9 +1522,10 @@ fn pool_shares_for(
         foreign_of: Option<fn(&mut PoolShares) -> &mut bool>,
         pool: Option<i64>,
         names: ContendedPool,
-        /// How this pool is divided once it is short: `TAX` walks the taxers in report order as
-        /// the engine does (`ah-alwr`). The wage pools still use `split_pool`, which drops the
-        /// remainder the engine's own walk hands the last unit - `ah-syug`.
+        /// How this pool is divided once it is short. Every pool here is walked in report order,
+        /// truncating, as the engine does: `TAX` by `Game::RunTaxRegion` (`ah-alwr`), wages and
+        /// entertainment by `Game::RunAProduction` (`ah-syug`) - the same arithmetic, kept per
+        /// pool so each names the engine routine it follows.
         split: fn(&[i64], i64) -> Vec<i64>,
     }
 
@@ -1601,7 +1601,10 @@ fn pool_shares_for(
             foreign_of: Some(|into| &mut into.foreign_claimant_wages),
             pool: region.max_wages,
             names: ContendedPool::Wages,
-            split: split_pool,
+            // `Game::RunAProduction` (`monthorders.cpp`), as `WORK` is production of silver with
+            // no skill: unit by unit, `amt * uatt / attempted` truncated, both shrinking, so the
+            // last worker takes the remainder.
+            split: |asks, pool| settle_in_report_order(asks, 0, pool, ShareRounding::Down),
         },
         Contended {
             want_of: |want| want.entertainment,
@@ -1610,7 +1613,8 @@ fn pool_shares_for(
             foreign_of: Some(|into| &mut into.foreign_claimant_entertainment),
             pool: region.entertainment,
             names: ContendedPool::Entertainment,
-            split: split_pool,
+            // `Game::RunAProduction` again, `ENTERTAIN` being production of silver by skill.
+            split: |asks, pool| settle_in_report_order(asks, 0, pool, ShareRounding::Down),
         },
     ];
 
@@ -2020,6 +2024,10 @@ struct ProductionClaim {
     origin: Coordinate,
     actor_index: usize,
     wanted: i64,
+    /// Whether a sailing vessel carries this unit to where it produces, which puts it behind the
+    /// units that stayed (`ah-syug`) - asked of the voyage rather than of the origin, since a
+    /// vessel that sails a round trip lands back in the hex it left and is still moved.
+    arrives_by_sea: bool,
 }
 
 /// Every own unit's primary `PRODUCE`, settled against the region that will actually yield it.
@@ -2110,6 +2118,7 @@ fn production_shares_for(hexes: &[Hex<'_>], ruleset: Option<&Ruleset>) -> Produc
                     origin: hex.region.coordinate,
                     actor_index,
                     wanted,
+                    arrives_by_sea: arrives_by_sea(hex, ordered, ruleset),
                 });
         }
     }
@@ -2126,8 +2135,17 @@ fn production_shares_for(hexes: &[Hex<'_>], ruleset: Option<&Ruleset>) -> Produc
         let foreign_sharer = by_coordinate
             .get(&coordinate)
             .is_some_and(|region| a_foreign_player_unit_in(region));
+        // `Game::RunAProduction` (`monthorders.cpp`) walks the region's objects in order, and an
+        // arriving vessel has been moved to the end of them (`Object::MoveObject`, `object.cpp`),
+        // so the units that stayed settle before any passenger - a stable sort, which keeps report
+        // order within each side. Passengers of two vessels are ordered by report region, an
+        // approximation: the engine orders them by which vessel arrived first, which the report
+        // cannot say. Then the same walk as the wage pools: truncating, the last claimant taking
+        // the remainder (`ah-syug`).
+        let mut group = group;
+        group.sort_by_key(|claim| claim.arrives_by_sea);
         let wants: Vec<i64> = group.iter().map(|claim| claim.wanted).collect();
-        let shares = split_pool(&wants, pool);
+        let shares = settle_in_report_order(&wants, 0, pool, ShareRounding::Down);
         for (claim, share) in group.iter().zip(shares) {
             write_answer(
                 &mut settled,
@@ -20716,6 +20734,24 @@ fn production_region<'a>(
     }
 }
 
+/// Whether a sailing vessel carries this unit this month - the same question
+/// [`production_region`] asks before following the voyage, and answered `false` without a
+/// ruleset, where it does not follow one either.
+fn arrives_by_sea(hex: &Hex<'_>, ordered: &Ordered<'_>, ruleset: Option<&Ruleset>) -> bool {
+    ruleset.is_some_and(|rules| {
+        matches!(
+            fleet_carrying(hex, ordered, rules),
+            Some((
+                PlacedIntent {
+                    intent: Intent::Sail { .. },
+                    ..
+                },
+                _,
+            ))
+        )
+    })
+}
+
 /// Both ways a `PRODUCE` order makes nothing: the unit cannot make the item anywhere, or not here.
 ///
 /// Two codes rather than one because they are separately toggleable and separately true, and a
@@ -27588,9 +27624,11 @@ mod tests {
             assert_eq!(silver_of(&review, "2390").late_income, Some(600));
         }
 
-        /// The bead's headline: $1,200 of pool, $1,320 of ask, and the two figures now add up to
-        /// no more than the region has. Both are rounded down by `split_pool`, so a few silver of
-        /// the pool goes unpromised - the safe direction.
+        /// The bead's headline: $1,200 of pool, $1,320 of ask. `Game::RunAProduction`
+        /// (`monthorders.cpp`) pays the workers in report order, each `amt * uatt / attempted`
+        /// truncated, with the pool and the outstanding ask both shrinking - so the first gets
+        /// 1200 * 600 / 1320 = 545 and the last the 655 that is left, and the whole pool is paid
+        /// out (`ah-syug`; rounding each share down on its own left the last at 654).
         #[test]
         fn two_workers_split_a_wage_pool_that_cannot_cover_both() {
             let review = wage_review(
@@ -27603,10 +27641,11 @@ mod tests {
 
             let first = silver_of(&review, "2390").late_income.expect("a number");
             let second = silver_of(&review, "2391").late_income.expect("a number");
-            assert_eq!((first, second), (545, 654));
-            assert!(
-                first + second <= 1200,
-                "the pool is never promised twice: {first} + {second}"
+            assert_eq!((first, second), (545, 655));
+            assert_eq!(
+                first + second,
+                1200,
+                "the whole pool is paid out, and never twice: {first} + {second}"
             );
         }
 
@@ -27650,9 +27689,10 @@ mod tests {
                 "unit 2390\nENTERTAIN\nunit 2391\nENTERTAIN\n",
             );
 
-            // Asks of 300 and 150 against a demand of 200.
+            // Asks of 300 and 150 against a demand of 200: 200 * 300 / 450 = 133 to the first in
+            // report order, and the 67 left to the last (`Game::RunAProduction`, `ah-syug`).
             assert_eq!(silver_of(&review, "2390").late_income, Some(133));
-            assert_eq!(silver_of(&review, "2391").late_income, Some(66));
+            assert_eq!(silver_of(&review, "2391").late_income, Some(67));
         }
 
         /// Different pools, no contention.
@@ -33321,8 +33361,8 @@ mod tests {
         }
 
         /// Farmers (3493): 17 orcs at farming 2 ask 34 of a hex that yields 34, and the report
-        /// says 34. `split_pool`'s own `total <= pool` arm - a pool that covers everybody divides
-        /// nothing, and names no cap.
+        /// says 34. `settle_in_report_order`'s own `outstanding <= pool` arm - a pool that covers
+        /// everybody divides nothing, and names no cap.
         #[test]
         fn a_yield_that_covers_every_producer_divides_nothing() {
             let review = review_of(
@@ -33414,6 +33454,30 @@ mod tests {
 
             assert_eq!(silver_of(&review, "9001").produced, 30);
             assert_eq!(silver_of(&review, "1795").produced, 16);
+            assert_eq!(silver_of(&review, "5105").produced, 20);
+        }
+
+        /// `Game::RunAProduction` (`monthorders.cpp`) hands out a short yield unit by unit in
+        /// report order, truncating each share and shrinking both the yield and the outstanding
+        /// ask, so the last producer takes the remainder (`ah-syug`). Asks of 32 and 40 against a
+        /// yield of 35: 35 * 32 / 72 = 15 to the first, and the 20 left to the second - all 35
+        /// mined, where rounding each share down on its own made it 15 and 19.
+        #[test]
+        fn a_short_yield_is_split_in_report_order_with_the_last_producer_taking_the_remainder() {
+            let review = review_of(
+                yielding(
+                    vec![product(35, "iron", "IRON")],
+                    vec![
+                        with_item(producer("1795", 8, "MINI", 3), 8, "pick", "PICK"),
+                        producer("5105", 8, "MINI", 5),
+                    ],
+                ),
+                "unit 1795\nPRODUCE iron\nunit 5105\nPRODUCE iron\n",
+            );
+
+            assert_eq!(silver_of(&review, "1795").production_wanted, 32);
+            assert_eq!(silver_of(&review, "5105").production_wanted, 40);
+            assert_eq!(silver_of(&review, "1795").produced, 15);
             assert_eq!(silver_of(&review, "5105").produced, 20);
         }
 
@@ -33517,9 +33581,9 @@ mod tests {
         /// `ah-k43x`. A passenger produces where the vessel arrives, so it draws on *that* hex's
         /// monthly yield alongside the units already producing there - and the two are settled
         /// against one another even though they stand in different regions of the report. The
-        /// passenger asks 40 and the miner 32 of a yield of 36, so `split_pool` leaves them 20 and
-        /// 16. Both preview columns are asserted, because both price the same order through arms
-        /// that share only their inputs.
+        /// passenger asks 40 and the miner 32 of a yield of 36, so `settle_in_report_order` leaves
+        /// them 20 and 16. Both preview columns are asserted, because both price the same order
+        /// through arms that share only their inputs.
         #[test]
         fn a_passenger_and_a_local_producer_split_the_destinations_yield_in_both_columns() {
             let report = sailing_north(vec![iron_to_the_north(vec![with_item(
@@ -33558,6 +33622,33 @@ mod tests {
             );
             assert_eq!(produced_in_items(&effects, "4021", "IRON"), 20);
             assert_eq!(produced_in_items(&effects, "1795", "IRON"), 16);
+        }
+
+        /// `ah-syug`. An arriving vessel is moved to the end of its destination's objects
+        /// (`Object::MoveObject`, `object.cpp`: `toreg->objects.Add(this)`), and
+        /// `Game::RunAProduction` walks those objects in order - so the miner already standing in
+        /// the destination is settled before the passenger, whichever region the report lists
+        /// first. Asks of 32 and 40 against a yield of 35: the miner 35 * 32 / 72 = 15, the
+        /// passenger the 20 left. Settled passenger first, it would be 19 and 16.
+        #[test]
+        fn a_passenger_is_settled_after_the_producers_already_in_the_destination() {
+            let mut destination = iron_to_the_north(vec![with_item(
+                producer("1795", 8, "MINI", 3),
+                8,
+                "pick",
+                "PICK",
+            )]);
+            destination.products = vec![product(35, "iron", "IRON")];
+            let report = sailing_north(vec![destination]);
+            let review = review_turn(
+                &report,
+                SAILING_MINERS,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert_eq!(silver_of(&review, "1795").produced, 15);
+            assert_eq!(silver_of(&review, "4021").produced, 20);
         }
 
         /// A unit of another player's faction, for `ah-e23d.2`.
@@ -43436,7 +43527,7 @@ BUILD
     }
 
     /// A hex whose tax pool two sharers oversubscribe: each of them wants $500 and the region
-    /// states $600, so `split_pool` settles each at $300 (`ah-3c2t.1`).
+    /// states $600, so `settle_in_report_order` settles each at $300 (`ah-3c2t.1`).
     fn contended_sharing_hex() -> ReportRegion {
         ReportRegion {
             tax_base: Some(600),
