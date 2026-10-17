@@ -949,7 +949,10 @@ mod tests {
         );
         assert_eq!(overload(carrying(Some(15), Some((0, 0, 15))), None), None);
         // Riding's 280 is the best allowance, so 210 is within it whatever walking says.
-        assert_eq!(overload(carrying(Some(210), Some((0, 280, 100))), None), None);
+        assert_eq!(
+            overload(carrying(Some(210), Some((0, 280, 100))), None),
+            None
+        );
     }
 
     /// Where the items cannot be priced the report's printed `Capacity:` line is the allowance,
