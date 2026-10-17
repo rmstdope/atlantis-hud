@@ -75,3 +75,37 @@ fn guard_1_at_sea_is_refused_because_it_is_at_sea() {
         "{findings:#?}"
     );
 }
+
+/// The same report's land hexes are still called unguarded, so the absence above is the sea's and
+/// not a check that has stopped speaking about this turn altogether.
+#[test]
+fn a_land_hex_of_the_same_turn_is_still_called_unguarded() {
+    let ruleset = ruleset();
+    let mut parsed = parse_report_full(atlantis_hud_fixtures::G3_F42_T42.text);
+    classify_units(&mut parsed, &ruleset);
+    let options = CheckOptions {
+        disabled: Default::default(),
+        ..CheckOptions::default()
+    };
+    let unguarded: Vec<_> = review_turn(&parsed, &orders(""), Some(&ruleset), options)
+        .findings
+        .into_iter()
+        .filter(|finding| finding.code == codes::HEX_UNGUARDED)
+        .map(|finding| finding.region_id)
+        .collect();
+    let land = parsed
+        .regions
+        .iter()
+        .find(|region| region.coordinate.x == 40 && region.coordinate.y == 0)
+        .expect("the fixture shows (40,0)");
+    assert!(
+        ruleset.allows_guard_in(&land.terrain),
+        "{} is land",
+        land.terrain
+    );
+    assert!(
+        unguarded.contains(&land.region_id),
+        "{} in {unguarded:?}",
+        land.region_id
+    );
+}
