@@ -151,6 +151,27 @@ describe("unitSkillsCell", () => {
   });
 });
 
+describe("skills carried from a merged report (ah-oqxn)", () => {
+  const carried = aSkill({ name: "combat", tag: "COMB", level: 2, turn: 17, coordinate: null, terrain: null, from: "Borg (62)" });
+
+  it("reads in the cell the way a battle-learned skill does", () => {
+    expect(unitSkillsCell(foreignUnit({ unitId: "7124" }), new Map([["7124", [carried]]]))).toBe("COMB 2 (turn 17)");
+  });
+
+  it("is its own group, apart from a battle in the same turn", () => {
+    const battle = aSkill({ turn: 17, coordinate: null, terrain: null });
+
+    expect(battleSkillGroups([carried, battle]).map((group) => group.from ?? null)).toEqual(["Borg (62)", null]);
+  });
+
+  it("names the merged report rather than a battle, in both voices", () => {
+    const [group] = battleSkillGroups([carried]);
+
+    expect(battleSkillSource(group, "read")).toBe("From Borg (62)'s own report for turn 17.");
+    expect(battleSkillSource(group, "seen")).toBe("From Borg (62)'s own report for turn 17.");
+  });
+});
+
 describe("battleSkillGroups", () => {
   it("skills are grouped by identical battle source without reordering them", () => {
     const first = aSkill({ name: "riding", tag: "RIDI", level: 5, turn: 71, coordinate: OCEAN, terrain: "ocean" });

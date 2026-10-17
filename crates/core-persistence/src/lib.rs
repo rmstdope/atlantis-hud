@@ -23,7 +23,7 @@ use rusqlite::{params, Connection, ErrorCode, OptionalExtension, Transaction};
 use thiserror::Error;
 
 /// Current schema version expected by the persistence layer.
-pub const CURRENT_SCHEMA_VERSION: u32 = 16;
+pub const CURRENT_SCHEMA_VERSION: u32 = 17;
 /// The manifest file inside a game's directory. The directory is named after the game's id, so the
 /// file itself does not have to be, and a game can be found without parsing any filename.
 pub const GAME_MANIFEST_FILE_NAME: &str = "game.json";
@@ -50,13 +50,15 @@ const MIGRATION_0015_ENGINE_TURN_NUMBERS: &str =
     include_str!("../migrations/0015_engine_turn_numbers.sql");
 const MIGRATION_0016_CAP_ATLACLIENT_SIGHTINGS: &str =
     include_str!("../migrations/0016_cap_atlaclient_sightings.sql");
+const MIGRATION_0017_MERGED_REPORT_UNITS: &str =
+    include_str!("../migrations/0017_merged_report_units.sql");
 
 struct Migration {
     version: u32,
     sql: &'static str,
 }
 
-const MIGRATIONS: [Migration; 16] = [
+const MIGRATIONS: [Migration; 17] = [
     Migration {
         version: 1,
         sql: MIGRATION_0001_INITIAL,
@@ -120,6 +122,10 @@ const MIGRATIONS: [Migration; 16] = [
     Migration {
         version: 16,
         sql: MIGRATION_0016_CAP_ATLACLIENT_SIGHTINGS,
+    },
+    Migration {
+        version: 17,
+        sql: MIGRATION_0017_MERGED_REPORT_UNITS,
     },
 ];
 
@@ -558,7 +564,8 @@ fn read_backup_collections(
         .collect::<Result<Vec<_>, _>>()?;
 
     let mut merges = connection.prepare(
-        "SELECT faction_id, turn_number, merged_faction_id, merged_faction_name, merged_at
+        "SELECT faction_id, turn_number, merged_faction_id, merged_faction_name, merged_at,
+                units_json
            FROM merged_reports
           WHERE game_id = ?1",
     )?;
@@ -570,6 +577,7 @@ fn read_backup_collections(
                 merged_faction_id: row.get(2)?,
                 merged_faction_name: row.get(3)?,
                 merged_at: row.get(4)?,
+                units: units_from_json(&row.get::<_, String>(5)?),
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -755,8 +763,9 @@ fn write_backup_collections(
                     turn_number,
                     merged_faction_id,
                     merged_faction_name,
-                    merged_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    merged_at,
+                    units_json
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 game_id,
                 record.faction_id.as_str(),
@@ -764,6 +773,7 @@ fn write_backup_collections(
                 record.merged_faction_id.as_str(),
                 record.merged_faction_name.as_str(),
                 record.merged_at.as_str(),
+                units_json(&record.units),
             ],
         )?;
     }
@@ -1440,11 +1450,13 @@ pub fn upsert_merged_report(
 
     connection.execute(
         "INSERT INTO merged_reports (
-            game_id, faction_id, turn_number, merged_faction_id, merged_faction_name, merged_at
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            game_id, faction_id, turn_number, merged_faction_id, merged_faction_name, merged_at,
+            units_json
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
          ON CONFLICT(game_id, faction_id, turn_number, merged_faction_id) DO UPDATE SET
             merged_faction_name = excluded.merged_faction_name,
-            merged_at = excluded.merged_at",
+            merged_at = excluded.merged_at,
+            units_json = excluded.units_json",
         params![
             record.game_id.as_str(),
             record.faction_id.as_str(),
@@ -1452,6 +1464,7 @@ pub fn upsert_merged_report(
             record.merged_faction_id.as_str(),
             record.merged_faction_name.as_str(),
             record.merged_at.as_str(),
+            units_json(&record.units),
         ],
     )?;
 
@@ -1479,7 +1492,7 @@ pub fn load_merged_reports(
     apply_migrations(&mut connection)?;
 
     let mut statement = connection.prepare(
-        "SELECT merged_faction_id, merged_faction_name, merged_at
+        "SELECT merged_faction_id, merged_faction_name, merged_at, units_json
             FROM merged_reports
             WHERE game_id = ?1 AND faction_id = ?2 AND turn_number = ?3
             ORDER BY merged_at ASC, merged_faction_id ASC",
@@ -1493,11 +1506,77 @@ pub fn load_merged_reports(
             merged_faction_id: row.get(0)?,
             merged_faction_name: row.get(1)?,
             merged_at: row.get(2)?,
+            units: units_from_json(&row.get::<_, String>(3)?),
         })
     })?;
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(PersistenceError::from)
+}
+
+/// Every allied report folded into one faction's map, over every turn: by turn, then in the order
+/// they were merged (`ah-oqxn`).
+///
+/// What a later turn carries merged skills forward from. Within a turn the order is the one
+/// [`load_merged_reports`] uses, so a turn read either way lists its merges alike.
+///
+/// Each record carries only the merged faction's own units: they are all a later turn reads, and a
+/// game that merges a large report every turn would otherwise ship every stranger and every
+/// inventory of every turn on each turn switch.
+///
+/// # Errors
+///
+/// Returns an error when the database file is missing or cannot be read.
+pub fn load_merged_report_history(
+    database_path: &Path,
+    game_id: &str,
+    faction_id: &str,
+) -> Result<Vec<MergedReportRecord>, PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+
+    let mut statement = connection.prepare(
+        "SELECT turn_number, merged_faction_id, merged_faction_name, merged_at, units_json
+            FROM merged_reports
+            WHERE game_id = ?1 AND faction_id = ?2
+            ORDER BY turn_number ASC, merged_at ASC, merged_faction_id ASC",
+    )?;
+
+    let rows = statement.query_map(params![game_id, faction_id], |row| {
+        Ok(MergedReportRecord {
+            game_id: game_id.to_string(),
+            faction_id: faction_id.to_string(),
+            turn_number: row.get(0)?,
+            merged_faction_id: row.get(1)?,
+            merged_faction_name: row.get(2)?,
+            merged_at: row.get(3)?,
+            units: units_from_json(&row.get::<_, String>(4)?)
+                .into_iter()
+                .filter(|unit| unit.own)
+                .collect(),
+        })
+    })?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(PersistenceError::from)
+}
+
+/// A merge's units as the `units_json` column stores them.
+fn units_json(units: &[atlantis_hud_core::report::model::ReportUnit]) -> String {
+    serde_json::to_string(units).unwrap_or_else(|_| "[]".to_owned())
+}
+
+/// The `units_json` column read back. A payload that will not parse - written by a build that
+/// shaped a unit differently - reads as no units: the merge itself is still recorded, and losing
+/// the filled-in rows is the same trade a sighting that will not parse already makes.
+fn units_from_json(json: &str) -> Vec<atlantis_hud_core::report::model::ReportUnit> {
+    serde_json::from_str(json).unwrap_or_default()
 }
 
 /// Inserts or updates one persisted order draft.
@@ -2841,6 +2920,7 @@ mod tests {
                 merged_faction_id: "73".to_string(),
                 merged_faction_name: "Ally 73".to_string(),
                 merged_at: IMPORTED_AT.to_string(),
+                units: Vec::new(),
             },
         )
         .expect("seed the merge");
@@ -3369,8 +3449,8 @@ mod tests {
 
         assert_eq!(created.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(
-            created.schema_version, 16,
-            "capping AtlaClient sightings added migration 16"
+            created.schema_version, 17,
+            "keeping a merged report's units added migration 17"
         );
     }
 
@@ -4040,6 +4120,7 @@ mod tests {
                      updated_at TEXT NOT NULL,
                      PRIMARY KEY (game_id, faction_id, unit_id)
                  );
+                 ALTER TABLE merged_reports DROP COLUMN units_json;
                  DELETE FROM schema_migrations WHERE version >= 14;
                  INSERT INTO study_plans
                         (game_id, faction_id, unit_id, goals_json, comment, updated_at)
@@ -4079,6 +4160,7 @@ mod tests {
         connection
             .execute_batch(
                 "ALTER TABLE study_plans DROP COLUMN casts_json;
+                 ALTER TABLE merged_reports DROP COLUMN units_json;
                  DELETE FROM schema_migrations WHERE version >= 13;
                  INSERT INTO study_plans
                         (game_id, faction_id, unit_id, goals_json, comment, updated_at)
@@ -4826,6 +4908,7 @@ mod tests {
                     SET imported_at = '2026-08-01 10:00:00',
                         updated_at  = '2026-08-01 10:00:00';
                  DROP TABLE study_plans;
+                 ALTER TABLE merged_reports DROP COLUMN units_json;
                  DELETE FROM schema_migrations WHERE version >= 6;",
             )
             .expect("rewind");
@@ -5672,7 +5755,128 @@ mod merged_report_tests {
             merged_faction_id: merged_faction_id.to_string(),
             merged_faction_name: format!("Ally {merged_faction_id}"),
             merged_at: merged_at.to_string(),
+            units: Vec::new(),
         }
+    }
+
+    fn unit(unit_id: &str, own: bool) -> atlantis_hud_core::report::model::ReportUnit {
+        atlantis_hud_core::report::model::ReportUnit {
+            unit_id: unit_id.to_string(),
+            name: format!("Unit ({unit_id})"),
+            region_id: "1:42,80".to_string(),
+            own,
+            men: 2,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_merges_units_round_trip() {
+        let dir = tempdir().expect("tempdir");
+        let opened = game(dir.path());
+        let mut record = merge_of("62", 17, "2026-10-17T10:00:00Z");
+        record.units = vec![unit("7124", true), unit("4410", false)];
+
+        upsert_merged_report(&opened.database_path, &record).expect("recorded");
+
+        let loaded = load_merged_reports(&opened.database_path, GAME, "95", 17).expect("load");
+        assert_eq!(loaded, vec![record]);
+    }
+
+    #[test]
+    fn merging_again_replaces_the_units() {
+        let dir = tempdir().expect("tempdir");
+        let opened = game(dir.path());
+        let mut first = merge_of("62", 17, "2026-10-17T10:00:00Z");
+        first.units = vec![unit("7124", true)];
+        upsert_merged_report(&opened.database_path, &first).expect("first");
+        let mut second = merge_of("62", 17, "2026-10-17T11:00:00Z");
+        second.units = vec![unit("7190", true)];
+        upsert_merged_report(&opened.database_path, &second).expect("second");
+
+        let loaded = load_merged_reports(&opened.database_path, GAME, "95", 17).expect("load");
+        assert_eq!(loaded, vec![second]);
+    }
+
+    #[test]
+    fn history_lists_every_turn_of_one_faction_in_order() {
+        let dir = tempdir().expect("tempdir");
+        let opened = game(dir.path());
+        for record in [
+            merge_of("62", 18, "2026-10-17T09:00:00Z"),
+            merge_of("81", 17, "2026-10-17T11:00:00Z"),
+            merge_of("62", 17, "2026-10-17T10:00:00Z"),
+        ] {
+            upsert_merged_report(&opened.database_path, &record).expect("recorded");
+        }
+        let mut elsewhere = merge_of("62", 17, "2026-10-17T10:00:00Z");
+        elsewhere.faction_id = "73".to_string();
+        upsert_merged_report(&opened.database_path, &elsewhere).expect("another faction's");
+        let mut with_units = merge_of("62", 18, "2026-10-17T09:00:00Z");
+        with_units.units = vec![unit("7124", true), unit("4410", false)];
+        upsert_merged_report(&opened.database_path, &with_units).expect("turn 18 with units");
+
+        let kept: Vec<String> = load_merged_report_history(&opened.database_path, GAME, "95")
+            .expect("load")
+            .into_iter()
+            .flat_map(|record| record.units)
+            .map(|unit| unit.unit_id)
+            .collect();
+        assert_eq!(
+            kept,
+            vec!["7124".to_string()],
+            "only the merged faction's own units"
+        );
+
+        let history: Vec<(u32, String)> =
+            load_merged_report_history(&opened.database_path, GAME, "95")
+                .expect("load")
+                .into_iter()
+                .map(|record| (record.turn_number, record.merged_faction_id))
+                .collect();
+        assert_eq!(
+            history,
+            vec![
+                (17, "62".to_string()),
+                (17, "81".to_string()),
+                (18, "62".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn a_merges_units_survive_a_backup_round_trip() {
+        let dir = tempdir().expect("tempdir");
+        let opened = game(dir.path());
+        let mut record = merge_of("62", 17, "2026-10-17T10:00:00Z");
+        record.units = vec![unit("7124", true)];
+        upsert_merged_report(&opened.database_path, &record).expect("recorded");
+
+        let exported = export_game(dir.path(), GAME, "2026-10-17T12:00:00Z").expect("export");
+        let restored_root = tempdir().expect("tempdir");
+        let restored =
+            import_game(restored_root.path(), &exported, "2026-10-17T13:00:00Z").expect("import");
+
+        let loaded = load_merged_reports(&restored.database_path, GAME, "95", 17).expect("load");
+        assert_eq!(loaded, vec![record]);
+    }
+
+    #[test]
+    fn a_row_with_unreadable_units_reads_with_none() {
+        let dir = tempdir().expect("tempdir");
+        let opened = game(dir.path());
+        upsert_merged_report(
+            &opened.database_path,
+            &merge_of("62", 17, "2026-10-17T10:00:00Z"),
+        )
+        .expect("recorded");
+        let connection = Connection::open(&opened.database_path).expect("open");
+        connection
+            .execute("UPDATE merged_reports SET units_json = 'not json'", [])
+            .expect("corrupted");
+
+        let loaded = load_merged_reports(&opened.database_path, GAME, "95", 17).expect("load");
+        assert!(loaded[0].units.is_empty());
     }
 
     #[test]

@@ -18,6 +18,7 @@ import type {
   AlliedMageRecord,
   ArmyRecord,
   HexNoteRecord,
+  ReportUnit,
   StorageStopCause,
   StorageStopListener,
   StudyPlanKey,
@@ -200,6 +201,12 @@ export type StoredMergedReport = {
   mergedFactionId: string;
   mergedFactionName: string;
   mergedAt: string;
+  /**
+   * Every unit the merged report lists, as it wrote them (`ah-oqxn`). Absent on a record stored
+   * before units were kept, which reads as none - IndexedDB keeps whatever shape it was given, so
+   * no version bump is needed for an older record to keep reading.
+   */
+  units?: ReportUnit[];
 };
 
 export type StoredOrderDraft = {

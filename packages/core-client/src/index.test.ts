@@ -153,6 +153,7 @@ function fakeAdapter(overrides: Partial<CoreAdapter> = {}): CoreAdapter {
       newRegionCount: 2
     }),
     loadMergedReports: vi.fn().mockResolvedValue([]),
+    loadMergedReportHistory: vi.fn().mockResolvedValue([]),
     loadImportedTurn: vi.fn().mockResolvedValue(null),
     loadLatestImportedTurn: vi.fn().mockResolvedValue(null),
     listImportedTurns: vi.fn().mockResolvedValue([]),
@@ -404,6 +405,23 @@ describe("merging an allied report", () => {
           faction_id: "95",
           turn_number: 71
         }
+      }
+    ]);
+  });
+
+  it("asks the desktop for one faction's merge history by the command's own argument names", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const invoke = <T,>(command: string, args?: Record<string, unknown>): Promise<T> => {
+      calls.push({ command, args });
+      return Promise.resolve([] as T);
+    };
+
+    await createCoreClient(createTauriAdapter(invoke)).loadMergedReportHistory(DB, "faction-39", "39");
+
+    expect(calls).toEqual([
+      {
+        command: "load_merged_report_history",
+        args: { database_path: DB, game_id: "faction-39", faction_id: "39" }
       }
     ]);
   });

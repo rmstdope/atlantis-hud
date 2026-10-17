@@ -170,7 +170,9 @@ import { rememberedFor } from "../resourceMemory";
 import { useResourceMemoryStore } from "../resourceMemoryStore";
 import { usePassageMemoryStore } from "../passageMemoryStore";
 import { knownPassagesOf } from "../passageMemory";
-import { derivedSkillsFor } from "../battleSkills";
+import { derivedSkillsFor, mergedDerived } from "../battleSkills";
+import { carriedMergedSkills, foreignRowsWithMerged, knownMapWithMerged } from "../mergedUnits";
+import { useMergedHistory } from "./mergedHistory";
 import { disabledAdvisoryCodes, useSettingsStore } from "../settingsStore";
 import { AppHeader, type HeaderPopoverId } from "./AppHeader";
 import { TurnPicker } from "./TurnPicker";
@@ -336,7 +338,6 @@ import {
 } from "../turnReport";
 import { UnitMovementSlot } from "./UnitMovementSlot";
 import { UnitTableDock, type UnitTableDockHandle } from "./UnitTableDock";
-import { foreignUnitsIn } from "./foreignUnits";
 import { dossierFor } from "../factionDossier";
 import { FloatingFactionDossier, MeasuredFactionDossier } from "./FactionDossierPanel";
 import type { KeepClear, PeekMode } from "./dossierPeek";
@@ -1145,6 +1146,17 @@ export function AppShell({
   const pendingMissingMages = fileQuestion?.kind === "missing-mages" ? fileQuestion.pending : null;
   const [ordersImportSummary, setOrdersImportSummary] = useState<OrdersImportSummary | null>(null);
   const [mergedReports, setMergedReports] = useState<MergedReportRecord[]>([]);
+  /**
+   * Every turn's merges for the faction on screen, and the skills they carry into this turn
+   * (`ah-oqxn`): what the units table, its hover and the Unit panel show beside the battle-recovered
+   * ones, under the same newer-turn-wins rule. The Army export keeps the battle skills alone - its
+   * counts are about battles.
+   */
+  const mergedHistory = useMergedHistory(client, game, parsed?.header.factionId ?? null, mergedReports);
+  const shownDerivedSkills = useMemo(() => {
+    const carried = carriedMergedSkills(mergedHistory, parsed?.header.turnNumber ?? null);
+    return carried.size === 0 ? derivedSkills : mergedDerived(derivedSkills, carried);
+  }, [mergedHistory, parsed?.header.turnNumber, derivedSkills]);
   // A second, read-only turn held beside the working one (ah-jg6.3), and the picker that chooses
   // it. Plain `useState`, as the panel-open flags above are: a comparison is transient, never
   // persisted, and is cleared the moment the working turn changes underneath it - or the moment
@@ -1291,12 +1303,16 @@ export function AppShell({
   // Converted straight from the core's resolution - no rule lives here any more. A report whose map
   // could not be drawn (`memory.knownMap === null`) shows an empty lattice; the units panel, which
   // reads `parsed` rather than the map, still works.
+  // A merged faction's units are laid over the turn they belong to before the model is built, so
+  // the map, the region panel and the Unit panel read the same units the table does (`ah-oqxn`).
   const model = useMemo(
     () => {
       const known = memory.knownMap;
-      return known ? timed("build map model", () => buildHexMapModel(known)) : EMPTY;
+      return known
+        ? timed("build map model", () => buildHexMapModel(knownMapWithMerged(known, mergedReports)))
+        : EMPTY;
     },
-    [memory.knownMap]
+    [memory.knownMap, mergedReports]
   );
 
   // Moving water repaints the whole map every frame, so by default it moves only on a small map -
@@ -1517,8 +1533,8 @@ export function AppShell({
    * store itself, matching how the table already reads this one map.
    */
   const unitDerivedSkills = useMemo(
-    () => (unit === null ? [] : derivedSkillsFor(derivedSkills, unit)),
-    [unit, derivedSkills]
+    () => (unit === null ? [] : derivedSkillsFor(shownDerivedSkills, unit)),
+    [unit, shownDerivedSkills]
   );
 
   /** What the engine said about this turn. Null when there is no turn on screen to say it about. */
@@ -1624,8 +1640,14 @@ export function AppShell({
       ),
     [model, parsed]
   );
-  /** Its exact complement, for the dock's `Other factions` source (`ah-1mpx.5`). */
-  const foreignUnits = useMemo(() => (parsed ? foreignUnitsIn(parsed) : []), [parsed]);
+  /**
+   * Its exact complement, for the dock's `Other factions` source (`ah-1mpx.5`), with a merged
+   * faction's own units filled in and the units only its report saw added (`ah-oqxn`).
+   */
+  const foreignUnits = useMemo(
+    () => (parsed ? foreignRowsWithMerged(parsed, mergedReports) : []),
+    [parsed, mergedReports]
+  );
   /**
    * Every unit on a report of this turn by unit number - own and same-turn allies' - for resolving
    * an Army's members. A member none of them shows is gone from every Army listing and count.
@@ -6359,7 +6381,7 @@ export function AppShell({
               currentTurn={parsed?.header.turnNumber ?? null}
               client={client}
               game={game}
-              derivedSkills={derivedSkills}
+              derivedSkills={shownDerivedSkills}
               // The header status line, which never expires: it stands until the next `setStatus`,
               // which is the existing behaviour and is right for a failure.
               onFailure={(message) => setStatus(failedStatus(message))}

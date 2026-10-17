@@ -14,6 +14,7 @@ import { count } from "./plural";
 import { isSilver, withoutSilver } from "./silverTag";
 import { sameLongOrder, type ReportedLongOrder } from "./ordersDocument";
 import { battleSkillGroups, battleSkillSource } from "./battleSkillPresentation";
+import { mergedFromOf, mergedMarkTitle } from "./mergedFrom";
 import type { DerivedSkill } from "./battleSkills";
 import { FLAG_SETTINGS, flagState, unsettledFlags } from "./unitFlags";
 import { describeMenBriefly, whyEstimated } from "./unitComposition";
@@ -384,6 +385,9 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
   // neither a line of its own nor a `gone` line for what the report listed and the month spent.
   // A tag the month only passed through - given to a sharer and lent on to a faction-mate's
   // BUILD - is neither held, reported nor produced, so its movements name it too (`ah-dqvi`).
+  // Except on a unit filled in from a merged faction's own report, whose Silver cell is a dash and
+  // whose Items cell therefore says its silver - so this popup must too (`ah-oqxn`).
+  const keepSilver = mergedFromOf(unit) !== null;
   const tags: string[] = [];
   for (const tag of [
     ...held.keys(),
@@ -391,7 +395,7 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
     ...(unit.produced ?? []).map(({ tag }) => tag),
     ...changes.map(({ tag }) => tag)
   ]) {
-    if (!isSilver(tag) && !tags.includes(tag)) {
+    if ((keepSilver || !isSilver(tag)) && !tags.includes(tag)) {
       tags.push(tag);
     }
   }
@@ -1215,7 +1219,10 @@ function flagCause(
  */
 function flagNotes(unit: PreviewedUnit): string[] {
   if (unit.own === false) {
-    return ["Another faction's flags, as your report printed them. Nothing you order changes them."];
+    // A unit filled in from its own faction's merged report shows that report's flags (`ah-oqxn`).
+    return mergedFromOf(unit) === null
+      ? ["Another faction's flags, as your report printed them. Nothing you order changes them."]
+      : ["Another faction's flags, as its own report printed them. Nothing you order changes them."];
   }
   if (unit.formed) {
     // `rules/form`: a formed unit inherits its flags bar guard and autotax. It records no
@@ -1313,6 +1320,18 @@ function foreignSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   const change = changeFor(unit, CHANGE_FIELD.skills!);
   const quoted = change ? { why: originalTooltip(change) } : {};
   const month = monthOf(change !== undefined);
+
+  // Filled in from its own faction's merged report (`ah-oqxn`): that report states every skill the
+  // unit has, so its list - empty included - is the whole answer, and the popup says whose it is.
+  const mergedFrom = mergedFromOf(unit);
+  if (mergedFrom !== null) {
+    return {
+      causes: [],
+      lines: summariseUnit(unit).skills,
+      notes: [mergedMarkTitle(mergedFrom)],
+      month
+    };
+  }
 
   if (unit.skills.length > 0) {
     return {

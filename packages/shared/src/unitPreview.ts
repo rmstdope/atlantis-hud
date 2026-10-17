@@ -355,9 +355,10 @@ export function changeFor(
 export function formatItems(
   items: readonly ItemAmount[],
   created: readonly CreatedItem[] = [],
-  short: readonly ShortItem[] = []
+  short: readonly ShortItem[] = [],
+  options: { withSilver?: boolean } = {}
 ): string {
-  return itemCellParts(items, created, short)
+  return itemCellParts(items, created, short, options)
     .map((part) => part.text)
     .join(", ");
 }

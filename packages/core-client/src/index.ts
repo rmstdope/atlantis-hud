@@ -320,6 +320,12 @@ export type MergedReportRecord = {
   mergedFactionId: string;
   mergedFactionName: string;
   mergedAt: string;
+  /**
+   * Every unit the merged report lists, in report order and exactly as it wrote them (`ah-oqxn`):
+   * `own` is relative to the *merged* faction, so it marks that faction's own units. Empty for a
+   * map export and for a merge recorded before units were kept.
+   */
+  units: ReportUnit[];
 };
 
 /** What merging one allied report did to a faction's map. */
@@ -647,6 +653,15 @@ export interface CoreAdapter extends CoreQueries {
     gameId: string,
     factionId: string,
     turnNumber: number
+  ): Promise<MergedReportRecord[]>;
+  /**
+   * Every allied report folded into one faction's map, over every turn: by turn, then in the order
+   * they were merged (`ah-oqxn`). What a later turn carries merged skills forward from.
+   */
+  loadMergedReportHistory(
+    databasePath: string,
+    gameId: string,
+    factionId: string
   ): Promise<MergedReportRecord[]>;
   loadImportedTurn(
     databasePath: string,

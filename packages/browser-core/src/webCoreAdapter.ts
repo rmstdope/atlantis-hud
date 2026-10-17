@@ -25,12 +25,13 @@ import type {
   ParsedReport,
   ReportParseResult,
   ReportRegion,
+  ReportUnit,
   RoutePlanResponse,
   TradeRoute,
   TurnRef
 } from "@atlantis/core-client";
 import { createQueryMethods } from "@atlantis/core-client";
-import type { StoredTurn, StoredTurnSnapshot, WebStore } from "./webStore";
+import type { StoredMergedReport, StoredTurn, StoredTurnSnapshot, WebStore } from "./webStore";
 import { createWebStore } from "./webStore";
 import type { TraceMoveOrdersRequest } from "@atlantis/core-client";
 
@@ -173,6 +174,8 @@ type PreparedMerge = {
    * the same reason it decides the merge: the desktop must not be able to answer differently.
    */
   mapExport: boolean;
+  /** The units the merge keeps on its record (`ah-oqxn`); the core decides which. */
+  units: ReportUnit[];
   /** `null` when the report may be merged; otherwise the core's reason to refuse it. */
   rejection: string | null;
 };
@@ -216,6 +219,8 @@ type DecodedGameBackup = {
     mergedFactionId: string;
     mergedFactionName: string;
     mergedAt: string;
+    /** Left out of the file when there are none (`ah-oqxn`). */
+    units?: ReportUnit[];
   }>;
   // A decoded note carries no gameId - the file never carries one, the store adds it.
   hexNotes: Array<Omit<HexNoteRecord, "gameId">>;
@@ -262,6 +267,22 @@ type StoredGoal = {
   /** The pre-ah-lyg6.2.3 flat column. Dropped, never carried through. */
   targetLevel?: number;
 };
+
+/**
+ * A stored merge as the core and the workspace read it: the store's own keys dropped, and the units
+ * a record from before `ah-oqxn` lacks read as none.
+ */
+function asMergedReportRecord(record: StoredMergedReport): MergedReportRecord {
+  return {
+    gameId: record.gameId,
+    factionId: record.factionId,
+    turnNumber: record.turnNumber,
+    mergedFactionId: record.mergedFactionId,
+    mergedFactionName: record.mergedFactionName,
+    mergedAt: record.mergedAt,
+    units: record.units ?? []
+  };
+}
 
 /**
  * A row stored before goals existed, read as a one-goal queue.
@@ -455,7 +476,8 @@ export function createWebCoreAdapter(
           turnNumber: prepared.turnNumber,
           mergedFactionId: prepared.mergedFactionId,
           mergedFactionName: prepared.mergedFactionName ?? prepared.mergedFactionId,
-          mergedAt
+          mergedAt,
+          units: prepared.units
         });
       }
 
@@ -479,18 +501,28 @@ export function createWebCoreAdapter(
       // The order is the core's, and the desktop's ORDER BY implements the same definition. The
       // panel lists them in the order they happened, and a list that reorders itself between
       // platforms is two applications (`ah-8z4y.3.2`).
-      return wasm.ordered_merged_reports_state(
-        JSON.stringify(
-          stored.map((record) => ({
-            gameId: record.gameId,
-            factionId: record.factionId,
-            turnNumber: record.turnNumber,
-            mergedFactionId: record.mergedFactionId,
-            mergedFactionName: record.mergedFactionName,
-            mergedAt: record.mergedAt
-          }))
-        )
+      return wasm.ordered_merged_reports_state(JSON.stringify(stored.map(asMergedReportRecord)));
+    },
+
+    async loadMergedReportHistory(databasePath: string, gameId: string, factionId: string) {
+      const stored = (await store.getAllMergedReports(databasePath, gameId)).filter(
+        (record) => record.factionId === factionId
       );
+
+      // The core's order within a turn, then by turn - the desktop's `ORDER BY turn_number,
+      // merged_at, merged_faction_id`. `sort` is stable, so the core's order survives inside a turn.
+      // Only the merged factions' own units, as the desktop hands back: they are all a later turn
+      // reads.
+      return wasm
+        .ordered_merged_reports_state(
+          JSON.stringify(
+            stored.map((record) => ({
+              ...asMergedReportRecord(record),
+              units: (record.units ?? []).filter((unit) => unit.own)
+            }))
+          )
+        )
+        .sort((left, right) => left.turnNumber - right.turnNumber);
     },
 
     async planRoute(
@@ -757,7 +789,8 @@ export function createWebCoreAdapter(
               turnNumber: record.turnNumber,
               mergedFactionId: record.mergedFactionId,
               mergedFactionName: record.mergedFactionName,
-              mergedAt: record.mergedAt
+              mergedAt: record.mergedAt,
+              units: record.units ?? []
             })
           )
         );

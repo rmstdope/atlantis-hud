@@ -9,6 +9,7 @@ import { skillEntryId, type GameDataIndex } from "../gameData";
 import { highestMagicSkill, type MagicTree } from "../magicTree";
 import type { MageStanding } from "../magicStanding";
 import { battleSkillGroups, battleSkillSource } from "../battleSkillPresentation";
+import { mergedBandText, mergedFromOf } from "../mergedFrom";
 import type { DerivedSkill } from "../battleSkills";
 import type { TurnMessage } from "../turnMessages";
 import { presentUnitMovement } from "../unitMovement";
@@ -100,7 +101,10 @@ export function UnitPanelBody({
   // a floor derived from items would be a smaller and so a wrong number.
   const floor = unread === null ? null : weightFloor(unit, gameData);
 
-  const items = withoutSilver(unit.items).sort(
+  // Filled in from its own faction's merged report (`ah-oqxn`): read like one of ours, with no
+  // Silver column anywhere to say its silver in, so silver stays among its items.
+  const mergedFrom = mergedFromOf(unit);
+  const items = (mergedFrom === null ? withoutSilver(unit.items) : [...unit.items]).sort(
     (left, right) => right.amount - left.amount
   );
   const mage = magicTree === null ? null : highestMagicSkill(unit.skills, magicTree);
@@ -126,6 +130,15 @@ export function UnitPanelBody({
         </strong>
         {unit.own ? " · your faction" : " · not your faction"}
       </p>
+
+      {mergedFrom === null ? null : (
+        <p
+          data-testid="merged-band"
+          className="mb-2 rounded border border-l-[3px] border-select/60 bg-select/10 px-2 py-1.5 text-ink-soft"
+        >
+          {mergedBandText(mergedFrom)}
+        </p>
+      )}
 
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-px">
         <Field label="Hex" value={unit.regionId} />
@@ -220,7 +233,7 @@ export function UnitPanelBody({
         </p>
       )}
 
-      {unit.own || unit.skills.length > 0 ? (
+      {unit.own || unit.skills.length > 0 || mergedFrom !== null ? (
         <Section title="Skills" count={unit.skills.length || undefined}>
           {unit.skills.length === 0 ? (
             <Absent>{unread === null ? "none" : NOT_KNOWN}</Absent>
@@ -248,7 +261,7 @@ export function UnitPanelBody({
           )}
         </Section>
       ) : (
-        <Section title="Skills from battle reports">
+        <Section title={derivedSectionTitle(derivedSkills)}>
           {derivedSkills.length === 0 ? (
             <Absent>
               {"No battle we have seen involved this unit. A report never shows another faction's skills."}
@@ -325,6 +338,20 @@ export function UnitPanelBody({
       </Section>
     </>
   );
+}
+
+/**
+ * The recovered-skills section's title, by where its skills came from: battle rosters, merged
+ * reports' own statements carried into a later turn (`ah-oqxn`), or both. Nothing recovered keeps
+ * the battle title its empty-state sentence explains.
+ */
+function derivedSectionTitle(derivedSkills: readonly DerivedSkill[]): string {
+  const merged = derivedSkills.some((skill) => skill.from !== undefined);
+  const battle = derivedSkills.some((skill) => skill.from === undefined);
+  if (merged && battle) {
+    return "Skills from battle and merged reports";
+  }
+  return merged ? "Skills from merged reports" : "Skills from battle reports";
 }
 
 function MovementSection({

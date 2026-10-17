@@ -55,6 +55,7 @@ import {
 } from "../unitRead";
 import { derivedSkillsFor, NO_DERIVED_SKILLS, type DerivedSkills } from "../battleSkills";
 import { unitSkillsCell } from "../battleSkillPresentation";
+import { mergedFromOf, mergedMarkTitle } from "../mergedFrom";
 import { presentUnitMovement } from "../unitMovement";
 import { flagLetters, flagWords } from "../unitFlags";
 import {
@@ -2330,11 +2331,14 @@ function UnitRow({
   needle: string;
 }) {
   const skills = unitSkillsCell(unit, derivedSkills);
+  // A unit filled in from a merged faction's own report (`ah-oqxn`): it reads like one of ours -
+  // skills, silver among its items - but has no month of ours to price and no orders to write.
+  const mergedFrom = mergedFromOf(unit);
   // What a refused CAST leaves this unit short of, red and first in the cell (`ah-44at`).
   const short = shortItems(unit);
-  const items = formatItems(unit.items, unit.created, short);
+  const items = formatItems(unit.items, unit.created, short, { withSilver: mergedFrom !== null });
   // The same entries, so the unfinished mark can sit before an unfinished ship's (`ah-2ql5`).
-  const itemParts = itemCellParts(unit.items, unit.created, short);
+  const itemParts = itemCellParts(unit.items, unit.created, short, { withSilver: mergedFrom !== null });
   const unread = !unitWasFullyRead(unit);
 
   // Which cells the orders changed, so each one can say so and show what the report said.
@@ -2496,6 +2500,18 @@ function UnitRow({
         </span>
         {rememberedTurn !== undefined ? (
           <span className="ml-1 text-pane-sm text-brass/70">last seen turn {rememberedTurn}</span>
+        ) : null}
+        {/* Where this unit's details came from (`ah-oqxn`). One unbreakable mark, so a narrow
+            column cuts it whole; its hover is also its description for a screen reader. */}
+        {mergedFrom ? (
+          <span
+            className="ml-1.5 whitespace-nowrap text-pane-sm text-select"
+            title={mergedMarkTitle(mergedFrom)}
+            data-testid={`merged-mark-${unit.unitId}`}
+          >
+            their report
+            <span className="sr-only"> {mergedMarkTitle(mergedFrom)}</span>
+          </span>
         ) : null}
         {/* Name opens the whole-unit summary rather than a column popup, so what the report said
             has no popup to live in - and it must still be reachable without a mouse. */}
@@ -2686,7 +2702,7 @@ function UnitRow({
         className={`truncate${skillsMarked ? ` ${PREDICTED}` : ""}`}
         predicted={skillsMarked}
       >
-        {skills === "" && !unit.own ? (
+        {skills === "" && !unit.own && mergedFrom === null ? (
           // A report never discloses a foreign unit's skills, so there was nothing there to lose:
           // `not disclosed` stays true whatever the wrapping did, and says more than `not known`.
           <span className="italic text-ink-dim">not disclosed</span>
@@ -2758,7 +2774,13 @@ function UnitRow({
     // that is not ours simply has nothing to say here.
     longOrder: (
       <Td className="truncate">
-        {unit.own ? (longOrder ?? <span className="text-danger">—</span>) : ""}
+        {unit.own ? (
+          (longOrder ?? <span className="text-danger">—</span>)
+        ) : mergedFrom ? (
+          <NoMonthOfOurs testId={`merged-no-orders-${unit.unitId}`} words="no orders" />
+        ) : (
+          ""
+        )}
         {explain("longOrder")}
       </Td>
     ),
@@ -2775,7 +2797,11 @@ function UnitRow({
         }`}
       >
         {silver === null ? (
-          ""
+          mergedFrom ? (
+            <NoMonthOfOurs testId={`merged-no-silver-${unit.unitId}`} words="no forecast" />
+          ) : (
+            ""
+          )
         ) : warned ? (
           <button
             type="button"
@@ -3001,5 +3027,20 @@ function silverIsDim(shown: ShownSilver | null): boolean {
     shown.kind === "unknown" ||
     (shown.kind === "single" && shown.value === 0) ||
     ((shown.kind === "pair" || shown.kind === "range") && shown.high === 0 && shown.low === 0)
+  );
+}
+
+/**
+ * The dash a merged faction's unit shows where one of ours shows its month (`ah-oqxn`): no orders
+ * are written and no silver forecast is made for a faction the player is not playing.
+ */
+function NoMonthOfOurs({ testId, words }: { testId: string; words: string }) {
+  return (
+    <span data-testid={testId}>
+      <span className="sr-only">{words}</span>
+      <span aria-hidden className="text-ink-dim">
+        —
+      </span>
+    </span>
   );
 }

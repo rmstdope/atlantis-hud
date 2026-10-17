@@ -15,6 +15,8 @@ export type BattleSkillGroup = {
   turn: number;
   coordinate: Coordinate | null;
   terrain: string | null;
+  /** The merged faction whose own report stated these skills, absent for a battle (`ah-oqxn`). */
+  from?: string;
   skills: readonly DerivedSkill[];
 };
 
@@ -28,13 +30,19 @@ export type BattleSkillGroup = {
  */
 export function battleSkillGroups(skills: readonly DerivedSkill[]): readonly BattleSkillGroup[] {
   const order: string[] = [];
-  const byKey = new Map<string, { turn: number; coordinate: Coordinate | null; terrain: string | null; skills: DerivedSkill[] }>();
+  const byKey = new Map<
+    string,
+    { turn: number; coordinate: Coordinate | null; terrain: string | null; from?: string; skills: DerivedSkill[] }
+  >();
 
   for (const skill of skills) {
     const key = sourceKey(skill);
     let group = byKey.get(key);
     if (!group) {
       group = { turn: skill.turn, coordinate: skill.coordinate, terrain: skill.terrain, skills: [] };
+      if (skill.from !== undefined) {
+        group.from = skill.from;
+      }
       byKey.set(key, group);
       order.push(key);
     }
@@ -47,7 +55,7 @@ export function battleSkillGroups(skills: readonly DerivedSkill[]): readonly Bat
 /** Distinguishes one battle's source from another's, for `battleSkillGroups`' grouping. */
 function sourceKey(skill: DerivedSkill): string {
   const coordinate = skill.coordinate ? `${skill.coordinate.x},${skill.coordinate.y},${skill.coordinate.z}` : "";
-  return `${skill.turn}|${skill.terrain ?? ""}|${coordinate}`;
+  return `${skill.turn}|${skill.terrain ?? ""}|${coordinate}|${skill.from ?? ""}`;
 }
 
 /**
@@ -115,6 +123,11 @@ function turnGroupsOf(
  * hex label is ever built from it.
  */
 export function battleSkillSource(group: BattleSkillGroup, voice: "read" | "seen"): string {
+  // A merged report is read and seen alike: it is the faction's own statement, not a battle
+  // witnessed, so both voices name it the way the Unit panel's band does (`ah-oqxn`).
+  if (group.from !== undefined) {
+    return `From ${group.from}'s own report for turn ${group.turn}.`;
+  }
   const location =
     group.terrain !== null && group.coordinate !== null
       ? `in ${group.terrain} (${group.coordinate.x},${group.coordinate.y})`

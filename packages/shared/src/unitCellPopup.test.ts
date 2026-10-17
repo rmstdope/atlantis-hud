@@ -753,6 +753,14 @@ describe("the column popups", () => {
     ]);
   });
 
+  it("a merged faction's unit says its flags are its own report's (ah-oqxn)", () => {
+    const merged = { ...unit({ own: false, flags: [] }), mergedFrom: { factionLabel: "Borg (62)", turn: 17 } };
+    const popup = columnPopup(popupForCell("flags", merged, facts()));
+    expect(popup.notes).toEqual([
+      "Another faction's flags, as its own report printed them. Nothing you order changes them."
+    ]);
+  });
+
   it("a unit formed this month says where its flags came from", () => {
     const popup = columnPopup(
       popupForCell("flags", unit({ own: true, formed: true, flags: [] }), facts())
@@ -871,6 +879,29 @@ describe("the column popups", () => {
     expect(popup.notes).toContain("A report never shows another faction's skills.");
   });
 
+  it("the skills popup of a merged faction's unit names its report, never the notice (ah-oqxn)", () => {
+    const from = { factionLabel: "Borg (62)", turn: 17 };
+    const none = columnPopup(
+      popupForCell("skills", { ...unit({ own: false, skills: [] }), mergedFrom: from } as PreviewedUnit, facts())
+    );
+    expect(none.lines).toEqual([]);
+    expect(none.notes[0]).toBe("Details from Borg (62)'s own report for turn 17.");
+    expect(none.notes).not.toContain("A report never shows another faction's skills.");
+
+    const some = columnPopup(
+      popupForCell(
+        "skills",
+        {
+          ...unit({ own: false, skills: [{ name: "mining", tag: "MINI", level: 3, points: 200 }] }),
+          mergedFrom: from
+        } as PreviewedUnit,
+        facts()
+      )
+    );
+    expect(some.lines).toEqual([{ label: "mining MINI", value: "3 (200)" }]);
+    expect(some.notes[0]).toBe("Details from Borg (62)'s own report for turn 17.");
+  });
+
   it("the skills popup names the battle a foreign unit's skills were read from", () => {
     const popup = columnPopup(
       popupForCell(
@@ -888,6 +919,24 @@ describe("the column popups", () => {
       "Read from a battle on turn 71.",
       "A report never shows another faction's skills."
     ]);
+  });
+
+  it("the items popup of a merged faction's unit lists the silver its cell shows (ah-oqxn)", () => {
+    const merged = {
+      ...unit({
+        own: false,
+        items: [
+          { amount: 2, name: "humans", tag: "HUMN" },
+          { amount: 43, name: "silver", tag: "SILV" }
+        ]
+      }),
+      mergedFrom: { factionLabel: "Borg (62)", turn: 17 }
+    } as PreviewedUnit;
+
+    const popup = columnPopup(popupForCell("items", merged, facts()));
+
+    expect(JSON.stringify(popup.lines)).toContain("SILV");
+    expect(JSON.stringify(columnPopup(popupForCell("items", unit({ own: false, items: merged.items }), facts())).lines)).not.toContain("SILV");
   });
 
   it("the items popup carries today's items tooltip and explains the plus-question mark", () => {

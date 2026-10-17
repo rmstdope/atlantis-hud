@@ -114,7 +114,12 @@ export type ItemCellPart = {
 export function itemCellParts(
   items: readonly ItemAmount[],
   created: readonly CreatedItem[] = [],
-  short: readonly ShortItem[] = []
+  short: readonly ShortItem[] = [],
+  /**
+   * Keep silver, where the report listed it: for a unit filled in from a merged faction's own
+   * report, whose Silver column is empty and whose silver is therefore said here (`ah-oqxn`).
+   */
+  { withSilver = false }: { withSilver?: boolean } = {}
 ): ItemCellPart[] {
   const shortfall = new Map<string, number>();
   for (const item of created) {
@@ -128,7 +133,8 @@ export function itemCellParts(
     name: item.name
   }));
   const isShort = (tag: string) => short.some((item) => item.tag === tag);
-  return [...shortParts, ...withoutSilver(items).filter((item) => !isShort(item.tag)).map((item) => {
+  const listed = withSilver ? items : withoutSilver(items);
+  return [...shortParts, ...listed.filter((item) => !isShort(item.tag)).map((item) => {
     const gap = shortfall.get(item.tag) ?? 0;
     return {
       text: gap > 0 ? `${item.amount - gap}-${item.amount} ${item.tag}` : `${item.amount} ${item.tag}`,

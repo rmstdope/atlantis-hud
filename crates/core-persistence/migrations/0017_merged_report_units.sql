@@ -1,0 +1,12 @@
+-- Every unit a merged report lists, kept on the merge's own row (ah-oqxn).
+--
+-- A merge writes the ally's hexes into region sightings, and the next import overwrites those, so
+-- once a later turn is in nothing in the database still says what the merged report knew about its
+-- own units. This row belongs to its turn for good, which is what lets going back to the merged
+-- turn show the merged faction's units filled in, and what later turns carry their skills forward
+-- from.
+--
+-- A JSON array of report units, exactly as the merged report wrote them. '[]' for a map export and
+-- for every row merged before this column existed, which therefore reads as "no units" rather than
+-- needing a rewrite.
+ALTER TABLE merged_reports ADD COLUMN units_json TEXT NOT NULL DEFAULT '[]';

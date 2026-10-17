@@ -252,6 +252,14 @@ export const SWEEP: SweepEntry[] = [
     })
   },
   {
+    command: "load_merged_report_history",
+    args: () => ({
+      database_path: context.databasePath,
+      game_id: GAME_ID,
+      faction_id: "95"
+    })
+  },
+  {
     command: "list_hex_notes",
     args: () => ({ database_path: context.databasePath, game_id: GAME_ID })
   },

@@ -590,6 +590,23 @@ pub fn apply_merge_plan(
     }
 }
 
+/// The units a merge keeps on its record (`ah-oqxn`): every unit of an allied report, and none of
+/// a map export's or an AtlaClient map's, which name no unit of a merged faction.
+///
+/// Beside [`apply_merge_plan`] for the same reason: both shells must keep the same units.
+#[must_use]
+pub fn units_for_merge_plan(
+    plan: &MergePlan,
+    incoming: &report::ParsedReport,
+) -> Vec<report::model::ReportUnit> {
+    match plan {
+        MergePlan::AlliedReport => report::merge::merged_report_units(incoming),
+        MergePlan::Refused(_) | MergePlan::MapExport { .. } | MergePlan::AtlaClientMap { .. } => {
+            Vec::new()
+        }
+    }
+}
+
 /// Who the hexes of a merge are filed under, when the file itself does not say.
 ///
 /// An AtlaClient map names no faction — that is normal rather than a fault — so its provenance row
@@ -1052,6 +1069,24 @@ mod tests {
     }
 
     /// The mini report is March, Year 1, which the header module numbers turn 3.
+    #[test]
+    fn only_an_allied_report_contributes_units() {
+        let report = report::parse_report_full(MINI_REPORT);
+
+        let allied: Vec<String> = units_for_merge_plan(&MergePlan::AlliedReport, &report)
+            .into_iter()
+            .map(|unit| unit.unit_id)
+            .collect();
+        assert_eq!(allied, vec!["100".to_owned(), "200".to_owned()]);
+
+        let export = MergePlan::MapExport {
+            file_turn: 3,
+            ages: std::collections::BTreeMap::new(),
+        };
+        assert!(units_for_merge_plan(&export, &report).is_empty());
+        assert!(units_for_merge_plan(&MergePlan::Refused("no".to_owned()), &report).is_empty());
+    }
+
     #[test]
     fn a_report_for_the_turn_on_screen_may_be_merged() {
         assert_eq!(reject_merge(&parse_report(MINI_REPORT), 3, "99"), None);

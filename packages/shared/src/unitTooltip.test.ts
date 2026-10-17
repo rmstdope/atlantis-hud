@@ -54,6 +54,21 @@ describe("summariseUnit", () => {
     expect(summary.items.map((item) => item.value.replace(/\D/g, ""))).toEqual(["1200", "2"]);
   });
 
+  it("lists silver among the items of a unit filled in from a merged report (ah-oqxn)", () => {
+    const summary = summariseUnit({
+      ...unit({
+        own: false,
+        items: [
+          { amount: 2, name: "humans", tag: "HUMN" },
+          { amount: 43, name: "silver", tag: "SILV" }
+        ]
+      }),
+      mergedFrom: { factionLabel: "Borg (62)", turn: 17 }
+    } as ReportUnit);
+
+    expect(summary.items.map((item) => item.label)).toEqual(["silver SILV", "humans HUMN"]);
+  });
+
   it("leaves silver out of the card's item list", () => {
     const summary = summariseUnit(
       unit({
