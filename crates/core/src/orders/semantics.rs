@@ -745,7 +745,7 @@ pub fn review_turn(
     // when the reach check is enabled: the shipping price reads them too, and the agreed record
     // says the switch takes sentences away and leaves every figure honest (`ah-7ale.3`).
     let shipping = ruleset.map(|rules| {
-        let mut shipping = super::transport::Shipping::read(report, rules, &options);
+        let mut shipping = super::transport::Shipping::read(report, rules, &options, source);
         // Which targets this month's orders could make eligible (`ah-kjjv`).
         shipping.read_orders(report, source, rules);
         shipping
@@ -7844,7 +7844,8 @@ pub(crate) fn item_effects(
     // `review_turn` runs it: the food upkeep eats comes off the ITEMS column, and steps 5 and 6
     // are only known once step 4 has lent what it lends (`ah-q490`).
     let shipping = ruleset.map(|rules| {
-        let mut shipping = super::transport::Shipping::read(report, rules, options);
+        let mut shipping =
+            super::transport::Shipping::read(report, rules, options, orders_document);
         // The same reading of the month's orders `review_turn` makes, so no `Judged` here can
         // call a refusal settled that the month may undo (`ah-kjjv`).
         shipping.read_orders(report, orders_document, rules);
@@ -23179,7 +23180,8 @@ fn check_transport_reach(
                     )
                 }
                 refused @ (super::transport::Acceptance::NotQuartermaster
-                | super::transport::Acceptance::NotCaravanseraiOwner)
+                | super::transport::Acceptance::NotCaravanseraiOwner
+                | super::transport::Acceptance::SenderOwnsNoCaravanserai)
                     if target_on && !judged.unsettled =>
                 {
                     (
@@ -24109,14 +24111,19 @@ fn transport_target_sentence(
     refused: super::transport::Acceptance,
     goods: Option<&(i64, String)>,
 ) -> String {
-    let why = if refused == super::transport::Acceptance::NotQuartermaster {
-        "is not a quartermaster"
-    } else {
-        "does not own a Caravanserai"
+    let who = match refused {
+        super::transport::Acceptance::NotQuartermaster => {
+            format!("Unit {to} is not a quartermaster")
+        }
+        // The sender's refusal, in its own words (`ah-1jl9`).
+        super::transport::Acceptance::SenderOwnsNoCaravanserai => {
+            "This unit owns no Caravanserai when the shipments run".to_string()
+        }
+        _ => format!("Unit {to} does not own a Caravanserai"),
     };
     match goods {
-        Some((moved, tag)) => format!("Unit {to} {why}, so {moved} {tag} stay with this unit."),
-        None => format!("Unit {to} {why}, so this TRANSPORT moves nothing."),
+        Some((moved, tag)) => format!("{who}, so {moved} {tag} stay with this unit."),
+        None => format!("{who}, so this TRANSPORT moves nothing."),
     }
 }
 
@@ -56950,24 +56957,52 @@ BUILD
             )
             .is_empty());
         }
-        // (b) A quartermaster with no Caravanserai ENTERs one, or BUILDs, or is PROMOTEd.
-        for orders in [
-            "unit 900\nTRANSPORT 901 100 SILV\nunit 901\nENTER 500\n",
+        // (b) A quartermaster with no Caravanserai BUILDs, which may found one it then owns.
+        assert!(target_findings(
+            vec![shipping_from(vec![
+                sender(),
+                with_skill(unit("901"), "QUAM", 1),
+            ])],
             "unit 900\nTRANSPORT 901 100 SILV\nunit 901\nBUILD Caravanserai\n",
+        )
+        .is_empty());
+        // (c) It ENTERs an empty Caravanserai, or its owner PROMOTEs it: ownership once those have
+        // run is settled (`ah-1jl9`), and here it is the target's - no refusal at all.
+        let mut empty = shipping_from(vec![sender(), with_skill(unit("901"), "QUAM", 1)]);
+        empty.structures = vec![Structure {
+            structure_id: "500".to_string(),
+            name: "Caravan".to_string(),
+            kind: "Caravanserai".to_string(),
+            ..Default::default()
+        }];
+        assert!(target_findings(
+            vec![empty],
+            "unit 900\nTRANSPORT 901 100 SILV\nunit 901\nENTER 500\n",
+        )
+        .is_empty());
+        let mut owned = caravanserai_owner("902", 1, 0, 0);
+        let mut heir = with_skill(unit("901"), "QUAM", 1);
+        heir.structure_id = Some("500".to_string());
+        owned.units.push(heir);
+        owned.units.insert(0, sender());
+        assert!(target_findings(
+            vec![owned],
+            "unit 900\nTRANSPORT 901 100 SILV\nunit 902\nPROMOTE 901\n",
+        )
+        .is_empty());
+        // (d) A PROMOTE from a unit that owns nothing hands nothing over (`Do1PromoteOrder` runs
+        // only the owner's): a refusal the month cannot undo.
+        let finding = only(target_findings(
+            vec![shipping_from(vec![
+                sender(),
+                with_skill(unit("901"), "QUAM", 1),
+            ])],
             "unit 900\nTRANSPORT 901 100 SILV\nPROMOTE 901\n",
-        ] {
-            assert!(
-                target_findings(
-                    vec![shipping_from(vec![
-                        sender(),
-                        with_skill(unit("901"), "QUAM", 1),
-                    ])],
-                    orders,
-                )
-                .is_empty(),
-                "{orders}"
-            );
-        }
+        ));
+        assert_eq!(
+            finding.message,
+            "Unit 901 does not own a Caravanserai, so 100 SILV stay with this unit."
+        );
         // Studying something else changes nothing.
         let finding = only(target_findings(
             vec![shipping_from(vec![sender(), unit("901")])],
@@ -56997,11 +57032,18 @@ BUILD
 
     /// `ah-kjjv`: `rules/world_structures` makes the owner "the first unit listed under the object",
     /// so when the owner LEAVEs, ENTERs elsewhere or MOVEs - all before TRANSPORT
-    /// (`rules/sequenceofevents`) - the next unit inside may become the owner.
+    /// (`rules/sequenceofevents`) - the next unit inside becomes the owner (`ah-1jl9`), or may,
+    /// for a walk no month end follows.
     #[test]
     fn a_target_inside_a_caravanserai_its_owner_leaves_is_not_warned_about() {
         for step_out in ["LEAVE", "ENTER 501", "MOVE N"] {
             let mut home = caravanserai_owner("902", 1, 0, 0);
+            home.structures.push(Structure {
+                structure_id: "501".to_string(),
+                name: "Shed".to_string(),
+                kind: "Tower".to_string(),
+                ..Default::default()
+            });
             let mut heir = with_skill(unit("901"), "QUAM", 1);
             heir.structure_id = Some("500".to_string());
             home.units.push(heir);
@@ -57083,17 +57125,22 @@ BUILD
 
     /// `ah-b6fz`: `rules/sequenceofevents` moves every unit before any TRANSPORT, so a
     /// quartermaster walking away takes the shipment out of reach - and the sentence names the
-    /// distance after the move.
+    /// distance after the move. It walks into the empty Caravanserai where it arrives, which it
+    /// owns by then: one ending the month outdoors owns none, and is refused for that before any
+    /// distance is measured (`CheckTransportOrders`, `ah-1jl9`).
     #[test]
     fn a_shipment_is_measured_from_where_both_units_end_the_month() {
         let sender = with_item(unit("900"), 5, "stone", "STON");
+        let mut arrival = caravanserai_owner("901", 1, 0, 6);
+        arrival.region_id = "1:0,6".to_string();
+        arrival.units.clear();
         let finding = only(traced_reach_findings(
             vec![
                 shipping_from(vec![sender]),
                 caravanserai_owner("901", 1, 0, 4),
-                region_at("1:0,6", 0, 6, Vec::new()),
+                arrival,
             ],
-            "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n",
+            "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S 500\n",
             with_map(),
         ));
 
@@ -59736,6 +59783,43 @@ BUILD
         );
     }
 
+    /// The long reach between quartermasters is the transport structure's owner's alone:
+    /// `CheckTransportOrders` gives any other sender `LOCAL_TRANSPORT` and refuses a TRANSPORT
+    /// beyond it ("Recipient ... is too far away."). Here 899 is listed first inside the
+    /// sender's Caravanserai, so the quartermaster 900 ships no farther than anybody (`ah-1jl9`).
+    #[test]
+    fn a_quartermaster_that_owns_no_caravanserai_ships_only_the_flat_reach() {
+        let mut regions = priced_shipping(
+            5,
+            &[(5, "stone", "STON")],
+            vec![caravanserai_owner("901", 1, 0, 6)],
+        );
+        let mut owner = unit("899");
+        owner.structure_id = Some("400".to_string());
+        owner.region_id = regions[0].region_id.clone();
+        regions[0].units.insert(0, owner);
+
+        // The sender's own refusal, in its own words (`ah-1jl9`, the navigator's choice).
+        let findings: Vec<Finding> = check_turn(
+            &report(regions),
+            "unit 900\nTRANSPORT 901 5 STON\n",
+            Some(&ruleset()),
+            with_map(),
+        )
+        .into_iter()
+        .filter(|finding| {
+            finding.code == codes::TRANSPORT_TARGET_REFUSED
+                || finding.code == codes::TRANSPORT_OUT_OF_REACH
+        })
+        .collect();
+        let finding = only(findings);
+        assert_eq!(finding.code, codes::TRANSPORT_TARGET_REFUSED);
+        assert_eq!(
+            finding.message,
+            "This unit owns no Caravanserai when the shipments run, so 5 STON stay with this unit."
+        );
+    }
+
     /// The same across units in a sharing hex: one sharer's refused $65 shipment leaves the $60
     /// pool whole, so a sharing mate's $30 shipment still pays from it.
     #[test]
@@ -59758,9 +59842,17 @@ BUILD
             "furs",
             "FUR",
         ));
-        mate.structure_id = Some("400".to_string());
+        // A Caravanserai of its own: the long reach is the owner's alone, and 900 owns 400
+        // (`CheckTransportOrders`, `ah-1jl9`).
+        mate.structure_id = Some("401".to_string());
         mate.region_id = regions[0].region_id.clone();
         regions[0].units.push(mate);
+        regions[0].structures.push(Structure {
+            structure_id: "401".to_string(),
+            name: "Second Caravan".to_string(),
+            kind: "Caravanserai".to_string(),
+            ..Default::default()
+        });
         let orders = "unit 900\nTRANSPORT 901 13 FUR\nunit 903\nTRANSPORT 901 6 FUR\n";
 
         let forecast = review_turn(&report(regions), orders, Some(&ruleset()), with_map()).silver;

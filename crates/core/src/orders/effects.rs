@@ -256,6 +256,14 @@ pub enum TransportTargetReason {
     /// its hex, so it owns none (`rules/world_structures`). Certain even for a foreign unit,
     /// whose structure the report still draws.
     NotCaravanseraiOwner,
+    /// The sender is a quartermaster that owns no Caravanserai once this month's boardings,
+    /// promotions and movement have run, and the shipment needs one: a DISTRIBUTE to a unit that
+    /// is no quartermaster, or a TRANSPORT beyond the flat reach. `CheckTransportOrders` refuses
+    /// the first with "DISTRIBUTE: Unit does not own transport structure." and the second, whose
+    /// range it caps at `LOCAL_TRANSPORT`, with "Recipient ... is too far away."; the navigator
+    /// chose to name the sender's missing Caravanserai for both, since that is what the player
+    /// can fix (`ah-1jl9`).
+    SenderOwnsNoCaravanserai,
     /// The report does not show the target at all, or shows a foreign Caravanserai owner whose
     /// skills it never discloses: no evidence either way.
     EligibilityUnknown,
@@ -338,7 +346,8 @@ pub struct TransportTargetIssue {
     /// whose orders we cannot read, or one of ours whose own orders this month could make it
     /// eligible before TRANSPORT runs (`transport::Judged::unsettled`, `ah-kjjv`). The order
     /// carries no warning for it and the SILVER working does not state it; `false` for every
-    /// reason but `NotQuartermaster` and `NotCaravanseraiOwner`.
+    /// reason but `NotQuartermaster`, `NotCaravanseraiOwner` and `SenderOwnsNoCaravanserai` - the
+    /// last unsettled when the sender's own month is (`ah-1jl9`).
     #[serde(default)]
     pub unsettled: bool,
 }
@@ -1276,7 +1285,8 @@ fn settle(
     geometry: Option<crate::movement::graph::MapGeometry>,
     options: super::semantics::CheckOptions,
 ) -> (Vec<WorkingUnit>, BTreeMap<usize, Option<String>>) {
-    let mut working = Working::over_own_units(report, ruleset.clone(), geometry, options);
+    let mut working =
+        Working::over_own_units(report, ruleset.clone(), orders_document, geometry, options);
     // The same reading of this month's orders the advisory makes (`ah-kjjv`).
     working
         .shipping
@@ -1919,8 +1929,15 @@ fn decide_movement(
                             ends_at = Some(month_end);
                             status = UnitPreviewStatus::Departing;
                         }
-                        // A round trip is not a departure, so only the other changes count.
-                        Some(_) => {}
+                        // A round trip is not a departure, so only the other changes count. It is
+                        // still a walk: every step stands the unit in the open of the hex it enters
+                        // (`monthorders.cpp` `DoAMoveOrder`), so where it ends the month is recorded,
+                        // which is how the transport check knows it left its structure (`ah-1jl9`).
+                        Some(back) => {
+                            if path.months.first().is_some_and(|month| month.steps > 0) {
+                                ends_at = Some(back);
+                            }
+                        }
                         // The report never said how the unit travels, so the trace cannot say
                         // where the month ends: a departure to nowhere nameable.
                         None => status = UnitPreviewStatus::Departing,
@@ -2819,6 +2836,7 @@ impl Working {
     fn over_own_units(
         report: &crate::report::ParsedReport,
         ruleset: std::sync::Arc<crate::movement::rules::Ruleset>,
+        orders_document: &str,
         geometry: Option<crate::movement::graph::MapGeometry>,
         options: super::semantics::CheckOptions,
     ) -> Self {
@@ -2874,6 +2892,7 @@ impl Working {
                 geometry,
                 ..options.clone()
             },
+            orders_document,
         );
         let mut shown_in_region: BTreeMap<String, std::collections::BTreeSet<String>> =
             BTreeMap::new();
@@ -4000,6 +4019,9 @@ impl Working {
             }
             Acceptance::NotCaravanseraiOwner => {
                 TransportTargetOutcome::Refused(TransportTargetReason::NotCaravanseraiOwner)
+            }
+            Acceptance::SenderOwnsNoCaravanserai => {
+                TransportTargetOutcome::Refused(TransportTargetReason::SenderOwnsNoCaravanserai)
             }
             Acceptance::EligibilityUnknown => {
                 TransportTargetOutcome::Refused(TransportTargetReason::EligibilityUnknown)
@@ -11946,8 +11968,9 @@ mod tests {
         }
 
         // `ah-kjjv`: a refusal of our own unit is settled only while nothing this month can make
-        // it eligible - `rules/sequenceofevents` runs ENTER and MOVE before TRANSPORT, and
-        // `rules/world_structures` hands ownership to the next unit listed when the owner goes.
+        // it eligible. Ownership once ENTER, LEAVE, PROMOTE and movement have run is settled by
+        // `transport::Shipping::read` (`ah-1jl9`), so only what it cannot follow - a BUILD, or a
+        // walk with no month end - leaves a refusal unsettled.
         #[test]
         fn a_refusal_this_months_orders_may_undo_is_marked_unsettled() {
             let settled = kept_everything("unit 5530\nTRANSPORT 5532 5 STON\n");
@@ -11957,11 +11980,35 @@ mod tests {
             );
             assert!(!only_issue(&settled).unsettled);
 
+            // Entering the Waystation queues it behind Broker (5531), who still owns it
+            // (`Unit::MoveUnit` appends, `Object::GetOwner` reads the first): settled.
             let enters = kept_everything("unit 5530\nTRANSPORT 5532 5 STON\nunit 5532\nENTER 1\n");
-            assert!(only_issue(&enters).unsettled);
+            assert_eq!(
+                only_issue(&enters).reason,
+                TransportTargetReason::NotCaravanseraiOwner
+            );
+            assert!(!only_issue(&enters).unsettled);
 
-            let heir = kept_everything("unit 5530\nTRANSPORT 6858 5 STON\nunit 6857\nMOVE NW\n");
-            assert!(only_issue(&heir).unsettled);
+            // A BUILD may found a structure it ends the month owning.
+            let builds = kept_everything(
+                "unit 5530\nTRANSPORT 5532 5 STON\nunit 5532\nBUILD Caravanserai\n",
+            );
+            assert!(only_issue(&builds).unsettled);
+        }
+
+        // When the owner walks off, the next unit listed inside owns the Caravanserai by the time
+        // the shipments run, so it receives (`rules/world_structures`, `ah-1jl9`).
+        #[test]
+        fn the_heir_to_a_caravanserai_its_owner_walks_off_receives() {
+            let response =
+                two_hex_preview("unit 5530\nTRANSPORT 6858 5 STON\nunit 6857\nMOVE NW\n");
+            let sender = sender_row(&response);
+            assert!(
+                sender.transport_target_issues.is_empty(),
+                "{:?}",
+                sender.transport_target_issues
+            );
+            assert_eq!(held(sender, "STON"), Some(35));
         }
 
         // A foreign unit's skills are never disclosed, so an empty list is missing evidence rather
@@ -13650,6 +13697,7 @@ mod tests {
         let working = Working::over_own_units(
             &parsed,
             ruleset,
+            "",
             Some(geometry),
             super::super::semantics::CheckOptions::default(),
         );
@@ -13669,6 +13717,7 @@ mod tests {
         let working = Working::over_own_units(
             &parsed,
             ruleset,
+            "",
             None,
             super::super::semantics::CheckOptions::default(),
         );
@@ -13717,6 +13766,7 @@ mod tests {
         let working = Working::over_own_units(
             &parsed,
             ruleset,
+            "",
             None,
             super::super::semantics::CheckOptions::default(),
         );
@@ -14023,9 +14073,12 @@ mod tests {
         let report = reach_report((0, 0), (0, 4), (0, 1));
         let z = reach_z(&report);
         let options = super::super::semantics::CheckOptions {
+            // The sender, not the quartermaster: one that ends the month in another hex has left
+            // its Caravanserai and is refused for that before any distance is measured
+            // (`CheckTransportOrders`, `ah-1jl9`).
             month_end: std::iter::once((
-                "901".to_string(),
-                crate::report::model::Coordinate { x: 0, y: 6, z },
+                "900".to_string(),
+                crate::report::model::Coordinate { x: 0, y: 10, z },
             ))
             .collect(),
             ..super::super::semantics::CheckOptions::default()
@@ -14051,9 +14104,12 @@ mod tests {
         let z = reach_z(&report);
         let orders = "unit 900\nTRANSPORT 901 5 STON\n";
         let options = super::super::semantics::CheckOptions {
+            // The sender, not the quartermaster: one that ends the month in another hex has left
+            // its Caravanserai and is refused for that before any distance is measured
+            // (`CheckTransportOrders`, `ah-1jl9`).
             month_end: std::iter::once((
-                "901".to_string(),
-                crate::report::model::Coordinate { x: 0, y: 6, z },
+                "900".to_string(),
+                crate::report::model::Coordinate { x: 0, y: 10, z },
             ))
             .collect(),
             ..super::super::semantics::CheckOptions::default()
@@ -14093,8 +14149,10 @@ mod tests {
         );
     }
 
-    /// `rules/sequenceofevents`: movement before TRANSPORT, so a quartermaster walking out of reach
-    /// leaves the goods with the sender.
+    /// `rules/sequenceofevents`: movement before TRANSPORT, so a quartermaster walking away
+    /// leaves the goods with the sender. Not for the distance: a walker has left its Caravanserai,
+    /// and `CheckTransportOrders` refuses a target that "does not own a transport structure"
+    /// before it measures anything (`ah-1jl9`).
     #[test]
     fn a_quartermaster_walking_away_leaves_the_goods_with_the_sender() {
         let report = moving_reach_report((0, 0), (0, 4), true);
@@ -14106,8 +14164,11 @@ mod tests {
         assert_eq!(reach_held(&response, "900", "STON"), 5);
         let issues = &reach_unit(&response, "900").transport_target_issues;
         assert_eq!(issues.len(), 1, "{issues:?}");
-        assert_eq!(issues[0].reason, TransportTargetReason::TooFarToAccept);
-        assert_eq!(issues[0].reach, too_far(3, 2));
+        assert_eq!(
+            issues[0].reason,
+            TransportTargetReason::NotCaravanseraiOwner
+        );
+        assert_eq!(issues[0].reach, None);
     }
 
     #[test]
@@ -14359,12 +14420,63 @@ mod tests {
             .clone()
     }
 
+    /// A walk out of the hex and back is still a walk: every step stands the walker in the open of
+    /// the hex it enters (`monthorders.cpp` `DoAMoveOrder`, `Unit::MoveUnit(newreg->GetDummy())`),
+    /// so it comes home owning no Caravanserai and is shipped nothing (`ah-1jl9`).
+    #[test]
+    fn a_quartermaster_that_walks_out_and_back_owns_its_caravanserai_no_longer() {
+        let report = moving_reach_report((0, 0), (0, 4), true);
+        let orders = "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S N\n";
+        let response = reach_preview(&report, orders, FLAT_MAP);
+
+        assert_eq!(reach_held(&response, "900", "STON"), 5);
+        let issues = &reach_unit(&response, "900").transport_target_issues;
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(
+            issues[0].reason,
+            TransportTargetReason::NotCaravanseraiOwner
+        );
+    }
+
+    /// A walker entering a Caravanserai somebody already stands in is appended behind them
+    /// (`Unit::MoveUnit`), so the first unit there still owns it (`Object::GetOwner`, `ah-1jl9`).
+    #[test]
+    fn a_quartermaster_that_walks_into_an_owned_caravanserai_owns_nothing() {
+        let report = moving_reach_report((0, 0), (0, 2), true).replace(
+            "  South : plain (0,6) in Nowhere.\n\n",
+            "  South : plain (0,6) in Nowhere.\n\n+ Post Two [2] : Caravanserai.\n  \
+             * Keeper (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+             Skills: quartermaster [QUAM] 1 (450).\n\n",
+        );
+        assert!(report.contains("Keeper (902)"), "the destination is owned");
+        let orders = "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S 2\n";
+        let response = reach_preview(&report, orders, FLAT_MAP);
+
+        assert_eq!(reach_held(&response, "900", "STON"), 5);
+        let issues = &reach_unit(&response, "900").transport_target_issues;
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(
+            issues[0].reason,
+            TransportTargetReason::NotCaravanseraiOwner
+        );
+    }
+
     /// `rules/sequenceofevents` moves every unit before TRANSPORT, so a quartermaster that walks
     /// and stays in reach is weighed without the goods that reach it after it has gone (`ah-ol1d`).
+    /// It walks into the empty Caravanserai where it arrives (`rules/move`: "A structure number"),
+    /// which it owns by the time the shipment runs - a walker that ends the month outdoors owns
+    /// nothing and is shipped nothing (`ah-1jl9`).
     #[test]
     fn a_quartermaster_in_reach_walks_off_before_the_goods_arrive() {
-        let report = moving_reach_report((0, 0), (0, 2), true);
-        let orders = "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n";
+        let report = moving_reach_report((0, 0), (0, 2), true).replace(
+            "  South : plain (0,6) in Nowhere.\n\n",
+            "  South : plain (0,6) in Nowhere.\n\n+ Post Two [2] : Caravanserai.\n\n",
+        );
+        assert!(
+            report.contains("Post Two"),
+            "the destination has a Caravanserai"
+        );
+        let orders = "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S 2\n";
         let response = reach_preview(&report, orders, FLAT_MAP);
         let z = reach_z(&report);
 

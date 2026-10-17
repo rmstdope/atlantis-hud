@@ -1945,6 +1945,17 @@ describe("a transport target the report cannot show receiving", () => {
     ).toBe("Unit 7002 does not own a Caravanserai, so 5 STON stay with this unit.");
   });
 
+  // `ah-1jl9`: a quartermaster that owns no Caravanserai when the shipments run is itself why a
+  // DISTRIBUTE, or a TRANSPORT past the flat reach, is refused - in the words the order check uses.
+  it("says the sender owns no Caravanserai and the goods stay", () => {
+    expect(
+      transportTargetSentence({ to: "1162", amount: 500, tag: "SILV", reason: "senderOwnsNoCaravanserai", orderIndex: 0, toUnshown: false, unsettled: false, reach: null })
+    ).toBe("This unit owns no Caravanserai when the shipments run, so 500 SILV stay with this unit.");
+    expect(
+      transportTargetSentence({ to: "1162", amount: 0, tag: "", reason: "senderOwnsNoCaravanserai", orderIndex: 0, toUnshown: false, unsettled: false, reach: null })
+    ).toBe("This unit owns no Caravanserai when the shipments run, so this TRANSPORT moves nothing.");
+  });
+
   it("says the report cannot show whether an unseen target is eligible", () => {
     expect(
       transportTargetSentence({ to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null })
