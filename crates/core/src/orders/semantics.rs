@@ -25336,46 +25336,6 @@ fn check_upkeep_fund(
     }
 }
 
-/// What this month's orders ask of the faction's unclaimed fund: every `CLAIM` amount, plus every
-/// `WITHDRAW`'s price from the ruleset.
-///
-/// `CLAIM` resolves during the month and maintenance is settled at its end, so this comes off the
-/// unclaimed fund before step 7 of the payment order sees it (`ah-fjty`). Shared with
-/// `check_claims` rather than summed twice, so the fund cannot be spent differently by two pieces
-/// of code that disagree.
-///
-/// `None` when any withdrawal cannot be priced - no ruleset, or an item the catalogue carries no
-/// `withdraw_cost` for. That is not zero and must not be treated as zero: the total is genuinely
-/// unknown, and both callers decline rather than guess (`ah-tdsi`, following `check_claims`'s own
-/// rule for a report that states no fund at all).
-///
-/// Priced against the ruleset's catalogue by the order's own item text, because at faction scope
-/// there is no hex and no actor for `resolve_item` to search the inventories of.
-fn total_drawn_from_fund(
-    report: &ParsedReport,
-    ordered: &OrderedUnits,
-    ruleset: Option<&Ruleset>,
-) -> Option<i64> {
-    report.regions.iter().try_fold(0i64, |total, region| {
-        region
-            .units
-            .iter()
-            .filter(|unit| unit.own)
-            .flat_map(|unit| ordered.intents_of(&unit.unit_id).iter())
-            .try_fold(total, |total, placed| match &placed.intent {
-                Intent::Claim(amount) => Some(total.saturating_add(*amount)),
-                Intent::Withdraw { count, item } => {
-                    if withdrawal_refused(region) {
-                        return Some(total);
-                    }
-                    let cost = withdrawal_cost(item, ruleset)?;
-                    Some(total.saturating_add(count.saturating_mul(cost)))
-                }
-                _ => Some(total),
-            })
-    })
-}
-
 fn check_withdraw_in_nexus(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
     if !withdrawal_refused(hex.region) || !options.emits(codes::WITHDRAW_IN_NEXUS) {
         return;
@@ -25645,13 +25605,22 @@ fn check_region_pools(
     }
 }
 
-/// Every unit that claims or withdraws, when the faction's units ask more of the unclaimed fund
-/// between them than it holds. Two orders draw on the one fund (`ah-tdsi`).
+/// Every CLAIM or WITHDRAW line the faction's unclaimed fund cannot pay in full, each with what
+/// it actually gets. Two orders draw on the one fund (`ah-tdsi`).
 ///
 /// Faction-wide rather than per hex: the purse is one pool for the whole report, and a claim in one
-/// hex spends what a claim in another cannot. Every claiming unit is named because none of them is
-/// more at fault than the others - the message says the total, so a unit reading it is not being
-/// blamed for the overrun on its own.
+/// hex spends what a claim in another cannot. The fund is drawn the way the engine draws it
+/// (`ah-5jb2`), so only the lines that fall short are named:
+///
+/// - CLAIM is an instant order (`rules/sequenceofevents`), paid while the orders file is parsed,
+///   in file order, each one in full while silver is left and the one that runs past the end cut
+///   to what remains (`../Atlantis/parseorders.cpp` `Game::ProcessClaimOrder`) - the same order
+///   [`claim_allowances_for`] pays them in.
+/// - WITHDRAW runs later in the turn, against what the claims left, region by region and unit by
+///   unit, and one that costs more than is left is refused whole
+///   (`../Atlantis/runorders.cpp` `Game::DoWithdrawOrder`) - as [`unclaimed_silver_plan`] counts
+///   it. A withdrawal nothing can price draws nothing here: the game refuses a non-basic item
+///   (`rules/withdraw`), and its own check says so.
 ///
 /// A report that states no purse does not fire the check at all. That is a decision rather than a
 /// guard: a faction with no stated `Unclaimed silver:` is not evidence of an empty purse, and
@@ -25672,9 +25641,21 @@ fn check_claims(
         return;
     };
 
-    // Placed intents rather than units: a unit with two CLAIM lines contributes both to the total
-    // and is warned on each, and each line is separately editable.
-    let claims: Vec<(&ReportUnit, &PlacedIntent)> = report
+    let finding = |unit: &ReportUnit, placed: &PlacedIntent, message: String| Finding {
+        code: codes::CLAIMS_EXCEED_UNCLAIMED,
+        message,
+        region_id: unit.region_id.clone(),
+        unit_id: Some(unit.unit_id.clone()),
+        line: Some(placed.line),
+        column_start: Some(placed.column_start),
+        column_end: Some(placed.column_end),
+        formed: None,
+        counted_in: None,
+    };
+
+    // Placed intents rather than units: a unit with two CLAIM lines is paid for each in turn, and
+    // each line is separately editable.
+    let mut claims: Vec<(&ReportUnit, &PlacedIntent, i64)> = report
         .regions
         .iter()
         .flat_map(|region| region.units.iter())
@@ -25683,48 +25664,63 @@ fn check_claims(
             ordered
                 .intents_of(&unit.unit_id)
                 .iter()
-                .filter(|placed| matches!(placed.intent, Intent::Claim(_)))
-                .map(move |placed| (unit, placed))
+                .filter_map(move |placed| match placed.intent {
+                    Intent::Claim(amount) => Some((unit, placed, amount)),
+                    _ => None,
+                })
         })
         .collect();
-    let withdrawals: Vec<(&ReportUnit, &PlacedIntent)> = report
+    claims.sort_by_key(|(_, placed, _)| placed.line);
+
+    let mut remaining = purse.max(0);
+    for (unit, placed, amount) in claims {
+        if amount > remaining {
+            let message = if remaining > 0 {
+                format!(
+                    "this claims ${amount} and the faction has ${remaining} of its unclaimed silver left, so it gets ${remaining}"
+                )
+            } else {
+                format!(
+                    "this claims ${amount} and the faction has no unclaimed silver left, so it gets nothing"
+                )
+            };
+            findings.push(finding(unit, placed, message));
+        }
+        remaining = remaining.saturating_sub(amount.max(0)).max(0);
+    }
+
+    for region in report
         .regions
         .iter()
         .filter(|region| !withdrawal_refused(region))
-        .flat_map(|region| region.units.iter())
-        .filter(|unit| unit.own)
-        .flat_map(|unit| {
-            ordered
-                .intents_of(&unit.unit_id)
-                .iter()
-                .filter(|placed| matches!(placed.intent, Intent::Withdraw { .. }))
-                .map(move |placed| (unit, placed))
-        })
-        .collect();
-    let claims = claims.into_iter().chain(withdrawals).collect::<Vec<_>>();
-
-    let Some(total) = total_drawn_from_fund(report, ordered, ruleset) else {
-        return;
-    };
-
-    if total <= purse {
-        return;
-    }
-
-    for (unit, placed) in claims {
-        findings.push(Finding {
-            code: codes::CLAIMS_EXCEED_UNCLAIMED,
-            message: format!(
-                "your units claim and withdraw ${total} between them and the faction has ${purse}"
-            ),
-            region_id: unit.region_id.clone(),
-            unit_id: Some(unit.unit_id.clone()),
-            line: Some(placed.line),
-            column_start: Some(placed.column_start),
-            column_end: Some(placed.column_end),
-            formed: None,
-            counted_in: None,
-        });
+    {
+        for unit in region.units.iter().filter(|unit| unit.own) {
+            for placed in ordered.intents_of(&unit.unit_id) {
+                let Intent::Withdraw { count, item } = &placed.intent else {
+                    continue;
+                };
+                let Some(cost) = withdrawal_cost(item, ruleset) else {
+                    continue;
+                };
+                let cost = count.saturating_mul(cost).max(0);
+                if cost > remaining {
+                    let left = if remaining > 0 {
+                        format!("has ${remaining} of its unclaimed silver left")
+                    } else {
+                        "has no unclaimed silver left".to_string()
+                    };
+                    findings.push(finding(
+                        unit,
+                        placed,
+                        format!(
+                            "this withdrawal costs ${cost} and the faction {left}, so the game refuses it"
+                        ),
+                    ));
+                } else {
+                    remaining -= cost;
+                }
+            }
+        }
     }
 }
 
@@ -54733,6 +54729,8 @@ BUILD
         .collect()
     }
 
+    /// Two units' claims overrun the purse together: the first is paid in full, so only the
+    /// second - the one the game cuts - is warned (`ah-5jb2`).
     #[test]
     fn a_faction_claiming_more_than_it_holds_is_warned() {
         let findings = check_claims_of(
@@ -54741,22 +54739,70 @@ BUILD
             "unit 500\nCLAIM 3000\nunit 700\nCLAIM 2000\n",
         );
 
-        assert_eq!(findings.len(), 2, "both claiming units: {findings:?}");
+        assert_eq!(findings.len(), 1, "only the second claim: {findings:?}");
+        assert_eq!(findings[0].unit_id.as_deref(), Some("700"));
+        assert_eq!(findings[0].line, Some(4));
         assert_eq!(
-            findings
-                .iter()
-                .map(|finding| finding.unit_id.as_deref())
-                .collect::<Vec<_>>(),
-            vec![Some("500"), Some("700")]
+            findings[0].message,
+            "this claims $2000 and the faction has $1935 of its unclaimed silver left, so it gets $1935"
         );
-        for finding in &findings {
-            assert_eq!(
-                finding.message,
-                "your units claim and withdraw $5000 between them and the faction has $4935"
-            );
-        }
-        assert_eq!(findings[0].line, Some(2));
-        assert_eq!(findings[1].line, Some(4));
+    }
+
+    /// The fund is drawn in orders-file order, not in the report's: the unit listed second in the
+    /// report but first in the file is the one paid in full.
+    #[test]
+    fn claims_are_paid_in_orders_file_order() {
+        let findings = check_claims_of(
+            Some(4935),
+            vec![region(vec![unit("500"), unit("700")])],
+            "unit 700\nCLAIM 2000\nunit 500\nCLAIM 3000\n",
+        );
+
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].unit_id.as_deref(), Some("500"));
+        assert_eq!(findings[0].line, Some(4));
+        assert_eq!(
+            findings[0].message,
+            "this claims $3000 and the faction has $2935 of its unclaimed silver left, so it gets $2935"
+        );
+    }
+
+    /// A claim after the fund has run dry gets nothing, and says so rather than "$0".
+    #[test]
+    fn a_claim_after_the_fund_is_spent_gets_nothing() {
+        let findings = check_claims_of(
+            Some(500),
+            vec![region(vec![unit("500")])],
+            "unit 500\nCLAIM 500\nCLAIM 100\n",
+        );
+
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].line, Some(3));
+        assert_eq!(
+            findings[0].message,
+            "this claims $100 and the faction has no unclaimed silver left, so it gets nothing"
+        );
+    }
+
+    /// `ah-5jb2`: the engine pays each CLAIM in full, in orders-file order, while there is silver
+    /// left, and cuts the one that runs past the end to what remains
+    /// (`../Atlantis/parseorders.cpp` `Game::ProcessClaimOrder`). So only the claim that falls
+    /// short is warned, with what it actually gets - the bead's Inholm case, Seven of Eight's
+    /// `@CLAIM 50`, `CLAIM 2000` and `CLAIM 5000` against $6038.
+    #[test]
+    fn only_the_claim_that_runs_past_the_purse_is_warned() {
+        let findings = check_claims_of(
+            Some(6038),
+            vec![region(vec![unit("18642")])],
+            "unit 18642\n@CLAIM 50\nCLAIM 2000\nCLAIM 5000\n",
+        );
+
+        assert_eq!(findings.len(), 1, "only CLAIM 5000: {findings:?}");
+        assert_eq!(findings[0].line, Some(4));
+        assert_eq!(
+            findings[0].message,
+            "this claims $5000 and the faction has $3988 of its unclaimed silver left, so it gets $3988"
+        );
     }
 
     #[test]
@@ -54804,27 +54850,28 @@ BUILD
         .is_empty());
     }
 
+    /// A unit with two CLAIM lines is paid for each in turn, so only the line that runs past the
+    /// purse is warned.
     #[test]
-    fn a_unit_claiming_twice_is_warned_on_each_line() {
+    fn a_unit_claiming_twice_is_warned_only_on_the_short_line() {
         let findings = check_claims_of(
             Some(4935),
             vec![region(vec![unit("500")])],
             "unit 500\nCLAIM 3000\nCLAIM 3000\n",
         );
 
-        assert_eq!(findings.len(), 2, "one per claim line: {findings:?}");
-        for finding in &findings {
-            assert_eq!(
-                finding.message,
-                "your units claim and withdraw $6000 between them and the faction has $4935"
-            );
-        }
-        assert_eq!(findings[0].line, Some(2));
-        assert_eq!(findings[1].line, Some(3));
+        assert_eq!(findings.len(), 1, "only the second claim: {findings:?}");
+        assert_eq!(findings[0].line, Some(3));
+        assert_eq!(
+            findings[0].message,
+            "this claims $3000 and the faction has $1935 of its unclaimed silver left, so it gets $1935"
+        );
     }
 
-    /// `ah-tdsi`: one fund, drawn on by two orders, so the check counts them together and names
-    /// every unit that draws on it.
+    /// `ah-tdsi`: one fund, drawn on by two orders. CLAIM is an instant order and WITHDRAW comes
+    /// later (`rules/sequenceofevents`), so the claim is paid first and the withdrawal is the one
+    /// short; the engine refuses a withdrawal it cannot pay in full
+    /// (`../Atlantis/runorders.cpp` `Game::DoWithdrawOrder`).
     #[test]
     fn claims_and_withdrawals_together_can_overdraw_the_fund() {
         let findings = check_claims_of(
@@ -54833,27 +54880,18 @@ BUILD
             "unit 101\nCLAIM 300\nunit 102\nWITHDRAW 10 grain\n",
         );
 
-        assert_eq!(findings.len(), 2, "both drawing units: {findings:?}");
+        assert_eq!(findings.len(), 1, "only the withdrawal: {findings:?}");
+        assert_eq!(findings[0].unit_id.as_deref(), Some("102"));
+        assert_eq!(findings[0].line, Some(4));
         assert_eq!(
-            findings
-                .iter()
-                .map(|finding| finding.unit_id.as_deref())
-                .collect::<Vec<_>>(),
-            vec![Some("101"), Some("102")]
+            findings[0].message,
+            "this withdrawal costs $370 and the faction has $200 of its unclaimed silver left, so the game refuses it"
         );
-        for finding in &findings {
-            assert_eq!(
-                finding.message,
-                "your units claim and withdraw $670 between them and the faction has $500"
-            );
-        }
-        assert_eq!(findings[0].line, Some(2));
-        assert_eq!(findings[1].line, Some(4));
     }
 
-    /// One shape of sentence for both cases: a faction that only claims reads exactly the same way.
+    /// A claim on its own that the purse cannot cover gets what there is.
     #[test]
-    fn a_claim_alone_still_reads_the_same_way() {
+    fn a_claim_alone_gets_what_there_is() {
         let findings = check_claims_of(
             Some(500),
             vec![region(vec![unit("101")])],
@@ -54863,7 +54901,7 @@ BUILD
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert_eq!(
             findings[0].message,
-            "your units claim and withdraw $600 between them and the faction has $500"
+            "this claims $600 and the faction has $500 of its unclaimed silver left, so it gets $500"
         );
     }
 
@@ -54882,39 +54920,56 @@ BUILD
         .is_empty());
     }
 
-    /// A withdrawal nothing can price makes the faction's total genuinely unknown, and an unknown
-    /// total is not zero: the check declines rather than guessing, exactly as it already declines a
-    /// report that states no fund (`ah-tdsi`). The claim alone overruns, so a naive zero-fallback
-    /// would still fire here.
+    /// A withdrawal nothing can price draws nothing - the game refuses a non-basic item
+    /// (`rules/withdraw`), and its own check says so - and since claims are paid before any
+    /// withdrawal (`rules/sequenceofevents`) it cannot change what a claim gets. So the claim that
+    /// overruns is still warned, and the unpriced line is not.
     #[test]
-    fn an_unpriceable_withdrawal_declines_the_fund_check() {
-        assert!(check_claims_of(
+    fn an_unpriceable_withdrawal_leaves_the_claim_check_standing() {
+        let findings = check_claims_of(
             Some(500),
             vec![region(vec![unit("101"), unit("102")])],
             "unit 101\nCLAIM 600\nunit 102\nWITHDRAW 1 longship\n",
-        )
-        .is_empty());
+        );
+
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].unit_id.as_deref(), Some("101"));
+        assert_eq!(findings[0].line, Some(2));
     }
 
-    /// A unit with two `WITHDRAW` lines contributes both to the total and is named on each, the
-    /// same way `a_unit_claiming_twice_is_warned_on_each_line` pins it for claims.
+    /// A unit with two `WITHDRAW` lines: the first is paid, the second costs more than is left and
+    /// is the one warned.
     #[test]
-    fn two_withdrawals_by_one_unit_both_count() {
+    fn two_withdrawals_by_one_unit_are_drawn_in_turn() {
         let findings = check_claims_of(
             Some(500),
             vec![region(vec![unit("101")])],
             "unit 101\nWITHDRAW 10 grain\nWITHDRAW 10 grain\n",
         );
 
-        assert_eq!(findings.len(), 2, "one per withdraw line: {findings:?}");
-        for finding in &findings {
-            assert_eq!(
-                finding.message,
-                "your units claim and withdraw $740 between them and the faction has $500"
-            );
-        }
+        assert_eq!(
+            findings.len(),
+            1,
+            "only the second withdrawal: {findings:?}"
+        );
+        assert_eq!(findings[0].line, Some(3));
+        assert_eq!(
+            findings[0].message,
+            "this withdrawal costs $370 and the faction has $130 of its unclaimed silver left, so the game refuses it"
+        );
+    }
+
+    /// A refused withdrawal draws nothing, so a smaller one after it is still paid and not warned.
+    #[test]
+    fn a_refused_withdrawal_leaves_the_fund_for_the_next() {
+        let findings = check_claims_of(
+            Some(500),
+            vec![region(vec![unit("101")])],
+            "unit 101\nWITHDRAW 20 grain\nWITHDRAW 10 grain\n",
+        );
+
+        assert_eq!(findings.len(), 1, "only the first withdrawal: {findings:?}");
         assert_eq!(findings[0].line, Some(2));
-        assert_eq!(findings[1].line, Some(3));
     }
 
     // --- a shipment the game will not carry ---------------------------------------------------
