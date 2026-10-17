@@ -2006,12 +2006,12 @@ fn leave_the_line_to_whoever_got_all_it_can_pay(
     pool: i64,
 ) {
     let total: i64 = shares.iter().copied().fold(0, i64::saturating_add);
-    for index in 0..shares.len() {
+    for (index, share) in shares.iter_mut().enumerate() {
         let line = on_the_line.get(index).copied().unwrap_or(0);
         let claim = claims.get(index).copied().unwrap_or(0);
-        if line > claim && shares[index] >= claim {
-            let others = total.saturating_sub(shares[index]);
-            shares[index] = shares[index].max(line.min(pool.saturating_sub(others)));
+        if line > claim && *share >= claim {
+            let others = total.saturating_sub(*share);
+            *share = (*share).max(line.min(pool.saturating_sub(others)));
         }
     }
 }
