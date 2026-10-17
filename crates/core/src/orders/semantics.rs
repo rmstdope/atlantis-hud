@@ -25136,9 +25136,7 @@ fn judge_sailing<'h, 'a>(
     ruleset: Option<&Ruleset>,
     fleet: &Structure,
 ) -> Option<SailingVerdict<'h, 'a>> {
-    if hulls_named_in(&fleet.kind).is_none() {
-        return None;
-    }
+    hulls_named_in(&fleet.kind)?;
 
     let captain = hex
         .units
