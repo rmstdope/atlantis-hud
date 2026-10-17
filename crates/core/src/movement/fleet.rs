@@ -578,20 +578,16 @@ pub struct FormedCrew {
 /// month-long phase by `orders::semantics::walk_after_boarding`, whose known gaps (PROMOTE and
 /// EVICT reordering, refused ENTERs) this walk shares.
 ///
-/// Then each valid `PROMOTE` written by the owner to a reported unit aboard the same hull. Among
-/// several `PROMOTE`s from one owner the **first valid one written** takes the hull, not the
-/// last: `rules/promote` promotes a unit "to owner of the object of which you are currently the
-/// owner", so once one has run that unit owns the object no longer and its later `PROMOTE`s hand
-/// on nothing. One naming a unit that is not aboard promotes nobody and leaves the next to run.
-/// Only that owner's `PROMOTE` runs (`ah-c1p2`): `Game::RunPromoteOrders` (../Atlantis
+/// Then the owner's `PROMOTE`, when it names a reported unit aboard the same hull. Among several
+/// `PROMOTE`s from one owner only the **last written** is kept (`ah-nhgo`): `ProcessPromoteOrder`
+/// (../Atlantis `parseorders.cpp`) overwrites `u->promote`. One naming a unit that is not aboard
+/// promotes nobody (`Do1PromoteOrder`: "PROMOTE: Can't find target."), and an earlier one does
+/// not run in its place; `rules/promote` does not settle either question. Only that owner's `PROMOTE` runs (`ah-c1p2`): `Game::RunPromoteOrders` (../Atlantis
 /// `runorders.cpp`) runs one per object, written by its owner once ENTER and LEAVE have run
 /// (`Object::GetOwner`), and errors every other unit's "PROMOTE: Must be owner" - so the unit it
 /// promotes does not hand the hull on again that month. A formed owner's own `PROMOTE`, and a
 /// `PROMOTE` naming a formed unit, are not followed: `promotes_of` records only a reported unit's
-/// block. Known gap (`ah-nhgo`): the engine keeps only the **last** `PROMOTE` a unit writes
-/// (`ProcessPromoteOrder` overwrites `u->promote`), and one naming a unit not aboard promotes
-/// nobody (`Do1PromoteOrder`: "PROMOTE: Can't find target."). `None` when no unit can be named at
-/// all.
+/// block. `None` when no unit can be named at all.
 #[must_use]
 pub fn fleet_owner(
     region: &ReportRegion,
@@ -623,7 +619,10 @@ pub fn occupants_after_promotes(
         return occupants;
     };
     let aboard = |unit: &&ReportUnit| ordered.structure_after_boarding(unit) == Some(structure_id);
-    let promoted = ordered.promotes_of(&owner).iter().find(|target| {
+    // Only the last `PROMOTE` the owner wrote is kept (`ProcessPromoteOrder` overwrites
+    // `u->promote`), and one naming a unit not in the object promotes nobody (`Do1PromoteOrder`:
+    // "PROMOTE: Can't find target.") - `ah-nhgo`.
+    let promoted = ordered.promotes_of(&owner).last().filter(|target| {
         region
             .units
             .iter()
@@ -1341,19 +1340,19 @@ mod tests {
         );
     }
 
-    /// Among several `PROMOTE`s from one owner the first valid one written takes the hull: once it
-    /// has run the owner no longer owns the object, so its later ones hand on nothing, and one
-    /// naming a unit that is not aboard promotes nobody and leaves the next to run. Only the
-    /// owner's `PROMOTE` runs at all (`ah-c1p2`): `Game::RunPromoteOrders` (../Atlantis
+    /// Among several `PROMOTE`s from one owner only the last written is kept (`ah-nhgo`):
+    /// `ProcessPromoteOrder` (../Atlantis `parseorders.cpp`) overwrites `u->promote`. One naming a
+    /// unit not in the object promotes nobody (`Do1PromoteOrder`: "PROMOTE: Can't find target.").
+    /// Only the owner's `PROMOTE` runs at all (`ah-c1p2`): `Game::RunPromoteOrders` (../Atlantis
     /// `runorders.cpp`) runs one per object, the one its owner wrote (`Object::GetOwner`), and
     /// errors every other unit's "PROMOTE: Must be owner" - so a promoted unit's own `PROMOTE`
     /// hands on nothing that month.
     #[test]
-    fn the_first_promote_takes_the_hull_and_the_promoted_units_own_promote_does_not_run() {
+    fn the_last_promote_takes_the_hull_and_the_promoted_units_own_promote_does_not_run() {
         assert_eq!(
             scene_owner("unit 900\nPROMOTE 901\nPROMOTE 902\n", "329"),
-            Some("901".to_string()),
-            "900's second PROMOTE hands on nothing: it no longer owns the hull"
+            Some("902".to_string()),
+            "900's second PROMOTE overwrites its first"
         );
         assert_eq!(
             scene_owner("unit 900\nPROMOTE 901\nunit 901\nPROMOTE 902\n", "329"),
@@ -1361,9 +1360,14 @@ mod tests {
             "901 did not own the hull when PROMOTEs ran, so its PROMOTE is refused"
         );
         assert_eq!(
+            scene_owner("unit 900\nPROMOTE 901\nPROMOTE 903\n", "329"),
+            Some("900".to_string()),
+            "903 is ashore, so the PROMOTE that is kept promotes nobody"
+        );
+        assert_eq!(
             scene_owner("unit 900\nPROMOTE 903\nPROMOTE 901\n", "329"),
             Some("901".to_string()),
-            "903 is ashore, so that PROMOTE promotes nobody and leaves the next one to run"
+            "the last PROMOTE names a unit aboard, so it runs"
         );
     }
 

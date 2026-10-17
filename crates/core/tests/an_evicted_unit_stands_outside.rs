@@ -195,3 +195,47 @@ fn an_evict_after_promoting_its_target_is_refused() {
     assert_eq!(study.points_after, 175, "{study:?}");
     assert!(!halving_warned(&findings));
 }
+
+/// Five of Eight (1294) stands in the other Stockade, `Building [4]`, in the same hex: a unit that
+/// is not in the Drones' object.
+const ELSEWHERE: &str = "1294";
+
+/// Of several PROMOTEs one unit writes, only the last is kept (`ah-nhgo`): `../Atlantis
+/// parseorders.cpp` `ProcessPromoteOrder` overwrites `u->promote`. The Drones' last PROMOTE names
+/// themselves, so they still own the Stockade when EVICTs run; their EVICT runs and the mage
+/// studies outside.
+#[test]
+fn the_last_of_several_promotes_decides_who_owns() {
+    let orders = orders(
+        "ENTER 5",
+        &format!("PROMOTE {MAGE}\nPROMOTE {DRONES}\nEVICT {MAGE}\n"),
+    );
+    let findings = findings(&orders);
+    assert!(
+        evict_warnings(&findings, DRONES).is_empty(),
+        "the Drones still own the Stockade, so their EVICT runs: {findings:#?}"
+    );
+    let (structure, study) = mage(&orders);
+    assert_eq!(structure, None, "the evicted mage stands outside");
+    assert_eq!(study.points_after, 160, "{study:?}");
+}
+
+/// A last PROMOTE naming a unit not in the object promotes nobody (`ah-nhgo`): `../Atlantis
+/// runorders.cpp` `Do1PromoteOrder` errors "PROMOTE: Can't find target." and returns, and the
+/// earlier PROMOTE of the mage was overwritten (`ProcessPromoteOrder`). So the Drones still own
+/// the Stockade and their EVICT puts the mage outside.
+#[test]
+fn a_last_promote_naming_a_unit_not_in_the_structure_promotes_nobody() {
+    let orders = orders(
+        "ENTER 5",
+        &format!("PROMOTE {MAGE}\nPROMOTE {ELSEWHERE}\nEVICT {MAGE}\n"),
+    );
+    let findings = findings(&orders);
+    assert!(
+        evict_warnings(&findings, DRONES).is_empty(),
+        "the Drones still own the Stockade, so their EVICT runs: {findings:#?}"
+    );
+    let (structure, study) = mage(&orders);
+    assert_eq!(structure, None, "the evicted mage stands outside");
+    assert_eq!(study.points_after, 160, "{study:?}");
+}
