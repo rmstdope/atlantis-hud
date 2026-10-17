@@ -511,10 +511,12 @@ impl ShipmentOrder {
 
 /// Whether the game will let this target receive the goods, and why not when it will not.
 ///
-/// `rules/economy_transport` lets a quartermaster owning a Caravanserai send to any unit within
-/// two hexes. A unit that is not a quartermaster can instead send only to a quartermaster owning a
-/// Caravanserai, the transport structure `rules/economy_transport` names; either target must be
-/// at least FRIENDLY to the sender.
+/// A quartermaster owning a Caravanserai may DISTRIBUTE to any unit within two hexes: the engine
+/// never asks a DISTRIBUTE's target about skill or structure (`CheckTransportOrders`,
+/// `../Atlantis/runorders.cpp`). Every TRANSPORT, whoever sends it, may go only to a quartermaster
+/// owning a Caravanserai, the transport structure `rules/economy_transport` names - the engine,
+/// not that page's "may also TRANSPORT items to any unit", by the navigator's choice (`ah-1d3i`).
+/// Either target must be at least FRIENDLY to the sender.
 ///
 /// Only the first two are ours to settle. `rules/com_attitudes` prints the attitudes *we* declare
 /// toward other factions, never theirs toward us, so a foreign target that passes both structural
@@ -529,8 +531,9 @@ pub(crate) enum Acceptance {
     NotQuartermaster,
     NotCaravanseraiOwner,
     /// The sender is a quartermaster that owns no Caravanserai when the shipments run, and the
-    /// shipment needs one: every DISTRIBUTE (`ah-g4bz`), and a TRANSPORT to a unit that is no
-    /// quartermaster or beyond the flat reach.
+    /// shipment needs one: every DISTRIBUTE (`ah-g4bz`), and a TRANSPORT beyond the flat reach. A
+    /// TRANSPORT to a unit that is no quartermaster is the target's refusal whoever sends it
+    /// (`ah-1d3i`).
     /// `CheckTransportOrders` blames the sender for a DISTRIBUTE ("Unit does not own transport
     /// structure.") and the distance for a TRANSPORT ("Recipient ... is too far away.", its range
     /// capped at `LOCAL_TRANSPORT`); the sentence names the sender's missing Caravanserai for
@@ -546,13 +549,13 @@ pub(crate) enum Acceptance {
     AcceptanceUnknown,
 }
 
-pub(crate) fn acceptance(sender_can_distribute: bool, facts: Option<&TargetFacts>) -> Acceptance {
+pub(crate) fn acceptance(skips_target_test: bool, facts: Option<&TargetFacts>) -> Acceptance {
     let Some(facts) = facts else {
         // A unit number the report never described: an ally's quartermaster, or a mistake.
         return Acceptance::EligibilityUnknown;
     };
-    if sender_can_distribute && !facts.quartermaster {
-        // The sender's own quartermaster status is what makes an ordinary target eligible. The
+    if skips_target_test && !facts.quartermaster {
+        // A DISTRIBUTE from a Caravanserai owner is what makes an ordinary target eligible. The
         // report can settle that immediately for our unit; a foreign target's attitude stays
         // unknown because `rules/com_attitudes` only reports our attitudes toward others.
         return if facts.own && facts.quartermaster_disclosed {
@@ -981,12 +984,15 @@ impl Shipping {
         // gap in the report (an unshown or foreign target) into the certainty it is.
         let sender_not_quartermaster =
             order == ShipmentOrder::Distribute && !sender_qm && self.quartermasters.skill_known();
-        let acceptance = match acceptance(sender_can_distribute, facts) {
+        // Only a DISTRIBUTE skips the target's own test: `CheckTransportOrders` asks every
+        // TRANSPORT's target for the quartermaster skill and a transport structure, whoever sends
+        // it, so a TRANSPORT to an ordinary unit is the target's refusal even from a quartermaster
+        // owning a Caravanserai. The navigator chose the engine over `rules/economy_transport`'s
+        // "may also TRANSPORT items to any unit" (`ah-1d3i`).
+        let skips_target_test = sender_can_distribute && order == ShipmentOrder::Distribute;
+        let acceptance = match acceptance(skips_target_test, facts) {
             _ if sender_not_quartermaster => Acceptance::SenderNotQuartermaster,
             _ if sender_without_caravanserai && order == ShipmentOrder::Distribute => {
-                Acceptance::SenderOwnsNoCaravanserai
-            }
-            Acceptance::NotQuartermaster if sender_without_caravanserai => {
                 Acceptance::SenderOwnsNoCaravanserai
             }
             Acceptance::Eligible
@@ -1146,7 +1152,8 @@ mod tests {
     }
 
     /// `rules/economy_transport`: a non-quartermaster sender needs a quartermaster target that
-    /// owns a Caravanserai; a quartermaster sender may target an ordinary unit.
+    /// owns a Caravanserai; only a DISTRIBUTE from a Caravanserai owner may target an ordinary unit
+    /// (`ah-1d3i`).
     #[test]
     fn a_target_that_is_not_a_caravanserai_owning_quartermaster_is_refused() {
         // One of ours, holding the skill, owning the Caravanserai: the goods go.
@@ -1652,8 +1659,10 @@ mod tests {
         let distributed = shipping.judge(ShipmentOrder::Distribute, "900", Some(hex(0, 0)), "901");
         assert_eq!(distributed.acceptance, Acceptance::SenderOwnsNoCaravanserai);
         assert!(!distributed.unsettled, "901's month cannot undo it");
+        // A TRANSPORT to a unit that is no quartermaster is the target's refusal, whoever sends it
+        // (`ah-1d3i`).
         let transported = shipping.judge(ShipmentOrder::Transport, "900", Some(hex(0, 0)), "901");
-        assert_eq!(transported.acceptance, Acceptance::SenderOwnsNoCaravanserai);
+        assert_eq!(transported.acceptance, Acceptance::NotQuartermaster);
         assert!(
             transported.unsettled,
             "901 may end the month able to accept"
@@ -1668,10 +1677,45 @@ mod tests {
         );
     }
 
+    /// `ah-1d3i`: `CheckTransportOrders` (`../Atlantis/runorders.cpp`) refuses every TRANSPORT
+    /// whose target is not a quartermaster owning a transport structure, whoever the sender is; it
+    /// asks a DISTRIBUTE's target nothing of the kind. The navigator chose the engine over
+    /// `rules/economy_transport` (2026-10-17).
+    #[test]
+    fn a_transport_from_a_caravanserai_owner_is_judged_on_its_target() {
+        let shipping = shipping(
+            &[("900", 1), ("902", 1)],
+            vec![
+                ("900", at(facts(true, true, true, true), hex(0, 0))),
+                ("901", at(facts(true, false, false, true), hex(0, 1))),
+                ("902", at(facts(true, true, false, true), hex(0, 1))),
+            ],
+            &[],
+        );
+
+        let judged = |order, target| {
+            shipping
+                .judge(order, "900", Some(hex(0, 0)), target)
+                .acceptance
+        };
+        assert_eq!(
+            judged(ShipmentOrder::Transport, "901"),
+            Acceptance::NotQuartermaster
+        );
+        assert_eq!(
+            judged(ShipmentOrder::Transport, "902"),
+            Acceptance::NotCaravanseraiOwner
+        );
+        assert_eq!(
+            judged(ShipmentOrder::Distribute, "901"),
+            Acceptance::Eligible
+        );
+    }
+
     /// `ah-s79p`: a unit this month's FORM creates is judged on what the engine knows of it, by the
-    /// one builder both engines call. `rules/economy_transport`: a quartermaster owning a
-    /// Caravanserai may send to any unit within two hexes, and a quartermaster *target* must own a
-    /// Caravanserai - which a unit formed this month does not.
+    /// one builder both engines call. A quartermaster owning a Caravanserai may DISTRIBUTE to any
+    /// unit within two hexes, but a TRANSPORT's target must be a quartermaster owning a
+    /// Caravanserai (`CheckTransportOrders`, `ah-1d3i`) - which a unit formed this month never is.
     #[test]
     fn a_formed_target_is_judged_on_its_own_skills() {
         // 900 is a quartermaster owning a Caravanserai, as the report shows it.
@@ -1686,9 +1730,9 @@ mod tests {
             level: 1,
             points: 30,
         }];
-        let judged = |skills: Option<&[crate::report::model::Skill]>| {
+        let judged_as = |order, skills: Option<&[crate::report::model::Skill]>| {
             shipping.judge_formed(
-                ShipmentOrder::Transport,
+                order,
                 "900",
                 Some(hex(0, 0)),
                 "new-1",
@@ -1699,8 +1743,13 @@ mod tests {
             )
         };
 
+        let judged = |skills| judged_as(ShipmentOrder::Distribute, skills);
         let plain = judged(Some(&[]));
         assert_eq!(plain.acceptance, Acceptance::Eligible);
+        assert_eq!(
+            judged_as(ShipmentOrder::Transport, Some(&[])).acceptance,
+            Acceptance::NotQuartermaster
+        );
         assert!(plain.target_shown, "the formed unit is described");
         assert_eq!(plain.phase, ShipmentPhase::FromQuartermaster);
         assert_eq!(
