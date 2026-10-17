@@ -20397,6 +20397,7 @@ fn report_shortfalls(
     let studies = study_settlement(hex, ledger);
     // Where a passenger's STUDY was judged, when that was the hex its fleet lands in (`ah-1uja`).
     let landing_of = |who: &str| ledger.relief().walking.landing_of(who);
+    let sent_elsewhere = |who: &str| ledger.relief().walking.studies_elsewhere.contains_key(who);
     let study_of = |who: &str| {
         hex.units
             .iter()
@@ -20767,10 +20768,12 @@ fn report_shortfalls(
             } else {
                 Vec::new()
             };
-            // A passenger refused where its fleet lands is marked below, naming that hex.
+            // A passenger's STUDY sent where its fleet lands was never this hex's to refuse: one
+            // refused by the purse there is marked above, naming that hex; one refused where
+            // nothing of ours shares is told by its own sentence (`ah-1uja`, `ah-oi3u`).
             for (ordered, placed) in refused_studies
                 .iter()
-                .filter(|(ordered, _)| landing_of(&ordered.unit.unit_id).is_none())
+                .filter(|(ordered, _)| !sent_elsewhere(&ordered.unit.unit_id))
             {
                 findings.push(ordered.finding(
                     hex,
@@ -79183,6 +79186,30 @@ BUILD
     #[test]
     fn a_passenger_refused_where_nothing_is_shared_gets_no_landing_marker() {
         let review = a_passenger_studying_where_none_of_ours_stand(None);
+        assert_eq!(markers_on(&review, "901"), Vec::<String>::new());
+    }
+
+    /// `ah-1uja` review: a passenger sailing from a hex short between its units to where nothing
+    /// of ours shares is not refused by the hex it leaves, so that hex's marker is not its.
+    #[test]
+    fn a_passenger_refused_where_nothing_is_shared_is_not_marked_by_the_short_hex_it_leaves() {
+        let banker = sharing(unit("903"));
+        let stayer = unit("904");
+        let (report, _) = passenger_palace(
+            open_sea(vec![banker, stayer]),
+            region_at("1:7,53", 7, 53, vec![]),
+            None,
+        );
+        let orders = "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 903\nunit 904\nSTUDY COMB\n";
+        let review = review_turn(&report, orders, Some(&trident()), CheckOptions::default());
+        assert_eq!(
+            markers_on(&review, "904"),
+            vec![
+                "This hex is short of silver between its units, so this STUDY is refused. See \
+                 Problems for the hex."
+            ],
+            "the hex it leaves is short"
+        );
         assert_eq!(markers_on(&review, "901"), Vec::<String>::new());
     }
 
