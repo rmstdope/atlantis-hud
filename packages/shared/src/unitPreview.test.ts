@@ -2204,6 +2204,48 @@ describe("a transport target the report cannot show receiving", () => {
   it("says nothing about a row with no target issue", () => {
     expect(itemsTooltip(previewedUnit({ items: stone }))).toBeUndefined();
   });
+
+  // ah-nsz8: rules/sequenceofevents runs LEAVE, ENTER, PROMOTE, MOVE, STUDY and BUILD before
+  // TRANSPORT, so a refusal the core marks `unsettled` is one the month may undo. The hover does
+  // not state it as certain, and the ITEMS cell carries the ` ?` mark (the navigator's answer of
+  // 2026-10-17).
+  describe("a refusal this month's orders may undo", () => {
+    const unsettled = (reason: TransportTargetIssue["reason"], tag = "SILV", amount = 100): TransportTargetIssue => ({
+      to: "901", amount, tag, reason, orderIndex: 0, toUnshown: false, unsettled: true, reach: null
+    });
+
+    it("is not stated as a certain refusal", () => {
+      expect(transportTargetSentence(unsettled("notQuartermaster"))).toBe(
+        "Could not count 100 SILV for unit 901 because it is not a quartermaster now, but this month's orders may make it one before TRANSPORT runs."
+      );
+      expect(transportTargetSentence(unsettled("notCaravanseraiOwner"))).toBe(
+        "Could not count 100 SILV for unit 901 because it does not own a Caravanserai now, but this month's orders may change that before TRANSPORT runs."
+      );
+      expect(transportTargetSentence(unsettled("senderOwnsNoCaravanserai"))).toBe(
+        "Could not count 100 SILV for unit 901 because this unit owns no Caravanserai now, but this month's orders may change that before the shipments run."
+      );
+      expect(transportTargetSentence(unsettled("notQuartermaster", "", 0))).toBe(
+        "Could not count this TRANSPORT for unit 901 because it is not a quartermaster now, but this month's orders may make it one before TRANSPORT runs."
+      );
+    });
+
+    it("marks the ITEMS figure as partly counted", () => {
+      const row = previewedUnit({ items: stone, transportTargetIssues: [unsettled("notQuartermaster")] });
+      expect(hasUncertainTransport(row)).toBe(true);
+      expect(itemsTooltip(row)).toBe(
+        "Could not count 100 SILV for unit 901 because it is not a quartermaster now, but this month's orders may make it one before TRANSPORT runs."
+      );
+    });
+
+    it("leaves a settled refusal certain", () => {
+      const row = previewedUnit({
+        items: stone,
+        transportTargetIssues: [{ ...unsettled("notQuartermaster"), unsettled: false }]
+      });
+      expect(hasUncertainTransport(row)).toBe(false);
+      expect(itemsTooltip(row)).toBe("Unit 901 is not a quartermaster, so 100 SILV stay with this unit.");
+    });
+  });
 });
 
 describe("the study forecast", () => {
