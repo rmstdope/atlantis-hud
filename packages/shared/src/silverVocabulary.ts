@@ -44,7 +44,7 @@ const SPENDS: Record<NonNullable<UnitSilver["shortOn"]>, string> = {
  * not "its X costs" - so these are complete tails rather than a noun interpolated into one
  * template, which would produce `its give costs` and typecheck (`ah-moq3`).
  */
-const CANNOT_PAY: Record<NonNullable<UnitSilver["shortOn"]> | "orders", string> = {
+export const CANNOT_PAY: Record<NonNullable<UnitSilver["shortOn"]> | "orders", string> = {
   study: "its study costs",
   buy: "its purchase costs",
   produce: "its production costs",
@@ -1286,9 +1286,13 @@ export function silverCauseGroups(changes: readonly SilverChange[]): SilverCause
  */
 export function silverNoteLines(
   facts: SilverFacts,
-  drawn: readonly SilverCauseGroup[] = []
+  drawn: readonly SilverCauseGroup[] = [],
+  omit: readonly string[] = []
 ): string[] {
-  return SILVER_NOTES.filter((note) => !(note.restatedBy?.(drawn) ?? false))
+  // `omit`: notes a surface already says elsewhere - the Silver popup's red first line restates
+  // `cannot-pay` (`ah-ottr`).
+  return SILVER_NOTES.filter((note) => !omit.includes(note.id))
+    .filter((note) => !(note.restatedBy?.(drawn) ?? false))
     .filter((note) => note.when(facts))
     .flatMap((note) => note.say(facts).split("\n"));
 }

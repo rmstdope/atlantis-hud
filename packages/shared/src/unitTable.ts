@@ -428,16 +428,55 @@ export function silverShown(silver: UnitSilver | null, countUpkeep: boolean): nu
 
 
 /**
- * Whether something is wrong with this unit's money: it ends below zero, or its orders spend more
- * than the silver reaching it in time can cover - a purchase the game will refuse even though the
- * month ends in credit (`ah-uwa3`).
+ * Whether the Silver figure is drawn red: the unit ends the month below zero.
  *
- * Lifted out of `UnitTableDock` so the cell's colour and the popup's amber sentence are one
- * decision (`ah-rgkk.4.3`).
+ * Red has that one meaning (`ah-ottr`). A unit that ends in credit but whose orders spend more
+ * than the silver reaching it in time can cover (`ah-uwa3`) keeps an ordinary figure and shows
+ * `silverShortfall` beside it instead - a positive figure in an error colour read as a mistake.
+ *
+ * Lifted out of `UnitTableDock` so the cell's colour and the popup's sentences are one decision
+ * (`ah-rgkk.4.3`). `silver` is kept so every call site reads the same pair as `silverShortfall`.
  */
-export function silverIsRed(shown: number | null, silver: UnitSilver | null): boolean {
-  if (shown !== null && shown < 0) return true;
-  return (silver?.shortForOrders ?? 0) > 0;
+export function silverIsRed(shown: number | null, _silver: UnitSilver | null): boolean {
+  return shown !== null && shown < 0;
+}
+
+/**
+ * What the cell writes beside the figure as `<N> short`: how far this unit's own orders outrun
+ * the silver reaching it in time, or `null` for nothing.
+ *
+ * Nothing beside a negative figure (choice **N1**, `ah-ottr`): it is already red and already says
+ * money is missing, and two red numbers in one cell compete. The hover gives both amounts.
+ */
+export function silverShortfall(shown: number | null, silver: UnitSilver | null): number | null {
+  const short = silver?.shortForOrders ?? 0;
+  if (short <= 0 || (shown !== null && shown < 0)) {
+    return null;
+  }
+  return short;
+}
+
+/**
+ * How much of the shortfall a narrow Silver column can hold (`ah-ottr`): spelled out, then `▾`
+ * and the number, then `▾` alone - so the figure is never what is cut first and a shortfall is
+ * never hidden completely.
+ */
+export type ShortfallForm = "long" | "short" | "cut";
+
+/** What one form reads: `8650 short`, `▾8650`, `▾…`. */
+export function shortfallText(form: ShortfallForm, amount: number): string {
+  if (form === "long") {
+    return `${amount} short`;
+  }
+  return form === "short" ? `\u25be${amount}` : "\u25be\u2026";
+}
+
+/** The next form to try: one step narrower while the text overflows, and no narrower than `cut`. */
+export function nextShortfallForm(form: ShortfallForm, overflowing: boolean): ShortfallForm {
+  if (!overflowing) {
+    return form;
+  }
+  return form === "long" ? "short" : "cut";
 }
 
 declare const unitRowKeyBrand: unique symbol;

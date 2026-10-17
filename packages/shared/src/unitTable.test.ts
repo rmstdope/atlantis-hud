@@ -26,6 +26,9 @@ import {
   dropBoundaryX,
   orderOf,
   silverIsRed,
+  silverShortfall,
+  shortfallText,
+  nextShortfallForm,
   silverShown,
   shareOf,
   REORDERABLE_COLUMNS,
@@ -679,15 +682,52 @@ describe("silverIsRed", () => {
     expect(silverIsRed(0, forecast({}))).toBe(false);
   });
 
-  // `ah-uwa3`: a month that ends in credit still fails if the silver does not reach the unit in
-  // time for the order that spends it.
-  it("marks a unit that cannot pay for its own orders", () => {
-    expect(silverIsRed(40, forecast({ shortForOrders: 95 }))).toBe(true);
-    expect(silverIsRed(40, forecast({ shortForOrders: 0 }))).toBe(false);
+  // `ah-ottr`: red keeps one meaning, money missing at month end. A unit in credit that cannot
+  // pay its own orders shows its shortfall beside the figure instead (`silverShortfall`).
+  it("leaves a unit in credit that cannot pay for its own orders unred", () => {
+    expect(silverIsRed(40, forecast({ shortForOrders: 95 }))).toBe(false);
+    expect(silverIsRed(0, forecast({ shortForOrders: 95 }))).toBe(false);
   });
 
   it("says nothing about a unit with no forecast", () => {
     expect(silverIsRed(null, null)).toBe(false);
+  });
+});
+
+describe("silverShortfall", () => {
+  const forecast = (overrides: Partial<UnitSilver>): UnitSilver =>
+    aUnitSilver({ regionId: "1:7,53", ...overrides });
+
+  it("is what the orders are short of, for a unit that ends the month in credit", () => {
+    expect(silverShortfall(33, forecast({ shortForOrders: 8650 }))).toBe(8650);
+    expect(silverShortfall(0, forecast({ shortForOrders: 60 }))).toBe(60);
+  });
+
+  // Choice N1: a negative figure is already red and already says money is missing.
+  it("is nothing beside a figure that ends the month in debt", () => {
+    expect(silverShortfall(-50, forecast({ shortForOrders: 30 }))).toBeNull();
+  });
+
+  it("is nothing for a unit whose orders are paid, or that has no forecast", () => {
+    expect(silverShortfall(40, forecast({ shortForOrders: 0 }))).toBeNull();
+    expect(silverShortfall(40, forecast({ shortForOrders: null }))).toBeNull();
+    expect(silverShortfall(null, null)).toBeNull();
+  });
+});
+
+describe("the shortfall's three widths", () => {
+  it("is spelled out, then the arrow and the number, then the arrow alone", () => {
+    expect(shortfallText("long", 8650)).toBe("8650 short");
+    expect(shortfallText("short", 8650)).toBe("\u25be8650");
+    expect(shortfallText("cut", 8650)).toBe("\u25be\u2026");
+  });
+
+  it("gives way one step at a time while it overflows, and never past the arrow", () => {
+    expect(nextShortfallForm("long", true)).toBe("short");
+    expect(nextShortfallForm("short", true)).toBe("cut");
+    expect(nextShortfallForm("cut", true)).toBe("cut");
+    expect(nextShortfallForm("long", false)).toBe("long");
+    expect(nextShortfallForm("short", false)).toBe("short");
   });
 });
 

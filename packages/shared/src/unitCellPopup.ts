@@ -34,6 +34,7 @@ import { andList, refusedProductReason, shortItems, shortName, shortSentence } f
 import { isUnfinishedShipName, type StructureFinish } from "./unfinishedMark";
 import { newShipStructureNote } from "./newShip";
 import {
+  CANNOT_PAY,
   silverCauseGroups,
   silverCauseLabel,
   silverNoteLines,
@@ -163,6 +164,11 @@ export type ColumnPopup = {
   notes: string[];
   /** One amber sentence, or null. */
   warning: string | null;
+  /**
+   * One red sentence drawn directly under the title, before the lines, or null (`ah-ottr`): the
+   * Silver cell's shortfall and what it does to the order. Every other column leaves it null.
+   */
+  alert: string | null;
   /**
    * Whether this month changes the cell - see `PopupMonth`. The shared no-change sentence is added
    * only for `unchanged`, and not even then where the popup words its month itself (the flags, the
@@ -787,6 +793,7 @@ export function popupForCell(
       lines: body.lines.slice(0, MAX_LINES),
       notes,
       warning: body.warning ?? null,
+      alert: body.alert ?? null,
       month: body.month
     }
   };
@@ -816,6 +823,8 @@ type Body = {
   /** Everything else the popup says: what the figures are, what is missing, what is guessed. */
   notes: string[];
   warning?: string | null;
+  /** The red first line - see `ColumnPopup.alert`. */
+  alert?: string | null;
   /** Whether this month changes the cell, worked out from the body's data (`PopupMonth`). */
   month: PopupMonth;
   /**
@@ -2163,10 +2172,35 @@ export function silverTotalLine(
 }
 
 /**
+ * The red line that opens the Silver popup, or `null` (`ah-ottr`): how far the unit's own orders
+ * outrun the silver reaching it in time, and what that does to the order.
+ *
+ * A cut purchase says how many it buys - `rules/buy`: a unit that "can't afford as many as
+ * [quantity] ... will attempt to buy as many as it can". A unit that also ends the month in debt
+ * gives both amounts, since its cell shows only the red figure (choice **N1**).
+ */
+export function silverAlert(silver: UnitSilver, shown: number | null): string | null {
+  const short = silver.shortForOrders ?? 0;
+  if (short <= 0) {
+    return null;
+  }
+  const tail = CANNOT_PAY[silver.shortOn ?? "orders"];
+  if (shown !== null && shown < 0) {
+    return `Ends the month ${-shown} short, and ${short} short of what ${tail}.`;
+  }
+  const buy = silver.shortOn === "buy" ? silver.shortBuy : null;
+  if (buy) {
+    return `${short} short: it buys ${buy.bought === 0 ? "none" : buy.bought} of the ${buy.orderedNamed} ordered.`;
+  }
+  return `${short} short of what ${tail}.`;
+}
+
+/**
  * The amber sentence(s) explaining the cell's marks (decision **W1**), or `null`.
  *
  * Red first, because it is the figure itself; the two are joined into one paragraph for a unit that
- * carries both.
+ * carries both. A red figure is only ever a month ending in debt (`ah-ottr`), and for a unit that is
+ * also short the popup's first line already says so, so it is not said twice.
  */
 function silverMarkWarning(
   silver: UnitSilver,
@@ -2174,12 +2208,8 @@ function silverMarkWarning(
   warned: boolean
 ): string | null {
   const parts: string[] = [];
-  if (silverIsRed(shown, silver)) {
-    parts.push(
-      shown !== null && shown < 0
-        ? `A red figure in the cell: this unit ends the month ${-shown} short.`
-        : "A red figure in the cell: this unit cannot pay for its own orders out of silver that reaches it in time."
-    );
+  if (silverIsRed(shown, silver) && (silver.shortForOrders ?? 0) <= 0) {
+    parts.push(`A red figure in the cell: this unit ends the month ${-shown!} short.`);
   }
   if (warned) {
     parts.push(
@@ -2330,7 +2360,13 @@ function silverLedger(unit: PreviewedUnit, facts: PopupFacts): Omit<Body, "month
     countUpkeep: facts.countUpkeep,
     upkeepLinesDrawn: paidByMates > 0
   };
-  const notes = silverNoteLines(noteFacts, [...groups, ...upkeepShares]);
+  const alert = silverAlert(silver, shownNumeric);
+  // The first line says the shortfall, so the lower sentence that said it goes (`ah-ottr`).
+  const notes = silverNoteLines(
+    noteFacts,
+    [...groups, ...upkeepShares],
+    alert === null ? [] : ["cannot-pay"]
+  );
   if (silver.doubt !== null) {
     // Above the doubt's own sentence, which says *why* it could not be added up.
     notes.unshift("This month cannot be added up, so what moved this unit's silver is not listed.");
@@ -2343,7 +2379,13 @@ function silverLedger(unit: PreviewedUnit, facts: PopupFacts): Omit<Body, "month
     notes.push(noStudyFeeSentence(silver.noStudyFee));
   }
 
-  return { causes: [], lines, notes, warning: silverMarkWarning(silver, shownNumeric, facts.silverWarned) };
+  return {
+    causes: [],
+    lines,
+    notes,
+    warning: silverMarkWarning(silver, shownNumeric, facts.silverWarned),
+    alert
+  };
 }
 
 /**
@@ -2463,7 +2505,13 @@ export function popupAsText(popup: ColumnPopup): string {
     return `${parts.join(", ")}.`;
   });
 
-  return [...lines, ...popup.notes, ...(popup.warning ? [popup.warning] : [])]
+  // The red first line first, as it is drawn (`ah-ottr`).
+  return [
+    ...(popup.alert ? [popup.alert] : []),
+    ...lines,
+    ...popup.notes,
+    ...(popup.warning ? [popup.warning] : [])
+  ]
     .join(" ")
     .trim();
 }

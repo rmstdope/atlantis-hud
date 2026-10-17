@@ -862,7 +862,9 @@ describe("the Silver column", () => {
     expect(markup).toContain("-140");
   });
 
-  it("a_unit_that_cannot_pay_for_its_orders_reads_red", () => {
+  // `ah-ottr`: red is money missing at month end and nothing else. A unit in credit whose orders
+  // cannot all be paid keeps an ordinary figure, with the shortfall beside it in small red text.
+  it("a_unit_that_cannot_pay_for_its_orders_shows_the_shortfall_beside_a_plain_figure", () => {
     const markup = drawSilver(
       forecast({
         income: 120,
@@ -872,11 +874,16 @@ describe("the Silver column", () => {
         shortForOrders: 60
       })
     );
-    expect(markup).toContain("text-right tabular-nums text-danger");
-    expect(markup).toContain(">60<");
+    expect(markup).not.toContain("text-right tabular-nums text-danger");
+    const cell = silverCell(markup);
+    expect(cell).toContain(">60<");
+    expect(cell).toContain('data-testid="silver-shortfall-1"');
+    expect(cell).toContain("60 short");
+    // The figure comes first; the shortfall follows it.
+    expect(cell.indexOf(">60<")).toBeLessThan(cell.indexOf("60 short"));
   });
 
-  it("a_zero_that_cannot_pay_its_orders_is_red_not_dim", () => {
+  it("a_zero_that_cannot_pay_its_orders_is_neither_red_nor_dim", () => {
     const markup = drawSilver(
       forecast({
         income: 60,
@@ -886,8 +893,30 @@ describe("the Silver column", () => {
         shortForOrders: 60
       })
     );
-    expect(markup).toContain("text-right tabular-nums text-danger");
+    expect(markup).not.toContain("text-right tabular-nums text-danger");
     expect(markup).not.toContain('<span class="text-ink-dim">0</span>');
+    expect(silverCell(markup)).toContain("60 short");
+  });
+
+  // The navigator's answer (2026-10-17): the warning mark stays first, where it is today.
+  it("a_warned_unit_that_cannot_pay_keeps_the_mark_first_and_the_shortfall_last", () => {
+    const cell = silverCell(drawSilver(forecast({ atMonthEnd: 33, shortForOrders: 8650 }), ["1"]));
+    expect(cell).toContain("unit-silver-1");
+    expect(cell.indexOf("⚠")).toBeLessThan(cell.indexOf(">33<"));
+    expect(cell.indexOf(">33<")).toBeLessThan(cell.indexOf("8650 short"));
+  });
+
+  // Choice N1: the red negative already says money is missing; the hover gives both amounts.
+  it("a_unit_in_debt_that_is_also_short_shows_its_red_figure_alone", () => {
+    const markup = drawSilver(forecast({ atMonthEnd: -50, shortForOrders: 30 }));
+    expect(markup).toContain("text-right tabular-nums text-danger");
+    expect(silverCell(markup)).not.toContain("short");
+  });
+
+  it("a_unit_whose_orders_are_paid_shows_no_shortfall", () => {
+    expect(silverCell(drawSilver(forecast({ atMonthEnd: 44, shortForOrders: 0 })))).not.toContain(
+      "short"
+    );
   });
 
   it("a_warned_unit_in_credit_still_shows_the_warning", () => {

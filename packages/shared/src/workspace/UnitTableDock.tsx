@@ -89,6 +89,7 @@ import {
   unitRefOf,
   unitRowSelector,
   silverIsRed,
+  silverShortfall,
   silverShownUI,
   type ShownSilver,
   type ColumnShares,
@@ -160,6 +161,7 @@ import type { ReportedLongOrder } from "../ordersDocument";
 import { ColumnReorderHandle } from "./ColumnReorderHandle";
 import { ColumnSplitter } from "./ColumnSplitter";
 import { Absent, SeverityMark, UNIT_LINK_CLASS } from "./primitives";
+import { SilverShortfall } from "./SilverShortfall";
 import { UnitCellPopup } from "./UnitCellPopup";
 import { UnitTooltip } from "./UnitTooltip";
 import { ItemsHiddenLine, Marked, MarkedItemPart } from "./UnitFilterMarks";
@@ -2410,6 +2412,11 @@ function UnitRow({
   // The money itself was never read, so the cell says so in words. The other read-doubt keeps the
   // dim `?`, which already means exactly "this month could not be priced" (`ah-l09a.4`).
   const moneyNotKnown = silverWasNeverRead(silver);
+  // What this unit's orders are short of, written beside a figure that is not negative
+  // (`ah-ottr`, choice N1). A dissolving unit has no month end to write it beside.
+  const shortfall = dissolving || moneyNotKnown ? null : silverShortfall(shownNumeric, silver);
+  const shortfallMark =
+    shortfall === null ? null : <SilverShortfall unitId={unit.unitId} amount={shortfall} />;
   const figure = moneyNotKnown ? (
     <span className="text-warn">{NOT_KNOWN}</span>
   ) : dissolving ? (
@@ -2806,7 +2813,7 @@ function UnitRow({
       <Td
         className={`text-right tabular-nums${
           !dissolving && silverIsRed(shownNumeric, silver) ? " text-danger" : ""
-        }`}
+        }${shortfall !== null ? " overflow-hidden whitespace-nowrap" : ""}`}
       >
         {silver === null ? (
           mergedFrom ? (
@@ -2828,13 +2835,18 @@ function UnitRow({
             <span className="sr-only">unit {unit.unitId} </span>
             <SeverityMark severity="warning" />
             {figure}
+            {shortfallMark}
           </button>
         ) : (
           <span
             className={
               // `silverIsDim(null)` is true, so without the first term the amber words would sit
               // inside a dim wrapper.
-              !moneyNotKnown && !silverIsRed(shownNumeric, silver) && silverIsDim(shownSilver)
+              // A short `0` is a number to act on, so it is not dimmed (`ah-ottr`).
+              !moneyNotKnown &&
+              !silverIsRed(shownNumeric, silver) &&
+              shortfall === null &&
+              silverIsDim(shownSilver)
                 ? "text-ink-dim"
                 : undefined
             }
@@ -2842,6 +2854,7 @@ function UnitRow({
             {figure}
           </span>
         )}
+        {warned ? null : shortfallMark}
         {explain("silver")}
       </Td>
     )

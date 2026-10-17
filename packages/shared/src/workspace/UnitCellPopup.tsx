@@ -35,6 +35,13 @@ export function UnitCellPopup({
     >
       <p className="m-0 font-medium text-brass">{popup.title}</p>
 
+      {/* The Silver cell's shortfall, in red, before the lines (`ah-ottr`). */}
+      {popup.alert ? (
+        <p data-testid="unit-cell-popup-alert" className="m-0 mb-1 text-pane-sm font-medium text-danger">
+          {popup.alert}
+        </p>
+      ) : null}
+
       {popup.lines.map((line, index) => (
         <div key={`${line.label}-${index}`} className="flex justify-between gap-3">
           <PopupLineLabel line={line} />
