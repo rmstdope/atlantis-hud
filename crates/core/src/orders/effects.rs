@@ -250,8 +250,11 @@ pub enum TransportTargetReason {
     NotCaravanseraiOwner,
     /// The sender is a quartermaster that owns no Caravanserai once this month's boardings,
     /// promotions and movement have run, and the shipment needs one: a DISTRIBUTE to a unit that
-    /// is no quartermaster, or a TRANSPORT beyond the flat reach (`CheckTransportOrders`: "Unit
-    /// does not own transport structure.", `ah-1jl9`). The sender's fault, not the target's.
+    /// is no quartermaster, or a TRANSPORT beyond the flat reach. `CheckTransportOrders` refuses
+    /// the first with "DISTRIBUTE: Unit does not own transport structure." and the second, whose
+    /// range it caps at `LOCAL_TRANSPORT`, with "Recipient ... is too far away."; the navigator
+    /// chose to name the sender's missing Caravanserai for both, since that is what the player
+    /// can fix (`ah-1jl9`).
     SenderOwnsNoCaravanserai,
     /// The report does not show the target at all, or shows a foreign Caravanserai owner whose
     /// skills it never discloses: no evidence either way.

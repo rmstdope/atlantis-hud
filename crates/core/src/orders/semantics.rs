@@ -59092,7 +59092,7 @@ BUILD
 
     /// The long reach between quartermasters is the transport structure's owner's alone:
     /// `CheckTransportOrders` gives any other sender `LOCAL_TRANSPORT` and refuses a TRANSPORT
-    /// beyond it ("Unit does not own transport structure."). Here 899 is listed first inside the
+    /// beyond it ("Recipient ... is too far away."). Here 899 is listed first inside the
     /// sender's Caravanserai, so the quartermaster 900 ships no farther than anybody (`ah-1jl9`).
     #[test]
     fn a_quartermaster_that_owns_no_caravanserai_ships_only_the_flat_reach() {

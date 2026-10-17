@@ -44,7 +44,8 @@ fn orders(trader: &str, others: &[(&str, &str)]) -> String {
         .map(|template| template.text)
         .expect("the fixture carries an orders template");
     // The Trader's own `@study mani` would replace a MOVE as its month-long order.
-    let mut orders = without_standing_month_orders(&template, &[TRADER]);
+    // Rebecca's too, for the case where she studies.
+    let mut orders = without_standing_month_orders(&template, &[TRADER, REBECCA]);
     let mut blocks = vec![
         (TRADER, format!("{trader}\n{DISTRIBUTES}")),
         (IVANHOE, format!("GIVE 6857 600 SILV\n{SHIPMENT}")),
@@ -270,4 +271,23 @@ fn a_promote_of_a_unit_outside_hands_nothing_over() {
         .map(|received| received.amount)
         .collect();
     assert_eq!(received, vec![1000]);
+}
+
+/// A refusal the target's own month may undo is not warned about, whichever end it names: Rebecca
+/// enters the Caravanserai the Trader leaves, so she owns it, and studies the quartermaster skill
+/// before the shipments run (`rules/sequenceofevents`), after which she accepts from anybody within
+/// the flat reach (`ah-kjjv`, `ah-1jl9`).
+#[test]
+fn a_shipment_the_targets_month_may_make_good_is_not_warned_about() {
+    let orders = orders(
+        "LEAVE\nTRANSPORT 1163 77 SILV",
+        &[(REBECCA, "ENTER 6\nSTUDY QUAM")],
+    );
+    let warned = refusals(&orders);
+    assert!(
+        !warned
+            .iter()
+            .any(|(unit, message)| unit == TRADER && message.contains("77 SILV")),
+        "{warned:?}"
+    );
 }

@@ -500,9 +500,11 @@ pub(crate) enum Acceptance {
     NotCaravanseraiOwner,
     /// The sender is a quartermaster that owns no Caravanserai when the shipments run, and the
     /// shipment needs one: to a unit that is no quartermaster, or beyond the flat reach.
-    /// `CheckTransportOrders` blames the sender here ("Unit does not own transport structure."),
-    /// so the sentence does too (`ah-1jl9`, the navigator's choice). Set by [`Shipping::judge`]
-    /// over [`acceptance`]'s answer, which knows nothing of distance.
+    /// `CheckTransportOrders` blames the sender for a DISTRIBUTE ("Unit does not own transport
+    /// structure.") and the distance for a TRANSPORT ("Recipient ... is too far away.", its range
+    /// capped at `LOCAL_TRANSPORT`); the sentence names the sender's missing Caravanserai for
+    /// both, the navigator's choice (`ah-1jl9`). Set by [`Shipping::judge`] over [`acceptance`]'s
+    /// answer, which knows nothing of distance.
     SenderOwnsNoCaravanserai,
     EligibilityUnknown,
     AcceptanceUnknown,
@@ -884,8 +886,8 @@ impl Shipping {
                 .is_some_and(|facts| facts.caravanserai_owner);
         let target_qm = facts.is_some_and(|facts| facts.quartermaster);
         // The long reach is the transport structure's owner's alone: `CheckTransportOrders` gives
-        // anyone else `LOCAL_TRANSPORT` and refuses a TRANSPORT beyond it ("Unit does not own
-        // transport structure."), so a quartermaster that owns none ships like anybody (`ah-1jl9`).
+        // anyone else `LOCAL_TRANSPORT` and refuses a TRANSPORT beyond it ("Recipient ... is too
+        // far away."), so a quartermaster that owns none ships like anybody (`ah-1jl9`).
         let reach = reach_for(
             sender_can_distribute,
             target_qm,
@@ -938,7 +940,12 @@ impl Shipping {
                 Acceptance::NotQuartermaster | Acceptance::NotCaravanseraiOwner => {
                     facts.is_some_and(|facts| !facts.own) || self.unsettled.contains(target)
                 }
-                Acceptance::SenderOwnsNoCaravanserai => self.unsettled.contains(sender),
+                // The sender's own month can undo it, and so can the target's: a target that ends
+                // the month a quartermaster owning a Caravanserai accepts from anybody within the
+                // flat reach.
+                Acceptance::SenderOwnsNoCaravanserai => {
+                    self.unsettled.contains(sender) || self.unsettled.contains(target)
+                }
                 _ => false,
             },
             acceptance,
