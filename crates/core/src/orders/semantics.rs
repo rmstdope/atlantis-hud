@@ -8998,8 +8998,9 @@ fn check_emptied_buys(
         let Some(ordered) = hex.find(&dead.unit_id) else {
             continue;
         };
-        // "this market has" is only true where the unit had the whole line to itself; where its
-        // faction-mates split it, the unit never had more than its share to buy (round-2 Q1).
+        // "this market has" is only true where the unit had the whole line to itself (round-2
+        // Q1). Since `ah-ecfl` a dead buy is only recorded there, as a later line on a shared one
+        // enlarged the share; the other wording stays as a guard on the share's arithmetic.
         let limit = if dead.available == dead.market_has {
             "this market has"
         } else {
@@ -11063,8 +11064,15 @@ fn buy(
     }
     // `allowed == 0` as well as `already > 0`: since `ah-omn7` a line can buy nothing because the
     // unit cannot pay, and `dead_buys` says the *goods* are gone, not the money.
+    //
+    // Only where the unit had the whole line to itself (`ah-ecfl`): on a line faction-mates share,
+    // `Game::GetBuyAmount` counts this order as an attempt of its own, so it enlarged the share
+    // its earlier lines spent, and deleting it is no free fix.
     if bought == 0 && allowed == 0 && already > 0 {
-        if let Some(share) = standing.market_share_of(&tag, MarketSide::Buying) {
+        if let Some(share) = standing
+            .market_share_of(&tag, MarketSide::Buying)
+            .filter(|share| *share >= offer.amount)
+        {
             ledger.dead_buys.push(DeadBuy {
                 unit_id: who.clone(),
                 tag: tag.clone(),
@@ -34560,10 +34568,12 @@ mod tests {
             );
         }
 
-        /// Round-2 Q1: where the unit's own earlier lines only ever had a *share* of the line,
-        /// the sentence says "it can have here", not "this market has".
+        /// `ah-ecfl`, the navigator's answer to review finding 1, superseding round-2 Q1: where
+        /// faction-mates share the line, `Game::GetBuyAmount` counts the unit's second line as a
+        /// second attempt, so it enlarges the unit's share - 4 of 5 here, against 5 * 5 / 7 for
+        /// one line - and deleting it is not the free fix the warning would tell the player.
         #[test]
-        fn a_shared_line_names_the_share_not_the_market() {
+        fn a_second_buy_all_on_a_shared_line_is_not_warned() {
             let hex = ReportRegion {
                 for_sale: vec![grain_line(5, 12)],
                 ..region(vec![
@@ -34578,11 +34588,35 @@ mod tests {
                 CheckOptions::default(),
             );
 
-            let findings = findings_for(&review);
-            assert_eq!(findings.len(), 1, "{:?}", codes(&review.findings));
-            assert_eq!(
-                findings[0].message,
-                "an earlier order of its own has already bought all 4 grain it can have here, so this buys nothing"
+            assert!(
+                findings_for(&review).is_empty(),
+                "{:?}",
+                codes(&review.findings)
+            );
+        }
+
+        /// `ah-ecfl`, the exact form of the case above: a `BUY 5` after a `BUY ALL` that took the
+        /// unit's whole share of a shared line still enlarged that share.
+        #[test]
+        fn a_second_exact_buy_on_a_shared_line_is_not_warned() {
+            let hex = ReportRegion {
+                for_sale: vec![grain_line(5, 12)],
+                ..region(vec![
+                    with_silver(unit("2390"), 100),
+                    with_silver(unit("2391"), 100),
+                ])
+            };
+            let review = review_turn(
+                &report(vec![hex]),
+                "unit 2390\nBUY ALL grain\nBUY 5 grain\nunit 2391\nBUY 2 grain\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert!(
+                findings_for(&review).is_empty(),
+                "{:?}",
+                codes(&review.findings)
             );
         }
 
@@ -35101,6 +35135,29 @@ mod tests {
 
             assert_eq!(silver_of(&review, "2390").expense, Some(9 * 60));
             assert_eq!(silver_of(&review, "2391").expense, Some(11 * 60));
+        }
+
+        /// `ah-ecfl`, review finding 2. The oversubscription warning states a unit's `BUY ALL`
+        /// lines as the line once, even where no buyer wrote a bounded `BUY` - the claims the
+        /// line is divided by count the doubled line twice, and must not leak into the warning.
+        #[test]
+        fn a_doubled_buy_all_is_stated_as_the_line_once() {
+            let review = market_review(
+                vec![],
+                vec![line(20, 60)],
+                vec![trader("2390", 0, 20_000), trader("2391", 0, 20_000)],
+                "unit 2390\nBUY ALL horse\nBUY ALL horse\nunit 2391\nBUY ALL horse\n",
+            );
+
+            let overruns: Vec<&str> = review
+                .findings
+                .iter()
+                .filter(|finding| finding.code == codes::REGION_POOL_OVERSUBSCRIBED)
+                .map(|finding| finding.message.as_str())
+                .collect();
+            // Each unit's `BUY ALL` lines stated once: 20 + 20, not the 60 its claims divide by.
+            let stated = "your units here buy 40 horse between them and this market has 20";
+            assert_eq!(overruns, vec![stated, stated], "{:?}", review.findings);
         }
 
         /// `ah-lauy`, increment 5. Regression net: a stated number that overshoots the line is a
