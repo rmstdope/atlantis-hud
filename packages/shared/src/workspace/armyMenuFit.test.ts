@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { edgeFades, fitArmyMenu, MENU_ANCHOR_GAP, MENU_EDGE_MARGIN } from "./armyMenuFit";
+import {
+  clearOfEdges,
+  edgeFades,
+  fitArmyMenu,
+  MENU_ANCHOR_GAP,
+  MENU_EDGE_MARGIN
+} from "./armyMenuFit";
 
 /** A naming line and a footer of 60px, rows of 24px, a button 24px tall. */
 const fit = (anchorTop: number, viewportHeight: number, naturalHeight: number) =>
@@ -86,5 +92,19 @@ describe("which edges of the army rows fade", () => {
       top: true,
       bottom: false
     });
+  });
+});
+
+describe("keeping the right-click list clear of the window's top and bottom", () => {
+  it("leaves a list that already sits clear where it is", () => {
+    expect(clearOfEdges(100, 200, 600)).toBe(100);
+  });
+
+  it("moves a list flush with the top down to the margin", () => {
+    expect(clearOfEdges(0, 584, 600)).toBe(MENU_EDGE_MARGIN);
+  });
+
+  it("moves a list running past the bottom up to the margin", () => {
+    expect(clearOfEdges(500, 200, 600)).toBe(600 - 200 - MENU_EDGE_MARGIN);
   });
 });

@@ -783,7 +783,7 @@ test("the right-click list is capped and scrolls the same way", async ({ page })
 
   const viewport = page.viewportSize()!;
   const box = (await menu.boundingBox())!;
-  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y).toBeGreaterThanOrEqual(4);
   expect(box.y + box.height).toBeLessThanOrEqual(viewport.height - 4);
   await expect(menu.getByText("into…")).toBeInViewport();
   await expect(menu.getByTestId("add-to-army-new")).toBeInViewport();
@@ -845,4 +845,36 @@ test("the list hung outside the dock still behaves as the button's own", async (
   await page.keyboard.press("Escape");
   await button.click();
   expect(await list.evaluate((el) => el.scrollTop)).toBe(0);
+});
+
+test("Shift+Tab from the list's first Army goes back to the button", async ({ page }) => {
+  await workspace(page);
+  await manyArmies(page, 3);
+  await selectUnit(page, OWN_UNIT);
+  const button = page.getByTestId("add-to-army");
+  await button.click();
+
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Host 01", exact: true })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(button).toBeFocused();
+});
+
+test("the bulk line's list is kept inside the window too", async ({ page }) => {
+  await workspace(page);
+  await manyArmies(page, 20);
+  const row = rows(page);
+  await row.nth(0).click();
+  await row.nth(1).click({ modifiers: ["Shift"] });
+  await expect(page.getByTestId("unit-bulk-line")).toContainText("2 units picked.");
+
+  await page.getByTestId("bulk-add").click();
+  const panel = page.getByTestId("add-to-army-panel");
+  await expect(panel).toContainText("2 units into…");
+  const viewport = page.viewportSize()!;
+  const box = (await panel.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(4);
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height - 4);
+  await expect(page.getByTestId("add-to-army-new")).toBeInViewport();
+  await expect(panel.getByText("into…")).toBeInViewport();
 });

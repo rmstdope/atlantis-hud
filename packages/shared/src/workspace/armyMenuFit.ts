@@ -50,6 +50,15 @@ export function fitArmyMenu(m: {
   return { side, maxHeight: Math.max(room, floor) };
 }
 
+/**
+ * The right-click list's top, moved so it stays `MENU_EDGE_MARGIN` clear of both window edges.
+ * `placeTooltip` keeps a box inside the window but lets it touch an edge; the list's cap
+ * (`100vh - 16px`) always leaves room for both margins.
+ */
+export function clearOfEdges(top: number, height: number, viewportHeight: number): number {
+  return Math.max(MENU_EDGE_MARGIN, Math.min(top, viewportHeight - height - MENU_EDGE_MARGIN));
+}
+
 export type EdgeFades = { top: boolean; bottom: boolean };
 
 /** A fade on each edge of the army rows that has rows hidden past it. */

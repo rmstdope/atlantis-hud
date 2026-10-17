@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { placeTooltip, type Point } from "../unitTooltip";
 import { ArmyMenuItems, useArmyRowsFades } from "./AddToArmyMenu";
+import { clearOfEdges } from "./armyMenuFit";
 import { usePopoverDismiss } from "./popover";
 
 /**
@@ -73,13 +74,10 @@ export function UnitContextMenu({
       node.focus({ preventScroll: true });
     }
     update();
-    setPlaced(
-      placeTooltip(
-        at,
-        { width: node.offsetWidth, height: node.offsetHeight },
-        { width: window.innerWidth, height: window.innerHeight }
-      )
-    );
+    const size = { width: node.offsetWidth, height: node.offsetHeight };
+    const placed = placeTooltip(at, size, { width: window.innerWidth, height: window.innerHeight });
+    // ah-gnmx: 8px clear of the top and bottom, as the button's list keeps.
+    setPlaced({ ...placed, top: clearOfEdges(placed.top, size.height, window.innerHeight) });
   }, [node, at, resized, update]);
 
   return createPortal(

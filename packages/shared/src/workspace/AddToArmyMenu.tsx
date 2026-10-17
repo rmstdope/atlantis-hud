@@ -241,6 +241,24 @@ export function AddToArmyMenu({
       ref={(node) => {
         chip.panelRef.current = node;
       }}
+      // Portalled to the end of the document, the list no longer follows its chip in tab order,
+      // so Shift+Tab from its first control would land at the far end of the app. Sent back to
+      // the chip instead, which is where it went while the list sat beside it.
+      onKeyDown={(event) => {
+        if (event.key !== "Tab" || !event.shiftKey) {
+          return;
+        }
+        const frame = frameRef.current;
+        const first = frame?.querySelector<HTMLElement>("button:not(:disabled)");
+        const active = document.activeElement;
+        if (active === frame || active === first) {
+          const trigger = chip.anchorRef.current?.querySelector<HTMLElement>("button");
+          if (trigger) {
+            event.preventDefault();
+            trigger.focus();
+          }
+        }
+      }}
       // Hidden until measured and placed, which is one layout pass and no painted frame. Zero
       // width: `PopoverFrame` is absolute and hangs its right edge off this holder's left.
       className="fixed z-50 w-0"
