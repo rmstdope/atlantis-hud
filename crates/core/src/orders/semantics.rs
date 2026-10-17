@@ -78770,8 +78770,7 @@ BUILD
             region_at("1:7,53", 7, 53, vec![resident]),
             None,
         );
-        let orders =
-            "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 903\nunit 902\nSELL 5 xyzzy\n";
+        let orders = "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 903\nunit 902\nSELL 5 xyzzy\n";
         let review = review_turn(&report, orders, Some(&trident()), CheckOptions::default());
         let passenger = silver_of(&review, "901");
         let fee = passenger.wanted_for_orders.expect("the study is priced");
