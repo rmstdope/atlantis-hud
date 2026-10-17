@@ -19775,6 +19775,35 @@ fn report_shortfalls(
         }
     }
 
+    // A STUDY refused for want of funds (`monthorders.cpp`: `Do1StudyOrder`, "STUDY: Not enough
+    // funds."), said on its own line wherever nothing above already marks it - the unit's own
+    // sentence sits at the first order to draw on its silver, which is often a BUY (`ah-wr2w`).
+    if options.emits(codes::NOT_ENOUGH_SILVER) {
+        for (ordered, study) in hex.units.iter().zip(&studies) {
+            let StudyOutcome::Refused { fee, short } = *study else {
+                continue;
+            };
+            let Some(placed) = ordered
+                .intents
+                .iter()
+                .find(|placed| matches!(placed.intent, Intent::Study { .. }))
+            else {
+                continue;
+            };
+            let finding = ordered.finding(
+                hex,
+                codes::NOT_ENOUGH_SILVER,
+                format!(
+                    "this STUDY will be refused: it costs ${fee} and only ${} is left to pay it \
+                     then",
+                    (fee - short).max(0),
+                ),
+                Some(placed),
+            );
+            push_unless_line_marked(findings, finding);
+        }
+    }
+
     // One mark for the hex, and only for its maintenance: an unflagged hex pools nothing else, so
     // the sentence names upkeep and nothing else either (`ah-e66j`, round 2 question 2). `costs`
     // rather than `spend`, because a fee is charged whatever a unit is told to do - telling a
@@ -61766,6 +61795,64 @@ BUILD
             ],
             "{:#?}",
             review.findings
+        );
+    }
+
+    /// The same, with a BUY ahead of the STUDY: market orders run before month-long ones
+    /// (`rules/sequenceofevents`), so the unit's own sentence sits on the BUY line, the first order
+    /// to draw on its silver. The STUDY line is told on its own: 902 buys one grain at $5 with its
+    /// $8 and has $3 left for combat's $10 (review of PR #1703, finding 1).
+    #[test]
+    fn a_refused_study_behind_a_buy_is_told_on_its_own_line() {
+        let hex = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 5,
+            }],
+            ..region(vec![
+                with_silver(unit("902"), 8),
+                with_silver(unit("903"), 100),
+            ])
+        };
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 902\nBUY 1 grain\nSTUDY COMB\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            line_messages(&review, "902", 3),
+            vec![
+                "this STUDY will be refused: it costs $10 and only $3 is left to pay it then"
+                    .to_string()
+            ],
+            "{:#?}",
+            review.findings
+        );
+    }
+
+    /// A GIVE cut short and a refused STUDY in one sentence: the clauses are joined, never a second
+    /// "so" (review of PR #1703, finding 2). 902 has $8, asks to give 20 and gives the 8
+    /// (`Game::DoGiveOrder`, `ah-4k84`), so nothing is left for combat's $10.
+    #[test]
+    fn a_cut_give_and_a_refused_study_share_one_sentence() {
+        let review = review_turn(
+            &report(vec![region(vec![
+                with_silver(unit("902"), 8),
+                with_silver(unit("903"), 100),
+            ])]),
+            "unit 902\nGIVE 903 20 SILV\nSTUDY COMB\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        let sentences = line_messages(&review, "902", 2);
+        assert_eq!(sentences.len(), 1, "{:#?}", review.findings);
+        assert!(
+            sentences[0]
+                .ends_with(", so it gives 8 of the 20 silver ordered and its STUDY is refused"),
+            "{sentences:?}"
         );
     }
 
