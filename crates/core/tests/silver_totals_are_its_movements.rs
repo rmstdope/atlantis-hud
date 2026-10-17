@@ -112,7 +112,8 @@ fn a_sharing_unit_says_where_its_loan_went() {
         .filter(|change| change.cause == SilverChangeCause::Lent)
         .collect();
 
-    assert_eq!(lent.len(), 1, "one loan, one line");
+    // One line per faction-mate it paid for, each naming it (`ah-myko`): eight students.
+    assert_eq!(lent.len(), 8, "one line per borrower: {lent:#?}");
     // $90 until `ah-0nwd`, when only non-sharers were lent to. The hex's sharing students
     // (12222's $500, 683's $656 and the rest) are lent their fees too now, and 3493 is drained
     // first, in hex order; the hex's total month end is unchanged.
@@ -128,9 +129,20 @@ fn a_sharing_unit_says_where_its_loan_went() {
     // $1942 until `ah-jmr8`, when a create-artifact cast began paying its inputs once per cast,
     // as the engine's `Game::RunCreateArtifact` does: 683's level 2 flaming sword costs $600, its
     // own, and borrows nothing.
-    assert_eq!(lent[0].amount, -1446, "signed out of the unit");
-    assert_eq!(lent[0].line, None, "the SHARE flag lent it, not an order");
-    assert_eq!(lent[0].other, None, "the hex's purse is not a unit");
+    assert_eq!(
+        lent.iter().map(|change| change.amount).sum::<i64>(),
+        -1446,
+        "signed out of the unit"
+    );
+    assert!(
+        lent.iter().all(|change| change.line.is_none()),
+        "the SHARE flag lent it, not an order"
+    );
+    assert!(
+        lent.iter()
+            .all(|change| change.other.is_some() && change.place.is_none()),
+        "each line names the faction-mate it paid for, in this hex (`ah-myko`): {lent:#?}"
+    );
 }
 
 /// A create-artifact CAST is charged its inputs once per cast, whatever it yields (`ah-jmr8`):

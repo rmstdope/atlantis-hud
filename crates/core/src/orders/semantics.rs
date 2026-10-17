@@ -977,7 +977,7 @@ pub fn review_turn(
     });
     lend_walking_sharers_silver(&mut hexes, &membership, StatePhase::Maintenance);
 
-    let mut lent_across: Vec<(UnitKey, i64)> = Vec::new();
+    let mut lent_across: Vec<LentAcross> = Vec::new();
     for (index, priced) in hexes.iter_mut().enumerate() {
         // Per hex, because the pools are: what one region's units ask of its tax base says nothing
         // about the next region's.
@@ -2963,7 +2963,7 @@ fn forecast_hex(
     transport_warning: bool,
     // What sharers arriving from other hexes lent this hex's units, by the arriving sharer's own
     // row: debited by `lend_across_hexes` once every hex's column exists (`ah-wyj8`).
-    lent_across: &mut Vec<(UnitKey, i64)>,
+    lent_across: &mut Vec<LentAcross>,
 ) {
     let Relief {
         shared_silver,
@@ -3398,7 +3398,14 @@ fn forecast_hex(
                     .iter()
                     .filter_map(|&(student, amount)| Some((students.get(student)?, amount)))
                     .collect();
-                for (other, place, amount) in split_loan(lent, &across, |student| {
+                // Whom it lent inside the hex, named as the upkeep line names them (`ah-myko`).
+                let in_hex: Vec<(String, i64)> = purse_for_orders.lent_to_each_in_hex[index]
+                    .iter()
+                    .map(|&(borrower, amount)| {
+                        (unit_label(hex, &hex.units[borrower].unit.unit_id), amount)
+                    })
+                    .collect();
+                for (other, place, amount) in split_loan(lent, &in_hex, &across, |student| {
                     (student.label.clone(), student.from.clone())
                 }) {
                     forecast.changes.push(SilverChange {
@@ -3413,12 +3420,13 @@ fn forecast_hex(
         }
         // What the hex's own sharers could not cover, a sharer arriving from elsewhere did - on its
         // own row, in the hex the report lists it in (`ah-wyj8`).
-        for (arrival, lends) in ledger
+        for (index, (arrival, lends)) in ledger
             .relief()
             .walking
             .arrivals_at(LendingMoment::MonthEnd)
             .iter()
             .zip(&purse_for_orders.arrivals_lend)
+            .enumerate()
         {
             if owing == 0 {
                 break;
@@ -3426,7 +3434,21 @@ fn forecast_hex(
             let lent = (*lends).min(owing);
             if lent > 0 {
                 owing -= lent;
-                lent_across.push((arrival.unit.clone(), lent));
+                // Whom it lent here, named in this hex, where its own row cannot see them
+                // (`ah-myko`).
+                let lent_to = purse_for_orders
+                    .arrivals_lent_to
+                    .get(index)
+                    .map(|lent_to| {
+                        lent_to
+                            .iter()
+                            .map(|&(borrower, amount)| {
+                                (unit_label(hex, &hex.units[borrower].unit.unit_id), amount)
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                lent_across.push((arrival.unit.clone(), lent_to, lent));
             }
         }
     }
@@ -3469,7 +3491,23 @@ fn forecast_hex(
                     .collect()
             })
             .unwrap_or_default();
-        let lines = split_loan(borrowed, &across, |(label, _)| {
+        // Who lent it inside the hex: a unit of it, or a sharer arriving from another (`ah-myko`).
+        let arrivals = ledger.relief().walking.arrivals_at(LendingMoment::MonthEnd);
+        let in_hex: Vec<(String, i64)> = purse_for_orders.lent_by[index]
+            .iter()
+            .map(|&(lender, amount)| {
+                let label = match lender {
+                    Lender::Unit(lender) => unit_label(hex, &hex.units[lender].unit.unit_id),
+                    // Aligned with the arrivals by construction; a miss still names a unit.
+                    Lender::Arrival(arrival) => arrivals.get(arrival).map_or_else(
+                        || "a unit arriving here".to_string(),
+                        |arrival| arrival.label.clone(),
+                    ),
+                };
+                (label, amount)
+            })
+            .collect();
+        let lines = split_loan(borrowed, &in_hex, &across, |(label, _)| {
             (
                 label.clone(),
                 elsewhere
@@ -17078,6 +17116,43 @@ impl SharerStock {
         (lent, owing)
     }
 
+    /// Who paid each overdraft when every one is drained ([`SharerStock::drained`]): for each
+    /// party, the `(lender party, amount)` draws that paid it, the claimants taken in drain order
+    /// and each drawn on the lenders' stock in drain order - the engine's `Unit::ConsumeShared`
+    /// (`unit.cpp`), run for each borrower's order in region order. Where the lenders cover every
+    /// overdraft, the draws on each lender add up to what `drained` says it lent, so the loan can
+    /// name its parties where the totals cannot (`ah-myko`).
+    fn drained_paid_by(&self) -> Vec<PaidBy> {
+        let mut stock: Vec<i64> = self
+            .parties
+            .iter()
+            .map(|party| {
+                if party.lends {
+                    party.position.max(0)
+                } else {
+                    0
+                }
+            })
+            .collect();
+        let mut paid_by: Vec<PaidBy> = vec![Vec::new(); self.parties.len()];
+        for &claimant in &self.order {
+            let mut owing = (-self.parties[claimant].position).max(0);
+            for &i in &self.order {
+                if owing == 0 {
+                    break;
+                }
+                let drawn = stock[i].min(owing);
+                if drawn == 0 {
+                    continue;
+                }
+                stock[i] -= drawn;
+                owing -= drawn;
+                paid_by[claimant].push((i, drawn));
+            }
+        }
+        paid_by
+    }
+
     /// Every overdraft paid **one claimant at a time**, in drain order, each in full from what
     /// the lenders still hold or not at all: the engine's STUDY, which refuses a study whose cost
     /// is more than `Unit::GetSharedMoney` and otherwise `ConsumeSharedMoney`s it
@@ -17540,6 +17615,9 @@ struct StudyVerdict {
 struct ArrivingSilver {
     /// Where its own row - and its own ledger - is: the hex the report lists it in.
     unit: UnitKey,
+    /// The sharer as [`unit_label`] names it in that hex, for the `was lent` line of a unit it
+    /// lends to here (`ah-myko`).
+    label: String,
     lends: i64,
     /// What maintenance took off its silver ([`maintenance_settled`]), on the `MonthEnd` figure
     /// once the month has settled and `0` everywhere else. Every order comes before maintenance
@@ -17605,13 +17683,29 @@ impl WalkingSilver {
     }
 }
 
-/// One loan of `total` as the lines that book it (`ah-kjq5`): first what was lent inside the
-/// hex, with no party, then one line per party across a fleet's move, `(other, place, amount)`,
-/// in the order given. The parties' amounts are capped together at `total`, so the lines always
+/// Adds `amount` to `party`'s entry in `lent`, or a new entry at the end - so a party lent at
+/// two moments is one entry, in the place it first appeared (`ah-myko`).
+fn push_loan<T: PartialEq>(lent: &mut Vec<(T, i64)>, party: T, amount: i64) {
+    if amount <= 0 {
+        return;
+    }
+    match lent.iter_mut().find(|(seen, _)| *seen == party) {
+        Some((_, total)) => *total += amount,
+        None => lent.push((party, amount)),
+    }
+}
+
+/// One loan of `total` as the lines that book it, `(other, place, amount)`: first one line per
+/// party inside the hex, named and with no place (`ah-myko`), then what was lent inside the hex
+/// that no party accounts for, with neither, then one line per party across a fleet's move
+/// (`ah-kjq5`), each in the order given. The parties across are taken out of `total` first and
+/// the parties inside out of what is left, all capped together at `total`, so the lines always
 /// add up to it - a purse that nets a unit's lending against its borrowing can book less than it
-/// drew (`Lending::netted`). Empty for a `total` of nothing.
+/// drew (`Lending::netted`), and a cap comes off the in-hex side (`ah-kjq5` review, finding 5).
+/// Empty for a `total` of nothing.
 fn split_loan<T>(
     total: i64,
+    in_hex: &[(String, i64)],
     across: &[(T, i64)],
     name: impl Fn(&T) -> (String, String),
 ) -> Vec<(Option<String>, Option<String>, i64)> {
@@ -17627,6 +17721,14 @@ fn split_loan<T>(
         parties.push((Some(other), Some(place), amount));
     }
     let mut lines = Vec::new();
+    for (other, amount) in in_hex {
+        let amount = (*amount).min(left);
+        if amount <= 0 {
+            continue;
+        }
+        left -= amount;
+        lines.push((Some(other.clone()), None, amount));
+    }
     if left > 0 {
         lines.push((None, None, left));
     }
@@ -17637,8 +17739,12 @@ fn split_loan<T>(
 /// Debits what each arriving sharer lent in the hex its month ends in from its own row, which
 /// sits in the hex the report lists it in - so a sharer that lends 50 spends 50 wherever it lent
 /// it, as `forecast_hex` does for a sharer that stays (`ah-moq3`, `ah-wyj8`).
-fn lend_across_hexes(silver: &mut [UnitSilver], lent_across: &[(UnitKey, i64)]) {
-    for (unit, lent) in lent_across {
+/// What one sharer arriving from another hex lent where its month ends: its own row's key, whom
+/// it lent there as `(label, amount)` (`ah-myko`), and how much in all.
+type LentAcross = (UnitKey, Vec<(String, i64)>, i64);
+
+fn lend_across_hexes(silver: &mut [UnitSilver], lent_across: &[LentAcross]) {
+    for (unit, lent_to, lent) in lent_across {
         let Some(forecast) = silver.iter_mut().find(|forecast| {
             forecast.region_id == unit.region_id && forecast.unit_id == unit.unit_id
         }) else {
@@ -17647,13 +17753,16 @@ fn lend_across_hexes(silver: &mut [UnitSilver], lent_across: &[(UnitKey, i64)]) 
         forecast.expense = forecast.expense.map(|spent| spent.saturating_add(*lent));
         forecast.at_month_end = forecast.at_month_end.map(|end| end.saturating_sub(*lent));
         if forecast.doubt.is_none() {
-            forecast.changes.push(SilverChange {
-                amount: -lent,
-                cause: SilverChangeCause::Lent,
-                line: None,
-                other: None,
-                place: None,
-            });
+            for (other, place, amount) in split_loan::<()>(*lent, lent_to, &[], |_| unreachable!())
+            {
+                forecast.changes.push(SilverChange {
+                    amount: -amount,
+                    cause: SilverChangeCause::Lent,
+                    line: None,
+                    other,
+                    place,
+                });
+            }
         }
     }
 }
@@ -17747,6 +17856,7 @@ fn lend_walking_sharers_silver(
             doubted[arrives] |= ledger.doubted.contains(who);
             let lends_at = |moment: LendingMoment| ArrivingSilver {
                 unit: unit_key(&hex.region.region_id, who),
+                label: unit_label(hex, who),
                 lends: (held_at(who, moment) - more).max(0),
                 maintenance: if moment == LendingMoment::MonthEnd {
                     maintenance_settled(ledger, who)
@@ -18478,6 +18588,15 @@ struct SharingPurse {
     /// [`Lending::lent_to_each_arriving`]: what each unit lent which arriving passenger, so its
     /// `lent` line can name them (`ah-kjq5`).
     lent_to_each_arriving: Vec<Vec<(usize, i64)>>,
+    /// [`Lending::lent_by`]: who lent each unit of the hex what it borrowed here, so its
+    /// `was lent` line can name them (`ah-myko`).
+    lent_by: Vec<Vec<(Lender, i64)>>,
+    /// [`Lending::lent_to_each_in_hex`]: what each unit lent which unit of the hex, so its `lent`
+    /// line can name them (`ah-myko`).
+    lent_to_each_in_hex: Vec<Vec<(usize, i64)>>,
+    /// [`Lending::arrivals_lent_to`]: what each sharer arriving from another hex lent which unit
+    /// of this one, aligned with `arrivals_lend` (`ah-myko`).
+    arrivals_lent_to: Vec<Vec<(usize, i64)>>,
     /// The result of judging each known shortfall against this pool, aligned with `hex.units`.
     coverage: Vec<Option<super::silver::SharedSilverCoverage>>,
     /// The pool could not be added up at all, because a sharer's month is doubted (`ah-0jxx`).
@@ -18519,6 +18638,15 @@ enum Lender {
     Arrival(usize),
 }
 
+/// One loan inside the hex the purse booked: `lender` paid `amount` of unit `borrower`'s orders,
+/// `borrower` an index into `hex.units` (`ah-myko`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Loan {
+    borrower: usize,
+    lender: Lender,
+    amount: i64,
+}
+
 /// What each unit of a hex has lent and borrowed through its `SHARE` silver pool's moments
 /// ([`PURSE_MOMENTS`]), and what each sharer arriving from another hex lent: **the one home of
 /// "what has a sharer lent by moment M"** (`ah-pf7t`).
@@ -18548,6 +18676,11 @@ struct Lending {
     /// What each unit's orders drew out of its faction-mates' pockets: its own overdraft, sharer
     /// or not, at each moment the pool covered.
     borrows: Vec<i64>,
+    /// Who paid `borrows`, loan by loan in the order the moments booked them: every part of it
+    /// lent inside this hex, by a unit of it or a sharer arriving from another (`ah-myko`). Not
+    /// what a passenger was lent where its fleet lands, which is [`WalkingSilver::studies_elsewhere`]'s.
+    /// [`Lending::netted`] rewires it as it nets, so it names whose silver ended up paying.
+    loans: Vec<Loan>,
     /// The cost of each unit's CAST the pool could not pay, and so the engine refused and took
     /// nothing for - the unit's own coins included ([`refused_cast_cost`], `ah-szu0`). `0` for a
     /// unit whose cast was paid or that does not overdraw at it. Handed back to the unit at every
@@ -18602,6 +18735,7 @@ impl Lending {
                     .len()
             ],
             borrows: vec![0; hex.units.len()],
+            loans: Vec::new(),
             refused_cast: vec![0; hex.units.len()],
             study: vec![StudyOutcome::NoStudy; hex.units.len()],
             arriving_study: vec![
@@ -18640,6 +18774,58 @@ impl Lending {
             }
         }
         by_unit
+    }
+
+    /// Who lent each unit of the hex what it borrowed here, `(lender, amount)` in booking order -
+    /// aligned with `hex.units` (`ah-myko`). Adds up to `borrows`, less a passenger's STUDY lent
+    /// where its fleet lands.
+    fn lent_by(&self) -> Vec<Vec<(Lender, i64)>> {
+        let mut by_unit: Vec<Vec<(Lender, i64)>> = vec![Vec::new(); self.borrows.len()];
+        for loan in &self.loans {
+            push_loan(&mut by_unit[loan.borrower], loan.lender, loan.amount);
+        }
+        by_unit
+    }
+
+    /// What each unit of the hex lent each unit of it, `(borrower index, amount)` with the
+    /// borrowers in report order - aligned with `hex.units` (`ah-myko`).
+    fn lent_to_each_in_hex(&self, report_order: &[usize]) -> Vec<Vec<(usize, i64)>> {
+        let mut by_unit = vec![Vec::new(); self.lends.len()];
+        for &borrower in report_order {
+            for loan in self.loans.iter().filter(|loan| loan.borrower == borrower) {
+                if let Lender::Unit(index) = loan.lender {
+                    push_loan(&mut by_unit[index], borrower, loan.amount);
+                }
+            }
+        }
+        by_unit
+    }
+
+    /// [`Lending::lent_to_each_in_hex`] for the sharers arriving from other hexes, aligned with
+    /// `arrivals_lend` (`ah-myko`).
+    fn arrivals_lent_to(&self, report_order: &[usize]) -> Vec<Vec<(usize, i64)>> {
+        let mut by_arrival = vec![Vec::new(); self.arrivals_lend.len()];
+        for &borrower in report_order {
+            for loan in self.loans.iter().filter(|loan| loan.borrower == borrower) {
+                if let Lender::Arrival(index) = loan.lender {
+                    if let Some(lent) = by_arrival.get_mut(index) {
+                        push_loan(lent, borrower, loan.amount);
+                    }
+                }
+            }
+        }
+        by_arrival
+    }
+
+    /// Books a loan, ignoring one of nothing.
+    fn lend(&mut self, borrower: usize, lender: Lender, amount: i64) {
+        if amount > 0 {
+            self.loans.push(Loan {
+                borrower,
+                lender,
+                amount,
+            });
+        }
     }
 
     /// What the arriving passengers whose STUDY this purse refused had asked of it: the engine
@@ -18738,18 +18924,81 @@ impl Lending {
     /// reads the unit's silver from that point on without it (`forecast_unit`, `ah-fj2l`). Netting
     /// it against a later loan would leave the borrower's fee unlent while its silver is still
     /// counted gone, a STUDY the purse pays shown as one the unit cannot (`ah-d3in`).
+    ///
+    /// The loans are rewired to match: what a unit passed on comes off the latest loans it made
+    /// and the latest it was given, and is booked as lent straight from whose silver it was to
+    /// whom it went - so a borrower's `was lent` line names the unit that ended up paying, and
+    /// that unit's `lent` line names it (`ah-myko`). The Give phase's draws are booked first, so
+    /// taking from the latest never reaches them.
     fn netted(mut self) -> Self {
-        for ((lent, borrowed), at_give) in self
-            .lends
-            .iter_mut()
-            .zip(self.borrows.iter_mut())
-            .zip(&self.lent_at_give)
-        {
-            let passed_on = (*lent - at_give).max(0).min(*borrowed);
-            *lent -= passed_on;
-            *borrowed -= passed_on;
+        for index in 0..self.lends.len() {
+            let passed_on = (self.lends[index] - self.lent_at_give[index])
+                .max(0)
+                .min(self.borrows[index]);
+            self.lends[index] -= passed_on;
+            self.borrows[index] -= passed_on;
+            if passed_on > 0 {
+                self.rewire(index, passed_on);
+            }
         }
         self
+    }
+
+    /// [`Lending::netted`]'s rewiring of unit `index`'s loans, for `passed_on` it only passed on.
+    fn rewire(&mut self, index: usize, passed_on: i64) {
+        // Cut `amount` off the latest loans `matches`, latest first, and say what each cut was.
+        let cut = |loans: &mut Vec<Loan>, matches: &dyn Fn(&Loan) -> bool, mut amount: i64| {
+            let mut cuts = Vec::new();
+            for loan in loans.iter_mut().rev() {
+                if amount == 0 {
+                    break;
+                }
+                if !matches(loan) {
+                    continue;
+                }
+                let taken = loan.amount.min(amount);
+                loan.amount -= taken;
+                amount -= taken;
+                cuts.push(Loan {
+                    amount: taken,
+                    ..*loan
+                });
+            }
+            loans.retain(|loan| loan.amount > 0);
+            cuts.reverse();
+            cuts
+        };
+        let mut loans = std::mem::take(&mut self.loans);
+        let onward = cut(
+            &mut loans,
+            &|loan: &Loan| loan.lender == Lender::Unit(index),
+            passed_on,
+        );
+        let sources = cut(&mut loans, &|loan: &Loan| loan.borrower == index, passed_on);
+        // Pair them in order: the first silver it was lent went on to the first it lent.
+        let mut sources = sources.into_iter().map(|loan| (loan.lender, loan.amount));
+        let mut source: Option<(Lender, i64)> = None;
+        for to in onward {
+            let mut owing = to.amount;
+            while owing > 0 {
+                let (lender, left) = match source.take() {
+                    Some(held) if held.1 > 0 => held,
+                    _ => match sources.next() {
+                        Some(next) => next,
+                        None => break,
+                    },
+                };
+                let amount = owing.min(left);
+                owing -= amount;
+                loans.push(Loan {
+                    borrower: to.borrower,
+                    lender,
+                    amount,
+                });
+                source = Some((lender, left - amount));
+            }
+        }
+        self.loans = loans;
     }
 
     /// The settlement, moment by moment through `moments`: each unit's position - its own
@@ -18863,6 +19112,7 @@ impl Lending {
                     purse.borrows[borrower] += amount;
                     purse.lends[lender] += amount;
                     purse.lent_at_give[lender] += amount;
+                    purse.lend(borrower, Lender::Unit(lender), amount);
                 }
             }
         }
@@ -18886,6 +19136,7 @@ impl Lending {
             };
             for &(lender, amount) in &step.draws {
                 purse.borrows[borrower] += amount;
+                purse.lend(borrower, lender, amount);
                 match lender {
                     Lender::Unit(index) => purse.lends[index] += amount,
                     Lender::Arrival(index) => {
@@ -19119,13 +19370,20 @@ impl Lending {
             ) {
                 let (lent, refused, paid_by) = SharerStock::new(parties).paid_one_by_one();
                 for (claim, draws) in claims.iter().zip(&paid_by) {
-                    if let Some(Claimant::Arriving(index)) = claim {
-                        purse.arriving_lent_by[*index] = draws
-                            .iter()
-                            .filter_map(|&(party, amount)| {
-                                who[party].map(|lender| (lender, amount))
-                            })
-                            .collect();
+                    let named = draws
+                        .iter()
+                        .filter_map(|&(party, amount)| who[party].map(|lender| (lender, amount)));
+                    match claim {
+                        Some(Claimant::Arriving(index)) => {
+                            purse.arriving_lent_by[*index] = named.collect();
+                        }
+                        // A claim the moment refused drew nothing, so `draws` is empty for it.
+                        Some(Claimant::Unit(index)) => {
+                            for (lender, amount) in named {
+                                purse.lend(*index, lender, amount);
+                            }
+                        }
+                        None => {}
                     }
                 }
                 for (lender, lent) in who.iter().zip(lent) {
@@ -19200,7 +19458,8 @@ impl Lending {
             // In report order and then the arrivals', rather than a proportional split: the engine
             // drains its sharers in whatever order it iterates them, so no split is truer than
             // another, and a whole number needs no rounding rule.
-            let (lent, short) = SharerStock::new(parties).drained();
+            let stock = SharerStock::new(parties);
+            let (lent, short) = stock.drained();
             if short > 0 || purse.stopped_at.is_some() {
                 // All or nothing (`ah-e66j`): from the first moment the pool cannot cover in
                 // full, it lends nothing at the market or the month's end, while STUDY still pays
@@ -19212,7 +19471,7 @@ impl Lending {
                 }
                 continue;
             }
-            for (lender, lent) in who.into_iter().zip(lent) {
+            for (lender, lent) in who.iter().copied().zip(lent) {
                 match lender {
                     Some(Lender::Unit(index)) => purse.lends[index] += lent,
                     Some(Lender::Arrival(index)) => purse.arrivals_lend[index] += lent,
@@ -19221,6 +19480,15 @@ impl Lending {
             }
             for (borrowed, need) in purse.borrows.iter_mut().zip(needs) {
                 *borrowed += need;
+            }
+            for (claim, draws) in claims.iter().zip(stock.drained_paid_by()) {
+                if let Some(Claimant::Unit(index)) = claim {
+                    for (party, amount) in draws {
+                        if let Some(lender) = who[party] {
+                            purse.lend(*index, lender, amount);
+                        }
+                    }
+                }
             }
         }
 
@@ -19440,6 +19708,9 @@ fn sharing_purse_over(
         study: vec![StudyOutcome::NoStudy; hex.units.len()],
         lent_to_arriving_students: 0,
         lent_to_each_arriving: vec![Vec::new(); hex.units.len()],
+        lent_by: vec![Vec::new(); hex.units.len()],
+        lent_to_each_in_hex: vec![Vec::new(); hex.units.len()],
+        arrivals_lent_to: vec![Vec::new(); arrivals.len()],
         coverage: vec![None; hex.units.len()],
         unjudged: false,
     };
@@ -19546,6 +19817,9 @@ fn sharing_purse_over(
             unjudged: false,
             lent_to_arriving_students: paid.lent_to_arriving_students(),
             lent_to_each_arriving: paid.lent_to_each_arriving(),
+            lent_by: paid.lent_by(),
+            lent_to_each_in_hex: paid.lent_to_each_in_hex(&hex.report_order()),
+            arrivals_lent_to: paid.arrivals_lent_to(&hex.report_order()),
             lends: paid.lends,
             arrivals_lend: paid.arrivals_lend,
             borrows: paid.borrows,
@@ -19575,6 +19849,9 @@ fn sharing_purse_over(
             .collect(),
         lent_to_arriving_students: lending.lent_to_arriving_students(),
         lent_to_each_arriving: lending.lent_to_each_arriving(),
+        lent_by: lending.lent_by(),
+        lent_to_each_in_hex: lending.lent_to_each_in_hex(&hex.report_order()),
+        arrivals_lent_to: lending.arrivals_lent_to(&hex.report_order()),
         lends: lending.lends,
         arrivals_lend: lending.arrivals_lend,
         borrows: lending.borrows,
@@ -39592,7 +39869,11 @@ BUILD
             assert_eq!(borrowed.len(), 1, "one line, not one per lender");
             assert_eq!(borrowed[0].amount, 300);
             assert_eq!(borrowed[0].line, None);
-            assert_eq!(borrowed[0].other, None);
+            assert_eq!(
+                borrowed[0].other.as_deref(),
+                Some("Unit 2 (2)"),
+                "it names the sharer that paid (`ah-myko`)"
+            );
             assert_eq!(
                 buyer.changes.last().map(|change| change.cause),
                 Some(SilverChangeCause::WasLent),
@@ -46618,6 +46899,159 @@ BUILD
 
         assert_eq!(purse.borrows, vec![100, 0, 0]);
         assert_eq!(purse.lends, vec![0, 50, 50]);
+    }
+
+    // --- who lent whom, inside the hex (`ah-myko`) ----------------------------------------------
+
+    /// The column books what sharer 7 lent as one line per student it paid for, each naming the
+    /// student, and each student's `was lent` line names 7.
+    #[test]
+    fn an_in_hex_order_loan_names_both_parties_in_the_column() {
+        let hex_region = region(vec![
+            with_silver(unit("5"), 0),
+            with_silver(unit("6"), 0),
+            sharing(with_silver(unit("7"), 500)),
+        ]);
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 5\nSTUDY combat\nunit 6\nSTUDY combat\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let name = |id: &str| Some(format!("Unit {id} ({id})"));
+
+        assert_eq!(
+            loan_lines(&review, "7", SilverChangeCause::Lent),
+            vec![(name("5"), None, -10), (name("6"), None, -10)]
+        );
+        assert_eq!(
+            loan_lines(&review, "5", SilverChangeCause::WasLent),
+            vec![(name("7"), None, 10)]
+        );
+        assert_eq!(
+            loan_lines(&review, "6", SilverChangeCause::WasLent),
+            vec![(name("7"), None, 10)]
+        );
+    }
+
+    /// A `$100` sword two sharers paid for: the buyer's `was lent` names both, in drain order.
+    #[test]
+    fn a_borrower_paid_by_two_sharers_names_both_in_the_column() {
+        let hex_region = selling_swords(vec![
+            with_silver(unit("5"), 0),
+            sharing(with_silver(unit("7"), 60)),
+            sharing(with_silver(unit("8"), 100)),
+        ]);
+        let review = review_turn(
+            &report(vec![hex_region]),
+            "unit 5\nBUY 1 swords\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let name = |id: &str| Some(format!("Unit {id} ({id})"));
+
+        assert_eq!(
+            loan_lines(&review, "5", SilverChangeCause::WasLent),
+            vec![(name("7"), None, 60), (name("8"), None, 40)]
+        );
+        assert_eq!(
+            loan_lines(&review, "8", SilverChangeCause::Lent),
+            vec![(name("5"), None, -40)]
+        );
+    }
+
+    /// Sharer 7 pays unit 5's study: 5 was lent by 7, and 7 lent to 5.
+    #[test]
+    fn the_purse_names_who_lent_each_borrower() {
+        let hex_region = region(vec![
+            with_silver(unit("5"), 0),
+            sharing(with_silver(unit("7"), 500)),
+        ]);
+
+        let purse = purse_of(&hex_region, "unit 5\nSTUDY combat\n");
+
+        assert_eq!(purse.lent_by, vec![vec![(Lender::Unit(1), 10)], vec![]]);
+        assert_eq!(purse.lent_to_each_in_hex, vec![vec![], vec![(0, 10)]]);
+    }
+
+    /// One sharer pays two students, who are named in report order.
+    #[test]
+    fn one_lender_names_every_borrower_in_report_order() {
+        let hex_region = region(vec![
+            with_silver(unit("5"), 0),
+            with_silver(unit("6"), 0),
+            sharing(with_silver(unit("7"), 500)),
+        ]);
+
+        let purse = purse_of(&hex_region, "unit 5\nSTUDY combat\nunit 6\nSTUDY combat\n");
+
+        assert_eq!(purse.lent_to_each_in_hex[2], vec![(0, 10), (1, 10)]);
+        assert_eq!(purse.lent_by[0], vec![(Lender::Unit(2), 10)]);
+        assert_eq!(purse.lent_by[1], vec![(Lender::Unit(2), 10)]);
+    }
+
+    /// Unit 5's $100 sword drains sharer 7's $60 and then $40 of sharer 8's, at the market.
+    #[test]
+    fn a_market_buy_names_each_sharer_it_drew_on() {
+        let hex_region = selling_swords(vec![
+            with_silver(unit("5"), 0),
+            sharing(with_silver(unit("7"), 60)),
+            sharing(with_silver(unit("8"), 100)),
+        ]);
+
+        let purse = purse_of(&hex_region, "unit 5\nBUY 1 swords\n");
+
+        assert_eq!(purse.borrows, vec![100, 0, 0]);
+        assert_eq!(
+            purse.lent_by[0],
+            vec![(Lender::Unit(1), 60), (Lender::Unit(2), 40)]
+        );
+        assert_eq!(purse.lent_to_each_in_hex[1], vec![(0, 60)]);
+        assert_eq!(purse.lent_to_each_in_hex[2], vec![(0, 40)]);
+    }
+
+    /// `a_sharer_that_lent_and_was_lent_shows_only_the_difference`, named: 7 paid $100 of 5's
+    /// sword and was then lent $50 of its own study by 8, so it passed $50 of 8's silver on.
+    /// 5 reads as lent by 7 and 8, $50 each, and 7 as lent by nobody (`ah-49j0`).
+    #[test]
+    fn a_sharer_that_passed_silver_on_names_whose_silver_it_was() {
+        let hex_region = selling_swords(vec![
+            with_silver(unit("5"), 0),
+            with_men(sharing(with_silver(unit("7"), 100)), 5),
+            sharing(with_silver(unit("8"), 100)),
+        ]);
+
+        let purse = purse_of(&hex_region, "unit 5\nBUY 1 swords\nunit 7\nSTUDY combat\n");
+
+        assert_eq!(purse.lends, vec![0, 50, 50]);
+        assert_eq!(
+            purse.lent_by,
+            vec![
+                vec![(Lender::Unit(1), 50), (Lender::Unit(2), 50)],
+                vec![],
+                vec![]
+            ]
+        );
+        assert_eq!(
+            purse.lent_to_each_in_hex,
+            vec![vec![], vec![(0, 50)], vec![(0, 50)]]
+        );
+    }
+
+    /// Unit 5 gives $50 it does not have; sharer 7 funds it as the GIVE runs (`ah-msds`).
+    #[test]
+    fn a_gift_a_sharer_funded_names_the_sharer() {
+        let hex_region = region(vec![
+            with_silver(unit("5"), 0),
+            unit("6"),
+            sharing(with_silver(unit("7"), 100)),
+        ]);
+
+        let purse = purse_of(&hex_region, "unit 5\nGIVE 6 50 SILV\n");
+
+        assert_eq!(purse.borrows[0], 50);
+        assert_eq!(purse.lent_by[0], vec![(Lender::Unit(2), 50)]);
+        assert_eq!(purse.lent_to_each_in_hex[2], vec![(0, 50)]);
     }
 
     /// A sharer's overdraft never decides whether the hex is covered, yet it is still paid out of
@@ -66304,6 +66738,7 @@ BUILD
             lent_at_give: vec![100, 405, 100, 0],
             arrivals_lend: Vec::new(),
             borrows: vec![10, 2, 300, 20],
+            loans: Vec::new(),
             refused_cast: vec![0; 4],
             study: vec![StudyOutcome::NoStudy; 4],
             arriving_study: Vec::new(),
@@ -66494,6 +66929,11 @@ BUILD
             read(at(TransportPoint::After(&draw))),
             (vec![40, 15, 0], vec![0, 0, 55]),
             "the draw is lent on the sharer it was drawn on, once"
+        );
+        assert_eq!(
+            at(TransportPoint::After(&draw)).lent_by()[2],
+            vec![(Lender::Unit(0), 40), (Lender::Unit(1), 15)],
+            "the fee and the draw each name the sharer that paid (`ah-myko`)"
         );
     }
 
@@ -79574,8 +80014,8 @@ BUILD
     }
 
     /// `ah-kjq5`: a resident that pays both a passenger sailing in and a faction-mate's study in
-    /// its own hex books the in-hex part as today, with no party, and the passenger on a line of
-    /// its own.
+    /// its own hex books the in-hex part naming that faction-mate (`ah-myko`), and the passenger
+    /// on a line of its own after it.
     #[test]
     fn a_resident_lending_in_its_own_hex_and_across_a_sailing_books_both() {
         let (report, review) = between_two_sharers_with(
@@ -79589,7 +80029,7 @@ BUILD
         assert_eq!(
             loan_lines(&review, "902", SilverChangeCause::Lent),
             vec![
-                (None, None, -own),
+                (Some(named(&report, "906")), None, -own),
                 (
                     Some(named(&report, "901")),
                     Some("ocean (7,55)".to_string()),
@@ -79599,8 +80039,8 @@ BUILD
         );
         assert_eq!(
             loan_lines(&review, "906", SilverChangeCause::WasLent),
-            vec![(None, None, own)],
-            "a loan inside one hex names nobody"
+            vec![(Some(named(&report, "902")), None, own)],
+            "a loan inside one hex names its lender (`ah-myko`)"
         );
         assert_eq!(silver_of(&review, "906").borrowed_where_fleet_lands, None);
     }
@@ -79678,7 +80118,7 @@ BUILD
     /// `ah-kjq5` review, finding 3: a passenger lent silver in its own hex before it sails - a
     /// GIVE beyond what it holds draws on the banker there, and gifts run before movement
     /// (`rules/sequenceofevents`) - and lent its study fee where its fleet lands books the in-hex
-    /// part first, with no party, and then the lender where it lands.
+    /// part first, naming the banker (`ah-myko`), and then the lender where it lands.
     #[test]
     fn a_passenger_lent_in_its_own_hex_and_where_it_lands_books_both() {
         let fee = silver_of(&a_passenger_ordering("").1, "901").borrowed_for_orders;
@@ -79686,7 +80126,7 @@ BUILD
         assert_eq!(
             loan_lines(&review, "901", SilverChangeCause::WasLent),
             vec![
-                (None, None, 50),
+                (Some(named(&report, "903")), None, 50),
                 (
                     Some(named(&report, "902")),
                     Some("mountain (7,53)".to_string()),
@@ -84272,6 +84712,25 @@ BUILD
         fn drained_lays_each_overdraft_on_the_lenders_in_report_order() {
             let stock = SharerStock::new(vec![lender(4), keeper(-6), lender(5), keeper(-1)]);
             assert_eq!(stock.drained(), (vec![4, 0, 3, 0], 0));
+        }
+
+        /// Who paid each overdraft at a drained moment: the claimants in drain order, each drawn
+        /// on the lenders' stock in drain order, so the pairs add up to what `drained` says each
+        /// lender lent (`ah-myko`).
+        #[test]
+        fn drained_pairs_each_claimant_with_its_lenders_in_drain_order() {
+            let stock = SharerStock::new(vec![lender(4), keeper(-6), lender(5), keeper(-1)]);
+            let paid_by = stock.drained_paid_by();
+            assert_eq!(paid_by[1], vec![(0, 4), (2, 2)]);
+            assert_eq!(paid_by[3], vec![(2, 1)]);
+            assert!(paid_by[0].is_empty() && paid_by[2].is_empty());
+            let mut lent = vec![0; 4];
+            for draws in &paid_by {
+                for &(lender, amount) in draws {
+                    lent[lender] += amount;
+                }
+            }
+            assert_eq!(lent, stock.drained().0);
         }
     }
 }
