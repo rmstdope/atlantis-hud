@@ -10937,6 +10937,224 @@ mod tests {
             );
             assert_eq!(holds(drones, "LONG"), None, "a finished ship is no item");
         }
+
+        /// `data/shipbuilding` 3: a Galleon takes "75 wood [WOOD]". 30 units of work leave it
+        /// unfinished, and `RunBuildShipOrder` keeps it in the founder's items.
+        #[test]
+        fn a_new_galleon_short_of_its_work_is_held_unfinished() {
+            let response = preview_over(&coast(DRONES, ""), "unit 900\nBUILD Galleon\n");
+            let drones = unit(&response, "900");
+            let sharer = unit(&response, "901");
+
+            assert!(drones.uncounted.is_empty(), "{:?}", drones.uncounted);
+            assert_eq!(holds(sharer, "WOOD"), Some(90));
+            assert_eq!(holds(drones, "GALL"), Some(1), "{:?}", drones.unit.items);
+            let ship = drones
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "GALL")
+                .expect("the ship is held");
+            assert_eq!(ship.name, "unfinished Galleon");
+            let started: Vec<_> = drones
+                .item_changes
+                .iter()
+                .filter(|change| change.cause == ItemChangeCause::ShipStarted)
+                .collect();
+            assert_eq!(started.len(), 1, "{:?}", drones.item_changes);
+            assert_eq!((started[0].delta, started[0].line), (1, Some(2)));
+            assert_eq!(drones.built[0].place, "Galleon");
+            assert_eq!(drones.built[0].amount, 30);
+            assert_eq!(
+                drones.new_ship.as_ref().map(|ship| ship.outcome),
+                Some(NewShipOutcome::Unfinished)
+            );
+        }
+
+        fn outcome(structure: &str, orders: &str) -> (Option<NewShipOutcome>, Vec<String>) {
+            let builder = format!("  {DRONES}");
+            let response = preview_over(&coast(&builder, structure), orders);
+            let drones = unit(&response, "900");
+            (
+                drones.new_ship.as_ref().map(|ship| ship.outcome),
+                drones.uncounted.clone(),
+            )
+        }
+
+        /// `CreateShip`: a builder aboard a fleet that sails, finishing a ship that sails, adds it
+        /// to that fleet and stays where it is.
+        #[test]
+        fn a_new_longship_joins_the_sailing_fleet_its_builder_is_aboard() {
+            assert_eq!(
+                outcome("+ Ship [250] : Longship.", "unit 900\nBUILD Longship\n"),
+                (Some(NewShipOutcome::JoinsFleet), vec![])
+            );
+        }
+
+        /// `CreateShip`: a sailing fleet cannot take a flying ship (`data/BALL`, "a flying
+        /// 'ship'"), so the finished Balloon is a fleet of its own. A Balloon takes 20 floater
+        /// hides at shipbuilding 4.
+        #[test]
+        fn a_new_balloon_built_aboard_a_sailing_fleet_gets_a_fleet_of_its_own() {
+            let builder = format!("  {DRONES}")
+                .replace("shipbuilding [SHIP] 3 (180)", "shipbuilding [SHIP] 4 (300)")
+                .replace(
+                    "10 goblins [GBLN].",
+                    "10 goblins [GBLN], 20 floater hides [FLOA].",
+                );
+            let response = preview_over(
+                &coast(&builder, "+ Ship [250] : Longship."),
+                "unit 900\nBUILD Balloon\n",
+            );
+            let drones = unit(&response, "900");
+            assert!(drones.uncounted.is_empty(), "{:?}", drones.uncounted);
+            assert_eq!(
+                drones.new_ship.as_ref().map(|ship| ship.outcome),
+                Some(NewShipOutcome::NewFleet)
+            );
+        }
+
+        /// `CreateShip` makes a new fleet for a builder standing in a building, and moves it in.
+        #[test]
+        fn a_builder_in_a_building_leaves_for_its_new_ship() {
+            assert_eq!(
+                outcome("+ Building [4] : Tower.", "unit 900\nBUILD Longship\n"),
+                (Some(NewShipOutcome::NewFleet), vec![])
+            );
+        }
+
+        /// A structure whose hulls the catalogue does not carry cannot say whether the ship joins.
+        #[test]
+        fn a_builder_in_an_unknown_hull_cannot_be_counted() {
+            let (ship, uncounted) =
+                outcome("+ Ship [250] : Dreadnought.", "unit 900\nBUILD Longship\n");
+            assert_eq!(ship, None);
+            assert_eq!(uncounted.len(), 1, "{uncounted:?}");
+        }
+
+        /// `RunBuildHelpers` runs every helper first; their work counts toward the founder's new
+        /// ship, which only the founder holds or boards. The helper does 3 (one goblin at 3) of
+        /// the Longship's 10, the founder the other 7 - whichever order the units are written in.
+        #[test]
+        fn helpers_and_founder_finish_a_new_ship_together() {
+            let helper = "* Helper (902), Foo (1), behind, 1 goblin [GBLN], 10 wood [WOOD]. \
+                          Weight: 110. Capacity: 0/0/15/0. Skills: shipbuilding [SHIP] 3 (180).";
+            for orders in [
+                "unit 900\nBUILD Longship\nunit 902\nBUILD HELP 900\n",
+                "unit 902\nBUILD HELP 900\nunit 900\nBUILD Longship\n",
+            ] {
+                let response = preview_over(&coast(DRONES, helper), orders);
+                let drones = unit(&response, "900");
+                let helped = unit(&response, "902");
+                let sharer = unit(&response, "901");
+                assert_eq!(
+                    drones.new_ship.as_ref().map(|ship| ship.outcome),
+                    Some(NewShipOutcome::NewFleet),
+                    "{orders}"
+                );
+                assert_eq!(helped.new_ship, None, "{orders}");
+                assert!(
+                    helped.uncounted.is_empty(),
+                    "{orders}: {:?}",
+                    helped.uncounted
+                );
+                let laid: i64 = [drones, helped]
+                    .iter()
+                    .flat_map(|unit| unit.built.iter())
+                    .map(|spend| spend.amount)
+                    .sum();
+                assert_eq!(laid, 10, "{orders}");
+                assert_eq!(
+                    holds(helped, "WOOD").unwrap_or(0) + holds(sharer, "WOOD").unwrap_or(0),
+                    120,
+                    "{orders}"
+                );
+            }
+        }
+
+        /// `ShipConstruction`: "BUILD: Can't build that." below the ship's level - a Galleon wants
+        /// shipbuilding 3 (`data/shipbuilding`). Nothing is spent, and the row is not marked.
+        #[test]
+        fn a_shipbuilder_below_the_ships_level_builds_nothing() {
+            let builder =
+                DRONES.replace("shipbuilding [SHIP] 3 (180)", "shipbuilding [SHIP] 2 (90)");
+            let response = preview_over(&coast(&builder, ""), "unit 900\nBUILD Galleon\n");
+            assert!(
+                response
+                    .regions
+                    .iter()
+                    .flat_map(|region| region.units.iter())
+                    .all(|unit| unit.uncounted.is_empty()
+                        && unit.new_ship.is_none()
+                        && unit.built.is_empty()),
+                "{:?}",
+                response.regions
+            );
+        }
+
+        /// `ShipConstruction`: "BUILD: Don't have the required materials." - no wood to hand.
+        #[test]
+        fn a_new_ship_with_no_wood_to_hand_builds_nothing() {
+            let report = coast(DRONES, "").replace("120 wood [WOOD]", "120 iron [IRON]");
+            let response = preview_over(&report, "unit 900\nBUILD Longship\n");
+            assert!(
+                response
+                    .regions
+                    .iter()
+                    .flat_map(|region| region.units.iter())
+                    .all(|unit| unit.uncounted.is_empty() && unit.new_ship.is_none()),
+                "{:?}",
+                response.regions
+            );
+        }
+
+        /// `ProcessBuildOrder`: "BUILD: Can't build ship in non-coastal or lakeside region." A
+        /// known refusal, so nothing is spent and the row is not marked.
+        #[test]
+        fn a_sailing_ship_inland_builds_nothing() {
+            let report = coast(DRONES, "").replace(
+                "  North : ocean (1,0) in Atlantis Ocean.",
+                "  North : forest (1,0) in Nowhere.",
+            );
+            let response = preview_over(&report, "unit 900\nBUILD Longship\n");
+            assert!(
+                response
+                    .regions
+                    .iter()
+                    .flat_map(|region| region.units.iter())
+                    .all(|unit| unit.uncounted.is_empty()
+                        && unit.new_ship.is_none()
+                        && unit.built.is_empty()),
+                "{:?}",
+                response.regions
+            );
+        }
+
+        /// `data/shipbuilding` 5: an Airship takes two materials, whose split the rules do not
+        /// state - the order stays "cannot be counted", as it was.
+        #[test]
+        fn a_new_airship_stays_uncounted() {
+            let builder =
+                DRONES.replace("shipbuilding [SHIP] 3 (180)", "shipbuilding [SHIP] 5 (900)");
+            let response = preview_over(&coast(&builder, ""), "unit 900\nBUILD Airship\n");
+            let drones = unit(&response, "900");
+            assert_eq!(drones.uncounted.len(), 1, "{:?}", drones.uncounted);
+            assert_eq!(drones.new_ship, None);
+        }
+
+        /// `ProcessBuildOrder` continues an unfinished ship the founder already holds, which this
+        /// bead leaves as it was: "cannot be counted".
+        #[test]
+        fn a_new_ship_founded_by_a_unit_carrying_an_unfinished_one_stays_uncounted() {
+            let builder = DRONES.replace(
+                "10 goblins [GBLN].",
+                "10 goblins [GBLN], unfinished Galleon [GALL] (needs 40).",
+            );
+            let response = preview_over(&coast(&builder, ""), "unit 900\nBUILD Longship\n");
+            let drones = unit(&response, "900");
+            assert_eq!(drones.uncounted.len(), 1, "{:?}", drones.uncounted);
+            assert_eq!(drones.new_ship, None);
+        }
     }
 
     /// The catalogue calls a leader "leader"; the report calls eight of them "leaders" and tags

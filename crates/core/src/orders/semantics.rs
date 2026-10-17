@@ -11987,11 +11987,11 @@ fn build(
         Some(kind) if ruleset.build_recipe(kind).is_none() => {
             match new_ship_task(hex, task_owner, kind, ruleset) {
                 NewShipLookup::NotAShip => None,
+                // A passenger's ship would be begun where its fleet lands, which is not the hex
+                // whose coast and structures were just read - so first, and whatever they said.
+                _ if away.is_some() => mark_uncounted_and_return!(),
                 NewShipLookup::Refused => return,
                 NewShipLookup::Unknown => mark_uncounted_and_return!(),
-                // A passenger's ship would be begun where its fleet lands, and a fleet that sails
-                // is no place the report shows a coast for (`rules/economy_ships`).
-                NewShipLookup::Known(_) if away.is_some() => mark_uncounted_and_return!(),
                 NewShipLookup::Known(task) => {
                     if helped_id.is_none() {
                         ledger.new_ship_foundings.push(NewShipFounding {
@@ -74473,6 +74473,38 @@ BUILD
             report,
             "unit 4022\nSAIL N\nunit 901\nPRODUCE wagon\n".to_string(),
         )
+    }
+
+    /// `ah-ywyf`: a passenger's `BUILD <ship>` would begin the ship where its fleet lands, not in
+    /// the open sea it is listed in - so it stays "cannot be counted", never refused for the water
+    /// it is reported over, and no wood is drawn.
+    #[test]
+    fn a_new_ship_built_where_a_passengers_fleet_lands_stays_uncounted() {
+        let there = sharing(with_item(unit("902"), 40, "wood", "WOOD"));
+        let (mut report, _) = passenger_palace(
+            open_sea(vec![]),
+            region_at("1:7,53", 7, 53, vec![there]),
+            None,
+        );
+        let passenger = report
+            .regions
+            .iter_mut()
+            .flat_map(|region| region.units.iter_mut())
+            .find(|unit| unit.unit_id == "901")
+            .expect("passenger_palace lists 901");
+        passenger.skills.clear();
+        *passenger = with_skill(passenger.clone(), "SHIP", 3);
+        let orders = "unit 4022\nSAIL N\nunit 901\nBUILD Longship\n";
+
+        let effects = item_effects(&report, orders, Some(&ruleset()), &CheckOptions::default());
+        let passenger = effects_for(&effects, "901").cloned().unwrap_or_default();
+        assert_eq!(
+            passenger.uncounted,
+            vec!["BUILD Longship".to_string()],
+            "{passenger:?}"
+        );
+        assert_eq!(passenger.new_ship, None);
+        assert!(wood_moved(&effects, "902").is_empty());
     }
 
     fn wood_moved(
