@@ -2321,7 +2321,7 @@ fn apply_item_movement(
             line: movement.line,
             unit_price: movement.unit_price,
             other: movement.other.clone(),
-            borrower: None,
+            borrower: movement.borrower.clone(),
             is_man: ruleset.is_man(&movement.tag),
             plural: None,
         },

@@ -6983,6 +6983,10 @@ pub(crate) struct ItemMovement {
     /// What a `CAST` creates, on the movement carrying its arrival (`ah-ofpb.5`). `None` on every
     /// other movement, the materials that same cast consumes included.
     pub created: Option<Created>,
+    /// The unit whose order this unit's goods paid for, as [`ItemChange::borrower`] carries it:
+    /// `Some` only on [`ItemChangeCause::LentForGive`], where `other` is that order's receiver -
+    /// today a sharer's part of another unit's `EXCHANGE` (`ah-yf72`).
+    pub borrower: Option<ItemChangeParty>,
 }
 
 /// The part of a cast's arrival the ITEMS column cannot state as one number (`ah-ofpb.5`).
@@ -7923,6 +7927,7 @@ fn discard_unfinished_ships_after_movement(
                 unit_price: None,
                 other: None,
                 created: None,
+                borrower: None,
             });
         }
     }
@@ -8166,6 +8171,7 @@ pub(crate) fn item_effects(
                     unit_price: None,
                     other: eater,
                     created: None,
+                    borrower: None,
                 });
             }
         }
@@ -9679,6 +9685,7 @@ fn apply(
                         unit_price: None,
                         other: None,
                         created: None,
+                        borrower: None,
                     });
                     // Silver never reaches here: this arm runs only where
                     // `withdrawal_cost(item, ruleset).is_some()`, which silver has no entry for.
@@ -10884,6 +10891,14 @@ fn exchange_draw(
     }
 }
 
+/// A unit as an item movement names it: its number and its name.
+fn item_party(unit: &ReportUnit) -> ItemChangeParty {
+    ItemChangeParty {
+        unit_id: unit.unit_id.clone(),
+        name: Some(unit.name.clone()),
+    }
+}
+
 /// One side of a settled exchange: `offer`'s unit hands what it offered to its partner.
 fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
     let giver = hex.units[offer.unit].unit;
@@ -10948,15 +10963,15 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
                 tag: tag.clone(),
                 name: item_name(tag, hex, ledger.ruleset),
                 delta: -take,
-                cause: ItemChangeCause::GivenAway,
+                // Lent for the giver's hand-over to its partner, never a gift of the sharer's own
+                // to the giver: the sharer ordered nothing (`rules/share`, `ah-yf72`).
+                cause: ItemChangeCause::LentForGive,
                 phase: StatePhase::Give,
                 line: Some(placed.line as i64),
                 unit_price: None,
-                other: Some(ItemChangeParty {
-                    unit_id: giver.unit_id.clone(),
-                    name: Some(giver.name.clone()),
-                }),
+                other: Some(item_party(receiver)),
                 created: None,
+                borrower: Some(item_party(giver)),
             });
         }
         own_part = own_sold + remaining;
@@ -10970,8 +10985,9 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
             &lenders,
             amount - own_sold,
             placed,
-            ItemChangeCause::GivenAway,
+            ItemChangeCause::LentForGive,
             None,
+            Some(item_party(receiver)),
         );
         own_part = own_sold + uncovered;
         charge(
@@ -11007,6 +11023,7 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
                 name: Some(other.name.clone()),
             }),
             created: None,
+            borrower: None,
         });
     }
 }
@@ -11203,6 +11220,7 @@ fn buy(
             unit_price: Some(offer.price),
             other: None,
             created: None,
+            borrower: None,
         });
     }
 }
@@ -11574,6 +11592,7 @@ fn settle_buy_all(
                 unit_price: Some(deferred.price),
                 other: None,
                 created: None,
+                borrower: None,
             });
         }
     }
@@ -11822,6 +11841,7 @@ fn produce(
             unit_price: None,
             other: None,
             created: None,
+            borrower: None,
         });
     }
 }
@@ -12468,6 +12488,7 @@ fn settle_new_ships(ledger: &mut Ledger<'_>) {
                 unit_price: None,
                 other: None,
                 created: None,
+                borrower: None,
             });
             super::effects::NewShipOutcome::Unfinished
         };
@@ -12956,6 +12977,7 @@ fn build(
                 name: Some(actor.unit.name.clone()),
             }),
             created: None,
+            borrower: None,
         });
     }
 
@@ -13027,6 +13049,10 @@ fn lenders_on_doubt(
 /// spent, recording the movement on the lender, against the borrower, so every projected
 /// inventory loses the goods where they actually were (`ah-0mch`, the attribution
 /// `charge_shared_material` makes for production). Returns what no lender could cover.
+///
+/// `handed_to` is the unit the borrower's order hands the goods on to, where it hands them on: each
+/// lender's movement then names that unit as `other` and the borrower as `borrower`, the
+/// lent-for-give shape (`ah-49is`, `ah-yf72`). `None` names the borrower as `other`.
 #[allow(clippy::too_many_arguments)]
 fn draw_on_lenders(
     ledger: &mut Ledger<'_>,
@@ -13039,6 +13065,7 @@ fn draw_on_lenders(
     placed: &PlacedIntent,
     cause: ItemChangeCause,
     unit_price: Option<i64>,
+    handed_to: Option<ItemChangeParty>,
 ) -> i64 {
     let mut remaining = amount.max(0);
     for &(index, lends) in lenders {
@@ -13061,11 +13088,13 @@ fn draw_on_lenders(
             phase,
             line: Some(placed.line as i64),
             unit_price,
-            other: Some(ItemChangeParty {
-                unit_id: borrower.unit.unit_id.clone(),
-                name: Some(borrower.unit.name.clone()),
-            }),
+            other: Some(
+                handed_to
+                    .clone()
+                    .unwrap_or_else(|| item_party(borrower.unit)),
+            ),
             created: None,
+            borrower: handed_to.as_ref().map(|_| item_party(borrower.unit)),
         });
     }
     remaining
@@ -13173,6 +13202,7 @@ fn sell(
         placed,
         ItemChangeCause::Sold,
         Some(demand.price),
+        None,
     );
     record_unfunded(ledger, who, &tag, uncovered);
     let sold_from_own = own_sold + uncovered;
@@ -13240,6 +13270,7 @@ fn sell(
             unit_price: Some(demand.price),
             other: None,
             created: None,
+            borrower: None,
         });
     }
 }
@@ -13661,6 +13692,7 @@ fn cast(
                 placed,
                 ItemChangeCause::CastSpent,
                 None,
+                None,
             )
         } else {
             shortfall
@@ -13700,6 +13732,7 @@ fn cast(
                 unit_price: None,
                 other: None,
                 created: None,
+                borrower: None,
             });
         }
     }
@@ -13729,6 +13762,7 @@ fn cast(
                 fewest: plan.made_certain,
                 summoned: plan.summons,
             }),
+            borrower: None,
         });
     }
 }
@@ -13930,6 +13964,7 @@ fn hand_in(
         unit_price: None,
         other: None,
         created: None,
+        borrower: None,
     });
 }
 
@@ -14534,6 +14569,7 @@ fn create_village(
             unit_price: None,
             other: None,
             created: None,
+            borrower: None,
         });
     }
 }
@@ -16186,6 +16222,7 @@ fn charge_shared_material(
         unit_price: None,
         other,
         created: None,
+        borrower: None,
     };
     let actor_party = ItemChangeParty {
         unit_id: actor.unit_id.clone(),
@@ -22352,6 +22389,7 @@ fn lend_to_month_end_hexes<'a>(
             unit_price: None,
             other: Some(debit.actor),
             created: None,
+            borrower: None,
         });
     }
 }
@@ -37980,6 +38018,7 @@ BUILD
                 unit_price: None,
                 other: None,
                 created: None,
+                borrower: None,
             }
         }
 
@@ -64299,7 +64338,7 @@ BUILD
         );
     }
 
-    /// The same moment in the ITEMS preview: the sharer that gives the $50 for 906's exchange is
+    /// The same moment in the ITEMS preview: the sharer that lends the $50 for 906's exchange is
     /// 902, the one 903 refilled, not 905, which 901's GIVE already drained (`runorders.cpp`:
     /// `DoExchangeOrder`; `unit.cpp`: `ConsumeShared`; `rules/exchange`, `rules/share`;
     /// `ah-6lw8`). `exchange_draw` sees 901's draw on 905 through [`SharerStock::at`]'s reading of
@@ -64328,12 +64367,12 @@ BUILD
             .iter()
             .filter(|movement| {
                 movement.tag == "SILV"
-                    && movement.cause == ItemChangeCause::GivenAway
+                    && movement.cause == ItemChangeCause::LentForGive
                     && movement.unit_id != "906"
                     && movement
-                        .other
+                        .borrower
                         .as_ref()
-                        .is_some_and(|other| other.unit_id == "906")
+                        .is_some_and(|borrower| borrower.unit_id == "906")
             })
             .map(|movement| (movement.unit_id.as_str(), movement.delta))
             .collect();
@@ -67870,12 +67909,12 @@ BUILD
                     .iter()
                     .filter(|movement| {
                         movement.tag == "SILV"
-                            && movement.cause == ItemChangeCause::GivenAway
+                            && movement.cause == ItemChangeCause::LentForGive
                             && movement.unit_id != "906"
                             && movement
-                                .other
+                                .borrower
                                 .as_ref()
-                                .is_some_and(|other| other.unit_id == "906")
+                                .is_some_and(|borrower| borrower.unit_id == "906")
                     })
                     .map(|movement| (movement.unit_id.as_str(), -movement.delta))
                     .collect();
