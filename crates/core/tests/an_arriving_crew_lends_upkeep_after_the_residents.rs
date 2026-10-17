@@ -139,3 +139,57 @@ fn the_resident_lends_the_passengers_study_fee_where_it_arrives() {
         );
     }
 }
+
+/// Each line of a cause, as `(other, place, amount)`.
+fn lines(row: &UnitSilver, cause: SilverChangeCause) -> Vec<(Option<String>, Option<String>, i64)> {
+    row.changes
+        .iter()
+        .filter(|change| change.cause == cause)
+        .map(|change| (change.other.clone(), change.place.clone(), change.amount))
+        .collect()
+}
+
+/// `ah-kjq5`: the passenger is listed in Lonthax (36,44), but its study fee is lent where its
+/// fleet lands (`rules/share`: "in the same region"), so its `was lent` line names that lender and
+/// that hex rather than "your units in this hex".
+#[test]
+fn the_passengers_was_lent_line_names_the_lender_where_its_fleet_lands() {
+    let review = review();
+    for (resident, passenger, lands) in [
+        ("9508", "10594", "ocean (38,44)"),
+        ("9506", "10599", "ocean (37,45)"),
+    ] {
+        let row = row_of(&review, passenger);
+        assert_eq!(
+            lines(&row, SilverChangeCause::WasLent),
+            vec![(
+                Some(format!("Drones ({resident})")),
+                Some(lands.to_string()),
+                200
+            )],
+            "{row:#?}"
+        );
+        assert_eq!(row.borrowed_where_fleet_lands.as_deref(), Some(lands));
+    }
+}
+
+/// `ah-kjq5`: the resident at ocean (38,44) lends the study fee of a passenger the report lists in
+/// Lonthax (36,44), so its `lent` line names that passenger and the hex it sails from rather than
+/// "a faction-mate's orders in this hex".
+#[test]
+fn the_residents_lent_line_names_the_passenger_and_the_hex_it_sails_from() {
+    let review = review();
+    for (resident, passenger) in [("9508", "10594"), ("9506", "10599")] {
+        let row = row_of(&review, resident);
+        assert_eq!(
+            lines(&row, SilverChangeCause::Lent),
+            vec![(
+                Some(format!("Drones ({passenger})")),
+                Some("Lonthax (36,44)".to_string()),
+                -200
+            )],
+            "{row:#?}"
+        );
+        assert_eq!(row.borrowed_where_fleet_lands, None);
+    }
+}

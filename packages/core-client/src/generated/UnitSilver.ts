@@ -235,6 +235,15 @@ lateIncomeForeignSharer: boolean,
  */
 borrowedForOrders: number, 
 /**
+ * Where the purse that lent part of [`Self::borrowed_for_orders`] stands, when that is not
+ * the hex this unit is listed in: a passenger whose STUDY is lent where its fleet lands
+ * (`ah-q1zz`), labelled as "ocean (38,44)". `None` for every loan inside one hex (`ah-kjq5`).
+ *
+ * Set whether or not the column doubts the unit: it words the hover's fallback sentence,
+ * which is what a doubted month shows in place of the `was lent` line.
+ */
+borrowedWhereFleetLands?: string, 
+/**
  * Silver of this unit's upkeep paid by food it holds itself, at step 1 of the payment order.
  * `0` when the unit is not set to consume, holds no food, or owes nothing.
  *

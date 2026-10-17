@@ -477,6 +477,17 @@ pub struct UnitSilver {
     /// total itself: `shared_silver_for_orders` is that figure clamped to what the unit's own
     /// orders left it short, and it is the one `at_month_end` and `short_for_orders` count.
     pub borrowed_for_orders: i64,
+    /// Where the purse that lent part of [`Self::borrowed_for_orders`] stands, when that is not
+    /// the hex this unit is listed in: a passenger whose STUDY is lent where its fleet lands
+    /// (`ah-q1zz`), labelled as "ocean (38,44)". `None` for every loan inside one hex (`ah-kjq5`).
+    ///
+    /// Set whether or not the column doubts the unit: it words the hover's fallback sentence,
+    /// which is what a doubted month shows in place of the `was lent` line.
+    // Skipped when `None` so the TypeScript says `borrowedWhereFleetLands?: string` and the wire
+    // agrees (the `effects.rs` precedent).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub borrowed_where_fleet_lands: Option<String>,
     /// Silver of this unit's upkeep paid by food it holds itself, at step 1 of the payment order.
     /// `0` when the unit is not set to consume, holds no food, or owes nothing.
     ///
@@ -985,6 +996,15 @@ pub struct SilverChange {
     /// [`UnitSilver::givers`] and [`UnitSilver::taken_unshown_from`] already carry. `None` on
     /// every cause but a gift, a take and a discard.
     pub other: Option<String>,
+    /// The hex `other` is in, when it is not the one this unit is listed in: a STUDY fee lent
+    /// across a fleet's move, on the passenger's `WasLent` (where its fleet lands) and the
+    /// lender's `Lent` (where the passenger sails from) - labelled as "Lonthax (36,44)" or
+    /// "ocean (38,44)". `None` on every other line (`ah-kjq5`).
+    // Skipped when `None` so the TypeScript says `place?: string` and the wire agrees (the
+    // `effects.rs` precedent).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub place: Option<String>,
 }
 
 /// One movement of one unit's silver, as the ledger settled it.
@@ -2204,6 +2224,7 @@ fn listed_moves(record: &[SilverMove]) -> Vec<(phases::StatePhase, SilverChange)
                     cause: moved.cause,
                     line: moved.line,
                     other: moved.other.clone(),
+                    place: None,
                 },
             )
         })
@@ -2444,6 +2465,7 @@ pub fn forecast_unit(
             pool_doubted: false,
             shared_silver_coverage: None,
             changes: Vec::new(),
+            borrowed_where_fleet_lands: None,
         };
     }
 
@@ -2516,6 +2538,7 @@ pub fn forecast_unit(
             pool_doubted: false,
             shared_silver_coverage: None,
             changes: Vec::new(),
+            borrowed_where_fleet_lands: None,
         };
     }
 
@@ -3465,6 +3488,7 @@ pub fn forecast_unit(
         } else {
             moves.into_iter().map(|(_, change)| change).collect()
         },
+        borrowed_where_fleet_lands: None,
     }
 }
 
@@ -8699,12 +8723,14 @@ mod tests {
                     cause: SilverChangeCause::WasGiven,
                     line: Some(7),
                     other: Some("Unit 9 (9)".into()),
+                    place: None,
                 },
                 SilverChange {
                     amount: -70,
                     cause: SilverChangeCause::Bought,
                     line: Some(3),
                     other: None,
+                    place: None,
                 },
             ]
         );

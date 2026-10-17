@@ -1816,6 +1816,112 @@ describe("the column popups", () => {
     );
   });
 
+  // `ah-kjq5`: a STUDY fee lent across a fleet's move names the other unit and its hex
+  // (`docs/ui/ah-kjq5-loan-across-a-sailing.html`).
+  describe("a loan across a sailing", () => {
+    const silverWhy = (label: string, silver: Partial<UnitSilver>) =>
+      columnPopup(popupForCell("silver", unit({ own: true }), facts({ silver: aUnitSilver(silver) }))).lines.find(
+        (line) => line.label === label
+      );
+
+    it("the passenger's line names its lender where its fleet lands", () => {
+      expect(
+        silverWhy("was lent", {
+          borrowedForOrders: 200,
+          borrowedWhereFleetLands: "ocean (38,44)",
+          changes: [{ amount: 200, cause: "was-lent", line: null, other: "Drones (9508)", place: "ocean (38,44)" }]
+        })
+      ).toMatchObject({ value: "+200", why: "by Drones (9508), where its fleet lands in ocean (38,44)" });
+    });
+
+    it("the passenger's line names every lender, and the hex once", () => {
+      expect(
+        silverWhy("was lent", {
+          borrowedForOrders: 200,
+          changes: [
+            { amount: 30, cause: "was-lent", line: null, other: "Drones (9508)", place: "ocean (38,44)" },
+            { amount: 170, cause: "was-lent", line: null, other: "Drones (9579)", place: "ocean (38,44)" }
+          ]
+        })
+      ).toMatchObject({
+        value: "+200",
+        why: "by Drones (9508) and Drones (9579), where its fleet lands in ocean (38,44)"
+      });
+    });
+
+    it("the lender's line names the passenger and the hex it sails from", () => {
+      expect(
+        silverWhy("lent", {
+          changes: [{ amount: -200, cause: "lent", line: null, other: "Drones (10594)", place: "Lonthax (36,44)" }]
+        })
+      ).toMatchObject({ value: "-200", why: "to Drones (10594), arriving by fleet from Lonthax (36,44)" });
+    });
+
+    it("the lender's line names each passenger with its own hex", () => {
+      expect(
+        silverWhy("lent", {
+          changes: [
+            { amount: -200, cause: "lent", line: null, other: "Drones (10594)", place: "Lonthax (36,44)" },
+            { amount: -200, cause: "lent", line: null, other: "Drones (10599)", place: "plain (37,43)" }
+          ]
+        })
+      ).toMatchObject({
+        value: "-400",
+        why: "to Drones (10594), arriving by fleet from Lonthax (36,44), and Drones (10599), arriving by fleet from plain (37,43)"
+      });
+    });
+
+    it("the lender's in-hex loan keeps today's clause and the passengers follow it", () => {
+      expect(
+        silverWhy("lent", {
+          changes: [
+            { amount: -50, cause: "lent", line: null, other: null },
+            { amount: -200, cause: "lent", line: null, other: "Drones (10594)", place: "Lonthax (36,44)" }
+          ]
+        })
+      ).toMatchObject({
+        value: "-250",
+        why: "to a faction-mate's orders in this hex, and to Drones (10594), arriving by fleet from Lonthax (36,44)"
+      });
+    });
+
+    it("a passenger lent in its own hex too keeps today's clause first", () => {
+      expect(
+        silverWhy("was lent", {
+          borrowedForOrders: 250,
+          changes: [
+            { amount: 50, cause: "was-lent", line: null, other: null },
+            { amount: 200, cause: "was-lent", line: null, other: "Drones (9508)", place: "ocean (38,44)" }
+          ]
+        })
+      ).toMatchObject({
+        value: "+250",
+        why: "by your units in this hex, and by Drones (9508), where its fleet lands in ocean (38,44)"
+      });
+    });
+
+    it("the fallback sentence names where the fleet lands", () => {
+      const popup = columnPopup(
+        popupForCell(
+          "silver",
+          unit({ own: true }),
+          facts({
+            silver: aUnitSilver({
+              borrowedForOrders: 200,
+              sharedSilverForOrders: 200,
+              borrowedWhereFleetLands: "ocean (38,44)",
+              changes: []
+            })
+          })
+        )
+      );
+      expect(popup.notes).toContain(
+        "A faction-mate's silver where its fleet lands, in ocean (38,44), pays for this unit's orders."
+      );
+      expect(popup.notes).not.toContain("A faction-mate's silver in this hex pays for this unit's orders.");
+    });
+  });
+
   it("the silver popup merges two takers into one line", () => {
     const popup = columnPopup(
       popupForCell(
