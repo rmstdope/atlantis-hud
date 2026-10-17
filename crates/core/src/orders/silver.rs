@@ -1223,6 +1223,11 @@ pub struct PoolShares {
     /// caller from the report-wide production settlement, since a passenger produces in another
     /// hex than its own.
     pub foreign_claimant_production: bool,
+    /// True when the faction's region limit refuses every TAX and PILLAGE in this unit's hex:
+    /// "TAX: Faction can't tax that many regions." (`../Atlantis` `runorders.cpp`, `ah-p0xm`). The
+    /// ledger credits neither, so the unit's tax and pillage are a certain zero - never doubted,
+    /// never bounded, and never overstated.
+    pub taxing_refused: bool,
 }
 
 /// What one unit's orders ask of each of its region's contended pools, before any settlement.
@@ -2554,9 +2559,13 @@ pub fn forecast_unit(
     // `PoolShare::Uncontended` for any unit that does not draw on the pool, so a non-taxer's
     // overstatement is `0`.
     let men = taxing_men(&facts, ruleset);
-    let tax_overstated = tax_overstated_by(men, region.tax_base, region.pillaged, shares.tax);
+    let tax_overstated = if shares.taxing_refused {
+        0
+    } else {
+        tax_overstated_by(men, region.tax_base, region.pillaged, shares.tax)
+    };
 
-    if taxes(unit_flags, intents) {
+    if taxes(unit_flags, intents) && !shares.taxing_refused {
         // The settlement is what the column shows: this unit's actual take once its faction-mates
         // in the hex are settled against it. `semantics::credit_tax` passes `Uncontended` instead,
         // and that difference is deliberate - see [`price_tax`].
@@ -2614,8 +2623,11 @@ pub fn forecast_unit(
             // `ah-q6bt`, both deliberate departures from `rules/economy_taxingpillaging`, which
             // gates on the faction's men in the region and shares the take out per unit.
             Intent::Pillage => {
-                income_doubt =
-                    income_doubt.or(price_pillage(region.tax_base, region.pillagers, mine).doubt);
+                if !shares.taxing_refused {
+                    income_doubt =
+                        income_doubt
+                            .or(price_pillage(region.tax_base, region.pillagers, mine).doubt);
+                }
             }
             // `WORK` and `ENTERTAIN` earn nothing but late income, so [`late_income`] prices them
             // both - once, for this function and for `semantics::charge_settled_upkeep` alike.
@@ -3269,7 +3281,7 @@ pub fn forecast_unit(
     // earning here is not bounded".
     let sells_here = moved_by(&moves, SilverChangeCause::Sold) > 0;
     let income_in_time_at_most = income.is_some()
-        && ((shares.unread_claimant_tax && taxes(unit_flags, intents))
+        && ((shares.unread_claimant_tax && !shares.taxing_refused && taxes(unit_flags, intents))
             || (shares.unread_seller && sells_here));
     // What the hex's `SHARE` purse actually lends this unit: never more than it is short of, so an
     // allowance settled from the ledger cannot inflate a figure here (`ah-moq3`).
