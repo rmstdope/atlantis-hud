@@ -2962,8 +2962,8 @@ fn forecast_hex(
         // would cancel (`ah-ia41`).
         facts.overdrawn_at_study =
             (-unlent_silver_at(ledger, &ordered.unit.unit_id, StatePhase::Study)).max(0);
-        facts.drawn_at_give = gift_drawn_by(ledger, &ordered.unit.unit_id);
-        facts.lent_at_give = gift_lent_by(ledger, &ordered.unit.unit_id);
+        facts.drawn_at_give = GiveDraws::of(ledger).drawn_by(&ordered.unit.unit_id);
+        facts.lent_at_give = GiveDraws::of(ledger).lent_by(&ordered.unit.unit_id);
         claims.push(food_claim(&facts, ruleset));
 
         into.push(forecast_unit(
@@ -9530,37 +9530,61 @@ struct GoodsTransfer {
     received: i64,
 }
 
-/// What the Give phase drew on the `SHARE` pool for `unit_id` as each of its transfers ran
-/// ([`Ledger::silver_fundings`]), between two units neither of which is doubted. Gone from the sharers
-/// for good (`unit.cpp`: `ConsumeShared`), so a reader of the unit's silver from the Give phase on
-/// must not let a receipt later in that phase net it away (`ah-9udi`).
-fn gift_drawn_by(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
-    gift_draws_where(ledger, |borrower, _| borrower == unit_id)
+/// **The one reading of what the Give phase drew on the `SHARE` pool** ([`Ledger::silver_fundings`],
+/// which [`transfer`] writes once, as each transfer runs): every draw a sharer funded of a
+/// faction-mate's GIVE, TAKE or discard, between two units neither of which is doubted. Such a draw
+/// is gone from the sharer for good before its own orders run (`unit.cpp`: `ConsumeShared`), so a
+/// reader of either side's silver from the Give phase on must not let a receipt later in that
+/// phase net it away (`ah-9udi`). The SILVER column ([`UnitFacts::drawn_at_give`],
+/// [`UnitFacts::lent_at_give`]) and the purse ([`Lending::settle`], whose [`Lending::netted`] never
+/// nets what was drawn here) both read it through this, so they cannot disagree about it
+/// (`ah-fj2l`, `ah-d3in`, `ah-izmv`).
+///
+/// Judged when read, not when the transfer ran: [`Ledger::doubted`] grows as the walk goes on.
+/// Borrows the ledger and caches nothing.
+#[derive(Clone, Copy)]
+struct GiveDraws<'l, 'a> {
+    ledger: &'l Ledger<'a>,
 }
 
-/// What the Give phase drew on `unit_id` as a sharer ([`Ledger::silver_fundings`]): the other side of
-/// [`gift_drawn_by`], which its own ledger row never shows (`ah-9udi`).
-fn gift_lent_by(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
-    gift_draws_where(ledger, |_, draw| draw.lender == unit_id)
-}
+impl<'l> GiveDraws<'l, '_> {
+    fn of<'a>(ledger: &'l Ledger<'a>) -> GiveDraws<'l, 'a> {
+        GiveDraws { ledger }
+    }
 
-fn gift_draws_where(ledger: &Ledger<'_>, keep: impl Fn(&str, &SilverDraw) -> bool) -> i64 {
-    ledger
-        .silver_fundings
-        .iter()
-        .flat_map(|(borrower, fundings)| {
-            fundings
-                .iter()
-                .flat_map(|funding| funding.draws.iter())
-                .map(move |draw| (borrower, draw))
-        })
-        .filter(|(borrower, draw)| {
-            keep(borrower, draw)
-                && !ledger.doubted.contains(*borrower)
-                && !ledger.doubted.contains(&draw.lender)
-        })
-        .map(|(_, draw)| draw.amount)
-        .sum()
+    /// `(borrower, lender, amount)` for every judged draw, in settlement order per borrower.
+    fn each(self) -> impl Iterator<Item = (&'l str, &'l str, i64)> {
+        let ledger = self.ledger;
+        ledger
+            .silver_fundings
+            .iter()
+            .flat_map(|(borrower, fundings)| {
+                fundings
+                    .iter()
+                    .flat_map(|funding| funding.draws.iter())
+                    .map(move |draw| (borrower.as_str(), draw.lender.as_str(), draw.amount))
+            })
+            .filter(move |(borrower, lender, _)| {
+                !ledger.doubted.contains(*borrower) && !ledger.doubted.contains(*lender)
+            })
+    }
+
+    /// What the Give phase drew on the pool for `unit_id` as each of its transfers ran.
+    fn drawn_by(self, unit_id: &str) -> i64 {
+        self.each()
+            .filter(|(borrower, _, _)| *borrower == unit_id)
+            .map(|(_, _, amount)| amount)
+            .sum()
+    }
+
+    /// What the Give phase drew on `unit_id` as a sharer: the other side of
+    /// [`GiveDraws::drawn_by`], which its own ledger row never shows (`ah-9udi`).
+    fn lent_by(self, unit_id: &str) -> i64 {
+        self.each()
+            .filter(|(_, lender, _)| *lender == unit_id)
+            .map(|(_, _, amount)| amount)
+            .sum()
+    }
 }
 
 /// Lays the part of a silver transfer from `from` that its own silver does not cover on the hex's
@@ -9570,6 +9594,8 @@ fn gift_draws_where(ledger: &Ledger<'_>, keep: impl Fn(&str, &SilverDraw) -> boo
 /// transfer's [`SilverFunding`] (`ah-msds`, `ah-rou9`). `funded` is what the pool let the transfer
 /// move.
 fn draws_for(ledger: &Ledger<'_>, hex: &Hex<'_>, from: &str, funded: i64) -> Vec<SilverDraw> {
+    // The writer's own running balance, mid-transfer: every draw laid so far, unjudged, as the walk
+    // laid it. Not a [`GiveDraws`] reader, which judges the record once it is read (`ah-izmv`).
     let holds = |unit_id: &str| {
         let drawn: i64 = ledger
             .silver_fundings
@@ -9832,8 +9858,8 @@ fn transfer(
     // its own balance never shows (`unit.cpp`: `ConsumeShared`; `ah-fj2l`). The funding record and
     // the cut record below both read it.
     let own_silver = known_source
-        .saturating_add(gift_drawn_by(ledger, &from))
-        .saturating_sub(gift_lent_by(ledger, &from))
+        .saturating_add(GiveDraws::of(ledger).drawn_by(&from))
+        .saturating_sub(GiveDraws::of(ledger).lent_by(&from))
         .max(0);
     let funding = (!from.is_empty() && tag.eq_ignore_ascii_case(SILVER)).then(|| SilverFunding {
         line: placed.line as i64,
@@ -15430,7 +15456,8 @@ impl SharerStock {
                         && pooled
                         && (StatePhase::Give..=StatePhase::Cast).contains(&phase)
                     {
-                        gift_drawn_by(ledger, unit_id) - gift_lent_by(ledger, unit_id)
+                        GiveDraws::of(ledger).drawn_by(unit_id)
+                            - GiveDraws::of(ledger).lent_by(unit_id)
                     } else {
                         0
                     };
@@ -15914,7 +15941,7 @@ impl<'a> Sharing<'a> {
                 // What its GIVEs drew on the pool as they ran is owed however much reached it
                 // later in the Give phase (`unit.cpp`: `ConsumeShared`; `ah-9udi`). A sharer's own
                 // row already nets that draw against what it holds, so only a claimant needs it.
-                let drawn = gift_drawn_by(ledger, &ordered.unit.unit_id);
+                let drawn = GiveDraws::of(ledger).drawn_by(&ordered.unit.unit_id);
                 if self.pools_silver(ordered) {
                     return -held;
                 }
@@ -15958,7 +15985,7 @@ impl<'a> Sharing<'a> {
                 } else {
                     // What its GIVEs drew on the pool is owed at both readings however much
                     // reached it later, as [`Sharing::silver_short_reading`] counts it (`ah-9udi`).
-                    let drawn = gift_drawn_by(ledger, who);
+                    let drawn = GiveDraws::of(ledger).drawn_by(who);
                     // What it overdrew at the cast is still owed at the month's end however much
                     // it sold since, exactly as the month-end reading counts it (`ah-9n7l.2`).
                     let at_month_end = (-silver_at(ledger, who, LendingMoment::MonthEnd))
@@ -16109,7 +16136,8 @@ fn lend_walking_sharers_silver(
         // (`ah-9udi`): a sharer drained then has nothing left to lend before it walks or where it
         // arrives, and a drawer refilled since owes the pool nothing more for its draw.
         let held_at = |who: &str, moment: LendingMoment| {
-            silver_at(ledger, who, moment) + gift_drawn_by(ledger, who) - gift_lent_by(ledger, who)
+            silver_at(ledger, who, moment) + GiveDraws::of(ledger).drawn_by(who)
+                - GiveDraws::of(ledger).lent_by(who)
         };
         let walkers: Vec<&Ordered<'_>> = hex
             .units
@@ -16155,7 +16183,7 @@ fn lend_walking_sharers_silver(
             // All it lent here before it left, what the Give phase drew on it included: every
             // reader of `departing` sets it against the drawers' rows, which still carry those
             // draws.
-            departing[index].insert(who.clone(), gift_lent_by(ledger, who) + more);
+            departing[index].insert(who.clone(), GiveDraws::of(ledger).lent_by(who) + more);
 
             let Some(&arrives) = by_place.get(&members.ends_at(here, who)) else {
                 continue;
@@ -16653,7 +16681,8 @@ struct Lending {
     /// What each unit lent its faction-mates' orders.
     lends: Vec<i64>,
     /// The part of `lends` the Give phase drew on each unit as a faction-mate's GIVE or TAKE ran
-    /// ([`Ledger::silver_fundings`]). Gone before the unit's own orders run (`unit.cpp`:
+    /// ([`GiveDraws::each`], the reading the column's [`UnitFacts::lent_at_give`] is summed
+    /// from too, so the two cannot drift; `ah-izmv`). Gone before the unit's own orders run (`unit.cpp`:
     /// `ConsumeShared`), so [`Lending::netted`] never passes it on against what the unit is lent
     /// later: a sharer a GIVE drains and whose STUDY the purse then pays lent the whole draw and
     /// was lent the fee, as its column reads it (`ah-d3in`).
@@ -16792,11 +16821,11 @@ impl Lending {
     /// unit holds once its lending is carried - its balance less `lends` plus `borrows` - is the
     /// same netted or not.
     ///
-    /// What the Give phase drew on a unit ([`Lending::lent_at_give`]) is never netted: it left
-    /// before any order of the unit's own could spend it, and the column already reads the unit's
-    /// silver from that point on without it (`forecast_unit`, `ah-fj2l`). Netting it against a
-    /// later loan would leave the borrower's fee unlent while its silver is still counted gone,
-    /// a STUDY the purse pays shown as one the unit cannot (`ah-d3in`).
+    /// What the Give phase drew on a unit ([`Lending::lent_at_give`], from [`GiveDraws`]) is never
+    /// netted: it left before any order of the unit's own could spend it, and the column already
+    /// reads the unit's silver from that point on without it (`forecast_unit`, `ah-fj2l`). Netting
+    /// it against a later loan would leave the borrower's fee unlent while its silver is still
+    /// counted gone, a STUDY the purse pays shown as one the unit cannot (`ah-d3in`).
     fn netted(mut self) -> Self {
         for ((lent, borrowed), at_give) in self
             .lends
@@ -16905,7 +16934,8 @@ impl Lending {
         // held silver at that point (`runorders.cpp`: `DoGiveOrders`, `DoGiveOrder`;
         // `unit.cpp`: `ConsumeShared`), so it is lent before the cast moment, on the sharer the
         // ledger recorded ([`Ledger::silver_fundings`]), rather than laid on the sharers in drain order
-        // against what they hold once every later GIVE has run (`ah-msds`). A draw on a sharer
+        // against what they hold once every later GIVE has run (`ah-msds`) - read through
+        // [`GiveDraws`], the same reading the SILVER column takes (`ah-izmv`). A draw on a sharer
         // that walks away is booked too: it ran before the walker left, and
         // [`lend_walking_sharers_silver`] counts it in what the walker lent here, so it is not
         // lent again where the walker's month ends (`ah-msds` review, finding 1).
@@ -16916,15 +16946,11 @@ impl Lending {
                     .position(|ordered| ordered.unit.unit_id == unit_id)
                     .filter(|&index| judged(index))
             };
-            for (borrower, funding) in &ledger.silver_fundings {
-                for draw in funding.iter().flat_map(|funding| funding.draws.iter()) {
-                    if let (Some(borrower), Some(lender)) =
-                        (index_of(borrower), index_of(&draw.lender))
-                    {
-                        purse.borrows[borrower] += draw.amount;
-                        purse.lends[lender] += draw.amount;
-                        purse.lent_at_give[lender] += draw.amount;
-                    }
+            for (borrower, lender, amount) in GiveDraws::of(ledger).each() {
+                if let (Some(borrower), Some(lender)) = (index_of(borrower), index_of(lender)) {
+                    purse.borrows[borrower] += amount;
+                    purse.lends[lender] += amount;
+                    purse.lent_at_give[lender] += amount;
                 }
             }
         }
@@ -64336,9 +64362,9 @@ BUILD
                         .position(|ordered| ordered.unit.unit_id == id)
                         .expect("listed")
                 };
-                assert_eq!(gift_drawn_by(&ledger, "901"), gift.drawn());
-                assert_eq!(gift_lent_by(&ledger, "905"), gift.draws[0].amount);
-                assert_eq!(gift_lent_by(&ledger, "902"), 0);
+                assert_eq!(GiveDraws::of(&ledger).drawn_by("901"), gift.drawn());
+                assert_eq!(GiveDraws::of(&ledger).lent_by("905"), gift.draws[0].amount);
+                assert_eq!(GiveDraws::of(&ledger).lent_by("902"), 0);
                 let lending = Lending::before(&hex, &ledger, StatePhase::Market);
                 assert_eq!(lending.borrows[index("901")], gift.drawn(), "{lending:?}");
                 assert_eq!(
@@ -64352,6 +64378,47 @@ BUILD
                     lending.borrows[index("906")],
                     "{lending:?}"
                 );
+            }
+
+            /// [`GiveDraws`] is the one reading of the Give phase's draws: both sides of 905's
+            /// draw for 901's GIVE, and nothing for 902, which 903 refills but which funds no
+            /// gift (`ah-izmv`).
+            #[test]
+            fn give_draws_read_both_sides_of_one_draw() {
+                let rules = trident_rules();
+                let region = region();
+                let ordered = OrderedUnits::read(ORDERS);
+                let hex = Hex::read(&region, &ordered, &[]);
+                let mut ledger = ledger_for(&hex, Some(&rules));
+                let draws = GiveDraws::of(&ledger);
+                assert_eq!(draws.each().collect::<Vec<_>>(), vec![("901", "905", 100)]);
+                assert_eq!(
+                    (
+                        draws.drawn_by("901"),
+                        draws.lent_by("905"),
+                        draws.lent_by("902")
+                    ),
+                    (100, 100, 0)
+                );
+                // Judged when read: a side doubted after the transfer ran drops the draw from
+                // both readings, though the record keeps it.
+                for doubted in ["905", "901"] {
+                    let mut later = ledger.doubted.clone();
+                    later.insert(doubted.to_string());
+                    let kept = std::mem::replace(&mut ledger.doubted, later);
+                    let draws = GiveDraws::of(&ledger);
+                    assert_eq!(
+                        (
+                            draws.each().count(),
+                            draws.drawn_by("901"),
+                            draws.lent_by("905")
+                        ),
+                        (0, 0, 0),
+                        "{doubted} doubted"
+                    );
+                    assert_eq!(ledger.silver_fundings["901"][0].draws.len(), 1);
+                    ledger.doubted = kept;
+                }
             }
 
             /// The SILVER column reads the record's verdict that the pool paid the GIVE in full,
@@ -64481,7 +64548,7 @@ BUILD
                         named_the_gift,
                         anchored_the_gift,
                         lent,
-                        gift_drawn_by(&ledger, "901"),
+                        GiveDraws::of(&ledger).drawn_by("901"),
                     ),
                     (gift.cut_gift(), gift.cut_gift(), drawn, gift.drawn()),
                     "{gift:?}"
