@@ -383,6 +383,9 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
   // neither a line of its own nor a `gone` line for what the report listed and the month spent.
   // A tag the month only passed through - given to a sharer and lent on to a faction-mate's
   // BUILD - is neither held, reported nor produced, so its movements name it too (`ah-dqvi`).
+  // Except on a unit filled in from a merged faction's own report, whose Silver cell is a dash and
+  // whose Items cell therefore says its silver - so this popup must too (`ah-oqxn`).
+  const keepSilver = mergedFromOf(unit) !== null;
   const tags: string[] = [];
   for (const tag of [
     ...held.keys(),
@@ -390,7 +393,7 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
     ...(unit.produced ?? []).map(({ tag }) => tag),
     ...changes.map(({ tag }) => tag)
   ]) {
-    if (!isSilver(tag) && !tags.includes(tag)) {
+    if ((keepSilver || !isSilver(tag)) && !tags.includes(tag)) {
       tags.push(tag);
     }
   }

@@ -921,6 +921,24 @@ describe("the column popups", () => {
     ]);
   });
 
+  it("the items popup of a merged faction's unit lists the silver its cell shows (ah-oqxn)", () => {
+    const merged = {
+      ...unit({
+        own: false,
+        items: [
+          { amount: 2, name: "humans", tag: "HUMN" },
+          { amount: 43, name: "silver", tag: "SILV" }
+        ]
+      }),
+      mergedFrom: { factionLabel: "Borg (62)", turn: 17 }
+    } as PreviewedUnit;
+
+    const popup = columnPopup(popupForCell("items", merged, facts()));
+
+    expect(JSON.stringify(popup.lines)).toContain("SILV");
+    expect(JSON.stringify(columnPopup(popupForCell("items", unit({ own: false, items: merged.items }), facts())).lines)).not.toContain("SILV");
+  });
+
   it("the items popup carries today's items tooltip and explains the plus-question mark", () => {
     const popup = columnPopup(
       popupForCell(

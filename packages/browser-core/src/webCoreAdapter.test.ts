@@ -2029,6 +2029,28 @@ describe("merging an allied report", () => {
     ]);
   });
 
+  it("hands back only the merged factions' own units in the history", async () => {
+    const store = createMemoryWebStore();
+    await store.putMergedReport({
+      databasePath: "/db",
+      gameId: "p",
+      factionId: "95",
+      turnNumber: 71,
+      mergedFactionId: "73",
+      mergedFactionName: "Borg",
+      mergedAt: MERGED_AT,
+      units: [
+        { unitId: "7124", regionId: "1:1,1", own: true } as ReportUnit,
+        { unitId: "4410", regionId: "1:1,1", own: false } as ReportUnit
+      ]
+    });
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+
+    const [record] = await adapter.loadMergedReportHistory("/db", "p", "95");
+
+    expect(record.units.map((unit) => unit.unitId)).toEqual(["7124"]);
+  });
+
   it("keeps one record per ally however often it is merged", async () => {
     const store = await withViewersMap();
     const adapter = createWebCoreAdapter(fakeWasm(), store);

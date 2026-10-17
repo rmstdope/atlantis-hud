@@ -34,6 +34,9 @@ export function useMergedHistory(
       setHistory(NONE);
       return;
     }
+    // Nothing from the previous game or faction stands in while this one loads: its carried skills
+    // would be laid on whichever unit here happens to share a number.
+    setHistory(NONE);
     let current = true;
     client
       .loadMergedReportHistory(databasePath, gameId, factionId)

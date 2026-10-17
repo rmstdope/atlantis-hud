@@ -2033,7 +2033,16 @@ mod merge_tests {
         let history =
             command_load_merged_report_history(&created.database_path, "faction-95", "95")
                 .expect("the history loads");
-        assert_eq!(history, merged);
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].merged_faction_id, merged[0].merged_faction_id);
+        // The history carries the ally's own units only: they are all a later turn reads.
+        let own: Vec<_> = merged[0]
+            .units
+            .iter()
+            .filter(|unit| unit.own)
+            .cloned()
+            .collect();
+        assert_eq!(history[0].units, own);
     }
 
     #[test]

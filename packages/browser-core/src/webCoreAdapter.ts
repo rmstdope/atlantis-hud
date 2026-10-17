@@ -511,8 +511,17 @@ export function createWebCoreAdapter(
 
       // The core's order within a turn, then by turn - the desktop's `ORDER BY turn_number,
       // merged_at, merged_faction_id`. `sort` is stable, so the core's order survives inside a turn.
+      // Only the merged factions' own units, as the desktop hands back: they are all a later turn
+      // reads.
       return wasm
-        .ordered_merged_reports_state(JSON.stringify(stored.map(asMergedReportRecord)))
+        .ordered_merged_reports_state(
+          JSON.stringify(
+            stored.map((record) => ({
+              ...asMergedReportRecord(record),
+              units: (record.units ?? []).filter((unit) => unit.own)
+            }))
+          )
+        )
         .sort((left, right) => left.turnNumber - right.turnNumber);
     },
 

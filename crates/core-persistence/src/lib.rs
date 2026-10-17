@@ -1520,6 +1520,10 @@ pub fn load_merged_reports(
 /// What a later turn carries merged skills forward from. Within a turn the order is the one
 /// [`load_merged_reports`] uses, so a turn read either way lists its merges alike.
 ///
+/// Each record carries only the merged faction's own units: they are all a later turn reads, and a
+/// game that merges a large report every turn would otherwise ship every stranger and every
+/// inventory of every turn on each turn switch.
+///
 /// # Errors
 ///
 /// Returns an error when the database file is missing or cannot be read.
@@ -1552,7 +1556,10 @@ pub fn load_merged_report_history(
             merged_faction_id: row.get(1)?,
             merged_faction_name: row.get(2)?,
             merged_at: row.get(3)?,
-            units: units_from_json(&row.get::<_, String>(4)?),
+            units: units_from_json(&row.get::<_, String>(4)?)
+                .into_iter()
+                .filter(|unit| unit.own)
+                .collect(),
         })
     })?;
 
@@ -5805,6 +5812,21 @@ mod merged_report_tests {
         let mut elsewhere = merge_of("62", 17, "2026-10-17T10:00:00Z");
         elsewhere.faction_id = "73".to_string();
         upsert_merged_report(&opened.database_path, &elsewhere).expect("another faction's");
+        let mut with_units = merge_of("62", 18, "2026-10-17T09:00:00Z");
+        with_units.units = vec![unit("7124", true), unit("4410", false)];
+        upsert_merged_report(&opened.database_path, &with_units).expect("turn 18 with units");
+
+        let kept: Vec<String> = load_merged_report_history(&opened.database_path, GAME, "95")
+            .expect("load")
+            .into_iter()
+            .flat_map(|record| record.units)
+            .map(|unit| unit.unit_id)
+            .collect();
+        assert_eq!(
+            kept,
+            vec!["7124".to_string()],
+            "only the merged faction's own units"
+        );
 
         let history: Vec<(u32, String)> =
             load_merged_report_history(&opened.database_path, GAME, "95")
