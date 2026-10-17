@@ -501,34 +501,51 @@ pub fn fleet_owner(
     formed: &[FormedCrew],
     structure_id: &str,
 ) -> Option<String> {
+    occupants_after_promotes(region, ordered, formed, structure_id)
+        .into_iter()
+        .next()
+}
+
+/// Everyone standing in a structure once this month's boardings and `PROMOTE`s have run, owner
+/// first, as unit ids - the object's list [`fleet_owner`] reads its first entry from, by the rules
+/// stated there. A structure of any kind, not only a hull: the engine keeps one list per object
+/// (`Object::GetOwner`), and `CheckTransportOrders` asks it about a Caravanserai long after the
+/// movement phase has taken more units off it (`ah-1jl9`).
+#[must_use]
+pub fn occupants_after_promotes(
+    region: &ReportRegion,
+    ordered: &OrderedUnits,
+    formed: &[FormedCrew],
+    structure_id: &str,
+) -> Vec<String> {
     let listed_under = |unit: &ReportUnit| unit.structure_id.as_deref() == Some(structure_id);
     let aboard = |unit: &&ReportUnit| ordered.structure_of(unit) == Some(structure_id);
     let stayed = region
         .units
         .iter()
         .filter(aboard)
-        .find(|unit| listed_under(unit) && !ordered.enters(unit, structure_id));
-    let boarded = || {
-        region
-            .units
-            .iter()
-            .filter(aboard)
-            .find(|unit| !listed_under(unit) || ordered.enters(unit, structure_id))
-    };
-    let formed_aboard = || {
-        formed.iter().find(|crew| {
-            crew.region_id == region.region_id && crew.structure_id.as_deref() == Some(structure_id)
-        })
-    };
-    let mut owner = match stayed.or_else(boarded) {
-        Some(unit) => unit.unit_id.clone(),
-        None => formed_aboard()?.unit_id.clone(),
-    };
+        .filter(|unit| listed_under(unit) && !ordered.enters(unit, structure_id));
+    let boarded = region
+        .units
+        .iter()
+        .filter(aboard)
+        .filter(|unit| !listed_under(unit) || ordered.enters(unit, structure_id));
+    let formed_aboard = formed.iter().filter(|crew| {
+        crew.region_id == region.region_id && crew.structure_id.as_deref() == Some(structure_id)
+    });
+    let mut occupants: Vec<String> = stayed
+        .chain(boarded)
+        .map(|unit| unit.unit_id.clone())
+        .chain(formed_aboard.map(|crew| crew.unit_id.clone()))
+        .collect();
 
     // Each promotion is followed in turn, so a hull handed on twice in one month ends with the
     // unit actually holding it. `seen` bounds the walk: a document can name a cycle.
     let mut seen: BTreeSet<String> = BTreeSet::new();
-    while seen.insert(owner.clone()) {
+    while let Some(owner) = occupants.first().cloned() {
+        if !seen.insert(owner.clone()) {
+            break;
+        }
         let Some(next) = ordered
             .promotes_of(&owner)
             .iter()
@@ -542,9 +559,11 @@ pub fn fleet_owner(
         else {
             break;
         };
-        owner = next;
+        // `Do1PromoteOrder`: the target is taken off the object's list and put back at its head.
+        occupants.retain(|unit| unit != &next);
+        occupants.insert(0, next);
     }
-    Some(owner)
+    occupants
 }
 
 /// Who owns a hull, and the course that owner set.

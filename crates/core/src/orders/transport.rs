@@ -315,9 +315,8 @@ impl Quartermasters {
 
 /// What the report shows about one unit a `TRANSPORT` could name (`ah-64wm`).
 ///
-/// Read from the report alone, before any order runs: `rules/transport` asks about the target's
-/// skill and its structure, and neither is something this month's orders are being previewed to
-/// change.
+/// Read from the report, before any order runs, except `caravanserai_owner`, which
+/// [`Shipping::read`] settles for the moment the shipments run (`ah-1jl9`).
 pub(crate) struct TargetFacts {
     /// Ours, whose skills the report prints in full - so an absent skill is an absent skill,
     /// rather than an undisclosed one.
@@ -327,7 +326,8 @@ pub(crate) struct TargetFacts {
     /// The report shows the quartermaster skill on this unit.
     pub quartermaster: bool,
     /// The unit is the first one listed inside a Caravanserai in its hex, which is what
-    /// `rules/world_structures` makes the owner of the structure.
+    /// `rules/world_structures` makes the owner of the structure - as [`target_facts`] reads the
+    /// report, and as [`Shipping::read`] then settles it for when the shipments run.
     pub caravanserai_owner: bool,
     /// The hex the report shows this unit standing in, for the reach the shipment is measured
     /// against (`ah-7ale.2.1`).
@@ -391,6 +391,89 @@ pub(crate) fn target_facts(
         }
     }
     facts
+}
+
+/// The units owning a Caravanserai when the month's shipments run, for a document that moves
+/// anybody in or out of one (`ah-1jl9`).
+///
+/// `rules/transport` asks the owner of a transport structure, and the engine asks last of all:
+/// `RunOrders` runs ENTER/LEAVE, then PROMOTE/EVICT, then movement, and only then
+/// `CheckTransportOrders` (`../Atlantis/runorders.cpp`). The owner is the first unit in the
+/// object's list (`Object::GetOwner`); [`occupants_after_promotes`] gives that list once the
+/// boardings and promotions have run, and the movement phase then takes off every unit
+/// `Unit::MoveUnit` moves out - a walker ending the month in another hex (`month_end`), and a
+/// `MOVE OUT` or `MOVE <structure>` from inside ([`standing_through_move`]) - and appends anyone a
+/// `MOVE <structure>` brings in, `MOVE <dir> <structure>` into another hex's included. A unit this month's `FORM` creates is not followed, as
+/// [`target_facts`] already says it owns nothing. EVICT is not modelled (`ah-0ace`): it takes a
+/// unit off the list behind the owner, so it never changes who owns.
+///
+/// [`occupants_after_promotes`]: crate::movement::fleet::occupants_after_promotes
+/// [`standing_through_move`]: super::standing::standing_through_move
+fn caravanserai_owners_at_transport(
+    report: &crate::report::ParsedReport,
+    orders_document: &str,
+    ruleset: &crate::movement::rules::Ruleset,
+    month_end: &MonthEndHexes,
+) -> std::collections::BTreeSet<String> {
+    use crate::movement::fleet::{occupants_after_promotes, OrderedUnits};
+    use crate::orders::blocks::OrderedUnitKey;
+    use crate::report::model::Coordinate;
+
+    let ordered = OrderedUnits::of_month(report, orders_document, Some(ruleset));
+    // Where every unit the report shows stands once the movement phase has run: the hex, and the
+    // structure in it. A walker that crossed out of its hex stands in whatever its order entered
+    // after the crossing, which is nothing unless it wrote `MOVE <dir> <structure>`.
+    let mut standing: std::collections::BTreeMap<&str, (Coordinate, Option<String>)> =
+        std::collections::BTreeMap::new();
+    for region in &report.regions {
+        for unit in &region.units {
+            let before = ordered.structure_of(unit).map(str::to_string);
+            let key = OrderedUnitKey::shown(&unit.unit_id);
+            let moved = ordered
+                .steps_for(&key)
+                .filter(|_| !ordered.sails_a_course(&key))
+                .map(|steps| super::standing::standing_through_move(before.as_deref(), steps));
+            let hex = standing_at(month_end, &unit.unit_id, region.coordinate);
+            let structure = match moved {
+                Some(moved) if hex != region.coordinate => moved.destination,
+                Some(moved) => moved.origin,
+                None if hex != region.coordinate => None,
+                None => before,
+            };
+            standing.insert(unit.unit_id.as_str(), (hex, structure));
+        }
+    }
+    let stands_in = |unit_id: &str, hex: Coordinate, id: &str| {
+        standing
+            .get(unit_id)
+            .is_some_and(|(at, structure)| *at == hex && structure.as_deref() == Some(id))
+    };
+
+    let mut owners = std::collections::BTreeSet::new();
+    for region in &report.regions {
+        for structure in region.structures.iter().filter(|one| is_caravanserai(one)) {
+            let id = structure.structure_id.as_str();
+            let mut occupants = occupants_after_promotes(region, &ordered, &[], id);
+            occupants.retain(|unit| {
+                // A unit `occupants_after_promotes` reads from outside the report - none today -
+                // is left where it put it.
+                !standing.contains_key(unit.as_str()) || stands_in(unit, region.coordinate, id)
+            });
+            // `Unit::MoveUnit` appends whoever the movement phase brings in, from this hex or
+            // another, in the order the report lists them.
+            for unit in report.units() {
+                if stands_in(&unit.unit_id, region.coordinate, id)
+                    && !occupants.contains(&unit.unit_id)
+                {
+                    occupants.push(unit.unit_id.clone());
+                }
+            }
+            if let Some(owner) = occupants.into_iter().next() {
+                owners.insert(owner);
+            }
+        }
+    }
+    owners
 }
 
 /// Whether the game will let this target receive the goods, and why not when it will not.
@@ -612,14 +695,33 @@ pub(crate) struct Shipping {
 }
 
 impl Shipping {
-    /// `geometry`, `shown` and `month_end` are cloned out of `options`.
+    /// `geometry`, `shown` and `month_end` are cloned out of `options`. `orders_document` says who
+    /// still owns each Caravanserai when the shipments run ([`caravanserai_owners_at_transport`]).
     pub(crate) fn read(
         report: &crate::report::ParsedReport,
         ruleset: &crate::movement::rules::Ruleset,
         options: &super::semantics::CheckOptions,
+        orders_document: &str,
     ) -> Self {
         let quartermasters = Quartermasters::read(report, ruleset);
-        let targets = target_facts(report, &quartermasters);
+        let mut targets = target_facts(report, &quartermasters);
+        // The report's owners are where the month starts. Only a hex with a Caravanserai can
+        // change them, so the document is not walked again for a faction that has none in view.
+        let any_caravanserai = report
+            .regions
+            .iter()
+            .any(|region| region.structures.iter().any(is_caravanserai));
+        if any_caravanserai {
+            let owners = caravanserai_owners_at_transport(
+                report,
+                orders_document,
+                ruleset,
+                &options.month_end,
+            );
+            for (unit_id, facts) in &mut targets {
+                facts.caravanserai_owner = owners.contains(unit_id);
+            }
+        }
         Self {
             quartermasters,
             targets,
@@ -637,10 +739,15 @@ impl Shipping {
     /// STUDY and BUILD, all before TRANSPORT; `rules/transport` asks the target for the
     /// quartermaster skill and ownership of a transport structure, and `rules/world_structures`
     /// makes the owner "the first unit listed under the object". So a unit is unsettled when it
-    /// studies the quartermaster skill (resolved through the catalogue, `ah-d0ku`), ENTERs or
-    /// BUILDs, is named by a PROMOTE, or stands in a structure one of whose units LEAVEs, ENTERs
-    /// elsewhere or MOVEs - which can hand ownership on. Deliberately broad: a refusal the
-    /// player is warned about with no switch must be one the month cannot undo.
+    /// studies the quartermaster skill (resolved through the catalogue, `ah-d0ku`) or BUILDs, or
+    /// stands in a structure one of whose units BUILDs or walks where the trace cannot follow -
+    /// which can hand ownership on. Deliberately broad: a refusal the player is warned about with
+    /// no switch must be one the month cannot undo.
+    ///
+    /// ENTER, LEAVE, PROMOTE and a traced MOVE no longer unsettle anybody: [`Shipping::read`] has
+    /// already settled who owns each Caravanserai once they have run (`ah-1jl9`). A walk with no
+    /// month end - a unit of unstated speed, a passage nobody has proved the far side of - is the
+    /// one movement it cannot follow, so it still unsettles everyone it stood with.
     pub(crate) fn read_orders(
         &mut self,
         report: &crate::report::ParsedReport,
@@ -670,7 +777,6 @@ impl Shipping {
         let mut shaken: std::collections::BTreeSet<(&str, &str)> =
             std::collections::BTreeSet::new();
         for unit in super::intents::read_intents(orders, Some(ruleset)) {
-            self.unsettled.extend(unit.promotes_units.iter().cloned());
             let mut changes_itself = false;
             let mut steps_out = false;
             for placed in &unit.intents {
@@ -678,11 +784,22 @@ impl Shipping {
                     Intent::Study { skill } if studies_quartermaster(skill) => {
                         changes_itself = true
                     }
-                    Intent::Enter { .. } | Intent::Build { .. } => {
+                    Intent::Build { .. } => {
                         changes_itself = true;
                         steps_out = true;
                     }
-                    Intent::Leave | Intent::Move { .. } => steps_out = true,
+                    Intent::Move { steps }
+                        if !self.month_end.contains_key(&unit.unit_id)
+                            && steps.iter().any(|step| {
+                                matches!(
+                                    step,
+                                    crate::movement::orders::MoveStep::Go(_)
+                                        | crate::movement::orders::MoveStep::In
+                                )
+                            }) =>
+                    {
+                        steps_out = true;
+                    }
                     _ => {}
                 }
             }

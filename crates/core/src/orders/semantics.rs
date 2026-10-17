@@ -734,7 +734,7 @@ pub fn review_turn(
     // when the reach check is enabled: the shipping price reads them too, and the agreed record
     // says the switch takes sentences away and leaves every figure honest (`ah-7ale.3`).
     let shipping = ruleset.map(|rules| {
-        let mut shipping = super::transport::Shipping::read(report, rules, &options);
+        let mut shipping = super::transport::Shipping::read(report, rules, &options, source);
         // Which targets this month's orders could make eligible (`ah-kjjv`).
         shipping.read_orders(report, source, rules);
         shipping
@@ -7740,7 +7740,8 @@ pub(crate) fn item_effects(
     // `review_turn` runs it: the food upkeep eats comes off the ITEMS column, and steps 5 and 6
     // are only known once step 4 has lent what it lends (`ah-q490`).
     let shipping = ruleset.map(|rules| {
-        let mut shipping = super::transport::Shipping::read(report, rules, options);
+        let mut shipping =
+            super::transport::Shipping::read(report, rules, options, orders_document);
         // The same reading of the month's orders `review_turn` makes, so no `Judged` here can
         // call a refusal settled that the month may undo (`ah-kjjv`).
         shipping.read_orders(report, orders_document, rules);
@@ -56257,24 +56258,52 @@ BUILD
             )
             .is_empty());
         }
-        // (b) A quartermaster with no Caravanserai ENTERs one, or BUILDs, or is PROMOTEd.
-        for orders in [
-            "unit 900\nTRANSPORT 901 100 SILV\nunit 901\nENTER 500\n",
+        // (b) A quartermaster with no Caravanserai BUILDs, which may found one it then owns.
+        assert!(target_findings(
+            vec![shipping_from(vec![
+                sender(),
+                with_skill(unit("901"), "QUAM", 1),
+            ])],
             "unit 900\nTRANSPORT 901 100 SILV\nunit 901\nBUILD Caravanserai\n",
+        )
+        .is_empty());
+        // (c) It ENTERs an empty Caravanserai, or its owner PROMOTEs it: ownership once those have
+        // run is settled (`ah-1jl9`), and here it is the target's - no refusal at all.
+        let mut empty = shipping_from(vec![sender(), with_skill(unit("901"), "QUAM", 1)]);
+        empty.structures = vec![Structure {
+            structure_id: "500".to_string(),
+            name: "Caravan".to_string(),
+            kind: "Caravanserai".to_string(),
+            ..Default::default()
+        }];
+        assert!(target_findings(
+            vec![empty],
+            "unit 900\nTRANSPORT 901 100 SILV\nunit 901\nENTER 500\n",
+        )
+        .is_empty());
+        let mut owned = caravanserai_owner("902", 1, 0, 0);
+        let mut heir = with_skill(unit("901"), "QUAM", 1);
+        heir.structure_id = Some("500".to_string());
+        owned.units.push(heir);
+        owned.units.insert(0, sender());
+        assert!(target_findings(
+            vec![owned],
+            "unit 900\nTRANSPORT 901 100 SILV\nunit 902\nPROMOTE 901\n",
+        )
+        .is_empty());
+        // (d) A PROMOTE from a unit that owns nothing hands nothing over (`Do1PromoteOrder` runs
+        // only the owner's): a refusal the month cannot undo.
+        let finding = only(target_findings(
+            vec![shipping_from(vec![
+                sender(),
+                with_skill(unit("901"), "QUAM", 1),
+            ])],
             "unit 900\nTRANSPORT 901 100 SILV\nPROMOTE 901\n",
-        ] {
-            assert!(
-                target_findings(
-                    vec![shipping_from(vec![
-                        sender(),
-                        with_skill(unit("901"), "QUAM", 1),
-                    ])],
-                    orders,
-                )
-                .is_empty(),
-                "{orders}"
-            );
-        }
+        ));
+        assert_eq!(
+            finding.message,
+            "Unit 901 does not own a Caravanserai, so 100 SILV stay with this unit."
+        );
         // Studying something else changes nothing.
         let finding = only(target_findings(
             vec![shipping_from(vec![sender(), unit("901")])],
@@ -56304,11 +56333,18 @@ BUILD
 
     /// `ah-kjjv`: `rules/world_structures` makes the owner "the first unit listed under the object",
     /// so when the owner LEAVEs, ENTERs elsewhere or MOVEs - all before TRANSPORT
-    /// (`rules/sequenceofevents`) - the next unit inside may become the owner.
+    /// (`rules/sequenceofevents`) - the next unit inside becomes the owner (`ah-1jl9`), or may,
+    /// for a walk no month end follows.
     #[test]
     fn a_target_inside_a_caravanserai_its_owner_leaves_is_not_warned_about() {
         for step_out in ["LEAVE", "ENTER 501", "MOVE N"] {
             let mut home = caravanserai_owner("902", 1, 0, 0);
+            home.structures.push(Structure {
+                structure_id: "501".to_string(),
+                name: "Shed".to_string(),
+                kind: "Tower".to_string(),
+                ..Default::default()
+            });
             let mut heir = with_skill(unit("901"), "QUAM", 1);
             heir.structure_id = Some("500".to_string());
             home.units.push(heir);
@@ -56390,17 +56426,22 @@ BUILD
 
     /// `ah-b6fz`: `rules/sequenceofevents` moves every unit before any TRANSPORT, so a
     /// quartermaster walking away takes the shipment out of reach - and the sentence names the
-    /// distance after the move.
+    /// distance after the move. It walks into the empty Caravanserai where it arrives, which it
+    /// owns by then: one ending the month outdoors owns none, and is refused for that before any
+    /// distance is measured (`CheckTransportOrders`, `ah-1jl9`).
     #[test]
     fn a_shipment_is_measured_from_where_both_units_end_the_month() {
         let sender = with_item(unit("900"), 5, "stone", "STON");
+        let mut arrival = caravanserai_owner("901", 1, 0, 6);
+        arrival.region_id = "1:0,6".to_string();
+        arrival.units.clear();
         let finding = only(traced_reach_findings(
             vec![
                 shipping_from(vec![sender]),
                 caravanserai_owner("901", 1, 0, 4),
-                region_at("1:0,6", 0, 6, Vec::new()),
+                arrival,
             ],
-            "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n",
+            "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S 500\n",
             with_map(),
         ));
 

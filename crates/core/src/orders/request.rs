@@ -348,6 +348,13 @@ mod tests {
                 );
                 lines.push(String::new());
             }
+            // Empty, for the quartermaster to walk into: one that ends the month outdoors owns
+            // no Caravanserai, and is refused for that before any distance is measured
+            // (`CheckTransportOrders`, `ah-1jl9`).
+            if y == 6 {
+                lines.push("+ Post Two [2] : Caravanserai.".to_string());
+                lines.push(String::new());
+            }
             if y == 4 {
                 lines.push("+ Post One [1] : Caravanserai.".to_string());
                 lines.push(
@@ -361,7 +368,7 @@ mod tests {
         let report = lines.join("\n");
         let reach = |remembered: Option<&str>| -> Vec<String> {
             let request = ValidateOrdersRequest {
-                raw_orders: "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S\n".into(),
+                raw_orders: "unit 900\nTRANSPORT 901 5 STON\nunit 901\nMOVE S 2\n".into(),
                 ruleset_json: Some(RULESET.into()),
                 raw_report: Some(report.clone()),
                 map_json: Some(r#"{"width":72,"height":96,"wrapX":false,"wrapY":false}"#.into()),
