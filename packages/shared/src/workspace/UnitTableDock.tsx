@@ -2759,7 +2759,9 @@ function UnitRow({
           prove does not: it is certain, and the hover says so (`ah-64wm`).
         */}
         {(unit.uncounted && unit.uncounted.length > 0) || hasUncertainTransport(unit) ? (
-          <span className="text-ink-dim"> + ?</span>
+          // No `+`: an order the month could not count may as well take goods away - an EXPLORE
+          // that uses its map, a doubted GIVE - as add them (`ah-6c76`).
+          <span data-testid="items-partly-counted" className="text-ink-dim"> ?</span>
         ) : null}
         {explain("items")}
       </Td>

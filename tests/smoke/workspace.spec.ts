@@ -5100,7 +5100,7 @@ test("a BUY ALL settles and marks the ITEMS cell as a projection", async ({ page
 
   const itemsCell = row.locator('[data-predicted="true"]').first();
   await expect(itemsCell).toContainText("PERF");
-  await expect(itemsCell).not.toContainText("+ ?");
+  await expect(itemsCell.getByTestId("items-partly-counted")).toHaveCount(0);
   await expect(itemsCell).toContainText(/this market offers/);
 });
 
@@ -5195,7 +5195,8 @@ test("a build that cannot be counted marks the ITEMS cell", async ({ page }) => 
   await fillOrders(page, "BUILD Barn");
 
   const itemsCell = row.locator('td[data-column="items"]');
-  await expect(itemsCell).toContainText("+ ?");
+  await expect(itemsCell.getByTestId("items-partly-counted")).toHaveText("?");
+  await expect(itemsCell).not.toContainText("+ ?");
   await expect(itemsCell).toContainText(/and more that cannot be counted: BUILD Barn/);
 });
 

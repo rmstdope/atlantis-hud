@@ -1087,7 +1087,8 @@ describe("the items column", () => {
       )
     );
 
-    expect(markup).toContain(" + ?");
+    expect(markup).toMatch(/data-testid="items-partly-counted" class="text-ink-dim"> \?<\/span>/);
+    expect(markup).not.toContain(" + ?");
     expect(markup).toContain("3 SWOR");
     // The S1 state: the mark alone keeps the row distinguishable from a unit given no orders -
     // nothing was projected, so italic (which means "this figure is a projection") must not
@@ -1157,7 +1158,8 @@ describe("the items column", () => {
       )
     );
 
-    expect(markup).toContain(" + ?");
+    expect(markup).toMatch(/data-testid="items-partly-counted" class="text-ink-dim"> \?<\/span>/);
+    expect(markup).not.toContain(" + ?");
     expect(markup).not.toContain("italic text-brass");
     expect(markup).not.toContain('data-predicted="true"');
   });
@@ -1177,7 +1179,8 @@ describe("the items column", () => {
       )
     );
 
-    expect(markup).toContain(" + ?");
+    expect(markup).toMatch(/data-testid="items-partly-counted" class="text-ink-dim"> \?<\/span>/);
+    expect(markup).not.toContain(" + ?");
     expect(markup).toContain("40 STON");
     expect(markup).toContain(
       "does not show whether it is an eligible transport target"
@@ -1200,7 +1203,7 @@ describe("the items column", () => {
       )
     );
 
-    expect(markup).not.toContain(" + ?");
+    expect(markup).not.toContain('data-testid="items-partly-counted"');
     expect(markup).toContain("Unit 7001 is not a quartermaster, so 5 STON stay with this unit.");
   });
 
@@ -1224,7 +1227,7 @@ describe("the items column", () => {
     expect(markup).toContain('data-predicted="true"');
     expect(markup).toContain("italic text-brass");
     expect(markup).toContain("2-3 RUNE");
-    expect(markup).not.toContain(" + ?");
+    expect(markup).not.toContain('data-testid="items-partly-counted"');
   });
 });
 

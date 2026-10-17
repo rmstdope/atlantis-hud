@@ -953,7 +953,7 @@ describe("the column popups", () => {
     expect(popup.lines).toEqual([{ label: "grain GRAI", value: "40" }]);
     expect(popup.notes).toContain("and more that cannot be counted: @TAX");
     expect(popup.warning).toBe(
-      "“+ ?” in the cell: this month is only partly counted, so this list may be short."
+      "“?” in the cell: this month is only partly counted, so these figures may be off."
     );
   });
 
@@ -1600,6 +1600,29 @@ describe("the column popups", () => {
     expect(popup.lines.slice(1)).toEqual([
       { label: "was given", value: "+144", tone: "up", why: "from HM (2000)" },
       { label: "was given", value: "+6597", tone: "up", why: "from Other (2001)" }
+    ]);
+  });
+
+  // `ah-6c76`: two GIVE lines from one unit merge into its one line, and named it twice.
+  it("the silver popup names a giver who gave twice once", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 0,
+            atMonthEnd: 15,
+            changes: [
+              { amount: 10, cause: "was-given", line: 2, other: "Ivanhoe, son of Cedric (683)" },
+              { amount: 5, cause: "was-given", line: 3, other: "Ivanhoe, son of Cedric (683)" }
+            ]
+          })
+        })
+      )
+    );
+    expect(popup.lines.slice(1)).toEqual([
+      { label: "was given", value: "+15", tone: "up", why: "from Ivanhoe, son of Cedric (683)" }
     ]);
   });
 
@@ -3023,9 +3046,9 @@ describe("the items popup's pairs", () => {
       )
     );
 
-    expect(popup.lines).toEqual([
-      { label: "grain GRAI", value: "gone", change: { direction: "down", from: "none" } }
-    ]);
+    // `ah-6c76`: the unit neither started nor ended the month with grain, so there is no pair to
+    // draw - "gone, down from none" read as a loss from nothing.
+    expect(popup.lines).toEqual([{ label: "grain GRAI", value: "gone" }]);
     expect(popup.notes).toContain("grain: produced 6, gave 6 to Scouts (1502).");
   });
 
@@ -4645,7 +4668,7 @@ describe("a refused cast in the items popup", () => {
       refusedCasts: [cloudship([FLOA(75)])]
     });
     expect(popup.warning).toBe(
-      "A red figure in the cell: this unit ends the month 75 floater hides short. “+ ?” in the cell: this month is only partly counted, so this list may be short."
+      "A red figure in the cell: this unit ends the month 75 floater hides short. “?” in the cell: this month is only partly counted, so these figures may be off."
     );
   });
 });
@@ -4675,6 +4698,52 @@ describe("silver moved by TRANSPORT", () => {
       changes: [{ amount: -5, cause: "sent", line: 2, other: "unit 8451" }]
     });
     expect(popup.lines.slice(1)).toEqual([{ label: "sent", value: "-5", tone: "down", why: "to unit 8451" }]);
+  });
+
+  // `ah-6c76`: a matched EXCHANGE is named as one, with the other side, both ways.
+  it("an exchange reads exchanged, with the other side, on both sides", () => {
+    const paid = silverPopup(unit({ own: true }), {
+      held: 0,
+      atMonthEnd: 200,
+      changes: [{ amount: 200, cause: "exchanged", line: 2, other: "Maurice de Bracy (1160)" }]
+    });
+    expect(paid.lines.slice(1)).toEqual([
+      { label: "exchanged", value: "+200", tone: "up", why: "with Maurice de Bracy (1160)" }
+    ]);
+    const payer = silverPopup(unit({ own: true }), {
+      held: 200,
+      atMonthEnd: 0,
+      changes: [{ amount: -200, cause: "exchanged", line: 2, other: "Ivanhoe, son of Cedric (683)" }]
+    });
+    expect(payer.lines.slice(1)).toEqual([
+      { label: "exchanged", value: "-200", tone: "down", why: "with Ivanhoe, son of Cedric (683)" }
+    ]);
+  });
+
+  it("an exchange of goods reads exchanged, with the other side", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [{ name: "horses", tag: "HORS", amount: 2 }],
+          previewChanges: [{ field: "items", original: "4 horses [HORS]" }],
+          itemChanges: [
+            {
+              tag: "HORS",
+              name: "horse",
+              delta: -2,
+              cause: "exchanged",
+              line: 2,
+              unitPrice: null,
+              other: { unitId: "1160", name: "Maurice de Bracy" },
+              isMan: false
+            }
+          ]
+        }),
+        facts()
+      )
+    );
+    expect(popup.notes).toContain("horses: exchanged 2 with Maurice de Bracy (1160).");
   });
 
   it("the receiver reads received, from the sender by name and number", () => {

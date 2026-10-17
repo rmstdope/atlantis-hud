@@ -241,17 +241,26 @@ export function diagnosticsForUnit(
       // only where it starts would drop it.
       return diagnostic.lineEnd >= first && diagnostic.lineStart <= last;
     })
-    .map((diagnostic) => ({
-      ...diagnostic,
-      // Clamped, so a range running past either end still points at a line the editor is showing.
-      // A finding of this unit's that carries no line keeps none: there is nothing to count to.
-      lineStart:
-        diagnostic.lineStart === null
-          ? null
-          : Math.max(diagnostic.lineStart, first) - block.firstLine,
-      lineEnd:
-        diagnostic.lineEnd === null ? null : Math.min(diagnostic.lineEnd, last) - block.firstLine
-    }));
+    .map((diagnostic) => {
+      // A finding wholly above the block's orders sits on the `unit` line, which the editor does
+      // not show: the core hangs a finding on the block there (`finding_at_block`). Clamped down,
+      // it read as line 1, an order it is not about, so it keeps no line instead (`ah-6c76`).
+      if (diagnostic.lineEnd !== null && diagnostic.lineEnd < first) {
+        return { ...diagnostic, lineStart: null, lineEnd: null };
+      }
+      return {
+        ...diagnostic,
+        // Clamped, so a range running past either end still points at a line the editor is
+        // showing. A finding of this unit's that carries no line keeps none: there is nothing to
+        // count to.
+        lineStart:
+          diagnostic.lineStart === null
+            ? null
+            : Math.max(diagnostic.lineStart, first) - block.firstLine,
+        lineEnd:
+          diagnostic.lineEnd === null ? null : Math.min(diagnostic.lineEnd, last) - block.firstLine
+      };
+    });
 }
 
 /**

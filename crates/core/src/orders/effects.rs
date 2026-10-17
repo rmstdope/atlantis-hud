@@ -680,6 +680,10 @@ pub enum ItemChangeCause {
     /// (`rules/economy_ships`, "unfinished ships appear only in their builder's inventory").
     /// Recorded on the founder, by its own `BUILD` order.
     ShipStarted,
+    /// Moved by a matched `EXCHANGE` between two of our units, either way: negative on the side
+    /// that hands the goods over, positive on the side that gets them, naming the other side
+    /// (`rules/exchange`). It read as a gift each way before (`ah-6c76`).
+    Exchanged,
 }
 
 /// A ship this month's founding `BUILD <ship>` begins, and what becomes of it (`ah-ywyf`).

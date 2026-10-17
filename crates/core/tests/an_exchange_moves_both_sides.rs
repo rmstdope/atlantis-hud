@@ -8,7 +8,7 @@
 //! is listed as uncounted, since we cannot see the partner's orders.
 
 use atlantis_hud_core::cache::ReportCache;
-use atlantis_hud_core::orders::effects::preview_orders_for_remembered_report;
+use atlantis_hud_core::orders::effects::{preview_orders_for_remembered_report, ItemChangeCause};
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions, TurnReview};
 use atlantis_hud_core::orders::silver::{SilverChangeCause, SilverDoubt, UnitSilver};
 use atlantis_hud_core::report::orders::extract_orders_template;
@@ -147,7 +147,7 @@ fn matching_lines_move_the_silver_on_the_silver_column() {
             SMITH_OFFERS,
             BUYER_ANSWERS,
             "2391",
-            SilverChangeCause::WasGiven
+            SilverChangeCause::Exchanged
         ),
         50
     );
@@ -156,10 +156,16 @@ fn matching_lines_move_the_silver_on_the_silver_column() {
             SMITH_OFFERS,
             BUYER_ANSWERS,
             "2392",
-            SilverChangeCause::GaveAway
+            SilverChangeCause::Exchanged
         ),
         -50
     );
+    // An exchange is told as one, not as a gift each way (`ah-6c76`).
+    for unit in ["2391", "2392"] {
+        for gift in [SilverChangeCause::WasGiven, SilverChangeCause::GaveAway] {
+            assert_eq!(silver_moved(SMITH_OFFERS, BUYER_ANSWERS, unit, gift), 0);
+        }
+    }
     let smith = silver_row(SMITH_OFFERS, BUYER_ANSWERS, "2391");
     let buyer = silver_row(SMITH_OFFERS, BUYER_ANSWERS, "2392");
     let (smith_before, buyer_before) = (silver_row("", "", "2391"), silver_row("", "", "2392"));
@@ -191,6 +197,36 @@ fn an_exchange_is_funded_by_this_months_gifts() {
     assert_eq!(preview_of(&smith, buyer, "2392", "SWOR", 0).0, 5);
     assert_eq!(preview_of(&smith, buyer, "2392", "SILV", 80).0, 50);
     assert_eq!(preview_of(&smith, buyer, "2391", "SILV", 100).0, 130);
+}
+
+/// `ah-6c76`: the ITEMS preview names a matched exchange as one, both ways, with the other party -
+/// it read "gave 5 to Buyer" and "was given 5 by Smith".
+#[test]
+fn matching_lines_are_named_an_exchange_on_the_items_preview() {
+    let text = report_text();
+    let preview = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::RULESET_JSON,
+        &text,
+        "[]",
+        &script_for(SMITH_OFFERS, BUYER_ANSWERS),
+    )
+    .expect("the committed ruleset loads");
+    for (unit_id, delta, other) in [("2391", -5, "2392"), ("2392", 5, "2391")] {
+        let row = common::preview_row(&text, &preview, unit_id).expect("the unit has a row");
+        let swords: Vec<_> = row
+            .item_changes
+            .iter()
+            .filter(|change| change.tag == "SWOR")
+            .collect();
+        assert_eq!(swords.len(), 1, "{swords:?}");
+        assert_eq!(swords[0].cause, ItemChangeCause::Exchanged, "{swords:?}");
+        assert_eq!(swords[0].delta, delta);
+        assert_eq!(
+            swords[0].other.as_ref().map(|party| party.unit_id.as_str()),
+            Some(other)
+        );
+    }
 }
 
 #[test]

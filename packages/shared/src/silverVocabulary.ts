@@ -190,6 +190,17 @@ function foreignProducerSentence(silver: UnitSilver): string | undefined {
   return `At most ${silver.produced}: a foreign unit in this region may also produce ${named}.`;
 }
 
+/**
+ * What limited the run, for the Silver hover: [`productionStatusSentence`] without the foreign
+ * producer's ceiling, and only where silver is what capped it - `undefined` otherwise (`ah-6c76`).
+ */
+function silverBoundProductionSentence(silver: UnitSilver): string | undefined {
+  if (silver.productionCappedBy !== "silver" || silver.producedName === null) {
+    return undefined;
+  }
+  return productionLimitSentence({ ...silver, producedName: silver.producedName });
+}
+
 /** What limited the run, as [`productionStatusSentence`] has always said it. */
 function productionLimitSentence(silver: UnitSilver & { producedName: string }): string | undefined {
   const requested = silver.productionRequested;
@@ -664,6 +675,20 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       countUpkeep: true
     })
   },
+  // `rules/give`: `GIVE <unit> UNIT` "gives the entire unit to the specified unit's faction" - not
+  // goods, so it is not told as a class of them (`ah-6c76`, the navigator's words).
+  {
+    id: "doubt-gives-itself-away",
+    when: ({ silver }) => silver.doubt === "gives-itself-away",
+    say: () =>
+      "This unit is giving itself to another faction, so what it ends the month with cannot be counted.",
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({ doubt: "gives-itself-away" }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
   {
     id: "give-consequences-uncertain",
     when: ({ silver }) => silver.doubt === "give-consequences-uncertain",
@@ -815,32 +840,17 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       countUpkeep: true
     })
   },
-  // Before `production-capped`, because that sentence quotes "the N its skill and tools could make" and this
-  // one is what explains why N is what it is (`ah-qct4`). `SILVER_NOTES`' order is reading order,
-  // not precedence - every note whose `when` holds is shown - so this changes only where it reads.
-  {
-    id: "production-men-left",
-    when: ({ silver }) => productionMenSentence(silver) !== undefined,
-    say: ({ silver }) => productionMenSentence(silver) ?? "",
-    example: () => ({
-      unit: aReportUnit({ men: 3 }),
-      silver: aUnitSilver({
-        produced: 3,
-        producedName: "sword",
-        productionWanted: 3,
-        productionMenLeft: 5
-      }),
-      warned: false,
-      countUpkeep: true
-    })
-  },
   // An order the game will not carry out as written, like the shortfall line above - and below it,
   // because a shortfall is the more urgent of the two (`ah-19l2.2`). Silent at full rate: the
   // count is only worth a line when something stopped it.
+  //
+  // Only where silver is what stopped it: the men that left, the materials, the workforce, the
+  // region's yield and a foreign producer's share are statements about items, which the Items hover
+  // makes, and they read as oddities under the silver figures (`ah-6c76`, the navigator's answer).
   {
     id: "production-capped",
-    when: ({ silver }) => productionStatusSentence(silver) !== undefined,
-    say: ({ silver }) => productionStatusSentence(silver) ?? "",
+    when: ({ silver }) => silverBoundProductionSentence(silver) !== undefined,
+    say: ({ silver }) => silverBoundProductionSentence(silver) ?? "",
     example: () => ({
       unit: aReportUnit({ men: 3 }),
       silver: aUnitSilver({
@@ -858,7 +868,7 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   // none of it at all (`ah-ofpb.4`).
   {
     id: "cast-capped",
-    when: ({ silver }) => castCapSentence(silver) !== undefined,
+    when: ({ silver }) => silver.castCappedBy === "silver" && castCapSentence(silver) !== undefined,
     say: ({ silver }) => castCapSentence(silver) ?? "",
     example: () => ({
       unit: aReportUnit(),
@@ -1205,6 +1215,7 @@ export const SILVER_CAUSE_LABELS: Readonly<Record<Exclude<SilverChangeCause, "to
   "cast-spent": "paid to cast",
   "production-spent": "spent producing",
   "gave-away": "gave away",
+  exchanged: "exchanged",
   sent: "sent",
   discarded: "given to nobody",
   lent: "lent",

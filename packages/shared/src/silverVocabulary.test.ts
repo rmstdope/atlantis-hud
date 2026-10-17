@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   SILVER_NOTES,
   buyAllSentences,
+  castCapSentence,
   productionStatusSentence,
   productionMenSentence,
   silverCauseGroups,
@@ -601,10 +602,71 @@ describe("the cast-capped note (ah-ofpb.4)", () => {
       castCappedBy: "room",
       castSummons: true
     });
-    expect(castCapped.when(clamped)).toBe(true);
-    expect(castCapped.say(clamped)).toBe(
+    // Room is no statement about silver, so the Silver hover leaves it to the Items one (`ah-6c76`).
+    expect(castCapped.when(clamped)).toBe(false);
+    expect(castCapSentence(clamped.silver)).toBe(
       "This unit has room for 6 wolves, not the 12 its level could summon."
     );
+  });
+});
+
+// `ah-6c76`, the navigator's answer: the Silver hover keeps a production or cast sentence only
+// where silver is what capped it. Everything else is a statement about items, and the Items hover
+// already says it.
+describe("production and cast sentences in the Silver notes (ah-6c76)", () => {
+  const lines = (silver: Partial<UnitSilver>): string[] =>
+    silverNoteLines({ unit: unit(), silver: aUnitSilver(silver), warned: false, countUpkeep: true });
+
+  it("leaves out the foreign producer's ceiling", () => {
+    const said = lines({
+      produced: 34,
+      producedName: "livestock",
+      productionRegionName: "livestock",
+      productionWanted: 34,
+      productionForeignSharer: true
+    }).join("\n");
+    expect(said).not.toContain("a foreign unit in this region may also produce");
+  });
+
+  it("leaves out a cap the region's yield set", () => {
+    const said = lines({
+      produced: 42,
+      producedName: "livestock",
+      productionRegionName: "livestock",
+      productionWanted: 50,
+      productionCappedBy: "region"
+    }).join("\n");
+    expect(said).not.toContain("This region has livestock for 42");
+  });
+
+  it("leaves out materials, the workforce and the men that left", () => {
+    expect(
+      lines({ produced: 5, producedName: "sword", productionWanted: 8, productionCappedBy: "materials" }).join("\n")
+    ).not.toContain("its skill and tools could make");
+    expect(
+      lines({
+        produced: 8,
+        producedName: "sword",
+        productionWanted: 8,
+        productionRequested: 10,
+        productionCappedBy: "workforce"
+      }).join("\n")
+    ).not.toContain("Requested:");
+    expect(
+      lines({ produced: 3, producedName: "sword", productionWanted: 3, productionMenLeft: 5 }).join("\n")
+    ).not.toContain("This unit has men for");
+  });
+
+  it("keeps a production silver capped, without the foreign ceiling beside it", () => {
+    const said = lines({
+      produced: 1,
+      producedName: "catapult",
+      productionWanted: 3,
+      productionCappedBy: "silver",
+      productionForeignSharer: true
+    });
+    expect(said).toContain("This unit has silver for 1 catapult, not the 3 its skill and tools could make.");
+    expect(said.join("\n")).not.toContain("may also produce");
   });
 });
 describe("the shared-silver coverage judgement", () => {
@@ -701,6 +763,8 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
       "This region is not selling horses, so what the purchase costs cannot be said.",
     "doubt-gives-a-whole-class":
       "This unit is giving away all its MAGIC items, and this application cannot tell which items those are.",
+    "doubt-gives-itself-away":
+      "This unit is giving itself to another faction, so what it ends the month with cannot be counted.",
     "give-consequences-uncertain":
       "Because this GIVE cannot be predicted, what this unit earns or spends afterwards cannot be said.",
     "doubt-steal-uncertain":
@@ -718,8 +782,6 @@ describe("the silver notes' reachability (ah-hvt8, ah-x36v)", () => {
       "A faction-mate's silver in this hex pays for this unit's orders.",
     "buy-all-settled":
       "This unit has silver for 19 grain, not the 30 this market offers.",
-    "production-men-left":
-      "This unit has men for 3 swords: GIVE and TAKE resolve before production, so the men that leave it this month do not work for it.",
     "production-capped":
       "This unit has silver for 1 catapult, not the 3 its skill and tools could make.",
     "cast-capped":

@@ -866,6 +866,11 @@ pub enum SilverChangeCause {
     ProductionSpent,
     /// `GIVE` to a unit.
     GaveAway,
+    /// Silver a matched `EXCHANGE` between two of our units moves, either way - signed, so the
+    /// payer's line is negative and the payee's positive (`rules/exchange`). Its own cause rather
+    /// than [`Self::GaveAway`] and [`Self::WasGiven`], which told an exchange as two gifts
+    /// (`ah-6c76`). The ITEMS ledger books the same move as `ItemChangeCause::Exchanged`.
+    Exchanged,
     /// Silver this unit's `TRANSPORT` or `DISTRIBUTE` shipped to another unit
     /// (`rules/transport`). Kept apart from [`Self::GaveAway`] so the two orders never read as one
     /// (`ah-9qzs`).
@@ -1056,9 +1061,13 @@ pub enum SilverDoubt {
     UnknownGoods,
     /// `BUY` of goods this region's `For Sale` list does not carry, so the purchase has no price.
     MarketDoesNotSell,
-    /// `GIVE` of a whole class of goods, or of the unit itself: what leaves depends on classifying
-    /// everything the unit holds, which is not modelled.
+    /// `GIVE` of a whole class of goods: what leaves depends on classifying everything the unit
+    /// holds, which is not modelled.
     GivesAWholeClass,
+    /// `GIVE <unit> UNIT`: the unit itself goes to the target's faction (`rules/give`), so what it
+    /// ends the month with is no longer this faction's to count. Told apart from
+    /// [`SilverDoubt::GivesAWholeClass`], whose sentence spoke of goods (`ah-6c76`).
+    GivesItselfAway,
     /// `PRODUCE` of something the ruleset prices nowhere - an unknown item, an item no skill
     /// makes, a recipe stating alternatives rather than requirements, or no ruleset at all.
     UnpricedProduction,
@@ -3013,7 +3022,12 @@ pub fn forecast_unit(
                 // shape, so the two surfaces cannot classify one order two ways (`ah-lu0f`).
                 let shape = transfer_shape(what, amount);
                 if shape == TransferShape::Unpriceable {
-                    expense_doubt = expense_doubt.or(Some(SilverDoubt::GivesAWholeClass));
+                    let doubt = if matches!(what, Selector::WholeUnit) {
+                        SilverDoubt::GivesItselfAway
+                    } else {
+                        SilverDoubt::GivesAWholeClass
+                    };
+                    expense_doubt = expense_doubt.or(Some(doubt));
                     continue;
                 }
                 let Selector::Item(text) = what else {
@@ -9787,10 +9801,11 @@ mod tests {
         assert_eq!(unit.doubt, None);
     }
 
-    /// `GIVE 901 UNIT` names no class at all, so it reaches the untouched body below and keeps
-    /// today's sentence - no subject, which is what the hover's fallback depends on.
+    /// `GIVE 901 UNIT` hands over the unit itself (`rules/give`: "gives the entire unit to the
+    /// specified unit's faction"), not a class of goods, so it has a doubt of its own - it was told
+    /// "giving away a whole class of goods" (`ah-6c76`).
     #[test]
-    fn giving_away_a_whole_class_of_goods_is_doubted() {
+    fn giving_the_unit_itself_away_is_doubted_as_that() {
         let intents = vec![placed(Intent::Give {
             to: Party::Unit("1235".to_string()),
             what: Selector::WholeUnit,
@@ -9798,7 +9813,7 @@ mod tests {
         })];
         let unit = spending(500, &intents, RegionWages::default(), &no_purchases, None);
         assert_eq!(unit.expense, None);
-        assert_eq!(unit.doubt, Some(SilverDoubt::GivesAWholeClass));
+        assert_eq!(unit.doubt, Some(SilverDoubt::GivesItselfAway));
         assert_eq!(unit.doubt_subject, None);
     }
 
