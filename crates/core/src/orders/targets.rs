@@ -23,30 +23,22 @@ use crate::report::model::{ItemAmount, Skill};
 /// Silver's tag, the one item `rules/give` exempts from the factional rule.
 const SILVER_TAG: &str = "SILV";
 
+/// Why the game keeps one tag of a transfer with its source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GiveRefusal {
+    /// The catalogue's "This item cannot be given to other units." - every target but the discard.
     CannotChangeHands,
+    /// `rules/give`: "men may not be given to units in other factions".
     MenToAnotherFaction,
-}
-
-/// Whether `rules/magic` refuses this `GIVE` of `tag` because the giver is a mage.
-///
-/// `rules/magic`: "mages may not GIVE men at all; once a unit becomes a mage (by studying one of
-/// the Foundations), the unit number is fixed. (The mage may be given to another faction using the
-/// GIVE UNIT order.)" So the refusal is about **men**, and about the item forms of `GIVE` only -
-/// `GIVE UNIT` is the rule's own exception, and TAKE, TRANSPORT and DISTRIBUTE are other orders.
-/// Callers must not put a `Selector::WholeUnit` through here.
-///
-/// A unit holding any catalogue-marked magic skill is already a mage: the derived skills all
-/// require a Foundation to begin, so accepting every magic skill also covers a report that lists a
-/// derived skill without its prerequisites. Without a ruleset nothing can be said, and the answer
-/// is `false` - the same "cannot say is not a refusal" reading [`give_outcome`] takes.
-#[must_use]
-pub fn mage_give_refused(skills: &[Skill], tag: &str, ruleset: Option<&Ruleset>) -> bool {
-    let Some(ruleset) = ruleset else {
-        return false;
-    };
-    ruleset.is_man(tag) && super::magic::is_mage(ruleset, skills)
+    /// `rules/magic`: "mages may not GIVE men at all; once a unit becomes a mage (by studying one
+    /// of the Foundations), the unit number is fixed. (The mage may be given to another faction
+    /// using the GIVE UNIT order.)" So the refusal is about **men**, and about the item forms of
+    /// `GIVE` only - the discard included; `GIVE UNIT` is the rule's own exception, and TAKE,
+    /// TRANSPORT and DISTRIBUTE are other orders. A unit holding any catalogue-marked magic skill
+    /// is already a mage (`magic::is_mage`).
+    MageGivesMen,
+    /// The navigator's New Origins ruling (`ah-ndp9`): no man may join a mage, by GIVE or by TAKE.
+    MenIntoAMage,
 }
 
 /// Whether the game refuses this `BUY` of `tag` because the buyer is a mage.
@@ -55,11 +47,11 @@ pub fn mage_give_refused(skills: &[Skill], tag: &str, ruleset: Option<&Ruleset>)
 /// number is fixed." The navigator's New Origins ruling (`ah-ndp9`) reads that as refusing a
 /// mage's recruiting outright, so the order buys nobody and spends nothing.
 ///
-/// Deliberately a second function rather than a rename of [`mage_give_refused`]: the two refusals
-/// have different sources - the rules page states the GIVE half itself, the BUY half is a ruling -
+/// Deliberately its own function rather than a reading of [`GiveRefusal::MageGivesMen`]: the two
+/// refusals have different sources - the rules page states the GIVE half itself, the BUY half is a ruling -
 /// so they may legitimately diverge, and one call site each is cheaper than one function with two
 /// stories. Without a ruleset nothing can be said and the answer is `false`, the same "cannot say
-/// is not a refusal" reading its sibling takes.
+/// is not a refusal" reading [`GiveVerdict::of`] takes.
 #[must_use]
 pub fn mage_recruit_refused(skills: &[Skill], tag: &str, ruleset: Option<&Ruleset>) -> bool {
     let Some(ruleset) = ruleset else {
@@ -125,7 +117,7 @@ impl GiveReach {
     /// receives, and nothing is doubted - the ledger reads exactly as it would with the line
     /// deleted. A unit the report shows elsewhere and a number it never prints alike (`ah-xaem`).
     #[must_use]
-    pub fn gives_nothing(self) -> bool {
+    fn gives_nothing(self) -> bool {
         matches!(self, Self::Nowhere | Self::Unshown)
     }
 }
@@ -142,6 +134,104 @@ pub enum GiveOutcome {
     Uncertain,
     /// There is no target at all, so the whole line does nothing.
     NoTarget,
+}
+
+/// One `GIVE` - or `TAKE` - judged once: where it lands, and who stands at each end.
+///
+/// The single answer every forecast surface consumes (`ah-amkn`): the units-table preview
+/// (`effects::Working::give`), the headcount walk (`semantics::apply_transfers`), the hex ledger
+/// (`semantics::transfer`) and the SILVER forecast (`silver.rs`) each build one of these per order
+/// and ask [`GiveVerdict::of`] per tag, so a refusal rule written here reaches all four. Five fixes
+/// had to find every surface by hand before it existed (`ah-xaem`, `ah-t8ei`, `ah-jo6b.4`,
+/// `ah-8lej`, `ah-66yi`), and the ledger was still moving men into a mage.
+///
+/// Plain data and no `&Ruleset`: `effects::Working` owns its catalogue and mutates its rows while
+/// a verdict is alive, so [`GiveVerdict::of`] takes the catalogue again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GiveVerdict {
+    reach: GiveReach,
+    is_give: bool,
+    giver_is_mage: bool,
+    receiver_is_mage: bool,
+}
+
+impl GiveVerdict {
+    /// A `GIVE` from a unit holding `giver_skills`. `receiver_skills` is `Some` exactly when a row
+    /// of ours receives - the endpoint's `row` - and is that unit's skills as the report printed
+    /// them, which is what `ah-ndp9`'s refusal reads on every surface.
+    #[must_use]
+    pub fn give(
+        reach: GiveReach,
+        giver_skills: &[Skill],
+        receiver_skills: Option<&[Skill]>,
+        ruleset: Option<&Ruleset>,
+    ) -> Self {
+        Self {
+            reach,
+            is_give: true,
+            giver_is_mage: is_mage(giver_skills, ruleset),
+            receiver_is_mage: receiver_skills.is_some_and(|skills| is_mage(skills, ruleset)),
+        }
+    }
+
+    /// A `TAKE` by a unit holding `taker_skills`. `rules/take` confines it to "another unit in the
+    /// same faction", so the source is always [`GiveReach::Ours`]; `rules/magic`'s refusal is
+    /// about GIVE, so a mage source is not asked about.
+    #[must_use]
+    pub fn take(taker_skills: &[Skill], ruleset: Option<&Ruleset>) -> Self {
+        Self {
+            reach: GiveReach::Ours,
+            is_give: false,
+            giver_is_mage: false,
+            receiver_is_mage: is_mage(taker_skills, ruleset),
+        }
+    }
+
+    /// Where the target stands.
+    #[must_use]
+    pub fn reach(self) -> GiveReach {
+        self.reach
+    }
+
+    /// Whether this is a `GIVE` rather than a `TAKE`.
+    #[must_use]
+    pub fn is_give(self) -> bool {
+        self.is_give
+    }
+
+    /// Whether the whole line does nothing: the source is not charged, nobody receives, and
+    /// nothing is doubted - see [`GiveReach::Unshown`] and [`GiveReach::Nowhere`].
+    #[must_use]
+    pub fn gives_nothing(self) -> bool {
+        self.reach.gives_nothing()
+    }
+
+    /// What one tag of this transfer does.
+    ///
+    /// No target first; then the giver's mage refusal, which holds whatever the target
+    /// (`rules/magic`); then the receiver's (`ah-ndp9`); then the permission table of
+    /// `rules/give`. A tag two rules refuse is reported under the first, as both walks always
+    /// did. Without a catalogue nobody is a mage and nothing is a man, so neither mage refusal is
+    /// made - "cannot say is not a refusal".
+    #[must_use]
+    pub fn of(self, tag: &str, ruleset: Option<&Ruleset>) -> GiveOutcome {
+        if self.gives_nothing() {
+            return GiveOutcome::NoTarget;
+        }
+        let is_man = ruleset.is_some_and(|ruleset| ruleset.is_man(tag));
+        if is_man && self.is_give && self.giver_is_mage {
+            return GiveOutcome::Refused(GiveRefusal::MageGivesMen);
+        }
+        if is_man && self.receiver_is_mage {
+            return GiveOutcome::Refused(GiveRefusal::MenIntoAMage);
+        }
+        give_outcome(self.reach, tag, ruleset)
+    }
+}
+
+/// Whether `skills` make a mage, as far as the catalogue can say.
+fn is_mage(skills: &[Skill], ruleset: Option<&Ruleset>) -> bool {
+    ruleset.is_some_and(|ruleset| super::magic::is_mage(ruleset, skills))
 }
 
 /// The unit id a party names, in the spelling every surface here files units under.
@@ -283,7 +373,7 @@ pub fn give_endpoint<T>(
 /// never be given across factions; and the catalogue's own "cannot be given to other units" holds
 /// for every target but the discard.
 #[must_use]
-pub fn give_outcome(reach: GiveReach, tag: &str, ruleset: Option<&Ruleset>) -> GiveOutcome {
+fn give_outcome(reach: GiveReach, tag: &str, ruleset: Option<&Ruleset>) -> GiveOutcome {
     let silver = tag.eq_ignore_ascii_case(SILVER_TAG);
     match reach {
         // Unit 0 is not another unit, so no permission applies and even ungiveable goods go.
@@ -322,7 +412,7 @@ mod tests {
         Ruleset::from_json(RULESET).expect("the committed ruleset should be usable")
     }
 
-    /// A skill as a report prints it - only the tag matters to `mage_give_refused`, but the whole
+    /// A skill as a report prints it - only the tag matters to the mage refusals, but the whole
     /// value is built so the test cannot drift from the report model.
     fn skill(name: &str, tag: &str) -> Skill {
         Skill {
@@ -331,6 +421,13 @@ mod tests {
             level: 1,
             points: 30,
         }
+    }
+
+    /// Whether the verdict refuses `tag` because a giver holding `skills` is a mage. Asked of a
+    /// discard, where no other refusal applies, so nothing else can answer in its place.
+    fn mage_give_refused(skills: &[Skill], tag: &str, ruleset: Option<&Ruleset>) -> bool {
+        GiveVerdict::give(GiveReach::Discard, skills, None, ruleset).of(tag, ruleset)
+            == GiveOutcome::Refused(GiveRefusal::MageGivesMen)
     }
 
     /// `rules/magic`: "mages may not GIVE men at all". The three Foundations, and a derived magic
@@ -699,6 +796,133 @@ mod tests {
         assert_eq!(
             give_outcome(GiveReach::Unshown, "SILV", None),
             GiveOutcome::NoTarget
+        );
+    }
+
+    /// A mage, as a report prints one: `rules/magic` makes a unit a mage by "studying one of the
+    /// Foundations".
+    fn mage() -> Vec<Skill> {
+        vec![skill("force", "FORC")]
+    }
+
+    fn plain() -> Vec<Skill> {
+        vec![skill("weaponsmith", "WEAP")]
+    }
+
+    /// `ah-amkn`: one verdict answers every reach and every refusal, so no surface needs to ask
+    /// a predicate of its own.
+    #[test]
+    fn a_verdict_answers_every_reach_and_refusal() {
+        let ruleset = ruleset();
+        let rs = Some(&ruleset);
+        let give =
+            |reach, receiver: Option<&[Skill]>| GiveVerdict::give(reach, &plain(), receiver, rs);
+        let plain_receiver = plain();
+        let ours = give(GiveReach::Ours, Some(&plain_receiver));
+        assert_eq!(ours.of("IRON", rs), GiveOutcome::Moves);
+        assert_eq!(ours.of("ORC", rs), GiveOutcome::Moves);
+        assert_eq!(
+            ours.of("LION", rs),
+            GiveOutcome::Refused(GiveRefusal::CannotChangeHands)
+        );
+        let discard = give(GiveReach::Discard, None);
+        assert_eq!(discard.of("LION", rs), GiveOutcome::Moves);
+        let foreign = give(GiveReach::Foreign, None);
+        assert_eq!(foreign.of("SILV", rs), GiveOutcome::Moves);
+        assert_eq!(foreign.of("IRON", rs), GiveOutcome::Uncertain);
+        assert_eq!(
+            foreign.of("ORC", rs),
+            GiveOutcome::Refused(GiveRefusal::MenToAnotherFaction)
+        );
+        assert_eq!(
+            foreign.of("LION", rs),
+            GiveOutcome::Refused(GiveRefusal::CannotChangeHands)
+        );
+        for reach in [GiveReach::Unshown, GiveReach::Nowhere] {
+            let nothing = give(reach, None);
+            assert!(nothing.gives_nothing(), "{reach:?}");
+            for tag in ["SILV", "IRON", "ORC", "LION"] {
+                assert_eq!(
+                    nothing.of(tag, rs),
+                    GiveOutcome::NoTarget,
+                    "{reach:?} {tag}"
+                );
+            }
+        }
+        for reach in [GiveReach::Ours, GiveReach::Foreign, GiveReach::Discard] {
+            assert!(!give(reach, None).gives_nothing(), "{reach:?}");
+            assert_eq!(give(reach, None).reach(), reach);
+        }
+    }
+
+    /// `rules/magic`: "mages may not GIVE men at all" - whatever the target, the discard included,
+    /// and only men.
+    #[test]
+    fn a_mage_giver_is_refused_men_even_to_the_discard() {
+        let ruleset = ruleset();
+        let rs = Some(&ruleset);
+        let plain_receiver = plain();
+        for (reach, receiver) in [
+            (GiveReach::Ours, Some(plain_receiver.as_slice())),
+            (GiveReach::Discard, None),
+        ] {
+            let verdict = GiveVerdict::give(reach, &mage(), receiver, rs);
+            assert_eq!(
+                verdict.of("ORC", rs),
+                GiveOutcome::Refused(GiveRefusal::MageGivesMen),
+                "{reach:?}"
+            );
+            assert_eq!(verdict.of("IRON", rs), GiveOutcome::Moves, "{reach:?}");
+        }
+    }
+
+    /// `ah-ndp9`: no man may join a mage, by GIVE or by TAKE - goods still may.
+    #[test]
+    fn men_into_a_mage_are_refused_by_give_and_by_take() {
+        let ruleset = ruleset();
+        let rs = Some(&ruleset);
+        let mage_receiver = mage();
+        let give = GiveVerdict::give(GiveReach::Ours, &plain(), Some(&mage_receiver), rs);
+        let take = GiveVerdict::take(&mage(), rs);
+        for verdict in [give, take] {
+            assert_eq!(
+                verdict.of("ORC", rs),
+                GiveOutcome::Refused(GiveRefusal::MenIntoAMage)
+            );
+            assert_eq!(verdict.of("IRON", rs), GiveOutcome::Moves);
+        }
+        // A mage giving men to a mage is refused as the giver first, as both walks always did.
+        let both = GiveVerdict::give(GiveReach::Ours, &mage(), Some(&mage_receiver), rs);
+        assert_eq!(
+            both.of("ORC", rs),
+            GiveOutcome::Refused(GiveRefusal::MageGivesMen)
+        );
+    }
+
+    /// `rules/magic`'s rule is about GIVE: a TAKE from a mage is not a mage giving.
+    #[test]
+    fn a_take_never_applies_the_mage_giver_rule() {
+        let ruleset = ruleset();
+        let rs = Some(&ruleset);
+        let take = GiveVerdict::take(&plain(), rs);
+        assert_eq!(take.reach(), GiveReach::Ours);
+        assert_eq!(take.of("ORC", rs), GiveOutcome::Moves);
+        assert_eq!(
+            take.of("LION", rs),
+            GiveOutcome::Refused(GiveRefusal::CannotChangeHands)
+        );
+    }
+
+    /// Without a catalogue nobody can be called a mage or a man, so neither mage refusal is
+    /// made - the "cannot say is not a refusal" reading this module has always taken.
+    #[test]
+    fn a_verdict_without_a_ruleset_refuses_nothing() {
+        let mage_receiver = mage();
+        let verdict = GiveVerdict::give(GiveReach::Ours, &mage(), Some(&mage_receiver), None);
+        assert_eq!(verdict.of("ORC", None), GiveOutcome::Moves);
+        assert_eq!(
+            GiveVerdict::give(GiveReach::Foreign, &mage(), None, None).of("STON", None),
+            GiveOutcome::Uncertain
         );
     }
 }

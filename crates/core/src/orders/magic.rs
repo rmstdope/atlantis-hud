@@ -6,8 +6,8 @@
 //! composition restriction on `manipulation`.
 //!
 //! One place answers "is this unit a mage", "does this skill make one" and "is this unit a lone
-//! leader", so the study warning, the three arrival refusals and [`targets::mage_give_refused`]
-//! cannot come to disagree about the same unit in the same month.
+//! leader", so the study warning, the three arrival refusals and the GIVE verdict's mage refusals
+//! ([`super::targets::GiveVerdict`]) cannot come to disagree about the same unit in the same month.
 //!
 //! **Accept on doubt**, like [`super::study`]: a composition the report has not fully classified
 //! answers `None`, and every caller goes silent on it. A warning that is wrong costs more than one
@@ -48,7 +48,7 @@ pub(crate) fn begins_magic(ruleset: &Ruleset, skill: &SkillEntry) -> bool {
 
 /// Whether this unit has already begun magic.
 ///
-/// Any magic skill at all - the same test `mage_give_refused` has applied since `ah-t8ei`, and
+/// Any magic skill at all - the same test the GIVE refusal has applied since `ah-t8ei`, and
 /// lifted out of it so the two directions of the rule cannot disagree. A derived magic skill can
 /// only be held by a unit that took a Foundation first, and an apprentice is a mage for this rule.
 pub(crate) fn is_mage(ruleset: &Ruleset, skills: &[Skill]) -> bool {

@@ -25,7 +25,7 @@ use crate::orders::intents::{works_by_default, Intent, PlacedIntent};
 use crate::orders::phases;
 use crate::orders::semantics::{counted_with_singular, withdrawal_cost, FormedSubject, Plurals};
 use crate::orders::study;
-use crate::orders::targets::GiveReach;
+use crate::orders::targets::{GiveOutcome, GiveReach, GiveVerdict};
 use crate::report::model::{Coordinate, ItemAmount, Skill};
 
 /// "Each taxing character collects $50."
@@ -1353,16 +1353,16 @@ pub struct Lookups<'a> {
     /// catalogue cannot say which items that class holds. See `semantics::class_carries_silver`,
     /// which is the one implementation - the column and the ledger must not answer this two ways.
     pub class_carries_silver: &'a dyn Fn(&str) -> Option<bool>,
-    /// Where a `GIVE`'s target stands. A closure for the same reason `item_tag` is one - resolving
-    /// a party against a hex is `super::semantics`' business, and this module holds no hex types.
+    /// Where a `GIVE`'s target stands and what each tag of it does, judged once for every surface
+    /// (`ah-amkn`). A closure for the same reason `item_tag` is one - resolving a party against a
+    /// hex is `super::semantics`' business, and this module holds no hex types.
     ///
     /// [`GiveReach::Nowhere`] is a unit number the report shows elsewhere, a `NEW` alias no `FORM`
     /// here creates, and a unit giving to itself: the server refuses all three, so the order costs
     /// this unit nothing (`ah-vcp8.2`). [`GiveReach::Unshown`], a number the report never prints,
-    /// costs nothing too: the engine finds no such target (`ah-xaem`). Every other reach settles:
-    /// `rules/give` exempts silver from the factional rule, so a visible foreign gift of it is an
-    /// expense.
-    pub give_reach: &'a dyn Fn(&Party) -> GiveReach,
+    /// costs nothing too: the engine finds no such target (`ah-xaem`). Silver given anywhere else
+    /// is an expense exactly when the verdict says it moves.
+    pub give_verdict: &'a dyn Fn(&Party) -> GiveVerdict,
     /// The target a `GIVE` this month left uncertain named, for an upper-case item tag, or `None`
     /// where this unit's holding of that tag survives its gifts intact (`ah-66yi`).
     pub uncertain_after_gifts: &'a dyn Fn(&str) -> Option<String>,
@@ -2963,12 +2963,13 @@ pub fn forecast_unit(
             Intent::Give { to, what, amount } => {
                 // A target the order cannot reach costs this unit nothing. Before the class branch
                 // below, which defers `GIVE ... ALL ITEMS` against the running total (`ah-vcp8.2`).
-                let reach = (lookups.give_reach)(to);
-                if reach.gives_nothing() {
+                let verdict = (lookups.give_verdict)(to);
+                if verdict.gives_nothing() {
                     continue;
                 }
                 // Every silver gift this arm can still see is settled: `rules/give` exempts silver
-                // from the factional rule outright, so a visible foreign target takes it. A number
+                // from the factional rule outright, so a visible foreign target takes it - which is
+                // the verdict's answer, asked below once the gift is known to be silver. A number
                 // the report never prints gave nothing above (`ah-xaem`), and what is said about it
                 // is the `give-target-not-here` warning.
                 if let Selector::Class(name) = what {
@@ -3020,6 +3021,11 @@ pub fn forecast_unit(
                 };
                 if !(lookups.item_tag)(text).is_some_and(|tag| tag.eq_ignore_ascii_case(SILVER_TAG))
                 {
+                    continue;
+                }
+                // Whatever `rules/give` may one day refuse or leave in doubt of silver, this
+                // column books only what the preview, the walk and the ledger also move.
+                if verdict.of(SILVER_TAG, ruleset) != GiveOutcome::Moves {
                     continue;
                 }
                 let to_nobody = matches!(to, Party::Discard);
@@ -3094,7 +3100,7 @@ pub fn forecast_unit(
                 (lookups.item_tag)(item).is_some_and(|tag| tag.eq_ignore_ascii_case(SILVER_TAG))
             }) && ((lookups.uncertain_after_gifts)(SILVER_TAG).is_some()
                 || matches!(
-                    (lookups.give_reach)(with),
+                    (lookups.give_verdict)(with).reach(),
                     GiveReach::Foreign | GiveReach::Unshown
                 )) =>
             {
@@ -8043,8 +8049,8 @@ mod tests {
     /// moves for a reason unrelated to what it tests.
     /// Every target is one of ours, standing here - the reading these arithmetic tests had before
     /// `ah-66yi` split reach into five answers, so their expectations are unchanged.
-    fn every_target_is_ours(_party: &Party) -> GiveReach {
-        GiveReach::Ours
+    fn every_target_is_ours(_party: &Party) -> GiveVerdict {
+        GiveVerdict::give(GiveReach::Ours, &[], Some(&[]), None)
     }
 
     /// No gift left anything uncertain, so every later order prices exactly as it always did.
@@ -8076,7 +8082,7 @@ mod tests {
             counted_item: &verbatim_counted,
             counted_or_none: &verbatim_counted_or_none,
             class_carries_silver: &no_class_members,
-            give_reach: &every_target_is_ours,
+            give_verdict: &every_target_is_ours,
             uncertain_after_gifts: &nothing_uncertain,
         }
     }
