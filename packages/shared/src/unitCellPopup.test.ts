@@ -4475,6 +4475,7 @@ describe("silver moved by TRANSPORT", () => {
     orderIndex: 0,
     reach: null,
     toUnshown: true,
+    unsettled: false,
     ...overrides
   });
   const silverPopup = (sender: PreviewedUnit, silver: Parameters<typeof aUnitSilver>[0]) =>
@@ -4685,7 +4686,10 @@ describe("silver moved by TRANSPORT", () => {
         transportTargetIssues: [
           issue({ to: "1162", tag: "STON", reason: "notQuartermaster", toUnshown: false }),
           issue({ to: "5120", reason: "acceptanceUnknown", toUnshown: false }),
-          issue({ to: "5121", reason: "distanceUnmeasured", toUnshown: false })
+          issue({ to: "5121", reason: "distanceUnmeasured", toUnshown: false }),
+          // A target studying the quartermaster skill this month, or another faction's: the
+          // month may undo the refusal, so the hover does not state it (ah-kjjv).
+          issue({ to: "5122", reason: "notQuartermaster", toUnshown: false, unsettled: true })
         ]
       }),
       { held: 500, atMonthEnd: 500 }
@@ -4693,6 +4697,7 @@ describe("silver moved by TRANSPORT", () => {
     expect(popup.notes.join(" ")).not.toContain("1162");
     expect(popup.notes.join(" ")).not.toContain("5120");
     expect(popup.notes.join(" ")).not.toContain("5121");
+    expect(popup.notes.join(" ")).not.toContain("5122");
   });
 
   it("a dissolving unit draws no not counted line", () => {

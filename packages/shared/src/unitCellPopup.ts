@@ -2359,8 +2359,9 @@ export function uncountedSilverShipments(unit: PreviewedUnit): PopupLine[] {
  * One sentence per silver TRANSPORT the game refuses, in document order (`ah-kjjv`): a target the
  * report proves cannot receive it, or one the map proves out of reach. The forecast keeps that
  * silver with the sender, so nothing in the ledger moves; the sentence is the unit preview's own
- * (`transportTargetSentence`), so the Silver and Items hovers explain the refusal alike. A target
- * the report cannot settle is `uncountedSilverShipments`' line instead.
+ * (`transportTargetSentence`), so the Silver hover and the order's warning explain the refusal
+ * alike. A target the report cannot settle is `uncountedSilverShipments`' line instead, and a
+ * refusal this month's orders may undo (`unsettled`) is stated by neither (`ah-kjjv`).
  */
 export function refusedSilverShipments(unit: PreviewedUnit): string[] {
   return (unit.transportTargetIssues ?? [])
@@ -2369,7 +2370,8 @@ export function refusedSilverShipments(unit: PreviewedUnit): string[] {
         issue.tag.toUpperCase() === "SILV" &&
         issue.amount > 0 &&
         !transportTargetUncertain(issue) &&
-        issue.reason !== "distanceUnmeasured"
+        issue.reason !== "distanceUnmeasured" &&
+        !issue.unsettled
     )
     .sort((left, right) => left.orderIndex - right.orderIndex)
     .map(transportTargetSentence);

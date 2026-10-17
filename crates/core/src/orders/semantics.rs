@@ -724,7 +724,12 @@ pub fn review_turn(
     // Read from the report and the catalogue alone. Built whenever there is a catalogue, not only
     // when the reach check is enabled: the shipping price reads them too, and the agreed record
     // says the switch takes sentences away and leaves every figure honest (`ah-7ale.3`).
-    let shipping = ruleset.map(|rules| super::transport::Shipping::read(report, rules, &options));
+    let shipping = ruleset.map(|rules| {
+        let mut shipping = super::transport::Shipping::read(report, rules, &options);
+        // Which targets this month's orders could make eligible (`ah-kjjv`).
+        shipping.read_orders(report, source, rules);
+        shipping
+    });
     let foreign_unit_ids = foreign_unit_ids(report);
     let shown_anywhere = unit_ids_in(report);
     // Every unit this month's orders create, built once and before `hexes` below so it outlives
@@ -894,8 +899,6 @@ pub fn review_turn(
     });
     lend_walking_sharers_silver(&mut hexes, &membership, StatePhase::Maintenance);
 
-    // Read across every hex, since a shipment's target may stand in another (`ah-kjjv`).
-    let unsettled_targets = transport_targets_unsettled_this_month(&hexes, ruleset);
     let mut lent_across: Vec<(UnitKey, i64)> = Vec::new();
     for (index, priced) in hexes.iter_mut().enumerate() {
         // Per hex, because the pools are: what one region's units ask of its tax base says nothing
@@ -978,14 +981,7 @@ pub fn review_turn(
         check_two_month_long_orders(hex, &options, &mut findings);
         check_unknown_skills(hex, ruleset, &mut findings);
         check_transfer_targets(hex, &located, &options, &mut findings);
-        check_transport_reach(
-            hex,
-            shipping.as_ref(),
-            ruleset,
-            &options,
-            &unsettled_targets,
-            &mut findings,
-        );
+        check_transport_reach(hex, shipping.as_ref(), ruleset, &options, &mut findings);
         check_take_from_another_faction(hex, &options, &mut findings);
         check_transfer_to_itself(hex, &options, &mut findings);
         check_arrivals(hex, &options, &mut findings);
@@ -22472,8 +22468,9 @@ fn check_transfer_targets(
 }
 
 /// Every `TRANSPORT`/`DISTRIBUTE` in this hex that the game will refuse because the two ends are
-/// too far apart (`ah-7ale.2.2.1`), or because the report proves the target cannot receive it -
-/// ours or another faction's (`ah-kjjv`) - reported against the unit that wrote it.
+/// too far apart (`ah-7ale.2.2.1`), or because the report proves one of our own units cannot
+/// receive it and nothing this month can change that (`ah-kjjv`, `transport::Judged::unsettled`),
+/// reported against the unit that wrote it.
 ///
 /// A reader of the same decision the forecast makes, not a second one: `transport::acceptance`
 /// settles whether the target would take the goods and `transport::arrival` settles the
@@ -22484,7 +22481,6 @@ fn check_transport_reach(
     shipping: Option<&super::transport::Shipping>,
     ruleset: Option<&Ruleset>,
     options: &CheckOptions,
-    unsettled_targets: &BTreeSet<String>,
     findings: &mut Vec<Finding>,
 ) {
     let reach_on = options.emits(codes::TRANSPORT_OUT_OF_REACH);
@@ -22543,7 +22539,7 @@ fn check_transport_reach(
                 }
                 refused @ (super::transport::Acceptance::NotQuartermaster
                 | super::transport::Acceptance::NotCaravanseraiOwner)
-                    if target_on && !unsettled_targets.contains(&id) =>
+                    if target_on && !judged.unsettled =>
                 {
                     (
                         codes::TRANSPORT_TARGET_REFUSED,
@@ -23461,43 +23457,6 @@ fn transport_reach_sentence(
             format!("Unit {to} is in the {to_name} and this unit is on the {from_name}, so {tail}.")
         }
     }
-}
-
-/// Every unit whose own orders this month could make it an eligible transport target before
-/// TRANSPORT runs, so a refusal read off the report is not proved for it (`ah-kjjv`).
-///
-/// `rules/sequenceofevents` processes ENTER and PROMOTE, and then the month's STUDY and BUILD, all
-/// before TRANSPORT; `rules/transport` asks the target for the quartermaster skill and ownership of
-/// a transport structure. So: a unit studying the quartermaster skill (resolved through the
-/// catalogue, `ah-d0ku`), one that ENTERs or BUILDs, and one some unit PROMOTEs. Deliberately
-/// broad - a warning with no switch must not fire on a shipment that may well go through.
-fn transport_targets_unsettled_this_month(
-    hexes: &[(Hex<'_>, Ledger<'_>)],
-    ruleset: Option<&Ruleset>,
-) -> BTreeSet<String> {
-    let quartermaster = ruleset
-        .and_then(|rules| rules.find_skill("quartermaster"))
-        .map(|skill| skill.tag.clone());
-    let studies_quartermaster = |skill: &str| {
-        ruleset
-            .and_then(|rules| rules.find_skill(skill))
-            .is_some_and(|found| Some(&found.tag) == quartermaster.as_ref())
-    };
-    let mut unsettled = BTreeSet::new();
-    for (hex, _) in hexes {
-        for ordered in &hex.units {
-            unsettled.extend(ordered.promotes_units.iter().cloned());
-            let changes_itself = ordered.intents.iter().any(|placed| match &placed.intent {
-                Intent::Study { skill } => studies_quartermaster(skill),
-                Intent::Enter { .. } | Intent::Build { .. } => true,
-                _ => false,
-            });
-            if changes_itself {
-                unsettled.insert(ordered.unit.unit_id.clone());
-            }
-        }
-    }
-    unsettled
 }
 
 /// The sentence for a target the report proves cannot receive a shipment (`ah-kjjv`): the same
@@ -55635,22 +55594,78 @@ BUILD
         );
     }
 
-    /// `ah-kjjv`: another faction's unit that owns no Caravanserai is a refusal the report proves
-    /// too - its structure is drawn in our report (`transport::acceptance`), and `rules/transport`
-    /// asks the target to own one.
+    /// `ah-kjjv`: another faction's unit that owns no Caravanserai is refused today, but its owner
+    /// may ENTER one or be PROMOTEd by orders we cannot read (`rules/sequenceofevents`), so the
+    /// refusal is never proved and the order is not warned about.
     #[test]
-    fn a_transport_to_a_foreign_unit_owning_no_caravanserai_warns_at_the_order() {
+    fn a_transport_to_a_foreign_unit_owning_no_caravanserai_is_not_warned_about() {
         let mut stranger = with_skill(unit("901"), "QUAM", 1);
         stranger.own = false;
         stranger.faction_id = Some("2".to_string());
         stranger.faction_name = Some("Theirs".to_string());
-        let finding = only(target_findings(
+        assert!(target_findings(
             vec![shipping_from(vec![with_silver(unit("900"), 100), stranger])],
+            "unit 900\nTRANSPORT 901 100 SILV\n",
+        )
+        .is_empty());
+    }
+
+    /// `ah-kjjv`: `rules/world_structures` makes the owner "the first unit listed under the object",
+    /// so when the owner LEAVEs, ENTERs elsewhere or MOVEs - all before TRANSPORT
+    /// (`rules/sequenceofevents`) - the next unit inside may become the owner.
+    #[test]
+    fn a_target_inside_a_caravanserai_its_owner_leaves_is_not_warned_about() {
+        for step_out in ["LEAVE", "ENTER 501", "MOVE N"] {
+            let mut home = caravanserai_owner("902", 1, 0, 0);
+            let mut heir = with_skill(unit("901"), "QUAM", 1);
+            heir.structure_id = Some("500".to_string());
+            home.units.push(heir);
+            home.units.insert(0, with_silver(unit("900"), 100));
+            let orders = format!("unit 900\nTRANSPORT 901 100 SILV\nunit 902\n{step_out}\n");
+            assert!(
+                target_findings(vec![home], &orders).is_empty(),
+                "{step_out}"
+            );
+        }
+        // The owner staying put leaves the heir refused.
+        let mut home = caravanserai_owner("902", 1, 0, 0);
+        let mut heir = with_skill(unit("901"), "QUAM", 1);
+        heir.structure_id = Some("500".to_string());
+        home.units.push(heir);
+        home.units.insert(0, with_silver(unit("900"), 100));
+        let finding = only(target_findings(
+            vec![home],
             "unit 900\nTRANSPORT 901 100 SILV\n",
         ));
         assert_eq!(
             finding.message,
             "Unit 901 does not own a Caravanserai, so 100 SILV stay with this unit."
+        );
+    }
+
+    /// `ah-kjjv`: the target's orders are read wherever it stands, not only in the sender's hex.
+    #[test]
+    fn a_target_in_another_hex_studying_the_quartermaster_skill_is_not_warned_about() {
+        let mut there = caravanserai_owner("901", 1, 0, 1);
+        there.units[0].skills.clear();
+        let regions = || {
+            vec![
+                shipping_from(vec![with_silver(unit("900"), 100)]),
+                there.clone(),
+            ]
+        };
+        assert!(target_findings(
+            regions(),
+            "unit 900\nTRANSPORT 901 100 SILV\nunit 901\nSTUDY QUAM\n",
+        )
+        .is_empty());
+        let finding = only(target_findings(
+            regions(),
+            "unit 900\nTRANSPORT 901 100 SILV\n",
+        ));
+        assert_eq!(
+            finding.message,
+            "Unit 901 is not a quartermaster, so 100 SILV stay with this unit."
         );
     }
 

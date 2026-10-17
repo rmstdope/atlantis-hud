@@ -606,6 +606,9 @@ pub(crate) struct Shipping {
     pub(crate) geometry: Option<crate::movement::graph::MapGeometry>,
     shown: crate::movement::graph::ShownExtent,
     month_end: MonthEndHexes,
+    /// Units whose own month could make them an eligible target before TRANSPORT runs, from
+    /// [`Shipping::read_orders`]. Empty until it is called (`ah-kjjv`).
+    unsettled: std::collections::BTreeSet<String>,
 }
 
 impl Shipping {
@@ -623,6 +626,79 @@ impl Shipping {
             geometry: options.geometry,
             shown: options.shown.clone(),
             month_end: options.month_end.clone(),
+            unsettled: std::collections::BTreeSet::new(),
+        }
+    }
+
+    /// Reads this month's orders for the units whose eligibility as a target they could change
+    /// before TRANSPORT runs (`ah-kjjv`).
+    ///
+    /// `rules/sequenceofevents` processes LEAVE, ENTER and PROMOTE, then MOVE, then the month's
+    /// STUDY and BUILD, all before TRANSPORT; `rules/transport` asks the target for the
+    /// quartermaster skill and ownership of a transport structure, and `rules/world_structures`
+    /// makes the owner "the first unit listed under the object". So a unit is unsettled when it
+    /// studies the quartermaster skill (resolved through the catalogue, `ah-d0ku`), ENTERs or
+    /// BUILDs, is named by a PROMOTE, or stands in a structure one of whose units LEAVEs, ENTERs
+    /// elsewhere or MOVEs - which can hand ownership on. Deliberately broad: a refusal the
+    /// player is warned about with no switch must be one the month cannot undo.
+    pub(crate) fn read_orders(
+        &mut self,
+        report: &crate::report::ParsedReport,
+        orders: &str,
+        ruleset: &crate::movement::rules::Ruleset,
+    ) {
+        use super::intents::Intent;
+        let quartermaster = self.quartermasters.tag.clone();
+        let studies_quartermaster = |skill: &str| {
+            ruleset
+                .find_skill(skill)
+                .is_some_and(|found| Some(&found.tag) == quartermaster.as_ref())
+        };
+        // Where each unit stands at the start of the month: its hex and its structure.
+        let mut inside: std::collections::BTreeMap<&str, (&str, &str)> =
+            std::collections::BTreeMap::new();
+        for region in &report.regions {
+            for unit in &region.units {
+                if let Some(structure) = unit.structure_id.as_deref() {
+                    inside.insert(
+                        unit.unit_id.as_str(),
+                        (region.region_id.as_str(), structure),
+                    );
+                }
+            }
+        }
+        let mut shaken: std::collections::BTreeSet<(&str, &str)> =
+            std::collections::BTreeSet::new();
+        for unit in super::intents::read_intents(orders, Some(ruleset)) {
+            self.unsettled.extend(unit.promotes_units.iter().cloned());
+            let mut changes_itself = false;
+            let mut steps_out = false;
+            for placed in &unit.intents {
+                match &placed.intent {
+                    Intent::Study { skill } if studies_quartermaster(skill) => {
+                        changes_itself = true
+                    }
+                    Intent::Enter { .. } | Intent::Build { .. } => {
+                        changes_itself = true;
+                        steps_out = true;
+                    }
+                    Intent::Leave | Intent::Move { .. } => steps_out = true,
+                    _ => {}
+                }
+            }
+            if changes_itself {
+                self.unsettled.insert(unit.unit_id.clone());
+            }
+            if steps_out {
+                if let Some(place) = inside.get(unit.unit_id.as_str()) {
+                    shaken.insert(*place);
+                }
+            }
+        }
+        for (unit, place) in &inside {
+            if shaken.contains(place) {
+                self.unsettled.insert((*unit).to_string());
+            }
         }
     }
 
@@ -705,9 +781,16 @@ impl Shipping {
             }
             _ => None,
         };
+        let acceptance = acceptance(sender_can_distribute, facts);
         Judged {
             target_shown: facts.is_some(),
-            acceptance: acceptance(sender_can_distribute, facts),
+            // Another faction's orders are never ours to read, so its month is never settled.
+            unsettled: matches!(
+                acceptance,
+                Acceptance::NotQuartermaster | Acceptance::NotCaravanseraiOwner
+            ) && (facts.is_some_and(|facts| !facts.own)
+                || self.unsettled.contains(target)),
+            acceptance,
             phase: shipment_phase(sender_qm, target_qm),
             reach,
             measured,
@@ -750,6 +833,10 @@ pub(crate) struct FormedTarget<'a> {
 pub(crate) struct Judged {
     /// The report shows the target somewhere: `targets` has an entry for it.
     pub target_shown: bool,
+    /// A refusal `acceptance` reads off the report that the month may undo: the target belongs to
+    /// another faction, or its own orders this month could make it eligible
+    /// ([`Shipping::read_orders`], `ah-kjjv`). `false` for every other answer.
+    pub unsettled: bool,
     pub acceptance: Acceptance,
     pub phase: ShipmentPhase,
     /// `None` exactly when `reach_for` answers `None`.
@@ -1303,6 +1390,7 @@ mod tests {
                 .iter()
                 .map(|(id, at)| ((*id).to_string(), *at))
                 .collect(),
+            unsettled: std::collections::BTreeSet::new(),
         }
     }
 

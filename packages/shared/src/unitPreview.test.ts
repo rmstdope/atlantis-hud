@@ -1903,7 +1903,7 @@ describe("a transport target the report cannot show receiving", () => {
 
   it("says an own target is no quartermaster and the goods stay", () => {
     expect(
-      transportTargetSentence({ to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, reach: null })
+      transportTargetSentence({ to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, unsettled: false, reach: null })
     ).toBe("Unit 7001 is not a quartermaster, so 5 STON stay with this unit.");
   });
 
@@ -1914,7 +1914,7 @@ describe("a transport target the report cannot show receiving", () => {
         amount: 5,
         tag: "STON",
         reason: "notCaravanseraiOwner",
-        orderIndex: 0, toUnshown: false,
+        orderIndex: 0, toUnshown: false, unsettled: false,
         reach: null
       })
     ).toBe("Unit 7002 does not own a Caravanserai, so 5 STON stay with this unit.");
@@ -1922,7 +1922,7 @@ describe("a transport target the report cannot show receiving", () => {
 
   it("says the report cannot show whether an unseen target is eligible", () => {
     expect(
-      transportTargetSentence({ to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, reach: null })
+      transportTargetSentence({ to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null })
     ).toBe(
       "Could not count 5 STON for unit 99999 because your report does not show whether it is an eligible transport target."
     );
@@ -1930,7 +1930,7 @@ describe("a transport target the report cannot show receiving", () => {
 
   it("says the report cannot show whether a foreign faction accepts transports", () => {
     expect(
-      transportTargetSentence({ to: "7003", amount: 5, tag: "STON", reason: "acceptanceUnknown", orderIndex: 0, toUnshown: false, reach: null })
+      transportTargetSentence({ to: "7003", amount: 5, tag: "STON", reason: "acceptanceUnknown", orderIndex: 0, toUnshown: false, unsettled: false, reach: null })
     ).toBe(
       "Could not count 5 STON for unit 7003 because your report does not show whether its faction accepts transports from yours."
     );
@@ -1940,13 +1940,13 @@ describe("a transport target the report cannot show receiving", () => {
   // the target gate is what stopped the order, and the sentence says only that.
   it("speaks of the order alone when it has no per-tag claim to make", () => {
     expect(
-      transportTargetSentence({ to: "7001", amount: 0, tag: "", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, reach: null })
+      transportTargetSentence({ to: "7001", amount: 0, tag: "", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, unsettled: false, reach: null })
     ).toBe("Unit 7001 is not a quartermaster, so this TRANSPORT moves nothing.");
     expect(
-      transportTargetSentence({ to: "7002", amount: 0, tag: "", reason: "notCaravanseraiOwner", orderIndex: 0, toUnshown: false, reach: null })
+      transportTargetSentence({ to: "7002", amount: 0, tag: "", reason: "notCaravanseraiOwner", orderIndex: 0, toUnshown: false, unsettled: false, reach: null })
     ).toBe("Unit 7002 does not own a Caravanserai, so this TRANSPORT moves nothing.");
     expect(
-      transportTargetSentence({ to: "99999", amount: 0, tag: "", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, reach: null })
+      transportTargetSentence({ to: "99999", amount: 0, tag: "", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null })
     ).toBe(
       "Could not count this TRANSPORT for unit 99999 because your report does not show whether it is an eligible transport target."
     );
@@ -1962,7 +1962,7 @@ describe("a transport target the report cannot show receiving", () => {
         amount: 5,
         tag: "STON",
         reason: "tooFarToAccept",
-        orderIndex: 0, toUnshown: false,
+        orderIndex: 0, toUnshown: false, unsettled: false,
         reach: { away: 3, limit: 2, fromLevel: null, toLevel: null }
       })
     ).toBe("Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit.");
@@ -1977,7 +1977,7 @@ describe("a transport target the report cannot show receiving", () => {
         amount: 100,
         tag: "SILV",
         reason: "tooFarToDistribute",
-        orderIndex: 0, toUnshown: false,
+        orderIndex: 0, toUnshown: false, unsettled: false,
         reach: { away: 3, limit: 2, fromLevel: null, toLevel: null }
       })
     ).toBe("Unit 2420 is 3 hexes away and this unit distributes to units within 2 hexes, so 100 SILV stay with this unit.");
@@ -1990,7 +1990,7 @@ describe("a transport target the report cannot show receiving", () => {
         amount: 1,
         tag: "IRON",
         reason: "tooFarToShip",
-        orderIndex: 0, toUnshown: false,
+        orderIndex: 0, toUnshown: false, unsettled: false,
         reach: { away: 4, limit: 3, fromLevel: null, toLevel: null }
       })
     ).toBe("Unit 901 is 4 hexes away and this unit can ship 3 hexes, so 1 IRON stays with this unit.");
@@ -2003,7 +2003,7 @@ describe("a transport target the report cannot show receiving", () => {
         amount: 9,
         tag: "FUR",
         reason: "tooFarToAccept",
-        orderIndex: 0, toUnshown: false,
+        orderIndex: 0, toUnshown: false, unsettled: false,
         reach: { away: null, limit: null, fromLevel: 1, toLevel: 2 }
       })
     ).toBe("Unit 901 is in the underworld and this unit is on the surface, so 9 FUR stay with this unit.");
@@ -2016,7 +2016,7 @@ describe("a transport target the report cannot show receiving", () => {
         amount: 0,
         tag: "",
         reason: "tooFarToAccept",
-        orderIndex: 0, toUnshown: false,
+        orderIndex: 0, toUnshown: false, unsettled: false,
         reach: { away: 3, limit: 2, fromLevel: null, toLevel: null }
       })
     ).toBe("Unit 901 is 3 hexes away and takes goods from 2 hexes, so this TRANSPORT moves nothing.");
@@ -2026,7 +2026,7 @@ describe("a transport target the report cannot show receiving", () => {
         amount: 0,
         tag: "",
         reason: "tooFarToShip",
-        orderIndex: 0, toUnshown: false,
+        orderIndex: 0, toUnshown: false, unsettled: false,
         reach: { away: 4, limit: 3, fromLevel: null, toLevel: null }
       })
     ).toBe("Unit 901 is 4 hexes away and this unit can ship 3 hexes, so this TRANSPORT moves nothing.");
@@ -2040,7 +2040,7 @@ describe("a transport target the report cannot show receiving", () => {
       amount: 5,
       tag: "STON",
       reason,
-      orderIndex: 0, toUnshown: false,
+      orderIndex: 0, toUnshown: false, unsettled: false,
       reach: { away: 3, limit: 2, fromLevel: null, toLevel: null }
     });
 
@@ -2057,7 +2057,7 @@ describe("a transport target the report cannot show receiving", () => {
       amount: 5,
       tag: "STON",
       reason,
-      orderIndex: 0, toUnshown: false,
+      orderIndex: 0, toUnshown: false, unsettled: false,
       reach: null
     });
 
@@ -2072,7 +2072,7 @@ describe("a transport target the report cannot show receiving", () => {
       hasUncertainTransport(
         previewedUnit({
           transportTargetIssues: [
-            { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, reach: null }
+            { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, unsettled: false, reach: null }
           ]
         })
       )
@@ -2081,8 +2081,8 @@ describe("a transport target the report cannot show receiving", () => {
       hasUncertainTransport(
         previewedUnit({
           transportTargetIssues: [
-            { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, reach: null },
-            { to: "99999", amount: 5, tag: "FUR", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, reach: null }
+            { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, unsettled: false, reach: null },
+            { to: "99999", amount: 5, tag: "FUR", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null }
           ]
         })
       )
@@ -2093,12 +2093,12 @@ describe("a transport target the report cannot show receiving", () => {
 
   it("a_distance_that_cannot_be_measured_says_so_and_marks_the_list", () => {
     expect(
-      transportTargetSentence({ to: "902", amount: 9, tag: "FUR", reason: "distanceUnmeasured", orderIndex: 0, toUnshown: false, reach: null })
+      transportTargetSentence({ to: "902", amount: 9, tag: "FUR", reason: "distanceUnmeasured", orderIndex: 0, toUnshown: false, unsettled: false, reach: null })
     ).toBe(
       "Could not count 9 FUR for unit 902 because your report does not show how far the world reaches around, so the distance cannot be worked out. Enter the map's width under Settings › Per game › Map to count it."
     );
     expect(
-      transportTargetSentence({ to: "902", amount: 0, tag: "", reason: "distanceUnmeasured", orderIndex: 0, toUnshown: false, reach: null })
+      transportTargetSentence({ to: "902", amount: 0, tag: "", reason: "distanceUnmeasured", orderIndex: 0, toUnshown: false, unsettled: false, reach: null })
     ).toBe(
       "Could not count this TRANSPORT for unit 902 because your report does not show how far the world reaches around, so the distance cannot be worked out. Enter the map's width under Settings › Per game › Map to count it."
     );
@@ -2112,7 +2112,7 @@ describe("a transport target the report cannot show receiving", () => {
     expect(
       transportSentences(
         [{ amount: 0, tag: "HORS", to: "", toUnshown: false, refused: true, orderIndex: 0 }],
-        [{ to: "7001", amount: 5, tag: "FUR", reason: "notQuartermaster", orderIndex: 1, toUnshown: false, reach: null }]
+        [{ to: "7001", amount: 5, tag: "FUR", reason: "notQuartermaster", orderIndex: 1, toUnshown: false, unsettled: false, reach: null }]
       )
     ).toEqual([
       "The game will not transport HORS, so they stay with this unit.",
@@ -2126,7 +2126,7 @@ describe("a transport target the report cannot show receiving", () => {
     expect(
       transportSentences(
         [{ amount: 0, tag: "HORS", to: "", toUnshown: false, refused: true, orderIndex: 1 }],
-        [{ to: "7001", amount: 5, tag: "FUR", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, reach: null }]
+        [{ to: "7001", amount: 5, tag: "FUR", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, unsettled: false, reach: null }]
       )
     ).toEqual([
       "Unit 7001 is not a quartermaster, so 5 FUR stay with this unit.",
@@ -2143,7 +2143,7 @@ describe("a transport target the report cannot show receiving", () => {
           { amount: 30, tag: "STON", to: "6857", toUnshown: false, refused: false, orderIndex: 1 },
           { amount: 0, tag: "HORS", to: "", toUnshown: false, refused: true, orderIndex: 1 }
         ],
-        [{ to: "99999", amount: 5, tag: "FUR", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, reach: null }]
+        [{ to: "99999", amount: 5, tag: "FUR", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null }]
       )
     ).toEqual([
       "Could not count 5 FUR for unit 99999 because your report does not show whether it is an eligible transport target.",
@@ -2158,7 +2158,7 @@ describe("a transport target the report cannot show receiving", () => {
     const row = previewedUnit({
       items: stone,
       transportTargetIssues: [
-        { to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, reach: null }
+        { to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null }
       ]
     });
 

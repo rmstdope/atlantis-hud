@@ -326,6 +326,13 @@ pub struct TransportTargetIssue {
     /// not accept it" by this, since both reach it as `EligibilityUnknown` (`ah-9qzs`).
     #[serde(default)]
     pub to_unshown: bool,
+    /// A refusal the report shows but the month may undo: the target is another faction's unit,
+    /// whose orders we cannot read, or one of ours whose own orders this month could make it
+    /// eligible before TRANSPORT runs (`transport::Judged::unsettled`, `ah-kjjv`). The order
+    /// carries no warning for it and the SILVER working does not state it; `false` for every
+    /// reason but `NotQuartermaster` and `NotCaravanseraiOwner`.
+    #[serde(default)]
+    pub unsettled: bool,
 }
 
 /// Why men joined a unit this month, in `rules/sequenceofevents` order (`ah-rgkk.2.1`).
@@ -1206,6 +1213,10 @@ fn settle(
     options: super::semantics::CheckOptions,
 ) -> (Vec<WorkingUnit>, BTreeMap<usize, Option<String>>) {
     let mut working = Working::over_own_units(report, ruleset.clone(), geometry, options);
+    // The same reading of this month's orders the advisory makes (`ah-kjjv`).
+    working
+        .shipping
+        .read_orders(report, orders_document, ruleset.as_ref());
     super::walk::walk(orders_document, Some(ruleset.as_ref()), |event| {
         working.visit(event);
     });
@@ -4102,6 +4113,7 @@ impl Working {
                         order_index: index,
                         reach: None,
                         to_unshown: pending.to_unshown,
+                        unsettled: verdict.unsettled,
                     },
                 ));
                 continue;
@@ -4122,6 +4134,7 @@ impl Working {
                         order_index: index,
                         reach: reach_opt,
                         to_unshown: pending.to_unshown,
+                        unsettled: false,
                     },
                 ));
                 continue;
@@ -4149,6 +4162,7 @@ impl Working {
                             order_index: index,
                             reach: None,
                             to_unshown: pending.to_unshown,
+                            unsettled: false,
                         },
                     ));
                 }
@@ -11152,6 +11166,7 @@ mod tests {
                     order_index: 0,
                     reach: None,
                     to_unshown: false,
+                    unsettled: false,
                 }
             );
         }
@@ -11182,6 +11197,7 @@ mod tests {
                     order_index: 0,
                     reach: None,
                     to_unshown: true,
+                    unsettled: false,
                 }
             );
         }
@@ -11223,8 +11239,28 @@ mod tests {
                     order_index: 0,
                     reach: None,
                     to_unshown: false,
+                    unsettled: false,
                 }
             );
+        }
+
+        // `ah-kjjv`: a refusal of our own unit is settled only while nothing this month can make
+        // it eligible - `rules/sequenceofevents` runs ENTER and MOVE before TRANSPORT, and
+        // `rules/world_structures` hands ownership to the next unit listed when the owner goes.
+        #[test]
+        fn a_refusal_this_months_orders_may_undo_is_marked_unsettled() {
+            let settled = kept_everything("unit 5530\nTRANSPORT 5532 5 STON\n");
+            assert_eq!(
+                only_issue(&settled).reason,
+                TransportTargetReason::NotCaravanseraiOwner
+            );
+            assert!(!only_issue(&settled).unsettled);
+
+            let enters = kept_everything("unit 5530\nTRANSPORT 5532 5 STON\nunit 5532\nENTER 1\n");
+            assert!(only_issue(&enters).unsettled);
+
+            let heir = kept_everything("unit 5530\nTRANSPORT 6858 5 STON\nunit 6857\nMOVE NW\n");
+            assert!(only_issue(&heir).unsettled);
         }
 
         // A foreign unit's skills are never disclosed, so an empty list is missing evidence rather
@@ -11258,6 +11294,7 @@ mod tests {
                     order_index: 0,
                     reach: None,
                     to_unshown: false,
+                    unsettled: true,
                 }
             );
             // No row of ours gains anything: 7001 is not our unit.
@@ -11278,6 +11315,7 @@ mod tests {
                     order_index: 0,
                     reach: None,
                     to_unshown: false,
+                    unsettled: true,
                 }
             );
         }
@@ -11305,6 +11343,7 @@ mod tests {
                     order_index: 0,
                     reach: None,
                     to_unshown: false,
+                    unsettled: true,
                 }
             );
         }
@@ -11346,6 +11385,7 @@ mod tests {
                     order_index: 1,
                     reach: None,
                     to_unshown: false,
+                    unsettled: true,
                 }]
             );
         }
@@ -11368,6 +11408,7 @@ mod tests {
                     order_index: 0,
                     reach: None,
                     to_unshown: false,
+                    unsettled: true,
                 }]
             );
             assert_eq!(
@@ -13949,6 +13990,7 @@ mod tests {
                     to_level: None
                 }),
                 to_unshown: false,
+                unsettled: false,
             }]
         );
         // The agreed record: "the forecast keeps the goods *and their weight*", so what the sender
@@ -13993,6 +14035,7 @@ mod tests {
                 order_index: 0,
                 reach: None,
                 to_unshown: false,
+                unsettled: false,
             }]
         );
 
@@ -14272,6 +14315,7 @@ mod tests {
                     to_level: None
                 }),
                 to_unshown: false,
+                unsettled: false,
             }]
         );
 
@@ -14381,6 +14425,7 @@ mod tests {
                     to_level: None
                 }),
                 to_unshown: false,
+                unsettled: false,
             }]
         );
     }
@@ -14409,6 +14454,7 @@ mod tests {
                     to_level: Some(2),
                 }),
                 to_unshown: false,
+                unsettled: false,
             }]
         );
         assert_eq!(reach_held(&response, "900", "FUR"), 9);
