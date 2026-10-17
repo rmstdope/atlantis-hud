@@ -5,7 +5,9 @@
 //! `ah-6cka` takes a leaver's **upkeep** off the purse of the hex it leaves:
 //! `rules/sequenceofevents` assesses maintenance after movement, and `rules/economy_maintenance`
 //! shares for it only "between your units in the same region". The passenger's study loan is not
-//! upkeep, so it must stay where it was, with no shortfall said. A first version capped every
+//! upkeep, so it must stay a loan, with no shortfall said - lent since `ah-q1zz` by Drones (9508)
+//! where the raft lands, as the real turn 25 has it
+//! (`an_arriving_crew_lends_upkeep_after_the_residents.rs`). A first version capped every
 //! claim after movement, and it gave this passenger a false not-enough-silver finding that only
 //! an unrelated browser smoke test caught.
 
