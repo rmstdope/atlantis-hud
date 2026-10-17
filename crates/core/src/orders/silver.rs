@@ -157,19 +157,33 @@ fn food_stock(items: &[ItemAmount], ruleset: Option<&Ruleset>) -> Vec<FoodAmount
         .collect()
 }
 
+/// The foods the engine eats for maintenance, in the order it eats them: every maintenance and
+/// hunger pass in `Game::CheckUnitMaintenance` and its siblings (../Atlantis/game.cpp:1800) walks
+/// meals, grain, livestock and fish, one item type at a time.
+const ENGINE_FOOD_ORDER: [&str; 4] = ["MEAL", "GRAI", "LIVE", "FISH"];
+
+/// Where `tag` falls in [`ENGINE_FOOD_ORDER`]; any other food comes after all four.
+fn engine_food_rank(tag: &str) -> usize {
+    ENGINE_FOOD_ORDER
+        .iter()
+        .position(|food| *food == tag)
+        .unwrap_or(ENGINE_FOOD_ORDER.len())
+}
+
 /// Spends food off `stock` against `owed` silver of maintenance, returning what it paid and cost.
 ///
 /// The one place maintenance food arithmetic lives - steps 1, 2, 5 and 6 of the payment order all
-/// go through here. Food is eaten least valuable first (`maintenance_value` then `tag`): where a
-/// future ruleset gives foods different values but does not say which the engine eats, spending the
-/// cheapest first is the conservative direction - it eats more items for the same relief and so
-/// cannot overstate the maintenance a hex can pay. A fractional maintenance cost still consumes a
+/// go through here. Food is eaten in the engine's order, [`ENGINE_FOOD_ORDER`]. A food the engine
+/// does not name is eaten after those, least valuable first (`maintenance_value` then `tag`):
+/// spending the cheapest first is the conservative direction - it eats more items for the same
+/// relief and so cannot overstate the maintenance a hex can pay. A fractional maintenance cost still consumes a
 /// whole unit of food, so each entry rounds its need up; the covered silver is capped at the
 /// remaining debt, and all arithmetic saturates so an absurd headcount cannot overflow it.
 fn consume_food(stock: &mut Vec<FoodAmount>, owed: i64) -> FoodUse {
     stock.sort_by(|a, b| {
-        a.maintenance_value
-            .cmp(&b.maintenance_value)
+        engine_food_rank(&a.tag)
+            .cmp(&engine_food_rank(&b.tag))
+            .then_with(|| a.maintenance_value.cmp(&b.maintenance_value))
             .then_with(|| a.tag.cmp(&b.tag))
     });
 
@@ -4075,6 +4089,29 @@ mod consume_food_tests {
         );
         // The stock is drawn down by exactly what was eaten.
         assert_eq!(stock, vec![food("BIG", 4, 40)]);
+    }
+
+    /// ah-p26h: the engine eats meals, then grain, livestock and fish
+    /// (`Game::CheckUnitMaintenance`, ../Atlantis/game.cpp:1800), not fish first. All four give
+    /// 30 silver (data/MEAL, data/GRAI, data/LIVE, data/FISH), so the tag order used to decide it.
+    /// Unit 8333 in neworigins-3.0.0-g5-f21-t24 holds 243 grain and 20 fish and eats one item:
+    /// it must be a grain, leaving the fish alone.
+    #[test]
+    fn eats_the_engine_food_order_meals_grain_livestock_fish() {
+        let mut stock = vec![food("FISH", 20, 30), food("GRAI", 243, 30)];
+        let use_ = consume_food(&mut stock, 30);
+        assert_eq!(use_.consumed, vec![food("GRAI", 1, 30)]);
+        assert_eq!(stock, vec![food("GRAI", 242, 30), food("FISH", 20, 30)]);
+
+        let mut all = vec![
+            food("FISH", 1, 30),
+            food("LIVE", 1, 30),
+            food("GRAI", 1, 30),
+            food("MEAL", 1, 30),
+        ];
+        let use_ = consume_food(&mut all, 120);
+        let order: Vec<&str> = use_.consumed.iter().map(|f| f.tag.as_str()).collect();
+        assert_eq!(order, vec!["MEAL", "GRAI", "LIVE", "FISH"]);
     }
 
     /// A stock too small pays what it can and no more; the debt survives.
