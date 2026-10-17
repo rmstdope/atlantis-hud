@@ -163,6 +163,11 @@ fn a_unit_out_of_silver_eats_faction_food_from_its_holder() {
     let granary = preview_row(&text, "", "900");
     assert_eq!(holding(&granary, "GRAI"), 4, "{:?}", granary.unit.items);
     assert_eq!(eaten(&granary), vec![("GRAI".to_string(), -2)]);
+    // Step 6's eater is named too (`ah-nzb0`).
+    assert_eq!(
+        eaten_by(&granary),
+        vec![(Some("901".to_string()), Some("Poor".to_string()), -2)]
+    );
 }
 
 /// Two holders: the one higher on the report gives up its grain first.
@@ -188,6 +193,13 @@ fn the_pool_drains_holders_in_report_order() {
     let second = preview_row(&text, "", "901");
     assert_eq!(holding(&second, "GRAI"), 4, "{:?}", second.unit.items);
     assert_eq!(eaten(&second), vec![("GRAI".to_string(), -1)]);
+    // One eater's draw split across two holders names that eater on both (`ah-nzb0`).
+    for holder in [&first, &second] {
+        assert_eq!(
+            eaten_by(holder),
+            vec![(Some("902".to_string()), Some("Eaters".to_string()), -1)]
+        );
+    }
 }
 
 /// A unit that pays in silver keeps its food.

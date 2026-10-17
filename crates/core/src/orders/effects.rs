@@ -14238,6 +14238,39 @@ mod tests {
 
     /// `data/quartermaster`: "Items may be shipped between two transport structures which are up to
     /// 3 plus (level+1)/3 hexes distant from each other" - the *sender's* own level.
+    /// `ah-nzb0`: a quartermaster sending to an ordinary unit passes its own distribution range
+    /// (`rules/economy_transport`: "Quartermasters may also TRANSPORT items to any unit within 2
+    /// hexes"), so the hover's reason blames the sender, not the recipient.
+    #[test]
+    fn a_quartermaster_distributing_too_far_is_refused_on_its_own_range() {
+        let target =
+            "+ Post One [1] : Caravanserai.\n  * Quarterone (901), Foo (1), leader [LEAD]. \
+                      Weight: 10. Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 1 (450).";
+        let report = reach_report((0, 0), (0, 6), (1, 1));
+        assert!(
+            report.contains(target),
+            "the fixture's target is a quartermaster"
+        );
+        let report = report.replace(
+            target,
+            "* Plain (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+        );
+        let too_far = reach_preview(&report, "unit 900\nDISTRIBUTE 901 1 IRON\n", FLAT_MAP);
+        assert_eq!(reach_held(&too_far, "900", "IRON"), 1, "the iron stayed");
+        let issues = &reach_unit(&too_far, "900").transport_target_issues;
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(issues[0].reason, TransportTargetReason::TooFarToDistribute);
+        assert_eq!(
+            issues[0].reach,
+            Some(TransportReach {
+                away: Some(3),
+                limit: Some(2),
+                from_level: None,
+                to_level: None
+            })
+        );
+    }
+
     #[test]
     fn a_quartermaster_ships_as_far_as_its_own_skill_allows() {
         let orders = "unit 900\nTRANSPORT 901 1 IRON\n";
