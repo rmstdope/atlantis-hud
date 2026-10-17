@@ -831,7 +831,9 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   const restOn = (unit: PreviewedUnit, column: DrawnColumnId | undefined) => {
     // A spacer row's `colSpan` cell carries no column, and neither does one of the five silent
     // ones - and resting on either closes what is open rather than leaving a stale popup over it.
-    if (column === undefined || !columnHasPopup(column)) {
+    // Nor does anything open while an Add to army list is up (ah-1lac): the popup shares the
+    // list's layer and, drawn over it, would hide its army rows.
+    if (column === undefined || !columnHasPopup(column) || menu !== null) {
       forgetHover();
       return;
     }
@@ -874,6 +876,16 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
       setHovered(null);
     }
   }, [hovered, hoveredRow]);
+
+  // An Add to army list opening, from any of its three controls, closes the popup and drops a
+  // wait still counting (ah-1lac), so nothing is drawn over the list and nothing reopens, at a
+  // spot the pointer has since left, once it closes. Keyed on whether a list is open, not which.
+  const menuOpen = menu !== null;
+  useEffect(() => {
+    if (menuOpen) {
+      forgetHover();
+    }
+  }, [menuOpen]);
 
   // Only the timer, and only on unmount: a rearrangement of the rows is no longer a reason to
   // close anything, because `hoveredRow` above cannot name a row that is not there.
@@ -1671,8 +1683,9 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
           </div>
           {/* Which of the two panels opens is the resolver's answer, not this component's, so
               the popup and the cell's own hidden sentence can never disagree (`ah-rgkk.1`). */}
+          {/* Never over an open Add to army list, whichever control opened it (ah-1lac). */}
           <HoveredPopup
-            hovered={hoveredRow}
+            hovered={menu === null ? hoveredRow : null}
             getSilver={getSilver}
             getLongOrder={getLongOrder}
             getReportedLongOrder={getReportedLongOrder}
