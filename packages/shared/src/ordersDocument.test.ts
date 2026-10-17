@@ -649,6 +649,22 @@ describe("finds the one order that takes the whole month", () => {
     expect(longOrderOf("SAIL N\nMOVE S", "origins")).toBe("MOVE S");
   });
 
+  // `ah-vjc3`: the column must agree with `two-month-long-orders`, which says of this block "MOVE
+  // replaces this STUDY as the unit's month-long order, so this STUDY will not run" - the last
+  // month-long order runs (`ah-728m.2.1`; `rules/movement_normal`: "In one month, a unit can issue
+  // a single MOVE order"). Seven of Eight's own template (neworigins-3.0.0-g7-f95-t71) with a MOVE
+  // added; before `ah-5we4` the column kept the STUDY. An overload that refuses the move does not
+  // change which order spent the month, so the loaded block reads the same.
+  it("names a MOVE written after the template's STUDY, overloaded or not", () => {
+    expect(longOrderOf("@claim 50\n@study obse\nMOVE N", "origins")).toBe("MOVE N");
+    expect(
+      longOrderOf(
+        "@CLAIM 50\n@STUDY OBSE\nCLAIM 2000\nBUY 5 GEM\nCLAIM 1000\nWITHDRAW 2 HAMM\nMOVE N",
+        "origins"
+      )
+    ).toBe("MOVE N");
+  });
+
   // `ah-5we4`: New Age's list is longer - "The orders which take an entire month are ADVANCE,
   // BUILD, CREATE, ENTERTAIN, EXPLORE, MOVE, PILLAGE, PRODUCE, SAIL, STUDY, TAX, TEACH and WORK"
   // (newage arcanum and trident, rules/playing_turns).
