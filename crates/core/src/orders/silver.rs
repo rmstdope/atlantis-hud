@@ -5779,6 +5779,11 @@ pub enum RegionShare {
     NothingHere,
     /// The region yields it, and the settlement leaves this unit this much of it.
     Share(i64),
+    /// The faction's region limit is spent before the game reaches this region, so it refuses the
+    /// order outright: "PRODUCE: Faction can't produce in that many regions." (`../Atlantis`
+    /// `monthorders.cpp` `ValidProd` and `RunUnitProduce`, `ah-gcrc`). Nothing is made, whatever
+    /// the recipe, and nothing is spent.
+    Refused,
 }
 
 /// What one `PRODUCE` order makes, and what it takes to make it.
@@ -5871,7 +5876,9 @@ pub fn plan_production(
     // Problems panel's `produce-not-here` already says why, immediately beside this, and two
     // copies of one sentence are two things to keep in step. The same shape - and the same
     // reasoning - as the minimum-level gate directly above.
-    if matches!(region, RegionShare::NothingHere) {
+    // A region the faction's region limit refuses makes nothing for the same reason, and the
+    // region-limit warning already names it (`ah-gcrc`).
+    if matches!(region, RegionShare::NothingHere | RegionShare::Refused) {
         return Some(ProductionPlan::default());
     }
 
@@ -5918,7 +5925,7 @@ pub fn plan_production(
     let by_region = match region {
         RegionShare::Unlimited => i64::MAX,
         // Answered by the guard above; kept exhaustive rather than caught by a wildcard.
-        RegionShare::NothingHere => 0,
+        RegionShare::NothingHere | RegionShare::Refused => 0,
         RegionShare::Share(share) => share.max(0),
     };
 
