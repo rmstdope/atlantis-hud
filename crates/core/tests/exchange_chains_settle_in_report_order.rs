@@ -228,3 +228,27 @@ fn a_sharers_stock_goes_to_the_pair_completed_first_in_report_order() {
         "Maurice holds the horses he sells"
     );
 }
+
+/// The partner is checked at its pair's first line, not when the pair completes. Ivanhoe's line to
+/// Cedric is reached first, while Cedric holds no silver, so that pair is aborted - even though
+/// Maurice's pair pays Cedric the silver before Cedric's own line to Ivanhoe completes it
+/// (`runorders.cpp` `DoExchangeOrder` keeps the first check's `exchangeStatus`; review of PR #1736).
+#[test]
+fn the_partner_is_checked_at_the_pairs_first_line() {
+    let orders = (
+        "EXCHANGE 900 1 HORS 10 SILV",
+        "EXCHANGE 900 10 SILV 1 WOOD",
+        "EXCHANGE 1160 1 WOOD 10 SILV\nEXCHANGE 683 10 SILV 1 HORS",
+    );
+    assert_eq!(silver_exchanged(4, orders, "683"), 0, "Ivanhoe is not paid");
+    assert_eq!(
+        silver_exchanged(4, orders, "900"),
+        10,
+        "Cedric keeps Maurice's silver"
+    );
+    assert_eq!(
+        sold_for(4, orders, "683", "SELL 4 HORS"),
+        160,
+        "Ivanhoe keeps all four horses"
+    );
+}

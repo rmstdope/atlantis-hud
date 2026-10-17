@@ -10667,6 +10667,10 @@ fn complementary_pairs(offers: &[ExchangeOffer]) -> Vec<(usize, usize)> {
 /// (`GetSharedNum`) and moves nothing; at its second (`completes`) it checks the first side's
 /// holding and, both checks passed, moves both sides (`ConsumeShared`). So a pair completed earlier
 /// in the walk can pay for, or drain, a pair completed later, whatever order the lines are written.
+///
+/// Not followed: the engine walks the object lists as they stand at EXCHANGE time, so a unit that
+/// ENTERs, LEAVEs, is PROMOTEd or EVICTed, JOINs, or is FORMed into a structure is reached in a
+/// different place than its report line (`ah-fyyk`).
 fn exchange_walk(pairs: &[(usize, usize)]) -> Vec<(usize, bool)> {
     let mut visits: Vec<(usize, usize, bool)> = pairs
         .iter()
@@ -10913,7 +10917,8 @@ fn record_unanswered_exchanges(
 /// an exchange with another faction is not followed at all, and a line whose goods nothing can
 /// name is not paired; so where another exchange could hand the short side (or a sharer lending to
 /// it) that item, or take it, whether this pair aborts is not certain and is not told (reviews of
-/// PR #1699). Saying nothing there is a missed warning, never a false one.
+/// PR #1699); nor is a unit that moves before EXCHANGE reached where the walk puts it (`ah-fyyk`).
+/// Saying nothing there is a missed warning, never a false one.
 fn record_short_exchange(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
@@ -11043,7 +11048,9 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
         .known_balance_at(StatePhase::Give, &giver.unit_id, tag)
     {
         Ok(own) => exchange_draw(ledger, hex, &giver.unit_id, tag, own),
-        // Unreachable: a pair moves only once both sides' holdings were read as known.
+        // A pair moves only once both sides' holdings were read as known, but the partner's was
+        // read at the pair's first line and a pair completed since may have left it in doubt: its
+        // offer is then charged whole, as an unknown holding cannot be cut (`ah-fyyk`).
         Err(_) => (amount, Vec::new()),
     };
     let own_sold = amount.min(own.max(0));
