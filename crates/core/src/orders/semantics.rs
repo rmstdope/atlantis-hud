@@ -9692,11 +9692,18 @@ fn transfer(
     // drawn from goods that may already have gone. A receiver of ours inherits the same doubt, so
     // its row shows `+ ?` rather than a flat arrival off a balance this ledger has marked
     // unknowable (`ah-66yi`).
+    //
+    // Only silver doubts the actor's sums. A line of goods that moves no silver leaves the doubt
+    // where it is - on the tag, on both ends - as an unnameable gift does above (`ah-jo6b`): a
+    // doubted sharer silences its hex's whole silver purse (`Sharing::pool_trusted`), so a second
+    // GIVE of swords turned every faction-mate the purse was lending to red (`ah-0ift`).
     let known_source = match ledger.state.known_balance_at(StatePhase::Give, &from, &tag) {
         Ok(holding) => holding,
         Err(uncertain) => {
             let inherited = uncertain.clone();
-            ledger.doubted.insert(actor.unit.unit_id.clone());
+            if tag.eq_ignore_ascii_case(SILVER) {
+                ledger.doubted.insert(actor.unit.unit_id.clone());
+            }
             mark_uncounted(ledger, &actor.unit.unit_id, placed.line);
             if let Some(to) = to {
                 ledger
