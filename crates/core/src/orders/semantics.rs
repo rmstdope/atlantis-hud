@@ -14408,6 +14408,16 @@ impl SharingReach {
                 reach.of.insert(member, position);
             }
         }
+        // The units already standing in the region come before the ones arriving in it: the
+        // engine appends an arriving fleet to the end of the region's objects
+        // (`../Atlantis/object.cpp`: `Object::MoveObject`), and `rules/sequenceofevents` gives
+        // "units that appear higher on the report" precedence, so a resident lends for upkeep
+        // before an arriving crew does (`ah-fpyo`). Stable, so each side keeps report order.
+        for neighbourhood in &mut reach.neighbourhoods {
+            neighbourhood
+                .members
+                .sort_by_key(|(index, _)| hexes[*index].0.region.coordinate != neighbourhood.at);
+        }
         reach
     }
 
@@ -45584,7 +45594,7 @@ BUILD
             vec![
                 (
                     Coordinate { x: 7, y: 51, z: 1 },
-                    vec!["4021".to_string(), "1795".to_string()]
+                    vec!["1795".to_string(), "4021".to_string()]
                 ),
                 (Coordinate { x: 7, y: 53, z: 1 }, vec!["1794".to_string()]),
             ]
@@ -45593,6 +45603,8 @@ BUILD
 
     /// A sail is never read from the trace, which the shells fill for a sail only when something
     /// else in the document walks or ships (`ah-n3qb`): the fleet ends where its own `SAIL` does.
+    /// The banker standing there comes first: an arriving fleet joins the end of the region
+    /// (`ah-fpyo`).
     #[test]
     fn the_sharing_reach_puts_a_sailing_passenger_where_its_fleet_arrives() {
         let (report, orders) = a_fleet_sailing_north_to_a_banker_inputs(true);
@@ -45604,7 +45616,7 @@ BUILD
             neighbourhoods(&report, &orders, &month_end),
             vec![(
                 Coordinate { x: 7, y: 51, z: 1 },
-                vec!["4022".to_string(), "4021".to_string(), "1795".to_string()]
+                vec!["1795".to_string(), "4022".to_string(), "4021".to_string()]
             )]
         );
     }
