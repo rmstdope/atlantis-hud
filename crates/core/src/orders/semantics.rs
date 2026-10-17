@@ -261,6 +261,11 @@ pub mod codes {
     /// order can only be used on the surface" (`ah-mw1r.4`). Always on: the bead asks for the
     /// warning and gives it no switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
     pub const EXPLORE_BELOW_THE_SURFACE: Code = Code("explore-below-the-surface");
+    /// A `QUEST` in a region the report shows without a finished Town Hall, which `newage arcanum
+    /// rules/quest` and `newage trident rules/quest` refuse: "The unit must be in a region that
+    /// has an active Town Hall with a living mayor" (`ah-o6o2`). Always on, like its neighbour
+    /// [`EXPLORE_BELOW_THE_SURFACE`]: the bead asks for the warning and gives it no switch.
+    pub const QUEST_WITHOUT_A_TOWN_HALL: Code = Code("quest-without-a-town-hall");
     /// A `CREATE VILLAGE` with a settlement the known map shows within two hexes, which
     /// `newage trident rules/create_village` refuses, or one whose neighbourhood the known map
     /// cannot rule a settlement out of (`ah-m24v`). Always on: the bead asks for the warning and
@@ -382,11 +387,12 @@ pub mod codes {
 
     /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
     /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
-    pub const ALWAYS_ON: [Code; 9] = [
+    pub const ALWAYS_ON: [Code; 10] = [
         MOVE_INTO_A_WALL,
         FACTION_ORDER_WILL_FAIL,
         UNKNOWN_SKILL,
         EXPLORE_BELOW_THE_SURFACE,
+        QUEST_WITHOUT_A_TOWN_HALL,
         VILLAGE_NEAR_A_SETTLEMENT,
         CREATE_VILLAGE_REFUSED,
         ENTER_NOT_HERE,
@@ -1032,6 +1038,7 @@ pub fn review_turn(
         check_refused_arrivals(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_withdraw_in_nexus(hex, &options, &mut findings);
         check_explore_below_the_surface(hex, &mut findings);
+        check_quest_without_a_town_hall(hex, &mut findings);
         check_enter_not_here(hex, &mut findings);
         check_leave_refused_at_sea(hex, &mut findings);
         check_village_site(hex, ledger, ruleset, &mut findings);
@@ -13608,6 +13615,36 @@ fn check_explore_below_the_surface(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
                     hex,
                     codes::EXPLORE_BELOW_THE_SURFACE,
                     "a treasure map can only be explored on the surface".to_string(),
+                    Some(placed),
+                ));
+            }
+        }
+    }
+}
+
+/// Always on (`codes::QUEST_WITHOUT_A_TOWN_HALL`), so no option is read. The ledger already turns
+/// nothing in here (`has_a_town_hall` in `apply`); this says so to the player.
+fn check_quest_without_a_town_hall(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
+    if has_a_town_hall(hex.region) {
+        return;
+    }
+    // A hall still being built is listed in the report, so "no Town Hall" would contradict what
+    // the player can see; `rules/quest` wants an active one, which an unfinished hall is not.
+    let unfinished = hex.region.structures.iter().any(|structure| {
+        structure.base_kind.eq_ignore_ascii_case("Town Hall") && structure.needs.is_some()
+    });
+    let message = if unfinished {
+        "QUEST will be refused: the Town Hall here is not finished"
+    } else {
+        "QUEST will be refused: there is no Town Hall here"
+    };
+    for ordered in &hex.units {
+        for placed in &ordered.intents {
+            if matches!(placed.intent, Intent::Quest { .. }) {
+                findings.push(ordered.finding(
+                    hex,
+                    codes::QUEST_WITHOUT_A_TOWN_HALL,
+                    message.to_string(),
                     Some(placed),
                 ));
             }

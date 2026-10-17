@@ -39,6 +39,11 @@ const UNDERWORLD: &str = "tunnels (1,1,2 <underworld>) in Deepdark, 10 peasants 
 /// Courier (901) of ours with two more tokens; and Mark (7001), another faction's, with three.
 fn report_in(region: &str) -> String {
     let structures = if region == TOWN { TOWN_HALL } else { "" };
+    report_with(region, structures)
+}
+
+/// [`report_in`]'s units, in `region` with `structures` below them.
+fn report_with(region: &str, structures: &str) -> String {
     [
         "Foo (1) Report",
         "",
@@ -154,13 +159,27 @@ fn seeker_if_changed(ruleset: &str, region: &str, order: &str) -> Seeker {
 }
 
 fn findings(region: &str, order: &str) -> Vec<Finding> {
-    let ruleset = trident_ruleset();
-    let text = report_in(region);
-    let mut parsed = parse_report_full(&text);
+    findings_under(trident_ruleset(), region, order)
+}
+
+fn findings_under(
+    ruleset: atlantis_hud_core::movement::rules::Ruleset,
+    region: &str,
+    order: &str,
+) -> Vec<Finding> {
+    findings_in(ruleset, &report_in(region), order)
+}
+
+fn findings_in(
+    ruleset: atlantis_hud_core::movement::rules::Ruleset,
+    text: &str,
+    order: &str,
+) -> Vec<Finding> {
+    let mut parsed = parse_report_full(text);
     classify_units(&mut parsed, &ruleset);
     review_turn(
         &parsed,
-        &script_for(&text, order, ""),
+        &script_for(text, order, ""),
         Some(&ruleset),
         CheckOptions::default(),
     )
@@ -245,6 +264,64 @@ fn quest_without_a_town_hall_hands_in_nothing() {
     let seeker = seeker_if_changed(TRIDENT, SURFACE, "QUEST 3 DISCOUNT");
     assert_eq!(seeker.held("BNTY"), 5);
     assert!(seeker.uncounted.is_empty(), "{:?}", seeker.uncounted);
+}
+
+/// `ah-o6o2`. `newage arcanum rules/quest` and `newage trident rules/quest`: "The unit must be in
+/// a region that has an active Town Hall with a living mayor", so a QUEST anywhere else is lost.
+#[test]
+fn quest_without_a_town_hall_is_warned_in_both_worlds() {
+    for (world, ruleset) in [
+        ("trident", trident_ruleset()),
+        ("arcanum", arcanum_ruleset()),
+    ] {
+        let findings = findings_under(ruleset, SURFACE, "QUEST 3\nWORK");
+        assert_eq!(
+            findings
+                .iter()
+                .map(|finding| (finding.code.as_str(), finding.message.as_str()))
+                .collect::<Vec<_>>(),
+            vec![(
+                "quest-without-a-town-hall",
+                "QUEST will be refused: there is no Town Hall here"
+            )],
+            "{world}: {findings:?}"
+        );
+    }
+}
+
+fn arcanum_ruleset() -> atlantis_hud_core::movement::rules::Ruleset {
+    atlantis_hud_core::movement::rules::Ruleset::from_json(ARCANUM)
+        .expect("the committed Arcanum ruleset loads")
+}
+
+#[test]
+fn quest_at_a_town_hall_is_not_warned_in_either_world() {
+    for (world, ruleset) in [
+        ("trident", trident_ruleset()),
+        ("arcanum", arcanum_ruleset()),
+    ] {
+        let findings = findings_under(ruleset, TOWN, "QUEST 3\nWORK");
+        assert!(findings.is_empty(), "{world}: {findings:?}");
+    }
+}
+
+/// `rules/quest` wants an *active* Town Hall; one still being built is listed in the report, so
+/// the warning names it rather than saying there is none.
+#[test]
+fn quest_at_an_unfinished_town_hall_is_warned_that_it_is_not_finished() {
+    let text = report_with(TOWN, "+ Hall [1] : Town Hall, needs 10.");
+    let findings = findings_in(trident_ruleset(), &text, "QUEST 3\nWORK");
+    assert_eq!(
+        findings
+            .iter()
+            .map(|finding| (finding.code.as_str(), finding.message.as_str()))
+            .collect::<Vec<_>>(),
+        vec![(
+            "quest-without-a-town-hall",
+            "QUEST will be refused: the Town Hall here is not finished"
+        )],
+        "{findings:?}"
+    );
 }
 
 #[test]
