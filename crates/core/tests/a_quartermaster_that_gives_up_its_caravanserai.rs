@@ -157,9 +157,8 @@ fn assert_trader_no_longer_owns(orders: &str) {
             "the Trader receives nothing"
         );
         assert_eq!(row.transport_sent, vec![], "the Trader distributes nothing");
-        // A sender that owns no Caravanserai can only ship to a quartermaster that owns one
-        // (`rules/transport`), which neither recipient is - the reason the row already gives for
-        // a quartermaster standing outside any structure.
+        // `CheckTransportOrders`: "DISTRIBUTE: Unit does not own transport structure." - the
+        // sender's refusal, not the recipients'.
         let refused: Vec<(&str, TransportTargetReason)> = row
             .transport_target_issues
             .iter()
@@ -168,8 +167,8 @@ fn assert_trader_no_longer_owns(orders: &str) {
         assert_eq!(
             refused,
             vec![
-                ("1162", TransportTargetReason::NotQuartermaster),
-                ("12127", TransportTargetReason::NotQuartermaster),
+                ("1162", TransportTargetReason::SenderOwnsNoCaravanserai),
+                ("12127", TransportTargetReason::SenderOwnsNoCaravanserai),
             ],
             "each DISTRIBUTE is explained on the Trader's row"
         );
@@ -184,8 +183,19 @@ fn assert_trader_no_longer_owns(orders: &str) {
         )),
         "{warned:?}"
     );
-    let distributes = warned.iter().filter(|(unit, _)| unit == TRADER).count();
-    assert_eq!(distributes, 2, "{warned:?}");
+    let distributes: Vec<&str> = warned
+        .iter()
+        .filter(|(unit, _)| unit == TRADER)
+        .map(|(_, message)| message.as_str())
+        .collect();
+    assert_eq!(
+        distributes,
+        vec![
+            "This unit owns no Caravanserai when the shipments run, so 500 SILV stay with this unit.",
+            "This unit owns no Caravanserai when the shipments run, so 100 SILV stay with this unit.",
+        ],
+        "{warned:?}"
+    );
 
     // The same month with no TRANSPORT written at all, on both silver rows.
     let unshipped = orders.replace(SHIPMENT, "");

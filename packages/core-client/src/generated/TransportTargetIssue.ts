@@ -47,6 +47,7 @@ toUnshown: boolean,
  * whose orders we cannot read, or one of ours whose own orders this month could make it
  * eligible before TRANSPORT runs (`transport::Judged::unsettled`, `ah-kjjv`). The order
  * carries no warning for it and the SILVER working does not state it; `false` for every
- * reason but `NotQuartermaster` and `NotCaravanseraiOwner`.
+ * reason but `NotQuartermaster`, `NotCaravanseraiOwner` and `SenderOwnsNoCaravanserai` - the
+ * last unsettled when the sender's own month is (`ah-1jl9`).
  */
 unsettled: boolean, };

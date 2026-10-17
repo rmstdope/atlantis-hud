@@ -498,6 +498,12 @@ pub(crate) enum Acceptance {
     Eligible,
     NotQuartermaster,
     NotCaravanseraiOwner,
+    /// The sender is a quartermaster that owns no Caravanserai when the shipments run, and the
+    /// shipment needs one: to a unit that is no quartermaster, or beyond the flat reach.
+    /// `CheckTransportOrders` blames the sender here ("Unit does not own transport structure."),
+    /// so the sentence does too (`ah-1jl9`, the navigator's choice). Set by [`Shipping::judge`]
+    /// over [`acceptance`]'s answer, which knows nothing of distance.
+    SenderOwnsNoCaravanserai,
     EligibilityUnknown,
     AcceptanceUnknown,
 }
@@ -908,15 +914,33 @@ impl Shipping {
             }
             _ => None,
         };
-        let acceptance = acceptance(sender_can_distribute, facts);
+        // A quartermaster that owns no Caravanserai can neither DISTRIBUTE nor ship past the flat
+        // reach; either refusal is its own, not the target's (`ah-1jl9`).
+        let sender_without_caravanserai = sender_qm && !sender_can_distribute;
+        let acceptance = match acceptance(sender_can_distribute, facts) {
+            Acceptance::NotQuartermaster if sender_without_caravanserai => {
+                Acceptance::SenderOwnsNoCaravanserai
+            }
+            Acceptance::Eligible
+                if sender_without_caravanserai
+                    && measured
+                        .is_some_and(|measured| matches!(measured.arrival, Arrival::TooFar(_))) =>
+            {
+                Acceptance::SenderOwnsNoCaravanserai
+            }
+            settled => settled,
+        };
         Judged {
             target_shown: facts.is_some(),
-            // Another faction's orders are never ours to read, so its month is never settled.
-            unsettled: matches!(
-                acceptance,
-                Acceptance::NotQuartermaster | Acceptance::NotCaravanseraiOwner
-            ) && (facts.is_some_and(|facts| !facts.own)
-                || self.unsettled.contains(target)),
+            // Another faction's orders are never ours to read, so its month is never settled. The
+            // sender's own refusal is unsettled exactly when the sender's month is.
+            unsettled: match acceptance {
+                Acceptance::NotQuartermaster | Acceptance::NotCaravanseraiOwner => {
+                    facts.is_some_and(|facts| !facts.own) || self.unsettled.contains(target)
+                }
+                Acceptance::SenderOwnsNoCaravanserai => self.unsettled.contains(sender),
+                _ => false,
+            },
             acceptance,
             phase: shipment_phase(sender_qm, target_qm),
             reach,

@@ -248,6 +248,11 @@ pub enum TransportTargetReason {
     /// its hex, so it owns none (`rules/world_structures`). Certain even for a foreign unit,
     /// whose structure the report still draws.
     NotCaravanseraiOwner,
+    /// The sender is a quartermaster that owns no Caravanserai once this month's boardings,
+    /// promotions and movement have run, and the shipment needs one: a DISTRIBUTE to a unit that
+    /// is no quartermaster, or a TRANSPORT beyond the flat reach (`CheckTransportOrders`: "Unit
+    /// does not own transport structure.", `ah-1jl9`). The sender's fault, not the target's.
+    SenderOwnsNoCaravanserai,
     /// The report does not show the target at all, or shows a foreign Caravanserai owner whose
     /// skills it never discloses: no evidence either way.
     EligibilityUnknown,
@@ -330,7 +335,8 @@ pub struct TransportTargetIssue {
     /// whose orders we cannot read, or one of ours whose own orders this month could make it
     /// eligible before TRANSPORT runs (`transport::Judged::unsettled`, `ah-kjjv`). The order
     /// carries no warning for it and the SILVER working does not state it; `false` for every
-    /// reason but `NotQuartermaster` and `NotCaravanseraiOwner`.
+    /// reason but `NotQuartermaster`, `NotCaravanseraiOwner` and `SenderOwnsNoCaravanserai` - the
+    /// last unsettled when the sender's own month is (`ah-1jl9`).
     #[serde(default)]
     pub unsettled: bool,
 }
@@ -3945,6 +3951,9 @@ impl Working {
             }
             Acceptance::NotCaravanseraiOwner => {
                 TransportTargetOutcome::Refused(TransportTargetReason::NotCaravanseraiOwner)
+            }
+            Acceptance::SenderOwnsNoCaravanserai => {
+                TransportTargetOutcome::Refused(TransportTargetReason::SenderOwnsNoCaravanserai)
             }
             Acceptance::EligibilityUnknown => {
                 TransportTargetOutcome::Refused(TransportTargetReason::EligibilityUnknown)

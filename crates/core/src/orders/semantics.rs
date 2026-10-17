@@ -22819,7 +22819,8 @@ fn check_transport_reach(
                     )
                 }
                 refused @ (super::transport::Acceptance::NotQuartermaster
-                | super::transport::Acceptance::NotCaravanseraiOwner)
+                | super::transport::Acceptance::NotCaravanseraiOwner
+                | super::transport::Acceptance::SenderOwnsNoCaravanserai)
                     if target_on && !judged.unsettled =>
                 {
                     (
@@ -23749,14 +23750,19 @@ fn transport_target_sentence(
     refused: super::transport::Acceptance,
     goods: Option<&(i64, String)>,
 ) -> String {
-    let why = if refused == super::transport::Acceptance::NotQuartermaster {
-        "is not a quartermaster"
-    } else {
-        "does not own a Caravanserai"
+    let who = match refused {
+        super::transport::Acceptance::NotQuartermaster => {
+            format!("Unit {to} is not a quartermaster")
+        }
+        // The sender's refusal, in its own words (`ah-1jl9`).
+        super::transport::Acceptance::SenderOwnsNoCaravanserai => {
+            "This unit owns no Caravanserai when the shipments run".to_string()
+        }
+        _ => format!("Unit {to} does not own a Caravanserai"),
     };
     match goods {
-        Some((moved, tag)) => format!("Unit {to} {why}, so {moved} {tag} stay with this unit."),
-        None => format!("Unit {to} {why}, so this TRANSPORT moves nothing."),
+        Some((moved, tag)) => format!("{who}, so {moved} {tag} stay with this unit."),
+        None => format!("{who}, so this TRANSPORT moves nothing."),
     }
 }
 
@@ -59100,15 +59106,24 @@ BUILD
         owner.region_id = regions[0].region_id.clone();
         regions[0].units.insert(0, owner);
 
-        let finding = only(traced_reach_findings(
-            regions,
+        // The sender's own refusal, in its own words (`ah-1jl9`, the navigator's choice).
+        let findings: Vec<Finding> = check_turn(
+            &report(regions),
             "unit 900\nTRANSPORT 901 5 STON\n",
+            Some(&ruleset()),
             with_map(),
-        ));
-        assert!(
-            finding.message.starts_with("Unit 901 is 3 hexes away"),
-            "{}",
-            finding.message
+        )
+        .into_iter()
+        .filter(|finding| {
+            finding.code == codes::TRANSPORT_TARGET_REFUSED
+                || finding.code == codes::TRANSPORT_OUT_OF_REACH
+        })
+        .collect();
+        let finding = only(findings);
+        assert_eq!(finding.code, codes::TRANSPORT_TARGET_REFUSED);
+        assert_eq!(
+            finding.message,
+            "This unit owns no Caravanserai when the shipments run, so 5 STON stay with this unit."
         );
     }
 

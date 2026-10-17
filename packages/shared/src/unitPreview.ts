@@ -669,6 +669,12 @@ export function transportTargetSentence(issue: TransportTargetIssue): string {
       return goods === null
         ? `Unit ${issue.to} does not own a Caravanserai, so this TRANSPORT moves nothing.`
         : `Unit ${issue.to} does not own a Caravanserai, so ${goods} stay with this unit.`;
+    case "senderOwnsNoCaravanserai":
+      // The sender's own refusal (`ah-1jl9`), in the words of `transport_target_sentence` in
+      // `crates/core/src/orders/semantics.rs`.
+      return goods === null
+        ? "This unit owns no Caravanserai when the shipments run, so this TRANSPORT moves nothing."
+        : `This unit owns no Caravanserai when the shipments run, so ${goods} stay with this unit.`;
     case "eligibilityUnknown":
       return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show whether it is an eligible transport target.`;
     case "distanceUnmeasured":
