@@ -124,6 +124,15 @@ describe("studyWritePlan", () => {
     });
   });
 
+  // `ah-5we4`: EXPLORE is a New Age month-long order (newage arcanum rules/playing_turns), so a
+  // planned STUDY replaces it as it replaces any other.
+  it("an_explore_is_replaced_by_the_planned_study", () => {
+    const result = plan(aDocument("EXPLORE RMAP"), [anEntry()]);
+    expect(result.next).not.toContain("EXPLORE RMAP");
+    expect(result.replaced).toBe(1);
+    expect(result.rows[0].detail).toBe("STUDY FORC 4 replaces EXPLORE RMAP");
+  });
+
   it("a_replaced_study_or_teach_is_not_counted_as_another_order", () => {
     expect(plan(aDocument("study patt"), [anEntry()]).replaced).toBe(0);
     expect(plan(aDocument("@teach 1263"), [anEntry()]).replaced).toBe(0);

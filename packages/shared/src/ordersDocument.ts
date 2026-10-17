@@ -881,7 +881,12 @@ const FACTION_HEADER = /^([ \t]*)#atlantis\b[ \t]*([^\s"]*)[^\r]*(\r?)$/;
  * The orders that occupy a unit's whole month, exactly as the rules name them: "The orders which
  * take an entire month are ADVANCE, BUILD, ENTERTAIN, MOVE, PILLAGE, PRODUCE, SAIL, STUDY, TAX,
  * TEACH and WORK." A unit can issue as many other orders as it likes alongside these (GIVE, GUARD,
- * CLAIM, AUTOTAX...), but only one of these eleven counts.
+ * CLAIM, AUTOTAX...), but only one of these counts.
+ *
+ * New Age adds two (`ah-5we4`): "The orders which take an entire month are ADVANCE, BUILD, CREATE,
+ * ENTERTAIN, EXPLORE, MOVE, ..." (newage arcanum and trident, rules/playing_turns). New Origins has
+ * no CREATE or EXPLORE order at all, so one list serves every world: a line issuing either there is
+ * an unknown order, and naming it as the unit's month is no worse than ignoring it.
  *
  * Not the Rust core's `MOVEMENT_ORDER_COMMANDS`: that list exists for the planner, which only ever
  * needs to know a movement order from a non-movement one. This is the ruleset's own full list.
@@ -889,7 +894,9 @@ const FACTION_HEADER = /^([ \t]*)#atlantis\b[ \t]*([^\s"]*)[^\r]*(\r?)$/;
 export const LONG_ORDER_COMMANDS = [
   "ADVANCE",
   "BUILD",
+  "CREATE",
   "ENTERTAIN",
+  "EXPLORE",
   "MOVE",
   "PILLAGE",
   "PRODUCE",
@@ -1047,7 +1054,7 @@ export function writeRouteOrder(input: {
 
 /**
  * A unit's orders with every month-long order line removed, so a newly written one replaces
- * whichever was there rather than standing beside it: a unit spends its month on one of the eleven
+ * whichever was there rather than standing beside it: a unit spends its month on one of them
  * (`rules/sequenceofevents`, and {@link LONG_ORDER_COMMANDS}).
  *
  * Unlike {@link stripMovementOrderLines} this does not `trim()`. That one is used on a block about
@@ -1064,8 +1071,15 @@ export function stripLongOrderLines(
 /**
  * The month-long order a unit's orders currently carry, if the document has one - for a display
  * that wants to say what a unit is actually going to spend its month on, at a glance. Comments and
- * blank lines are never it; if a document somehow holds two, the first is what the game will keep,
- * so the first is what is shown.
+ * blank lines are never it; if a document holds two, the last is what the game keeps - a later
+ * month-long order overwrites the one before ("Overwriting previous month-long order",
+ * ProcessEntertainOrder in the engine's parseorders.cpp), and the core's two-month-long-orders
+ * finding names the last as the winner - so the last is what is shown (`ah-5we4`).
+ *
+ * Except a chain: MOVE (or ADVANCE), SAIL and TEACH lines in a row are one journey or one lesson,
+ * which the engine extends rather than overwrites (ProcessMoveOrder, ProcessSailOrder) and the
+ * core's `month_segments` reads as one segment. When the order that runs is such a run, its first
+ * line is what is shown, as it is for a lone journey.
  */
 export function longOrderOf(
   orders: string,
@@ -1073,12 +1087,33 @@ export function longOrderOf(
 ): string | null {
   const own = atTopLevel(orders, syntax);
   const mine = orders.split("\n").filter((_line, index) => own[index] === true);
-  return (
-    commandsOnly(mine.join("\n")).find((line) =>
-      isCommand(line, LONG_ORDER_COMMANDS, syntax)
-    ) ?? null
+  const longOrders = commandsOnly(mine.join("\n")).filter((line) =>
+    isCommand(line, LONG_ORDER_COMMANDS, syntax)
   );
+  let first = longOrders.length - 1;
+  const chain = first < 0 ? undefined : chainOf(longOrders[first], syntax);
+  while (chain !== undefined && first > 0 && chainOf(longOrders[first - 1], syntax) === chain) {
+    first -= 1;
+  }
+  return longOrders[first] ?? null;
 }
+
+/**
+ * Which chain a month-long line extends, for the commands whose consecutive lines are one month:
+ * the core's `ChainKind` (`crates/core/src/orders/semantics.rs`), where MOVE and ADVANCE are both
+ * travelling. `undefined` for every other line.
+ */
+function chainOf(line: string, syntax: OrderCommentSyntax): string | undefined {
+  const command = commandOf(line, syntax);
+  return command === null ? undefined : CHAIN_KINDS[command];
+}
+
+const CHAIN_KINDS: Readonly<Record<string, string>> = {
+  MOVE: "travelling",
+  ADVANCE: "travelling",
+  SAIL: "sailing",
+  TEACH: "teaching"
+};
 
 /**
  * Every one of the unit's own lines that issues one of `keywords`, in order - `longOrderOf` for
