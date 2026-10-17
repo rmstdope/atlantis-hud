@@ -43248,6 +43248,23 @@ BUILD
         );
     }
 
+    /// `ah-vjc3`: the verifier's block - Seven of Eight's own template (neworigins-3.0.0-g7-f95-t71)
+    /// with a MOVE added. The units table's Long order column names `MOVE N` for this block
+    /// (`longOrderOf` in `packages/shared/src/ordersDocument.ts`); this pins the check's side of
+    /// that agreement, `@`-prefixed template lines and all.
+    #[test]
+    fn a_move_after_the_templates_repeated_study_replaces_it() {
+        let finding = only(two_month_long(check_months(
+            vec![region(vec![unit("18642")])],
+            "unit 18642\n@claim 50\n@study obse\nMOVE N\n",
+        )));
+        assert_eq!(finding.line, Some(3));
+        assert_eq!(
+            finding.message,
+            "MOVE replaces this STUDY as the unit's month-long order, so this STUDY will not run"
+        );
+    }
+
     /// A chained journey lost the month once, not once per leg, so the whole segment is marked on
     /// the line that opens it.
     #[test]
