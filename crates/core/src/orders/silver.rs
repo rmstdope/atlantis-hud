@@ -1239,6 +1239,11 @@ pub struct PoolShares {
     /// caller from the report-wide production settlement, since a passenger produces in another
     /// hex than its own.
     pub foreign_claimant_production: bool,
+    /// True when the faction's region limit refuses every TAX and PILLAGE in this unit's hex:
+    /// "TAX: Faction can't tax that many regions." (`../Atlantis` `runorders.cpp`, `ah-p0xm`). The
+    /// ledger credits neither, so the unit's tax and pillage are a certain zero, never doubted.
+    /// (Nor bounded or overstated: the caller settles such a hex with no tax pool at all.)
+    pub taxing_refused: bool,
 }
 
 /// What one unit's orders ask of each of its region's contended pools, before any settlement.
@@ -2572,7 +2577,7 @@ pub fn forecast_unit(
     let men = taxing_men(&facts, ruleset);
     let tax_overstated = tax_overstated_by(men, region.tax_base, region.pillaged, shares.tax);
 
-    if taxes(unit_flags, intents) {
+    if taxes(unit_flags, intents) && !shares.taxing_refused {
         // The settlement is what the column shows: this unit's actual take once its faction-mates
         // in the hex are settled against it. `semantics::credit_tax` passes `Uncontended` instead,
         // and that difference is deliberate - see [`price_tax`].
@@ -2630,8 +2635,11 @@ pub fn forecast_unit(
             // `ah-q6bt`, both deliberate departures from `rules/economy_taxingpillaging`, which
             // gates on the faction's men in the region and shares the take out per unit.
             Intent::Pillage => {
-                income_doubt =
-                    income_doubt.or(price_pillage(region.tax_base, region.pillagers, mine).doubt);
+                if !shares.taxing_refused {
+                    income_doubt =
+                        income_doubt
+                            .or(price_pillage(region.tax_base, region.pillagers, mine).doubt);
+                }
             }
             // `WORK` and `ENTERTAIN` earn nothing but late income, so [`late_income`] prices them
             // both - once, for this function and for `semantics::charge_settled_upkeep` alike.
