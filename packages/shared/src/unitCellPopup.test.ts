@@ -5411,7 +5411,7 @@ describe("a refused order in the silver popup", () => {
   });
 
   it("names nothing struck for a month that cannot be added up", () => {
-    const popup = silverPopup(drone({ doubt: "unpriced-sale", atMonthEnd: null, income: null }));
+    const popup = silverPopup(drone({ doubt: "unpriced-skill", atMonthEnd: null, income: null }));
     expect(popup.lines.some((line) => line.struck)).toBe(false);
   });
 
