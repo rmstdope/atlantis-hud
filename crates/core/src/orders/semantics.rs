@@ -38,8 +38,8 @@ use super::village_site::VillageSite;
 use crate::movement::fleet::OrderedUnits as FleetOrders;
 use crate::movement::graph::{Direction, MapKnowledge};
 use crate::movement::mode::{
-    best_allowance, cargo_capacity, carrying_after_transfers, fleet_flies, fleet_label,
-    hulls_named_in, is_vessel, sailing_requirement, Carrying,
+    cargo_capacity, carrying_after_transfers, fleet_flies, fleet_label, hulls_named_in, is_vessel,
+    overload, sailing_requirement, Carrying, Overload,
 };
 use crate::movement::orders::{first_passage, MoveStep};
 use crate::movement::plan::{Hull, Journey};
@@ -26580,36 +26580,25 @@ fn region_after<'a>(
     Some(here)
 }
 
-/// This unit's known load and allowance, the moment `check_movement` renders as `unit-overloaded`.
+/// This unit's load over its allowance, the moment `check_movement` renders as `unit-overloaded`.
 /// Shared so guard and teaching can ask the same question about a MOVE that will not happen
 /// (`ah-0wpn`), without rebuilding load and capacity a second time or searching the findings
 /// vector for an answer that has not been computed yet (`check_guard` and `check_teaching` both
 /// run before `check_movement`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct MovementOverload {
-    weight: i64,
-    allowance: i64,
-}
-
-/// `Some` only when both the derived-or-printed allowance and `carrying_after_orders` are known and
-/// the weight exceeds it. Unknown load or allowance - no ruleset, an unpriceable item - returns
-/// `None`, which callers must read as "cannot say", never as "not overloaded".
+///
+/// The verdict is [`overload`], the one the preview's settle reads too (`ah-v0e3`); this supplies
+/// only its input, the ledger's load and the report's printed line. `None` is both "not
+/// overloaded" and "cannot say" (no ruleset, an unpriceable item and no printed capacity), and
+/// every caller lets the ordered move stand on either.
 fn movement_overload(
     ordered: &Ordered<'_>,
     ledger: &Ledger<'_>,
     ruleset: Option<&Ruleset>,
-) -> Option<MovementOverload> {
-    let carrying = carrying_after_orders(ordered, ledger, ruleset);
-    let allowance = carrying
-        .capacities
-        .map(|capacity| capacity.fly.max(capacity.ride).max(capacity.walk))
-        .or_else(|| best_allowance(ordered.unit));
-
-    let (Some(allowance), Some(weight)) = (allowance, carrying.weight) else {
-        return None;
-    };
-
-    (weight > allowance).then_some(MovementOverload { weight, allowance })
+) -> Option<Overload> {
+    overload(
+        carrying_after_orders(ordered, ledger, ruleset),
+        Some(ordered.unit),
+    )
 }
 
 /// Whether `ordered` actually leaves the hex, replacing the old unconditional

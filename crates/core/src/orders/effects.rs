@@ -2718,14 +2718,13 @@ impl WorkingUnit {
 
     /// Whether the game refuses this unit's own `MOVE` or `ADVANCE` because it is overloaded:
     /// `rules/movement_normal` - "Otherwise the unit cannot issue a MOVE order" - so it stays
-    /// where it is all month (`ah-586v`). The same question `semantics::movement_overload` asks
-    /// for the `unit-overloaded` warning, answered the same way so the units list, the map and the
-    /// warning agree: the load and allowance from `movement::mode::carrying_after_transfers`, the
-    /// allowance the best of flying, riding and walking, and the report's printed `Capacity:` line
-    /// where the ruleset cannot price what the unit holds. A unit whose items this month leaves
-    /// alone is judged by the report's own printed movement, the game's word for it, exactly as
-    /// `movement_now` reads it. Where the load or the allowance cannot be told, the ordered
-    /// departure stands, as the check stays silent then too.
+    /// where it is all month (`ah-586v`). The verdict is `movement::mode::overload`, the one the
+    /// `unit-overloaded` warning reads (`ah-v0e3`), so the units list, the map and the warning
+    /// agree; this supplies its input - the load as the unit steps off and the report's printed
+    /// `Capacity:` line. A unit whose items this month leaves alone is judged by the report's own
+    /// printed movement, the game's word for it, exactly as `movement_now` reads it. Where the
+    /// load or the allowance cannot be told, the ordered departure stands, as the check stays
+    /// silent then too.
     ///
     /// Never a `SAIL`: a fleet is judged by what its hull carries (`rules/movement_sailing`), not
     /// by the unit's own legs.
@@ -2744,18 +2743,9 @@ impl WorkingUnit {
                 .movement
                 .is_some_and(|movement| movement.status == UnitMovementStatus::Overloaded);
         }
-        let Some(carrying) = self.carrying(ruleset) else {
-            return false;
-        };
-        let allowance = carrying
-            .capacities
-            .map(|capacity| capacity.fly.max(capacity.ride).max(capacity.walk))
-            .or_else(|| {
-                self.original
-                    .as_ref()
-                    .and_then(crate::movement::mode::best_allowance)
-            });
-        matches!((carrying.weight, allowance), (Some(weight), Some(allowance)) if weight > allowance)
+        self.carrying(ruleset).is_some_and(|carrying| {
+            crate::movement::mode::overload(carrying, self.original.as_ref()).is_some()
+        })
     }
 
     fn refresh_movement(&mut self, ruleset: &Ruleset) {
