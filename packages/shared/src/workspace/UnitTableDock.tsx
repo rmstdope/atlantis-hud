@@ -831,7 +831,9 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   const restOn = (unit: PreviewedUnit, column: DrawnColumnId | undefined) => {
     // A spacer row's `colSpan` cell carries no column, and neither does one of the five silent
     // ones - and resting on either closes what is open rather than leaving a stale popup over it.
-    if (column === undefined || !columnHasPopup(column)) {
+    // Nor does anything open while an Add to army list is up (ah-1lac): the popup shares the
+    // list's layer and, drawn over it, would hide its army rows.
+    if (column === undefined || !columnHasPopup(column) || armyListOpen) {
       forgetHover();
       return;
     }
@@ -1078,6 +1080,28 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   );
   /** E3: two or more picked is what draws the bulk line and stands the header trigger down. */
   const bulk = pick.ids.size >= 2;
+
+  /**
+   * Whether an Add to army list is drawn, from the conditions each of its three controls draws it
+   * under. `menu` alone is not that: a right-click with no game open sets it and draws nothing,
+   * and nothing then clears it (ah-1lac review).
+   */
+  const armyListOpen = armyListShown(menu, {
+    canEditArmies,
+    hasSelection: selectedUnit !== null,
+    bulk,
+    acting: acting.length,
+    hasTurn: currentTurn !== null
+  });
+
+  // A list opening, from any of its controls, closes the popup and drops a wait still counting
+  // (ah-1lac), so nothing is drawn over the list and nothing reopens, at a spot the pointer has
+  // since left, once it closes.
+  useEffect(() => {
+    if (armyListOpen) {
+      forgetHover();
+    }
+  }, [armyListOpen]);
 
   /**
    * What a press on a row does, before anything is known about whether it becomes a drag.
@@ -1671,8 +1695,9 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
           </div>
           {/* Which of the two panels opens is the resolver's answer, not this component's, so
               the popup and the cell's own hidden sentence can never disagree (`ah-rgkk.1`). */}
+          {/* Never over an open Add to army list, whichever control opened it (ah-1lac). */}
           <HoveredPopup
-            hovered={hoveredRow}
+            hovered={armyListOpen ? null : hoveredRow}
             getSilver={getSilver}
             getLongOrder={getLongOrder}
             getReportedLongOrder={getReportedLongOrder}
@@ -1689,7 +1714,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
           {/* D4: the same list the button opens, at the pointer. The three conditions are the ones
               that already disable the header trigger - a right-click with no game open, or on a
               report naming no turn, opens nothing. */}
-          {menu?.at === "pointer" && acting.length > 0 && canEditArmies && currentTurn !== null ? (
+          {menu?.at === "pointer" && armyListOpen ? (
             <UnitContextMenu
               at={menu.point}
               units={acting}
@@ -1726,6 +1751,28 @@ const byMouse = (event: PointerEvent<HTMLElement>) => event.pointerType === "mou
  * exactly one live way in at any moment.
  */
 type MenuAnchor = { at: "header" } | { at: "bulk" } | { at: "pointer"; point: Point };
+
+/**
+ * Whether the Add to army list `menu` names is actually drawn (ah-1lac): the header's needs a
+ * selected unit, the bulk line's needs two or more picked, and the right-click one needs rows to
+ * act on and a report naming a turn - and every one needs a game to edit. Exported for its test.
+ */
+export function armyListShown(
+  menu: MenuAnchor | null,
+  can: { canEditArmies: boolean; hasSelection: boolean; bulk: boolean; acting: number; hasTurn: boolean }
+): boolean {
+  if (menu === null || !can.canEditArmies) {
+    return false;
+  }
+  switch (menu.at) {
+    case "header":
+      return can.hasSelection;
+    case "bulk":
+      return can.bulk;
+    case "pointer":
+      return can.acting > 0 && can.hasTurn;
+  }
+}
 
 /**
  * The structure this month's orders moved a unit **out of**, labelled by the same helper and from
