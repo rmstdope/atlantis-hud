@@ -15,10 +15,19 @@ use common::ruleset;
 
 /// Seven of Eight (18642), with its `@study obse` line followed by `extra`.
 fn seven_of_eight_with(extra: &str) -> UnitSilver {
+    seven_of_eight_under(extra, &[])
+}
+
+/// The same, with `edits` applied to the template first - each must find its text.
+fn seven_of_eight_under(extra: &str, edits: &[(&str, &str)]) -> UnitSilver {
     let text = atlantis_hud_fixtures::G7_F95_T71.text;
-    let orders = extract_orders_template(text)
+    let mut orders = extract_orders_template(text)
         .expect("the committed turn 71 carries an orders template")
         .text;
+    for (from, to) in edits {
+        assert!(orders.contains(from), "the template still holds {from:?}");
+        orders = orders.replacen(from, to, 1);
+    }
     let from = "unit 18642\n";
     let at = orders.find(from).expect("the template holds unit 18642");
     let study = orders[at..]
@@ -63,11 +72,12 @@ fn a_purchase_it_can_pay_none_of_buys_none() {
 
 #[test]
 fn a_shortfall_on_anything_but_a_purchase_carries_no_purchase() {
-    // The study is the only spend, and the $50 claim pays upkeep at the month's end, so nothing
-    // reaches the study in time.
-    let unit = seven_of_eight_with("");
-    if unit.short_for_orders.is_some_and(|short| short > 0) {
-        assert_ne!(unit.short_on, Some(SilverSpender::Buy), "{unit:?}");
-    }
+    // Without its $50 claim 18642 holds nothing to pay its study with.
+    let unit = seven_of_eight_under("", &[("@claim 50\n@study obse", "@study obse")]);
+    assert!(
+        unit.short_for_orders.is_some_and(|short| short > 0),
+        "18642 holds no silver of its own, so its study is short: {unit:?}"
+    );
+    assert_eq!(unit.short_on, Some(SilverSpender::Study), "{unit:?}");
     assert_eq!(unit.short_buy, None, "{unit:?}");
 }

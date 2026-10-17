@@ -904,6 +904,8 @@ describe("the Silver column", () => {
     expect(cell).toContain("unit-silver-1");
     expect(cell.indexOf("⚠")).toBeLessThan(cell.indexOf(">33<"));
     expect(cell.indexOf(">33<")).toBeLessThan(cell.indexOf("8650 short"));
+    // Outside the button: the button selects the unit, and its name is the unit and its figure.
+    expect(cell.indexOf("</button>")).toBeLessThan(cell.indexOf('data-testid="silver-shortfall-1"'));
   });
 
   // Choice N1: the red negative already says money is missing; the hover gives both amounts.

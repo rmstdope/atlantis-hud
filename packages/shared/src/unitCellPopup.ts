@@ -35,6 +35,7 @@ import { isUnfinishedShipName, type StructureFinish } from "./unfinishedMark";
 import { newShipStructureNote } from "./newShip";
 import {
   CANNOT_PAY,
+  CANNOT_PAY_NOTE,
   silverCauseGroups,
   silverCauseLabel,
   silverNoteLines,
@@ -2365,7 +2366,7 @@ function silverLedger(unit: PreviewedUnit, facts: PopupFacts): Omit<Body, "month
   const notes = silverNoteLines(
     noteFacts,
     [...groups, ...upkeepShares],
-    alert === null ? [] : ["cannot-pay"]
+    alert === null ? [] : [CANNOT_PAY_NOTE]
   );
   if (silver.doubt !== null) {
     // Above the doubt's own sentence, which says *why* it could not be added up.
