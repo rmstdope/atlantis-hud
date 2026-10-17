@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guard setting wording</title>
+<style>
+:root { color-scheme: dark; font-family: system-ui, sans-serif; }
+body { margin: 0; background: #101417; color: #ddd6c8; }
+main { max-width: 760px; margin: 30px auto; padding: 0 16px; }
+h1 { margin-bottom: 4px; color: #d5b56a; font-size: 22px; }
+.intro { margin-top: 0; color: #aaa397; }
+.card { border: 1px solid #554b39; border-radius: 6px; background: #171c20; overflow: hidden; margin-top: 14px; }
+.head { padding: 7px 10px; border-bottom: 1px solid #554b39; color: #d5b56a; background: #211e18; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.body { padding: 6px 10px; }
+.setting { display: flex; align-items: start; gap: 10px; padding: 8px 0; border-top: 1px solid #2a2722; }
+.setting:first-child { border-top: 0; }
+.toggle { position: relative; width: 36px; height: 20px; border-radius: 20px; background: #b38b31; flex: none; }
+.toggle::after { content: ""; position: absolute; top: 3px; right: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff7e7; }
+.title { font-weight: 650; }
+.desc { color: #aaa397; font-size: 13px; line-height: 1.4; }
+.changed { outline: 1px dashed #d5b56a; outline-offset: 3px; border-radius: 3px; }
+.narrow { width: 320px; max-width: 100%; }
+.finding { font: 13px/1.4 ui-monospace, Menlo, monospace; padding: 6px 0; }
+.warn { color: #e2b94c; } .who { color: #d5b56a; }
+.note { color: #9f998d; font-size: 13px; }
+</style>
+</head>
+<body><main>
+<h1>Option A — one sentence, both reasons</h1>
+<p class="intro">Settings › Warnings › Guarding. Only the dashed description changes; the title and the single switch stay as they are. Turning the switch off silences both warnings below.</p>
+<section class="card"><div class="head">Settings › Warnings › Guarding</div><div class="body">
+<div class="setting"><span class="toggle"></span><div><div class="title">Dropped guards</div><div class="desc">A hex you were guarding no longer is.</div></div></div>
+<div class="setting"><span class="toggle"></span><div><div class="title">Guards that cannot take watch</div><div class="desc changed">A GUARD 1 order given to a unit that cannot guard: one that cannot tax, or one at sea.</div></div></div>
+<div class="setting"><span class="toggle"></span><div><div class="title">Unguarded hexes</div><div class="desc">Every hex holding your units with nobody guarding it.</div></div></div>
+</div></section>
+<section class="card narrow"><div class="head">Narrow window (320 px)</div><div class="body">
+<div class="setting"><span class="toggle"></span><div><div class="title">Guards that cannot take watch</div><div class="desc changed">A GUARD 1 order given to a unit that cannot guard: one that cannot tax, or one at sea.</div></div></div>
+</div></section>
+<section class="card"><div class="head">The two warnings this switch controls (unchanged)</div><div class="body">
+<div class="finding"><span class="warn">⚠</span> <span class="who">8</span> cannot guard: this unit cannot tax — its 3 horses need riding 1, and it has no riding</div>
+<div class="finding"><span class="warn">⚠</span> <span class="who">12590</span> cannot guard: guarding at sea is not possible</div>
+</div></section>
+<p class="note">Today: “A GUARD 1 order given to a unit that cannot tax and therefore cannot guard.”</p>
+</main></body></html>
