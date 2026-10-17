@@ -882,7 +882,7 @@ describe("the column popups", () => {
   it("the skills popup of a merged faction's unit names its report, never the notice (ah-oqxn)", () => {
     const from = { factionLabel: "Borg (62)", turn: 17 };
     const none = columnPopup(
-      popupForCell("skills", { ...unit({ own: false, skills: [] }), mergedFrom: from }, facts())
+      popupForCell("skills", { ...unit({ own: false, skills: [] }), mergedFrom: from } as PreviewedUnit, facts())
     );
     expect(none.lines).toEqual([]);
     expect(none.notes[0]).toBe("Details from Borg (62)'s own report for turn 17.");
@@ -894,7 +894,7 @@ describe("the column popups", () => {
         {
           ...unit({ own: false, skills: [{ name: "mining", tag: "MINI", level: 3, points: 200 }] }),
           mergedFrom: from
-        },
+        } as PreviewedUnit,
         facts()
       )
     );

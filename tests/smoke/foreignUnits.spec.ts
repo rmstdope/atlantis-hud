@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
-import { loadReport, selectHex } from "./gameSetup";
+import { importReport, loadReport, selectHex } from "./gameSetup";
 
 /**
  * The `Other factions` source and its faction pin (`ah-1mpx.5`).
@@ -190,4 +190,59 @@ test("the attitude's lead-in gives way before the faction name does", async ({ p
 
   await page.setViewportSize(viewport);
   await expect(lead).toBeVisible();
+});
+
+/**
+ * `ah-oqxn`: merging a second faction's report of the same turn fills that faction's own units in,
+ * in place, in `Other factions` - and the next turn of the player's own carries their skills forward
+ * with the turn they came from. The rules are pinned in `mergedUnits.test.ts`; this walks the real
+ * import, the real merge question and both stores' round trip through a reload.
+ */
+test("a merged report fills in its faction's own units, and its skills carry into the next turn", async ({ page }) => {
+  const DRONES = "7124";
+  const MOUNTAIN = "1:42,80";
+  await loadReport(page, "Mantzikert", readReport("g7f39t17"), "region");
+
+  await importReport(page, "borg-t17.rep", readReport("g7f62t17"));
+  await expect(page.getByTestId("foreign-report-prompt")).toContainText(
+    /Merge adds everywhere Borg \(62\) went to your map, and what its report says about its own units, and leaves you playing Mantzikert \(39\)\./u
+  );
+  await page.getByTestId("foreign-report-merge").click();
+  await expect(page.getByTestId("foreign-report-prompt")).toHaveCount(0);
+
+  const drones = async () => {
+    await selectHex(page, MOUNTAIN);
+    await page.getByTestId("unit-source-foreign").click();
+    await page.getByTestId("panel-units").getByLabel("Filter units").fill(DRONES);
+    return page.getByTestId(`unit-row-${DRONES}`);
+  };
+
+  let row = await drones();
+  await expect(row.getByTestId(`merged-mark-${DRONES}`)).toHaveText(/their report/u);
+  await expect(row.getByTestId(`merged-mark-${DRONES}`)).toHaveAttribute(
+    "title",
+    /^Details from Borg \(62\)'s own report for turn \d+\.$/u
+  );
+  await expect(row).toContainText("MINI 3 (200)");
+  await expect(row).toContainText("43 SILV");
+  await expect(row).not.toContainText("not disclosed");
+
+  await row.getByRole("button", { name: `unit ${DRONES}` }).click();
+  await expect(page.getByTestId("merged-band")).toHaveText(
+    /^From Borg \(62\)'s own report for turn \d+\. You can't write orders for this unit\.$/u
+  );
+
+  // The merge is part of the turn: a reload reads it back from the store.
+  await page.reload();
+  await expect(page.getByTestId("app-header")).toContainText("Mantzikert (39)");
+  row = await drones();
+  await expect(row.getByTestId(`merged-mark-${DRONES}`)).toBeVisible();
+
+  // The player's next turn, with nothing merged into it: the skills come forward, the rest does not.
+  await importReport(page, "turn-18.rep", readReport("g7f39t18"));
+  await expect(page.getByTestId("import-status")).toContainText("region");
+  row = await drones();
+  await expect(row).toContainText(/MINI 3 \(turn \d+\)/u);
+  await expect(row.getByTestId(`merged-mark-${DRONES}`)).toHaveCount(0);
+  await expect(row).not.toContainText("SILV");
 });

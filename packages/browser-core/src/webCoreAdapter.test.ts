@@ -314,7 +314,9 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
         mapExport,
         // One of the merged faction's own units per hex, and none for a map export - the core's
         // rule (`units_for_merge_plan`), mirrored only so far as the routing tests need.
-        units: mapExport ? [] : regions.map((regionId) => ({ unitId: `u${regionId}`, regionId, own: true })),
+        units: mapExport
+          ? []
+          : regions.map((regionId) => ({ unitId: `u${regionId}`, regionId, own: true }) as ReportUnit),
         rejection: null
       };
     },

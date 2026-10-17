@@ -14,20 +14,20 @@ use atlantis_hud_core::report::import::import_writes;
 use atlantis_hud_core::report::merge::StoredSighting;
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
-    apply_merge_plan, completions_at_caret, units_for_merge_plan, order_argument_completions, parse_report, plan_merge,
-    reject_import, reserved_merge_identity, CaretCompletions, MergePlan, OrderCompletion,
-    ReportParseResultWire,
+    apply_merge_plan, completions_at_caret, order_argument_completions, parse_report, plan_merge,
+    reject_import, reserved_merge_identity, units_for_merge_plan, CaretCompletions, MergePlan,
+    OrderCompletion, ReportParseResultWire,
 };
 use atlantis_hud_core_persistence::{
     create_game, delete_army, delete_game, delete_hex_note, edit_game_manifest, export_game,
     import_game, insert_imported_turn, list_allied_mages, list_armies, list_games, list_hex_notes,
     list_imported_turns, list_study_plans, load_imported_turn, load_imported_turn_stamps,
-    load_latest_imported_turn, load_merged_report_history, load_merged_reports, load_order_draft, load_region_sightings,
-    open_game, preview_imported_turn, reset_game, save_allied_mages, save_study_plans, upsert_army,
-    upsert_hex_note, upsert_imported_turn, upsert_merged_report, upsert_order_draft,
-    upsert_region_sightings, AlliedMage, AlliedMageKey, Army, HexNote, ImportedTurnKey,
-    ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame, OrderDraftKey,
-    OrderDraftRecord, PersistenceError, StudyPlan, StudyPlanKey,
+    load_latest_imported_turn, load_merged_report_history, load_merged_reports, load_order_draft,
+    load_region_sightings, open_game, preview_imported_turn, reset_game, save_allied_mages,
+    save_study_plans, upsert_army, upsert_hex_note, upsert_imported_turn, upsert_merged_report,
+    upsert_order_draft, upsert_region_sightings, AlliedMage, AlliedMageKey, Army, HexNote,
+    ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame,
+    OrderDraftKey, OrderDraftRecord, PersistenceError, StudyPlan, StudyPlanKey,
 };
 /// The manifest types cross to the shell as themselves: `core-tauri` used to carry a field-for-field
 /// `…Dto` copy of each, whose own comments said so (ah-8z4y.2).
@@ -1010,11 +1010,11 @@ pub use commands::{
     command_delete_hex_note, command_known_map, command_list_allied_mages, command_list_armies,
     command_list_hex_notes, command_list_imported_turns, command_list_study_plans,
     command_load_imported_turn, command_load_latest_imported_turn,
-    command_load_merged_report_history, command_load_merged_reports,
-    command_load_order_draft, command_load_region_sightings, command_merge_report,
-    command_order_argument_completions, command_parse_report, command_parse_report_full,
-    command_plan_route, command_preview_report_import, command_query, command_save_allied_mages,
-    command_save_army, command_save_hex_note, command_save_order_draft, command_save_study_plans,
+    command_load_merged_report_history, command_load_merged_reports, command_load_order_draft,
+    command_load_region_sightings, command_merge_report, command_order_argument_completions,
+    command_parse_report, command_parse_report_full, command_plan_route,
+    command_preview_report_import, command_query, command_save_allied_mages, command_save_army,
+    command_save_hex_note, command_save_order_draft, command_save_study_plans,
     command_trace_move_orders, command_trade_routes,
 };
 
@@ -2030,8 +2030,9 @@ mod merge_tests {
             .expect("the record loads");
         assert!(merged[0].units.iter().any(|unit| unit.own));
 
-        let history = command_load_merged_report_history(&created.database_path, "faction-95", "95")
-            .expect("the history loads");
+        let history =
+            command_load_merged_report_history(&created.database_path, "faction-95", "95")
+                .expect("the history loads");
         assert_eq!(history, merged);
     }
 

@@ -691,7 +691,10 @@ mod tests {
             .iter()
             .map(|unit| (unit.unit_id.as_str(), unit.own))
             .collect();
-        assert_eq!(described, vec![("7124", true), ("4410", false), ("7190", true)]);
+        assert_eq!(
+            described,
+            vec![("7124", true), ("4410", false), ("7190", true)]
+        );
     }
 
     #[test]
