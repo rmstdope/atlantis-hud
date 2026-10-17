@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
-import { loadReport } from "./gameSetup";
+import { freezeClock, loadReport } from "./gameSetup";
 
 /**
  * The study planner (ah-lyg6.2.2): every mage the player can see, opened with F4.
@@ -479,26 +479,6 @@ test("a note written in All mages shows as a pencil and in the mage pane", async
   await page.getByTestId("study-schedule-cell-12878-73").hover();
   await expect(pane.getByTestId("study-schedule-note")).toHaveCount(0);
 });
-
-/**
- * Stop the clock, so a debounce cannot write on its own.
- *
- * `pauseAt` refuses a time that is already past, and the clock goes on running while the
- * instruction is in flight - so the target is taken a little ahead of the clock's own `now`, and
- * retried with more room if the round trip outran even that. The small fast-forward this costs
- * fires only timers already due within it; callers freeze before anything is owed to the note, so
- * nothing it could fire can write one.
- */
-const freezeClock = async (page: Page): Promise<void> => {
-  for (let margin = 100; ; margin *= 4) {
-    try {
-      await page.clock.pauseAt((await page.evaluate(() => Date.now())) + margin);
-      return;
-    } catch (error) {
-      if (margin >= 2000) throw error;
-    }
-  }
-};
 
 test("a note is kept without pressing anything", async ({ page }) => {
   // The debounce must not write on its own, or every assertion below passes without the unmount
