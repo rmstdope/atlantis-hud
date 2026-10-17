@@ -2810,6 +2810,8 @@ enum TransportTargetOutcome {
 /// One `TRANSPORT`/`DISTRIBUTE` order, held until the month's other orders have been worked out
 /// (`ah-bxgs`).
 struct PendingTransport {
+    /// TRANSPORT or DISTRIBUTE, which `CheckTransportOrders` checks differently (`ah-g4bz`).
+    order: super::transport::ShipmentOrder,
     sender: usize,
     /// The receiving row, when the target is one of ours. `None` for an ally's quartermaster or a
     /// unit number the report does not carry, which `Working::transport_target` settles before
@@ -3328,7 +3330,8 @@ impl Working {
             // `rules/transport`: "the order DISTRIBUTE can be used in place of TRANSPORT and has
             // the same meaning and syntax", which is why one arm serves both and why the grammar
             // gives them one shared `TRANSPORT_FORMS` (`ah-bxgs`).
-            self.transport(active, arguments, line);
+            let order = super::transport::ShipmentOrder::from_command(command.is("distribute"));
+            self.transport(order, active, arguments, line);
         }
     }
 
@@ -3957,7 +3960,13 @@ impl Working {
     /// (`TRANSPORT` is not `GIVE`, and no rule makes
     /// transport-to-zero destroy goods); or the target resolves to the sender itself, which the
     /// server refuses.
-    fn transport(&mut self, sender: usize, arguments: &[super::lexer::Token], line: usize) {
+    fn transport(
+        &mut self,
+        order: super::transport::ShipmentOrder,
+        sender: usize,
+        arguments: &[super::lexer::Token],
+        line: usize,
+    ) {
         use super::forms::{Party, Selector};
 
         let Some((target, rest)) = super::forms::read_party(arguments) else {
@@ -3987,6 +3996,7 @@ impl Working {
 
         let sequence = self.transports.len();
         self.transports.push(PendingTransport {
+            order,
             sender,
             receiver,
             alias_region,
@@ -4144,13 +4154,16 @@ impl Working {
                 })
             });
         match formed {
-            Some(formed) => {
-                self.shipping
-                    .judge_formed(&sender.unit_id, sender_hex, &pending.to, formed)
-            }
+            Some(formed) => self.shipping.judge_formed(
+                pending.order,
+                &sender.unit_id,
+                sender_hex,
+                &pending.to,
+                formed,
+            ),
             None => self
                 .shipping
-                .judge(&sender.unit_id, sender_hex, &pending.to),
+                .judge(pending.order, &sender.unit_id, sender_hex, &pending.to),
         }
     }
 
@@ -11904,6 +11917,37 @@ mod tests {
                 only_issue(&sender).reason,
                 TransportTargetReason::NotCaravanseraiOwner
             );
+        }
+
+        // `CheckTransportOrders` refuses every DISTRIBUTE whose issuer owns no transport
+        // structure, whatever the target ("DISTRIBUTE: Unit does not own transport structure.",
+        // `../Atlantis/runorders.cpp`), and a TRANSPORT only beyond `LOCAL_TRANSPORT`. `6858` is
+        // a quartermaster listed second in `6857`'s Caravanserai, and `6857` owns it (`ah-g4bz`).
+        #[test]
+        fn a_distribute_from_a_quartermaster_owning_no_caravanserai_keeps_the_goods_here() {
+            let report = report_across_two_hexes().replace(
+                "Hauler (6858), Foo (1), leader [LEAD].",
+                "Hauler (6858), Foo (1), leader [LEAD], 20 stone [STON].",
+            );
+
+            let distributed = preview_over(&report, "unit 6858\nDISTRIBUTE 6857 5 STON\n");
+            let hauler = row(&distributed, "1:2,2", "6858").expect("the sender is shown");
+            assert_eq!(held(hauler, "STON"), Some(20), "the stone stayed put");
+            assert!(
+                hauler.transport_sent.is_empty(),
+                "{:?}",
+                hauler.transport_sent
+            );
+            assert_eq!(
+                only_issue(hauler).reason,
+                TransportTargetReason::SenderOwnsNoCaravanserai
+            );
+
+            // TRANSPORT is unchanged: the target is a quartermaster owning a Caravanserai.
+            let transported = preview_over(&report, "unit 6858\nTRANSPORT 6857 5 STON\n");
+            let hauler = row(&transported, "1:2,2", "6858").expect("the sender is shown");
+            assert_eq!(held(hauler, "STON"), Some(15), "five left 6858");
+            assert!(hauler.transport_target_issues.is_empty());
         }
 
         #[test]

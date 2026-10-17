@@ -479,6 +479,27 @@ fn caravanserai_owners_at_transport(
     owners
 }
 
+/// Which of the two words a shipment line was written with. `rules/transport` calls DISTRIBUTE a
+/// synonym of TRANSPORT, but `CheckTransportOrders` (`../Atlantis/runorders.cpp`) asks every
+/// DISTRIBUTE's issuer to be a quartermaster owning a transport structure, whatever the target,
+/// and a TRANSPORT's only beyond `LOCAL_TRANSPORT` (`ah-g4bz`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShipmentOrder {
+    Transport,
+    Distribute,
+}
+
+impl ShipmentOrder {
+    /// The word of an order already known to be a shipment: DISTRIBUTE, or else TRANSPORT.
+    pub fn from_command(distribute: bool) -> Self {
+        if distribute {
+            Self::Distribute
+        } else {
+            Self::Transport
+        }
+    }
+}
+
 /// Whether the game will let this target receive the goods, and why not when it will not.
 ///
 /// `rules/economy_transport` lets a quartermaster owning a Caravanserai send to any unit within
@@ -836,11 +857,18 @@ impl Shipping {
     /// own FORM creates is `judge_formed`'s.
     pub(crate) fn judge(
         &self,
+        order: ShipmentOrder,
         sender: &str,
         sender_reported: Option<crate::report::model::Coordinate>,
         target: &str,
     ) -> Judged {
-        self.judge_on(sender, sender_reported, target, self.targets.get(target))
+        self.judge_on(
+            order,
+            sender,
+            sender_reported,
+            target,
+            self.targets.get(target),
+        )
     }
 
     /// `judge`, for a target this month's own FORM creates, which the report cannot describe: its
@@ -848,13 +876,14 @@ impl Shipping {
     /// effects walk and the forecast cannot judge one formed unit differently (`ah-s79p`).
     pub(crate) fn judge_formed(
         &self,
+        order: ShipmentOrder,
         sender: &str,
         sender_reported: Option<crate::report::model::Coordinate>,
         target: &str,
         formed: FormedTarget<'_>,
     ) -> Judged {
         let facts = self.formed_target_facts(formed);
-        self.judge_on(sender, sender_reported, target, Some(&facts))
+        self.judge_on(order, sender, sender_reported, target, Some(&facts))
     }
 
     /// What a formed unit is as a target: ours, owning nothing yet, and a quartermaster exactly when
@@ -873,6 +902,7 @@ impl Shipping {
 
     fn judge_on(
         &self,
+        order: ShipmentOrder,
         sender: &str,
         sender_reported: Option<crate::report::model::Coordinate>,
         target: &str,
@@ -917,9 +947,14 @@ impl Shipping {
             _ => None,
         };
         // A quartermaster that owns no Caravanserai can neither DISTRIBUTE nor ship past the flat
-        // reach; either refusal is its own, not the target's (`ah-1jl9`).
+        // reach; either refusal is its own, not the target's (`ah-1jl9`). A DISTRIBUTE is refused
+        // whoever its target is: `CheckTransportOrders` asks its issuer for a transport structure
+        // unconditionally (`ah-g4bz`).
         let sender_without_caravanserai = sender_qm && !sender_can_distribute;
         let acceptance = match acceptance(sender_can_distribute, facts) {
+            _ if sender_without_caravanserai && order == ShipmentOrder::Distribute => {
+                Acceptance::SenderOwnsNoCaravanserai
+            }
             Acceptance::NotQuartermaster if sender_without_caravanserai => {
                 Acceptance::SenderOwnsNoCaravanserai
             }
@@ -1578,6 +1613,7 @@ mod tests {
         }];
         let judged = |skills: Option<&[crate::report::model::Skill]>| {
             shipping.judge_formed(
+                ShipmentOrder::Transport,
                 "900",
                 Some(hex(0, 0)),
                 "new-1",
@@ -1608,7 +1644,7 @@ mod tests {
             vec![("901", at(facts(true, true, true, true), hex(0, 4)))],
             &[("901", hex(0, 6))],
         );
-        let judged = shipping.judge("900", Some(hex(0, 0)), "901");
+        let judged = shipping.judge(ShipmentOrder::Transport, "900", Some(hex(0, 0)), "901");
         assert_eq!(
             judged.measured,
             Some(Measured {
@@ -1635,7 +1671,7 @@ mod tests {
             &[],
         );
         let measured = shipping
-            .judge("900", Some(hex(0, 0)), "901")
+            .judge(ShipmentOrder::Transport, "900", Some(hex(0, 0)), "901")
             .measured
             .expect("both ends are shown");
         assert_eq!(measured.from, hex(0, 0));
@@ -1650,7 +1686,7 @@ mod tests {
             vec![("901", at(facts(true, false, true, true), hex(0, 1)))],
             &[],
         );
-        let judged = shipping.judge("900", Some(hex(0, 0)), "901");
+        let judged = shipping.judge(ShipmentOrder::Transport, "900", Some(hex(0, 0)), "901");
         assert_eq!(judged.reach, Some(Reach::Local));
         assert_eq!(
             judged.measured,
@@ -1671,7 +1707,7 @@ mod tests {
             vec![("901", at(facts(true, true, true, true), hex(0, 1)))],
             &[],
         );
-        let judged = shipping.judge("900", None, "901");
+        let judged = shipping.judge(ShipmentOrder::Transport, "900", None, "901");
         assert!(judged.reach.is_some());
         assert_eq!(judged.measured, None);
     }
@@ -1679,7 +1715,7 @@ mod tests {
     #[test]
     fn judge_measures_nothing_for_a_target_the_report_does_not_show() {
         let shipping = shipping(&[("901", 1)], Vec::new(), &[]);
-        let judged = shipping.judge("900", Some(hex(0, 0)), "901");
+        let judged = shipping.judge(ShipmentOrder::Transport, "900", Some(hex(0, 0)), "901");
         assert!(!judged.target_shown);
         assert_eq!(judged.acceptance, Acceptance::EligibilityUnknown);
         assert_eq!(judged.measured, None);
