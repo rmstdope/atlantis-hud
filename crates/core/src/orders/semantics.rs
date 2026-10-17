@@ -14601,6 +14601,9 @@ struct Leaver {
     at: Coordinate,
     /// Whether it carries the `SHARE` flag, so lends to some purse at all.
     shares: bool,
+    /// Whether a fleet carries it there, rather than its own feet: the two join the region they
+    /// arrive in at different places ([`SharingReach::read`], `ah-fpyo`).
+    sails: bool,
 }
 
 /// How a unit's silver position counts against the purse of the hex it is listed in, at one
@@ -14643,6 +14646,9 @@ impl PurseMembership {
                                     Leaver {
                                         at,
                                         shares: ordered.shares(),
+                                        sails: ruleset.is_some_and(|rules| {
+                                            carried_away(hex, ordered, rules).is_some()
+                                        }),
                                     },
                                 )
                             })
@@ -14694,6 +14700,11 @@ impl HexMembership {
         self.leavers.contains_key(unit_id)
     }
 
+    /// Whether the unit numbered `unit_id` ends its month in another region aboard a fleet.
+    fn sails_away(&self, unit_id: &str) -> bool {
+        self.leavers.get(unit_id).is_some_and(|leaver| leaver.sails)
+    }
+
     /// Whether a sharing unit numbered `unit_id` ends its month in another region.
     fn sharer_leaves(&self, unit_id: &str) -> bool {
         self.leavers
@@ -14735,7 +14746,8 @@ impl HexMembership {
 struct Neighbourhood {
     /// The region they end the month in.
     at: Coordinate,
-    /// In report order.
+    /// In the order the engine holds them in that region once movement is over
+    /// ([`SharingReach::read`]): report order on each side of where the arrivals join it.
     members: Vec<Member>,
 }
 
@@ -14764,9 +14776,10 @@ struct Neighbourhood {
 ///   MOVE was replaced stands where it is (`ah-wyj8`, `ah-osny`);
 /// - a unit nothing can follow: where it stands. "Cannot say" is not a destination.
 struct SharingReach {
-    /// In report order, and each one's members in report order, so lending and eating stay in
-    /// document order. Told apart by region alone: [`Hex::read`] lists only our own units, so
-    /// every neighbourhood is already faction-mates (`rules/share`: "your faction"), and a unit
+    /// In report order, and each one's members in the region's order once movement is over
+    /// ([`SharingReach::read`]), so lending and eating follow the engine's walk of the region.
+    /// Told apart by region alone: [`Hex::read`] lists only our own units, so every neighbourhood
+    /// is already faction-mates (`rules/share`: "your faction"), and a unit
     /// whose faction number the report did not give is not cut off from its hex-mates.
     neighbourhoods: Vec<Neighbourhood>,
     /// Which neighbourhood each unit is in.
@@ -14796,6 +14809,42 @@ impl SharingReach {
                 reach.neighbourhoods[position].members.push(member.clone());
                 reach.of.insert(member, position);
             }
+        }
+        // Each region in the order the engine walks it once movement is over, which is the order
+        // maintenance (steps 2 and 4 to 7) draws on and feeds its units in (`runorders.cpp`:
+        // `AssessMaintenance`, `CheckFactionMaintenance` walk `objects`, then each one's `units`;
+        // `rules/sequenceofevents`: "units that appear higher on the report get precedence").
+        // A walker joins the end of the region's first object, the units outside any structure
+        // (`monthorders.cpp`: `MoveUnit(newreg->GetDummy())`), and an arriving fleet is appended
+        // after every object already there (`object.cpp`: `Object::MoveObject`). So: residents
+        // outside a structure, walkers, residents inside one, fleet crews (`ah-fpyo`). Inside or
+        // outside is read after this month's ENTER and LEAVE, which run before movement
+        // (`rules/sequenceofevents`; [`structure_after_orders`]). Stable, so each rank keeps report
+        // order - which for several walkers or fleets arriving together stands in for the order
+        // movement brings them in, phase by phase, which is not read here; nor is where a LEAVE
+        // or an ENTER puts a resident among the others of its rank.
+        for neighbourhood in &mut reach.neighbourhoods {
+            neighbourhood.members.sort_by_key(|(index, unit_id)| {
+                let (hex, _) = &hexes[*index];
+                if hex.region.coordinate != neighbourhood.at {
+                    if membership.of(*index).sails_away(unit_id) {
+                        3
+                    } else {
+                        1
+                    }
+                } else {
+                    let in_structure = hex
+                        .units
+                        .iter()
+                        .find(|ordered| ordered.unit.unit_id == *unit_id)
+                        .is_some_and(|ordered| structure_after_orders(ordered).is_some());
+                    if in_structure {
+                        2
+                    } else {
+                        0
+                    }
+                }
+            });
         }
         reach
     }
@@ -46057,15 +46106,70 @@ BUILD
             vec![
                 (
                     Coordinate { x: 7, y: 51, z: 1 },
-                    vec!["4021".to_string(), "1795".to_string()]
+                    vec!["1795".to_string(), "4021".to_string()]
                 ),
                 (Coordinate { x: 7, y: 53, z: 1 }, vec!["1794".to_string()]),
             ]
         );
     }
 
+    /// `ah-fpyo` review, finding 1: a walker joins the region's units outside any structure
+    /// (`monthorders.cpp`: `MoveUnit(newreg->GetDummy())`), the first object the engine walks, so
+    /// it comes after a resident standing outside and before one inside a building.
+    #[test]
+    fn the_sharing_reach_puts_a_walker_before_a_resident_inside_a_structure() {
+        let outside = with_silver(unit("1795"), 500);
+        let inside = ReportUnit {
+            structure_id: Some("12".to_string()),
+            ..with_silver(unit("1796"), 500)
+        };
+        let (report, orders, options) = a_walkers_turn(vec![], vec![inside, outside], true);
+        assert_eq!(
+            neighbourhoods(&report, &orders, &options.month_end),
+            vec![(
+                Coordinate { x: 7, y: 51, z: 1 },
+                vec!["1795".to_string(), "4021".to_string(), "1796".to_string()]
+            )]
+        );
+    }
+
+    /// `ah-fpyo` delta review, finding 1: inside or outside is where a resident stands once this
+    /// month's ENTER and LEAVE have run (`rules/sequenceofevents` runs both before movement), not
+    /// where the report found it. A resident that LEAVEs its building stands outside before the
+    /// walker joins; one that ENTERs stands inside after it.
+    #[test]
+    fn the_sharing_reach_ranks_a_resident_by_where_its_enter_or_leave_puts_it() {
+        let leaving = ReportUnit {
+            structure_id: Some("12".to_string()),
+            ..with_silver(unit("1796"), 500)
+        };
+        let entering = with_silver(unit("1795"), 500);
+        let (mut report, orders, options) = a_walkers_turn(vec![], vec![leaving, entering], true);
+        let tower = report
+            .regions
+            .iter_mut()
+            .find(|region| region.region_id == "1:7,51")
+            .expect("the walker's destination");
+        tower.structures.push(Structure {
+            structure_id: "12".to_string(),
+            ..Default::default()
+        });
+        let orders = orders
+            .replace("unit 1796\n", "unit 1796\nLEAVE\n")
+            .replace("unit 1795\n", "unit 1795\nENTER 12\n");
+        assert_eq!(
+            neighbourhoods(&report, &orders, &options.month_end),
+            vec![(
+                Coordinate { x: 7, y: 51, z: 1 },
+                vec!["1796".to_string(), "4021".to_string(), "1795".to_string()]
+            )]
+        );
+    }
+
     /// A sail is never read from the trace, which the shells fill for a sail only when something
     /// else in the document walks or ships (`ah-n3qb`): the fleet ends where its own `SAIL` does.
+    /// The banker standing there comes first: an arriving fleet joins the end of the region
+    /// (`ah-fpyo`).
     #[test]
     fn the_sharing_reach_puts_a_sailing_passenger_where_its_fleet_arrives() {
         let (report, orders) = a_fleet_sailing_north_to_a_banker_inputs(true);
@@ -46077,7 +46181,7 @@ BUILD
             neighbourhoods(&report, &orders, &month_end),
             vec![(
                 Coordinate { x: 7, y: 51, z: 1 },
-                vec!["4022".to_string(), "4021".to_string(), "1795".to_string()]
+                vec!["1795".to_string(), "4022".to_string(), "4021".to_string()]
             )]
         );
     }
@@ -76563,7 +76667,15 @@ BUILD
         /// building one ledger by hand gives its [`WalkingSilver::members`] in place of the trace.
         fn leaving(unit_id: &str, at: Coordinate) -> Self {
             Self {
-                leavers: [(unit_id.to_string(), Leaver { at, shares: true })].into(),
+                leavers: [(
+                    unit_id.to_string(),
+                    Leaver {
+                        at,
+                        shares: true,
+                        sails: false,
+                    },
+                )]
+                .into(),
             }
         }
     }
