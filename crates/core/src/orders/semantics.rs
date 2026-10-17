@@ -35817,10 +35817,10 @@ mod tests {
                 .unwrap_or_else(|| panic!("no HORS line settled: {shares:?}"))
         }
 
-        /// `ah-r0na`, the bead's headline. A buyer stopped by its purse *gets* what it can pay for
-        /// - the division `Game::DoBuy` makes of the purse-cut orders (`ah-s4hy`) - but its order
-        /// is *charged against* what the line leaves it, which is what keeps `not-enough-silver`
-        /// speaking for it. The two used to be one number.
+        /// `ah-r0na`, the bead's headline. A buyer stopped by its purse *gets* what it can pay
+        /// for, the division `Game::DoBuy` makes of the purse-cut orders (`ah-s4hy`), but its
+        /// order is *charged against* what the line leaves it, which is what keeps
+        /// `not-enough-silver` speaking for it. The two used to be one number.
         #[test]
         fn a_purse_stopped_buyer_gets_what_it_can_pay_and_is_charged_against_what_the_line_leaves()
         {

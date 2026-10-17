@@ -5161,9 +5161,9 @@ pub fn price_pillage(
 /// settlement charges this unit's order against. The unit's purse cuts what it actually gets
 /// after this, in [`price_purchase`].
 ///
-/// `allowed` is the settled charge ceiling, or the asked count where the hex could not be settled
-/// - which is what [`Lookups::charge_ceiling`] returning `None` means, and is the behaviour before
-/// `ah-t2pn.3`.
+/// `allowed` is the settled charge ceiling, or the asked count where the hex could not be
+/// settled - which is what [`Lookups::charge_ceiling`] returning `None` means, and is the
+/// behaviour before `ah-t2pn.3`.
 #[must_use]
 pub fn quantity_bought(count: i64, allowed: i64) -> i64 {
     count.min(allowed).max(0)
