@@ -186,6 +186,14 @@ pub struct UnitPreview {
     /// studying, for one whose skills this month cannot be said at all, for a skill the catalogue
     /// does not know, and for a dissolving unit, which never exists to study (`ah-rgkk.2.2`).
     pub study: Option<StudyForecast>,
+    /// The ship this unit's founding `BUILD <ship>` begins this month, and whether it is finished
+    /// (`ah-ywyf`). `None` for every other unit, and where the work cannot be counted.
+    //
+    // Skipped when absent, as `FieldChange::cause` is, so the TypeScript reads `newShip?:` and
+    // every existing fixture stays a valid `UnitPreview`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub new_ship: Option<NewShip>,
 }
 
 /// One line of what a unit's `TRANSPORT`/`DISTRIBUTE` orders send this month, in document order
@@ -660,6 +668,42 @@ pub enum ItemChangeCause {
     /// since a finished ship is "placed in fleets" rather than carried (`rules/economy_ships`).
     /// Recorded on the ship's owner, by the order that lays its last work.
     ShipFinished,
+    /// A ship this month's founding `BUILD <ship>` begins and does not finish (`ah-ywyf`): the
+    /// engine's `RunBuildShipOrder` leaves it in the founder's items as an unfinished ship
+    /// (`rules/economy_ships`, "unfinished ships appear only in their builder's inventory").
+    /// Recorded on the founder, by its own `BUILD` order.
+    ShipStarted,
+}
+
+/// A ship this month's founding `BUILD <ship>` begins, and what becomes of it (`ah-ywyf`).
+///
+/// Carried on the founder's row only - a `BUILD HELP`'s work counts toward it, but only the unit
+/// whose order founds the ship holds it or goes aboard it (`monthorders.cpp` `RunBuildHelpers`,
+/// "leave that for the unit we're helping").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub struct NewShip {
+    /// The catalogue's name for the ship - `Longship` - whatever spelling the order used.
+    pub name: String,
+    /// Its tag - `LONG`.
+    pub tag: String,
+    pub outcome: NewShipOutcome,
+}
+
+/// Where a ship begun this month ends it (`ah-ywyf`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub enum NewShipOutcome {
+    /// Finished, and `CreateShip` makes a fleet of its own with the founder aboard: the founder
+    /// stood in no fleet, or in one the new ship cannot join.
+    NewFleet,
+    /// Finished, and `CreateShip` adds it to the fleet the founder stands in - both sail or both
+    /// fly - so the founder stays where it is.
+    JoinsFleet,
+    /// Not finished: the founder holds it as an unfinished ship.
+    Unfinished,
 }
 
 /// The other unit an item change is between (`ah-rgkk.3.1`).
@@ -1006,6 +1050,11 @@ pub fn preview_orders_on_map(
         } else {
             entry.study.clone()
         };
+        let new_ship = if dissolving {
+            None
+        } else {
+            entry.new_ship.clone()
+        };
         // `rules/form` dissolves a unit that gains nobody before the month ends, so it never held
         // anything to move (`ah-rgkk.3.1`), exactly as `produced`, `built` and `created` above.
         let item_changes = if dissolving {
@@ -1077,6 +1126,7 @@ pub fn preview_orders_on_map(
                     transport_target_issues: transport_target_issues.clone(),
                     shipment_unmeasured,
                     study: study.clone(),
+                    new_ship: new_ship.clone(),
                     // An arriving row is never dissolving, but the field is set from the same
                     // source on all three pushes rather than relying on that.
                     dissolves_into: dissolves_into.clone(),
@@ -1109,6 +1159,7 @@ pub fn preview_orders_on_map(
                     transport_target_issues,
                     shipment_unmeasured,
                     study,
+                    new_ship: new_ship.clone(),
                     dissolves_into: dissolves_into.clone(),
                     formed,
                     dissolving,
@@ -1140,6 +1191,7 @@ pub fn preview_orders_on_map(
                     transport_target_issues,
                     shipment_unmeasured,
                     study,
+                    new_ship: new_ship.clone(),
                     dissolves_into,
                     formed,
                     dissolving,
@@ -2045,6 +2097,9 @@ impl Decided {
             // sharers is the engine's (`Run1BuildOrder` through `Unit::GetSharedNum` and
             // `Unit::ConsumeShared`); `newage trident rules/share` states it for production.
             || (lives && !self.entry.built.is_empty())
+            // A founder whose helpers laid all of a new ship's work spends nothing itself, and
+            // still ends the month aboard it (`ah-ywyf`).
+            || (lives && self.entry.new_ship.is_some())
             // A unit that buys five of a tag and sells five of the same tag ends the month holding
             // what it started with, so `changes()` records nothing - and the row would be dropped
             // along with the explanation of why nothing changed (`ah-rgkk.3.1`).
@@ -2301,6 +2356,9 @@ struct WorkingUnit {
     /// What this unit's `BUILD` orders spend this month. Written once by `apply_item_effects`
     /// (`ah-ofpb.2`).
     built: Vec<BuildSpend>,
+    /// The ship this unit's `BUILD <ship>` begins. Written once by `apply_item_effects`
+    /// (`ah-ywyf`).
+    new_ship: Option<NewShip>,
     /// What this unit's `CAST` orders create this month. Written once by `apply_item_effects`
     /// (`ah-ofpb.5`).
     created: Vec<CreatedItem>,
@@ -2772,6 +2830,7 @@ impl Working {
                 taken_unshown: Vec::new(),
                 produced: Vec::new(),
                 built: Vec::new(),
+                new_ship: None,
                 created: Vec::new(),
                 refused_casts: Vec::new(),
                 item_log: super::item_change_log::ItemChangeLog::default(),
@@ -3102,6 +3161,7 @@ impl Working {
                 })
                 .collect();
             unit.built = effect.built.clone();
+            unit.new_ship = effect.new_ship.clone();
             unit.refused_casts = effect.refused_casts.clone();
             unit.created = effect
                 .moved
@@ -3171,6 +3231,7 @@ impl Working {
             taken_unshown: Vec::new(),
             produced: Vec::new(),
             built: Vec::new(),
+            new_ship: None,
             created: Vec::new(),
             refused_casts: Vec::new(),
             item_log: super::item_change_log::ItemChangeLog::default(),
@@ -10784,6 +10845,97 @@ mod tests {
                 }]
             );
             change(unit, "items");
+        }
+    }
+
+    /// `ah-ywyf`: `BUILD <ship>` by a unit carrying no unfinished ship begins a new one
+    /// (`rules/build`: "BUILD given with an [object type] (such as "Tower" or "Galleon") instructs
+    /// the unit to begin work on a new object"). The engine's `RunBuildShipOrder` then either
+    /// leaves the half-built ship in the builder's items or, finished, `CreateShip` puts it in a
+    /// fleet (`rules/economy_ships`).
+    mod new_ships {
+        use super::*;
+
+        /// A coastal plain - one exit is ocean - with Drones (900), 10 goblins at shipbuilding 3
+        /// and no wood, and Unit (901), who shares and holds 120 wood: the bead's Lonthax shape.
+        /// `extra` is placed in front of the builder's line, for a structure to stand in.
+        fn coast(builder: &str, extra: &str) -> String {
+            [
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "Exits:",
+                "  North : ocean (1,0) in Atlantis Ocean.",
+                "  Southeast : plain (2,2) in Nowhere.",
+                "",
+                extra,
+                builder,
+                "",
+                "* Unit (901), Foo (1), behind, sharing, 1 goblin [GBLN], 120 wood [WOOD]. \
+                 Weight: 610. Capacity: 0/0/15/0. Skills: none.",
+                "",
+            ]
+            .join("\n")
+        }
+
+        const DRONES: &str = "* Drones (900), Foo (1), behind, 10 goblins [GBLN]. Weight: 100. \
+             Capacity: 0/0/150/0. Skills: shipbuilding [SHIP] 3 (180).";
+
+        fn unit<'a>(response: &'a OrdersPreviewResponse, id: &str) -> &'a UnitPreview {
+            response
+                .regions
+                .iter()
+                .flat_map(|region| region.units.iter())
+                .find(|unit| unit.unit.unit_id == id && unit.status != UnitPreviewStatus::Arriving)
+                .unwrap_or_else(|| panic!("unit {id} is previewed: {:?}", response.regions))
+        }
+
+        fn holds(unit: &UnitPreview, tag: &str) -> Option<i64> {
+            unit.unit
+                .items
+                .iter()
+                .find(|item| item.tag == tag)
+                .map(|item| item.amount)
+        }
+
+        /// `data/shipbuilding` 1: a Longship is built "from 10 wood [WOOD]"; 10 goblins at level 3
+        /// could do 30, so the ship is finished with the sharer's wood and the builder is aboard a
+        /// new fleet.
+        #[test]
+        fn a_new_longship_is_finished_and_spends_the_sharers_wood() {
+            let response = preview_over(&coast(DRONES, ""), "unit 900\nBUILD LONGSHIP\n");
+            let drones = unit(&response, "900");
+            let sharer = unit(&response, "901");
+
+            assert!(drones.uncounted.is_empty(), "{:?}", drones.uncounted);
+            assert_eq!(holds(sharer, "WOOD"), Some(110));
+            assert_eq!(
+                drones.built,
+                vec![BuildSpend {
+                    materials: vec![BuildMaterialShare {
+                        amount: 10,
+                        tag: "WOOD".to_string(),
+                        name: "wood".to_string(),
+                    }],
+                    amount: 10,
+                    place: "Longship".to_string(),
+                    founding: true,
+                    helping: None,
+                    could_do: 30,
+                    capped_by: Some(BuildCap::Needs),
+                    finishes: None,
+                }]
+            );
+            assert_eq!(
+                drones.new_ship,
+                Some(NewShip {
+                    name: "Longship".to_string(),
+                    tag: "LONG".to_string(),
+                    outcome: NewShipOutcome::NewFleet,
+                })
+            );
+            assert_eq!(holds(drones, "LONG"), None, "a finished ship is no item");
         }
     }
 

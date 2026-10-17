@@ -6238,6 +6238,12 @@ struct Ledger<'a> {
     /// Structures an earlier builder this month worked on uncounted: what they still need is
     /// unknown, so no later builder of them can be priced either.
     build_doubted: BTreeSet<BuildSite>,
+    /// Every new ship a founding `BUILD <ship>` begins this month, in the order the walk reached
+    /// its founder (`ah-ywyf`). Settled by [`settle_new_ships`] once the whole walk has run, since
+    /// helpers walked after the founder still add to it.
+    new_ship_foundings: Vec<NewShipFounding>,
+    /// What [`settle_new_ships`] made of each of them, keyed by founder.
+    pub(crate) new_ship_outcomes: BTreeMap<String, super::effects::NewShip>,
     /// Direct founding `BUILD`s whose selected ruleset refuses their reported site.
     pub(crate) build_placement_refusals:
         BTreeMap<String, Vec<super::effects::BuildPlacementRefusal>>,
@@ -6941,6 +6947,8 @@ fn ledger_for_reaching<'a>(
         refused_casts: BTreeMap::new(),
         build_laid: BTreeMap::new(),
         build_doubted: BTreeSet::new(),
+        new_ship_foundings: Vec::new(),
+        new_ship_outcomes: BTreeMap::new(),
         build_placement_refusals: BTreeMap::new(),
         buy_all: BTreeMap::new(),
         settled_buy_all: BTreeMap::new(),
@@ -7349,6 +7357,7 @@ fn ledger_for_reaching<'a>(
         }
     }
 
+    settle_new_ships(&mut ledger);
     unwind_unconsumed_production(&mut ledger);
     pay_wages(&mut ledger, hex);
 
@@ -7902,6 +7911,12 @@ pub(crate) fn item_effects(
                 .or_default()
                 .built = spends;
         }
+        for (unit_id, ship) in ledger.new_ship_outcomes {
+            result
+                .entry(unit_key(&hex.region.region_id, &unit_id))
+                .or_default()
+                .new_ship = Some(ship);
+        }
         for (unit_id, mut casts) in ledger.refused_casts {
             // The report's own plural, read from the whole report as `counted_item` reads it, so a
             // sentence counting 75 says `floater hides` (`ah-rsdz`, `ah-44at`).
@@ -7953,6 +7968,8 @@ pub(crate) struct UnitItemEffects {
     pub recruited: Vec<ItemAmount>,
     /// Where this unit's `STUDY` lands next turn (`ah-rgkk.2.2`). `None` for a unit not studying.
     pub study: Option<super::effects::StudyForecast>,
+    /// The ship this unit's founding `BUILD <ship>` begins this month (`ah-ywyf`).
+    pub new_ship: Option<super::effects::NewShip>,
     /// The 1-based document lines of this unit's shipments the game refuses: those its month could
     /// not pay for (`ah-7ale.4`), and silver ones asking more than it held as shipping began
     /// (`ah-0aqx`). The item preview keeps their goods: it has no silver of its own to judge with.
@@ -11657,6 +11674,193 @@ fn ship_task(ledger: &Ledger<'_>, owner: &Ordered<'_>, ruleset: &Ruleset) -> Shi
     })
 }
 
+/// A ship a founding `BUILD <ship>` begins this month, as [`build`] reads it (`ah-ywyf`).
+struct NewShipTask {
+    /// Priced exactly as an unfinished ship is: `needs` is the whole of its cost, and `name` is
+    /// the catalogue's (`Longship`).
+    ship: ShipTask,
+    /// Whether `CreateShip` adds the finished ship to the fleet its founder stands in.
+    joins_fleet: bool,
+}
+
+/// What a founding `BUILD <ship>` can say about the ship it begins (`ah-ywyf`).
+enum NewShipLookup {
+    /// Not a ship at all: the order is read as before.
+    NotAShip,
+    Known(NewShipTask),
+    /// The engine refuses it outright - in the ocean, or a ship that does not fly in a region with
+    /// no water beside it - so nothing is built and nothing spent: a known zero.
+    Refused,
+    /// Something about it cannot be told, so the order cannot be counted, as before.
+    Unknown,
+}
+
+/// One new ship's founding, recorded by its founder's `BUILD` for [`settle_new_ships`].
+#[derive(Debug, Clone)]
+struct NewShipFounding {
+    founder: String,
+    tag: String,
+    /// The catalogue's name: `Longship`.
+    name: String,
+    /// The work, and the material, the whole ship takes.
+    cost: i64,
+    line: usize,
+    joins_fleet: bool,
+}
+
+/// Whether a ship of this kind flies: the catalogue's own sentence, "This is a flying 'ship'",
+/// read as [`crate::movement::mode::fleet_flies`] reads every hull.
+fn ship_flies(item: &crate::movement::rules::ItemEntry) -> bool {
+    crate::movement::mode::ship_flies(item)
+}
+
+/// The new ship `kind` names, built for `owner` - the founder, or the unit a `BUILD HELP` helps.
+///
+/// `../Atlantis/parseorders.cpp` `ProcessBuildOrder` refuses one "in an ocean" and, for a ship that
+/// does not fly, one in a "non-coastal or lakeside region" (`ARegion::IsCoastalOrLakeside`: a
+/// neighbour of ocean type, which a lake is). `CreateShip` then adds a finished ship to the
+/// founder's fleet when both sail or both fly, and otherwise makes a new fleet - New Origins'
+/// engine always, and New Age's under `NO_CROSS_JOIN` (`../atlantis-newage/neworigins/rules.cpp`),
+/// so one reading serves every world.
+///
+/// [`NewShipLookup::Unknown`] wherever any of that cannot be read: a founder already carrying an
+/// unfinished ship (`ProcessBuildOrder` then continues that one), a recipe of other than one
+/// material (an Airship's split is not stated, as for `ship_task`), a region whose exits the
+/// report does not list, or a structure the founder stands in that is neither a building the
+/// catalogue knows nor a fleet whose hulls it does.
+fn new_ship_task(
+    hex: &Hex<'_>,
+    owner: &Ordered<'_>,
+    kind: &str,
+    ruleset: &Ruleset,
+) -> NewShipLookup {
+    let Some(item) = ruleset
+        .find_item(&kind.replace('_', " "))
+        .filter(|item| item.kind == crate::movement::rules::ItemKind::Ship)
+    else {
+        return NewShipLookup::NotAShip;
+    };
+    if carries_unfinished_ship(owner) {
+        return NewShipLookup::Unknown;
+    }
+    let Some(build) = ruleset.ship_build(&item.tag) else {
+        return NewShipLookup::Unknown;
+    };
+    let [input] = build.inputs.as_slice() else {
+        return NewShipLookup::Unknown;
+    };
+    let region = hex.region;
+    if ruleset.is_water(&region.terrain) {
+        return NewShipLookup::Refused;
+    }
+    let flies = ship_flies(item);
+    if !flies {
+        if region.exits.is_empty() {
+            return NewShipLookup::Unknown;
+        }
+        if !region
+            .exits
+            .iter()
+            .any(|exit| ruleset.is_water(&exit.terrain))
+        {
+            return NewShipLookup::Refused;
+        }
+    }
+    let joins_fleet = match structure_after_orders(owner) {
+        None => false,
+        Some(structure_id) => {
+            let Some(structure) = region
+                .structures
+                .iter()
+                .find(|structure| structure.structure_id == structure_id)
+            else {
+                return NewShipLookup::Unknown;
+            };
+            if ruleset
+                .buildings
+                .contains_key(&structure.kind.to_ascii_uppercase())
+            {
+                false
+            } else {
+                match crate::movement::mode::fleet_flies(structure, Some(ruleset)) {
+                    Some(fleet_flies) => fleet_flies == flies,
+                    None => return NewShipLookup::Unknown,
+                }
+            }
+        }
+    };
+    NewShipLookup::Known(NewShipTask {
+        ship: ShipTask {
+            tag: item.tag.to_ascii_uppercase(),
+            name: item.name.clone(),
+            needs: input.amount,
+            material: input.tag.clone(),
+            skill: build.skill.clone(),
+            level: build.level,
+        },
+        joins_fleet,
+    })
+}
+
+/// What becomes of each ship this month's founding `BUILD`s began, once every builder of it has
+/// been walked (`ah-ywyf`).
+///
+/// `monthorders.cpp` runs every `BUILD HELP` (`RunBuildHelpers`) before the founder's own
+/// `RunBuildShipOrder`, and the founder then finishes the ship when nothing is left to do, or
+/// keeps it unfinished in its items: so it is the work all of them laid that decides, which is
+/// only known after the walk. Nothing laid is nothing begun.
+fn settle_new_ships(ledger: &mut Ledger<'_>) {
+    for founding in std::mem::take(&mut ledger.new_ship_foundings) {
+        let site = BuildSite::Ship {
+            owner: founding.founder.clone(),
+            tag: founding.tag.clone(),
+        };
+        if ledger.build_doubted.contains(&site) {
+            continue;
+        }
+        let laid = ledger.build_laid.get(&site).copied().unwrap_or(0);
+        if laid <= 0 {
+            continue;
+        }
+        let outcome = if laid >= founding.cost {
+            if founding.joins_fleet {
+                super::effects::NewShipOutcome::JoinsFleet
+            } else {
+                super::effects::NewShipOutcome::NewFleet
+            }
+        } else {
+            let name = format!("unfinished {}", founding.name);
+            ledger.state.apply(
+                StatePhase::Manufacturing,
+                &founding.founder,
+                &founding.tag,
+                1,
+            );
+            ledger.movements.push(ItemMovement {
+                unit_id: founding.founder.clone(),
+                tag: founding.tag.clone(),
+                name,
+                delta: 1,
+                cause: ItemChangeCause::ShipStarted,
+                phase: StatePhase::Manufacturing,
+                line: Some(founding.line as i64),
+                unit_price: None,
+                other: None,
+                created: None,
+            });
+            super::effects::NewShipOutcome::Unfinished
+        };
+        ledger.new_ship_outcomes.insert(
+            founding.founder,
+            super::effects::NewShip {
+                name: founding.name,
+                tag: founding.tag,
+                outcome,
+            },
+        );
+    }
+}
+
 /// What a `BUILD` order named, straight off [`Intent::Build`].
 #[derive(Debug, Clone, Copy)]
 struct BuildOrder<'a> {
@@ -11776,6 +11980,49 @@ fn build(
             (None, None) => (None, actor, None),
         };
 
+    // 2b. A founding BUILD naming a ship begins a new one (`ah-ywyf`). Priced like an unfinished
+    // ship from here on, against the whole of its cost; its founder is recorded so that, once
+    // every builder of it has been walked, `settle_new_ships` says what became of it.
+    let new_ship = match founding_kind.as_deref() {
+        Some(kind) if ruleset.build_recipe(kind).is_none() => {
+            match new_ship_task(hex, task_owner, kind, ruleset) {
+                NewShipLookup::NotAShip => None,
+                NewShipLookup::Refused => return,
+                NewShipLookup::Unknown => mark_uncounted_and_return!(),
+                // A passenger's ship would be begun where its fleet lands, and a fleet that sails
+                // is no place the report shows a coast for (`rules/economy_ships`).
+                NewShipLookup::Known(_) if away.is_some() => mark_uncounted_and_return!(),
+                NewShipLookup::Known(task) => {
+                    if helped_id.is_none() {
+                        ledger.new_ship_foundings.push(NewShipFounding {
+                            founder: who.clone(),
+                            tag: task.ship.tag.clone(),
+                            name: task.ship.name.clone(),
+                            cost: task.ship.needs,
+                            line: placed.line,
+                            joins_fleet: task.joins_fleet,
+                        });
+                    }
+                    let site = BuildSite::Ship {
+                        owner: task_owner.unit.unit_id.clone(),
+                        tag: task.ship.tag.clone(),
+                    };
+                    let Some(skills) = actor.after_the_market().skills else {
+                        ledger.build_doubted.insert(site);
+                        mark_uncounted_and_return!();
+                    };
+                    // `ShipConstruction` refuses a unit below the ship's level, founder and
+                    // helper alike ("BUILD: Can't build that."): a known zero.
+                    if i64::from(level_in(skills, &task.ship.skill)) < task.ship.level {
+                        return;
+                    }
+                    Some(task.ship)
+                }
+            }
+        }
+        _ => None,
+    };
+
     // 3. An unfinished ship beats everything a bare BUILD could mean (`rules/build`) - but only
     // for the bare form; a founding BUILD falls out at step 5 instead, because no ship is in the
     // buildings table. Priced like a building from here on when the report says what it still
@@ -11825,7 +12072,18 @@ fn build(
 
     // 4/5. The structure being worked on, and its recipe. A founding build spends against its
     // whole cost, and is named by the kind the player wrote, verbatim.
-    let (place, kind, is_founding, existing_remaining, site) = if let Some(ship) = &ship {
+    let (place, kind, is_founding, existing_remaining, site) = if let Some(ship) = &new_ship {
+        (
+            ship.name.clone(),
+            ship.tag.clone(),
+            true,
+            Some(ship.needs),
+            BuildSite::Ship {
+                owner: task_owner.unit.unit_id.clone(),
+                tag: ship.tag.clone(),
+            },
+        )
+    } else if let Some(ship) = &ship {
         (
             format!("the {}", ship.name),
             ship.tag.clone(),
@@ -11875,7 +12133,9 @@ fn build(
             mark_uncounted_and_return!();
         }};
     }
-    let (cost, materials): (i64, Vec<String>) = match &ship {
+    // Either kind of ship: one being worked on, or one begun this month.
+    let any_ship = ship.as_ref().or(new_ship.as_ref());
+    let (cost, materials): (i64, Vec<String>) = match any_ship {
         Some(ship) => (ship.needs, vec![ship.material.clone()]),
         None => {
             let Some((cost, materials)) = ruleset.build_recipe(&kind) else {
@@ -11893,7 +12153,7 @@ fn build(
     // 6. The skill tag. The minimum level is not read here - whether the unit may build at all is
     // `build-without-skill`'s business, and a unit below the minimum still does `men * level`
     // units of work by the rules as written.
-    let skill_tag: &str = match &ship {
+    let skill_tag: &str = match any_ship {
         Some(ship) => &ship.skill,
         None => {
             let Some((skill_tag, _minimum_level)) = ruleset.build_requirement(&kind) else {

@@ -678,12 +678,19 @@ pub fn fleet_flies(fleet: &Structure, ruleset: Option<&Ruleset>) -> Option<bool>
         if item.kind != ItemKind::Ship {
             return None;
         }
-        flies |= item
-            .description
-            .as_deref()
-            .is_some_and(|text| text.to_ascii_lowercase().contains("is a flying"));
+        flies |= ship_flies(item);
     }
     Some(flies)
+}
+
+/// Whether the catalogue calls this ship a flying one - the phrase [`fleet_flies`] reads every
+/// hull by. Also what decides whether a ship begun this month may join its builder's fleet
+/// (`ah-ywyf`).
+#[must_use]
+pub fn ship_flies(item: &crate::movement::rules::ItemEntry) -> bool {
+    item.description
+        .as_deref()
+        .is_some_and(|text| text.to_ascii_lowercase().contains("is a flying"))
 }
 
 /// How much weight a fleet can carry. Stated `Load: H/N` first; else the ruleset's `cargoCapacity`
@@ -1544,6 +1551,14 @@ mod tests {
     ///
     /// Enumerated rather than sampled: `fleet_flies` decides whether a warning is shown at all, and
     /// the three flying hulls are the entire exception.
+    #[test]
+    fn ship_flies_reads_the_catalogue_s_flying_phrase() {
+        let rules = ruleset();
+        let item = |name: &str| rules.find_item(name).expect("the catalogue carries it");
+        assert!(ship_flies(item("Balloon")));
+        assert!(!ship_flies(item("Longship")));
+    }
+
     #[test]
     fn fleet_flies_separates_the_catalogue_s_flying_ships() {
         let rules = ruleset();
