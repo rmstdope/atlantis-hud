@@ -17391,8 +17391,10 @@ struct StudyElsewhere {
     /// How the purse where it arrives settled it; `None` until it has.
     outcome: Option<StudyOutcome>,
     /// The hex its fleet lands in, as [`hex_label`] names it - what its STUDY line's marker
-    /// points at when that purse refuses it (`ah-1uja`).
-    landing: String,
+    /// points at when that purse refuses it (`ah-1uja`). `None` where nothing of ours shares
+    /// there (`ah-oi3u`): no hex is then short "between its units", and the passenger's own
+    /// sentence carries the refusal.
+    landing: Option<String>,
 }
 
 /// One sharer arriving in a hex, and the silver it lends there.
@@ -17444,12 +17446,13 @@ impl WalkingSilver {
             .map_or(0, |elsewhere| elsewhere.need)
     }
 
-    /// The hex `unit_id`'s fleet lands in, where its STUDY was sent to be judged
-    /// ([`send_studies_where_fleets_arrive`]); `None` for a unit whose STUDY is this hex's own.
+    /// The hex `unit_id`'s fleet lands in, where its STUDY was sent to be judged by the purse
+    /// there ([`send_studies_where_fleets_arrive`]); `None` for a unit whose STUDY is this hex's
+    /// own, or one landing where nothing of ours shares (`ah-oi3u`).
     fn landing_of(&self, unit_id: &str) -> Option<&str> {
         self.studies_elsewhere
             .get(unit_id)
-            .map(|elsewhere| elsewhere.landing.as_str())
+            .and_then(|elsewhere| elsewhere.landing.as_deref())
     }
 
     /// What `unit_id`'s STUDY asks of the purse where its fleet arrives, at `moment`: none of it
@@ -17716,8 +17719,9 @@ fn send_studies_where_fleets_arrive(
             && (purse_settles(there, there_ledger) || nothing_is_shared(there, there_ledger))
     });
     for (index, who, arrives) in &sent {
-        let there = hexes[*arrives].0.region;
-        let landing = hex_label(&there.terrain, there.coordinate);
+        let (there, there_ledger) = &hexes[*arrives];
+        let landing = purse_settles(there, there_ledger)
+            .then(|| hex_label(&there.region.terrain, there.region.coordinate));
         hexes[*index]
             .1
             .relief_mut()
@@ -79172,6 +79176,14 @@ BUILD
             )),
             "{warning}"
         );
+    }
+
+    /// `ah-1uja` after `ah-oi3u`: a passenger refused where nothing of ours shares is told so by
+    /// its own sentence; no hex there is short "between its units", so it gets no marker.
+    #[test]
+    fn a_passenger_refused_where_nothing_is_shared_gets_no_landing_marker() {
+        let review = a_passenger_studying_where_none_of_ours_stand(None);
+        assert_eq!(markers_on(&review, "901"), Vec::<String>::new());
     }
 
     /// `ah-1uja`: a landing hex that can pay its passenger's STUDY says nothing new anywhere.
