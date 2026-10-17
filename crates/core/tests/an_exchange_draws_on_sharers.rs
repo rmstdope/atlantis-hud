@@ -8,7 +8,7 @@
 //! exchange is aborted."
 
 use atlantis_hud_core::cache::ReportCache;
-use atlantis_hud_core::orders::effects::preview_orders_for_remembered_report;
+use atlantis_hud_core::orders::effects::{preview_orders_for_remembered_report, ItemChangeCause};
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions};
 use atlantis_hud_core::orders::silver::{SilverChangeCause, UnitSilver};
 use atlantis_hud_core::report::orders::extract_orders_template;
@@ -311,4 +311,76 @@ fn a_sharer_giving_itself_to_a_unit_not_here_leaves_the_exchange_certain() {
             "{give}: the transfer walk sells all five"
         );
     }
+}
+
+/// `(cause, delta, other, borrower)` for each `tag` change the ITEMS preview books on `unit_id`.
+fn item_changes(
+    orders: Orders,
+    unit_id: &str,
+    tag: &str,
+) -> Vec<(ItemChangeCause, i64, Option<String>, Option<String>)> {
+    let text = report_text();
+    let preview = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::RULESET_JSON,
+        &text,
+        "[]",
+        &script_for(orders),
+    )
+    .expect("the committed ruleset loads");
+    let unit = common::preview_row(&text, &preview, unit_id).expect("the unit has a row");
+    unit.item_changes
+        .iter()
+        .filter(|change| change.tag == tag)
+        .map(|change| {
+            (
+                change.cause,
+                change.delta,
+                change.other.as_ref().map(|party| party.unit_id.clone()),
+                change.borrower.as_ref().map(|party| party.unit_id.clone()),
+            )
+        })
+        .collect()
+}
+
+/// `ah-yf72`. The sharer never ordered a GIVE or an EXCHANGE: its goods paid for the smith's
+/// offer (`rules/share`; `rules/exchange`), so its row reads as a loan for the smith's hand-over
+/// to the buyer - the lent-for-give shape of `ah-49is` - and never as a gift to the smith.
+#[test]
+fn a_sharer_drawn_on_for_an_exchange_lends_rather_than_gives() {
+    let orders = (
+        "EXCHANGE 2392 5 SWOR 50 SILV",
+        "EXCHANGE 2391 50 SILV 5 SWOR",
+        "",
+    );
+    assert_eq!(
+        item_changes(orders, "2393", "SWOR"),
+        [(
+            ItemChangeCause::LentForGive,
+            -3,
+            Some("2392".to_string()),
+            Some("2391".to_string()),
+        )],
+        "the sharer lends three for the smith to hand to the buyer"
+    );
+}
+
+/// The same for silver: the buyer's own 80 go first and the sharer lends the other 40.
+#[test]
+fn a_sharer_drawn_on_for_an_exchange_of_silver_lends_rather_than_gives() {
+    let orders = (
+        "EXCHANGE 2392 2 SWOR 120 SILV",
+        "EXCHANGE 2391 120 SILV 2 SWOR",
+        "",
+    );
+    assert_eq!(
+        item_changes(orders, "2393", "SILV"),
+        [(
+            ItemChangeCause::LentForGive,
+            -40,
+            Some("2391".to_string()),
+            Some("2392".to_string()),
+        )],
+        "the sharer lends forty for the buyer to hand to the smith"
+    );
 }

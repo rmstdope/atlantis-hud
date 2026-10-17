@@ -653,6 +653,10 @@ pub enum ItemChangeCause {
     /// that GIVE's receiver as [`ItemChangeCause::GivenAway`] would name it - `None` for another
     /// faction's unit - and [`ItemChange::borrower`] the unit whose GIVE it was. This unit never
     /// ordered a GIVE to the receiver, so it is not `GivenAway` (`ah-49is`).
+    ///
+    /// Also this sharing unit's part of another unit's matched `EXCHANGE` (`rules/exchange`,
+    /// `rules/share`): `other` is the exchange partner the goods were handed to, and
+    /// [`ItemChange::borrower`] the unit whose offer they made up (`ah-yf72`).
     LentForGive,
     /// Drawn from this sharing unit for another unit's numbered `GIVE 0`, whose own stock fell
     /// short: the engine checks a numbered discard against `Unit::GetSharedNum` and removes it with
@@ -2321,7 +2325,7 @@ fn apply_item_movement(
             line: movement.line,
             unit_price: movement.unit_price,
             other: movement.other.clone(),
-            borrower: None,
+            borrower: movement.borrower.clone(),
             is_man: ruleset.is_man(&movement.tag),
             plural: None,
         },
