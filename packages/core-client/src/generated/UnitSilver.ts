@@ -76,7 +76,9 @@ shortForOrders: number | null,
  * `CAST` are not spending orders and are never named, and neither is a silver `GIVE` the
  * ledger paid in full, by the unit or by the hex's `SHARE` purse, since the game refuses it
  * nothing (`ah-ub3y`): the same verdict the editor's anchor reads ([`SilverFunding::cut_gift`],
- * `ah-jz5q`). `None` when `short_for_orders` is
+ * `ah-jz5q`). Nor is a bounded `BUY` the ledger charged in full, from the unit's own silver or
+ * the purse: the game bought every item of it, and what falls short is an order after it
+ * (`ah-4j5f`). `None` when `short_for_orders` is
  * `Some(0)` or `None`.
  *
  * A tag rather than a word: how it is said is the interface's business, and the core has no
