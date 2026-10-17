@@ -61,7 +61,7 @@ fn the_sharer_lends_its_swords_for_the_discard() {
 
     let lender = expect_preview_row(&report, &response, "12880");
     assert!(
-        preview_row(&report, &response, "12878").map_or(true, |row| sword_changes(row).is_empty()),
+        preview_row(&report, &response, "12878").is_none_or(|row| sword_changes(row).is_empty()),
         "Two of Seven holds no swords, so none leave its own row"
     );
     assert_eq!(
