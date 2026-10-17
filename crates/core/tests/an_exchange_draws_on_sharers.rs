@@ -21,7 +21,8 @@ use common::ruleset;
 type Orders<'a> = (&'a str, &'a str, &'a str);
 
 /// Smith (2391) holds 2 swords, Buyer (2392) 80 silver, and Stash (2393), sharing, 5 swords and
-/// 100 silver; Mark (7001) is a foreign unit all three can see.
+/// 100 silver; Mark (7001) is a foreign unit all three can see, and Far (7002) a foreign unit the
+/// report shows in the next hex.
 fn report_text() -> String {
     [
         "Foo (1) Report",
@@ -39,6 +40,13 @@ fn report_text() -> String {
         "* Stash (2393), Foo (1), sharing, orc [ORC], 100 silver [SILV], 5 swords [SWOR]. \
          Weight: 15. Capacity: 0/0/15/0.",
         "- Mark (7001), Bar (2), 5 orcs [ORC], 900 silver [SILV].",
+        "",
+        "plain (2,2) in Nowhere, 1000 peasants (orcs), $0.",
+        "",
+        "Exits:",
+        "  Northwest : plain (1,1) in Nowhere.",
+        "",
+        "- Far (7002), Bar (2), 5 orcs [ORC], 900 silver [SILV].",
         "",
     ]
     .join("\n")
@@ -268,4 +276,39 @@ fn a_sharer_giving_itself_away_leaves_an_offer_it_would_cover_uncounted() {
     assert!(uncounted.contains(&BUYER.to_string()), "{uncounted:?}");
     let row = silver_row(orders, "2392");
     assert!(row.doubt.is_some(), "{row:?}");
+}
+
+/// A sharer whose `GIVE <n> UNIT` cannot land gives nothing: `Game::DoGiveOrder` (../Atlantis
+/// `runorders.cpp`) looks the target up in the giver's region and errors "Nonexistant target"
+/// before the whole-unit branch is reached, so the sharer stays ours and lends as before
+/// (`ah-te15`). A unit the report shows in another hex, and a number it never prints, alike
+/// (`ah-xaem`), and the exchange reads exactly as it does without the line.
+#[test]
+fn a_sharer_giving_itself_to_a_unit_not_here_leaves_the_exchange_certain() {
+    const SMITH: &str = "EXCHANGE 2392 5 SWOR 50 SILV";
+    const BUYER: &str = "EXCHANGE 2391 50 SILV 5 SWOR";
+    let buyer = format!("{BUYER}\nSELL 5 SWOR");
+    for give in ["GIVE 7002 UNIT", "GIVE 9999 UNIT"] {
+        let orders = (SMITH, buyer.as_str(), give);
+        let (_, uncounted) = preview_of(orders, "2391", "SWOR", 2);
+        assert!(uncounted.is_empty(), "{give}: {uncounted:?}");
+        let (swords, uncounted) = preview_of(orders, "2392", "SWOR", 0);
+        assert_eq!(swords, 0, "{give}: all five arrive and are sold");
+        assert!(
+            !uncounted.iter().any(|line| line.starts_with("EXCHANGE")),
+            "{give}: {uncounted:?}"
+        );
+        assert_eq!(
+            holding(orders, "2393", "SWOR", 5),
+            2,
+            "{give}: the sharer lends three"
+        );
+        let row = silver_row(orders, "2392");
+        assert_eq!(row.doubt, None, "{give}: {row:?}");
+        assert_eq!(
+            silver_moved(orders, "2392", SilverChangeCause::Sold),
+            500,
+            "{give}: the transfer walk sells all five"
+        );
+    }
 }

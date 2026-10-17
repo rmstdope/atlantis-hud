@@ -4415,7 +4415,15 @@ fn held_by(
 /// runs before `EXCHANGE` (`rules/sequenceofevents`) and, if taken, puts the unit in another
 /// faction, which the engine's `GetSharedNum` does not lend from; whether it is taken the report
 /// cannot say (`rules/give`; `ah-80mj`).
-fn gives_itself_away(ordered: &Ordered<'_>) -> Option<UncertainGive> {
+///
+/// `reach` says where each target stands. One the gift cannot land on - a unit the report shows in
+/// another hex, or a number it never prints ([`GiveReach::gives_nothing`]) - leaves no doubt: the
+/// engine's `Game::DoGiveOrder` (../Atlantis `runorders.cpp`) errors "Nonexistant target" before
+/// the whole-unit branch, so the sharer stays ours and lends as before (`ah-te15`).
+fn gives_itself_away(
+    ordered: &Ordered<'_>,
+    reach: impl Fn(&Party) -> GiveReach,
+) -> Option<UncertainGive> {
     ordered
         .intents
         .iter()
@@ -4424,7 +4432,7 @@ fn gives_itself_away(ordered: &Ordered<'_>) -> Option<UncertainGive> {
                 to,
                 what: Selector::WholeUnit,
                 ..
-            } => Some(UncertainGive {
+            } if !reach(to).gives_nothing() => Some(UncertainGive {
                 target: party_label(to),
                 line: placed.line,
             }),
@@ -5386,7 +5394,18 @@ fn apply_transfers(
                     .get(&lender)
                     .and_then(|state| state.uncertain_after_gifts.get(&offer.give_tag))
                     .cloned()
-                    .or_else(|| gives_itself_away(&units[lender]))
+                    .or_else(|| {
+                        gives_itself_away(&units[lender], |party| {
+                            resolve_give_endpoint(
+                                &position_of,
+                                &shown_here,
+                                shown_anywhere,
+                                &units[lender].unit.unit_id,
+                                party,
+                            )
+                            .reach
+                        })
+                    })
             }) {
                 return Err(uncertain);
             }
@@ -10597,7 +10616,11 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
                 .units
                 .iter()
                 .filter(|other| other.shares() && other.unit.unit_id != *who)
-                .find_map(gives_itself_away)
+                .find_map(|sharer| {
+                    gives_itself_away(sharer, |party| {
+                        hex.give_endpoint(party, &sharer.unit.unit_id).reach
+                    })
+                })
             {
                 return Err(uncertain);
             }
