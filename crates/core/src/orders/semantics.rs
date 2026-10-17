@@ -75384,15 +75384,19 @@ BUILD
                 "1:7,53",
                 7,
                 53,
-                vec![with_skill(with_men(unit("5"), 5), "COMB", 1), foreign_guard("14")],
+                vec![
+                    with_skill(with_men(unit("5"), 5), "COMB", 1),
+                    foreign_guard("14"),
+                ],
             ),
-            region_at("1:8,53", 8, 53, vec![with_skill(with_men(unit("6"), 5), "COMB", 1)]),
+            region_at(
+                "1:8,53",
+                8,
+                53,
+                vec![with_skill(with_men(unit("6"), 5), "COMB", 1)],
+            ),
         ];
-        let review = review_trade(
-            regions,
-            "unit 5\nPILLAGE\nunit 6\nTAX\n",
-            &[("Regions", 1)],
-        );
+        let review = review_trade(regions, "unit 5\nPILLAGE\nunit 6\nTAX\n", &[("Regions", 1)]);
 
         assert!(
             trade_findings(&review.findings).is_empty(),
