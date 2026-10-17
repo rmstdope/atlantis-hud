@@ -524,7 +524,9 @@ function changeOf(
     return undefined;
   }
   const now = amount ?? 0;
-  if (before === now) {
+  // Nothing at either end - goods the month passed through - is no pair: "gone, down from none"
+  // read as a loss from nothing (`ah-6c76`).
+  if ((before ?? 0) === now) {
     return undefined;
   }
   return {
@@ -639,6 +641,9 @@ function itemCauseClause(change: ItemChange, unit: PreviewedUnit, people: boolea
       return `lent ${n}${change.borrower ? ` for ${party(change.borrower)}` : ""} to discard`;
     case "was-given":
       return `given ${n}${change.other ? ` by ${party(change.other)}` : ""}`;
+    // A matched EXCHANGE, either way: the line's own up or down says which (`ah-6c76`).
+    case "exchanged":
+      return `exchanged ${n}${change.other ? ` with ${party(change.other)}` : ""}`;
     case "took":
       return `took ${n}${change.other ? ` from ${party(change.other)}` : ""}`;
     case "was-taken-from":
@@ -1676,7 +1681,7 @@ function ownSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
 /**
  * What the unit holds, and everything today's ITEMS hover says about how the figure was reached.
  *
- * The amber sentence explains the cell's `+ ?` in general terms, because both of its causes - an
+ * The amber sentence explains the cell's `?` in general terms, because both of its causes - an
  * order that could not be read, and a TRANSPORT whose target the report cannot settle (`ah-64wm`)
  * - leave the month partly counted; which one it was is in the notes, where `itemsTooltip` already
  * words it.
@@ -1720,7 +1725,7 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   const warning = [
     shortSentence(shortItems(unit)),
     partlyCounted
-      ? "“+ ?” in the cell: this month is only partly counted, so this list may be short."
+      ? "“?” in the cell: this month is only partly counted, so these figures may be off."
       : null
   ].filter((part): part is string => part !== null);
 
@@ -2005,8 +2010,11 @@ function silverCauseWhy(
   itemChanges: readonly ItemChange[]
 ): string | undefined {
   const parts: string[] = [];
-  const others = (entries: readonly SilverChange[]): string[] =>
-    entries.map((entry) => entry.other).filter((other): other is string => other !== null);
+  // Each party once: two GIVE lines from one unit merge into one line, and named it twice
+  // (`ah-6c76`).
+  const others = (entries: readonly SilverChange[]): string[] => [
+    ...new Set(entries.map((entry) => entry.other).filter((other): other is string => other !== null))
+  ];
 
   if (group.cause === "was-given" || group.cause === "received") {
     const from = others(group.entries);
@@ -2021,6 +2029,11 @@ function silverCauseWhy(
     }
     if (unshown.length > 0) {
       parts.push(`from ${andList(unshown)}, which your report does not show`);
+    }
+  } else if (group.cause === "exchanged") {
+    const with_ = others(group.entries);
+    if (with_.length > 0) {
+      parts.push(`with ${andList(with_)}`);
     }
   } else if (group.cause === "gave-away" || group.cause === "sent") {
     const to = others(group.entries);

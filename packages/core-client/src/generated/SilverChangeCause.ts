@@ -3,4 +3,4 @@
 /**
  * Why a unit's silver moved this month. One variant per term [`forecast_unit`] prices.
  */
-export type SilverChangeCause = "taxed" | "pillaged" | "claimed" | "sold" | "cast-earned" | "worked" | "entertained" | "was-given" | "received" | "gift-reverted" | "took" | "took-unshown" | "bought" | "studied" | "cast-spent" | "production-spent" | "gave-away" | "sent" | "discarded" | "lent" | "was-taken" | "was-lent" | "was-lent-for-upkeep" | "lent-for-upkeep" | "shipped";
+export type SilverChangeCause = "taxed" | "pillaged" | "claimed" | "sold" | "cast-earned" | "worked" | "entertained" | "was-given" | "received" | "gift-reverted" | "took" | "took-unshown" | "bought" | "studied" | "cast-spent" | "production-spent" | "gave-away" | "exchanged" | "sent" | "discarded" | "lent" | "was-taken" | "was-lent" | "was-lent-for-upkeep" | "lent-for-upkeep" | "shipped";

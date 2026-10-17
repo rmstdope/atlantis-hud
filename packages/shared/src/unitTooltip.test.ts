@@ -283,12 +283,8 @@ describe("the silver section", () => {
 
     // Every sentence that holds, not the first (`ah-x36v`): no silver moves either, and that is
     // now said alongside rather than swallowed.
-    expect(capped.silver?.note).toBe(
-      [
-        "This unit has materials for 0 catapults, not the 2 its skill and tools could make.",
-        "Nothing this unit is ordered to do moves silver."
-      ].join("\n")
-    );
+    // Materials are the Items hover's business, not the Silver one's (`ah-6c76`).
+    expect(capped.silver?.note).toBe("Nothing this unit is ordered to do moves silver.");
   });
 
   it("the_shortfall_outranks_a_capped_production", () => {
@@ -1591,9 +1587,8 @@ describe("the hover says every sentence that holds (ah-x36v)", () => {
       true
     );
 
-    expect(summary.silver?.note).toBe(
-      "Requested: 10 swords. This month: 8.\nLimited by skill and tools. The remaining 2 carry over."
-    );
+    // Not silver-bound, so the Items hover alone says it (`ah-6c76`).
+    expect(summary.silver?.note ?? "").not.toContain("Requested: 10 swords.");
   });
 
   it("a unit that takes, receives and destroys is told all three", () => {
@@ -1838,6 +1833,7 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
     "contested-region-pool",
     "market-does-not-sell",
     "gives-a-whole-class",
+    "gives-itself-away",
     "contested-faction-food",
     "unknown-combat-ready",
     "unknown-skills-after-arrivals",

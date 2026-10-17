@@ -136,7 +136,7 @@ pub struct UnitPreview {
     pub transport_target_issues: Vec<TransportTargetIssue>,
     /// This unit wrote a `TRANSPORT`/`DISTRIBUTE` whose distance the map cannot measure, so its
     /// goods are listed where the report left them and the list may be wrong (`ah-7ale.5`). What
-    /// the ITEMS cell's ` + ?` is drawn from, and **never silenced by the Transport warning**: a
+    /// the ITEMS cell's ` ?` is drawn from, and **never silenced by the Transport warning**: a
     /// mark on a figure is not a warning about an order.
     pub shipment_unmeasured: bool,
     /// Every item this month's orders move into or out of this unit, each with its cause, **in the
@@ -680,6 +680,10 @@ pub enum ItemChangeCause {
     /// (`rules/economy_ships`, "unfinished ships appear only in their builder's inventory").
     /// Recorded on the founder, by its own `BUILD` order.
     ShipStarted,
+    /// Moved by a matched `EXCHANGE` between two of our units, either way: negative on the side
+    /// that hands the goods over, positive on the side that gets them, naming the other side
+    /// (`rules/exchange`). It read as a gift each way before (`ah-6c76`).
+    Exchanged,
 }
 
 /// A ship this month's founding `BUILD <ship>` begins, and what becomes of it (`ah-ywyf`).
@@ -3762,7 +3766,7 @@ impl Working {
             // "cannot be given", men to another faction, a mage's men (`rules/magic`, a discard
             // included), men into a mage (`ah-ndp9`) - and a tag whose permission the report cannot
             // establish (`ah-66yi`) all stay with the source. The second is admitted through the
-            // ledger's `uncounted`, which the preview renders as `+ ?`. Per tag, so `ALL ITEMS`
+            // ledger's `uncounted`, which the preview renders as ` ?`. Per tag, so `ALL ITEMS`
             // still hands over what may move, and before anything is debited.
             if verdict.of(&tag, Some(&self.ruleset)) != super::targets::GiveOutcome::Moves {
                 continue;
@@ -4311,10 +4315,10 @@ impl Working {
                 continue;
             }
             // The goods are welcome and the map cannot say whether they get there, so nothing
-            // moves them and nothing claims they moved: the list keeps them and carries the ` + ?`
+            // moves them and nothing claims they moved: the list keeps them and carries the ` ?`
             // that says it may be wrong (`ah-7ale.5`).
             if arrival == super::transport::Arrival::Unmeasured {
-                // Never gated: this is what the ` + ?` is drawn from, and a mark on a figure is not
+                // Never gated: this is what the ` ?` is drawn from, and a mark on a figure is not
                 // a warning about an order.
                 self.units[pending.sender].shipment_unmeasured = true;
                 // The sentence that names *which* shipment did it is the switch's.

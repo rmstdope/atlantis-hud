@@ -4,6 +4,7 @@ import { OrdersPanel } from "./OrdersPanel";
 import { NO_PRODUCTION, NO_STUDENTS, NO_FACTION_ORDERS } from "../orderEditor";
 import { formedSelectionFor } from "./ordersLock";
 import { orderProcessingFor } from "../orderProcessing";
+import { aReportUnit } from "@atlantis/core-client";
 
 /**
  * The orders pane's walk buttons (ah-dlao): the mouse route into the same walk F8 makes.
@@ -145,5 +146,50 @@ describe("a unit formed this month", () => {
     expect(markup).toContain(
       "The orders no longer carry a FORM 1 that creates this unit in this hex."
     );
+  });
+});
+
+/**
+ * `ah-6c76`: a finding of this unit's that names no line - a hex pool it draws on by its flag, with
+ * no order to point at - drew the word "line" followed by nothing.
+ */
+describe("a unit's problem with no line", () => {
+  const DOCUMENT = ["unit 161", "@study obse"].join("\n");
+  const problem = {
+    code: "region-pool-oversubscribed",
+    message: "your units here work for $9816 between them and this region pays $5000",
+    lineStart: null,
+    lineEnd: null,
+    columnStart: null,
+    columnEnd: null,
+    regionId: "1:7,53",
+    unitId: "161",
+    formed: null,
+    severity: "warning" as const
+  };
+
+  it("names no line rather than an empty one", () => {
+    const markup = renderToStaticMarkup(
+      <OrdersPanel orders={orderProcessingFor("neworigins")}
+        unit={aReportUnit({ unitId: "161", own: true })}
+        unitId="161"
+        formed={null}
+        regionUnitIds={new Set(["161"])}
+        hex={null}
+        document={DOCUMENT}
+        externalRevision={0}
+        ownFactionName="your faction"
+        onChange={() => {}}
+        validated={{ text: DOCUMENT, diagnostics: [problem], silver: [], production: NO_PRODUCTION, students: NO_STUDENTS, faction: NO_FACTION_ORDERS, unclaimedSilverUse: null }}
+        save={{ kind: "clean" }}
+        commands={[]}
+        orderVocabulary={[]}
+        snippets={[]}
+        caretCompletions={async () => ({ position: "command", wordStart: 0, word: "", options: [], endingCommands: [] })}
+      />
+    );
+
+    expect(markup).toContain("your units here work for $9816");
+    expect(markup).not.toMatch(/>line\s*</);
   });
 });

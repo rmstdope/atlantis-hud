@@ -10490,7 +10490,7 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
             StatePhase::Give,
             &giver.unit_id,
             -amount,
-            SilverChangeCause::GaveAway,
+            SilverChangeCause::Exchanged,
             Some(placed),
             Some(format!("{} ({})", receiver.name, receiver.unit_id)),
         );
@@ -10499,7 +10499,7 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
             StatePhase::Give,
             &receiver.unit_id,
             amount,
-            SilverChangeCause::WasGiven,
+            SilverChangeCause::Exchanged,
             Some(placed),
             Some(format!("{} ({})", giver.name, giver.unit_id)),
         );
@@ -10555,9 +10555,10 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
         .exchanged_away
         .insert((giver.unit_id.clone(), offer.line, tag.clone()));
     let name = item_name(tag, hex, ledger.ruleset);
+    // Named as the exchange it is, both ways, rather than as a gift each way (`ah-6c76`).
     for (unit, delta, cause, other) in [
-        (giver, -own_part, ItemChangeCause::GivenAway, receiver),
-        (receiver, amount, ItemChangeCause::WasGiven, giver),
+        (giver, -own_part, ItemChangeCause::Exchanged, receiver),
+        (receiver, amount, ItemChangeCause::Exchanged, giver),
     ] {
         ledger.movements.push(ItemMovement {
             unit_id: unit.unit_id.clone(),

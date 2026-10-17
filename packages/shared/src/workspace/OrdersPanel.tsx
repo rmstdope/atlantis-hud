@@ -287,7 +287,10 @@ function ProblemList({ problems, text }: { problems: OrderDiagnostic[]; text: st
             className="flex gap-2"
           >
             <SeverityMark severity={problem.severity} />
-            <span className="shrink-0 tabular-nums text-ink-dim">line {problem.lineStart}</span>
+            {/* A finding on the unit as a whole has no line to count to, and says none (`ah-6c76`). */}
+            {problem.lineStart === null ? null : (
+              <span className="shrink-0 tabular-nums text-ink-dim">line {problem.lineStart}</span>
+            )}
             {found === null ? null : (
               <code
                 data-testid="orders-diagnostic-token"

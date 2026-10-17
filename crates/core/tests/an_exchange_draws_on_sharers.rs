@@ -140,7 +140,7 @@ fn goods_a_sharer_covers_move_on_the_items_preview() {
         "the buyer pays"
     );
     assert_eq!(
-        silver_moved((smith, buyer, ""), "2391", SilverChangeCause::WasGiven),
+        silver_moved((smith, buyer, ""), "2391", SilverChangeCause::Exchanged),
         50,
         "the SILVER column books the payment"
     );
@@ -152,12 +152,12 @@ fn silver_a_sharer_covers_moves_on_the_silver_column() {
     let smith = "EXCHANGE 2392 2 SWOR 120 SILV";
     let buyer = "EXCHANGE 2391 120 SILV 2 SWOR";
     assert_eq!(
-        silver_moved((smith, buyer, ""), "2391", SilverChangeCause::WasGiven),
+        silver_moved((smith, buyer, ""), "2391", SilverChangeCause::Exchanged),
         120,
         "the smith is paid in full"
     );
     assert_eq!(
-        silver_moved((smith, buyer, ""), "2392", SilverChangeCause::GaveAway),
+        silver_moved((smith, buyer, ""), "2392", SilverChangeCause::Exchanged),
         -120
     );
     let buyer_row = silver_row((smith, buyer, ""), "2392");

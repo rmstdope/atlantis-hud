@@ -156,9 +156,9 @@ function limitedBy(silver: UnitSilver, capped: ProductionCap): string {
  * `rules/produce`: a numbered order "will attempt to produce exactly that number of items; if this
  * is not possible in one month then the order will carry over to subsequent months" - so the
  * written request is shown even when it fits exactly (the navigator's decision 2), and every
- * shortfall ends by saying what carries over (decision 6). One entry point for both hovers,
- * because the ITEMS and SILVER cells of one row must say the same thing in the same words
- * (`ah-ofpb.1`).
+ * shortfall ends by saying what carries over (decision 6). The ITEMS hover's entry point; the
+ * SILVER hover says only a silver-capped run, through `silverBoundProductionSentence`, in the same
+ * words (`ah-ofpb.1`, `ah-6c76`).
  */
 export function productionStatusSentence(
   silver: UnitSilver | null | undefined
@@ -188,6 +188,17 @@ function foreignProducerSentence(silver: UnitSilver): string | undefined {
   }
   const named = silver.productionRegionName ?? silver.producedName;
   return `At most ${silver.produced}: a foreign unit in this region may also produce ${named}.`;
+}
+
+/**
+ * What limited the run, for the Silver hover: [`productionStatusSentence`] without the foreign
+ * producer's ceiling, and only where silver is what capped it - `undefined` otherwise (`ah-6c76`).
+ */
+function silverBoundProductionSentence(silver: UnitSilver): string | undefined {
+  if (silver.productionCappedBy !== "silver" || silver.producedName === null) {
+    return undefined;
+  }
+  return productionLimitSentence({ ...silver, producedName: silver.producedName });
 }
 
 /** What limited the run, as [`productionStatusSentence`] has always said it. */
@@ -664,6 +675,20 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       countUpkeep: true
     })
   },
+  // `rules/give`: `GIVE <unit> UNIT` "gives the entire unit to the specified unit's faction" - not
+  // goods, so it is not told as a class of them (`ah-6c76`, the navigator's words).
+  {
+    id: "doubt-gives-itself-away",
+    when: ({ silver }) => silver.doubt === "gives-itself-away",
+    say: () =>
+      "This unit is giving itself to another faction, so what it ends the month with cannot be counted.",
+    example: () => ({
+      unit: aReportUnit(),
+      silver: aUnitSilver({ doubt: "gives-itself-away" }),
+      warned: false,
+      countUpkeep: true
+    })
+  },
   {
     id: "give-consequences-uncertain",
     when: ({ silver }) => silver.doubt === "give-consequences-uncertain",
@@ -815,32 +840,17 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       countUpkeep: true
     })
   },
-  // Before `production-capped`, because that sentence quotes "the N its skill and tools could make" and this
-  // one is what explains why N is what it is (`ah-qct4`). `SILVER_NOTES`' order is reading order,
-  // not precedence - every note whose `when` holds is shown - so this changes only where it reads.
-  {
-    id: "production-men-left",
-    when: ({ silver }) => productionMenSentence(silver) !== undefined,
-    say: ({ silver }) => productionMenSentence(silver) ?? "",
-    example: () => ({
-      unit: aReportUnit({ men: 3 }),
-      silver: aUnitSilver({
-        produced: 3,
-        producedName: "sword",
-        productionWanted: 3,
-        productionMenLeft: 5
-      }),
-      warned: false,
-      countUpkeep: true
-    })
-  },
   // An order the game will not carry out as written, like the shortfall line above - and below it,
   // because a shortfall is the more urgent of the two (`ah-19l2.2`). Silent at full rate: the
   // count is only worth a line when something stopped it.
+  //
+  // Only where silver is what stopped it: the men that left, the materials, the workforce, the
+  // region's yield and a foreign producer's share are statements about items, which the Items hover
+  // makes, and they read as oddities under the silver figures (`ah-6c76`, the navigator's answer).
   {
     id: "production-capped",
-    when: ({ silver }) => productionStatusSentence(silver) !== undefined,
-    say: ({ silver }) => productionStatusSentence(silver) ?? "",
+    when: ({ silver }) => silverBoundProductionSentence(silver) !== undefined,
+    say: ({ silver }) => silverBoundProductionSentence(silver) ?? "",
     example: () => ({
       unit: aReportUnit({ men: 3 }),
       silver: aUnitSilver({
@@ -858,7 +868,7 @@ export const SILVER_NOTES: readonly SilverNote[] = [
   // none of it at all (`ah-ofpb.4`).
   {
     id: "cast-capped",
-    when: ({ silver }) => castCapSentence(silver) !== undefined,
+    when: ({ silver }) => silver.castCappedBy === "silver" && castCapSentence(silver) !== undefined,
     say: ({ silver }) => castCapSentence(silver) ?? "",
     example: () => ({
       unit: aReportUnit(),
@@ -1205,6 +1215,7 @@ export const SILVER_CAUSE_LABELS: Readonly<Record<Exclude<SilverChangeCause, "to
   "cast-spent": "paid to cast",
   "production-spent": "spent producing",
   "gave-away": "gave away",
+  exchanged: "exchanged",
   sent: "sent",
   discarded: "given to nobody",
   lent: "lent",
@@ -1228,7 +1239,7 @@ export function silverCauseLabel(cause: string): string {
 
 /**
  * The causes that moved this unit's silver, one group per cause, except gifts and shipments
- * received, which are grouped by sender. Each group stays in the position of its first entry - the turn's own order, because
+ * received, which are grouped by sender, and exchanges, grouped by partner and direction. Each group stays in the position of its first entry - the turn's own order, because
  * `UnitSilver.changes` is in it.
  *
  * `took` and `took-unshown` merge into one group, keyed `took`: they are one event to a reader, and
@@ -1239,8 +1250,15 @@ export function silverCauseGroups(changes: readonly SilverChange[]): SilverCause
   const byCause = new Map<string, Map<string, SilverCauseGroup>>();
   for (const change of changes) {
     const key = change.cause === "took-unshown" ? "took" : change.cause;
-    // A gift or a shipment received is a line per sender, so two senders never read as one.
-    const source = key === "was-given" || key === "received" ? (change.other ?? "") : "";
+    // A gift or a shipment received is a line per sender, so two senders never read as one. An
+    // exchange is a line per partner and direction: its cause is signed, so two exchanges the
+    // other way round would otherwise net out of sight (review finding 1 on PR #1688).
+    const source =
+      key === "was-given" || key === "received"
+        ? (change.other ?? "")
+        : key === "exchanged"
+          ? `${change.amount < 0 ? "-" : "+"}${change.other ?? ""}`
+          : "";
     let bySource = byCause.get(key);
     if (!bySource) {
       bySource = new Map();

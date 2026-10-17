@@ -388,6 +388,17 @@ describe("findings that belong to a hex", () => {
     expect(found[0].lineStart).toBe(2);
   });
 
+  // `ah-6c76`: a finding the core hangs on a unit's block rather than an order - an automatic tax
+  // caveat for a unit with no TAX line - sits on the `unit` line itself, which the editor does not
+  // show. Clamped onto the block, it read as "line 1", the unit's first order, which it is not.
+  it("keeps no line for a finding that sits on the unit's own header", () => {
+    const found = diagnosticsForUnit(DOCUMENT, "13401", [unitFinding("13401", 3)], undefined, "origins");
+
+    expect(found).toHaveLength(1);
+    expect(found[0].lineStart).toBeNull();
+    expect(found[0].lineEnd).toBeNull();
+  });
+
   /**
    * The unit is what a finding names, and it beats the line it happens to sit on. Two units'
    * blocks are adjacent, and a finding filed under one must never surface under the other because
