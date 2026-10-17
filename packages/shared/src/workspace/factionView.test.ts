@@ -39,7 +39,7 @@ describe("allowanceRows (ah-x7s3)", () => {
   it("a Regions row over its limit is over, with the Production window's note", () => {
     const [row] = allowanceRows(
       statusOf({ label: "Regions", used: 0, maximum: 10 }),
-      aProductionOverview({ regions: regions(12) }),
+      aProductionOverview({ regions: regions(12, { usesTaxSlot: true }) }),
       NONE, null);
     expect(row).toMatchObject({
       used: 12,
@@ -207,7 +207,7 @@ describe("faction order (ah-7g4f)", () => {
   it("allowanceRows takes the applied limits", () => {
     const [regionRow] = allowanceRows(
       statusOf({ label: "Regions", used: 0, maximum: 10 }),
-      aProductionOverview({ regions: regions(43) }),
+      aProductionOverview({ regions: regions(43, { usesTaxSlot: true }) }),
       NONE,
       LIMITS
     );
