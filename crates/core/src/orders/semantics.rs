@@ -869,13 +869,13 @@ pub fn review_turn(
     // (`ah-gcrc`, `ah-p0xm`).
     let (faction, failures) = faction_orders(report, &ordered, ruleset);
     let applied = faction.applied.as_ref().map(|applied| &applied.limits);
-    let taxing_refused = region_limit_refusals(report, &hexes, ruleset, applied).taxing;
     settle_recruits_before_production(
         &mut hexes,
+        report,
         ruleset,
+        applied,
         &claim_allowances,
         withdrawal_allowances,
-        taxing_refused,
     );
     let production = production_shares_refusing(
         &hexes,
@@ -6991,14 +6991,18 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
 /// `ProductionShares` and its final ledger from that post-recruit state after this returns.
 fn settle_recruits_before_production(
     hexes: &mut [Hex<'_>],
+    report: &ParsedReport,
     ruleset: Option<&Ruleset>,
+    // The region limit this month's FACTION applies (`faction_orders`).
+    applied: Option<&FactionLimits>,
     claim_allowances: &ClaimAllowances,
     withdrawal_allowances: WithdrawalAllowances<'_>,
+) {
     // The hexes whose TAX and PILLAGE the faction's region limit refuses. The tax phase runs
     // before BUY (`rules/sequenceofevents`), so tax the game never collects pays for no recruit
-    // (`ah-p0xm`). Production runs after the market, so its refusals do not matter here.
-    taxing_refused: HashSet<Coordinate>,
-) {
+    // (`ah-p0xm`). Production runs after the market, so its refusals do not matter here. Settled
+    // here rather than by each caller, so every caller's recruits agree.
+    let taxing_refused = region_limit_refusals(report, hexes, ruleset, applied).taxing;
     let provisional = production_shares_refusing(
         hexes,
         ruleset,
@@ -7866,15 +7870,15 @@ pub(crate) fn month_long_teachers(
     );
     let (faction, _) = faction_orders(report, &ordered, ruleset);
     let applied = faction.applied.as_ref().map(|applied| &applied.limits);
-    let taxing_refused = region_limit_refusals(report, &hexes, ruleset, applied).taxing;
     settle_recruits_before_production(
         &mut hexes,
+        report,
         ruleset,
+        applied,
         &claim_allowances,
         unclaimed_plan
             .as_ref()
             .map(|plan| &plan.withdrawal_allowances),
-        taxing_refused,
     );
     hexes
         .iter()
@@ -7953,13 +7957,13 @@ pub(crate) fn item_effects(
     // The limit this month's FACTION applies, as `review_turn` reads it (`ah-gcrc`, `ah-p0xm`).
     let (faction, _) = faction_orders(report, &ordered, ruleset);
     let applied = faction.applied.as_ref().map(|applied| &applied.limits);
-    let taxing_refused = region_limit_refusals(report, &hexes, ruleset, applied).taxing;
     settle_recruits_before_production(
         &mut hexes,
+        report,
         ruleset,
+        applied,
         &claim_allowances,
         withdrawal_allowances,
-        taxing_refused,
     );
 
     // Every hex before any ledger, and one settlement for all of them: a passenger produces where
@@ -73130,6 +73134,36 @@ BUILD
             .find(|row| row.unit_id == "6")
             .expect("unit 6 has a SILVER row");
         assert_eq!(row.expense, Some(76));
+    }
+
+    /// The guard is asked before the region limit ("TAX: A unit is on guard." precedes
+    /// `ActivityCheck`, `../Atlantis` `runorders.cpp`), so a refused hex's guard is still named on
+    /// its TAX line - and a pillage the limit refuses no longer hides it (`ah-p0xm`).
+    #[test]
+    fn a_refused_guarded_hex_still_names_the_guard() {
+        let regions = vec![
+            taxable_region("1:7,53", 7, 53, vec![fighter("5")]),
+            taxable_region(
+                "1:8,53",
+                8,
+                53,
+                vec![foreign_guard("9"), fighter("6"), fighter("8")],
+            ),
+        ];
+        let review = review_turn(
+            &report_with_statuses(&[("Tax Regions", 1), ("Trade Regions", 5)], regions),
+            "unit 5\nPILLAGE\nunit 6\nTAX\nunit 8\nPILLAGE\n",
+            Some(&ruleset()),
+            disabling_all(&[]),
+        );
+
+        let on_the_tax_line: Vec<&str> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.unit_id.as_deref() == Some("6"))
+            .map(|finding| finding.code.as_str())
+            .collect();
+        assert_eq!(on_the_tax_line, vec![codes::TAXED_A_GUARDED_HEX.as_str()]);
     }
 
     /// The same for PILLAGE, which `RunPillageOrders` checks against the same tax counter.
