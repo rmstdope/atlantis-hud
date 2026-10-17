@@ -1,0 +1,57 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Red silver: option A</title><style>
+:root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--edge-soft:#1e2733;--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--select:#4a9fd8;--ok:#4fb783;--danger:#d97070;}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:28px 16px 64px}
+main{max-width:1100px;margin:0 auto}
+h1{font-size:24px} h1 span{color:var(--brass)}
+p.lead{color:var(--ink-soft);font-size:14px;max-width:90ch;margin:8px 0}
+h3{margin:30px 0 6px;font-size:13px;letter-spacing:1.6px;text-transform:uppercase;color:var(--brass)}
+.card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:14px;margin-bottom:16px}
+.stage{background:var(--ground);border:1px solid var(--edge-soft);border-radius:8px;padding:10px;overflow-x:auto}
+table.units{width:100%;table-layout:fixed;border-collapse:collapse;font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif;font-variant-numeric:tabular-nums}
+table.units th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);font-weight:400;padding:2px 8px;border-bottom:1px solid var(--edge)}
+table.units td{padding:3px 8px;border-bottom:1px solid var(--edge-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.num{text-align:right}
+.own{color:var(--ok)}.uid{color:var(--select)}.ord{color:var(--ink-dim);font-family:Menlo,monospace;font-size:11px}
+.pred{font-style:italic;color:var(--brass)} .bad{color:var(--danger);font-style:normal}
+.short{color:var(--danger);font-size:11px;margin-left:6px;font-style:normal}
+.mark{color:var(--danger);font-weight:bold;margin-left:4px;font-style:normal}
+.colhi{outline:1px solid var(--brass);outline-offset:-1px}
+.pop{margin-top:10px;max-width:440px;background:var(--raised);border:1px solid var(--edge);border-radius:6px;padding:9px 12px;font:12px/1.5 'Helvetica Neue',Arial,sans-serif;color:var(--ink-soft)}
+.pop .head{color:var(--ink);font-weight:bold;margin-bottom:4px}
+.pop .alert{color:var(--danger);font-weight:bold;margin-bottom:6px}
+.pop .row{display:flex;justify-content:space-between;font-family:Menlo,monospace;font-size:11.5px}
+.pop .foot{margin-top:6px;color:var(--ink-dim);font-size:11px}
+.notes{list-style:none;font-size:12.5px;color:var(--ink-soft);margin-top:10px;display:grid;gap:3px}
+.notes li::before{content:"+ ";color:var(--ok)} .notes li.con::before{content:"\2212 ";color:var(--danger)}
+.narrow{max-width:360px}
+</style></head><body><main>
+<h1>Why is a positive figure red? — <span>Option A — the shortfall beside the figure</span></h1>
+<p class="lead">Seven of Eight claims 2000 silver and orders 50 gems at 213 (10650). It can afford 9, so it buys 9 and ends the month with 33. The red was meant to say “its orders can’t all be paid”; today it reads as a mistake. Below the units table you see Pikemen, who ends the month in debt, for comparison.</p>
+<h3>Today</h3><div class="card"><div class="stage"><table class="units"><colgroup><col style="width:28px"><col style="width:64px"><col style="width:130px"><col><col style="width:150px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi num">SILVER</th></tr></thead><tbody>
+<tr><td class="own">*</td><td class="uid">18642</td><td>Seven of Eight</td><td class="ord">claim 2000 · buy 50 GEM</td><td class="colhi num"><span class="pred bad">33</span></td></tr>
+<tr><td class="own">*</td><td class="uid">18650</td><td>Ferrymen</td><td class="ord">work</td><td class="colhi num"><span class="pred">412</span></td></tr>
+<tr><td class="own">*</td><td class="uid">18655</td><td>Pikemen</td><td class="ord">study COMB</td><td class="colhi num"><span class="pred bad">-50</span></td></tr>
+</tbody></table></div><div class="pop"><div class="head">Seven of Eight (18642)</div><div class="row"><span>silver</span><span>0 → 33</span></div>
+<div class="row"><span>claimed</span><span>+2050</span></div>
+<div class="row"><span>bought 9 gems at 213</span><span>-1917</span></div>
+<div class="row"><span>studied</span><span>-50</span></div>
+<div class="row"><span>upkeep</span><span>-50</span></div><div class="foot">This unit is 8650 short of what its purchase costs.</div><div class="foot">A red figure in the cell: this unit cannot pay for its own orders out of silver that reaches it in time.</div></div></div>
+<h3>Option A — the shortfall beside the figure</h3><div class="card"><p class="lead">The month-end figure goes back to the ordinary projected colour. Beside it, in red and smaller, the cell says how much the orders are short. Red now always sits on a shortfall: a negative figure, or the words “short”.</p><div class="stage"><table class="units"><colgroup><col style="width:28px"><col style="width:64px"><col style="width:130px"><col><col style="width:150px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi num">SILVER</th></tr></thead><tbody>
+<tr><td class="own">*</td><td class="uid">18642</td><td>Seven of Eight</td><td class="ord">claim 2000 · buy 50 GEM</td><td class="colhi num"><span class="pred">33</span><span class="short">8650 short</span></td></tr>
+<tr><td class="own">*</td><td class="uid">18650</td><td>Ferrymen</td><td class="ord">work</td><td class="colhi num"><span class="pred">412</span></td></tr>
+<tr><td class="own">*</td><td class="uid">18655</td><td>Pikemen</td><td class="ord">study COMB</td><td class="colhi num"><span class="pred bad">-50</span></td></tr>
+</tbody></table></div><div class="pop"><div class="head">Seven of Eight (18642)</div><div class="alert">8650 short: it buys 9 of the 50 gems ordered.</div><div class="row"><span>silver</span><span>0 → 33</span></div>
+<div class="row"><span>claimed</span><span>+2050</span></div>
+<div class="row"><span>bought 9 gems at 213</span><span>-1917</span></div>
+<div class="row"><span>studied</span><span>-50</span></div>
+<div class="row"><span>upkeep</span><span>-50</span></div></div><ul class="notes"><li>The reason is in the cell itself — no hover needed.</li><li>Red keeps one meaning across the table: money is missing.</li><li class="con">The SILVER column needs room for a second number; in a narrow window it shortens to “33 ▾8650” and then to “33 …”.</li></ul></div>
+<h3>Narrow window</h3><div class="card narrow"><div class="stage"><table class="units"><colgroup><col style="width:28px"><col style="width:64px"><col style="width:130px"><col><col style="width:150px"></colgroup>
+<thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi num">SILVER</th></tr></thead><tbody>
+<tr><td class="own">*</td><td class="uid">18642</td><td>Seven of Eight</td><td class="ord">claim 2000 · buy 50 GEM</td><td class="colhi num"><span class="pred">33</span><span class="short">▾8650</span></td></tr>
+<tr><td class="own">*</td><td class="uid">18650</td><td>Ferrymen</td><td class="ord">work</td><td class="colhi num"><span class="pred">412</span></td></tr>
+<tr><td class="own">*</td><td class="uid">18655</td><td>Pikemen</td><td class="ord">study COMB</td><td class="colhi num"><span class="pred bad">-50</span></td></tr>
+</tbody></table></div></div>
+</main></body></html>

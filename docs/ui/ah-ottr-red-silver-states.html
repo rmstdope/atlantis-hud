@@ -1,0 +1,42 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Red silver states: N1</title><style>
+:root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--edge-soft:#1e2733;--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--select:#4a9fd8;--ok:#4fb783;--danger:#d97070;}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:28px 16px 64px}
+main{max-width:1100px;margin:0 auto}
+h1{font-size:24px} h1 span{color:var(--brass)}
+p.lead{color:var(--ink-soft);font-size:14px;max-width:90ch;margin:8px 0}
+h3{margin:30px 0 6px;font-size:13px;letter-spacing:1.6px;text-transform:uppercase;color:var(--brass)}
+.card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:14px;margin-bottom:16px}
+.stage{background:var(--ground);border:1px solid var(--edge-soft);border-radius:8px;padding:10px;overflow-x:auto}
+table.units{width:100%;table-layout:fixed;border-collapse:collapse;font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif;font-variant-numeric:tabular-nums}
+table.units th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);font-weight:400;padding:2px 8px;border-bottom:1px solid var(--edge)}
+table.units td{padding:3px 8px;border-bottom:1px solid var(--edge-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.num{text-align:right}
+.own{color:var(--ok)}.uid{color:var(--select)}.ord{color:var(--ink-dim);font-family:Menlo,monospace;font-size:11px}
+.pred{font-style:italic;color:var(--brass)} .bad{color:var(--danger);font-style:normal}
+.short{color:var(--danger);font-size:11px;margin-left:6px;font-style:normal}
+.mark{color:var(--danger);font-weight:bold;margin-left:4px;font-style:normal}
+.colhi{outline:1px solid var(--brass);outline-offset:-1px}
+.pop{margin-top:10px;max-width:440px;background:var(--raised);border:1px solid var(--edge);border-radius:6px;padding:9px 12px;font:12px/1.5 'Helvetica Neue',Arial,sans-serif;color:var(--ink-soft)}
+.pop .head{color:var(--ink);font-weight:bold;margin-bottom:4px}
+.pop .alert{color:var(--danger);font-weight:bold;margin-bottom:6px}
+.pop .row{display:flex;justify-content:space-between;font-family:Menlo,monospace;font-size:11.5px}
+.pop .foot{margin-top:6px;color:var(--ink-dim);font-size:11px}
+.notes{list-style:none;font-size:12.5px;color:var(--ink-soft);margin-top:10px;display:grid;gap:3px}
+.notes li::before{content:"+ ";color:var(--ok)} .notes li.con::before{content:"\2212 ";color:var(--danger)}
+.narrow{max-width:360px}
+.notes li.n::before{content:"· ";color:var(--ink-dim)}</style></head><body><main>
+<h1>Option A, every case — <span>N1 — a negative figure shows alone</span></h1>
+<p class="lead">This is the option you chose, A, drawn for every case it has to cover. The only difference between the two drawings is the third row, Pikemen, who ends the month in debt <i>and</i> can't pay for all of its study.</p>
+<h3>The cases</h3><div class="card"><div class="stage"><table class="units"><colgroup><col style="width:28px"><col style="width:64px"><col style="width:130px"><col><col style="width:150px"></colgroup><thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi num">SILVER</th></tr></thead><tbody><tr><td class="own">*</td><td class="uid">18642</td><td>Seven of Eight</td><td class="ord">claim 2000 · buy 50 GEM</td><td class="colhi num"><span class="pred">33</span><span class="short">8650 short</span></td></tr><tr><td class="own">*</td><td class="uid">18644</td><td>Gem buyers</td><td class="ord">buy 10 GEM</td><td class="colhi num"><span class="pred">120</span><span class="short">2010 short</span></td></tr><tr><td class="own">*</td><td class="uid">18655</td><td>Pikemen</td><td class="ord">study COMB</td><td class="colhi num"><span class="pred bad">-50</span></td></tr><tr><td class="own">*</td><td class="uid">18660</td><td>Scribes</td><td class="ord">study OBSE</td><td class="colhi num"><span class="pred">12</span><span class="short">38 short</span></td></tr><tr><td class="own">*</td><td class="uid">18661</td><td>Hoarders</td><td class="ord">buy 400 MITH</td><td class="colhi num"><span class="pred">1 204 330</span><span class="short">2 961 100 short</span></td></tr><tr><td class="own">*</td><td class="uid">18662</td><td>Watched</td><td class="ord">buy 50 GEM</td><td class="colhi num"><span class="pred">33</span><span class="short">8650 short</span><span class="mark" style="color:var(--brass)">⚠</span></td></tr><tr><td class="own">*</td><td class="uid">18650</td><td>Ferrymen</td><td class="ord">work</td><td class="colhi num"><span class="pred">412</span></td></tr></tbody></table></div>
+<ul class="notes">
+<li class="n" style="list-style:none">Seven of Eight: buys 9 of 50. Gem buyers: can afford none of its 10 gems. Scribes: a study it can't pay for in full. Hoarders: a very long number. Watched: a money check also warns, so ⚠ follows as it does today. Ferrymen: nothing short, so nothing changes.</li>
+<li class="n" style="list-style:none">Pikemen: The figure is already red and already says money is missing, so the cell shows only <b>-50</b>. The hover gives both.</li></ul></div>
+<h3>The hover, case by case</h3><div class="card" style="display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+<div class="pop"><div class="head">Seven of Eight (18642)</div><div class="alert">8650 short: it buys 9 of the 50 gems ordered.</div><div class="row"><span>silver</span><span>0 → 33</span></div><div class="row"><span>claimed</span><span>+2050</span></div><div class="row"><span>bought 9 gems at 213</span><span>-1917</span></div><div class="row"><span>studied</span><span>-50</span></div><div class="row"><span>upkeep</span><span>-50</span></div></div>
+<div class="pop"><div class="head">Gem buyers (18644)</div><div class="alert">2010 short: it buys none of the 10 gems ordered.</div><div class="row"><span>silver</span><span>120 → 120</span></div></div>
+<div class="pop"><div class="head">Scribes (18660)</div><div class="alert">38 short of what its study costs.</div><div class="row"><span>silver</span><span>100 → 12</span></div><div class="row"><span>studied</span><span>-38</span></div><div class="row"><span>upkeep</span><span>-50</span></div></div>
+<div class="pop"><div class="head">Pikemen (18655)</div><div class="alert">Ends the month 50 short, and 30 short of what its study costs.</div><div class="row"><span>silver</span><span>40 → -50</span></div><div class="row"><span>studied</span><span>-40</span></div><div class="row"><span>upkeep</span><span>-50</span></div></div>
+</div>
+<h3>A narrow window</h3><div class="card narrow"><div class="stage"><table class="units"><colgroup><col style="width:28px"><col style="width:64px"><col style="width:130px"><col><col style="width:110px"></colgroup><thead><tr><th></th><th>ID</th><th>NAME</th><th>ORDER</th><th class="colhi num">SILVER</th></tr></thead><tbody><tr><td class="own">*</td><td class="uid">18642</td><td>Seven of Eight</td><td class="ord">claim 2000 · buy 50 GEM</td><td class="colhi num"><span class="pred">33</span><span class="short">▾8650</span></td></tr><tr><td class="own">*</td><td class="uid">18655</td><td>Pikemen</td><td class="ord">study COMB</td><td class="colhi num"><span class="pred bad">-50</span></td></tr><tr><td class="own">*</td><td class="uid">18661</td><td>Hoarders</td><td class="ord">buy 400 MITH</td><td class="colhi num"><span class="pred">1 204 330</span><span class="short">▾…</span></td></tr></tbody></table></div><ul class="notes"><li class="n" style="list-style:none">When the column is too narrow for “8650 short”, it becomes “▾8650”. If even that won't fit, the red ▾ stays and the number is cut, so a shortfall is never hidden completely.</li></ul></div>
+</main></body></html>
