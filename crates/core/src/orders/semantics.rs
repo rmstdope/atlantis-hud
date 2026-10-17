@@ -3387,7 +3387,11 @@ fn forecast_hex(
             // month did to the unit's purse - which it is.
             if forecast.doubt.is_none() {
                 // What it lent a passenger sailing in is a line of its own naming that passenger
-                // and the hex it sails from (`ah-kjq5`); the rest was lent in this hex.
+                // and the hex it sails from (`ah-kjq5`); the rest was lent in this hex. Where
+                // `owing` caps `lent`, it is the in-hex line that shrinks, and rightly: `owing`
+                // counts the passengers' loans whole (`lent_to_arriving_students`) but the hex's
+                // own borrowers only as far as `shared_silver_for_orders` is clamped, so any cap
+                // comes from the in-hex side (`ah-kjq5` review, finding 5).
                 let students = &ledger.relief().walking.arriving_students;
                 let across: Vec<(&ArrivingStudent, i64)> = purse_for_orders.lent_to_each_arriving
                     [index]
@@ -18009,9 +18013,11 @@ fn settle_studies_where_fleets_arrive(hexes: &mut [(Hex<'_>, Ledger<'_>)]) {
                 .map(|&(lender, amount)| {
                     let label = match lender {
                         Lender::Unit(index) => unit_label(hex, &hex.units[index].unit.unit_id),
-                        Lender::Arrival(index) => arrivals
-                            .get(index)
-                            .map_or_else(String::new, |arrival| label_of(&arrival.unit)),
+                        // Aligned with the arrivals by construction; a miss still names a unit.
+                        Lender::Arrival(index) => arrivals.get(index).map_or_else(
+                            || "a unit arriving here".to_string(),
+                            |arrival| label_of(&arrival.unit),
+                        ),
                     };
                     (label, amount)
                 })
@@ -79538,6 +79544,103 @@ BUILD
             "a loan inside one hex names nobody"
         );
         assert_eq!(silver_of(&review, "906").borrowed_where_fleet_lands, None);
+    }
+
+    /// `ah-kjq5` review, finding 1: a sharer that walks into the hex the fleet lands in lends
+    /// there too (`rules/share`: "in the same region"), so the passenger's line names it among
+    /// its lenders, by the name the hex it is listed in gives it. Its own `lent` line keeps
+    /// today's words - that line is out of this bead's scope.
+    #[test]
+    fn a_sharer_walking_in_where_the_fleet_lands_is_named_among_the_lenders() {
+        let banker = sharing(with_silver(unit("903"), 500));
+        let resident = sharing(with_silver(unit("902"), 30));
+        let (mut report, _) = passenger_palace(
+            open_sea(vec![banker]),
+            region_at("1:7,53", 7, 53, vec![resident]),
+            None,
+        );
+        report.regions.push(region_at(
+            "1:7,51",
+            7,
+            51,
+            vec![sharing(with_silver(unit("907"), 500))],
+        ));
+        let orders =
+            "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 903\nunit 902\nunit 907\nMOVE S\n";
+        let mut options = CheckOptions::default();
+        options
+            .month_end
+            .insert("907".to_string(), Coordinate { x: 7, y: 53, z: 1 });
+        let review = review_turn(&report, orders, Some(&trident()), options);
+        let fee = silver_of(&review, "901").borrowed_for_orders;
+        assert!(fee > 30, "the resident cannot pay it alone: {fee}");
+        let place = Some("mountain (7,53)".to_string());
+        assert_eq!(
+            loan_lines(&review, "901", SilverChangeCause::WasLent),
+            vec![
+                (Some(named(&report, "902")), place.clone(), 30),
+                (Some(named(&report, "907")), place, fee - 30),
+            ]
+        );
+    }
+
+    /// [`a_passenger_studying_between_two_sharers`] with $500 each side, the passenger's orders
+    /// being `passenger` before its STUDY.
+    fn a_passenger_ordering(passenger: &str) -> (ParsedReport, TurnReview) {
+        let banker = sharing(with_silver(unit("903"), 500));
+        let resident = sharing(with_silver(unit("902"), 500));
+        let (report, _) = passenger_palace(
+            open_sea(vec![banker]),
+            region_at("1:7,53", 7, 53, vec![resident]),
+            None,
+        );
+        let orders =
+            format!("unit 4022\nSAIL N\nunit 901\n{passenger}STUDY COMB\nunit 903\nunit 902\n");
+        let review = review_turn(&report, &orders, Some(&trident()), CheckOptions::default());
+        (report, review)
+    }
+
+    /// `ah-kjq5` review, finding 2: a passenger whose column is doubted draws no lines, so the
+    /// fallback sentence is all its month shows - and it still names where the fleet lands. A
+    /// STEAL's outcome cannot be predicted, which doubts the column but not the purse.
+    #[test]
+    fn a_doubted_passenger_still_says_where_its_fleet_lands() {
+        let (_, review) = a_passenger_ordering("STEAL 903 SILV\n");
+        let passenger = silver_of(&review, "901");
+        assert!(passenger.doubt.is_some(), "{passenger:?}");
+        assert!(passenger.borrowed_for_orders > 0, "{passenger:?}");
+        assert!(passenger.changes.is_empty(), "{passenger:?}");
+        assert_eq!(
+            passenger.borrowed_where_fleet_lands.as_deref(),
+            Some("mountain (7,53)")
+        );
+    }
+
+    /// `ah-kjq5` review, finding 3: a passenger lent silver in its own hex before it sails - a
+    /// GIVE beyond what it holds draws on the banker there, and gifts run before movement
+    /// (`rules/sequenceofevents`) - and lent its study fee where its fleet lands books the in-hex
+    /// part first, with no party, and then the lender where it lands.
+    #[test]
+    fn a_passenger_lent_in_its_own_hex_and_where_it_lands_books_both() {
+        let fee = silver_of(&a_passenger_ordering("").1, "901").borrowed_for_orders;
+        let (report, review) = a_passenger_ordering("GIVE 4022 50 SILV\n");
+        assert_eq!(
+            loan_lines(&review, "901", SilverChangeCause::WasLent),
+            vec![
+                (None, None, 50),
+                (
+                    Some(named(&report, "902")),
+                    Some("mountain (7,53)".to_string()),
+                    fee
+                ),
+            ]
+        );
+        assert_eq!(
+            silver_of(&review, "901")
+                .borrowed_where_fleet_lands
+                .as_deref(),
+            Some("mountain (7,53)")
+        );
     }
 
     /// `ah-kjq5`: a resident that pays two passengers sailing in books a line for each, in the
