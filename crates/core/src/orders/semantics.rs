@@ -27782,11 +27782,14 @@ fn region_refusals<'b>(
 /// - TAX and PILLAGE (`runorders.cpp` `CountTaxes` and the pillage walk): "No population to tax",
 ///   and a unit with no combat-ready men ("Unit cannot tax", "Not a combat ready unit"), read
 ///   through the same [`readiness`] `tax-without-combat-ready-men` reads.
+/// - PILLAGE in a hex another faction guards (`runorders.cpp` `CountPillagers`, "PILLAGE: A unit
+///   is on guard.", and `aregion.cpp` `ARegion::CanPillage`): a guard blocks it "regardless of
+///   your attitude" (`rules/economy_taxingpillaging`).
 ///
 /// Anything it cannot judge is counted. Both the regions the walk refuses and the warning's own
-/// count read it (`ah-lb2o`), so the warning says exactly what the limit does. TAX and PILLAGE in
-/// a guarded hex are counted too: a guard refuses them first only when *its* attitude to us is
-/// neutral or worse (`aregion.cpp` `ARegion::CanTax`), which the report does not show - on
+/// count read it (`ah-lb2o`), so the warning says exactly what the limit does. TAX in a guarded
+/// hex is counted: a guard refuses it first only when *its* attitude to us is neutral or worse
+/// (`aregion.cpp` `ARegion::CanTax`), which the report does not show - on
 /// `neworigins-3.0.0-g5-f21-t24` two taxed hexes have a foreign guard, and turn 25 shows both
 /// taxed.
 fn reaches_activity_check(used: &RegionUse<'_, '_>, ruleset: Option<&Ruleset>) -> bool {
