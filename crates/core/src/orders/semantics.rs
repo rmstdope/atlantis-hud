@@ -294,6 +294,12 @@ pub mod codes {
     /// Always on: the bead asks for the warning and gives it no switch, so it is in [`ALWAYS_ON`]
     /// and not in [`ALL`].
     pub const TRANSPORT_TARGET_REFUSED: Code = Code("transport-target-refused");
+    /// An `EXCHANGE` between two of our units in one hex that the game will abort: the two lines
+    /// are not complementary, or a side will not hold what it offers (`rules/exchange`: "If either
+    /// unit involved does not have the items it is offering, or if the exchange orders given are
+    /// not complementary, the exchange is aborted."; `ah-p5ow`). Always on: the bead asks for the
+    /// warning and gives it no switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
+    pub const EXCHANGE_ABORTED: Code = Code("exchange-aborted");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -387,7 +393,7 @@ pub mod codes {
 
     /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
     /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
-    pub const ALWAYS_ON: [Code; 10] = [
+    pub const ALWAYS_ON: [Code; 11] = [
         MOVE_INTO_A_WALL,
         FACTION_ORDER_WILL_FAIL,
         UNKNOWN_SKILL,
@@ -398,6 +404,7 @@ pub mod codes {
         ENTER_NOT_HERE,
         LEAVE_REFUSED_AT_SEA,
         TRANSPORT_TARGET_REFUSED,
+        EXCHANGE_ABORTED,
     ];
 }
 
@@ -1040,6 +1047,7 @@ pub fn review_turn(
         check_explore_below_the_surface(hex, &mut findings);
         check_quest_without_a_town_hall(hex, &mut findings);
         check_enter_not_here(hex, &mut findings);
+        check_exchanges_aborted(hex, ledger, &mut findings);
         check_leave_refused_at_sea(hex, &mut findings);
         check_village_site(hex, ledger, ruleset, &mut findings);
         check_withdraw_not_a_basic_item(hex, ruleset, &options, &mut findings);
@@ -6384,6 +6392,9 @@ struct Ledger<'a> {
     /// `(unit, line, tag)` of every `EXCHANGE` line that settled and handed `tag` over, so a
     /// check naming why goods are gone blames only an exchange that went ahead (`ah-mw1r.2`).
     pub(crate) exchanged_away: BTreeSet<(String, usize, String)>,
+    /// `(unit, line, why)` of every `EXCHANGE` line between two of our units here that the game
+    /// will abort, in the order [`settle_exchanges`] found them (`ah-p5ow`).
+    aborted_exchanges: Vec<(String, usize, String)>,
     /// Lines whose effect on a unit's items could not be counted at all, by unit, in document
     /// order (`ah-agbm`).
     pub(crate) uncounted: BTreeMap<String, Vec<usize>>,
@@ -7118,6 +7129,7 @@ fn ledger_for_reaching<'a>(
         food_claims: Vec::new(),
         movements: Vec::new(),
         exchanged_away: BTreeSet::new(),
+        aborted_exchanges: Vec::new(),
         uncounted: BTreeMap::new(),
         unfollowed_recruits: BTreeSet::new(),
         refused_recruits: Vec::new(),
@@ -10429,7 +10441,9 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
         mark_uncounted(ledger, &hex.units[unit].unit.unit_id, line);
     }
     let offers = &read.offers;
-    for (first, second) in complementary_pairs(offers) {
+    let pairs = complementary_pairs(offers);
+    record_unanswered_exchanges(ledger, hex, &read, &pairs);
+    for (first, second) in pairs {
         let (one, other) = (&offers[first], &offers[second]);
         // What a side has as the engine counts an offer, `GetSharedNum`: its own stock and what
         // its `SHARE` faction-mates in the hex still lend it, off the one reading every spend from
@@ -10473,12 +10487,39 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
         };
         let (held, other_held) = (holds(one), holds(other));
         let doubt = held.as_ref().err().or(other_held.as_ref().err()).cloned();
+        let known = (
+            held.as_ref().ok().copied(),
+            other_held.as_ref().ok().copied(),
+        );
         match exchange_verdict((one, held), (other, other_held)) {
             ExchangeVerdict::Moves => {
                 hand_over(ledger, hex, one);
                 hand_over(ledger, hex, other);
             }
-            ExchangeVerdict::Aborted => {}
+            ExchangeVerdict::Aborted => {
+                // Who is short, as each line will say it.
+                let short: Vec<String> = [(one, known.0), (other, known.1)]
+                    .into_iter()
+                    .filter_map(|(offer, held)| match held {
+                        Some(held) if held < offer.give_amount => Some(format!(
+                            "{} will hold only {} of the {} {} it offers",
+                            unit_label(hex, &hex.units[offer.unit].unit.unit_id),
+                            held.max(0),
+                            offer.give_amount,
+                            offer.give_tag
+                        )),
+                        _ => None,
+                    })
+                    .collect();
+                let why = short.join("; ");
+                for offer in [one, other] {
+                    ledger.aborted_exchanges.push((
+                        hex.units[offer.unit].unit.unit_id.clone(),
+                        offer.line,
+                        why.clone(),
+                    ));
+                }
+            }
             ExchangeVerdict::Uncertain => {
                 let doubt = doubt.expect("an uncertain verdict has a doubted side");
                 // Both ends of both legs: what each side gives may leave, and what each receives
@@ -10496,6 +10537,52 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
                 }
             }
         }
+    }
+}
+
+/// Records every offer [`complementary_pairs`] left without a partner line: the game aborts it, since
+/// "the orders given by the two units must be complementary" (`rules/exchange`; `ah-p5ow`). The
+/// partner's own unpaired line toward this unit, where it wrote one, is named so the player sees
+/// what does not match. Nothing is said where the partner wrote a line whose goods nothing can name:
+/// whether that one matches cannot be said.
+fn record_unanswered_exchanges(
+    ledger: &mut Ledger<'_>,
+    hex: &Hex<'_>,
+    read: &ExchangeOffers,
+    pairs: &[(usize, usize)],
+) {
+    let offers = &read.offers;
+    let paired: BTreeSet<usize> = pairs
+        .iter()
+        .flat_map(|&(one, other)| [one, other])
+        .collect();
+    for (index, offer) in offers.iter().enumerate() {
+        if paired.contains(&index) || read.unnamed.iter().any(|&(unit, _)| unit == offer.partner) {
+            continue;
+        }
+        let partner = unit_label(hex, &hex.units[offer.partner].unit.unit_id);
+        let answer = offers.iter().enumerate().find(|(other, answer)| {
+            !paired.contains(other) && answer.unit == offer.partner && answer.partner == offer.unit
+        });
+        let why = match answer {
+            Some((_, answer)) => format!(
+                "{partner} offers {} {} for {} {}, not {} {} for {} {}",
+                answer.give_amount,
+                answer.give_tag,
+                answer.expect_amount,
+                answer.expect_tag,
+                offer.expect_amount,
+                offer.expect_tag,
+                offer.give_amount,
+                offer.give_tag
+            ),
+            None => format!("{partner} has no EXCHANGE answering it"),
+        };
+        ledger.aborted_exchanges.push((
+            hex.units[offer.unit].unit.unit_id.clone(),
+            offer.line,
+            why,
+        ));
     }
 }
 
@@ -13530,6 +13617,27 @@ fn hand_in(
 /// last one replaces never runs and is not warned. `rules/sequenceofevents` runs ENTER before any
 /// movement, so nothing arriving later that month can be entered by one. Always on
 /// (`codes::ALWAYS_ON`), so no option is read.
+/// Always on (`codes::EXCHANGE_ABORTED`), so no option is read. `settle_exchanges` already moves
+/// nothing for these lines; this says so to the player, on each line involved (`ah-p5ow`).
+fn check_exchanges_aborted(hex: &Hex<'_>, ledger: &Ledger<'_>, findings: &mut Vec<Finding>) {
+    for (unit_id, line, why) in &ledger.aborted_exchanges {
+        let Some(ordered) = hex
+            .units
+            .iter()
+            .find(|ordered| ordered.unit.unit_id == *unit_id)
+        else {
+            continue;
+        };
+        let placed = ordered.intents.iter().find(|placed| placed.line == *line);
+        findings.push(ordered.finding(
+            hex,
+            codes::EXCHANGE_ABORTED,
+            format!("EXCHANGE will be aborted: {why}"),
+            placed,
+        ));
+    }
+}
+
 fn check_enter_not_here(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
     for ordered in &hex.units {
         if !boarding_refused(ordered) {
