@@ -654,7 +654,8 @@ fn verdict_report_text() -> String {
 }
 
 /// One row of the verdict matrix: an order, the tag it is about, what the verdict says of it,
-/// and how much of that tag the giver ends the Give phase down.
+/// and how much of that tag the giver ends the Give phase down. For a `TAKE` the "giver" is the
+/// source the goods are taken from.
 struct VerdictCase {
     orders: &'static str,
     giver: &'static str,
@@ -844,6 +845,50 @@ fn verdict_cases() -> Vec<VerdictCase> {
             O::NoTarget,
             0,
         ),
+        // A unit giving to itself: `rules/give` gives "to another unit". `apply_transfers` settles
+        // it by an early return of its own, the others through `GiveReach::Nowhere`.
+        case(
+            "unit 900\nGIVE 900 4 ORC\n",
+            "900",
+            "ORC",
+            R::Nowhere,
+            O::NoTarget,
+            0,
+        ),
+        case(
+            "unit 900\nGIVE 900 20 SILV\n",
+            "900",
+            "SILV",
+            R::Nowhere,
+            O::NoTarget,
+            0,
+        ),
+        // `rules/take`: a TAKE "works just like the GIVE order, except that the direction of
+        // transfer is reversed" - so a mage taker is refused men (`ah-ndp9`) and keeps goods.
+        case(
+            "unit 902\nTAKE FROM 900 4 ORC\n",
+            "900",
+            "ORC",
+            R::Ours,
+            O::Refused(F::MenIntoAMage),
+            0,
+        ),
+        case(
+            "unit 902\nTAKE FROM 900 15 IRON\n",
+            "900",
+            "IRON",
+            R::Ours,
+            O::Moves,
+            -15,
+        ),
+        case(
+            "unit 901\nTAKE FROM 900 4 ORC\n",
+            "900",
+            "ORC",
+            R::Ours,
+            O::Moves,
+            -4,
+        ),
     ]
 }
 
@@ -1001,6 +1046,25 @@ fn the_matrix_covers_every_verdict() {
     let mut reaches = [false; REACHES];
     let mut outcomes = [false; OUTCOMES];
     for case in verdict_cases() {
+        // A TAKE is judged as one, by its taker - the unit whose block the order is in.
+        if let Some(taker) = case
+            .orders
+            .strip_prefix("unit ")
+            .filter(|_| case.orders.contains("\nTAKE FROM "))
+            .and_then(|rest| rest.lines().next())
+        {
+            let verdict = GiveVerdict::take(&unit(taker).skills, Some(&ruleset));
+            assert_eq!(verdict.reach(), case.reach, "{:?}", case.orders);
+            assert_eq!(
+                verdict.of(case.tag, Some(&ruleset)),
+                case.outcome,
+                "{:?}",
+                case.orders
+            );
+            reaches[reach_number(case.reach)] = true;
+            outcomes[outcome_number(case.outcome)] = true;
+            continue;
+        }
         let giver = unit(case.giver);
         let here = report
             .regions
