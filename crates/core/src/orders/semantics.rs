@@ -301,7 +301,8 @@ pub mod codes {
     /// not complementary, the exchange is aborted."; `ah-p5ow`). Always on: the bead asks for the
     /// warning and gives it no switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
     pub const EXCHANGE_ABORTED: Code = Code("exchange-aborted");
-    /// A `PROMOTE` by a unit that does not own its structure when promotions run.
+    /// A `PROMOTE` by a unit that does not own its structure when promotions run, or stands in
+    /// none ("PROMOTE: Can only promote inside structures.", `ah-q4kp`).
     /// `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`) runs one `PROMOTE` per object, its
     /// owner's once ENTER and LEAVE have run (`Object::GetOwner`), and errors every other unit's
     /// "PROMOTE: Must be owner" - including the unit that owner promotes (`ah-c1p2`;
@@ -14197,41 +14198,37 @@ fn check_leave_refused_at_sea(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
 /// structure on once. The owner is [`owner_when_promotions_run`], the one the `DESTROY`
 /// projection reads too. One warning per unit, on its last `PROMOTE` line: the engine keeps one
 /// `PROMOTE` per unit (`ProcessPromoteOrder` overwrites `u->promote`). A unit in no structure
-/// is not this warning's business, and a formed unit's `PROMOTE` is not followed by the ownership
-/// walks, so neither is warned. Always on (`codes::ALWAYS_ON`), so no option is read.
+/// once ENTER and LEAVE have run - an owner that wrote LEAVE with its `PROMOTE` among them, since
+/// LEAVE runs first (`rules/sequenceofevents`) - is errored "PROMOTE: Can only promote inside
+/// structures." and is warned too (`ah-q4kp`). A formed unit's `PROMOTE` is not followed by the
+/// ownership walks, so it is not warned. Always on (`codes::ALWAYS_ON`), so no option is read.
 fn check_promote_not_owner(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
     for ordered in hex.units.iter().filter(|ordered| ordered.formed.is_none()) {
         let Some(promote) = ordered.promotes.last() else {
             continue;
         };
-        let Some(structure_id) = structure_after_boarding(ordered) else {
-            continue;
+        let why = match structure_after_boarding(ordered) {
+            None => match ordered.unit.structure_id.as_deref() {
+                Some(left) => format!(
+                    "this unit leaves {} before promotions run",
+                    named_structure(hex, left)
+                ),
+                None => "this unit stands in no structure when promotions run".to_string(),
+            },
+            Some(structure_id) => {
+                let Some(owner_id) = owner_when_promotions_run(hex, structure_id) else {
+                    continue;
+                };
+                if owner_id == ordered.unit.unit_id {
+                    continue;
+                }
+                format!(
+                    "{} owns {} when promotions run, not this unit",
+                    shown_unit_label(hex, &owner_id),
+                    named_structure(hex, structure_id)
+                )
+            }
         };
-        let Some(owner_id) = owner_when_promotions_run(hex, structure_id) else {
-            continue;
-        };
-        if owner_id == ordered.unit.unit_id {
-            continue;
-        }
-        let owner = hex
-            .region
-            .units
-            .iter()
-            .chain(hex.units.iter().map(|ordered| ordered.unit))
-            .find(|unit| unit.unit_id == owner_id)
-            .map_or_else(
-                || format!("unit {owner_id}"),
-                |unit| format!("{} ({})", unit.name, unit.unit_id),
-            );
-        let structure = hex
-            .region
-            .structures
-            .iter()
-            .find(|structure| structure.structure_id == structure_id)
-            .map_or_else(
-                || format!("[{structure_id}]"),
-                crate::movement::mode::fleet_label,
-            );
         findings.push(Finding {
             line: Some(promote.line),
             column_start: Some(promote.column_start),
@@ -14239,10 +14236,7 @@ fn check_promote_not_owner(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
             ..ordered.finding(
                 hex,
                 codes::PROMOTE_NOT_OWNER,
-                format!(
-                    "PROMOTE will be refused: {owner} owns {structure} when promotions run, \
-                     not this unit, so nothing changes"
-                ),
+                format!("PROMOTE will be refused: {why}, so nothing changes"),
                 None,
             )
         });
@@ -56775,6 +56769,44 @@ BUILD
         );
     }
 
+    /// `ah-q4kp`: LEAVE runs before PROMOTE (`rules/sequenceofevents`), so an owner that writes
+    /// LEAVE and PROMOTE in one month stands in no structure when promotions run, and the engine
+    /// errors "PROMOTE: Can only promote inside structures." (../Atlantis `runorders.cpp`
+    /// `RunPromoteOrders`). Its PROMOTE line is warned; a unit that was never inside is too.
+    #[test]
+    fn a_promote_by_a_unit_in_no_structure_is_warned() {
+        let findings = check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("1", "Castle")],
+                ..region(vec![
+                    in_structure(unit("900"), "1"),
+                    in_structure(unit("901"), "1"),
+                    unit("902"),
+                ])
+            }],
+            "unit 900\nLEAVE\nPROMOTE 901\nunit 901\nunit 902\nPROMOTE 901\n",
+        );
+        let refused: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "promote-not-owner")
+            .collect();
+        assert_eq!(refused.len(), 2, "{findings:?}");
+        assert_eq!(refused[0].unit_id.as_deref(), Some("900"));
+        assert_eq!(refused[0].line, Some(3));
+        assert_eq!(
+            refused[0].message,
+            "PROMOTE will be refused: this unit leaves Castle [1] before promotions run, so \
+             nothing changes"
+        );
+        assert_eq!(refused[1].unit_id.as_deref(), Some("902"));
+        assert_eq!(refused[1].line, Some(6));
+        assert_eq!(
+            refused[1].message,
+            "PROMOTE will be refused: this unit stands in no structure when promotions run, so \
+             nothing changes"
+        );
+    }
+
     /// `ah-c1p2`: the owner is read once ENTER and LEAVE have run, so a unit that boards an
     /// empty structure owns it and its `PROMOTE` is not warned; one that boards behind the owner
     /// is.
@@ -56806,8 +56838,8 @@ BUILD
         );
         assert_eq!(
             promote_findings("unit 900\nLEAVE\nPROMOTE 901\nunit 901\nENTER 1\n"),
-            Vec::<String>::new(),
-            "900 left before promotions run, so its PROMOTE is not this warning's business"
+            vec!["900".to_string()],
+            "900 left before promotions run, so its PROMOTE is refused (ah-q4kp)"
         );
         assert_eq!(
             promote_findings("unit 901\nENTER 1\nPROMOTE 902\nunit 902\nENTER 1\n"),
