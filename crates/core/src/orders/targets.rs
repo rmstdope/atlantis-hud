@@ -117,7 +117,7 @@ impl GiveReach {
     /// receives, and nothing is doubted - the ledger reads exactly as it would with the line
     /// deleted. A unit the report shows elsewhere and a number it never prints alike (`ah-xaem`).
     #[must_use]
-    fn gives_nothing(self) -> bool {
+    pub(crate) fn gives_nothing(self) -> bool {
         matches!(self, Self::Nowhere | Self::Unshown)
     }
 }
