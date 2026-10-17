@@ -77,6 +77,7 @@ export type { ProductionCap } from "./ProductionCap";
 export type { ProductionOverview } from "./ProductionOverview";
 export type { RefusedCast } from "./RefusedCast";
 export type { RefusedProduct } from "./RefusedProduct";
+export type { RefusedSpend } from "./RefusedSpend";
 export type { RegionExit } from "./RegionExit";
 export type { RegionLimits } from "./RegionLimits";
 export type { RegionPreview } from "./RegionPreview";

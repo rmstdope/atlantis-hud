@@ -2941,6 +2941,59 @@ fn claim_purse_for(allowances: &ClaimAllowances, unit: &UnitKey) -> FactionPurse
     }
 }
 
+/// What one unit's SILVER column carries as refused, as `(cause, cost)` (`ah-rjz2`).
+#[cfg(test)]
+pub(crate) fn refused_costs(silver: &UnitSilver) -> Vec<(SilverChangeCause, i64)> {
+    silver
+        .refused
+        .iter()
+        .map(|spend| (spend.cause, spend.cost))
+        .collect()
+}
+
+/// Hands a refused order's cost back to one unit's column and carries the order on its own
+/// ([`UnitSilver::refused`], `ah-rjz2`): out of `changes` and every total it was in, and off the
+/// shortfall it caused, since the game took nothing for it.
+fn hand_back_refused(
+    forecast: &mut UnitSilver,
+    line: Option<i64>,
+    cause: SilverChangeCause,
+    cost: i64,
+    available: i64,
+) {
+    if cost <= 0 {
+        return;
+    }
+    let at = forecast
+        .changes
+        .iter()
+        .position(|change| change.cause == cause && (line.is_none() || change.line == line));
+    // An earlier order spent this unit's silver first: what is left is what it can draw on.
+    let after_spending = forecast.changes[..at.unwrap_or(forecast.changes.len())]
+        .iter()
+        .any(|change| change.amount < 0);
+    forecast
+        .changes
+        .retain(|change| !(change.cause == cause && (line.is_none() || change.line == line)));
+    forecast.expense = forecast.expense.map(|spent| (spent - cost).max(0));
+    forecast.wanted_for_orders = forecast
+        .wanted_for_orders
+        .map(|wanted| (wanted - cost).max(0));
+    forecast.at_month_end = forecast.at_month_end.map(|end| end.saturating_add(cost));
+    forecast.short_for_orders = forecast.short_for_orders.map(|short| (short - cost).max(0));
+    if forecast.short_for_orders == Some(0) {
+        forecast.short_on = None;
+        forecast.short_buy = None;
+    }
+    forecast.refused.push(super::silver::RefusedSpend {
+        cause,
+        line,
+        cost,
+        available: available.clamp(0, cost),
+        after_spending,
+    });
+}
+
 /// Every own unit in one hex, priced. Foreign units are not here to begin with: `Hex::read` has
 /// already filtered them out, so their cell is blank for free.
 #[allow(clippy::too_many_arguments)]
@@ -3491,6 +3544,59 @@ fn forecast_hex(
                     place,
                 });
             }
+        }
+    }
+
+    // An order the game refuses as a whole takes nothing (`ah-rjz2`): a STUDY short of its fee
+    // (`monthorders.cpp`: `Do1StudyOrder`, "STUDY: Not enough funds.") and a create-artifact CAST
+    // short of its silver (`spells.cpp`: `RunCreateArtifact` checks every input before it consumes
+    // any). The ledger keeps charging both, so the warnings still fire, and hands the cost back at
+    // every later reading; the column is handed it back here, and the order carried on its own.
+    // Only a hex where somebody studies pays for the settlement: this runs on every orders edit.
+    let studies = if hex
+        .units
+        .iter()
+        .any(|ordered| ordered.studies_placed().is_some())
+    {
+        study_settlement(hex, ledger)
+    } else {
+        vec![StudyOutcome::NoStudy; hex.units.len()]
+    };
+    for ((ordered, forecast), study) in hex.units.iter().zip(into[start..].iter_mut()).zip(&studies)
+    {
+        let unit_id = &ordered.unit.unit_id;
+        let mut refused: Vec<(Option<i64>, SilverChangeCause, i64, i64)> = Vec::new();
+        if let StudyOutcome::Refused { fee, short } = *study {
+            let line = ordered
+                .intents
+                .iter()
+                .find(|placed| matches!(placed.intent, Intent::Study { .. }))
+                .map(|placed| placed.line as i64);
+            refused.push((line, SilverChangeCause::Studied, fee, (fee - short).max(0)));
+        }
+        for cast in ledger.refused_casts.get(unit_id).into_iter().flatten() {
+            if cast.silver_short <= 0 {
+                continue;
+            }
+            let cost: i64 = forecast
+                .changes
+                .iter()
+                .filter(|change| {
+                    change.cause == SilverChangeCause::CastSpent && change.line == Some(cast.line)
+                })
+                .map(|change| -change.amount)
+                .sum();
+            let cost = cost.max(cast.silver_short);
+            refused.push((
+                Some(cast.line),
+                SilverChangeCause::CastSpent,
+                cost,
+                (cost - cast.silver_short).max(0),
+            ));
+        }
+        refused.sort_by_key(|(line, ..)| *line);
+        for (line, cause, cost, available) in refused {
+            hand_back_refused(forecast, line, cause, cost, available);
         }
     }
 
@@ -13891,6 +13997,7 @@ fn cast(
             .entry(who.clone())
             .or_default()
             .push(super::effects::RefusedCast {
+                line: placed.line as i64,
                 product,
                 silver_short: if outcome == CastOutcome::RefusedForSilver {
                     unfunded_cast.max(0)
@@ -13944,7 +14051,15 @@ fn cast(
         // `RunTransmutation`: `num` items, `num * amt` taken). Its one-item charge above is only
         // there to keep `not-enough-items` firing (`plan_cast`, R2), so it is never shown in the
         // ITEMS hover as material the spell used up (`ah-ryry`).
-        let consumes = plan.per_cast || plan.made > 0;
+        //
+        // A refused create-artifact cast consumes nothing either (`RunCreateArtifact` checks every
+        // input before it consumes any), so its charge above, kept for `not-enough-items`, is not
+        // shown as material the spell used up (`ah-rjz2`, replacing `ah-44at`'s red figure).
+        let consumes = if plan.per_cast {
+            outcome.creates()
+        } else {
+            plan.made > 0
+        };
         if from_caster != 0 && consumes {
             ledger.movements.push(ItemMovement {
                 unit_id: who.clone(),
@@ -32348,10 +32463,15 @@ mod tests {
             "unit 2390\nSTUDY combat\nBUY 5 grain\n",
         );
 
-        assert_eq!(forecast.expense, Some(110));
-        assert_eq!(forecast.wanted_for_orders, Some(110));
-        assert_eq!(forecast.at_month_end, Some(-10));
-        assert_eq!(forecast.short_for_orders, Some(10));
+        // The grain takes all $100, so the study is refused and takes nothing (`ah-rjz2`).
+        assert_eq!(forecast.expense, Some(100));
+        assert_eq!(forecast.wanted_for_orders, Some(100));
+        assert_eq!(forecast.at_month_end, Some(0));
+        assert_eq!(forecast.short_for_orders, Some(0));
+        assert_eq!(
+            crate::orders::semantics::refused_costs(&forecast),
+            [(SilverChangeCause::Studied, 10)]
+        );
     }
 
     /// `ah-lauy`, increment 3. The exact form's running total, against a settled share.
@@ -40119,7 +40239,8 @@ BUILD
                 .iter()
                 .map(|row| row.at_month_end.expect("every row is a number"))
                 .sum();
-            assert_eq!(total, -600, "$2,600 in, $3,200 out: {rows:?}");
+            // 3's refused study takes nothing (`ah-rjz2`): $2,600 in, $2,600 out.
+            assert_eq!(total, 0, "$2,600 in, $2,600 out: {rows:?}");
 
             let lent: i64 = rows
                 .iter()
@@ -47578,8 +47699,13 @@ BUILD
         );
         let studier = forecast_for(&review, "5");
 
-        assert_eq!(studier.short_for_orders, Some(10));
-        assert_eq!(studier.at_month_end, Some(-10));
+        // Refused, so the column hands the fee back and carries the study on its own (`ah-rjz2`).
+        assert_eq!(studier.short_for_orders, Some(0));
+        assert_eq!(studier.at_month_end, Some(0));
+        assert_eq!(
+            crate::orders::semantics::refused_costs(&studier),
+            [(SilverChangeCause::Studied, 10)]
+        );
         assert_eq!(studier.shared_silver_for_orders, 0);
     }
 
@@ -47601,8 +47727,14 @@ BUILD
         assert_eq!(paid.at_month_end, Some(0), "{paid:?}");
         assert_eq!(paid.shared_silver_for_orders, 10, "{paid:?}");
         let refused = forecast_for(&review, "9");
-        assert_eq!(refused.short_for_orders, Some(10), "{refused:?}");
-        assert_eq!(refused.at_month_end, Some(-10), "{refused:?}");
+        // Refused, so the column hands the fee back and carries the study on its own (`ah-rjz2`).
+        assert_eq!(refused.short_for_orders, Some(0), "{refused:?}");
+        assert_eq!(refused.at_month_end, Some(0), "{refused:?}");
+        assert_eq!(
+            crate::orders::semantics::refused_costs(&refused),
+            [(SilverChangeCause::Studied, 10)],
+            "{refused:?}"
+        );
         assert_eq!(refused.shared_silver_for_orders, 0, "{refused:?}");
         assert_eq!(
             forecast_for(&review, "7").expense,
@@ -50034,7 +50166,13 @@ BUILD
         );
 
         assert_eq!(forecast.income, Some(300));
-        assert_eq!(forecast.short_for_orders, Some(200), "{forecast:#?}");
+        // Refused, so the column hands the cost back and carries the order on its own (`ah-rjz2`).
+        assert_eq!(forecast.short_for_orders, Some(0), "{forecast:#?}");
+        assert_eq!(
+            crate::orders::semantics::refused_costs(&forecast),
+            [(SilverChangeCause::CastSpent, 200)],
+            "{forecast:#?}"
+        );
     }
 
     /// The order the lines are written in changes nothing: the market still opens after the cast.
@@ -50057,7 +50195,13 @@ BUILD
             "unit 5\nCAST Create_Amulet_Of_Protection\nSELL 30 grain\n",
         );
 
-        assert_eq!(forecast.short_for_orders, Some(200), "{forecast:#?}");
+        // Refused, so the column hands the cost back and carries the order on its own (`ah-rjz2`).
+        assert_eq!(forecast.short_for_orders, Some(0), "{forecast:#?}");
+        assert_eq!(
+            crate::orders::semantics::refused_costs(&forecast),
+            [(SilverChangeCause::CastSpent, 200)],
+            "{forecast:#?}"
+        );
     }
 
     /// A hex wanting grain at 10, holding `units`: the market a sale-funded cast is set in.
@@ -50149,7 +50293,13 @@ BUILD
             .iter()
             .find(|silver| silver.unit_id == "5")
             .unwrap();
-        assert_eq!(caster.short_for_orders, Some(200), "{caster:#?}");
+        // Refused, so the column hands the cost back and carries the order on its own (`ah-rjz2`).
+        assert_eq!(caster.short_for_orders, Some(0), "{caster:#?}");
+        assert_eq!(
+            crate::orders::semantics::refused_costs(caster),
+            [(SilverChangeCause::CastSpent, 200)],
+            "{caster:#?}"
+        );
     }
 
     /// A sharer with the silver lends it to the cast, so nothing is short on either surface.
@@ -50221,7 +50371,13 @@ BUILD
         let orders = "unit 5\nCAST Create_Amulet_Of_Protection\nWORK\n";
 
         let forecast = forecast_with_ruleset(regions(), orders);
-        assert_eq!(forecast.short_for_orders, Some(200), "{forecast:#?}");
+        // Refused, so the column hands the cost back and carries the order on its own (`ah-rjz2`).
+        assert_eq!(forecast.short_for_orders, Some(0), "{forecast:#?}");
+        assert_eq!(
+            crate::orders::semantics::refused_costs(&forecast),
+            [(SilverChangeCause::CastSpent, 200)],
+            "{forecast:#?}"
+        );
         let findings = review_turn(
             &report(regions()),
             orders,
@@ -63157,10 +63313,13 @@ BUILD
             "the study took nothing out of what 901 forwards"
         );
         let forwarder = forecast(orders, "901");
+        // Refused, so the column carries the study on its own rather than as a shortfall
+        // (`ah-rjz2`): combat costs 10 a month (data/COMB).
+        assert_eq!(forwarder.short_for_orders, Some(0), "{forwarder:?}");
         assert_eq!(
-            forwarder.short_for_orders,
-            Some(10),
-            "the study shows as unfunded: combat costs 10 a month (data/COMB)"
+            crate::orders::semantics::refused_costs(&forwarder),
+            [(SilverChangeCause::Studied, 10)],
+            "{forwarder:?}"
         );
 
         // Some silver, but not the study's 10: the game refuses the study whole and takes none
@@ -63549,7 +63708,13 @@ BUILD
             "902's own $8 pays the first 8 of its upkeep: {student:?}"
         );
         assert_eq!(student.upkeep, Some(8), "{student:?}");
-        assert_eq!(student.short_for_orders, Some(2), "{student:?}");
+        // The refused STUDY is carried on its own, not as a shortfall (`ah-rjz2`).
+        assert_eq!(student.short_for_orders, Some(0), "{student:?}");
+        assert_eq!(
+            crate::orders::semantics::refused_costs(&student),
+            [(SilverChangeCause::Studied, 10)],
+            "{student:?}"
+        );
         // The warning still counts the refused STUDY as spending its $10, so the $8 the upkeep
         // took from the hand-back is not spent a second time in it.
         assert_eq!(
@@ -63583,7 +63748,13 @@ BUILD
             "901's own $150 pays its upkeep: {caster:?}"
         );
         assert_eq!(caster.upkeep, Some(10), "{caster:?}");
-        assert_eq!(caster.short_for_orders, Some(50), "{caster:?}");
+        // The refused CAST is carried on its own, not as a shortfall (`ah-rjz2`).
+        assert_eq!(caster.short_for_orders, Some(0), "{caster:?}");
+        assert_eq!(
+            crate::orders::semantics::refused_costs(&caster),
+            [(SilverChangeCause::CastSpent, 200)],
+            "{caster:?}"
+        );
         assert_eq!(
             hex_silver_messages(&review),
             vec![
@@ -64046,6 +64217,101 @@ BUILD
         );
     }
 
+    /// What the SILVER column carries as refused for one unit (`ah-rjz2`).
+    fn refused_of(review: &TurnReview, unit_id: &str) -> Vec<super::super::silver::RefusedSpend> {
+        review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == unit_id)
+            .map(|row| row.refused.clone())
+            .unwrap_or_default()
+    }
+
+    fn end_of(review: &TurnReview, unit_id: &str) -> Option<i64> {
+        review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == unit_id)
+            .and_then(|row| row.at_month_end)
+    }
+
+    /// `ah-rjz2`: a sharing student a faction-mate can lend part of its fee to, but not all of it,
+    /// is refused (`monthorders.cpp`: `Do1StudyOrder` weighs the fee against the shared money).
+    /// Five men at combat's $10 a head (`rules/skills_studying` in Trident) cost $50; 902's $24 and
+    /// sharer 903's $20 make $44, all of which the column says it could draw on, and none of which
+    /// the refused study takes.
+    #[test]
+    fn a_partly_lent_refused_study_can_draw_on_both() {
+        let review = review_turn(
+            &report(vec![region(vec![
+                sharing(with_silver(with_men(unit("902"), 5), 24)),
+                sharing(with_silver(unit("903"), 20)),
+            ])]),
+            "unit 902\nSTUDY COMB\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        let refused = refused_of(&review, "902");
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        assert_eq!((refused[0].cost, refused[0].available), (50, 44));
+        assert!(!refused[0].after_spending);
+        assert_eq!(end_of(&review, "902"), Some(24));
+        assert_eq!(
+            end_of(&review, "903"),
+            Some(20),
+            "a refused study draws on no sharer"
+        );
+    }
+
+    /// `ah-rjz2`: the market runs before STUDY (`rules/sequenceofevents`), so 902's $8 less one
+    /// grain at $5 leaves $3 for combat's $10 - the figure its order line already names (`ah-wr2w`).
+    #[test]
+    fn a_refused_study_after_a_buy_is_left_what_the_buy_left() {
+        let hex = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 5,
+            }],
+            ..region(vec![
+                with_silver(unit("902"), 8),
+                with_silver(unit("903"), 100),
+            ])
+        };
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 902\nBUY 1 grain\nSTUDY COMB\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        let refused = refused_of(&review, "902");
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        assert_eq!((refused[0].cost, refused[0].available), (10, 3));
+        assert!(refused[0].after_spending);
+        assert_eq!(refused[0].line, Some(3));
+        assert_eq!(
+            end_of(&review, "902"),
+            Some(3),
+            "the purchase is paid, the study is not"
+        );
+    }
+
+    /// `ah-rjz2`: a student with no silver at all and nobody to lend has nothing to draw on.
+    #[test]
+    fn a_penniless_student_has_nothing_to_draw_on() {
+        let review = review_turn(
+            &report(vec![region(vec![unit("902")])]),
+            "unit 902\nSTUDY COMB\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        let refused = refused_of(&review, "902");
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        assert_eq!((refused[0].cost, refused[0].available), (10, 0));
+        assert_eq!(end_of(&review, "902"), Some(0));
+    }
+
     /// A GIVE cut short and a refused STUDY in one sentence: the clauses are joined, never a second
     /// "so" (review of PR #1703, finding 2). 902 has $8, asks to give 20 and gives the 8
     /// (`Game::DoGiveOrder`, `ah-4k84`), so nothing is left for combat's $10.
@@ -64326,10 +64592,12 @@ BUILD
         let first = shipment_silver(&review, "902");
         assert_eq!(first.short_for_orders, Some(0), "902 is paid: {first:?}");
         let second = shipment_silver(&review, "904");
+        // 904 alone is refused, carried on its own rather than as a shortfall (`ah-rjz2`).
+        assert_eq!(second.short_for_orders, Some(0), "{second:?}");
         assert_eq!(
-            second.short_for_orders,
-            Some(10),
-            "904 alone is short: {second:?}"
+            crate::orders::semantics::refused_costs(&second),
+            [(SilverChangeCause::Studied, 10)],
+            "904 alone is refused: {second:?}"
         );
         assert_eq!(
             silver_shipped(&review, "903"),
@@ -64582,13 +64850,12 @@ BUILD
             with_map(),
         );
         let caster = shipment_silver(&review, "901");
-        assert!(
-            caster.short_for_orders.is_some_and(|short| short > 0),
-            "{caster:?}"
-        );
+        // The GIVE is not named: the CAST is refused, and the column carries it on its own rather
+        // than as a shortfall (`ah-rjz2`).
+        assert_eq!(caster.short_on, None, "{caster:?}");
         assert_eq!(
-            caster.short_on,
-            Some(crate::orders::silver::SilverSpender::Cast),
+            crate::orders::semantics::refused_costs(&caster),
+            [(SilverChangeCause::CastSpent, 200)],
             "{caster:?}"
         );
     }
@@ -64695,13 +64962,12 @@ BUILD
             with_map(),
         );
         let caster = shipment_silver(&review, "901");
-        assert!(
-            caster.short_for_orders.is_some_and(|short| short > 0),
-            "{caster:?}"
-        );
+        // The GIVE is not named: the CAST is refused, and the column carries it on its own rather
+        // than as a shortfall (`ah-rjz2`).
+        assert_eq!(caster.short_on, None, "{caster:?}");
         assert_eq!(
-            caster.short_on,
-            Some(crate::orders::silver::SilverSpender::Cast),
+            crate::orders::semantics::refused_costs(&caster),
+            [(SilverChangeCause::CastSpent, 200)],
             "{caster:?}"
         );
     }
@@ -64722,10 +64988,22 @@ BUILD
             with_map(),
         );
         let caster = shipment_silver(&review, "901");
+        // The silver the cut GIVE could not move was never in the column's shortfall; what was is
+        // the refused CAST, which the column now carries on its own (`ah-rjz2`). The warning
+        // still names the GIVE.
+        assert_eq!(caster.short_on, None, "{caster:?}");
         assert_eq!(
-            caster.short_on,
-            Some(crate::orders::silver::SilverSpender::Give),
+            crate::orders::semantics::refused_costs(&caster),
+            [(SilverChangeCause::CastSpent, 200)],
             "{caster:?}"
+        );
+        assert!(
+            review
+                .findings
+                .iter()
+                .any(|f| f.code.as_str() == "not-enough-silver" && f.line == Some(2)),
+            "{:?}",
+            review.findings
         );
     }
 
@@ -64830,7 +65108,13 @@ BUILD
                 "{case}: {hex:?}"
             );
             let giver = shipment_silver(&review, "902");
-            assert_eq!(giver.short_for_orders, Some(short), "{case}: {giver:?}");
+            // The refused study is carried on its own, not in the column's shortfall (`ah-rjz2`).
+            let study: i64 = giver.refused.iter().map(|spend| spend.cost).sum();
+            assert_eq!(
+                giver.short_for_orders,
+                Some(short - study),
+                "{case}: {giver:?}"
+            );
             assert_eq!(giver.short_on, Some(Give), "{case}: {giver:?}");
         }
     }
@@ -65061,13 +65345,19 @@ BUILD
                 })
                 .filter_map(|f| f.line)
                 .collect();
-            assert_eq!(
-                caster.short_on == Some(Give),
-                anchors.contains(&gift_line),
-                "{case}: the column and the anchor disagree: {caster:?} {:?}",
-                review.findings
-            );
-            assert_eq!(caster.short_on, Some(short_on), "{case}: {caster:?}");
+            // A refused CAST is carried on its own, so its shortfall names no order on the column
+            // (`ah-rjz2`); the anchor still sits where the warning puts it.
+            if caster.short_for_orders != Some(0) || caster.refused.is_empty() {
+                assert_eq!(
+                    caster.short_on == Some(Give),
+                    anchors.contains(&gift_line),
+                    "{case}: the column and the anchor disagree: {caster:?} {:?}",
+                    review.findings
+                );
+                assert_eq!(caster.short_on, Some(short_on), "{case}: {caster:?}");
+            } else {
+                assert_eq!(caster.short_on, None, "{case}: {caster:?}");
+            }
             assert_eq!(anchors, vec![anchor], "{case}: {:?}", review.findings);
         }
     }
@@ -65349,7 +65639,13 @@ BUILD
             shipment_silver(&review, "905")
         );
         let student = shipment_silver(&review, "902");
-        assert_eq!(student.short_for_orders, Some(10), "{student:?}");
+        // Refused, and carried on its own rather than as a shortfall (`ah-rjz2`).
+        assert_eq!(student.short_for_orders, Some(0), "{student:?}");
+        assert_eq!(
+            crate::orders::semantics::refused_costs(&student),
+            [(SilverChangeCause::Studied, 10)],
+            "{student:?}"
+        );
     }
 
     /// The same moment with nothing to refill the sharer: 901's GIVE of $100 is cut to sharer
@@ -67006,9 +67302,11 @@ BUILD
                 Some(&[("FLOA".to_string(), 75)][..]),
                 "{shipped:?}"
             );
+            // Nor is the short ironwood shown as used up: the cast takes nothing (`ah-rjz2`).
+            // The ledger still charges it, so the warning below reads as before.
             assert_eq!(
                 moved_by(&effects, "901", "IRWD", Some(ItemChangeCause::CastSpent)),
-                -75,
+                0,
                 "{mage:?}"
             );
             let review = review_turn(&report, orders, Some(&rules), with_map());
@@ -67121,9 +67419,10 @@ BUILD
                 "{:?}",
                 effects_for(&effects, "902")
             );
+            // Nor is the short ironwood shown as used up (`ah-rjz2`).
             assert_eq!(
                 moved(&effects, "901", "IRWD"),
-                -75,
+                0,
                 "{:?}",
                 effects_for(&effects, "901")
             );
@@ -67715,6 +68014,7 @@ BUILD
             assert_eq!(
                 refused(&effects, "901"),
                 [RefusedCast {
+                    line: 2,
                     product: cloudship(),
                     silver_short: 0,
                     short: vec![short("FLOA", "floater hide", "floater hide", 75)],
@@ -67786,6 +68086,7 @@ BUILD
             assert_eq!(
                 refused(&effects, "901"),
                 [RefusedCast {
+                    line: 2,
                     product: cloudship(),
                     silver_short: 200,
                     short: Vec::new(),
@@ -67806,6 +68107,7 @@ BUILD
             assert_eq!(
                 refused(&effects, "901"),
                 [RefusedCast {
+                    line: 2,
                     product: cloudship(),
                     silver_short: 200,
                     short: vec![
@@ -67813,6 +68115,97 @@ BUILD
                         short("IRWD", "ironwood", "ironwood", 75)
                     ],
                 }]
+            );
+        }
+
+        /// `ah-rjz2`: a cast refused for a material takes nothing (`RunCreateArtifact`, `spells.cpp`,
+        /// checks every input before it consumes any), so the ITEMS column moves none of its
+        /// materials - neither the 50 hides held nor the 25 nobody had - while the ledger still
+        /// charges them for `not-enough-items`.
+        #[test]
+        fn a_cast_refused_for_a_material_takes_no_items() {
+            let report = report(vec![region(vec![with_item(
+                with_item(with_skill(unit("901"), "SWIN", 3), 75, "ironwood", "IRWD"),
+                50,
+                "floater hides",
+                "FLOA",
+            )])]);
+            let effects = items_after(&report, "unit 901\nCAST Summon_Wind\n", &trident_rules());
+            let moved: Vec<_> = effects_for(&effects, "901")
+                .map(|unit| unit.moved.clone())
+                .unwrap_or_default();
+            assert!(
+                moved
+                    .iter()
+                    .all(|movement| movement.cause != ItemChangeCause::CastSpent),
+                "{moved:?}"
+            );
+            assert_eq!(refused(&effects, "901").len(), 1);
+            let review = review_turn(
+                &report,
+                "unit 901\nCAST Summon_Wind\n",
+                Some(&trident_rules()),
+                CheckOptions::default(),
+            );
+            assert!(
+                review
+                    .findings
+                    .iter()
+                    .any(|finding| finding.code == codes::NOT_ENOUGH_ITEMS),
+                "{:#?}",
+                review.findings
+            );
+        }
+
+        /// `ah-rjz2`: a cast refused for its silver takes none of it either, so the SILVER column
+        /// hands the 200 back and carries the cast as refused, with the 50 the mage could draw on.
+        #[test]
+        fn a_cast_refused_for_silver_is_handed_back() {
+            let report = report(vec![region(vec![with_silver(
+                with_item(
+                    with_item(with_skill(unit("901"), "SWIN", 3), 75, "ironwood", "IRWD"),
+                    75,
+                    "floater hides",
+                    "FLOA",
+                ),
+                50,
+            )])]);
+            let review = review_turn(
+                &report,
+                "unit 901\nCAST Summon_Wind\n",
+                Some(&wind_for_silver_and_goods()),
+                CheckOptions::default(),
+            );
+            let row = review
+                .silver
+                .iter()
+                .find(|row| row.unit_id == "901")
+                .expect("901 is forecast");
+            assert_eq!(row.at_month_end, Some(50), "{row:?}");
+            assert_eq!(row.short_for_orders, Some(0), "{row:?}");
+            assert!(
+                row.changes
+                    .iter()
+                    .all(|change| change.cause != SilverChangeCause::CastSpent),
+                "{row:?}"
+            );
+            assert_eq!(
+                row.refused,
+                vec![super::super::super::silver::RefusedSpend {
+                    cause: SilverChangeCause::CastSpent,
+                    line: Some(2),
+                    cost: 200,
+                    available: 50,
+                    after_spending: false,
+                }]
+            );
+            assert!(
+                review
+                    .findings
+                    .iter()
+                    .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
+                "{:#?}",
+                review.findings
             );
         }
 
@@ -68765,13 +69158,12 @@ BUILD
                 let rules = trident_rules();
                 let review = review_turn(&report(vec![region()]), ORDERS, Some(&rules), with_map());
                 let giver = shipment_silver(&review, "901");
-                assert!(
-                    giver.short_for_orders.is_some_and(|short| short > 0),
-                    "{giver:?}"
-                );
+                // The GIVE is not named: the CAST is refused, and the column carries it on its
+                // own rather than as a shortfall (`ah-rjz2`).
+                assert_eq!(giver.short_on, None, "{giver:?}");
                 assert_eq!(
-                    giver.short_on,
-                    Some(crate::orders::silver::SilverSpender::Cast),
+                    crate::orders::semantics::refused_costs(&giver),
+                    [(SilverChangeCause::CastSpent, 200)],
                     "{giver:?}"
                 );
             }
@@ -77952,13 +78344,12 @@ BUILD
         // And the popup's fee is the ledger's own charge for the same orders.
         let silver =
             forecast_with_ruleset(vec![hex_region], "unit 900\nBUY 9 HUMN\nSTUDY Combat\n");
-        let studied: Vec<_> = silver
-            .changes
-            .iter()
-            .filter(|change| change.cause == SilverChangeCause::Studied)
-            .map(|change| change.amount)
-            .collect();
-        assert_eq!(studied, vec![-study.doubts[0].fee], "{:?}", silver.changes);
+        // The study is refused, so the column carries its fee on its own (`ah-rjz2`).
+        assert_eq!(
+            crate::orders::semantics::refused_costs(&silver),
+            [(SilverChangeCause::Studied, study.doubts[0].fee)],
+            "{silver:?}"
+        );
     }
 
     #[test]
@@ -81246,7 +81637,14 @@ BUILD
                 "short $200: this unit can have $0 and its orders spend $200"
             )]
         );
-        assert_eq!(forecast_for(&review, "5").short_for_orders, Some(200));
+        // Refused, so the column hands the cost back and carries the order on its own (`ah-rjz2`).
+        let caster = forecast_for(&review, "5");
+        assert_eq!(caster.short_for_orders, Some(0), "{caster:?}");
+        assert_eq!(
+            crate::orders::semantics::refused_costs(&caster),
+            [(SilverChangeCause::CastSpent, 200)],
+            "{caster:?}"
+        );
     }
 
     /// The mirror: a sharer that walks in arrives after `BUY` (`rules/sequenceofevents`), so it
@@ -82140,7 +82538,16 @@ BUILD
                 .iter()
                 .map(|row| row.at_month_end.expect("priced"))
                 .sum();
-            assert_eq!(total, 100 - spent, "{orders}: {:?}", review.silver);
+            // Every study here is refused and takes nothing (`ah-rjz2`), so the hex ends with all
+            // it started with; what was spent is carried as refused instead.
+            let refused: i64 = review
+                .silver
+                .iter()
+                .flat_map(|row| &row.refused)
+                .map(|spend| spend.cost)
+                .sum();
+            assert_eq!(total, 100, "{orders}: {:?}", review.silver);
+            assert_eq!(refused, spent, "{orders}: {:?}", review.silver);
             let lent: i64 = review
                 .silver
                 .iter()
@@ -82492,7 +82899,8 @@ BUILD
     }
 
     /// Sharer 8 lent its $100 to unit 5's BUY before it studied, so its row is debited the $100
-    /// and its $10 STUDY leaves it $10 overdrawn - the shortfall the warning reports for the hex.
+    /// and its $10 STUDY is refused and takes nothing (`ah-rjz2`) - the shortfall the warning reports
+    /// for the hex.
     /// The navigator chose to follow the phases here rather than lend all or nothing.
     #[test]
     fn the_column_debits_a_sharer_for_a_buy_whose_buyer_is_shipped_silver_later() {
@@ -82501,7 +82909,7 @@ BUILD
         assert_eq!(
             silver_rows(&review, &["8", "5"]),
             vec![
-                ("8".to_string(), Some(-10), 100),
+                ("8".to_string(), Some(0), 100),
                 ("5".to_string(), Some(100), 0),
             ],
             "{:#?}",
@@ -82527,14 +82935,15 @@ BUILD
 
     /// The buyer shares too, as quartermaster 667 does in the verified swamp (7,25): its own
     /// overdraft at the market is still a draw on sharer 8, made before 8 studied, so 8's row is
-    /// debited the $100 and ends $10 short, as the hex warning says (`ah-aqqb` verification).
+    /// debited the $100; its refused STUDY takes nothing (`ah-rjz2`), and the hex warning still says
+    /// it is $10 short (`ah-aqqb` verification).
     #[test]
     fn the_column_debits_a_sharer_for_a_sharing_buyer_shipped_silver_later() {
         let review = a_sharer_funds_a_buy_for(false, true);
         assert_eq!(
             silver_rows(&review, &["8", "5"]),
             vec![
-                ("8".to_string(), Some(-10), 100),
+                ("8".to_string(), Some(0), 100),
                 ("5".to_string(), Some(100), 0),
             ],
             "{:#?}",
@@ -82575,8 +82984,9 @@ BUILD
 
     /// A sharer repaid after STUDY still lends the market what it held as the market ran:
     /// sharing quartermaster 6 (15 men, $100) pays non-sharing quartermaster 5's $100 sword, then
-    /// its own $150 STUDY is unpaid; unit 9 ships each of them $100 afterwards. So 6 lent $100 and
-    /// ends $50 short, and 5 keeps its shipment (`ah-aqqb` review; `rules/sequenceofevents`).
+    /// its own $150 STUDY is refused; unit 9 ships each of them $100 afterwards. So 6 lent $100 and
+    /// ends at the $100 it is shipped, the refused study taking nothing (`ah-rjz2`), and 5 keeps its
+    /// shipment (`ah-aqqb` review; `rules/sequenceofevents`).
     #[test]
     fn a_sharer_repaid_after_study_still_lends_the_market_what_it_held() {
         let mut student = with_men(
@@ -82607,7 +83017,7 @@ BUILD
         assert_eq!(
             silver_rows(&review, &["6", "5"]),
             vec![
-                ("6".to_string(), Some(-50), 100),
+                ("6".to_string(), Some(100), 100),
                 ("5".to_string(), Some(100), 0),
             ],
             "{:#?}",
@@ -82693,7 +83103,7 @@ BUILD
         );
         assert_eq!(
             silver_rows(&review, &["8"]),
-            vec![("8".to_string(), Some(-10), 100)],
+            vec![("8".to_string(), Some(0), 100)],
             "{:#?}",
             review.silver
         );
@@ -82791,7 +83201,8 @@ BUILD
 
     /// Sharer 8 ($200) held enough as the market closed for both swords, so the sharing buyer 4
     /// is lent its $100 like non-sharing buyer 5 and ends the month at 0, not in the red; 8 is
-    /// debited both loans and its $10 STUDY leaves it $10 short (`ah-ludc`, following `ah-0nwd`).
+    /// debited both loans and its $10 STUDY is refused, taking nothing (`ah-ludc`, following
+    /// `ah-0nwd`; `ah-rjz2`).
     #[test]
     fn a_sharing_buyer_in_a_hex_short_at_month_end_is_lent_its_market_overdraft() {
         let review = a_sharing_buyer_in_a_hex_short_at_month_end(200);
@@ -82805,7 +83216,7 @@ BUILD
             silver_rows(&review, &["4", "8"]),
             vec![
                 ("4".to_string(), Some(0), 0),
-                ("8".to_string(), Some(-10), 200),
+                ("8".to_string(), Some(0), 200),
             ],
             "{:#?}",
             review.silver
@@ -82867,7 +83278,7 @@ BUILD
             silver_rows(&review, &["7", "8"]),
             vec![
                 ("7".to_string(), Some(40), 60),
-                ("8".to_string(), Some(-10), 100),
+                ("8".to_string(), Some(0), 100),
             ],
             "{:#?}",
             review.silver

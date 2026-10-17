@@ -166,11 +166,9 @@ fn a_study_does_not_shrink_what_a_buy_all_can_afford() {
 
     assert_eq!(row.buy_all[0].bought, 5, "100 silver buys five at 20");
     assert_eq!(held, 5, "and the ITEMS ledger says the same");
-    assert!(
-        row.at_month_end.is_some_and(|left| left < 0),
-        "the study is then unpaid: {:?}",
-        row.at_month_end
-    );
+    // The study is then refused and takes nothing (`ah-rjz2`).
+    assert_eq!(row.at_month_end, Some(0), "{row:?}");
+    assert_eq!(row.refused.len(), 1, "the study is then refused: {row:?}");
 }
 
 /// `rules/sequenceofevents` runs *Give orders* before *Market orders*, so a `GIVE ... ALL SILV`

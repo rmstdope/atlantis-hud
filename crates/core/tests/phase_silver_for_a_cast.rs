@@ -103,7 +103,8 @@ fn cases() -> Vec<Case> {
             script: "GIVE 901 200 SILV\nCAST Create_Amulet_Of_Protection",
             cast_made: 0,
             capped_by: Some(ProductionCap::Silver),
-            expense: Some(400),
+            // The refused cast takes nothing, so only the gift is spent (`ah-rjz2`).
+            expense: Some(200),
             amulets: 0,
             warns: true,
         },
@@ -112,7 +113,8 @@ fn cases() -> Vec<Case> {
             script: "CAST Create_Amulet_Of_Protection\nGIVE 901 200 SILV",
             cast_made: 0,
             capped_by: Some(ProductionCap::Silver),
-            expense: Some(400),
+            // The refused cast takes nothing, so only the gift is spent (`ah-rjz2`).
+            expense: Some(200),
             amulets: 0,
             warns: true,
         },

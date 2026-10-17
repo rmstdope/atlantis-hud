@@ -656,6 +656,34 @@ pub struct UnitSilver {
     /// [`UnitSilver::buy_all`] is: a partial ledger under a figure that is not a number would
     /// invite a consumer to add the entries up and disagree with the column beside it.
     pub changes: Vec<SilverChange>,
+    /// This unit's orders the game refuses as a whole for want of silver - a `STUDY`
+    /// (`monthorders.cpp`: `Do1StudyOrder`, "STUDY: Not enough funds.") or a create-artifact `CAST`
+    /// (`spells.cpp`: `RunCreateArtifact`) - in document order (`ah-rjz2`). A refused order takes
+    /// nothing, so its cost is in no total and no entry of [`Self::changes`]: it is carried here
+    /// for the interface to strike through, with what the unit could draw on. Empty for every unit
+    /// whose orders all go ahead.
+    pub refused: Vec<RefusedSpend>,
+}
+
+/// One order the game refuses as a whole for want of silver, as the SILVER column carries it
+/// ([`UnitSilver::refused`], `ah-rjz2`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub struct RefusedSpend {
+    /// What it would have been booked as: [`SilverChangeCause::Studied`] or
+    /// [`SilverChangeCause::CastSpent`].
+    pub cause: SilverChangeCause,
+    /// The 1-based document line of the refused order.
+    pub line: Option<i64>,
+    /// What it would have cost. Always above zero.
+    pub cost: i64,
+    /// What the unit could draw on when it came to pay - its own silver and what the hex's `SHARE`
+    /// purse could still lend it. Never below zero, and always below `cost`.
+    pub available: i64,
+    /// Whether an earlier order this month spent this unit's silver first, so `available` is what
+    /// that left rather than what the unit held.
+    pub after_spending: bool,
 }
 
 /// The outcome of judging a unit's shortfall against its hex's `SHARE` pool.
@@ -2466,6 +2494,7 @@ pub fn forecast_unit(
             shared_silver_coverage: None,
             changes: Vec::new(),
             borrowed_where_fleet_lands: None,
+            refused: Vec::new(),
         };
     }
 
@@ -2539,6 +2568,7 @@ pub fn forecast_unit(
             shared_silver_coverage: None,
             changes: Vec::new(),
             borrowed_where_fleet_lands: None,
+            refused: Vec::new(),
         };
     }
 
@@ -3489,6 +3519,7 @@ pub fn forecast_unit(
             moves.into_iter().map(|(_, change)| change).collect()
         },
         borrowed_where_fleet_lands: None,
+        refused: Vec::new(),
     }
 }
 

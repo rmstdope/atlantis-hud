@@ -64,15 +64,19 @@ fn a_purchase_the_purse_paid_in_full_is_not_what_the_buyer_is_short_on() {
         bought, -6426,
         "the purse covers the purchase, so all 51 chocolate are bought at $126: {reginald:?}"
     );
+    // The $100 study is what nothing is left for, so the game refuses it and takes nothing: the
+    // column carries it on its own and names no order short, the purchase the purse paid
+    // included (`ah-rjz2`).
+    assert_eq!(reginald.short_for_orders, Some(0), "{reginald:?}");
+    assert_eq!(reginald.short_on, None, "{reginald:?}");
     assert_eq!(
-        reginald.short_for_orders,
-        Some(100),
-        "the $100 study is what nothing is left for: {reginald:?}"
-    );
-    assert_eq!(
-        reginald.short_on,
-        Some(SilverSpender::Study),
-        "the study is what falls short, not the purchase the purse paid: {reginald:?}"
+        reginald
+            .refused
+            .iter()
+            .map(|spend| (spend.cause, spend.cost))
+            .collect::<Vec<_>>(),
+        [(SilverChangeCause::Studied, 100)],
+        "the study is what is refused, not the purchase the purse paid: {reginald:?}"
     );
     // Nor does the hover say how many the purchase buys: it bought every one (`ah-ottr`).
     assert_eq!(reginald.short_buy, None, "{reginald:?}");
@@ -127,10 +131,16 @@ fn a_purchase_the_unit_paid_itself_is_not_what_it_is_short_on() {
             .any(|change| change.cause == SilverChangeCause::Bought && change.amount == -500),
         "all 5 chocolate are bought at $100: {buyer:?}"
     );
+    // $5 left for a $10 study: refused, and carried on its own (`ah-rjz2`).
+    assert_eq!(buyer.short_for_orders, Some(0), "{buyer:?}");
+    assert_eq!(buyer.short_on, None, "{buyer:?}");
     assert_eq!(
-        buyer.short_for_orders,
-        Some(5),
+        buyer
+            .refused
+            .iter()
+            .map(|spend| (spend.cost, spend.available, spend.after_spending))
+            .collect::<Vec<_>>(),
+        [(10, 5, true)],
         "$5 left for a $10 study: {buyer:?}"
     );
-    assert_eq!(buyer.short_on, Some(SilverSpender::Study), "{buyer:?}");
 }
