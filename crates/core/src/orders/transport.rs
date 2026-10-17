@@ -596,8 +596,11 @@ pub(crate) fn acceptance(sender_can_distribute: bool, facts: Option<&TargetFacts
 /// Which reach this shipment is measured against.
 ///
 /// `rules/economy_transport` gives shipments involving one quartermaster the local two-hex reach,
-/// while two quartermasters use the sender skill's longer reach.
+/// while two quartermasters use the sender skill's longer reach. That longer reach is TRANSPORT's
+/// alone: the engine's `CheckTransportOrders` measures every DISTRIBUTE against `LOCAL_TRANSPORT`
+/// (`ah-4g2l`), although `rules/transport` calls the two orders one.
 pub(crate) fn reach_for(
+    order: ShipmentOrder,
     sender_is_quartermaster: bool,
     target_is_quartermaster: bool,
     sender_level: u32,
@@ -605,7 +608,7 @@ pub(crate) fn reach_for(
     if !sender_is_quartermaster {
         return Some(Reach::Local);
     }
-    if target_is_quartermaster {
+    if target_is_quartermaster && order == ShipmentOrder::Transport {
         return Some(Reach::BetweenQuartermasters {
             level: sender_level,
         });
@@ -934,6 +937,7 @@ impl Shipping {
         // anyone else `LOCAL_TRANSPORT` and refuses a TRANSPORT beyond it ("Recipient ... is too
         // far away."), so a quartermaster that owns none ships like anybody (`ah-1jl9`).
         let reach = reach_for(
+            order,
             sender_can_distribute,
             target_qm,
             self.quartermasters.level(sender),
@@ -950,8 +954,9 @@ impl Shipping {
                         let settled = arrival(reach, from, to, self.geometry, &self.shown);
                         // `rules/economy_transport`: a quartermaster "may also TRANSPORT items to
                         // any unit within 2 hexes" - its own range when the target is no
-                        // quartermaster (`ah-nzb0`).
-                        if sender_qm && !target_qm {
+                        // quartermaster (`ah-nzb0`), and for every DISTRIBUTE, which never gets the
+                        // longer reach (`ah-4g2l`).
+                        if sender_qm && (!target_qm || order == ShipmentOrder::Distribute) {
                             settled.distributed()
                         } else {
                             settled
@@ -1230,12 +1235,17 @@ mod tests {
         );
 
         // Which reach a shipment is measured against, by what each end is.
-        assert_eq!(reach_for(false, true, 0), Some(Reach::Local));
+        let transport = ShipmentOrder::Transport;
+        assert_eq!(reach_for(transport, false, true, 0), Some(Reach::Local));
         assert_eq!(
-            reach_for(true, true, 1),
+            reach_for(transport, true, true, 1),
             Some(Reach::BetweenQuartermasters { level: 1 })
         );
-        assert_eq!(reach_for(true, false, 1), Some(Reach::Local));
+        assert_eq!(reach_for(transport, true, false, 1), Some(Reach::Local));
+        assert_eq!(
+            reach_for(ShipmentOrder::Distribute, true, true, 1),
+            Some(Reach::Local)
+        );
     }
 
     #[test]
@@ -1696,6 +1706,44 @@ mod tests {
             Acceptance::NotCaravanseraiOwner
         );
         assert_eq!(judged(None).acceptance, Acceptance::EligibilityUnknown);
+    }
+
+    /// `ah-4g2l`: `rules/transport` calls DISTRIBUTE TRANSPORT's other name, but the engine's
+    /// `CheckTransportOrders` gives the long reach to `O_TRANSPORT` alone and measures every
+    /// DISTRIBUTE against `LOCAL_TRANSPORT` (2), refusing it beyond that as "Recipient ... is too
+    /// far away." - whoever the target is. TRANSPORT's long reach between quartermasters stays.
+    #[test]
+    fn a_distribute_beyond_the_flat_reach_is_refused_even_between_quartermasters() {
+        // Both are quartermasters owning a Caravanserai, three hexes apart.
+        let shipping = shipping(
+            &[("900", 1), ("901", 1)],
+            vec![
+                ("900", at(facts(true, true, true, true), hex(0, 0))),
+                ("901", at(facts(true, true, true, true), hex(0, 6))),
+            ],
+            &[],
+        );
+
+        let distributed = shipping.judge(ShipmentOrder::Distribute, "900", Some(hex(0, 0)), "901");
+        assert_eq!(distributed.reach, Some(Reach::Local));
+        assert_eq!(
+            distributed.measured.map(|measured| measured.arrival),
+            Some(Arrival::TooFar(OutOfReach::Distance {
+                away: 3,
+                limit: 2,
+                range: Range::Distributes,
+            }))
+        );
+
+        let transported = shipping.judge(ShipmentOrder::Transport, "900", Some(hex(0, 0)), "901");
+        assert_eq!(
+            transported.reach,
+            Some(Reach::BetweenQuartermasters { level: 1 })
+        );
+        assert_eq!(
+            transported.measured.map(|measured| measured.arrival),
+            Some(Arrival::Certain)
+        );
     }
 
     /// `rules/sequenceofevents` moves every unit before any TRANSPORT, so both ends are measured
