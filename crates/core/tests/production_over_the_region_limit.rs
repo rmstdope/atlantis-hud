@@ -54,14 +54,14 @@ fn the_refused_swamps_floater_hides_are_neither_produced_nor_shipped() {
     .expect("the committed ruleset loads");
 
     for producer in ["11852", "11853"] {
-        if let Some(row) = common::preview_row(text, &preview, producer) {
-            assert!(
-                row.produced.is_empty(),
-                "{producer} produces nothing in the refused swamp: {:?}",
-                row.produced
-            );
-            assert_eq!(floa(row), 0, "{producer}: {:?}", row.unit.items);
-        }
+        // Its orders now change nothing the preview shows - no goods made, none sent - so the
+        // producer has no preview row at all. Before the fix it had one, producing 3 FLOA.
+        let row = common::preview_row(text, &preview, producer);
+        assert!(
+            row.is_none(),
+            "{producer} produces nothing in the refused swamp: {:?}",
+            row.map(|row| (&row.produced, floa(row)))
+        );
     }
     let quartermaster = common::expect_preview_row(text, &preview, "8333");
     assert_eq!(
