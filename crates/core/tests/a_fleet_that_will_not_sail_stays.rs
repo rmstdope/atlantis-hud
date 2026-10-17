@@ -267,3 +267,48 @@ fn a_raft_within_its_capacity_still_leaves() {
     assert!(departs(text, &orders, "10575"));
     assert!(traced(text, &orders, "10575"));
 }
+
+/// The overloaded raft's passenger Drones (10594) with `study fish` replaced by `with`.
+fn passenger_instead(with: &str) -> String {
+    let orders = overloaded();
+    let from = "Skills: fishing [FISH] 1 (30).\nstudy fish\n";
+    assert_eq!(orders.matches(from).count(), 1, "{from:?} is unique");
+    orders.replacen(from, &format!("Skills: fishing [FISH] 1 (30).\n{with}"), 1)
+}
+
+/// A fleet kept in port holds only who stays aboard it: Drones (10594) steps off the overloaded
+/// raft and walks north into plain (36,42) on its own MOVE, and every surface draws the walk.
+#[test]
+fn a_unit_that_steps_off_an_overloaded_raft_still_walks() {
+    let text = atlantis_hud_fixtures::G5_F21_T24.text;
+    let orders = passenger_instead("LEAVE\nMOVE N\n");
+    assert!(warned(text, &orders, "fleet-overloaded"));
+    assert!(
+        rows(text, &orders, "10594")
+            .iter()
+            .any(|(region, status, to)| region == LONTHAX
+                && *status == UnitPreviewStatus::Departing
+                && to.as_deref() == Some("1:36,42")),
+        "{:?}",
+        rows(text, &orders, "10594")
+    );
+    assert!(traced(text, &orders, "10594"));
+}
+
+/// Nor does it hold one that steps off it onto another fleet: 10594 boards Raft [236], 220 aboard
+/// plus its 200 on a capacity of 450, which Drones (10584) sails SE to ocean (37,45).
+#[test]
+fn a_unit_that_moves_from_an_overloaded_raft_to_one_that_sails_sails_with_it() {
+    let text = atlantis_hud_fixtures::G5_F21_T24.text;
+    let orders = passenger_instead("LEAVE\nENTER 236\n");
+    assert!(
+        rows(text, &orders, "10594")
+            .iter()
+            .any(|(region, status, to)| region == LONTHAX
+                && *status == UnitPreviewStatus::Departing
+                && to.as_deref() == Some("1:37,45")),
+        "{:?}",
+        rows(text, &orders, "10594")
+    );
+    assert!(traced(text, &orders, "10594"));
+}

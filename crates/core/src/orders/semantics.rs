@@ -21650,7 +21650,9 @@ fn uncounted_cause(unit: &ReportUnit, facts: &UnitFacts<'_>, ruleset: Option<&Ru
 /// fleet is overloaded or short of crew, in which case the boat stays put and the produce check
 /// would have been right - but the player is already being told the sail will fail, and a second
 /// finding true only *because* of the first is two warnings for one mistake, and the wrong one to
-/// act on.
+/// act on. So the produce check alone reads the course as ordered
+/// ([`production_region_as_ordered`]); this, and every reader of where the month ends, keeps such a
+/// fleet in port, since the game does (`rules/movement_sailing`, `ah-zbtx`).
 ///
 /// A vessel is one [`is_vessel`] recognises - the server's own `Sailors: H/N`, or a hull the
 /// ruleset knows. [`hulls_named_in`] is not that test: it reads any non-empty kind as a one-hull
@@ -21666,17 +21668,28 @@ fn carried_away<'a>(
 /// The fleet carrying `ordered` out of the hex, as [`carried_away`] defines it: its captain's
 /// course and its hull, the hull read as `check_sail_route` reads it, so a flying fleet is not held
 /// to the water here either. Read by [`carried_away`] and [`production_region`] alike, so the two
-/// cannot disagree about which fleet carries a unit or whether it leaves.
+/// cannot disagree about which fleet carries a unit or whether it leaves. A fleet the game keeps in
+/// port, overloaded or short of sailors ([`Hex::staying_fleets`], `ah-zbtx`), carries nobody.
 fn fleet_carrying<'a>(
     hex: &'a Hex<'a>,
     ordered: &Ordered<'_>,
     ruleset: &Ruleset,
 ) -> Option<(&'a PlacedIntent, Hull)> {
+    fleet_carrying_as_ordered(hex, ordered, ruleset)
+        .filter(|(fleet, _, _)| !hex.staying_fleets.contains(*fleet))
+        .map(|(_, course, hull)| (course, hull))
+}
+
+/// [`fleet_carrying`] before any fleet is kept in port for its load or crew, with the fleet's
+/// structure id: the course as ordered, which the produce check judges a passenger by
+/// ([`carried_away`]'s doc, `ah-jk9h`).
+fn fleet_carrying_as_ordered<'a>(
+    hex: &'a Hex<'a>,
+    ordered: &Ordered<'_>,
+    ruleset: &Ruleset,
+) -> Option<(&'a str, &'a PlacedIntent, Hull)> {
     hex.region.structures.iter().find_map(|fleet| {
-        if !is_vessel(fleet, Some(ruleset))
-            || !is_aboard(ordered, &fleet.structure_id)
-            || hex.staying_fleets.contains(&fleet.structure_id)
-        {
+        if !is_vessel(fleet, Some(ruleset)) || !is_aboard(ordered, &fleet.structure_id) {
             return None;
         }
         let hull = Hull::from_flies(fleet_flies(fleet, Some(ruleset)));
@@ -21701,7 +21714,7 @@ fn fleet_carrying<'a>(
                 };
                 sail_month_end(hex.region, steps, &HashMap::new(), ruleset, hull).leaves()
             })
-            .map(|placed| (placed, hull))
+            .map(|placed| (fleet.structure_id.as_str(), placed, hull))
     })
 }
 
@@ -21813,7 +21826,37 @@ fn production_region<'a>(
     let Some(rules) = ruleset else {
         return Some(hex.region);
     };
-    match fleet_carrying(hex, ordered, rules) {
+    sailed_to(
+        hex,
+        fleet_carrying(hex, ordered, rules),
+        rules,
+        by_coordinate,
+    )
+}
+
+/// [`production_region`] for the produce check, which judges a passenger where its fleet's course
+/// takes it even when `check_sailing` says the fleet will not sail: the player is already told the
+/// sail fails, and a second warning true only because of the first is the wrong one to act on
+/// ([`carried_away`], `ah-jk9h`, kept by `ah-zbtx`).
+fn production_region_as_ordered<'a>(
+    hex: &Hex<'a>,
+    ordered: &Ordered<'_>,
+    ruleset: &Ruleset,
+    by_coordinate: &HashMap<Coordinate, &'a ReportRegion>,
+) -> Option<&'a ReportRegion> {
+    let carrying =
+        fleet_carrying_as_ordered(hex, ordered, ruleset).map(|(_, course, hull)| (course, hull));
+    sailed_to(hex, carrying, ruleset, by_coordinate)
+}
+
+/// Where a unit `carrying` takes from `hex` ends up, or `hex` itself when nothing carries it.
+fn sailed_to<'a>(
+    hex: &Hex<'a>,
+    carrying: Option<(&PlacedIntent, Hull)>,
+    rules: &Ruleset,
+    by_coordinate: &HashMap<Coordinate, &'a ReportRegion>,
+) -> Option<&'a ReportRegion> {
+    match carrying {
         Some((
             PlacedIntent {
                 intent: Intent::Sail { steps },
@@ -21981,7 +22024,8 @@ fn check_production(
             // a region nobody can see is worse than no mark at all (`ah-jk9h`, `ah-8myf`).
             // `produce-without-skill` above is unaffected: whether the unit has the skill is a
             // fact about the unit, not about the region.
-            let where_it_produces = production_region(hex, ordered, Some(ruleset), by_coordinate);
+            let where_it_produces =
+                production_region_as_ordered(hex, ordered, ruleset, by_coordinate);
             let Some(region) = where_it_produces else {
                 continue;
             };
@@ -25642,12 +25686,12 @@ fn leaves_hex_after_load_check(
     })
 }
 
-/// Whether `ordered` stands in, or could captain, a fleet the game keeps in this hex all month
-/// ([`Hex::staying_fleets`], `ah-zbtx`).
+/// Whether `ordered` stands in a fleet the game keeps in this hex all month once its own ENTER and
+/// LEAVE have run ([`Hex::staying_fleets`], `ah-zbtx`): a unit that steps off it is not held by it.
 fn in_staying_fleet(hex: &Hex<'_>, ordered: &Ordered<'_>) -> bool {
     hex.staying_fleets
         .iter()
-        .any(|fleet| is_aboard(ordered, fleet) || could_captain(ordered, fleet))
+        .any(|fleet| is_aboard(ordered, fleet))
 }
 
 /// Whether the game refuses this unit's own `SAIL` at its very first step, so the fleet - and the
@@ -72322,16 +72366,9 @@ BUILD
             kind: "Galley, 40 Galleons, 11 Galleys, 10 Balloons".to_string(),
             ..Default::default()
         }];
-        // Crewed for all 62 hulls - the 762 sailing levels `fleet-undercrewed` asks for - or the
-        // fleet "will not go anywhere" (`rules/movement_sailing`, `ah-zbtx`) and the fisherman is
-        // rightly judged where he is.
-        for sailor in regions[0]
-            .units
-            .iter_mut()
-            .filter(|unit| unit.unit_id == "4022")
-        {
-            sailor.men = 200;
-        }
+        // Undercrewed (4 sailing levels of 762), so `fleet-undercrewed` says it will not sail; the
+        // produce check still judges the fisherman where the course goes rather than warn a second
+        // time for the same mistake (`ah-jk9h`, kept by `ah-zbtx`).
         let findings = check(regions, "unit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n");
 
         assert_eq!(produce_codes(&findings), Vec::<&str>::new(), "{findings:?}");

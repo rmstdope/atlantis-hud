@@ -1555,7 +1555,7 @@ pub(crate) fn formed_unit_as_ordered(
     })?;
     Some(FormedAsOrdered {
         sails: entry.move_command.as_deref() == Some("SAIL"),
-        refused_movement: entry.refused_overloaded || entry.fleet_stays,
+        refused_movement: entry.refused_overloaded || entry.kept_in_port(),
         move_steps: entry.move_steps,
         unit: entry.unit,
     })
@@ -1592,7 +1592,7 @@ pub(crate) fn settled_movement(
         .into_iter()
         .find(|entry| !entry.formed && entry.unit.unit_id == unit_id)
         .map(|entry| SettledMovement {
-            refused_movement: entry.refused_overloaded || entry.fleet_stays,
+            refused_movement: entry.refused_overloaded || entry.kept_in_port(),
             movement: entry.unit.movement,
         })
 }
@@ -1902,7 +1902,7 @@ fn decide_movement(
             sailed_hull.map(|(region, hull)| {
                 crate::movement::fleet::fleet_course(region, ordered, &formed, &hull.structure_id)
                     .steps
-                    .filter(|_| !entry.fleet_stays)
+                    .filter(|_| !entry.kept_in_port())
                     .map(<[crate::movement::orders::MoveStep]>::to_vec)
             });
         let traced_steps: Option<&[crate::movement::orders::MoveStep]> = match &hull_course {
@@ -2692,6 +2692,13 @@ impl WorkingUnit {
             &stepping_off,
             Some(ruleset),
         ))
+    }
+
+    /// Whether a fleet the game keeps in port holds this unit there: it is aboard one
+    /// ([`WorkingUnit::fleet_stays`]) and follows the hull - writing no movement of its own, or a
+    /// `SAIL` - rather than walking off it on its own `MOVE` (`ah-zbtx`).
+    fn kept_in_port(&self) -> bool {
+        self.fleet_stays && matches!(self.move_command.as_deref(), None | Some("SAIL"))
     }
 
     /// Whether the game refuses this unit's own `MOVE` or `ADVANCE` because it is overloaded:
