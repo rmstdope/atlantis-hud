@@ -605,7 +605,10 @@ pub fn fleet_owner(
 /// first, as unit ids - the object's list [`fleet_owner`] reads its first entry from, by the rules
 /// stated there. A structure of any kind, not only a hull: the engine keeps one list per object
 /// (`Object::GetOwner`), and `CheckTransportOrders` asks it about a Caravanserai long after the
-/// movement phase has taken more units off it (`ah-1jl9`).
+/// movement phase has taken more units off it (`ah-1jl9`). A caller that passes no `formed` crews
+/// does not follow a `PROMOTE NEW <n>` either: the formed unit is not in the list, so that
+/// `PROMOTE` promotes nobody here (`OrderedUnits::evictions_in` and `orders::transport` today -
+/// `ah-vweq`).
 #[must_use]
 pub fn occupants_after_promotes(
     region: &ReportRegion,
