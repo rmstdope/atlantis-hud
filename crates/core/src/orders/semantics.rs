@@ -618,9 +618,13 @@ fn formed_units(
         .filter_map(|mut block| {
             // The first lookup stays on a bare number: it resolves a unit the report physically
             // prints, whose number the game assigns once.
+            // Only our own unit can FORM: the engine answers `unit <id>` for anyone else's with
+            // "is not your unit." and selects nothing, so the block forms no one
+            // (`../Atlantis/parseorders.cpp` `O_UNIT`, `O_FORM`; `ah-5jb2`).
             let parent = unit_by_id
                 .get(block.formed_by.as_str())
                 .copied()
+                .filter(|parent| parent.own)
                 .or_else(|| minted.get(&unit_key(&block.region_id, &block.formed_by)))?;
             let unit = effects::formed_unit(parent, &block.alias, &parent.flags);
             minted.insert(unit_key(&unit.region_id, &unit.unit_id), unit.clone());
@@ -54756,6 +54760,23 @@ BUILD
             findings[0].message,
             "this claims $2000 and the faction has $1038 of its unclaimed silver left, so it gets $1038"
         );
+    }
+
+    /// A FORM under another faction's unit forms nothing: the engine answers `unit <id>` with
+    /// "is not your unit." and selects no unit, so the FORM is "Order given without a unit
+    /// selected." and its CLAIM never reaches `ProcessClaimOrder` (`../Atlantis/parseorders.cpp`
+    /// `O_UNIT`, `O_FORM`). It must not draw on the fund ahead of our own claim.
+    #[test]
+    fn a_form_under_a_foreign_unit_claims_nothing() {
+        let mut theirs = unit("700");
+        theirs.own = false;
+        theirs.faction_id = Some("12".to_string());
+        assert!(check_claims_of(
+            Some(6038),
+            vec![region(vec![theirs, unit("18642")])],
+            "unit 700\nFORM 1\nCLAIM 5000\nEND\nunit 18642\nCLAIM 2000\n",
+        )
+        .is_empty());
     }
 
     /// A formed unit's own over-claim is warned on its own line, naming the unit it is.
