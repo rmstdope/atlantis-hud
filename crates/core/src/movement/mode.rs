@@ -394,6 +394,37 @@ pub fn carrying_after_transfers(
     Carrying { weight, capacities }
 }
 
+/// A unit's load over its best allowance: the moment the game refuses its `MOVE`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Overload {
+    pub weight: i64,
+    pub allowance: i64,
+}
+
+/// Whether a unit carrying `carrying` is overloaded, the one verdict read by the `unit-overloaded`
+/// check and the departures guard and teaching ask about (`orders::semantics`) and by the preview's
+/// settle, which the units list and the map trace follow (`orders::effects`). They used to judge it
+/// in a copy each, and the copies disagreed (`ah-586v`, consolidated by `ah-v0e3`).
+///
+/// `rules/movement_normal`: "A unit can walk provided that the carrying capacity of its people,
+/// horses and wagons is at least as great as the weight of all its other items ... Otherwise the
+/// unit cannot issue a MOVE order." The allowance is the best of flying, riding and walking from
+/// `carrying.capacities`, else the report's printed `Capacity:` line of `printed`
+/// ([`best_allowance`]) where the ruleset cannot price what the unit holds.
+///
+/// `Some` only when the weight and an allowance are both known and the weight exceeds the
+/// allowance. `None` is both "not overloaded" and "cannot say", and every caller lets the ordered
+/// move stand on either.
+#[must_use]
+pub fn overload(carrying: Carrying, printed: Option<&ReportUnit>) -> Option<Overload> {
+    let allowance = carrying
+        .capacities
+        .map(|capacity| capacity.fly.max(capacity.ride).max(capacity.walk))
+        .or_else(|| printed.and_then(best_allowance))?;
+    let weight = carrying.weight?;
+    (weight > allowance).then_some(Overload { weight, allowance })
+}
+
 /// A [`Carrying`] whose both halves are known, presented the way a report prints a unit's movement.
 #[must_use]
 pub fn movement_for_carrying(carrying: Carrying) -> Option<UnitMovement> {
@@ -889,6 +920,67 @@ mod tests {
     fn a_negative_capacity_carries_nothing() {
         let capacities = parse_capacities("-1/-1/-1/-1").expect("still four numbers");
         assert_eq!(capacities.fly, -1);
+    }
+
+    // ------------------------------------------------------------ overload
+
+    fn carrying(weight: Option<i64>, capacities: Option<(i64, i64, i64)>) -> Carrying {
+        Carrying {
+            weight,
+            capacities: capacities.map(|(fly, ride, walk)| Capacities {
+                fly,
+                ride,
+                walk,
+                swim: 0,
+            }),
+        }
+    }
+
+    /// `rules/movement_normal`: a unit walks or rides only while its capacity is at least its
+    /// weight, so the verdict is the weight against the best of flying, riding and walking.
+    #[test]
+    fn overload_compares_the_load_to_the_best_derived_allowance() {
+        assert_eq!(
+            overload(carrying(Some(16), Some((0, 0, 15))), None),
+            Some(Overload {
+                weight: 16,
+                allowance: 15
+            })
+        );
+        assert_eq!(overload(carrying(Some(15), Some((0, 0, 15))), None), None);
+        // Riding's 280 is the best allowance, so 210 is within it whatever walking says.
+        assert_eq!(overload(carrying(Some(210), Some((0, 280, 100))), None), None);
+    }
+
+    /// Where the items cannot be priced the report's printed `Capacity:` line is the allowance,
+    /// as the `unit-overloaded` check has always read it.
+    #[test]
+    fn overload_falls_back_to_the_printed_capacity_line() {
+        let printed = with_capacity("0/0/15/0");
+        assert_eq!(
+            overload(carrying(Some(20), None), Some(&printed)),
+            Some(Overload {
+                weight: 20,
+                allowance: 15
+            })
+        );
+        assert_eq!(overload(carrying(Some(14), None), Some(&printed)), None);
+        // A derived capacity outranks the printed one, which predates this month's orders.
+        assert_eq!(
+            overload(carrying(Some(20), Some((0, 0, 25))), Some(&printed)),
+            None
+        );
+    }
+
+    /// Unknown weight or allowance is "cannot say", which every caller reads as "let it move".
+    #[test]
+    fn overload_cannot_say_without_a_weight_or_an_allowance() {
+        assert_eq!(overload(carrying(None, Some((0, 0, 15))), None), None);
+        assert_eq!(overload(carrying(Some(99), None), None), None);
+        assert_eq!(
+            overload(carrying(Some(99), None), Some(&ReportUnit::default())),
+            None
+        );
     }
 
     // ------------------------------------------------------------ best_allowance
