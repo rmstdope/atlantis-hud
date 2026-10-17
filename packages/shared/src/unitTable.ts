@@ -430,15 +430,45 @@ export function silverShown(silver: UnitSilver | null, countUpkeep: boolean): nu
 /**
  * Whether the Silver figure is drawn red: the unit ends the month below zero.
  *
- * Red has that one meaning (`ah-ottr`). A unit that ends in credit but whose orders spend more
+ * Red has that one meaning (`ah-ottr`), so a shortfall a pool left unjudged is not red
+ * (`ah-3aaj`, `poolLeavesShortfallOpen`). A unit that ends in credit but whose orders spend more
  * than the silver reaching it in time can cover (`ah-uwa3`) keeps an ordinary figure and shows
  * `silverShortfall` beside it instead - a positive figure in an error colour read as a mistake.
  *
  * Lifted out of `UnitTableDock` so the cell's colour and the popup's sentences are one decision
  * (`ah-rgkk.4.3`). `silver` is kept so every call site reads the same pair as `silverShortfall`.
  */
-export function silverIsRed(shown: number | null, _silver: UnitSilver | null): boolean {
-  return shown !== null && shown < 0;
+export function silverIsRed(shown: number | null, silver: UnitSilver | null): boolean {
+  return shown !== null && shown < 0 && !poolLeavesShortfallOpen(silver);
+}
+
+/**
+ * Whether this unit's shortfall rests on a hex's shared silver that could not be added up, because
+ * a sharing unit's month is uncertain (`ah-3aaj`). The purse might have lent it the difference, so
+ * neither a red figure nor `<N> short` may claim the shortfall as certain.
+ *
+ * Read from the core's own judgement of this unit, never from `poolDoubted` alone: the core marks
+ * exactly the units whose shortfall it could not judge, and leaves a doubted sharer unmarked.
+ */
+export function poolLeavesShortfallOpen(silver: UnitSilver | null): boolean {
+  return silver?.sharedSilverCoverage === "unjudged";
+}
+
+/**
+ * What the Silver cell draws (`ah-3aaj`): the column's dim `?` in place of a figure below zero
+ * that a pool left unjudged - the mark that already means "this month could not be priced" -
+ * and `shown` otherwise. A pair is read at its low end, as the cell reads it everywhere else.
+ */
+export function silverCellShown(
+  shown: ShownSilver | null,
+  silver: UnitSilver | null
+): ShownSilver | null {
+  if (shown === null || !poolLeavesShortfallOpen(silver)) {
+    return shown;
+  }
+  const low =
+    shown.kind === "single" ? shown.value : shown.kind === "unknown" ? null : shown.low;
+  return low !== null && low < 0 ? { kind: "unknown" } : shown;
 }
 
 /**
@@ -450,7 +480,8 @@ export function silverIsRed(shown: number | null, _silver: UnitSilver | null): b
  */
 export function silverShortfall(shown: number | null, silver: UnitSilver | null): number | null {
   const short = silver?.shortForOrders ?? 0;
-  if (short <= 0 || (shown !== null && shown < 0)) {
+  // A pool left unjudged might have lent the difference; the hover gives the amount (`ah-3aaj`).
+  if (short <= 0 || (shown !== null && shown < 0) || poolLeavesShortfallOpen(silver)) {
     return null;
   }
   return short;
