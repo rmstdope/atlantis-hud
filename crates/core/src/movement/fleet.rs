@@ -1260,6 +1260,18 @@ mod tests {
         );
     }
 
+    /// `ah-q4kp`: LEAVE runs before PROMOTE (`rules/sequenceofevents`), so an owner that writes
+    /// both is in no structure when promotions run; its PROMOTE errors "PROMOTE: Can only promote
+    /// inside structures." (../Atlantis `runorders.cpp` `RunPromoteOrders`) and the hull goes to
+    /// the next unit aboard, not to the unit it named.
+    #[test]
+    fn a_promote_written_with_leave_does_not_hand_the_hull_on() {
+        assert_eq!(
+            coast_owner("unit 900\nLEAVE\nPROMOTE 902\n", "329"),
+            Some("901".to_string())
+        );
+    }
+
     #[test]
     fn a_passenger_who_reenters_can_replace_a_departing_builder() {
         assert_eq!(
