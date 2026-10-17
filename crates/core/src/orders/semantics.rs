@@ -23388,7 +23388,13 @@ fn check_transport_reach(
     for ordered in &hex.units {
         let sender = ordered.unit.unit_id.as_str();
         for placed in &ordered.intents {
-            let Intent::Transport { to, what, amount } = &placed.intent else {
+            let Intent::Transport {
+                order,
+                to,
+                what,
+                amount,
+            } = &placed.intent
+            else {
                 continue;
             };
             let Some(id) = super::transport::shipment_target(sender, to, what) else {
@@ -23404,7 +23410,7 @@ fn check_transport_reach(
             // two answers that are gaps in the report, and an unmeasured distance, may well go
             // through (`ah-64wm`, `ah-7ale.5`); the unit preview explains those. The finding
             // still anchors on the hex the report lists the sender in.
-            let Some(judged) = judge_shipment(shipping, hex, sender, &id) else {
+            let Some(judged) = judge_shipment(shipping, hex, *order, sender, &id) else {
                 continue;
             };
             let goods = || match (amount, what) {
@@ -23464,6 +23470,7 @@ struct SettledShipment {
 fn judge_shipment(
     shipping: &super::transport::Shipping,
     hex: &Hex<'_>,
+    order: super::transport::ShipmentOrder,
     sender: &str,
     target_id: &str,
 ) -> Option<super::transport::Judged> {
@@ -23471,6 +23478,7 @@ fn judge_shipment(
     let formed = hex.find(target_id).filter(|target| target.formed.is_some());
     match formed {
         Some(target) => Some(shipping.judge_formed(
+            order,
             sender,
             sender_reported,
             target_id,
@@ -23480,7 +23488,7 @@ fn judge_shipment(
             },
         )),
         None if target_id.starts_with("new-") => None,
-        None => Some(shipping.judge(sender, sender_reported, target_id)),
+        None => Some(shipping.judge(order, sender, sender_reported, target_id)),
     }
 }
 
@@ -23773,7 +23781,13 @@ fn shipping_bills(
         let mut priced_and_refused: Vec<(i64, super::transport::RefusedShipment)> = Vec::new();
         let mut unmeasured = super::transport::UnmeasuredShipments::default();
         for placed in &ordered.intents {
-            let Intent::Transport { to, what, amount } = &placed.intent else {
+            let Intent::Transport {
+                order,
+                to,
+                what,
+                amount,
+            } = &placed.intent
+            else {
                 continue;
             };
             let Some(id) = super::transport::shipment_target(sender, to, what) else {
@@ -23787,7 +23801,7 @@ fn shipping_bills(
             let Selector::Item(text) = what else {
                 continue;
             };
-            let Some(judged) = judge_shipment(shipping, hex, sender, &id) else {
+            let Some(judged) = judge_shipment(shipping, hex, *order, sender, &id) else {
                 continue;
             };
             // `target_facts` has an entry for every unit in every region of the report, so an
@@ -60411,6 +60425,74 @@ BUILD
         assert_eq!(
             finding.message,
             "This unit owns no Caravanserai when the shipments run, so 5 STON stay with this unit."
+        );
+    }
+
+    /// `CheckTransportOrders` asks whether the issuer of every DISTRIBUTE is a quartermaster owning
+    /// a transport structure, whatever the target ("DISTRIBUTE: Unit does not own transport
+    /// structure."), but asks it of a TRANSPORT only beyond `LOCAL_TRANSPORT`
+    /// (`../Atlantis/runorders.cpp`). The quartermaster 900 owns nothing and 901 is a quartermaster
+    /// owning a Caravanserai beside it: the TRANSPORT goes, the DISTRIBUTE is refused (`ah-g4bz`).
+    #[test]
+    fn a_distribute_from_a_quartermaster_owning_no_caravanserai_is_refused() {
+        let mut target = with_skill(unit("901"), "QUAM", 1);
+        target.structure_id = Some("500".to_string());
+        let sender = with_silver(with_skill(unit("900"), "QUAM", 1), 500);
+        let mut nearby = region(vec![sender, target]);
+        nearby.structures = vec![Structure {
+            structure_id: "500".to_string(),
+            name: "Caravan".to_string(),
+            kind: "Caravanserai".to_string(),
+            ..Default::default()
+        }];
+        let refusals = |orders: &str| -> Vec<String> {
+            check_turn(
+                &report(vec![nearby.clone()]),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            )
+            .into_iter()
+            .filter(|finding| finding.code == codes::TRANSPORT_TARGET_REFUSED)
+            .map(|finding| finding.message)
+            .collect()
+        };
+        let at_month_end = |orders: &str| {
+            review_turn(
+                &report(vec![nearby.clone()]),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            )
+            .silver
+            .into_iter()
+            .find(|forecast| forecast.unit_id == "900")
+            .expect("the sender is forecast")
+            .at_month_end
+        };
+
+        assert_eq!(
+            refusals("unit 900\nDISTRIBUTE 901 200 SILV\n"),
+            vec![
+                "This unit owns no Caravanserai when the shipments run, so 200 SILV stay with \
+                 this unit."
+                    .to_string()
+            ]
+        );
+        assert_eq!(
+            at_month_end("unit 900\nDISTRIBUTE 901 200 SILV\n"),
+            at_month_end("unit 900\n"),
+            "the 200 stay with the sender"
+        );
+
+        // TRANSPORT is unchanged: within `LOCAL_TRANSPORT` the issuer is never asked.
+        assert_eq!(
+            refusals("unit 900\nTRANSPORT 901 200 SILV\n"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            at_month_end("unit 900\nTRANSPORT 901 200 SILV\n"),
+            at_month_end("unit 900\n").map(|silver| silver - 200)
         );
     }
 

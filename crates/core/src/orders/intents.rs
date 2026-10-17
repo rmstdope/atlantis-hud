@@ -31,6 +31,8 @@ pub enum Intent {
     /// (`rules/sequenceofevents`) - carried as an intent because the reach check needs the line it
     /// stands on.
     Transport {
+        /// TRANSPORT or DISTRIBUTE: the engine checks the two differently (`ah-g4bz`).
+        order: super::transport::ShipmentOrder,
         to: Party,
         what: Selector,
         amount: Amount,
@@ -764,7 +766,12 @@ pub fn read_order(
             let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
             let (to, rest) = forms::read_party(arguments)?;
             let (what, amount) = forms::read_transfer(rest)?;
-            Some(Intent::Transport { to, what, amount })
+            Some(Intent::Transport {
+                order: super::transport::ShipmentOrder::from_command(name == "DISTRIBUTE"),
+                to,
+                what,
+                amount,
+            })
         }
         "TAKE" => {
             let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
@@ -2450,13 +2457,24 @@ mod tests {
 
     #[test]
     fn a_transport_line_is_read_as_an_intent() {
-        let expected = vec![Intent::Transport {
-            to: Party::Unit("901".to_string()),
-            what: Selector::Item("STON".to_string()),
-            amount: Amount::Exact(5),
-        }];
-        assert_eq!(intents("unit 900\nTRANSPORT 901 5 STON\n"), expected);
-        assert_eq!(intents("unit 900\nDISTRIBUTE 901 5 STON\n"), expected);
+        use super::super::transport::ShipmentOrder;
+        let expected = |order| {
+            vec![Intent::Transport {
+                order,
+                to: Party::Unit("901".to_string()),
+                what: Selector::Item("STON".to_string()),
+                amount: Amount::Exact(5),
+            }]
+        };
+        assert_eq!(
+            intents("unit 900\nTRANSPORT 901 5 STON\n"),
+            expected(ShipmentOrder::Transport)
+        );
+        // The same syntax, but the engine checks its issuer differently (`ah-g4bz`).
+        assert_eq!(
+            intents("unit 900\nDISTRIBUTE 901 5 STON\n"),
+            expected(ShipmentOrder::Distribute)
+        );
 
         // A free order, so the month is still the unit's own.
         assert!(works_by_default(
