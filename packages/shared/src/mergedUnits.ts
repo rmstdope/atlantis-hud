@@ -23,7 +23,7 @@ import type { KnownMap, MergedReportRecord, ParsedReport, ReportUnit } from "@at
 import { mergedDerived, NO_DERIVED_SKILLS, type DerivedSkill, type DerivedSkills } from "./battleSkills";
 import { foreignUnitsIn } from "./workspace/foreignUnits";
 import { mergedFactionLabel } from "./workspace/mergedFactionLabel";
-import type { MergedFrom, MergedUnit } from "./mergedFrom";
+import type { MergedUnit } from "./mergedFrom";
 
 export { mergedBandText, mergedFromOf, mergedMarkTitle, type MergedFrom, type MergedUnit } from "./mergedFrom";
 
