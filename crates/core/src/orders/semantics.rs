@@ -12303,9 +12303,10 @@ fn per_skill_destroy(
 /// knowable from the report. Only [`owner_when_promotions_run`] can transfer it:
 /// `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`) runs one `PROMOTE` per object, its
 /// owner's (`Object::GetOwner`), and errors every other unit's "PROMOTE: Must be owner", so the
-/// unit it promotes hands nothing on again (`ah-c1p2`). Among that owner's `PROMOTE`s the first
-/// naming a unit in the structure is taken, as `movement::fleet::fleet_owner` takes it - a known
-/// gap, since the engine keeps only the last one written (`ah-nhgo`).
+/// unit it promotes hands nothing on again (`ah-c1p2`). Of that owner's `PROMOTE`s only the last
+/// written is kept (`ProcessPromoteOrder` overwrites `u->promote`), and it promotes nobody when it
+/// names a unit not in the structure (`Do1PromoteOrder`: "PROMOTE: Can't find target.") - the
+/// rule `movement::fleet::fleet_owner` follows (`ah-nhgo`).
 fn structure_owner_after_promotes(hex: &Hex<'_>, structure_id: &str) -> Option<String> {
     let owner = owner_when_promotions_run(hex, structure_id)?;
     let promoted = hex
@@ -12315,9 +12316,11 @@ fn structure_owner_after_promotes(hex: &Hex<'_>, structure_id: &str) -> Option<S
         .and_then(|promoter| {
             promoter
                 .promotes
-                .iter()
+                .last()
                 .map(|promote| &promote.target)
-                .find(|target| *target != &owner && unit_is_in_structure(hex, target, structure_id))
+                .filter(|target| {
+                    *target != &owner && unit_is_in_structure(hex, target, structure_id)
+                })
         });
     Some(promoted.cloned().unwrap_or(owner))
 }
@@ -41531,8 +41534,11 @@ BUILD
             );
         }
 
+        /// Of the owner's several `PROMOTE`s only the last is kept (`ah-nhgo`;
+        /// `ProcessPromoteOrder` overwrites `u->promote`), so 901, named last, owns the Palace
+        /// when `DESTROY` runs and its replacement is built.
         #[test]
-        fn an_owner_can_promote_only_once_before_replacement_destroy() {
+        fn the_owners_last_promote_decides_who_destroys_before_a_replacement() {
             let mut replacement_site = region(vec![
                 in_structure(unit("900"), "4"),
                 in_structure(
@@ -41557,7 +41563,7 @@ BUILD
             });
             with_trident_ledger(
                 replacement_site,
-                "unit 900\nPROMOTE 901\nPROMOTE 902\nunit 901\nDESTROY\nBUILD Palace\nunit 902\n",
+                "unit 900\nPROMOTE 902\nPROMOTE 901\nunit 901\nDESTROY\nBUILD Palace\nunit 902\n",
                 |ledger| {
                     assert!(ledger.build_placement_refusals.is_empty());
                     assert!(ledger.movements.contains(&movement(
