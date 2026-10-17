@@ -27,6 +27,7 @@ import {
   orderOf,
   poolLeavesShortfallOpen,
   silverCellShown,
+  silverSortValue,
   silverIsRed,
   silverShortfall,
   shortfallText,
@@ -722,7 +723,8 @@ describe("silverShortfall", () => {
 describe("a shortfall a pool left unjudged", () => {
   const forecast = (overrides: Partial<UnitSilver>): UnitSilver =>
     aUnitSilver({ regionId: "1:2,18", ...overrides });
-  const unjudged = forecast({ poolDoubted: true, sharedSilverCoverage: "unjudged" });
+  const unjudgedFields = { poolDoubted: true, sharedSilverCoverage: "unjudged" as const };
+  const unjudged = forecast(unjudgedFields);
 
   it("is read from the forecast's own unjudged coverage, and nothing else", () => {
     expect(poolLeavesShortfallOpen(unjudged)).toBe(true);
@@ -743,6 +745,15 @@ describe("a shortfall a pool left unjudged", () => {
     const short = forecast({ sharedSilverCoverage: "unjudged", shortForOrders: 95 });
     expect(silverCellShown({ kind: "single", value: 40 }, short)).toEqual({ kind: "single", value: 40 });
     expect(silverShortfall(40, short)).toBeNull();
+  });
+
+  // Review of PR #1726, finding 1: a `?` sorts as one, not on the figure it hides (as the
+  // dissolving dash does, `ah-ty3s.3`).
+  it("sorts the ? with the other unpriced rows rather than on the hidden figure", () => {
+    expect(silverSortValue(forecast({ atMonthEnd: -500, ...unjudgedFields }), true)).toBeNull();
+    expect(silverSortValue(forecast({ atMonthEnd: 40, shortForOrders: 95, ...unjudgedFields }), true)).toBe(40);
+    expect(silverSortValue(forecast({ atMonthEnd: -100, sharedSilverCoverage: "shortfall" }), true)).toBe(-100);
+    expect(silverSortValue(null, true)).toBeNull();
   });
 
   it("leaves a judged pool's red figure and short mark as they were", () => {

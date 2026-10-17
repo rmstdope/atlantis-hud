@@ -472,6 +472,19 @@ export function silverCellShown(
 }
 
 /**
+ * What the Silver column sorts this unit on: the figure the cell draws, a pair at its low end, and
+ * nothing for a `?` - so a `?` a pool left unjudged sorts with every other `?` rather than on the
+ * figure it hides, as the dissolving dash does (`ah-ty3s.3`, `ah-3aaj`).
+ */
+export function silverSortValue(silver: UnitSilver | null, countUpkeep: boolean): number | null {
+  const shown = silverCellShown(silverShownUI(silver, countUpkeep), silver);
+  if (shown === null || shown.kind === "unknown") {
+    return null;
+  }
+  return shown.kind === "single" ? shown.value : shown.low;
+}
+
+/**
  * What the cell writes beside the figure as `<N> short`: how far this unit's own orders outrun
  * the silver reaching it in time, or `null` for nothing.
  *

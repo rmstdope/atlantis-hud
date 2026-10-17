@@ -90,6 +90,7 @@ import {
   unitRowSelector,
   silverCellShown,
   silverIsRed,
+  silverSortValue,
   silverShortfall,
   silverShownUI,
   type ShownSilver,
@@ -589,18 +590,11 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
         // A dissolving row prints no month end, so it sorts as having none: a column that
         // printed a dash and sorted on a figure is the defect the dash exists to avoid
         // (`ah-ty3s.3`, decision **S1**).
-        .map((entry) => {
-          const shown = dissolves(entry)
-            ? null
-            : silverShownUI(rowMonth(entry, { getSilver }).silver, countUpkeep);
-          const numeric =
-            shown === null || shown.kind === "unknown"
-              ? null
-              : shown.kind === "single"
-                ? shown.value
-                : shown.low;
-          return [rowKeyOf(entry), numeric];
-        })
+        // A `?` sorts as one too, whatever figure a pool left unjudged hides (`ah-3aaj`).
+        .map((entry) => [
+          rowKeyOf(entry),
+          dissolves(entry) ? null : silverSortValue(rowMonth(entry, { getSilver }).silver, countUpkeep)
+        ])
     );
   }, [units, effectiveSort.column, getSilver, countUpkeep]);
   const visible = useMemo(

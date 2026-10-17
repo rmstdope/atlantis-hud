@@ -46601,6 +46601,48 @@ BUILD
         );
     }
 
+    /// Review of PR #1726, question 2: a unit whose own silver covers its orders but not its
+    /// upkeep ends the month below zero as the Silver column counts it, so beside a doubted
+    /// sharer it is as unjudged as any other debt.
+    /// A fixture unit without the food `unit` feeds it with, so its maintenance is paid in silver.
+    fn hungry(mut unit: ReportUnit) -> ReportUnit {
+        unit.flags.clear();
+        unit.items.retain(|item| item.tag != "GRAI");
+        unit
+    }
+
+    #[test]
+    fn a_unit_short_only_of_its_upkeep_beside_a_doubted_sharer_is_unjudged() {
+        let hex_region = region(vec![
+            with_silver(hungry(unit("5")), 5),
+            sharing(with_silver(unit("7"), 0)),
+        ]);
+        let orders = "unit 5\nunit 7\nBUY 1 unobtainium\nSTUDY combat\n";
+        let review = review_turn(
+            &report(vec![hex_region]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let idle = review
+            .silver
+            .iter()
+            .find(|silver| silver.unit_id == "5")
+            .cloned()
+            .expect("5 has a forecast");
+        let at_month_end = idle.at_month_end.expect("priced");
+        let upkeep = idle.upkeep.expect("priced");
+        assert!(at_month_end >= 0, "in credit before upkeep: {idle:?}");
+        assert!(
+            at_month_end - upkeep - idle.upkeep_lent < 0,
+            "below zero once upkeep is counted: {idle:?}"
+        );
+        assert_eq!(
+            idle.shared_silver_coverage,
+            Some(super::super::silver::SharedSilverCoverage::Unjudged)
+        );
+    }
+
     #[test]
     fn an_in_credit_unit_short_for_its_orders_in_a_judged_pool_is_not_marked_unjudged() {
         let worker = short_in_credit_beside("");
