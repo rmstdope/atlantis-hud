@@ -478,3 +478,56 @@ fn a_first_line_the_unit_cannot_afford_leaves_the_second_free_to_recruit() {
     assert_eq!(both.row.at_month_end, Some(12));
     assert_eq!((both.orcs, both.leaders), (1, 0));
 }
+
+/// `ah-fsgb`. The unit whose leader line bought nobody still recruits orcs, so it is one of the
+/// buyers the orcs' line is split among (`rules/buy`: *"the available items will be split among
+/// the buyers in proportion to the amount each buyer attempted to buy"*). `Game::GetBuyAmount`
+/// (../Atlantis `runorders.cpp`) cuts the formed unit's `BUY 5 orcs` to the one its $50 pays for,
+/// and asks `IsLeader` of a unit the leaders' line added nobody to, so the orcs' line is attempted
+/// by 1 + 6 = 7 against 6 for sale. `Game::DoBuy` gives the faction-mate `(6 * 6 + r) / 7` - five
+/// to the nearest - and the formed unit the one that is left.
+#[test]
+fn a_recruit_an_unaffordable_first_line_left_free_takes_its_share_of_the_line() {
+    let text = format!(
+        "{}\n* Bran (2391), Foo (1), 3 orcs [ORC], 1000 silver [SILV]. Weight: 30. \
+         Capacity: 0/0/45/0. Skills: none.\n",
+        report_with("1 leaders [LEAD]", "combat [COMB] 1 (30)")
+            .replace(
+                "20 orcs [ORC] at $38, 5 leaders [LEAD] at $100",
+                "5 leaders [LEAD] at $100, 6 orcs [ORC] at $38"
+            )
+            .trim_end()
+    );
+    let script = "unit 2390\nFORM 1\nBUY 1 leaders\nBUY 5 orcs\nEND\nGIVE NEW 1 50 SILV\n\
+                  unit 2391\nBUY 6 orcs\n";
+    let review = review_of(&text, script);
+
+    let formed = review
+        .silver
+        .iter()
+        .find(|row| row.unit_id != "2390" && row.unit_id != "2391")
+        .expect("the formed unit has a silver row")
+        .clone();
+    let bran = row_of(&review, "2391");
+    assert_eq!(
+        (formed.expense, bran.expense),
+        (Some(38), Some(190)),
+        "one orc for the formed unit and five for Bran, six in all: {formed:?} {bran:?}"
+    );
+    assert!(
+        !review
+            .findings
+            .iter()
+            .any(|finding| finding.code.as_str() == "leaders-and-men-mixed"),
+        "no leader arrives to mix with: {:?}",
+        review.findings
+    );
+    assert!(
+        review
+            .findings
+            .iter()
+            .any(|finding| finding.code.as_str() == "region-pool-oversubscribed"),
+        "five and six orcs are ordered where six are for sale: {:?}",
+        review.findings
+    );
+}

@@ -1807,7 +1807,8 @@ fn market_shares_for(
     ruleset: Option<&Ruleset>,
     overruns: &mut Vec<PoolOverrun>,
 ) -> BTreeMap<(String, MarketSide), Vec<i64>> {
-    market_shares_sized(hex, ruleset, overruns, &|_, _| None, None)
+    let refused = refused_recruits_in_market_order(hex, ruleset);
+    market_shares_sized(hex, ruleset, overruns, &|_, _| None, None, &refused)
 }
 
 /// [`market_shares_for`], with every `BUY` cut to what its unit can pay before the line is divided
@@ -1826,6 +1827,10 @@ fn market_shares_sized(
     overruns: &mut Vec<PoolOverrun>,
     afford: &dyn Fn(usize, &str) -> Option<i64>,
     only: Option<(&str, MarketSide)>,
+    // Which recruits the game refuses, as `(index into hex.units, upper-case tag)`: the market
+    // pre-pass's guess where nothing has been priced (`refused_recruits_in_market_order`), the
+    // ledger's own judgement once it has (`ah-fsgb`).
+    refused_recruits: &BTreeSet<(usize, String)>,
 ) -> BTreeMap<(String, MarketSide), Vec<i64>> {
     let mut wants: BTreeMap<(String, MarketSide), Vec<i64>> = BTreeMap::new();
     // A unit's `SELL` lines draw on one stock, so a second line for the same goods can only claim
@@ -1855,9 +1860,6 @@ fn market_shares_sized(
     // purse: the most the line could give it, were it able to pay (`ah-s4hy`).
     let mut line_buys: BTreeMap<String, Vec<i64>> = BTreeMap::new();
     let sharing_for_sales = Sharing::read(hex);
-    // Which recruits the game refuses, judged line by line in the market's order (`ah-wk49`).
-    let refused_recruits = refused_recruits_in_market_order(hex, ruleset);
-
     for (index, ordered) in hex.units.iter().enumerate() {
         for placed in &ordered.intents {
             let (text, side) = match &placed.intent {
@@ -1897,8 +1899,9 @@ fn market_shares_sized(
             // can raise a `region-pool-oversubscribed` finding for goods nobody was ever going to
             // buy (`ah-yn2x`).
             //
-            // Which recruits are refused comes from `refused_recruits_in_market_order`, which
-            // judges each line on the unit as the earlier market lines leave it (`ah-wk49`).
+            // Which recruits are refused is the caller's: each line judged on the unit as the
+            // earlier market lines leave it (`ah-wk49`), by what they actually bought once the
+            // ledger knows (`ah-fsgb`).
             if matches!(side, MarketSide::Buying)
                 && refused_recruits.contains(&(index, tag.to_ascii_uppercase()))
             {
@@ -2993,7 +2996,20 @@ fn forecast_hex(
 
     // A market line is shared the same way, and the rules say so outright: oversupply and
     // oversubscription split in proportion to what each unit tried to trade (`ah-t2pn.3`).
-    let mut market_shares = market_shares_for(hex, ruleset, overruns);
+    // Its buyers are the ones the ledger's `buy` let recruit, so a recruit an earlier line left
+    // free is counted in the line it oversubscribes (`ah-fsgb`).
+    let refused: BTreeSet<(usize, String)> = ledger
+        .refused_recruits
+        .iter()
+        .filter_map(|refused| {
+            hex.units
+                .iter()
+                .position(|ordered| ordered.unit.unit_id == refused.unit_id)
+                .map(|index| (index, refused.tag.to_ascii_uppercase()))
+        })
+        .collect();
+    let mut market_shares =
+        market_shares_sized(hex, ruleset, overruns, &|_, _| None, None, &refused);
     // Each line's buyers as the ITEMS ledger's market pass divided them, once it knew what each
     // could pay (`ah-s4hy`): the warnings above state the orders as written, the division is the
     // ledger's.
@@ -7458,6 +7474,24 @@ fn ledger_for_reaching<'a>(
                         }
                     })
                     .collect();
+                // Who the game refuses on this line, judged as `buy` is about to judge each of them:
+                // on the men the earlier lines actually bought, not on what they attempted. A
+                // leader line its unit could not afford leaves its orcs free to recruit, and so one
+                // of the buyers this line is split among (`ah-fsgb`).
+                let refused: BTreeSet<(usize, String)> = hex
+                    .units
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, ordered)| {
+                        recruit_refused(
+                            &ordered.unit.skills,
+                            &men_at_market(&ledger, ordered, ruleset),
+                            &tag,
+                            ruleset,
+                        )
+                    })
+                    .map(|(index, _)| (index, tag.clone()))
+                    .collect();
                 let key = (tag.clone(), MarketSide::Buying);
                 if let Some(sized) = market_shares_sized(
                     hex,
@@ -7465,6 +7499,7 @@ fn ledger_for_reaching<'a>(
                     &mut Vec::new(),
                     &|index, _| afford.get(index).copied().flatten(),
                     Some((&tag, MarketSide::Buying)),
+                    &refused,
                 )
                 .remove(&key)
                 {
@@ -10949,6 +10984,33 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
     }
 }
 
+/// The men `actor` holds when the market line being sized reaches it, by race: what the Give phase
+/// left it, plus what the market lines settled so far actually bought it (`ah-wk49`). A line that
+/// bought nobody adds nobody. `buy` refuses a recruit on this, and the market pass sizes each line's
+/// buyers on it too, so the two cannot disagree about who recruits (`ah-fsgb`).
+fn men_at_market(
+    ledger: &Ledger<'_>,
+    actor: &Ordered<'_>,
+    ruleset: Option<&Ruleset>,
+) -> Vec<ItemAmount> {
+    let who = &actor.unit.unit_id;
+    let mut men_by_race = actor.early_men_by_race().to_vec();
+    men_by_race.extend(
+        ledger
+            .bought
+            .iter()
+            .filter(|((unit_id, bought_tag), amount)| {
+                unit_id == who
+                    && **amount > 0
+                    && ruleset.is_some_and(|ruleset| ruleset.is_man(bought_tag))
+            })
+            .map(|((_, bought_tag), amount)| {
+                ItemAmount::new(*amount, bought_tag.clone(), bought_tag.clone())
+            }),
+    );
+    men_by_race
+}
+
 fn buy(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
@@ -10996,21 +11058,12 @@ fn buy(
     // market lines settled before this one, whose recruits `DoBuy` has already added (`ah-wk49`).
     // So the men this unit has actually bought so far count, and a line that bought nobody adds
     // nobody to mix with. The SILVER column reads the refusal recorded here, so the two agree.
-    let mut men_by_race = actor.early_men_by_race().to_vec();
-    men_by_race.extend(
-        ledger
-            .bought
-            .iter()
-            .filter(|((unit_id, bought_tag), amount)| {
-                unit_id == who
-                    && **amount > 0
-                    && ruleset.is_some_and(|ruleset| ruleset.is_man(bought_tag))
-            })
-            .map(|((_, bought_tag), amount)| {
-                ItemAmount::new(*amount, bought_tag.clone(), bought_tag.clone())
-            }),
-    );
-    if recruit_refused(&actor.unit.skills, &men_by_race, &tag, ruleset) {
+    if recruit_refused(
+        &actor.unit.skills,
+        &men_at_market(ledger, actor, ruleset),
+        &tag,
+        ruleset,
+    ) {
         ledger.refused_recruits.push(RefusedRecruit {
             unit_id: who.clone(),
             line: placed.line,
@@ -11259,11 +11312,11 @@ fn buys_in_market_order(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<MarketB
 /// the other (`ah-wk49`). The answer is per unit and tag, because every line of a unit for one item
 /// is sized against the same unit.
 ///
-/// The shares are settled before any line is priced, so an earlier purchase counts here as
-/// recruited when it was attempted - a positive `BUY n` or a `BUY ALL` - and not refused. The
-/// ledger's `buy` judges on what earlier lines actually bought instead, as the engine does, and
-/// the two differ only where an earlier line buys nobody: the share pre-pass then leaves out a
-/// buyer `buy` runs, and that buyer's line falls back to what it asked for.
+/// Nothing has been priced when this runs, so an earlier purchase counts here as recruited when
+/// it was attempted - a positive `BUY n` or a `BUY ALL` - and not refused. That is a guess where
+/// an earlier line buys nobody, so it serves only the shares settled before the ledger's market
+/// pass: that pass re-sizes every line on [`men_at_market`], as `buy` judges, and the SILVER
+/// column's split and its `region-pool-oversubscribed` read the ledger's refusals (`ah-fsgb`).
 fn refused_recruits_in_market_order(
     hex: &Hex<'_>,
     ruleset: Option<&Ruleset>,
