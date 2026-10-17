@@ -58,6 +58,8 @@ export type { MapSizes } from "./MapSizes";
 export type { MarketItem } from "./MarketItem";
 export type { MessageSummary } from "./MessageSummary";
 export type { MinimumAllocation } from "./MinimumAllocation";
+export type { NewShip } from "./NewShip";
+export type { NewShipOutcome } from "./NewShipOutcome";
 export type { NewStudents } from "./NewStudents";
 export type { NoStudyFee } from "./NoStudyFee";
 export type { OrderDiagnostic } from "./OrderDiagnostic";

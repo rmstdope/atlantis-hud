@@ -32,6 +32,7 @@ import {
 import { summariseUnit } from "./unitTooltip";
 import { andList, refusedProductReason, shortItems, shortName, shortSentence } from "./refusedCast";
 import { isUnfinishedShipName, type StructureFinish } from "./unfinishedMark";
+import { newShipStructureNote } from "./newShip";
 import {
   silverCauseGroups,
   silverCauseLabel,
@@ -558,12 +559,19 @@ export function itemCauseSentence(
   if (changes.length > 0 && changes.every((change) => change.cause === "ship-finished")) {
     return SHIP_FINISHED_NOTE;
   }
+  // A ship a founding BUILD begins and does not finish has its own agreed words too (`ah-ywyf`).
+  if (changes.length > 0 && changes.every((change) => change.cause === "ship-started")) {
+    return SHIP_STARTED_NOTE;
+  }
   const clauses = changes.map((change) => itemCauseClause(change, unit, people === true));
   return clauses.length === 0 ? undefined : `${label}: ${clauses.join(", ")}.`;
 }
 
 /** The Items hover's note for a ship this month's building finishes (`ah-2ql5`, the agreed words). */
 const SHIP_FINISHED_NOTE = "Finished this month: becomes a ship.";
+
+/** The Items hover's note for a ship a founding BUILD begins and does not finish (`ah-ywyf`). */
+const SHIP_STARTED_NOTE = "Started this month: still unfinished.";
 
 /** The other unit of a movement, as `ah-rgkk.2.3` settled it: `Scouts (1502)`, or `unit 1502`. */
 function party(other: ItemChangeParty): string {
@@ -615,6 +623,9 @@ function itemCauseClause(change: ItemChange, unit: PreviewedUnit, people: boolea
     // Alone, a finished ship reads `SHIP_FINISHED_NOTE` instead; this is its part of a longer list.
     case "ship-finished":
       return "finished this month";
+    // Alone, a ship begun this month reads `SHIP_STARTED_NOTE` instead (`ah-ywyf`).
+    case "ship-started":
+      return "started this month";
     case "given-away":
       // `ah-rgkk.3.2` reserves a null party for a GIVE to a foreign faction that names no unit.
       return change.other ? `gave ${n} to ${party(change.other)}` : `gave ${n} to another faction`;
@@ -1749,6 +1760,19 @@ const UNFINISHED_NOTE = "Unfinished \u2014 still being built.";
 const FINISHING_NOTE = "Unfinished in the report; this month's building finishes it.";
 
 function structureBody(unit: PreviewedUnit, facts: PopupFacts): Body {
+  // A ship this month's BUILD finishes (`ah-ywyf`): the label the dock already drew for it - a new
+  // fleet's `Ship [new] · Longship`, or the fleet it joins - and the agreed sentence. A new fleet
+  // is the whole of the month-end answer, so no "was" line is drawn beside it.
+  const shipNote = newShipStructureNote(unit);
+  if (shipNote !== null && unit.newShip?.outcome === "new-fleet") {
+    return {
+      lines: [{ label: "structure", value: facts.structureLabel ?? IN_THE_OPEN }],
+      causes: [shipNote],
+      notes: [],
+      month: "changes"
+    };
+  }
+  const shipCauses = shipNote === null ? [] : [shipNote];
   const change = changeFor(unit, CHANGE_FIELD.structure!);
   // The month-end line carries the mark; the note under the lines says what it means. A building
   // this month finishes drops the mark, and is a change the month makes, so the shared "Nothing
@@ -1764,9 +1788,9 @@ function structureBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     }
     return {
       lines: [{ label: "structure", value: facts.structureLabel, ...marked }],
-      causes: finishCauses,
+      causes: [...finishCauses, ...shipCauses],
       notes: [...finishNotes, ...undescribedNotes([[facts.structureLabel, unit.structureId]])],
-      month: monthOf(finish === "finishing")
+      month: monthOf(finish === "finishing" || shipCauses.length > 0)
     };
   }
   // `Number("")` is 0, and an original the report left empty is it saying "in the open" rather
@@ -1786,7 +1810,7 @@ function structureBody(unit: PreviewedUnit, facts: PopupFacts): Body {
         ...marked
       }
     ],
-    causes: finishCauses,
+    causes: [...finishCauses, ...shipCauses],
     notes: [
       ...finishNotes,
       ...undescribedNotes([

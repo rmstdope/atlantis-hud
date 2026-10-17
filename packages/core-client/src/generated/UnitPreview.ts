@@ -3,6 +3,7 @@ import type { BuildSpend } from "./BuildSpend";
 import type { CreatedItem } from "./CreatedItem";
 import type { FieldChange } from "./FieldChange";
 import type { ItemChange } from "./ItemChange";
+import type { NewShip } from "./NewShip";
 import type { ProducedItem } from "./ProducedItem";
 import type { RefusedCast } from "./RefusedCast";
 import type { ReportUnit } from "./ReportUnit";
@@ -157,4 +158,9 @@ menOfUnknownSkill: Array<TakenUnshown>,
  * studying, for one whose skills this month cannot be said at all, for a skill the catalogue
  * does not know, and for a dissolving unit, which never exists to study (`ah-rgkk.2.2`).
  */
-study: StudyForecast | null, };
+study: StudyForecast | null, 
+/**
+ * The ship this unit's founding `BUILD <ship>` begins this month, and whether it is finished
+ * (`ah-ywyf`). `None` for every other unit, and where the work cannot be counted.
+ */
+newShip?: NewShip, };

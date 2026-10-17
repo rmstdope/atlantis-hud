@@ -678,12 +678,39 @@ pub fn fleet_flies(fleet: &Structure, ruleset: Option<&Ruleset>) -> Option<bool>
         if item.kind != ItemKind::Ship {
             return None;
         }
-        flies |= item
-            .description
-            .as_deref()
-            .is_some_and(|text| text.to_ascii_lowercase().contains("is a flying"));
+        flies |= ship_flies(item);
     }
     Some(flies)
+}
+
+/// Whether the engine counts this fleet as flying: **every** hull flies (`../Atlantis/object.cpp`
+/// `Object::FleetCapacity`, "Fleets are assumed to be flying, at least until we find any
+/// non-flying vessels in them"; `../atlantis-newage/object.cpp` the same). Narrower than
+/// [`fleet_flies`], which asks whether any hull is free of the water. What `CreateShip` compares a
+/// new ship against to decide whether it joins the fleet (`ah-ywyf`). `None` as for [`fleet_flies`].
+#[must_use]
+pub fn fleet_counts_as_flying(fleet: &Structure, ruleset: Option<&Ruleset>) -> Option<bool> {
+    let ruleset = ruleset?;
+    let hulls = hulls_named_in(&fleet.kind)?;
+    let mut flying = true;
+    for (name, _) in &hulls {
+        let item = ruleset.find_item(name)?;
+        if item.kind != ItemKind::Ship {
+            return None;
+        }
+        flying &= ship_flies(item);
+    }
+    Some(flying)
+}
+
+/// Whether the catalogue calls this ship a flying one - the phrase [`fleet_flies`] reads every
+/// hull by. Also what decides whether a ship begun this month may join its builder's fleet
+/// (`ah-ywyf`).
+#[must_use]
+pub fn ship_flies(item: &crate::movement::rules::ItemEntry) -> bool {
+    item.description
+        .as_deref()
+        .is_some_and(|text| text.to_ascii_lowercase().contains("is a flying"))
 }
 
 /// How much weight a fleet can carry. Stated `Load: H/N` first; else the ruleset's `cargoCapacity`
@@ -1538,6 +1565,38 @@ mod tests {
         };
 
         assert_eq!(cargo_capacity(&fleet, Some(&ruleset())), Some(5400));
+    }
+
+    #[test]
+    fn ship_flies_reads_the_catalogue_s_flying_phrase() {
+        let rules = ruleset();
+        let item = |name: &str| rules.find_item(name).expect("the catalogue carries it");
+        assert!(ship_flies(item("Balloon")));
+        assert!(!ship_flies(item("Longship")));
+    }
+
+    /// `ah-ywyf`: the engine's fleet flies only when every hull does, unlike [`fleet_flies`].
+    #[test]
+    fn a_fleet_counts_as_flying_only_when_every_hull_flies() {
+        let rules = ruleset();
+        let fleet = |kind: &str| Structure {
+            structure_id: "1".to_string(),
+            name: "Ship".to_string(),
+            kind: kind.to_string(),
+            ..Default::default()
+        };
+        assert_eq!(
+            fleet_counts_as_flying(&fleet("Balloon"), Some(&rules)),
+            Some(true)
+        );
+        assert_eq!(
+            fleet_counts_as_flying(&fleet("Fleet, 1 Balloon, 2 Longships"), Some(&rules)),
+            Some(false)
+        );
+        assert_eq!(
+            fleet_counts_as_flying(&fleet("Longship"), Some(&rules)),
+            Some(false)
+        );
     }
 
     /// The predicate's whole accepting set over the catalogue the application ships with.

@@ -34,6 +34,7 @@ import {
   unitStructureLabelIn,
   type StructuresByRegion
 } from "../structureLabel";
+import { monthEndStructureLabel, predictsStructure } from "../newShip";
 import {
   finishingStructuresOf,
   itemCellParts,
@@ -1615,7 +1616,10 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
                 <UnitRow
                   key={rowKeyOf(unit)}
                   unit={unit}
-                  structureLabel={unitStructureLabelIn(structureRegionOf(unit), unit.structureId, structures)}
+                  structureLabel={monthEndStructureLabel(
+                    unit,
+                    unitStructureLabelIn(structureRegionOf(unit), unit.structureId, structures)
+                  )}
                   reportedStructureLabel={reportedStructureLabelFor(unit, structures)}
                   structureFinish={structureFinishState(
                     structureRegionOf(unit),
@@ -2130,7 +2134,10 @@ function HoveredPopup({
   });
   const dissolving = dissolves(unit);
   const spec = popupForCell(column, unit, {
-    structureLabel: unitStructureLabelIn(structureRegionOf(unit), unit.structureId, structures),
+    structureLabel: monthEndStructureLabel(
+      unit,
+      unitStructureLabelIn(structureRegionOf(unit), unit.structureId, structures)
+    ),
     reportedStructureLabel: reportedStructureLabelFor(unit, structures),
     longOrder,
     reportedLongOrder,
@@ -2759,10 +2766,13 @@ function UnitRow({
     ),
     structure: (
       // The mark first, so a narrow column cuts the name and never the mark; a building this
-      // month's orders finish loses it and reads in the coming month's italic instead (`ah-2ql5`).
+      // month's orders finish loses it and reads in the coming month's italic instead (`ah-2ql5`),
+      // as does a ship this month's BUILD finishes, new fleet or joined one (`ah-ywyf`).
       <Td
         className={`truncate${
-          structureChange || structureFinish === "finishing" ? ` ${PREDICTED}` : ""
+          structureChange || structureFinish === "finishing" || predictsStructure(unit)
+            ? ` ${PREDICTED}`
+            : ""
         }`}
       >
         {structureFinish === "unfinished" ? <UnfinishedMark /> : null}
