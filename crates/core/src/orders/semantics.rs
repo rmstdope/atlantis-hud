@@ -1713,7 +1713,7 @@ fn market_shares_for(
     ruleset: Option<&Ruleset>,
     overruns: &mut Vec<PoolOverrun>,
 ) -> BTreeMap<(String, MarketSide), Vec<i64>> {
-    market_shares_sized(hex, ruleset, overruns, &|_, _| None)
+    market_shares_sized(hex, ruleset, overruns, &|_, _| None, None)
 }
 
 /// [`market_shares_for`], with every `BUY` cut to what its unit can pay before the line is divided
@@ -1723,11 +1723,15 @@ fn market_shares_for(
 /// and sizes a `BUY ALL` as exactly that, before `Game::DoBuy` divides the line by the cut orders.
 /// The purse is only known inside the ledger's market pass, which re-settles each item's buyers
 /// through here before applying them.
+///
+/// `only`, when given, settles that one line and skips every other: the market pass sizes one
+/// item at a time on the per-keystroke path, and needs nothing else (`ah-s4hy`, review finding 3).
 fn market_shares_sized(
     hex: &Hex<'_>,
     ruleset: Option<&Ruleset>,
     overruns: &mut Vec<PoolOverrun>,
     afford: &dyn Fn(usize, &str) -> Option<i64>,
+    only: Option<(&str, MarketSide)>,
 ) -> BTreeMap<(String, MarketSide), Vec<i64>> {
     let mut wants: BTreeMap<(String, MarketSide), Vec<i64>> = BTreeMap::new();
     // A unit's `SELL` lines draw on one stock, so a second line for the same goods can only claim
@@ -1774,6 +1778,9 @@ fn market_shares_sized(
             let Some(tag) = market_item_tag(lines, text, hex, ordered, ruleset) else {
                 continue;
             };
+            if only.is_some_and(|(only, of)| of != side || !only.eq_ignore_ascii_case(&tag)) {
+                continue;
+            }
             // A tag this market has no line for has no pool, so there is nothing to divide - and
             // the goods are unsellable or unpriceable, which the arms already answer for. The
             // pool itself is read again after the loop, once every unit's claims are in
@@ -1999,6 +2006,14 @@ fn market_shares_sized(
 ///
 /// Where nothing was cut by a purse, `claims` and `on_the_line` agree and every share is left as
 /// it was: one that got its whole claim got its whole order, which is all the line can leave it.
+///
+/// **A raised share is a ceiling, not a slice of the line**, so where two or more buyers are
+/// stopped by their purses the shares can add up to more than the line (`ah-s4hy`, review finding
+/// 1): each is raised against what the *others actually get*, never against another's raise. A
+/// running total would be a partition, but it would hand the line to whichever purse-stopped buyer
+/// comes first and charge the next one only what it can pay - silencing its `not-enough-silver`
+/// for an order the game equally tells it it cannot afford. What every buyer gets is the
+/// purse-cut division either way.
 fn leave_the_line_to_whoever_got_all_it_can_pay(
     shares: &mut [i64],
     claims: &[i64],
@@ -7026,15 +7041,14 @@ fn ledger_for_reaching<'a>(
                     })
                     .collect();
                 let key = (tag.clone(), MarketSide::Buying);
-                if let Some(sized) =
-                    market_shares_sized(hex, ruleset, &mut Vec::new(), &|index, of| {
-                        if of == tag {
-                            afford.get(index).copied().flatten()
-                        } else {
-                            None
-                        }
-                    })
-                    .remove(&key)
+                if let Some(sized) = market_shares_sized(
+                    hex,
+                    ruleset,
+                    &mut Vec::new(),
+                    &|index, _| afford.get(index).copied().flatten(),
+                    Some((&tag, MarketSide::Buying)),
+                )
+                .remove(&key)
                 {
                     ledger.sized_buys.insert(tag.clone(), sized.clone());
                     market_shares.insert(key, sized);
@@ -33082,6 +33096,17 @@ mod tests {
 
             assert_eq!(silver_of(&review, "2390").expense, Some(10 * 60));
             assert_eq!(silver_of(&review, "2391").expense, Some(50 * 60));
+            // The game still tells the poorer unit "BUY: Unit attempted to buy more than it could
+            // afford.", and so does the review: its order is charged against the 50 the line
+            // leaves it, not cut to the ten it can pay for (review finding 2).
+            let short = |id: &str| {
+                review.findings.iter().any(|finding| {
+                    finding.code == codes::NOT_ENOUGH_SILVER
+                        && finding.unit_id.as_deref() == Some(id)
+                })
+            };
+            assert!(short("2390"), "{:?}", review.findings);
+            assert!(!short("2391"), "{:?}", review.findings);
         }
 
         /// `ah-s4hy`, a line still short once the purse has cut an order: $600 at $10 is 60, so
