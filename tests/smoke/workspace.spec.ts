@@ -5736,7 +5736,9 @@ test("a unit that cannot pay for its purchase shows the shortfall beside its fig
   // What is on screen, not what is in the DOM: clipping never changes `textContent`. The shortfall
   // must sit wholly inside the cell, and the figure is "whole" while its box is not truncating it.
   const layout = () =>
-    cell.evaluate((node) => {
+    cell.evaluate(async (node) => {
+      // Two frames: the cell's resize is observed, re-measured and redrawn before this reads it.
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
       const box = node.getBoundingClientRect();
       const figure = node.querySelector<HTMLElement>("[data-silver-figure]")!;
       const short = node.querySelector<HTMLElement>("[data-testid^='silver-shortfall-']")!;
@@ -5766,13 +5768,25 @@ test("a unit that cannot pay for its purchase shows the shortfall beside its fig
   // Narrowing the window a little at a time: the shortfall gives way to the arrow and the number
   // first, with the figure still whole, and only then to the arrow alone - which stays in view.
   // Stepped rather than set, because what width each form needs depends on this machine's fonts.
-  // One step narrower until the form is no longer `from`; the waits let the resize re-measure.
+  // Read until two reads agree, so a step is judged only once its re-measuring has finished.
+  const settled = async () => {
+    let last = await layout();
+    await expect
+      .poll(async () => {
+        const now = await layout();
+        const same = now.form === last.form && now.shortInside === last.shortInside;
+        last = now;
+        return same;
+      })
+      .toBe(true);
+    return last;
+  };
+  // One step narrower until the form is no longer `from`.
   const narrowPast = async (from: string) => {
-    let now = await layout();
+    let now = await settled();
     for (let width = page.viewportSize()!.width; width >= 400 && now.form === from; width -= 40) {
       await page.setViewportSize({ width, height: 900 });
-      await page.waitForTimeout(50);
-      now = await layout();
+      now = await settled();
     }
     return now;
   };

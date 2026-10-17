@@ -906,6 +906,9 @@ describe("the Silver column", () => {
     expect(cell.indexOf(">33<")).toBeLessThan(cell.indexOf("8650 short"));
     // Outside the button: the button selects the unit, and its name is the unit and its figure.
     expect(cell.indexOf("</button>")).toBeLessThan(cell.indexOf('data-testid="silver-shortfall-1"'));
+    // Its digits truncate inside it, and nothing around it clips its focus ring.
+    expect(cell.slice(cell.indexOf("<button"))).toMatch(/^<button[^>]*>.*data-silver-figure/);
+    expect(cell.slice(0, cell.indexOf("<button"))).not.toMatch(/overflow-hidden|truncate/);
   });
 
   // Choice N1: the red negative already says money is missing; the hover gives both amounts.

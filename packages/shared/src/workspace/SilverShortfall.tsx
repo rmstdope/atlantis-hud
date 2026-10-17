@@ -42,6 +42,8 @@ export function SilverShortfall({
     const cut =
       row.scrollWidth > row.clientWidth ||
       (figure !== null && figure.scrollWidth > figure.clientWidth);
+    // `data-silver-figure` is the box that truncates: around the plain figure, or inside the ⚠
+    // button around its digits.
     const next = nextShortfallForm(form, cut);
     if (next !== form) {
       setForm(next);

@@ -2446,11 +2446,19 @@ function UnitRow({
         // formed in that hex, and the finding this button explains is anchored where the
         // report lists the unit (`ah-xu6v`).
         onClick={() => onSelectUnit?.(unit.unitId, home)}
-        className={`inline-flex items-center gap-0.5 ${UNIT_LINK_CLASS}`}
+        className={`inline-flex items-center gap-0.5${shortfall !== null ? " min-w-0" : ""} ${UNIT_LINK_CLASS}`}
       >
         <span className="sr-only">unit {unit.unitId} </span>
         <SeverityMark severity="warning" />
-        {figure}
+        {shortfall !== null ? (
+          // Only the digits truncate: the ⚠ stays, and nothing outside the button clips its focus
+          // ring (`ah-ottr`).
+          <span data-silver-figure className="min-w-0 truncate">
+            {figure}
+          </span>
+        ) : (
+          figure
+        )}
       </button>
     ) : (
       <span
@@ -2868,9 +2876,13 @@ function UnitRow({
           // One row, so a narrow column cuts the figure only after the shortfall has shrunk to
           // `▾…` (`ah-ottr`): the shortfall never shrinks, the figure truncates.
           <span className="inline-flex max-w-full items-baseline">
-            <span data-silver-figure className="min-w-0 overflow-hidden text-ellipsis">
-              {silverFigureCell}
-            </span>
+            {warned ? (
+              silverFigureCell
+            ) : (
+              <span data-silver-figure className="min-w-0 truncate">
+                {silverFigureCell}
+              </span>
+            )}
             {shortfallMark}
           </span>
         )}
