@@ -3700,8 +3700,9 @@ pub fn settle_in_report_order(
 /// and wrong here, where the weights are *men* and the pool is *silver*. Handed `[300, 1]` and
 /// `45308`, `settle_in_report_order` answers `[300, 1]`.
 ///
-/// Truncating, so the shares never sum above `total` - the same invariant [`settle_in_report_order`] states and
-/// tests. The remainder, at most one silver per claimant, is not distributed.
+/// Truncating, so the shares never sum above `total` - the same invariant
+/// [`settle_in_report_order`] states and tests. The remainder, at most one silver per claimant, is
+/// not distributed.
 ///
 /// `weights` summing to zero answers all zeros: nobody combat ready means nobody takes a share, and
 /// the threshold will have refused the pillage anyway.

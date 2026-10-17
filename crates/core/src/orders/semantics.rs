@@ -2024,6 +2024,10 @@ struct ProductionClaim {
     origin: Coordinate,
     actor_index: usize,
     wanted: i64,
+    /// Whether a sailing vessel carries this unit to where it produces, which puts it behind the
+    /// units that stayed (`ah-syug`) - asked of the voyage rather than of the origin, since a
+    /// vessel that sails a round trip lands back in the hex it left and is still moved.
+    arrives_by_sea: bool,
 }
 
 /// Every own unit's primary `PRODUCE`, settled against the region that will actually yield it.
@@ -2114,6 +2118,7 @@ fn production_shares_for(hexes: &[Hex<'_>], ruleset: Option<&Ruleset>) -> Produc
                     origin: hex.region.coordinate,
                     actor_index,
                     wanted,
+                    arrives_by_sea: arrives_by_sea(hex, ordered, ruleset),
                 });
         }
     }
@@ -2132,11 +2137,13 @@ fn production_shares_for(hexes: &[Hex<'_>], ruleset: Option<&Ruleset>) -> Produc
             .is_some_and(|region| a_foreign_player_unit_in(region));
         // `Game::RunAProduction` (`monthorders.cpp`) walks the region's objects in order, and an
         // arriving vessel has been moved to the end of them (`Object::MoveObject`, `object.cpp`),
-        // so the destination's own producers settle before any passenger - a stable sort, which
-        // keeps report order within each side. Then the same walk as the wage pools: truncating,
-        // the last claimant taking the remainder (`ah-syug`).
+        // so the units that stayed settle before any passenger - a stable sort, which keeps report
+        // order within each side. Passengers of two vessels are ordered by report region, an
+        // approximation: the engine orders them by which vessel arrived first, which the report
+        // cannot say. Then the same walk as the wage pools: truncating, the last claimant taking
+        // the remainder (`ah-syug`).
         let mut group = group;
-        group.sort_by_key(|claim| claim.origin != coordinate);
+        group.sort_by_key(|claim| claim.arrives_by_sea);
         let wants: Vec<i64> = group.iter().map(|claim| claim.wanted).collect();
         let shares = settle_in_report_order(&wants, 0, pool, ShareRounding::Down);
         for (claim, share) in group.iter().zip(shares) {
@@ -20727,6 +20734,24 @@ fn production_region<'a>(
     }
 }
 
+/// Whether a sailing vessel carries this unit this month - the same question
+/// [`production_region`] asks before following the voyage, and answered `false` without a
+/// ruleset, where it does not follow one either.
+fn arrives_by_sea(hex: &Hex<'_>, ordered: &Ordered<'_>, ruleset: Option<&Ruleset>) -> bool {
+    ruleset.is_some_and(|rules| {
+        matches!(
+            fleet_carrying(hex, ordered, rules),
+            Some((
+                PlacedIntent {
+                    intent: Intent::Sail { .. },
+                    ..
+                },
+                _,
+            ))
+        )
+    })
+}
+
 /// Both ways a `PRODUCE` order makes nothing: the unit cannot make the item anywhere, or not here.
 ///
 /// Two codes rather than one because they are separately toggleable and separately true, and a
@@ -33336,8 +33361,8 @@ mod tests {
         }
 
         /// Farmers (3493): 17 orcs at farming 2 ask 34 of a hex that yields 34, and the report
-        /// says 34. `settle_in_report_order`'s own `outstanding <= pool` arm - a pool that covers everybody divides
-        /// nothing, and names no cap.
+        /// says 34. `settle_in_report_order`'s own `outstanding <= pool` arm - a pool that covers
+        /// everybody divides nothing, and names no cap.
         #[test]
         fn a_yield_that_covers_every_producer_divides_nothing() {
             let review = review_of(
@@ -33556,9 +33581,9 @@ mod tests {
         /// `ah-k43x`. A passenger produces where the vessel arrives, so it draws on *that* hex's
         /// monthly yield alongside the units already producing there - and the two are settled
         /// against one another even though they stand in different regions of the report. The
-        /// passenger asks 40 and the miner 32 of a yield of 36, so `settle_in_report_order` leaves them
-        /// 20 and 16. Both preview columns are asserted, because both price the same order through arms
-        /// that share only their inputs.
+        /// passenger asks 40 and the miner 32 of a yield of 36, so `settle_in_report_order` leaves
+        /// them 20 and 16. Both preview columns are asserted, because both price the same order
+        /// through arms that share only their inputs.
         #[test]
         fn a_passenger_and_a_local_producer_split_the_destinations_yield_in_both_columns() {
             let report = sailing_north(vec![iron_to_the_north(vec![with_item(
