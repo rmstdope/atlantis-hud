@@ -4481,6 +4481,11 @@ pub struct UpkeepSettlement {
     pub available: i64,
     /// `owed - available`, floored at zero. `> 0` means the fund could not reach everybody.
     pub short: i64,
+    /// Every unit that needed the fund for its maintenance, in report order, **whether or not
+    /// the fund was in play**: an emptied fund settles nothing (see [`settle_unclaimed`]), yet the
+    /// `CLAIM` that emptied it still left these units short (`ah-m1th`). Filled by the caller of
+    /// [`settle_unclaimed`] from the same claims, and read by nothing that settles.
+    pub relying: Vec<UpkeepClaim>,
 }
 
 impl UpkeepSettlement {
@@ -4566,6 +4571,7 @@ pub fn settle_unclaimed(claims: &[UpkeepClaim], available: Option<i64>) -> Upkee
         owed,
         available,
         short: (owed - available).max(0),
+        relying: Vec::new(),
     }
 }
 

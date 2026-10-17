@@ -394,6 +394,12 @@ describe("the Warnings settings tab", () => {
       "CLAIM and WITHDRAW orders across all your units asking for more unclaimed silver than the faction holds."
     );
 
+    // One switch for one problem (`ah-m1th`, S1): the units left short, and the lines that drained
+    // the fund. Escaped as the pillage description below explains.
+    expect(html).toContain(
+      "Units that cannot pay their maintenance, when the faction&#x27;s unclaimed silver will not cover the shortfall either, and the CLAIM and WITHDRAW orders that took that silver."
+    );
+
     // A pillage empties the hex before any TAX reaches it, and the description is what says so
     // (`ah-cxxa`). Asserted against the escaped markup, because React escapes the apostrophe in
     // "region's" - the shipped string itself is the plain one.

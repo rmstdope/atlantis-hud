@@ -584,7 +584,8 @@ export const WARNING_GROUPS: readonly {
       {
         code: "upkeep-exceeds-unclaimed",
         title: "Upkeep the faction cannot pay",
-        description: "Units that cannot pay their maintenance, when the faction's unclaimed silver will not cover the shortfall either."
+        description:
+          "Units that cannot pay their maintenance, when the faction's unclaimed silver will not cover the shortfall either, and the CLAIM and WITHDRAW orders that took that silver."
       },
       {
         code: "region-pool-oversubscribed",

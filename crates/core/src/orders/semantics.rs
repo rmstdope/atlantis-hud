@@ -113,8 +113,8 @@ const STUDENTS_PER_TEACHER: i64 = 10;
 /// An advisory check's code, as the shell, the settings and the diagnostics know it.
 ///
 /// Constructible only through the constants in [`codes`]: the field is private and `codes` is the
-/// one child module, so a finding cannot be emitted under a code that is not in `codes::ALL` or
-/// `codes::ALWAYS_ON`. That is the guarantee `ah-m9q.2` had to add by hand when
+/// one child module, so a finding cannot be emitted under a code that is not in `codes::ALL`,
+/// `codes::ALWAYS_ON` or `codes::SHARES_A_SWITCH`. That is the guarantee `ah-m9q.2` had to add by hand when
 /// `teacher-has-free-slots` shipped as a bare literal missing from both this list and the shell's
 /// copy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -213,6 +213,10 @@ pub mod codes {
     pub const BUILD_WITHOUT_MATERIAL: Code = Code("build-without-material");
     pub const CLAIMS_EXCEED_UNCLAIMED: Code = Code("claims-exceed-unclaimed");
     pub const UPKEEP_EXCEEDS_UNCLAIMED: Code = Code("upkeep-exceeds-unclaimed");
+    /// A `CLAIM` or `WITHDRAW` that took unclaimed silver, when what the month's draws leave
+    /// cannot cover the upkeep relying on the fund (`ah-m1th`). Switched by
+    /// [`UPKEEP_EXCEEDS_UNCLAIMED`]'s entry, so it is in [`SHARES_A_SWITCH`].
+    pub const DRAW_LEAVES_UPKEEP_UNPAID: Code = Code("draw-leaves-upkeep-unpaid");
     pub const TAXED_A_PILLAGED_HEX: Code = Code("taxed-a-pillaged-hex");
     pub const PRODUCE_WITHOUT_SKILL: Code = Code("produce-without-skill");
     pub const PRODUCE_NOT_HERE: Code = Code("produce-not-here");
@@ -368,6 +372,13 @@ pub mod codes {
     /// row. Adding a code that belongs here is still one hand edit - but it is one edit, in this
     /// file, three lines below where the code was just declared.
     pub const SILVER_TROUBLE: [Code; 2] = [NOT_ENOUGH_SILVER, UPKEEP_EXCEEDS_UNCLAIMED];
+
+    /// Codes switched by another code's entry, as `(code, the code whose switch silences it)`.
+    /// Kept out of [`ALL`], whose every entry becomes a toggle of its own, and out of
+    /// [`ALWAYS_ON`], since the player can turn them off. The navigator chose one switch for one
+    /// problem (`ah-m1th`, S1): the line that drained the fund and the units it left short.
+    pub const SHARES_A_SWITCH: [(Code, Code); 1] =
+        [(DRAW_LEAVES_UPKEEP_UNPAID, UPKEEP_EXCEEDS_UNCLAIMED)];
 
     /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
     /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
@@ -814,6 +825,20 @@ pub fn review_turn(
             })
         })
         .collect();
+    // How a warning sentence names each unit: `<name> (<id>)`, or `new unit <alias>` for one this
+    // month's FORM creates, as `teaching_ordered_label` names it (`ah-m1th`).
+    let unit_labels: BTreeMap<UnitKey, String> = hexes
+        .iter()
+        .flat_map(|hex| {
+            hex.units.iter().map(|unit| {
+                let label = unit.formed.as_ref().map_or_else(
+                    || format!("{} ({})", unit.unit.name, unit.unit.unit_id),
+                    |formed| format!("new unit {}", formed.alias),
+                );
+                (unit_key(&hex.region.region_id, &unit.unit.unit_id), label)
+            })
+        })
+        .collect();
 
     // Silver receipts come from the settlement those hexes just ran, so every hex has to exist
     // before any of them can be priced - the same reason the ledgers below are built in two
@@ -1028,6 +1053,13 @@ pub fn review_turn(
     check_faction_orders(&failures, &options, &mut findings);
     check_faction(report, &hexes, ruleset, applied, &options, &mut findings);
     check_upkeep_fund(report, &month_end.fund, &options, &mut findings);
+    check_draws_leave_upkeep_unpaid(
+        unclaimed_plan.as_ref(),
+        &month_end.fund,
+        &unit_labels,
+        &options,
+        &mut findings,
+    );
 
     // Not a warning, so no `CheckOptions` switch hides it.
     let worked = production_overview(report, &hexes, ruleset, applied, &silver, &plurals);
@@ -1470,8 +1502,9 @@ fn draw_on_unclaimed_fund(
         .header
         .unclaimed_silver
         .and(inputs.pre_maintenance_fund_remaining);
-    let settlement = settle_unclaimed(&claims, available);
+    let mut settlement = settle_unclaimed(&claims, available);
     apply_relief(hexes, &settlement);
+    settlement.relying = claims.into_iter().filter(|claim| claim.short > 0).collect();
     settlement
 }
 
@@ -2512,6 +2545,33 @@ struct UnclaimedSilverPlan {
     not_counted: Vec<UnclaimedSilverRejection>,
     withdrawal_allowances: BTreeSet<WithdrawalOrderKey>,
     remaining_before_maintenance: i64,
+    /// Every order line that took silver from the fund: each `CLAIM` that earned something, then
+    /// each `WITHDRAW` the game accepts (`ah-m1th`). A refused or empty draw is not here.
+    draws: Vec<FundDraw>,
+}
+
+/// One order line that took silver from the faction's unclaimed fund: the finding about it,
+/// anchored and still without its message. Built by [`Ordered::finding`], as every other per-unit
+/// finding is, so a draw in a `FORM` block names its `NEW` alias in Problems.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FundDraw(Finding);
+
+impl FundDraw {
+    fn of(hex: &Hex<'_>, unit: &Ordered<'_>, placed: &PlacedIntent) -> Self {
+        Self(unit.finding(
+            hex,
+            codes::DRAW_LEAVES_UPKEEP_UNPAID,
+            String::new(),
+            Some(placed),
+        ))
+    }
+}
+
+/// One `CLAIM` line and what it earned, in orders-file order.
+struct ClaimGrant {
+    key: UnitKey,
+    draw: FundDraw,
+    earns: i64,
 }
 
 /// Each unit's share of the faction's unclaimed silver.
@@ -2521,29 +2581,54 @@ struct UnclaimedSilverPlan {
 /// from `ParseOrders`' per-line loop), so the fund is drawn in orders-file order - not hex by hex
 /// in the report's order (`ah-0v48`).
 fn claim_allowances_for(hexes: &[Hex<'_>], unclaimed: Option<i64>) -> ClaimAllowances {
+    let grants = claim_grants(hexes, unclaimed)?;
+    let mut allowances: BTreeMap<UnitKey, i64> = hexes
+        .iter()
+        .flat_map(|hex| {
+            hex.units
+                .iter()
+                .map(|unit| (unit_key(&hex.region.region_id, &unit.unit.unit_id), 0_i64))
+        })
+        .collect();
+    for grant in grants {
+        if let Some(allowance) = allowances.get_mut(&grant.key) {
+            *allowance = allowance.saturating_add(grant.earns);
+        }
+    }
+    Some(allowances)
+}
+
+/// Every `CLAIM` line, paid in orders-file order and capped at what is still unclaimed, as the
+/// engine pays them ([`claim_allowances_for`]). One replay for both of its readers - the units'
+/// allowances and the lines that took silver (`ah-m1th`) - so the two cannot disagree.
+fn claim_grants(hexes: &[Hex<'_>], unclaimed: Option<i64>) -> Option<Vec<ClaimGrant>> {
     let mut remaining = unclaimed?;
-    let mut allowances = BTreeMap::new();
     let mut claims = Vec::new();
     for hex in hexes {
         for unit in &hex.units {
             let key = unit_key(&hex.region.region_id, &unit.unit.unit_id);
             for placed in &unit.intents {
                 if let Intent::Claim(amount) = placed.intent {
-                    claims.push((placed.line, key.clone(), amount));
+                    claims.push((key.clone(), FundDraw::of(hex, unit, placed), amount));
                 }
             }
-            allowances.insert(key, 0_i64);
         }
     }
-    claims.sort_by_key(|(line, _, _)| *line);
-    for (_, key, amount) in claims {
-        let priced = price_claim(amount, Some(remaining.max(0)));
-        remaining = remaining.saturating_sub(priced.earns).max(0);
-        if let Some(grant) = allowances.get_mut(&key) {
-            *grant = grant.saturating_add(priced.earns);
-        }
-    }
-    Some(allowances)
+    claims.sort_by_key(|(_, draw, _)| draw.0.line);
+    Some(
+        claims
+            .into_iter()
+            .map(|(key, draw, amount)| {
+                let priced = price_claim(amount, Some(remaining.max(0)));
+                remaining = remaining.saturating_sub(priced.earns).max(0);
+                ClaimGrant {
+                    key,
+                    draw,
+                    earns: priced.earns,
+                }
+            })
+            .collect(),
+    )
 }
 
 fn unclaimed_silver_plan(
@@ -2555,6 +2640,11 @@ fn unclaimed_silver_plan(
     let mut remaining = unclaimed?;
     let claims = claim_allowances.as_ref()?;
     let mut claim_group = UnclaimedSilverUseGroup::default();
+    let mut draws: Vec<FundDraw> = claim_grants(hexes, unclaimed)?
+        .into_iter()
+        .filter(|grant| grant.earns > 0)
+        .map(|grant| grant.draw)
+        .collect();
 
     for hex in hexes {
         for unit in &hex.units {
@@ -2628,6 +2718,10 @@ fn unclaimed_silver_plan(
                     detail: Some(format!("{count} {item}")),
                 });
                 withdrawal_allowances.insert((key.clone(), placed.line));
+                // `WITHDRAW 0 grain` is accepted and takes nothing, so it drew nothing either.
+                if amount > 0 {
+                    draws.push(FundDraw::of(hex, unit, placed));
+                }
             }
         }
     }
@@ -2638,6 +2732,7 @@ fn unclaimed_silver_plan(
         not_counted,
         withdrawal_allowances,
         remaining_before_maintenance: remaining,
+        draws,
     })
 }
 
@@ -26067,6 +26162,84 @@ fn check_upkeep_fund(
     }
 }
 
+/// Every `CLAIM` or `WITHDRAW` line that took unclaimed silver, when what the month's draws leave
+/// cannot cover the upkeep of the units relying on the fund (`ah-m1th`).
+///
+/// `rules/economy_maintenance`: "If you have silver in your unclaimed fund, then that silver will
+/// be automatically claimed by units that would otherwise starve" - and `rules/sequenceofevents`
+/// processes `CLAIM` and `WITHDRAW` before "Maintenance costs are assessed", so a draw spends
+/// silver those units were going to eat. Every drawing line carries the same sentence, none
+/// singled out, as `claims-exceed-unclaimed` names every claimant; the units left short keep their
+/// own warnings untouched.
+///
+/// Quiet when the report states no fund, or a withdrawal cannot be priced (no plan at all): the
+/// figure left is then unknown, as [`check_claims`] reasons. Switched by
+/// `upkeep-exceeds-unclaimed`'s entry ([`codes::SHARES_A_SWITCH`]).
+fn check_draws_leave_upkeep_unpaid(
+    plan: Option<&UnclaimedSilverPlan>,
+    settlement: &UpkeepSettlement,
+    unit_labels: &BTreeMap<UnitKey, String>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::UPKEEP_EXCEEDS_UNCLAIMED) {
+        return;
+    }
+    let Some(plan) = plan else {
+        return;
+    };
+    let left = plan.remaining_before_maintenance;
+    let relying = settlement
+        .relying
+        .iter()
+        .fold(0i64, |sum, claim| sum.saturating_add(claim.short));
+    if relying <= left || plan.draws.is_empty() {
+        return;
+    }
+
+    let names: Vec<String> = settlement
+        .relying
+        .iter()
+        .map(|claim| {
+            unit_labels
+                .get(&unit_key(&claim.region_id, &claim.unit_id))
+                .map_or_else(|| format!("unit {}", claim.unit_id), Clone::clone)
+        })
+        .collect();
+    let message = format!(
+        "This leaves ${left} of the faction's unclaimed silver, and ${relying} of upkeep relies on \
+         it: {}.",
+        named_units(&names)
+    );
+
+    for FundDraw(draw) in &plan.draws {
+        findings.push(Finding {
+            message: message.clone(),
+            ..draw.clone()
+        });
+    }
+}
+
+/// Up to three names in full, joined "A", "A and B", "A, B and C"; past three, the first three
+/// and a count: "A, B, C and 1 other", "A, B, C and 9 others" (`ah-m1th`, N1). The full list is in
+/// Problems, where each unit carries its own warning.
+fn named_units(names: &[String]) -> String {
+    const NAMED: usize = 3;
+    match names {
+        [] => String::new(),
+        [only] => only.clone(),
+        _ if names.len() <= NAMED => {
+            let (last, rest) = names.split_last().expect("at least two names");
+            format!("{} and {last}", rest.join(", "))
+        }
+        _ => {
+            let others = names.len() - NAMED;
+            let noun = if others == 1 { "other" } else { "others" };
+            format!("{} and {others} {noun}", names[..NAMED].join(", "))
+        }
+    }
+}
+
 fn check_withdraw_in_nexus(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
     if !withdrawal_refused(hex.region) || !options.emits(codes::WITHDRAW_IN_NEXUS) {
         return;
@@ -47996,10 +48169,21 @@ BUILD
         ];
 
         let findings = check_with_purse(Some(8450), regions, "unit 5\nCLAIM 8450\n");
-        assert_eq!(codes(&findings), ["not-enough-silver"], "{findings:?}");
+        // The short unit's own warning is exactly as it was; since `ah-m1th` the CLAIM that
+        // emptied the fund says so on its own line too, "This leaves $0 ...".
+        assert_eq!(
+            codes(&findings),
+            ["not-enough-silver", "draw-leaves-upkeep-unpaid"],
+            "{findings:?}"
+        );
         assert_eq!(
             findings[0].message,
             "short $60: this unit can have $0 and its orders and upkeep spend $60"
+        );
+        assert_eq!(
+            findings[1].message,
+            "This leaves $0 of the faction's unclaimed silver, and $60 of upkeep relies on it: \
+             Unit 7 (7)."
         );
     }
 
@@ -48098,6 +48282,249 @@ BUILD
             [] as [&str; 0],
             "a fund that can be sized still pays the upkeep"
         );
+    }
+
+    /// `ah-m1th`: the two fixture hexes these tests draw in. Unit 5 pays its own upkeep and does
+    /// the drawing; unit 7, `men` strong and penniless, stands in a hex of its own so no
+    /// faction-mate's silver reaches it at step 4 (`ah-e66j`) and only the fund can feed it.
+    fn a_drawer_and_a_unit_relying_on_the_fund(men: i64) -> Vec<ReportRegion> {
+        vec![
+            region_at("1:7,53", 7, 53, vec![unfed(unit("5"))]),
+            region_at(
+                "1:8,54",
+                8,
+                54,
+                vec![with_men(with_silver(starving(unit("7")), 0), men)],
+            ),
+        ]
+    }
+
+    /// `(line, message)` of every `draw-leaves-upkeep-unpaid` finding, in the order emitted.
+    fn draw_warnings(findings: &[Finding]) -> Vec<(Option<usize>, String)> {
+        findings
+            .iter()
+            .filter(|finding| finding.code == codes::DRAW_LEAVES_UPKEEP_UNPAID)
+            .map(|finding| (finding.line, finding.message.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn draw_leaves_upkeep_unpaid_names_one_two_and_three_units_in_full() {
+        let names = |n: usize| -> Vec<String> { (1..=n).map(|i| format!("U{i} ({i})")).collect() };
+        assert_eq!(named_units(&names(1)), "U1 (1)");
+        assert_eq!(named_units(&names(2)), "U1 (1) and U2 (2)");
+        assert_eq!(named_units(&names(3)), "U1 (1), U2 (2) and U3 (3)");
+    }
+
+    #[test]
+    fn draw_leaves_upkeep_unpaid_names_three_and_counts_the_rest() {
+        let names = |n: usize| -> Vec<String> { (1..=n).map(|i| format!("U{i} ({i})")).collect() };
+        assert_eq!(named_units(&names(4)), "U1 (1), U2 (2), U3 (3) and 1 other");
+        assert_eq!(
+            named_units(&names(12)),
+            "U1 (1), U2 (2), U3 (3) and 9 others"
+        );
+    }
+
+    /// The agreed sentence, on the WITHDRAW's own line: $14850 less 400 grain leaves $50, and unit
+    /// 7's six men need $60 of it (`rules/economy_maintenance`: unclaimed silver feeds units that
+    /// would otherwise starve; `rules/sequenceofevents`: WITHDRAW before maintenance).
+    #[test]
+    fn draw_leaves_upkeep_unpaid_warns_a_withdrawal_on_its_line() {
+        let findings = check_with_purse(
+            Some(14850),
+            a_drawer_and_a_unit_relying_on_the_fund(6),
+            "unit 5\nWITHDRAW 400 grain\n",
+        );
+        assert_eq!(
+            draw_warnings(&findings),
+            [(
+                Some(2),
+                "This leaves $50 of the faction's unclaimed silver, and $60 of upkeep relies on \
+                 it: Unit 7 (7)."
+                    .to_string()
+            )],
+            "{findings:?}"
+        );
+        let finding = findings
+            .iter()
+            .find(|finding| finding.code == codes::DRAW_LEAVES_UPKEEP_UNPAID)
+            .expect("the warning");
+        assert_eq!(finding.unit_id.as_deref(), Some("5"));
+        assert_eq!(finding.region_id, "1:7,53");
+    }
+
+    /// Several draws share the blame, as `claims-exceed-unclaimed` does: every line that took
+    /// silver carries the same sentence. $8450 less a CLAIM of 8000 and 10 grain ($370) is $80.
+    #[test]
+    fn draw_leaves_upkeep_unpaid_warns_every_line_that_took_silver() {
+        let findings = check_with_purse(
+            Some(8450),
+            a_drawer_and_a_unit_relying_on_the_fund(10),
+            "unit 5\nCLAIM 8000\nWITHDRAW 10 grain\n",
+        );
+        let sentence = "This leaves $80 of the faction's unclaimed silver, and $100 of upkeep \
+                        relies on it: Unit 7 (7)."
+            .to_string();
+        assert_eq!(
+            draw_warnings(&findings),
+            [(Some(2), sentence.clone()), (Some(3), sentence)],
+            "{findings:?}"
+        );
+    }
+
+    /// A CLAIM written after the fund is spent takes nothing (`claim_allowances_for` caps it at
+    /// what is left), so only the first is warned - and the fund it emptied reads `$0`.
+    #[test]
+    fn draw_leaves_upkeep_unpaid_skips_a_claim_that_took_nothing() {
+        let findings = check_with_purse(
+            Some(100),
+            a_drawer_and_a_unit_relying_on_the_fund(6),
+            "unit 5\nCLAIM 100\nCLAIM 50\n",
+        );
+        assert_eq!(
+            draw_warnings(&findings),
+            [(
+                Some(2),
+                "This leaves $0 of the faction's unclaimed silver, and $60 of upkeep relies on \
+                 it: Unit 7 (7)."
+                    .to_string()
+            )],
+            "{findings:?}"
+        );
+    }
+
+    /// A WITHDRAW the game refuses takes no silver (`rules/withdraw`: non-basic items, the Nexus,
+    /// too little unclaimed), so it is not warned even when the fund is short anyway.
+    #[test]
+    fn draw_leaves_upkeep_unpaid_ignores_a_refused_withdrawal() {
+        // Sixteen men owe $160 against $100: the fund is short with or without the orders.
+        let not_basic = check_with_purse(
+            Some(100),
+            a_drawer_and_a_unit_relying_on_the_fund(16),
+            "unit 5\nWITHDRAW 1 longship\n",
+        );
+        assert_eq!(draw_warnings(&not_basic), [], "{not_basic:?}");
+
+        let too_dear = check_with_purse(
+            Some(100),
+            a_drawer_and_a_unit_relying_on_the_fund(16),
+            "unit 5\nWITHDRAW 10 grain\n",
+        );
+        assert_eq!(draw_warnings(&too_dear), [], "{too_dear:?}");
+
+        let mut in_the_nexus = a_drawer_and_a_unit_relying_on_the_fund(16);
+        in_the_nexus[0].terrain = "nexus".to_string();
+        let nexus = check_with_purse(Some(100), in_the_nexus, "unit 5\nWITHDRAW 1 grain\n");
+        assert_eq!(draw_warnings(&nexus), [], "{nexus:?}");
+    }
+
+    /// `WITHDRAW 0 grain` is accepted and costs nothing, so it took nothing and is not warned,
+    /// as a CLAIM capped to nothing is not.
+    #[test]
+    fn draw_leaves_upkeep_unpaid_ignores_a_withdrawal_of_nothing() {
+        let findings = check_with_purse(
+            Some(100),
+            a_drawer_and_a_unit_relying_on_the_fund(16),
+            "unit 5\nWITHDRAW 0 grain\n",
+        );
+        assert_eq!(draw_warnings(&findings), [], "{findings:?}");
+    }
+
+    /// A draw in a FORM block is the new unit's, and Problems names it by the alias the player
+    /// wrote - the `formed` subject every other per-unit finding carries.
+    #[test]
+    fn draw_leaves_upkeep_unpaid_names_a_formed_drawer_by_its_alias() {
+        let findings = check_with_purse(
+            Some(100),
+            a_drawer_and_a_unit_relying_on_the_fund(6),
+            "unit 5\nFORM 1\nCLAIM 100\nEND\n",
+        );
+        let warning = findings
+            .iter()
+            .find(|finding| finding.code == codes::DRAW_LEAVES_UPKEEP_UNPAID)
+            .unwrap_or_else(|| panic!("the CLAIM is warned: {findings:?}"));
+        assert_eq!(warning.line, Some(3));
+        assert_eq!(
+            warning.formed,
+            Some(FormedSubject {
+                alias: "1".to_string(),
+                formed_by: "5".to_string(),
+            })
+        );
+    }
+
+    /// A unit this month's FORM creates is named as `new unit <alias>` in the sentence, as a TEACH
+    /// warning names one.
+    #[test]
+    fn draw_leaves_upkeep_unpaid_names_a_formed_unit_relying_on_the_fund_by_its_alias() {
+        // 7 gives one of its six penniless men to a new unit, so 7 owes $50 and the new unit $10,
+        // and both fall to the fund.
+        let findings = check_with_purse(
+            Some(100),
+            a_drawer_and_a_unit_relying_on_the_fund(6),
+            "unit 5\nCLAIM 100\nunit 7\nFORM 1\nEND\nGIVE NEW 1 1 HUMN\n",
+        );
+        let sentences: Vec<String> = draw_warnings(&findings)
+            .into_iter()
+            .map(|(_, message)| message)
+            .collect();
+        assert_eq!(sentences.len(), 1, "{findings:?}");
+        assert!(
+            sentences[0].ends_with("Unit 7 (7) and new unit 1."),
+            "{}",
+            sentences[0]
+        );
+    }
+
+    #[test]
+    fn draw_leaves_upkeep_unpaid_is_quiet_when_the_fund_still_covers_the_upkeep() {
+        let findings = check_with_purse(
+            Some(14850),
+            a_drawer_and_a_unit_relying_on_the_fund(6),
+            "unit 5\nWITHDRAW 10 grain\n",
+        );
+        assert_eq!(draw_warnings(&findings), [], "{findings:?}");
+    }
+
+    #[test]
+    fn draw_leaves_upkeep_unpaid_is_quiet_when_no_unit_relies_on_the_fund() {
+        let regions = vec![region_at("1:7,53", 7, 53, vec![unfed(unit("5"))])];
+        let findings = check_with_purse(Some(100), regions, "unit 5\nCLAIM 100\n");
+        assert_eq!(draw_warnings(&findings), [], "{findings:?}");
+    }
+
+    /// No stated fund is not an empty one, as for the other unclaimed-silver warnings.
+    #[test]
+    fn draw_leaves_upkeep_unpaid_is_quiet_without_a_stated_fund() {
+        let findings = check_with_purse(
+            None,
+            a_drawer_and_a_unit_relying_on_the_fund(6),
+            "unit 5\nCLAIM 100\n",
+        );
+        assert_eq!(draw_warnings(&findings), [], "{findings:?}");
+    }
+
+    /// One problem, one switch (S1): "Upkeep the faction cannot pay" silences both warnings.
+    #[test]
+    fn draw_leaves_upkeep_unpaid_shares_the_upkeep_switch() {
+        assert!(!codes::ALL.contains(&codes::DRAW_LEAVES_UPKEEP_UNPAID));
+        assert!(!codes::ALWAYS_ON.contains(&codes::DRAW_LEAVES_UPKEEP_UNPAID));
+        assert!(codes::SHARES_A_SWITCH.contains(&(
+            codes::DRAW_LEAVES_UPKEEP_UNPAID,
+            codes::UPKEEP_EXCEEDS_UNCLAIMED
+        )));
+        for (_, switch) in codes::SHARES_A_SWITCH {
+            assert!(codes::ALL.contains(&switch), "{switch} has no switch");
+        }
+
+        let findings = check_turn(
+            &report_with_purse(Some(14850), a_drawer_and_a_unit_relying_on_the_fund(6)),
+            "unit 5\nWITHDRAW 400 grain\n",
+            Some(&ruleset()),
+            disabling_all(&[codes::UNIT_DOES_NOTHING, codes::UPKEEP_EXCEEDS_UNCLAIMED]),
+        );
+        assert_eq!(draw_warnings(&findings), [], "{findings:?}");
     }
 
     /// The fund pays maintenance and only maintenance: a unit with no fee at all that overspends
