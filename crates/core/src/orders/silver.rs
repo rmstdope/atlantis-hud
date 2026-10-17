@@ -1354,9 +1354,9 @@ pub enum PurchaseAnswer {
     RecruitsRefused,
 }
 
-/// Which side of the market an order is on, for [`Lookups::market_share`]. Buying and selling the
-/// same goods draw on two separate pools - the `For Sale` and `Wanted` lines - so the side is part
-/// of the question.
+/// Which side of the market an order is on, for the settlement of a hex's market lines. Buying and
+/// selling the same goods draw on two separate pools - the `For Sale` and `Wanted` lines - so the
+/// side is part of the question.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MarketSide {
     Buying,
@@ -1378,13 +1378,16 @@ pub struct Lookups<'a> {
     /// The catalogue's name for a tag, for the one figure the interface cannot name itself: what
     /// a unit is about to produce is not yet in its inventory (`ah-19l2.2`).
     pub item_name: &'a dyn Fn(&str) -> String,
-    /// How much of the goods an order names this unit may trade, once its faction-mates in the
-    /// same hex have been settled against it (`ah-t2pn.3`).
+    /// What a `BUY` of the goods it names is charged against, once this unit's faction-mates in
+    /// the same hex have been settled against it (`ah-t2pn.3`): what the line would leave the
+    /// buyer if its purse were no object (`ah-r0na`). It is **not** how many goods the buyer gets,
+    /// and must never be cut by the unit's own purse - the purchase is cut to the purse after it,
+    /// and a ceiling cut there would silence `not-enough-silver` (`ah-s4hy`).
     ///
     /// `None` means nothing was settled - the goods are not traded here, nothing could identify
     /// them, or the hex could not be settled at all - and the arm falls back to what the market
-    /// line itself says, which is the behaviour before this bead.
-    pub market_share: &'a dyn Fn(&str, MarketSide) -> Option<i64>,
+    /// line itself says, which is the behaviour before `ah-t2pn.3`.
+    pub charge_ceiling: &'a dyn Fn(&str) -> Option<i64>,
     /// What the region leaves this unit of the goods a `PRODUCE` names, once its faction-mates in
     /// the same hex have been settled against the hex's `Products` line (`ah-256d`).
     pub region_share: &'a dyn Fn(&str) -> RegionShare,
@@ -2566,9 +2569,9 @@ pub fn forecast_unit(
     // What a `CAST` order will make, for the four `cast_*` fields the hover reads. Filled by the
     // arm below; a unit with no such order, or none the ruleset prices, leaves it at nothing.
     let mut cast: Option<CastPlan> = None;
-    // What this unit's earlier `BUY` lines have already taken out of its settled share, per
-    // canonical tag. A block may name the same goods twice, and the second line can only buy what
-    // the first left - of the market line and of this unit's share of it alike (`ah-lauy`).
+    // What this unit's earlier `BUY` lines have already taken out of its settled charge ceiling,
+    // per canonical tag. A block may name the same goods twice, and the second line can only buy
+    // what the first left - of the market line and of this unit's share of it alike (`ah-lauy`).
     let mut bought: BTreeMap<String, i64> = BTreeMap::new();
     // What each `BUY ALL` settled to, for the hover - read off the ledger's own settlement below,
     // in document order.
@@ -2980,16 +2983,16 @@ pub fn forecast_unit(
                         // navigator's decision, recorded in the bead's plan (`ah-t2pn.3`). Less
                         // what this unit's own earlier lines already took (`ah-lauy`).
                         //
-                        // The running total comes off the *settled share* only. Where nothing was
+                        // The running total comes off the *settled ceiling* only. Where nothing was
                         // settled the arm falls back to what the unit asked for, which is not a
                         // quantity of goods at all, so there is nothing there to spend down.
-                        let allowed = match (lookups.market_share)(item, MarketSide::Buying) {
-                            Some(share) => (share - already).max(0),
+                        let ceiling = match (lookups.charge_ceiling)(item) {
+                            Some(ceiling) => (ceiling - already).max(0),
                             None => *count,
                         };
                         // Priced in the market phase below, against what the Give phase leaves
                         // (`ah-npab`), because that is where affordability can be answered.
-                        let asked = quantity_bought(*count, allowed);
+                        let asked = quantity_bought(*count, ceiling);
                         let wanted = asked.saturating_mul(price);
                         market_demand = market_demand.saturating_add(wanted);
                         // From what was *wanted*, not from what was spent: a purchase the unit can
@@ -5154,11 +5157,13 @@ pub fn price_pillage(
     Priced::default()
 }
 
-/// How many of the goods a `BUY` actually takes: what was asked, capped by what the settlement
-/// leaves this unit of the market's line.
+/// How many of the goods a `BUY` is charged for: what was asked, capped by the ceiling the
+/// settlement charges this unit's order against. The unit's purse cuts what it actually gets
+/// after this, in [`price_purchase`].
 ///
-/// `allowed` is the settled share, or the asked count where the hex could not be settled - which is
-/// what [`Lookups::market_share`] returning `None` means, and is the behaviour before `ah-t2pn.3`.
+/// `allowed` is the settled charge ceiling, or the asked count where the hex could not be settled
+/// - which is what [`Lookups::charge_ceiling`] returning `None` means, and is the behaviour before
+/// `ah-t2pn.3`.
 #[must_use]
 pub fn quantity_bought(count: i64, allowed: i64) -> i64 {
     count.min(allowed).max(0)
@@ -8305,7 +8310,7 @@ mod tests {
 
     /// Nothing settled, so every arm falls back to what the market line itself says - which is
     /// this module's own behaviour, unit-tested here without `semantics`' settlement.
-    fn unsettled_market(_item: &str, _side: MarketSide) -> Option<i64> {
+    fn unsettled_market(_item: &str) -> Option<i64> {
         None
     }
 
@@ -8346,7 +8351,7 @@ mod tests {
             purchase: &no_purchases,
             item_tag: &verbatim_tag,
             item_name: &verbatim_name,
-            market_share: &unsettled_market,
+            charge_ceiling: &unsettled_market,
             region_share: &no_region_pool,
             region_product_name: &no_region_product,
             counted_item: &verbatim_counted,
