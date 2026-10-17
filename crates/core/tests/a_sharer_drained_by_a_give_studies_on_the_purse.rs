@@ -10,7 +10,7 @@
 //! holds the 20000. So 13403's study is paid from the hex's purse, not refused: nothing is short,
 //! and its 413 leaves in the Give phase, not after a study it paid for itself.
 
-use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions};
+use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions, TurnReview};
 use atlantis_hud_core::orders::silver::{SilverChangeCause, UnitSilver};
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
@@ -20,7 +20,7 @@ use common::ruleset;
 
 const DRAINED: &str = "13403";
 
-fn row(gift: i64, unit_id: &str) -> UnitSilver {
+fn review(gift: i64) -> TurnReview {
     let ruleset = ruleset();
     let text = atlantis_hud_fixtures::G7_F95_T71.text;
     let mut parsed = parse_report_full(text);
@@ -35,10 +35,19 @@ fn row(gift: i64, unit_id: &str) -> UnitSilver {
         1,
     );
     review_turn(&parsed, &orders, Some(&ruleset), CheckOptions::default())
+}
+
+fn row_of(review: &TurnReview, unit_id: &str) -> UnitSilver {
+    review
         .silver
-        .into_iter()
+        .iter()
         .find(|row| row.unit_id == unit_id)
+        .cloned()
         .unwrap_or_else(|| panic!("unit {unit_id} is forecast"))
+}
+
+fn row(gift: i64, unit_id: &str) -> UnitSilver {
+    row_of(&review(gift), unit_id)
 }
 
 #[test]
@@ -80,4 +89,41 @@ fn a_give_the_sharer_need_not_fund_leaves_its_study_alone() {
     let drained = row(1000, DRAINED);
     assert_eq!(drained.short_for_orders, Some(0), "{drained:#?}");
     assert_eq!(drained.short_on, None, "{drained:#?}");
+}
+
+/// The two readers of the Give-phase draw in one assertion (`ah-izmv`): the SILVER column, which
+/// reads the 413 gone from the Give phase on, and the SHARE purse, which lends the whole draw and
+/// never nets it against the study fee it lends back. A change to either alone - the column
+/// counting the draw differently, or the purse netting it - breaks one of these while the other
+/// still holds, so they are asserted together, with the findings the warning reads off the same
+/// purse.
+#[test]
+fn a_drained_sharers_column_loan_and_findings_agree() {
+    let review = review(20000);
+    let drained = row_of(&review, DRAINED);
+    let lent: i64 = drained
+        .changes
+        .iter()
+        .filter(|change| change.cause == SilverChangeCause::Lent)
+        .map(|change| change.amount)
+        .sum();
+    let short: Vec<_> = review
+        .findings
+        .iter()
+        .filter(|finding| {
+            finding.unit_id.as_deref() == Some(DRAINED)
+                && finding.code.as_str() == "not-enough-silver"
+        })
+        .collect();
+    assert_eq!(
+        (
+            lent,
+            drained.borrowed_for_orders,
+            drained.short_for_orders,
+            drained.at_month_end,
+            short.len(),
+        ),
+        (-413, 10, Some(0), Some(0), 0),
+        "column, loan and findings: {drained:#?} {short:#?}"
+    );
 }
