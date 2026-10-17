@@ -4657,19 +4657,42 @@ describe("silver moved by TRANSPORT", () => {
     expect(popupAsText(popup)).toContain("Unit 1162 is not a quartermaster, so 100 SILV stay with this unit.");
   });
 
+  it("a silver TRANSPORT the map proves out of reach says why the silver stays too", () => {
+    const popup = silverPopup(
+      unit({
+        own: true,
+        transportTargetIssues: [
+          issue({
+            to: "901",
+            amount: 100,
+            reason: "tooFarToAccept",
+            toUnshown: false,
+            reach: { away: 3, limit: 2, fromLevel: null, toLevel: null }
+          })
+        ]
+      }),
+      { held: 500, atMonthEnd: 500 }
+    );
+    expect(popup.notes).toContain(
+      "Unit 901 is 3 hexes away and takes goods from 2 hexes, so 100 SILV stay with this unit."
+    );
+  });
+
   it("a refusal of other goods, or one the report cannot settle, adds no silver sentence", () => {
     const popup = silverPopup(
       unit({
         own: true,
         transportTargetIssues: [
           issue({ to: "1162", tag: "STON", reason: "notQuartermaster", toUnshown: false }),
-          issue({ to: "5120", reason: "acceptanceUnknown", toUnshown: false })
+          issue({ to: "5120", reason: "acceptanceUnknown", toUnshown: false }),
+          issue({ to: "5121", reason: "distanceUnmeasured", toUnshown: false })
         ]
       }),
       { held: 500, atMonthEnd: 500 }
     );
     expect(popup.notes.join(" ")).not.toContain("1162");
     expect(popup.notes.join(" ")).not.toContain("5120");
+    expect(popup.notes.join(" ")).not.toContain("5121");
   });
 
   it("a dissolving unit draws no not counted line", () => {
