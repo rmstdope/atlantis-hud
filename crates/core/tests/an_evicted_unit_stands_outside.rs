@@ -173,3 +173,25 @@ fn an_evict_from_outside_any_structure_is_refused() {
     assert_eq!(structure.as_deref(), Some("5"));
     assert_eq!(study.points_after, 175, "{study:?}");
 }
+
+/// `Game::RunPromoteOrders` runs the PROMOTEs before the EVICTs, so an owner that promotes the
+/// mage owns the Stockade no longer: its EVICT is refused and the mage, now the owner, studies
+/// inside.
+#[test]
+fn an_evict_after_promoting_its_target_is_refused() {
+    let orders = orders("ENTER 5", &format!("PROMOTE {MAGE}\nEVICT {MAGE}\n"));
+    let findings = findings(&orders);
+    assert_eq!(
+        evict_warnings(&findings, DRONES),
+        vec![
+            "EVICT will be refused: Six of Seven (1296) owns Stockade [5] when evictions run, \
+             not this unit, so nothing changes"
+                .to_string()
+        ],
+        "{findings:#?}"
+    );
+    let (structure, study) = mage(&orders);
+    assert_eq!(structure.as_deref(), Some("5"));
+    assert_eq!(study.points_after, 175, "{study:?}");
+    assert!(!halving_warned(&findings));
+}

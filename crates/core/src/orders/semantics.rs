@@ -12193,7 +12193,10 @@ fn owner_when_promotions_run(hex: &Hex<'_>, structure_id: &str) -> Option<String
 /// ([`standing::eviction_refused_at_sea`]). `movement::fleet::OrderedUnits` reads the same rule
 /// out of the orders document for the preview and the map. A formed owner's EVICT, and an EVICT
 /// naming a formed unit, are not followed; a unit of another faction stays where the report shows
-/// it.
+/// it, though the game evicts it and `movement::fleet` follows that (a known divergence: every
+/// check here reads a foreign unit's structure from the report). Known gap: an owner that EVICTs
+/// itself leaves the structure to the next occupant, whose DESTROY then runs, but
+/// [`structure_owner_after_promotes`] - the owner [`AfterDestroy`] reads - still names it.
 fn evictions(hex: &Hex<'_>) -> BTreeMap<String, String> {
     let mut evicted = BTreeMap::new();
     if hex.units.iter().all(|ordered| ordered.evicts.is_empty()) {

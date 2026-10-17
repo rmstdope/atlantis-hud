@@ -453,7 +453,10 @@ impl OrderedUnits {
     /// standing in that object to the region's dummy, unless the object is a fleet at sea and the
     /// target cannot really swim ([`crate::orders::standing::eviction_refused_at_sea`]). Formed
     /// units are not followed: a formed owner's EVICT, and an EVICT naming a formed unit, evict
-    /// nobody here.
+    /// nobody here. A unit of another faction is evicted here as the engine evicts it
+    /// (`Object::GetUnitId` finds any unit in the object), where `orders::semantics::evictions`
+    /// leaves one where the report shows it - a known divergence, since the checks there read a
+    /// foreign unit's structure from the report throughout.
     fn evictions_in(&self, region: &ReportRegion) -> BTreeMap<String, String> {
         let hex = self.0.hexes.of_region(&region.region_id);
         let mut evicted = BTreeMap::new();
