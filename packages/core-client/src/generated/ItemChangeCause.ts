@@ -6,4 +6,4 @@
  * One cause per movement. `ah-rgkk.3.2` adds the GIVE/TAKE cases to this enum; a reader must
  * treat an unknown cause as "moved, reason not stated" rather than failing.
  */
-export type ItemChangeCause = "bought" | "sold" | "withdrawn" | "produced" | "production-spent" | "build-spent" | "drawn-from-sharer" | "cast-created" | "cast-spent" | "create-spent" | "quest-spent" | "explore-spent" | "transported-out" | "transported-in" | "abandoned" | "given-away" | "was-given" | "lent-for-give" | "took" | "was-taken-from" | "discarded" | "gift-reverted" | "eaten-for-upkeep" | "ship-finished";
+export type ItemChangeCause = "bought" | "sold" | "withdrawn" | "produced" | "production-spent" | "build-spent" | "drawn-from-sharer" | "cast-created" | "cast-spent" | "create-spent" | "quest-spent" | "explore-spent" | "transported-out" | "transported-in" | "abandoned" | "given-away" | "was-given" | "lent-for-give" | "lent-for-discard" | "took" | "was-taken-from" | "discarded" | "gift-reverted" | "eaten-for-upkeep" | "ship-finished";

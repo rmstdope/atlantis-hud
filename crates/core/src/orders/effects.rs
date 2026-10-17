@@ -630,6 +630,13 @@ pub enum ItemChangeCause {
     /// faction's unit - and [`ItemChange::borrower`] the unit whose GIVE it was. This unit never
     /// ordered a GIVE to the receiver, so it is not `GivenAway` (`ah-49is`).
     LentForGive,
+    /// Drawn from this sharing unit for another unit's numbered `GIVE 0`, whose own stock fell
+    /// short: the engine checks a numbered discard against `Unit::GetSharedNum` and removes it with
+    /// `Unit::ConsumeShared` (../Atlantis `runorders.cpp`; `rules/give`, `rules/share`).
+    /// [`ItemChange::borrower`] is the unit whose discard it was, and `other` is `None` - a discard
+    /// has no receiver. Silver, and the monsters the engine releases from the unit's own stock, are
+    /// never recorded so (`ah-84b1`).
+    LentForDiscard,
     /// Collected by this unit's `TAKE FROM`.
     Took,
     /// Collected from this unit by another unit's `TAKE FROM`.
@@ -687,7 +694,8 @@ pub struct ItemChange {
     pub unit_price: Option<i64>,
     pub other: Option<ItemChangeParty>,
     /// The unit whose order this unit's goods paid for: `Some` only on
-    /// [`ItemChangeCause::LentForGive`], where `other` is that order's receiver (`ah-49is`).
+    /// [`ItemChangeCause::LentForGive`], where `other` is that order's receiver (`ah-49is`), and
+    /// on [`ItemChangeCause::LentForDiscard`], where there is no receiver (`ah-84b1`).
     //
     // `skip_serializing_if` is load-bearing, as on `FieldChange::cause`: the TypeScript says
     // `borrower?:`, a key that may be absent and is never `null`.
@@ -3559,8 +3567,18 @@ impl Working {
         // never a GIVE of its own to the receiver (`ah-49is`). Another faction's unit is named as
         // no receiver at all, which the hover words as "another faction". A discard and a TAKE
         // keep the source's own cause; their words are not this bead's.
+        //
+        // A discard a sharer's goods made up is a loan for the discarder's `GIVE 0` (`ah-84b1`),
+        // except silver, whose SILVER column words stand, and goods no unit may be given - the
+        // monsters the engine releases from the unit's own stock (`runorders.cpp`'s Give 0 branch).
+        // Asked per tag below, so this arm only says which shape the discard takes.
         let (lender_cause, lender_other, lender_borrower) = match (is_give, reach) {
-            (true, GiveReach::Discard) | (false, _) => (source_cause, far_end.clone(), None),
+            (true, GiveReach::Discard) => (
+                ItemChangeCause::LentForDiscard,
+                None,
+                Some(near_end.clone()),
+            ),
+            (false, _) => (source_cause, far_end.clone(), None),
             (true, GiveReach::Foreign) => {
                 (ItemChangeCause::LentForGive, None, Some(near_end.clone()))
             }
@@ -3633,16 +3651,23 @@ impl Working {
                 }
                 take_item(&mut self.units[lender].unit.items, index, take);
                 remaining -= take;
+                let (cause, other, borrower) = if lender_cause == ItemChangeCause::LentForDiscard
+                    && (tag.eq_ignore_ascii_case(SILVER_TAG) || !self.ruleset.can_be_given(&tag))
+                {
+                    (source_cause, far_end.clone(), None)
+                } else {
+                    (lender_cause, lender_other.clone(), lender_borrower.clone())
+                };
                 self.units[lender].item_log.record(
                     ItemChange {
                         tag: tag.clone(),
                         name: name.clone(),
                         delta: -take,
-                        cause: lender_cause,
+                        cause,
                         line,
                         unit_price: None,
-                        other: lender_other.clone(),
-                        borrower: lender_borrower.clone(),
+                        other,
+                        borrower,
                         is_man,
                         plural: None,
                     },
@@ -6893,44 +6918,164 @@ mod tests {
         .join("\n")
     }
 
+    /// `(cause, delta, borrower)` for each change of `tag` on `id`'s row, in the order recorded.
+    fn tag_changes(
+        response: &OrdersPreviewResponse,
+        id: &str,
+        tag: &str,
+    ) -> Vec<(ItemChangeCause, i64, Option<String>)> {
+        response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .find(|unit| unit.unit.unit_id == id)
+            .map_or_else(Vec::new, |unit| {
+                unit.item_changes
+                    .iter()
+                    .filter(|change| change.tag == tag)
+                    .map(|change| {
+                        (
+                            change.cause,
+                            change.delta,
+                            change.borrower.as_ref().map(|party| party.unit_id.clone()),
+                        )
+                    })
+                    .collect()
+            })
+    }
+
+    /// [`report_with_a_flagged_former`] with iron on the warden (a sharer) and the bystander, and a
+    /// second sharer, the keeper, listed after them.
+    fn report_with_two_iron_sharers(warden: i64, bystander: i64, keeper: i64) -> String {
+        report_with_a_flagged_former()
+            .replace(
+                "2 leaders [LEAD], 100 silver [SILV].",
+                &format!("2 leaders [LEAD], 100 silver [SILV], {warden} iron [IRON]."),
+            )
+            .replace(
+                "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                &format!(
+                    "* Bystander (901), Foo (1), leader [LEAD], {bystander} iron [IRON]. Weight: \
+                     10. Capacity: 0/0/15/0.\n* Keeper (902), Foo (1), sharing, leader [LEAD], \
+                     {keeper} iron [IRON], 50 silver [SILV]. Weight: 10. Capacity: 0/0/15/0."
+                ),
+            )
+    }
+
     /// `ah-0mch`: an exact GIVE is clamped to what the giver has as the engine counts it -
     /// `Unit::GetSharedNum`, its own stock and every other sharer's - and spends its own first,
     /// then the sharer's (`Unit::ConsumeShared`). The bystander holds 20 iron and the warden shares
-    /// 100, so a discard of 150 takes the bystander's 20 and the warden's 100.
+    /// 100, so a discard of 150 takes the bystander's 20 and the warden's 100. The warden's part is
+    /// a loan for the bystander's discard, naming it (`ah-84b1`).
     #[test]
     fn an_exact_gift_draws_on_another_sharer_in_the_preview() {
-        let report = report_with_a_flagged_former()
-            .replace(
-                "2 leaders [LEAD], 100 silver [SILV].",
-                "2 leaders [LEAD], 100 silver [SILV], 100 iron [IRON].",
-            )
-            .replace(
-                "* Bystander (901), Foo (1), leader [LEAD].",
-                "* Bystander (901), Foo (1), leader [LEAD], 20 iron [IRON].",
-            );
+        let report = report_with_two_iron_sharers(100, 20, 0);
         let response = preview_over(&report, "unit 901\nGIVE 0 150 IRON\n");
-        // What the Items popup reads: each unit's own change, where the goods actually were.
-        let discarded = |id: &str| -> i64 {
-            response
-                .regions
-                .iter()
-                .flat_map(|region| region.units.iter())
-                .find(|unit| unit.unit.unit_id == id)
-                .map_or(0, |unit| {
-                    unit.item_changes
-                        .iter()
-                        .filter(|change| {
-                            change.tag == "IRON" && change.cause == ItemChangeCause::Discarded
-                        })
-                        .map(|change| change.delta)
-                        .sum()
-                })
-        };
-        assert_eq!(discarded("901"), -20, "the giver's own 20 go first");
         assert_eq!(
-            discarded("900"),
-            -100,
-            "then the sharer's 100, which is all it has"
+            tag_changes(&response, "901", "IRON"),
+            [(ItemChangeCause::Discarded, -20, None)],
+            "the giver's own 20 go first, and are its own discard"
+        );
+        assert_eq!(
+            tag_changes(&response, "900", "IRON"),
+            [(
+                ItemChangeCause::LentForDiscard,
+                -100,
+                Some("901".to_string())
+            )],
+            "then the sharer's 100, which is all it has, lent for the bystander's discard"
+        );
+    }
+
+    /// `ah-84b1`: several sharers lend in report order, each recording its own loan.
+    #[test]
+    fn a_discard_draws_on_each_sharer_in_report_order_as_loans() {
+        let report = report_with_two_iron_sharers(20, 0, 30);
+        let response = preview_over(&report, "unit 901\nGIVE 0 30 IRON\n");
+        assert_eq!(tag_changes(&response, "901", "IRON"), []);
+        assert_eq!(
+            tag_changes(&response, "900", "IRON"),
+            [(
+                ItemChangeCause::LentForDiscard,
+                -20,
+                Some("901".to_string())
+            )]
+        );
+        assert_eq!(
+            tag_changes(&response, "902", "IRON"),
+            [(
+                ItemChangeCause::LentForDiscard,
+                -10,
+                Some("901".to_string())
+            )]
+        );
+    }
+
+    /// `ah-84b1`: one sharer lending to two discarders records one loan per discard, in the
+    /// order they run; its own discard stays "discarded".
+    #[test]
+    fn a_sharer_lends_to_each_discard_and_keeps_its_own_discard() {
+        let report = report_with_two_iron_sharers(0, 0, 40);
+        let response = preview_over(
+            &report,
+            "unit 902\nGIVE 0 5 IRON\nunit 900\nGIVE 0 20 IRON\nunit 901\nGIVE 0 10 IRON\n",
+        );
+        assert_eq!(
+            tag_changes(&response, "902", "IRON"),
+            [
+                (
+                    ItemChangeCause::LentForDiscard,
+                    -20,
+                    Some("900".to_string())
+                ),
+                (
+                    ItemChangeCause::LentForDiscard,
+                    -10,
+                    Some("901".to_string())
+                ),
+                (ItemChangeCause::Discarded, -5, None),
+            ],
+            "report order: the warden and the bystander are listed before the keeper"
+        );
+    }
+
+    /// `ah-84b1`: the engine releases monsters from the unit's own stock (`runorders.cpp`'s Give 0
+    /// branch, `items.SetNum`), so a sharer's lions are never lent for a discard: whatever the
+    /// figures do, the sharer's row does not say it lent them.
+    #[test]
+    fn a_monster_discard_is_never_a_loan() {
+        let report = report_with_two_iron_sharers(0, 0, 0)
+            .replace("0 iron [IRON], 50 silver", "5 lions [LION], 50 silver");
+        let response = preview_over(&report, "unit 901\nGIVE 0 5 LION\n");
+        assert!(
+            tag_changes(&response, "902", "LION")
+                .iter()
+                .all(|(cause, _, _)| *cause != ItemChangeCause::LentForDiscard),
+            "{:?}",
+            tag_changes(&response, "902", "LION")
+        );
+    }
+
+    /// `ah-84b1`: what the agreed experience leaves unchanged - `ALL` is only what the unit holds,
+    /// and a silver discard keeps the words the SILVER column already has.
+    #[test]
+    fn an_all_discard_and_a_silver_discard_are_not_loans() {
+        let report = report_with_two_iron_sharers(0, 5, 40);
+        let response = preview_over(&report, "unit 901\nGIVE 0 ALL IRON\nGIVE 0 30 SILV\n");
+        assert_eq!(
+            tag_changes(&response, "901", "IRON"),
+            [(ItemChangeCause::Discarded, -5, None)]
+        );
+        assert_eq!(tag_changes(&response, "902", "IRON"), []);
+        assert!(
+            tag_changes(&response, "900", "SILV")
+                .iter()
+                .chain(tag_changes(&response, "902", "SILV").iter())
+                .all(
+                    |(cause, _, borrower)| *cause != ItemChangeCause::LentForDiscard
+                        && borrower.is_none()
+                ),
+            "silver lent for a discard keeps today's cause"
         );
     }
 

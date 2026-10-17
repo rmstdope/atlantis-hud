@@ -30,7 +30,8 @@ line: number | null,
 unitPrice: number | null, other: ItemChangeParty | null, 
 /**
  * The unit whose order this unit's goods paid for: `Some` only on
- * [`ItemChangeCause::LentForGive`], where `other` is that order's receiver (`ah-49is`).
+ * [`ItemChangeCause::LentForGive`], where `other` is that order's receiver (`ah-49is`), and
+ * on [`ItemChangeCause::LentForDiscard`], where there is no receiver (`ah-84b1`).
  */
 borrower?: ItemChangeParty, 
 /**

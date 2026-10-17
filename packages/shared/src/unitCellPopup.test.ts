@@ -3385,6 +3385,59 @@ describe("the items popup's cause sentences", () => {
     expect(notes.join(" ")).not.toContain("gave 14 to Unit (4840)");
   });
 
+  // `ah-84b1`: a sharer's goods made up another unit's numbered GIVE 0 (`rules/give`, `rules/share`).
+  it("says a sharer lent the goods for another unit's discard, naming the discarder", () => {
+    expect(
+      notesFor({
+        items: [{ name: "swords", tag: "SWOR", amount: 0 }],
+        itemChanges: [
+          moved({
+            tag: "SWOR",
+            name: "swords",
+            cause: "lent-for-discard",
+            delta: -30,
+            borrower: { unitId: "12878", name: "Two of Seven" }
+          })
+        ]
+      })[0]
+    ).toBe("swords: lent 30 for Two of Seven (12878) to discard.");
+  });
+
+  it("names each discard a sharer lent for, after its own discard and beside its other loans, in month order", () => {
+    expect(
+      notesFor({
+        items: [{ name: "swords", tag: "SWOR", amount: 0 }],
+        itemChanges: [
+          moved({ tag: "SWOR", name: "swords", cause: "discarded", delta: -5 }),
+          moved({
+            tag: "SWOR",
+            name: "swords",
+            cause: "lent-for-discard",
+            delta: -20,
+            borrower: { unitId: "12878", name: "Two of Seven" }
+          }),
+          moved({
+            tag: "SWOR",
+            name: "swords",
+            cause: "lent-for-discard",
+            delta: -10,
+            borrower: { unitId: "12879", name: "Three of Seven" }
+          }),
+          moved({
+            tag: "SWOR",
+            name: "swords",
+            cause: "lent-for-give",
+            delta: -8,
+            other: { unitId: "12884", name: "Seven of Seven" },
+            borrower: { unitId: "12883", name: "Six of Seven" }
+          })
+        ]
+      })[0]
+    ).toBe(
+      "swords: discarded 5, lent 20 for Two of Seven (12878) to discard, lent 10 for Three of Seven (12879) to discard, lent 8 for Six of Seven (12883) to give to Seven of Seven (12884)."
+    );
+  });
+
   it("names each loan in one month, in the order they run", () => {
     expect(
       notesFor({
