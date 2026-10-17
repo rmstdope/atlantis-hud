@@ -4933,7 +4933,7 @@ fn apply_transfers(
             // Silver keeps the SILVER column's words, and the monsters the engine releases come
             // from the unit's own stock alone, so neither is told. Nor is a draw on stock this walk
             // cannot vouch for: who lost what cannot then be said.
-            if discarding
+            if verdict.reach() == GiveReach::Discard
                 && matches!(&*transfer.amount, Amount::Exact(_))
                 && !draws.is_empty()
                 && !tag.eq_ignore_ascii_case(SILVER)
