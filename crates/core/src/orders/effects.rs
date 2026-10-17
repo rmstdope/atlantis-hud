@@ -2343,7 +2343,8 @@ struct WorkingUnit {
     /// unit is weighed for its walk, before any TRANSPORT reaches it; read by the preview and the
     /// map trace.
     refused_overloaded: bool,
-    /// Whether this unit stands in, or captains, a fleet the game keeps in port all month,
+    /// Whether this unit stands in a fleet the game keeps in port all month, once its own ENTER and
+    /// LEAVE have run,
     /// overloaded or short of sailors - `semantics`' judgement, the one the `fleet-overloaded` and
     /// `fleet-undercrewed` warnings read (`UnitItemEffects::fleet_stays`, `ah-zbtx`).
     fleet_stays: bool,

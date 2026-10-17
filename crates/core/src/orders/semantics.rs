@@ -8258,7 +8258,8 @@ pub(crate) struct UnitItemEffects {
     /// `revert_dissolved_forms` reads too, so the ITEMS preview never judges it on its own
     /// (`ah-l9d9`). `None` for every unit that stays, and for one whose recruits are unjudged.
     pub dissolution: Option<Dissolution>,
-    /// Whether this unit stands in, or captains, a fleet the game keeps in port all month,
+    /// Whether this unit stands in a fleet the game keeps in port all month, once its own ENTER and
+    /// LEAVE have run,
     /// overloaded or short of sailors ([`Hex::staying_fleets`], `ah-zbtx`), so the preview and the
     /// map keep it at home as the `fleet-overloaded` and `fleet-undercrewed` warnings say.
     pub fleet_stays: bool,
