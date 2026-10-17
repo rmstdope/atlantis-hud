@@ -343,6 +343,18 @@ test("renaming to another game's name only warns", async ({ page }) => {
 });
 
 /**
+ * How far the page has been scrolled, summed over the three elements the browser could scroll:
+ * html (the viewport's scroller), body and #root. The app never wants any of them moved (ah-gmg8).
+ */
+function pageScroll(page: Page) {
+  return page.evaluate(() =>
+    [document.documentElement, document.body, document.getElementById("root")]
+      .map((element) => element?.scrollTop ?? 0)
+      .reduce((total, value) => total + value, 0)
+  );
+}
+
+/**
  * A long Games menu scrolls within itself, and the app never slides off-screen (ah-gmg8).
  *
  * Found with about seventy games in an 806 px window: the picker had no height cap, so it grew
@@ -363,13 +375,6 @@ test("a menu taller than the window scrolls inside itself, never the page", asyn
   const height = 360;
   await page.setViewportSize({ width: 1000, height });
 
-  /** How far the page has been scrolled, wherever the browser chose to scroll it. */
-  const pageScroll = () =>
-    page.evaluate(() =>
-      [document.scrollingElement, document.documentElement, document.body, document.getElementById("root")]
-        .map((element) => element?.scrollTop ?? 0)
-        .reduce((total, value) => total + value, 0)
-    );
 
   await page.getByTestId("game-indicator").click();
   const picker = page.getByTestId("game-picker");
@@ -380,7 +385,7 @@ test("a menu taller than the window scrolls inside itself, never the page", asyn
   // scrolls whichever ancestor can scroll - before the fix that was #root, by about 490 px here.
   const submit = page.getByRole("button", { name: "Create game", exact: true });
   await submit.evaluate((element) => element.scrollIntoView({ block: "nearest" }));
-  expect(await pageScroll()).toBe(0);
+  expect(await pageScroll(page)).toBe(0);
   const indicator = await page.getByTestId("game-indicator").boundingBox();
   expect(indicator?.y ?? -1).toBeGreaterThanOrEqual(0);
 
@@ -391,5 +396,34 @@ test("a menu taller than the window scrolls inside itself, never the page", asyn
 
   // The form is reachable by scrolling the menu, and filling it in moves nothing else.
   await createGame(page, "Game 9");
-  expect(await pageScroll()).toBe(0);
+  expect(await pageScroll(page)).toBe(0);
+});
+
+/**
+ * The no-game screen scrolls itself in a short window (ah-gmg8).
+ *
+ * It used to lean on the page scrolling to reach Create game; once the page could not scroll, its
+ * own main has to. In a tall window the card stays centred - the reason for `m-auto` on the card
+ * rather than `items-center`, which would push the top of an overflowing card out of reach.
+ */
+test("the no-game screen scrolls to Create game in a short window, and centres in a tall one", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 360 });
+  await clearGames(page);
+
+  const gate = page.getByTestId("game-gate");
+  await expect(gate).toBeVisible();
+  const submit = page.getByRole("button", { name: "Create game", exact: true });
+  await submit.evaluate((element) => element.scrollIntoView({ block: "nearest" }));
+  await expect(submit).toBeInViewport();
+  expect(await gate.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  expect(await pageScroll(page)).toBe(0);
+  await expect(page.getByText("No game yet")).toBeAttached();
+
+  await page.setViewportSize({ width: 1000, height: 1000 });
+  await gate.evaluate((element) => element.scrollTo(0, 0));
+  const main = await gate.boundingBox();
+  const card = await page.getByText("No game yet").locator("..").boundingBox();
+  const above = (card?.y ?? 0) - (main?.y ?? 0);
+  const below = (main?.y ?? 0) + (main?.height ?? 0) - ((card?.y ?? 0) + (card?.height ?? 0));
+  expect(Math.abs(above - below)).toBeLessThanOrEqual(2);
 });
