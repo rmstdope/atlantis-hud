@@ -649,6 +649,27 @@ describe("finds the one order that takes the whole month", () => {
     expect(longOrderOf("SAIL N\nMOVE S", "origins")).toBe("MOVE S");
   });
 
+  // `ah-vjc3`: the column must agree with `two-month-long-orders`, which says of this block "MOVE
+  // replaces this STUDY as the unit's month-long order, so this STUDY will not run" - the last
+  // month-long order runs (`ah-728m.2.1`; `rules/movement_normal`: "In one month, a unit can issue
+  // a single MOVE order"). Seven of Eight's own template (neworigins-3.0.0-g7-f95-t71) with a MOVE
+  // added; before `ah-5we4` the column kept the STUDY. The core pins the check's side on the same
+  // block (`a_move_after_the_templates_repeated_study_replaces_it`). The second block is the
+  // verifier's overloaded one: the lines that load the unit sit between the two orders and change
+  // nothing here. That an overload does not hand the month back to the STUDY is the engine's - a
+  // MOVE overwrites the earlier month-long order as it is parsed ("MOVE: Overwriting previous",
+  // ProcessMoveOrder in parseorders.cpp), and the overload is only refused when the move is made
+  // ("MOVE: Unit is overloaded and cannot move.", DoAMoveOrder in monthorders.cpp).
+  it("names a MOVE written after the template's STUDY, whatever lines sit between them", () => {
+    expect(longOrderOf("@claim 50\n@study obse\nMOVE N", "origins")).toBe("MOVE N");
+    expect(
+      longOrderOf(
+        "@CLAIM 50\n@STUDY OBSE\nCLAIM 2000\nBUY 5 GEM\nCLAIM 1000\nWITHDRAW 2 HAMM\nMOVE N",
+        "origins"
+      )
+    ).toBe("MOVE N");
+  });
+
   // `ah-5we4`: New Age's list is longer - "The orders which take an entire month are ADVANCE,
   // BUILD, CREATE, ENTERTAIN, EXPLORE, MOVE, PILLAGE, PRODUCE, SAIL, STUDY, TAX, TEACH and WORK"
   // (newage arcanum and trident, rules/playing_turns).
