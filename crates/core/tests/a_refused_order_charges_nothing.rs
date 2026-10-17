@@ -48,6 +48,8 @@ fn a_refused_study_is_handed_back_to_the_column() {
         Some(24),
         "no fee is taken, and a refused study works nothing either: {drone:?}"
     );
+    // The cell the navigator agreed is 24 → 14: the month's end less this upkeep.
+    assert_eq!(drone.upkeep, Some(10), "{drone:?}");
     assert_eq!(drone.short_for_orders, Some(0), "{drone:?}");
     assert_eq!(drone.short_on, None, "{drone:?}");
     assert!(

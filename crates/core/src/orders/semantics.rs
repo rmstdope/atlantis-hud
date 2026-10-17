@@ -2952,8 +2952,9 @@ pub(crate) fn refused_costs(silver: &UnitSilver) -> Vec<(SilverChangeCause, i64)
 }
 
 /// Hands a refused order's cost back to one unit's column and carries the order on its own
-/// ([`UnitSilver::refused`], `ah-rjz2`): out of `changes` and every total it was in, and off the
-/// shortfall it caused, since the game took nothing for it.
+/// ([`UnitSilver::refused`], `ah-rjz2`): out of `changes`, `expense` and the month's end, and off
+/// the shortfall it caused, since the game took nothing for it. `wanted_for_orders` still counts
+/// it: the orders asked for it.
 fn hand_back_refused(
     forecast: &mut UnitSilver,
     line: Option<i64>,
@@ -2968,17 +2969,20 @@ fn hand_back_refused(
         .changes
         .iter()
         .position(|change| change.cause == cause && (line.is_none() || change.line == line));
-    // An earlier order spent this unit's silver first: what is left is what it can draw on.
-    let after_spending = forecast.changes[..at.unwrap_or(forecast.changes.len())]
-        .iter()
-        .any(|change| change.amount < 0);
+    // An earlier order spent this unit's silver first: what is left is what it can draw on. Read
+    // off the list's order, and off the figure itself, since a sharer's `Lent` rows - the pool's
+    // draws on it at the market or at GIVE - are appended after the order they ran before (review
+    // of PR #1734, finding 1).
+    let available = available.clamp(0, cost);
+    let after_spending = available < forecast.held
+        || forecast.changes[..at.unwrap_or(forecast.changes.len())]
+            .iter()
+            .any(|change| change.amount < 0);
     forecast
         .changes
         .retain(|change| !(change.cause == cause && (line.is_none() || change.line == line)));
     forecast.expense = forecast.expense.map(|spent| (spent - cost).max(0));
-    forecast.wanted_for_orders = forecast
-        .wanted_for_orders
-        .map(|wanted| (wanted - cost).max(0));
+    // `wanted_for_orders` keeps the ask: it is what the orders asked to spend, refused or not.
     forecast.at_month_end = forecast.at_month_end.map(|end| end.saturating_add(cost));
     forecast.short_for_orders = forecast.short_for_orders.map(|short| (short - cost).max(0));
     if forecast.short_for_orders == Some(0) {
@@ -2989,7 +2993,7 @@ fn hand_back_refused(
         cause,
         line,
         cost,
-        available: available.clamp(0, cost),
+        available,
         after_spending,
     });
 }
@@ -32465,7 +32469,11 @@ mod tests {
 
         // The grain takes all $100, so the study is refused and takes nothing (`ah-rjz2`).
         assert_eq!(forecast.expense, Some(100));
-        assert_eq!(forecast.wanted_for_orders, Some(100));
+        assert_eq!(
+            forecast.wanted_for_orders,
+            Some(110),
+            "the orders still asked for both"
+        );
         assert_eq!(forecast.at_month_end, Some(0));
         assert_eq!(forecast.short_for_orders, Some(0));
         assert_eq!(
@@ -64235,6 +64243,62 @@ BUILD
             .and_then(|row| row.at_month_end)
     }
 
+    /// A refused STUDY is in no entry of the column's list, and the warning still reads the refusal
+    /// as before (`ah-wr2w`; review of PR #1734, finding 2).
+    fn studied_left_the_column_and_is_still_warned(review: &TurnReview, unit_id: &str) {
+        let row = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == unit_id)
+            .expect("the student is forecast");
+        assert!(
+            row.changes
+                .iter()
+                .all(|change| change.cause != SilverChangeCause::Studied),
+            "{row:?}"
+        );
+        assert!(
+            review.findings.iter().any(|finding| matches!(
+                finding.code.as_str(),
+                "not-enough-silver" | "part-of-hex-shortfall"
+            )),
+            "{:#?}",
+            review.findings
+        );
+    }
+
+    /// `ah-rjz2`: a sharer the pool drew on at the market (`rules/share` lends "for buying or
+    /// studying"; BUY runs before STUDY, `rules/sequenceofevents`) studies on what that left it:
+    /// sharer 902's $105 pays 903's $100 sword, and its own $10 combat is refused with $5 left -
+    /// said as what is left, though the column books the loan after the study (review of PR #1734,
+    /// finding 1).
+    #[test]
+    fn a_sharer_drawn_on_at_the_market_is_left_what_the_loan_left() {
+        let hex = ReportRegion {
+            for_sale: vec![MarketItem {
+                amount: 10,
+                name: "swords".to_string(),
+                tag: "SWOR".to_string(),
+                price: 100,
+            }],
+            ..region(vec![
+                sharing(with_silver(unit("902"), 105)),
+                with_silver(unit("903"), 0),
+            ])
+        };
+        let review = review_turn(
+            &report(vec![hex]),
+            "unit 902\nSTUDY COMB\nunit 903\nBUY 1 swords\n",
+            Some(&trident_rules()),
+            CheckOptions::default(),
+        );
+        let refused = refused_of(&review, "902");
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        studied_left_the_column_and_is_still_warned(&review, "902");
+        assert_eq!((refused[0].cost, refused[0].available), (10, 5));
+        assert!(refused[0].after_spending, "{refused:?}");
+    }
+
     /// `ah-rjz2`: a sharing student a faction-mate can lend part of its fee to, but not all of it,
     /// is refused (`monthorders.cpp`: `Do1StudyOrder` weighs the fee against the shared money).
     /// Five men at combat's $10 a head (`rules/skills_studying` in Trident) cost $50; 902's $24 and
@@ -64253,6 +64317,7 @@ BUILD
         );
         let refused = refused_of(&review, "902");
         assert_eq!(refused.len(), 1, "{refused:?}");
+        studied_left_the_column_and_is_still_warned(&review, "902");
         assert_eq!((refused[0].cost, refused[0].available), (50, 44));
         assert!(!refused[0].after_spending);
         assert_eq!(end_of(&review, "902"), Some(24));
@@ -64287,6 +64352,7 @@ BUILD
         );
         let refused = refused_of(&review, "902");
         assert_eq!(refused.len(), 1, "{refused:?}");
+        studied_left_the_column_and_is_still_warned(&review, "902");
         assert_eq!((refused[0].cost, refused[0].available), (10, 3));
         assert!(refused[0].after_spending);
         assert_eq!(refused[0].line, Some(3));
@@ -64308,6 +64374,7 @@ BUILD
         );
         let refused = refused_of(&review, "902");
         assert_eq!(refused.len(), 1, "{refused:?}");
+        studied_left_the_column_and_is_still_warned(&review, "902");
         assert_eq!((refused[0].cost, refused[0].available), (10, 0));
         assert_eq!(end_of(&review, "902"), Some(0));
     }
