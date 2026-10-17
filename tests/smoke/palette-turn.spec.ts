@@ -171,8 +171,13 @@ test.describe("on a New Age game", () => {
   });
 
   test("Import reports opens the header's file picker", async ({ page }) => {
-    await search(page, "import reports");
+    // Armed before the search, not just before the Enter (ah-kb9x). Listening for "filechooser"
+    // switches Playwright's interception on with a message that is not waited for, and a bare
+    // keyboard press has no actionability round trips to give it time: about one run in four the
+    // click reached Chromium first, its native dialog opened and was dropped headlessly, and the
+    // event never came. The search's own round trips settle the interception before the press.
     const chooser = page.waitForEvent("filechooser");
+    await search(page, "import reports");
     await page.keyboard.press("Enter");
     const picker = await chooser;
     expect(picker.isMultiple()).toBe(true);
