@@ -359,9 +359,12 @@ fn trace_orders(
         .with_passages(crate::movement::passages::known_passages_from_json(
             passages_json,
         )?);
-    Ok(MoveOrderTraceResponse {
-        path: trace_move(&map, &ruleset, &unit, steps, Some(&ordered)),
-    })
+    // An overloaded walker is refused its MOVE outright (`rules/movement_normal`), so the map
+    // draws no route for it, agreeing with the `unit-overloaded` warning and the units list
+    // (`ah-586v`, the navigator's choice over a dotted line).
+    let path = trace_move(&map, &ruleset, &unit, steps, Some(&ordered))
+        .filter(|path| !crate::movement::trace::refused_as_overloaded(path, &unit));
+    Ok(MoveOrderTraceResponse { path })
 }
 
 /// Parses a report and counts each unit's men against the catalogue.

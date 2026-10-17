@@ -1788,6 +1788,11 @@ fn decide_movement(
             match trace_move(map, ruleset, &entry.unit, steps, Some(ordered)) {
                 // The first month's end is where the unit stands when the next report is written;
                 // the rest of a longer journey is later months' business.
+                // An overloaded walker is refused its MOVE outright (`rules/movement_normal`):
+                // it stays, as the `unit-overloaded` warning says, rather than reading its unknown
+                // speed as a departure to nowhere nameable (`ah-586v`).
+                Some(path) if crate::movement::trace::refused_as_overloaded(&path, &entry.unit) => {
+                }
                 Some(path) => {
                     mode = path.mode;
                     let sailed = sailed_hull
