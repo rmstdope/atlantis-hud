@@ -10645,7 +10645,7 @@ fn record_unanswered_exchanges(
 }
 
 /// Records a complementary pair aborted because a side is short of what it offers - but only
-/// where no other pair of the hex moves that item. The engine settles exchanges as it walks the
+/// where some short side's item no other pair of the hex moves. The engine settles exchanges as it walks the
 /// units in report order (`runorders.cpp` `DoExchangeOrders`), not in the order the lines are
 /// written as [`settle_exchanges`] does, so where another exchange could hand the short side (or a
 /// sharer lending to it) that item, or take it, whether this pair aborts is not certain and is not
@@ -10658,21 +10658,23 @@ fn record_short_exchange(
     pair: (usize, usize),
     known: [(&ExchangeOffer, Option<i64>); 2],
 ) {
+    // A short side whose item another pair of the hex moves may be paid or drained in time, so
+    // only a side whose item nothing else moves is certainly short; one is enough to abort.
     let short: Vec<(&ExchangeOffer, i64)> = known
         .into_iter()
         .filter_map(|(offer, held)| {
             held.filter(|held| *held < offer.give_amount)
                 .map(|held| (offer, held))
         })
+        .filter(|(offer, _)| {
+            !pairs
+                .iter()
+                .filter(|&&other| other != pair)
+                .flat_map(|&(a, b)| [&offers[a], &offers[b]])
+                .any(|moving| moving.give_tag == offer.give_tag)
+        })
         .collect();
-    let chained = short.iter().any(|(offer, _)| {
-        pairs
-            .iter()
-            .filter(|&&other| other != pair)
-            .flat_map(|&(a, b)| [&offers[a], &offers[b]])
-            .any(|moving| moving.give_tag == offer.give_tag)
-    });
-    if short.is_empty() || chained {
+    if short.is_empty() {
         return;
     }
     let why = short
