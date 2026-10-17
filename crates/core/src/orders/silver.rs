@@ -5224,8 +5224,9 @@ pub enum BuyAllCap {
     /// player can do something about.
     Shared,
     /// This unit's own earlier `BUY` lines had already taken these goods, wholly or in part
-    /// (`ah-lauy`). Wins over `Silver`, `Market` and `Shared` whenever it applies: it is the one
-    /// cause the player can fix by deleting a line.
+    /// (`ah-lauy`), on a line it had to itself. Wins over `Silver` and `Market` whenever it
+    /// applies: it is the one cause the player can fix by deleting a line. Never on a shared line
+    /// (`ah-ecfl`), where every line is an attempt that enlarged the unit's share.
     AlreadyBought,
 }
 
@@ -5280,26 +5281,30 @@ pub fn price_buy_all(
     // What is left of this unit's share once its own earlier lines have had theirs.
     let left = (available - already_bought).max(0);
     let bought = affordable.min(left);
-    let capped_by = if already_bought > 0 && (left == 0 || bought < affordable) {
-        // The unit's own earlier line is what bit - either it emptied the share outright, or the
-        // remainder stopped this line short of what its silver would have paid for. It wins even
-        // the case where the purse is empty too (the navigator's round-2 Q3): "it holds 0 silver"
-        // is true of every spent-up `BUY ALL` and hides the duplicate line, which is the one thing
-        // the player can act on.
-        BuyAllCap::AlreadyBought
-    } else if bought < affordable {
-        if available < market_has {
-            BuyAllCap::Shared
+    // Only where the unit had the whole line to itself (`ah-ecfl`): on a shared line the earlier
+    // lines' own attempts enlarged the share they spent, as `Game::GetBuyAmount` adds every order,
+    // so deleting one is no fix and the cause falls through to `Shared`.
+    let capped_by =
+        if already_bought > 0 && available >= market_has && (left == 0 || bought < affordable) {
+            // The unit's own earlier line is what bit - either it emptied the share outright, or the
+            // remainder stopped this line short of what its silver would have paid for. It wins even
+            // the case where the purse is empty too (the navigator's round-2 Q3): "it holds 0 silver"
+            // is true of every spent-up `BUY ALL` and hides the duplicate line, which is the one thing
+            // the player can act on.
+            BuyAllCap::AlreadyBought
+        } else if bought < affordable {
+            if available < market_has {
+                BuyAllCap::Shared
+            } else {
+                BuyAllCap::Market
+            }
         } else {
-            BuyAllCap::Market
-        }
-    } else {
-        // Silver is the narrator whenever the market did not bite - which includes the exact tie
-        // (the navigator's decision: a `BUY ALL` means "as many as it can afford", so silver is
-        // its natural voice, and the two equal numbers make the dead heat visible) and a unit
-        // that can afford none, where `affordable` and `bought` are both zero.
-        BuyAllCap::Silver
-    };
+            // Silver is the narrator whenever the market did not bite - which includes the exact tie
+            // (the navigator's decision: a `BUY ALL` means "as many as it can afford", so silver is
+            // its natural voice, and the two equal numbers make the dead heat visible) and a unit
+            // that can afford none, where `affordable` and `bought` are both zero.
+            BuyAllCap::Silver
+        };
     (
         Priced {
             spends: bought.saturating_mul(price),
@@ -9990,6 +9995,15 @@ mod tests {
         let (_, plan) = price_buy_all(360, 12, 5, 5, 3);
         assert_eq!(plan.bought, 2);
         assert_eq!(plan.capped_by, BuyAllCap::AlreadyBought);
+    }
+
+    /// `ah-ecfl`: on a line shared with faction-mates the unit's own earlier line does not
+    /// narrate - a second line enlarged the share it is spent against, so deleting it is no fix.
+    #[test]
+    fn a_buy_all_on_a_shared_line_is_not_capped_by_its_own_line() {
+        let (_, plan) = price_buy_all(360, 12, 4, 5, 4);
+        assert_eq!(plan.bought, 0);
+        assert_eq!(plan.capped_by, BuyAllCap::Shared);
     }
 
     /// Round-2 Q3: the unit's own earlier line wins the sentence even when the purse is also
