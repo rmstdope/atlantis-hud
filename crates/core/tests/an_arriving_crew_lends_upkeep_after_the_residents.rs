@@ -14,7 +14,7 @@
 //! turn 25 (`neworigins-3.0.0-g5-f21-t25`) shows it: 10575 goes 2180 -> 2160, its own upkeep only,
 //! and 9508 pays everyone else's.
 //!
-//! The passenger's study, which the real turn also has 9508 lend, is `ah-q1zz`'s.
+//! The real turn also has 9508 lend the passenger's study fee there (`ah-q1zz`), pinned below.
 
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions, TurnReview};
 use atlantis_hud_core::orders::silver::{SilverChangeCause, UnitSilver};
@@ -92,4 +92,43 @@ fn the_resident_also_lends_its_raftmates_upkeep() {
             ("Drones (10594)".to_string(), -200),
         ]
     );
+}
+
+/// What the unit lent for others' orders, as the column's `lent` lines sum it.
+fn lent_for_orders(row: &UnitSilver) -> i64 {
+    row.changes
+        .iter()
+        .filter(|change| change.cause == SilverChangeCause::Lent)
+        .map(|change| change.amount)
+        .sum()
+}
+
+/// `ah-q1zz`: `STUDY` is a month-long order, after movement (`rules/sequenceofevents`), and
+/// `rules/share` lends to units "in the same region", so the passenger's $200 study fee is lent
+/// in the hex the fleet arrives in. The real turn 25 report says "Drones (9508) shares 200 silver
+/// [SILV] with Drones (10594)", and 9508 goes 680 -> 190.
+#[test]
+fn the_resident_lends_the_passengers_study_fee_where_it_arrives() {
+    let review = review();
+    for (captain, resident, passenger) in [("10575", "9508", "10594"), ("10584", "9506", "10599")] {
+        let captain = row_of(&review, captain);
+        let resident = row_of(&review, resident);
+        let passenger = row_of(&review, passenger);
+        assert_eq!(passenger.borrowed_for_orders, 200, "{passenger:#?}");
+        assert_eq!(
+            lent_for_orders(&resident),
+            -200,
+            "the resident lends the study fee: {resident:#?}"
+        );
+        assert_eq!(
+            lent_for_orders(&captain),
+            0,
+            "the captain lends nothing for the study: {captain:#?}"
+        );
+        assert_eq!(
+            ends_with(&resident),
+            Some(190),
+            "turn 25: the resident pays the study and the upkeep: {resident:#?}"
+        );
+    }
 }

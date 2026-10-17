@@ -3295,10 +3295,13 @@ fn forecast_hex(
     // A sharer that lends 50 spends 50: what the purse settled out of it is an expense of its
     // own, so the hex's total silver is unchanged and a player adding their hex up finds it
     // (`ah-moq3`). Who lent what is [`sharing_purse`]'s settlement, moment by moment (`ah-49j0`).
+    // The passengers sailing in borrowed here too, though their rows are in the hex each is
+    // listed in (`ah-q1zz`).
     let mut owing: i64 = into[start..]
         .iter()
         .map(|forecast| forecast.shared_silver_for_orders)
-        .sum();
+        .sum::<i64>()
+        + purse_for_orders.lent_to_arriving_students;
     if owing > 0 {
         // Who lent is the purse's settlement; drained here only so the column never debits more
         // than its borrowers were credited.
@@ -15254,10 +15257,12 @@ impl HexMembership {
     }
 
     /// How the unit numbered `unit_id` claims on this hex's purse at `moment`. Every unit listed
-    /// here claims its whole position until the month's end - a leaver's STUDY and TRANSPORT
-    /// included, which is today's behaviour rather than a rule (`docs/retrospectives/ah-6cka.md`;
-    /// pinned by `a_walkers_transport_is_lent_by_the_sharer_in_the_hex_it_leaves` and
-    /// `a_passengers_study_is_lent_by_the_sharer_in_the_hex_it_leaves`). At the month's end a
+    /// here claims its whole position until the month's end - a leaver's TRANSPORT included,
+    /// which is today's behaviour rather than a rule (`docs/retrospectives/ah-6cka.md`; pinned by
+    /// `a_walkers_transport_is_lent_by_the_sharer_in_the_hex_it_leaves`). A sailing passenger's
+    /// STUDY is the exception, handed to the purse where its fleet arrives when one is listed
+    /// there ([`send_studies_where_fleets_arrive`], `ah-q1zz`), which every reading takes out of
+    /// this position ([`WalkingSilver::study_claimed_elsewhere`], [`Lending::settle`]). At the month's end a
     /// leaver claims only what it owed before maintenance: `rules/sequenceofevents` assesses
     /// maintenance after movement, and `rules/economy_maintenance` shares for it "between your
     /// units in the same region" (`ah-6cka`).
@@ -16940,6 +16945,11 @@ impl<'a> Sharing<'a> {
                 let who = &ordered.unit.unit_id;
                 let held =
                     self.position_here(ordered, moment, held, |then| silver_at(ledger, who, then));
+                // A passenger's STUDY is the claim of the hex its fleet arrives in (`ah-q1zz`).
+                let held = held.saturating_add(
+                    self.walking
+                        .map_or(0, |walking| walking.study_claimed_elsewhere(who, moment)),
+                );
                 if cast_refused(index) {
                     (-held).max(0).max(drawn)
                 } else {
@@ -16950,6 +16960,9 @@ impl<'a> Sharing<'a> {
                 }
             })
             .sum::<i64>()
+            + self
+                .walking
+                .map_or(0, |walking| walking.study_claims_crossed_at(moment))
             - self.silver_from_walkers(moment)
     }
 
@@ -17042,6 +17055,38 @@ struct WalkingSilver {
     /// An arriving sharer whose sums cannot be trusted - as a doubted sharer of the hex's own
     /// makes its pool untrustworthy (`Sharing::pool_trusted`).
     arrival_doubted: bool,
+    /// The passengers sailing in whose STUDY this hex's purse pays, after its own units'
+    /// (`ah-q1zz`): STUDY is a month-long order, after movement (`rules/sequenceofevents`), and
+    /// `rules/share` lends to units "in the same region". The engine appends an arriving fleet to
+    /// the end of the region's objects (`object.cpp`: `Object::MoveObject`) and studies them in
+    /// region order (`monthorders.cpp`: `RunStudyOrders`), so they are paid last. The mirror of
+    /// the arriving sharers above; their verdict is written back to
+    /// [`WalkingSilver::studies_elsewhere`] in the hex each is listed in.
+    arriving_students: Vec<ArrivingStudent>,
+    /// This hex's own passengers whose STUDY is judged by the purse of the hex their fleet
+    /// arrives in ([`WalkingSilver::arriving_students`] there), by unit id: what the claim was,
+    /// and, once that hex has settled it, how it went.
+    studies_elsewhere: BTreeMap<String, StudyElsewhere>,
+}
+
+/// A passenger sailing into a hex whose STUDY that hex's purse pays (`ah-q1zz`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ArrivingStudent {
+    /// Where its own row - and its own ledger - is: the hex the report lists it in.
+    unit: UnitKey,
+    /// What its STUDY overdrew it, as the hex it leaves reads its position then.
+    need: i64,
+    /// The fee its STUDY was charged ([`studied_fee`]).
+    fee: i64,
+}
+
+/// One of a hex's passengers whose STUDY is judged where its fleet arrives (`ah-q1zz`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct StudyElsewhere {
+    /// What its STUDY asked of a purse: [`ArrivingStudent::need`].
+    need: i64,
+    /// How the purse where it arrives settled it; `None` until it has.
+    outcome: Option<StudyOutcome>,
 }
 
 /// One sharer arriving in a hex, and the silver it lends there.
@@ -17068,6 +17113,29 @@ impl WalkingSilver {
             .iter()
             .map(|arrival| arrival.lends)
             .sum()
+    }
+
+    /// What the arriving passengers' STUDY asks of this hex's purse at `moment`, beyond what its
+    /// own units ask (`ah-q1zz`). Nothing before movement, when nobody has arrived yet.
+    fn study_claims_crossed_at(&self, moment: LendingMoment) -> i64 {
+        if HexMembership::before_movement(moment) {
+            return 0;
+        }
+        self.arriving_students
+            .iter()
+            .map(|student| student.need)
+            .sum()
+    }
+
+    /// What `unit_id`'s STUDY asks of the purse where its fleet arrives, at `moment`: none of it
+    /// is this hex's to answer for once it has sailed (`ah-q1zz`).
+    fn study_claimed_elsewhere(&self, unit_id: &str, moment: LendingMoment) -> i64 {
+        if HexMembership::before_movement(moment) {
+            return 0;
+        }
+        self.studies_elsewhere
+            .get(unit_id)
+            .map_or(0, |elsewhere| elsewhere.need)
     }
 }
 
@@ -17205,8 +17273,28 @@ fn lend_walking_sharers_silver(
         }
     }
 
+    let mut at_month_end: Vec<Vec<ArrivingSilver>> = Vec::with_capacity(hexes.len());
+    for (index, (_, ledger)) in hexes.iter_mut().enumerate() {
+        let [_, _, at_study, at_transport, month_end] = std::mem::take(&mut arrivals[index]);
+        let walking = &mut ledger.relief_mut().walking;
+        walking.departing = std::mem::take(&mut departing[index]);
+        walking.members = membership.of(index).clone();
+        walking.arrival_doubted = doubted[index];
+        walking.arrivals[LendingMoment::Study as usize] = at_study;
+        // The TRANSPORT figures are the ones shipping settled against; the month's settlement
+        // does not rewrite them.
+        if phase != StatePhase::Maintenance {
+            walking.arrivals[LendingMoment::Transport as usize] = at_transport;
+        }
+        walking.arriving_students.clear();
+        walking.studies_elsewhere.clear();
+        at_month_end.push(month_end);
+    }
+
+    send_studies_where_fleets_arrive(hexes, membership, &by_place);
+
     for (index, (hex, ledger)) in hexes.iter_mut().enumerate() {
-        let [_, _, at_study, at_transport, mut at_month_end] = std::mem::take(&mut arrivals[index]);
+        let mut at_month_end = std::mem::take(&mut at_month_end[index]);
         // Not at `Transport`: a shipment's bill is not in the ledger until shipping settles, and
         // `shipping_purse` sets the pool against that bill alone.
         if phase == StatePhase::Maintenance {
@@ -17220,10 +17308,13 @@ fn lend_walking_sharers_silver(
             // then ([`Sharing::silver_short_carried_from_movement`]); and at least what the hex
             // is short as STUDY settles beyond what it was short as movement began: a debt paid
             // off after STUDY - a shipment, wages - leaves the month's end netted but the study
-            // still unpaid (`ah-qrk0`).
+            // still unpaid (`ah-qrk0`). The passengers sailing in study here too (`ah-q1zz`).
+            let walking = &ledger.relief().walking;
             let before = WalkingSilver {
-                departing: departing[index].clone(),
-                members: membership.of(index).clone(),
+                departing: walking.departing.clone(),
+                members: walking.members.clone(),
+                arriving_students: walking.arriving_students.clone(),
+                studies_elsewhere: walking.studies_elsewhere.clone(),
                 ..WalkingSilver::default()
             };
             let pool = Sharing::with_walking(hex, &before);
@@ -17238,16 +17329,164 @@ fn lend_walking_sharers_silver(
                 after_movement -= arrival.lends;
             }
         }
-        let walking = &mut ledger.relief_mut().walking;
-        walking.departing = std::mem::take(&mut departing[index]);
-        walking.members = membership.of(index).clone();
-        walking.arrival_doubted = doubted[index];
-        walking.arrivals[LendingMoment::Study as usize] = at_study;
-        walking.arrivals[LendingMoment::MonthEnd as usize] = at_month_end;
-        // The TRANSPORT figures are the ones shipping settled against; the month's settlement
-        // does not rewrite them.
-        if phase != StatePhase::Maintenance {
-            walking.arrivals[LendingMoment::Transport as usize] = at_transport;
+        ledger.relief_mut().walking.arrivals[LendingMoment::MonthEnd as usize] = at_month_end;
+    }
+
+    settle_studies_where_fleets_arrive(hexes);
+}
+
+/// Whether `hex`'s `SHARE` purse settles its silver at all: it pools silver and can be trusted -
+/// the gate every reader of [`Lending`] passes through ([`Lending::over`]).
+fn purse_settles(hex: &Hex<'_>, ledger: &Ledger<'_>) -> bool {
+    let sharing = Sharing::for_silver(hex, ledger);
+    sharing.reading(SILVER, None) == Reading::Pooled && sharing.pool_trusted(ledger)
+}
+
+/// Hands each sailing passenger's STUDY to the purse of the hex its fleet arrives in
+/// (`ah-q1zz`): STUDY is a month-long order, after movement (`rules/sequenceofevents`), and
+/// `rules/share` lends to units "in the same region". The claim is what the passenger's position
+/// in the hex it leaves asks of a purse at STUDY - its own silver, and what that purse lent it
+/// before it sailed - so it is read there ([`Lending::studies_sent`]) and listed where it
+/// arrives ([`WalkingSilver::arriving_students`]).
+///
+/// Only between two purses that settle ([`purse_settles`]), and only into a hex the report
+/// lists units of ours in: elsewhere the study stays the claim of the hex it leaves, as it was
+/// before. A purse nobody arrives at with silver cannot be told apart from one this model does
+/// not read, so it is left alone rather than refused.
+fn send_studies_where_fleets_arrive(
+    hexes: &mut [(Hex<'_>, Ledger<'_>)],
+    membership: &PurseMembership,
+    by_place: &HashMap<Coordinate, usize>,
+) {
+    let mut sent: Vec<(usize, String, usize)> = Vec::new();
+    for (index, (hex, ledger)) in hexes.iter().enumerate() {
+        let members = membership.of(index);
+        for ordered in &hex.units {
+            let who = &ordered.unit.unit_id;
+            if !members.sails_away(who)
+                || ledger.doubted.contains(who)
+                || studied_fee(ledger, who) == 0
+            {
+                continue;
+            }
+            let Some(&arrives) = by_place.get(&members.ends_at(hex.region.coordinate, who)) else {
+                continue;
+            };
+            if arrives == index {
+                continue;
+            }
+            sent.push((index, who.clone(), arrives));
+        }
+    }
+    sent.retain(|(index, _, arrives)| {
+        let (hex, ledger) = &hexes[*index];
+        let (there, there_ledger) = &hexes[*arrives];
+        purse_settles(hex, ledger) && purse_settles(there, there_ledger)
+    });
+    for (index, who, _) in &sent {
+        hexes[*index]
+            .1
+            .relief_mut()
+            .walking
+            .studies_elsewhere
+            .insert(
+                who.clone(),
+                StudyElsewhere {
+                    need: 0,
+                    outcome: None,
+                },
+            );
+    }
+    let mut students: Vec<Vec<ArrivingStudent>> = vec![Vec::new(); hexes.len()];
+    let origins: BTreeSet<usize> = sent.iter().map(|(index, _, _)| *index).collect();
+    for index in origins {
+        let (hex, ledger) = &hexes[index];
+        let lending = Lending::settle(
+            hex,
+            ledger,
+            &Sharing::for_silver(hex, ledger),
+            &[
+                LendingMoment::Cast,
+                LendingMoment::Movement,
+                LendingMoment::Study,
+            ],
+            &[],
+        );
+        let mut needs: Vec<(String, i64)> = Vec::new();
+        for (from, who, arrives) in &sent {
+            if *from != index {
+                continue;
+            }
+            let Some(position) = hex.units.iter().position(|o| o.unit.unit_id == *who) else {
+                continue;
+            };
+            let need = lending.studies_sent[position];
+            needs.push((who.clone(), need));
+            students[*arrives].push(ArrivingStudent {
+                unit: unit_key(&hex.region.region_id, who),
+                need,
+                fee: studied_fee(ledger, who),
+            });
+        }
+        let walking = &mut hexes[index].1.relief_mut().walking;
+        for (who, need) in needs {
+            if let Some(elsewhere) = walking.studies_elsewhere.get_mut(&who) {
+                elsewhere.need = need;
+            }
+        }
+    }
+    for (index, students) in students.into_iter().enumerate() {
+        hexes[index].1.relief_mut().walking.arriving_students = students;
+    }
+}
+
+/// Settles the STUDY of every passenger [`send_studies_where_fleets_arrive`] sent on, in the
+/// purse of the hex it arrives in, and writes the verdict back to the hex it is listed in
+/// ([`StudyElsewhere::outcome`]), where its row's loan and a refused fee are read from.
+fn settle_studies_where_fleets_arrive(hexes: &mut [(Hex<'_>, Ledger<'_>)]) {
+    let mut verdicts: Vec<(UnitKey, StudyOutcome)> = Vec::new();
+    for (hex, ledger) in hexes.iter() {
+        let students = &ledger.relief().walking.arriving_students;
+        if students.is_empty() {
+            continue;
+        }
+        let lending = Lending::settle(
+            hex,
+            ledger,
+            &Sharing::for_silver(hex, ledger),
+            &[
+                LendingMoment::Cast,
+                LendingMoment::Movement,
+                LendingMoment::Study,
+            ],
+            &[],
+        );
+        for (student, outcome) in students.iter().zip(&lending.arriving_study) {
+            // A claim of nothing was the passenger's own to pay.
+            let outcome = match outcome {
+                StudyOutcome::NoStudy => StudyOutcome::Paid {
+                    own: student.fee,
+                    lent: 0,
+                },
+                other => *other,
+            };
+            verdicts.push((student.unit.clone(), outcome));
+        }
+    }
+    for (unit, outcome) in verdicts {
+        let Some((_, ledger)) = hexes
+            .iter_mut()
+            .find(|(hex, _)| hex.region.region_id == unit.region_id)
+        else {
+            continue;
+        };
+        if let Some(elsewhere) = ledger
+            .relief_mut()
+            .walking
+            .studies_elsewhere
+            .get_mut(&unit.unit_id)
+        {
+            elsewhere.outcome = Some(outcome);
         }
     }
 }
@@ -17627,6 +17866,9 @@ struct SharingPurse {
     refused: Vec<i64>,
     /// [`Lending::study`]: how each unit's STUDY went (`ah-2f77`).
     study: Vec<StudyOutcome>,
+    /// What this hex's sharers lent the passengers sailing in for their STUDY, whose rows - and
+    /// whose `was lent` lines - are in the hex each is listed in (`ah-q1zz`).
+    lent_to_arriving_students: i64,
     /// The result of judging each known shortfall against this pool, aligned with `hex.units`.
     coverage: Vec<Option<super::silver::SharedSilverCoverage>>,
 }
@@ -17645,6 +17887,15 @@ const PURSE_MOMENTS: [LendingMoment; 5] = [
     LendingMoment::Transport,
     LendingMoment::MonthEnd,
 ];
+
+/// Whose claim a party of a moment's reading is: a unit of the hex, by its index into
+/// `hex.units`, or a passenger sailing in, by its index into
+/// [`WalkingSilver::arriving_students`] (`ah-q1zz`).
+#[derive(Debug, Clone, Copy)]
+enum Claimant {
+    Unit(usize),
+    Arriving(usize),
+}
 
 /// A unit or an arriving sharer the purse can draw on at a moment.
 #[derive(Debug, Clone, Copy)]
@@ -17697,8 +17948,16 @@ struct Lending {
     refused_cast: Vec<i64>,
     /// How each unit's STUDY went, judged one student at a time as the engine pays them - **the
     /// one reading of whether the purse paid a study** (`ah-2f77`). [`StudyOutcome::NoStudy`]
-    /// throughout where the moments read stop before STUDY.
+    /// throughout where the moments read stop before STUDY. A passenger whose study is judged
+    /// where its fleet arrives reads that hex's verdict ([`WalkingSilver::studies_elsewhere`]).
     study: Vec<StudyOutcome>,
+    /// How each arriving passenger's STUDY went here, aligned with
+    /// [`WalkingSilver::arriving_students`] (`ah-q1zz`).
+    arriving_study: Vec<StudyOutcome>,
+    /// What each passenger's STUDY asks of the purse where its fleet arrives, read where the
+    /// verdict there is not known yet ([`StudyElsewhere::outcome`] `None`): the claim
+    /// [`lend_walking_sharers_silver`] hands that purse. `0` for every other unit.
+    studies_sent: Vec<i64>,
     /// Whether each unit's claim at the cast moment is among what `refused` hands back - its CAST,
     /// or an earlier overdraft for a unit with no cast (`ah-mrs0`): nothing it overdrew at the cast
     /// is owed later ([`Sharing::silver_short_reading`]'s `cast_refused`, `ah-szu0`).
@@ -17728,9 +17987,37 @@ impl Lending {
             borrows: vec![0; hex.units.len()],
             refused_cast: vec![0; hex.units.len()],
             study: vec![StudyOutcome::NoStudy; hex.units.len()],
+            arriving_study: vec![
+                StudyOutcome::NoStudy;
+                ledger.relief().walking.arriving_students.len()
+            ],
+            studies_sent: vec![0; hex.units.len()],
             refused_casts: vec![false; hex.units.len()],
             stopped_at: None,
         }
+    }
+
+    /// What this hex's sharers lent the arriving passengers' STUDY, together (`ah-q1zz`): lent
+    /// out of this hex's purse to units whose rows are in another hex.
+    fn lent_to_arriving_students(&self) -> i64 {
+        self.arriving_study
+            .iter()
+            .map(|outcome| match outcome {
+                StudyOutcome::Paid { lent, .. } => *lent,
+                _ => 0,
+            })
+            .sum()
+    }
+
+    /// What the arriving passengers whose STUDY this purse refused had asked of it: the engine
+    /// took nothing for them, so nothing of it is owed here (`ah-q1zz`).
+    fn refused_to_arriving_students(&self, walking: &WalkingSilver) -> i64 {
+        self.arriving_study
+            .iter()
+            .zip(&walking.arriving_students)
+            .filter(|(outcome, _)| matches!(outcome, StudyOutcome::Refused { .. }))
+            .map(|(_, student)| student.need)
+            .sum()
     }
 
     /// What the pool lent through the moments whose phase comes before `phase`: what a reading of
@@ -17987,9 +18274,32 @@ impl Lending {
             };
             (0..=last).map(move |read| (moment, read))
         });
+        let walking = &ledger.relief().walking;
         for (moment, read) in readings {
             if moment == LendingMoment::Transport && read > 0 {
                 lend_draws(&mut purse, &run[read - 1]);
+            }
+            if moment == LendingMoment::Study {
+                // A passenger's STUDY is judged where its fleet arrives (`ah-q1zz`), and that
+                // purse's verdict is taken here as the purse's own would be: what it lent is
+                // borrowed, and a refused fee is handed back.
+                for index in 0..hex.units.len() {
+                    let unit_id = &hex.units[index].unit.unit_id;
+                    let Some(outcome) = walking
+                        .studies_elsewhere
+                        .get(unit_id)
+                        .and_then(|elsewhere| elsewhere.outcome)
+                    else {
+                        continue;
+                    };
+                    if !judged(index) {
+                        continue;
+                    }
+                    if let StudyOutcome::Paid { lent, .. } = outcome {
+                        purse.borrows[index] += lent;
+                    }
+                    purse.study[index] = outcome;
+                }
             }
             if moment == LendingMoment::Cast {
                 // The casts are judged one at a time, in region order, each against what the
@@ -18038,7 +18348,7 @@ impl Lending {
                     |then| own(index, then, fees_taken) + carried,
                 )
             };
-            let needs: Vec<i64> = (0..hex.units.len())
+            let mut needs: Vec<i64> = (0..hex.units.len())
                 .map(|index| {
                     if judged(index) {
                         (-position(&purse, index, moment)).max(0)
@@ -18047,7 +18357,28 @@ impl Lending {
                     }
                 })
                 .collect();
-            let need: i64 = needs.iter().sum();
+            // A passenger whose STUDY the purse where it arrives has not judged yet: what it asks
+            // is that purse's claim, not this one's (`ah-q1zz`).
+            if moment == LendingMoment::Study {
+                for (index, need) in needs.iter_mut().enumerate() {
+                    let unit_id = &hex.units[index].unit.unit_id;
+                    if walking
+                        .studies_elsewhere
+                        .get(unit_id)
+                        .is_some_and(|elsewhere| elsewhere.outcome.is_none())
+                    {
+                        purse.studies_sent[index] = *need;
+                        *need = 0;
+                    }
+                }
+            }
+            let students: &[ArrivingStudent] = if moment == LendingMoment::Study {
+                &walking.arriving_students
+            } else {
+                &[]
+            };
+            let need: i64 = needs.iter().sum::<i64>()
+                + students.iter().map(|student| student.need).sum::<i64>();
             if need == 0 {
                 continue;
             }
@@ -18060,7 +18391,7 @@ impl Lending {
             let mut who: Vec<Option<Lender>> = Vec::new();
             // The unit each party claims for, where it is a unit's own entry: STUDY pays them one
             // by one, so it needs to know whose overdraft each negative position is.
-            let mut claims: Vec<Option<usize>> = Vec::new();
+            let mut claims: Vec<Option<Claimant>> = Vec::new();
             for &index in &report_order {
                 let ordered = &hex.units[index];
                 if !judged(index) {
@@ -18073,15 +18404,20 @@ impl Lending {
                         lends: true,
                     });
                     who.push(Some(Lender::Unit(index)));
-                    claims.push(Some(index));
+                    claims.push(Some(Claimant::Unit(index)));
                     continue;
                 }
                 parties.push(StockParty {
-                    position: at.min(0),
+                    // A claim sent to the purse where it arrives is none of this one's.
+                    position: if purse.studies_sent[index] > 0 && moment == LendingMoment::Study {
+                        0
+                    } else {
+                        at.min(0)
+                    },
                     lends: false,
                 });
                 who.push(None);
-                claims.push(Some(index));
+                claims.push(Some(Claimant::Unit(index)));
                 if matches!(moment, LendingMoment::Cast | LendingMoment::Movement) {
                     // A sharer that walks away lends here only what was drawn on it before it left.
                     if let Some(&departing) =
@@ -18095,6 +18431,16 @@ impl Lending {
                         claims.push(None);
                     }
                 }
+            }
+            // The passengers sailing in study after every unit already here (`ah-q1zz`; see
+            // [`WalkingSilver::arriving_students`]).
+            for (index, student) in students.iter().enumerate() {
+                parties.push(StockParty {
+                    position: -student.need,
+                    lends: false,
+                });
+                who.push(None);
+                claims.push(Some(Claimant::Arriving(index)));
             }
             // An arrival is not here for the market, and lends in all no more than its month-end
             // figure, which `lend_walking_sharers_silver` capped at what the hex needs of it. Defensive
@@ -18147,7 +18493,25 @@ impl Lending {
                     }
                 }
                 for (claim, missing) in claims.into_iter().zip(refused) {
-                    let Some(index) = claim else { continue };
+                    let index = match claim {
+                        Some(Claimant::Unit(index)) => index,
+                        Some(Claimant::Arriving(index)) => {
+                            let student = &students[index];
+                            purse.arriving_study[index] = if missing > 0 {
+                                StudyOutcome::Refused {
+                                    fee: student.fee.max(student.need),
+                                    short: missing,
+                                }
+                            } else {
+                                StudyOutcome::Paid {
+                                    own: (student.fee - student.need).max(0),
+                                    lent: student.need,
+                                }
+                            };
+                            continue;
+                        }
+                        None => continue,
+                    };
                     let unit_id = &hex.units[index].unit.unit_id;
                     if missing > 0 && moment == LendingMoment::Transport {
                         // Its refused shipments were handed back above once charged, and are
@@ -18431,6 +18795,7 @@ fn sharing_purse_over(
         borrows: vec![0; hex.units.len()],
         refused: vec![0; hex.units.len()],
         study: vec![StudyOutcome::NoStudy; hex.units.len()],
+        lent_to_arriving_students: 0,
         coverage: vec![None; hex.units.len()],
     };
 
@@ -18476,14 +18841,16 @@ fn sharing_purse_over(
     let lending = Lending::settle(hex, ledger, &sharing, moments, &ledger.transport_run);
 
     // The warning's month-end reading, on the column's figures - less the casts and studies the
-    // engine refuses, which take nothing (`ah-li7l`, `ah-szu0`).
+    // engine refuses, which take nothing (`ah-li7l`, `ah-szu0`), an arriving passenger's
+    // included (`ah-q1zz`).
     if sharing.silver_short_reading(
         hex,
         ledger,
         LendingMoment::MonthEnd,
         |index| own(index, LendingMoment::MonthEnd) + lending.refused(index),
         |index| lending.refused_casts[index],
-    ) > 0
+    ) - lending.refused_to_arriving_students(&ledger.relief().walking)
+        > 0
     {
         // Short only at the month's end: what the purse paid as each order ran stays paid, since
         // the engine charged it then, and what the hex is short is its maintenance - `rules/share`
@@ -18526,6 +18893,7 @@ fn sharing_purse_over(
         let refused = paid.refused_all();
         return SharingPurse {
             coverage,
+            lent_to_arriving_students: paid.lent_to_arriving_students(),
             lends: paid.lends,
             arrivals_lend: paid.arrivals_lend,
             borrows: paid.borrows,
@@ -18553,6 +18921,7 @@ fn sharing_purse_over(
                 }
             })
             .collect(),
+        lent_to_arriving_students: lending.lent_to_arriving_students(),
         lends: lending.lends,
         arrivals_lend: lending.arrivals_lend,
         borrows: lending.borrows,
@@ -64831,6 +65200,8 @@ BUILD
             borrows: vec![10, 2, 300, 20],
             refused_cast: vec![0; 4],
             study: vec![StudyOutcome::NoStudy; 4],
+            arriving_study: Vec::new(),
+            studies_sent: vec![0; 4],
             refused_casts: vec![false; 4],
             stopped_at: None,
         }
@@ -77699,12 +78070,16 @@ BUILD
 
     /// `ah-mnvp`: a sailing passenger's STUDY draws on the purse of the hex it is listed in, while
     /// its upkeep does not. Passenger 901 holds nothing, studies aboard longship 329 as its
-    /// captain sails north, and banker 903 stays behind with $500: the banker pays the study, as
-    /// the g5-f21-t24 fixture's Drones (10594) is paid (`a_sharing_passenger_keeps_its_study_loan`),
+    /// captain sails north, and banker 903 stays behind with $500: the banker pays the study,
     /// and none of the upkeep, which `rules/economy_maintenance` shares only "between your units in
     /// the same region" and `rules/sequenceofevents` assesses after movement (`ah-6cka`). Not
     /// [`traced`]: a unit its fleet carries away ends the month where [`production_region`] says,
     /// never where the movement trace does ([`SharingReach::ends_at`]).
+    ///
+    /// Only because the fleet lands where no unit of ours stands: the study is then left the
+    /// claim of the hex it leaves ([`send_studies_where_fleets_arrive`]). Where a purse is
+    /// listed there, that purse pays it (`ah-q1zz`,
+    /// `a_passengers_study_is_lent_by_the_sharer_in_the_hex_it_arrives_in`).
     #[test]
     fn a_passengers_study_is_lent_by_the_sharer_in_the_hex_it_leaves() {
         let banker = sharing(with_silver(unit("903"), 500));
@@ -77746,6 +78121,93 @@ BUILD
         assert!(
             short[0].starts_with(&format!("short ${upkeep}:")),
             "{short:?}"
+        );
+    }
+
+    /// [`a_passengers_study_is_lent_by_the_sharer_in_the_hex_it_leaves`] with a sharer standing
+    /// where the fleet lands, as well as the banker it leaves behind.
+    fn a_passenger_studying_between_two_sharers(there: i64) -> TurnReview {
+        let banker = sharing(with_silver(unit("903"), 500));
+        let resident = sharing(with_silver(unit("902"), there));
+        let (report, _) = passenger_palace(
+            open_sea(vec![banker]),
+            region_at("1:7,53", 7, 53, vec![resident]),
+            None,
+        );
+        let orders = "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 903\nunit 902\n";
+        review_turn(&report, orders, Some(&trident()), CheckOptions::default())
+    }
+
+    fn silver_of(review: &TurnReview, id: &str) -> UnitSilver {
+        review
+            .silver
+            .iter()
+            .find(|forecast| forecast.unit_id == id)
+            .cloned()
+            .unwrap_or_else(|| panic!("no forecast for {id}"))
+    }
+
+    /// `ah-q1zz`: STUDY is a month-long order, after movement (`rules/sequenceofevents`), and
+    /// `rules/share` lends to units "in the same region" - so a sailing passenger's study is lent
+    /// by the sharer where its fleet lands, and the banker it left behind keeps its silver. The
+    /// g5-f21-t24 fixture's Drones (10594) is the same case
+    /// (`the_resident_lends_the_passengers_study_fee_where_it_arrives`).
+    #[test]
+    fn a_passengers_study_is_lent_by_the_sharer_in_the_hex_it_arrives_in() {
+        let review = a_passenger_studying_between_two_sharers(500);
+        let passenger = silver_of(&review, "901");
+        let fee = passenger.wanted_for_orders.expect("the study is priced");
+        assert!(fee > 0, "{passenger:?}");
+        assert_eq!(passenger.borrowed_for_orders, fee, "{passenger:?}");
+        assert_eq!(
+            silver_of(&review, "903").at_month_end,
+            Some(500),
+            "the banker lends nothing"
+        );
+        let resident = silver_of(&review, "902");
+        assert_eq!(resident.at_month_end, Some(500 - fee), "{resident:?}");
+        assert!(
+            resident
+                .changes
+                .iter()
+                .any(|change| change.cause == SilverChangeCause::Lent && change.amount == -fee),
+            "{resident:?}"
+        );
+        let short: Vec<&str> = review
+            .findings
+            .iter()
+            .filter(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("901")
+            })
+            .map(|finding| finding.message.as_str())
+            .collect();
+        let upkeep = passenger.upkeep.expect("the passenger's upkeep is priced");
+        assert!(
+            short
+                .iter()
+                .all(|said| said.starts_with(&format!("short ${upkeep}:"))),
+            "only its upkeep can be short, never the study: {short:?}"
+        );
+    }
+
+    /// `ah-q1zz`: where the sharer the fleet lands beside cannot pay the fee, the engine refuses
+    /// the study (`monthorders.cpp`: `Do1StudyOrder`) - the banker left behind is in another
+    /// region and pays none of it.
+    #[test]
+    fn a_passengers_study_the_sharer_where_it_arrives_cannot_pay_is_refused() {
+        let review = a_passenger_studying_between_two_sharers(1);
+        let passenger = silver_of(&review, "901");
+        assert_eq!(passenger.borrowed_for_orders, 0, "{passenger:?}");
+        assert_eq!(
+            silver_of(&review, "903").at_month_end,
+            Some(500),
+            "the banker lends nothing"
+        );
+        assert_eq!(
+            silver_of(&review, "902").at_month_end,
+            Some(1),
+            "the resident lends nothing"
         );
     }
 
