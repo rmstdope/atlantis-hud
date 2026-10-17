@@ -495,7 +495,10 @@ pub struct FormedCrew {
 /// (`Object::GetOwner`), and errors every other unit's "PROMOTE: Must be owner" - so the unit it
 /// promotes does not hand the hull on again that month. A formed owner's own `PROMOTE`, and a
 /// `PROMOTE` naming a formed unit, are not followed: `promotes_of` records only a reported unit's
-/// block. `None` when no unit can be named at all.
+/// block. Known gap (`ah-nhgo`): the engine keeps only the **last** `PROMOTE` a unit writes
+/// (`ProcessPromoteOrder` overwrites `u->promote`), and one naming a unit not aboard promotes
+/// nobody (`Do1PromoteOrder`: "PROMOTE: Can't find target."). `None` when no unit can be named at
+/// all.
 #[must_use]
 pub fn fleet_owner(
     region: &ReportRegion,
@@ -544,9 +547,10 @@ pub fn occupants_after_promotes(
 /// Everyone standing in a structure once this month's ENTER and LEAVE have run and before any
 /// `PROMOTE`, owner first, as unit ids - the list `Game::RunPromoteOrders` asks for its owner, by
 /// the rules [`fleet_owner`] states. Its first entry is the one unit whose `PROMOTE` runs
-/// (`ah-c1p2`).
+/// (`ah-c1p2`). `orders::semantics::owner_when_promotions_run` reads the same rule from a hex's
+/// own units.
 #[must_use]
-pub fn occupants_after_boarding(
+fn occupants_after_boarding(
     region: &ReportRegion,
     ordered: &OrderedUnits,
     formed: &[FormedCrew],

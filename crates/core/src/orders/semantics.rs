@@ -1062,7 +1062,7 @@ pub fn review_turn(
         check_enter_not_here(hex, &mut findings);
         check_exchanges_aborted(hex, ledger, &mut findings);
         check_leave_refused_at_sea(hex, &mut findings);
-        check_promote_not_owner(hex, &fleet_orders, &mut findings);
+        check_promote_not_owner(hex, &mut findings);
         check_village_site(hex, ledger, ruleset, &mut findings);
         check_withdraw_not_a_basic_item(hex, ruleset, &options, &mut findings);
         check_cast_material(hex, ruleset, &options, &mut findings);
@@ -11977,25 +11977,18 @@ fn per_skill_destroy(
 }
 
 /// The owner that can execute `DESTROY` after this turn's `PROMOTE` orders, when ownership is
-/// knowable from the report. A unit that leaves the structure cannot promote its ownership, and
-/// only the report's owner can transfer it: `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`)
-/// runs one `PROMOTE` per object, its owner's (`Object::GetOwner`), and errors every other unit's
-/// "PROMOTE: Must be owner", so the unit it promotes hands nothing on again (`ah-c1p2`).
+/// knowable from the report. Only [`owner_when_promotions_run`] can transfer it:
+/// `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`) runs one `PROMOTE` per object, its
+/// owner's (`Object::GetOwner`), and errors every other unit's "PROMOTE: Must be owner", so the
+/// unit it promotes hands nothing on again (`ah-c1p2`). Among that owner's `PROMOTE`s the first
+/// naming a unit in the structure is taken, as `movement::fleet::fleet_owner` takes it - a known
+/// gap, since the engine keeps only the last one written (`ah-nhgo`).
 fn structure_owner_after_promotes(hex: &Hex<'_>, structure_id: &str) -> Option<String> {
-    let owner = hex
-        .region
-        .units
-        .iter()
-        .find(|unit| unit.structure_id.as_deref() == Some(structure_id))?
-        .unit_id
-        .clone();
-
+    let owner = owner_when_promotions_run(hex, structure_id)?;
     let promoted = hex
         .units
         .iter()
-        .find(|promoter| {
-            promoter.unit.unit_id == owner && structure_after_orders(promoter) == Some(structure_id)
-        })
+        .find(|promoter| promoter.unit.unit_id == owner)
         .and_then(|promoter| {
             promoter
                 .promotes
@@ -12004,6 +11997,50 @@ fn structure_owner_after_promotes(hex: &Hex<'_>, structure_id: &str) -> Option<S
                 .find(|target| *target != &owner && unit_is_in_structure(hex, target, structure_id))
         });
     Some(promoted.cloned().unwrap_or(owner))
+}
+
+/// Who owns a structure when this month's `PROMOTE`s run: the first unit in the object's list
+/// once ENTER and LEAVE have run (`Object::GetOwner`; `rules/sequenceofevents`). The rule
+/// [`crate::movement::fleet::fleet_owner`] states, read from this hex's units (`ah-c1p2`): the
+/// report's occupants who stayed, in report order, then everyone who boarded - a reported
+/// occupant that ENTERs the structure it stands in boards again - then units formed aboard. A
+/// unit of another faction stays where the report shows it. `None` when nobody stands in it.
+fn owner_when_promotions_run(hex: &Hex<'_>, structure_id: &str) -> Option<String> {
+    let enters = |unit_id: &str| {
+        hex.units.iter().any(|ordered| {
+            ordered.formed.is_none()
+                && ordered.unit.unit_id == unit_id
+                && ordered.intents.iter().any(|placed| {
+                    matches!(&placed.intent, Intent::Enter { structure } if structure == structure_id)
+                })
+        })
+    };
+    let aboard: Vec<&ReportUnit> = hex
+        .region
+        .units
+        .iter()
+        .filter(|unit| unit_is_in_structure(hex, &unit.unit_id, structure_id))
+        .collect();
+    let listed_under = |unit: &ReportUnit| unit.structure_id.as_deref() == Some(structure_id);
+    let stayed = aboard
+        .iter()
+        .find(|unit| listed_under(unit) && !enters(&unit.unit_id));
+    let boarded = || {
+        aboard
+            .iter()
+            .find(|unit| !listed_under(unit) || enters(&unit.unit_id))
+    };
+    if let Some(unit) = stayed.or_else(boarded) {
+        return Some(unit.unit_id.clone());
+    }
+    hex.units
+        .iter()
+        .find(|ordered| {
+            ordered.formed.is_some()
+                && !ordered.after_the_market().gained_nobody()
+                && structure_after_orders(ordered) == Some(structure_id)
+        })
+        .map(|ordered| ordered.unit.unit_id.clone())
 }
 
 /// Whether a unit is still in a structure after this month's ENTER/LEAVE projection.
@@ -13882,72 +13919,47 @@ fn check_leave_refused_at_sea(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
     }
 }
 
-/// A formed unit known to gain nobody is deleted before anything moves, so it neither owns a
-/// structure nor has a course to be overruled (`ah-877p`, `crate::movement::fleet::FormedCrew`).
-/// Every reported unit survives.
-fn survives_forming(ordered: &Ordered<'_>) -> bool {
-    ordered.formed.is_none() || !ordered.after_the_market().gained_nobody()
-}
-
-/// This hex's surviving formed units, where they stand once ENTER and LEAVE have run, as the
-/// fleet module's ownership walk takes them.
-fn formed_crews(hex: &Hex<'_>) -> Vec<crate::movement::fleet::FormedCrew> {
-    hex.units
-        .iter()
-        .filter(|ordered| ordered.formed.is_some() && survives_forming(ordered))
-        .map(|ordered| crate::movement::fleet::FormedCrew {
-            unit_id: ordered.unit.unit_id.clone(),
-            region_id: hex.region.region_id.clone(),
-            key: ordered.key.clone(),
-            structure_id: structure_after_orders(ordered).map(str::to_string),
-        })
-        .collect()
-}
-
 /// The `PROMOTE` the game refuses because its writer does not own its structure when promotions
 /// run (`ah-c1p2`). `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`) runs one `PROMOTE` per
 /// object, its owner's once ENTER and LEAVE have run (`Object::GetOwner`), and errors every other
 /// unit's "PROMOTE: Must be owner" - the unit that owner promotes among them, so a chain hands the
-/// structure on once. The owner is read as [`crate::movement::fleet::occupants_after_boarding`]
-/// reads it. The engine keeps one `PROMOTE` per unit (`ProcessPromoteOrder` overwrites
-/// `u->promote`), so one warning per unit, on the last line written. A unit in no structure is not
-/// this warning's business, and a formed unit's `PROMOTE` is not followed by the ownership walk,
-/// so neither is warned. Always on (`codes::ALWAYS_ON`), so no option is read.
-fn check_promote_not_owner(hex: &Hex<'_>, fleet_orders: &FleetOrders, findings: &mut Vec<Finding>) {
-    let formed = formed_crews(hex);
+/// structure on once. The owner is [`owner_when_promotions_run`], the one the `DESTROY`
+/// projection reads too. One warning per unit, on its last `PROMOTE` line: the engine keeps one
+/// `PROMOTE` per unit (`ProcessPromoteOrder` overwrites `u->promote`). A unit in no structure
+/// is not this warning's business, and a formed unit's `PROMOTE` is not followed by the ownership
+/// walks, so neither is warned. Always on (`codes::ALWAYS_ON`), so no option is read.
+fn check_promote_not_owner(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
     for ordered in hex.units.iter().filter(|ordered| ordered.formed.is_none()) {
         let Some(promote) = ordered.promotes.last() else {
             continue;
         };
-        let Some(structure_id) = fleet_orders.structure_of(ordered.unit) else {
+        let Some(structure_id) = structure_after_orders(ordered) else {
             continue;
         };
-        let occupants = crate::movement::fleet::occupants_after_boarding(
-            hex.region,
-            fleet_orders,
-            &formed,
-            structure_id,
-        );
-        let Some(owner_id) = occupants.first() else {
+        let Some(owner_id) = owner_when_promotions_run(hex, structure_id) else {
             continue;
         };
-        if owner_id == &ordered.unit.unit_id {
+        if owner_id == ordered.unit.unit_id {
             continue;
         }
         let owner = hex
             .region
             .units
             .iter()
-            .chain(
-                hex.units
-                    .iter()
-                    .filter(|ordered| ordered.formed.is_some())
-                    .map(|ordered| ordered.unit),
-            )
-            .find(|unit| &unit.unit_id == owner_id)
+            .chain(hex.units.iter().map(|ordered| ordered.unit))
+            .find(|unit| unit.unit_id == owner_id)
             .map_or_else(
                 || format!("unit {owner_id}"),
                 |unit| format!("{} ({})", unit.name, unit.unit_id),
+            );
+        let structure = hex
+            .region
+            .structures
+            .iter()
+            .find(|structure| structure.structure_id == structure_id)
+            .map_or_else(
+                || format!("[{structure_id}]"),
+                crate::movement::mode::fleet_label,
             );
         findings.push(Finding {
             line: Some(promote.line),
@@ -13957,7 +13969,7 @@ fn check_promote_not_owner(hex: &Hex<'_>, fleet_orders: &FleetOrders, findings: 
                 hex,
                 codes::PROMOTE_NOT_OWNER,
                 format!(
-                    "PROMOTE will be refused: {owner} owns [{structure_id}] when promotions run, \
+                    "PROMOTE will be refused: {owner} owns {structure} when promotions run, \
                      not this unit, so nothing changes"
                 ),
                 None,
@@ -25277,8 +25289,23 @@ fn check_fleet_course(
         return;
     };
 
-    let survives = |ordered: &&Ordered<'_>| survives_forming(ordered);
-    let formed = formed_crews(hex);
+    // A formed unit known to gain nobody is deleted before anything moves, so it neither owns a
+    // hull nor has a course to be overruled (`ah-877p`, `crate::movement::fleet::FormedCrew`).
+    let survives = |ordered: &&Ordered<'_>| {
+        ordered.formed.is_none() || !ordered.after_the_market().gained_nobody()
+    };
+    let formed: Vec<crate::movement::fleet::FormedCrew> = hex
+        .units
+        .iter()
+        .filter(|ordered| ordered.formed.is_some())
+        .filter(survives)
+        .map(|ordered| crate::movement::fleet::FormedCrew {
+            unit_id: ordered.unit.unit_id.clone(),
+            region_id: hex.region.region_id.clone(),
+            key: ordered.key.clone(),
+            structure_id: structure_after_orders(ordered).map(str::to_string),
+        })
+        .collect();
 
     for fleet in &hex.region.structures {
         // The same predicate the map applies, so the pane can never warn about a hull the map
@@ -39959,6 +39986,43 @@ BUILD
                 |ledger| {
                     assert!(ledger.build_placement_refusals.is_empty());
                     assert_eq!(balance_of(ledger, "901", "STON"), 90);
+                },
+            );
+        }
+
+        /// `ah-c1p2`: the owner whose `PROMOTE` runs is read once ENTER and LEAVE have run
+        /// (`Object::GetOwner`, `Game::RunPromoteOrders`): 900 leaves, so 901 owns the Palace and
+        /// its `PROMOTE 902` runs, and 902's DESTROY clears the way for its BUILD.
+        #[test]
+        fn the_owner_after_a_leave_promotes_before_replacement_destroy() {
+            let mut replacement_site = region(vec![
+                in_structure(unit("900"), "4"),
+                in_structure(unit("901"), "4"),
+                in_structure(
+                    with_skill(
+                        with_item(with_men(unit("902"), 10), 120, "stone", "STON"),
+                        "BUIL",
+                        3,
+                    ),
+                    "4",
+                ),
+            ]);
+            replacement_site.settlement = Some(crate::report::model::Settlement {
+                name: "Inholm".to_string(),
+                size: "city".to_string(),
+            });
+            replacement_site.structures.push(Structure {
+                structure_id: "4".to_string(),
+                name: "Building".to_string(),
+                kind: "Palace".to_string(),
+                ..Default::default()
+            });
+            with_trident_ledger(
+                replacement_site,
+                "unit 900\nLEAVE\nunit 901\nPROMOTE 902\nunit 902\nDESTROY\nBUILD Palace\n",
+                |ledger| {
+                    assert!(ledger.build_placement_refusals.is_empty());
+                    assert_eq!(balance_of(ledger, "902", "STON"), 90);
                 },
             );
         }
@@ -55630,8 +55694,8 @@ BUILD
         assert_eq!(refused[0].line, Some(4));
         assert_eq!(
             refused[0].message,
-            "PROMOTE will be refused: Unit 900 (900) owns [1] when promotions run, not this \
-             unit, so nothing changes"
+            "PROMOTE will be refused: Unit 900 (900) owns Castle [1] when promotions run, not \
+             this unit, so nothing changes"
         );
     }
 
@@ -55663,6 +55727,11 @@ BUILD
             ),
             Vec::<String>::new(),
             "900 left, so 901 owns [1] when promotions run"
+        );
+        assert_eq!(
+            promote_findings("unit 900\nLEAVE\nPROMOTE 901\nunit 901\nENTER 1\n"),
+            Vec::<String>::new(),
+            "900 left before promotions run, so its PROMOTE is not this warning's business"
         );
         assert_eq!(
             promote_findings("unit 901\nENTER 1\nPROMOTE 902\nunit 902\nENTER 1\n"),
