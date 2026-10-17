@@ -616,7 +616,10 @@ export function transportSentences(
  * what the ` ?` mark is for - the month could not be fully counted.
  */
 export function transportTargetUncertain(issue: TransportTargetIssue): boolean {
-  return issue.reason === "eligibilityUnknown" || issue.reason === "acceptanceUnknown";
+  // A refusal this month's orders may undo (`unsettled`, `ah-kjjv`) is no fact either: LEAVE,
+  // ENTER, PROMOTE, MOVE, STUDY and BUILD all run before TRANSPORT (`rules/sequenceofevents`), so
+  // the cell marks it like a gap in the report (`ah-nsz8`).
+  return issue.reason === "eligibilityUnknown" || issue.reason === "acceptanceUnknown" || issue.unsettled;
 }
 
 /**
@@ -665,6 +668,21 @@ export function transportTargetSentence(issue: TransportTargetIssue): string {
         return `level ${z}`;
     }
   };
+  if (issue.unsettled) {
+    // The month may undo the refusal (`ah-nsz8`, the navigator's words of 2026-10-17): the
+    // forecast keeps the goods here, but the hover does not say they certainly stay.
+    const counted = `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because`;
+    switch (issue.reason) {
+      case "notQuartermaster":
+        return `${counted} it is not a quartermaster now, but this month's orders may make it one before TRANSPORT runs.`;
+      case "notCaravanseraiOwner":
+        return `${counted} it does not own a Caravanserai now, but this month's orders may change that before TRANSPORT runs.`;
+      case "senderOwnsNoCaravanserai":
+        return `${counted} this unit owns no Caravanserai now, but this month's orders may change that before the shipments run.`;
+      default:
+        break;
+    }
+  }
   switch (issue.reason) {
     case "notQuartermaster":
       return goods === null
