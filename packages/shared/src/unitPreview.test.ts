@@ -1968,6 +1968,21 @@ describe("a transport target the report cannot show receiving", () => {
     ).toBe("Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit.");
   });
 
+  // `ah-nzb0`. `rules/economy_transport`: "Quartermasters may also TRANSPORT items to any unit
+  // within 2 hexes" - the range is the distributing quartermaster's, not the recipient's.
+  it("a quartermaster distributing too far names its own distribution range", () => {
+    expect(
+      transportTargetSentence({
+        to: "2420",
+        amount: 100,
+        tag: "SILV",
+        reason: "tooFarToDistribute",
+        orderIndex: 0, toUnshown: false,
+        reach: { away: 3, limit: 2, fromLevel: null, toLevel: null }
+      })
+    ).toBe("Unit 2420 is 3 hexes away and this unit distributes to units within 2 hexes, so 100 SILV stay with this unit.");
+  });
+
   it("a shipment a quartermaster cannot reach names its own limit", () => {
     expect(
       transportTargetSentence({

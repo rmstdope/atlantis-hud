@@ -635,7 +635,7 @@ export function hasUncertainTransport(unit: PreviewedUnit | undefined): boolean 
  */
 export function transportTargetSentence(issue: TransportTargetIssue): string {
   const goods = issue.tag === "" ? null : `${issue.amount} ${issue.tag}`;
-  // The two reach refusals are the only reasons that name a distance, and the agreed record
+  // The reach refusals are the only reasons that name a distance, and the agreed record
   // writes "1 IRON stays" against "5 STON stay", so the verb agrees with the count. The four
   // reasons below keep their unconditional "stay": they were agreed as they stand (`ah-7ale.2.1`).
   const verb = issue.amount === 1 ? "stays" : "stay";
@@ -673,49 +673,32 @@ export function transportTargetSentence(issue: TransportTargetIssue): string {
     case "acceptanceUnknown":
       return `Could not count ${goods ?? "this TRANSPORT"} for unit ${issue.to} because your report does not show whether its faction accepts transports from yours.`;
     case "tooFarToAccept":
-      if (issue.reach !== null) {
-        const reach = issue.reach;
-        if (reach.away != null && reach.limit != null) {
-          const away = reach.away;
-          const limit = reach.limit;
-          return goods === null
-            ? `Unit ${issue.to} is ${away} hexes away and takes goods from ${limit} hexes, so this TRANSPORT moves nothing.`
-            : `Unit ${issue.to} is ${away} hexes away and takes goods from ${limit} hexes, so ${goods} ${verb} with this unit.`;
+    case "tooFarToDistribute":
+    case "tooFarToShip": {
+      // Whose limit was passed, in the words of `transport_reach_sentence` in
+      // `crates/core/src/orders/semantics.rs`: the recipient quartermaster's acceptance, the
+      // distributing quartermaster's own range (`ah-nzb0`), or its shipping reach.
+      const range = (limit: number): string => {
+        switch (issue.reason) {
+          case "tooFarToDistribute":
+            return `this unit distributes to units within ${limit} hexes`;
+          case "tooFarToShip":
+            return `this unit can ship ${limit} hexes`;
+          default:
+            return `takes goods from ${limit} hexes`;
         }
-        if (reach.fromLevel !== null && reach.toLevel !== null) {
-          const toName = levelName(reach.toLevel);
-          const fromName = levelName(reach.fromLevel);
-          return goods === null
-            ? `Unit ${issue.to} is in the ${toName} and this unit is on the ${fromName}, so this TRANSPORT moves nothing.`
-            : `Unit ${issue.to} is in the ${toName} and this unit is on the ${fromName}, so ${goods} ${verb} with this unit.`;
-        }
+      };
+      const tail = goods === null ? "this TRANSPORT moves nothing" : `${goods} ${verb} with this unit`;
+      const reach = issue.reach;
+      if (reach !== null && reach.away != null && reach.limit != null) {
+        return `Unit ${issue.to} is ${reach.away} hexes away and ${range(reach.limit)}, so ${tail}.`;
+      }
+      if (reach !== null && reach.fromLevel !== null && reach.toLevel !== null) {
+        return `Unit ${issue.to} is in the ${levelName(reach.toLevel)} and this unit is on the ${levelName(reach.fromLevel)}, so ${tail}.`;
       }
       // Fallback: keep old numeric wording with zeroes.
-      return goods === null
-        ? `Unit ${issue.to} is 0 hexes away and takes goods from 0 hexes, so this TRANSPORT moves nothing.`
-        : `Unit ${issue.to} is 0 hexes away and takes goods from 0 hexes, so ${goods} ${verb} with this unit.`;
-    case "tooFarToShip":
-      if (issue.reach !== null) {
-        const reach = issue.reach;
-        if (reach.away != null && reach.limit != null) {
-          const away = reach.away;
-          const limit = reach.limit;
-          return goods === null
-            ? `Unit ${issue.to} is ${away} hexes away and this unit can ship ${limit} hexes, so this TRANSPORT moves nothing.`
-            : `Unit ${issue.to} is ${away} hexes away and this unit can ship ${limit} hexes, so ${goods} ${verb} with this unit.`;
-        }
-        if (reach.fromLevel !== null && reach.toLevel !== null) {
-          const toName = levelName(reach.toLevel);
-          const fromName = levelName(reach.fromLevel);
-          return goods === null
-            ? `Unit ${issue.to} is in the ${toName} and this unit is on the ${fromName}, so this TRANSPORT moves nothing.`
-            : `Unit ${issue.to} is in the ${toName} and this unit is on the ${fromName}, so ${goods} ${verb} with this unit.`;
-        }
-      }
-      // Fallback: keep old numeric wording with zeroes.
-      return goods === null
-        ? `Unit ${issue.to} is 0 hexes away and this unit can ship 0 hexes, so this TRANSPORT moves nothing.`
-        : `Unit ${issue.to} is 0 hexes away and this unit can ship 0 hexes, so ${goods} ${verb} with this unit.`;
+      return `Unit ${issue.to} is 0 hexes away and ${range(0)}, so ${tail}.`;
+    }
   }
 }
 

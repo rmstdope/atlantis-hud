@@ -4238,8 +4238,24 @@ fn add_food(into: &mut Vec<FoodAmount>, food: &FoodAmount, amount: i64) {
     }
 }
 
+/// Food one holder gives up to maintenance, and who ate it (`ah-nzb0`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EatenFood {
+    pub food: FoodAmount,
+    /// The claim's `unit_id` of the unit that ate it, when that is another unit drawing on the
+    /// pool. `None` for a unit's own food, and for any of the pool's food no single eater is known
+    /// for.
+    pub eater: Option<String>,
+}
+
+/// One eater's draw on the pool, in the order the draws were made.
+struct Draw<'c> {
+    eater: &'c str,
+    food: FoodAmount,
+}
+
 /// Whose food maintenance eats this month, per unit and per tag: what the ITEMS column takes off
-/// each unit that held it (`ah-q490`).
+/// each unit that held it (`ah-q490`), and which unit ate it (`ah-nzb0`).
 ///
 /// Reads the same passes the SILVER column is priced from, so the two cannot disagree about how
 /// much was eaten: `claims` for step 1 (and each unit's spare food, which is what the pool is made
@@ -4252,6 +4268,11 @@ fn add_food(into: &mut Vec<FoodAmount>, food: &FoodAmount, amount: i64) {
 /// what each still holds once its own eating is done. That keeps every unit's count at zero or
 /// more: the hex's own passes never let the pool eat more than its units hold between them.
 ///
+/// Each eater draws in the same precedence - step 2's claimants in report order, then step 6's -
+/// and its draw is paired with the holders it drains, so a holder's entry names who ate it. The
+/// pairing never changes a figure: how much each holder loses is what the pool gave up, as before,
+/// and a share no eater accounts for is left unnamed.
+///
 /// Where step 2 was contended (`pass.pool_left` is `None`), what the pool ate cannot be told, and
 /// steps 5 and 6 claimed nothing either: only step 1 is known, and only step 1 is answered - the
 /// same posture the column takes, which doubts those units' upkeep rather than inventing it.
@@ -4260,14 +4281,15 @@ pub fn food_eaten_by_holder(
     claims: &[FoodClaim],
     pass: &FactionFoodPass,
     late: &BTreeMap<String, LateFoodRelief>,
-) -> BTreeMap<String, Vec<FoodAmount>> {
-    let mut eaten: BTreeMap<String, Vec<FoodAmount>> = BTreeMap::new();
+) -> BTreeMap<String, Vec<EatenFood>> {
+    let mut eaten: BTreeMap<String, Vec<EatenFood>> = BTreeMap::new();
     for claim in claims {
         for food in &claim.own_eaten {
-            add_food(
+            add_eaten(
                 eaten.entry(claim.unit_id.clone()).or_default(),
                 food,
                 food.amount,
+                None,
             );
         }
     }
@@ -4278,12 +4300,13 @@ pub fn food_eaten_by_holder(
 
     // What the pool gave up: step 2's is what was pooled less what it left, and step 6's is
     // recorded per claimant.
-    let mut pool_eaten: Vec<FoodAmount> = Vec::new();
+    let mut pooled: Vec<FoodAmount> = Vec::new();
     for claim in claims {
         for food in &claim.spare_food {
-            add_food(&mut pool_eaten, food, food.amount);
+            add_food(&mut pooled, food, food.amount);
         }
     }
+    let mut pool_eaten = pooled.clone();
     for food in &mut pool_eaten {
         let left = pool_left
             .iter()
@@ -4297,6 +4320,35 @@ pub fn food_eaten_by_holder(
         }
     }
 
+    // Who drew it: step 2's claimants replayed in report order against the pool, as
+    // `feed_from_faction_food` settles them, then step 6's.
+    let mut draws: Vec<Draw<'_>> = Vec::new();
+    let mut stock = pooled
+        .into_iter()
+        .filter(|food| food.amount > 0 && food.maintenance_value > 0)
+        .collect::<Vec<_>>();
+    for claim in claims
+        .iter()
+        .filter(|claim| claim.draws_on_pool && claim.owed_after_own_food > 0)
+    {
+        for food in consume_food(&mut stock, claim.owed_after_own_food).consumed {
+            draws.push(Draw {
+                eater: &claim.unit_id,
+                food,
+            });
+        }
+    }
+    for claim in claims {
+        if let Some(relief) = late.get(claim.unit_id.as_str()) {
+            for food in &relief.faction_eaten {
+                draws.push(Draw {
+                    eater: &claim.unit_id,
+                    food: food.clone(),
+                });
+            }
+        }
+    }
+
     // Step 5 comes off the unit itself, and out of what it holds for the pool to drain.
     let mut held: Vec<(String, Vec<FoodAmount>)> = claims
         .iter()
@@ -4307,7 +4359,12 @@ pub fn food_eaten_by_holder(
             continue;
         };
         for food in &relief.own_eaten {
-            add_food(eaten.entry(unit_id.clone()).or_default(), food, food.amount);
+            add_eaten(
+                eaten.entry(unit_id.clone()).or_default(),
+                food,
+                food.amount,
+                None,
+            );
             if let Some(entry) = spare.iter_mut().find(|entry| entry.tag == food.tag) {
                 entry.amount = (entry.amount - food.amount).max(0);
             }
@@ -4316,21 +4373,65 @@ pub fn food_eaten_by_holder(
 
     for food in &pool_eaten {
         let mut owed = food.amount;
-        for (unit_id, spare) in &mut held {
-            if owed <= 0 {
-                break;
+        // This tag's draws, each capped at what the pool is known to have given up, then a share
+        // nobody's draw accounts for.
+        let mut shares: Vec<(Option<&str>, i64)> = Vec::new();
+        for draw in draws.iter().filter(|draw| draw.food.tag == food.tag) {
+            let share = draw.food.amount.min(owed);
+            if share > 0 {
+                shares.push((Some(draw.eater), share));
+                owed -= share;
             }
-            let Some(entry) = spare.iter_mut().find(|entry| entry.tag == food.tag) else {
-                continue;
-            };
-            let taken = entry.amount.min(owed);
-            entry.amount -= taken;
-            owed -= taken;
-            add_food(eaten.entry(unit_id.clone()).or_default(), food, taken);
+        }
+        if owed > 0 {
+            shares.push((None, owed));
+        }
+        for (eater, mut share) in shares {
+            for (unit_id, spare) in &mut held {
+                if share <= 0 {
+                    break;
+                }
+                let Some(entry) = spare.iter_mut().find(|entry| entry.tag == food.tag) else {
+                    continue;
+                };
+                let taken = entry.amount.min(share);
+                entry.amount -= taken;
+                share -= taken;
+                let eater = eater
+                    .filter(|eater| *eater != unit_id.as_str())
+                    .map(str::to_string);
+                add_eaten(
+                    eaten.entry(unit_id.clone()).or_default(),
+                    food,
+                    taken,
+                    eater,
+                );
+            }
         }
     }
     eaten.retain(|_, foods| !foods.is_empty());
     eaten
+}
+
+/// Adds `amount` of `food` to a holder's eaten list, beside any entry with the same tag and eater.
+fn add_eaten(into: &mut Vec<EatenFood>, food: &FoodAmount, amount: i64, eater: Option<String>) {
+    if amount <= 0 {
+        return;
+    }
+    match into
+        .iter_mut()
+        .find(|entry| entry.food.tag == food.tag && entry.eater == eater)
+    {
+        Some(entry) => entry.food.amount = entry.food.amount.saturating_add(amount),
+        None => into.push(EatenFood {
+            food: FoodAmount {
+                tag: food.tag.clone(),
+                amount,
+                maintenance_value: food.maintenance_value,
+            },
+            eater,
+        }),
+    }
 }
 
 /// One unit's unpayable maintenance, for the faction-wide settlement of step 7.

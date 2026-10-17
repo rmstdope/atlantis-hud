@@ -491,17 +491,56 @@ pub(crate) enum OutOfReach {
     Distance {
         away: i32,
         limit: i32,
-        /// Which sentence this refusal takes: the sender's own skill-dependent reach, or the flat two
-        /// hexes a quartermaster accepts from anyone.
-        between_quartermasters: bool,
+        /// Whose limit was passed, which decides the sentence this refusal takes.
+        range: Range,
     },
     /// The ends are on different levels of the map, which the old `hex_distance` API reported as
     /// `None`. This is a definite refusal that names both levels rather than a numeric distance.
     DifferentLevel {
         from_level: u32,
         to_level: u32,
-        between_quartermasters: bool,
+        range: Range,
     },
+}
+
+/// Whose limit a refused shipment passed (`rules/economy_transport`), so the sentence can blame the
+/// right end of it (`ah-nzb0`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Range {
+    /// The flat two hexes within which a quartermaster accepts goods from any unit.
+    Accepts,
+    /// The flat two hexes within which a quartermaster may TRANSPORT (or DISTRIBUTE) to any unit:
+    /// the sender's own range, not the recipient's.
+    Distributes,
+    /// Quartermaster to quartermaster, as far as the *sender's* own skill reaches.
+    Ships,
+}
+
+impl Arrival {
+    /// The same arrival, with a refusal blamed on the sending quartermaster's distribution range
+    /// rather than on the recipient's acceptance: [`Reach::Local`] is one limit for both, and only
+    /// the caller knows which end is the quartermaster.
+    fn distributed(self) -> Self {
+        match self {
+            Self::TooFar(OutOfReach::Distance { away, limit, .. }) => {
+                Self::TooFar(OutOfReach::Distance {
+                    away,
+                    limit,
+                    range: Range::Distributes,
+                })
+            }
+            Self::TooFar(OutOfReach::DifferentLevel {
+                from_level,
+                to_level,
+                ..
+            }) => Self::TooFar(OutOfReach::DifferentLevel {
+                from_level,
+                to_level,
+                range: Range::Distributes,
+            }),
+            settled => settled,
+        }
+    }
 }
 
 /// Whether the map settles that one shipment arrives (`ah-7ale.5`).
@@ -534,12 +573,15 @@ pub(crate) fn arrival(
     use crate::movement::graph::{hex_distance, HexDistance};
 
     let limit = reach.hexes();
-    let between_quartermasters = matches!(reach, Reach::BetweenQuartermasters { .. });
+    let range = match reach {
+        Reach::Local => Range::Accepts,
+        Reach::BetweenQuartermasters { .. } => Range::Ships,
+    };
     match hex_distance(from, to, geometry, shown) {
         Some(HexDistance::Exact(hexes)) if hexes > limit => Arrival::TooFar(OutOfReach::Distance {
             away: hexes,
             limit,
-            between_quartermasters,
+            range,
         }),
         Some(HexDistance::Exact(_)) => Arrival::Certain,
         // An upper bound inside the limit settles the question.
@@ -550,7 +592,7 @@ pub(crate) fn arrival(
         None => Arrival::TooFar(OutOfReach::DifferentLevel {
             from_level: from.z,
             to_level: to.z,
-            between_quartermasters,
+            range,
         }),
     }
 }
@@ -648,7 +690,17 @@ impl Shipping {
                     reach,
                     from,
                     to,
-                    arrival: arrival(reach, from, to, self.geometry, &self.shown),
+                    arrival: {
+                        let settled = arrival(reach, from, to, self.geometry, &self.shown);
+                        // `rules/economy_transport`: a quartermaster "may also TRANSPORT items to
+                        // any unit within 2 hexes" - its own range when the target is no
+                        // quartermaster (`ah-nzb0`).
+                        if sender_qm && !target_qm {
+                            settled.distributed()
+                        } else {
+                            settled
+                        }
+                    },
                 })
             }
             _ => None,
@@ -841,7 +893,7 @@ mod tests {
             Arrival::TooFar(OutOfReach::Distance {
                 away: 3,
                 limit: 2,
-                between_quartermasters: false,
+                range: Range::Accepts,
             })
         );
         // Two hexes away is inside the limit, so nothing is refused.
@@ -889,7 +941,7 @@ mod tests {
             Arrival::TooFar(OutOfReach::DifferentLevel {
                 from_level: 1,
                 to_level: 2,
-                between_quartermasters: false,
+                range: Range::Accepts,
             })
         );
     }
@@ -927,7 +979,7 @@ mod tests {
             Arrival::TooFar(OutOfReach::Distance {
                 away: 4,
                 limit: 3,
-                between_quartermasters: true,
+                range: Range::Ships,
             })
         );
         assert_eq!(
@@ -1319,7 +1371,7 @@ mod tests {
                 arrival: Arrival::TooFar(OutOfReach::Distance {
                     away: 3,
                     limit: 2,
-                    between_quartermasters: false,
+                    range: Range::Accepts,
                 }),
             })
         );
