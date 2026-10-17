@@ -10363,9 +10363,9 @@ struct ExchangeOffers {
     offers: Vec<ExchangeOffer>,
     /// `(unit, line)` of a line whose goods nothing can name: whether it matches cannot be said.
     unnamed: Vec<(usize, usize)>,
-    /// `(unit, partner)` of a line dropped for trading men or goods the game will not hand over,
-    /// so the line it was meant to answer is not told that nothing answered it (`ah-p5ow`).
-    refused: Vec<(usize, usize)>,
+    /// `(unit, line, why)` of a line dropped for trading men or goods the game will not hand
+    /// over: the game aborts it whatever the partner writes (`ah-p5ow`).
+    refused: Vec<(usize, usize, String)>,
 }
 
 /// Reads every `EXCHANGE` between two of our units in one hex.
@@ -10408,7 +10408,19 @@ fn exchange_offers(
             );
             let refused = |tag: &str| ruleset.is_man(tag) || !ruleset.can_be_given(tag);
             if refused(&give_tag) || refused(&expect_tag) {
-                read.refused.push((unit, partner));
+                // `rules/exchange`: "Men may not be exchanged."; the engine's `DoExchangeOrder`
+                // refuses a `CANTGIVE` item ("EXCHANGE: Can't trade ...").
+                let why = if ruleset.is_man(&give_tag) || ruleset.is_man(&expect_tag) {
+                    "men may not be exchanged".to_string()
+                } else {
+                    let tag = if refused(&give_tag) {
+                        &give_tag
+                    } else {
+                        &expect_tag
+                    };
+                    format!("the game will not trade {tag}")
+                };
+                read.refused.push((unit, placed.line, why));
                 continue;
             }
             read.offers.push(ExchangeOffer {
@@ -10569,7 +10581,7 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
                 hand_over(ledger, hex, other);
             }
             ExchangeVerdict::Aborted => {
-                record_short_exchange(ledger, hex, offers, &pairs, (first, second), known);
+                record_short_exchange(ledger, hex, ruleset, offers, (first, second), known);
             }
             ExchangeVerdict::Uncertain => {
                 let doubt = doubt.expect("an uncertain verdict has a doubted side");
@@ -10591,39 +10603,63 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     }
 }
 
-/// Records every offer [`complementary_pairs`] left without a partner line: the game aborts it
-/// whatever order it reaches the lines in, since "the orders given by the two units must be
-/// complementary" (`rules/exchange`; `ah-p5ow`). The partner's own unpaired line toward this unit,
-/// where it wrote one, is named so the player sees what does not match. Nothing is said where the
-/// partner wrote a line whose goods nothing can name: whether that one matches cannot be said.
+/// Records every offer [`complementary_pairs`] left without a partner line, and every line
+/// [`exchange_offers`] refused: the game aborts both whatever order it reaches the lines in, since
+/// "the orders given by the two units must be complementary" and "men may not be exchanged"
+/// (`rules/exchange`; `ah-p5ow`). The partner's own unpaired line toward this unit, where it wrote
+/// one, is named so the player sees what does not match - the one trading the same two items
+/// first. Nothing is said where the partner wrote a line whose goods nothing can name, or one
+/// naming another faction's new unit, which may be this one: whether either answers cannot be said.
 fn record_unanswered_exchanges(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
     read: &ExchangeOffers,
     pairs: &[(usize, usize)],
 ) {
+    for (unit, line, why) in &read.refused {
+        ledger
+            .aborted_exchanges
+            .push((hex.units[*unit].unit.unit_id.clone(), *line, why.clone()));
+    }
     let offers = &read.offers;
     let paired: BTreeSet<usize> = pairs
         .iter()
         .flat_map(|&(one, other)| [one, other])
         .collect();
+    let unreadable = |unit: usize| {
+        read.unnamed.iter().any(|&(named, _)| named == unit)
+            || hex.units[unit].intents.iter().any(|placed| {
+                matches!(
+                    &placed.intent,
+                    Intent::Exchange {
+                        with: Party::Foreign { .. },
+                        ..
+                    }
+                )
+            })
+    };
     for (index, offer) in offers.iter().enumerate() {
-        if paired.contains(&index) || read.unnamed.iter().any(|&(unit, _)| unit == offer.partner) {
+        if paired.contains(&index) || unreadable(offer.partner) {
             continue;
         }
         let partner = unit_label(hex, &hex.units[offer.partner].unit.unit_id);
-        let answer = offers.iter().enumerate().find(|(other, answer)| {
-            !paired.contains(other) && answer.unit == offer.partner && answer.partner == offer.unit
-        });
-        let refused = read
-            .refused
-            .iter()
-            .any(|&(unit, partner)| unit == offer.partner && partner == offer.unit);
+        let toward =
+            |answer: &&ExchangeOffer| answer.unit == offer.partner && answer.partner == offer.unit;
+        let unpaired = || {
+            offers
+                .iter()
+                .enumerate()
+                .filter(|(other, _)| !paired.contains(other))
+                .map(|(_, answer)| answer)
+        };
+        let answer = unpaired()
+            .filter(toward)
+            .find(|answer| {
+                answer.give_tag == offer.expect_tag && answer.expect_tag == offer.give_tag
+            })
+            .or_else(|| unpaired().find(toward));
         let why = match answer {
-            None if refused => {
-                format!("{partner} answers with men or goods the game will not hand over")
-            }
-            Some((_, answer)) => format!(
+            Some(answer) => format!(
                 "{partner} offers {} {} for {} {}, not {} {} for {} {}",
                 answer.give_amount,
                 answer.give_tag,
@@ -10645,34 +10681,49 @@ fn record_unanswered_exchanges(
 }
 
 /// Records a complementary pair aborted because a side is short of what it offers - but only
-/// where some short side's item no other pair of the hex moves. The engine settles exchanges as it walks the
-/// units in report order (`runorders.cpp` `DoExchangeOrders`), not in the order the lines are
-/// written as [`settle_exchanges`] does, so where another exchange could hand the short side (or a
-/// sharer lending to it) that item, or take it, whether this pair aborts is not certain and is not
-/// told (reviews of PR #1699). Saying nothing there is a missed warning, never a false one.
+/// where some short side's item no other `EXCHANGE` line of ours in the hex trades, with any
+/// partner. The engine settles exchanges as it walks the units in report order (`runorders.cpp`
+/// `DoExchangeOrders`), not in the order the lines are written as [`settle_exchanges`] does, and
+/// an exchange with another faction is not followed at all; so where another exchange could hand
+/// the short side (or a sharer lending to it) that item, or take it, whether this pair aborts is
+/// not certain and is not told (reviews of PR #1699, `ah-6cni`). Saying nothing there is a missed
+/// warning, never a false one.
 fn record_short_exchange(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
+    ruleset: &Ruleset,
     offers: &[ExchangeOffer],
-    pairs: &[(usize, usize)],
     pair: (usize, usize),
     known: [(&ExchangeOffer, Option<i64>); 2],
 ) {
-    // A short side whose item another pair of the hex moves may be paid or drained in time, so
-    // only a side whose item nothing else moves is certainly short; one is enough to abort.
+    let these = [&offers[pair.0], &offers[pair.1]].map(|offer| (offer.unit, offer.line));
+    // Whether any other exchange line here trades `tag`; one whose goods nothing can name might.
+    let traded_elsewhere = |tag: &str| {
+        hex.units.iter().enumerate().any(|(unit, ordered)| {
+            ordered.intents.iter().any(|placed| {
+                let Intent::Exchange {
+                    give_item,
+                    expect_item,
+                    ..
+                } = &placed.intent
+                else {
+                    return false;
+                };
+                !these.contains(&(unit, placed.line))
+                    && [give_item, expect_item].into_iter().any(|item| {
+                        resolve_item(item, hex, ordered, Some(ruleset))
+                            .is_none_or(|named| named.eq_ignore_ascii_case(tag))
+                    })
+            })
+        })
+    };
     let short: Vec<(&ExchangeOffer, i64)> = known
         .into_iter()
         .filter_map(|(offer, held)| {
             held.filter(|held| *held < offer.give_amount)
                 .map(|held| (offer, held))
         })
-        .filter(|(offer, _)| {
-            !pairs
-                .iter()
-                .filter(|&&other| other != pair)
-                .flat_map(|&(a, b)| [&offers[a], &offers[b]])
-                .any(|moving| moving.give_tag == offer.give_tag)
-        })
+        .filter(|(offer, _)| !traded_elsewhere(&offer.give_tag))
         .collect();
     if short.is_empty() {
         return;

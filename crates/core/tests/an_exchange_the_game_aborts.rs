@@ -144,12 +144,18 @@ fn an_offer_covered_by_an_earlier_gift_is_not_warned() {
         "EXCHANGE 1160 50 SILV 2 HORS",
         "GIVE 683 50 SILV\nEXCHANGE 683 2 HORS 50 SILV",
     );
-    // Maurice holds no horses: that pair is aborted, but for Maurice's shortfall, not Ivanhoe's.
-    assert!(
-        findings
-            .iter()
-            .all(|finding| !finding.message.contains("Ivanhoe (683) will hold")),
-        "{findings:?}"
+    // Maurice holds no horses, so the pair is aborted - for Maurice's shortfall alone.
+    let messages: Vec<&str> = findings
+        .iter()
+        .map(|finding| finding.message.as_str())
+        .collect();
+    assert_eq!(
+        messages,
+        vec![
+            "EXCHANGE will be aborted: Maurice de Bracy (1160) will hold only 0 of the 2 HORS it \
+             offers";
+            2
+        ]
     );
 }
 
@@ -167,17 +173,67 @@ fn an_offer_paid_for_by_another_exchange_is_not_warned_short() {
     assert!(findings.is_empty(), "{findings:?}");
 }
 
-/// Maurice did answer, but with men, which `rules/exchange` refuses ("Men may not be
-/// exchanged."): the warning says so rather than that he wrote nothing (reviewer's finding 3).
+/// `rules/exchange`: "Men may not be exchanged." Maurice's line offering one is aborted and warned
+/// on its own line; Ivanhoe's is then answered by nothing the game takes (fresh review's findings 3
+/// and 5 on PR #1699).
 #[test]
-fn an_answer_the_game_refuses_is_named_as_such() {
+fn an_exchange_of_men_is_warned_and_answers_nothing() {
     let findings = findings_of(IVANHOE_OFFERS, "EXCHANGE 683 200 SILV 1 LEAD");
-    assert_eq!(warned_units(&findings), vec!["683"], "{findings:?}");
+    let messages: Vec<(&str, &str)> = findings
+        .iter()
+        .map(|finding| {
+            (
+                finding.unit_id.as_deref().unwrap_or(""),
+                finding.message.as_str(),
+            )
+        })
+        .collect();
     assert_eq!(
-        findings[0].message,
-        "EXCHANGE will be aborted: Maurice de Bracy (1160) answers with men or goods the game will \
-         not hand over"
+        messages,
+        vec![
+            (
+                "683",
+                "EXCHANGE will be aborted: Maurice de Bracy (1160) has no EXCHANGE answering it"
+            ),
+            ("1160", "EXCHANGE will be aborted: men may not be exchanged"),
+        ]
     );
+}
+
+/// Maurice's other line to Ivanhoe trades different goods: the mismatch named is the line with
+/// the same two items (fresh review's finding 4).
+#[test]
+fn the_mismatch_named_is_the_line_with_the_same_goods() {
+    let findings = findings_of(
+        IVANHOE_OFFERS,
+        "EXCHANGE 683 1 SILV 1 WOOD\nEXCHANGE 683 150 SILV 2 HORS",
+    );
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding.unit_id.as_deref() == Some("683")
+                && finding.message.contains("offers 150 SILV for 2 HORS")),
+        "{findings:?}"
+    );
+}
+
+/// Maurice also trades wood to a foreign unit for silver, which may pay his 500 in time: the
+/// shortfall is not certain and is not told (fresh review's finding 1).
+#[test]
+fn a_shortfall_an_exchange_with_another_faction_may_cover_is_not_warned() {
+    let findings = findings_of(
+        "EXCHANGE 1160 2 HORS 500 SILV",
+        "EXCHANGE 7001 5 WOOD 200 SILV\nEXCHANGE 683 500 SILV 2 HORS",
+    );
+    assert!(findings.is_empty(), "{findings:?}");
+}
+
+/// Maurice's answer names goods nothing can read: whether it matches cannot be said, so Ivanhoe
+/// is not told it has no answer.
+#[test]
+fn an_answer_whose_goods_cannot_be_named_is_not_called_missing() {
+    let findings = findings_of(IVANHOE_OFFERS, "EXCHANGE 683 200 WIDGETS 2 HORS");
+    assert!(findings.is_empty(), "{findings:?}");
 }
 
 /// Another pair paying Cedric silver says nothing about Ivanhoe's swords: Ivanhoe is the short
