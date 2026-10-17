@@ -598,7 +598,9 @@ pub(crate) fn acceptance(sender_can_distribute: bool, facts: Option<&TargetFacts
 /// `rules/economy_transport` gives shipments involving one quartermaster the local two-hex reach,
 /// while two quartermasters use the sender skill's longer reach. That longer reach is TRANSPORT's
 /// alone: the engine's `CheckTransportOrders` measures every DISTRIBUTE against `LOCAL_TRANSPORT`
-/// (`ah-4g2l`), although `rules/transport` calls the two orders one.
+/// (`ah-4g2l`), although `rules/transport` calls the two orders one. The engine source at hand is
+/// New Origins'; the New Age worlds' rules text says the same as New Origins' (`newage trident
+/// rules distribute`), so they are assumed to share the engine's behaviour too.
 pub(crate) fn reach_for(
     order: ShipmentOrder,
     sender_is_quartermaster: bool,
