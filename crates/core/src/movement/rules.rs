@@ -1515,6 +1515,19 @@ impl Ruleset {
                 .any(|extra| extra.eq_ignore_ascii_case(terrain))
     }
 
+    /// Whether a unit may stand guard in this terrain.
+    ///
+    /// New Origins may not guard at sea: `../Atlantis/neworigins/rules.cpp` sets `OCEAN_GUARD` to
+    /// 0, and `Game::DoGuard1Orders` (`../Atlantis/runorders.cpp`) then clears every guard in a
+    /// region whose terrain is similar to ocean - "Can not guard in oceans." Lakes are among them
+    /// (`../Atlantis/gamedata.cpp` gives `lake` the similar type `R_OCEAN`). Neither New Age
+    /// world's rules say whether it allows an ocean guard, so both keep answering yes (`ah-j04e`).
+    #[must_use]
+    pub fn allows_guard_in(&self, terrain: &str) -> bool {
+        let at_sea = self.is_water(terrain) || terrain.eq_ignore_ascii_case("lake");
+        !(at_sea && self.order_language == OrderLanguage::NewOrigins)
+    }
+
     /// Whether the ruleset describes movement completely.
     ///
     /// False while any gap is open, which today means weather. A route costed under an open gap is
@@ -1877,6 +1890,23 @@ mod tests {
     // Failing to recognise a name is a **warning** wherever it is asked, never an error: the
     // catalogue is scraped from the game being played and may be stale, absent, or simply missing
     // an entry, and none of that is grounds for telling a player their order is wrong.
+
+    /// New Origins refuses a guard at sea and on a lake; the New Age worlds keep allowing one, since
+    /// their rules do not say (`ah-j04e`).
+    #[test]
+    fn only_new_origins_refuses_a_guard_at_sea() {
+        let origins = Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON).expect("loads");
+        assert!(!origins.allows_guard_in("ocean"));
+        assert!(!origins.allows_guard_in("Lake"));
+        assert!(origins.allows_guard_in("plain"));
+        for json in [
+            atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON,
+            atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+        ] {
+            let ruleset = Ruleset::from_json(json).expect("loads");
+            assert!(ruleset.allows_guard_in("ocean"));
+        }
+    }
 
     /// `data/MANI` says continued study gives no further advantages at level 3 in New Origins and
     /// at level 5 in both New Age worlds (`newage arcanum data MANI`, `newage trident data MANI`),

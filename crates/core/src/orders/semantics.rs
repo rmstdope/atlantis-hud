@@ -19702,6 +19702,23 @@ fn check_guard(
     departed: &BTreeSet<String>,
     findings: &mut Vec<Finding>,
 ) {
+    // A hex nobody may guard is neither unguarded nor a guard dropped, and a `GUARD 1` there is
+    // refused for where it is, whatever the unit could tax with (`Ruleset::allows_guard_in`).
+    if ruleset.is_some_and(|ruleset| !ruleset.allows_guard_in(&hex.region.terrain)) {
+        if options.emits(codes::GUARD_WITHOUT_TAX_ABILITY) {
+            for ordered in &hex.units {
+                if let Some((placed, true)) = ordered.final_guard_order() {
+                    findings.push(ordered.finding(
+                        hex,
+                        codes::GUARD_WITHOUT_TAX_ABILITY,
+                        "cannot guard: guarding at sea is not possible".to_string(),
+                        Some(placed),
+                    ));
+                }
+            }
+        }
+        return;
+    }
     let guarded_now = hex.units.iter().any(|ordered| ordered.unit.on_guard);
     let nothing = Receipts::default();
     let mut eligibility = Vec::with_capacity(hex.units.len());

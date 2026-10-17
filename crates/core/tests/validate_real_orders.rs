@@ -375,10 +375,12 @@ fn the_broad_guard_check_is_the_noisy_one_the_setting_holds_back() {
         },
     );
 
+    // A hex at sea cannot be guarded in New Origins, so it is never called unguarded (`ah-j04e`).
     let hexes_with_our_units = report
         .regions
         .iter()
         .filter(|region| region.units.iter().any(|unit| unit.own))
+        .filter(|region| ruleset().allows_guard_in(&region.terrain))
         .count();
     assert_eq!(
         noisy
@@ -386,7 +388,7 @@ fn the_broad_guard_check_is_the_noisy_one_the_setting_holds_back() {
             .filter(|f| f.code.as_str() == "hex-unguarded")
             .count(),
         hexes_with_our_units,
-        "one per hex we stand in, and nothing guards any of them"
+        "one per land hex we stand in, and nothing guards any of them"
     );
     assert!(
         hexes_with_our_units > 1,
