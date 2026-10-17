@@ -1501,8 +1501,10 @@ pub(crate) struct FormedAsOrdered {
     pub(crate) move_steps: Option<Vec<crate::movement::orders::MoveStep>>,
     /// `WorkingUnit::move_command == Some("SAIL")`.
     pub(crate) sails: bool,
-    /// `WorkingUnit::refused_as_overloaded`: the game refuses its MOVE outright (`ah-586v`).
-    pub(crate) refused_as_overloaded: bool,
+    /// Whether the game keeps it where it is all month: its MOVE refused outright for overload
+    /// (`WorkingUnit::refused_as_overloaded`, `ah-586v`), or its fleet kept in port
+    /// (`WorkingUnit::fleet_stays`, `ah-zbtx`).
+    pub(crate) refused_movement: bool,
 }
 
 /// One unit this month's `FORM` creates, as the whole month's orders leave it.
@@ -1553,7 +1555,7 @@ pub(crate) fn formed_unit_as_ordered(
     })?;
     Some(FormedAsOrdered {
         sails: entry.move_command.as_deref() == Some("SAIL"),
-        refused_as_overloaded: entry.refused_overloaded,
+        refused_movement: entry.refused_overloaded || entry.fleet_stays,
         move_steps: entry.move_steps,
         unit: entry.unit,
     })
@@ -1563,8 +1565,8 @@ pub(crate) fn formed_unit_as_ordered(
 pub(crate) struct SettledMovement {
     /// The settled row's movement, weighed as it holds things after GIVE, TAKE and the market.
     pub(crate) movement: Option<crate::report::model::UnitMovement>,
-    /// `WorkingUnit::refused_as_overloaded`: the game refuses its MOVE outright (`ah-586v`).
-    pub(crate) refused_as_overloaded: bool,
+    /// As [`FormedAsOrdered::refused_movement`].
+    pub(crate) refused_movement: bool,
 }
 
 /// How a unit the report prints moves once this month's orders before movement have run: the
@@ -1590,7 +1592,7 @@ pub(crate) fn settled_movement(
         .into_iter()
         .find(|entry| !entry.formed && entry.unit.unit_id == unit_id)
         .map(|entry| SettledMovement {
-            refused_as_overloaded: entry.refused_overloaded,
+            refused_movement: entry.refused_overloaded || entry.fleet_stays,
             movement: entry.unit.movement,
         })
 }
@@ -1894,10 +1896,13 @@ fn decide_movement(
         } else {
             None
         };
+        // A hull the game keeps in port - overloaded or short of sailors - goes nowhere either, as
+        // the `fleet-overloaded` and `fleet-undercrewed` warnings say (`ah-zbtx`).
         let hull_course: Option<Option<Vec<crate::movement::orders::MoveStep>>> =
             sailed_hull.map(|(region, hull)| {
                 crate::movement::fleet::fleet_course(region, ordered, &formed, &hull.structure_id)
                     .steps
+                    .filter(|_| !entry.fleet_stays)
                     .map(<[crate::movement::orders::MoveStep]>::to_vec)
             });
         let traced_steps: Option<&[crate::movement::orders::MoveStep]> = match &hull_course {
@@ -2338,6 +2343,10 @@ struct WorkingUnit {
     /// unit is weighed for its walk, before any TRANSPORT reaches it; read by the preview and the
     /// map trace.
     refused_overloaded: bool,
+    /// Whether this unit stands in, or captains, a fleet the game keeps in port all month,
+    /// overloaded or short of sailors - `semantics`' judgement, the one the `fleet-overloaded` and
+    /// `fleet-undercrewed` warnings read (`UnitItemEffects::fleet_stays`, `ah-zbtx`).
+    fleet_stays: bool,
     /// The 1-based line of the `FORM` that created this row, or `None` for a report unit. Read
     /// through [`WorkingUnit::key`].
     form_line: Option<usize>,
@@ -2853,6 +2862,7 @@ impl Working {
                 move_steps: None,
                 move_command: None,
                 refused_overloaded: false,
+                fleet_stays: false,
                 form_line: None,
                 move_origin_cause: None,
                 move_destination: None,
@@ -3199,6 +3209,7 @@ impl Working {
             unit.built = effect.built.clone();
             unit.new_ship = effect.new_ship.clone();
             unit.refused_casts = effect.refused_casts.clone();
+            unit.fleet_stays = effect.fleet_stays;
             unit.created = effect
                 .moved
                 .iter()
@@ -3255,6 +3266,7 @@ impl Working {
             move_steps: None,
             move_command: None,
             refused_overloaded: false,
+            fleet_stays: false,
             form_line: Some(form_line),
             move_origin_cause: None,
             move_destination: None,
@@ -9291,8 +9303,15 @@ mod tests {
     /// while the units that stepped ashore stay behind.
     #[test]
     fn a_formed_unit_that_boards_a_hull_its_crew_left_sails_it() {
+        // Ashore's leader is a level-4 sailor, so the new unit alone is the four sailing levels a
+        // Longship needs: short of them the fleet "will not go anywhere" (`rules/movement_sailing`,
+        // `ah-zbtx`), which is not what this test is about.
         let report = fleet_report_with_a_passenger(WAVECREST)
-            .replace("ocean (1,1) in Sea", "plain (1,1) in Shire");
+            .replace("ocean (1,1) in Sea", "plain (1,1) in Shire")
+            .replace(
+                "leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                "leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: sailing [SAIL] 4 (300).",
+            );
         let response = preview_orders_for_remembered_report(
             &mut ReportCache::new(),
             RULESET,

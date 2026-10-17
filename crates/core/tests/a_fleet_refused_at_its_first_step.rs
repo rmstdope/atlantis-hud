@@ -21,7 +21,9 @@ mod common;
 
 /// The settled plain (1,1), where the longship lies, and the unsettled forest (2,2) SE of it,
 /// which grows no grain. Aboard: the captain (900) and a sailor (901), both on guard, a passenger
-/// founding a Palace with its own stone (902) and a farmer (903).
+/// founding a Palace with its own stone (902) and a farmer (903). They weigh 140 together, within
+/// the Longship's 150 (`newage trident data/LONG`): an overloaded fleet stays whatever its course
+/// (`rules/movement_sailing`, `ah-zbtx`), and these tests are about the course.
 const REPORT: &str = "Foo (1) Report\n\n\
 plain (1,1) in Shire, contains Inholm [city], 1000 peasants (humans), $5000.\n\
 ------------------------------------------------------------\n\
@@ -32,10 +34,10 @@ Exits:\n\x20\x20Southeast : forest (2,2) in Shire.\n\n\
 Skills: sailing [SAIL] 2 (90).\n\
 \x20\x20* Sailor (901), on guard, Foo (1), 2 humans [HUMN], 1000 silver [SILV]. Weight: 30. Capacity: \
 0/0/30/0. Skills: sailing [SAIL] 2 (90).\n\
-\x20\x20* Founder (902), Foo (1), 10 humans [HUMN], 120 stone [STON]. Weight: 6100. Capacity: \
-0/0/150/0. Skills: building [BUIL] 3 (180).\n\
-\x20\x20* Farmer (903), Foo (1), 5 humans [HUMN]. Weight: 50. Capacity: 0/0/75/0. Skills: \
-farming [FARM] 1 (30).\n\n\
+\x20\x20* Founder (902), Foo (1), human [HUMN], stone [STON]. Weight: 60. Capacity: 0/0/5/0. \
+Skills: building [BUIL] 3 (180).\n\
+\x20\x20* Farmer (903), Foo (1), human [HUMN]. Weight: 10. Capacity: 0/0/5/0. Skills: farming \
+[FARM] 1 (30).\n\n\
 forest (2,2) in Shire, 100 peasants (humans), $50.\n\
 ------------------------------------------------------------\n\
 \x20\x20Products: 20 wood [WOOD].\n\n\

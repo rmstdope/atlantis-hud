@@ -10,8 +10,8 @@
 
 use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::movement::request::trace_orders_for_remembered_report;
-use atlantis_hud_core::orders::request::{validate_orders_request, ValidateOrdersRequest};
 use atlantis_hud_core::orders::effects::{preview_orders_for_remembered_report, UnitPreviewStatus};
+use atlantis_hud_core::orders::request::{validate_orders_request, ValidateOrdersRequest};
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions, TurnReview};
 use atlantis_hud_core::orders::silver::SilverChangeCause;
 use atlantis_hud_core::report::orders::extract_orders_template;
@@ -47,7 +47,11 @@ fn warned(text: &str, orders: &str, code: &str) -> bool {
 }
 
 /// Every preview row of `unit_id`: its region, status and where it is shown departing to.
-fn rows(text: &str, orders: &str, unit_id: &str) -> Vec<(String, UnitPreviewStatus, Option<String>)> {
+fn rows(
+    text: &str,
+    orders: &str,
+    unit_id: &str,
+) -> Vec<(String, UnitPreviewStatus, Option<String>)> {
     preview_orders_for_remembered_report(
         &mut ReportCache::new(),
         atlantis_hud_fixtures::RULESET_JSON,
@@ -74,9 +78,10 @@ fn rows(text: &str, orders: &str, unit_id: &str) -> Vec<(String, UnitPreviewStat
     .collect()
 }
 
+/// A unit the month leaves untouched gets no row at all, and is drawn as the report shows it; any
+/// row it does get must keep it at `home`.
 fn stays(text: &str, orders: &str, unit_id: &str, home: &str) {
     let rows = rows(text, orders, unit_id);
-    assert!(!rows.is_empty(), "{unit_id} has a row");
     for (region, status, departing_to) in &rows {
         assert_eq!(region, home, "{unit_id}: {rows:?}");
         assert_eq!(*status, UnitPreviewStatus::Present, "{unit_id}: {rows:?}");
@@ -129,7 +134,12 @@ fn the_panel_calls_the_longship_short_of_sailors() {
 fn the_units_list_keeps_a_longship_short_of_sailors_at_sea() {
     let orders = short_of_sailors();
     for unit_id in ["11125", "12590"] {
-        stays(atlantis_hud_fixtures::G3_F42_T42.text, &orders, unit_id, OCEAN);
+        stays(
+            atlantis_hud_fixtures::G3_F42_T42.text,
+            &orders,
+            unit_id,
+            OCEAN,
+        );
     }
 }
 
@@ -180,7 +190,12 @@ fn the_panel_calls_the_raft_overloaded() {
 fn the_units_list_keeps_an_overloaded_raft_in_lonthax() {
     let orders = overloaded();
     for unit_id in ["8333", "10575", "10594"] {
-        stays(atlantis_hud_fixtures::G5_F21_T24.text, &orders, unit_id, LONTHAX);
+        stays(
+            atlantis_hud_fixtures::G5_F21_T24.text,
+            &orders,
+            unit_id,
+            LONTHAX,
+        );
     }
 }
 
@@ -196,7 +211,10 @@ fn the_map_draws_no_route_for_an_overloaded_raft() {
 }
 
 /// Who `unit_id` lends upkeep to, as the SILVER column's `lent for upkeep` lines name them.
-fn lent_for_upkeep(silver: &[atlantis_hud_core::orders::silver::UnitSilver], unit_id: &str) -> Vec<String> {
+fn lent_for_upkeep(
+    silver: &[atlantis_hud_core::orders::silver::UnitSilver],
+    unit_id: &str,
+) -> Vec<String> {
     silver
         .iter()
         .find(|row| row.unit_id == unit_id)
@@ -229,9 +247,15 @@ fn an_overloaded_raft_shares_upkeep_only_in_lonthax() {
     )
     .silver;
     let resident = lent_for_upkeep(&silver, "9508");
-    assert!(!resident.contains(&"Drones (10594)".to_string()), "{resident:?}");
+    assert!(
+        !resident.contains(&"Drones (10594)".to_string()),
+        "{resident:?}"
+    );
     let boarder = lent_for_upkeep(&silver, "8333");
-    assert!(!boarder.contains(&"Drones (9579)".to_string()), "{boarder:?}");
+    assert!(
+        !boarder.contains(&"Drones (9579)".to_string()),
+        "{boarder:?}"
+    );
 }
 
 /// The control: the raft as the report leaves it, with nobody boarding, still sails.

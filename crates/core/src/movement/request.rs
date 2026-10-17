@@ -288,8 +288,9 @@ fn trace_orders(
     let formed;
     // The game refuses an overloaded walker its MOVE outright (`rules/movement_normal`), so the
     // map draws no route for it, agreeing with the `unit-overloaded` warning and the units list
-    // (`ah-586v`, the navigator's choice over a dotted line).
-    let mut refused_as_overloaded = false;
+    // (`ah-586v`, the navigator's choice over a dotted line). A fleet kept in port, overloaded or
+    // short of sailors, is drawn the same way (`rules/movement_sailing`, `ah-zbtx`).
+    let mut refused_movement = false;
     let (unit, own, own_is_sail) =
         match report.units().find(|unit| unit.unit_id == unit_id).cloned() {
             Some(unit) => (
@@ -313,7 +314,7 @@ fn trace_orders(
             ) {
                 Some(found) => {
                     formed = found;
-                    refused_as_overloaded = formed.refused_as_overloaded;
+                    refused_movement = formed.refused_movement;
                     (
                         formed.unit.clone(),
                         formed.move_steps.as_deref(),
@@ -355,7 +356,7 @@ fn trace_orders(
             &ordered,
             unit_id,
         ) {
-            refused_as_overloaded = settled.refused_as_overloaded;
+            refused_movement = settled.refused_movement;
             if let Some(movement) = settled.movement {
                 unit.movement = Some(movement);
             }
@@ -367,7 +368,7 @@ fn trace_orders(
         .with_passages(crate::movement::passages::known_passages_from_json(
             passages_json,
         )?);
-    let path = if refused_as_overloaded {
+    let path = if refused_movement {
         None
     } else {
         trace_move(&map, &ruleset, &unit, steps, Some(&ordered))
@@ -446,8 +447,12 @@ mod tests {
     fn the_map_draws_a_formed_unit_sailing_a_hull_its_builder_left() {
         let mut report = String::from("Foo (1) Report\n\nplain (1,1) in Shire.\n\n");
         report.push_str("Exits:\n  Southeast : ocean (2,2) in Sea.\n\n");
-        report
-            .push_str("* Ashore (903), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n");
+        // A level-4 sailor, so the new unit alone is the four sailing levels a Longship needs: short
+        // of them the fleet "will not go anywhere" (`rules/movement_sailing`, `ah-zbtx`).
+        report.push_str(
+            "* Ashore (903), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+             Skills: sailing [SAIL] 4 (300).\n",
+        );
         report.push_str("+ Wavecrest [329] : Longship; Load: 50/150; Sailors: 4/4; MaxSpeed: 4.\n");
         report.push_str(
             "  * Builders (900), Foo (1), leader [LEAD], sharing, centaur [CTAU]. Weight: 50. \
