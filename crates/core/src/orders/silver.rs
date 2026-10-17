@@ -2932,11 +2932,17 @@ pub fn forecast_unit(
                         let wanted = asked.saturating_mul(price);
                         market_demand = market_demand.saturating_add(wanted);
                         // From what was *wanted*, not from what was spent: a purchase the unit can
-                        // pay none of is still what its shortfall bites on (`ah-omn7`).
-                        if wanted > 0 {
+                        // pay none of is still what its shortfall bites on (`ah-omn7`). But a line
+                        // the ledger charged in full - its own silver and the `SHARE` purse
+                        // together - was refused nothing (`runorders.cpp`: `GetBuyAmount` sizes it
+                        // against `GetSharedMoney()`), so it is not what the unit falls short on:
+                        // the order the purse ran dry for later in the month is (`ah-4j5f`), the
+                        // same reading a silver gift the pool paid gets (`ah-ub3y`).
+                        let line = placed.line as i64;
+                        if wanted > 0 && exact_market_spend(&moves, &[line]) < wanted {
                             spent_on = spent_on.or(Some(SilverSpender::Buy));
                         }
-                        exact_buy_lines.push(placed.line as i64);
+                        exact_buy_lines.push(line);
                         if let Some(tag) = tag {
                             *bought.entry(tag).or_default() += asked;
                         }
