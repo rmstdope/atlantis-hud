@@ -1785,6 +1785,41 @@ fn pool_shares_for(
     PoolSettlement { shares, overruns }
 }
 
+/// One trader's settled standing on one market line (`ah-r0na`).
+///
+/// Two values because a `BUY` asks two questions of the settlement, and cutting one of them to
+/// the buyer's purse once silenced every purse warning (`ah-s4hy`, docs/retrospectives/ah-s4hy.md).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MarketShare {
+    /// What the trader receives (`BUY`) or sells (`SELL`): the game's own division of the line,
+    /// `Game::DoBuy` and `Game::DoSell` dividing it by the orders `GetBuyAmount` and
+    /// `GetSellAmount` cut (`runorders.cpp`, `ah-s4hy`, `ah-6la1`). A line's goods never add up to
+    /// more than the line.
+    goods: i64,
+    /// What a `BUY` is charged *against*: what the line would leave this buyer if its purse were
+    /// no object. `buy` and the SILVER column size the order's "wanted" figure from it, which is
+    /// what `not-enough-silver` and `short_for_orders` bite on, and `price_buy_all` reads one below
+    /// the line as [`BuyAllCap::Shared`]. **Never cut by the buyer's own purse**, or those warnings
+    /// go quiet. Never below `goods`; a line's ceilings may add up to more than the line. A seller
+    /// is charged nothing, so for it this is `goods`.
+    charge_ceiling: i64,
+}
+
+impl MarketShare {
+    /// A trader whose charge ceiling is what it gets: every seller, and every buyer its purse did
+    /// not stop.
+    fn exactly(goods: i64) -> Self {
+        Self {
+            goods,
+            charge_ceiling: goods,
+        }
+    }
+}
+
+/// [`market_shares_for`]'s answer: keyed by canonical tag and side, each vector index-aligned with
+/// `hex.units`.
+type MarketShares = BTreeMap<(String, MarketSide), Vec<MarketShare>>;
+
 /// Every own unit's claim on each of this hex's market lines, settled (`ah-t2pn.3`).
 ///
 /// Keyed by canonical item tag **and side**: a unit selling horses and a unit buying horses draw
@@ -1806,7 +1841,7 @@ fn market_shares_for(
     hex: &Hex<'_>,
     ruleset: Option<&Ruleset>,
     overruns: &mut Vec<PoolOverrun>,
-) -> BTreeMap<(String, MarketSide), Vec<i64>> {
+) -> MarketShares {
     let refused = refused_recruits_in_market_order(hex, ruleset);
     market_shares_sized(hex, ruleset, overruns, &|_, _| None, None, &refused)
 }
@@ -1831,7 +1866,7 @@ fn market_shares_sized(
     // pre-pass's guess where nothing has been priced (`refused_recruits_in_market_order`), the
     // ledger's own judgement once it has (`ah-fsgb`).
     refused_recruits: &BTreeSet<(usize, String)>,
-) -> BTreeMap<(String, MarketSide), Vec<i64>> {
+) -> MarketShares {
     let mut wants: BTreeMap<(String, MarketSide), Vec<i64>> = BTreeMap::new();
     // A unit's `SELL` lines draw on one stock, so a second line for the same goods can only claim
     // what the first left. Without this a unit writing `SELL ALL FUR` twice claims twenty of a line
@@ -2082,58 +2117,57 @@ fn market_shares_sized(
             };
             // `Game::DoSell` and `Game::DoBuy` walk the traders in report order - the order of
             // `claims` - so the last one takes what is left (`ah-alwr`).
-            let mut shares =
-                settle_in_report_order(&claims, attempted, pool, ShareRounding::Nearest);
-            if matches!(side, MarketSide::Buying) {
-                leave_the_line_to_whoever_got_all_it_can_pay(
-                    &mut shares,
-                    &claims,
-                    &on_the_line,
-                    pool,
-                );
-            }
+            let goods = settle_in_report_order(&claims, attempted, pool, ShareRounding::Nearest);
+            let shares = match side {
+                MarketSide::Selling => goods.into_iter().map(MarketShare::exactly).collect(),
+                MarketSide::Buying => {
+                    let ceilings = charge_ceilings(&goods, &claims, &on_the_line, pool);
+                    goods
+                        .into_iter()
+                        .zip(ceilings)
+                        .map(|(goods, charge_ceiling)| MarketShare {
+                            goods,
+                            charge_ceiling,
+                        })
+                        .collect()
+                }
+            };
             ((tag, side), shares)
         })
         .collect()
 }
 
+/// Each buyer's [`MarketShare::charge_ceiling`], from the goods the line's division gave it
+/// (`ah-r0na`, which replaced `ah-s4hy`'s raise of the division itself).
+///
 /// A buyer the line gave everything its purse-cut claim asked for was stopped by its purse, not by
-/// the market, so its share is raised back to what the line leaves it once every other buyer has
-/// theirs - never above its order cut to the line (`ah-s4hy`).
+/// the market, so it is charged against what the line leaves it once every other buyer has its
+/// goods - never more than its order cut to the line. Every other buyer is charged against what
+/// it gets: one squeezed below its claim was stopped by the market, and where nothing was cut by a
+/// purse `claims` and `on_the_line` agree.
 ///
-/// The division itself is the game's: `Game::GetBuyAmount` cuts each order to what its unit can
-/// pay before `Game::DoBuy` divides, so the others are squeezed only by what this buyer can pay.
-/// But a share is also what `buy` and the SILVER column charge the order *against*: cut to the
-/// purse, it would never exceed the purse, and the `not-enough-silver` warning the game's own
-/// "BUY: Unit attempted to buy more than it could afford." stands behind would go quiet - and a
-/// lone `BUY ALL` stopped by its silver would read as stopped by a neighbour. Each caller still
-/// cuts the purchase to the same purse, so what the buyer gets is unchanged by the raise.
-///
-/// Where nothing was cut by a purse, `claims` and `on_the_line` agree and every share is left as
-/// it was: one that got its whole claim got its whole order, which is all the line can leave it.
-///
-/// **A raised share is a ceiling, not a slice of the line**, so where two or more buyers are
-/// stopped by their purses the shares can add up to more than the line (`ah-s4hy`, review finding
-/// 1): each is raised against what the *others actually get*, never against another's raise. A
-/// running total would be a partition, but it would hand the line to whichever purse-stopped buyer
-/// comes first and charge the next one only what it can pay - silencing its `not-enough-silver`
-/// for an order the game equally tells it it cannot afford. What every buyer gets is the
-/// purse-cut division either way.
-fn leave_the_line_to_whoever_got_all_it_can_pay(
-    shares: &mut [i64],
-    claims: &[i64],
-    on_the_line: &[i64],
-    pool: i64,
-) {
-    let total: i64 = shares.iter().copied().fold(0, i64::saturating_add);
-    for (index, share) in shares.iter_mut().enumerate() {
-        let line = on_the_line.get(index).copied().unwrap_or(0);
-        let claim = claims.get(index).copied().unwrap_or(0);
-        if line > claim && *share >= claim {
-            let others = total.saturating_sub(*share);
-            *share = (*share).max(line.min(pool.saturating_sub(others)));
-        }
-    }
+/// Each ceiling is measured against what the *others actually get*, never against another's
+/// ceiling, so two purse-stopped buyers' ceilings can add up to more than the line (`ah-s4hy`,
+/// review finding 1). A running total would partition the line, but hand it to whichever
+/// purse-stopped buyer comes first and charge the next only what it can pay - silencing its
+/// `not-enough-silver` for an order the game equally tells it it cannot afford. The goods are the
+/// partition; this is not.
+fn charge_ceilings(goods: &[i64], claims: &[i64], on_the_line: &[i64], pool: i64) -> Vec<i64> {
+    let total: i64 = goods.iter().copied().fold(0, i64::saturating_add);
+    goods
+        .iter()
+        .enumerate()
+        .map(|(index, &got)| {
+            let line = on_the_line.get(index).copied().unwrap_or(0);
+            let claim = claims.get(index).copied().unwrap_or(0);
+            if line > claim && got >= claim {
+                let others = total.saturating_sub(got);
+                got.max(line.min(pool.saturating_sub(others)))
+            } else {
+                got
+            }
+        })
+        .collect()
 }
 
 /// What one region's monthly yield leaves one unit's `PRODUCE`, and what that region calls the
@@ -3102,22 +3136,26 @@ fn forecast_hex(
                 .get(&tag.to_ascii_uppercase())
                 .map(|uncertain| uncertain.target.clone())
         };
-        // What this unit's own share of the settled market line is. `None` where nothing was
-        // settled - untraded goods, goods nothing could identify - and the arm then falls back to
-        // what the market line itself says.
-        let market_share = |text: &str, side: MarketSide| {
+        // What this unit's `BUY` of the goods is charged against on the settled market line
+        // ([`MarketShare::charge_ceiling`]). `None` where nothing was settled - untraded goods,
+        // goods nothing could identify - and the arm then falls back to what the market line
+        // itself says.
+        let charge_ceiling = |text: &str| {
             // The same resolver the settlement used, market lines and all: bare `resolve_item`
-            // here would look up no share for exactly the goods only the line can name, and the
-            // column would price the whole ask while the ledger priced the settled share
+            // here would look up no ceiling for exactly the goods only the line can name, and the
+            // column would price the whole ask while the ledger priced the settled one
             // (`ah-oymb`).
-            let (lines, text) = match side {
-                MarketSide::Selling => (&hex.region.wanted, text),
-                MarketSide::Buying => (&hex.region.for_sale, bought_item(text, hex)),
-            };
-            market_item_tag(lines, text, hex, ordered, ruleset).and_then(|tag| {
+            market_item_tag(
+                &hex.region.for_sale,
+                bought_item(text, hex),
+                hex,
+                ordered,
+                ruleset,
+            )
+            .and_then(|tag| {
                 market_shares
-                    .get(&(tag.to_ascii_uppercase(), side))
-                    .map(|shares| shares[index])
+                    .get(&(tag.to_ascii_uppercase(), MarketSide::Buying))
+                    .map(|shares| shares[index].charge_ceiling)
             })
         };
         // What this hex's `Products` line leaves this unit's `PRODUCE`, and the region's own word
@@ -3215,7 +3253,7 @@ fn forecast_hex(
                 purchase: &purchase,
                 item_tag: &item_tag,
                 item_name: &name_of,
-                market_share: &market_share,
+                charge_ceiling: &charge_ceiling,
                 region_share: &region_share,
                 region_product_name: &region_product,
                 counted_item: &counted_by_name,
@@ -6555,7 +6593,7 @@ struct Ledger<'a> {
     /// Each market line's buyers, divided as the market pass sized them against the purse the
     /// line found, by upper-case tag and index-aligned with `hex.units` (`ah-s4hy`). The SILVER
     /// column reads these in place of its own up-front settlement, which cannot know the purse.
-    pub(crate) sized_buys: BTreeMap<String, Vec<i64>>,
+    pub(crate) sized_buys: BTreeMap<String, Vec<MarketShare>>,
 
     /// What each unit's `GIVE ... ALL SILV` lines actually handed over, in document order - given
     /// to the SILVER column through [`PhaseFacts::gifts`] so it books the ledger's answer instead
@@ -11120,7 +11158,7 @@ fn buy(
         // What this hex's other own buyers left of the line. `None` where nothing was settled, and
         // `settle_buy_all` then falls back to the line itself (`ah-t2pn.3`). `BUY ALL` is settled
         // once the unit's whole month is counted - see `Ledger::buy_all`.
-        let share = standing.market_share_of(&tag, MarketSide::Buying);
+        let ceiling = standing.charge_ceiling_of(&tag);
         ledger
             .buy_all
             .entry(who.clone())
@@ -11129,7 +11167,7 @@ fn buy(
                 placed: placed.clone(),
                 tag,
                 price: offer.price,
-                share,
+                share: ceiling,
                 market_has: offer.amount,
             });
         return;
@@ -11148,8 +11186,8 @@ fn buy(
     // the unit *asked for* - which is not a quantity of goods, so there is nothing there for an
     // earlier line to have spent down (`ah-lauy`). The unbounded arm falls back to the whole line
     // instead (`ah-t2pn.3`).
-    let allowed = match standing.market_share_of(&tag, MarketSide::Buying) {
-        Some(share) => (share - already).max(0),
+    let ceiling = match standing.charge_ceiling_of(&tag) {
+        Some(ceiling) => (ceiling - already).max(0),
         None => *count,
     };
     // The purse at the market phase, which is what `rules/sequenceofevents` leaves the market to
@@ -11165,8 +11203,8 @@ fn buy(
     // spent is gone, though: the purse shrinks between items (`ah-zus2`). An untrusted purse
     // leaves the line uncapped, which is the behaviour before `ah-szye`.
     let funds = market_funds(ledger, who, standing.actor_index, standing.overstated_tax());
-    let line = price_purchase(*count, offer.price, allowed, funds);
-    let claimed = quantity_bought(*count, allowed);
+    let line = price_purchase(*count, offer.price, ceiling, funds);
+    let claimed = quantity_bought(*count, ceiling);
     let bought = line.quantity;
 
     // The charge is the whole ask, exactly as it was before `ah-omn7`: it is what pushes the
@@ -11188,22 +11226,22 @@ fn buy(
             placed: placed.clone(),
         });
     }
-    // `allowed == 0` as well as `already > 0`: since `ah-omn7` a line can buy nothing because the
+    // `ceiling == 0` as well as `already > 0`: since `ah-omn7` a line can buy nothing because the
     // unit cannot pay, and `dead_buys` says the *goods* are gone, not the money.
     //
     // Only where the unit had the whole line to itself (`ah-ecfl`): on a line faction-mates share,
     // `Game::GetBuyAmount` counts this order as an attempt of its own, so it enlarged the share
     // its earlier lines spent, and deleting it is no free fix.
-    if bought == 0 && allowed == 0 && already > 0 {
-        if let Some(share) = standing
-            .market_share_of(&tag, MarketSide::Buying)
-            .filter(|share| *share >= offer.amount)
+    if bought == 0 && ceiling == 0 && already > 0 {
+        if let Some(ceiling) = standing
+            .charge_ceiling_of(&tag)
+            .filter(|ceiling| *ceiling >= offer.amount)
         {
             ledger.dead_buys.push(DeadBuy {
                 unit_id: who.clone(),
                 tag: tag.clone(),
                 placed: placed.clone(),
-                available: share,
+                available: ceiling,
                 market_has: offer.amount,
             });
         }
@@ -11606,7 +11644,7 @@ fn settle_buy_all(
 #[derive(Clone, Copy)]
 struct HexStanding<'a> {
     /// Index-aligned with `hex.units`, exactly as [`market_shares_for`] builds it.
-    market: &'a BTreeMap<(String, MarketSide), Vec<i64>>,
+    market: &'a MarketShares,
     /// The whole report's production settlement, read by origin coordinate and `actor_index`: a
     /// passenger's pool is in the hex its vessel arrives in, not in this one (`ah-k43x`).
     production: &'a ProductionShares,
@@ -11619,17 +11657,31 @@ struct HexStanding<'a> {
 }
 
 impl HexStanding<'_> {
-    /// This unit's own share of a settled market line, or `None` where nothing was settled - goods
-    /// this market does not trade, or a hex that could not be settled at all. The caller then falls
-    /// back to what the market line itself says.
+    /// This unit's own standing on a settled market line, or `None` where nothing was settled -
+    /// goods this market does not trade, or a hex that could not be settled at all. The caller
+    /// then falls back to what the market line itself says.
     ///
     /// Index-aligned rather than keyed by unit id, because the settlement is positional - the same
     /// reason [`market_shares_for`] builds it that way, and the same lookup the Silver column's
-    /// `market_share` closure makes.
-    fn market_share_of(&self, tag: &str, side: MarketSide) -> Option<i64> {
+    /// `charge_ceiling` closure makes.
+    fn market_standing(&self, tag: &str, side: MarketSide) -> Option<MarketShare> {
         self.market
             .get(&(tag.to_ascii_uppercase(), side))
             .and_then(|shares| shares.get(self.actor_index).copied())
+    }
+
+    /// What this unit's `BUY` of `tag` is charged against ([`MarketShare::charge_ceiling`]), or
+    /// `None` where nothing was settled.
+    fn charge_ceiling_of(&self, tag: &str) -> Option<i64> {
+        self.market_standing(tag, MarketSide::Buying)
+            .map(|share| share.charge_ceiling)
+    }
+
+    /// How many of `tag` the line lets this unit's `SELL` sell ([`MarketShare::goods`]), or `None`
+    /// where nothing was settled.
+    fn sold_share_of(&self, tag: &str) -> Option<i64> {
+        self.market_standing(tag, MarketSide::Selling)
+            .map(|share| share.goods)
     }
 
     /// This unit's own overstatement, or `0` where the slice cannot answer - the same
@@ -13178,9 +13230,7 @@ fn sell(
     let remaining_holding = own_holding.saturating_add(lent);
     // What this hex's other own sellers left of the line, or the line itself where nothing was
     // settled (`ah-t2pn.3`), less what this unit's own earlier lines have already taken out of it.
-    let allowed = standing
-        .market_share_of(&tag, MarketSide::Selling)
-        .unwrap_or(demand.amount);
+    let allowed = standing.sold_share_of(&tag).unwrap_or(demand.amount);
     let line = price_sale_line(
         amount,
         remaining_holding,
@@ -32759,7 +32809,7 @@ mod tests {
         let settled_share = shares
             .get(&("FUR".to_string(), MarketSide::Selling))
             .and_then(|shares| shares.first())
-            .copied()
+            .map(|share| share.goods)
             .expect("the doubled unit's settled share should exist");
 
         let price = 42;
@@ -35765,6 +35815,106 @@ mod tests {
 
             assert_eq!(silver_of(&review, "2390").expense, Some(10 * 60));
             assert_eq!(silver_of(&review, "2391").expense, Some(50 * 60));
+        }
+
+        /// The settlement of one line, straight from `market_shares_sized`, with each unit able
+        /// to pay for `afford[index]` of the goods (`ah-r0na`).
+        fn settled_line(
+            wanted: Vec<MarketItem>,
+            for_sale: Vec<MarketItem>,
+            units: Vec<ReportUnit>,
+            orders: &str,
+            afford: &[i64],
+            side: MarketSide,
+        ) -> Vec<MarketShare> {
+            let hex = ReportRegion {
+                wanted,
+                for_sale,
+                ..region(units)
+            };
+            let ordered = OrderedUnits::read(orders);
+            let rules = ruleset();
+            let hex = hex_with_transfers(
+                &hex,
+                &ordered,
+                &[],
+                Some(&rules),
+                &BTreeSet::new(),
+                &NO_UNITS_SHOWN,
+            );
+            let mut shares = market_shares_sized(
+                &hex,
+                Some(&rules),
+                &mut Vec::new(),
+                &|index, _| afford.get(index).copied(),
+                None,
+                &BTreeSet::new(),
+            );
+            shares
+                .remove(&("HORS".to_string(), side))
+                .unwrap_or_else(|| panic!("no HORS line settled: {shares:?}"))
+        }
+
+        /// `ah-r0na`, the bead's headline. A buyer stopped by its purse *gets* what it can pay
+        /// for, the division `Game::DoBuy` makes of the purse-cut orders (`ah-s4hy`), but its
+        /// order is *charged against* what the line leaves it, which is what keeps
+        /// `not-enough-silver` speaking for it. The two used to be one number.
+        #[test]
+        fn a_purse_stopped_buyer_gets_what_it_can_pay_and_is_charged_against_what_the_line_leaves()
+        {
+            let shares = settled_line(
+                vec![],
+                vec![line(100, 60)],
+                vec![trader("2390", 0, 600), trader("2391", 0, 20_000)],
+                "unit 2390\nBUY 100 horse\nunit 2391\nBUY 50 horse\n",
+                &[10, 333],
+                MarketSide::Buying,
+            );
+
+            let goods: Vec<i64> = shares.iter().map(|share| share.goods).collect();
+            let ceilings: Vec<i64> = shares.iter().map(|share| share.charge_ceiling).collect();
+            assert_eq!(goods, vec![10, 50]);
+            assert_eq!(ceilings, vec![50, 50]);
+        }
+
+        /// The shape of `ah-s4hy`'s review finding 1, now stated rather than stumbled on: where
+        /// two buyers are both stopped by their purses, their goods still add up to no more than
+        /// the line, while their charge ceilings - each measured against what the *other* gets -
+        /// may.
+        #[test]
+        fn the_goods_partition_the_line_where_the_charge_ceilings_need_not() {
+            let shares = settled_line(
+                vec![],
+                vec![line(100, 60)],
+                vec![trader("2390", 0, 600), trader("2391", 0, 1200)],
+                "unit 2390\nBUY 100 horse\nunit 2391\nBUY 100 horse\n",
+                &[10, 20],
+                MarketSide::Buying,
+            );
+
+            let goods: Vec<i64> = shares.iter().map(|share| share.goods).collect();
+            let ceilings: Vec<i64> = shares.iter().map(|share| share.charge_ceiling).collect();
+            assert_eq!(goods, vec![10, 20]);
+            assert!(goods.iter().sum::<i64>() <= 100);
+            assert_eq!(ceilings, vec![80, 90]);
+        }
+
+        /// A sale is charged nothing, so a seller's ceiling is simply what it sells.
+        #[test]
+        fn a_seller_s_charge_ceiling_is_its_goods() {
+            let shares = settled_line(
+                vec![line(100, 60)],
+                vec![],
+                vec![trader("2390", 80, 0), trader("2391", 70, 0)],
+                "unit 2390\nSELL 80 horse\nunit 2391\nSELL 70 horse\n",
+                &[],
+                MarketSide::Selling,
+            );
+
+            assert!(shares
+                .iter()
+                .all(|share| share.goods == share.charge_ceiling));
+            assert_eq!(shares.iter().map(|share| share.goods).sum::<i64>(), 100);
         }
 
         #[test]
@@ -55523,9 +55673,9 @@ BUILD
             .get(&("HUMN".to_string(), MarketSide::Buying))
             .unwrap_or_else(|| panic!("no HUMN buying line: {shares:?}"));
 
-        assert_eq!(settled[0], 0, "the mage's refused BUY claims nothing");
+        assert_eq!(settled[0].goods, 0, "the mage's refused BUY claims nothing");
         assert_eq!(
-            settled[1], 10,
+            settled[1].goods, 10,
             "the faction-mate takes the whole line, as the server will give it"
         );
         assert!(
@@ -55605,7 +55755,7 @@ BUILD
             .unwrap_or_else(|| panic!("no FUR selling line: {shares:?}"));
 
         assert!(
-            settled[0] > 0,
+            settled[0].goods > 0,
             "a sale this HUD cannot follow still contends: {settled:?}"
         );
     }
@@ -55650,8 +55800,8 @@ BUILD
             .get(&("GLAS".to_string(), MarketSide::Buying))
             .unwrap_or_else(|| panic!("no GLAS buying line: {shares:?}"));
 
-        assert_eq!(settled[0], 5, "each buyer takes half the line");
-        assert_eq!(settled[1], 5, "each buyer takes half the line");
+        assert_eq!(settled[0].goods, 5, "each buyer takes half the line");
+        assert_eq!(settled[1].goods, 5, "each buyer takes half the line");
         assert_eq!(overruns.len(), 1, "one oversubscribed line: {overruns:?}");
         let overrun = &overruns[0];
         assert!(
@@ -55707,8 +55857,8 @@ BUILD
             .get(&("GLAS".to_string(), MarketSide::Selling))
             .unwrap_or_else(|| panic!("no GLAS selling line: {shares:?}"));
 
-        assert_eq!(settled[0], 5, "each seller sells half the line");
-        assert_eq!(settled[1], 5, "each seller sells half the line");
+        assert_eq!(settled[0].goods, 5, "each seller sells half the line");
+        assert_eq!(settled[1].goods, 5, "each seller sells half the line");
         assert_eq!(overruns.len(), 1, "one oversubscribed line: {overruns:?}");
         let overrun = &overruns[0];
         assert!(
