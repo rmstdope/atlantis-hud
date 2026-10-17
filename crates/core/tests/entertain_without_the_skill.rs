@@ -1,11 +1,11 @@
 //! ENTERTAIN by a unit without the entertainment skill earns nothing and loses the month (`ah-sej1`).
 //!
 //! The engine runs ENTERTAIN as a `PRODUCE` of silver by the entertainment skill: parseorders.cpp
-//! sets `o->skill = S_ENTERTAINMENT`, and `Game::ValidProd` (../Atlantis `monthorders.cpp`) refuses
-//! a unit whose level is below the item's production level with "PRODUCE: Unit isn't skilled
-//! enough." and deletes the month order. The level is `Unit::GetSkill(S_ENTERTAINMENT)`, which
-//! reads the `entertainment` attribute (`unit.cpp`), built from ENTE and from five times PHEN
-//! (`gamedata.cpp`) - so a Phantasmal Entertainment mage is skilled enough without ENTE.
+//! `ProcessEntertainOrder` sets `o->skill = S_ENTERTAINMENT`. Silver's production level is 0
+//! (`gamedata.cpp`), so `Game::ValidProd` (../Atlantis `monthorders.cpp`) refuses nothing and pays
+//! `men * level`, where the level is `Unit::GetSkill(S_ENTERTAINMENT)`: the `entertainment`
+//! attribute, the larger of ENTE and five times PHEN (`unit.cpp`, `gamedata.cpp`). A unit with
+//! neither earns 0, and since its month order exists it is not set to work: the month is lost.
 //! `rules/entertain`: "Spend the month entertaining the populace to earn money."
 //!
 //! `mountain (7,53)` of the committed turn 72 holds Seven of Eight (18642), with manipulation,

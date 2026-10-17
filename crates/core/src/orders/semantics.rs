@@ -21795,8 +21795,8 @@ fn arrives_by_sea(hex: &Hex<'_>, ordered: &Ordered<'_>, ruleset: Option<&Ruleset
 /// The engine parses ENTERTAIN into a `PRODUCE` of silver by the entertainment skill
 /// (`Game::ProcessEntertainOrder`, ../Atlantis `parseorders.cpp`) and pays each entertainer
 /// `men * level` of the region's demand (`Game::ValidProd`, `monthorders.cpp`), where the level is
-/// `Unit::GetSkill(S_ENTERTAINMENT)` - the `entertainment` attribute, built from ENTE and from
-/// PHEN (`unit.cpp`, `gamedata.cpp`). So a unit with neither earns nothing, and since its month
+/// `Unit::GetSkill(S_ENTERTAINMENT)` - the `entertainment` attribute, the larger of ENTE and five
+/// times PHEN (`unit.cpp`, `gamedata.cpp`). So a unit with neither earns nothing, and since its month
 /// order exists it is not set to work either: the month is lost. Under `produce-without-skill`
 /// because that is what the engine runs it as, and so one switch covers both.
 fn check_entertainment_skill(
@@ -29621,6 +29621,30 @@ mod tests {
                 "a unit drawing on another pool is not contending"
             );
             assert_eq!(entertaining.late_income, Some(200));
+        }
+
+        /// An entertainer with no level to be paid on asks the pool for nothing, so a contested
+        /// pool is no doubt about its takings: it earns a certain nothing (`ah-sej1`).
+        #[test]
+        fn an_unskilled_entertainer_is_not_doubted_by_a_contested_entertainment_pool() {
+            let mut guessed = entertainer("2391", 60, 2);
+            guessed.men_estimated = true;
+            let review = wage_review(
+                "$12.0",
+                Some(1200),
+                Some(200),
+                vec![entertainer("2390", 5, 2), guessed, worker("2392", 5)],
+                "unit 2390\nENTERTAIN\nunit 2391\nENTERTAIN\nunit 2392\nENTERTAIN\n",
+            );
+
+            assert_eq!(
+                silver_of(&review, "2390").doubt,
+                Some(SilverDoubt::ContestedRegionPool),
+                "the skilled entertainer contends, or the assertion below is vacuous"
+            );
+            let unskilled = silver_of(&review, "2392");
+            assert_eq!(unskilled.doubt, None);
+            assert_eq!(unskilled.late_income, Some(0));
         }
 
         /// What separates this doubt from `EstimatedMen`'s whole-unit early return: the unit's
@@ -69438,8 +69462,8 @@ BUILD
 
     #[test]
     fn an_entertainer_with_entertainment_or_phantasmal_entertainment_is_not_marked() {
-        // `entertainment` is ENTE plus five times PHEN (../Atlantis `gamedata.cpp`), so either is
-        // a level the engine pays on.
+        // `entertainment` is the larger of ENTE and five times PHEN (../Atlantis `gamedata.cpp`,
+        // `Unit::GetAttribute` in `unit.cpp`), so either is a level the engine pays on.
         for tag in ["ENTE", "PHEN"] {
             let findings = check(
                 vec![region(vec![with_skill(unit("4021"), tag, 1)])],

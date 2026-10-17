@@ -3180,7 +3180,9 @@ pub fn forecast_unit(
             Intent::Work if shares.wages == PoolShare::Unknowable => {
                 income_doubt = income_doubt.or(Some(SilverDoubt::ContestedRegionPool));
             }
-            Intent::Entertain if shares.entertainment == PoolShare::Unknowable => {
+            Intent::Entertain
+                if wants_entertainment && shares.entertainment == PoolShare::Unknowable =>
+            {
                 income_doubt = income_doubt.or(Some(SilverDoubt::ContestedRegionPool));
             }
             _ => {}
