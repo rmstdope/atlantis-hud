@@ -15,6 +15,7 @@ import {
   type ParsedReport,
   type ReportParseResult,
   type ReportRegion,
+  type ReportUnit,
   type TraceMoveOrdersRequest,
   type TradeRoute,
   type ValidateOrdersRequest
@@ -264,6 +265,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
           mergedRegionCount: 0,
           newRegionCount: 0,
           mapExport: false,
+          units: [],
           rejection: "parsed report did not meet minimum import threshold"
         };
       }
@@ -276,6 +278,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
           mergedRegionCount: 0,
           newRegionCount: 0,
           mapExport: false,
+          units: [],
           rejection: "a faction's own report is loaded rather than merged"
         };
       }
@@ -288,6 +291,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
           mergedRegionCount: 0,
           newRegionCount: 0,
           mapExport: false,
+          units: [],
           rejection: `a report from turn ${turn} cannot be merged into turn ${viewerTurnNumber}`
         };
       }
@@ -308,6 +312,9 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
         mergedRegionCount: regions.length,
         newRegionCount: regions.filter((regionId) => !known.has(regionId)).length,
         mapExport,
+        // One of the merged faction's own units per hex, and none for a map export - the core's
+        // rule (`units_for_merge_plan`), mirrored only so far as the routing tests need.
+        units: mapExport ? [] : regions.map((regionId) => ({ unitId: `u${regionId}`, regionId, own: true })),
         rejection: null
       };
     },
@@ -1469,7 +1476,8 @@ describe("exporting and importing games", () => {
       turnNumber: 12,
       mergedFactionId: "73",
       mergedFactionName: "Faction 73",
-      mergedAt: "2026-08-08T00:05:00Z"
+      mergedAt: "2026-08-08T00:05:00Z",
+      units: [{ unitId: "7124", regionId: "1:7,53", own: true } as ReportUnit]
     });
     await adapter.saveHexNote(opened.databasePath, {
       id: "note-1",
@@ -1537,7 +1545,8 @@ describe("exporting and importing games", () => {
         turnNumber: 12,
         mergedFactionId: "73",
         mergedFactionName: "Faction 73",
-        mergedAt: "2026-08-08T00:05:00Z"
+        mergedAt: "2026-08-08T00:05:00Z",
+        units: [{ unitId: "7124", regionId: "1:7,53", own: true }]
       }
     ]);
     expect(await imported.listHexNotes(restored.databasePath, "alpha")).toEqual([
@@ -1956,7 +1965,11 @@ describe("merging an allied report", () => {
         turnNumber: 71,
         mergedFactionId: "73",
         mergedFactionName: "Faction 73",
-        mergedAt: MERGED_AT
+        mergedAt: MERGED_AT,
+        units: [
+          { unitId: "u1:1,1", regionId: "1:1,1", own: true },
+          { unitId: "u1:9,9", regionId: "1:9,9", own: true }
+        ]
       },
       {
         gameId: "p",
@@ -1964,8 +1977,53 @@ describe("merging an allied report", () => {
         turnNumber: 71,
         mergedFactionId: "81",
         mergedFactionName: "Faction 81",
-        mergedAt: "2026-08-10T19:00:00Z"
+        mergedAt: "2026-08-10T19:00:00Z",
+        units: [{ unitId: "u1:5,5", regionId: "1:5,5", own: true }]
       }
+    ]);
+  });
+
+  /** `ah-oqxn`: the merged report's units ride on its record, so its turn can show them later. */
+  it("keeps the merged report's units on its record", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), await withViewersMap());
+
+    await adapter.mergeReport("/db", "p", "95", 71, ALLY, null, MERGED_AT);
+
+    const [record] = await adapter.loadMergedReports("/db", "p", "95", 71);
+    expect(record.units.map((unit) => unit.unitId)).toEqual(["u1:1,1", "u1:9,9"]);
+  });
+
+  it("reads a record stored before units were kept as having none", async () => {
+    const store = createMemoryWebStore();
+    await store.putMergedReport({
+      databasePath: "/db",
+      gameId: "p",
+      factionId: "95",
+      turnNumber: 71,
+      mergedFactionId: "73",
+      mergedFactionName: "Borg",
+      mergedAt: MERGED_AT
+    });
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+
+    const [record] = await adapter.loadMergedReports("/db", "p", "95", 71);
+    expect(record.units).toEqual([]);
+  });
+
+  it("lists one faction's merges over every turn, by turn", async () => {
+    const store = createMemoryWebStore();
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+    await adapter.mergeReport("/db", "p", "95", 72, "MERGE: 73 72 1:1,1", null, "2026-08-11T09:00:00Z");
+    await adapter.mergeReport("/db", "p", "95", 71, "MERGE: 81 71 1:5,5", null, "2026-08-10T19:00:00Z");
+    await adapter.mergeReport("/db", "p", "95", 71, ALLY, null, MERGED_AT);
+    await adapter.mergeReport("/db", "p", "12", 71, ALLY, null, MERGED_AT);
+
+    const history = await adapter.loadMergedReportHistory("/db", "p", "95");
+
+    expect(history.map((record) => [record.turnNumber, record.mergedFactionId])).toEqual([
+      [71, "73"],
+      [71, "81"],
+      [72, "73"]
     ]);
   });
 

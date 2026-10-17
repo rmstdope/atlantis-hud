@@ -17,7 +17,7 @@ use atlantis_hud_core::report::merge::StoredSighting;
 use atlantis_hud_core::report::sighting::RegionSighting;
 use atlantis_hud_core::{
     apply_merge_plan, diff_imported_turn, plan_merge, reject_import, reserved_merge_identity,
-    ImportedTurnSnapshot, MergePlan, ReportParseResultWire,
+    units_for_merge_plan, ImportedTurnSnapshot, MergePlan, ReportParseResultWire,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -98,6 +98,9 @@ struct PreparedMergeDto {
     /// the core's for the same reason the merge itself is: the desktop, which writes that record in
     /// Rust, must not be able to answer differently.
     map_export: bool,
+    /// The units the merge keeps on its record (`ah-oqxn`): every unit of an allied report, none
+    /// of a map export's. The core's rule, so the browser keeps exactly what the desktop keeps.
+    units: Vec<atlantis_hud_core::report::model::ReportUnit>,
     /// `None` when the report may be merged; otherwise why it may not be.
     rejection: Option<String>,
 }
@@ -354,6 +357,7 @@ pub fn prepare_report_merge_state(
                 merged_region_count: 0,
                 new_region_count: 0,
                 map_export: false,
+                units: Vec::new(),
                 rejection: Some(rejection),
             })
         }
@@ -376,6 +380,7 @@ pub fn prepare_report_merge_state(
         merged_region_count: u32::try_from(outcome.merged_region_count).unwrap_or(u32::MAX),
         new_region_count: u32::try_from(outcome.new_region_count).unwrap_or(u32::MAX),
         map_export,
+        units: units_for_merge_plan(&plan, &report),
         rejection: None,
     })
 }

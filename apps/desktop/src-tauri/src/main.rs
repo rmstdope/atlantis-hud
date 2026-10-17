@@ -173,6 +173,7 @@ fn main() {
             atlantis_hud_core_tauri::command_load_region_sightings,
             atlantis_hud_core_tauri::command_merge_report,
             atlantis_hud_core_tauri::command_load_merged_reports,
+            atlantis_hud_core_tauri::command_load_merged_report_history,
             atlantis_hud_core_tauri::command_trade_routes,
             atlantis_hud_core_tauri::command_query
         ])
