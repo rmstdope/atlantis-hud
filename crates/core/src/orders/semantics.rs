@@ -72939,7 +72939,7 @@ BUILD
             .iter()
             .find(|row| row.unit_id == "6")
             .expect("unit 6 has a SILVER row");
-        assert_eq!((row.income, row.doubt.clone()), (Some(0), None));
+        assert_eq!((row.income, row.doubt), (Some(0), None));
     }
 
     /// The same for PILLAGE, which `RunPillageOrders` checks against the same tax counter.
