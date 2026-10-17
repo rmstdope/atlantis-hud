@@ -634,6 +634,21 @@ describe("finds the one order that takes the whole month", () => {
     expect(longOrderOf("STUDY COMB\nCREATE VILLAGE", "trident")).toBe("CREATE VILLAGE");
   });
 
+  // `ah-5we4`: MOVE and ADVANCE, SAIL, and TEACH lines in a row are one journey or one lesson,
+  // not rivals - the engine appends a second MOVE or SAIL to the first (ProcessMoveOrder and
+  // ProcessSailOrder in parseorders.cpp), and the core's `month_segments` makes consecutive lines
+  // of one `ChainKind` a single segment. So the column names the run's first line, as it always
+  // did for a lone journey.
+  it("names the first line of a chained journey or lesson that runs last", () => {
+    expect(longOrderOf("MOVE N\nMOVE NE", "origins")).toBe("MOVE N");
+    expect(longOrderOf("ADVANCE N\nMOVE NE", "origins")).toBe("ADVANCE N");
+    expect(longOrderOf("SAIL N\nguard 1\nSAIL NE", "origins")).toBe("SAIL N");
+    expect(longOrderOf("TEACH 12\nTEACH 13", "origins")).toBe("TEACH 12");
+    // Only a run that ends the list: a STUDY between two MOVEs breaks the journey.
+    expect(longOrderOf("MOVE N\nSTUDY COMB\nMOVE S", "origins")).toBe("MOVE S");
+    expect(longOrderOf("SAIL N\nMOVE S", "origins")).toBe("MOVE S");
+  });
+
   // `ah-5we4`: New Age's list is longer - "The orders which take an entire month are ADVANCE,
   // BUILD, CREATE, ENTERTAIN, EXPLORE, MOVE, PILLAGE, PRODUCE, SAIL, STUDY, TAX, TEACH and WORK"
   // (newage arcanum and trident, rules/playing_turns).
