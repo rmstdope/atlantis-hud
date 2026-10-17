@@ -1,8 +1,9 @@
 import type { ArmyRecord, ReportUnit } from "@atlantis/core-client";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { placeTooltip, type Point } from "../unitTooltip";
-import { ArmyMenuItems } from "./AddToArmyMenu";
+import { ArmyMenuItems, useArmyRowsFades } from "./AddToArmyMenu";
+import { clearOfEdges } from "./armyMenuFit";
 import { usePopoverDismiss } from "./popover";
 
 /**
@@ -44,6 +45,17 @@ export function UnitContextMenu({
   const [node, setNode] = useState<HTMLDivElement | null>(null);
   const ownRef = useRef<HTMLDivElement | null>(null);
   const [placed, setPlaced] = useState<{ left: number; top: number } | null>(null);
+  const rows = useArmyRowsFades();
+  const { update } = rows;
+  // A resize re-places the menu rather than closing it (ah-gnmx); the cap itself is CSS and follows
+  // the window on its own, but where it sits has to be worked out again from its new size.
+  const [resized, setResized] = useState(0);
+
+  useEffect(() => {
+    const onResize = () => setResized((count) => count + 1);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   // Escape and a press outside, through the popover kit rather than hand-rolled: this is a
   // popover, so it hears Escape in the bubble phase like every other one. The drag's Escape goes
@@ -56,16 +68,17 @@ export function UnitContextMenu({
       return;
     }
     // The frame takes focus as it mounts, exactly as `PopoverFrame` does: it is the
-    // `role="dialog"` element carrying the label, so focusing it announces both.
-    node.focus({ preventScroll: true });
-    setPlaced(
-      placeTooltip(
-        at,
-        { width: node.offsetWidth, height: node.offsetHeight },
-        { width: window.innerWidth, height: window.innerHeight }
-      )
-    );
-  }, [node, at]);
+    // `role="dialog"` element carrying the label, so focusing it announces both. Only on the first
+    // placing: a resize must not pull focus off a row the player has tabbed to.
+    if (resized === 0) {
+      node.focus({ preventScroll: true });
+    }
+    update();
+    const size = { width: node.offsetWidth, height: node.offsetHeight };
+    const placed = placeTooltip(at, size, { width: window.innerWidth, height: window.innerHeight });
+    // ah-gnmx: 8px clear of the top and bottom, as the button's list keeps.
+    setPlaced({ ...placed, top: clearOfEdges(placed.top, size.height, window.innerHeight) });
+  }, [node, at, resized, update]);
 
   return createPortal(
     <div
@@ -84,7 +97,10 @@ export function UnitContextMenu({
         // frame: shown, that pass would put it at the corner of the window for an instant.
         visibility: placed ? "visible" : "hidden"
       }}
-      className="pointer-events-auto fixed z-50 w-56 rounded border border-edge bg-panel-raised p-1 text-pane shadow-lg"
+      // ah-gnmx: the same cap as the button's list - 8px clear of each window edge
+      // (`MENU_EDGE_MARGIN`) - with the same army rows scrolling inside it. `placeTooltip` then
+      // measures the capped box, so it is kept inside the window as before.
+      className="pointer-events-auto fixed z-50 flex max-h-[calc(100vh-16px)] w-56 flex-col rounded border border-edge bg-panel-raised p-1 text-pane shadow-lg"
     >
       <ArmyMenuItems
         units={units}
@@ -92,6 +108,9 @@ export function UnitContextMenu({
         onAdd={onAdd}
         onNewArmy={onNewArmy}
         onDismiss={onDismiss}
+        rowsRef={rows.rowsRef}
+        fades={rows.fades}
+        onRowsScroll={update}
       />
     </div>,
     document.body

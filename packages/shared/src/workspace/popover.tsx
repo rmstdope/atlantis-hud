@@ -1,5 +1,6 @@
 import type { ReactNode, RefObject } from "react";
-import { useEffect, useRef } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef } from "react";
+import type { MenuSide } from "./armyMenuFit";
 
 /** Which edge of its chip a popover hangs from. */
 export type PopoverAlign = "left" | "right";
@@ -20,7 +21,9 @@ export type PopoverAlign = "left" | "right";
 export function usePopoverDismiss(
   wrapperRef: RefObject<HTMLElement | null>,
   open: boolean,
-  onDismiss: () => void
+  onDismiss: () => void,
+  /** A panel rendered somewhere else in the document that still counts as inside (ah-gnmx). */
+  panelRef?: RefObject<HTMLElement | null>
 ): void {
   const latest = useRef(onDismiss);
   latest.current = onDismiss;
@@ -37,7 +40,8 @@ export function usePopoverDismiss(
     // Pointer rather than click: a click that started inside and ended outside is still a drag
     // within the panel, not a dismissal.
     const onPointerDown = (event: PointerEvent) => {
-      if (!wrapperRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!wrapperRef.current?.contains(target) && !panelRef?.current?.contains(target)) {
         latest.current();
       }
     };
@@ -48,7 +52,28 @@ export function usePopoverDismiss(
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("pointerdown", onPointerDown);
     };
-  }, [open, wrapperRef]);
+  }, [open, wrapperRef, panelRef]);
+}
+
+/**
+ * What a `ChipPopover` hands a panel that has to render itself outside it (ah-gnmx): the chip's
+ * wrapper to measure and hang from, and a ref for the panel's own node, which the popover then
+ * treats as inside for dismissal and for giving focus back on close.
+ *
+ * A panel needs this when the chip sits in a pane that clips and blurs what it holds - the units
+ * dock does both, so a list there cannot pass the pane's own edges unless it is portalled out of
+ * it (`UnitContextMenu.tsx` records the same fact).
+ */
+export type ChipPopoverAnchor = {
+  anchorRef: RefObject<HTMLElement | null>;
+  panelRef: RefObject<HTMLElement | null>;
+};
+
+const ChipPopoverContext = createContext<ChipPopoverAnchor | null>(null);
+
+/** The enclosing `ChipPopover`'s anchor, or null outside one. */
+export function useChipPopoverAnchor(): ChipPopoverAnchor | null {
+  return useContext(ChipPopoverContext);
 }
 
 /**
@@ -66,6 +91,8 @@ export function PopoverFrame({
   padding,
   textSize,
   frameRef,
+  side,
+  maxHeight,
   children
 }: {
   testId: string;
@@ -76,6 +103,13 @@ export function PopoverFrame({
   textSize?: string;
   /** So a popover that has to know where it is on screen can measure itself (ah-mwqa). */
   frameRef?: RefObject<HTMLDivElement | null>;
+  /** Which side of the chip it hangs from; under it unless told otherwise (ah-gnmx). */
+  side?: MenuSide;
+  /**
+   * A cap in pixels for a panel that has measured how much room it has (ah-gnmx). The frame becomes
+   * a flex column under it, so a `min-h-0` child is the part that shrinks and scrolls.
+   */
+  maxHeight?: number;
   children: ReactNode;
 }) {
   // The frame takes focus as it mounts (ah-pdly). It is the `role="dialog"` element carrying the
@@ -107,7 +141,8 @@ export function PopoverFrame({
       role="dialog"
       aria-label={label}
       onDragOver={(event) => event.stopPropagation()}
-      className={`absolute ${align === "left" ? "left-0" : "right-0"} top-full z-20 mt-1 ${width} rounded border border-edge bg-panel-raised ${padding ?? ""} ${textSize ?? "text-pane"} whitespace-normal shadow-lg`}
+      style={maxHeight === undefined ? undefined : { maxHeight }}
+      className={`absolute ${align === "left" ? "left-0" : "right-0"} ${side === "above" ? "bottom-full mb-1" : "top-full mt-1"} z-20 ${maxHeight === undefined ? "" : "flex flex-col"} ${width} rounded border border-edge bg-panel-raised ${padding ?? ""} ${textSize ?? "text-pane"} whitespace-normal shadow-lg`}
     >
       {children}
     </div>
@@ -133,7 +168,9 @@ export function ChipPopover({
   className?: string;
 }) {
   const wrapperRef = useRef<HTMLSpanElement | null>(null);
-  usePopoverDismiss(wrapperRef, open, onDismiss);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const anchor = useMemo<ChipPopoverAnchor>(() => ({ anchorRef: wrapperRef, panelRef }), []);
+  usePopoverDismiss(wrapperRef, open, onDismiss, panelRef);
 
   // Closing puts the user back where they were (ah-pdly). Remembered on open rather than assumed
   // to be the chip: a popover can be opened by a cycling chord with focus somewhere else entirely,
@@ -154,7 +191,10 @@ export function ChipPopover({
     // Asked while rendering for the same reason: by the time the effect below runs the panel has
     // been removed from the document and focus has already fallen to <body>, so "is focus still
     // ours?" can only be answered before the commit.
-    hadFocus.current = wrapperRef.current?.contains(document.activeElement) ?? false;
+    const active = document.activeElement;
+    hadFocus.current =
+      (wrapperRef.current?.contains(active) ?? false) ||
+      (panelRef.current?.contains(active) ?? false);
   }
   wasOpen.current = open;
 
@@ -187,7 +227,9 @@ export function ChipPopover({
   return (
     <span ref={wrapperRef} className={`relative ${className ?? ""}`}>
       {children}
-      {open ? panel : null}
+      {open ? (
+        <ChipPopoverContext.Provider value={anchor}>{panel}</ChipPopoverContext.Provider>
+      ) : null}
     </span>
   );
 }
