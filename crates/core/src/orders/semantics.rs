@@ -20116,7 +20116,9 @@ impl ArrivingStudyShare {
 
 /// The clause a sharing hex's silver sentence ends with when passengers sailing in study there
 /// (`ah-1uja`): one figure, the names joined "A and B" / "A, B and C", and a count past three.
+/// `share` names at least one passenger: [`ArrivingStudyShare::of`] builds none that is empty.
 fn arriving_study_clause(share: &ArrivingStudyShare) -> String {
+    debug_assert!(!share.names.is_empty(), "a share names its passengers");
     let total = share.total;
     match share.names.as_slice() {
         [one] => format!(", ${total} of it on the STUDY of {one}, arriving by sea"),
@@ -79130,7 +79132,8 @@ BUILD
                 && warning.ends_with(&format!(
                     " and their orders spend ${}, ${fee} of it on the STUDY of Unit 901 (901), \
                      arriving by sea",
-                    // The resident's own upkeep, paid out of its $1 at the month's end.
+                    // The resident's $1 is gone by the month's end, where this sentence is read
+                    // (its balance there is 0), so it is counted on both sides of the sentence.
                     fee + 1
                 )),
             "{warning}"
@@ -79167,6 +79170,40 @@ BUILD
             warning.ends_with(&format!(
                 ", ${fee} of it on the STUDY of Unit 901 (901), arriving by sea"
             )),
+            "{warning}"
+        );
+    }
+
+    /// `ah-1uja`: a landing hex that can pay its passenger's STUDY says nothing new anywhere.
+    #[test]
+    fn a_landing_hex_that_pays_the_passengers_study_says_nothing_new() {
+        let review = a_passenger_studying_between_two_sharers(500);
+        assert_eq!(markers_on(&review, "901"), Vec::<String>::new());
+        assert_eq!(hex_silver_warning(&review, "1:7,53"), None);
+        assert_eq!(hex_silver_warning(&review, "1:7,55"), None);
+    }
+
+    /// `ah-1uja`: with upkeep in the warning, the clause follows "orders and upkeep spend" and
+    /// counts only the passenger's STUDY.
+    #[test]
+    fn the_landing_hex_warning_with_upkeep_names_only_the_passengers_study() {
+        let fee = silver_of(&a_passenger_studying_between_two_sharers(1), "901")
+            .wanted_for_orders
+            .expect("the study is priced");
+        let resident = sharing(with_silver(with_men(unit("902"), 10), 1));
+        let (report, _) = passenger_palace(
+            open_sea(vec![sharing(with_silver(unit("903"), 500))]),
+            region_at("1:7,53", 7, 53, vec![resident]),
+            None,
+        );
+        let orders = "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 903\nunit 902\n";
+        let review = review_turn(&report, orders, Some(&trident()), CheckOptions::default());
+        let warning = hex_silver_warning(&review, "1:7,53").expect("the landing hex is short");
+        assert!(
+            warning.contains(" and their orders and upkeep spend $")
+                && warning.ends_with(&format!(
+                    ", ${fee} of it on the STUDY of Unit 901 (901), arriving by sea"
+                )),
             "{warning}"
         );
     }
