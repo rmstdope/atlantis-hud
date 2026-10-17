@@ -122,3 +122,128 @@ fn a_walker_within_its_capacity_still_leaves() {
             && to.as_deref() == Some("1:1,0")));
     assert!(traced(LIGHT));
 }
+
+/// Whether the overload check warns about `unit_id` for `orders` over `report`.
+fn warned(report: &str, orders: &str, unit_id: &str) -> bool {
+    review_turn(
+        &parse_report_full(report),
+        orders,
+        Some(&common::ruleset()),
+        CheckOptions::default(),
+    )
+    .findings
+    .iter()
+    .any(|finding| {
+        finding.code.as_str() == "unit-overloaded" && finding.unit_id.as_deref() == Some(unit_id)
+    })
+}
+
+fn rows_of(report: &str, orders: &str) -> Vec<(String, UnitPreviewStatus, Option<String>)> {
+    preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::RULESET_JSON,
+        report,
+        "[]",
+        orders,
+    )
+    .expect("the ruleset loads")
+    .regions
+    .iter()
+    .flat_map(|region| {
+        region
+            .units
+            .iter()
+            .filter(|row| row.unit.unit_id == "900")
+            .map(|row| {
+                (
+                    region.region_id.clone(),
+                    row.status,
+                    row.departing_to.clone(),
+                )
+            })
+    })
+    .collect()
+}
+
+fn traced_in(report: &str, orders: &str) -> bool {
+    trace_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::RULESET_JSON,
+        report,
+        "[]",
+        "900",
+        orders,
+    )
+    .expect("the trace runs")
+    .path
+    .is_some()
+}
+
+/// A walker printed overloaded (20 against 15) that gives six gems away steps off at 14, so the
+/// check is silent. It also holds an item the ruleset cannot price, which leaves the preview's own
+/// movement on the report's printed line: the refusal must not read that line, or shedding the
+/// ballast - the ordinary fix for being overloaded - would show as staying.
+#[test]
+fn a_walker_that_sheds_its_ballast_still_leaves_beside_an_unpriceable_item() {
+    let report = REPORT.replace(
+        "* Walker (900), Foo (1), human [HUMN], 4 gem [GEM]. Weight: 14.",
+        "* Walker (900), Foo (1), human [HUMN], 10 gem [GEM], widget [WDGT]. Weight: 20.",
+    );
+    let orders = "unit 900\nGIVE 901 6 GEM\nMOVE N\n";
+    assert!(!warned(&report, orders, "900"));
+    let rows = rows_of(&report, orders);
+    assert!(
+        rows.iter()
+            .any(|(region, status, _)| region == "1:1,1" && *status == UnitPreviewStatus::Departing),
+        "{rows:?}"
+    );
+    assert!(traced_in(&report, orders));
+}
+
+/// Two hexes of open sea and a hull the ruleset cannot price, with the walker and the giver both
+/// aboard. The walker's own legs are overloaded once given the gems, but it SAILs: a fleet is
+/// judged by what its hull carries (`rules/movement_sailing`), so its own load refuses nothing.
+const AT_SEA: &str = "Foo (1) Report\n\n\
+ocean (1,1) in Sea.\n\
+------------------------------------------------------------\n\n\
+Exits:\n\x20\x20North : ocean (1,0) in Sea.\n\n\
++ Ship [329] : Junkboat.\n\
+\x20\x20* Walker (900), Foo (1), human [HUMN], 4 gem [GEM]. Weight: 14. Capacity: 0/0/15/0.\n\
+\x20\x20* Giver (901), Foo (1), human [HUMN], 2 gem [GEM]. Weight: 12. Capacity: 0/0/15/0.\n\n\
+ocean (1,0) in Sea.\n\
+------------------------------------------------------------\n\n\
+Exits:\n\x20\x20South : ocean (1,1) in Sea.\n\n";
+
+#[test]
+fn an_overloaded_walker_that_sails_is_not_refused_for_its_legs() {
+    let orders = "unit 901\nGIVE 900 2 GEM\nunit 900\nSAIL N\n";
+    assert!(!warned(AT_SEA, orders, "900"));
+    let rows = rows_of(AT_SEA, orders);
+    assert!(
+        rows.iter()
+            .any(|(region, status, _)| region == "1:1,1" && *status == UnitPreviewStatus::Departing),
+        "{rows:?}"
+    );
+    assert!(traced_in(AT_SEA, orders));
+}
+
+/// The walker stands aboard a longship the ruleset can price and writes its own `MOVE`, so the
+/// trace times it as sailing. A MOVE is still the unit's own legs (`rules/movement_normal`): the
+/// check calls it overloaded, and the units list and the map keep it at home with the warning.
+#[test]
+fn an_overloaded_walker_aboard_a_priceable_fleet_stays_when_it_walks() {
+    let report = REPORT.replace(
+        "* Walker (900),",
+        "+ Ship [329] : Longship; Load: 0/150; Sailors: 0/4; MaxSpeed: 4.\n\x20\x20* Walker (900),",
+    );
+    assert!(warned(&report, OVERLOADED, "900"));
+    let rows = rows_of(&report, OVERLOADED);
+    assert!(!rows.is_empty());
+    assert!(
+        rows.iter().all(|(region, status, to)| region == "1:1,1"
+            && *status == UnitPreviewStatus::Present
+            && to.is_none()),
+        "{rows:?}"
+    );
+    assert!(!traced_in(&report, OVERLOADED));
+}

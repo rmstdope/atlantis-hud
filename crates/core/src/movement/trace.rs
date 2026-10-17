@@ -102,19 +102,6 @@ pub struct TracedPassageExit {
     pub steps: Vec<RouteStep>,
 }
 
-/// Whether the game refuses this path outright because the unit walking it is overloaded:
-/// `rules/movement_normal` - "Otherwise the unit cannot issue a MOVE order" - so it stays where it
-/// is all month. The trace still walks such an order, for whoever wants the route the orders say;
-/// the preview and the map both read this to keep the unit at home, agreeing with the
-/// `unit-overloaded` warning that it "will not move" (`ah-586v`).
-///
-/// A unit aboard a priceable fleet is traced as sailing, whatever it weighs, so it is never
-/// refused here; one whose speed the report never stated is doubt, not refusal.
-#[must_use]
-pub fn refused_as_overloaded(path: &TracedPath, unit: &ReportUnit) -> bool {
-    path.mode.is_none() && mobility(unit) == Mobility::Overloaded
-}
-
 /// Walks a MOVE order from where the unit stands.
 ///
 /// Returns nothing only when the map does not know the unit's own hex - with no origin there is
@@ -650,8 +637,9 @@ mod tests {
     }
 
     /// An overloaded unit's order is still walked - the route is what the orders say - but its
-    /// timing is unknowable, which the empty months and absent mode both say. The game refuses it
-    /// outright, which `refused_as_overloaded` reads; the map draws nothing for it (`ah-586v`).
+    /// timing is unknowable, which the empty months and absent mode both say. Whether the game
+    /// refuses it outright is the settle's question, not the trace's
+    /// (`WorkingUnit::refused_as_overloaded`, `ah-586v`).
     #[test]
     fn an_overloaded_unit_gets_a_path_with_no_months() {
         let report = corridor(&["plain", "plain"]);
@@ -676,7 +664,6 @@ mod tests {
         assert_eq!(path.mode, None);
         assert!(path.months.is_empty());
         assert_eq!(path.steps.len(), 1);
-        assert!(refused_as_overloaded(&path, &unit));
     }
 
     #[test]
