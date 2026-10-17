@@ -156,9 +156,9 @@ function limitedBy(silver: UnitSilver, capped: ProductionCap): string {
  * `rules/produce`: a numbered order "will attempt to produce exactly that number of items; if this
  * is not possible in one month then the order will carry over to subsequent months" - so the
  * written request is shown even when it fits exactly (the navigator's decision 2), and every
- * shortfall ends by saying what carries over (decision 6). One entry point for both hovers,
- * because the ITEMS and SILVER cells of one row must say the same thing in the same words
- * (`ah-ofpb.1`).
+ * shortfall ends by saying what carries over (decision 6). The ITEMS hover's entry point; the
+ * SILVER hover says only a silver-capped run, through `silverBoundProductionSentence`, in the same
+ * words (`ah-ofpb.1`, `ah-6c76`).
  */
 export function productionStatusSentence(
   silver: UnitSilver | null | undefined
@@ -1239,7 +1239,7 @@ export function silverCauseLabel(cause: string): string {
 
 /**
  * The causes that moved this unit's silver, one group per cause, except gifts and shipments
- * received, which are grouped by sender. Each group stays in the position of its first entry - the turn's own order, because
+ * received, which are grouped by sender, and exchanges, grouped by partner and direction. Each group stays in the position of its first entry - the turn's own order, because
  * `UnitSilver.changes` is in it.
  *
  * `took` and `took-unshown` merge into one group, keyed `took`: they are one event to a reader, and
@@ -1250,8 +1250,15 @@ export function silverCauseGroups(changes: readonly SilverChange[]): SilverCause
   const byCause = new Map<string, Map<string, SilverCauseGroup>>();
   for (const change of changes) {
     const key = change.cause === "took-unshown" ? "took" : change.cause;
-    // A gift or a shipment received is a line per sender, so two senders never read as one.
-    const source = key === "was-given" || key === "received" ? (change.other ?? "") : "";
+    // A gift or a shipment received is a line per sender, so two senders never read as one. An
+    // exchange is a line per partner and direction: its cause is signed, so two exchanges the
+    // other way round would otherwise net out of sight (review finding 1 on PR #1688).
+    const source =
+      key === "was-given" || key === "received"
+        ? (change.other ?? "")
+        : key === "exchanged"
+          ? `${change.amount < 0 ? "-" : "+"}${change.other ?? ""}`
+          : "";
     let bySource = byCause.get(key);
     if (!bySource) {
       bySource = new Map();

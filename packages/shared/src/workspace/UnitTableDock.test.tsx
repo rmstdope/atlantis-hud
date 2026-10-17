@@ -1208,7 +1208,7 @@ describe("the items column", () => {
   });
 
   // `ah-ofpb.5`. A cast's creation is a projection like any other PREDICTED figure, and a range
-  // gets no ` + ?` mark - `unit.uncounted` alone still drives that span.
+  // gets no ` ?` mark - `unit.uncounted` alone still drives that span.
   it("shows a cast creation in the projected item list", () => {
     const markup = draw(
       hex({ region: region({ units: [unit({ unitId: "1", items: [{ amount: 3, name: "runesword", tag: "RUNE" }] })] }) }),

@@ -3104,7 +3104,7 @@ pub fn forecast_unit(
             // both parties (`semantics::apply_transfers`), and one with a foreign or unshown
             // partner turns on an answer the report cannot show (the ledger's `Exchange` arm), so
             // one moving silver cannot be added up on either side (`ah-mw1r.2`). A certain
-            // exchange is the ledger's record, as a gift each way.
+            // exchange is the ledger's record, booked `Exchanged` both ways (`ah-6c76`).
             Intent::Exchange {
                 with,
                 give_item,

@@ -93,7 +93,7 @@ export type PreviewedUnit = ReportUnit & {
    * receive. Those orders move nothing (`ah-64wm`).
    */
   transportTargetIssues?: TransportTargetIssue[];
-  /** A shipment whose distance the map cannot measure; draws the ITEMS ` + ?` (`ah-7ale.5`). */
+  /** A shipment whose distance the map cannot measure; draws the ITEMS ` ?` (`ah-7ale.5`). */
   shipmentUnmeasured?: boolean;
   /**
    * Every item this month's orders move into or out of this unit, each with its cause, in the
@@ -613,7 +613,7 @@ export function transportSentences(
  * Whether a target issue is a gap in the report rather than a refusal it can prove (`ah-64wm`).
  *
  * A definite refusal is a fact the hover states and the cell need say nothing more about; a gap is
- * what the ` + ?` mark is for - the month could not be fully counted.
+ * what the ` ?` mark is for - the month could not be fully counted.
  */
 export function transportTargetUncertain(issue: TransportTargetIssue): boolean {
   return issue.reason === "eligibilityUnknown" || issue.reason === "acceptanceUnknown";
@@ -621,7 +621,7 @@ export function transportTargetUncertain(issue: TransportTargetIssue): boolean {
 
 /**
  * Whether this row's item list may be wrong because of a transport: a target the report cannot settle
- * (`ah-64wm`), or a distance the map cannot measure (`ah-7ale.5`). What the ITEMS cell's ` + ?` is
+ * (`ah-64wm`), or a distance the map cannot measure (`ah-7ale.5`). What the ITEMS cell's ` ?` is
  * drawn from.
  */
 export function hasUncertainTransport(unit: PreviewedUnit | undefined): boolean {

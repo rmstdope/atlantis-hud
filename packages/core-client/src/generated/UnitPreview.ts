@@ -90,7 +90,7 @@ transportTargetIssues: Array<TransportTargetIssue>,
 /**
  * This unit wrote a `TRANSPORT`/`DISTRIBUTE` whose distance the map cannot measure, so its
  * goods are listed where the report left them and the list may be wrong (`ah-7ale.5`). What
- * the ITEMS cell's ` + ?` is drawn from, and **never silenced by the Transport warning**: a
+ * the ITEMS cell's ` ?` is drawn from, and **never silenced by the Transport warning**: a
  * mark on a figure is not a warning about an order.
  */
 shipmentUnmeasured: boolean, 

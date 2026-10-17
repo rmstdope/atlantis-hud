@@ -4720,6 +4720,23 @@ describe("silver moved by TRANSPORT", () => {
     ]);
   });
 
+  // Review finding 1 on PR #1688: `exchanged` is signed, so two exchanges in opposite directions
+  // must stay two lines rather than net out to nothing.
+  it("two exchanges in opposite directions stay two lines", () => {
+    const popup = silverPopup(unit({ own: true }), {
+      held: 200,
+      atMonthEnd: 200,
+      changes: [
+        { amount: -200, cause: "exchanged", line: 2, other: "B (2)" },
+        { amount: 200, cause: "exchanged", line: 3, other: "C (3)" }
+      ]
+    });
+    expect(popup.lines.slice(1)).toEqual([
+      { label: "exchanged", value: "-200", tone: "down", why: "with B (2)" },
+      { label: "exchanged", value: "+200", tone: "up", why: "with C (3)" }
+    ]);
+  });
+
   it("an exchange of goods reads exchanged, with the other side", () => {
     const popup = columnPopup(
       popupForCell(
