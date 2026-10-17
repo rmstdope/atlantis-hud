@@ -896,12 +896,6 @@ pub fn review_turn(
         region_limit_refusals(report, &hexes, ruleset, applied),
     );
 
-    // Which hex's purse each unit lends to and claims on, once for every reader (`ah-mnvp`) ...
-    let membership = PurseMembership::read(&hexes, report, ruleset, &options.month_end);
-    // ... so a sharer lends its material where its month ends, not where it is listed (`ah-7r9p`).
-    let departing = membership.departing_sharers();
-    // ... and a passenger builds where its fleet lands (`ah-i6d0`).
-    let away = away_builders(&hexes, report, ruleset, &departing);
     let price = |hex: &Hex<'_>, reach: MonthLongReach| {
         ledger_for_reaching(
             hex,
@@ -913,6 +907,15 @@ pub fn review_turn(
             reach,
         )
     };
+    // A fleet the game keeps in port stays there for every reader below (`ah-zbtx`).
+    settle_staying_fleets(&mut hexes, |hex| price(hex, MonthLongReach::default()));
+
+    // Which hex's purse each unit lends to and claims on, once for every reader (`ah-mnvp`) ...
+    let membership = PurseMembership::read(&hexes, report, ruleset, &options.month_end);
+    // ... so a sharer lends its material where its month ends, not where it is listed (`ah-7r9p`).
+    let departing = membership.departing_sharers();
+    // ... and a passenger builds where its fleet lands (`ah-i6d0`).
+    let away = away_builders(&hexes, report, ruleset, &departing);
     // Which of this month's foundings an earlier one refuses (`ah-flx2`).
     settle_foundings(&mut hexes, ruleset, options.geometry, |index, hex| {
         price(hex, departing_ids(&departing[index], &away, index))
@@ -3718,6 +3721,11 @@ struct Hex<'a> {
     /// Each unit of this hex whose `CREATE VILLAGE` an earlier founding this month refuses, by unit
     /// id (`ah-flx2`). Empty as read: [`settle_foundings`] writes it.
     beaten_foundings: BTreeMap<String, EarlierFounding>,
+    /// Each fleet here, by structure id, that one of our units orders to SAIL and that the game
+    /// keeps in this hex all month, overloaded or short of sailors ([`SailingVerdict::stays`],
+    /// `ah-zbtx`). Empty as read: [`settle_staying_fleets`] writes it, before anything asks who
+    /// leaves.
+    staying_fleets: BTreeSet<String>,
 }
 
 /// A founding this month that the engine runs before another within two hexes of it, and so
@@ -4084,6 +4092,7 @@ impl<'a> Hex<'a> {
             shown_anywhere,
             village_site: VillageSite::Unsure,
             beaten_foundings: BTreeMap::new(),
+            staying_fleets: BTreeSet::new(),
         }
     }
 
@@ -8008,11 +8017,6 @@ pub(crate) fn item_effects(
         shipping.read_orders(report, orders_document, rules);
         shipping
     });
-    // The same cross-hex lending `review_turn` settles, so the ITEMS column agrees with Problems.
-    let membership = PurseMembership::read(&hexes, report, ruleset, &options.month_end);
-    let departing = membership.departing_sharers();
-    // ... and a passenger builds where its fleet lands (`ah-i6d0`).
-    let away = away_builders(&hexes, report, ruleset, &departing);
     let price = |hex: &Hex<'_>, reach: MonthLongReach| {
         ledger_for_reaching(
             hex,
@@ -8024,6 +8028,13 @@ pub(crate) fn item_effects(
             reach,
         )
     };
+    // The same fleets kept in port `review_turn` settles (`ah-zbtx`).
+    settle_staying_fleets(&mut hexes, |hex| price(hex, MonthLongReach::default()));
+    // The same cross-hex lending `review_turn` settles, so the ITEMS column agrees with Problems.
+    let membership = PurseMembership::read(&hexes, report, ruleset, &options.month_end);
+    let departing = membership.departing_sharers();
+    // ... and a passenger builds where its fleet lands (`ah-i6d0`).
+    let away = away_builders(&hexes, report, ruleset, &departing);
     // The same refusals `review_turn` settles (`ah-flx2`).
     settle_foundings(&mut hexes, ruleset, options.geometry, |index, hex| {
         price(hex, departing_ids(&departing[index], &away, index))
@@ -8061,6 +8072,9 @@ pub(crate) fn item_effects(
         for ordered in &hex.units {
             let unit_id = &ordered.unit.unit_id;
             let key = unit_key(&hex.region.region_id, unit_id);
+            if in_staying_fleet(hex, ordered) {
+                result.entry(key.clone()).or_default().fleet_stays = true;
+            }
             let Some(foods) = eaten.remove(&key) else {
                 continue;
             };
@@ -8256,6 +8270,11 @@ pub(crate) struct UnitItemEffects {
     /// `revert_dissolved_forms` reads too, so the ITEMS preview never judges it on its own
     /// (`ah-l9d9`). `None` for every unit that stays, and for one whose recruits are unjudged.
     pub dissolution: Option<Dissolution>,
+    /// Whether this unit stands in a fleet the game keeps in port all month, once its own ENTER and
+    /// LEAVE have run,
+    /// overloaded or short of sailors ([`Hex::staying_fleets`], `ah-zbtx`), so the preview and the
+    /// map keep it at home as the `fleet-overloaded` and `fleet-undercrewed` warnings say.
+    pub fleet_stays: bool,
 }
 
 /// What each unit in a hex holds once its whole month has run, in `hex.units` order.
@@ -14039,6 +14058,38 @@ fn check_village_site(
                 Some(placed),
             ));
         }
+    }
+}
+
+/// Which fleets each hex keeps all month because they are overloaded or short of sailors
+/// ([`judge_sailing`], `ah-zbtx`), written to [`Hex::staying_fleets`] before anything asks who
+/// leaves - the SILVER column's month-end hexes, a passenger's production region, the departures
+/// the guard and teaching checks read - so every reader agrees with the `fleet-overloaded` and
+/// `fleet-undercrewed` warnings. `price` is a hex's ledger before anybody's month end is known:
+/// what a unit holds as it sails is settled by GIVE, TAKE and the market, all before movement
+/// (`rules/sequenceofevents`), so no sharer's month end changes it.
+fn settle_staying_fleets<'a>(hexes: &mut [Hex<'_>], price: impl Fn(&Hex<'_>) -> Ledger<'a>) {
+    for hex in hexes.iter_mut() {
+        let sails = hex.units.iter().any(|ordered| {
+            ordered
+                .intents()
+                .any(|intent| matches!(intent, Intent::Sail { .. }))
+        });
+        if !sails {
+            continue;
+        }
+        let ledger = price(hex);
+        let ruleset = ledger.ruleset;
+        let staying: BTreeSet<String> = hex
+            .region
+            .structures
+            .iter()
+            .filter(|fleet| {
+                judge_sailing(hex, &ledger, ruleset, fleet).is_some_and(|verdict| verdict.stays())
+            })
+            .map(|fleet| fleet.structure_id.clone())
+            .collect();
+        hex.staying_fleets = staying;
     }
 }
 
@@ -21877,7 +21928,9 @@ fn uncounted_cause(unit: &ReportUnit, facts: &UnitFacts<'_>, ruleset: Option<&Ru
 /// fleet is overloaded or short of crew, in which case the boat stays put and the produce check
 /// would have been right - but the player is already being told the sail will fail, and a second
 /// finding true only *because* of the first is two warnings for one mistake, and the wrong one to
-/// act on.
+/// act on. So the produce check alone reads the course as ordered
+/// ([`production_region_as_ordered`]); this, and every reader of where the month ends, keeps such a
+/// fleet in port, since the game does (`rules/movement_sailing`, `ah-zbtx`).
 ///
 /// A vessel is one [`is_vessel`] recognises - the server's own `Sailors: H/N`, or a hull the
 /// ruleset knows. [`hulls_named_in`] is not that test: it reads any non-empty kind as a one-hull
@@ -21893,12 +21946,26 @@ fn carried_away<'a>(
 /// The fleet carrying `ordered` out of the hex, as [`carried_away`] defines it: its captain's
 /// course and its hull, the hull read as `check_sail_route` reads it, so a flying fleet is not held
 /// to the water here either. Read by [`carried_away`] and [`production_region`] alike, so the two
-/// cannot disagree about which fleet carries a unit or whether it leaves.
+/// cannot disagree about which fleet carries a unit or whether it leaves. A fleet the game keeps in
+/// port, overloaded or short of sailors ([`Hex::staying_fleets`], `ah-zbtx`), carries nobody.
 fn fleet_carrying<'a>(
     hex: &'a Hex<'a>,
     ordered: &Ordered<'_>,
     ruleset: &Ruleset,
 ) -> Option<(&'a PlacedIntent, Hull)> {
+    fleet_carrying_as_ordered(hex, ordered, ruleset)
+        .filter(|(fleet, _, _)| !hex.staying_fleets.contains(*fleet))
+        .map(|(_, course, hull)| (course, hull))
+}
+
+/// [`fleet_carrying`] before any fleet is kept in port for its load or crew, with the fleet's
+/// structure id: the course as ordered, which the produce check judges a passenger by
+/// ([`carried_away`]'s doc, `ah-jk9h`).
+fn fleet_carrying_as_ordered<'a>(
+    hex: &'a Hex<'a>,
+    ordered: &Ordered<'_>,
+    ruleset: &Ruleset,
+) -> Option<(&'a str, &'a PlacedIntent, Hull)> {
     hex.region.structures.iter().find_map(|fleet| {
         if !is_vessel(fleet, Some(ruleset)) || !is_aboard(ordered, &fleet.structure_id) {
             return None;
@@ -21925,7 +21992,7 @@ fn fleet_carrying<'a>(
                 };
                 sail_month_end(hex.region, steps, &HashMap::new(), ruleset, hull).leaves()
             })
-            .map(|placed| (placed, hull))
+            .map(|placed| (fleet.structure_id.as_str(), placed, hull))
     })
 }
 
@@ -22037,7 +22104,37 @@ fn production_region<'a>(
     let Some(rules) = ruleset else {
         return Some(hex.region);
     };
-    match fleet_carrying(hex, ordered, rules) {
+    sailed_to(
+        hex,
+        fleet_carrying(hex, ordered, rules),
+        rules,
+        by_coordinate,
+    )
+}
+
+/// [`production_region`] for the produce check, which judges a passenger where its fleet's course
+/// takes it even when `check_sailing` says the fleet will not sail: the player is already told the
+/// sail fails, and a second warning true only because of the first is the wrong one to act on
+/// ([`carried_away`], `ah-jk9h`, kept by `ah-zbtx`).
+fn production_region_as_ordered<'a>(
+    hex: &Hex<'a>,
+    ordered: &Ordered<'_>,
+    ruleset: &Ruleset,
+    by_coordinate: &HashMap<Coordinate, &'a ReportRegion>,
+) -> Option<&'a ReportRegion> {
+    let carrying =
+        fleet_carrying_as_ordered(hex, ordered, ruleset).map(|(_, course, hull)| (course, hull));
+    sailed_to(hex, carrying, ruleset, by_coordinate)
+}
+
+/// Where a unit `carrying` takes from `hex` ends up, or `hex` itself when nothing carries it.
+fn sailed_to<'a>(
+    hex: &Hex<'a>,
+    carrying: Option<(&PlacedIntent, Hull)>,
+    rules: &Ruleset,
+    by_coordinate: &HashMap<Coordinate, &'a ReportRegion>,
+) -> Option<&'a ReportRegion> {
+    match carrying {
         Some((
             PlacedIntent {
                 intent: Intent::Sail { steps },
@@ -22205,7 +22302,8 @@ fn check_production(
             // a region nobody can see is worse than no mark at all (`ah-jk9h`, `ah-8myf`).
             // `produce-without-skill` above is unaffected: whether the unit has the skill is a
             // fact about the unit, not about the region.
-            let where_it_produces = production_region(hex, ordered, Some(ruleset), by_coordinate);
+            let where_it_produces =
+                production_region_as_ordered(hex, ordered, ruleset, by_coordinate);
             let Some(region) = where_it_produces else {
                 continue;
             };
@@ -25313,218 +25411,258 @@ fn check_sailing(
     findings: &mut Vec<Finding>,
 ) {
     for fleet in &hex.region.structures {
-        if hulls_named_in(&fleet.kind).is_none() {
-            continue;
-        }
-
-        let captain = hex
-            .units
-            .iter()
-            .filter(|ordered| could_captain(ordered, &fleet.structure_id))
-            .filter_map(|ordered| {
-                ordered
-                    .intents
-                    .iter()
-                    .find(|placed| matches!(placed.intent, Intent::Sail { .. }))
-                    .map(|placed| (ordered, placed))
-            })
-            .min_by_key(|(_, placed)| placed.line);
-        let Some((captain, sail_placement)) = captain else {
+        let Some(verdict) = judge_sailing(hex, ledger, ruleset, fleet) else {
             continue;
         };
-
-        let aboard: Vec<&Ordered<'_>> = hex
-            .units
-            .iter()
-            .filter(|ordered| is_aboard(ordered, &fleet.structure_id))
-            .collect();
-
-        // A MOVE by anyone aboard, or a MOVE that steps into this fleet, leaves the server's
-        // ordering against the SAIL unpromised - doubt, not a guess. `MOVE IN` with no number
-        // enters whatever single structure the server finds in the hex, which may be this one, so
-        // it counts as touching every fleet here rather than none of them.
-        let move_touches_fleet = hex.units.iter().any(|ordered| {
-            ordered.intents.iter().any(|placed| match &placed.intent {
-                Intent::Move { steps } => steps.iter().any(|step| match step {
-                    MoveStep::In => true,
-                    MoveStep::Enter(id) => id == &fleet.structure_id,
-                    _ => false,
-                }),
-                _ => false,
-            })
-        });
-        let aboard_unit_moves = aboard.iter().any(|ordered| {
-            ordered
-                .intents
-                .iter()
-                .any(|placed| matches!(placed.intent, Intent::Move { .. }))
-        });
-        // A unit of another faction standing in the same hull is not ours to weigh or to train.
-        let foreign_aboard = hex.region.units.iter().any(|unit| {
-            !unit.own && unit.structure_id.as_deref() == Some(fleet.structure_id.as_str())
-        });
-
-        if move_touches_fleet || aboard_unit_moves || foreign_aboard {
-            continue;
-        }
-
-        let label = fleet_label(fleet);
-
-        // What the report says is in the hull now, before this month's ENTER and LEAVE. On a real
-        // report this is the first number of the ship line's `Load: H/N`: the server computes it
-        // the same way, as the sum of the weights of the units standing in the hull. Checked
-        // against two committed reports - Longship [329] states 110 and holds 50 + 50 + 10
-        // (neworigins-3.0.0-g3-f42-t41.rep:2018), Raft [235] states 220 and holds 20 + 200
-        // (neworigins-3.0.0-g5-f21-t24.rep:1359). Summed here rather than read off the `Load:`
-        // line so that a fleet whose report states no load still gets a first number, and so that
-        // a report disagreeing with its own units cannot make the message claim that weight moved
-        // when nothing did.
-        let reported: Option<i64> = hex
-            .units
-            .iter()
-            .filter(|ordered| {
-                ordered.unit.structure_id.as_deref() == Some(fleet.structure_id.as_str())
-            })
-            .map(weight_before_orders)
-            .sum();
-
-        let sailing: Option<i64> = aboard
-            .iter()
-            .map(|ordered| carrying_after_orders(ordered, ledger, ruleset).weight)
-            .sum();
-
-        if let (Some(load), Some(capacity)) = (sailing, cargo_capacity(fleet, ruleset)) {
-            if load > capacity && options.emits(codes::FLEET_OVERLOADED) {
-                let overload = match reported.map(|reported| (reported, load - reported)) {
-                    Some((reported, change)) if change > 0 => format!(
-                        "{reported} aboard plus {change} loaded this month, \
-                         on a capacity of {capacity}"
-                    ),
-                    Some((reported, change)) if change < 0 => format!(
-                        "{reported} aboard less {} unloaded this month, on a capacity of {capacity}",
-                        -change
-                    ),
-                    // Nothing moved, or a unit in the hull whose weight the report never gave, so
-                    // there is no honest before-and-after to draw. `ah-j0e`'s own sentence.
-                    _ => format!("{load} aboard on a capacity of {capacity}"),
-                };
-                findings.push(captain.finding(
+        for (code, message) in [
+            (codes::FLEET_OVERLOADED, verdict.overloaded),
+            (codes::FLEET_UNDERCREWED, verdict.undercrewed),
+        ] {
+            if let Some(message) = message.filter(|_| options.emits(code)) {
+                findings.push(verdict.captain.finding(
                     hex,
-                    codes::FLEET_OVERLOADED,
-                    format!("{label} is overloaded: {overload}, so it will not sail"),
-                    Some(sail_placement),
-                ));
-            }
-        }
-
-        // A level is held by each of a unit's men, not by the unit once - see
-        // `movement::mode::crew_sailing_levels`, which this sums the same way over the
-        // aboard-after set.
-        // What the report printed, which is the "before" the message compares against.
-        let reported_levels: i64 = aboard
-            .iter()
-            .flat_map(|ordered| {
-                let men = ordered.unit.men;
-                ordered
-                    .unit
-                    .skills
-                    .iter()
-                    .filter(|skill| skill.tag.eq_ignore_ascii_case("SAIL"))
-                    .map(move |skill| i64::from(skill.level) * men)
-            })
-            .sum();
-        let helping: Vec<&Ordered<'_>> = aboard
-            .iter()
-            .copied()
-            .filter(|ordered| ordered.issues_sail())
-            .collect();
-        let helping_levels: i64 = helping
-            .iter()
-            .flat_map(|ordered| {
-                let men = ordered.unit.men;
-                ordered
-                    .unit
-                    .skills
-                    .iter()
-                    .filter(|skill| skill.tag.eq_ignore_ascii_case("SAIL"))
-                    .map(move |skill| i64::from(skill.level) * men)
-            })
-            .sum();
-        // The same after this month's transfers of men. `None` from any unit aboard silences the
-        // crew check for the whole fleet - one unknowable unit makes the fleet's total unknowable.
-        let crews: Option<Vec<CrewAfterOrders>> = helping
-            .iter()
-            .map(|ordered| sailing_levels_after_orders(ordered, ruleset))
-            .collect();
-        // A guessed headcount cannot price an exact number of sailing levels either - the same
-        // doubt `study` already treats `men_estimated` as (`:750`). Raised in review on this
-        // bead's own PR. A unit whose sums the ledger could not follow is the same kind of doubt,
-        // and both guard the crew finding alone: the load half has never consulted `doubted`, and
-        // silencing overload warnings here would be a regression.
-        let headcount_is_doubtful = helping.iter().any(|ordered| {
-            ordered.unit.men_estimated || ledger.doubted.contains(&ordered.unit.unit_id)
-        });
-        if let (Some(crews), Some(required)) = (crews, sailing_requirement(fleet, ruleset)) {
-            let levels: i64 = crews.iter().map(|crew| crew.levels).sum();
-            let men_joined = crews.iter().any(|crew| crew.men_joined);
-            if !headcount_is_doubtful
-                && levels < required
-                && options.emits(codes::FLEET_UNDERCREWED)
-            {
-                let crew = if helping_levels < reported_levels {
-                    let participation = format!(
-                        "{} aboard, but {} {} helping with SAIL",
-                        sailing_level_phrase(reported_levels, "sailing levels"),
-                        helping_levels,
-                        if helping_levels == 1 { "is" } else { "are" }
-                    );
-                    if men_joined {
-                        format!(
-                            "{participation}, and {levels} once the men joining the crew this \
-                             month are counted; it needs {required}"
-                        )
-                    } else if levels < helping_levels {
-                        format!(
-                            "{participation}, less {} given away this month; it needs {required}",
-                            helping_levels - levels
-                        )
-                    } else {
-                        format!("{participation}; it needs {required}")
-                    }
-                } else if men_joined && levels != helping_levels {
-                    // Men joining the crew this month, whatever else moved - shown first so a
-                    // fleet where men both joined and left still gets the joining clause rather
-                    // than "given away" (the navigator's decision, `ah-z73s3-wording-2.html`).
-                    format!(
-                        "{} aboard and helping with SAIL, {} once the men joining the crew this \
-                         month are counted; it needs {required}",
-                        sailing_level_phrase(helping_levels, "sailing levels"),
-                        levels
-                    )
-                } else if levels < helping_levels {
-                    format!(
-                        "all {} aboard are helping with SAIL, less {} given away this month; it \
-                         needs {required}",
-                        sailing_level_phrase(helping_levels, "sailing levels"),
-                        helping_levels - levels
-                    )
-                } else {
-                    // Unchanged, and the sentence `ah-j0e` already shipped: the crew did not move
-                    // this month, so there is no before-and-after to draw.
-                    format!(
-                        "all {} aboard are helping with SAIL; it needs {required}",
-                        sailing_level_phrase(levels, "sailing levels")
-                    )
-                };
-                findings.push(captain.finding(
-                    hex,
-                    codes::FLEET_UNDERCREWED,
-                    format!("{label} is short of sailors: {crew}, so it will not sail"),
-                    Some(sail_placement),
+                    code,
+                    message,
+                    Some(verdict.sail_placement),
                 ));
             }
         }
     }
+}
+
+/// Why a fleet one of our units orders to SAIL will not sail, as [`check_sailing`] words it: each
+/// sentence is `None` when that refusal does not hold or cannot be told.
+struct SailingVerdict<'h, 'a> {
+    captain: &'h Ordered<'a>,
+    sail_placement: &'h PlacedIntent,
+    overloaded: Option<String>,
+    undercrewed: Option<String>,
+}
+
+impl SailingVerdict<'_, '_> {
+    /// Whether the game keeps the fleet where it is all month: "A fleet can only move if the total
+    /// weight of everything aboard does not exceed the fleet's capacity ... Also, there must be
+    /// enough sailors aboard (using the SAIL order), to sail the fleet, or it will not go anywhere"
+    /// (`rules/movement_sailing`, `ah-zbtx`).
+    fn stays(&self) -> bool {
+        self.overloaded.is_some() || self.undercrewed.is_some()
+    }
+}
+
+/// [`check_sailing`]'s judgement of one fleet, whether or not its warnings are enabled: the switch
+/// takes a sentence away, never the fleet's month (`ah-zbtx`). `None` for a structure that is no
+/// fleet, one nobody of ours orders to SAIL, or one whose load and crew cannot be settled.
+fn judge_sailing<'h, 'a>(
+    hex: &'h Hex<'a>,
+    ledger: &Ledger<'_>,
+    ruleset: Option<&Ruleset>,
+    fleet: &Structure,
+) -> Option<SailingVerdict<'h, 'a>> {
+    hulls_named_in(&fleet.kind)?;
+
+    let captain = hex
+        .units
+        .iter()
+        .filter(|ordered| could_captain(ordered, &fleet.structure_id))
+        .filter_map(|ordered| {
+            ordered
+                .intents
+                .iter()
+                .find(|placed| matches!(placed.intent, Intent::Sail { .. }))
+                .map(|placed| (ordered, placed))
+        })
+        .min_by_key(|(_, placed)| placed.line);
+    let (captain, sail_placement) = captain?;
+
+    let aboard: Vec<&Ordered<'_>> = hex
+        .units
+        .iter()
+        .filter(|ordered| is_aboard(ordered, &fleet.structure_id))
+        .collect();
+
+    // A MOVE by anyone aboard, or a MOVE that steps into this fleet, leaves the server's
+    // ordering against the SAIL unpromised - doubt, not a guess. `MOVE IN` with no number
+    // enters whatever single structure the server finds in the hex, which may be this one, so
+    // it counts as touching every fleet here rather than none of them.
+    let move_touches_fleet = hex.units.iter().any(|ordered| {
+        ordered.intents.iter().any(|placed| match &placed.intent {
+            Intent::Move { steps } => steps.iter().any(|step| match step {
+                MoveStep::In => true,
+                MoveStep::Enter(id) => id == &fleet.structure_id,
+                _ => false,
+            }),
+            _ => false,
+        })
+    });
+    let aboard_unit_moves = aboard.iter().any(|ordered| {
+        ordered
+            .intents
+            .iter()
+            .any(|placed| matches!(placed.intent, Intent::Move { .. }))
+    });
+    // A unit of another faction standing in the same hull is not ours to weigh or to train.
+    let foreign_aboard =
+        hex.region.units.iter().any(|unit| {
+            !unit.own && unit.structure_id.as_deref() == Some(fleet.structure_id.as_str())
+        });
+
+    if move_touches_fleet || aboard_unit_moves || foreign_aboard {
+        return None;
+    }
+
+    let label = fleet_label(fleet);
+
+    // What the report says is in the hull now, before this month's ENTER and LEAVE. On a real
+    // report this is the first number of the ship line's `Load: H/N`: the server computes it
+    // the same way, as the sum of the weights of the units standing in the hull. Checked
+    // against two committed reports - Longship [329] states 110 and holds 50 + 50 + 10
+    // (neworigins-3.0.0-g3-f42-t41.rep:2018), Raft [235] states 220 and holds 20 + 200
+    // (neworigins-3.0.0-g5-f21-t24.rep:1359). Summed here rather than read off the `Load:`
+    // line so that a fleet whose report states no load still gets a first number, and so that
+    // a report disagreeing with its own units cannot make the message claim that weight moved
+    // when nothing did.
+    let reported: Option<i64> = hex
+        .units
+        .iter()
+        .filter(|ordered| ordered.unit.structure_id.as_deref() == Some(fleet.structure_id.as_str()))
+        .map(weight_before_orders)
+        .sum();
+
+    let sailing: Option<i64> = aboard
+        .iter()
+        .map(|ordered| carrying_after_orders(ordered, ledger, ruleset).weight)
+        .sum();
+
+    let mut overloaded = None;
+    if let (Some(load), Some(capacity)) = (sailing, cargo_capacity(fleet, ruleset)) {
+        if load > capacity {
+            let overload = match reported.map(|reported| (reported, load - reported)) {
+                Some((reported, change)) if change > 0 => format!(
+                    "{reported} aboard plus {change} loaded this month, \
+                     on a capacity of {capacity}"
+                ),
+                Some((reported, change)) if change < 0 => format!(
+                    "{reported} aboard less {} unloaded this month, on a capacity of {capacity}",
+                    -change
+                ),
+                // Nothing moved, or a unit in the hull whose weight the report never gave, so
+                // there is no honest before-and-after to draw. `ah-j0e`'s own sentence.
+                _ => format!("{load} aboard on a capacity of {capacity}"),
+            };
+            overloaded = Some(format!(
+                "{label} is overloaded: {overload}, so it will not sail"
+            ));
+        }
+    }
+
+    // A level is held by each of a unit's men, not by the unit once - see
+    // `movement::mode::crew_sailing_levels`, which this sums the same way over the
+    // aboard-after set.
+    // What the report printed, which is the "before" the message compares against.
+    let reported_levels: i64 = aboard
+        .iter()
+        .flat_map(|ordered| {
+            let men = ordered.unit.men;
+            ordered
+                .unit
+                .skills
+                .iter()
+                .filter(|skill| skill.tag.eq_ignore_ascii_case("SAIL"))
+                .map(move |skill| i64::from(skill.level) * men)
+        })
+        .sum();
+    let helping: Vec<&Ordered<'_>> = aboard
+        .iter()
+        .copied()
+        .filter(|ordered| ordered.issues_sail())
+        .collect();
+    let helping_levels: i64 = helping
+        .iter()
+        .flat_map(|ordered| {
+            let men = ordered.unit.men;
+            ordered
+                .unit
+                .skills
+                .iter()
+                .filter(|skill| skill.tag.eq_ignore_ascii_case("SAIL"))
+                .map(move |skill| i64::from(skill.level) * men)
+        })
+        .sum();
+    // The same after this month's transfers of men. `None` from any unit aboard silences the
+    // crew check for the whole fleet - one unknowable unit makes the fleet's total unknowable.
+    let crews: Option<Vec<CrewAfterOrders>> = helping
+        .iter()
+        .map(|ordered| sailing_levels_after_orders(ordered, ruleset))
+        .collect();
+    // A guessed headcount cannot price an exact number of sailing levels either - the same
+    // doubt `study` already treats `men_estimated` as (`:750`). Raised in review on this
+    // bead's own PR. A unit whose sums the ledger could not follow is the same kind of doubt,
+    // and both guard the crew finding alone: the load half has never consulted `doubted`, and
+    // silencing overload warnings here would be a regression.
+    let headcount_is_doubtful = helping.iter().any(|ordered| {
+        ordered.unit.men_estimated || ledger.doubted.contains(&ordered.unit.unit_id)
+    });
+    let mut undercrewed = None;
+    if let (Some(crews), Some(required)) = (crews, sailing_requirement(fleet, ruleset)) {
+        let levels: i64 = crews.iter().map(|crew| crew.levels).sum();
+        let men_joined = crews.iter().any(|crew| crew.men_joined);
+        if !headcount_is_doubtful && levels < required {
+            let crew = if helping_levels < reported_levels {
+                let participation = format!(
+                    "{} aboard, but {} {} helping with SAIL",
+                    sailing_level_phrase(reported_levels, "sailing levels"),
+                    helping_levels,
+                    if helping_levels == 1 { "is" } else { "are" }
+                );
+                if men_joined {
+                    format!(
+                        "{participation}, and {levels} once the men joining the crew this \
+                         month are counted; it needs {required}"
+                    )
+                } else if levels < helping_levels {
+                    format!(
+                        "{participation}, less {} given away this month; it needs {required}",
+                        helping_levels - levels
+                    )
+                } else {
+                    format!("{participation}; it needs {required}")
+                }
+            } else if men_joined && levels != helping_levels {
+                // Men joining the crew this month, whatever else moved - shown first so a
+                // fleet where men both joined and left still gets the joining clause rather
+                // than "given away" (the navigator's decision, `ah-z73s3-wording-2.html`).
+                format!(
+                    "{} aboard and helping with SAIL, {} once the men joining the crew this \
+                     month are counted; it needs {required}",
+                    sailing_level_phrase(helping_levels, "sailing levels"),
+                    levels
+                )
+            } else if levels < helping_levels {
+                format!(
+                    "all {} aboard are helping with SAIL, less {} given away this month; it \
+                     needs {required}",
+                    sailing_level_phrase(helping_levels, "sailing levels"),
+                    helping_levels - levels
+                )
+            } else {
+                // Unchanged, and the sentence `ah-j0e` already shipped: the crew did not move
+                // this month, so there is no before-and-after to draw.
+                format!(
+                    "all {} aboard are helping with SAIL; it needs {required}",
+                    sailing_level_phrase(levels, "sailing levels")
+                )
+            };
+            undercrewed = Some(format!(
+                "{label} is short of sailors: {crew}, so it will not sail"
+            ));
+        }
+    }
+    Some(SailingVerdict {
+        captain,
+        sail_placement,
+        overloaded,
+        undercrewed,
+    })
 }
 
 /// A `SAIL` step the game will simply refuse: land at both ends.
@@ -25818,11 +25956,20 @@ fn leaves_hex_after_load_check(
         }
         Intent::Sail { steps } => {
             steps.iter().any(|step| matches!(step, MoveStep::Go(_)))
+                && !in_staying_fleet(hex, ordered)
                 && !ruleset
                     .is_some_and(|rules| sail_refused_before_leaving(hex, ordered, steps, rules))
         }
         _ => false,
     })
+}
+
+/// Whether `ordered` stands in a fleet the game keeps in this hex all month once its own ENTER and
+/// LEAVE have run ([`Hex::staying_fleets`], `ah-zbtx`): a unit that steps off it is not held by it.
+fn in_staying_fleet(hex: &Hex<'_>, ordered: &Ordered<'_>) -> bool {
+    hex.staying_fleets
+        .iter()
+        .any(|fleet| is_aboard(ordered, fleet))
 }
 
 /// Whether the game refuses this unit's own `SAIL` at its very first step, so the fleet - and the
@@ -72624,6 +72771,9 @@ BUILD
             kind: "Galley, 40 Galleons, 11 Galleys, 10 Balloons".to_string(),
             ..Default::default()
         }];
+        // Undercrewed (4 sailing levels of 762), so `fleet-undercrewed` says it will not sail; the
+        // produce check still judges the fisherman where the course goes rather than warn a second
+        // time for the same mistake (`ah-jk9h`, kept by `ah-zbtx`).
         let findings = check(regions, "unit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n");
 
         assert_eq!(produce_codes(&findings), Vec::<&str>::new(), "{findings:?}");

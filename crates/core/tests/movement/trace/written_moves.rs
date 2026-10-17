@@ -48,7 +48,9 @@ fn a_written_sail_order_traces_over_water() {
         G3_F42_T40,
         "[]",
         "11125",
-        &document("11125", "SAIL S"),
+        // Sailors (12590) helps, so the longship has the four sailing levels it needs: 11125's two
+        // alone leave it short of sailors and in port (`rules/movement_sailing`, `ah-zbtx`).
+        &format!("{}unit 12590\nSAIL\n", document("11125", "SAIL S\n")),
     )
     .expect("the ruleset loads");
     let path = response.path.expect("a traced path");
@@ -385,17 +387,19 @@ fn an_order_into_unexplored_country_is_drawn_to_its_end() {
 
 /// A unit that boards a fleet this month sails with it: ENTER runs before anything moves, so the
 /// tracer must read where the unit stands *after* its own orders rather than where the report
-/// found it (ah-ssd). Drones (1297) stands ashore in the plain at (36,44); Raft [235] there is
-/// sailed by Drones (10575), and "Southeast : ocean (37,45)".
+/// found it (ah-ssd). Drones (1298) stands ashore in the plain at (36,44); Raft [235] there is
+/// sailed by Drones (10575), and "Southeast : ocean (37,45)". 1298 weighs 110, so the 220 aboard
+/// plus 110 stay within the raft's 450: 1297's 970 would overload it, and an overloaded raft stays
+/// in port (`rules/movement_sailing`, `ah-zbtx`).
 #[test]
 fn a_unit_that_boards_a_fleet_this_month_is_traced_as_sailing_with_it() {
-    let orders = "unit 10575\nSAIL SE\nunit 1297\nENTER 235\n";
+    let orders = "unit 10575\nSAIL SE\nunit 1298\nENTER 235\n";
     let response = trace_orders_for_remembered_report(
         &mut ReportCache::new(),
         RULESET,
         G5_F21_T24,
         "[]",
-        "1297",
+        "1298",
         orders,
     )
     .expect("the ruleset loads");
@@ -415,7 +419,7 @@ fn a_unit_that_boards_a_fleet_this_month_is_traced_as_sailing_with_it() {
         RULESET,
         G5_F21_T24,
         "[]",
-        "1297",
+        "1298",
         "unit 10575\nSAIL SE\n",
     )
     .expect("the ruleset loads");

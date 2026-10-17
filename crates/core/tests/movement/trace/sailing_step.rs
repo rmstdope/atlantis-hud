@@ -139,6 +139,8 @@ fn a_traced_flight_marks_its_water_steps() {
 /// (`rules/skills_teaching`: "Only leaders may use the TEACH order."), so neither a passenger
 /// already aboard nor one that ENTERs it this month is traced sailing. Owned by a human, whose
 /// TEACH spends nothing, both are.
+// The captain is a level-4 sailor, the four sailing levels a Longship needs alone: short of them
+// the fleet "will not go anywhere" (`rules/movement_sailing`, `ah-zbtx`), teaching or not.
 #[test]
 fn a_passenger_of_a_sail_an_eligible_teach_replaced_is_not_traced() {
     let report = |owner: &str| {
@@ -151,7 +153,7 @@ fn a_passenger_of_a_sail_an_eligible_teach_replaced_is_not_traced() {
         text.push_str("+ Ship [329] : Longship; Load: 0/150; Sailors: 4/4; MaxSpeed: 4.\n");
         text.push_str(&format!(
             "  * Captain (900), Foo (1), {owner}. Weight: 10. Capacity: 0/0/15/0. \
-             Skills: sailing [SAIL] 2 (90).\n"
+             Skills: sailing [SAIL] 4 (300).\n"
         ));
         text.push_str(
             "  * Hand (901), Foo (1), centaur [CTAU]. Weight: 50. Capacity: 0/70/70/0. \
@@ -218,6 +220,8 @@ fn a_passenger_of_a_sail_an_eligible_teach_replaced_is_not_traced() {
 /// course. Every movement reading is settled now, whoever is traced. Owned by a human, whose TEACH
 /// spends nothing (`rules/skills_teaching`: "Only leaders may use the TEACH order."), the formed
 /// unit still sails.
+// The captain is a level-4 sailor, the four sailing levels a Longship needs alone: short of them
+// the fleet "will not go anywhere" (`rules/movement_sailing`, `ah-zbtx`), teaching or not.
 #[test]
 fn a_formed_passenger_of_a_sail_an_eligible_teach_replaced_is_not_traced() {
     let report = |owner: &str| {
@@ -227,7 +231,7 @@ fn a_formed_passenger_of_a_sail_an_eligible_teach_replaced_is_not_traced() {
         text.push_str("+ Ship [329] : Longship; Load: 0/150; Sailors: 4/4; MaxSpeed: 4.\n");
         text.push_str(&format!(
             "  * Captain (900), Foo (1), {owner}. Weight: 10. Capacity: 0/0/15/0. \
-             Skills: sailing [SAIL] 2 (90).\n"
+             Skills: sailing [SAIL] 4 (300).\n"
         ));
         text.push_str(
             "  * Hand (901), Foo (1), 2 centaurs [CTAU]. Weight: 100. Capacity: 0/140/140/0. \
