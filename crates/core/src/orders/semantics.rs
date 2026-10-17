@@ -5280,7 +5280,8 @@ fn apply_transfers(
     // what the exchange moved (`ah-mw1r.2`). Silver is not recorded here: the ledger records both
     // legs itself.
     let offers = &exchanges.offers;
-    for (first, second) in complementary_pairs(offers) {
+    let pairs = complementary_pairs(offers);
+    for (index, &(first, second)) in pairs.iter().enumerate() {
         let (one, other) = (&offers[first], &offers[second]);
         let holds = |offer: &ExchangeOffer| -> Result<i64, UncertainGive> {
             if let Some(uncertain) = working
@@ -5336,8 +5337,9 @@ fn apply_transfers(
             Ok(own.max(0).saturating_add(lent))
         };
         let (held, other_held) = (holds(one), holds(other));
-        let doubt = held.as_ref().err().or(other_held.as_ref().err()).cloned();
-        match exchange_verdict((one, held), (other, other_held)) {
+        let (verdict, doubt) =
+            settled_exchange_verdict(units, offers, &pairs, index, held, other_held);
+        match verdict {
             ExchangeVerdict::Moves => {}
             ExchangeVerdict::Aborted => continue,
             ExchangeVerdict::Uncertain => {
@@ -10415,6 +10417,64 @@ fn exchange_verdict<E>(
     }
 }
 
+/// [`exchange_verdict`] for `pairs[index]` among every pair of the hex, with the doubt an
+/// [`ExchangeVerdict::Uncertain`] carries.
+///
+/// A side short of what it offers may be paid it in time by another pair of the hex: the engine
+/// settles each exchange as it walks the units in report order (`runorders.cpp`
+/// `DoExchangeOrders`), not in the order the lines are written. Rather than follow that walk, a
+/// short side that other pairs could pay enough of the offered item is read conservatively, as
+/// uncertain; the abort is certain - and is told (`ah-p5ow`) - only when some short side has no
+/// such pair (reviews of PR #1699). Both settlements call this, so they reach one verdict.
+fn settled_exchange_verdict(
+    units: &[Ordered<'_>],
+    offers: &[ExchangeOffer],
+    pairs: &[(usize, usize)],
+    index: usize,
+    held: Result<i64, UncertainGive>,
+    other_held: Result<i64, UncertainGive>,
+) -> (ExchangeVerdict, Option<UncertainGive>) {
+    let (first, second) = pairs[index];
+    let (one, other) = (&offers[first], &offers[second]);
+    let doubt = held.as_ref().err().or(other_held.as_ref().err()).cloned();
+    let known = [
+        (one, held.as_ref().ok().copied()),
+        (other, other_held.as_ref().ok().copied()),
+    ];
+    let verdict = exchange_verdict((one, held), (other, other_held));
+    if verdict != ExchangeVerdict::Aborted {
+        return (verdict, doubt);
+    }
+    let mut rescue = None;
+    for (offer, held) in known {
+        let Some(held) = held.filter(|held| *held < offer.give_amount) else {
+            continue;
+        };
+        let paying: Vec<&ExchangeOffer> = pairs
+            .iter()
+            .enumerate()
+            .filter(|&(at, _)| at != index)
+            .flat_map(|(_, &(a, b))| [&offers[a], &offers[b]])
+            .filter(|paying| paying.partner == offer.unit && paying.give_tag == offer.give_tag)
+            .collect();
+        let could_receive: i64 = paying.iter().map(|paying| paying.give_amount).sum();
+        let Some(first_paying) = paying.first() else {
+            return (ExchangeVerdict::Aborted, None);
+        };
+        if held.max(0).saturating_add(could_receive) < offer.give_amount {
+            return (ExchangeVerdict::Aborted, None);
+        }
+        rescue.get_or_insert_with(|| UncertainGive {
+            target: format!("unit {}", units[first_paying.unit].unit.unit_id),
+            line: first_paying.line,
+        });
+    }
+    match rescue {
+        Some(rescue) => (ExchangeVerdict::Uncertain, doubt.or(Some(rescue))),
+        None => (ExchangeVerdict::Aborted, None),
+    }
+}
+
 /// Settles every `EXCHANGE` between two of our units in `hex`, after the hex's Give phase.
 ///
 /// `rules/exchange`: "The orders given by the two units must be complementary. If either unit
@@ -10447,7 +10507,7 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     let offers = &read.offers;
     let pairs = complementary_pairs(offers);
     record_unanswered_exchanges(ledger, hex, &read, &pairs);
-    for &(first, second) in &pairs {
+    for (index, &(first, second)) in pairs.iter().enumerate() {
         let (one, other) = (&offers[first], &offers[second]);
         // What a side has as the engine counts an offer, `GetSharedNum`: its own stock and what
         // its `SHARE` faction-mates in the hex still lend it, off the one reading every spend from
@@ -10490,34 +10550,18 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
                 .saturating_add(lenders.iter().map(|(_, lends)| lends).sum::<i64>()))
         };
         let (held, other_held) = (holds(one), holds(other));
-        let doubt = held.as_ref().err().or(other_held.as_ref().err()).cloned();
         let known = (
             held.as_ref().ok().copied(),
             other_held.as_ref().ok().copied(),
         );
-        match exchange_verdict((one, held), (other, other_held)) {
+        let (verdict, doubt) =
+            settled_exchange_verdict(&hex.units, offers, &pairs, index, held, other_held);
+        match verdict {
             ExchangeVerdict::Moves => {
                 hand_over(ledger, hex, one);
                 hand_over(ledger, hex, other);
             }
             ExchangeVerdict::Aborted => {
-                // A short side another pair here pays in what it offers may be paid in time: the
-                // engine settles a pair as it reaches its second unit in report order, not in the
-                // order the lines are written, so this abort is not certain and is not told
-                // (reviewer's finding 1 on PR #1699).
-                let paid_by_another_pair = |offer: &ExchangeOffer| {
-                    pairs
-                        .iter()
-                        .filter(|&&pair| pair != (first, second))
-                        .any(|&(a, b)| {
-                            [&offers[a], &offers[b]].iter().any(|paying| {
-                                paying.partner == offer.unit && paying.give_tag == offer.give_tag
-                            })
-                        })
-                };
-                if paid_by_another_pair(one) || paid_by_another_pair(other) {
-                    continue;
-                }
                 // Who is short, as each line will say it.
                 let short: Vec<String> = [(one, known.0), (other, known.1)]
                     .into_iter()
@@ -10548,11 +10592,18 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
                 // `GIVE` marks its giver (`transfer`, `GiveOutcome::Uncertain`).
                 for offer in [one, other] {
                     for unit in [offer.unit, offer.partner] {
+                        let unit_id = &hex.units[unit].unit.unit_id;
                         ledger
                             .state
                             .uncertain
-                            .entry((hex.units[unit].unit.unit_id.clone(), offer.give_tag.clone()))
+                            .entry((unit_id.clone(), offer.give_tag.clone()))
                             .or_insert_with(|| doubt.clone());
+                        // Only silver doubts a unit's sums, as an uncertain `GIVE` of it does
+                        // (`transfer`): its later spending is not judged against a purse the
+                        // exchange may or may not fill (delta review's finding 3 on PR #1699).
+                        if offer.give_tag.eq_ignore_ascii_case(SILVER) {
+                            ledger.doubted.insert(unit_id.clone());
+                        }
                     }
                     mark_uncounted(ledger, &hex.units[offer.unit].unit.unit_id, offer.line);
                 }

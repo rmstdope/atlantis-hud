@@ -173,9 +173,63 @@ fn an_offer_paid_for_by_another_exchange_is_not_warned_short() {
 fn an_answer_the_game_refuses_is_named_as_such() {
     let findings = findings_of(IVANHOE_OFFERS, "EXCHANGE 683 200 SILV 1 LEAD");
     assert_eq!(warned_units(&findings), vec!["683"], "{findings:?}");
-    assert!(
-        !findings[0].message.contains("has no EXCHANGE"),
-        "{}",
-        findings[0].message
+    assert_eq!(
+        findings[0].message,
+        "EXCHANGE will be aborted: Maurice de Bracy (1160) answers with men or goods the game will \
+         not hand over"
     );
+}
+
+/// Another pair paying Cedric silver says nothing about Ivanhoe's swords: Ivanhoe is the short
+/// side and nothing gives it swords, so the abort is certain and is warned (delta review's
+/// finding 1 on PR #1699).
+#[test]
+fn a_pair_paying_the_side_that_is_not_short_does_not_hide_the_abort() {
+    let findings = findings_with_cedric(
+        "EXCHANGE 900 10 SWOR 50 SILV",
+        "EXCHANGE 900 50 SILV 1 WOOD",
+        "EXCHANGE 683 50 SILV 10 SWOR\nEXCHANGE 1160 1 WOOD 50 SILV",
+    );
+    assert_eq!(warned_units(&findings), vec!["683", "900"], "{findings:?}");
+}
+
+/// A pair that pays too little to cover the shortfall cannot rescue it (delta review's finding
+/// 2): Maurice's 1 silver leaves Ivanhoe 199 short of the 200 it offers Cedric.
+#[test]
+fn a_pair_paying_too_little_does_not_hide_the_abort() {
+    let findings = findings_with_cedric(
+        "EXCHANGE 900 200 SILV 1 WOOD\nEXCHANGE 1160 1 HORS 1 SILV",
+        "EXCHANGE 683 1 SILV 1 HORS",
+        "EXCHANGE 683 1 WOOD 200 SILV",
+    );
+    assert_eq!(warned_units(&findings), vec!["683", "900"], "{findings:?}");
+}
+
+/// An exchange another pair may pay for in time may go ahead, so no later check reads it as
+/// certainly moving nothing: Cedric's study is not called short of the silver it may receive
+/// (delta review's finding 3).
+#[test]
+fn an_exchange_that_may_be_paid_for_leaves_later_spending_uncertain() {
+    let ruleset = ruleset();
+    let text = report_text();
+    let mut parsed = parse_report_full(&text);
+    classify_units(&mut parsed, &ruleset);
+    let template = extract_orders_template(&text)
+        .map(|template| template.text)
+        .unwrap_or_default();
+    let script = format!(
+        "{template}\nunit 683\nEXCHANGE 900 200 SILV 1 WOOD\nEXCHANGE 1160 2 HORS 200 SILV\n\
+         unit 1160\nEXCHANGE 683 200 SILV 2 HORS\nunit 900\nEXCHANGE 683 1 WOOD 200 SILV\n\
+         STUDY COMB\n"
+    );
+    let review = review_turn(&parsed, &script, Some(&ruleset), CheckOptions::default());
+    let short: Vec<_> = review
+        .findings
+        .iter()
+        .filter(|finding| {
+            finding.code.as_str() == "not-enough-silver"
+                && finding.unit_id.as_deref() == Some("900")
+        })
+        .collect();
+    assert!(short.is_empty(), "{short:?}");
 }
