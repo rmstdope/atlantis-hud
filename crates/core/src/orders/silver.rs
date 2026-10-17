@@ -157,19 +157,35 @@ fn food_stock(items: &[ItemAmount], ruleset: Option<&Ruleset>) -> Vec<FoodAmount
         .collect()
 }
 
+/// The foods the engine eats for maintenance, in the order it eats them: every maintenance and
+/// hunger pass in `Game::CheckUnitMaintenance` and its siblings (../Atlantis/game.cpp:1800) walks
+/// meals, grain, livestock and fish, one item type at a time.
+const ENGINE_FOOD_ORDER: [&str; 4] = ["MEAL", "GRAI", "LIVE", "FISH"];
+
+/// Where `tag` falls in [`ENGINE_FOOD_ORDER`]; any other food comes after all four.
+fn engine_food_rank(tag: &str) -> usize {
+    ENGINE_FOOD_ORDER
+        .iter()
+        .position(|food| *food == tag)
+        .unwrap_or(ENGINE_FOOD_ORDER.len())
+}
+
 /// Spends food off `stock` against `owed` silver of maintenance, returning what it paid and cost.
 ///
 /// The one place maintenance food arithmetic lives - steps 1, 2, 5 and 6 of the payment order all
-/// go through here. Food is eaten least valuable first (`maintenance_value` then `tag`): where a
-/// future ruleset gives foods different values but does not say which the engine eats, spending the
-/// cheapest first is the conservative direction - it eats more items for the same relief and so
-/// cannot overstate the maintenance a hex can pay. A fractional maintenance cost still consumes a
-/// whole unit of food, so each entry rounds its need up; the covered silver is capped at the
+/// go through here. Food is eaten in the engine's order, [`ENGINE_FOOD_ORDER`]. The engine eats no
+/// other food at all; should a ruleset give another item a maintenance value, this app's
+/// assumption, kept from before the engine order was known, is that it is eaten after those four,
+/// least valuable first (`maintenance_value` then `tag`): spending the cheapest first is the
+/// conservative direction - it eats more items for the same relief and so cannot overstate the
+/// maintenance a hex can pay. A fractional maintenance cost still consumes a whole unit of food,
+/// so each entry rounds its need up; the covered silver is capped at the
 /// remaining debt, and all arithmetic saturates so an absurd headcount cannot overflow it.
 fn consume_food(stock: &mut Vec<FoodAmount>, owed: i64) -> FoodUse {
     stock.sort_by(|a, b| {
-        a.maintenance_value
-            .cmp(&b.maintenance_value)
+        engine_food_rank(&a.tag)
+            .cmp(&engine_food_rank(&b.tag))
+            .then_with(|| a.maintenance_value.cmp(&b.maintenance_value))
             .then_with(|| a.tag.cmp(&b.tag))
     });
 
@@ -3629,8 +3645,8 @@ pub fn feed_from_faction_food(claims: &[FoodClaim]) -> FactionFoodPass {
         };
     }
 
-    // Several claimants settle in document order against one shared stock. Each takes the cheapest
-    // food first, so report order makes the outcome deterministic even when the pool is short.
+    // Several claimants settle in document order against one shared stock. Each eats in the engine's
+    // food order, so report order makes the outcome deterministic even when the pool is short.
     let mut stock = pool;
     let mut settlements: Vec<(String, i64)> = Vec::with_capacity(claimants.len());
     for claim in &claimants {
@@ -4014,17 +4030,18 @@ mod late_food_tests {
         }
     }
 
-    /// Step 5 spends the least valuable food first and the item count comes from the entries eaten,
-    /// not from a silver total divided by a constant: a unit owing 60 with a 20-silver meal and two
-    /// 30-silver grain eats the meal and two grain (covering 60 with three items).
+    /// Step 5 counts items from the entries eaten, not from a silver total divided by a constant: a
+    /// unit owing 60 with a 20-silver food and two 30-silver foods eats all three (covering 60 with
+    /// three items). The tags are synthetic, so the order is the value fallback for foods the
+    /// engine does not name.
     #[test]
-    fn own_food_is_spent_least_valuable_first_and_counted_by_entry() {
+    fn own_food_is_counted_by_entry_eaten() {
         let claims = [LateFoodClaim {
             unit_id: "a".to_string(),
             short: 60,
-            own_food: vec![food("GRAI", 2, 30), food("MEAL", 1, 20)],
+            own_food: vec![food("DEAR", 2, 30), food("CHEAP", 1, 20)],
         }];
-        let pool_left = Some(vec![food("GRAI", 2, 30), food("MEAL", 1, 20)]);
+        let pool_left = Some(vec![food("DEAR", 2, 30), food("CHEAP", 1, 20)]);
         let relief = feed_after_silver(&claims, pool_left);
         let a = relief.get("a").expect("a is fed");
         assert_eq!(a.own_covered, 60);
@@ -4058,7 +4075,7 @@ mod consume_food_tests {
         }
     }
 
-    /// The core of the whole bead: food is eaten least valuable first, each entry rounds its need
+    /// Food the engine does not name is eaten least valuable first, each entry rounds its need
     /// up, and covered silver is capped at the debt. A unit owing 50 with a 20-silver stock and a
     /// 40-silver stock eats the 20s first - two of them cover 40, and a single 40 covers the last
     /// 10, capped. Three items eaten, 50 covered.
@@ -4075,6 +4092,38 @@ mod consume_food_tests {
         );
         // The stock is drawn down by exactly what was eaten.
         assert_eq!(stock, vec![food("BIG", 4, 40)]);
+    }
+
+    /// ah-p26h: the engine eats meals, then grain, livestock and fish
+    /// (`Game::CheckUnitMaintenance`, ../Atlantis/game.cpp:1800), not fish first. All four give
+    /// 30 silver (data/MEAL, data/GRAI, data/LIVE, data/FISH), so the tag order used to decide it.
+    /// Unit 8333 in neworigins-3.0.0-g5-f21-t24 holds 243 grain and 20 fish and eats one item:
+    /// it must be a grain, leaving the fish alone.
+    #[test]
+    fn eats_the_engine_food_order_meals_grain_livestock_fish() {
+        let mut stock = vec![food("FISH", 20, 30), food("GRAI", 243, 30)];
+        let use_ = consume_food(&mut stock, 30);
+        assert_eq!(use_.consumed, vec![food("GRAI", 1, 30)]);
+        assert_eq!(stock, vec![food("GRAI", 242, 30), food("FISH", 20, 30)]);
+
+        let mut all = vec![
+            food("FISH", 1, 30),
+            food("LIVE", 1, 30),
+            food("GRAI", 1, 30),
+            food("MEAL", 1, 30),
+        ];
+        let use_ = consume_food(&mut all, 120);
+        let order: Vec<&str> = use_.consumed.iter().map(|f| f.tag.as_str()).collect();
+        assert_eq!(order, vec!["MEAL", "GRAI", "LIVE", "FISH"]);
+    }
+
+    /// The engine's foods come before any other, whatever its value: a 20-silver food the engine
+    /// does not name waits behind 30-silver grain.
+    #[test]
+    fn the_engine_foods_are_eaten_before_an_unnamed_cheaper_food() {
+        let mut stock = vec![food("CHEAP", 5, 20), food("GRAI", 5, 30)];
+        let use_ = consume_food(&mut stock, 30);
+        assert_eq!(use_.consumed, vec![food("GRAI", 1, 30)]);
     }
 
     /// A stock too small pays what it can and no more; the debt survives.
@@ -4224,7 +4273,7 @@ pub fn feed_after_silver(
         return relief;
     }
 
-    // Several claimants: dry-run in document order against one cloned stock, cheapest food first.
+    // Several claimants: dry-run in document order against one cloned stock, in food order.
     let mut stock = remaining.clone();
     let mut uses: Vec<(&String, FoodUse)> = Vec::with_capacity(claimants.len());
     let mut all_fed = true;
@@ -10787,17 +10836,16 @@ mod faction_food_tests {
         assert_eq!(pool_count(&pass), Some(0));
     }
 
-    /// A hex whose pool is several kinds of food spends the least valuable first: a lone claimant
-    /// owing 40 against one 20-silver meal and two 40-silver grain eats the meal then one grain,
-    /// leaving the dearer grain behind. The values are synthetic (real foods share one value today),
-    /// which is exactly why this must be pinned before a ruleset gives them different ones
-    /// (`ah-773o`).
+    /// A hex whose pool is several kinds of food the engine does not name spends the least
+    /// valuable first: a lone claimant owing 40 against one 20-silver food and two 40-silver foods
+    /// eats the cheap one then one dear one, leaving a dear one behind. Tags and values are
+    /// synthetic (`ah-773o`); the engine's own foods go in its order (ah-p26h).
     #[test]
-    fn a_mixed_value_pool_is_spent_least_valuable_first() {
+    fn a_mixed_value_pool_of_unnamed_food_is_spent_least_valuable_first() {
         let quartermaster = FoodClaim {
             spare_food_uncertain: false,
             unit_id: "quartermaster".to_string(),
-            spare_food: vec![food("MEAL", 1, 20), food("GRAI", 2, 40)],
+            spare_food: vec![food("CHEAP", 1, 20), food("DEAR", 2, 40)],
             owed_after_own_food: 0,
             own_food_covered: 0,
             own_eaten: Vec::new(),
@@ -10806,10 +10854,10 @@ mod faction_food_tests {
         let claims = [quartermaster, claim("a", 0, 40, true)];
         let pass = feed_from_faction_food(&claims);
         assert_eq!(pass.settled.get("a"), Some(&Some(0)));
-        // `a` eats the 20 meal (covers 20) then one 40 grain (covers the last 20), so one grain of
-        // the dearer stock is left and the cheap meal is gone.
+        // `a` eats the 20 food (covers 20) then one 40 food (covers the last 20), so one of the
+        // dearer stock is left and the cheap one is gone.
         let left = pass.pool_left.expect("a lone claimant is not contended");
-        assert_eq!(left, vec![food("GRAI", 1, 40)]);
+        assert_eq!(left, vec![food("DEAR", 1, 40)]);
     }
 
     /// An empty pool is exact, not doubtful: with no food in the hex nobody eats, so every unit
