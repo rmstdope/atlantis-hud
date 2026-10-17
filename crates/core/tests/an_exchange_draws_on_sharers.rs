@@ -313,6 +313,46 @@ fn a_sharer_giving_itself_to_a_unit_not_here_leaves_the_exchange_certain() {
     }
 }
 
+/// A sharer whose `GIVE <n> UNIT` the engine refuses before anything moves stays ours and lends as
+/// before (`ah-839x`). `Game::DoGiveOrder` (../Atlantis `runorders.cpp`) errors "Can't discard a
+/// whole unit." for `GIVE 0 UNIT`, and "Unit already belongs to our faction!" for a whole-unit gift
+/// to a faction-mate - one of our units here, or a `NEW` unit this month's `FORM` creates - so the
+/// exchange reads exactly as it does without the line. Only a foreign target in the hex leaves the
+/// doubt (`a_sharer_giving_itself_away_leaves_an_offer_it_would_cover_uncounted`).
+#[test]
+fn a_sharer_giving_itself_to_its_own_faction_or_unit_0_leaves_the_exchange_certain() {
+    const SMITH: &str = "EXCHANGE 2392 5 SWOR 50 SILV";
+    const BUYER: &str = "EXCHANGE 2391 50 SILV 5 SWOR";
+    let buyer = format!("{BUYER}\nSELL 5 SWOR");
+    for give in [
+        "GIVE 0 UNIT",
+        "GIVE 2392 UNIT",
+        "FORM 1\nEND\nGIVE NEW 1 UNIT",
+    ] {
+        let orders = (SMITH, buyer.as_str(), give);
+        let (_, uncounted) = preview_of(orders, "2391", "SWOR", 2);
+        assert!(uncounted.is_empty(), "{give}: {uncounted:?}");
+        let (swords, uncounted) = preview_of(orders, "2392", "SWOR", 0);
+        assert_eq!(swords, 0, "{give}: all five arrive and are sold");
+        assert!(
+            !uncounted.iter().any(|line| line.starts_with("EXCHANGE")),
+            "{give}: {uncounted:?}"
+        );
+        assert_eq!(
+            holding(orders, "2393", "SWOR", 5),
+            2,
+            "{give}: the sharer lends three"
+        );
+        let row = silver_row(orders, "2392");
+        assert_eq!(row.doubt, None, "{give}: {row:?}");
+        assert_eq!(
+            silver_moved(orders, "2392", SilverChangeCause::Sold),
+            500,
+            "{give}: the transfer walk sells all five"
+        );
+    }
+}
+
 /// `(cause, delta, other, borrower)` for each `tag` change the ITEMS preview books on `unit_id`.
 fn item_changes(
     orders: Orders,

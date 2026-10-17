@@ -4471,13 +4471,14 @@ fn held_by(
 /// The `GIVE <party> UNIT` a unit writes, as the doubt it leaves a sharer's lending in: the gift
 /// runs before `EXCHANGE` (`rules/sequenceofevents`) and, if taken, puts the unit in another
 /// faction, which the engine's `GetSharedNum` does not lend from; whether another faction's unit
-/// takes it the report cannot say (`rules/give`; `ah-80mj`). A gift to our own unit or to unit 0,
-/// which the engine also refuses, is still doubted here (`ah-839x`).
+/// takes it the report cannot say (`rules/give`; `ah-80mj`).
 ///
-/// `reach` says where each target stands. One the gift cannot land on - a unit the report shows in
-/// another hex, or a number it never prints ([`GiveReach::gives_nothing`]) - leaves no doubt: the
-/// engine's `Game::DoGiveOrder` (../Atlantis `runorders.cpp`) errors "Nonexistant target" before
-/// the whole-unit branch, so the sharer stays ours and lends as before (`ah-te15`).
+/// `reach` says where each target stands, and only [`GiveReach::Foreign`] leaves a doubt. Every
+/// other target the engine's `Game::DoGiveOrder` (../Atlantis `runorders.cpp`) refuses before
+/// anything moves, so the sharer stays ours and lends as before: a unit the report shows in
+/// another hex, or a number it never prints, errors "Nonexistant target" (`ah-te15`); unit 0
+/// errors "Can't discard a whole unit."; and one of our own units here, a `FORM`ed `NEW` unit
+/// included, errors "Unit already belongs to our faction!" (`ah-839x`).
 fn gives_itself_away(
     ordered: &Ordered<'_>,
     reach: impl Fn(&Party) -> GiveReach,
@@ -4490,7 +4491,7 @@ fn gives_itself_away(
                 to,
                 what: Selector::WholeUnit,
                 ..
-            } if !reach(to).gives_nothing() => Some(UncertainGive {
+            } if reach(to) == GiveReach::Foreign => Some(UncertainGive {
                 target: party_label(to),
                 line: placed.line,
             }),
