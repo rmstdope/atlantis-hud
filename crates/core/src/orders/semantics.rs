@@ -16699,6 +16699,10 @@ struct SharerStock {
     order: Vec<usize>,
 }
 
+/// The `(lender party, amount)` draws that paid one claimant ([`SharerStock::paid_one_by_one`],
+/// `ah-kjq5`).
+type PaidBy = Vec<(usize, i64)>;
+
 impl SharerStock {
     /// Parties drained in the order they are given.
     fn new(parties: Vec<StockParty>) -> Self {
@@ -17026,7 +17030,7 @@ impl SharerStock {
     /// Third, who paid each claimant: for each party, the `(lender party, amount)` draws that paid
     /// its overdraft, in drain order - empty for a party that was refused or owed nothing - so a
     /// loan can name its lender where the totals cannot (`ah-kjq5`).
-    fn paid_one_by_one(&self) -> (Vec<i64>, Vec<i64>, Vec<Vec<(usize, i64)>>) {
+    fn paid_one_by_one(&self) -> (Vec<i64>, Vec<i64>, Vec<PaidBy>) {
         let mut stock: Vec<i64> = self
             .parties
             .iter()
@@ -17040,7 +17044,7 @@ impl SharerStock {
             .collect();
         let mut lent = vec![0; self.parties.len()];
         let mut refused = vec![0; self.parties.len()];
-        let mut paid_by: Vec<Vec<(usize, i64)>> = vec![Vec::new(); self.parties.len()];
+        let mut paid_by: Vec<PaidBy> = vec![Vec::new(); self.parties.len()];
         for &claimant in &self.order {
             let need = (-self.parties[claimant].position).max(0);
             if need == 0 {
