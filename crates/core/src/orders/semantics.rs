@@ -1777,10 +1777,8 @@ fn market_shares_for(
             // can raise a `region-pool-oversubscribed` finding for goods nobody was ever going to
             // buy (`ah-yn2x`).
             //
-            // `ordered.unit.skills` - the report's own list - because that is exactly what `buy`
-            // and the SILVER column's `purchase` closure both read. Asking `skills_before_the_market`
-            // here instead would re-open the divergence this guard closes. The races, by the same
-            // argument, are `early_men_by_race` on all three: the men after this month's gifts.
+            // Which recruits are refused comes from `refused_recruits_in_market_order`, which
+            // judges each line on the unit as the earlier market lines leave it (`ah-wk49`).
             if matches!(side, MarketSide::Buying)
                 && refused_recruits.contains(&(index, tag.to_ascii_uppercase()))
             {
@@ -2693,12 +2691,15 @@ fn forecast_hex(
             ordered,
             ruleset,
         ) {
-            // The buyer's own skills, as the report prints them - `actor.unit.skills` is what
-            // the ledger's `buy` reads, and the two surfaces must read the same list.
+            // The ledger's own refusal, so the column and `buy` cannot answer one order two ways:
+            // `buy` judges it on the unit as the market phase finds it, earlier market lines'
+            // recruits included (`ah-ndp9`, `ah-u5rz`, `ah-wk49`). Every line of a unit for one
+            // item is judged against the same unit, so the tag is the whole key.
             MarketAnswer::Offered(line)
-                if ledger
-                    .refused_recruit_tags
-                    .contains(&(index, line.tag.to_ascii_uppercase())) =>
+                if ledger.refused_recruits.iter().any(|refused| {
+                    refused.unit_id == ordered.unit.unit_id
+                        && refused.tag.eq_ignore_ascii_case(&line.tag)
+                }) =>
             {
                 PurchaseAnswer::RecruitsRefused
             }
@@ -5970,10 +5971,6 @@ struct Ledger<'a> {
     /// (`ah-ndp9`). One entry per refused line; no tag and no count, because the sentence the
     /// navigator chose names neither.
     pub(crate) refused_recruits: Vec<RefusedRecruit>,
-    /// Every recruit the game refuses this month, by `(index into hex.units, tag)`: what `buy`
-    /// refuses and the SILVER column charges nothing for. Settled once from the hex
-    /// (`refused_recruits_in_market_order`, `ah-wk49`).
-    pub(crate) refused_recruit_tags: BTreeSet<(usize, String)>,
     /// Tags a `GIVE` may or may not have moved out of a unit, keyed exactly as `balance` is.
     ///
     /// The balance of such a tag is neither the report's figure nor zero, so every arithmetic that
@@ -6688,7 +6685,6 @@ fn ledger_for_reaching<'a>(
         uncounted: BTreeMap::new(),
         unfollowed_recruits: BTreeSet::new(),
         refused_recruits: Vec::new(),
-        refused_recruit_tags: refused_recruits_in_market_order(hex, ruleset),
         built: BTreeMap::new(),
         refused_casts: BTreeMap::new(),
         build_laid: BTreeMap::new(),
@@ -10179,15 +10175,28 @@ fn buy(
     // mage's recruiting too (`ah-ndp9`). Refused before anything is charged, credited or recorded:
     // the server refuses the order, so no silver leaves. Before the `BUY ALL` deferral as well, so
     // no `BUY ALL` slips past into `settle_buy_all`. A recruit that would mix leaders and normal
-    // men is refused the same way, mage or not (`rules/playing_units`, `ah-u5rz`) - judged on the
-    // men the unit holds once this month's gifts have run, since `rules/sequenceofevents` settles
-    // GIVE before the market and `Game::GetBuyAmount` asks the unit as it then stands.
-    // Read from the market pass's one answer, which also refuses the second of two purchases
-    // that would mix leaders and normal men between them (`ah-wk49`).
-    if ledger
-        .refused_recruit_tags
-        .contains(&(standing.actor_index, tag.clone()))
-    {
+    // men is refused the same way, mage or not (`rules/playing_units`, `ah-u5rz`).
+    //
+    // `Game::GetBuyAmount` asks the unit as it stands when this item's market line is sized: after
+    // this month's gifts (`rules/sequenceofevents` settles GIVE before the market), and after the
+    // market lines settled before this one, whose recruits `DoBuy` has already added (`ah-wk49`).
+    // So the men this unit has actually bought so far count, and a line that bought nobody adds
+    // nobody to mix with. The SILVER column reads the refusal recorded here, so the two agree.
+    let mut men_by_race = actor.early_men_by_race().to_vec();
+    men_by_race.extend(
+        ledger
+            .bought
+            .iter()
+            .filter(|((unit_id, bought_tag), amount)| {
+                unit_id == who
+                    && **amount > 0
+                    && ruleset.is_some_and(|ruleset| ruleset.is_man(bought_tag))
+            })
+            .map(|((_, bought_tag), amount)| {
+                ItemAmount::new(*amount, bought_tag.clone(), bought_tag.clone())
+            }),
+    );
+    if recruit_refused(&actor.unit.skills, &men_by_race, &tag, ruleset) {
         ledger.refused_recruits.push(RefusedRecruit {
             unit_id: who.clone(),
             line: placed.line,
@@ -10406,7 +10415,8 @@ fn buys_in_market_order(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<MarketB
     buys
 }
 
-/// Every recruit the game refuses this month, as `(index into hex.units, upper-case tag)`.
+/// Every recruit the game refuses this month, as `(index into hex.units, upper-case tag)`, for
+/// the market-share pre-pass.
 ///
 /// `Game::GetBuyAmount` (../Atlantis `runorders.cpp`) refuses a mage's recruiting and one that
 /// would mix leaders and normal men (`rules/playing_units`, `ah-u5rz`), asking the unit as it
@@ -10416,11 +10426,11 @@ fn buys_in_market_order(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<MarketB
 /// the other (`ah-wk49`). The answer is per unit and tag, because every line of a unit for one item
 /// is sized against the same unit.
 ///
-/// An earlier purchase counts as recruited when it was attempted - a positive `BUY n` or a
-/// `BUY ALL` - and not refused. The engine adds men only where the line bought some, but what a
-/// line buys is settled later than this answer is needed: the market-share pre-pass reads it before
-/// any line is priced. One answer, read by the shares, the ledger's `buy` and the SILVER column
-/// alike, so no two surfaces disagree about a refusal.
+/// The shares are settled before any line is priced, so an earlier purchase counts here as
+/// recruited when it was attempted - a positive `BUY n` or a `BUY ALL` - and not refused. The
+/// ledger's `buy` judges on what earlier lines actually bought instead, as the engine does, and
+/// the two differ only where an earlier line buys nobody: the share pre-pass then leaves out a
+/// buyer `buy` runs, and that buyer's line falls back to what it asked for.
 fn refused_recruits_in_market_order(
     hex: &Hex<'_>,
     ruleset: Option<&Ruleset>,

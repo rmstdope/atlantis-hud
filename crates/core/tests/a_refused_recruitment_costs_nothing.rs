@@ -343,13 +343,24 @@ fn a_leader_who_is_no_mage_buying_all_normal_men_is_refused() {
 /// mixed in the same unit).
 ///
 /// The orders write the leaders first on purpose: what decides is the market's order, not the
-/// document's. Returns the formed unit's silver row, the lines of its mixing findings, and the
-/// ITEMS preview's orcs and leaders for it.
-fn formed_unit_buying_both(for_sale: &str) -> (UnitSilver, Vec<Option<usize>>, i64, i64) {
+/// document's. The formed unit is handed `silver`.
+struct BuyingBoth {
+    row: UnitSilver,
+    /// The lines the `leaders-and-men-mixed` findings sit on.
+    mixed: Vec<Option<usize>>,
+    /// The order lines of `BUY 1 leaders` and `BUY 5 orcs`, numbered as findings number them.
+    leaders_line: usize,
+    orcs_line: usize,
+    orcs: i64,
+    leaders: i64,
+}
+
+fn formed_unit_buying_both(for_sale: &str, silver: i64) -> BuyingBoth {
     let text = report_with("1 leaders [LEAD]", "combat [COMB] 1 (30)")
         .replace("20 orcs [ORC] at $38, 5 leaders [LEAD] at $100", for_sale);
-    let script = "unit 2390\nFORM 1\nBUY 1 leaders\nBUY 5 orcs\nEND\nGIVE NEW 1 500 SILV\n";
-    let review = review_of(&text, script);
+    let script =
+        format!("unit 2390\nFORM 1\nBUY 1 leaders\nBUY 5 orcs\nEND\nGIVE NEW 1 {silver} SILV\n");
+    let review = review_of(&text, &script);
 
     let formed_id = review
         .silver
@@ -371,12 +382,20 @@ fn formed_unit_buying_both(for_sale: &str) -> (UnitSilver, Vec<Option<usize>>, i
     let template = extract_orders_template(&text)
         .map(|template| template.text)
         .unwrap_or_default();
+    let orders = format!("{template}\n{script}");
+    let line_of = |wanted: &str| {
+        orders
+            .lines()
+            .position(|line| line.trim() == wanted)
+            .expect("the script writes the line")
+            + 1
+    };
     let preview = preview_orders_for_remembered_report(
         &mut ReportCache::new(),
         atlantis_hud_fixtures::RULESET_JSON,
         &text,
         "[]",
-        &format!("{template}\n{script}"),
+        &orders,
     )
     .expect("the committed ruleset loads");
     let formed = preview
@@ -394,48 +413,61 @@ fn formed_unit_buying_both(for_sale: &str) -> (UnitSilver, Vec<Option<usize>>, i
             .map(|item| item.amount)
             .sum()
     };
-    (
-        row_of(&review, &formed_id),
+    BuyingBoth {
+        row: row_of(&review, &formed_id),
         mixed,
-        holding("ORC"),
-        holding("LEAD"),
-    )
+        leaders_line: line_of("BUY 1 leaders"),
+        orcs_line: line_of("BUY 5 orcs"),
+        orcs: holding("ORC"),
+        leaders: holding("LEAD"),
+    }
 }
 
 #[test]
 fn orcs_sold_first_recruit_the_orcs_and_refuse_the_leader() {
-    let (row, mixed, orcs, leaders) =
-        formed_unit_buying_both("20 orcs [ORC] at $38, 5 leaders [LEAD] at $100");
+    let both = formed_unit_buying_both("20 orcs [ORC] at $38, 5 leaders [LEAD] at $100", 500);
 
     assert_eq!(
-        row.expense,
+        both.row.expense,
         Some(190),
-        "five orcs at $38 and no leader: {row:?}"
+        "five orcs at $38 and no leader: {:?}",
+        both.row
     );
-    assert_eq!(row.at_month_end, Some(310));
+    assert_eq!(both.row.at_month_end, Some(310));
     assert_eq!(
-        mixed.len(),
-        1,
-        "one warning, on the refused leader: {mixed:?}"
+        both.mixed,
+        vec![Some(both.leaders_line)],
+        "one warning, on the refused leader"
     );
-    assert_eq!((orcs, leaders), (5, 0));
+    assert_eq!((both.orcs, both.leaders), (5, 0));
 }
 
 #[test]
 fn leaders_sold_first_recruit_the_leader_and_refuse_the_orcs() {
-    let (row, mixed, orcs, leaders) =
-        formed_unit_buying_both("5 leaders [LEAD] at $100, 20 orcs [ORC] at $38");
+    let both = formed_unit_buying_both("5 leaders [LEAD] at $100, 20 orcs [ORC] at $38", 500);
 
     assert_eq!(
-        row.expense,
+        both.row.expense,
         Some(100),
-        "one leader at $100 and no orc: {row:?}"
+        "one leader at $100 and no orc: {:?}",
+        both.row
     );
-    assert_eq!(row.at_month_end, Some(400));
+    assert_eq!(both.row.at_month_end, Some(400));
     assert_eq!(
-        mixed.len(),
-        1,
-        "one warning, on the refused orcs: {mixed:?}"
+        both.mixed,
+        vec![Some(both.orcs_line)],
+        "one warning, on the refused orcs"
     );
-    assert_eq!((orcs, leaders), (0, 1));
+    assert_eq!((both.orcs, both.leaders), (0, 1));
+}
+
+/// A first line that buys nobody leaves nobody to mix with. `Game::GetBuyAmount` cuts a line to
+/// what the unit can afford and drops one cut to nothing, so `DoBuy` adds no leader, and the orcs'
+/// line, sized next, meets a unit with no men and buys what the silver left covers: one orc at $38.
+#[test]
+fn a_first_line_the_unit_cannot_afford_leaves_the_second_free_to_recruit() {
+    let both = formed_unit_buying_both("5 leaders [LEAD] at $100, 20 orcs [ORC] at $38", 50);
+
+    assert_eq!(both.mixed, vec![], "no leader arrives to mix with");
+    assert_eq!((both.orcs, both.leaders), (1, 0));
 }
