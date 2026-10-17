@@ -835,7 +835,8 @@ pub(crate) struct Judged {
     pub target_shown: bool,
     /// A refusal `acceptance` reads off the report that the month may undo: the target belongs to
     /// another faction, or its own orders this month could make it eligible
-    /// ([`Shipping::read_orders`], `ah-kjjv`). `false` for every other answer.
+    /// ([`Shipping::read_orders`], `ah-kjjv`). `false` for every other answer. Meaningful only on a
+    /// `Shipping` that has read the month's orders; every caller does, straight after `read`.
     pub unsettled: bool,
     pub acceptance: Acceptance,
     pub phase: ShipmentPhase,

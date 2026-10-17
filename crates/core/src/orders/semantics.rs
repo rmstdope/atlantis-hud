@@ -7510,7 +7510,13 @@ pub(crate) fn item_effects(
     // `review_turn` settles it - through the same driver (`ah-7ale.4`). Through maintenance, as
     // `review_turn` runs it: the food upkeep eats comes off the ITEMS column, and steps 5 and 6
     // are only known once step 4 has lent what it lends (`ah-q490`).
-    let shipping = ruleset.map(|rules| super::transport::Shipping::read(report, rules, options));
+    let shipping = ruleset.map(|rules| {
+        let mut shipping = super::transport::Shipping::read(report, rules, options);
+        // The same reading of the month's orders `review_turn` makes, so no `Judged` here can
+        // call a refusal settled that the month may undo (`ah-kjjv`).
+        shipping.read_orders(report, orders_document, rules);
+        shipping
+    });
     // The same cross-hex lending `review_turn` settles, so the ITEMS column agrees with Problems.
     let membership = PurseMembership::read(&hexes, report, ruleset, &options.month_end);
     let departing = membership.departing_sharers();
