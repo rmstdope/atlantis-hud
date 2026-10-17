@@ -1819,11 +1819,12 @@ fn market_shares_sized(
     // it can supply ten into, wins a share it is not owed, and can push the line into a false
     // `region-pool-oversubscribed` (`ah-vw8e`).
     let mut claimed: BTreeMap<(usize, String), i64> = BTreeMap::new();
-    // Which units wrote an unbounded `BUY` for each tag. `rules/buy` splits a line "in proportion
-    // to the amount each buyer attempted to buy" - per buyer, against one purse - so a unit's two
-    // `BUY ALL` lines are one attempt, not two. Settled after the loop rather than inside it, so
-    // the claim does not depend on which line the player typed first (`ah-lauy`).
-    let mut unbounded: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
+    // How many unbounded `BUY` lines each unit wrote for each tag. `Game::GetBuyAmount`
+    // (`runorders.cpp`) sizes every buy order on its own and adds them, so a unit's two `BUY ALL`
+    // lines are two attempts, and a `BUY ALL` beside a `BUY 5` attempts both (`ah-ecfl`, which
+    // supersedes `ah-lauy`'s one attempt per unit). Settled after the loop, where the line's pool
+    // is read once every claim is in.
+    let mut unbounded: BTreeMap<String, BTreeMap<usize, i64>> = BTreeMap::new();
     // What every seller *attempted* of each tag, before its order is cut to what it holds:
     // `Game::DoSell` divides the line by this (`GetSellAmount`), so a unit ordering more than it
     // holds squeezes the others by its whole order while claiming only its holding (`ah-6la1`).
@@ -1965,7 +1966,11 @@ fn market_shares_sized(
                     // runs after this settlement must. Recorded rather than added: see
                     // `unbounded` above.
                     Amount::All { .. } => {
-                        unbounded.entry(tag.clone()).or_default().insert(index);
+                        *unbounded
+                            .entry(tag.clone())
+                            .or_default()
+                            .entry(index)
+                            .or_default() += 1;
                         wants
                             .entry((tag, side))
                             .or_insert_with(|| vec![0; hex.units.len()]);
@@ -2000,12 +2005,13 @@ fn market_shares_sized(
                 .iter()
                 .find(|line| line.tag.eq_ignore_ascii_case(&tag))
                 .map_or(0, |line| line.amount);
-            // Every unbounded purchase, settled once its unit's bounded asks are all counted: the
-            // unit claims the whole line, or its bounded asks where those already exceed it. Two
-            // `BUY ALL` lines therefore claim the line once, and a `BUY ALL` beside a `BUY 3`
-            // claims the line rather than the line plus three (`ah-lauy`). A unit that writes
-            // `BUY 200` where 100 exist still overruns: a stated number that overshoots is a real
-            // mistake, and an unbounded line states no number at all.
+            // Every unbounded purchase, added to its unit's bounded asks as `Game::GetBuyAmount`
+            // adds every order: each `BUY ALL` attempts what the unit can pay, capped at the line,
+            // so two of them attempt it twice and one beside a `BUY 3` attempts three more
+            // (`ah-ecfl`). The oversubscription warning still states a unit's unbounded lines as
+            // the line once: a unit that writes `BUY 200` where 100 exist overruns, since a stated
+            // number that overshoots is a real mistake, but an unbounded line states no number at
+            // all (`ah-lauy`).
             let mut stated_buying = stated_buys.get(&tag).cloned();
             let mut on_the_line = line_buys
                 .get(&tag)
@@ -2013,15 +2019,16 @@ fn market_shares_sized(
                 .unwrap_or_else(|| vec![0; hex.units.len()]);
             if matches!(side, MarketSide::Buying) {
                 if let Some(buyers) = unbounded.get(&tag) {
-                    for index in buyers {
-                        on_the_line[*index] = on_the_line[*index].max(pool);
+                    for (index, lines) in buyers {
+                        on_the_line[*index] =
+                            on_the_line[*index].saturating_add(pool.saturating_mul(*lines));
                         // `GetBuyAmount` sizes a `BUY ALL` as what the unit can pay, capped at
-                        // the line (`ah-s4hy`).
-                        let attempt = pool.min(afford(*index, &tag).unwrap_or(i64::MAX));
-                        claims[*index] = claims[*index].max(attempt);
-                        if let Some(stated) = stated_buying.as_mut() {
-                            stated[*index] = stated[*index].max(pool);
-                        }
+                        // the line (`ah-s4hy`), once for every such line.
+                        let attempt = pool.min(afford(*index, &tag).unwrap_or(i64::MAX)).max(0);
+                        claims[*index] =
+                            claims[*index].saturating_add(attempt.saturating_mul(*lines));
+                        let stated = stated_buying.get_or_insert_with(|| vec![0; hex.units.len()]);
+                        stated[*index] = stated[*index].max(pool);
                     }
                 }
             }
@@ -35016,12 +35023,11 @@ mod tests {
             assert_eq!(silver_of(&poor, "2390").expense, Some(10 * 60));
         }
 
-        /// `ah-lauy`, increment 5. `rules/buy` splits a line "in proportion to the amount each
-        /// buyer attempted to buy" - per buyer, against one purse - so a unit's two `BUY ALL`
-        /// lines are one attempt, not two: it claims 15 of a line of 30 shared with one
-        /// faction-mate, not 20.
+        /// `ah-ecfl`, superseding `ah-lauy` increment 5. `Game::GetBuyAmount` adds every buy
+        /// order, so a unit's two `BUY ALL` lines are two attempts of the line: 60 against a
+        /// faction-mate's 30 takes 20 of a line of 30, and leaves it 10.
         #[test]
-        fn two_buy_all_lines_claim_the_line_once() {
+        fn two_buy_all_lines_are_two_attempts() {
             let review = market_review(
                 vec![],
                 vec![line(30, 60)],
@@ -35029,8 +35035,8 @@ mod tests {
                 "unit 2390\nBUY ALL horse\nBUY ALL horse\nunit 2391\nBUY ALL horse\n",
             );
 
-            assert_eq!(silver_of(&review, "2390").expense, Some(15 * 60));
-            assert_eq!(silver_of(&review, "2391").expense, Some(15 * 60));
+            assert_eq!(silver_of(&review, "2390").expense, Some(20 * 60));
+            assert_eq!(silver_of(&review, "2391").expense, Some(10 * 60));
         }
 
         /// `ah-lauy`, increment 5. A lone unit writing `BUY ALL` twice against a line of 5 was
@@ -35055,18 +35061,19 @@ mod tests {
             );
         }
 
-        /// `ah-lauy`, increment 5. `BUY 3` plus `BUY ALL` claims the whole line once, not the
-        /// line plus three - either way round.
+        /// `ah-ecfl`, superseding `ah-lauy` increment 5. `BUY 15` plus `BUY ALL` attempts the
+        /// line plus fifteen, as `Game::GetBuyAmount` adds them - 45 against a faction-mate's 30
+        /// takes 18 of a line of 30 - either way round.
         #[test]
-        fn a_buy_all_beside_an_exact_buy_claims_the_line_once() {
+        fn a_buy_all_beside_an_exact_buy_attempts_both() {
             let all_first = market_review(
                 vec![],
                 vec![line(30, 60)],
                 vec![trader("2390", 0, 20_000), trader("2391", 0, 20_000)],
                 "unit 2390\nBUY ALL horse\nBUY 15 horse\nunit 2391\nBUY ALL horse\n",
             );
-            assert_eq!(silver_of(&all_first, "2390").expense, Some(15 * 60));
-            assert_eq!(silver_of(&all_first, "2391").expense, Some(15 * 60));
+            assert_eq!(silver_of(&all_first, "2390").expense, Some(18 * 60));
+            assert_eq!(silver_of(&all_first, "2391").expense, Some(12 * 60));
 
             let exact_first = market_review(
                 vec![],
@@ -35074,8 +35081,26 @@ mod tests {
                 vec![trader("2390", 0, 20_000), trader("2391", 0, 20_000)],
                 "unit 2390\nBUY 15 horse\nBUY ALL horse\nunit 2391\nBUY ALL horse\n",
             );
-            assert_eq!(silver_of(&exact_first, "2390").expense, Some(15 * 60));
-            assert_eq!(silver_of(&exact_first, "2391").expense, Some(15 * 60));
+            assert_eq!(silver_of(&exact_first, "2390").expense, Some(18 * 60));
+            assert_eq!(silver_of(&exact_first, "2391").expense, Some(12 * 60));
+        }
+
+        /// `ah-ecfl`. `Game::GetBuyAmount` (`runorders.cpp`) caps each buy order on its own -
+        /// a `BUY ALL` at `GetSharedMoney() / price` - and adds them, so a unit holding $600
+        /// that writes `BUY 5` and `BUY ALL` at $60 attempts 5 + 10 = 15, not the larger 10.
+        /// Against a faction-mate attempting the whole line of 20, `Game::DoBuy` gives it
+        /// 20 * 15 / 35, nine to the nearest, and the other the eleven left.
+        #[test]
+        fn a_buy_beside_a_buy_all_contends_for_the_sum_of_both() {
+            let review = market_review(
+                vec![],
+                vec![line(20, 60)],
+                vec![trader("2390", 0, 600), trader("2391", 0, 20_000)],
+                "unit 2390\nBUY 5 horse\nBUY ALL horse\nunit 2391\nBUY ALL horse\n",
+            );
+
+            assert_eq!(silver_of(&review, "2390").expense, Some(9 * 60));
+            assert_eq!(silver_of(&review, "2391").expense, Some(11 * 60));
         }
 
         /// `ah-lauy`, increment 5. Regression net: a stated number that overshoots the line is a

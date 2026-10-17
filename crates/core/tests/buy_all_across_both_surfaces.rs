@@ -279,13 +279,15 @@ fn a_second_buy_all_cannot_take_its_share_twice() {
         "GRAI",
     );
 
+    // `Game::GetBuyAmount` adds every order, so this unit's two lines attempt 40 of the 60
+    // attempted in all, and are settled 20 * 40 / 60 of the line (`ah-ecfl`).
     assert_eq!(
-        row.buy_all[0].bought, 10,
-        "two units ask for the whole line, so each is settled half of the twenty"
+        row.buy_all[0].bought, 13,
+        "two lines against one, so this unit is settled two thirds of the twenty"
     );
     assert_eq!(
         row.buy_all[1].bought, 0,
         "and its second line cannot take that share a second time"
     );
-    assert_eq!(held, 10, "and the ITEMS ledger says the same");
+    assert_eq!(held, 13, "and the ITEMS ledger says the same");
 }
