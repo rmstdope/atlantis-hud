@@ -1320,6 +1320,29 @@ fn settle(
     // ENTER and LEAVE orders `visit` already settled, so they are composed on top of that answer
     // here. After the walk, because a `FORM` reads its parent's structure mid-walk and
     // `rules/sequenceofevents` creates every formed unit long before any movement (`ah-ehgy`).
+    // `Game::RunPromoteOrders` runs each structure's owner's EVICT right after ENTER and LEAVE, and
+    // `Do1EvictOrder` puts each target outside, before anything moves (`rules/evict`, `ah-0ace`).
+    // Who is evicted is `movement::fleet::OrderedUnits`' answer, so every surface reads one.
+    for unit in &mut working.units {
+        if unit.formed {
+            continue;
+        }
+        let Some(owner_id) = ordered.evicted_by(&unit.unit) else {
+            continue;
+        };
+        let owner = report
+            .regions
+            .iter()
+            .filter(|region| region.region_id == unit.unit.region_id)
+            .flat_map(|region| region.units.iter())
+            .find(|candidate| candidate.unit_id == owner_id)
+            .map_or_else(
+                || format!("unit {owner_id}"),
+                |candidate| format!("{} ({})", candidate.name, candidate.unit_id),
+            );
+        unit.unit.structure_id = None;
+        unit.evicted_cause = Some(format!("EVICT by {owner}"));
+    }
     // Kept so a MOVE the game refuses for overload can be put back where its boardings found it.
     let before_boardings: Vec<Option<String>> = working
         .units
@@ -2368,6 +2391,9 @@ struct WorkingUnit {
     /// `MOVE OUT`/`MOVE 12`/... when a step of the movement order set this unit's structure in the
     /// hex it started in. Read by `changes()`.
     move_origin_cause: Option<String>,
+    /// `EVICT by <owner>` when its structure's owner evicted this unit this month (`ah-0ace`).
+    /// Read by `changes()`, after a movement step's cause, which runs later.
+    evicted_cause: Option<String>,
     /// Where the movement order leaves this unit once it is out of its starting hex, with the
     /// order that put it there. Read when the arriving row is built.
     move_destination: Option<MoveDestination>,
@@ -2522,6 +2548,9 @@ impl WorkingUnit {
     /// no LEAVE beside it.
     fn structure_change_cause(&self) -> Option<String> {
         if let Some(cause) = &self.move_origin_cause {
+            return Some(cause.clone());
+        }
+        if let Some(cause) = &self.evicted_cause {
             return Some(cause.clone());
         }
         if let Some(BoardingOrder::Enter(id)) = self
@@ -2718,14 +2747,13 @@ impl WorkingUnit {
 
     /// Whether the game refuses this unit's own `MOVE` or `ADVANCE` because it is overloaded:
     /// `rules/movement_normal` - "Otherwise the unit cannot issue a MOVE order" - so it stays
-    /// where it is all month (`ah-586v`). The same question `semantics::movement_overload` asks
-    /// for the `unit-overloaded` warning, answered the same way so the units list, the map and the
-    /// warning agree: the load and allowance from `movement::mode::carrying_after_transfers`, the
-    /// allowance the best of flying, riding and walking, and the report's printed `Capacity:` line
-    /// where the ruleset cannot price what the unit holds. A unit whose items this month leaves
-    /// alone is judged by the report's own printed movement, the game's word for it, exactly as
-    /// `movement_now` reads it. Where the load or the allowance cannot be told, the ordered
-    /// departure stands, as the check stays silent then too.
+    /// where it is all month (`ah-586v`). The verdict is `movement::mode::overload`, the one the
+    /// `unit-overloaded` warning reads (`ah-v0e3`), so the units list, the map and the warning
+    /// agree; this supplies its input - the load as the unit steps off and the report's printed
+    /// `Capacity:` line. A unit whose items this month leaves alone is judged by the report's own
+    /// printed movement, the game's word for it, exactly as `movement_now` reads it. Where the
+    /// load or the allowance cannot be told, the ordered departure stands, as the check stays
+    /// silent then too.
     ///
     /// Never a `SAIL`: a fleet is judged by what its hull carries (`rules/movement_sailing`), not
     /// by the unit's own legs.
@@ -2744,18 +2772,9 @@ impl WorkingUnit {
                 .movement
                 .is_some_and(|movement| movement.status == UnitMovementStatus::Overloaded);
         }
-        let Some(carrying) = self.carrying(ruleset) else {
-            return false;
-        };
-        let allowance = carrying
-            .capacities
-            .map(|capacity| capacity.fly.max(capacity.ride).max(capacity.walk))
-            .or_else(|| {
-                self.original
-                    .as_ref()
-                    .and_then(crate::movement::mode::best_allowance)
-            });
-        matches!((carrying.weight, allowance), (Some(weight), Some(allowance)) if weight > allowance)
+        self.carrying(ruleset).is_some_and(|carrying| {
+            crate::movement::mode::overload(carrying, self.original.as_ref()).is_some()
+        })
     }
 
     fn refresh_movement(&mut self, ruleset: &Ruleset) {
@@ -2887,6 +2906,7 @@ impl Working {
                 fleet_stays: false,
                 form_line: None,
                 move_origin_cause: None,
+                evicted_cause: None,
                 move_destination: None,
                 reported: unit.structure_id.clone(),
                 placed_in: unit.structure_id.clone(),
@@ -3291,6 +3311,7 @@ impl Working {
             fleet_stays: false,
             form_line: Some(form_line),
             move_origin_cause: None,
+            evicted_cause: None,
             move_destination: None,
             reported,
             placed_in,

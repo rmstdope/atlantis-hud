@@ -165,6 +165,32 @@ pub fn leave_refused_at_sea(
     !(swims || flies)
 }
 
+/// Whether the game refuses to evict a unit from a fleet at sea.
+///
+/// `Do1EvictOrder` (../Atlantis `runorders.cpp`) skips a target "over ocean" that cannot really
+/// swim or won't cross water ("EVICT: Cannot forcibly evict units over ocean."). Unlike a LEAVE
+/// ([`leave_refused_at_sea`]), flying does not help: `Unit::CanReallySwim` asks for swimming
+/// capacity alone. A unit whose movement nothing states is taken as unable, as there.
+#[must_use]
+pub fn eviction_refused_at_sea(
+    at_sea: bool,
+    wont_cross_water: bool,
+    movement: Option<&UnitMovement>,
+) -> bool {
+    if !at_sea {
+        return false;
+    }
+    if wont_cross_water {
+        return true;
+    }
+    !movement.is_some_and(|movement| {
+        matches!(
+            movement.swim,
+            SwimCapacity::Stated { capacity } if capacity > 0 && capacity >= movement.load
+        )
+    })
+}
+
 /// What the standing rule knows about one hex, read once from the report and the ruleset.
 ///
 /// The one place a per-hex fact the rule needs is gathered (`ah-6udn`): ah-5maa needed the hex's
@@ -180,6 +206,11 @@ pub struct HexStanding {
     /// Whether the hex's terrain is water in this world, where a LEAVE can be refused
     /// ([`leave_refused_at_sea`]). `false` without a ruleset to say so: then every LEAVE runs.
     water: bool,
+    /// The units this month's `EVICT` orders put outside, each with the owner that evicted it
+    /// (`ah-0ace`). Filled by the reader that can see the whole hex's orders
+    /// ([`Self::with_evictions`]), once it has worked out who owns each structure when evictions
+    /// run; empty until then.
+    evicted: BTreeMap<String, String>,
 }
 
 /// What the unit itself brings to whether its LEAVE runs where it stands
@@ -198,6 +229,7 @@ impl HexStanding {
     pub const UNDESCRIBED: HexStanding = HexStanding {
         structures: None,
         water: false,
+        evicted: BTreeMap::new(),
     };
 
     /// What the rule knows about `region`, with `ruleset` to say whether its terrain is water.
@@ -212,7 +244,35 @@ impl HexStanding {
                     .collect(),
             ),
             water: ruleset.is_some_and(|rules| rules.is_water(&region.terrain)),
+            evicted: BTreeMap::new(),
         }
+    }
+
+    /// This hex with `evicted` - each evicted unit, and the owner that evicted it - as the units
+    /// this month's `EVICT` orders put outside.
+    #[must_use]
+    pub fn with_evictions(mut self, evicted: BTreeMap<String, String>) -> Self {
+        self.evicted = evicted;
+        self
+    }
+
+    /// The owner whose `EVICT` puts `unit_id` outside its structure this month, if one does.
+    ///
+    /// `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`) runs the EVICTs right after the
+    /// PROMOTEs and before any month-long order, and `Do1EvictOrder` moves each target to the
+    /// region's dummy object, so an evicted unit stands outside for everything after the boarding
+    /// phase. [`Self::standing_after`] does not apply it - the owner that runs an EVICT is read from
+    /// that answer - so a reader asking where a unit stands for the month applies both.
+    #[must_use]
+    pub fn evicted_by(&self, unit_id: &str) -> Option<&str> {
+        self.evicted.get(unit_id).map(String::as_str)
+    }
+
+    /// Whether the game refuses to evict this unit from where it stands
+    /// ([`eviction_refused_at_sea`]).
+    #[must_use]
+    pub fn eviction_refused(&self, leaver: Leaver<'_>) -> bool {
+        eviction_refused_at_sea(self.water, leaver.wont_cross_water, leaver.movement)
     }
 
     fn has(&self, structure: &str) -> bool {
@@ -288,7 +348,18 @@ impl HexStandings {
     /// report does not show.
     #[must_use]
     pub fn of_region(&self, region_id: &str) -> &HexStanding {
-        self.0.get(region_id).unwrap_or(&HexStanding::UNDESCRIBED)
+        // A `static`, not the `const` itself: a const holding a map is not promoted to a
+        // reference that outlives this call.
+        static UNDESCRIBED: HexStanding = HexStanding::UNDESCRIBED;
+        self.0.get(region_id).unwrap_or(&UNDESCRIBED)
+    }
+
+    /// Records the units this month's `EVICT` orders put outside in `region_id`
+    /// ([`HexStanding::with_evictions`]). A region the report does not show evicts nobody.
+    pub fn set_evictions(&mut self, region_id: &str, evicted: BTreeMap<String, String>) {
+        if let Some(hex) = self.0.get_mut(region_id) {
+            *hex = std::mem::take(hex).with_evictions(evicted);
+        }
     }
 }
 

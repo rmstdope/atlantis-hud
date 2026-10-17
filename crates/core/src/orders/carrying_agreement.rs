@@ -11,9 +11,10 @@
 //! A unit this month's `FORM` creates has no report weight, and both sides start it from nothing
 //! (`ah-4ij2`: the check used to read `effects::formed_unit`'s `weight: None` as "cannot say").
 
-use super::effects::preview_orders_for_remembered_report;
+use super::effects::{preview_orders_for_remembered_report, UnitPreviewStatus};
 use super::semantics::{carrying_for_tests, check_turn, CheckOptions};
 use crate::cache::ReportCache;
+use crate::movement::request::trace_orders_for_remembered_report;
 use crate::movement::rules::Ruleset;
 use crate::report::{classify_units, parse_report_full};
 
@@ -172,4 +173,119 @@ fn a_unit_formed_this_month_that_steps_off_overloaded_is_called_overloaded() {
                 && finding.unit_id.as_deref() == Some("new-1")),
         "{findings:#?}"
     );
+}
+
+/// Walkers beside [`report_text`]'s Quarry (3000, four stone). `data/HUMN` weighs 10 and walks 5
+/// carrying itself, so one human prints `Capacity: 0/0/15/0`; `data/STON` weighs 50. `WDGT` is
+/// not in the ruleset, so a unit holding one has no derived capacity and is judged by its printed
+/// line - the fallback the preview's copy of the verdict once left out (`ah-586v`).
+fn walkers_report() -> String {
+    [
+        report_text(),
+        "plain (1,0) in Nowhere, 10 peasants (humans), $5.".to_string(),
+        String::new(),
+        "Exits:".to_string(),
+        "  South : plain (1,1) in Nowhere.".to_string(),
+        String::new(),
+    ]
+    .join("\n")
+    .replacen(
+        "* Quarry (3000)",
+        "* Light (900), Foo (1), human [HUMN]. Weight: 10. Capacity: 0/0/15/0.\n\
+         * Laden (902), Foo (1), human [HUMN], stone [STON]. Weight: 60. Capacity: 0/0/15/0.\n\
+         * Shedder (903), Foo (1), human [HUMN], 2 stone [STON], widget [WDGT]. Weight: 111. \
+         Capacity: 0/0/15/0.\n\
+         * Taker (904), Foo (1), human [HUMN], widget [WDGT]. Weight: 11. Capacity: 0/0/15/0.\n\
+         * Quarry (3000)",
+        1,
+    )
+}
+
+/// Whether the `unit-overloaded` warning names `unit_id`.
+fn warned(report_text: &str, orders: &str, unit_id: &str) -> bool {
+    let ruleset = Ruleset::from_json(RULESET).expect("the ruleset loads");
+    let mut report = parse_report_full(report_text);
+    classify_units(&mut report, &ruleset);
+    check_turn(&report, orders, Some(&ruleset), CheckOptions::default())
+        .iter()
+        .any(|finding| {
+            finding.code.as_str() == "unit-overloaded"
+                && finding.unit_id.as_deref() == Some(unit_id)
+        })
+}
+
+/// Whether the units list shows `unit_id` departing.
+fn departs_in_the_list(report_text: &str, orders: &str, unit_id: &str) -> bool {
+    preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        report_text,
+        "[]",
+        orders,
+    )
+    .expect("the ruleset loads")
+    .regions
+    .iter()
+    .flat_map(|region| region.units.iter())
+    .any(|row| row.unit.unit_id == unit_id && row.status == UnitPreviewStatus::Departing)
+}
+
+/// Whether the map draws a route for `unit_id`.
+fn traced_on_the_map(report_text: &str, orders: &str, unit_id: &str) -> bool {
+    trace_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        report_text,
+        "[]",
+        unit_id,
+        orders,
+    )
+    .expect("the trace runs")
+    .path
+    .is_some()
+}
+
+/// The verdict on whether a MOVE is refused for overload is `movement::mode::overload`, read by
+/// both the check and the preview's settle (`ah-v0e3`); the warning, the units list and the map
+/// follow it together. Each case names the answer too, so agreement cannot be all three wrong.
+#[test]
+fn the_warning_the_units_list_and_the_map_agree_on_whether_an_overloaded_mover_stays() {
+    let report = walkers_report();
+    let cases = [
+        // 10 against 15.
+        ("900", "unit 900\nMOVE N\n", false),
+        // A stone given before movement (`rules/sequenceofevents`): 60 against 15.
+        (
+            "900",
+            "unit 3000\nGIVE 900 1 STON\nunit 900\nMOVE N\n",
+            true,
+        ),
+        // Printed overloaded and its items left alone: the report's own word stands.
+        ("902", "unit 902\nMOVE N\n", true),
+        // Sheds both stone beside an unpriceable widget: 111 - 100 = 11 against the printed 15.
+        ("903", "unit 903\nGIVE 3000 2 STON\nMOVE N\n", false),
+        // Takes a stone beside an unpriceable widget: 11 + 50 = 61 against the printed 15.
+        (
+            "904",
+            "unit 3000\nGIVE 904 1 STON\nunit 904\nMOVE N\n",
+            true,
+        ),
+    ];
+    for (unit_id, orders, stays) in cases {
+        assert_eq!(
+            warned(&report, orders, unit_id),
+            stays,
+            "warning, {unit_id}: {orders}"
+        );
+        assert_eq!(
+            departs_in_the_list(&report, orders, unit_id),
+            !stays,
+            "units list, {unit_id}: {orders}"
+        );
+        assert_eq!(
+            traced_on_the_map(&report, orders, unit_id),
+            !stays,
+            "map, {unit_id}: {orders}"
+        );
+    }
 }

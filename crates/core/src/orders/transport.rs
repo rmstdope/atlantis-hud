@@ -404,8 +404,9 @@ pub(crate) fn target_facts(
 /// `Unit::MoveUnit` moves out - a walker ending the month in another hex (`month_end`), and a
 /// `MOVE OUT` or `MOVE <structure>` from inside ([`standing_through_move`]) - and appends anyone a
 /// `MOVE <structure>` brings in, `MOVE <dir> <structure>` into another hex's included. A unit this month's `FORM` creates is not followed, as
-/// [`target_facts`] already says it owns nothing. EVICT is not modelled (`ah-0ace`): it takes a
-/// unit off the list behind the owner, so it never changes who owns.
+/// [`target_facts`] already says it owns nothing. The owner's EVICT takes its targets off the
+/// list too ([`occupants_after_promotes`], `ah-0ace`), units behind the owner, so it changes who
+/// owns only for an owner that evicts itself.
 ///
 /// [`occupants_after_promotes`]: crate::movement::fleet::occupants_after_promotes
 /// [`standing_through_move`]: super::standing::standing_through_move

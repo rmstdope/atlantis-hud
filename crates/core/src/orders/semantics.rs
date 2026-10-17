@@ -28,8 +28,8 @@ use super::effects::{self, ItemChangeCause, ItemChangeParty};
 use super::forms::{Amount, Party, Selector};
 use super::grammar::names_peasants;
 use super::intents::{
-    read_formed, read_intents, spends_the_month, FormedBlock, Intent, PlacedIntent, PlacedPromote,
-    UnitIntents,
+    read_formed, read_intents, spends_the_month, FormedBlock, Intent, PlacedEvict, PlacedIntent,
+    PlacedPromote, UnitIntents,
 };
 use super::phases::{self, StatePhase};
 use super::standing::{self, Boarding};
@@ -38,8 +38,8 @@ use super::village_site::VillageSite;
 use crate::movement::fleet::OrderedUnits as FleetOrders;
 use crate::movement::graph::{Direction, MapKnowledge};
 use crate::movement::mode::{
-    best_allowance, cargo_capacity, carrying_after_transfers, fleet_flies, fleet_label,
-    hulls_named_in, is_vessel, sailing_requirement, Carrying,
+    cargo_capacity, carrying_after_transfers, fleet_flies, fleet_label, hulls_named_in, is_vessel,
+    overload, sailing_requirement, Carrying, Overload,
 };
 use crate::movement::orders::{first_passage, MoveStep};
 use crate::movement::plan::{Hull, Journey};
@@ -309,6 +309,12 @@ pub mod codes {
     /// currently the owner"). Always on: the bead asks for the warning and gives it no switch, so
     /// it is in [`ALWAYS_ON`] and not in [`ALL`].
     pub const PROMOTE_NOT_OWNER: Code = Code("promote-not-owner");
+    /// An `EVICT` the game refuses: `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`) runs
+    /// only each object's owner's EVICT, once PROMOTE has run, and errors every other unit's
+    /// "EVICT: Must be owner", or "EVICT: Can only evict inside structures." for one standing in
+    /// none (`ah-0ace`; `rules/evict`: "Evict the specified unit from the object of which you are
+    /// currently the owner"). Always on, as [`PROMOTE_NOT_OWNER`] is.
+    pub const EVICT_REFUSED: Code = Code("evict-refused");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -402,7 +408,7 @@ pub mod codes {
 
     /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
     /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
-    pub const ALWAYS_ON: [Code; 12] = [
+    pub const ALWAYS_ON: [Code; 13] = [
         MOVE_INTO_A_WALL,
         FACTION_ORDER_WILL_FAIL,
         UNKNOWN_SKILL,
@@ -415,6 +421,7 @@ pub mod codes {
         TRANSPORT_TARGET_REFUSED,
         EXCHANGE_ABORTED,
         PROMOTE_NOT_OWNER,
+        EVICT_REFUSED,
     ];
 }
 
@@ -1066,6 +1073,7 @@ pub fn review_turn(
         check_exchanges_aborted(hex, ledger, &mut findings);
         check_leave_refused_at_sea(hex, &mut findings);
         check_promote_not_owner(hex, &mut findings);
+        check_evict_refused(hex, &mut findings);
         check_village_site(hex, ledger, ruleset, &mut findings);
         check_withdraw_not_a_basic_item(hex, ruleset, &options, &mut findings);
         check_cast_material(hex, ruleset, &options, &mut findings);
@@ -3685,6 +3693,7 @@ struct UnitOrders {
     flag_changes: Vec<FlagChange>,
     destroys_structure: bool,
     promotes: Vec<PlacedPromote>,
+    evicts: Vec<PlacedEvict>,
     /// STUDY lines naming a skill nothing knows (`study::names_no_skill`), taken out of `intents`
     /// because they set no month-long order, and kept for the `unknown-skill` warning (`ah-9199`).
     unknown_studies: Vec<PlacedIntent>,
@@ -3738,6 +3747,7 @@ impl OrderedUnits {
             flag_changes,
             destroys_structure,
             promotes,
+            evicts,
         } in read_intents(source, ruleset)
         {
             let entry = by_unit.entry(unit_id).or_insert_with(|| UnitOrders {
@@ -3747,6 +3757,7 @@ impl OrderedUnits {
                 flag_changes: Vec::new(),
                 destroys_structure: false,
                 promotes: Vec::new(),
+                evicts: Vec::new(),
                 unknown_studies: Vec::new(),
             });
             let mut intents = intents;
@@ -3760,6 +3771,7 @@ impl OrderedUnits {
             entry.unread |= !unread.is_empty();
             entry.destroys_structure |= destroys_structure;
             entry.promotes.extend(promotes);
+            entry.evicts.extend(evicts);
         }
         Self { by_unit }
     }
@@ -3969,6 +3981,8 @@ struct Ordered<'a> {
     destroys_structure: bool,
     /// The syntactically valid `PROMOTE` orders this month, in the order written.
     promotes: Vec<PlacedPromote>,
+    /// Every unit this month's `EVICT` orders name, in the order written (`ah-0ace`).
+    evicts: Vec<PlacedEvict>,
     /// The intents that can actually execute this month: every order that does not spend the
     /// month, plus the one month claim that wins (`ah-rzkm`), so every projection and every
     /// specialized check describes the executable month.
@@ -4105,6 +4119,7 @@ impl<'a> Hex<'a> {
                     ),
                     destroys_structure: orders.is_some_and(|orders| orders.destroys_structure),
                     promotes: orders.map_or_else(Vec::new, |orders| orders.promotes.clone()),
+                    evicts: orders.map_or_else(Vec::new, |orders| orders.evicts.clone()),
                     intents: orders.map_or_else(Vec::new, |orders| orders.intents.clone()),
                     all_intents: orders.map_or(&[][..], |orders| orders.intents.as_slice()),
                     teaching_eligible: None,
@@ -4138,6 +4153,7 @@ impl<'a> Hex<'a> {
                     flags: flags_after_orders(&formed.unit.flags, &formed.block.flag_changes),
                     destroys_structure: formed.block.destroys_structure,
                     promotes: formed.block.promotes.clone(),
+                    evicts: formed.block.evicts.clone(),
                     intents: formed.block.intents.clone(),
                     all_intents: &formed.block.intents,
                     teaching_eligible: None,
@@ -4168,14 +4184,22 @@ impl<'a> Hex<'a> {
                 .map(|unit| unit.unit_id.clone())
                 .collect(),
         );
-        Self {
+        let mut hex = Self {
             region,
             units,
             shown_anywhere,
             village_site: VillageSite::Unsure,
             beaten_foundings: BTreeMap::new(),
             staying_fleets: BTreeSet::new(),
+        };
+        let evicted = evictions(&hex);
+        if !evicted.is_empty() {
+            let standing = Arc::new((*standing).clone().with_evictions(evicted));
+            for ordered in &mut hex.units {
+                ordered.hex = Arc::clone(&standing);
+            }
         }
+        hex
     }
 
     fn find(&self, unit_id: &str) -> Option<&Ordered<'a>> {
@@ -4479,13 +4503,14 @@ fn held_by(
 /// The `GIVE <party> UNIT` a unit writes, as the doubt it leaves a sharer's lending in: the gift
 /// runs before `EXCHANGE` (`rules/sequenceofevents`) and, if taken, puts the unit in another
 /// faction, which the engine's `GetSharedNum` does not lend from; whether another faction's unit
-/// takes it the report cannot say (`rules/give`; `ah-80mj`). A gift to our own unit or to unit 0,
-/// which the engine also refuses, is still doubted here (`ah-839x`).
+/// takes it the report cannot say (`rules/give`; `ah-80mj`).
 ///
-/// `reach` says where each target stands. One the gift cannot land on - a unit the report shows in
-/// another hex, or a number it never prints ([`GiveReach::gives_nothing`]) - leaves no doubt: the
-/// engine's `Game::DoGiveOrder` (../Atlantis `runorders.cpp`) errors "Nonexistant target" before
-/// the whole-unit branch, so the sharer stays ours and lends as before (`ah-te15`).
+/// `reach` says where each target stands, and only [`GiveReach::Foreign`] leaves a doubt. Every
+/// other target the engine's `Game::DoGiveOrder` (../Atlantis `runorders.cpp`) refuses before
+/// anything moves, so the sharer stays ours and lends as before: a unit the report shows in
+/// another hex, or a number it never prints, errors "Nonexistant target" (`ah-te15`); unit 0
+/// errors "Can't discard a whole unit."; and one of our own units here, a `FORM`ed `NEW` unit
+/// included, errors "Unit already belongs to our faction!" (`ah-839x`).
 fn gives_itself_away(
     ordered: &Ordered<'_>,
     reach: impl Fn(&Party) -> GiveReach,
@@ -4498,7 +4523,7 @@ fn gives_itself_away(
                 to,
                 what: Selector::WholeUnit,
                 ..
-            } if !reach(to).gives_nothing() => Some(UncertainGive {
+            } if reach(to) == GiveReach::Foreign => Some(UncertainGive {
                 target: party_label(to),
                 line: placed.line,
             }),
@@ -7892,7 +7917,9 @@ fn month_long_walk(hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> Vec<usize> {
 ///
 /// Known gap: PROMOTE (`Do1PromoteOrder` puts the promoted unit first in its structure) and EVICT
 /// (`Do1EvictOrder` appends the evicted unit to the units outside) also reorder units before the
-/// walk, and neither is modelled here; nor is an ENTER the engine refuses into a structure the hex
+/// walk, and neither reordering is modelled here - an evicted unit is walked outside
+/// ([`structure_after_orders`], `ah-0ace`), but where its boardings would have placed it in the
+/// walk; nor is an ENTER the engine refuses into a structure the hex
 /// does have (`CanEnter`, `ForbiddenBy`), which moves nothing but is walked here as a move. A LEAVE
 /// it refuses at sea is not walked as one (`ah-djst`).
 fn walk_after_boarding(hex: &Hex<'_>) -> Vec<usize> {
@@ -12232,9 +12259,55 @@ fn owner_when_promotions_run(hex: &Hex<'_>, structure_id: &str) -> Option<String
         .find(|ordered| {
             ordered.formed.is_some()
                 && !ordered.after_the_market().gained_nobody()
-                && structure_after_orders(ordered) == Some(structure_id)
+                && structure_after_boarding(ordered) == Some(structure_id)
         })
         .map(|ordered| ordered.unit.unit_id.clone())
+}
+
+/// Every unit of ours a structure's owner EVICTs this month, with that owner (`ah-0ace`).
+///
+/// `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`) runs each object's owner's PROMOTE,
+/// then each object's owner's EVICT - the owner as the PROMOTE left it, which is
+/// [`structure_owner_after_promotes`] - and errors every other unit's ("EVICT: Must be owner",
+/// [`check_evict_refused`]). `Do1EvictOrder` moves each target standing in that object to the
+/// region's dummy, unless the object is a fleet at sea and the target cannot really swim
+/// ([`standing::eviction_refused_at_sea`]). `movement::fleet::OrderedUnits` reads the same rule
+/// out of the orders document for the preview and the map. A formed owner's EVICT, and an EVICT
+/// naming a formed unit, are not followed; a unit of another faction stays where the report shows
+/// it, though the game evicts it and `movement::fleet` follows that (a known divergence: every
+/// check here reads a foreign unit's structure from the report). Known gap: an owner that EVICTs
+/// itself leaves the structure to the next occupant, whose DESTROY then runs, but
+/// [`structure_owner_after_promotes`] - the owner [`AfterDestroy`] reads - still names it.
+fn evictions(hex: &Hex<'_>) -> BTreeMap<String, String> {
+    let mut evicted = BTreeMap::new();
+    if hex.units.iter().all(|ordered| ordered.evicts.is_empty()) {
+        return evicted;
+    }
+    for structure in &hex.region.structures {
+        let structure_id = structure.structure_id.as_str();
+        let Some(owner_id) = structure_owner_after_promotes(hex, structure_id) else {
+            continue;
+        };
+        let Some(owner) = hex
+            .units
+            .iter()
+            .find(|ordered| ordered.formed.is_none() && ordered.unit.unit_id == owner_id)
+        else {
+            continue;
+        };
+        for target in hex.units.iter().filter(|ordered| {
+            ordered.formed.is_none()
+                && owner
+                    .evicts
+                    .iter()
+                    .any(|evict| evict.target == ordered.unit.unit_id)
+                && structure_after_boarding(ordered) == Some(structure_id)
+                && !ordered.hex.eviction_refused(leaver(ordered))
+        }) {
+            evicted.insert(target.unit.unit_id.clone(), owner_id.clone());
+        }
+    }
+    evicted
 }
 
 /// Whether a unit is still in a structure after this month's ENTER/LEAVE projection.
@@ -12244,7 +12317,7 @@ fn unit_is_in_structure(hex: &Hex<'_>, unit_id: &str, structure_id: &str) -> boo
         .iter()
         .find(|ordered| ordered.unit.unit_id == unit_id)
     {
-        return structure_after_orders(ordered) == Some(structure_id);
+        return structure_after_boarding(ordered) == Some(structure_id);
     }
     hex.region
         .units
@@ -14140,7 +14213,7 @@ fn check_promote_not_owner(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
         let Some(promote) = ordered.promotes.last() else {
             continue;
         };
-        let Some(structure_id) = structure_after_orders(ordered) else {
+        let Some(structure_id) = structure_after_boarding(ordered) else {
             continue;
         };
         let Some(owner_id) = owner_when_promotions_run(hex, structure_id) else {
@@ -14183,6 +14256,70 @@ fn check_promote_not_owner(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
             )
         });
     }
+}
+
+/// The `EVICT` the game refuses because its writer does not own a structure when evictions run
+/// (`ah-0ace`, [`codes::EVICT_REFUSED`]). The owner is [`structure_owner_after_promotes`], the one
+/// [`evictions`] runs the EVICT of. One warning per unit, on its last `EVICT` line: the engine
+/// refuses the unit's EVICTs together. A formed unit's `EVICT` is not followed by [`evictions`],
+/// so it is not warned about either. Always on (`codes::ALWAYS_ON`), so no option is read.
+fn check_evict_refused(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
+    for ordered in hex.units.iter().filter(|ordered| ordered.formed.is_none()) {
+        let Some(evict) = ordered.evicts.last() else {
+            continue;
+        };
+        let message = match structure_after_boarding(ordered) {
+            None => "EVICT will be refused: this unit stands in no structure when evictions run, \
+                     so nothing changes"
+                .to_string(),
+            Some(structure_id) => {
+                let Some(owner_id) = structure_owner_after_promotes(hex, structure_id) else {
+                    continue;
+                };
+                if owner_id == ordered.unit.unit_id {
+                    continue;
+                }
+                format!(
+                    "EVICT will be refused: {} owns {} when evictions run, not this unit, so \
+                     nothing changes",
+                    shown_unit_label(hex, &owner_id),
+                    named_structure(hex, structure_id)
+                )
+            }
+        };
+        findings.push(Finding {
+            line: Some(evict.line),
+            column_start: Some(evict.column_start),
+            column_end: Some(evict.column_end),
+            ..ordered.finding(hex, codes::EVICT_REFUSED, message, None)
+        });
+    }
+}
+
+/// `Name (id)` for a unit this region shows, ours or not, or `unit <id>` for one it does not.
+fn shown_unit_label(hex: &Hex<'_>, unit_id: &str) -> String {
+    hex.region
+        .units
+        .iter()
+        .chain(hex.units.iter().map(|ordered| ordered.unit))
+        .find(|unit| unit.unit_id == unit_id)
+        .map_or_else(
+            || format!("unit {unit_id}"),
+            |unit| format!("{} ({})", unit.name, unit.unit_id),
+        )
+}
+
+/// A structure as the fleet and structure sentences name it, or `[id]` for one this region's
+/// report does not list.
+fn named_structure(hex: &Hex<'_>, structure_id: &str) -> String {
+    hex.region
+        .structures
+        .iter()
+        .find(|structure| structure.structure_id == structure_id)
+        .map_or_else(
+            || format!("[{structure_id}]"),
+            crate::movement::mode::fleet_label,
+        )
 }
 
 /// Always on (`codes::ALWAYS_ON`), so no option is read.
@@ -17536,10 +17673,12 @@ fn purse_settles(hex: &Hex<'_>, ledger: &Ledger<'_>) -> bool {
 /// before it sailed - so it is read there ([`Lending::studies_sent`]) and listed where it
 /// arrives ([`WalkingSilver::arriving_students`]).
 ///
-/// Only between two purses that settle ([`purse_settles`]), and only into a hex the report
-/// lists units of ours in: elsewhere the study stays the claim of the hex it leaves, as it was
-/// before. A purse nobody arrives at with silver cannot be told apart from one this model does
-/// not read, so it is left alone rather than refused.
+/// Only from a purse that settles ([`purse_settles`]): elsewhere the study stays the claim of the
+/// hex it leaves, as it was before. Where the fleet lands in a hex where nothing of ours shares,
+/// the study is judged there and then, by nobody's silver but its own
+/// ([`settle_studies_where_nothing_is_shared`], `ah-oi3u`). Where something there shares but its
+/// sums cannot be trusted, the study stays the claim of the hex it leaves, as it was before: a
+/// purse that cannot be added up says nothing about who lends (`ah-oi3u` review, finding 1).
 fn send_studies_where_fleets_arrive(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
     membership: &PurseMembership,
@@ -17568,7 +17707,8 @@ fn send_studies_where_fleets_arrive(
     sent.retain(|(index, _, arrives)| {
         let (hex, ledger) = &hexes[*index];
         let (there, there_ledger) = &hexes[*arrives];
-        purse_settles(hex, ledger) && purse_settles(there, there_ledger)
+        purse_settles(hex, ledger)
+            && (purse_settles(there, there_ledger) || nothing_is_shared(there, there_ledger))
     });
     for (index, who, _) in &sent {
         hexes[*index]
@@ -17622,8 +17762,71 @@ fn send_studies_where_fleets_arrive(
             }
         }
     }
+    let mut verdicts: Vec<(UnitKey, StudyOutcome)> = Vec::new();
     for (index, students) in students.into_iter().enumerate() {
-        hexes[index].1.relief_mut().walking.arriving_students = students;
+        let (hex, ledger) = &hexes[index];
+        if nothing_is_shared(hex, ledger) {
+            verdicts.extend(settle_studies_where_nothing_is_shared(&students));
+        } else {
+            hexes[index].1.relief_mut().walking.arriving_students = students;
+        }
+    }
+    write_back_study_verdicts(hexes, verdicts);
+}
+
+/// Whether nothing in `hex` shares silver after movement: no sharer of ours listed there, and
+/// none arriving with silver ([`Sharing::reading`]).
+fn nothing_is_shared(hex: &Hex<'_>, ledger: &Ledger<'_>) -> bool {
+    Sharing::for_silver(hex, ledger).reading(SILVER, None) == Reading::PerUnit
+}
+
+/// The verdicts on the passengers sailing into a hex where nothing of ours shares (`ah-oi3u`):
+/// `rules/share` has nobody "in the same region" to lend for "studying", so a student whose own
+/// silver does not cover its fee is refused (`monthorders.cpp`: `Do1StudyOrder`), and the hex it
+/// left lends none of it.
+fn settle_studies_where_nothing_is_shared(
+    students: &[ArrivingStudent],
+) -> Vec<(UnitKey, StudyOutcome)> {
+    students
+        .iter()
+        .map(|student| {
+            let outcome = if student.need > 0 {
+                StudyOutcome::Refused {
+                    fee: student.fee.max(student.need),
+                    short: student.need,
+                }
+            } else {
+                StudyOutcome::Paid {
+                    own: student.fee,
+                    lent: 0,
+                }
+            };
+            (student.unit.clone(), outcome)
+        })
+        .collect()
+}
+
+/// Writes each sailing passenger's STUDY verdict back to the hex the report lists it in
+/// ([`StudyElsewhere::outcome`]), where its row's loan and a refused fee are read from.
+fn write_back_study_verdicts(
+    hexes: &mut [(Hex<'_>, Ledger<'_>)],
+    verdicts: Vec<(UnitKey, StudyOutcome)>,
+) {
+    for (unit, outcome) in verdicts {
+        let Some((_, ledger)) = hexes
+            .iter_mut()
+            .find(|(hex, _)| hex.region.region_id == unit.region_id)
+        else {
+            continue;
+        };
+        if let Some(elsewhere) = ledger
+            .relief_mut()
+            .walking
+            .studies_elsewhere
+            .get_mut(&unit.unit_id)
+        {
+            elsewhere.outcome = Some(outcome);
+        }
     }
 }
 
@@ -17660,22 +17863,7 @@ fn settle_studies_where_fleets_arrive(hexes: &mut [(Hex<'_>, Ledger<'_>)]) {
             verdicts.push((student.unit.clone(), outcome));
         }
     }
-    for (unit, outcome) in verdicts {
-        let Some((_, ledger)) = hexes
-            .iter_mut()
-            .find(|(hex, _)| hex.region.region_id == unit.region_id)
-        else {
-            continue;
-        };
-        if let Some(elsewhere) = ledger
-            .relief_mut()
-            .walking
-            .studies_elsewhere
-            .get_mut(&unit.unit_id)
-        {
-            elsewhere.outcome = Some(outcome);
-        }
-    }
+    write_back_study_verdicts(hexes, verdicts);
 }
 
 /// What one unit's tax means to the market purse.
@@ -24123,7 +24311,19 @@ fn is_aboard(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 /// The rule itself lives in [`super::standing`], which is the one place it is stated; this is the
 /// adapter that reads it out of parsed intents. An ENTER of a structure the hex does not have is
 /// refused and moves nothing (`ah-5maa`), and so is a LEAVE the game refuses at sea (`ah-djst`).
+///
+/// A unit its structure's owner EVICTs this month stands outside ([`evictions`], `ah-0ace`): the
+/// EVICTs run right after ENTER and LEAVE, before anything else a block can ask for.
 fn structure_after_orders<'a>(ordered: &'a Ordered<'_>) -> Option<&'a str> {
+    if ordered.formed.is_none() && ordered.hex.evicted_by(&ordered.unit.unit_id).is_some() {
+        return None;
+    }
+    structure_after_boarding(ordered)
+}
+
+/// Where the unit stands once ENTER and LEAVE have run and before any `EVICT`: the list
+/// `Game::RunPromoteOrders` asks each structure's owner of, for its PROMOTE and then its EVICT.
+fn structure_after_boarding<'a>(ordered: &'a Ordered<'_>) -> Option<&'a str> {
     ordered.hex.standing_after(
         ordered.unit.structure_id.as_deref(),
         ordered.intents.iter().filter_map(boarding_of),
@@ -26596,36 +26796,25 @@ fn region_after<'a>(
     Some(here)
 }
 
-/// This unit's known load and allowance, the moment `check_movement` renders as `unit-overloaded`.
+/// This unit's load over its allowance, the moment `check_movement` renders as `unit-overloaded`.
 /// Shared so guard and teaching can ask the same question about a MOVE that will not happen
 /// (`ah-0wpn`), without rebuilding load and capacity a second time or searching the findings
 /// vector for an answer that has not been computed yet (`check_guard` and `check_teaching` both
 /// run before `check_movement`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct MovementOverload {
-    weight: i64,
-    allowance: i64,
-}
-
-/// `Some` only when both the derived-or-printed allowance and `carrying_after_orders` are known and
-/// the weight exceeds it. Unknown load or allowance - no ruleset, an unpriceable item - returns
-/// `None`, which callers must read as "cannot say", never as "not overloaded".
+///
+/// The verdict is [`overload`], the one the preview's settle reads too (`ah-v0e3`); this supplies
+/// only its input, the ledger's load and the report's printed line. `None` is both "not
+/// overloaded" and "cannot say" (no ruleset, an unpriceable item and no printed capacity), and
+/// every caller lets the ordered move stand on either.
 fn movement_overload(
     ordered: &Ordered<'_>,
     ledger: &Ledger<'_>,
     ruleset: Option<&Ruleset>,
-) -> Option<MovementOverload> {
-    let carrying = carrying_after_orders(ordered, ledger, ruleset);
-    let allowance = carrying
-        .capacities
-        .map(|capacity| capacity.fly.max(capacity.ride).max(capacity.walk))
-        .or_else(|| best_allowance(ordered.unit));
-
-    let (Some(allowance), Some(weight)) = (allowance, carrying.weight) else {
-        return None;
-    };
-
-    (weight > allowance).then_some(MovementOverload { weight, allowance })
+) -> Option<Overload> {
+    overload(
+        carrying_after_orders(ordered, ledger, ruleset),
+        Some(ordered.unit),
+    )
 }
 
 /// Whether `ordered` actually leaves the hex, replacing the old unconditional
@@ -78645,46 +78834,83 @@ BUILD
             .collect()
     }
 
-    /// `ah-mnvp`: a sailing passenger's STUDY draws on the purse of the hex it is listed in, while
-    /// its upkeep does not. Passenger 901 holds nothing, studies aboard longship 329 as its
-    /// captain sails north, and banker 903 stays behind with $500: the banker pays the study,
-    /// and none of the upkeep, which `rules/economy_maintenance` shares only "between your units in
-    /// the same region" and `rules/sequenceofevents` assesses after movement (`ah-6cka`). Not
-    /// [`traced`]: a unit its fleet carries away ends the month where [`production_region`] says,
-    /// never where the movement trace does ([`SharingReach::ends_at`]).
-    ///
-    /// Only because the fleet lands where no unit of ours stands: the study is then left the
-    /// claim of the hex it leaves ([`send_studies_where_fleets_arrive`]). Where a purse is
-    /// listed there, that purse pays it (`ah-q1zz`,
-    /// `a_passengers_study_is_lent_by_the_sharer_in_the_hex_it_arrives_in`).
-    #[test]
-    fn a_passengers_study_is_lent_by_the_sharer_in_the_hex_it_leaves() {
+    /// Passenger 901, holding nothing, studies aboard longship 329 as its captain 4022 sails north
+    /// into a region where no unit of ours stands; banker 903 stays behind with $500. With
+    /// `captain_silver`, the captain shares and carries that much silver with it.
+    fn a_passenger_studying_where_none_of_ours_stand(captain_silver: Option<i64>) -> TurnReview {
         let banker = sharing(with_silver(unit("903"), 500));
-        let (report, _) = passenger_palace(
+        let (mut report, _) = passenger_palace(
             open_sea(vec![banker]),
             region_at("1:7,53", 7, 53, vec![]),
             None,
         );
+        if let Some(silver) = captain_silver {
+            let captain = report
+                .regions
+                .iter_mut()
+                .flat_map(|region| region.units.iter_mut())
+                .find(|unit| unit.unit_id == "4022")
+                .expect("passenger_palace lists 4022");
+            *captain = sharing(with_silver(captain.clone(), silver));
+        }
         let orders = "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 903\n";
-        let review = review_turn(&report, orders, Some(&trident()), CheckOptions::default());
-        let silver = |id: &str| {
-            review
-                .silver
-                .iter()
-                .find(|forecast| forecast.unit_id == id)
-                .cloned()
-                .unwrap_or_else(|| panic!("no forecast for {id}"))
-        };
-        let passenger = silver("901");
+        review_turn(&report, orders, Some(&trident()), CheckOptions::default())
+    }
+
+    /// `ah-oi3u`: STUDY is a month-long order, after movement (`rules/sequenceofevents`), and
+    /// `rules/share` lends to units "in the same region" - so a passenger whose fleet lands where
+    /// none of our units stand is lent its fee by nobody there, and the banker it left behind is
+    /// in another region and lends none of it. The engine refuses the study (`monthorders.cpp`:
+    /// `Do1StudyOrder`), as it does where the sharer the fleet lands beside cannot pay
+    /// (`a_passengers_study_the_sharer_where_it_arrives_cannot_pay_is_refused`).
+    #[test]
+    fn a_passengers_study_where_none_of_ours_stand_is_refused_with_no_sharer_aboard() {
+        let review = a_passenger_studying_where_none_of_ours_stand(None);
+        let passenger = silver_of(&review, "901");
+        assert!(
+            passenger.wanted_for_orders.is_some_and(|fee| fee > 0),
+            "{passenger:?}"
+        );
+        assert_eq!(passenger.borrowed_for_orders, 0, "{passenger:?}");
+        assert_eq!(
+            silver_of(&review, "903").at_month_end,
+            Some(500),
+            "the banker left behind lends nothing"
+        );
+        assert!(
+            review.findings.iter().any(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("901")
+                    && finding.message.ends_with("so its STUDY is refused")
+            }),
+            "{:?}",
+            review.findings
+        );
+    }
+
+    /// `ah-oi3u`: a sharing captain sails with its passenger, so it is in the region the
+    /// passenger studies in (`rules/share`: "in the same region") and lends the fee there, where
+    /// none of our units stand - and the banker left behind lends nothing.
+    #[test]
+    fn a_passengers_study_where_none_of_ours_stand_is_lent_by_its_sharing_captain() {
+        let review = a_passenger_studying_where_none_of_ours_stand(Some(500));
+        let passenger = silver_of(&review, "901");
         let fee = passenger.wanted_for_orders.expect("the study is priced");
         assert!(fee > 0, "{passenger:?}");
         assert_eq!(passenger.borrowed_for_orders, fee, "{passenger:?}");
-        assert_eq!(passenger.shared_silver_covered, 0, "{passenger:?}");
-        assert_eq!(passenger.upkeep_lent, 0, "{passenger:?}");
-        assert_eq!(silver("903").at_month_end, Some(500 - fee));
-        // Its one shortfall is its upkeep, counted where it ends the month; none of it is the
-        // study the banker paid.
-        let upkeep = passenger.upkeep.expect("the passenger's upkeep is priced");
+        assert_eq!(
+            silver_of(&review, "903").at_month_end,
+            Some(500),
+            "the banker left behind lends nothing"
+        );
+        let captain = silver_of(&review, "4022");
+        assert!(
+            captain
+                .changes
+                .iter()
+                .any(|change| change.cause == SilverChangeCause::Lent && change.amount == -fee),
+            "{captain:?}"
+        );
         let short: Vec<&str> = review
             .findings
             .iter()
@@ -78694,15 +78920,17 @@ BUILD
             })
             .map(|finding| finding.message.as_str())
             .collect();
-        assert_eq!(short.len(), 1, "{short:?}");
+        let upkeep = passenger.upkeep.expect("the passenger's upkeep is priced");
         assert!(
-            short[0].starts_with(&format!("short ${upkeep}:")),
-            "{short:?}"
+            short
+                .iter()
+                .all(|said| said.starts_with(&format!("short ${upkeep}:"))),
+            "only its upkeep can be short, never the study: {short:?}"
         );
     }
 
-    /// [`a_passengers_study_is_lent_by_the_sharer_in_the_hex_it_leaves`] with a sharer standing
-    /// where the fleet lands, as well as the banker it leaves behind.
+    /// [`a_passenger_studying_where_none_of_ours_stand`] with a sharer standing where the fleet
+    /// lands, as well as the banker it leaves behind.
     fn a_passenger_studying_between_two_sharers(there: i64) -> TurnReview {
         let banker = sharing(with_silver(unit("903"), 500));
         let resident = sharing(with_silver(unit("902"), there));
@@ -78785,6 +79013,34 @@ BUILD
             silver_of(&review, "902").at_month_end,
             Some(1),
             "the resident lends nothing"
+        );
+    }
+
+    /// `ah-oi3u` review, finding 1: where the fleet lands beside a sharer whose sums cannot be
+    /// trusted, nothing there can be added up, so the study stays the claim of the hex it leaves,
+    /// as before `ah-q1zz` - never refused, and never marked unjudged while that purse lends it.
+    #[test]
+    fn a_passengers_study_landing_beside_a_doubted_sharer_stays_with_the_hex_it_leaves() {
+        let banker = sharing(with_silver(unit("903"), 500));
+        let resident = sharing(with_silver(unit("902"), 500));
+        let (report, _) = passenger_palace(
+            open_sea(vec![banker]),
+            region_at("1:7,53", 7, 53, vec![resident]),
+            None,
+        );
+        let orders = "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 903\nunit 902\nSELL 5 xyzzy\n";
+        let review = review_turn(&report, orders, Some(&trident()), CheckOptions::default());
+        let passenger = silver_of(&review, "901");
+        let fee = passenger.wanted_for_orders.expect("the study is priced");
+        assert_eq!(passenger.borrowed_for_orders, fee, "{passenger:?}");
+        assert_eq!(silver_of(&review, "903").at_month_end, Some(500 - fee));
+        assert!(
+            !review.findings.iter().any(|finding| {
+                finding.unit_id.as_deref() == Some("901")
+                    && finding.message.ends_with("so its STUDY is refused")
+            }),
+            "{:?}",
+            review.findings
         );
     }
 
@@ -79823,10 +80079,10 @@ BUILD
         assert!(!members.sharer_lends_here("5", false, LendingMoment::Movement));
     }
 
-    /// What `a_walkers_transport_is_lent_by_the_sharer_in_the_hex_it_leaves` and
-    /// `a_passengers_study_is_lent_by_the_sharer_in_the_hex_it_leaves` pin end to end: a leaver
-    /// claims on the hex it is listed in for its STUDY and TRANSPORT, and at the month's end only
-    /// for what it owed before maintenance (`ah-6cka`).
+    /// What `a_walkers_transport_is_lent_by_the_sharer_in_the_hex_it_leaves` pins end to end: a
+    /// leaver claims on the hex it is listed in for its STUDY and TRANSPORT, and at the month's
+    /// end only for what it owed before maintenance (`ah-6cka`). A sailing passenger's STUDY is
+    /// then sent on to the purse where its fleet lands ([`send_studies_where_fleets_arrive`]).
     #[test]
     fn a_leaver_claims_where_it_is_listed_but_not_for_its_upkeep() {
         let members = walkers_membership();

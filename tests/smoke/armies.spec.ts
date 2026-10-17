@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
+import { HOVER_DELAY_MS } from "../../packages/shared/src/unitTooltip";
 import { loadReport, mapTransform, selectHex, selectUnit } from "./gameSetup";
 
 /**
@@ -795,6 +796,58 @@ test("the right-click list is capped and scrolls the same way", async ({ page })
   await page.mouse.wheel(0, 120);
   await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
   expect(await appScroll(page)).toEqual({ root: 0, page: 0 });
+});
+
+test("no hover popup from the table is drawn over an open Add to army list", async ({ page }) => {
+  // ah-1lac: the popup and the list share a layer, so a popup left open as the list opened was
+  // drawn over its army rows and hid them.
+  await workspace(page);
+  await manyArmies(page, 8);
+
+  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  const popups = page.locator('[data-testid="unit-tooltip"], [data-testid="unit-cell-popup"]');
+
+  // The whole-unit card, open on the Name cell, as the pointer comes to rest before the right-click.
+  await row.locator('td[data-column="name"]').hover();
+  await expect(page.getByTestId("unit-tooltip")).toBeVisible();
+  await row.locator('td[data-column="name"]').click({ button: "right" });
+  const menu = page.getByTestId("unit-context-menu");
+  await expect(menu).toBeVisible();
+  await expect(popups).toHaveCount(0);
+
+  // Nor does resting on another row's cell open one while the list is up.
+  await rows(page).nth(0).locator('td[data-column="men"]').hover();
+  await page.waitForTimeout(HOVER_DELAY_MS * 2);
+  await expect(menu).toBeVisible();
+  await expect(popups).toHaveCount(0);
+
+  // The button's form of the same list keeps the table quiet the same way.
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await page.getByTestId("add-to-army").click();
+  await expect(page.getByTestId("add-to-army-panel")).toBeVisible();
+  await rows(page).nth(0).locator('td[data-column="men"]').hover();
+  await page.waitForTimeout(HOVER_DELAY_MS * 2);
+  await expect(page.getByTestId("add-to-army-panel")).toBeVisible();
+  await expect(popups).toHaveCount(0);
+
+  // And the bulk line's, with two rows picked.
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("add-to-army-panel")).toHaveCount(0);
+  await rows(page).nth(0).click();
+  await rows(page).nth(1).click({ modifiers: ["Shift"] });
+  await page.getByTestId("bulk-add").click();
+  await expect(page.getByTestId("add-to-army-panel")).toBeVisible();
+  await rows(page).nth(2).locator('td[data-column="men"]').hover();
+  await page.waitForTimeout(HOVER_DELAY_MS * 2);
+  await expect(page.getByTestId("add-to-army-panel")).toBeVisible();
+  await expect(popups).toHaveCount(0);
+
+  // Closed again, the table's popups come back.
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("add-to-army-panel")).toHaveCount(0);
+  await rows(page).nth(3).locator('td[data-column="name"]').hover();
+  await expect(page.getByTestId("unit-tooltip")).toBeVisible();
 });
 
 test("a list that fits is drawn as it always was", async ({ page }) => {

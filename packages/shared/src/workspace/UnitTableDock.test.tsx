@@ -26,7 +26,7 @@ import { renderWithStoreState, restoreStoresForTest, setStoreStateForTest } from
 import { resetWorkspaceStore, useWorkspaceStore } from "../workspaceStore";
 import { useArmiesStore } from "../armiesStore";
 import { structuresByRegionOf } from "../structureLabel";
-import { UnitTableDock } from "./UnitTableDock";
+import { armyListShown, UnitTableDock } from "./UnitTableDock";
 import { FOREIGN_SOURCE, OWN_SOURCE } from "./unitSource";
 
 /**
@@ -3066,5 +3066,38 @@ describe("the units filter box (ah-ykac)", () => {
     );
 
     expect(markup).not.toContain("units-items-hidden-line");
+  });
+});
+
+describe("armyListShown (ah-1lac)", () => {
+  // The table's hover popups stand down only while a list is actually drawn over them; a `menu`
+  // left set by a control that drew nothing must not keep them off for good.
+  const all = { canEditArmies: true, hasSelection: true, bulk: true, acting: 2, hasTurn: true };
+
+  it("is closed with no menu", () => {
+    expect(armyListShown(null, all)).toBe(false);
+  });
+
+  it("is open for each control when its own conditions hold", () => {
+    expect(armyListShown({ at: "header" }, all)).toBe(true);
+    expect(armyListShown({ at: "bulk" }, all)).toBe(true);
+    expect(armyListShown({ at: "pointer", point: { x: 0, y: 0 } }, all)).toBe(true);
+  });
+
+  it("is closed after a right-click with no game open, which draws nothing", () => {
+    expect(
+      armyListShown({ at: "pointer", point: { x: 0, y: 0 } }, { ...all, canEditArmies: false })
+    ).toBe(false);
+  });
+
+  it("is closed after a right-click on a report naming no turn", () => {
+    expect(armyListShown({ at: "pointer", point: { x: 0, y: 0 } }, { ...all, hasTurn: false })).toBe(
+      false
+    );
+  });
+
+  it("is closed for the header with nothing selected, and the bulk line with under two picked", () => {
+    expect(armyListShown({ at: "header" }, { ...all, hasSelection: false })).toBe(false);
+    expect(armyListShown({ at: "bulk" }, { ...all, bulk: false })).toBe(false);
   });
 });

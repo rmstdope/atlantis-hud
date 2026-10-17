@@ -1,0 +1,76 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Passenger study pointer</title><style>
+:root{--ground:#10151c;--raised:#1c232e;--edge:#26303d;--ink:#dbe3ec;--soft:#a3b0c0;--dim:#8a97a8;--brass:#d9a441;--warn:#e0a03a;--bad:#e06a5a;--sel:#2a3a52}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:14px/1.5 'Helvetica Neue',Arial,sans-serif;padding:24px 16px 48px}
+main{max-width:980px;margin:0 auto}
+h1{font:22px Georgia,serif}h1 span{color:var(--brass)}
+.lede{color:var(--soft);margin:8px 0 20px;max-width:90ch}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--raised);border:1px solid var(--edge);border-radius:6px;overflow:hidden}
+.panel h3{font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--brass);font-weight:normal;padding:8px 12px;border-bottom:1px solid var(--edge)}
+.orders{font:13px/1.7 'SF Mono',Menlo,monospace;padding:8px 0}
+.orders div{padding:0 12px}
+.orders .unit{color:var(--soft)}
+.orders .flag{text-decoration:underline wavy var(--warn);text-underline-offset:3px}
+.tip{margin:6px 12px 10px 24px;background:#26303d;border-left:3px solid var(--warn);padding:8px 10px;font:13px/1.45 'Helvetica Neue',Arial,sans-serif;color:var(--ink);border-radius:3px}
+.tip a,.prob a{color:#8fb8ff;text-decoration:underline;cursor:pointer}
+.prob{padding:6px 0}
+.hexhead{padding:6px 12px;color:var(--brass);font-weight:bold;font-size:13px}
+.item{padding:4px 12px 8px 28px;color:var(--ink);font-size:13px;position:relative}
+.item:before{content:'\26A0';color:var(--warn);position:absolute;left:10px}
+.item.unit{color:var(--soft)}
+.note{color:var(--dim);font-size:12.5px;font-style:italic;margin-top:14px;max-width:90ch}
+.cost{margin-top:14px;padding:10px 12px;border:1px dashed var(--edge);color:var(--soft);font-size:13px;border-radius:4px}
+.cost b{color:var(--ink)}
+.row{display:flex;justify-content:space-between;padding:3px 12px;font-size:13px}
+.row .s{color:var(--bad)}
+
+section{margin-bottom:36px}</style></head><body><main>
+<h1><span>ah-1uja</span> &mdash; a passenger whose landing hex refuses its STUDY (agreed 2026-10-17)</h1>
+<p class="lede">Chosen: the STUDY line names the landing hex in today's sentence (A); the landing hex's warning names the passengers' share in the same sentence (B); several passengers share one total, and four or more become a count (B). The share is named whenever a passenger's study is part of the spending, refused or not. &ldquo;See Problems for &hellip;&rdquo; is plain text, as today.</p>
+<section>
+<h1><span>Drawing</span> &mdash; the landing hex's warning, B: name the passenger in the same sentence</h1>
+<p class="lede">One clause added to the hex's warning, naming the arriving unit and its share. Only added when a passenger is part of the spend.</p>
+<div class="grid">
+<div class="panel"><h3>Orders &mdash; ocean (7,55)</h3><div class="orders">
+<div class="unit">unit 4022 &nbsp;; Trident's captain</div><div>SAIL N</div>
+<div class="unit">unit 901 &nbsp;; Drones, aboard the Trident</div><div><span class="flag">STUDY COMB</span></div>
+<div class="tip">The hex where the fleet lands, plain (7,53), is short of silver between its units, so this STUDY is refused. See Problems for plain (7,53).</div>
+<div class="unit">unit 903 &nbsp;; Banker, stays at sea</div>
+</div>
+<div class="row"><span>Drones (901) &middot; silver at month end</span><span class="s">&minus;49</span></div>
+</div>
+<div class="panel"><h3>Problems</h3><div class="prob">
+<div class="hexhead">plain (7,53)</div>
+<div class="item">the units in this hex are short $49 between them: they can have $1 and their orders spend $50, $50 of it on the STUDY of Drones (901), arriving by sea</div>
+<div class="hexhead">ocean (7,55)</div>
+<div class="item unit">Drones (901): The hex where the fleet lands, plain (7,53), is short of silver between its units, so this STUDY is refused. See Problems for plain (7,53).</div>
+</div></div>
+</div>
+<div class="cost"><b>Cost:</b> a longer warning, and with several passengers it lists each one.</div>
+<p class="note">The Trident sails north from ocean (7,55) to plain (7,53). Drones study there, and the only faction-mate sharing silver in plain (7,53) is Farmers (902), who hold $1. Figures are illustrative. </p>
+</section>
+<section>
+<h1><span>Drawing</span> &mdash; several passengers, B: one total, names listed, a count past three</h1>
+<p class="lede">Two passengers: one total and both names. Past three passengers the names give way to a count, shown underneath.</p>
+<div class="grid">
+<div class="panel"><h3>Orders &mdash; ocean (7,55)</h3><div class="orders">
+<div class="unit">unit 4022 &nbsp;; Trident's captain</div><div>SAIL N</div>
+<div class="unit">unit 901 &nbsp;; Drones, aboard the Trident</div><div><span class="flag">STUDY COMB</span></div>
+<div class="tip">The hex where the fleet lands, plain (7,53), is short of silver between its units, so this STUDY is refused. See Problems for plain (7,53).</div>
+<div class="unit">unit 903 &nbsp;; Banker, stays at sea</div>
+</div>
+<div class="row"><span>Drones (901) &middot; silver at month end</span><span class="s">&minus;49</span></div>
+</div>
+<div class="panel"><h3>Problems</h3><div class="prob">
+<div class="hexhead">plain (7,53)</div>
+<div class="item">the units in this hex are short $79 between them: they can have $1 and their orders spend $80, $80 of it on the studies of Drones (901) and Scouts (905), arriving by sea</div><div class="item"><i>With four or more:</i> &hellip; their orders spend $170, $160 of it on the studies of 4 units arriving by sea</div>
+<div class="hexhead">ocean (7,55)</div>
+<div class="item unit">Drones (901): The hex where the fleet lands, plain (7,53), is short of silver between its units, so this STUDY is refused. See Problems for plain (7,53).</div>
+</div></div>
+</div>
+<div class="cost"><b>Cost:</b> the split per passenger is gone; each one's own STUDY line and silver figure still has it.</div>
+<p class="note">The Trident sails north from ocean (7,55) to plain (7,53). Drones study there, and the only faction-mate sharing silver in plain (7,53) is Farmers (902), who hold $1. Figures are illustrative. </p>
+</section>
+</main></body></html>
