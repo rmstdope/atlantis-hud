@@ -1003,15 +1003,7 @@ pub fn review_turn(
     let (faction, failures) = faction_orders(report, &ordered, ruleset);
     let applied = faction.applied.as_ref().map(|applied| &applied.limits);
     check_faction_orders(&failures, &options, &mut findings);
-    check_faction(
-        report,
-        &ordered,
-        &hexes,
-        ruleset,
-        applied,
-        &options,
-        &mut findings,
-    );
+    check_faction(report, &hexes, ruleset, applied, &options, &mut findings);
     check_upkeep_fund(report, &month_end.fund, &options, &mut findings);
 
     // Not a warning, so no `CheckOptions` switch hides it.
@@ -24636,7 +24628,6 @@ fn new_students(hexes: &[(Hex<'_>, Ledger<'_>)], ruleset: Option<&Ruleset>) -> N
 /// orders would spend against the maximum.
 fn check_faction(
     report: &ParsedReport,
-    ordered: &OrderedUnits,
     hexes: &[(Hex<'_>, Ledger<'_>)],
     ruleset: Option<&Ruleset>,
     applied: Option<&FactionLimits>,
@@ -24645,7 +24636,7 @@ fn check_faction(
 ) {
     check_quartermasters(report, hexes, ruleset, applied, options, findings);
     check_trade_regions(report, hexes, ruleset, applied, options, findings);
-    check_claims(report, ordered, ruleset, options, findings);
+    check_claims(report, hexes, ruleset, options, findings);
 }
 
 /// The region limits this report prints in its `Faction Status:` block.
@@ -25628,7 +25619,7 @@ fn check_region_pools(
 /// not read. `ah-bumi` counts a claim as written in exactly that case, for the same reason.
 fn check_claims(
     report: &ParsedReport,
-    ordered: &OrderedUnits,
+    hexes: &[(Hex<'_>, Ledger<'_>)],
     ruleset: Option<&Ruleset>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
@@ -25641,39 +25632,34 @@ fn check_claims(
         return;
     };
 
-    let finding = |unit: &ReportUnit, placed: &PlacedIntent, message: String| Finding {
-        code: codes::CLAIMS_EXCEED_UNCLAIMED,
-        message,
-        region_id: unit.region_id.clone(),
-        unit_id: Some(unit.unit_id.clone()),
-        line: Some(placed.line),
-        column_start: Some(placed.column_start),
-        column_end: Some(placed.column_end),
-        formed: None,
-        counted_in: None,
+    // The hexes rather than the report's own units: a unit formed this month claims and withdraws
+    // too, and only the hex carries it - as it does for `claim_allowances_for`.
+    let units = || {
+        hexes.iter().flat_map(|(hex, _)| {
+            hex.units
+                .iter()
+                .filter(|ordered| ordered.unit.own)
+                .map(move |ordered| (hex, ordered))
+        })
     };
 
     // Placed intents rather than units: a unit with two CLAIM lines is paid for each in turn, and
     // each line is separately editable.
-    let mut claims: Vec<(&ReportUnit, &PlacedIntent, i64)> = report
-        .regions
-        .iter()
-        .flat_map(|region| region.units.iter())
-        .filter(|unit| unit.own)
-        .flat_map(|unit| {
+    let mut claims: Vec<_> = units()
+        .flat_map(|(hex, ordered)| {
             ordered
-                .intents_of(&unit.unit_id)
+                .intents
                 .iter()
                 .filter_map(move |placed| match placed.intent {
-                    Intent::Claim(amount) => Some((unit, placed, amount)),
+                    Intent::Claim(amount) => Some((hex, ordered, placed, amount)),
                     _ => None,
                 })
         })
         .collect();
-    claims.sort_by_key(|(_, placed, _)| placed.line);
+    claims.sort_by_key(|(_, _, placed, _)| placed.line);
 
     let mut remaining = purse.max(0);
-    for (unit, placed, amount) in claims {
+    for (hex, ordered, placed, amount) in claims {
         if amount > remaining {
             let message = if remaining > 0 {
                 format!(
@@ -25684,41 +25670,41 @@ fn check_claims(
                     "this claims ${amount} and the faction has no unclaimed silver left, so it gets nothing"
                 )
             };
-            findings.push(finding(unit, placed, message));
+            findings.push(ordered.finding(
+                hex,
+                codes::CLAIMS_EXCEED_UNCLAIMED,
+                message,
+                Some(placed),
+            ));
         }
         remaining = remaining.saturating_sub(amount.max(0)).max(0);
     }
 
-    for region in report
-        .regions
-        .iter()
-        .filter(|region| !withdrawal_refused(region))
-    {
-        for unit in region.units.iter().filter(|unit| unit.own) {
-            for placed in ordered.intents_of(&unit.unit_id) {
-                let Intent::Withdraw { count, item } = &placed.intent else {
-                    continue;
-                };
-                let Some(cost) = withdrawal_cost(item, ruleset) else {
-                    continue;
-                };
-                let cost = count.saturating_mul(cost).max(0);
-                if cost > remaining {
-                    let left = if remaining > 0 {
-                        format!("has ${remaining} of its unclaimed silver left")
-                    } else {
-                        "has no unclaimed silver left".to_string()
-                    };
-                    findings.push(finding(
-                        unit,
-                        placed,
-                        format!(
-                            "this withdrawal costs ${cost} and the faction {left}, so the game refuses it"
-                        ),
-                    ));
+    for (hex, ordered) in units().filter(|(hex, _)| !withdrawal_refused(hex.region)) {
+        for placed in &ordered.intents {
+            let Intent::Withdraw { count, item } = &placed.intent else {
+                continue;
+            };
+            let Some(cost) = withdrawal_cost(item, ruleset) else {
+                continue;
+            };
+            let cost = count.saturating_mul(cost).max(0);
+            if cost > remaining {
+                let left = if remaining > 0 {
+                    format!("has ${remaining} of its unclaimed silver left")
                 } else {
-                    remaining -= cost;
-                }
+                    "has no unclaimed silver left".to_string()
+                };
+                findings.push(ordered.finding(
+                    hex,
+                    codes::CLAIMS_EXCEED_UNCLAIMED,
+                    format!(
+                        "this withdrawal costs ${cost} and the faction {left}, so the game refuses it"
+                    ),
+                    Some(placed),
+                ));
+            } else {
+                remaining -= cost;
             }
         }
     }
@@ -54746,6 +54732,44 @@ BUILD
             findings[0].message,
             "this claims $2000 and the faction has $1935 of its unclaimed silver left, so it gets $1935"
         );
+    }
+
+    /// A unit formed this month claims at parse time too (`../Atlantis/parseorders.cpp`
+    /// `case O_FORM` makes it the current unit, so its CLAIM reaches `ProcessClaimOrder`), in its
+    /// place in the file. So the parent's later claim is the one cut.
+    #[test]
+    fn a_formed_units_claim_draws_on_the_fund_in_its_place() {
+        let findings = check_claims_of(
+            Some(6038),
+            vec![region(vec![unit("18642")])],
+            "unit 18642\nFORM 1\nCLAIM 5000\nEND\nCLAIM 2000\n",
+        );
+
+        assert_eq!(
+            findings.len(),
+            1,
+            "only the parent's CLAIM 2000: {findings:?}"
+        );
+        assert_eq!(findings[0].unit_id.as_deref(), Some("18642"));
+        assert_eq!(findings[0].line, Some(5));
+        assert_eq!(
+            findings[0].message,
+            "this claims $2000 and the faction has $1038 of its unclaimed silver left, so it gets $1038"
+        );
+    }
+
+    /// A formed unit's own over-claim is warned on its own line, naming the unit it is.
+    #[test]
+    fn a_formed_units_over_claim_is_warned() {
+        let findings = check_claims_of(
+            Some(500),
+            vec![region(vec![unit("18642")])],
+            "unit 18642\nFORM 1\nCLAIM 600\nEND\n",
+        );
+
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].line, Some(3));
+        assert!(findings[0].formed.is_some(), "{findings:?}");
     }
 
     /// The fund is drawn in orders-file order, not in the report's: the unit listed second in the
