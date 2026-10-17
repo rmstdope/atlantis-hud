@@ -237,6 +237,11 @@ pub struct GameBackupMergedReport {
     pub merged_faction_id: String,
     pub merged_faction_name: String,
     pub merged_at: String,
+    /// The merged report's units (`ah-oqxn`), as `MergedReportRecord::units` keeps them. Left out
+    /// of the file when there are none, so a backup of a game with no allied merge reads exactly
+    /// as it did before, and a backup written before the field reads with none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub units: Vec<crate::report::model::ReportUnit>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1174,6 +1179,31 @@ mod tests {
     }
 
     #[test]
+    fn a_merged_reports_units_round_trip_and_none_are_left_out() {
+        let mut merge = GameBackupMergedReport {
+            faction_id: "39".to_string(),
+            turn_number: 17,
+            merged_faction_id: "62".to_string(),
+            merged_faction_name: "Borg".to_string(),
+            merged_at: "2026-10-17T10:00:00Z".to_string(),
+            units: Vec::new(),
+        };
+        let without = serde_json::to_string(&merge).expect("serialises");
+        assert!(!without.contains("units"));
+
+        merge.units = vec![crate::report::model::ReportUnit {
+            unit_id: "7124".to_string(),
+            own: true,
+            ..Default::default()
+        }];
+        let json = serde_json::to_string(&merge).expect("serialises");
+        assert_eq!(
+            serde_json::from_str::<GameBackupMergedReport>(&json).expect("round trips"),
+            merge
+        );
+    }
+
+    #[test]
     fn a_hex_note_round_trips_as_camel_case() {
         let note = HexNote {
             id: "note-1".to_string(),
@@ -1922,6 +1952,7 @@ mod tests {
             merged_faction_id: "2".to_string(),
             merged_faction_name: "Ally".to_string(),
             merged_at: "2026-01-05T00:00:00Z".to_string(),
+            units: Vec::new(),
         };
         let note = GameBackupHexNote {
             id: "n1".to_string(),
@@ -2115,6 +2146,7 @@ mod tests {
                 merged_faction_id: "2".to_string(),
                 merged_faction_name: "Ally".to_string(),
                 merged_at: "2026-01-05T00:00:00Z".to_string(),
+                units: Vec::new(),
             }],
             vec![GameBackupHexNote {
                 id: "n1".to_string(),
@@ -2266,6 +2298,7 @@ mod tests {
             merged_faction_id: merged_faction_id.to_string(),
             merged_faction_name: "AtlaClient, turn 72".to_string(),
             merged_at: "2026-01-05T00:00:00Z".to_string(),
+            units: Vec::new(),
         };
         let content = content_with(
             vec![turn("1"), turn("2")],

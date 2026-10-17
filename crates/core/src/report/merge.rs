@@ -331,6 +331,29 @@ pub struct MergedReportRecord {
     pub merged_faction_id: String,
     pub merged_faction_name: String,
     pub merged_at: String,
+    /// Every unit the merged report lists, in report order and exactly as that report wrote them -
+    /// so `own` is relative to the *merged* faction and marks its own units (`ah-oqxn`).
+    ///
+    /// Kept on the record rather than read back from the sightings, because a sighting is
+    /// overwritten by the next turn's import while this record belongs to its turn for good: going
+    /// back to the merged turn still shows what the merged report said. Empty for a map export,
+    /// which names no unit of a merged faction, and for a record written before the field existed.
+    #[serde(default)]
+    pub units: Vec<ReportUnit>,
+}
+
+/// Every unit an allied report lists, in report order, exactly as it wrote them (`ah-oqxn`).
+///
+/// Nothing is re-marked: `own` stays the report's own `*`, which is what lets the workspace tell
+/// the merged faction's own units - whose skills and full inventory the report states
+/// (`rules/reportformat`) - from the strangers it merely saw.
+#[must_use]
+pub fn merged_report_units(report: &ParsedReport) -> Vec<ReportUnit> {
+    report
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter().cloned())
+        .collect()
 }
 
 /// Merged reports oldest first, then by faction id: the order both platforms list them in.
@@ -650,7 +673,34 @@ mod tests {
             merged_faction_id: merged_faction_id.to_owned(),
             merged_faction_name: format!("Ally {merged_faction_id}"),
             merged_at: merged_at.to_owned(),
+            units: Vec::new(),
         }
+    }
+
+    #[test]
+    fn a_merged_reports_units_are_kept_as_its_report_wrote_them() {
+        let mut first = region();
+        first.units = vec![unit("7124", true), unit("4410", false)];
+        let mut second = region();
+        second.region_id = "1:44,82".to_owned();
+        second.units = vec![unit("7190", true)];
+
+        let units = merged_report_units(&report_of(vec![first, second]));
+
+        let described: Vec<(&str, bool)> = units
+            .iter()
+            .map(|unit| (unit.unit_id.as_str(), unit.own))
+            .collect();
+        assert_eq!(described, vec![("7124", true), ("4410", false), ("7190", true)]);
+    }
+
+    #[test]
+    fn a_record_written_before_units_existed_reads_with_none() {
+        let record: MergedReportRecord = serde_json::from_str(
+            r#"{"gameId":"alpha","factionId":"95","turnNumber":71,"mergedFactionId":"12","mergedFactionName":"Ally","mergedAt":"2026-08-01T12:00:00Z"}"#,
+        )
+        .expect("an old record");
+        assert!(record.units.is_empty());
     }
 
     #[test]
