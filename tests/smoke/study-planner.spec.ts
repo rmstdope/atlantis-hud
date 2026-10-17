@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
 import { freezeClock, loadReport } from "./gameSetup";
 
