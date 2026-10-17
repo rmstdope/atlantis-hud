@@ -641,3 +641,208 @@ test("choosing an Army from the palette unfolds a folded units pane", async ({ p
   // The rows remount with the unfold, in the same batch as the source change; focus still lands.
   await expect(rows(page).first()).toBeFocused();
 });
+
+/**
+ * More Armies than fit under the dock's button (ah-gnmx). Made through the rail, the only way in;
+ * named so a row's place in the list is plain from its name.
+ */
+async function manyArmies(page: Page, count: number) {
+  for (let n = 1; n <= count; n += 1) {
+    await newArmy(page, `Host ${String(n).padStart(2, "0")}`);
+  }
+  await expect(page.getByTestId(/^unit-source-army-/)).toHaveCount(count);
+}
+
+/** The page itself never scrolls: the root clips (ah-gmg8), and nothing may move it anyway. */
+async function appScroll(page: Page) {
+  return page.evaluate(() => ({
+    root: document.getElementById("root")?.scrollTop ?? 0,
+    page: document.scrollingElement?.scrollTop ?? 0
+  }));
+}
+
+test("with many Armies the list stops above the window edge and only its rows scroll", async ({
+  page
+}) => {
+  await workspace(page);
+  await manyArmies(page, 20);
+  await selectUnit(page, OWN_UNIT);
+  await page.getByTestId("add-to-army").click();
+
+  const panel = page.getByTestId("add-to-army-panel");
+  const list = page.getByTestId("add-to-army-rows");
+  const viewport = page.viewportSize()!;
+  const box = (await panel.boundingBox())!;
+  const button = (await page.getByTestId("add-to-army").boundingBox())!;
+
+  // Under its button, as today, and clear of the window's bottom edge.
+  expect(box.y).toBeGreaterThan(button.y);
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height - 4);
+
+  // The naming line and New Army… stay on screen; the army rows are what scrolls.
+  await expect(panel.getByText("into…")).toBeInViewport();
+  await expect(page.getByTestId("add-to-army-new")).toBeInViewport();
+  expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  expect(await list.evaluate((el) => el.scrollTop)).toBe(0);
+  await expect(page.getByTestId("add-to-army-fade-bottom")).toBeVisible();
+  await expect(page.getByTestId("add-to-army-fade-top")).toHaveCount(0);
+
+  // The wheel moves the rows, never the app.
+  await list.hover();
+  await page.mouse.wheel(0, 120);
+  await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  await expect(page.getByTestId("add-to-army-fade-top")).toBeVisible();
+  await expect(page.getByTestId("add-to-army-fade-bottom")).toBeVisible();
+  expect(await appScroll(page)).toEqual({ root: 0, page: 0 });
+
+  // Scrolled to the end: the last Army sits above the separator and only the top fades.
+  await page.mouse.wheel(0, 5000);
+  await expect(page.getByTestId("add-to-army-fade-bottom")).toHaveCount(0);
+  await expect(page.getByTestId("add-to-army-fade-top")).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Host 20", exact: true })).toBeInViewport();
+  expect(await appScroll(page)).toEqual({ root: 0, page: 0 });
+
+  // New Army… is one click away wherever the rows stand.
+  await page.getByTestId("add-to-army-new").click();
+  await expect(page.getByTestId("rail-name-field")).toBeVisible();
+});
+
+test("tabbing to an Army out of view scrolls it into view inside the list", async ({ page }) => {
+  await workspace(page);
+  await manyArmies(page, 20);
+  await selectUnit(page, OWN_UNIT);
+  await page.getByTestId("add-to-army").click();
+
+  const last = page.getByTestId("add-to-army-panel").getByRole("button", { name: "Host 20", exact: true });
+  await expect(last).not.toBeInViewport();
+  for (let n = 0; n < 20; n += 1) {
+    await page.keyboard.press("Tab");
+  }
+  await expect(last).toBeFocused();
+  await expect(last).toBeInViewport();
+  expect(await appScroll(page)).toEqual({ root: 0, page: 0 });
+});
+
+test("with too little room below for five rows the list opens upward", async ({ page }) => {
+  await workspace(page);
+  await manyArmies(page, 20);
+  await selectUnit(page, OWN_UNIT);
+
+  // A window short enough that the room under the dock's button holds fewer than five rows. The
+  // dock reflows with the window, so it is shrunk until the button has under 150px beneath it.
+  const button = page.getByTestId("add-to-army");
+  for (let height = 700; height >= 300; height -= 20) {
+    await page.setViewportSize({ width: 1280, height });
+    const at = (await button.boundingBox())!;
+    if (height - (at.y + at.height) < 150) {
+      break;
+    }
+  }
+  await expect(button).toBeInViewport();
+  const at = (await button.boundingBox())!;
+  expect(page.viewportSize()!.height - (at.y + at.height)).toBeLessThan(150);
+  await button.click();
+
+  const panel = page.getByTestId("add-to-army-panel");
+  const box = (await panel.boundingBox())!;
+  const anchor = (await button.boundingBox())!;
+  expect(box.y + box.height).toBeLessThanOrEqual(anchor.y);
+  expect(box.y).toBeGreaterThanOrEqual(4);
+  await expect(page.getByTestId("add-to-army-new")).toBeInViewport();
+  await expect(page.getByTestId("add-to-army-fade-bottom")).toBeVisible();
+});
+
+test("a resize refits an open list rather than closing it", async ({ page }) => {
+  await workspace(page);
+  await manyArmies(page, 20);
+  await selectUnit(page, OWN_UNIT);
+  await page.getByTestId("add-to-army").click();
+
+  const panel = page.getByTestId("add-to-army-panel");
+  const before = (await panel.boundingBox())!;
+  await page.setViewportSize({ width: 1280, height: 680 });
+
+  await expect(panel).toBeVisible();
+  await expect
+    .poll(async () => {
+      const after = (await panel.boundingBox())!;
+      return after.y + after.height;
+    })
+    .toBeLessThanOrEqual(680 - 4);
+  expect(before.height).toBeGreaterThan(0);
+  await expect(page.getByTestId("add-to-army-new")).toBeInViewport();
+});
+
+test("the right-click list is capped and scrolls the same way", async ({ page }) => {
+  await workspace(page);
+  await manyArmies(page, 30);
+
+  await rows(page).nth(0).click({ button: "right" });
+  const menu = page.getByTestId("unit-context-menu");
+  await expect(menu).toBeVisible();
+
+  const viewport = page.viewportSize()!;
+  const box = (await menu.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height - 4);
+  await expect(menu.getByText("into…")).toBeInViewport();
+  await expect(menu.getByTestId("add-to-army-new")).toBeInViewport();
+
+  const list = menu.getByTestId("add-to-army-rows");
+  expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  await expect(menu.getByTestId("add-to-army-fade-bottom")).toBeVisible();
+  await list.hover();
+  await page.mouse.wheel(0, 120);
+  await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  expect(await appScroll(page)).toEqual({ root: 0, page: 0 });
+});
+
+test("a list that fits is drawn as it always was", async ({ page }) => {
+  await workspace(page);
+  await newArmy(page, "Northern Host");
+  await selectUnit(page, OWN_UNIT);
+  await page.getByTestId("add-to-army").click();
+
+  const list = page.getByTestId("add-to-army-rows");
+  expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(false);
+  await expect(page.getByTestId("add-to-army-fade-top")).toHaveCount(0);
+  await expect(page.getByTestId("add-to-army-fade-bottom")).toHaveCount(0);
+  const box = (await page.getByTestId("add-to-army-panel").boundingBox())!;
+  const button = (await page.getByTestId("add-to-army").boundingBox())!;
+  expect(box.y).toBeGreaterThan(button.y);
+});
+
+test("the list hung outside the dock still behaves as the button's own", async ({ page }) => {
+  await workspace(page);
+  await manyArmies(page, 20);
+  await selectUnit(page, OWN_UNIT);
+  const button = page.getByTestId("add-to-army");
+  const panel = page.getByTestId("add-to-army-panel");
+
+  // The panel takes focus as it opens, and a press inside it - on its naming line - keeps it.
+  await button.click();
+  await expect(panel).toBeFocused();
+  await panel.getByText("into…").click();
+  await expect(panel).toBeVisible();
+
+  // Escape closes it and gives focus back to the button.
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  await expect(button).toBeFocused();
+
+  // The button toggles it: a second press closes rather than reopens.
+  await button.click();
+  await expect(panel).toBeVisible();
+  await button.click();
+  await expect(panel).toHaveCount(0);
+
+  // And each opening starts at the top of the list.
+  await button.click();
+  const list = page.getByTestId("add-to-army-rows");
+  await list.hover();
+  await page.mouse.wheel(0, 300);
+  await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  await button.click();
+  expect(await list.evaluate((el) => el.scrollTop)).toBe(0);
+});
