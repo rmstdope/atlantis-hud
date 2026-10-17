@@ -25961,6 +25961,18 @@ fn check_region_pools(
                     (MarketSide::Buying, false) => format!(
                         "your units here buy {goods} between them and this market has {available}"
                     ),
+                    // `rules/sell`: `SELL ALL` "will attempt to sell all of that item, regardless
+                    // of how many it has", and the market takes what it wants. A lone seller
+                    // writing it means exactly that, so there is nothing to act on; a number it
+                    // wrote, or a contest between sellers, still is (`ah-up48`).
+                    (MarketSide::Selling, true)
+                        if claimants
+                            .first()
+                            .and_then(|index| hex.units.get(*index))
+                            .is_some_and(|ordered| sells_all_only(ordered, tag, hex, ruleset)) =>
+                    {
+                        continue
+                    }
                     (MarketSide::Selling, true) => {
                         format!("this unit sells {goods} and this market wants {available}")
                     }
@@ -26009,6 +26021,30 @@ fn check_region_pools(
             ));
         }
     }
+}
+
+/// Whether every one of the unit's `SELL` lines on the market line `tag` is a `SELL ALL`, and it
+/// has at least one. Resolved as the anchor in `check_region_pools` resolves them, so the two agree
+/// on which lines are this line's.
+fn sells_all_only(
+    ordered: &Ordered<'_>,
+    tag: &str,
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+) -> bool {
+    let mut sells = ordered
+        .intents
+        .iter()
+        .filter_map(|placed| match &placed.intent {
+            Intent::Sell { amount, item } => {
+                market_item_tag(&hex.region.wanted, item, hex, ordered, ruleset)
+                    .filter(|resolved| resolved.eq_ignore_ascii_case(tag))
+                    .map(|_| amount)
+            }
+            _ => None,
+        })
+        .peekable();
+    sells.peek().is_some() && sells.all(|amount| matches!(amount, Amount::All { .. }))
 }
 
 /// Every CLAIM or WITHDRAW line the faction's unclaimed fund cannot pay in full, each with what
@@ -27147,6 +27183,72 @@ mod tests {
                 found[0].message,
                 "this unit sells 200 horse and this market wants 100"
             );
+        }
+
+        /// `rules/sell`: `SELL ALL` "will attempt to sell all of that item, regardless of how
+        /// many it has", and the market takes what it wants - which is what a lone seller writing
+        /// it means, so there is nothing to act on (`ah-up48`).
+        #[test]
+        fn a_lone_seller_selling_all_into_a_smaller_market_is_not_warned() {
+            let review = review_turn(
+                &report(vec![market(
+                    vec![horses(100)],
+                    vec![],
+                    vec![horse_seller("2390", 200)],
+                )]),
+                "unit 2390\nSELL ALL horse\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert!(
+                oversubscriptions(&review).is_empty(),
+                "{:?}",
+                review.findings
+            );
+        }
+
+        /// A number written beside a `SELL ALL` of the same goods is still a number the player
+        /// wrote, so the lone seller keeps its warning (`ah-up48`).
+        #[test]
+        fn a_lone_seller_with_a_number_beside_its_sell_all_is_still_told_so() {
+            let review = review_turn(
+                &report(vec![market(
+                    vec![horses(100)],
+                    vec![],
+                    vec![horse_seller("2390", 300)],
+                )]),
+                "unit 2390\nSELL 150 horse\nSELL ALL horse\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            assert_eq!(oversubscriptions(&review).len(), 1, "{:?}", review.findings);
+        }
+
+        /// A contest is a different case: every seller still hears the plural sentence, whether
+        /// its line is `SELL ALL` or a number (`ah-up48`).
+        #[test]
+        fn two_sellers_mixing_sell_all_and_a_number_are_both_still_warned() {
+            let review = review_turn(
+                &report(vec![market(
+                    vec![horses(100)],
+                    vec![],
+                    vec![horse_seller("2390", 80), horse_seller("2391", 80)],
+                )]),
+                "unit 2390\nSELL ALL horse\nunit 2391\nSELL 80 horse\n",
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let found = oversubscriptions(&review);
+            assert_eq!(found.len(), 2, "{:?}", review.findings);
+            for finding in &found {
+                assert_eq!(
+                    finding.message,
+                    "your units here sell 160 horse between them and this market wants 100"
+                );
+            }
         }
 
         /// One code, two facts. Nothing here deduplicates by pool.
