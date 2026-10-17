@@ -13548,13 +13548,23 @@ fn check_quest_without_a_town_hall(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
     if has_a_town_hall(hex.region) {
         return;
     }
+    // A hall still being built is listed in the report, so "no Town Hall" would contradict what
+    // the player can see; `rules/quest` wants an active one, which an unfinished hall is not.
+    let unfinished = hex.region.structures.iter().any(|structure| {
+        structure.base_kind.eq_ignore_ascii_case("Town Hall") && structure.needs.is_some()
+    });
+    let message = if unfinished {
+        "QUEST will be refused: the Town Hall here is not finished"
+    } else {
+        "QUEST will be refused: there is no Town Hall here"
+    };
     for ordered in &hex.units {
         for placed in &ordered.intents {
             if matches!(placed.intent, Intent::Quest { .. }) {
                 findings.push(ordered.finding(
                     hex,
                     codes::QUEST_WITHOUT_A_TOWN_HALL,
-                    "QUEST will be refused: there is no Town Hall here".to_string(),
+                    message.to_string(),
                     Some(placed),
                 ));
             }
