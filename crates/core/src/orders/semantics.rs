@@ -17529,9 +17529,11 @@ fn purse_settles(hex: &Hex<'_>, ledger: &Ledger<'_>) -> bool {
 /// arrives ([`WalkingSilver::arriving_students`]).
 ///
 /// Only from a purse that settles ([`purse_settles`]): elsewhere the study stays the claim of the
-/// hex it leaves, as it was before. Where the fleet lands in a hex whose purse does not settle,
+/// hex it leaves, as it was before. Where the fleet lands in a hex where nothing of ours shares,
 /// the study is judged there and then, by nobody's silver but its own
-/// ([`settle_studies_where_nothing_is_shared`], `ah-oi3u`).
+/// ([`settle_studies_where_nothing_is_shared`], `ah-oi3u`). Where something there shares but its
+/// sums cannot be trusted, the study stays the claim of the hex it leaves, as it was before: a
+/// purse that cannot be added up says nothing about who lends (`ah-oi3u` review, finding 1).
 fn send_studies_where_fleets_arrive(
     hexes: &mut [(Hex<'_>, Ledger<'_>)],
     membership: &PurseMembership,
@@ -17557,9 +17559,11 @@ fn send_studies_where_fleets_arrive(
             sent.push((index, who.clone(), arrives));
         }
     }
-    sent.retain(|(index, _, _)| {
+    sent.retain(|(index, _, arrives)| {
         let (hex, ledger) = &hexes[*index];
+        let (there, there_ledger) = &hexes[*arrives];
         purse_settles(hex, ledger)
+            && (purse_settles(there, there_ledger) || nothing_is_shared(there, there_ledger))
     });
     for (index, who, _) in &sent {
         hexes[*index]
@@ -17616,35 +17620,32 @@ fn send_studies_where_fleets_arrive(
     let mut verdicts: Vec<(UnitKey, StudyOutcome)> = Vec::new();
     for (index, students) in students.into_iter().enumerate() {
         let (hex, ledger) = &hexes[index];
-        if purse_settles(hex, ledger) {
-            hexes[index].1.relief_mut().walking.arriving_students = students;
+        if nothing_is_shared(hex, ledger) {
+            verdicts.extend(settle_studies_where_nothing_is_shared(&students));
         } else {
-            let pooled = Sharing::for_silver(hex, ledger).reading(SILVER, None) == Reading::Pooled;
-            verdicts.extend(settle_studies_where_nothing_is_shared(&students, pooled));
+            hexes[index].1.relief_mut().walking.arriving_students = students;
         }
     }
     write_back_study_verdicts(hexes, verdicts);
 }
 
-/// The verdicts on the passengers sailing into a hex whose purse does not settle (`ah-oi3u`).
-/// Where nothing there shares - no unit of ours listed there, none arriving with silver -
+/// Whether nothing in `hex` shares silver after movement: no sharer of ours listed there, and
+/// none arriving with silver ([`Sharing::reading`]).
+fn nothing_is_shared(hex: &Hex<'_>, ledger: &Ledger<'_>) -> bool {
+    Sharing::for_silver(hex, ledger).reading(SILVER, None) == Reading::PerUnit
+}
+
+/// The verdicts on the passengers sailing into a hex where nothing of ours shares (`ah-oi3u`):
 /// `rules/share` has nobody "in the same region" to lend for "studying", so a student whose own
 /// silver does not cover its fee is refused (`monthorders.cpp`: `Do1StudyOrder`), and the hex it
-/// left lends none of it. Where something there shares but its sums cannot be trusted
-/// (`pooled`), the purse cannot judge them, as a doubted pool of the hex's own does not
-/// ([`unjudged_study`]).
+/// left lends none of it.
 fn settle_studies_where_nothing_is_shared(
     students: &[ArrivingStudent],
-    pooled: bool,
 ) -> Vec<(UnitKey, StudyOutcome)> {
     students
         .iter()
         .map(|student| {
-            let outcome = if pooled {
-                StudyOutcome::Unjudged {
-                    overdrawn: student.need,
-                }
-            } else if student.need > 0 {
+            let outcome = if student.need > 0 {
                 StudyOutcome::Refused {
                     fee: student.fee.max(student.need),
                     short: student.need,
@@ -78754,6 +78755,35 @@ BUILD
             silver_of(&review, "902").at_month_end,
             Some(1),
             "the resident lends nothing"
+        );
+    }
+
+    /// `ah-oi3u` review, finding 1: where the fleet lands beside a sharer whose sums cannot be
+    /// trusted, nothing there can be added up, so the study stays the claim of the hex it leaves,
+    /// as before `ah-q1zz` - never refused, and never marked unjudged while that purse lends it.
+    #[test]
+    fn a_passengers_study_landing_beside_a_doubted_sharer_stays_with_the_hex_it_leaves() {
+        let banker = sharing(with_silver(unit("903"), 500));
+        let resident = sharing(with_silver(unit("902"), 500));
+        let (report, _) = passenger_palace(
+            open_sea(vec![banker]),
+            region_at("1:7,53", 7, 53, vec![resident]),
+            None,
+        );
+        let orders =
+            "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 903\nunit 902\nSELL 5 xyzzy\n";
+        let review = review_turn(&report, orders, Some(&trident()), CheckOptions::default());
+        let passenger = silver_of(&review, "901");
+        let fee = passenger.wanted_for_orders.expect("the study is priced");
+        assert_eq!(passenger.borrowed_for_orders, fee, "{passenger:?}");
+        assert_eq!(silver_of(&review, "903").at_month_end, Some(500 - fee));
+        assert!(
+            !review.findings.iter().any(|finding| {
+                finding.unit_id.as_deref() == Some("901")
+                    && finding.message.ends_with("so its STUDY is refused")
+            }),
+            "{:?}",
+            review.findings
         );
     }
 
