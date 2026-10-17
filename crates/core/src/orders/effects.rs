@@ -277,9 +277,9 @@ pub enum TransportTargetReason {
     /// Further than the flat two hexes within which any unit may send to a quartermaster
     /// (`rules/economy_transport`). The target would accept the goods; they cannot get there.
     TooFarToAccept,
-    /// Further than the flat two hexes within which a quartermaster may TRANSPORT (or DISTRIBUTE)
-    /// to any unit (`rules/economy_transport`): the sending quartermaster's own range, not the
-    /// recipient's (`ah-nzb0`).
+    /// Further than the flat two hexes within which a quartermaster may DISTRIBUTE
+    /// (`CheckTransportOrders` gives every DISTRIBUTE `LOCAL_TRANSPORT`, `ah-1d3i`): the sending
+    /// quartermaster's own range, not the recipient's (`ah-nzb0`).
     TooFarToDistribute,
     /// Quartermaster to quartermaster, beyond the reach the *sender's* own skill gives it
     /// (`data/quartermaster`: "up to 3 plus (level+1)/3 hexes distant from each other").
@@ -11825,11 +11825,29 @@ mod tests {
             &unit.transport_target_issues[0]
         }
 
-        // `rules/economy_transport`: a quartermaster owning a Caravanserai may send items to
-        // another unit within two hexes.
+        // A quartermaster owning a Caravanserai may DISTRIBUTE to any unit within two hexes:
+        // `CheckTransportOrders` (`../Atlantis/runorders.cpp`) never asks a DISTRIBUTE's target
+        // about skill or structure. A TRANSPORT's target it always asks, whoever sends it, so the
+        // same shipment as a TRANSPORT stays with the quartermaster (`ah-1d3i`).
         #[test]
-        fn an_own_ordinary_target_receives_goods_from_a_quartermaster() {
+        fn an_own_ordinary_target_receives_goods_a_quartermaster_distributes() {
             let response = two_hex_preview("unit 6857\nTRANSPORT 5530 5 STON\n");
+            let refused = row(&response, "1:2,2", "6857").expect("the sender is shown");
+            assert_eq!(
+                held(refused, "STON"),
+                Some(15),
+                "the stone stayed with 6857"
+            );
+            assert_eq!(
+                only_issue(refused).reason,
+                TransportTargetReason::NotQuartermaster
+            );
+            assert!(
+                row(&response, "1:1,1", "5530").is_none(),
+                "nothing arrived at 5530, so its row is unchanged"
+            );
+
+            let response = two_hex_preview("unit 6857\nDISTRIBUTE 5530 5 STON\n");
 
             let sender = row(&response, "1:2,2", "6857").expect("the sender is shown");
             assert_eq!(held(sender, "STON"), Some(10), "five left 6857");
@@ -11868,8 +11886,8 @@ mod tests {
         /// `ah-s79p`: one report, one order set, through both engines. Whether a formed unit may
         /// receive a quartermaster's DISTRIBUTE is decided once, by
         /// `transport::Shipping::judge_formed`; if that one place changes, the effects walk and the
-        /// silver forecast both stop delivering here. `rules/economy_transport`: a quartermaster
-        /// owning a Caravanserai may send items to any unit within two hexes.
+        /// silver forecast both stop delivering here. A quartermaster owning a Caravanserai may
+        /// DISTRIBUTE to any unit within two hexes (`CheckTransportOrders`, `ah-1d3i`).
         #[test]
         fn a_quartermaster_distributes_to_a_formed_unit_in_both_engines() {
             let report = report_across_two_hexes()
@@ -15203,9 +15221,9 @@ mod tests {
 
     /// `data/quartermaster`: "Items may be shipped between two transport structures which are up to
     /// 3 plus (level+1)/3 hexes distant from each other" - the *sender's* own level.
-    /// `ah-nzb0`: a quartermaster sending to an ordinary unit passes its own distribution range
-    /// (`rules/economy_transport`: "Quartermasters may also TRANSPORT items to any unit within 2
-    /// hexes"), so the hover's reason blames the sender, not the recipient.
+    /// `ah-nzb0`: a quartermaster distributing to an ordinary unit passes its own distribution
+    /// range (`CheckTransportOrders` gives a DISTRIBUTE `LOCAL_TRANSPORT`, `ah-1d3i`), so the
+    /// hover's reason blames the sender, not the recipient.
     #[test]
     fn a_quartermaster_distributing_too_far_is_refused_on_its_own_range() {
         let target =
