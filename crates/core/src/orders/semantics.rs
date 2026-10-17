@@ -274,6 +274,13 @@ pub mod codes {
     /// aboard (`ah-z6zt`, `ah-djst`; `rules/leave`, `rules/nocross`). Always on: the bead asks for
     /// the warning and gives it no switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
     pub const LEAVE_REFUSED_AT_SEA: Code = Code("leave-refused-at-sea");
+    /// A `TRANSPORT`/`DISTRIBUTE` to a unit the report proves cannot receive one: it is not a
+    /// quartermaster, or does not own a transport structure (`rules/transport`: "The target of
+    /// the transport unit must be a unit with the quartermaster skill and must be the owner of a
+    /// transport structure"). The game refuses it and the goods stay with the sender (`ah-kjjv`).
+    /// Always on: the bead asks for the warning and gives it no switch, so it is in [`ALWAYS_ON`]
+    /// and not in [`ALL`].
+    pub const TRANSPORT_TARGET_REFUSED: Code = Code("transport-target-refused");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -359,7 +366,7 @@ pub mod codes {
 
     /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
     /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
-    pub const ALWAYS_ON: [Code; 8] = [
+    pub const ALWAYS_ON: [Code; 9] = [
         MOVE_INTO_A_WALL,
         FACTION_ORDER_WILL_FAIL,
         UNKNOWN_SKILL,
@@ -368,6 +375,7 @@ pub mod codes {
         CREATE_VILLAGE_REFUSED,
         ENTER_NOT_HERE,
         LEAVE_REFUSED_AT_SEA,
+        TRANSPORT_TARGET_REFUSED,
     ];
 }
 
@@ -22455,7 +22463,8 @@ fn check_transfer_targets(
 }
 
 /// Every `TRANSPORT`/`DISTRIBUTE` in this hex that the game will refuse because the two ends are
-/// too far apart, reported against the unit that wrote it (`ah-7ale.2.2.1`).
+/// too far apart (`ah-7ale.2.2.1`), or because the target is one of ours the report proves cannot
+/// receive it (`ah-kjjv`), reported against the unit that wrote it.
 ///
 /// A reader of the same decision the forecast makes, not a second one: `transport::acceptance`
 /// settles whether the target would take the goods and `transport::arrival` settles the
@@ -22468,7 +22477,9 @@ fn check_transport_reach(
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
-    if !options.emits(codes::TRANSPORT_OUT_OF_REACH) {
+    let reach_on = options.emits(codes::TRANSPORT_OUT_OF_REACH);
+    let target_on = options.emits(codes::TRANSPORT_TARGET_REFUSED);
+    if !reach_on && !target_on {
         return;
     }
     let Some(shipping) = shipping else {
@@ -22489,24 +22500,15 @@ fn check_transport_reach(
                 continue;
             }
             // Judged once, by the same function the forecast and the shipping bill read
-            // (`transport::Shipping::judge`). Every answer but `Eligible` is one of `ah-64wm`'s four
-            // refusals, which the unit preview explains and this check says nothing about; only a
-            // settled refusal is a problem, since an unmeasured distance may well be in reach
-            // (`ah-7ale.5`). The finding still anchors on the hex the report lists the sender in.
+            // (`transport::Shipping::judge`). Only a settled refusal is a problem: a target the
+            // report proves ineligible (`ah-kjjv`), or an eligible one the map proves too far. The
+            // two answers that are gaps in the report, and an unmeasured distance, may well go
+            // through (`ah-64wm`, `ah-7ale.5`); the unit preview explains those. The finding
+            // still anchors on the hex the report lists the sender in.
             let Some(judged) = judge_shipment(shipping, hex, sender, &id) else {
                 continue;
             };
-            if judged.acceptance != super::transport::Acceptance::Eligible {
-                continue;
-            }
-            let Some(super::transport::Measured {
-                arrival: super::transport::Arrival::TooFar(refused),
-                ..
-            }) = judged.measured
-            else {
-                continue;
-            };
-            let goods = match (amount, what) {
+            let goods = || match (amount, what) {
                 (Amount::Exact(moved), Selector::Item(text)) if *moved > 0 => {
                     resolve_item(text, hex, ordered, ruleset)
                         .filter(|tag| ruleset.is_some_and(|rules| rules.can_be_transported(tag)))
@@ -22515,13 +22517,32 @@ fn check_transport_reach(
                 // `ALL` is a question about stock, which this check does not ask.
                 _ => None,
             };
-            let message = transport_reach_sentence(&id, refused, goods.as_ref());
-            findings.push(ordered.finding(
-                hex,
-                codes::TRANSPORT_OUT_OF_REACH,
-                message,
-                Some(placed),
-            ));
+            let (code, message) = match judged.acceptance {
+                super::transport::Acceptance::Eligible if reach_on => {
+                    let Some(super::transport::Measured {
+                        arrival: super::transport::Arrival::TooFar(refused),
+                        ..
+                    }) = judged.measured
+                    else {
+                        continue;
+                    };
+                    (
+                        codes::TRANSPORT_OUT_OF_REACH,
+                        transport_reach_sentence(&id, refused, goods().as_ref()),
+                    )
+                }
+                refused @ (super::transport::Acceptance::NotQuartermaster
+                | super::transport::Acceptance::NotCaravanseraiOwner)
+                    if target_on =>
+                {
+                    (
+                        codes::TRANSPORT_TARGET_REFUSED,
+                        transport_target_sentence(&id, refused, goods().as_ref()),
+                    )
+                }
+                _ => continue,
+            };
+            findings.push(ordered.finding(hex, code, message, Some(placed)));
         }
     }
 }
@@ -23429,6 +23450,26 @@ fn transport_reach_sentence(
             let from_name = crate::report::level::level_name(from_level);
             format!("Unit {to} is in the {to_name} and this unit is on the {from_name}, so {tail}.")
         }
+    }
+}
+
+/// The sentence for a target the report proves cannot receive a shipment (`ah-kjjv`): the same
+/// words `packages/shared/src/unitPreview.ts`'s `transportTargetSentence` gives the unit preview
+/// for the same two reasons, so the order and the hover read alike. The tests on both sides quote
+/// them in full so neither can drift unnoticed.
+fn transport_target_sentence(
+    to: &str,
+    refused: super::transport::Acceptance,
+    goods: Option<&(i64, String)>,
+) -> String {
+    let why = if refused == super::transport::Acceptance::NotQuartermaster {
+        "is not a quartermaster"
+    } else {
+        "does not own a Caravanserai"
+    };
+    match goods {
+        Some((moved, tag)) => format!("Unit {to} {why}, so {moved} {tag} stay with this unit."),
+        None => format!("Unit {to} {why}, so this TRANSPORT moves nothing."),
     }
 }
 
@@ -55421,6 +55462,82 @@ BUILD
             finding.message,
             "Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit."
         );
+    }
+
+    fn target_findings(regions: Vec<ReportRegion>, orders: &str) -> Vec<Finding> {
+        check_turn(
+            &report(regions),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        )
+        .into_iter()
+        .filter(|finding| finding.code == codes::TRANSPORT_TARGET_REFUSED)
+        .collect()
+    }
+
+    /// `ah-kjjv`: `rules/transport` - "The target of the transport unit must be a unit with the
+    /// quartermaster skill and must be the owner of a transport structure". A unit of ours with
+    /// no quartermaster skill is a refusal the report proves, so the line that wrote it is told,
+    /// in the words the unit preview already uses for the same shipment.
+    #[test]
+    fn a_transport_to_one_of_ours_that_is_not_a_quartermaster_warns_at_the_order() {
+        let finding = only(target_findings(
+            vec![shipping_from(vec![
+                with_silver(unit("900"), 100),
+                unit("901"),
+            ])],
+            "unit 900\nTRANSPORT 901 100 SILV\n",
+        ));
+
+        assert_eq!(finding.region_id, "1:0,0");
+        assert_eq!(finding.unit_id.as_deref(), Some("900"));
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(finding.column_start, Some(0));
+        assert_eq!(finding.column_end, Some(9));
+        assert_eq!(
+            finding.message,
+            "Unit 901 is not a quartermaster, so 100 SILV stay with this unit."
+        );
+    }
+
+    /// `ah-kjjv`: the other half of the same rule - a quartermaster of ours that owns no transport
+    /// structure. `ALL` names no amount, so the sentence speaks of the order alone.
+    #[test]
+    fn a_transport_to_a_quartermaster_owning_no_caravanserai_warns_at_the_order() {
+        let finding = only(target_findings(
+            vec![shipping_from(vec![
+                with_silver(unit("900"), 100),
+                with_skill(unit("901"), "QUAM", 1),
+            ])],
+            "unit 900\nTRANSPORT 901 ALL SILV\n",
+        ));
+
+        assert_eq!(
+            finding.message,
+            "Unit 901 does not own a Caravanserai, so this TRANSPORT moves nothing."
+        );
+    }
+
+    /// `ah-kjjv`: only a refusal the report proves is warned about. A target that can receive, a
+    /// quartermaster sender (`rules/economy_transport`: quartermasters "may also TRANSPORT items
+    /// to any unit within 2 hexes"), and another faction's Caravanserai owner, whose attitude to
+    /// us the report does not show (`rules/com_attitudes`), are all silent.
+    #[test]
+    fn a_transport_target_the_report_cannot_prove_ineligible_is_not_warned_about() {
+        let mut eligible = caravanserai_owner("901", 1, 0, 0);
+        eligible.units.insert(0, with_silver(unit("900"), 100));
+        assert!(target_findings(vec![eligible], "unit 900\nTRANSPORT 901 100 SILV\n").is_empty());
+
+        let mut quartermaster = shipping_quartermaster();
+        quartermaster.units.push(unit("901"));
+        assert!(
+            target_findings(vec![quartermaster], "unit 900\nTRANSPORT 901 5 IRON\n").is_empty()
+        );
+
+        let mut stranger = foreign_caravanserai_owner("901", 1, 0, 0);
+        stranger.units.insert(0, with_silver(unit("900"), 100));
+        assert!(target_findings(vec![stranger], "unit 900\nTRANSPORT 901 100 SILV\n").is_empty());
     }
 
     /// `ah-nzb0`: a quartermaster DISTRIBUTEs to an ordinary unit. `rules/economy_transport`:

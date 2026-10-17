@@ -4639,6 +4639,39 @@ describe("silver moved by TRANSPORT", () => {
     );
   });
 
+  // ah-kjjv: a refusal the report proves keeps the silver with the sender, and the Silver hover
+  // says why in the sentence the unit's own explanation uses - before, only the Items hover did.
+  it("a silver TRANSPORT the target refuses says why the silver stays", () => {
+    const popup = silverPopup(
+      unit({
+        own: true,
+        transportTargetIssues: [
+          issue({ to: "1162", amount: 100, reason: "notQuartermaster", toUnshown: false }),
+          issue({ to: "1163", amount: 5, reason: "notCaravanseraiOwner", toUnshown: false, orderIndex: 1 })
+        ]
+      }),
+      { held: 500, atMonthEnd: 500 }
+    );
+    expect(popup.notes).toContain("Unit 1162 is not a quartermaster, so 100 SILV stay with this unit.");
+    expect(popup.notes).toContain("Unit 1163 does not own a Caravanserai, so 5 SILV stay with this unit.");
+    expect(popupAsText(popup)).toContain("Unit 1162 is not a quartermaster, so 100 SILV stay with this unit.");
+  });
+
+  it("a refusal of other goods, or one the report cannot settle, adds no silver sentence", () => {
+    const popup = silverPopup(
+      unit({
+        own: true,
+        transportTargetIssues: [
+          issue({ to: "1162", tag: "STON", reason: "notQuartermaster", toUnshown: false }),
+          issue({ to: "5120", reason: "acceptanceUnknown", toUnshown: false })
+        ]
+      }),
+      { held: 500, atMonthEnd: 500 }
+    );
+    expect(popup.notes.join(" ")).not.toContain("1162");
+    expect(popup.notes.join(" ")).not.toContain("5120");
+  });
+
   it("a dissolving unit draws no not counted line", () => {
     const popup = columnPopup(
       popupForCell(

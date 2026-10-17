@@ -632,6 +632,9 @@ export function hasUncertainTransport(unit: PreviewedUnit | undefined): boolean 
  * An issue naming a tag makes a claim about those goods - they stay here, or they could not be
  * counted. One naming none speaks of the order alone: the goods are ones the game would not have
  * carried anyway, so "they stay with this unit" would imply a move that was never on offer.
+ *
+ * The two refusals' words are repeated by `transport_target_sentence` in
+ * `crates/core/src/orders/semantics.rs` for the order's own warning (`ah-kjjv`).
  */
 export function transportTargetSentence(issue: TransportTargetIssue): string {
   const goods = issue.tag === "" ? null : `${issue.amount} ${issue.tag}`;

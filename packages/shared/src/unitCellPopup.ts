@@ -24,6 +24,8 @@ import {
   hasUncertainTransport,
   itemsTooltip,
   originalTooltip,
+  transportTargetSentence,
+  transportTargetUncertain,
   type PreviewedUnit
 } from "./unitPreview";
 import { summariseUnit } from "./unitTooltip";
@@ -2274,6 +2276,9 @@ function silverLedger(unit: PreviewedUnit, facts: PopupFacts): Omit<Body, "month
     notes.unshift("This month cannot be added up, so what moved this unit's silver is not listed.");
   }
 
+  // Why a silver TRANSPORT moved nothing, when the report proves the game refuses it (`ah-kjjv`).
+  notes.push(...refusedSilverShipments(unit));
+
   if (silver.noStudyFee !== null) {
     notes.push(noStudyFeeSentence(silver.noStudyFee));
   }
@@ -2348,6 +2353,26 @@ export function uncountedSilverShipments(unit: PreviewedUnit): PopupLine[] {
       }`,
       uncounted: true
     }));
+}
+
+/**
+ * One sentence per silver TRANSPORT the game refuses, in document order (`ah-kjjv`): a target the
+ * report proves cannot receive it, or one the map proves out of reach. The forecast keeps that
+ * silver with the sender, so nothing in the ledger moves; the sentence is the unit preview's own
+ * (`transportTargetSentence`), so the Silver and Items hovers explain the refusal alike. A target
+ * the report cannot settle is `uncountedSilverShipments`' line instead.
+ */
+export function refusedSilverShipments(unit: PreviewedUnit): string[] {
+  return (unit.transportTargetIssues ?? [])
+    .filter(
+      (issue) =>
+        issue.tag.toUpperCase() === "SILV" &&
+        issue.amount > 0 &&
+        !transportTargetUncertain(issue) &&
+        issue.reason !== "distanceUnmeasured"
+    )
+    .sort((left, right) => left.orderIndex - right.orderIndex)
+    .map(transportTargetSentence);
 }
 
 export function popupAsText(popup: ColumnPopup): string {
