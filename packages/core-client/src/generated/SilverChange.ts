@@ -26,4 +26,11 @@ line: number | null,
  * [`UnitSilver::givers`] and [`UnitSilver::taken_unshown_from`] already carry. `None` on
  * every cause but a gift, a take and a discard.
  */
-other: string | null, };
+other: string | null, 
+/**
+ * The hex `other` is in, when it is not the one this unit is listed in: a STUDY fee lent
+ * across a fleet's move, on the passenger's `WasLent` (where its fleet lands) and the
+ * lender's `Lent` (where the passenger sails from) - labelled as "Lonthax (36,44)" or
+ * "ocean (38,44)". `None` on every other line (`ah-kjq5`).
+ */
+place?: string, };

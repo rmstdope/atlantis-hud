@@ -350,6 +350,7 @@ fn claim_case(upkeep: i64, late_income: i64, shared_silver_covered: i64) -> Unit
         pool_doubted: false,
         shared_silver_coverage: None,
         changes: Vec::new(),
+        borrowed_where_fleet_lands: None,
     }
 }
 
