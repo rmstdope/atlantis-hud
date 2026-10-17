@@ -17849,8 +17849,11 @@ fn purse_settles(hex: &Hex<'_>, ledger: &Ledger<'_>) -> bool {
 /// before it sailed - so it is read there ([`Lending::studies_sent`]) and listed where it
 /// arrives ([`WalkingSilver::arriving_students`]).
 ///
-/// Only from a purse that settles ([`purse_settles`]): elsewhere the study stays the claim of the
-/// hex it leaves, as it was before. Where the fleet lands in a hex where nothing of ours shares,
+/// Only from a purse that settles ([`purse_settles`]), or from a hex where nothing of ours shares
+/// ([`nothing_is_shared`]), whose claim is the passenger's own overdraft at STUDY and whose
+/// per-unit readers take the verdict through [`study_judged_elsewhere`] (`ah-pa6z`). From a pool
+/// that cannot be trusted the study stays the claim of the hex it leaves, unjudged: what that
+/// purse lent the passenger before it sailed cannot be added up. Where the fleet lands in a hex where nothing of ours shares,
 /// the study is judged there and then, by nobody's silver but its own
 /// ([`settle_studies_where_nothing_is_shared`], `ah-oi3u`). Where something there shares but its
 /// sums cannot be trusted, the study stays the claim of the hex it leaves, as it was before: a
@@ -17883,7 +17886,7 @@ fn send_studies_where_fleets_arrive(
     sent.retain(|(index, _, arrives)| {
         let (hex, ledger) = &hexes[*index];
         let (there, there_ledger) = &hexes[*arrives];
-        purse_settles(hex, ledger)
+        (purse_settles(hex, ledger) || nothing_is_shared(hex, ledger))
             && (purse_settles(there, there_ledger) || nothing_is_shared(there, there_ledger))
     });
     for (index, who, arrives) in &sent {
@@ -17907,17 +17910,22 @@ fn send_studies_where_fleets_arrive(
     let origins: BTreeSet<usize> = sent.iter().map(|(index, _, _)| *index).collect();
     for index in origins {
         let (hex, ledger) = &hexes[index];
-        let lending = Lending::settle(
-            hex,
-            ledger,
-            &Sharing::for_silver(hex, ledger),
-            &[
-                LendingMoment::Cast,
-                LendingMoment::Movement,
-                LendingMoment::Study,
-            ],
-            &[],
-        );
+        // Where nothing of ours shares in the hex it leaves, nothing there lent it anything before
+        // it sailed, so the claim is its own overdraft at STUDY ([`own_study_outcome`]'s reading;
+        // `ah-pa6z`).
+        let lending = purse_settles(hex, ledger).then(|| {
+            Lending::settle(
+                hex,
+                ledger,
+                &Sharing::for_silver(hex, ledger),
+                &[
+                    LendingMoment::Cast,
+                    LendingMoment::Movement,
+                    LendingMoment::Study,
+                ],
+                &[],
+            )
+        });
         let mut needs: Vec<(String, i64)> = Vec::new();
         for (from, who, arrives) in &sent {
             if *from != index {
@@ -17926,7 +17934,10 @@ fn send_studies_where_fleets_arrive(
             let Some(position) = hex.units.iter().position(|o| o.unit.unit_id == *who) else {
                 continue;
             };
-            let need = lending.studies_sent[position];
+            let need = lending.as_ref().map_or_else(
+                || silver_short_at_study_after(ledger, who, own_refused_cast(ledger, who)),
+                |lending| lending.studies_sent[position],
+            );
             needs.push((who.clone(), need));
             students[*arrives].push(ArrivingStudent {
                 unit: unit_key(&hex.region.region_id, who),
@@ -19376,7 +19387,13 @@ fn unjudged_study(ledger: &Ledger<'_>, unit_id: &str) -> StudyOutcome {
 /// takes nothing, so the whole fee comes back (`monthorders.cpp`: "STUDY: Not enough funds.";
 /// `ah-rt4p`). STUDY runs before TRANSPORT (`rules/sequenceofevents`), so silver shipped later
 /// cannot pay for it.
+///
+/// A passenger whose STUDY was sent to the purse where its fleet lands takes that purse's verdict
+/// instead: nothing in the hex it leaves shares, but something where it lands may (`ah-pa6z`).
 fn own_study_outcome(ledger: &Ledger<'_>, unit_id: &str) -> StudyOutcome {
+    if let Some(outcome) = study_judged_elsewhere(ledger, unit_id) {
+        return outcome;
+    }
     let cast_back = own_refused_cast(ledger, unit_id);
     let overdrawn = silver_short_at_study_after(ledger, unit_id, cast_back);
     let fee = studied_fee(ledger, unit_id);
@@ -19390,6 +19407,17 @@ fn own_study_outcome(ledger: &Ledger<'_>, unit_id: &str) -> StudyOutcome {
     } else {
         StudyOutcome::NoStudy
     }
+}
+
+/// How the purse where `unit_id`'s fleet lands settled its STUDY, once it has
+/// ([`StudyElsewhere::outcome`]); `None` for a study this hex judges itself.
+fn study_judged_elsewhere(ledger: &Ledger<'_>, unit_id: &str) -> Option<StudyOutcome> {
+    ledger
+        .relief()
+        .walking
+        .studies_elsewhere
+        .get(unit_id)
+        .and_then(|elsewhere| elsewhere.outcome)
 }
 
 /// The purse this hex's `SHARE` flags open for orders, settled between the units that claim it.
@@ -19446,7 +19474,18 @@ fn sharing_purse_over(
 
     let sharing = Sharing::for_silver(hex, ledger);
     if sharing.reading(SILVER, None) == Reading::PerUnit {
-        return nothing;
+        // Nothing here lends, but a passenger sailing away may have been lent its STUDY fee
+        // where its fleet lands (`ah-pa6z`): that loan is its own row's, read from the verdict.
+        let mut purse = nothing;
+        for (index, ordered) in hex.units.iter().enumerate() {
+            if let Some(outcome) = study_judged_elsewhere(ledger, &ordered.unit.unit_id) {
+                if let StudyOutcome::Paid { lent, .. } = outcome {
+                    purse.borrows[index] = lent;
+                }
+                purse.study[index] = outcome;
+            }
+        }
+        return purse;
     }
 
     // A doubted unit is judged nowhere in this module, so it neither borrows nor lends here:
@@ -19707,13 +19746,14 @@ fn silver_short_at_market(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
 
 /// The deepest of [`silver_short_at_give`], [`silver_short_at_cast`], [`silver_short_at_market`]
 /// and [`silver_short_at_study`]: what a unit's own orders overdrew it by before a later receipt could
-/// net it out.
-fn silver_short_mid_month(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+/// net it out. `lent_at_study` is what the purse where its fleet lands lent its STUDY
+/// (`ah-pa6z`): silver it held from STUDY on, though its own row never received it.
+fn silver_short_mid_month(ledger: &Ledger<'_>, unit_id: &str, lent_at_study: i64) -> i64 {
     silver_short_at_give(ledger, unit_id)
         .max(silver_short_at_cast(ledger, unit_id))
         .max(silver_short_at_market(ledger, unit_id))
-        .max(silver_short_at_study(ledger, unit_id))
-        .max(silver_short_before_wages(ledger, unit_id))
+        .max(silver_short_at_study(ledger, unit_id) - lent_at_study)
+        .max(silver_short_before_wages(ledger, unit_id) - lent_at_study)
 }
 
 /// What a unit's own silver is short once every order that spends it has run, and before the
@@ -20113,8 +20153,15 @@ fn judge_shortfalls(
             //
             // Likewise a GIVE, which runs long before either (`ah-4k84`), and a `BUY` its silver
             // cut, which runs at the market (`ah-y70h`).
+            // A passenger sailing out of a hex where nothing shares may have been lent its STUDY
+            // fee where its fleet lands (`ah-pa6z`): its row was charged the fee, never the loan.
+            let lent_elsewhere = match study_judged_elsewhere(ledger, unit_id) {
+                Some(StudyOutcome::Paid { lent, .. }) if tag == SILVER && !pooled => lent,
+                _ => 0,
+            };
+            let balance = balance + lent_elsewhere;
             let mid_month = if tag == SILVER && !pooled {
-                silver_short_mid_month(ledger, unit_id)
+                silver_short_mid_month(ledger, unit_id, lent_elsewhere)
             } else {
                 0
             };
@@ -79454,6 +79501,78 @@ BUILD
             silver_of(&review, "902").at_month_end,
             Some(1),
             "the resident lends nothing"
+        );
+    }
+
+    /// `ah-pa6z`: the passenger's STUDY comes after its fleet has sailed
+    /// (`rules/sequenceofevents`: STUDY among the month-long orders, after SAIL), and
+    /// `rules/share` lends to units "in the same region" - so the sharer where it lands lends the
+    /// fee even when nothing of ours shares in the hex it leaves.
+    #[test]
+    fn a_passengers_study_leaving_a_hex_where_nothing_shares_is_lent_where_it_lands() {
+        let resident = sharing(with_silver(unit("902"), 500));
+        let (report, _) = passenger_palace(
+            open_sea(vec![]),
+            region_at("1:7,53", 7, 53, vec![resident]),
+            None,
+        );
+        let orders = "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 902\n";
+        let review = review_turn(&report, orders, Some(&trident()), CheckOptions::default());
+
+        let passenger = silver_of(&review, "901");
+        let fee = passenger.wanted_for_orders.expect("the study is priced");
+        assert!(fee > 0, "{passenger:?}");
+        assert_eq!(passenger.borrowed_for_orders, fee, "{passenger:?}");
+        let resident = silver_of(&review, "902");
+        assert_eq!(resident.at_month_end, Some(500 - fee), "{resident:?}");
+        assert!(
+            resident
+                .changes
+                .iter()
+                .any(|change| change.cause == SilverChangeCause::Lent && change.amount == -fee),
+            "{resident:?}"
+        );
+        let short: Vec<&str> = review
+            .findings
+            .iter()
+            .filter(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("901")
+            })
+            .map(|finding| finding.message.as_str())
+            .collect();
+        let upkeep = passenger.upkeep.expect("the passenger's upkeep is priced");
+        assert!(
+            short
+                .iter()
+                .all(|said| said.starts_with(&format!("short ${upkeep}:"))),
+            "only its upkeep can be short, never the study: {short:?}"
+        );
+    }
+
+    /// `ah-pa6z`: ... and where the sharer it lands beside cannot pay, the study is refused there,
+    /// and the resident lends nothing.
+    #[test]
+    fn a_passengers_study_leaving_a_hex_where_nothing_shares_is_refused_where_nobody_can_pay() {
+        let resident = sharing(with_silver(unit("902"), 1));
+        let (report, _) = passenger_palace(
+            open_sea(vec![]),
+            region_at("1:7,53", 7, 53, vec![resident]),
+            None,
+        );
+        let orders = "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 902\n";
+        let review = review_turn(&report, orders, Some(&trident()), CheckOptions::default());
+
+        assert_eq!(silver_of(&review, "901").borrowed_for_orders, 0);
+        assert_eq!(silver_of(&review, "902").at_month_end, Some(1));
+        assert!(
+            review.findings.iter().any(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("901")
+                    && finding.message.contains("STUDY")
+            }),
+            "{:?}",
+            review.findings
         );
     }
 
