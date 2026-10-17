@@ -14,6 +14,7 @@ import { count } from "./plural";
 import { isSilver, withoutSilver } from "./silverTag";
 import { sameLongOrder, type ReportedLongOrder } from "./ordersDocument";
 import { battleSkillGroups, battleSkillSource } from "./battleSkillPresentation";
+import { mergedFromOf, mergedMarkTitle } from "./mergedFrom";
 import type { DerivedSkill } from "./battleSkills";
 import { FLAG_SETTINGS, flagState, unsettledFlags } from "./unitFlags";
 import { describeMenBriefly, whyEstimated } from "./unitComposition";
@@ -1213,7 +1214,10 @@ function flagCause(
  */
 function flagNotes(unit: PreviewedUnit): string[] {
   if (unit.own === false) {
-    return ["Another faction's flags, as your report printed them. Nothing you order changes them."];
+    // A unit filled in from its own faction's merged report shows that report's flags (`ah-oqxn`).
+    return mergedFromOf(unit) === null
+      ? ["Another faction's flags, as your report printed them. Nothing you order changes them."]
+      : ["Another faction's flags, as its own report printed them. Nothing you order changes them."];
   }
   if (unit.formed) {
     // `rules/form`: a formed unit inherits its flags bar guard and autotax. It records no
@@ -1311,6 +1315,18 @@ function foreignSkillsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   const change = changeFor(unit, CHANGE_FIELD.skills!);
   const quoted = change ? { why: originalTooltip(change) } : {};
   const month = monthOf(change !== undefined);
+
+  // Filled in from its own faction's merged report (`ah-oqxn`): that report states every skill the
+  // unit has, so its list - empty included - is the whole answer, and the popup says whose it is.
+  const mergedFrom = mergedFromOf(unit);
+  if (mergedFrom !== null) {
+    return {
+      causes: [],
+      lines: summariseUnit(unit).skills,
+      notes: [mergedMarkTitle(mergedFrom)],
+      month
+    };
+  }
 
   if (unit.skills.length > 0) {
     return {

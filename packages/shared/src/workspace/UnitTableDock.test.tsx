@@ -2194,6 +2194,62 @@ describe("the Other factions source (ah-1mpx.5)", () => {
     expect(drawForeign({ hex: null, currentTurn: null }, [])).toContain("No report loaded.");
   });
 
+  describe("a unit filled in from a merged report (ah-oqxn)", () => {
+    const drones = (over: Partial<ReportUnit> = {}): ReportUnit =>
+      ({
+        ...theirs("7124", {
+          factionId: "62",
+          factionName: "Borg",
+          skills: [{ name: "mining", tag: "MINI", level: 3, points: 200 }],
+          items: [
+            { amount: 2, name: "humans", tag: "HUMN" },
+            { amount: 43, name: "silver", tag: "SILV" }
+          ],
+          ...over
+        }),
+        mergedFrom: { factionLabel: "Borg (62)", turn: 17 }
+      }) as ReportUnit;
+    const rowOf = (markup: string) => /<tr data-testid="unit-row-7124"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+
+    it("carries the their report mark, which names the faction and the turn", () => {
+      const row = rowOf(drawForeign({}, [drones()]));
+
+      expect(row).toContain("their report");
+      expect(row).toContain('title="Details from Borg (62)&#x27;s own report for turn 17."');
+      expect(row).toContain("Details from Borg (62)&#x27;s own report for turn 17.</span>");
+    });
+
+    it("prints its skills, and silver among its items", () => {
+      const row = rowOf(drawForeign({}, [drones()]));
+
+      expect(row).toContain("MINI 3 (200)");
+      expect(row).toContain("43 SILV");
+    });
+
+    it("leaves a Skills cell empty when its own report states none, rather than not disclosed", () => {
+      const row = rowOf(drawForeign({}, [drones({ skills: [] })]));
+      const skillsCell = /<td[^>]*data-column="skills"[\s\S]*?<\/td>/.exec(row)?.[0] ?? "";
+
+      expect(skillsCell).not.toBe("");
+      expect(skillsCell).not.toContain("not disclosed");
+    });
+
+    it("dashes its Silver and Long order cells", () => {
+      const row = rowOf(drawForeign({}, [drones()]));
+
+      expect(row).toContain('data-testid="merged-no-orders-7124"');
+      expect(row).toContain('data-testid="merged-no-silver-7124"');
+    });
+
+    it("leaves every other foreign row unmarked", () => {
+      const markup = drawForeign({}, [drones(), theirs("2")]);
+      const row2 = /<tr data-testid="unit-row-2"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+
+      expect(row2).not.toContain("their report");
+      expect(row2).not.toContain("merged-no-orders");
+    });
+  });
+
   it("a foreign unit's Skills cell says its skills are not disclosed", () => {
     // `rules/reportformat`: a report discloses a foreign unit's large items and never its skills,
     // so a blank cell would be indistinguishable from a unit that genuinely has none.

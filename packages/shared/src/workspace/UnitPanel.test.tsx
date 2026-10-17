@@ -216,6 +216,20 @@ describe("battle-derived skills in the unit pane (ah-1mpx.6.3)", () => {
     expect(html).toContain("Seen in the battle in ocean (25,55), turn 71.");
   });
 
+  it("skills carried from a merged report title their section by where they came from (ah-oqxn)", () => {
+    const carried = { name: "mining", tag: "MINI", level: 3, turn: 17, coordinate: null, terrain: null, from: "Borg (62)" };
+    const battle = { name: "combat", tag: "COMB", level: 2, turn: 16, coordinate: null, terrain: null };
+
+    const merged = renderToStaticMarkup(<UnitPanel unit={foreignUnit} hex={HEX} derivedSkills={[carried]} />);
+    expect(merged).toContain("Skills from merged reports");
+    expect(merged).toContain("From Borg (62)&#x27;s own report for turn 17.");
+
+    const both = renderToStaticMarkup(
+      <UnitPanel unit={foreignUnit} hex={HEX} derivedSkills={[battle, carried]} />
+    );
+    expect(both).toContain("Skills from battle and merged reports");
+  });
+
   it("a foreign unit with no recovered skills explains the empty battle section", () => {
     const html = renderToStaticMarkup(<UnitPanel unit={foreignUnit} hex={HEX} derivedSkills={[]} />);
 
@@ -505,5 +519,52 @@ describe("a part-read unit whose own figures did reach the model", () => {
     const itemsSection = markup.slice(markup.indexOf("Items"), markup.indexOf("Events"));
     expect(itemsSection).toContain("and more, not known");
     expect(itemsSection.replace("and more, not known", "")).not.toContain("not known");
+  });
+});
+
+describe("a unit filled in from a merged report (ah-oqxn)", () => {
+  const drones = (over: Parameters<typeof aReportUnit>[0] = {}) => ({
+    ...aReportUnit({
+      unitId: "7124",
+      name: "Drones",
+      own: false,
+      factionId: "62",
+      factionName: "Borg",
+      skills: [{ name: "mining", tag: "MINI", level: 3, points: 200 }],
+      items: [
+        { amount: 2, name: "humans", tag: "HUMN" },
+        { amount: 43, name: "silver", tag: "SILV" }
+      ],
+      ...over
+    }),
+    mergedFrom: { factionLabel: "Borg (62)", turn: 17 }
+  });
+
+  it("carries the band naming its report, directly under the faction line", () => {
+    const html = renderToStaticMarkup(<UnitPanel unit={drones()} hex={HEX} />);
+
+    expect(html).toContain("From Borg (62)&#x27;s own report for turn 17. You can&#x27;t write orders for this unit.");
+    expect(html.indexOf("not your faction")).toBeLessThan(html.indexOf("data-testid=\"merged-band\""));
+    expect(html.indexOf("data-testid=\"merged-band\"")).toBeLessThan(html.indexOf(">Hex<"));
+  });
+
+  it("reads like one of ours: its skills, and silver among its items", () => {
+    const html = renderToStaticMarkup(<UnitPanel unit={drones()} hex={HEX} />);
+
+    expect(html).toContain("3 (200)");
+    expect(html).toContain("SILV");
+    expect(html).not.toContain("Skills from battle reports");
+  });
+
+  it("says none for skills its own report states it has none of", () => {
+    const html = renderToStaticMarkup(<UnitPanel unit={drones({ skills: [] })} hex={HEX} />);
+
+    expect(html).not.toContain("Skills from battle reports");
+    expect(html).toMatch(/Skills[\s\S]*none/);
+  });
+
+  it("carries no band on any other unit", () => {
+    expect(renderToStaticMarkup(<UnitPanel unit={drones()} hex={HEX} />)).toContain("merged-band");
+    expect(draw()).not.toContain("merged-band");
   });
 });
