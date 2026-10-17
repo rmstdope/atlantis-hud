@@ -2022,21 +2022,30 @@ function conditionalShippingClause(shipping: UnitSilver["shipping"]): string | u
 }
 
 /**
- * The `lent` / `was lent` clause (`ah-kjq5`, `docs/ui/ah-kjq5-loan-across-a-sailing.html`). A loan
- * inside one hex keeps today's words; one across a fleet's move carries a `place` and names the
- * other unit and the hex it is in - the lender's passengers each with the hex it sails from, the
- * passenger's lenders together with the one hex its fleet lands in. Both together read the in-hex
- * part first.
+ * The `lent` / `was lent` clause (`ah-kjq5`, `docs/ui/ah-kjq5-loan-across-a-sailing.html`;
+ * `ah-myko`, `docs/ui/ah-myko-order-loan-names-units.html`). A loan inside one hex names the
+ * other units, as the upkeep-loan lines do ("to A and B" / "by A and B"); a part the core could
+ * name nobody for keeps the words it had before. One across a fleet's move carries a `place` and
+ * names the other unit and the hex it is in - the lender's passengers each with the hex it sails
+ * from, the passenger's lenders together with the one hex its fleet lands in. The in-hex part
+ * reads first.
  */
 function loanClause(group: SilverCauseGroup): string {
-  const inHex = group.entries.some((entry) => entry.place === undefined);
+  const inHex = group.entries.filter((entry) => entry.place === undefined);
+  const named = [
+    ...new Set(inHex.map((entry) => entry.other).filter((other): other is string => other !== null))
+  ];
+  const unnamed = inHex.some((entry) => entry.other === null);
   const across = group.entries.filter(
     (entry): entry is SilverChange & { other: string; place: string } =>
       entry.place !== undefined && entry.other !== null
   );
   const clauses: string[] = [];
   if (group.cause === "lent") {
-    if (inHex) {
+    if (named.length > 0) {
+      clauses.push(`to ${andList(named)}`);
+    }
+    if (unnamed) {
       clauses.push("to a faction-mate's orders in this hex");
     }
     const passengers = [
@@ -2046,7 +2055,10 @@ function loanClause(group: SilverCauseGroup): string {
       clauses.push(`to ${serialList(passengers)}`);
     }
   } else {
-    if (inHex) {
+    if (named.length > 0) {
+      clauses.push(`by ${andList(named)}`);
+    }
+    if (unnamed) {
       clauses.push("by your units in this hex");
     }
     const lenders = [...new Set(across.map((entry) => entry.other))];
