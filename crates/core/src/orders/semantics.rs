@@ -864,17 +864,19 @@ pub fn review_turn(
     let withdrawal_allowances = unclaimed_plan
         .as_ref()
         .map(|plan| &plan.withdrawal_allowances);
+    // FACTION runs in the first batch of instant orders (`rules/sequenceofevents`), so the region
+    // limit it applies is the one this month's taxing and production are refused against
+    // (`ah-gcrc`, `ah-p0xm`).
+    let (faction, failures) = faction_orders(report, &ordered, ruleset);
+    let applied = faction.applied.as_ref().map(|applied| &applied.limits);
+    let taxing_refused = region_limit_refusals(report, &hexes, ruleset, applied).taxing;
     settle_recruits_before_production(
         &mut hexes,
         ruleset,
         &claim_allowances,
         withdrawal_allowances,
+        taxing_refused,
     );
-
-    // FACTION runs in the first batch of instant orders (`rules/sequenceofevents`), so the region
-    // limit it applies is the one this month's production is refused against (`ah-gcrc`).
-    let (faction, failures) = faction_orders(report, &ordered, ruleset);
-    let applied = faction.applied.as_ref().map(|applied| &applied.limits);
     let production = production_shares_refusing(
         &hexes,
         ruleset,
@@ -994,7 +996,8 @@ pub fn review_turn(
         check_emptied_sales(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_oversold_sales(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_emptied_buys(hex, ledger, ruleset, &plurals, &options, &mut findings);
-        let pillaged = own_unit_pillages(hex);
+        // A pillage the region limit refuses empties nothing (`ah-p0xm`).
+        let pillaged = own_unit_pillages(hex) && !production.refuses_taxing(hex.region.coordinate);
         check_pillaged_tax(hex, pillaged, &options, &mut findings);
         check_guarded_tax(
             hex,
@@ -2241,6 +2244,7 @@ struct ProductionClaim {
 /// [`PoolShare::Unknowable`] has no counterpart here, and neither does [`PoolOverrun`]: a guessed
 /// headcount is handled by [`region_share_of`], and the navigator chose against any finding at all
 /// (`ah-256d`, 2026-08-29), so nothing is reported and there is no overruns argument.
+#[cfg(test)]
 fn production_shares_for(hexes: &[Hex<'_>], ruleset: Option<&Ruleset>) -> ProductionShares {
     production_shares_refusing(hexes, ruleset, RegionLimitRefusals::default())
 }
@@ -2937,7 +2941,17 @@ fn forecast_hex(
 
     // A region's pools are shared, so who else in this hex draws on them has to be settled before
     // any one unit can be priced against them (`ah-t2pn`).
-    let settled = pool_shares_for(hex, region, Some(&phases), ruleset);
+    // A hex whose taxing the region limit refuses has no tax pool to share: nobody collects from
+    // it, so nobody contends for it (`ah-p0xm`).
+    let pools = if production.refuses_taxing(hex.region.coordinate) {
+        RegionWages {
+            tax_base: None,
+            ..region
+        }
+    } else {
+        region
+    };
+    let settled = pool_shares_for(hex, pools, Some(&phases), ruleset);
     let shares = settled.shares;
     overruns.extend(settled.overruns);
 
@@ -6980,8 +6994,19 @@ fn settle_recruits_before_production(
     ruleset: Option<&Ruleset>,
     claim_allowances: &ClaimAllowances,
     withdrawal_allowances: WithdrawalAllowances<'_>,
+    // The hexes whose TAX and PILLAGE the faction's region limit refuses. The tax phase runs
+    // before BUY (`rules/sequenceofevents`), so tax the game never collects pays for no recruit
+    // (`ah-p0xm`). Production runs after the market, so its refusals do not matter here.
+    taxing_refused: HashSet<Coordinate>,
 ) {
-    let provisional = production_shares_for(hexes, ruleset);
+    let provisional = production_shares_refusing(
+        hexes,
+        ruleset,
+        RegionLimitRefusals {
+            taxing: taxing_refused,
+            ..RegionLimitRefusals::default()
+        },
+    );
     for hex in hexes.iter_mut() {
         let foreign_unit_ids = hex
             .region
@@ -7839,6 +7864,9 @@ pub(crate) fn month_long_teachers(
         report.header.unclaimed_silver,
         ruleset,
     );
+    let (faction, _) = faction_orders(report, &ordered, ruleset);
+    let applied = faction.applied.as_ref().map(|applied| &applied.limits);
+    let taxing_refused = region_limit_refusals(report, &hexes, ruleset, applied).taxing;
     settle_recruits_before_production(
         &mut hexes,
         ruleset,
@@ -7846,6 +7874,7 @@ pub(crate) fn month_long_teachers(
         unclaimed_plan
             .as_ref()
             .map(|plan| &plan.withdrawal_allowances),
+        taxing_refused,
     );
     hexes
         .iter()
@@ -7921,21 +7950,23 @@ pub(crate) fn item_effects(
     let withdrawal_allowances = unclaimed_plan
         .as_ref()
         .map(|plan| &plan.withdrawal_allowances);
+    // The limit this month's FACTION applies, as `review_turn` reads it (`ah-gcrc`, `ah-p0xm`).
+    let (faction, _) = faction_orders(report, &ordered, ruleset);
+    let applied = faction.applied.as_ref().map(|applied| &applied.limits);
+    let taxing_refused = region_limit_refusals(report, &hexes, ruleset, applied).taxing;
     settle_recruits_before_production(
         &mut hexes,
         ruleset,
         &claim_allowances,
         withdrawal_allowances,
+        taxing_refused,
     );
 
     // Every hex before any ledger, and one settlement for all of them: a passenger produces where
     // its vessel arrives, so the pool it draws on is in another hex's `Products` line. Settling
     // this per hex here would leave the ITEMS cell disagreeing with the SILVER cell beside it,
     // which reads the report-wide answer (`ah-k43x`). The producers the faction's region limit
-    // refuses are taken out first, against the limit this month's FACTION applies, as
-    // `review_turn` does (`ah-gcrc`).
-    let (faction, _) = faction_orders(report, &ordered, ruleset);
-    let applied = faction.applied.as_ref().map(|applied| &applied.limits);
+    // refuses are taken out first.
     let production = production_shares_refusing(
         &hexes,
         ruleset,
@@ -72940,6 +72971,165 @@ BUILD
             .find(|row| row.unit_id == "6")
             .expect("unit 6 has a SILVER row");
         assert_eq!((row.income, row.doubt), (Some(0), None));
+    }
+
+    /// BUY runs after TAX (`rules/sequenceofevents`), so a refused taxer with no silver of its own
+    /// cannot pay for recruits with the tax it never collects: they never arrive, so they dilute
+    /// none of its skills (`ah-p0xm`).
+    #[test]
+    fn a_refused_regions_tax_buys_no_recruits() {
+        let review = |entries: &[(&str, i64)]| {
+            let taxer = with_named_skill_pts(fighter("6"), "lumberjack", "LUMB", 30);
+            let regions = vec![
+                taxable_region("1:7,53", 7, 53, vec![fighter("5")]),
+                ReportRegion {
+                    for_sale: vec![MarketItem {
+                        amount: 20,
+                        name: "men".to_string(),
+                        tag: "HUMN".to_string(),
+                        price: 38,
+                    }],
+                    ..taxable_region("1:8,53", 8, 53, vec![taxer])
+                },
+            ];
+            review_trade(regions, "unit 5\nTAX\nunit 6\nTAX\nBUY 4 HUMN\n", entries)
+        };
+        let diluted = |review: &TurnReview| {
+            review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::ARRIVALS_LOWER_A_SKILL)
+        };
+
+        assert!(
+            diluted(&review(&[("Tax Regions", 5)])),
+            "with room to tax, the tax pays for the men"
+        );
+        let refused = review(&[("Tax Regions", 1), ("Trade Regions", 5)]);
+        assert!(!diluted(&refused), "{:?}", refused.findings);
+    }
+
+    /// A refused hex's taxers share no pool and meet no pillage - the game refuses both before
+    /// either matters - so Problems tells them neither story, only the region limit's (`ah-p0xm`).
+    #[test]
+    fn a_refused_hex_is_neither_oversubscribed_nor_pillaged() {
+        let told = |orders: &str| {
+            let regions = vec![
+                taxable_region("1:7,53", 7, 53, vec![fighter("5")]),
+                taxable_region(
+                    "1:8,53",
+                    8,
+                    53,
+                    vec![fighter("6"), fighter("7"), fighter("8")],
+                ),
+            ];
+            let review = review_turn(
+                &report_with_statuses(&[("Tax Regions", 1), ("Trade Regions", 5)], regions),
+                orders,
+                Some(&ruleset()),
+                disabling_all(&[]),
+            );
+            assert_eq!(trade_findings(&review.findings).len(), 1);
+            review
+                .findings
+                .into_iter()
+                .filter(|finding| {
+                    finding.code == codes::REGION_POOL_OVERSUBSCRIBED
+                        || finding.code == codes::TAXED_A_PILLAGED_HEX
+                })
+                .collect::<Vec<_>>()
+        };
+
+        // Three 5-man taxers ask $750 of a $400 base.
+        let oversubscribed = told("unit 5\nTAX\nunit 6\nTAX\nunit 7\nTAX\nunit 8\nTAX\n");
+        assert!(oversubscribed.is_empty(), "{oversubscribed:?}");
+        // PILLAGE is walked first, so (7,53)'s pillage takes the one region and (8,53)'s is refused.
+        let pillaged = told("unit 5\nPILLAGE\nunit 6\nTAX\nunit 7\nTAX\nunit 8\nPILLAGE\n");
+        assert!(pillaged.is_empty(), "{pillaged:?}");
+    }
+
+    /// The same for a refused pillager, whose share the column would otherwise doubt for want of
+    /// a tax base (`ah-p0xm`).
+    #[test]
+    fn a_refused_regions_pillager_is_not_doubted_for_its_tax_base() {
+        let regions = vec![
+            taxable_region("1:7,53", 7, 53, vec![fighter("5")]),
+            region_at("1:8,53", 8, 53, vec![fighter("6")]),
+        ];
+        let review = review_trade(
+            regions,
+            "unit 5\nPILLAGE\nunit 6\nPILLAGE\n",
+            &[("Tax Regions", 1), ("Trade Regions", 5)],
+        );
+
+        let row = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "6")
+            .expect("unit 6 has a SILVER row");
+        assert_eq!((row.income, row.doubt), (Some(0), None));
+    }
+
+    /// A unit taxing by its flag alone is refused like one with a `TAX` line (`ah-fvzu`).
+    #[test]
+    fn a_refused_regions_flagged_taxer_is_forecast_no_tax() {
+        let mut flagged = fighter("6");
+        flagged.flags.push("taxing".to_string());
+        let regions = vec![
+            taxable_region("1:7,53", 7, 53, vec![fighter("5")]),
+            taxable_region("1:8,53", 8, 53, vec![flagged]),
+        ];
+        let review = review_trade(
+            regions,
+            "unit 5\nTAX\nunit 6\n",
+            &[("Tax Regions", 1), ("Trade Regions", 5)],
+        );
+
+        assert!(trade_findings(&review.findings)[0]
+            .message
+            .ends_with("taxing will be refused: mountain (8,53)"));
+        assert_eq!(
+            income_of(&review, "6", SilverChangeCause::Taxed),
+            (0, false)
+        );
+    }
+
+    /// Three taxers asking $750 of a $400 base would have their market purse cut by the tax the
+    /// settlement says they will not collect - but a refused taxer's balance never held any tax,
+    /// so nothing is withheld from the silver it does hold (`ah-p0xm`).
+    #[test]
+    fn a_refused_taxers_own_silver_still_buys() {
+        let shopper = with_silver(fighter("6"), 100);
+        let regions = vec![
+            taxable_region("1:7,53", 7, 53, vec![fighter("5")]),
+            ReportRegion {
+                for_sale: vec![MarketItem {
+                    amount: 20,
+                    name: "men".to_string(),
+                    tag: "HUMN".to_string(),
+                    price: 38,
+                }],
+                ..taxable_region("1:8,53", 8, 53, vec![shopper, fighter("7"), fighter("8")])
+            },
+        ];
+        let review = review_trade(
+            regions,
+            "unit 5\nTAX\nunit 6\nTAX\nBUY 2 HUMN\nunit 7\nTAX\nunit 8\nTAX\n",
+            &[("Tax Regions", 1), ("Trade Regions", 5)],
+        );
+
+        let short: Vec<&Finding> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .collect();
+        assert!(short.is_empty(), "{short:?}");
+        let row = review
+            .silver
+            .iter()
+            .find(|row| row.unit_id == "6")
+            .expect("unit 6 has a SILVER row");
+        assert_eq!(row.expense, Some(76));
     }
 
     /// The same for PILLAGE, which `RunPillageOrders` checks against the same tax counter.

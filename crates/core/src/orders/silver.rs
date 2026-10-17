@@ -1225,8 +1225,8 @@ pub struct PoolShares {
     pub foreign_claimant_production: bool,
     /// True when the faction's region limit refuses every TAX and PILLAGE in this unit's hex:
     /// "TAX: Faction can't tax that many regions." (`../Atlantis` `runorders.cpp`, `ah-p0xm`). The
-    /// ledger credits neither, so the unit's tax and pillage are a certain zero - never doubted,
-    /// never bounded, and never overstated.
+    /// ledger credits neither, so the unit's tax and pillage are a certain zero, never doubted.
+    /// (Nor bounded or overstated: the caller settles such a hex with no tax pool at all.)
     pub taxing_refused: bool,
 }
 
@@ -2559,11 +2559,7 @@ pub fn forecast_unit(
     // `PoolShare::Uncontended` for any unit that does not draw on the pool, so a non-taxer's
     // overstatement is `0`.
     let men = taxing_men(&facts, ruleset);
-    let tax_overstated = if shares.taxing_refused {
-        0
-    } else {
-        tax_overstated_by(men, region.tax_base, region.pillaged, shares.tax)
-    };
+    let tax_overstated = tax_overstated_by(men, region.tax_base, region.pillaged, shares.tax);
 
     if taxes(unit_flags, intents) && !shares.taxing_refused {
         // The settlement is what the column shows: this unit's actual take once its faction-mates
@@ -3281,7 +3277,7 @@ pub fn forecast_unit(
     // earning here is not bounded".
     let sells_here = moved_by(&moves, SilverChangeCause::Sold) > 0;
     let income_in_time_at_most = income.is_some()
-        && ((shares.unread_claimant_tax && !shares.taxing_refused && taxes(unit_flags, intents))
+        && ((shares.unread_claimant_tax && taxes(unit_flags, intents))
             || (shares.unread_seller && sells_here));
     // What the hex's `SHARE` purse actually lends this unit: never more than it is short of, so an
     // allowance settled from the ledger cannot inflate a figure here (`ah-moq3`).
