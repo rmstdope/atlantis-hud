@@ -3415,7 +3415,15 @@ fn forecast_hex(
     // draws it - under `bought`.
     for (index, forecast) in into[start..].iter_mut().enumerate() {
         forecast.pool_doubted = pool_doubted;
-        forecast.shared_silver_coverage = purse_for_orders.coverage[index];
+        forecast.shared_silver_coverage = purse_for_orders.coverage[index].or_else(|| {
+            // A unit in credit whose orders outrun the silver reaching it is as unjudged as one in
+            // debt where the pool cannot be added up: the purse might have lent it the difference,
+            // so its shortfall is not a certain one (`ah-3aaj`).
+            (purse_for_orders.unjudged
+                && !ledger.doubted.contains(&hex.units[index].unit.unit_id)
+                && forecast.short_for_orders.is_some_and(|short| short > 0))
+            .then_some(super::silver::SharedSilverCoverage::Unjudged)
+        });
         let borrowed = purse_for_orders.borrows[index];
         forecast.borrowed_for_orders = borrowed;
         // The same guard the `Lent` pass makes, and for the same reason: a doubted unit's list is
@@ -18050,6 +18058,10 @@ struct SharingPurse {
     lent_to_arriving_students: i64,
     /// The result of judging each known shortfall against this pool, aligned with `hex.units`.
     coverage: Vec<Option<super::silver::SharedSilverCoverage>>,
+    /// The pool could not be added up at all, because a sharer's month is doubted (`ah-0jxx`).
+    /// Unlike `pool_doubted`, never set for a hex whose silver is read per unit: there is no
+    /// shared silver there to leave unjudged (`ah-3aaj`).
+    unjudged: bool,
 }
 
 /// The moments `SHARE` lends silver for orders at, in the order `rules/sequenceofevents` runs
@@ -18976,6 +18988,7 @@ fn sharing_purse_over(
         study: vec![StudyOutcome::NoStudy; hex.units.len()],
         lent_to_arriving_students: 0,
         coverage: vec![None; hex.units.len()],
+        unjudged: false,
     };
 
     let sharing = Sharing::for_silver(hex, ledger);
@@ -19014,6 +19027,7 @@ fn sharing_purse_over(
     if !sharing.pool_trusted(ledger) {
         return SharingPurse {
             coverage: coverage_for(super::silver::SharedSilverCoverage::Unjudged),
+            unjudged: true,
             ..nothing
         };
     }
@@ -19076,6 +19090,7 @@ fn sharing_purse_over(
         let refused = paid.refused_all();
         return SharingPurse {
             coverage,
+            unjudged: false,
             lent_to_arriving_students: paid.lent_to_arriving_students(),
             lends: paid.lends,
             arrivals_lend: paid.arrivals_lend,
@@ -19110,6 +19125,7 @@ fn sharing_purse_over(
         borrows: lending.borrows,
         refused,
         study: lending.study,
+        unjudged: false,
     }
 }
 
@@ -46535,6 +46551,68 @@ BUILD
             CheckOptions::default(),
         );
         assert!(review.silver.iter().all(|silver| !silver.pool_doubted));
+    }
+
+    /// `ah-3aaj`: a unit that ends in credit but whose orders outrun the silver reaching it in time
+    /// is as unjudged as a negative one when a doubted sharer leaves the pool unadded - the UI must
+    /// not call its `<N> short` certain.
+    fn short_in_credit_beside(sharer: &str) -> super::super::silver::UnitSilver {
+        let hex_region = ReportRegion {
+            wages: Some("$120.0".to_string()),
+            for_sale: vec![MarketItem {
+                amount: 40,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+                price: 12,
+            }],
+            ..region(vec![unit("5"), sharing(with_silver(unit("7"), 0))])
+        };
+        let orders = format!("unit 5\nWORK\nBUY 5 grain\nunit 7\n{sharer}");
+        let review = review_turn(
+            &report(vec![hex_region]),
+            &orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        review
+            .silver
+            .iter()
+            .find(|silver| silver.unit_id == "5")
+            .cloned()
+            .expect("5 has a forecast")
+    }
+
+    #[test]
+    fn an_in_credit_unit_short_for_its_orders_beside_a_doubted_sharer_is_unjudged() {
+        // Nothing this market sells, so the sharer's own month cannot be added up.
+        let worker = short_in_credit_beside("BUY 1 unobtainium\nSTUDY combat\n");
+        assert!(worker.pool_doubted, "the pool is untrusted: {worker:?}");
+        assert!(
+            worker.at_month_end.expect("priced") > 0,
+            "ends in credit: {worker:?}"
+        );
+        assert!(
+            worker.short_for_orders.is_some_and(|short| short > 0),
+            "short for its orders: {worker:?}"
+        );
+        assert_eq!(
+            worker.shared_silver_coverage,
+            Some(super::super::silver::SharedSilverCoverage::Unjudged)
+        );
+    }
+
+    #[test]
+    fn an_in_credit_unit_short_for_its_orders_in_a_judged_pool_is_not_marked_unjudged() {
+        let worker = short_in_credit_beside("");
+        assert!(!worker.pool_doubted, "the pool is judged: {worker:?}");
+        assert!(
+            worker.short_for_orders.is_some_and(|short| short > 0),
+            "a penniless sharer lends nothing: {worker:?}"
+        );
+        assert_ne!(
+            worker.shared_silver_coverage,
+            Some(super::super::silver::SharedSilverCoverage::Unjudged)
+        );
     }
 
     #[test]
