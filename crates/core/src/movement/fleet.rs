@@ -49,6 +49,8 @@ pub struct WrittenMovement {
     boardings_by_unit: BTreeMap<String, Vec<BoardingOrder>>,
     /// Each unit's syntactically valid `PROMOTE` targets this month, in the order written.
     promotes_by_unit: BTreeMap<String, Vec<String>>,
+    /// Every unit each unit's `EVICT` orders name this month, in the order written (`ah-0ace`).
+    evicts_by_unit: BTreeMap<String, Vec<String>>,
     /// The last `NOCROSS` each unit's own block writes this month. `rules/sequenceofevents` runs
     /// NOCROSS among the first instant orders, before LEAVE, so this is the flag a LEAVE at sea
     /// meets ([`standing::leave_refused_at_sea`]).
@@ -83,6 +85,7 @@ impl WrittenMovement {
 
         let mut chains: BTreeMap<OrderedUnitKey, RouteChain> = BTreeMap::new();
         let mut promotes_by_unit: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let mut evicts_by_unit: BTreeMap<String, Vec<String>> = BTreeMap::new();
         let mut boardings_by_unit: BTreeMap<String, Vec<BoardingOrder>> = BTreeMap::new();
         let mut nocross_by_unit: BTreeMap<String, bool> = BTreeMap::new();
         let mut sailers = BTreeSet::new();
@@ -146,6 +149,17 @@ impl WrittenMovement {
                             .entry(unit_id.clone())
                             .or_default()
                             .push(target);
+                    }
+                    let evicted = crate::orders::intents::evicted_units(
+                        line.command,
+                        line.arguments,
+                        ruleset,
+                    );
+                    if !evicted.is_empty() {
+                        evicts_by_unit
+                            .entry(unit_id.clone())
+                            .or_default()
+                            .extend(evicted);
                     }
                     if let Some(crate::report::flags::FlagChange::Toggle {
                         setting: crate::report::flags::Setting::NoCross,
@@ -248,6 +262,7 @@ impl WrittenMovement {
             sailers,
             boardings_by_unit,
             promotes_by_unit,
+            evicts_by_unit,
             nocross_by_unit,
             closed_by_teach,
             // Only a report says what a hex holds; `settle` fills this from one.
@@ -291,7 +306,16 @@ impl WrittenMovement {
             }
         }
         self.hexes = HexStandings::of(report, ruleset);
-        OrderedUnits(self)
+        let mut settled = OrderedUnits(self);
+        if !settled.0.evicts_by_unit.is_empty() {
+            for region in &report.regions {
+                let evicted = settled.evictions_in(region);
+                if !evicted.is_empty() {
+                    settled.0.hexes.set_evictions(&region.region_id, evicted);
+                }
+            }
+        }
+        settled
     }
 }
 
@@ -381,8 +405,36 @@ impl OrderedUnits {
     ///
     /// This is where a unit *ends up*. For "could this unit be the one sailing the hull" the
     /// question is different and [`Self::could_captain`] answers it.
+    ///
+    /// A unit its structure's owner EVICTs this month stands outside ([`standing::HexStanding::evicted_by`],
+    /// `ah-0ace`): the EVICT runs right after the boardings, before anything else this month.
     #[must_use]
     pub fn structure_of<'a>(&'a self, unit: &'a ReportUnit) -> Option<&'a str> {
+        if self
+            .0
+            .hexes
+            .of_region(&unit.region_id)
+            .evicted_by(&unit.unit_id)
+            .is_some()
+        {
+            return None;
+        }
+        self.structure_after_boarding(unit)
+    }
+
+    /// The owner whose `EVICT` puts this unit outside its structure this month, if one does
+    /// (`ah-0ace`).
+    #[must_use]
+    pub fn evicted_by(&self, unit: &ReportUnit) -> Option<&str> {
+        self.0
+            .hexes
+            .of_region(&unit.region_id)
+            .evicted_by(&unit.unit_id)
+    }
+
+    /// Where the unit stands once ENTER and LEAVE have run and before any `EVICT`: the list
+    /// `Game::RunPromoteOrders` asks each object's owner of, for its PROMOTE and then its EVICT.
+    fn structure_after_boarding<'a>(&'a self, unit: &'a ReportUnit) -> Option<&'a str> {
         self.0.hexes.of_region(&unit.region_id).standing_after(
             unit.structure_id.as_deref(),
             self.boardings_of(&unit.unit_id),
@@ -391,6 +443,44 @@ impl OrderedUnits {
                 movement: unit.movement.as_ref(),
             },
         )
+    }
+
+    /// Every unit an owner's `EVICT` puts outside in `region`, with that owner (`ah-0ace`).
+    ///
+    /// `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`) runs each object's owner's PROMOTE,
+    /// then each object's owner's EVICT - the owner as the PROMOTE left it (`Object::GetOwner`) -
+    /// and errors every other unit's ("EVICT: Must be owner"). `Do1EvictOrder` moves each target
+    /// standing in that object to the region's dummy, unless the object is a fleet at sea and the
+    /// target cannot really swim ([`crate::orders::standing::eviction_refused_at_sea`]). Formed
+    /// units are not followed: a formed owner's EVICT, and an EVICT naming a formed unit, evict
+    /// nobody here.
+    fn evictions_in(&self, region: &ReportRegion) -> BTreeMap<String, String> {
+        let hex = self.0.hexes.of_region(&region.region_id);
+        let mut evicted = BTreeMap::new();
+        for structure in &region.structures {
+            let structure_id = structure.structure_id.as_str();
+            let Some(owner) = occupants_after_promotes(region, self, &[], structure_id)
+                .into_iter()
+                .next()
+            else {
+                continue;
+            };
+            let Some(targets) = self.0.evicts_by_unit.get(&owner) else {
+                continue;
+            };
+            for unit in &region.units {
+                if targets.contains(&unit.unit_id)
+                    && self.structure_after_boarding(unit) == Some(structure_id)
+                    && !hex.eviction_refused(Leaver {
+                        wont_cross_water: self.wont_cross_water(unit),
+                        movement: unit.movement.as_ref(),
+                    })
+                {
+                    evicted.insert(unit.unit_id.clone(), owner.clone());
+                }
+            }
+        }
+        evicted
     }
 
     /// One unit's boardings as the rule reads them.
@@ -529,7 +619,7 @@ pub fn occupants_after_promotes(
     let Some(owner) = occupants.first().cloned() else {
         return occupants;
     };
-    let aboard = |unit: &&ReportUnit| ordered.structure_of(unit) == Some(structure_id);
+    let aboard = |unit: &&ReportUnit| ordered.structure_after_boarding(unit) == Some(structure_id);
     let promoted = ordered.promotes_of(&owner).iter().find(|target| {
         region
             .units
@@ -541,6 +631,9 @@ pub fn occupants_after_promotes(
         occupants.retain(|unit| unit != &next);
         occupants.insert(0, next);
     }
+    // Then the EVICTs (`ah-0ace`): whoever they put outside is no longer in the object's list.
+    let hex = ordered.0.hexes.of_region(&region.region_id);
+    occupants.retain(|unit| hex.evicted_by(unit).is_none());
     occupants
 }
 
@@ -557,7 +650,7 @@ fn occupants_after_boarding(
     structure_id: &str,
 ) -> Vec<String> {
     let listed_under = |unit: &ReportUnit| unit.structure_id.as_deref() == Some(structure_id);
-    let aboard = |unit: &&ReportUnit| ordered.structure_of(unit) == Some(structure_id);
+    let aboard = |unit: &&ReportUnit| ordered.structure_after_boarding(unit) == Some(structure_id);
     let stayed = region
         .units
         .iter()
@@ -884,6 +977,67 @@ mod tests {
 
     fn coast_course(orders: &str, structure_id: &str) -> Option<Vec<MoveStep>> {
         course_in(&coast_scene(), orders, &[], structure_id).1
+    }
+
+    /// Where `unit_id` of `scene`'s hex stands once this month's boardings and EVICTs have run.
+    fn standing_in(scene: &str, orders: &str, unit_id: &str) -> Option<String> {
+        let mut cache = ReportCache::new();
+        let report = cache.classified(scene, RULESET);
+        let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
+        let unit = report
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .find(|unit| unit.unit_id == unit_id)
+            .expect("the scene's unit");
+        let ordered = OrderedUnits::of_month(&report, orders, Some(&ruleset));
+        ordered.structure_of(unit).map(str::to_string)
+    }
+
+    /// `rules/evict`: "EVICT [unit] ..." names any number of units, and the owner's EVICT puts
+    /// each one outside (`Do1EvictOrder`, `ah-0ace`). The owner itself stays.
+    #[test]
+    fn an_owners_evict_puts_every_unit_it_names_outside() {
+        let orders = "unit 900\nEVICT 901 902\n";
+        assert_eq!(standing_in(&coast_scene(), orders, "901"), None);
+        assert_eq!(standing_in(&coast_scene(), orders, "902"), None);
+        assert_eq!(
+            standing_in(&coast_scene(), orders, "900").as_deref(),
+            Some("329")
+        );
+        assert_eq!(
+            standing_in(&coast_scene(), "unit 900\nEVICT 901\nEVICT 902\n", "902"),
+            None,
+            "if multiple EVICT orders are given, all of the units will be evicted"
+        );
+    }
+
+    /// `Game::RunPromoteOrders` runs the EVICTs after the PROMOTEs, so the EVICT that runs is the
+    /// promoted unit's, and the old owner's is refused ("EVICT: Must be owner").
+    #[test]
+    fn the_evict_that_runs_is_the_owners_once_promote_has_run() {
+        let orders = "unit 900\nPROMOTE 901\nEVICT 902\nunit 901\nEVICT 900\n";
+        assert_eq!(standing_in(&coast_scene(), orders, "900"), None);
+        assert_eq!(
+            standing_in(&coast_scene(), orders, "902").as_deref(),
+            Some("329")
+        );
+        assert_eq!(coast_owner(orders, "329"), Some("901".to_string()));
+        assert_eq!(
+            standing_in(&coast_scene(), "unit 901\nEVICT 902\n", "902").as_deref(),
+            Some("329"),
+            "901 does not own the hull, so its EVICT moves nobody"
+        );
+    }
+
+    /// `Do1EvictOrder`: "EVICT: Cannot forcibly evict units over ocean." for a target that cannot
+    /// really swim; the scene's centaurs swim nothing.
+    #[test]
+    fn nobody_is_evicted_over_the_ocean_who_cannot_swim() {
+        assert_eq!(
+            standing_in(&owner_scene(), "unit 900\nEVICT 901\n", "901").as_deref(),
+            Some("329")
+        );
     }
 
     #[test]
