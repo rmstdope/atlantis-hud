@@ -60831,7 +60831,10 @@ BUILD
         let mut home = shipping_quartermaster();
         home.units.push(unit("901"));
 
-        let finding = only(target_findings(vec![home], "unit 900\nTRANSPORT 901 ALL SILV\n"));
+        let finding = only(target_findings(
+            vec![home],
+            "unit 900\nTRANSPORT 901 ALL SILV\n",
+        ));
         assert_eq!(
             finding.message,
             "Unit 901 is not a quartermaster, so this TRANSPORT moves nothing. DISTRIBUTE would deliver them."

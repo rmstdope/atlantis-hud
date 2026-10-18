@@ -11919,7 +11919,10 @@ mod tests {
             let refused = row(&response, "1:2,2", "6857").expect("the sender is shown");
             let issue = only_issue(refused);
             assert_eq!(issue.reason, TransportTargetReason::NotQuartermaster);
-            assert_eq!(issue.tag, "", "no claim about goods the game would not carry");
+            assert_eq!(
+                issue.tag, "",
+                "no claim about goods the game would not carry"
+            );
             assert!(!issue.distribute_delivers);
         }
 
