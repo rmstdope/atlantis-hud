@@ -34,7 +34,10 @@ export class QueryWorkerUnavailable extends Error {
 /** What a `Worker` is, as far as asking it queries goes. */
 export interface QueryPort {
   postMessage(message: QueryRequest): void;
-  addEventListener(type: "message" | "error", listener: (event: unknown) => void): void;
+  addEventListener(
+    type: "message" | "error" | "messageerror",
+    listener: (event: unknown) => void
+  ): void;
 }
 
 /**
@@ -52,13 +55,26 @@ export function answerQuery(wasm: Pick<CoreWasmModule, "query">, request: QueryR
 }
 
 /**
+ * Posts `reply` through `post`, or - when structured clone refuses the answer - a refusal saying
+ * so under the same id. Without this the post would throw inside the worker, where nothing on the
+ * main side hears it, and that call would wait for ever.
+ */
+export function postReply(post: (reply: QueryReply) => void, reply: QueryReply): void {
+  try {
+    post(reply);
+  } catch (error) {
+    post({ id: reply.id, ok: false, error: String(error) });
+  }
+}
+
+/**
  * Asks the worker behind `port`, one call per query.
  *
  * The worker answers in the order it was asked, but nothing here depends on that: each reply
  * settles the call with its own id. A stale reply is still the caller's to drop, as it was on the
  * main thread. Once the worker fails, every pending and later call rejects with
  * `QueryWorkerUnavailable`, so the caller can run the query somewhere else rather than wait for
- * ever.
+ * ever; so does every call once a reply arrives that cannot be read.
  */
 export function createWorkerQueryCall(port: QueryPort): QueryCall {
   const pending = new Map<number, { resolve(value: unknown): void; reject(error: unknown): void }>();
@@ -79,13 +95,16 @@ export function createWorkerQueryCall(port: QueryPort): QueryCall {
     }
   });
 
-  port.addEventListener("error", () => {
+  // A reply that cannot be read carries no id to settle, so it counts as the worker failing.
+  const fail = () => {
     failed = true;
     for (const waiting of pending.values()) {
       waiting.reject(new QueryWorkerUnavailable());
     }
     pending.clear();
-  });
+  };
+  port.addEventListener("error", fail);
+  port.addEventListener("messageerror", fail);
 
   return (name, args) => {
     if (failed) {
