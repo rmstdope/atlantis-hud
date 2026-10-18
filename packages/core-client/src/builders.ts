@@ -325,6 +325,7 @@ export function aUnitSilver(overrides: Partial<UnitSilver> = {}): UnitSilver {
     poolDoubted: false,
     buyAll: [],
     changes: [],
+    refused: [],
     ...overrides
   };
 }

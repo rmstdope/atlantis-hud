@@ -824,6 +824,8 @@ pub struct CreatedItem {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct RefusedCast {
+    /// The 1-based document line of the refused `CAST` (`ah-rjz2`).
+    pub line: i64,
     /// What it would have made, or `None` for a spell that makes nothing an item catalogue
     /// carries.
     pub product: Option<RefusedProduct>,

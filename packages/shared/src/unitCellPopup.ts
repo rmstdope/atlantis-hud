@@ -30,7 +30,8 @@ import {
   type PreviewedUnit
 } from "./unitPreview";
 import { summariseUnit } from "./unitTooltip";
-import { andList, refusedProductReason, shortItems, shortName, shortSentence } from "./refusedCast";
+import { andList, ITEMS_WARNING, itemsRefused, refusedProductReason } from "./refusedCast";
+import { refusedSpendLine, refusedSpendReason } from "./refusedSpend";
 import { isUnfinishedShipName, type StructureFinish } from "./unfinishedMark";
 import { newShipStructureNote } from "./newShip";
 import {
@@ -360,12 +361,8 @@ export function reportedFlags(original: string): readonly string[] {
  * `items` change's original carries no names at all (`crates/core/src/orders/effects.rs`).
  */
 function itemName(tag: string, unit: PreviewedUnit): string | undefined {
-  // A material a refused cast leaves short is named to agree with the figure it ends at - the core
-  // names a movement by the catalogue's singular, and `-75` is not one (`ah-44at`).
-  const short = shortItems(unit).find((item) => item.tag === tag);
   return (
     unit.items.find((item) => item.tag === tag)?.name ??
-    (short ? shortName(short) : undefined) ??
     (unit.itemChanges ?? []).find((change) => change.tag === tag)?.name
   );
 }
@@ -430,9 +427,8 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
     }
   }
 
-  // What a refused cast leaves short, and what the report listed for a tag - or, with no `items`
-  // change to say, what the unit holds now, since then the month left the list as it was.
-  const short = new Map(shortItems(unit).map((item) => [item.tag, item.figure]));
+  // What the report listed for a tag - or, with no `items` change to say, what the unit holds now,
+  // since then the month left the list as it was.
   const reportedOr = (tag: string): number | undefined =>
     reported === undefined ? held.get(tag)?.amount : reported.get(tag);
 
@@ -452,22 +448,6 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
       // (`ah-2ql5`): the report's own words lead the line, and the mark goes before them.
       ...(isUnfinishedShipName(name) ? { unfinished: "label" as const } : {})
     };
-    const figure = short.get(tag);
-    if (figure !== undefined) {
-      // A refused cast's short material ends at its red minus figure (`ah-44at`, Q1 A), paired
-      // from what the report listed - which, with no `items` change at all, is what it holds now.
-      const from = reportedOr(tag);
-      return {
-        tag,
-        line: {
-          ...line,
-          value: figure.toLocaleString(),
-          change: { direction: "down" as const, from: from === undefined ? "none" : from.toLocaleString() }
-        },
-        moved: true,
-        amount: figure
-      };
-    }
     const change = changeOf(before, amount, reported);
     return { tag, line: change ? { ...line, change } : line, moved, amount: amount ?? 0 };
   })
@@ -1745,12 +1725,12 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
       return itemCauseSentence(itemLabel(entry.tag, unit), forTag, unit, forTag[0]?.isMan);
     })
     .filter((note): note is string => note !== undefined);
-  // Red first, as `silverMarkWarning` puts it, then the partly-counted sentence (`ah-44at`).
+  // The partly-counted sentence, then the ⚠ a refused cast leaves the cell, last (`ah-rjz2`, Q4 A).
   const warning = [
-    shortSentence(shortItems(unit)),
     partlyCounted
       ? "“?” in the cell: this month is only partly counted, so these figures may be off."
-      : null
+      : null,
+    itemsRefused(unit) ? ITEMS_WARNING : null
   ].filter((part): part is string => part !== null);
 
   return {
@@ -2394,6 +2374,10 @@ function silverLedger(unit: PreviewedUnit, facts: PopupFacts): Omit<Body, "month
       ...(why === undefined ? {} : { why })
     });
   }
+  // What the game refused and so never took, struck through after the month's counted lines and
+  // before shipping and maintenance (`ah-rjz2`). A doubted month lists no working, so none either.
+  const refused = silver.doubt === null ? (silver.refused ?? []) : [];
+  lines.push(...refused.map(refusedSpendLine));
   const alreadyCharged = groups.find((group) => group.cause === "shipped");
   const { conditional } = splitShipping(silver, alreadyCharged?.entries ?? []);
   const conditionalCost = conditional.reduce((sum, shipment) => sum + shipment.cost, 0);
@@ -2452,6 +2436,8 @@ function silverLedger(unit: PreviewedUnit, facts: PopupFacts): Omit<Body, "month
     [...groups, ...upkeepShares],
     caveat.length > 0 ? RESTATED_BY_UNJUDGED_POOL : alert === null ? [] : [CANNOT_PAY_NOTE]
   );
+  // Why each struck line was not paid, directly under the lines (`ah-rjz2`).
+  notes.unshift(...refused.map(refusedSpendReason));
   if (silver.doubt !== null) {
     // Above the doubt's own sentence, which says *why* it could not be added up.
     notes.unshift("This month cannot be added up, so what moved this unit's silver is not listed.");

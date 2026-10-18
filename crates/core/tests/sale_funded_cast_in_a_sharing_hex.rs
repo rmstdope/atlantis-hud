@@ -99,7 +99,9 @@ fn the_sale_after_the_cast_still_leaves_the_cast_short_on_both_surfaces() {
         .iter()
         .find(|silver| silver.unit_id == "683")
         .expect("683 is forecast");
-    assert_eq!(ivanhoe.short_for_orders, Some(556), "{ivanhoe:#?}");
+    // The refused cast is carried on its own rather than as a shortfall (`ah-rjz2`).
+    assert_eq!(ivanhoe.short_for_orders, Some(0), "{ivanhoe:#?}");
+    assert_eq!(ivanhoe.refused.len(), 1, "{ivanhoe:#?}");
     assert!(marked(&review, "683"), "{:#?}", review.findings);
     assert!(
         hex_message(&review).starts_with("the units in this hex are short $1346 between them"),

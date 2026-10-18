@@ -227,8 +227,9 @@ export async function selectUnit(page: Page, unitId: string) {
   await expect(row).toHaveCount(1);
   await expect(row).toBeVisible();
   // Named, not "the button in this row": a foreign unit's row also carries the faction name as a
-  // control (ah-bu2c), so a bare role lookup is ambiguous there.
-  await row.getByRole("button", { name: `unit ${unitId}` }).click();
+  // control (ah-bu2c), so a bare role lookup is ambiguous there. Exactly, since a Silver cell's ⚠
+  // is a button named after the unit too, its figure following (`ah-rjz2`).
+  await row.getByRole("button", { name: `unit ${unitId}`, exact: true }).click();
   await box.clear();
 }
 

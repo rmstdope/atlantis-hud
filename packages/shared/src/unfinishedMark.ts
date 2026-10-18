@@ -1,7 +1,6 @@
 import type { CreatedItem, ItemAmount, RegionPreview } from "@atlantis/core-client";
 import { withoutSilver } from "./silverTag";
 import type { StructuresByRegion } from "./structureLabel";
-import type { ShortItem } from "./refusedCast";
 
 /**
  * Which structures and items the Units in hex pane marks as unfinished (`ah-2ql5`).
@@ -96,7 +95,6 @@ export function isUnfinishedShipName(name: string | undefined): boolean {
 export type ItemCellPart = {
   text: string;
   unfinished: boolean;
-  short?: true;
   /** The item's code, which `text` always ends with - what the units filter marks (`ah-ykac`). */
   tag: string;
   /** The item's name, which the units filter also matches though the cell never prints it. */
@@ -106,15 +104,12 @@ export type ItemCellPart = {
 /**
  * The Items cell's entries, silver left out, each as `formatItems` writes it.
  *
- * A `CAST` whose creation is uncertain draws its range, `2-5 SWOR`, exactly as before. A material a
- * refused cast leaves short (`shortItems`) comes first, as a minus figure written as the Silver
- * cell writes one, so a narrow cell never hides it behind its ellipsis; it replaces that tag's own
- * entry, so no tag is listed twice (`ah-44at`, Q6 A).
+ * A `CAST` whose creation is uncertain draws its range, `2-5 SWOR`, exactly as before. A refused
+ * cast moves no material, so it adds no entry here: its ⚠ is the cell's own (`ah-rjz2`).
  */
 export function itemCellParts(
   items: readonly ItemAmount[],
   created: readonly CreatedItem[] = [],
-  short: readonly ShortItem[] = [],
   /**
    * Keep silver, where the report listed it: for a unit filled in from a merged faction's own
    * report, whose Silver column is empty and whose silver is therefore said here (`ah-oqxn`).
@@ -125,16 +120,8 @@ export function itemCellParts(
   for (const item of created) {
     shortfall.set(item.tag, (shortfall.get(item.tag) ?? 0) + (item.most - item.fewest));
   }
-  const shortParts: ItemCellPart[] = short.map((item) => ({
-    text: `${item.figure} ${item.tag}`,
-    unfinished: false,
-    short: true,
-    tag: item.tag,
-    name: item.name
-  }));
-  const isShort = (tag: string) => short.some((item) => item.tag === tag);
   const listed = withSilver ? items : withoutSilver(items);
-  return [...shortParts, ...listed.filter((item) => !isShort(item.tag)).map((item) => {
+  return listed.map((item) => {
     const gap = shortfall.get(item.tag) ?? 0;
     return {
       text: gap > 0 ? `${item.amount - gap}-${item.amount} ${item.tag}` : `${item.amount} ${item.tag}`,
@@ -142,5 +129,5 @@ export function itemCellParts(
       tag: item.tag,
       name: item.name
     };
-  })];
+  });
 }

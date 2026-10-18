@@ -1,8 +1,8 @@
-import type { ItemChange, RefusedCast, ReportUnit } from "@atlantis/core-client";
+import type { RefusedCast, ReportUnit } from "@atlantis/core-client";
 import { aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import type { PreviewedUnit } from "./unitPreview";
-import { andList, refusedProductReason, shortItems, shortSentence } from "./refusedCast";
+import { andList, ITEMS_WARNING, itemsRefused, refusedProductReason } from "./refusedCast";
 
 /**
  * `data/SWIN` level 3: a Cloudship [CLOU] "at a cost of 75 floater hides [FLOA] and 75 ironwood
@@ -13,18 +13,8 @@ const ivanhoe = (overrides: Partial<PreviewedUnit> = {}): PreviewedUnit => ({
   ...overrides
 });
 
-const spent = (tag: string, name: string, delta: number): ItemChange => ({
-  tag,
-  name,
-  delta,
-  cause: "cast-spent",
-  line: 3,
-  unitPrice: null,
-  other: null,
-  isMan: false
-});
-
 const cloudship = (short: RefusedCast["short"], silverShort = 0): RefusedCast => ({
+  line: 3,
   product: { tag: "CLOU", name: "Cloudship", fewest: 0, most: 1 },
   silverShort,
   short
@@ -36,53 +26,23 @@ const IRWD = (amount: number) => ({ tag: "IRWD", name: "ironwood", plural: "iron
 /** The hover's own name for a product, as its line labels it. */
 const named = (_tag: string, fallback: string) => fallback;
 
-describe("the figure a refused cast leaves a material at", () => {
-  it("is minus the shortfall when the caster holds none", () => {
-    const unit = ivanhoe({
-      items: [{ tag: "IRWD", name: "ironwood", amount: 75 }],
-      itemChanges: [spent("FLOA", "floater hides", -75)],
-      refusedCasts: [cloudship([FLOA(75)])]
-    });
-    expect(shortItems(unit)).toEqual([{ tag: "FLOA", name: "floater hide", plural: "floater hides", figure: -75 }]);
+// `ah-rjz2`: a refused cast takes nothing, so the Items cell draws no red figure; a cast refused
+// for a material puts an amber ⚠ on the cell instead.
+describe("whether a refused cast marks the Items cell", () => {
+  it("marks a cast refused for a material", () => {
+    expect(itemsRefused(ivanhoe({ refusedCasts: [cloudship([FLOA(75)])] }))).toBe(true);
   });
 
-  it("is minus the shortfall alone when the caster holds part of it", () => {
-    // 50 held of the 75: the core charges all 75 and the preview clamps the stock at none.
-    const unit = ivanhoe({
-      itemChanges: [spent("FLOA", "floater hides", -75)],
-      refusedCasts: [cloudship([FLOA(25)])]
-    });
-    expect(shortItems(unit).map((item) => item.figure)).toEqual([-25]);
+  it("marks a cast short of both silver and a material, refused for its silver", () => {
+    expect(itemsRefused(ivanhoe({ refusedCasts: [cloudship([FLOA(75)], 200)] }))).toBe(true);
   });
 
-  it("sums two refused casts of one material", () => {
-    const unit = ivanhoe({
-      itemChanges: [spent("FLOA", "floater hides", -75), spent("FLOA", "floater hides", -75)],
-      refusedCasts: [cloudship([FLOA(25)]), cloudship([FLOA(75)])]
-    });
-    expect(shortItems(unit).map((item) => item.figure)).toEqual([-100]);
+  it("leaves a cast refused for its silver alone to the Silver cell", () => {
+    expect(itemsRefused(ivanhoe({ refusedCasts: [cloudship([], 200)] }))).toBe(false);
   });
 
-  it("keeps the month's order of the materials, as the hover's lines do", () => {
-    const unit = ivanhoe({
-      itemChanges: [spent("IRWD", "ironwood", -75), spent("FLOA", "floater hides", -75)],
-      refusedCasts: [cloudship([FLOA(75), IRWD(75)])]
-    });
-    expect(shortItems(unit).map((item) => item.tag)).toEqual(["IRWD", "FLOA"]);
-  });
-
-  it("is not short once a later arrival covers it", () => {
-    // `rules/sequenceofevents`: BUY runs after CAST, so 80 hides bought later leave the unit 5 up.
-    const unit = ivanhoe({
-      items: [{ tag: "FLOA", name: "floater hides", amount: 80 }],
-      itemChanges: [spent("FLOA", "floater hides", -75)],
-      refusedCasts: [cloudship([FLOA(75)])]
-    });
-    expect(shortItems(unit)).toEqual([]);
-  });
-
-  it("is nothing for a unit with no refused cast", () => {
-    expect(shortItems(ivanhoe())).toEqual([]);
+  it("marks nothing for a unit with no refused cast", () => {
+    expect(itemsRefused(ivanhoe())).toBe(false);
   });
 });
 
@@ -114,25 +74,12 @@ describe("the agreed words", () => {
     expect(refusedProductReason(cloudship([FLOA(1)]), named)).toBe(
       "Cloudship: not created — the cast is 1 floater hide short."
     );
-    expect(shortSentence([{ tag: "FLOA", name: "floater hide", plural: "floater hides", figure: -1 }])).toBe(
-      "A red figure in the cell: this unit ends the month 1 floater hide short."
-    );
   });
 
-  it("says the red figure in one sentence", () => {
-    expect(shortSentence([{ tag: "FLOA", name: "floater hide", plural: "floater hides", figure: -75 }])).toBe(
-      "A red figure in the cell: this unit ends the month 75 floater hides short."
+  it("words the Items ⚠ as the Silver cell's is worded", () => {
+    expect(ITEMS_WARNING).toBe(
+      "⚠ in the cell: a check warns about this unit's items. Select the unit to read it in the Problems panel."
     );
-    expect(
-      shortSentence(
-        [
-          { tag: "FLOA", name: "floater hide", plural: "floater hides", figure: -75 },
-          { tag: "IRWD", name: "ironwood", plural: "ironwood", figure: -75 }
-        ])
-    ).toBe(
-      "A red figure in the cell: this unit ends the month 75 floater hides and 75 ironwood short."
-    );
-    expect(shortSentence([])).toBeNull();
   });
 
   it("lists three or more with commas and 'and' before the last", () => {

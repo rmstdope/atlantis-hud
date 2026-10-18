@@ -596,6 +596,21 @@ describe("rowMonth reads a row's month where the report lists the unit (ah-xu6v)
     expect(month.hexShort).toBe(true);
   });
 
+  // `ah-rjz2`: an order the game refuses for want of silver marks the cell whatever finding names
+  // the unit - in a pooled hex that finding is the hex's, and the cell is agreed as '24 → 14 ⚠'.
+  it("warns about a unit whose order the game refuses, even when no finding names it", () => {
+    const refused = aUnitSilver({
+      unitId: "new-1",
+      regionId: A,
+      refused: [{ cause: "studied", line: 3, cost: 50, available: 24, afterSpending: false }]
+    });
+    const month = rowMonth(
+      { regionId: A, unitId: "new-1", arrivingFrom: null, own: true },
+      { ...lookups, getSilver: () => refused, silverWarnings: new Set() }
+    );
+    expect(month.warned).toBe(true);
+  });
+
   it("raises no silver flag on an own unit with no forecast to explain it", () => {
     const month = rowMonth(
       { regionId: A, unitId: "new-1", arrivingFrom: null, own: true },

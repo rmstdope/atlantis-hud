@@ -1112,37 +1112,27 @@ describe("the items column", () => {
     expect(markup).toContain("5 GRAI");
   });
 
-  // `ah-44at`: a refused CAST's short material ends red and leads the cell (Q1 A, Q6 A).
-  it("draws a refused cast's short material red, ahead of everything else", () => {
+  // `ah-rjz2`, revising `ah-44at`: a refused CAST takes nothing, so no material is drawn red; an
+  // amber ⚠ leads the cell instead, ahead of every item (Q3 A, Q6 A).
+  it("leads a refused cast's cell with the ⚠ and draws no missing material", () => {
     const mage = { unitId: "1", items: [{ amount: 75, name: "ironwood", tag: "IRWD" }] };
-    const markup = draw(
-      hex({ region: region({ units: [unit(mage)] }) }),
-      previewOf(mage, {
-        itemChanges: [
-          {
-            tag: "FLOA",
-            name: "floater hides",
-            delta: -75,
-            cause: "cast-spent",
-            line: 3,
-            unitPrice: null,
-            other: null,
-            isMan: false
-          }
-        ],
-        refusedCasts: [
-          {
-            product: { tag: "CLOU", name: "Cloudship", fewest: 0, most: 1 },
-            silverShort: 0,
-            short: [{ tag: "FLOA", name: "floater hide", plural: "floater hides", amount: 75 }]
-          }
-        ]
-      })
-    );
+    const refusedCast = (silverShort: number, short: { tag: string; name: string; plural: string; amount: number }[]) =>
+      draw(
+        hex({ region: region({ units: [unit(mage)] }) }),
+        previewOf(mage, {
+          refusedCasts: [
+            { line: 3, product: { tag: "CLOU", name: "Cloudship", fewest: 0, most: 1 }, silverShort, short }
+          ]
+        })
+      );
+    const markup = refusedCast(0, [{ tag: "FLOA", name: "floater hide", plural: "floater hides", amount: 75 }]);
 
-    expect(markup).toMatch(/<span class="text-danger">-75 FLOA<\/span>, 75 IRWD/);
-    // The cell never shows the product of a refused cast (Q3 B).
+    expect(markup).toMatch(/data-testid="items-refused"[^>]*>.*?<\/span>75 IRWD/);
+    expect(markup).not.toContain("FLOA");
+    // The cell never shows the product of a refused cast (`ah-44at`, Q3 B).
     expect(markup).not.toContain("CLOU</");
+    // Refused for its silver alone, no item is affected, so the Items cell carries no ⚠.
+    expect(refusedCast(200, [])).not.toContain('data-testid="items-refused"');
   });
 
   it("marks a cell whose month could not be fully counted, upright when nothing was projected", () => {
