@@ -81543,24 +81543,7 @@ BUILD
     /// it sails from, not "a faction-mate's orders in this hex".
     #[test]
     fn a_sharer_that_walks_in_and_pays_a_passengers_study_names_the_passenger() {
-        let walker = sharing(with_silver(unit("907"), 500));
-        let resident = sharing(with_silver(unit("902"), 0));
-        let (mut report, _) = passenger_palace(
-            open_sea(vec![]),
-            region_at("1:7,53", 7, 53, vec![resident]),
-            None,
-        );
-        report
-            .regions
-            .push(region_at("1:7,51", 7, 51, vec![walker]));
-        let orders = "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 902\nunit 907\nMOVE S\n";
-        // Only the walker's month end is given, as the passenger tests above review the fleet
-        // untraced; the fleet's landing is read from its SAIL.
-        let options = counterfactual_month_end(
-            CheckOptions::default(),
-            &[("907", Coordinate { x: 7, y: 53, z: 1 })],
-        );
-        let review = review_turn(&report, orders, Some(&trident()), options);
+        let (report, review) = walker_paying_a_passenger("");
         let fee = silver_of(&review, "901").borrowed_for_orders;
         assert!(fee > 0, "{:?}", silver_of(&review, "901"));
         assert_eq!(
@@ -81579,6 +81562,54 @@ BUILD
                 -fee
             )]
         );
+    }
+
+    /// `ah-qffa` review, finding 1: the same walker also pays resident 902's own STUDY, so its
+    /// loan is two lines - the resident first, with no place, then the passenger and the hex it
+    /// sails from (`split_loan`) - which add up to what it lent.
+    #[test]
+    fn a_sharer_that_walks_in_and_pays_a_resident_and_a_passenger_names_both() {
+        let (report, review) = walker_paying_a_passenger("STUDY COMB\n");
+        let fee = silver_of(&review, "901").borrowed_for_orders;
+        let resident_fee = silver_of(&review, "902").borrowed_for_orders;
+        assert!(fee > 0 && resident_fee > 0, "{fee} {resident_fee}");
+        assert_eq!(
+            loan_lines(&review, "907", SilverChangeCause::Lent),
+            vec![
+                (Some(named(&report, "902")), None, -resident_fee),
+                (
+                    Some(named(&report, "901")),
+                    Some("ocean (7,55)".to_string()),
+                    -fee
+                ),
+            ]
+        );
+    }
+
+    /// Sharer 907 walks from (7,51) into (7,53), where the fleet carrying studying passenger 901
+    /// lands and sharer 902, with no silver, writes `resident`.
+    fn walker_paying_a_passenger(resident_orders: &str) -> (ParsedReport, TurnReview) {
+        let walker = sharing(with_silver(unit("907"), 500));
+        let resident = sharing(with_silver(unit("902"), 0));
+        let (mut report, _) = passenger_palace(
+            open_sea(vec![]),
+            region_at("1:7,53", 7, 53, vec![resident]),
+            None,
+        );
+        report
+            .regions
+            .push(region_at("1:7,51", 7, 51, vec![walker]));
+        let orders = format!(
+            "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 902\n{resident_orders}unit 907\nMOVE S\n"
+        );
+        // Only the walker's month end is given, as the passenger tests above review the fleet
+        // untraced; the fleet's landing is read from its SAIL.
+        let options = counterfactual_month_end(
+            CheckOptions::default(),
+            &[("907", Coordinate { x: 7, y: 53, z: 1 })],
+        );
+        let review = review_turn(&report, &orders, Some(&trident()), options);
+        (report, review)
     }
 
     /// `ah-kjq5`: two sharers where the fleet lands pay one fee between them, so the passenger's
