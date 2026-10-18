@@ -308,8 +308,8 @@ pub mod codes {
     /// "PROMOTE: Must be owner" - including the unit that owner promotes (`ah-c1p2`;
     /// `rules/promote`: "Promote the specified unit to owner of the object of which you are
     /// currently the owner"). Also the owner's own last `PROMOTE` when it names a unit not in the
-    /// object ("PROMOTE: Can't find target.", `Do1PromoteOrder`; `ah-h9hh`). Always on: the bead asks for the warning and gives it no switch, so
-    /// it is in [`ALWAYS_ON`] and not in [`ALL`].
+    /// object ("PROMOTE: Can't find target.", `Do1PromoteOrder`; `ah-h9hh`). Always on: the bead
+    /// asks for the warning and gives it no switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
     pub const PROMOTE_NOT_OWNER: Code = Code("promote-not-owner");
     /// An `EVICT` the game refuses: `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`) runs
     /// only each object's owner's EVICT, once PROMOTE has run, and errors every other unit's
@@ -14343,7 +14343,7 @@ fn check_promote_not_owner(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
                     }
                     format!(
                         "{} is not in {} when promotions run, so it promotes nobody",
-                        shown_unit_label(hex, &promote.target),
+                        promoted_label(hex, &promote.target),
                         named_structure(hex, structure_id)
                     )
                 } else {
@@ -14404,6 +14404,22 @@ fn check_evict_refused(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
             column_end: Some(evict.column_end),
             ..ordered.finding(hex, codes::EVICT_REFUSED, message, None)
         });
+    }
+}
+
+/// A `PROMOTE` target as [`shown_unit_label`] names it, except that a `new-<alias>` target no
+/// unit here was formed as reads `NEW <alias>`, as the player wrote it.
+fn promoted_label(hex: &Hex<'_>, target: &str) -> String {
+    match target.strip_prefix("new-") {
+        Some(alias)
+            if !hex
+                .units
+                .iter()
+                .any(|ordered| ordered.unit.unit_id == target) =>
+        {
+            format!("NEW {alias}")
+        }
+        _ => shown_unit_label(hex, target),
     }
 }
 
@@ -57464,6 +57480,16 @@ BUILD
             promote_findings("unit 900\nFORM 1\nEND\nPROMOTE NEW 1\nunit 901\nunit 902\n"),
             Vec::<(Option<usize>, String)>::new(),
             "a unit formed aboard is aboard"
+        );
+        assert_eq!(
+            promote_findings("unit 900\nPROMOTE NEW 3\nunit 901\nunit 902\n"),
+            vec![(
+                Some(2),
+                "PROMOTE will be refused: NEW 3 is not in Castle [1] when promotions run, so it \
+                 promotes nobody"
+                    .to_string()
+            )],
+            "a NEW alias nobody formed is named as written"
         );
     }
 
