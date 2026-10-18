@@ -780,17 +780,27 @@ describe("a shortfall a pool left unjudged", () => {
   });
 });
 
-describe("the shortfall's three widths", () => {
-  it("is spelled out, then the arrow and the number, then the arrow alone", () => {
+describe("the shortfall's narrowing forms", () => {
+  it("is spelled out, then the arrow and the number, then the arrow and an ellipsis, then the arrow alone", () => {
     expect(shortfallText("long", 8650)).toBe("8650 short");
     expect(shortfallText("short", 8650)).toBe("\u25be8650");
     expect(shortfallText("cut", 8650)).toBe("\u25be\u2026");
+    // `ah-sa9p`: the navigator's answer - the shortfall gives up its ellipsis before the figure
+    // beside it gives up a digit.
+    expect(shortfallText("arrow", 8650)).toBe("\u25be");
+    expect(shortfallText("unmarked", 8650)).toBe("\u25be");
   });
 
   it("gives way one step at a time while it overflows, and never past the arrow", () => {
     expect(nextShortfallForm("long", true)).toBe("short");
     expect(nextShortfallForm("short", true)).toBe("cut");
-    expect(nextShortfallForm("cut", true)).toBe("cut");
+    expect(nextShortfallForm("cut", true)).toBe("arrow");
+    // From `▾` the ⚠ goes only when the row overflows the cell, never for the figure's own `…`.
+    expect(nextShortfallForm("arrow", true)).toBe("arrow");
+    expect(nextShortfallForm("arrow", true, true)).toBe("unmarked");
+    expect(nextShortfallForm("unmarked", true, true)).toBe("unmarked");
+    expect(nextShortfallForm("cut", false, true)).toBe("arrow");
+    expect(nextShortfallForm("cut", false)).toBe("cut");
     expect(nextShortfallForm("long", false)).toBe("long");
     expect(nextShortfallForm("short", false)).toBe("short");
   });

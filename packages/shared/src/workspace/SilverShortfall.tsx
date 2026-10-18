@@ -5,11 +5,13 @@ import { nextShortfallForm, shortfallText, type ShortfallForm } from "../unitTab
  * The small red `<N> short` the Silver cell writes after the figure of a unit that ends the month
  * in credit but cannot pay for all of its own orders (`ah-ottr`).
  *
- * A column too narrow for it shortens it to `▾<N>`, then to `▾…`: one step at a time while it
- * does not fit (`nextShortfallForm`), starting again from the long form whenever the cell's width,
- * the amount or what sits beside it changes. It never shrinks itself: the figure beside it, in the
- * `data-silver-figure` box, is what truncates, so "does not fit" is that figure being cut - and
- * only once this has reached `▾…` is the figure left cut.
+ * A column too narrow for it shortens it to `▾<N>`, then to `▾…`, then to `▾` alone (`ah-sa9p`):
+ * one step at a time while it does not fit (`nextShortfallForm`), starting again from the long
+ * form whenever the cell's width, the amount or what sits beside it changes. It never shrinks
+ * itself: the figure beside it, in the `data-silver-figure` box, is what truncates, so "does not
+ * fit" is that figure being cut - and only once this has reached `▾` is the figure left cut. The
+ * figure's box keeps one character's width, so at the column's floor it still shows its `…`; a row
+ * that overflows even so drops its ⚠ (`unmarked`, which the cell's markup hides it on).
  *
  * A screen reader always hears `<N> short`, whatever form is drawn.
  */
@@ -32,19 +34,17 @@ export function SilverShortfall({
     setForm("long");
   }, [amount, beside, width]);
 
-  // Step narrower while the cell overflows; settles in at most two steps, each a change of `form`.
+  // Step narrower while the cell overflows; settles in at most four steps, each a change of `form`.
   useLayoutEffect(() => {
     const row = ref.current?.parentElement;
     if (!row) {
       return;
     }
     const figure = row.querySelector<HTMLElement>("[data-silver-figure]");
-    const cut =
-      row.scrollWidth > row.clientWidth ||
-      (figure !== null && figure.scrollWidth > figure.clientWidth);
     // `data-silver-figure` is the box that truncates: around the plain figure, or inside the ⚠
     // button around its digits.
-    const next = nextShortfallForm(form, cut);
+    const figureCut = figure !== null && figure.scrollWidth > figure.clientWidth;
+    const next = nextShortfallForm(form, figureCut, row.scrollWidth > row.clientWidth);
     if (next !== form) {
       setForm(next);
     }
@@ -70,7 +70,8 @@ export function SilverShortfall({
       ref={ref}
       data-testid={`silver-shortfall-${unitId}`}
       data-form={form}
-      className="ml-1.5 shrink-0 text-pane-sm not-italic text-danger"
+      // At `▾` alone the gap tightens too, so the 36 px floor still holds the figure's `…`.
+      className={`${form === "arrow" || form === "unmarked" ? "ml-0.5" : "ml-1.5"} shrink-0 text-pane-sm not-italic text-danger`}
     >
       <span aria-hidden>{shortfallText(form, amount)}</span>
       <span className="sr-only">{shortfallText("long", amount)}</span>
