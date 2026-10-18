@@ -20445,9 +20445,12 @@ fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> Shor
 struct SilverFigures {
     figures: ShortfallFigures,
     upkeep: i64,
-    /// The food counted in on both sides for that upkeep (`ah-pyiy`): part of the fee the
-    /// sentence's spend states, though not part of `upkeep`.
-    food: i64,
+    /// The whole fee the sentence's spend states: `upkeep`, plus the food counted in on both sides
+    /// for it (`ah-pyiy`), plus what the members lent at step 4 for somebody's fee - their own
+    /// silver, in `can_have`, so in the spend whether it fed a member (whose `upkeep` it took off)
+    /// or a unit outside the set (`ah-8xiv` review). What a lender outside the set, or the
+    /// unclaimed fund, paid is in neither figure. `0` at any moment before the month's end.
+    fee: i64,
 }
 
 impl SilverFigures {
@@ -20462,7 +20465,7 @@ impl SilverFigures {
     fn spenders(self) -> &'static str {
         if self.upkeep <= 0 {
             "orders spend"
-        } else if self.figures.spend() <= self.upkeep + self.food {
+        } else if self.figures.spend() <= self.fee {
             "upkeep spends"
         } else {
             "orders and upkeep spend"
@@ -20491,13 +20494,16 @@ fn silver_figures(
         .iter()
         .map(|member| member.unit.unit_id.as_str())
         .collect();
-    let (upkeep, food) = if moment == ShortfallMoment::MonthEnd {
+    let (upkeep, food, lent) = if moment == ShortfallMoment::MonthEnd {
         (
             ids.iter().map(|who| unpaid_upkeep(ledger, who)).sum(),
             ids.iter().map(|who| food_counted_in(ledger, who)).sum(),
+            ids.iter()
+                .map(|who| ledger.relief().lent.get(*who).copied().unwrap_or_default())
+                .sum::<i64>(),
         )
     } else {
-        (0, 0)
+        (0, 0, 0)
     };
     let can_have = silver_can_have(hex, ledger, members, moment, walking)
         + silver_unfunded_between(ledger, &ids)
@@ -20505,7 +20511,7 @@ fn silver_figures(
     SilverFigures {
         figures: ShortfallFigures { short, can_have },
         upkeep,
-        food,
+        fee: upkeep + food + lent,
     }
 }
 
@@ -20916,8 +20922,8 @@ struct PoolShortfall {
     tag: String,
     figures: ShortfallFigures,
     upkeep: i64,
-    /// The food counted in for that upkeep ([`SilverFigures::food`]). Always `0` for an item.
-    food: i64,
+    /// The whole fee the sentence's spend states ([`SilverFigures::fee`]). Always `0` for an item.
+    fee: i64,
     /// The passengers sailing in whose STUDY is part of what the sentence says is spent
     /// (`ah-1uja`). Always `None` for an item.
     arriving_study: Option<ArrivingStudyShare>,
@@ -21027,7 +21033,7 @@ fn pool_shortfalls(
                 SilverFigures {
                     figures: ShortfallFigures { short, can_have },
                     upkeep: 0,
-                    food: 0,
+                    fee: 0,
                 },
                 None,
             ))
@@ -21036,7 +21042,7 @@ fn pool_shortfalls(
             SilverFigures {
                 figures,
                 upkeep,
-                food,
+                fee,
             },
             arriving_study,
         )) = found
@@ -21047,7 +21053,7 @@ fn pool_shortfalls(
             tag,
             figures,
             upkeep,
-            food,
+            fee,
             arriving_study,
         });
     }
@@ -21652,7 +21658,7 @@ fn report_shortfalls(
         tag,
         figures,
         upkeep,
-        food,
+        fee,
         arriving_study,
     } in pooled
     {
@@ -21872,7 +21878,7 @@ fn report_shortfalls(
                 SilverFigures {
                     figures,
                     upkeep,
-                    food
+                    fee
                 }
                 .spenders(),
                 figures.spend(),
@@ -49869,7 +49875,9 @@ BUILD
     /// $500 of upkeep and earning $300 by `WORK`. The sharer is one man, so it owes $10 and earns
     /// $6 working by default (`ah-gjq4`). It must read as the unit sentence does - $406 of silver
     /// and wages on the "can have" side and the whole $510 of fees in "spend". Netting the wages
-    /// into the fees read "can have $100 ... spend $204".
+    /// into the fees read "can have $100 ... spend $204". No order spends silver, so the hex is told
+    /// its upkeep spends, though the sharer's silver paid part of the borrower's fee at step 4
+    /// (`ah-8xiv`, review finding 1).
     #[test]
     fn a_sharing_hexs_month_end_income_is_silver_it_can_have_not_a_smaller_spend() {
         let regions = vec![ReportRegion {
@@ -49888,7 +49896,7 @@ BUILD
         assert_eq!(
             only(findings).message,
             "the units in this hex are short $104 between them: they can have $406 and their \
-             orders and upkeep spend $510"
+             upkeep spends $510"
         );
     }
 
@@ -69169,7 +69177,7 @@ BUILD
                         can_have: 0
                     },
                     upkeep: 0,
-                    food: 0
+                    fee: 0
                 }
             );
             assert_eq!(read(true, &["901", "903"]), alone);
@@ -81809,24 +81817,31 @@ BUILD
         }
     }
 
-    /// `ah-8xiv`: a sentence whose whole spend is the fee it names - the unpaid upkeep plus the
-    /// food counted in on both sides (`ah-pyiy`) - names upkeep alone, since no order spends any
-    /// of it; one with spending beyond the fee names orders too, and one with no fee orders alone.
+    /// `ah-8xiv`: a sentence whose whole spend is the fee it states - the unpaid upkeep, the food
+    /// counted in on both sides (`ah-pyiy`), and what its units lent at step 4 for a fee (review
+    /// finding 1) - names upkeep alone, since no order spends any of it; one with spending beyond
+    /// the fee names orders too, and one owing no upkeep names orders alone.
     #[test]
     fn silver_figures_name_upkeep_alone_when_the_fee_is_the_whole_spend() {
-        let figures = |short, can_have, upkeep, food| SilverFigures {
+        let figures = |short, can_have, upkeep, fee| SilverFigures {
             figures: ShortfallFigures { short, can_have },
             upkeep,
-            food,
+            fee,
         };
         assert_eq!(figures(50, 0, 0, 0).spenders(), "orders spend");
-        assert_eq!(figures(40, 60, 100, 0).spenders(), "upkeep spends");
-        assert_eq!(figures(40, 60, 80, 20).spenders(), "upkeep spends");
+        assert_eq!(figures(40, 60, 100, 100).spenders(), "upkeep spends");
+        // $80 unpaid and $20 of food counted in.
+        assert_eq!(figures(40, 60, 80, 100).spenders(), "upkeep spends");
+        // $414 unpaid and $96 a counted sharer lent toward a counted borrower's fee.
+        assert_eq!(figures(104, 406, 414, 510).spenders(), "upkeep spends");
         assert_eq!(
-            figures(40, 61, 80, 20).spenders(),
+            figures(40, 61, 80, 100).spenders(),
             "orders and upkeep spend"
         );
-        assert_eq!(figures(70, 30, 60, 0).spenders(), "orders and upkeep spend");
+        assert_eq!(
+            figures(70, 30, 60, 60).spenders(),
+            "orders and upkeep spend"
+        );
     }
 
     /// `ah-65kt`: ... and where nothing there pays its upkeep either, that is the sentence it gets,
