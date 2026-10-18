@@ -20445,6 +20445,29 @@ fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> Shor
 struct SilverFigures {
     figures: ShortfallFigures,
     upkeep: i64,
+    /// The food counted in on both sides for that upkeep (`ah-pyiy`): part of the fee the
+    /// sentence's spend states, though not part of `upkeep`.
+    food: i64,
+}
+
+impl SilverFigures {
+    /// What the sentence names as having spent the silver, with its verb (`ah-8xiv`).
+    ///
+    /// Maintenance is not an order, so a unit charged one must not be told its *orders* spend it -
+    /// the fee is charged whatever a unit is told to do, and a player reading "its orders spend
+    /// $30" of a unit whose orders spend nothing would go looking for a mistake that is not there.
+    /// Nor "orders and upkeep" where the whole spend is the fee: no order spends anything of it,
+    /// so the sentence names upkeep alone. Read off the sentence's own figures, so the words always
+    /// agree with the arithmetic printed beside them, for one unit and a hex's counted units alike.
+    fn spenders(self) -> &'static str {
+        if self.upkeep <= 0 {
+            "orders spend"
+        } else if self.figures.spend() <= self.upkeep + self.food {
+            "upkeep spends"
+        } else {
+            "orders and upkeep spend"
+        }
+    }
 }
 
 /// [`SilverFigures`] for `members`: [`silver_can_have`], plus what their `GIVE`s and `TAKE`s to one
@@ -20482,6 +20505,7 @@ fn silver_figures(
     SilverFigures {
         figures: ShortfallFigures { short, can_have },
         upkeep,
+        food,
     }
 }
 
@@ -20892,6 +20916,8 @@ struct PoolShortfall {
     tag: String,
     figures: ShortfallFigures,
     upkeep: i64,
+    /// The food counted in for that upkeep ([`SilverFigures::food`]). Always `0` for an item.
+    food: i64,
     /// The passengers sailing in whose STUDY is part of what the sentence says is spent
     /// (`ah-1uja`). Always `None` for an item.
     arriving_study: Option<ArrivingStudyShare>,
@@ -20966,13 +20992,7 @@ fn pool_shortfalls(
                 claimed,
                 short_counting_cuts,
             )
-            .map(|(figures, upkeep, moment)| {
-                (
-                    figures,
-                    upkeep,
-                    ArrivingStudyShare::of(sharing.walking, moment),
-                )
-            })
+            .map(|(silver, moment)| (silver, ArrivingStudyShare::of(sharing.walking, moment)))
         } else {
             let short = claimed - sharing.pool(ledger, &tag);
             // What the pool's members and its borrowers hold of it, so the message can say "they
@@ -21003,15 +21023,31 @@ fn pool_shortfalls(
                 )
                 .sum();
             let can_have = counted.iter().map(|o| o.holding(&tag)).sum::<i64>() + with_mates;
-            (short > 0).then_some((ShortfallFigures { short, can_have }, 0, None))
+            (short > 0).then_some((
+                SilverFigures {
+                    figures: ShortfallFigures { short, can_have },
+                    upkeep: 0,
+                    food: 0,
+                },
+                None,
+            ))
         };
-        let Some((figures, upkeep, arriving_study)) = found else {
+        let Some((
+            SilverFigures {
+                figures,
+                upkeep,
+                food,
+            },
+            arriving_study,
+        )) = found
+        else {
             continue;
         };
         shortfalls.push(PoolShortfall {
             tag,
             figures,
             upkeep,
+            food,
             arriving_study,
         });
     }
@@ -21087,7 +21123,7 @@ fn pool_silver_figures(
     silver_by_moment: bool,
     claimed: i64,
     short_counting_cuts: i64,
-) -> Option<(ShortfallFigures, i64, ShortfallMoment)> {
+) -> Option<(SilverFigures, ShortfallMoment)> {
     // The moment the sentence is read at is the one whose reading set `short` (`ah-w2ou`).
     let (short, moment) = if silver_by_moment {
         let at_month_end = sharing.silver_short_at(hex, ledger, LendingMoment::MonthEnd);
@@ -21186,9 +21222,10 @@ fn pool_silver_figures(
     // ... and what they can have and spend, from the one function the unit sentence reads too
     // (`ah-wka4`): a gift between the counted units beyond the pool is part of what they spend,
     // and a move to a faction-mate of the hex not counted is not spending (`ah-3qmk`, `ah-1dep`).
-    let SilverFigures { figures, upkeep } =
-        silver_figures(hex, ledger, &counted, short, moment, sharing.walking);
-    Some((figures, upkeep, moment))
+    Some((
+        silver_figures(hex, ledger, &counted, short, moment, sharing.walking),
+        moment,
+    ))
 }
 
 /// Which way a transfer crossed between a set of counted units and the hex's other units of our
@@ -21493,15 +21530,17 @@ fn report_shortfalls(
             // (`ah-6ak4`), and so does the food that paid part of its fee (`ah-ex2l`). It is the
             // unit as a set of one, read by the function the hex's sentence reads its counted
             // units with (`ah-wka4`).
-            let SilverFigures { figures, upkeep } =
-                silver_figures(hex, ledger, &[ordered], short, moment, None);
+            let silver = silver_figures(hex, ledger, &[ordered], short, moment, None);
+            let SilverFigures {
+                figures, upkeep, ..
+            } = silver;
             let mut finding = ordered.finding(
                 hex,
                 codes::NOT_ENOUGH_SILVER,
                 format!(
-                    "short ${short}: this unit can have ${} and its {} spend ${}{bought}",
+                    "short ${short}: this unit can have ${} and its {} ${}{bought}",
                     figures.can_have,
-                    spenders(upkeep),
+                    silver.spenders(),
                     figures.spend(),
                 ),
                 at,
@@ -21613,6 +21652,7 @@ fn report_shortfalls(
         tag,
         figures,
         upkeep,
+        food,
         arriving_study,
     } in pooled
     {
@@ -21828,12 +21868,13 @@ fn report_shortfalls(
         let message = if tag == SILVER {
             format!(
                 "the units in this hex are short ${short} between them: they can have ${can_have} \
-                 and their {} spend ${}{}",
-                if upkeep > 0 {
-                    "orders and upkeep"
-                } else {
-                    "orders"
-                },
+                 and their {} ${}{}",
+                SilverFigures {
+                    figures,
+                    upkeep,
+                    food
+                }
+                .spenders(),
                 figures.spend(),
                 arriving_study
                     .as_ref()
@@ -22052,19 +22093,6 @@ fn unpaid_upkeep(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
         .copied()
         .unwrap_or_default();
     (fee - paid).max(0)
-}
-
-/// What a shortfall message names as having spent the silver.
-///
-/// Maintenance is not an order, so a unit charged one must not be told its *orders* spend it - the
-/// fee is charged whatever a unit is told to do, and a player reading "its orders spend $30" of a
-/// unit whose orders spend nothing would go looking for a mistake that is not there.
-fn spenders(upkeep: i64) -> &'static str {
-    if upkeep > 0 {
-        "orders and upkeep"
-    } else {
-        "orders"
-    }
 }
 
 /// Every item's plural, as the report itself writes it.
@@ -49704,7 +49732,7 @@ BUILD
         assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert_eq!(
             finding.message,
-            "short $70: this unit can have $30 and its orders and upkeep spend $100"
+            "short $70: this unit can have $30 and its upkeep spends $100"
         );
     }
 
@@ -49813,7 +49841,7 @@ BUILD
         // would go looking for a mistake that is not there.
         assert_eq!(
             finding.message,
-            "short $30: this unit can have $0 and its orders and upkeep spend $30"
+            "short $30: this unit can have $0 and its upkeep spends $30"
         );
     }
 
@@ -49833,7 +49861,7 @@ BUILD
         let finding = only(check(regions, "unit 5\nWORK\n"));
         assert_eq!(
             finding.message,
-            "short $100: this unit can have $400 and its orders and upkeep spend $500"
+            "short $100: this unit can have $400 and its upkeep spends $500"
         );
     }
 
@@ -49886,7 +49914,7 @@ BUILD
             .unwrap_or_else(|| panic!("{findings:#?}"));
         assert_eq!(
             sentence.message,
-            "short $200: this unit can have $300 and its orders and upkeep spend $500"
+            "short $200: this unit can have $300 and its upkeep spends $500"
         );
     }
 
@@ -51780,7 +51808,7 @@ BUILD
         assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert_eq!(
             finding.message,
-            "short $70: this unit can have $30 and its orders and upkeep spend $100"
+            "short $70: this unit can have $30 and its upkeep spends $100"
         );
     }
 
@@ -51798,7 +51826,7 @@ BUILD
         assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert_eq!(
             finding.message,
-            "short $70: this unit can have $30 and its orders and upkeep spend $100"
+            "short $70: this unit can have $30 and its upkeep spends $100"
         );
     }
 
@@ -51830,7 +51858,7 @@ BUILD
         );
         assert_eq!(
             findings[0].message,
-            "short $60: this unit can have $0 and its orders and upkeep spend $60"
+            "short $60: this unit can have $0 and its upkeep spends $60"
         );
         assert_eq!(
             findings[1].message,
@@ -52892,7 +52920,7 @@ BUILD
         ));
         assert_eq!(
             only(findings).message,
-            "short $30: this unit can have $60 and its orders and upkeep spend $90"
+            "short $30: this unit can have $60 and its upkeep spends $90"
         );
     }
 
@@ -52919,7 +52947,7 @@ BUILD
             hex,
             vec![
                 "the units in this hex are short $30 between them: they can have $60 and their \
-                 orders and upkeep spend $90"
+                 upkeep spends $90"
                     .to_string()
             ]
         );
@@ -52934,7 +52962,7 @@ BUILD
         ));
         assert_eq!(
             only(findings).message,
-            "short $20: this unit can have $70 and its orders and upkeep spend $90"
+            "short $20: this unit can have $70 and its upkeep spends $90"
         );
     }
 
@@ -52969,7 +52997,7 @@ BUILD
         ));
         assert_eq!(
             only(findings).message,
-            "short $30: this unit can have $70 and its orders and upkeep spend $100"
+            "short $30: this unit can have $70 and its upkeep spends $100"
         );
     }
 
@@ -52995,7 +53023,7 @@ BUILD
         ));
         assert_eq!(
             only(findings).message,
-            "short $30: this unit can have $60 and its orders and upkeep spend $90"
+            "short $30: this unit can have $60 and its upkeep spends $90"
         );
     }
 
@@ -69140,7 +69168,8 @@ BUILD
                         short: 200,
                         can_have: 0
                     },
-                    upkeep: 0
+                    upkeep: 0,
+                    food: 0
                 }
             );
             assert_eq!(read(true, &["901", "903"]), alone);
@@ -81290,7 +81319,7 @@ BUILD
         assert_eq!(
             short,
             vec![(
-                "short $40: this unit can have $60 and its orders and upkeep spend $100",
+                "short $40: this unit can have $60 and its upkeep spends $100",
                 None,
                 Some("1:7,53")
             )]
@@ -81780,8 +81809,29 @@ BUILD
         }
     }
 
+    /// `ah-8xiv`: a sentence whose whole spend is the fee it names - the unpaid upkeep plus the
+    /// food counted in on both sides (`ah-pyiy`) - names upkeep alone, since no order spends any
+    /// of it; one with spending beyond the fee names orders too, and one with no fee orders alone.
+    #[test]
+    fn silver_figures_name_upkeep_alone_when_the_fee_is_the_whole_spend() {
+        let figures = |short, can_have, upkeep, food| SilverFigures {
+            figures: ShortfallFigures { short, can_have },
+            upkeep,
+            food,
+        };
+        assert_eq!(figures(50, 0, 0, 0).spenders(), "orders spend");
+        assert_eq!(figures(40, 60, 100, 0).spenders(), "upkeep spends");
+        assert_eq!(figures(40, 60, 80, 20).spenders(), "upkeep spends");
+        assert_eq!(
+            figures(40, 61, 80, 20).spenders(),
+            "orders and upkeep spend"
+        );
+        assert_eq!(figures(70, 30, 60, 0).spenders(), "orders and upkeep spend");
+    }
+
     /// `ah-65kt`: ... and where nothing there pays its upkeep either, that is the sentence it gets,
-    /// on its row, counted in the hex it lands in.
+    /// on its row, counted in the hex it lands in (`ah-8xiv`: by its upkeep alone, since no order
+    /// of the passenger's spends silver).
     #[test]
     fn a_passenger_refused_where_it_lands_is_told_only_of_its_upkeep() {
         let review = a_passenger_studying_between_two_sharers(1);
@@ -81797,7 +81847,7 @@ BUILD
         assert_eq!(
             short,
             vec![(
-                "short $40: this unit can have $60 and its orders and upkeep spend $100",
+                "short $40: this unit can have $60 and its upkeep spends $100",
                 Some("1:7,53")
             )]
         );
@@ -85542,7 +85592,7 @@ BUILD
             .map(|finding| finding.message.as_str());
         assert_eq!(
             sentence,
-            Some("short $20: this unit can have $80 and its orders and upkeep spend $100"),
+            Some("short $20: this unit can have $80 and its upkeep spends $100"),
             "{findings:#?}"
         );
     }
@@ -85621,8 +85671,12 @@ BUILD
         let ledger = ledger_for(&hex, Some(&rules));
         let sharing = Sharing::for_silver(&hex, &ledger);
         let cuts = silver_short_counting_cuts(&hex, &ledger, &sharing);
-        let (figures, upkeep, _) =
-            pool_silver_figures(&hex, &ledger, &sharing, false, 0, cuts).expect("the hex is short");
+        let (
+            SilverFigures {
+                figures, upkeep, ..
+            },
+            _,
+        ) = pool_silver_figures(&hex, &ledger, &sharing, false, 0, cuts).expect("the hex is short");
         assert_eq!(
             figures,
             ShortfallFigures {
