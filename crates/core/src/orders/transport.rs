@@ -316,7 +316,7 @@ impl Quartermasters {
 /// What the report shows about one unit a `TRANSPORT` could name (`ah-64wm`).
 ///
 /// Read from the report, before any order runs, except `caravanserai_owner`, which
-/// [`Shipping::read`] settles for the moment the shipments run (`ah-1jl9`).
+/// [`Shipping::read_owners`] settles for the moment the shipments run (`ah-1jl9`).
 pub(crate) struct TargetFacts {
     /// Ours, whose skills the report prints in full - so an absent skill is an absent skill,
     /// rather than an undisclosed one.
@@ -327,7 +327,7 @@ pub(crate) struct TargetFacts {
     pub quartermaster: bool,
     /// The unit is the first one listed inside a Caravanserai in its hex, which is what
     /// `rules/world_structures` makes the owner of the structure - as [`target_facts`] reads the
-    /// report, and as [`Shipping::read`] then settles it for when the shipments run.
+    /// report, and as [`Shipping::read_owners`] then settles it for when the shipments run.
     pub caravanserai_owner: bool,
     /// The hex the report shows this unit standing in, for the reach the shipment is measured
     /// against (`ah-7ale.2.1`).
@@ -403,11 +403,16 @@ pub(crate) fn target_facts(
 /// boardings and promotions have run, and the movement phase then takes off every unit
 /// `Unit::MoveUnit` moves out - a walker ending the month in another hex (`month_end`), and a
 /// `MOVE OUT` or `MOVE <structure>` from inside ([`standing_through_move`]) - and appends anyone a
-/// `MOVE <structure>` brings in, `MOVE <dir> <structure>` into another hex's included. A unit this month's `FORM` creates is not followed, as
-/// [`target_facts`] already says it owns nothing - nor, so, is an owner's `PROMOTE NEW <n>`, which
-/// needs the month's dissolution to answer (`ah-ry88`). The owner's EVICT takes its targets off the
-/// list too ([`occupants_after_promotes`], `ah-0ace`), units behind the owner, so it changes who
-/// owns only for an owner that evicts itself.
+/// `MOVE <structure>` brings in, `MOVE <dir> <structure>` into another hex's included. A unit this month's `FORM` creates
+/// stands in the list while PROMOTE runs, so an owner's `PROMOTE NEW <n>` hands the structure on;
+/// it is still there when the shipments run only when it is one of `survivors`, the formed units
+/// the month's dissolution keeps (`ah-ry88`): `RunOrders` deletes a unit that gained no men
+/// (`Game::DeleteEmptyUnits`) after BUY and long before `CheckTransportOrders`, and with it goes
+/// whatever it owned. A survivor's own MOVE is followed like a reported unit's, so one that
+/// moves out hands the structure back. [`target_facts`] still says a formed unit owns nothing as a shipment end;
+/// what it changes here is who else does. The owner's EVICT takes its targets off the list too
+/// ([`occupants_after_promotes`], `ah-0ace`), units behind the owner, so it changes who owns only
+/// for an owner that evicts itself.
 ///
 /// [`occupants_after_promotes`]: crate::movement::fleet::occupants_after_promotes
 /// [`standing_through_move`]: super::standing::standing_through_move
@@ -416,6 +421,7 @@ fn caravanserai_owners_at_transport(
     orders_document: &str,
     ruleset: &crate::movement::rules::Ruleset,
     month_end: &MonthEndHexes,
+    survivors: &[crate::movement::fleet::FormedCrew],
 ) -> std::collections::BTreeSet<String> {
     use crate::movement::fleet::{occupants_after_promotes, OrderedUnits};
     use crate::orders::blocks::OrderedUnitKey;
@@ -456,13 +462,48 @@ fn caravanserai_owners_at_transport(
 
     let mut owners = std::collections::BTreeSet::new();
     for region in &report.regions {
+        // Where each unit formed in this hex stands once the movement phase has run, by the rule
+        // a reported unit's walk is read by above, from where the PROMOTEs found it: a formed
+        // unit promoted to owner that then moves out hands the structure back (`ah-ry88`
+        // review). Keyed by its `new-<alias>`, which is unique only inside its hex (`rules/form`).
+        let formed_standing: std::collections::BTreeMap<String, (Coordinate, Option<String>)> =
+            ordered
+                .formed_at_promotion(region)
+                .into_iter()
+                .map(|crew| {
+                    let month_end_key = formed_month_end_key(&region.region_id, &crew.unit_id);
+                    let walked = month_end.contains_key(&month_end_key);
+                    let hex = standing_at(month_end, &month_end_key, region.coordinate);
+                    let moved = ordered
+                        .steps_for(&crew.key)
+                        .filter(|_| !ordered.sails_a_course(&crew.key))
+                        .map(|steps| {
+                            super::standing::standing_through_move(
+                                crew.structure_id.as_deref(),
+                                steps,
+                            )
+                        });
+                    let structure = match moved {
+                        Some(moved) if walked => moved.destination,
+                        Some(moved) => moved.origin,
+                        None if walked => None,
+                        None => crew.structure_id,
+                    };
+                    (crew.unit_id, (hex, structure))
+                })
+                .collect();
         for structure in region.structures.iter().filter(|one| is_caravanserai(one)) {
             let id = structure.structure_id.as_str();
-            let mut occupants = occupants_after_promotes(region, &ordered, &[], id);
-            occupants.retain(|unit| {
-                // A unit `occupants_after_promotes` reads from outside the report - none today -
-                // is left where it put it.
-                !standing.contains_key(unit.as_str()) || stands_in(unit, region.coordinate, id)
+            let mut occupants = occupants_after_promotes(region, &ordered, survivors, id);
+            occupants.retain(|unit| match formed_standing.get(unit) {
+                Some((at, structure)) => {
+                    *at == region.coordinate && structure.as_deref() == Some(id)
+                }
+                // A unit `occupants_after_promotes` reads from outside the report and this
+                // month's FORMs - none today - is left where it put it.
+                None => {
+                    !standing.contains_key(unit.as_str()) || stands_in(unit, region.coordinate, id)
+                }
             });
             // `Unit::MoveUnit` appends whoever the movement phase brings in, from this hex or
             // another, in the order the report lists them.
@@ -756,33 +797,16 @@ pub(crate) struct Shipping {
 }
 
 impl Shipping {
-    /// `geometry`, `shown` and `month_end` are cloned out of `options`. `orders_document` says who
-    /// still owns each Caravanserai when the shipments run ([`caravanserai_owners_at_transport`]).
+    /// `geometry`, `shown` and `month_end` are cloned out of `options`. Every Caravanserai's owner
+    /// is the report's until [`Shipping::read_owners`] settles who owns it when the shipments run,
+    /// which every caller does once it knows the month's dissolution (`ah-ry88`).
     pub(crate) fn read(
         report: &crate::report::ParsedReport,
         ruleset: &crate::movement::rules::Ruleset,
         options: &super::semantics::CheckOptions,
-        orders_document: &str,
     ) -> Self {
         let quartermasters = Quartermasters::read(report, ruleset);
-        let mut targets = target_facts(report, &quartermasters);
-        // The report's owners are where the month starts. Only a hex with a Caravanserai can
-        // change them, so the document is not walked again for a faction that has none in view.
-        let any_caravanserai = report
-            .regions
-            .iter()
-            .any(|region| region.structures.iter().any(is_caravanserai));
-        if any_caravanserai {
-            let owners = caravanserai_owners_at_transport(
-                report,
-                orders_document,
-                ruleset,
-                &options.month_end,
-            );
-            for (unit_id, facts) in &mut targets {
-                facts.caravanserai_owner = owners.contains(unit_id);
-            }
-        }
+        let targets = target_facts(report, &quartermasters);
         Self {
             quartermasters,
             targets,
@@ -791,6 +815,40 @@ impl Shipping {
             month_end: options.month_end.clone(),
             may_learn: std::collections::BTreeSet::new(),
             may_own: std::collections::BTreeSet::new(),
+        }
+    }
+
+    /// Settles who owns each Caravanserai when the shipments run, from `orders_document`
+    /// ([`caravanserai_owners_at_transport`]). `survivors` are the month's formed units the
+    /// dissolution keeps - those that gained men, or may have - as the fleets are handed them: a
+    /// formed unit left out is deleted before the shipments, and owns nothing then (`ah-ry88`).
+    /// A survivor is matched by its hex and `FORM` key alone, never by its `structure_id`: where it
+    /// stands is read from the month's orders (`movement::fleet::occupants_after_promotes`).
+    pub(crate) fn read_owners(
+        &mut self,
+        report: &crate::report::ParsedReport,
+        orders_document: &str,
+        ruleset: &crate::movement::rules::Ruleset,
+        survivors: &[crate::movement::fleet::FormedCrew],
+    ) {
+        // The report's owners are where the month starts. Only a hex with a Caravanserai can
+        // change them, so the document is not walked again for a faction that has none in view.
+        let any_caravanserai = report
+            .regions
+            .iter()
+            .any(|region| region.structures.iter().any(is_caravanserai));
+        if !any_caravanserai {
+            return;
+        }
+        let owners = caravanserai_owners_at_transport(
+            report,
+            orders_document,
+            ruleset,
+            &self.month_end,
+            survivors,
+        );
+        for (unit_id, facts) in &mut self.targets {
+            facts.caravanserai_owner = owners.contains(unit_id);
         }
     }
 
@@ -811,7 +869,7 @@ impl Shipping {
     /// which can hand ownership on. Deliberately broad: a refusal the player is warned about with
     /// no switch must be one the month cannot undo.
     ///
-    /// ENTER, LEAVE, PROMOTE and a traced MOVE no longer unsettle anybody: [`Shipping::read`] has
+    /// ENTER, LEAVE, PROMOTE and a traced MOVE no longer unsettle anybody: [`Shipping::read_owners`] has
     /// already settled who owns each Caravanserai once they have run (`ah-1jl9`). A walk with no
     /// month end - a unit of unstated speed, a passage nobody has proved the far side of - is the
     /// one movement it cannot follow, so it still unsettles everyone it stood with.

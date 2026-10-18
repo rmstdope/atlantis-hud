@@ -291,3 +291,66 @@ fn a_shipment_the_targets_month_may_make_good_is_not_warned_about() {
         "{warned:?}"
     );
 }
+
+/// `ah-ry88`: a unit the Trader forms stands in the Caravanserai with it (`rules/form`: "in the
+/// same structure if any"), so the Trader's `PROMOTE NEW 1` hands the Caravanserai on
+/// (`rules/promote`), and once the new unit has bought a man it is still there when the shipments
+/// run - `rules/world_structures`: "Only units with men in them can be structure owners". Ivanhoe
+/// gives it the silver its `BUY` spends.
+#[test]
+fn a_trader_that_promotes_a_unit_it_forms_owns_it_no_longer() {
+    assert_trader_no_longer_owns(&orders(
+        "FORM 1\nBUY 1 ORC\nEND\nPROMOTE NEW 1",
+        &[(IVANHOE, "GIVE NEW 1 100 SILV")],
+    ));
+}
+
+/// `ah-ry88`: a formed unit that gains nobody is dissolved (`rules/form`: "If no recruits are
+/// gained at all, the empty unit will be dissolved") long before the shipments run, so the
+/// Caravanserai the Trader promoted it to is the Trader's again, and Ivanhoe's 1000 arrives.
+#[test]
+fn a_trader_that_promotes_an_empty_formed_unit_still_owns_it() {
+    assert_trader_still_owns(&orders("FORM 1\nEND\nPROMOTE NEW 1", &[]));
+}
+
+/// `ah-ry88` review: the formed unit the Trader promotes leaves again in the movement phase -
+/// `rules/move`: "OUT, which will leave the structure that the unit is in" - and
+/// `rules/sequenceofevents` runs movement before TRANSPORT, so the Trader is the first unit
+/// listed under the Caravanserai once more and Ivanhoe's 1000 arrives.
+#[test]
+fn a_promoted_formed_unit_that_moves_out_hands_the_caravanserai_back() {
+    assert_trader_still_owns(&orders(
+        "FORM 1\nBUY 1 ORC\nMOVE OUT\nEND\nPROMOTE NEW 1",
+        &[(IVANHOE, "GIVE NEW 1 100 SILV")],
+    ));
+}
+
+/// `ah-ry88` review: as above, for a formed unit that walks out of the hex altogether.
+#[test]
+fn a_promoted_formed_unit_that_walks_away_hands_the_caravanserai_back() {
+    assert_trader_still_owns(&orders(
+        "FORM 1\nBUY 1 ORC\nMOVE N\nEND\nPROMOTE NEW 1",
+        &[(IVANHOE, "GIVE NEW 1 100 SILV")],
+    ));
+}
+
+/// Both surfaces agree the Trader still owns its Caravanserai when the month ships: it receives
+/// Ivanhoe's 1000 and nobody's line is warned about.
+fn assert_trader_still_owns(orders: &str) {
+    let response = preview(orders);
+    let received: Vec<i64> = rows(&response, TRADER)[0]
+        .transport_received
+        .iter()
+        .map(|received| received.amount)
+        .collect();
+    assert_eq!(received, vec![1000], "the Trader receives Ivanhoe's 1000");
+    assert_eq!(
+        silver(orders, TRADER).income,
+        silver(&orders.replace(SHIPMENT, ""), TRADER)
+            .income
+            .map(|income| income + 1000),
+        "the Trader's silver receives Ivanhoe's 1000"
+    );
+    let warned = refusals(orders);
+    assert!(warned.is_empty(), "{warned:?}");
+}

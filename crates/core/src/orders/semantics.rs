@@ -776,8 +776,8 @@ pub fn review_turn(
     // Read from the report and the catalogue alone. Built whenever there is a catalogue, not only
     // when the reach check is enabled: the shipping price reads them too, and the agreed record
     // says the switch takes sentences away and leaves every figure honest (`ah-7ale.3`).
-    let shipping = ruleset.map(|rules| {
-        let mut shipping = super::transport::Shipping::read(report, rules, &options, source);
+    let mut shipping = ruleset.map(|rules| {
+        let mut shipping = super::transport::Shipping::read(report, rules, &options);
         // Which targets this month's orders could make eligible (`ah-kjjv`).
         shipping.read_orders(report, source, rules);
         shipping
@@ -909,6 +909,11 @@ pub fn review_turn(
         &claim_allowances,
         withdrawal_allowances,
     );
+    // Who owns each Caravanserai when the shipments run, once the market has said which formed
+    // units dissolve (`ah-ry88`).
+    if let (Some(shipping), Some(rules)) = (shipping.as_mut(), ruleset) {
+        shipping.read_owners(report, source, rules, &surviving_formed_crews(&hexes));
+    }
     let production = production_shares_refusing(
         &hexes,
         ruleset,
@@ -8434,8 +8439,14 @@ pub(crate) fn item_effects(
     // `review_turn` runs it: the food upkeep eats comes off the ITEMS column, and steps 5 and 6
     // are only known once step 4 has lent what it lends (`ah-q490`).
     let shipping = ruleset.map(|rules| {
-        let mut shipping =
-            super::transport::Shipping::read(report, rules, options, orders_document);
+        let mut shipping = super::transport::Shipping::read(report, rules, options);
+        // Once the market has said which formed units dissolve (`ah-ry88`).
+        shipping.read_owners(
+            report,
+            orders_document,
+            rules,
+            &surviving_formed_crews(&hexes),
+        );
         // The same reading of the month's orders `review_turn` makes, so no `Judged` here can
         // call a refusal settled that the month may undo (`ah-kjjv`).
         shipping.read_orders(report, orders_document, rules);
@@ -27417,6 +27428,30 @@ fn check_refused_transfers(
     }
 }
 
+/// Every unit this month's `FORM`s create in `hexes` that is still there once the market has run:
+/// one known to gain nobody is deleted (`rules/form`: "If no recruits are gained at all, the empty
+/// unit will be dissolved"; `Game::DeleteEmptyUnits`, after BUY), so it neither owns a hull when
+/// the fleets move (`ah-877p`) nor a Caravanserai when the shipments run (`ah-ry88`). Read once
+/// recruits are settled, which is what [`AfterTheMarket::gained_nobody`] reads.
+fn surviving_formed_crews(hexes: &[Hex<'_>]) -> Vec<crate::movement::fleet::FormedCrew> {
+    hexes
+        .iter()
+        .flat_map(|hex| {
+            hex.units
+                .iter()
+                .filter(|ordered| {
+                    ordered.formed.is_some() && !ordered.after_the_market().gained_nobody()
+                })
+                .map(|ordered| crate::movement::fleet::FormedCrew {
+                    unit_id: ordered.unit.unit_id.clone(),
+                    region_id: hex.region.region_id.clone(),
+                    key: ordered.key.clone(),
+                    structure_id: structure_after_orders(ordered).map(str::to_string),
+                })
+        })
+        .collect()
+}
+
 /// A course written for a fleet by a unit that does not own it: it lends a pair of hands and sets
 /// no direction, so the ship goes where its owner said or nowhere at all (`ah-ofra`).
 ///
@@ -27444,18 +27479,7 @@ fn check_fleet_course(
     let survives = |ordered: &&Ordered<'_>| {
         ordered.formed.is_none() || !ordered.after_the_market().gained_nobody()
     };
-    let formed: Vec<crate::movement::fleet::FormedCrew> = hex
-        .units
-        .iter()
-        .filter(|ordered| ordered.formed.is_some())
-        .filter(survives)
-        .map(|ordered| crate::movement::fleet::FormedCrew {
-            unit_id: ordered.unit.unit_id.clone(),
-            region_id: hex.region.region_id.clone(),
-            key: ordered.key.clone(),
-            structure_id: structure_after_orders(ordered).map(str::to_string),
-        })
-        .collect();
+    let formed = surviving_formed_crews(std::slice::from_ref(hex));
 
     for fleet in &hex.region.structures {
         // The same predicate the map applies, so the pane can never warn about a hull the map
