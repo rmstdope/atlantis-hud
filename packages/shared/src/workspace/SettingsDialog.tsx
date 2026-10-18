@@ -677,7 +677,7 @@ export const WARNING_GROUPS: readonly {
         code: "items-cannot-be-given",
         title: "Gifts the game will refuse",
         description:
-          "A GIVE or TAKE naming items that cannot change hands, or men given to another faction."
+          "A GIVE or TAKE naming items that cannot change hands, men given to another faction, or a whole unit given to unit 0 or to a unit that is already yours."
       },
       {
         code: "men-sent-into-a-mage",
