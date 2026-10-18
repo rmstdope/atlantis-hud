@@ -14,14 +14,16 @@ export type TransportTargetIssue = {
  */
 to: string, 
 /**
- * What the order would have moved out of the sender's stock. `0` when the sentence names no
- * amount - see `tag`.
+ * What the order would have moved out of the sender's stock - for `ALL SILV`, the silver left
+ * when the shipments run, after every STUDY and CAST (`ah-7jsv`). `0` when the sentence names
+ * no amount - see `tag`.
  */
 amount: number, 
 /**
  * The item the order named. Empty when the goods are ones the game would not transport
  * anyway, or when one order selected several tags: there is no per-tag claim to make, so the
- * sentence explains the target and says the order moves nothing.
+ * sentence explains the target and says the order moves nothing. Empty too for an `ALL SILV`
+ * that would find no silver left when the shipments run (`ah-7jsv`).
  */
 tag: string, reason: TransportTargetReason, 
 /**

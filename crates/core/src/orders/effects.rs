@@ -325,12 +325,14 @@ pub struct TransportReach {
 pub struct TransportTargetIssue {
     /// The unit number the order named.
     pub to: String,
-    /// What the order would have moved out of the sender's stock. `0` when the sentence names no
-    /// amount - see `tag`.
+    /// What the order would have moved out of the sender's stock - for `ALL SILV`, the silver left
+    /// when the shipments run, after every STUDY and CAST (`ah-7jsv`). `0` when the sentence names
+    /// no amount - see `tag`.
     pub amount: i64,
     /// The item the order named. Empty when the goods are ones the game would not transport
     /// anyway, or when one order selected several tags: there is no per-tag claim to make, so the
-    /// sentence explains the target and says the order moves nothing.
+    /// sentence explains the target and says the order moves nothing. Empty too for an `ALL SILV`
+    /// that would find no silver left when the shipments run (`ah-7jsv`).
     pub tag: String,
     pub reason: TransportTargetReason,
     /// Which of this unit's `TRANSPORT`/`DISTRIBUTE` orders this issue belongs to, on the same
@@ -2817,7 +2819,8 @@ struct Working {
     /// could not pay for, filled by `apply_item_effects` and read by `apply_transport_phase`
     /// (`ah-7ale.4`).
     refused_shipments: std::collections::BTreeSet<(usize, usize)>,
-    /// `(sender index, 1-based document line)` of every refused `ALL SILV` shipment, with the
+    /// `(sender index, 1-based document line)` of every `ALL SILV` shipment that moves nothing
+    /// (refused, possibly refused, out of reach or unmeasured), with the
     /// silver it would have taken as it ran - the ledger's figure, since this walk does not
     /// spend silver on STUDY or CAST (`ah-7jsv`). Filled by `apply_item_effects`, read by
     /// `goods_named`.

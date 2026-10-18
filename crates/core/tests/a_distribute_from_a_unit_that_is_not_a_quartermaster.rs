@@ -195,3 +195,28 @@ fn a_refused_all_silv_names_the_silver_left_after_cast_and_study() {
         vec![("1162".to_string(), 2890 + spent, "SILV".to_string())]
     );
 }
+
+/// The same refusal to a unit the report never names: the sender's own missing skill settles it
+/// whatever the target is, so the hover still names a figure, and it is the one left when the
+/// shipments run (`ah-7jsv` review, finding 1).
+#[test]
+fn a_refused_all_silv_to_an_unshown_unit_names_the_silver_left_after_study() {
+    let (issues, spent) =
+        the_silver_named_by_a_refused_all_silv(&orders("STUDY TRUE\nDISTRIBUTE 99999 ALL SILV"));
+    assert!(spent < 0, "the study fee is booked: {spent}");
+    assert_eq!(
+        issues,
+        vec![("99999".to_string(), 2890 + spent, "SILV".to_string())]
+    );
+}
+
+/// Where the month has spent everything before the shipments run, `ALL` would take nothing: the
+/// hover names no amount and says the order moves nothing, as the order line does (`ah-7jsv`
+/// review, finding 3).
+#[test]
+fn a_refused_all_silv_with_nothing_left_names_no_amount() {
+    let (issues, _) = the_silver_named_by_a_refused_all_silv(&orders(
+        "GIVE 1162 2190 SILV\nCAST CFSW\nSTUDY TRUE\nDISTRIBUTE 1162 ALL SILV",
+    ));
+    assert_eq!(issues, vec![("1162".to_string(), 0, String::new())]);
+}

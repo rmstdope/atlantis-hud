@@ -6953,8 +6953,9 @@ struct Ledger<'a> {
     /// was left as the line ran, or refused outright before shipping began (`ah-0aqx`). Said on
     /// the sender's own line by [`report_shortfalls`].
     cut_shipments: Vec<CutShipment>,
-    /// What each refused `ALL SILV` shipment would have taken as it ran, keyed by sender and
-    /// 1-based document line (`ah-7jsv`). The game moves nothing for it, but the hover names the
+    /// What each `ALL SILV` shipment that moves nothing - refused, possibly refused, out of reach
+    /// or unmeasured - would have taken as it ran, keyed by sender and 1-based document line
+    /// (`ah-7jsv`). The game moves nothing for it, but the hover names the
     /// silver that stays, and that is the silver left at TRANSPORT - after every STUDY and CAST
     /// (`rules/sequenceofevents`) - not the report's holding. Read by [`item_effects`].
     unshipped_silver: BTreeMap<(String, usize), i64>,
@@ -8671,7 +8672,7 @@ pub(crate) struct UnitItemEffects {
     /// not pay for (`ah-7ale.4`), and silver ones asking more than it held as shipping began
     /// (`ah-0aqx`). The item preview keeps their goods: it has no silver of its own to judge with.
     pub refused_shipments: Vec<i64>,
-    /// What each of this unit's refused `ALL SILV` shipments would have taken as it ran, by
+    /// What each of this unit's unshipped `ALL SILV` lines would have taken as it ran, by
     /// 1-based document line (`ah-7jsv`): the silver the hover says stays, which the item preview
     /// cannot count itself, since it has no silver ledger of its own.
     pub unshipped_silver: BTreeMap<i64, i64>,
@@ -26145,6 +26146,20 @@ fn shipping_bills(
             let Some(judged) = judge_shipment(shipping, hex, *order, sender, &id) else {
                 continue;
             };
+            // Before the unshown target's exit below: a DISTRIBUTE refused for its sender's skill is
+            // refused whoever the target is, and the hover still names its silver (`ah-7jsv`).
+            record_unshipped_silver(
+                ledger,
+                hex,
+                ordered,
+                ruleset,
+                &judged,
+                sub_phase,
+                &name,
+                text,
+                amount,
+                received_earlier,
+            );
             // `target_facts` has an entry for every unit in every region of the report, so an
             // absent entry is exactly "the report does not show this unit at all" - narrower than
             // `Acceptance::EligibilityUnknown`, whose other cause is a foreign unit the report does
@@ -26177,18 +26192,6 @@ fn shipping_bills(
                 continue;
             }
             let acceptance = judged.acceptance;
-            record_unshipped_silver(
-                ledger,
-                hex,
-                ordered,
-                ruleset,
-                &judged,
-                sub_phase,
-                &name,
-                text,
-                amount,
-                received_earlier,
-            );
             if !matches!(
                 acceptance,
                 super::transport::Acceptance::Eligible
@@ -26446,9 +26449,9 @@ fn shipping_bills(
     delivered
 }
 
-/// What a refused `ALL SILV` line would have shipped had it run, into
-/// [`Ledger::unshipped_silver`] (`ah-7jsv`): the target refused it, or it is out of reach, or its
-/// distance cannot be measured. The same holding an accepted line in this sub-phase is resolved
+/// What an `ALL SILV` line that moves nothing would have shipped had it run, into
+/// [`Ledger::unshipped_silver`] (`ah-7jsv`): the target refused it or may not accept it, it is out
+/// of reach, or its distance cannot be measured - every line the hover names without shipping. The same holding an accepted line in this sub-phase is resolved
 /// against, so the hover's "N SILV stay" and the month-end figure beside it read one stock. An
 /// exact amount is left out: the order line names it as written, and the hover agrees with it.
 #[allow(clippy::too_many_arguments)]
@@ -26467,10 +26470,9 @@ fn record_unshipped_silver(
     if judged.phase != sub_phase || matches!(amount, Amount::Exact(_)) {
         return;
     }
-    let accepted = matches!(
-        judged.acceptance,
-        super::transport::Acceptance::Eligible | super::transport::Acceptance::AcceptanceUnknown
-    );
+    // `AcceptanceUnknown` is never booked either (`conditional` in [`shipping_bills`]), and the
+    // hover counts it out beside the refusals: one basis for every line it names.
+    let accepted = judged.acceptance == super::transport::Acceptance::Eligible;
     let arrives = matches!(
         judged.measured,
         Some(super::transport::Measured {
