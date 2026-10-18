@@ -1693,6 +1693,64 @@ test("the unit/orders split drags at the grip and survives a reload", async ({ p
   );
 });
 
+/**
+ * In a short window the right column cannot hold its floors, and it used to run down under the units
+ * dock, taking the orders splitter with it (ah-hgyl). The dock now yields first, down to its own
+ * one-row floor, and whatever the column still cannot hold scrolls inside the column, so the
+ * splitter never lies under the dock at any height.
+ */
+test("in a short window the orders splitter stays clear of the units dock and takes the mouse", async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1200, height: 720 });
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await waitForSettledHeader(page);
+  const grip = page.getByTestId("panel-splitter");
+  const dock = page.locator('[data-map-overlay="bottom"]');
+
+  for (let height = 720; height >= 350; height -= 10) {
+    await page.setViewportSize({ width: 1200, height });
+    await expect(grip).toBeInViewport();
+    const strip = (await grip.boundingBox())!;
+    const pane = (await dock.boundingBox())!;
+    expect(strip.y + strip.height, `the orders splitter's strip at ${height}px`).toBeLessThanOrEqual(
+      pane.y + 0.5
+    );
+    // The dock is still on screen, title bar and all.
+    expect(pane.y + pane.height, `the units dock at ${height}px`).toBeLessThanOrEqual(height);
+  }
+
+  // At 1200x350 the strip is the mouse's to grab: its middle row hits the grip, and pressing
+  // there starts the splitter's own drag (its pill widens) rather than anything of the dock's.
+  const strip = (await grip.boundingBox())!;
+  const middle = { x: strip.x + strip.width / 2, y: strip.y + strip.height / 2 };
+  const hit = await page.evaluate(({ x, y }) => {
+    const top = document.elementFromPoint(x, y);
+    return Boolean(top && document.querySelector('[data-testid="panel-splitter"]')?.contains(top));
+  }, middle);
+  expect(hit).toBe(true);
+  const pill = grip.locator("div").first();
+  await page.mouse.move(middle.x, middle.y);
+  await page.mouse.down();
+  await page.mouse.move(middle.x, middle.y + 20, { steps: 3 });
+  await expect(pill).toHaveClass(/w-12/);
+  await page.mouse.up();
+  await expect(pill).toHaveClass(/w-8/);
+
+  // Nor can the dock be dragged up over it: dragged as far as it goes, it stops short of the strip.
+  await page.setViewportSize({ width: 1200, height: 720 });
+  const unitsGrip = page.getByTestId("units-splitter");
+  const from = (await unitsGrip.boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2, 60, { steps: 6 });
+  await page.mouse.up();
+  const raised = (await grip.boundingBox())!;
+  expect(raised.y + raised.height).toBeLessThanOrEqual((await dock.boundingBox())!.y + 0.5);
+  await unitsGrip.dblclick();
+});
+
 /** The left or right overlay pane's current width, in CSS pixels. */
 async function overlayWidth(page: Page, edge: "left" | "right") {
   const box = await page.locator(`[data-map-overlay="${edge}"]`).boundingBox();
@@ -1733,6 +1791,10 @@ async function unitsPaneHeight(page: Page): Promise<number> {
 
 test("the units pane drags at its grip and survives a reload", async ({ page }) => {
   await loadReport(page);
+  // The pane may not be dragged into what the right column above it needs for its floors
+  // (ah-hgyl), which at the pinned 1280x720 leaves it about 40px to grow; this test is about the
+  // drag mechanism, so it takes a window with room for it.
+  await withRoomToDrag(page);
   await selectHex(page, "1:7,53");
 
   const before = await unitsPaneHeight(page);

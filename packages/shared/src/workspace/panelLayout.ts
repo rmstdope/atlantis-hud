@@ -189,6 +189,37 @@ export function rightColumnFloorsRem(): number {
 }
 
 /**
+ * Inline style for the row of rails above the units dock: a floor that keeps the right column's two
+ * floors, or null when no floor is needed.
+ *
+ * In a short window the right column used to run on below its row, under the units dock, and took
+ * the orders splitter with it (ah-hgyl). With this floor the dock yields first, down to its own
+ * `UNITS_MIN_REM` plus the one gap between them - that is the `100% - ...` term, so the dock is
+ * never pushed off the bottom of the window. Whatever the column still cannot hold below that
+ * scrolls inside the column, which is the shell's half of the rule.
+ *
+ * Only while the unit and orders panels are both open: that is when both floors stand, and when
+ * the splitter between them exists. A folded one leaves the editor flexible or a title bar.
+ */
+export function railRowStyle(collapsed: Collapsed): { minHeight: string } | null {
+  if (railRowReserveRem(collapsed) === 0) {
+    return null;
+  }
+  return {
+    minHeight: `min(${rightColumnFloorsRem()}rem, 100% - ${RAIL_GAP_REM + UNITS_MIN_REM}rem)`
+  };
+}
+
+/**
+ * How much of the overlay column the units dock must leave above itself, in rem: the right
+ * column's floors and the one gap between the row and the dock, or 0 when `railRowStyle` holds no
+ * floor. The dock's drag stops here (`dragUnitsHeight`), since the layout would not draw it taller.
+ */
+export function railRowReserveRem(collapsed: Collapsed): number {
+  return collapsed.unit || collapsed.orders ? 0 : rightColumnFloorsRem() + RAIL_GAP_REM;
+}
+
+/**
  * Inline style for the orders slot, or null while the default pin applies.
  *
  * The `maxHeight` is the clamp-to-fit on a short window: the shared slot keeps `SLOT_MIN_REM` plus
@@ -274,8 +305,13 @@ export const UNITS_MIN_REM = 5.75;
 export const UNITS_MAX_REM = 60; // sanity ceiling for stored values only
 export const UNITS_CEILING_FRACTION = 0.7;
 
-const PINNED_UNITS = "h-[20.625rem] max-h-[70%] min-h-[5.75rem] flex-none";
-const CUSTOM_UNITS = "min-h-[5.75rem] flex-none";
+/**
+ * `flex-initial`, not `flex-none`: the dock may shrink, down to its floor, when the row of rails
+ * above it asks for the right column's floors in a short window (`railRowStyle`, ah-hgyl). In any
+ * window with room it keeps its height exactly as before, since nothing then asks it to shrink.
+ */
+const PINNED_UNITS = "h-[20.625rem] max-h-[70%] min-h-[5.75rem] flex-initial";
+const CUSTOM_UNITS = "min-h-[5.75rem] flex-initial";
 
 /** null unless a finite number; otherwise clamped into [UNITS_MIN_REM, UNITS_MAX_REM]. */
 export function clampUnitsHeight(value: unknown): number | null {
@@ -293,11 +329,21 @@ export function clampUnitsHeight(value: unknown): number | null {
  * One drag or key step on the units pane, resolved against the map column: `hostRem` is the
  * overlay column's content height (Infinity when unmeasurable, leaving UNITS_MAX_REM). Ceiling is
  * min(UNITS_MAX_REM, hostRem * UNITS_CEILING_FRACTION); if that falls under UNITS_MIN_REM the
- * floor wins outright with atLimit true.
+ * floor wins outright with atLimit true. `reserveRem` is what the row of rails above must keep
+ * (`railRowReserveRem`, ah-hgyl): the dock is never dragged into it.
  */
-export function dragUnitsHeight(startRem: number, deltaRem: number, hostRem: number): DragResult {
+export function dragUnitsHeight(
+  startRem: number,
+  deltaRem: number,
+  hostRem: number,
+  reserveRem = 0
+): DragResult {
   const raw = startRem + deltaRem;
-  const ceiling = Math.min(UNITS_MAX_REM, hostRem * UNITS_CEILING_FRACTION);
+  const ceiling = Math.min(
+    UNITS_MAX_REM,
+    hostRem * UNITS_CEILING_FRACTION,
+    hostRem - reserveRem
+  );
   if (ceiling < UNITS_MIN_REM) {
     return { rem: UNITS_MIN_REM, atLimit: true };
   }
