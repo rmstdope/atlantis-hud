@@ -10,7 +10,7 @@
  * transport and the storage differ.
  */
 
-import { createWebCoreAdapter, loadCoreWasm } from "@atlantis/browser-core";
+import { createWebCoreAdapter, loadCoreWasm, startQueryWorker } from "@atlantis/browser-core";
 import type { CoreAdapter, TauriInvoke } from "@atlantis/core-client";
 import { createTauriAdapter } from "@atlantis/core-client";
 
@@ -33,5 +33,7 @@ export async function createDesktopCoreAdapter(): Promise<CoreAdapter> {
     return createTauriAdapter(invoke as TauriInvoke);
   }
 
-  return createWebCoreAdapter(await loadCoreWasm());
+  // The order checks in the core's worker, as on the web (ah-iauy).
+  const wasm = await loadCoreWasm();
+  return createWebCoreAdapter(wasm, undefined, startQueryWorker());
 }

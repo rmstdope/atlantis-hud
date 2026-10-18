@@ -7,6 +7,8 @@
  */
 
 import init, * as core from "./wasm/atlantis_core.js";
+import type { QueryCall } from "@atlantis/core-client";
+import { createWorkerQueryCall } from "./queryWorkerProtocol";
 import type { CoreWasmModule } from "./webCoreAdapter";
 
 let pending: Promise<CoreWasmModule> | null = null;
@@ -28,4 +30,24 @@ export function loadCoreWasm(): Promise<CoreWasmModule> {
   }
 
   return pending;
+}
+
+/**
+ * Starts the core's worker and returns how to ask it a query, or null where no worker can be
+ * started - in which case the adapter answers everything on the main thread, as it did before
+ * ah-iauy.
+ *
+ * Vite recognises the `new Worker(new URL(...))` form and bundles the worker with its own copy of
+ * the glue, which fetches the same `.wasm` asset relative to itself.
+ */
+export function startQueryWorker(): QueryCall | null {
+  if (typeof Worker === "undefined") {
+    return null;
+  }
+  try {
+    const worker = new Worker(new URL("./queryWorker.ts", import.meta.url), { type: "module" });
+    return createWorkerQueryCall(worker);
+  } catch {
+    return null;
+  }
 }
