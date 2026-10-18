@@ -4770,7 +4770,9 @@ fn held_by(
 /// anything moves, so the sharer stays ours and lends as before: a unit the report shows in
 /// another hex, or a number it never prints, errors "Nonexistant target" (`ah-te15`); unit 0
 /// errors "Can't discard a whole unit."; and one of our own units here, a `FORM`ed `NEW` unit
-/// included, errors "Unit already belongs to our faction!" (`ah-839x`).
+/// included, errors "Unit already belongs to our faction!" (`ah-839x`). The ledger, the Silver
+/// column and the warning read those two refusals from [`GiveReach::refuses_a_whole_unit`]; a
+/// change there must be matched here.
 fn gives_itself_away(
     ordered: &Ordered<'_>,
     reach: impl Fn(&Party) -> GiveReach,
@@ -9237,10 +9239,13 @@ fn emptied_by(
     // resolving the class - re-deriving it here would be a second reading of what `apply_transfers`
     // has already worked out.
     let gives_it_away = actor.intents.iter().any(|placed| match &placed.intent {
-        Intent::Give { what, .. } => match what {
+        Intent::Give { to, what, .. } => match what {
             Selector::Item(text) => resolve_item(text, hex, actor, ruleset)
                 .is_some_and(|resolved| resolved.eq_ignore_ascii_case(tag)),
-            Selector::Class(_) | Selector::WholeUnit | Selector::UnfinishedShip(_) => true,
+            // A whole unit given to unit 0 or to one of ours is refused before anything moves,
+            // so it empties nothing (`ah-miqb`).
+            Selector::WholeUnit => !hex.give_endpoint(to, unit_id).reach.refuses_a_whole_unit(),
+            Selector::Class(_) | Selector::UnfinishedShip(_) => true,
         },
         // What an `EXCHANGE` hands over leaves in the Give orders too (`rules/sequenceofevents`),
         // so it is said the way a gift is - but only a line the ledger actually settled, never a
@@ -34052,6 +34057,46 @@ mod tests {
             message,
             Some("another unit takes all 10 of its furs before the market opens, so this sells nothing")
         );
+    }
+
+    /// `ah-miqb`. A whole unit given to unit 0 or to one of ours is refused before anything moves
+    /// (`Game::DoGiveOrder`), so it empties nothing: the TAKE is what is named.
+    #[test]
+    fn a_sale_emptied_by_a_take_beside_a_refused_whole_unit_gift_names_the_take() {
+        for give in ["GIVE 0 UNIT", "GIVE 5512 UNIT"] {
+            let hex = ReportRegion {
+                wanted: vec![MarketItem {
+                    amount: 100,
+                    name: "furs".to_string(),
+                    tag: "FUR".to_string(),
+                    price: 42,
+                }],
+                ..region(vec![
+                    with_item(unit("2390"), 10, "furs", "FUR"),
+                    unit("5512"),
+                ])
+            };
+
+            let review = review_turn(
+                &report(vec![hex]),
+                &format!("unit 5512\nTAKE FROM 2390 10 FUR\nunit 2390\n{give}\nSELL ALL FUR\n"),
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let message = review
+                .findings
+                .iter()
+                .find(|finding| finding.code.as_str() == "nothing-left-to-sell")
+                .map(|finding| finding.message.as_str());
+            assert_eq!(
+                message,
+                Some(
+                    "another unit takes all 10 of its furs before the market opens, so this sells nothing"
+                ),
+                "{give}"
+            );
+        }
     }
 
     /// `ah-q7jd`, increment 7.

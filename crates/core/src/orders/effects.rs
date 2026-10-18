@@ -6139,10 +6139,10 @@ mod tests {
     /// admit the gap rather than hide it (see the design's *Where each recording goes* table).
     /// Renamed from `giving_the_unit_itself_previews_nothing`, whose old name and assertion
     /// predate that decision - recorded as a deviation from the plan's regression net in the PR.
-    #[test]
     ///
     /// Aimed at another faction's new unit: a whole unit given to one of our own or to unit 0 is
     /// refused by the game and reads as the line deleted (`ah-miqb`, the control below).
+    #[test]
     fn giving_the_unit_itself_moves_no_items_but_is_marked_uncounted() {
         let response = preview("unit 900\nGIVE FACTION 14 NEW 2 UNIT\n");
         let unit = only_unit(&response);
@@ -6161,13 +6161,15 @@ mod tests {
         // `Game::DoGiveOrder`), so neither leaves anything uncounted.
         for refused in ["unit 900\nGIVE 901 UNIT\n", "unit 900\nGIVE 0 UNIT\n"] {
             let response = preview(refused);
+            let giver = response
+                .regions
+                .iter()
+                .flat_map(|region| &region.units)
+                .find(|unit| unit.unit.unit_id == "900");
+            // The giver's row is absent - nothing about it changed - or carries nothing uncounted.
             assert!(
-                response
-                    .regions
-                    .iter()
-                    .flat_map(|region| &region.units)
-                    .all(|unit| unit.uncounted.is_empty()),
-                "{refused}: {response:?}"
+                giver.is_none_or(|giver| giver.uncounted.is_empty()),
+                "{refused}: {giver:?}"
             );
         }
 
