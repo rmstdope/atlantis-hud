@@ -3512,7 +3512,23 @@ fn forecast_hex(
                             .collect()
                     })
                     .unwrap_or_default();
-                lent_across.push((arrival.unit.clone(), lent_to, lent));
+                // And whom it lent among the passengers sailing in, with the hex each sails
+                // from, as a resident's line names them (`ah-kjq5`, `ah-qffa`).
+                let students = &ledger.relief().walking.arriving_students;
+                let across = purse_for_orders
+                    .arrivals_lent_to_arriving
+                    .get(index)
+                    .map(|lent_to| {
+                        lent_to
+                            .iter()
+                            .filter_map(|&(student, amount)| {
+                                let student = students.get(student)?;
+                                Some(((student.label.clone(), student.from.clone()), amount))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                lent_across.push((arrival.unit.clone(), lent_to, across, lent));
             }
         }
     }
@@ -17975,11 +17991,17 @@ fn split_loan<T>(
 /// sits in the hex the report lists it in - so a sharer that lends 50 spends 50 wherever it lent
 /// it, as `forecast_hex` does for a sharer that stays (`ah-moq3`, `ah-wyj8`).
 /// What one sharer arriving from another hex lent where its month ends: its own row's key, whom
-/// it lent there as `(label, amount)` (`ah-myko`), and how much in all.
-type LentAcross = (UnitKey, Vec<(String, i64)>, i64);
+/// it lent there as `(label, amount)` (`ah-myko`), which passengers sailing in it lent as
+/// `((label, the hex each sails from), amount)` (`ah-qffa`), and how much in all.
+type LentAcross = (
+    UnitKey,
+    Vec<(String, i64)>,
+    Vec<((String, String), i64)>,
+    i64,
+);
 
 fn lend_across_hexes(silver: &mut [UnitSilver], lent_across: &[LentAcross]) {
-    for (unit, lent_to, lent) in lent_across {
+    for (unit, lent_to, across, lent) in lent_across {
         let Some(forecast) = silver.iter_mut().find(|forecast| {
             forecast.region_id == unit.region_id && forecast.unit_id == unit.unit_id
         }) else {
@@ -17988,8 +18010,7 @@ fn lend_across_hexes(silver: &mut [UnitSilver], lent_across: &[LentAcross]) {
         forecast.expense = forecast.expense.map(|spent| spent.saturating_add(*lent));
         forecast.at_month_end = forecast.at_month_end.map(|end| end.saturating_sub(*lent));
         if forecast.doubt.is_none() {
-            for (other, place, amount) in split_loan::<()>(*lent, lent_to, &[], |_| unreachable!())
-            {
+            for (other, place, amount) in split_loan(*lent, lent_to, across, Clone::clone) {
                 forecast.changes.push(SilverChange {
                     amount: -amount,
                     cause: SilverChangeCause::Lent,
@@ -18894,6 +18915,9 @@ struct SharingPurse {
     /// [`Lending::arrivals_lent_to`]: what each sharer arriving from another hex lent which unit
     /// of this one, aligned with `arrivals_lend` (`ah-myko`).
     arrivals_lent_to: Vec<Vec<(usize, i64)>>,
+    /// [`Lending::arrivals_lent_to_arriving`]: what each sharer arriving from another hex lent
+    /// which passenger sailing in, aligned with `arrivals_lend` (`ah-qffa`).
+    arrivals_lent_to_arriving: Vec<Vec<(usize, i64)>>,
     /// [`Lending::arriving_lent_by`] once netted: who paid each arriving passenger's STUDY here,
     /// aligned with [`WalkingSilver::arriving_students`] (`ah-myko`). Empty where nothing pools.
     arriving_lent_by: Vec<Vec<(Lender, i64)>>,
@@ -19077,6 +19101,22 @@ impl Lending {
             }
         }
         by_unit
+    }
+
+    /// [`Lending::lent_to_each_arriving`] for the sharers arriving from other hexes, aligned with
+    /// `arrivals_lend`: what each lent which passenger sailing in (`ah-qffa`).
+    fn arrivals_lent_to_arriving(&self) -> Vec<Vec<(usize, i64)>> {
+        let mut by_arrival = vec![Vec::new(); self.arrivals_lend.len()];
+        for (student, draws) in self.arriving_lent_by.iter().enumerate() {
+            for &(lender, amount) in draws {
+                if let Lender::Arrival(index) = lender {
+                    if let Some(lent) = by_arrival.get_mut(index) {
+                        push_loan(lent, student, amount);
+                    }
+                }
+            }
+        }
+        by_arrival
     }
 
     /// Who lent each unit of the hex what it borrowed here, `(lender, amount)` - aligned with
@@ -20102,6 +20142,7 @@ fn sharing_purse_over(
         lent_by: vec![Vec::new(); hex.units.len()],
         lent_to_each_in_hex: vec![Vec::new(); hex.units.len()],
         arrivals_lent_to: vec![Vec::new(); arrivals.len()],
+        arrivals_lent_to_arriving: vec![Vec::new(); arrivals.len()],
         arriving_lent_by: Vec::new(),
         coverage: vec![None; hex.units.len()],
         unjudged: false,
@@ -20223,6 +20264,7 @@ fn sharing_purse_over(
             lent_by: paid.lent_by(),
             lent_to_each_in_hex: paid.lent_to_each_in_hex(),
             arrivals_lent_to: paid.arrivals_lent_to(),
+            arrivals_lent_to_arriving: paid.arrivals_lent_to_arriving(),
             arriving_lent_by: paid.arriving_lent_by.clone(),
             lends: paid.lends,
             arrivals_lend: paid.arrivals_lend,
@@ -20256,6 +20298,7 @@ fn sharing_purse_over(
         lent_by: lending.lent_by(),
         lent_to_each_in_hex: lending.lent_to_each_in_hex(),
         arrivals_lent_to: lending.arrivals_lent_to(),
+        arrivals_lent_to_arriving: lending.arrivals_lent_to_arriving(),
         arriving_lent_by: lending.arriving_lent_by.clone(),
         lends: lending.lends,
         arrivals_lend: lending.arrivals_lend,
@@ -82212,6 +82255,83 @@ BUILD
                 -fee
             )]
         );
+    }
+
+    /// `ah-qffa`: sharer 907 walks from (7,51) into (7,53), where the fleet lands and resident 902
+    /// has nothing to lend. MOVE and SAIL run before the month-long orders
+    /// (`rules/sequenceofevents`) and a sharer pays for a unit "in the same region"
+    /// (`rules/share`), so 907 pays the passenger's STUDY. Both sides of that loan name each
+    /// other, as a resident's do (`ah-kjq5`): 907's `lent` line names the passenger and the hex
+    /// it sails from, not "a faction-mate's orders in this hex".
+    #[test]
+    fn a_sharer_that_walks_in_and_pays_a_passengers_study_names_the_passenger() {
+        let (report, review) = walker_paying_a_passenger("");
+        let fee = silver_of(&review, "901").borrowed_for_orders;
+        assert!(fee > 0, "{:?}", silver_of(&review, "901"));
+        assert_eq!(
+            loan_lines(&review, "901", SilverChangeCause::WasLent),
+            vec![(
+                Some(named(&report, "907")),
+                Some("mountain (7,53)".to_string()),
+                fee
+            )]
+        );
+        assert_eq!(
+            loan_lines(&review, "907", SilverChangeCause::Lent),
+            vec![(
+                Some(named(&report, "901")),
+                Some("ocean (7,55)".to_string()),
+                -fee
+            )]
+        );
+    }
+
+    /// `ah-qffa` review, finding 1: the same walker also pays resident 902's own STUDY, so its
+    /// loan is two lines - the resident first, with no place, then the passenger and the hex it
+    /// sails from (`split_loan`) - which add up to what it lent.
+    #[test]
+    fn a_sharer_that_walks_in_and_pays_a_resident_and_a_passenger_names_both() {
+        let (report, review) = walker_paying_a_passenger("STUDY COMB\n");
+        let fee = silver_of(&review, "901").borrowed_for_orders;
+        let resident_fee = silver_of(&review, "902").borrowed_for_orders;
+        assert!(fee > 0 && resident_fee > 0, "{fee} {resident_fee}");
+        assert_eq!(
+            loan_lines(&review, "907", SilverChangeCause::Lent),
+            vec![
+                (Some(named(&report, "902")), None, -resident_fee),
+                (
+                    Some(named(&report, "901")),
+                    Some("ocean (7,55)".to_string()),
+                    -fee
+                ),
+            ]
+        );
+    }
+
+    /// Sharer 907 walks from (7,51) into (7,53), where the fleet carrying studying passenger 901
+    /// lands and sharer 902, with no silver, writes `resident`.
+    fn walker_paying_a_passenger(resident_orders: &str) -> (ParsedReport, TurnReview) {
+        let walker = sharing(with_silver(unit("907"), 500));
+        let resident = sharing(with_silver(unit("902"), 0));
+        let (mut report, _) = passenger_palace(
+            open_sea(vec![]),
+            region_at("1:7,53", 7, 53, vec![resident]),
+            None,
+        );
+        report
+            .regions
+            .push(region_at("1:7,51", 7, 51, vec![walker]));
+        let orders = format!(
+            "unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 902\n{resident_orders}unit 907\nMOVE S\n"
+        );
+        // Only the walker's month end is given, as the passenger tests above review the fleet
+        // untraced; the fleet's landing is read from its SAIL.
+        let options = counterfactual_month_end(
+            CheckOptions::default(),
+            &[("907", Coordinate { x: 7, y: 53, z: 1 })],
+        );
+        let review = review_turn(&report, &orders, Some(&trident()), options);
+        (report, review)
     }
 
     /// `ah-kjq5`: two sharers where the fleet lands pay one fee between them, so the passenger's

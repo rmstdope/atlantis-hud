@@ -91,6 +91,16 @@ const withoutExplanations = (nodes: Element[]) =>
     return (copy.textContent ?? "").trim();
   });
 
+/** A Silver cell's figure alone: its explanation, its ⚠ and its screen-reader words dropped. */
+const silverFigures = (nodes: Element[]) =>
+  nodes.map((node) => {
+    const copy = node.cloneNode(true) as HTMLElement;
+    for (const span of copy.querySelectorAll("[data-explains], [aria-hidden], .sr-only")) {
+      span.remove();
+    }
+    return (copy.textContent ?? "").trim();
+  });
+
 const visibleText = async (cell: Locator) =>
   (await cell.evaluateAll(withoutExplanations))[0] ?? "";
 
@@ -5729,10 +5739,12 @@ test("the dossier sends the reader to their units rather than listing them", asy
  * The Silver column (`ah-1wcw.1`), on the real turn.
  *
  * What is walkable here is the column existing, carrying real figures for our own units and none
- * for anyone else's, and sorting on them. The warned cell - the one that is a button and jumps to
- * the unit - cannot be reached from this fixture: every one of faction 95's units is `sharing`, so
- * `not-enough-silver` is anchored to the hex and names no unit, which is the plan's own
- * measurement (17 red, 0 warned). Its markup is pinned in `UnitTableDock.test.tsx` instead.
+ * for anyone else's, and sorting on them. Every one of faction 95's units is `sharing`, so
+ * `not-enough-silver` is anchored to the hex and names no unit; but the hex's pool holds nothing,
+ * so 18642's STUDY is refused, and a refused order marks the cell with a ⚠ all the same
+ * (`ah-rjz2`). The figure is read past that mark ([`silverFigures`]), and the test waits for the
+ * mark before reading anything: until the checks land the cell shows a plain figure, and a read
+ * that raced them is what made this test pass or fail by timing (`ah-qffa`).
  */
 test("the silver column forecasts our own units and sorts on the figure", async ({ page }) => {
   await loadReport(page);
@@ -5747,7 +5759,11 @@ test("the silver column forecasts our own units and sorts on the figure", async 
   // table windows its rows, so the foreign one is filtered into view rather than scrolled to.
   const cellOf = (unitId: string) =>
     page.getByTestId(`unit-row-${unitId}`).locator("td").last();
-  await expect.poll(() => visibleText(cellOf(OWN_UNIT))).toMatch(/^-?\d+$/);
+  const refusedMark = page.getByTestId(`unit-silver-${OWN_UNIT}`);
+  await expect(refusedMark).toBeVisible();
+  await expect.poll(async () => (await cellOf(OWN_UNIT).evaluateAll(silverFigures))[0]).toMatch(
+    /^-?\d+$/
+  );
 
   const filter = page.getByTestId("panel-units").getByLabel("Filter units");
   await filter.fill(FOREIGN_UNIT);
@@ -5769,11 +5785,13 @@ test("the silver column forecasts our own units and sorts on the figure", async 
   await expect(formedRow).toBeVisible();
   await expect.poll(() => visibleText(formedRow.locator("td").last())).toMatch(/^-?\d+$/);
   await fillOrders(page, "@study obse");
+  await expect(formedRow).toHaveCount(0);
+  await expect(refusedMark).toBeVisible();
 
   // Sorting ascending puts the lowest forecast first, and every figure on screen is in order.
   await header.getByRole("button", { name: "Silver", exact: true }).click();
   const figures = (
-    await page.locator("[data-testid^='unit-row-'] td:last-child").evaluateAll(withoutExplanations)
+    await page.locator("[data-testid^='unit-row-'] td:last-child").evaluateAll(silverFigures)
   )
     .filter((text) => /^-?\d+$/.test(text))
     .map(Number);
