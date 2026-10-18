@@ -25792,10 +25792,23 @@ fn check_transport_reach(
                 | super::transport::Acceptance::SenderNotQuartermaster)
                     if target_on && !judged.unsettled =>
                 {
-                    (
-                        codes::TRANSPORT_TARGET_REFUSED,
-                        transport_target_sentence(&id, *order, refused, goods().as_ref()),
-                    )
+                    let mut sentence =
+                        transport_target_sentence(&id, *order, refused, goods().as_ref());
+                    // The same line as a DISTRIBUTE would deliver, so the refusal says so - in the
+                    // words `transportTargetSentence` appends in the hover (`ah-7j90`). DISTRIBUTE
+                    // carries only what TRANSPORT does (`rules/economy_transport`), whatever the
+                    // amount form.
+                    let carried = || match what {
+                        Selector::Item(text) => resolve_item(text, hex, ordered, ruleset)
+                            .is_some_and(|tag| {
+                                ruleset.is_some_and(|rules| rules.can_be_transported(&tag))
+                            }),
+                        _ => false,
+                    };
+                    if judged.distribute_would_deliver && carried() {
+                        sentence.push_str(" DISTRIBUTE would deliver them.");
+                    }
+                    (codes::TRANSPORT_TARGET_REFUSED, sentence)
                 }
                 _ => continue,
             };
@@ -60784,9 +60797,10 @@ BUILD
         ));
         assert_eq!(finding.unit_id.as_deref(), Some("900"));
         assert_eq!(finding.line, Some(2));
+        // The same line as a DISTRIBUTE delivers, so the refusal says so (`ah-7j90`).
         assert_eq!(
             finding.message,
-            "Unit 901 is not a quartermaster, so 100 SILV stay with this unit."
+            "Unit 901 is not a quartermaster, so 100 SILV stay with this unit. DISTRIBUTE would deliver them."
         );
 
         let review = |orders: &str| {
@@ -60808,6 +60822,118 @@ BUILD
         }
 
         assert!(target_findings(vec![home], "unit 900\nDISTRIBUTE 901 100 SILV\n").is_empty());
+    }
+
+    /// `ah-7j90`: the order line's refusal keeps its words and gains the hint whatever the amount
+    /// form, since DISTRIBUTE carries SILV. `ALL` names no amount here, as today.
+    #[test]
+    fn a_refused_transport_of_all_says_distribute_would_deliver_them() {
+        let mut home = shipping_quartermaster();
+        home.units.push(unit("901"));
+
+        let finding = only(target_findings(vec![home], "unit 900\nTRANSPORT 901 ALL SILV\n"));
+        assert_eq!(
+            finding.message,
+            "Unit 901 is not a quartermaster, so this TRANSPORT moves nothing. DISTRIBUTE would deliver them."
+        );
+    }
+
+    /// `ah-7j90`: each refused line carries its own refusal and its own hint.
+    #[test]
+    fn every_refused_transport_line_carries_its_own_distribute_hint() {
+        let mut home = shipping_quartermaster();
+        home.units.push(unit("901"));
+
+        let messages: Vec<String> = target_findings(
+            vec![home],
+            "unit 900\nTRANSPORT 901 100 SILV\nTRANSPORT 901 3 IRON\n",
+        )
+        .into_iter()
+        .map(|finding| finding.message)
+        .collect();
+        assert_eq!(
+            messages,
+            vec![
+                "Unit 901 is not a quartermaster, so 100 SILV stay with this unit. DISTRIBUTE would deliver them.",
+                "Unit 901 is not a quartermaster, so 3 IRON stay with this unit. DISTRIBUTE would deliver them.",
+            ]
+        );
+    }
+
+    /// `ah-7j90`: no hint where DISTRIBUTE would not deliver either - beyond its two-hex reach
+    /// (`CheckTransportOrders` gives every DISTRIBUTE `LOCAL_TRANSPORT`), from a sender that cannot
+    /// DISTRIBUTE, to a quartermaster target, or for goods no shipment carries
+    /// (`rules/economy_transport`).
+    #[test]
+    fn a_refused_transport_distribute_would_not_deliver_has_no_hint() {
+        let refusals = |regions: Vec<ReportRegion>, orders: &str| -> Vec<String> {
+            check_turn(&report(regions), orders, Some(&ruleset()), with_map())
+                .into_iter()
+                .filter(|finding| finding.code == codes::TRANSPORT_TARGET_REFUSED)
+                .map(|finding| finding.message)
+                .collect()
+        };
+
+        let far = region_at("1:0,6", 0, 6, vec![unit("950")]);
+        assert_eq!(
+            refusals(
+                vec![shipping_quartermaster(), far],
+                "unit 900\nTRANSPORT 950 100 SILV\n"
+            ),
+            vec!["Unit 950 is not a quartermaster, so 100 SILV stay with this unit."]
+        );
+
+        assert_eq!(
+            refusals(
+                vec![shipping_from(vec![
+                    with_silver(unit("900"), 100),
+                    unit("901"),
+                ])],
+                "unit 900\nTRANSPORT 901 100 SILV\n"
+            ),
+            vec!["Unit 901 is not a quartermaster, so 100 SILV stay with this unit."],
+            "a sender that is no quartermaster"
+        );
+
+        assert_eq!(
+            refusals(
+                vec![shipping_from(vec![
+                    with_silver(with_skill(unit("900"), "QUAM", 1), 100),
+                    unit("901"),
+                ])],
+                "unit 900\nTRANSPORT 901 100 SILV\n"
+            ),
+            vec!["Unit 901 is not a quartermaster, so 100 SILV stay with this unit."],
+            "a quartermaster sender owning no Caravanserai"
+        );
+
+        let mut home = shipping_quartermaster();
+        home.units.push(with_skill(unit("902"), "QUAM", 1));
+        assert_eq!(
+            refusals(vec![home], "unit 900\nTRANSPORT 902 100 SILV\n"),
+            vec!["Unit 902 does not own a Caravanserai, so 100 SILV stay with this unit."],
+            "a quartermaster target"
+        );
+
+        let mut home = shipping_quartermaster();
+        home.units[0] = with_item(home.units[0].clone(), 2, "horse", "HORS");
+        home.units.push(unit("901"));
+        assert_eq!(
+            refusals(vec![home], "unit 900\nTRANSPORT 901 2 HORS\n"),
+            vec!["Unit 901 is not a quartermaster, so this TRANSPORT moves nothing."],
+            "goods no shipment carries"
+        );
+    }
+
+    /// `ah-7j90`: an uncertain refusal still has no order-line warning; its hint lives in the hover.
+    #[test]
+    fn an_uncertain_refusal_distribute_would_deliver_stays_silent_at_the_order() {
+        let mut home = shipping_quartermaster();
+        let mut theirs = unit("7100");
+        theirs.own = false;
+        theirs.faction_id = Some("2".to_string());
+        home.units.push(theirs);
+        assert!(target_findings(vec![home], "unit 900\nTRANSPORT 7100 100 SILV\n").is_empty());
     }
 
     /// `ah-kjjv`: only a refusal the report proves is warned about. A target that can receive, a

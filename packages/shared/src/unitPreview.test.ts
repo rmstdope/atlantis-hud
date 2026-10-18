@@ -2299,3 +2299,49 @@ describe("the study forecast", () => {
     expect(rows[0].study).toBeNull();
   });
 });
+
+// `ah-7j90`. Each sentence is quoted from the bead's agreed acceptance, against
+// `docs/ui/ah-7j90-distribute-hint.html` and `docs/ui/ah-7j90-distribute-hint-uncertain.html`.
+describe("a refused TRANSPORT a DISTRIBUTE would deliver", () => {
+  const refused = (overrides: Partial<TransportTargetIssue>): TransportTargetIssue => ({
+    to: "901",
+    amount: 100,
+    tag: "SILV",
+    reason: "notQuartermaster",
+    orderIndex: 0,
+    toUnshown: false,
+    unsettled: false,
+    reach: null,
+    distributeDelivers: true,
+    ...overrides
+  });
+
+  it("adds the hint to a certain refusal", () => {
+    expect(transportTargetSentence(refused({}))).toBe(
+      "Unit 901 is not a quartermaster, so 100 SILV stay with this unit. DISTRIBUTE would deliver them."
+    );
+  });
+
+  it("adds 'either way' to an own target whose month may make it a quartermaster", () => {
+    expect(transportTargetSentence(refused({ unsettled: true }))).toBe(
+      "Could not count 100 SILV for unit 901 because it is not a quartermaster now, but this month's orders may make it one before TRANSPORT runs. DISTRIBUTE would deliver them either way."
+    );
+  });
+
+  it("names the faction's attitude for another faction's unit", () => {
+    expect(
+      transportTargetSentence(refused({ to: "7100", reason: "notCaravanseraiOwner", unsettled: true }))
+    ).toBe(
+      "Could not count 100 SILV for unit 7100 because it does not own a Caravanserai now, but this month's orders may change that before TRANSPORT runs. DISTRIBUTE would deliver them either way, if unit 7100's faction accepts transports from yours."
+    );
+  });
+
+  it("leaves every sentence as it was without the flag", () => {
+    expect(transportTargetSentence(refused({ distributeDelivers: undefined }))).toBe(
+      "Unit 901 is not a quartermaster, so 100 SILV stay with this unit."
+    );
+    expect(transportTargetSentence(refused({ distributeDelivers: undefined, unsettled: true }))).toBe(
+      "Could not count 100 SILV for unit 901 because it is not a quartermaster now, but this month's orders may make it one before TRANSPORT runs."
+    );
+  });
+});
