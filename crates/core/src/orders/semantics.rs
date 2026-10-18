@@ -20449,7 +20449,10 @@ struct SilverFigures {
     /// for it (`ah-pyiy`), plus what the members lent at step 4 for somebody's fee - their own
     /// silver, in `can_have`, so in the spend whether it fed a member (whose `upkeep` it took off)
     /// or a unit outside the set (`ah-8xiv` review). What a lender outside the set, or the
-    /// unclaimed fund, paid is in neither figure. `0` at any moment before the month's end.
+    /// unclaimed fund, paid is in neither figure, and so is what a sharer walking away lends where
+    /// it lands. `0` at any moment before the month's end. The same reckoning as
+    /// [`maintenance_settled`]'s upkeep - relieved + lent, but on [`unpaid_upkeep`], which never
+    /// reads a fee paid twice over as a negative one.
     fee: i64,
 }
 
@@ -20498,7 +20501,10 @@ fn silver_figures(
         (
             ids.iter().map(|who| unpaid_upkeep(ledger, who)).sum(),
             ids.iter().map(|who| food_counted_in(ledger, who)).sum(),
+            // ... only of a member ending the month here: a sharer that walks away lends where it
+            // lands, from silver this sentence never counts (`ah-8xiv` follow-up review).
             ids.iter()
+                .filter(|&&who| !walking.is_some_and(|walking| walking.members.sharer_leaves(who)))
                 .map(|who| ledger.relief().lent.get(*who).copied().unwrap_or_default())
                 .sum::<i64>(),
         )
@@ -81841,6 +81847,57 @@ BUILD
         assert_eq!(
             figures(70, 30, 60, 60).spenders(),
             "orders and upkeep spend"
+        );
+    }
+
+    /// `ah-8xiv`, follow-up review finding 1: a sharer walking out of the hex lends at step 4
+    /// where it ends the month (`rules/share`: "the same region"; `rules/sequenceofevents`:
+    /// movement before maintenance), and the hex it leaves counts none of that silver in its
+    /// sentence. So the loan is no part of the fee that hex's spend states, and a borrower there
+    /// whose discard does spend silver keeps "orders and upkeep".
+    #[test]
+    fn a_walking_sharers_loan_where_it_lands_is_no_fee_of_the_hex_it_leaves() {
+        let regions = vec![
+            region_at(
+                "1:0,2",
+                0,
+                2,
+                vec![
+                    sharing(starving(with_silver(unit("903"), 200))),
+                    starving(with_silver(unit("905"), 25)),
+                    sharing(starving(with_silver(unit("907"), 0))),
+                ],
+            ),
+            region_at(
+                "1:0,0",
+                0,
+                0,
+                vec![with_men(starving(with_silver(unit("906"), 0)), 10)],
+            ),
+        ];
+        let orders = "unit 903\nMOVE N\nunit 905\nGIVE 0 20 SILV\nunit 906\nunit 907\n";
+        let (traced_report, options) = traced(report(regions), orders, &ruleset(), with_map());
+        let review = review_turn(
+            &report(traced_report.regions),
+            orders,
+            Some(&ruleset()),
+            options,
+        );
+        let silver: Vec<(Option<&str>, &str)> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .map(|finding| (finding.unit_id.as_deref(), finding.message.as_str()))
+            .collect();
+        assert_eq!(
+            silver,
+            vec![(
+                None,
+                "the units in this hex are short $15 between them: they can have $25 and their \
+                 orders and upkeep spend $40"
+            )],
+            "{:#?}",
+            review.findings
         );
     }
 
