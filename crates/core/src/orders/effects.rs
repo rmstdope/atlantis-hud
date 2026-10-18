@@ -6139,16 +6139,39 @@ mod tests {
     /// admit the gap rather than hide it (see the design's *Where each recording goes* table).
     /// Renamed from `giving_the_unit_itself_previews_nothing`, whose old name and assertion
     /// predate that decision - recorded as a deviation from the plan's regression net in the PR.
+    ///
+    /// Aimed at another faction's new unit: a whole unit given to one of our own or to unit 0 is
+    /// refused by the game and reads as the line deleted (`ah-miqb`, the control below).
     #[test]
     fn giving_the_unit_itself_moves_no_items_but_is_marked_uncounted() {
-        let response = preview("unit 900\nGIVE 901 UNIT\n");
+        let response = preview("unit 900\nGIVE FACTION 14 NEW 2 UNIT\n");
         let unit = only_unit(&response);
         assert!(
             !unit.changes.iter().any(|change| change.field == "items"),
             "handing over the unit itself must move none of its items: {:?}",
             unit.changes
         );
-        assert_eq!(unit.uncounted, vec!["GIVE 901 UNIT".to_string()]);
+        assert_eq!(
+            unit.uncounted,
+            vec!["GIVE FACTION 14 NEW 2 UNIT".to_string()]
+        );
+
+        // `ah-miqb`: the game refuses a whole unit given to one of our own or to unit 0 before
+        // anything moves ("Unit already belongs to our faction!" / "Can't discard a whole unit.",
+        // `Game::DoGiveOrder`), so neither leaves anything uncounted.
+        for refused in ["unit 900\nGIVE 901 UNIT\n", "unit 900\nGIVE 0 UNIT\n"] {
+            let response = preview(refused);
+            let giver = response
+                .regions
+                .iter()
+                .flat_map(|region| &region.units)
+                .find(|unit| unit.unit.unit_id == "900");
+            // The giver's row is absent - nothing about it changed - or carries nothing uncounted.
+            assert!(
+                giver.is_none_or(|giver| giver.uncounted.is_empty()),
+                "{refused}: {giver:?}"
+            );
+        }
 
         // The control: the same giver and receiver, with a transfer the preview does model and
         // count, so the row above is not just every GIVE reading as uncounted. Both units change
@@ -6581,7 +6604,7 @@ mod tests {
     /// into a refused man-item transfer.
     #[test]
     fn give_unit_remains_a_whole_unit_order_for_a_mage() {
-        let response = preview_for_mage("force [FORC]", "unit 900\nGIVE 901 UNIT\n");
+        let response = preview_for_mage("force [FORC]", "unit 900\nGIVE FACTION 14 NEW 2 UNIT\n");
         let region = &response.regions[0];
         assert_eq!(region.units.len(), 1, "only the giver's row is annotated");
         let unit = &region.units[0];
@@ -6591,7 +6614,10 @@ mod tests {
             unit.changes
         );
         assert_eq!(unit.unit.men, 1, "and no headcount changes");
-        assert_eq!(unit.uncounted, vec!["GIVE 901 UNIT".to_string()]);
+        assert_eq!(
+            unit.uncounted,
+            vec!["GIVE FACTION 14 NEW 2 UNIT".to_string()]
+        );
     }
 
     /// `ah-3sp7.1` taught the catalogue `MOUNT`'s five tags, so `tags_moved` can now resolve a
@@ -13183,7 +13209,10 @@ mod tests {
         /// `uncounted` already tells the player so - this pins that it is not reported twice.
         #[test]
         fn giving_the_unit_itself_records_no_item_change() {
-            let response = preview_over(&report_with_three(), "unit 900\nGIVE 901 UNIT\n");
+            let response = preview_over(
+                &report_with_three(),
+                "unit 900\nGIVE FACTION 14 NEW 2 UNIT\n",
+            );
 
             // 901 is not previewed at all: nothing about it changed, which is the same answer.
             let giver = row_of(&response, "900");

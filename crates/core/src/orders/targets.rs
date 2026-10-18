@@ -120,6 +120,17 @@ impl GiveReach {
     pub(crate) fn gives_nothing(self) -> bool {
         matches!(self, Self::Nowhere | Self::Unshown)
     }
+
+    /// Whether the game refuses a `GIVE <target> UNIT` aimed here before anything moves, so the
+    /// giver stays ours and its month reads exactly as with the line deleted. `Game::DoGiveOrder`
+    /// (../Atlantis `runorders.cpp`) errors "Can't discard a whole unit." for unit 0 and "Unit
+    /// already belongs to our faction!" for one of our own units, a `FORM`ed `NEW` unit included
+    /// (`ah-839x`, `ah-miqb`). A target nowhere here already [gives nothing](Self::gives_nothing),
+    /// and only [`Self::Foreign`] leaves the whole-unit gift in doubt.
+    #[must_use]
+    pub(crate) fn refuses_a_whole_unit(self) -> bool {
+        matches!(self, Self::Discard | Self::Ours)
+    }
 }
 
 /// What one tag of one transfer actually does, once reach and the item are both known.

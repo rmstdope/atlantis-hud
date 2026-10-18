@@ -353,6 +353,59 @@ fn a_sharer_giving_itself_to_its_own_faction_or_unit_0_leaves_the_exchange_certa
     }
 }
 
+/// `ah-miqb`. The refused whole-unit gift that `ah-839x` stopped doubting the exchange over no
+/// longer doubts the giver's own month either: `Game::DoGiveOrder` (../Atlantis `runorders.cpp`)
+/// errors "Can't discard a whole unit." for `GIVE 0 UNIT` and "Unit already belongs to our
+/// faction!" for a whole-unit gift to a faction-mate before anything moves, so the giver's Items
+/// and Silver read exactly as they do with the line deleted.
+#[test]
+fn a_refused_whole_unit_gift_leaves_the_givers_own_month_certain() {
+    let plain = silver_row(("", "", ""), "2393");
+    for give in [
+        "GIVE 0 UNIT",
+        "GIVE 2392 UNIT",
+        "FORM 1\nEND\nGIVE NEW 1 UNIT",
+    ] {
+        let orders = ("", "", give);
+        let row = silver_row(orders, "2393");
+        assert_eq!(row.doubt, None, "{give}: {row:?}");
+        assert_eq!(row.at_month_end, plain.at_month_end, "{give}: {row:?}");
+        let (swords, uncounted) = preview_of(orders, "2393", "SWOR", 5);
+        assert_eq!(swords, 5, "{give}");
+        assert!(uncounted.is_empty(), "{give}: {uncounted:?}");
+    }
+}
+
+/// `ah-miqb`. A unit whose whole-unit gift is refused stays ours, so its maintenance is still drawn
+/// from its faction-mates' silver (`rules/share`), exactly as with the line deleted - the issue's
+/// Taxers read 7829 instead of 7769. The foreign control proves the fixture really draws on them.
+#[test]
+fn a_refused_whole_unit_gift_still_has_its_upkeep_paid_by_faction_mates() {
+    // The stash hands every coin to the smith, so its own upkeep must be drawn from the others.
+    const BROKE: &str = "GIVE 2391 100 SILV";
+    let plain_stash = silver_row(("", "", BROKE), "2393");
+    let plain_buyer = silver_row(("", "", BROKE), "2392");
+    assert!(
+        plain_stash.shared_silver_covered > 0,
+        "the fixture draws on the faction-mates: {plain_stash:?}"
+    );
+    for give in ["GIVE 0 UNIT", "GIVE 2392 UNIT"] {
+        let stash = format!("{BROKE}\n{give}");
+        let orders = ("", "", stash.as_str());
+        let row = silver_row(orders, "2393");
+        assert_eq!(row.doubt, None, "{give}: {row:?}");
+        assert_eq!(
+            row.shared_silver_covered, plain_stash.shared_silver_covered,
+            "{give}: {row:?}"
+        );
+        assert_eq!(
+            silver_row(orders, "2392"),
+            plain_buyer,
+            "{give}: the buyer's month reads as without the line"
+        );
+    }
+}
+
 /// `(cause, delta, other, borrower)` for each `tag` change the ITEMS preview books on `unit_id`.
 fn item_changes(
     orders: Orders,

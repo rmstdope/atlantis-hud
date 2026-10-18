@@ -3102,6 +3102,12 @@ pub fn forecast_unit(
                 if verdict.gives_nothing() {
                     continue;
                 }
+                // A whole unit given to unit 0 or to one of our own is refused before anything
+                // moves, so this unit stays ours and spends nothing on it - the ledger's own
+                // reading of the same predicate (`ah-miqb`).
+                if matches!(what, Selector::WholeUnit) && verdict.reach().refuses_a_whole_unit() {
+                    continue;
+                }
                 // Every silver gift this arm can still see is settled: `rules/give` exempts silver
                 // from the factional rule outright, so a visible foreign target takes it - which is
                 // the verdict's answer, asked below once the gift is known to be silver. A number
@@ -10133,17 +10139,54 @@ mod tests {
     /// `GIVE 901 UNIT` hands over the unit itself (`rules/give`: "gives the entire unit to the
     /// specified unit's faction"), not a class of goods, so it has a doubt of its own - it was told
     /// "giving away a whole class of goods" (`ah-6c76`).
+    ///
+    /// Only to another faction's unit: the one target the game may hand the unit to.
     #[test]
     fn giving_the_unit_itself_away_is_doubted_as_that() {
+        let unit = giving_the_whole_unit_to(GiveReach::Foreign);
+        assert_eq!(unit.expense, None);
+        assert_eq!(unit.doubt, Some(SilverDoubt::GivesItselfAway));
+        assert_eq!(unit.doubt_subject, None);
+    }
+
+    /// `ah-miqb`. `Game::DoGiveOrder` (../Atlantis `runorders.cpp`) refuses a whole unit given to
+    /// unit 0 ("Can't discard a whole unit.") or to one of our own ("Unit already belongs to our
+    /// faction!") before anything moves, so the unit's month reads as with the line deleted.
+    #[test]
+    fn giving_the_unit_itself_to_unit_0_or_one_of_ours_neither_spends_nor_doubts() {
+        for reach in [GiveReach::Discard, GiveReach::Ours] {
+            let unit = giving_the_whole_unit_to(reach);
+            assert_eq!(unit.expense, Some(0), "{reach:?}");
+            assert_eq!(unit.doubt, None, "{reach:?}");
+        }
+    }
+
+    /// One `GIVE 1235 UNIT` from a unit holding 500 silver, its target standing at `reach`.
+    fn giving_the_whole_unit_to(reach: GiveReach) -> UnitSilver {
         let intents = vec![placed(Intent::Give {
             to: Party::Unit("1235".to_string()),
             what: Selector::WholeUnit,
             amount: Amount::All { except: 0 },
         })];
-        let unit = spending(500, &intents, RegionWages::default(), &no_purchases, None);
-        assert_eq!(unit.expense, None);
-        assert_eq!(unit.doubt, Some(SilverDoubt::GivesItselfAway));
-        assert_eq!(unit.doubt_subject, None);
+        let receipts = Receipts::default();
+        let verdict = move |_: &Party| GiveVerdict::give(reach, &[], Some(&[]), None);
+        forecast_unit(
+            UnitFacts {
+                held: 500,
+                ..facts(1, &intents, &receipts)
+            },
+            RegionWages::default(),
+            PoolShares::default(),
+            FactionPurse::default(),
+            0,
+            Lookups {
+                purchase: &no_purchases,
+                give_verdict: &verdict,
+                ..no_market()
+            },
+            SharedMarket::Adds(0),
+            None,
+        )
     }
 
     /// Reads whether a class carries silver against the real, committed ruleset - unlike

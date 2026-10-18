@@ -1076,6 +1076,7 @@ pub fn review_turn(
         check_transfer_to_itself(hex, &options, &mut findings);
         check_arrivals(hex, &options, &mut findings);
         check_refused_transfers(hex, ruleset, &plurals, &options, &mut findings);
+        check_refused_whole_unit_gift(hex, &options, &mut findings);
         check_discards_from_shared_stock(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_refused_arrivals(hex, ledger, ruleset, &plurals, &options, &mut findings);
         check_withdraw_in_nexus(hex, &options, &mut findings);
@@ -4769,7 +4770,9 @@ fn held_by(
 /// anything moves, so the sharer stays ours and lends as before: a unit the report shows in
 /// another hex, or a number it never prints, errors "Nonexistant target" (`ah-te15`); unit 0
 /// errors "Can't discard a whole unit."; and one of our own units here, a `FORM`ed `NEW` unit
-/// included, errors "Unit already belongs to our faction!" (`ah-839x`).
+/// included, errors "Unit already belongs to our faction!" (`ah-839x`). The ledger, the Silver
+/// column and the warning read those two refusals from [`GiveReach::refuses_a_whole_unit`]; a
+/// change there must be matched here.
 fn gives_itself_away(
     ordered: &Ordered<'_>,
     reach: impl Fn(&Party) -> GiveReach,
@@ -9236,10 +9239,13 @@ fn emptied_by(
     // resolving the class - re-deriving it here would be a second reading of what `apply_transfers`
     // has already worked out.
     let gives_it_away = actor.intents.iter().any(|placed| match &placed.intent {
-        Intent::Give { what, .. } => match what {
+        Intent::Give { to, what, .. } => match what {
             Selector::Item(text) => resolve_item(text, hex, actor, ruleset)
                 .is_some_and(|resolved| resolved.eq_ignore_ascii_case(tag)),
-            Selector::Class(_) | Selector::WholeUnit | Selector::UnfinishedShip(_) => true,
+            // A whole unit given to unit 0 or to one of ours is refused before anything moves,
+            // so it empties nothing (`ah-miqb`).
+            Selector::WholeUnit => !hex.give_endpoint(to, unit_id).reach.refuses_a_whole_unit(),
+            Selector::Class(_) | Selector::UnfinishedShip(_) => true,
         },
         // What an `EXCHANGE` hands over leaves in the Give orders too (`rules/sequenceofevents`),
         // so it is said the way a gift is - but only a line the ledger actually settled, never a
@@ -9830,6 +9836,13 @@ fn apply(
             // answer is zero. The ledger reads exactly as it would with the line deleted
             // (`ah-vcp8.2`).
             if verdict.gives_nothing() {
+                return;
+            }
+            // A whole unit the game will not hand over - to unit 0 or to one of our own - moves
+            // nothing and leaves the giver ours, so it is followed to the end the same way: the
+            // ledger reads as with the line deleted (`ah-miqb`). `check_refused_whole_unit_gift`
+            // is what tells the player.
+            if matches!(what, Selector::WholeUnit) && verdict.reach().refuses_a_whole_unit() {
                 return;
             }
             // Only ever read for a tag the verdict calls uncertain, and only ever a unit number
@@ -27456,6 +27469,49 @@ fn check_refused_transfers(
     }
 }
 
+/// A `GIVE <target> UNIT` the game refuses before anything moves (`ah-miqb`):
+/// `Game::DoGiveOrder` (../Atlantis `runorders.cpp`) errors "Can't discard a whole unit." for unit
+/// 0 and "Unit already belongs to our faction!" for one of our own units here, a `FORM`ed `NEW`
+/// unit included. The ledger and the Silver column read the line as deleted through the same
+/// [`GiveReach::refuses_a_whole_unit`]; this is what tells the player.
+///
+/// A unit giving itself, or one of ours elsewhere, reaches `Nowhere`/`Unshown` and is told by
+/// `check_transfer_to_itself` or `check_transfer_targets` alone, so a line never carries both.
+fn check_refused_whole_unit_gift(
+    hex: &Hex<'_>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::ITEMS_CANNOT_BE_GIVEN) {
+        return;
+    }
+    for ordered in &hex.units {
+        for placed in &ordered.intents {
+            let Intent::Give {
+                to,
+                what: Selector::WholeUnit,
+                ..
+            } = &placed.intent
+            else {
+                continue;
+            };
+            let why = match hex.give_endpoint(to, &ordered.unit.unit_id).reach {
+                GiveReach::Discard => "a whole unit cannot be discarded".to_string(),
+                GiveReach::Ours => {
+                    format!("{} already belongs to this faction", party_label(to))
+                }
+                GiveReach::Foreign | GiveReach::Nowhere | GiveReach::Unshown => continue,
+            };
+            findings.push(ordered.finding(
+                hex,
+                codes::ITEMS_CANNOT_BE_GIVEN,
+                format!("GIVE UNIT will be refused: {why}"),
+                Some(placed),
+            ));
+        }
+    }
+}
+
 /// Every unit this month's `FORM`s create in `hexes` that is still there once the market has run:
 /// one known to gain nobody is deleted (`rules/form`: "If no recruits are gained at all, the empty
 /// unit will be dissolved"; `Game::DeleteEmptyUnits`, after BUY), so it neither owns a hull when
@@ -34001,6 +34057,46 @@ mod tests {
             message,
             Some("another unit takes all 10 of its furs before the market opens, so this sells nothing")
         );
+    }
+
+    /// `ah-miqb`. A whole unit given to unit 0 or to one of ours is refused before anything moves
+    /// (`Game::DoGiveOrder`), so it empties nothing: the TAKE is what is named.
+    #[test]
+    fn a_sale_emptied_by_a_take_beside_a_refused_whole_unit_gift_names_the_take() {
+        for give in ["GIVE 0 UNIT", "GIVE 5512 UNIT"] {
+            let hex = ReportRegion {
+                wanted: vec![MarketItem {
+                    amount: 100,
+                    name: "furs".to_string(),
+                    tag: "FUR".to_string(),
+                    price: 42,
+                }],
+                ..region(vec![
+                    with_item(unit("2390"), 10, "furs", "FUR"),
+                    unit("5512"),
+                ])
+            };
+
+            let review = review_turn(
+                &report(vec![hex]),
+                &format!("unit 5512\nTAKE FROM 2390 10 FUR\nunit 2390\n{give}\nSELL ALL FUR\n"),
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+
+            let message = review
+                .findings
+                .iter()
+                .find(|finding| finding.code.as_str() == "nothing-left-to-sell")
+                .map(|finding| finding.message.as_str());
+            assert_eq!(
+                message,
+                Some(
+                    "another unit takes all 10 of its furs before the market opens, so this sells nothing"
+                ),
+                "{give}"
+            );
+        }
     }
 
     /// `ah-q7jd`, increment 7.
@@ -59646,6 +59742,111 @@ BUILD
             finding.message,
             "unit 13304 is not in this hex to be taken from - your report shows it in mountain (8,53) in Inhead"
         );
+    }
+
+    // --- refused whole-unit gifts (`ah-miqb`) ----------------------------------------------
+
+    /// `Game::DoGiveOrder` (../Atlantis `runorders.cpp`) errors "Can't discard a whole unit." for
+    /// `GIVE 0 UNIT`, before anything moves.
+    #[test]
+    fn a_whole_unit_given_to_unit_0_will_be_refused() {
+        let finding = only(check(
+            vec![region(vec![unit("900")])],
+            "unit 900\nGIVE 0 UNIT\n",
+        ));
+        assert_eq!(finding.code, codes::ITEMS_CANNOT_BE_GIVEN);
+        assert_eq!(finding.unit_id, Some("900".to_string()));
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(
+            finding.message,
+            "GIVE UNIT will be refused: a whole unit cannot be discarded"
+        );
+    }
+
+    /// "Unit already belongs to our faction!" (`Game::DoGiveOrder`): one of our own units here,
+    /// named as the order writes it. Neither unit shares - the refusal does not depend on SHARE.
+    #[test]
+    fn a_whole_unit_given_to_one_of_ours_will_be_refused() {
+        let finding = only(check(
+            vec![region(vec![unit("900"), unit("6109")])],
+            "unit 900\nGIVE 6109 UNIT\n",
+        ));
+        assert_eq!(finding.code, codes::ITEMS_CANNOT_BE_GIVEN);
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(
+            finding.message,
+            "GIVE UNIT will be refused: unit 6109 already belongs to this faction"
+        );
+    }
+
+    /// A unit this month's `FORM` creates here is ours too, and refused the same way (`ah-839x`).
+    #[test]
+    fn a_whole_unit_given_to_a_unit_we_form_will_be_refused() {
+        let finding = only(check(
+            vec![region(vec![unit("900"), unit("901")])],
+            "unit 901\nFORM 1\nEND\nunit 900\nGIVE NEW 1 UNIT\n",
+        ));
+        assert_eq!(
+            finding.message,
+            "GIVE UNIT will be refused: NEW 1 already belongs to this faction"
+        );
+    }
+
+    /// Another faction's unit in the hex may take it: no warning, the cells stay in doubt.
+    #[test]
+    fn a_whole_unit_given_to_a_foreign_unit_here_is_not_warned_about() {
+        let mut foreign = unit("7001");
+        foreign.own = false;
+        let findings = check(
+            vec![region(vec![unit("900"), foreign])],
+            "unit 900\nGIVE 7001 UNIT\n",
+        );
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.code == codes::ITEMS_CANNOT_BE_GIVEN),
+            "{findings:?}"
+        );
+    }
+
+    /// One of ours in another hex: the game fails on the missing target first, so only that
+    /// warning shows.
+    #[test]
+    fn a_whole_unit_given_to_one_of_ours_elsewhere_is_only_not_here() {
+        let mut elsewhere = region(vec![unit("6109")]);
+        elsewhere.region_id = "1:8,53".to_string();
+        elsewhere.coordinate = Coordinate { x: 8, y: 53, z: 1 };
+        let finding = only(check(
+            vec![region(vec![unit("900")]), elsewhere],
+            "unit 900\nGIVE 6109 UNIT\n",
+        ));
+        assert_eq!(finding.code, codes::GIVE_TARGET_NOT_HERE);
+    }
+
+    /// A unit giving itself gets only the transfer-to-itself warning - never both on one line.
+    #[test]
+    fn a_whole_unit_given_to_itself_is_only_a_transfer_to_itself() {
+        let finding = only(check(
+            vec![region(vec![unit("900")])],
+            "unit 900\nGIVE 900 UNIT\n",
+        ));
+        assert_eq!(finding.code, codes::TRANSFER_TO_ITSELF);
+    }
+
+    /// The existing "Gifts the game will refuse" switch silences it.
+    #[test]
+    fn a_refused_whole_unit_gift_is_silenced_by_its_switch() {
+        let findings = check_turn(
+            &report(vec![region(vec![unit("900"), unit("6109")])]),
+            "unit 900\nGIVE 0 UNIT\nunit 6109\nGIVE 900 UNIT\n",
+            Some(&ruleset()),
+            disabling_all(&[
+                codes::UNIT_DOES_NOTHING,
+                codes::TWO_MONTH_LONG_ORDERS,
+                codes::ITEMS_CANNOT_BE_GIVEN,
+            ]),
+        );
+        assert!(findings.is_empty(), "{findings:?}");
     }
 
     #[test]
