@@ -1078,8 +1078,8 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
 
   /**
    * Whether an Add to army list is drawn, from the conditions each of its three controls draws it
-   * under. `menu` alone is not that: a right-click with no game open sets it and draws nothing,
-   * and nothing then clears it (ah-1lac review).
+   * under. `menu` alone is not that: a right-click with no game open sets it and draws nothing
+   * (ah-1lac review), until the effect below forgets it (ah-91i4).
    */
   const armyListOpen = armyListShown(menu, {
     canEditArmies,
@@ -1088,6 +1088,16 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     acting: acting.length,
     hasTurn: currentTurn !== null
   });
+
+  // A list that is not drawn is forgotten (ah-91i4). A control that could not draw it - a
+  // right-click with no game open, or on a report naming no turn - and a header list whose unit a
+  // filter has hidden would otherwise keep `menu` set, and the list would appear by itself, with no
+  // new click, the moment its condition came to hold again.
+  useEffect(() => {
+    if (menu !== null && !armyListOpen) {
+      setMenu(null);
+    }
+  }, [menu, armyListOpen]);
 
   // A list opening, from any of its controls, closes the popup and drops a wait still counting
   // (ah-1lac), so nothing is drawn over the list and nothing reopens, at a spot the pointer has

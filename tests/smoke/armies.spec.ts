@@ -84,6 +84,29 @@ test("a unit is added from the header menu and the Army's count follows", async 
   await expect(already).toContainText("✓");
 });
 
+test("a header list that lost its unit is forgotten, and the unit coming back does not reopen it", async ({
+  page
+}) => {
+  await workspace(page);
+  await newArmy(page, "Northern Host");
+
+  await selectUnit(page, OWN_UNIT);
+  await page.getByTestId("add-to-army").click();
+  await expect(page.getByTestId("add-to-army-panel")).toBeVisible();
+
+  // Typed, so nothing presses elsewhere: a filter that hides the selected row leaves the list with
+  // nothing to add, and it is drawn no longer.
+  const filter = page.getByLabel("Filter units");
+  await filter.fill("no such unit");
+  await expect(page.getByTestId("add-to-army-panel")).toHaveCount(0);
+
+  // ah-91i4: the list the click asked for is gone, so the row coming back opens nothing by itself.
+  await filter.clear();
+  await expect(page.getByTestId(`unit-row-${OWN_UNIT}`)).toHaveAttribute("data-selected", "true");
+  await expect(page.getByTestId("add-to-army")).toBeEnabled();
+  await expect(page.getByTestId("add-to-army-panel")).toHaveCount(0);
+});
+
 test("choosing an Army shows its units, and the pane says so", async ({ page }) => {
   await workspace(page);
   await newArmy(page, "Northern Host");
