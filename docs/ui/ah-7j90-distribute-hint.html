@@ -1,0 +1,93 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>DISTRIBUTE hint after a refused TRANSPORT (chosen: wording A, both places)</title><style>
+  :root { --page:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d;
+    --ink:#dbe3ec; --soft:#a3b0c0; --dim:#8a97a8; --brass:#d9a441;
+    --blue:#4a9fd8; --ok:#4fb783; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:28px; background:var(--page); color:var(--ink);
+    font:14px/1.5 system-ui,sans-serif; }
+  header,main,footer { max-width:1180px; margin:auto; }
+  h1 { margin:0 0 8px; font:25px/1.2 Georgia,serif; }
+  h1 span,h2 { color:var(--brass); }
+  header p,footer,.note { color:var(--soft); max-width:100ch; }
+  code,.mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  h2 { margin:30px 0 10px; font-size:13px; text-transform:uppercase; letter-spacing:1px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:16px; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:14px; }
+  h3 { margin:0 0 8px; font-size:14px; }
+  .order { padding:7px 9px; background:#0c1117; border:1px solid var(--edge); color:var(--soft);
+    white-space:pre-line; }
+  table { width:100%; margin-top:10px; border-collapse:collapse; table-layout:fixed; font-size:12px; }
+  th,td { text-align:left; padding:5px 7px; border-bottom:1px solid var(--edge); overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; }
+  th { color:var(--dim); font-size:10px; text-transform:uppercase; }
+  .id { color:var(--blue); } .pred { color:var(--brass); font-style:italic; }
+  .unknown { color:var(--dim); }
+  .tip { display:block; margin-top:9px; padding:9px 11px; background:var(--raised);
+    border:1px solid var(--edge); border-radius:5px; white-space:pre-line; font-size:12px; }
+  .tip b { color:var(--brass); display:block; margin-bottom:4px; }
+  .note { margin:10px 0 0; font-size:12px; }
+  .narrow { width:300px; }
+  footer { margin-top:32px; font-size:12px; }
+  @media(max-width:520px) { body{padding:16px} .grid{grid-template-columns:1fr} .narrow{width:auto} }
+
+.warn{display:block;margin-top:8px;padding:8px 10px;border-left:3px solid var(--brass);background:#221d12;font-size:12px;color:var(--ink)}
+.warn b{color:var(--brass);display:block;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px}
+.hint{color:#e6c27a}
+.ln{color:var(--dim);margin-right:8px}
+.off{opacity:.55}
+</style></head><body>
+<header><h1>ah-7j90 - <span>DISTRIBUTE hint after a refused TRANSPORT (chosen: wording A, both places)</span></h1><p>Unit 5530 is a quartermaster owning a Caravanserai. The published rules say it may TRANSPORT to any unit within 2 hexes, but the game refuses a TRANSPORT to a unit that is not a quartermaster; only DISTRIBUTE delivers there.</p><p>Shown with wording A; the wording is the first question.</p></header><main>
+<h2>The hint appears</h2><div class="grid"><section class="card"><h3>The case: own ordinary unit 1 hex away</h3>
+<div class="order mono"><span class="ln">unit 5530</span>
+TRANSPORT 901 100 SILV</div>
+<span class="warn"><b>warning at the order line</b>Unit 901 is not a quartermaster, so 100 SILV stay with this unit. <span class="hint">DISTRIBUTE would deliver them.</span></span>
+<table><tr><th>Unit</th><th>Items</th></tr><tr><td class="id">5530</td><td>400 SILV</td></tr></table>
+<span class="tip"><b>hover on the ITEMS cell</b>was: 400 SILV
+Unit 901 is not a quartermaster, so 100 SILV stay with this unit. <span class="hint">DISTRIBUTE would deliver them.</span></span><p class="note">Unit 5530 is a quartermaster owning a Caravanserai.</p></section><section class="card"><h3>ALL form</h3>
+<div class="order mono"><span class="ln">unit 5530</span>
+TRANSPORT 901 ALL SILV</div>
+<span class="warn"><b>warning at the order line</b>Unit 901 is not a quartermaster, so 400 SILV stay with this unit. <span class="hint">DISTRIBUTE would deliver them.</span></span>
+<table><tr><th>Unit</th><th>Items</th></tr><tr><td class="id">5530</td><td>400 SILV</td></tr></table>
+<span class="tip"><b>hover on the ITEMS cell</b>was: 400 SILV
+Unit 901 is not a quartermaster, so 400 SILV stay with this unit. <span class="hint">DISTRIBUTE would deliver them.</span></span></section><section class="card"><h3>Several items in one order refused</h3>
+<div class="order mono"><span class="ln">unit 5530</span>
+TRANSPORT 901 5 STON
+TRANSPORT 901 3 IRON</div>
+<span class="warn"><b>warning at the order line</b>Unit 901 is not a quartermaster, so 5 STON stay with this unit. <span class="hint">DISTRIBUTE would deliver them.</span></span>
+<table><tr><th>Unit</th><th>Items</th></tr><tr><td class="id">5530</td><td>400 SILV, 5 STON, 3 IRON</td></tr></table>
+<span class="tip"><b>hover on the ITEMS cell</b>was: 400 SILV
+Unit 901 is not a quartermaster, so 5 STON stay with this unit. <span class="hint">DISTRIBUTE would deliver them.</span></span><p class="note">Each refused line carries its own hint, as each already carries its own refusal.</p></section></div>
+<h2>Foreign target — DISTRIBUTE might be refused too</h2><div class="grid"><section class="card"><h3>Foreign ordinary unit 1 hex away</h3>
+<div class="order mono"><span class="ln">unit 5530</span>
+TRANSPORT 7100 100 SILV</div>
+<span class="warn"><b>warning at the order line</b>Unit 7100 is not a quartermaster, so 100 SILV stay with this unit. <span class="hint">DISTRIBUTE would deliver them, if unit 7100's faction accepts transports from yours.</span></span>
+<table><tr><th>Unit</th><th>Items</th></tr><tr><td class="id">5530</td><td>400 SILV</td></tr></table>
+<span class="tip"><b>hover on the ITEMS cell</b>was: 400 SILV
+Unit 7100 is not a quartermaster, so 100 SILV stay with this unit. <span class="hint">DISTRIBUTE would deliver them, if unit 7100's faction accepts transports from yours.</span></span><p class="note">Our report cannot show whether that faction accepts transports from ours, so DISTRIBUTE's outcome is uncertain.</p></section></div>
+<h2>No hint — DISTRIBUTE would not deliver either</h2><div class="grid"><section class="card"><h3>Ordinary unit 3 hexes away — beyond DISTRIBUTE's reach</h3>
+<div class="order mono"><span class="ln">unit 5530</span>
+TRANSPORT 950 100 SILV</div>
+<span class="warn"><b>warning at the order line</b>Unit 950 is not a quartermaster, so 100 SILV stay with this unit.</span>
+<table><tr><th>Unit</th><th>Items</th></tr><tr><td class="id">5530</td><td>400 SILV</td></tr></table>
+<span class="tip"><b>hover on the ITEMS cell</b>was: 400 SILV
+Unit 950 is not a quartermaster, so 100 SILV stay with this unit.</span><p class="note">No hint: DISTRIBUTE would not reach either.</p></section><section class="card"><h3>Sender is not a quartermaster</h3>
+<div class="order mono"><span class="ln">unit 5530</span>
+TRANSPORT 901 100 SILV</div>
+<span class="warn"><b>warning at the order line</b>Unit 901 is not a quartermaster, so 100 SILV stay with this unit.</span>
+<table><tr><th>Unit</th><th>Items</th></tr><tr><td class="id">5530</td><td>400 SILV</td></tr></table>
+<span class="tip"><b>hover on the ITEMS cell</b>was: 400 SILV
+Unit 901 is not a quartermaster, so 100 SILV stay with this unit.</span><p class="note">No hint: DISTRIBUTE needs a quartermaster sender, so it would be refused too. Unchanged from today.</p></section><section class="card"><h3>Target is a quartermaster without a Caravanserai</h3>
+<div class="order mono"><span class="ln">unit 5530</span>
+TRANSPORT 7002 100 SILV</div>
+<span class="warn"><b>warning at the order line</b>Unit 7002 does not own a Caravanserai, so 100 SILV stay with this unit.</span>
+<table><tr><th>Unit</th><th>Items</th></tr><tr><td class="id">5530</td><td>400 SILV</td></tr></table>
+<span class="tip"><b>hover on the ITEMS cell</b>was: 400 SILV
+Unit 7002 does not own a Caravanserai, so 100 SILV stay with this unit.</span><p class="note">Other refusals are unchanged.</p></section></div>
+<h2>Narrow window</h2><div class="grid"><div class="narrow"><section class="card"><h3>The case: own ordinary unit 1 hex away</h3>
+<div class="order mono"><span class="ln">unit 5530</span>
+TRANSPORT 901 100 SILV</div>
+<span class="warn"><b>warning at the order line</b>Unit 901 is not a quartermaster, so 100 SILV stay with this unit. <span class="hint">DISTRIBUTE would deliver them.</span></span>
+<table><tr><th>Unit</th><th>Items</th></tr><tr><td class="id">5530</td><td>400 SILV</td></tr></table>
+<span class="tip"><b>hover on the ITEMS cell</b>was: 400 SILV
+Unit 901 is not a quartermaster, so 100 SILV stay with this unit. <span class="hint">DISTRIBUTE would deliver them.</span></span><p class="note">Unit 5530 is a quartermaster owning a Caravanserai.</p></section></div></div>
+</main><footer>Nothing to click, no focus change, nothing saved. The hint is worked out afresh from the report and the current orders, like the refusal it follows.</footer></body></html>

@@ -6,6 +6,7 @@ import {
   expectOrders,
   expectOrdersNot,
   fillOrders,
+  freezeClock,
   openOrders,
   ordersInput,
   saveNow,
@@ -236,12 +237,19 @@ test("orders typed into a game are still there after a reload", async ({ page })
 test("a saved draft gains its missing trailing newline without moving the cursor", async ({
   page
 }) => {
+  // The autosave must not write on its own before saveNow, or the "untouched until the save lands"
+  // check below races its five-second idle - and a loaded CI runner lost that race on every shard
+  // (ah-xqta). So the clock is held rather than raced, as in study-planner.spec.ts: installed
+  // before the first navigation, flowing while the game loads, frozen before anything is owed.
+  await page.clock.install();
+  await page.clock.resume();
   await clearGames(page);
   await createGame(page, "Newline game");
   await openReport(page);
   await openOrders(page, OWN_UNIT);
 
   const editor = ordersInput(page);
+  await freezeClock(page);
   await fillOrders(page, "@work\n@study combat");
   // Park the caret mid-word, where an append at the end must not disturb it - and where a
   // whole-value replacement (the old editor's answer to an external change) visibly would.

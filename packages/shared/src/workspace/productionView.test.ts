@@ -34,8 +34,8 @@ const rowOf = (region: Partial<WorkedRegion>) => {
 const fullTax = { base: 800, taxed: true, collected: 800, pillaged: null, atMost: false };
 
 describe("productionView", () => {
-  it("a pooled report counts every listed region", () => {
-    const result = view(pooled(40, regionsOf(34)));
+  it("a pooled report counts every region that uses a slot", () => {
+    const result = view(pooled(40, regionsOf(34, { usesTaxSlot: true })));
     expect(result.counts).toHaveLength(1);
     expect(result.counts[0]).toMatchObject({
       label: "Regions",
@@ -50,21 +50,21 @@ describe("productionView", () => {
   });
 
   it("one region of room reads as one hex", () => {
-    expect(view(pooled(40, regionsOf(39))).counts[0].note).toBe("1 more hex could tax or produce");
+    expect(view(pooled(40, regionsOf(39, { usesTaxSlot: true }))).counts[0].note).toBe("1 more hex could tax or produce");
   });
 
   it("over the limit is red and says how many are refused", () => {
-    const line = view(pooled(40, regionsOf(42))).counts[0];
+    const line = view(pooled(40, regionsOf(42, { usesTaxSlot: true }))).counts[0];
     expect(line.state).toBe("over");
     expect(line.fraction).toBe(1);
     expect(line.note).toBe("2 hexes over — orders in 2 hexes will be refused");
-    expect(view(pooled(40, regionsOf(41))).counts[0].note).toBe(
+    expect(view(pooled(40, regionsOf(41, { usesTaxSlot: true }))).counts[0].note).toBe(
       "1 hex over — orders in 1 hex will be refused"
     );
   });
 
   it("exactly at the limit is full with no note", () => {
-    const line = view(pooled(40, regionsOf(40))).counts[0];
+    const line = view(pooled(40, regionsOf(40, { usesTaxSlot: true }))).counts[0];
     expect(line.state).toBe("full");
     expect(line.note).toBe("");
   });
@@ -258,5 +258,27 @@ describe("the helpers the faction view shares (ah-x7s3)", () => {
       ]
     });
     expect(regionsUsed(overview)).toEqual({ pooled: 3, tax: 2, trade: 2 });
+  });
+
+  /**
+   * ah-lb2o, reopened: a listed region whose orders the game refuses before the region limit
+   * (an unskilled PRODUCE, a PILLAGE under a foreign guard) uses no slot, so a pooled "Regions"
+   * line counts it no more than the separate lines do, and agrees with the region-limit warning.
+   */
+  it("a pooled count leaves out a listed region that uses no slot", () => {
+    const result = view(
+      pooled(10, [
+        ...regionsOf(10, { usesTaxSlot: true }),
+        aWorkedRegion({ regionId: "jungle", usesTaxSlot: false, usesTradeSlot: false }),
+        aWorkedRegion({ regionId: "swamp", usesTaxSlot: false, usesTradeSlot: true })
+      ])
+    );
+    expect(result.title).toBe("Production · 11 of 10 regions");
+    expect(result.counts[0]).toMatchObject({
+      used: 11,
+      maximum: 10,
+      state: "over",
+      note: "1 hex over — orders in 1 hex will be refused"
+    });
   });
 });

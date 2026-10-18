@@ -39,7 +39,7 @@ describe("allowanceRows (ah-x7s3)", () => {
   it("a Regions row over its limit is over, with the Production window's note", () => {
     const [row] = allowanceRows(
       statusOf({ label: "Regions", used: 0, maximum: 10 }),
-      aProductionOverview({ regions: regions(12) }),
+      aProductionOverview({ regions: regions(12, { usesTaxSlot: true }) }),
       NONE, null);
     expect(row).toMatchObject({
       used: 12,
@@ -47,6 +47,17 @@ describe("allowanceRows (ah-x7s3)", () => {
       fraction: 1,
       note: "2 hexes over — orders in 2 hexes will be refused"
     });
+  });
+
+  // ah-lb2o: a listed region whose orders fail before the limit uses no slot and is not counted.
+  it("a Regions row leaves out a listed region that uses no slot", () => {
+    const [row] = allowanceRows(
+      statusOf({ label: "Regions", used: 0, maximum: 10 }),
+      aProductionOverview({
+        regions: [...regions(11, { usesTaxSlot: true }), aWorkedRegion({ regionId: "jungle" })]
+      }),
+      NONE, null);
+    expect(row).toMatchObject({ used: 11, state: "over", note: "1 hex over — orders in 1 hex will be refused" });
   });
 
   it("study rows add new students to the report's figure", () => {
@@ -207,7 +218,7 @@ describe("faction order (ah-7g4f)", () => {
   it("allowanceRows takes the applied limits", () => {
     const [regionRow] = allowanceRows(
       statusOf({ label: "Regions", used: 0, maximum: 10 }),
-      aProductionOverview({ regions: regions(43) }),
+      aProductionOverview({ regions: regions(43, { usesTaxSlot: true }) }),
       NONE,
       LIMITS
     );

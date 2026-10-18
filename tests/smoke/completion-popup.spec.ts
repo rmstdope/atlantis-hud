@@ -1,7 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
-  clearGames,
-  createGame,
   fillOrders,
   loadReport,
   ordersInput,

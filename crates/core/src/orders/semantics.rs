@@ -27885,17 +27885,27 @@ fn region_refusals<'b>(
 /// - TAX and PILLAGE (`runorders.cpp` `CountTaxes` and the pillage walk): "No population to tax",
 ///   and a unit with no combat-ready men ("Unit cannot tax", "Not a combat ready unit"), read
 ///   through the same [`readiness`] `tax-without-combat-ready-men` reads.
+/// - PILLAGE in a hex another faction guards (`runorders.cpp` `CountPillagers`, "PILLAGE: A unit
+///   is on guard.", and `aregion.cpp` `ARegion::CanPillage`): a guard blocks it "regardless of
+///   your attitude" (`rules/economy_taxingpillaging`).
 ///
 /// Anything it cannot judge is counted. Both the regions the walk refuses and the warning's own
-/// count read it (`ah-lb2o`), so the warning says exactly what the limit does. TAX and PILLAGE in
-/// a guarded hex are counted too: a guard refuses them first only when *its* attitude to us is
-/// neutral or worse (`aregion.cpp` `ARegion::CanTax`), which the report does not show - on
+/// count read it (`ah-lb2o`), so the warning says exactly what the limit does. TAX in a guarded
+/// hex is counted: a guard refuses it first only when *its* attitude to us is neutral or worse
+/// (`aregion.cpp` `ARegion::CanTax`), which the report does not show - on
 /// `neworigins-3.0.0-g5-f21-t24` two taxed hexes have a foreign guard, and turn 25 shows both
 /// taxed.
 fn reaches_activity_check(used: &RegionUse<'_, '_>, ruleset: Option<&Ruleset>) -> bool {
     match used.kind {
         RegionUseKind::Tax | RegionUseKind::TaxByFlag | RegionUseKind::Pillage => {
             if used.hex.region.population.is_some_and(|people| people < 1) {
+                return false;
+            }
+            // A foreign guard blocks every other faction's PILLAGE "regardless of your attitude"
+            // (`rules/economy_taxingpillaging`), and the engine refuses it before `ActivityCheck`
+            // (`ah-lb2o`). A guarded TAX is blocked only unless the guard's faction has declared
+            // ours Friendly (same rule), which our report does not state, so it still counts.
+            if matches!(used.kind, RegionUseKind::Pillage) && foreign_unit_guards(used.hex) {
                 return false;
             }
             let nothing = Receipts::default();
@@ -59806,10 +59816,54 @@ BUILD
         );
     }
 
+    /// `ah-1d3i`: `CheckTransportOrders` (`../Atlantis/runorders.cpp`) asks every TRANSPORT's
+    /// target for the quartermaster skill and a transport structure, whoever sends it - a
+    /// quartermaster owning a Caravanserai included ("TRANSPORT: Target ... is not a
+    /// quartermaster"). The navigator chose the engine over `rules/economy_transport`'s "may also
+    /// TRANSPORT items to any unit within 2 hexes" (2026-10-17). The line is warned and the silver
+    /// stays with the sender; the same shipment as a DISTRIBUTE, whose target the engine never
+    /// asks, still goes.
+    #[test]
+    fn a_transport_from_a_caravanserai_owner_to_an_ordinary_unit_is_refused() {
+        let mut home = shipping_quartermaster();
+        home.units.push(unit("901"));
+
+        let finding = only(target_findings(
+            vec![home.clone()],
+            "unit 900\nTRANSPORT 901 100 SILV\n",
+        ));
+        assert_eq!(finding.unit_id.as_deref(), Some("900"));
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(
+            finding.message,
+            "Unit 901 is not a quartermaster, so 100 SILV stay with this unit."
+        );
+
+        let review = |orders: &str| {
+            review_turn(
+                &report(vec![home.clone()]),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            )
+        };
+        let baseline = review("unit 900\n");
+        let transported = review("unit 900\nTRANSPORT 901 100 SILV\n");
+        for id in ["900", "901"] {
+            assert_eq!(
+                shipment_silver(&transported, id).at_month_end,
+                shipment_silver(&baseline, id).at_month_end,
+                "{id}'s silver is untouched by a refused TRANSPORT"
+            );
+        }
+
+        assert!(target_findings(vec![home], "unit 900\nDISTRIBUTE 901 100 SILV\n").is_empty());
+    }
+
     /// `ah-kjjv`: only a refusal the report proves is warned about. A target that can receive, a
-    /// quartermaster sender (`rules/economy_transport`: quartermasters "may also TRANSPORT items
-    /// to any unit within 2 hexes"), and another faction's Caravanserai owner, whose attitude to
-    /// us the report does not show (`rules/com_attitudes`), are all silent.
+    /// DISTRIBUTE from a quartermaster owning a Caravanserai (`CheckTransportOrders` never asks a
+    /// DISTRIBUTE's target, `ah-1d3i`), and another faction's Caravanserai owner, whose attitude
+    /// to us the report does not show (`rules/com_attitudes`), are all silent.
     #[test]
     fn a_transport_target_the_report_cannot_prove_ineligible_is_not_warned_about() {
         let mut eligible = caravanserai_owner("901", 1, 0, 0);
@@ -59819,7 +59873,7 @@ BUILD
         let mut quartermaster = shipping_quartermaster();
         quartermaster.units.push(unit("901"));
         assert!(
-            target_findings(vec![quartermaster], "unit 900\nTRANSPORT 901 5 IRON\n").is_empty()
+            target_findings(vec![quartermaster], "unit 900\nDISTRIBUTE 901 5 IRON\n").is_empty()
         );
 
         let mut stranger = foreign_caravanserai_owner("901", 1, 0, 0);
@@ -61726,7 +61780,7 @@ BUILD
 
     /// `ah-k719` case 2: a $50 sharer that lent $45 for 900's fee between the Caravanserais
     /// (`rules/sequenceofevents`: the second TRANSPORT phase) has $5 left when its own
-    /// `TRANSPORT ... ALL SILV` to a hex-mate runs in the third ("Items are sent a quartermaster
+    /// `DISTRIBUTE ... ALL SILV` to a hex-mate runs in the third ("Items are sent a quartermaster
     /// unit to non-quartermaster units"): the engine took the fee from it already
     /// (`runorders.cpp`: `ConsumeSharedMoney`). 906 is [`two_senders`]' second Quartermaster,
     /// here sharing $50 and shipping no furs.
@@ -61739,7 +61793,7 @@ BUILD
             .find(|unit| unit.unit_id == "906")
             .expect("two_senders has 906");
         *sharer = sharing(with_silver(sharer.clone(), 50));
-        let orders = format!("{UNPAID}unit 906\nTRANSPORT 905 ALL SILV\n");
+        let orders = format!("{UNPAID}unit 906\nDISTRIBUTE 905 ALL SILV\n");
         let review = review_turn(&report(regions), &orders, Some(&ruleset()), with_map());
         assert_eq!(
             shipment_silver(&review, "900").shipping.len(),
@@ -61769,8 +61823,8 @@ BUILD
             .find(|unit| unit.unit_id == "906")
             .expect("two_senders has 906");
         *sharer = sharing(with_silver(sharer.clone(), 50));
-        let orders = "unit 900\nTRANSPORT 901 9 FUR\nTRANSPORT 905 ALL SILV\n\
-                      unit 906\nTRANSPORT 905 ALL SILV\nunit 901\nTRANSPORT 900 100 SILV\n";
+        let orders = "unit 900\nTRANSPORT 901 9 FUR\nDISTRIBUTE 905 ALL SILV\n\
+                      unit 906\nDISTRIBUTE 905 ALL SILV\nunit 901\nTRANSPORT 900 100 SILV\n";
         let review = review_turn(&report(regions), orders, Some(&ruleset()), with_map());
         assert_eq!(
             silver_shipped(&review, "900"),
@@ -61813,11 +61867,11 @@ BUILD
 
     /// `runorders.cpp`, `RunTransportOrders`: an amount above `GetSharedNum` as the line runs
     /// errors "TRANSPORT: Not enough." and ships what is left. 906's $50 lent $45 for 900's fee
-    /// before its own `TRANSPORT 905 10 SILV` runs in the third sub-phase, so 5 ship and the line
+    /// before its own `DISTRIBUTE 905 10 SILV` runs in the third sub-phase, so 5 ship and the line
     /// says so.
     #[test]
     fn a_silver_shipment_cut_by_an_earlier_fee_loan_is_told_on_its_line() {
-        let orders = format!("{UNPAID}unit 906\nTRANSPORT 905 10 SILV\n");
+        let orders = format!("{UNPAID}unit 906\nDISTRIBUTE 905 10 SILV\n");
         let review = review_turn(
             &report(sharing_sender(50)),
             &orders,
@@ -61839,7 +61893,7 @@ BUILD
     /// The same cut with $45: the fee leaves nothing, and the sentence says "none".
     #[test]
     fn a_silver_shipment_with_nothing_left_when_it_runs_says_none() {
-        let orders = format!("{UNPAID}unit 906\nTRANSPORT 905 10 SILV\n");
+        let orders = format!("{UNPAID}unit 906\nDISTRIBUTE 905 10 SILV\n");
         let review = review_turn(
             &report(sharing_sender(45)),
             &orders,
@@ -61864,7 +61918,7 @@ BUILD
     /// 905 receives nothing.
     #[test]
     fn a_silver_shipment_short_before_shipping_begins_is_refused_outright() {
-        let orders = "unit 906\nTRANSPORT 905 60 SILV\n";
+        let orders = "unit 906\nDISTRIBUTE 905 60 SILV\n";
         let review = review_turn(
             &report(sharing_sender(50)),
             orders,
@@ -61908,8 +61962,8 @@ BUILD
     #[test]
     fn a_silver_shipment_paid_in_full_or_all_silv_says_nothing() {
         for orders in [
-            format!("{UNPAID}unit 906\nTRANSPORT 905 5 SILV\n"),
-            format!("{UNPAID}unit 906\nTRANSPORT 905 ALL SILV\n"),
+            format!("{UNPAID}unit 906\nDISTRIBUTE 905 5 SILV\n"),
+            format!("{UNPAID}unit 906\nDISTRIBUTE 905 ALL SILV\n"),
         ] {
             let review = review_turn(
                 &report(sharing_sender(50)),
@@ -61926,7 +61980,7 @@ BUILD
     /// at its own line.
     #[test]
     fn two_cut_silver_shipments_are_each_told_with_their_own_figure() {
-        let orders = format!("{UNPAID}unit 906\nTRANSPORT 905 10 SILV\nTRANSPORT 905 20 SILV\n");
+        let orders = format!("{UNPAID}unit 906\nDISTRIBUTE 905 10 SILV\nDISTRIBUTE 905 20 SILV\n");
         let review = review_turn(
             &report(sharing_sender(50)),
             &orders,
@@ -61964,8 +62018,8 @@ BUILD
         guessed.region_id = regions[0].region_id.clone();
         regions[0].units.push(guessed);
         for orders in [
-            "unit 906\nTRANSPORT 905 60 SILV\nunit 907\nSTUDY combat\n".to_string(),
-            format!("{UNPAID}unit 906\nTRANSPORT 905 10 SILV\nunit 907\nSTUDY combat\n"),
+            "unit 906\nDISTRIBUTE 905 60 SILV\nunit 907\nSTUDY combat\n".to_string(),
+            format!("{UNPAID}unit 906\nDISTRIBUTE 905 10 SILV\nunit 907\nSTUDY combat\n"),
         ] {
             let review = review_turn(
                 &report(regions.clone()),
@@ -62014,11 +62068,11 @@ BUILD
     /// region, whatever the sender's own flag (`unit.cpp`) - and `ConsumeShared` spends the
     /// sender's own first and draws the rest on the sharers (`rules/share`: a sharer supplies
     /// "any other unit of your faction that needs them"). So a $5 non-sharer beside a $50 sharer
-    /// ships all 10 of `TRANSPORT 905 10 SILV`: the sharer's row lends 5 and ends at 45, the
+    /// ships all 10 of `DISTRIBUTE 905 10 SILV`: the sharer's row lends 5 and ends at 45, the
     /// sender's is lent 5 and ends at 0, and nothing is warned (`ah-9yvv`).
     #[test]
     fn a_short_sender_draws_the_rest_of_an_exact_silver_shipment_on_a_sharer() {
-        let orders = "unit 906\nTRANSPORT 905 10 SILV\n";
+        let orders = "unit 906\nDISTRIBUTE 905 10 SILV\n";
         let review = review_turn(
             &report(short_sender_beside_a_sharer()),
             orders,
@@ -62043,7 +62097,7 @@ BUILD
     /// cut to it - the sharer counted once (`ah-9yvv`).
     #[test]
     fn a_second_exact_silver_line_reads_what_the_first_draw_left() {
-        let orders = "unit 906\nTRANSPORT 905 10 SILV\nTRANSPORT 905 50 SILV\n";
+        let orders = "unit 906\nDISTRIBUTE 905 10 SILV\nDISTRIBUTE 905 50 SILV\n";
         let review = review_turn(
             &report(short_sender_beside_a_sharer()),
             orders,
@@ -62070,7 +62124,7 @@ BUILD
     /// (`ah-9yvv`, extending `ah-0aqx`'s refusal).
     #[test]
     fn an_exact_silver_shipment_above_the_pooled_purse_is_refused() {
-        let orders = "unit 906\nTRANSPORT 905 60 SILV\n";
+        let orders = "unit 906\nDISTRIBUTE 905 60 SILV\n";
         let review = review_turn(
             &report(short_sender_beside_a_sharer()),
             orders,
@@ -62095,7 +62149,7 @@ BUILD
     /// and the sharer's $10 left and is cut to 15 (`ah-9yvv`).
     #[test]
     fn two_senders_drawing_on_one_sharer_each_read_what_the_other_left() {
-        let orders = "unit 900\nTRANSPORT 905 40 SILV\nunit 906\nTRANSPORT 905 40 SILV\n";
+        let orders = "unit 900\nDISTRIBUTE 905 40 SILV\nunit 906\nDISTRIBUTE 905 40 SILV\n";
         let review = review_turn(
             &report(short_sender_beside_a_sharer()),
             orders,
@@ -62135,13 +62189,13 @@ BUILD
     }
 
     /// A sharer that walks away is gone by TRANSPORT (`rules/sequenceofevents`), so `GetSharedNum`
-    /// is 906's own $5 and `TRANSPORT 905 10 SILV` is refused at the check (follow-up finding 2).
+    /// is 906's own $5 and `DISTRIBUTE 905 10 SILV` is refused at the check (follow-up finding 2).
     #[test]
     fn a_sharer_that_walks_away_leaves_the_shipment_refused() {
         let mut regions =
             non_sharing_sender(5, vec![unit("905"), sharing(with_silver(unit("903"), 50))]);
         regions.push(region_at("1:0,2", 0, 2, vec![]));
-        let orders = "unit 903\nMOVE S\nunit 906\nTRANSPORT 905 10 SILV\n";
+        let orders = "unit 903\nMOVE S\nunit 906\nDISTRIBUTE 905 10 SILV\n";
         let (traced_report, options) = traced(report(regions), orders, &ruleset(), with_map());
         let review = review_turn(
             &report(traced_report.regions),
@@ -62236,7 +62290,7 @@ BUILD
             2,
             vec![sharing(with_silver(unit("903"), 50))],
         ));
-        let orders = "unit 903\nMOVE N\nunit 906\nTRANSPORT 905 10 SILV\n";
+        let orders = "unit 903\nMOVE N\nunit 906\nDISTRIBUTE 905 10 SILV\n";
         let (traced_report, options) = traced(report(regions), orders, &ruleset(), with_map());
         let review = review_turn(
             &report(traced_report.regions),
@@ -62266,7 +62320,7 @@ BUILD
             2,
             vec![sharing(with_silver(unit("903"), 50))],
         ));
-        let orders = "unit 903\nSELL 5 xyzzy\nMOVE N\nunit 906\nTRANSPORT 905 10 SILV\n";
+        let orders = "unit 903\nSELL 5 xyzzy\nMOVE N\nunit 906\nDISTRIBUTE 905 10 SILV\n";
         let (traced_report, options) = traced(report(regions), orders, &ruleset(), with_map());
         let review = review_turn(
             &report(traced_report.regions),
@@ -62285,7 +62339,7 @@ BUILD
     /// A sharing sender drained ahead of the sharer that really lends: 906 ($5, sharing, owner of
     /// structure 401) and 903 ($50, sharing, in structure 402 after it, so drained after it). The purse lends 900's $45 fee
     /// out of 906's 5 and 903's 40 in drain order (`unit.cpp`: `ConsumeShared`), and then 906's
-    /// `TRANSPORT 905 10 SILV` runs in the third phase with nothing of its own and draws all 10 on
+    /// `DISTRIBUTE 905 10 SILV` runs in the third phase with nothing of its own and draws all 10 on
     /// 903. That draw comes after the fee, so the fee is never lent out of it: 903 has nothing
     /// left, 906's second line finds nothing and is cut to none, and both end at 0. Lent before
     /// the fee instead, the draw would leave 906 lending 15 of the fee and 903 holding 10 the
@@ -62309,7 +62363,7 @@ BUILD
             ..Default::default()
         });
         regions[0].units.push(lender);
-        let orders = format!("{UNPAID}unit 906\nTRANSPORT 905 10 SILV\nTRANSPORT 905 10 SILV\n");
+        let orders = format!("{UNPAID}unit 906\nDISTRIBUTE 905 10 SILV\nDISTRIBUTE 905 10 SILV\n");
         let review = review_turn(&report(regions), &orders, Some(&ruleset()), with_map());
         assert_eq!(
             shipment_silver(&review, "900").shipping.len(),
@@ -62342,7 +62396,7 @@ BUILD
     }
 
     /// `CheckTransportOrders` judges every shipment before any runs, so a $0 quartermaster cannot
-    /// forward an exact amount it is only sent this month: `TRANSPORT 902 200 SILV` is refused
+    /// forward an exact amount it is only sent this month: `DISTRIBUTE 902 200 SILV` is refused
     /// though 900's $200 reaches 901 in the first sub-phase. `ALL SILV` is never checked
     /// (`o->amount > 0` only) and still forwards it (`ah-rt4p`; `ah-0aqx` review, finding 3).
     #[test]
@@ -62352,7 +62406,7 @@ BUILD
             regions[1].units.push(unit("902"));
             regions
         };
-        let exact = "unit 900\nTRANSPORT 901 200 SILV\nunit 901\nTRANSPORT 902 200 SILV\n";
+        let exact = "unit 900\nTRANSPORT 901 200 SILV\nunit 901\nDISTRIBUTE 902 200 SILV\n";
         let review = review_turn(&report(regions()), exact, Some(&ruleset()), with_map());
         assert_eq!(silver_shipped(&review, "901"), 0);
         assert_eq!(
@@ -62364,7 +62418,7 @@ BUILD
                     .to_string()
             )]
         );
-        let all = "unit 900\nTRANSPORT 901 200 SILV\nunit 901\nTRANSPORT 902 ALL SILV\n";
+        let all = "unit 900\nTRANSPORT 901 200 SILV\nunit 901\nDISTRIBUTE 902 ALL SILV\n";
         let review = review_turn(&report(regions()), all, Some(&ruleset()), with_map());
         assert_eq!(silver_shipped(&review, "901"), 200);
         assert!(shipment_warnings(&review, "901").is_empty());
@@ -62378,7 +62432,7 @@ BUILD
             disabled: [codes::NOT_ENOUGH_SILVER.to_string()].into_iter().collect(),
             ..with_map()
         };
-        let cut = format!("{UNPAID}unit 906\nTRANSPORT 905 10 SILV\n");
+        let cut = format!("{UNPAID}unit 906\nDISTRIBUTE 905 10 SILV\n");
         let review = review_turn(
             &report(sharing_sender(50)),
             &cut,
@@ -62387,7 +62441,7 @@ BUILD
         );
         assert_eq!(silver_shipped(&review, "906"), 5);
         assert!(shipment_warnings(&review, "906").is_empty());
-        let refused = "unit 906\nTRANSPORT 905 60 SILV\n";
+        let refused = "unit 906\nDISTRIBUTE 905 60 SILV\n";
         let review = review_turn(
             &report(sharing_sender(50)),
             refused,
@@ -63151,7 +63205,7 @@ BUILD
         };
 
         // Silver, weight 0 (`data/SILV`), so the receiver's month shows what reached it.
-        let orders = "unit 900\nTRANSPORT 901 200 SILV\nunit 901\nTRANSPORT 902 ALL SILV\n";
+        let orders = "unit 900\nTRANSPORT 901 200 SILV\nunit 901\nDISTRIBUTE 902 ALL SILV\n";
         let baseline = forecast(regions(&[]), "unit 900\n", "902");
         let chained = forecast(regions(&[]), orders, "902");
         assert_eq!(
@@ -63165,7 +63219,7 @@ BUILD
 
         // Goods with a weight: the long leg is charged once, the local leg nothing, and the item
         // preview moves the same goods.
-        let orders = "unit 900\nTRANSPORT 901 9 FUR\nunit 901\nTRANSPORT 902 ALL FUR\n";
+        let orders = "unit 900\nTRANSPORT 901 9 FUR\nunit 901\nDISTRIBUTE 902 ALL FUR\n";
         let sender = forecast(regions(&[(9, "fur", "FUR")]), orders, "900");
         assert_eq!(sender.shipping.len(), 1);
         assert_eq!(sender.shipping[0].cost, 45);
@@ -63183,7 +63237,7 @@ BUILD
     /// `rules/sequenceofevents` processes STUDY among the month-long orders, before TRANSPORT and
     /// its three sub-phases, so a quartermaster holding no silver of its own cannot fund its study
     /// from silver another quartermaster ships it later in the month: the study goes unpaid, and
-    /// its `TRANSPORT ... ALL SILV` forwards everything it was sent (`ah-rt4p`).
+    /// its `DISTRIBUTE ... ALL SILV` forwards everything it was sent (`ah-rt4p`).
     #[test]
     fn a_quartermasters_study_is_not_paid_from_silver_shipped_to_it_later() {
         let regions = || {
@@ -63202,7 +63256,7 @@ BUILD
 
         let baseline = forecast("unit 900\n", "902");
         let orders = "unit 900\nTRANSPORT 901 200 SILV\n\
-                      unit 901\nSTUDY combat\nTRANSPORT 902 ALL SILV\n";
+                      unit 901\nSTUDY combat\nDISTRIBUTE 902 ALL SILV\n";
         let receiver = forecast(orders, "902");
         assert_eq!(
             receiver.at_month_end,
@@ -63330,7 +63384,7 @@ BUILD
         let rules = ruleset();
         let review = review_turn(
             &report(regions()),
-            "unit 900\nTRANSPORT 901 200 SILV\nunit 901\nWORK\nTRANSPORT 902 ALL SILV\n",
+            "unit 900\nTRANSPORT 901 200 SILV\nunit 901\nWORK\nDISTRIBUTE 902 ALL SILV\n",
             Some(&rules),
             with_map(),
         );
@@ -75471,6 +75525,46 @@ BUILD
         );
     }
 
+    /// A foreign guard refuses every other faction's PILLAGE before `ActivityCheck`, whatever its
+    /// attitude (`rules/economy_taxingpillaging`: "Units on guard will also block PILLAGE orders
+    /// issued by other factions in the same region, regardless of your attitude"), so that hex
+    /// spends no region: the TAX in the next hex keeps the one slot, and the window counts the
+    /// guarded hex as using none (`ah-lb2o`).
+    #[test]
+    fn a_pillage_a_foreign_guard_refuses_spends_no_region() {
+        let regions = vec![
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![
+                    with_skill(with_men(unit("5"), 5), "COMB", 1),
+                    foreign_guard("14"),
+                ],
+            ),
+            region_at(
+                "1:8,53",
+                8,
+                53,
+                vec![with_skill(with_men(unit("6"), 5), "COMB", 1)],
+            ),
+        ];
+        let review = review_trade(regions, "unit 5\nPILLAGE\nunit 6\nTAX\n", &[("Regions", 1)]);
+
+        assert!(
+            trade_findings(&review.findings).is_empty(),
+            "{:?}",
+            trade_findings(&review.findings)
+        );
+        let slots: Vec<(&str, bool)> = review
+            .production
+            .regions
+            .iter()
+            .map(|region| (region.region_id.as_str(), region.uses_tax_slot))
+            .collect();
+        assert_eq!(slots, [("1:7,53", false), ("1:8,53", true)]);
+    }
+
     /// Only the uses that reach `ActivityCheck` are counted, and the warning sits on the first of
     /// those: the unskilled producer listed first is neither counted nor the anchor (`ah-lb2o`).
     #[test]
@@ -82228,7 +82322,7 @@ BUILD
     /// its own loan back to itself (`ah-0nwd` review, finding 3).
     #[test]
     fn a_sharer_that_borrowed_at_study_does_not_lend_to_itself() {
-        let orders = "unit 5\nTRANSPORT 6 100 SILV\nunit 6\nSTUDY combat\n";
+        let orders = "unit 5\nDISTRIBUTE 6 100 SILV\nunit 6\nSTUDY combat\n";
         let (report, options) = traced(
             report(vec![caravanserai_hex(
                 "5",
@@ -82378,7 +82472,7 @@ BUILD
     /// pays nothing that has already been studied (`rules/sequenceofevents`, `ah-qrk0` review).
     #[test]
     fn silver_shipped_to_an_arriving_sharer_after_study_does_not_pay_for_the_study() {
-        let orders = "unit 5\nTRANSPORT 7 100 SILV\nunit 6\nSTUDY combat\nunit 7\nMOVE S\n";
+        let orders = "unit 5\nDISTRIBUTE 7 100 SILV\nunit 6\nSTUDY combat\nunit 7\nMOVE S\n";
         let (report, options) = traced(
             report(vec![
                 caravanserai_hex("5", 100, vec![with_men(with_silver(unit("6"), 0), 2)]),
