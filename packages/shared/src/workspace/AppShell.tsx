@@ -6345,6 +6345,13 @@ export function AppShell({
                         ? { at: walkStop.index + 1, of: problemTargets.length }
                         : null
                     }
+                    walkedProblem={
+                      walkStop.standing &&
+                      walkStop.index !== null &&
+                      problemTargets[walkStop.index]?.unitId === selectedUnitId
+                        ? problemTargets[walkStop.index].problem
+                        : null
+                    }
                   />
                 </div>
               </div>

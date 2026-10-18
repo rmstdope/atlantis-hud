@@ -13,7 +13,9 @@ import {
   saveNow,
   selectHex,
   selectUnit,
-  closeRulesetCheck
+  closeRulesetCheck,
+  boxOf,
+  waitForStableHeight
 } from "./gameSetup";
 import { readReport } from "@atlantis/fixtures";
 
@@ -871,4 +873,163 @@ test("a formed unit that recruits nobody keeps its row, marked as dissolving", a
   await expect(formedRow).toHaveAttribute("data-preview-formed", "true");
   await expect(formedRow).not.toContainText("dissolves — no recruits");
   await expect(formedRow.locator("td").last()).toHaveText(/\d/);
+});
+
+/**
+ * ah-nup4: the editor keeps its room when the problem list appears.
+ *
+ * The list used to keep its full height and leave the editor about a line and a half, with the line
+ * just typed scrolled out of sight. Now the editor holds three lines at the panel's smallest height,
+ * the list shrinks to one row and scrolls, and a dim "N more ↓" counts what it is hiding
+ * (docs/ui/ah-nup4-orders-room.html). Geometry, so only a real browser can say it holds.
+ */
+const FIVE_PROBLEMS = "AVOID 1\nAVOID 0\nAVOID 1\nWROK\nWROK\nWROK\nWROK\nWROK";
+
+/** Drag the unit/orders split far down, so the orders panel clamps to its smallest height. */
+async function shrinkOrders(page: Page) {
+  await waitForStableHeight(page, "orders");
+  const grip = (await page.getByTestId("panel-splitter").boundingBox())!;
+  const start = { x: grip.x + grip.width / 2, y: grip.y + grip.height / 2 };
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x, start.y + 1000, { steps: 5 });
+  await page.mouse.up();
+  // 9rem, `ORDERS_MIN_REM`.
+  await expect.poll(async () => (await boxOf(page, "orders")).height).toBeCloseTo(144, 0);
+}
+
+/** What the editor and the list each show, in pixels, and whether the panel body overflows. */
+async function ordersRoom(page: Page) {
+  return page.getByTestId("panel-orders").evaluate((panel) => {
+    const scroller = panel.querySelector<HTMLElement>(".cm-scroller")!;
+    const line = panel.querySelector<HTMLElement>(".cm-line")!;
+    const list = panel.querySelector<HTMLElement>('[data-testid="orders-diagnostics"]');
+    const row = list?.querySelector<HTMLElement>("li") ?? null;
+    const body = panel.querySelector<HTMLElement>('[data-testid="orders-status"]')!.parentElement!
+      .parentElement!;
+    return {
+      editorLines: scroller.clientHeight / line.getBoundingClientRect().height,
+      listHeight: list?.clientHeight ?? 0,
+      rowHeight: row?.getBoundingClientRect().height ?? 0,
+      bodyOverflow: body.scrollHeight - body.clientHeight
+    };
+  });
+}
+
+/** Whether `inner` lies wholly inside `outer`, give or take a pixel of rounding. */
+async function within(inner: ReturnType<Page["locator"]>, outer: ReturnType<Page["locator"]>) {
+  const a = await inner.boundingBox();
+  const b = await outer.boundingBox();
+  return a !== null && b !== null && a.y >= b.y - 1 && a.y + a.height <= b.y + b.height + 1;
+}
+
+test("at its smallest height the orders panel keeps three editor lines and one problem row", async ({
+  page
+}) => {
+  await onlyChecks(page, []);
+  await openEditor(page);
+  await shrinkOrders(page);
+
+  await fillOrders(page, FIVE_PROBLEMS);
+  await expect(page.getByTestId("orders-diagnostic")).toHaveCount(5);
+
+  await expect.poll(async () => (await ordersRoom(page)).editorLines).toBeGreaterThanOrEqual(2.98);
+  const room = await ordersRoom(page);
+  expect(room.listHeight).toBeGreaterThanOrEqual(room.rowHeight - 0.5);
+  expect(room.bodyOverflow, "the panel body itself must not scroll").toBeLessThanOrEqual(0);
+});
+
+test("the line just typed stays visible when its warning list appears", async ({ page }) => {
+  await onlyChecks(page, []);
+  await openEditor(page);
+  await shrinkOrders(page);
+
+  await fillOrders(page, "AVOID 1\nAVOID 0\nAVOID 1\nAVOID 0\nAVOID 1");
+  await expect(page.getByTestId("orders-diagnostics")).toHaveCount(0);
+  await ordersInput(page).click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("WROK");
+
+  await expect(page.getByTestId("orders-diagnostic")).toHaveCount(1);
+  const typed = page.getByTestId("orders-input").locator(".cm-line", { hasText: "WROK" });
+  const scroller = page.getByTestId("orders-input").locator(".cm-scroller");
+  await expect.poll(() => within(typed, scroller)).toBe(true);
+});
+
+test("a problem list with more rows than fit says how many are below, until scrolled to the end", async ({
+  page
+}) => {
+  await onlyChecks(page, []);
+  await openEditor(page);
+  await shrinkOrders(page);
+
+  await fillOrders(page, FIVE_PROBLEMS);
+  const more = page.getByTestId("orders-diagnostics-more");
+  await expect(more).toHaveText("4 more ↓");
+
+  await page.getByTestId("orders-diagnostics").evaluate((list) => {
+    list.scrollTop = list.scrollHeight;
+  });
+  await expect(more).toHaveCount(0);
+});
+
+test("in a tall orders panel a long problem list is capped and the editor keeps the rest", async ({
+  page
+}) => {
+  // The pinned 1280x720 window leaves the default panel near its minimum; a taller one gives it the
+  // 19rem it is pinned at.
+  await page.setViewportSize({ width: 1280, height: 1100 });
+  await onlyChecks(page, []);
+  await openEditor(page);
+  await waitForStableHeight(page, "orders");
+  await expect.poll(async () => (await boxOf(page, "orders")).height).toBeGreaterThanOrEqual(300);
+
+  await fillOrders(page, FIVE_PROBLEMS);
+  await expect(page.getByTestId("orders-diagnostic")).toHaveCount(5);
+  await expect.poll(async () => (await ordersRoom(page)).editorLines).toBeGreaterThanOrEqual(5);
+  // `max-h-20`, the list's height before ah-nup4.
+  expect((await ordersRoom(page)).listHeight).toBeLessThanOrEqual(80);
+});
+
+test("walking the problems scrolls the list to the walked row", async ({ page }) => {
+  await onlyChecks(page, []);
+  await openEditor(page);
+  await shrinkOrders(page);
+
+  await fillOrders(page, FIVE_PROBLEMS);
+  await expect(page.getByTestId("orders-diagnostic")).toHaveCount(5);
+  await ordersInput(page).click();
+  for (let step = 0; step < 5; step++) {
+    await page.keyboard.press("F8");
+  }
+  await expect(page.getByTestId("walk-position")).toHaveAttribute("data-position", "5/5");
+
+  const last = page.getByTestId("orders-diagnostic").last();
+  await expect.poll(() => within(last, page.getByTestId("orders-diagnostics"))).toBe(true);
+});
+
+test("another unit's problem list starts at the top", async ({ page }) => {
+  await onlyChecks(page, []);
+  await openEditor(page);
+  await shrinkOrders(page);
+
+  await fillOrders(page, FIVE_PROBLEMS);
+  const list = page.getByTestId("orders-diagnostics");
+  await list.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+
+  // The other unit has problems of its own, so the list stays on screen across the change - only
+  // the reset can bring it back to the top, not the list going away and coming back.
+  await selectHex(page, "1:26,52");
+  await selectUnit(page, OTHER_OWN_UNIT);
+  await fillOrders(page, FIVE_PROBLEMS);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  await expect(page.getByTestId("orders-diagnostic")).toHaveCount(5);
+  await expect(page.getByTestId("panel-orders")).toContainText(`unit ${OWN_UNIT}`);
+  expect(await list.evaluate((element) => element.scrollTop)).toBe(0);
 });

@@ -1,5 +1,5 @@
 import type { OrderDiagnostic, ReportUnit } from "@atlantis/core-client";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { HexNode } from "../hexMapModel";
 import type { OrderProcessing } from "../orderProcessing";
 import { readableTime, type SaveState } from "../orderDraft";
@@ -16,6 +16,7 @@ import { useSettingsStore } from "../settingsStore";
 import type { Ref } from "react";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { OrdersEditor, type OrdersEditorHandle } from "./OrdersEditor";
+import { revealRow, rowsBelow, walkedKey, walkedRowIndex } from "./problemListScroll";
 
 type OrdersPanelProps = {
   unit: ReportUnit | null;
@@ -72,6 +73,13 @@ type OrdersPanelProps = {
    */
   walkPosition?: { at: number; of: number } | null;
 
+  /**
+   * The problem the walk stands on, when it is one of this unit's - re-based to this unit's block
+   * like every problem the panel lists - so the list can scroll to its row (ah-nup4). Null when the
+   * walk stands nowhere, or on another unit's problem.
+   */
+  walkedProblem?: OrderDiagnostic | null;
+
   /** The open game's order-processing context. */
   orders: OrderProcessing;
 };
@@ -95,6 +103,7 @@ export function OrdersPanel({
   editorRef,
   onWalkProblems,
   walkPosition,
+  walkedProblem,
   orders
 }: OrdersPanelProps) {
   // Read here rather than in the editor: the panel re-renders on a settings change, which is what
@@ -181,7 +190,7 @@ export function OrdersPanel({
           />
           <p
             data-testid="orders-status"
-            className="m-0 flex items-center gap-3 border-t border-edge pt-1.5 text-pane-sm text-ink-soft"
+            className="m-0 flex flex-none items-center gap-3 border-t border-edge pt-1.5 text-pane-sm text-ink-soft"
           >
             <span className={here.errorCount > 0 ? "text-danger" : "text-ok"}>
               {here.errorCount} error{here.errorCount === 1 ? "" : "s"}
@@ -195,7 +204,16 @@ export function OrdersPanel({
             <span className="flex-1" />
             <SaveNotice save={save} />
           </p>
-          {problems.length > 0 ? <ProblemList problems={problems} text={validatedBlock} /> : null}
+          {problems.length > 0 ? (
+            // Keyed on the unit, so another unit's list starts at the top rather than wherever
+            // this one was scrolled to (ah-nup4).
+            <ProblemList
+              key={unitId ?? ""}
+              problems={problems}
+              text={validatedBlock}
+              walked={walkedProblem ?? null}
+            />
+          ) : null}
         </div>
       )}
     </CollapsiblePanel>
@@ -262,48 +280,126 @@ function WalkProblems({
  * What is wrong with this unit's orders, line by line.
  *
  * Counts alone told the player a number and left them to find it. The line is the one the editor
- * above is showing, so it can be counted down to; scrolled rather than allowed to grow, because the
- * panel's height is fixed and the editor is what the space is for.
+ * above is showing, so it can be counted down to.
+ *
+ * The list shares the panel with the editor rather than taking what it wants (ah-nup4,
+ * docs/ui/ah-nup4-orders-room.html): it is never taller than its old `max-h-20`, shrinks to as
+ * little as one row when the editor needs the room for its three lines, and scrolls. While rows are
+ * hidden below, "N more ↓" sits in its bottom-right corner - a sibling of the scrolling list rather
+ * than a child, so it stays put while the rows move under it.
  *
  * The parser knows which token is wrong and not merely which line, so the token is quoted beside the
  * message - "line 4, swords" beats "line 4" on a line with four arguments on it. `text` is the text
  * the diagnostics were counted in rather than the draft on screen, so the quote is of what was
  * actually found wrong; a span that no longer fits goes unquoted rather than quoting the wrong thing.
  */
-function ProblemList({ problems, text }: { problems: OrderDiagnostic[]; text: string }) {
-  return (
-    <ul
-      data-testid="orders-diagnostics"
-      className="m-0 max-h-20 list-none overflow-y-auto p-0 pt-1 text-pane-sm leading-snug"
-    >
-      {problems.map((problem, index) => {
-        const found = offendingText(text, problem);
+function ProblemList({
+  problems,
+  text,
+  walked
+}: {
+  problems: OrderDiagnostic[];
+  text: string;
+  walked: OrderDiagnostic | null;
+}) {
+  const list = useRef<HTMLUListElement | null>(null);
+  const [hidden, setHidden] = useState(0);
+  // The one guaranteed row is the first row as it is drawn, wrapped or not; measured, since a
+  // narrow rail wraps a long message onto several lines. The class below is the floor until then.
+  const [floor, setFloor] = useState<number | null>(null);
 
-        return (
-          <li
-            key={`${problem.code}-${problem.lineStart}-${index}`}
-            data-testid="orders-diagnostic"
-            data-severity={problem.severity}
-            className="flex gap-2"
-          >
-            <SeverityMark severity={problem.severity} />
-            {/* A finding on the unit as a whole has no line to count to, and says none (`ah-6c76`). */}
-            {problem.lineStart === null ? null : (
-              <span className="shrink-0 tabular-nums text-ink-dim">line {problem.lineStart}</span>
-            )}
-            {found === null ? null : (
-              <code
-                data-testid="orders-diagnostic-token"
-                className="shrink-0 rounded bg-edge/40 px-1 font-mono text-ink-soft"
-              >
-                {found}
-              </code>
-            )}
-            <span className="text-ink">{problem.message}</span>
-          </li>
-        );
-      })}
-    </ul>
+  useEffect(() => {
+    const element = list.current;
+    if (!element) {
+      return;
+    }
+    const measure = () => {
+      const rows = Array.from(element.children) as HTMLElement[];
+      setHidden(
+        rowsBelow(
+          rows.map((row) => row.offsetTop + row.offsetHeight),
+          element.scrollTop + element.clientHeight
+        )
+      );
+      setFloor(rows[0] ? rows[0].offsetHeight : null);
+    };
+    measure();
+    const resized = new ResizeObserver(measure);
+    resized.observe(element);
+    element.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      resized.disconnect();
+      element.removeEventListener("scroll", measure);
+    };
+  }, [problems]);
+
+  // The walk's row into view when the walk moves to it - keyed on where it stands rather than on
+  // the problem object, which a re-validation replaces, so a hand-scrolled list is left alone.
+  const walkedAt = walkedKey(walked);
+  useEffect(() => {
+    const element = list.current;
+    const index = walkedRowIndex(problems, walked);
+    const row = index === null ? undefined : (element?.children[index] as HTMLElement | undefined);
+    if (!element || !row) {
+      return;
+    }
+    element.scrollTop = revealRow(
+      { top: row.offsetTop, bottom: row.offsetTop + row.offsetHeight },
+      { scrollTop: element.scrollTop, height: element.clientHeight }
+    );
+    // `problems` and `walked` are read for the walk that just happened, not watched: see above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walkedAt]);
+
+  return (
+    <div
+      data-testid="orders-diagnostics-room"
+      className="relative flex max-h-20 min-h-[calc(1.375*var(--text-pane-sm))] shrink flex-col"
+      style={floor === null ? undefined : { minHeight: `${floor}px` }}
+    >
+      <ul
+        ref={list}
+        data-testid="orders-diagnostics"
+        // `relative`, so each row's offsetTop is measured from the list itself.
+        className="relative m-0 min-h-0 list-none overflow-y-auto p-0 text-pane-sm leading-snug"
+      >
+        {problems.map((problem, index) => {
+          const found = offendingText(text, problem);
+
+          return (
+            <li
+              key={`${problem.code}-${problem.lineStart}-${index}`}
+              data-testid="orders-diagnostic"
+              data-severity={problem.severity}
+              className="flex gap-2"
+            >
+              <SeverityMark severity={problem.severity} />
+              {/* A finding on the unit as a whole has no line to count to, and says none (`ah-6c76`). */}
+              {problem.lineStart === null ? null : (
+                <span className="shrink-0 tabular-nums text-ink-dim">line {problem.lineStart}</span>
+              )}
+              {found === null ? null : (
+                <code
+                  data-testid="orders-diagnostic-token"
+                  className="shrink-0 rounded bg-edge/40 px-1 font-mono text-ink-soft"
+                >
+                  {found}
+                </code>
+              )}
+              <span className="text-ink">{problem.message}</span>
+            </li>
+          );
+        })}
+      </ul>
+      {hidden > 0 ? (
+        <span
+          data-testid="orders-diagnostics-more"
+          className="pointer-events-none absolute bottom-0 right-1.5 bg-pane px-1 text-pane-sm leading-snug text-ink-dim"
+        >
+          {hidden} more ↓
+        </span>
+      ) : null}
+    </div>
   );
 }
 
