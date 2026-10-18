@@ -6953,6 +6953,12 @@ struct Ledger<'a> {
     /// was left as the line ran, or refused outright before shipping began (`ah-0aqx`). Said on
     /// the sender's own line by [`report_shortfalls`].
     cut_shipments: Vec<CutShipment>,
+    /// What each `ALL SILV` shipment that moves nothing - refused, possibly refused, out of reach
+    /// or unmeasured - would have taken as it ran, keyed by sender and 1-based document line
+    /// (`ah-7jsv`). The game moves nothing for it, but the hover names the
+    /// silver that stays, and that is the silver left at TRANSPORT - after every STUDY and CAST
+    /// (`rules/sequenceofevents`) - not the report's holding. Read by [`item_effects`].
+    unshipped_silver: BTreeMap<(String, usize), i64>,
     /// Which of the two unmeasurable causes each of this hex's units met, by unit number
     /// (`ah-7ale.5`). Not gated on the Transport warning: it is what makes the month read `?`, and
     /// no figure may claim to be certain when it is not.
@@ -7595,6 +7601,7 @@ fn ledger_for_reaching<'a>(
         transport_run: Vec::new(),
         silver_at_transport_check: BTreeMap::new(),
         cut_shipments: Vec::new(),
+        unshipped_silver: BTreeMap::new(),
         shipping_unmeasured: BTreeMap::new(),
         sold: BTreeMap::new(),
         dead_sales: Vec::new(),
@@ -8516,6 +8523,13 @@ pub(crate) fn item_effects(
                 .refused_shipments
                 .push(refused.line);
         }
+        for ((unit_id, line), left) in &ledger.unshipped_silver {
+            result
+                .entry(unit_key(&hex.region.region_id, unit_id))
+                .or_default()
+                .unshipped_silver
+                .insert(i64::try_from(*line).unwrap_or(i64::MAX), *left);
+        }
         // A silver shipment refused for want of silver keeps its silver in the preview too
         // (`ah-0aqx`).
         for refused in ledger.cut_shipments.iter().filter(|cut| cut.refused) {
@@ -8658,6 +8672,10 @@ pub(crate) struct UnitItemEffects {
     /// not pay for (`ah-7ale.4`), and silver ones asking more than it held as shipping began
     /// (`ah-0aqx`). The item preview keeps their goods: it has no silver of its own to judge with.
     pub refused_shipments: Vec<i64>,
+    /// What each of this unit's unshipped `ALL SILV` lines would have taken as it ran, by
+    /// 1-based document line (`ah-7jsv`): the silver the hover says stays, which the item preview
+    /// cannot count itself, since it has no silver ledger of its own.
+    pub unshipped_silver: BTreeMap<i64, i64>,
     /// The food maintenance eats off this unit, whoever's upkeep it paid (`ah-q490`). Apart from
     /// `moved` because it is applied last: `rules/sequenceofevents` assesses maintenance after
     /// every `TRANSPORT`, which the preview applies after `moved`.
@@ -26137,6 +26155,20 @@ fn shipping_bills(
             let Some(judged) = judge_shipment(shipping, hex, *order, sender, &id) else {
                 continue;
             };
+            // Before the unshown target's exit below: a DISTRIBUTE refused for its sender's skill is
+            // refused whoever the target is, and the hover still names its silver (`ah-7jsv`).
+            record_unshipped_silver(
+                ledger,
+                hex,
+                ordered,
+                ruleset,
+                &judged,
+                sub_phase,
+                &name,
+                text,
+                amount,
+                received_earlier,
+            );
             // `target_facts` has an entry for every unit in every region of the report, so an
             // absent entry is exactly "the report does not show this unit at all" - narrower than
             // `Acceptance::EligibilityUnknown`, whose other cause is a foreign unit the report does
@@ -26424,6 +26456,57 @@ fn shipping_bills(
         }
     }
     delivered
+}
+
+/// What an `ALL SILV` line that moves nothing would have shipped had it run, into
+/// [`Ledger::unshipped_silver`] (`ah-7jsv`): the target refused it or may not accept it, it is out
+/// of reach, or its distance cannot be measured - every line the hover names without shipping. The same holding an accepted line in this sub-phase is resolved
+/// against, so the hover's "N SILV stay" and the month-end figure beside it read one stock. An
+/// exact amount is left out: the order line names it as written, and the hover agrees with it.
+#[allow(clippy::too_many_arguments)]
+fn record_unshipped_silver(
+    ledger: &mut Ledger<'_>,
+    hex: &Hex<'_>,
+    ordered: &Ordered<'_>,
+    ruleset: Option<&Ruleset>,
+    judged: &super::transport::Judged,
+    sub_phase: super::transport::ShipmentPhase,
+    name: &ShipmentName,
+    text: &str,
+    amount: &Amount,
+    received_earlier: &BTreeMap<(String, String), i64>,
+) {
+    if judged.phase != sub_phase || matches!(amount, Amount::Exact(_)) {
+        return;
+    }
+    // `AcceptanceUnknown` is never booked either (`conditional` in [`shipping_bills`]), and the
+    // hover counts it out beside the refusals: one basis for every line it names.
+    let accepted = judged.acceptance == super::transport::Acceptance::Eligible;
+    let arrives = matches!(
+        judged.measured,
+        Some(super::transport::Measured {
+            arrival: super::transport::Arrival::Certain,
+            ..
+        })
+    );
+    if accepted && arrives {
+        return;
+    }
+    if !resolve_item(text, hex, ordered, ruleset)
+        .is_some_and(|tag| tag.eq_ignore_ascii_case(SILVER))
+    {
+        return;
+    }
+    let sender = name.sender.as_str();
+    let arrived = received_earlier
+        .get(&(sender.to_string(), SILVER.to_string()))
+        .copied()
+        .unwrap_or_default();
+    let held = (ledger.transport_holding(hex, sender, SILVER, name) + arrived).max(0);
+    ledger.unshipped_silver.insert(
+        (sender.to_string(), name.line),
+        super::transfers::quantity_moved(amount, held),
+    );
 }
 
 /// Book a shipment that reaches its target. `SILV` is both an item and the sender's forecast,

@@ -15,6 +15,7 @@ use atlantis_hud_core::orders::effects::{
     preview_orders_for_remembered_report, TransportTargetReason,
 };
 use atlantis_hud_core::orders::semantics::{codes, review_turn, CheckOptions};
+use atlantis_hud_core::orders::silver::SilverChangeCause;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
 mod common;
@@ -120,4 +121,102 @@ fn a_sender_studying_the_skill_is_not_warned() {
         refusals(&orders("STUDY QUAM\nDISTRIBUTE 1162 100 SILV")),
         vec![]
     );
+}
+
+/// `ah-7jsv`. A refused `ALL SILV` names what `ALL` would have taken when the shipments run, not
+/// the report's holding: `rules/sequenceofevents` processes CAST and STUDY before TRANSPORT, so
+/// their silver has already left Ivanhoe's 2890 by then. Before the fix the hover said 2890 while
+/// the same hover's month end said less.
+fn the_silver_named_by_a_refused_all_silv(script: &str) -> (Vec<(String, i64, String)>, i64) {
+    let ruleset = ruleset();
+    let mut parsed = parse_report_full(atlantis_hud_fixtures::G3_F42_T42.text);
+    classify_units(&mut parsed, &ruleset);
+    let spent_before_transport: i64 =
+        review_turn(&parsed, script, Some(&ruleset), CheckOptions::default())
+            .silver
+            .into_iter()
+            .find(|silver| silver.unit_id == "683")
+            .expect("Ivanhoe's silver is forecast")
+            .changes
+            .iter()
+            .filter(|change| {
+                matches!(
+                    change.cause,
+                    SilverChangeCause::Studied | SilverChangeCause::CastSpent
+                )
+            })
+            .map(|change| change.amount)
+            .sum();
+    let response = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::RULESET_JSON,
+        atlantis_hud_fixtures::G3_F42_T42.text,
+        "[]",
+        script,
+    )
+    .expect("the ruleset loads");
+    let issues = response
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .filter(|row| row.unit.unit_id == "683")
+        .flat_map(|row| row.transport_target_issues.iter())
+        .inspect(|issue| {
+            assert_eq!(issue.reason, TransportTargetReason::SenderNotQuartermaster);
+        })
+        .map(|issue| (issue.to.clone(), issue.amount, issue.tag.clone()))
+        .collect();
+    (issues, spent_before_transport)
+}
+
+#[test]
+fn a_refused_all_silv_names_the_silver_left_after_study() {
+    let (issues, spent) =
+        the_silver_named_by_a_refused_all_silv(&orders("STUDY TRUE\nDISTRIBUTE 1162 ALL SILV"));
+    assert!(spent < 0, "the study fee is booked: {spent}");
+    assert_eq!(
+        issues,
+        vec![("1162".to_string(), 2890 + spent, "SILV".to_string())]
+    );
+}
+
+/// The verifier's own month (`ah-7jsv`): a CAST and a STUDY both paid before the shipments run.
+#[test]
+fn a_refused_all_silv_names_the_silver_left_after_cast_and_study() {
+    let (issues, spent) = the_silver_named_by_a_refused_all_silv(&orders(
+        "CAST CFSW\nSTUDY TRUE\nDISTRIBUTE 1162 ALL SILV",
+    ));
+    assert!(
+        spent < -100,
+        "the cast and the study fee are booked: {spent}"
+    );
+    assert_eq!(
+        issues,
+        vec![("1162".to_string(), 2890 + spent, "SILV".to_string())]
+    );
+}
+
+/// The same refusal to a unit the report never names: the sender's own missing skill settles it
+/// whatever the target is, so the hover still names a figure, and it is the one left when the
+/// shipments run (`ah-7jsv` review, finding 1).
+#[test]
+fn a_refused_all_silv_to_an_unshown_unit_names_the_silver_left_after_study() {
+    let (issues, spent) =
+        the_silver_named_by_a_refused_all_silv(&orders("STUDY TRUE\nDISTRIBUTE 99999 ALL SILV"));
+    assert!(spent < 0, "the study fee is booked: {spent}");
+    assert_eq!(
+        issues,
+        vec![("99999".to_string(), 2890 + spent, "SILV".to_string())]
+    );
+}
+
+/// Where the month has spent everything before the shipments run, `ALL` would take nothing: the
+/// hover names no amount and says the order moves nothing, as the order line does (`ah-7jsv`
+/// review, finding 3).
+#[test]
+fn a_refused_all_silv_with_nothing_left_names_no_amount() {
+    let (issues, _) = the_silver_named_by_a_refused_all_silv(&orders(
+        "GIVE 1162 2190 SILV\nCAST CFSW\nSTUDY TRUE\nDISTRIBUTE 1162 ALL SILV",
+    ));
+    assert_eq!(issues, vec![("1162".to_string(), 0, String::new())]);
 }
