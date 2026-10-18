@@ -793,6 +793,9 @@ pub(crate) fn promoted_unit(
     match target {
         forms::Party::Unit(unit_id) => Some(unit_id),
         forms::Party::New(alias) => Some(format!("new-{alias}")),
+        // `ParseUnit` answers no unit for faction 0 (`if (!fn) return 0;`), so
+        // `ProcessPromoteOrder` errors "PROMOTE: No target given." and keeps the earlier one.
+        forms::Party::Foreign { faction, .. } if faction.trim_start_matches('0').is_empty() => None,
         forms::Party::Foreign { faction, alias } => {
             Some(format!("{ANOTHER_FACTIONS_NEW_UNIT}{faction}-new-{alias}"))
         }
@@ -1340,6 +1343,21 @@ mod tests {
             .map(|one| one.target.as_str())
             .collect();
         assert_eq!(targets, ["7", "faction-3-new-1"], "{unit:?}");
+    }
+
+    /// `ah-fcro` review: `ParseUnit` (../Atlantis `parseorders.cpp`) answers no unit for faction
+    /// 0, so `ProcessPromoteOrder` errors "PROMOTE: No target given." and the earlier `PROMOTE`
+    /// stands.
+    #[test]
+    fn a_promote_of_faction_zeros_new_unit_is_not_carried() {
+        let unit =
+            only_unit("unit 5\nPROMOTE 7\nPROMOTE FACTION 0 NEW 1\nPROMOTE FACTION 00 NEW 1\n");
+        let targets: Vec<&str> = unit
+            .promotes
+            .iter()
+            .map(|one| one.target.as_str())
+            .collect();
+        assert_eq!(targets, ["7"], "{unit:?}");
     }
 
     #[test]

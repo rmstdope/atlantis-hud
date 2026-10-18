@@ -14540,8 +14540,8 @@ fn check_leave_refused_at_sea(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
 /// errors "PROMOTE: Can't find target." and promotes nobody, the reading
 /// [`structure_owner_after_promotes`] forecasts. A last `PROMOTE FACTION <f> NEW <n>` is not
 /// warned (`ah-fcro`): `Object::GetUnitId` finds it by that faction's alias, a unit formed by
-/// orders this report cannot show. A formed unit's `PROMOTE` is not followed by the
-/// ownership walks, so it is not warned. Always on (`codes::ALWAYS_ON`), so no option is read.
+/// orders this report cannot show. A formed unit's `PROMOTE` is not followed by the ownership
+/// walks, so it is not warned. Always on (`codes::ALWAYS_ON`), so no option is read.
 fn check_promote_not_owner(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
     for ordered in hex.units.iter().filter(|ordered| ordered.formed.is_none()) {
         let Some(promote) = ordered.promotes.last() else {
