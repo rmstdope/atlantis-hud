@@ -1,0 +1,67 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>DISTRIBUTE hint when the refusal is uncertain (chosen: hover only, "either way")</title><style>
+  :root { --page:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d;
+    --ink:#dbe3ec; --soft:#a3b0c0; --dim:#8a97a8; --brass:#d9a441;
+    --blue:#4a9fd8; --ok:#4fb783; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:28px; background:var(--page); color:var(--ink);
+    font:14px/1.5 system-ui,sans-serif; }
+  header,main,footer { max-width:1180px; margin:auto; }
+  h1 { margin:0 0 8px; font:25px/1.2 Georgia,serif; }
+  h1 span,h2 { color:var(--brass); }
+  header p,footer,.note { color:var(--soft); max-width:100ch; }
+  code,.mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  h2 { margin:30px 0 10px; font-size:13px; text-transform:uppercase; letter-spacing:1px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:16px; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:14px; }
+  h3 { margin:0 0 8px; font-size:14px; }
+  .order { padding:7px 9px; background:#0c1117; border:1px solid var(--edge); color:var(--soft);
+    white-space:pre-line; }
+  table { width:100%; margin-top:10px; border-collapse:collapse; table-layout:fixed; font-size:12px; }
+  th,td { text-align:left; padding:5px 7px; border-bottom:1px solid var(--edge); overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; }
+  th { color:var(--dim); font-size:10px; text-transform:uppercase; }
+  .id { color:var(--blue); } .pred { color:var(--brass); font-style:italic; }
+  .unknown { color:var(--dim); }
+  .tip { display:block; margin-top:9px; padding:9px 11px; background:var(--raised);
+    border:1px solid var(--edge); border-radius:5px; white-space:pre-line; font-size:12px; }
+  .tip b { color:var(--brass); display:block; margin-bottom:4px; }
+  .note { margin:10px 0 0; font-size:12px; }
+  .narrow { width:300px; }
+  footer { margin-top:32px; font-size:12px; }
+  @media(max-width:520px) { body{padding:16px} .grid{grid-template-columns:1fr} .narrow{width:auto} }
+
+.warn{display:block;margin-top:8px;padding:8px 10px;border-left:3px solid var(--brass);background:#221d12;font-size:12px;color:var(--ink)}
+.warn b{color:var(--brass);display:block;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px}
+.hint{color:#e6c27a}
+.ln{color:var(--dim);margin-right:8px}
+.off{opacity:.55}
+
+:root{color-scheme:dark}
+.info{display:block;margin-top:8px;padding:8px 10px;border-left:3px solid var(--blue);background:#121c26;font-size:12px}
+.info b{color:var(--blue);display:block;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px}
+.none{display:block;margin-top:8px;font-size:12px;color:var(--dim);font-style:italic}
+</style></head><body><header><h1>ah-7j90 - <span>DISTRIBUTE hint when the refusal is uncertain (chosen: hover only, "either way")</span></h1><p>Unit 5530 is a quartermaster owning a Caravanserai. These are the cases where the app cannot yet tell whether the TRANSPORT will be refused, because the target's own orders this month may change things. DISTRIBUTE would deliver in both cases whatever the target does.</p></header><main><h2>Another faction's unit 1 hex away</h2><div class="grid"><section class="card"><h3>Foreign ordinary unit</h3>
+<div class="order mono"><span class="ln">unit 5530</span>
+TRANSPORT 7100 100 SILV</div>
+<span class="none">order line: no warning (as today)</span>
+<table><tr><th>Unit</th><th>Items</th></tr><tr><td class="id">5530</td><td>400 SILV</td></tr></table>
+<span class="tip"><b>hover on the ITEMS cell</b>was: 400 SILV
+Could not count 100 SILV for unit 7100 because it does not own a Caravanserai now, but this month's orders may change that before TRANSPORT runs. <span class="hint">DISTRIBUTE would deliver them either way, if unit 7100's faction accepts transports from yours.</span></span><p class="note">Nothing new at the order line; the hover gains the hint.</p></section></div><h2>Own unit that may become a quartermaster this month</h2><div class="grid"><section class="card"><h3>Own unit that STUDYs QUARTERMASTER</h3>
+<div class="order mono"><span class="ln">unit 5530</span>
+TRANSPORT 901 100 SILV</div>
+<span class="none">order line: no warning (as today)</span>
+<table><tr><th>Unit</th><th>Items</th></tr><tr><td class="id">5530</td><td>400 SILV</td></tr></table>
+<span class="tip"><b>hover on the ITEMS cell</b>was: 400 SILV
+Could not count 100 SILV for unit 901 because it is not a quartermaster now, but this month's orders may make it one before TRANSPORT runs. <span class="hint">DISTRIBUTE would deliver them either way.</span></span><p class="note">Same treatment: hover only.</p></section></div><h2>Already agreed</h2><div class="grid"><section class="card"><h3>For comparison: own unit, certain (already agreed)</h3>
+<div class="order mono"><span class="ln">unit 5530</span>
+TRANSPORT 901 100 SILV</div>
+<span class="warn"><b>warning at the order line</b>Unit 901 is not a quartermaster, so 100 SILV stay with this unit. <span class="hint">DISTRIBUTE would deliver them.</span></span>
+<table><tr><th>Unit</th><th>Items</th></tr><tr><td class="id">5530</td><td>400 SILV</td></tr></table>
+<span class="tip"><b>hover on the ITEMS cell</b>was: 400 SILV
+Unit 901 is not a quartermaster, so 100 SILV stay with this unit. <span class="hint">DISTRIBUTE would deliver them.</span></span><p class="note">Unchanged from what we agreed: warning at the order line and the hover.</p></section></div><h2>Narrow window</h2><div class="grid"><div class="narrow"><section class="card"><h3>Foreign ordinary unit</h3>
+<div class="order mono"><span class="ln">unit 5530</span>
+TRANSPORT 7100 100 SILV</div>
+<span class="none">order line: no warning (as today)</span>
+<table><tr><th>Unit</th><th>Items</th></tr><tr><td class="id">5530</td><td>400 SILV</td></tr></table>
+<span class="tip"><b>hover on the ITEMS cell</b>was: 400 SILV
+Could not count 100 SILV for unit 7100 because it does not own a Caravanserai now, but this month's orders may change that before TRANSPORT runs. <span class="hint">DISTRIBUTE would deliver them either way, if unit 7100's faction accepts transports from yours.</span></span><p class="note">Nothing new at the order line; the hover gains the hint.</p></section></div></div></main><footer>Recommended. The order line keeps its rule: it only warns when the outcome is certain. The hover, which already explains the uncertainty, says what would work regardless.</footer></body></html>
