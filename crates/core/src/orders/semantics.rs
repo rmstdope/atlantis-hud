@@ -6448,6 +6448,68 @@ impl Ordered<'_> {
 /// between them - which is what the issue means by asking whether the silver goes round.
 type BalanceKey = (String, String);
 
+/// A [`BalanceKey`] looked up without building one: `balances` and `uncertain` are read once per
+/// party per spend, and two `String`s allocated per read were a fifth of what a validation cost
+/// (`ah-q767`). Ordered exactly as the tuple is - the unit, then the tag - so a borrowed key finds
+/// what an owned one would.
+trait BalanceKeyRef {
+    fn unit(&self) -> &str;
+    fn tag(&self) -> &str;
+}
+
+impl BalanceKeyRef for BalanceKey {
+    fn unit(&self) -> &str {
+        &self.0
+    }
+    fn tag(&self) -> &str {
+        &self.1
+    }
+}
+
+impl BalanceKeyRef for (&str, &str) {
+    fn unit(&self) -> &str {
+        self.0
+    }
+    fn tag(&self) -> &str {
+        self.1
+    }
+}
+
+impl<'a> std::borrow::Borrow<dyn BalanceKeyRef + 'a> for BalanceKey {
+    fn borrow(&self) -> &(dyn BalanceKeyRef + 'a) {
+        self
+    }
+}
+
+impl PartialEq for dyn BalanceKeyRef + '_ {
+    fn eq(&self, other: &Self) -> bool {
+        self.unit() == other.unit() && self.tag() == other.tag()
+    }
+}
+
+impl Eq for dyn BalanceKeyRef + '_ {}
+
+impl PartialOrd for dyn BalanceKeyRef + '_ {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for dyn BalanceKeyRef + '_ {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.unit(), self.tag()).cmp(&(other.unit(), other.tag()))
+    }
+}
+
+/// `tag` as `balances` keys it, upper case, allocating only when it is not already.
+fn upper_tag(tag: &str) -> std::borrow::Cow<'_, str> {
+    if tag.bytes().any(|byte| byte.is_ascii_lowercase()) {
+        std::borrow::Cow::Owned(tag.to_ascii_uppercase())
+    } else {
+        std::borrow::Cow::Borrowed(tag)
+    }
+}
+
 #[derive(Clone)]
 struct PhaseState {
     balances: BTreeMap<BalanceKey, [i64; StatePhase::COUNT]>,
@@ -6512,8 +6574,9 @@ impl PhaseState {
     /// lending: three beads paid a review round or more each for doing so (`ah-0mch`, `ah-lnz4`,
     /// `ah-su1x`; `ah-pf7t`).
     fn balance_at(&self, phase: StatePhase, unit_id: &str, tag: &str) -> i64 {
+        let tag = upper_tag(tag);
         self.balances
-            .get(&(unit_id.to_owned(), tag.to_ascii_uppercase()))
+            .get(&(unit_id, tag.as_ref()) as &dyn BalanceKeyRef)
             .map_or(0, |values| values[phase as usize])
     }
 
@@ -6523,10 +6586,15 @@ impl PhaseState {
         unit_id: &str,
         tag: &str,
     ) -> Result<i64, &UncertainGive> {
-        let key = (unit_id.to_owned(), tag.to_ascii_uppercase());
-        self.uncertain
-            .get(&key)
-            .map_or_else(|| Ok(self.balance_at(phase, unit_id, tag)), Err)
+        let upper = upper_tag(tag);
+        let key = (unit_id, upper.as_ref());
+        match self.uncertain.get(&key as &dyn BalanceKeyRef) {
+            Some(uncertain) => Err(uncertain),
+            None => Ok(self
+                .balances
+                .get(&key as &dyn BalanceKeyRef)
+                .map_or(0, |values| values[phase as usize])),
+        }
     }
 
     fn holdings_at(&self, phase: StatePhase, unit_id: &str) -> BTreeMap<String, i64> {
@@ -6922,7 +6990,7 @@ struct Ledger<'a> {
     /// whole ask, so the shortfall keeps its warning, and [`SharerStock`] adds it back wherever
     /// the ledger answers for the overdraft ([`OverdraftOwner`]) - the way
     /// [`Ledger::overcharged`] does for a cut `BUY` (`ah-0mch`, `ah-eoag`).
-    unfunded: BTreeMap<(String, String), i64>,
+    unfunded: BTreeMap<BalanceKey, i64>,
     /// What neither each unit nor any sharer could fund of its `CAST`'s silver cost as [`cast`]
     /// priced it - the one record of it, and the mark of a cast the engine refuses. Added back
     /// only where the ledger answers for the overdraft ([`OverdraftOwner::Ledger`]); where the
@@ -17026,7 +17094,7 @@ impl OverdraftOwner {
         let unfunded = |tag: &str| {
             ledger
                 .unfunded
-                .get(&(unit_id.to_string(), tag.to_ascii_uppercase()))
+                .get(&(unit_id, upper_tag(tag).as_ref()) as &dyn BalanceKeyRef)
                 .copied()
                 .unwrap_or(0)
         };
@@ -30099,6 +30167,50 @@ fn check_faction_orders(
 mod tests {
     use super::*;
     use crate::report::model::{level_for_points, Exit, Skill};
+
+    /// A balance read through a borrowed key finds what the owned key booked, whatever case the
+    /// tag is asked in, and an uncertain `GIVE` still answers before the balance (`ah-q767`).
+    #[test]
+    fn a_balance_is_read_without_building_its_key() {
+        let mut state = PhaseState {
+            balances: BTreeMap::new(),
+            uncertain: BTreeMap::new(),
+        };
+        // Neighbours on either side, so the search has to order by the unit and then the tag.
+        state.apply(StatePhase::Give, "12", "SILV", 7);
+        state.apply(StatePhase::Give, "123", "HORS", 2);
+        state.apply(StatePhase::Give, "123", "silv", 40);
+        state.apply(StatePhase::Give, "124", "SILV", 9);
+
+        assert_eq!(state.balance_at(StatePhase::Give, "123", "SILV"), 40);
+        assert_eq!(state.balance_at(StatePhase::Give, "123", "Silv"), 40);
+        assert_eq!(
+            state.balance_at(StatePhase::Claim, "123", "SILV"),
+            0,
+            "booked from Give on"
+        );
+        assert_eq!(state.balance_at(StatePhase::Give, "123", "WOOD"), 0);
+        assert_eq!(
+            state.known_balance_at(StatePhase::Give, "123", "hors"),
+            Ok(2)
+        );
+
+        let doubt = UncertainGive {
+            target: "unit 9999".to_owned(),
+            line: 3,
+        };
+        state
+            .uncertain
+            .insert(("123".to_owned(), "HORS".to_owned()), doubt.clone());
+        assert_eq!(
+            state.known_balance_at(StatePhase::Give, "123", "Hors"),
+            Err(&doubt)
+        );
+        assert_eq!(
+            state.known_balance_at(StatePhase::Give, "124", "SILV"),
+            Ok(9)
+        );
+    }
 
     #[test]
     fn a_unit_key_names_its_hex_and_its_number() {

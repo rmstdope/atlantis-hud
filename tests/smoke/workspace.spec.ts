@@ -2641,6 +2641,15 @@ test("the interface is not blocked while the core reads a report", async ({ page
   // lands inside the sampling window and is charged to the import being measured.
   await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
 
+  // And for the checks that reopening runs on the restored orders, for the same reason. They wait
+  // out a 300ms debounce, so they ran inside the sampling window and were charged to the import:
+  // the reload's validation and preview were the whole of the 900ms this guard tripped on in CI,
+  // against about a tenth of that for the import itself (`ah-q767`). The chip's problem count
+  // turning non-zero is the validation landing - the restored orders carry findings - and one
+  // timer turn after it the preview queued beside it has run too, since timers fire in due order.
+  await expect(page.getByTestId("turn-report-chip")).not.toHaveAttribute("data-problems", "0");
+  await page.evaluate(() => new Promise((resolve) => window.setTimeout(resolve, 0)));
+
   // Sample how long the main thread goes unresponsive, by watching a timer miss its deadline.
   await page.evaluate(() => {
     const state = window as unknown as { __gaps?: number[]; __sampler?: number };
@@ -2668,9 +2677,11 @@ test("the interface is not blocked while the core reads a report", async ({ page
 
   // Reported so the figure this threshold is calibrated against can be read off a CI run rather
   // than guessed at. A guard calibrated on the fastest machine available is a guard that fails
-  // everywhere else, so the number below comes from CI: 400ms for the web project and 464ms for
-  // the desktop shell. 900 sits about twice the slower of those, and below the 1204-1945ms this
-  // same measurement gave before the change.
+  // everywhere else, so the figures below come from CI. 900 was set at about twice 400ms (web) and
+  // 464ms (desktop shell), below the 1204-1945ms this measurement gave before the core cached its
+  // parse - but those figures, and the 900ms that later turned this red, carried the reload's
+  // checks. Measuring the import alone, CI gave 122ms (web) and 95ms (desktop shell) (`ah-q767`),
+  // so 900 now has room for a large regression only.
   console.log(`report load: worst main-thread block ${Math.round(worstBlockMs)}ms`);
   expect(worstBlockMs).toBeLessThan(900);
 

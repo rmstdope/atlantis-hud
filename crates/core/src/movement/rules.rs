@@ -1035,6 +1035,9 @@ pub struct Ruleset {
     pub movement: MovementRules,
     pub risk: RiskThresholds,
     pub gaps: Gaps,
+    /// The item catalogue. Edit it only before the first [`Ruleset::item_spelled`] lookup, or on a
+    /// clone: that lookup indexes it once, and a release build answers later lookups from that
+    /// index without looking at the catalogue again.
     pub items: BTreeMap<String, ItemEntry>,
     /// Empty for a ruleset generated before study costs were scraped. A missing catalogue means
     /// nothing can be priced, not that everything is free.
@@ -1105,6 +1108,31 @@ pub struct Ruleset {
     /// order here" - never as "this world has no orders", which is the grammar's to say.
     #[serde(default)]
     pub orders: BTreeMap<String, OrderEntry>,
+    /// [`Ruleset::item_spelled`]'s index, built on first use. Not part of the file.
+    #[serde(skip)]
+    #[cfg_attr(test, ts(skip))]
+    item_index: ItemIndex,
+}
+
+/// Every spelling of an item, folded to lower case, and the key of the first catalogue entry it
+/// names - what [`Ruleset::item_spelled`] would find walking `items` in order.
+///
+/// The walk ran on every item an order names, several times per check, and was an eighth of the
+/// time a validation took (`ah-q767`). Built once, on the first lookup; a clone starts without
+/// one, and two rulesets compare equal whatever their indexes hold, since it is only a cache.
+#[derive(Debug, Default)]
+struct ItemIndex(std::sync::OnceLock<std::collections::HashMap<String, String>>);
+
+impl Clone for ItemIndex {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl PartialEq for ItemIndex {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
 }
 
 /// One order's section of the rules page, verbatim: every form, the prose, and the examples.
@@ -1861,9 +1889,34 @@ impl Ruleset {
     /// come to disagree about what "names this item" means.
     #[must_use]
     pub fn item_spelled(&self, spelling: &str) -> Option<&ItemEntry> {
-        self.items.values().find(|item| {
-            item.tag.eq_ignore_ascii_case(spelling) || item.name.eq_ignore_ascii_case(spelling)
-        })
+        let index = self.item_index.0.get_or_init(|| {
+            let mut index = std::collections::HashMap::new();
+            for (key, item) in &self.items {
+                for written in [&item.tag, &item.name] {
+                    index
+                        .entry(written.to_ascii_lowercase())
+                        .or_insert_with(|| key.clone());
+                }
+            }
+            index
+        });
+        let found = index
+            .get(&spelling.to_ascii_lowercase())
+            .and_then(|key| self.items.get(key));
+        // The walk the index stands for, so a test that edits `items` after a lookup is caught
+        // rather than answered from a stale index.
+        debug_assert_eq!(
+            found.map(|item| &item.tag),
+            self.items
+                .values()
+                .find(|item| {
+                    item.tag.eq_ignore_ascii_case(spelling)
+                        || item.name.eq_ignore_ascii_case(spelling)
+                })
+                .map(|item| &item.tag),
+            "the item index is stale"
+        );
+        found
     }
 
     /// The item an order names, written as a tag, a name, or the plural the rules' own examples
@@ -1917,6 +1970,63 @@ mod tests {
 
     fn ruleset() -> Ruleset {
         Ruleset::from_json(RULESET).expect("the committed ruleset should be usable")
+    }
+
+    /// The index answers what walking the catalogue in order answered: the first entry whose tag
+    /// or name is the spelling, ignoring case - so where one entry's name is another's tag, the
+    /// entry that comes first wins either way round (`ah-q767`).
+    #[test]
+    fn an_indexed_item_lookup_finds_the_first_entry_a_spelling_names() {
+        let mut ruleset = ruleset();
+        let template = ruleset.items["SWOR"].clone();
+        // `AAAA` sorts before every real tag and takes `SWOR` as its name; `ZZZZ` sorts after
+        // every real tag and takes `sword` as its name.
+        for (key, name) in [("AAAA", "swor"), ("ZZZZ", "SWORD")] {
+            let mut item = template.clone();
+            key.clone_into(&mut item.tag);
+            name.clone_into(&mut item.name);
+            ruleset.items.insert(key.to_owned(), item);
+        }
+
+        assert_eq!(
+            ruleset.item_spelled("Swor").map(|item| item.tag.as_str()),
+            Some("AAAA")
+        );
+        assert_eq!(
+            ruleset.item_spelled("sWoRd").map(|item| item.tag.as_str()),
+            Some("SWOR")
+        );
+        assert_eq!(
+            ruleset.item_spelled("zzzz").map(|item| item.tag.as_str()),
+            Some("ZZZZ")
+        );
+        assert!(ruleset.item_spelled("no such thing").is_none());
+    }
+
+    /// The index is a cache: a clone builds its own from the catalogue it holds, and it plays no
+    /// part in whether two rulesets are the same.
+    #[test]
+    fn a_cloned_ruleset_indexes_its_own_catalogue() {
+        let original = ruleset();
+        assert!(
+            original.item_spelled("widget").is_none(),
+            "builds the original's index"
+        );
+
+        let mut copy = original.clone();
+        assert_eq!(
+            copy, original,
+            "an index built on one side changes no equality"
+        );
+        let mut widget = copy.items["SWOR"].clone();
+        "WIDG".clone_into(&mut widget.tag);
+        "widget".clone_into(&mut widget.name);
+        copy.items.insert("WIDG".to_owned(), widget);
+
+        assert_eq!(
+            copy.item_spelled("WIDGET").map(|item| item.tag.as_str()),
+            Some("WIDG")
+        );
     }
 
     // How an order may name an item. These moved here from `orders/items.rs` when the rule they

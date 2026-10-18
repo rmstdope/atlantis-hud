@@ -11,7 +11,13 @@ import type { RiskThresholds } from "./RiskThresholds";
 import type { RulesetSource } from "./RulesetSource";
 import type { SkillEntry } from "./SkillEntry";
 
-export type Ruleset = { source: RulesetSource, orderLanguage: OrderLanguage, movement: MovementRules, risk: RiskThresholds, gaps: Gaps, items: { [key in string]: ItemEntry }, 
+export type Ruleset = { source: RulesetSource, orderLanguage: OrderLanguage, movement: MovementRules, risk: RiskThresholds, gaps: Gaps, 
+/**
+ * The item catalogue. Edit it only before the first [`Ruleset::item_spelled`] lookup, or on a
+ * clone: that lookup indexes it once, and a release build answers later lookups from that
+ * index without looking at the catalogue again.
+ */
+items: { [key in string]: ItemEntry }, 
 /**
  * Empty for a ruleset generated before study costs were scraped. A missing catalogue means
  * nothing can be priced, not that everything is free.
