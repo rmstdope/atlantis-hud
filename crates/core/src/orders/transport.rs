@@ -1889,7 +1889,8 @@ mod tests {
                 ("903", at(facts(true, false, false, true), hex(0, 6))),
                 // 904: another faction's unit owning no Caravanserai.
                 ("904", at(facts(false, false, false, true), hex(0, 1))),
-                // 905: one of ours, ordinary, whose month may make it a quartermaster.
+                // 905: one of ours, ordinary, whose month may make it a quartermaster owning a
+                // Caravanserai.
                 ("905", at(facts(true, false, false, true), hex(0, 1))),
                 // 910: a quartermaster owning no Caravanserai, sending.
                 ("910", at(facts(true, true, false, true), hex(0, 0))),
@@ -1898,7 +1899,9 @@ mod tests {
             ],
             &[],
         );
-        shipping.unsettled.insert("905".to_string());
+        // It fails both of the target's tests, so its month must be able to mend both (`ah-xbnu`).
+        shipping.may_learn.insert("905".to_string());
+        shipping.may_own.insert("905".to_string());
         let delivers = |order, sender, target| {
             shipping
                 .judge(order, sender, Some(hex(0, 0)), target)
