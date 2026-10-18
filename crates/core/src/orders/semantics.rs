@@ -12541,9 +12541,14 @@ fn structure_owner_after_promotes(hex: &Hex<'_>, structure_id: &str) -> Option<S
 /// Who owns a structure when this month's `PROMOTE`s run: the first unit in the object's list
 /// once ENTER and LEAVE have run (`Object::GetOwner`; `rules/sequenceofevents`). The rule
 /// [`crate::movement::fleet::fleet_owner`] states, read from this hex's units (`ah-c1p2`): the
-/// report's occupants who stayed, in report order, then everyone who boarded - a reported
-/// occupant that ENTERs the structure it stands in boards again - then units formed aboard. A
-/// unit of another faction stays where the report shows it. `None` when nobody stands in it.
+/// report's occupants who stayed, in report order; then the units formed in place - still in
+/// their former's structure once ENTER and LEAVE have run, and named by no ENTER of their own
+/// (the engine adds one to its former's object as the `FORM` is parsed, before any ENTER runs -
+/// `ah-7ful`); then the reported units that boarded - a reported occupant that ENTERs the
+/// structure it stands in boards again; then the formed units that boarded. A
+/// formed unit counts men or none: `Game::DeleteEmptyUnits` runs only after PROMOTE, EVICT and
+/// DESTROY (`Game::RunOrders`). A unit of another faction stays where the report shows it. `None`
+/// when nobody stands in it.
 fn owner_when_promotions_run(hex: &Hex<'_>, structure_id: &str) -> Option<String> {
     let enters = |unit_id: &str| {
         hex.units.iter().any(|ordered| {
@@ -12569,17 +12574,26 @@ fn owner_when_promotions_run(hex: &Hex<'_>, structure_id: &str) -> Option<String
             .iter()
             .find(|unit| !listed_under(unit) || enters(&unit.unit_id))
     };
-    if let Some(unit) = stayed.or_else(boarded) {
-        return Some(unit.unit_id.clone());
-    }
-    hex.units
-        .iter()
-        .find(|ordered| {
+    // A formed unit joins its former's object as the FORM is parsed, before any ENTER runs
+    // (`ah-7ful`): one still there - no ENTER of its own named it, and one that was refused moved
+    // nobody - stands between the occupants who stayed and the entrants, and one that boarded by
+    // its own ENTER is an entrant itself.
+    let formed = |boards: bool| {
+        hex.units.iter().find(|ordered| {
+            let stays = listed_under(ordered.unit)
+                && !ordered.intents.iter().any(|placed| {
+                    matches!(&placed.intent, Intent::Enter { structure } if structure == structure_id)
+                });
             ordered.formed.is_some()
-                && !ordered.after_the_market().gained_nobody()
                 && structure_after_boarding(ordered) == Some(structure_id)
+                && stays != boards
         })
-        .map(|ordered| ordered.unit.unit_id.clone())
+    };
+    stayed
+        .map(|unit| unit.unit_id.clone())
+        .or_else(|| formed(false).map(|ordered| ordered.unit.unit_id.clone()))
+        .or_else(|| boarded().map(|unit| unit.unit_id.clone()))
+        .or_else(|| formed(true).map(|ordered| ordered.unit.unit_id.clone()))
 }
 
 /// Every unit of ours a structure's owner EVICTs this month, with that owner (`ah-0ace`).
@@ -14538,8 +14552,10 @@ fn check_leave_refused_at_sea(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
 /// structures." and is warned too (`ah-q4kp`). The owner's own last `PROMOTE` is warned when it
 /// names a unit not in the structure once ENTER and LEAVE have run (`ah-h9hh`): `Do1PromoteOrder`
 /// errors "PROMOTE: Can't find target." and promotes nobody, the reading
-/// [`structure_owner_after_promotes`] forecasts. A formed unit's `PROMOTE` is not followed by the
-/// ownership walks, so it is not warned. Always on (`codes::ALWAYS_ON`), so no option is read.
+/// [`structure_owner_after_promotes`] forecasts. A last `PROMOTE FACTION <f> NEW <n>` is not
+/// warned (`ah-fcro`): `Object::GetUnitId` finds it by that faction's alias, a unit formed by
+/// orders this report cannot show. A formed unit's `PROMOTE` is not followed by the ownership
+/// walks, so it is not warned. Always on (`codes::ALWAYS_ON`), so no option is read.
 fn check_promote_not_owner(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
     for ordered in hex.units.iter().filter(|ordered| ordered.formed.is_none()) {
         let Some(promote) = ordered.promotes.last() else {
@@ -14559,7 +14575,13 @@ fn check_promote_not_owner(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
                     continue;
                 };
                 if owner_id == ordered.unit.unit_id {
-                    if unit_is_in_structure(hex, &promote.target, structure_id) {
+                    // Another faction's new unit is formed by orders this report cannot show, so
+                    // whether it stands aboard is not doubted (`ah-fcro`).
+                    if unit_is_in_structure(hex, &promote.target, structure_id)
+                        || promote
+                            .target
+                            .starts_with(crate::orders::intents::ANOTHER_FACTIONS_NEW_UNIT)
+                    {
                         continue;
                     }
                     format!(
@@ -20445,6 +20467,35 @@ fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> Shor
 struct SilverFigures {
     figures: ShortfallFigures,
     upkeep: i64,
+    /// The whole fee the sentence's spend states: `upkeep`, plus the food counted in on both sides
+    /// for it (`ah-pyiy`), plus what the members lent at step 4 for somebody's fee - their own
+    /// silver, in `can_have`, so in the spend whether it fed a member (whose `upkeep` it took off)
+    /// or a unit outside the set (`ah-8xiv` review). What a lender outside the set, or the
+    /// unclaimed fund, paid is in neither figure, and so is what a sharer walking away lends where
+    /// it lands. `0` at any moment before the month's end. The same reckoning as
+    /// [`maintenance_settled`]'s upkeep - relieved + lent, but on [`unpaid_upkeep`], which never
+    /// reads a fee paid twice over as a negative one.
+    fee: i64,
+}
+
+impl SilverFigures {
+    /// What the sentence names as having spent the silver, with its verb (`ah-8xiv`).
+    ///
+    /// Maintenance is not an order, so a unit charged one must not be told its *orders* spend it -
+    /// the fee is charged whatever a unit is told to do, and a player reading "its orders spend
+    /// $30" of a unit whose orders spend nothing would go looking for a mistake that is not there.
+    /// Nor "orders and upkeep" where the whole spend is the fee: no order spends anything of it,
+    /// so the sentence names upkeep alone. Read off the sentence's own figures, so the words always
+    /// agree with the arithmetic printed beside them, for one unit and a hex's counted units alike.
+    fn spenders(self) -> &'static str {
+        if self.upkeep <= 0 {
+            "orders spend"
+        } else if self.figures.spend() <= self.fee {
+            "upkeep spends"
+        } else {
+            "orders and upkeep spend"
+        }
+    }
 }
 
 /// [`SilverFigures`] for `members`: [`silver_can_have`], plus what their `GIVE`s and `TAKE`s to one
@@ -20468,13 +20519,19 @@ fn silver_figures(
         .iter()
         .map(|member| member.unit.unit_id.as_str())
         .collect();
-    let (upkeep, food) = if moment == ShortfallMoment::MonthEnd {
+    let (upkeep, food, lent) = if moment == ShortfallMoment::MonthEnd {
         (
             ids.iter().map(|who| unpaid_upkeep(ledger, who)).sum(),
             ids.iter().map(|who| food_counted_in(ledger, who)).sum(),
+            // ... only of a member ending the month here: a sharer that walks away lends where it
+            // lands, from silver this sentence never counts (`ah-8xiv` follow-up review).
+            ids.iter()
+                .filter(|&&who| !walking.is_some_and(|walking| walking.members.sharer_leaves(who)))
+                .map(|who| ledger.relief().lent.get(*who).copied().unwrap_or_default())
+                .sum::<i64>(),
         )
     } else {
-        (0, 0)
+        (0, 0, 0)
     };
     let can_have = silver_can_have(hex, ledger, members, moment, walking)
         + silver_unfunded_between(ledger, &ids)
@@ -20482,6 +20539,7 @@ fn silver_figures(
     SilverFigures {
         figures: ShortfallFigures { short, can_have },
         upkeep,
+        fee: upkeep + food + lent,
     }
 }
 
@@ -20892,6 +20950,8 @@ struct PoolShortfall {
     tag: String,
     figures: ShortfallFigures,
     upkeep: i64,
+    /// The whole fee the sentence's spend states ([`SilverFigures::fee`]). Always `0` for an item.
+    fee: i64,
     /// The passengers sailing in whose STUDY is part of what the sentence says is spent
     /// (`ah-1uja`). Always `None` for an item.
     arriving_study: Option<ArrivingStudyShare>,
@@ -20966,13 +21026,7 @@ fn pool_shortfalls(
                 claimed,
                 short_counting_cuts,
             )
-            .map(|(figures, upkeep, moment)| {
-                (
-                    figures,
-                    upkeep,
-                    ArrivingStudyShare::of(sharing.walking, moment),
-                )
-            })
+            .map(|(silver, moment)| (silver, ArrivingStudyShare::of(sharing.walking, moment)))
         } else {
             let short = claimed - sharing.pool(ledger, &tag);
             // What the pool's members and its borrowers hold of it, so the message can say "they
@@ -21003,15 +21057,31 @@ fn pool_shortfalls(
                 )
                 .sum();
             let can_have = counted.iter().map(|o| o.holding(&tag)).sum::<i64>() + with_mates;
-            (short > 0).then_some((ShortfallFigures { short, can_have }, 0, None))
+            (short > 0).then_some((
+                SilverFigures {
+                    figures: ShortfallFigures { short, can_have },
+                    upkeep: 0,
+                    fee: 0,
+                },
+                None,
+            ))
         };
-        let Some((figures, upkeep, arriving_study)) = found else {
+        let Some((
+            SilverFigures {
+                figures,
+                upkeep,
+                fee,
+            },
+            arriving_study,
+        )) = found
+        else {
             continue;
         };
         shortfalls.push(PoolShortfall {
             tag,
             figures,
             upkeep,
+            fee,
             arriving_study,
         });
     }
@@ -21087,7 +21157,7 @@ fn pool_silver_figures(
     silver_by_moment: bool,
     claimed: i64,
     short_counting_cuts: i64,
-) -> Option<(ShortfallFigures, i64, ShortfallMoment)> {
+) -> Option<(SilverFigures, ShortfallMoment)> {
     // The moment the sentence is read at is the one whose reading set `short` (`ah-w2ou`).
     let (short, moment) = if silver_by_moment {
         let at_month_end = sharing.silver_short_at(hex, ledger, LendingMoment::MonthEnd);
@@ -21186,9 +21256,10 @@ fn pool_silver_figures(
     // ... and what they can have and spend, from the one function the unit sentence reads too
     // (`ah-wka4`): a gift between the counted units beyond the pool is part of what they spend,
     // and a move to a faction-mate of the hex not counted is not spending (`ah-3qmk`, `ah-1dep`).
-    let SilverFigures { figures, upkeep } =
-        silver_figures(hex, ledger, &counted, short, moment, sharing.walking);
-    Some((figures, upkeep, moment))
+    Some((
+        silver_figures(hex, ledger, &counted, short, moment, sharing.walking),
+        moment,
+    ))
 }
 
 /// Which way a transfer crossed between a set of counted units and the hex's other units of our
@@ -21493,15 +21564,17 @@ fn report_shortfalls(
             // (`ah-6ak4`), and so does the food that paid part of its fee (`ah-ex2l`). It is the
             // unit as a set of one, read by the function the hex's sentence reads its counted
             // units with (`ah-wka4`).
-            let SilverFigures { figures, upkeep } =
-                silver_figures(hex, ledger, &[ordered], short, moment, None);
+            let silver = silver_figures(hex, ledger, &[ordered], short, moment, None);
+            let SilverFigures {
+                figures, upkeep, ..
+            } = silver;
             let mut finding = ordered.finding(
                 hex,
                 codes::NOT_ENOUGH_SILVER,
                 format!(
-                    "short ${short}: this unit can have ${} and its {} spend ${}{bought}",
+                    "short ${short}: this unit can have ${} and its {} ${}{bought}",
                     figures.can_have,
-                    spenders(upkeep),
+                    silver.spenders(),
                     figures.spend(),
                 ),
                 at,
@@ -21613,6 +21686,7 @@ fn report_shortfalls(
         tag,
         figures,
         upkeep,
+        fee,
         arriving_study,
     } in pooled
     {
@@ -21828,12 +21902,13 @@ fn report_shortfalls(
         let message = if tag == SILVER {
             format!(
                 "the units in this hex are short ${short} between them: they can have ${can_have} \
-                 and their {} spend ${}{}",
-                if upkeep > 0 {
-                    "orders and upkeep"
-                } else {
-                    "orders"
-                },
+                 and their {} ${}{}",
+                SilverFigures {
+                    figures,
+                    upkeep,
+                    fee
+                }
+                .spenders(),
                 figures.spend(),
                 arriving_study
                     .as_ref()
@@ -22052,19 +22127,6 @@ fn unpaid_upkeep(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
         .copied()
         .unwrap_or_default();
     (fee - paid).max(0)
-}
-
-/// What a shortfall message names as having spent the silver.
-///
-/// Maintenance is not an order, so a unit charged one must not be told its *orders* spend it - the
-/// fee is charged whatever a unit is told to do, and a player reading "its orders spend $30" of a
-/// unit whose orders spend nothing would go looking for a mistake that is not there.
-fn spenders(upkeep: i64) -> &'static str {
-    if upkeep > 0 {
-        "orders and upkeep"
-    } else {
-        "orders"
-    }
 }
 
 /// Every item's plural, as the report itself writes it.
@@ -49803,7 +49865,7 @@ BUILD
         assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert_eq!(
             finding.message,
-            "short $70: this unit can have $30 and its orders and upkeep spend $100"
+            "short $70: this unit can have $30 and its upkeep spends $100"
         );
     }
 
@@ -49912,7 +49974,7 @@ BUILD
         // would go looking for a mistake that is not there.
         assert_eq!(
             finding.message,
-            "short $30: this unit can have $0 and its orders and upkeep spend $30"
+            "short $30: this unit can have $0 and its upkeep spends $30"
         );
     }
 
@@ -49932,7 +49994,7 @@ BUILD
         let finding = only(check(regions, "unit 5\nWORK\n"));
         assert_eq!(
             finding.message,
-            "short $100: this unit can have $400 and its orders and upkeep spend $500"
+            "short $100: this unit can have $400 and its upkeep spends $500"
         );
     }
 
@@ -49940,7 +50002,9 @@ BUILD
     /// $500 of upkeep and earning $300 by `WORK`. The sharer is one man, so it owes $10 and earns
     /// $6 working by default (`ah-gjq4`). It must read as the unit sentence does - $406 of silver
     /// and wages on the "can have" side and the whole $510 of fees in "spend". Netting the wages
-    /// into the fees read "can have $100 ... spend $204".
+    /// into the fees read "can have $100 ... spend $204". No order spends silver, so the hex is told
+    /// its upkeep spends, though the sharer's silver paid part of the borrower's fee at step 4
+    /// (`ah-8xiv`, review finding 1).
     #[test]
     fn a_sharing_hexs_month_end_income_is_silver_it_can_have_not_a_smaller_spend() {
         let regions = vec![ReportRegion {
@@ -49959,7 +50023,7 @@ BUILD
         assert_eq!(
             only(findings).message,
             "the units in this hex are short $104 between them: they can have $406 and their \
-             orders and upkeep spend $510"
+             upkeep spends $510"
         );
     }
 
@@ -49985,7 +50049,7 @@ BUILD
             .unwrap_or_else(|| panic!("{findings:#?}"));
         assert_eq!(
             sentence.message,
-            "short $200: this unit can have $300 and its orders and upkeep spend $500"
+            "short $200: this unit can have $300 and its upkeep spends $500"
         );
     }
 
@@ -51879,7 +51943,7 @@ BUILD
         assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert_eq!(
             finding.message,
-            "short $70: this unit can have $30 and its orders and upkeep spend $100"
+            "short $70: this unit can have $30 and its upkeep spends $100"
         );
     }
 
@@ -51897,7 +51961,7 @@ BUILD
         assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert_eq!(
             finding.message,
-            "short $70: this unit can have $30 and its orders and upkeep spend $100"
+            "short $70: this unit can have $30 and its upkeep spends $100"
         );
     }
 
@@ -51929,7 +51993,7 @@ BUILD
         );
         assert_eq!(
             findings[0].message,
-            "short $60: this unit can have $0 and its orders and upkeep spend $60"
+            "short $60: this unit can have $0 and its upkeep spends $60"
         );
         assert_eq!(
             findings[1].message,
@@ -52991,7 +53055,7 @@ BUILD
         ));
         assert_eq!(
             only(findings).message,
-            "short $30: this unit can have $60 and its orders and upkeep spend $90"
+            "short $30: this unit can have $60 and its upkeep spends $90"
         );
     }
 
@@ -53018,7 +53082,7 @@ BUILD
             hex,
             vec![
                 "the units in this hex are short $30 between them: they can have $60 and their \
-                 orders and upkeep spend $90"
+                 upkeep spends $90"
                     .to_string()
             ]
         );
@@ -53033,7 +53097,7 @@ BUILD
         ));
         assert_eq!(
             only(findings).message,
-            "short $20: this unit can have $70 and its orders and upkeep spend $90"
+            "short $20: this unit can have $70 and its upkeep spends $90"
         );
     }
 
@@ -53068,7 +53132,7 @@ BUILD
         ));
         assert_eq!(
             only(findings).message,
-            "short $30: this unit can have $70 and its orders and upkeep spend $100"
+            "short $30: this unit can have $70 and its upkeep spends $100"
         );
     }
 
@@ -53094,7 +53158,7 @@ BUILD
         ));
         assert_eq!(
             only(findings).message,
-            "short $30: this unit can have $60 and its orders and upkeep spend $90"
+            "short $30: this unit can have $60 and its upkeep spends $90"
         );
     }
 
@@ -58406,6 +58470,78 @@ BUILD
         );
     }
 
+    /// `ah-7ful`: the engine adds a formed unit to its former's object as the `FORM` is parsed
+    /// (../Atlantis `parseorders.cpp`: `temp->MoveUnit(former->object)`), before
+    /// `Game::RunEnterOrders`, and `Unit::MoveUnit` appends, so it stands ahead of every unit that
+    /// ENTERs. 900 forms NEW 1 in the Castle and leaves; 901 enters. NEW 1 owns the Castle when
+    /// promotions and evictions run, so 901's EVICT is refused ("EVICT: Must be owner").
+    #[test]
+    fn a_unit_formed_in_a_structure_owns_it_ahead_of_a_unit_that_enters() {
+        let castle = || ReportRegion {
+            structures: vec![finished_of_kind("1", "Castle")],
+            ..region(vec![
+                in_structure(unit("900"), "1"),
+                unit("901"),
+                unit("902"),
+            ])
+        };
+        let evict_refusals = |orders: &str| -> Vec<(Option<String>, String)> {
+            check(vec![castle()], orders)
+                .into_iter()
+                .filter(|finding| finding.code.as_str() == "evict-refused")
+                .map(|finding| (finding.unit_id, finding.message))
+                .collect()
+        };
+        assert_eq!(
+            evict_refusals("unit 900\nLEAVE\nunit 901\nENTER 1\nEVICT 900\n"),
+            vec![],
+            "with nobody formed, the entrant owns the Castle"
+        );
+        assert_eq!(
+            evict_refusals(
+                "unit 900\nFORM 1\nEND\nGIVE NEW 1 1 HUMN\nLEAVE\nunit 901\nENTER 1\nEVICT 900\n"
+            ),
+            vec![(
+                Some("901".to_string()),
+                "EVICT will be refused: Unit (new 1) (new-1) owns Castle [1] when evictions run, not \
+                 this unit, so nothing changes"
+                    .to_string()
+            )]
+        );
+        // `ah-7ful` review: an ENTER the engine refuses ("ENTER: Can't enter that.") moves the
+        // formed unit nowhere, so it keeps the place it took when its FORM was parsed.
+        assert_eq!(
+            evict_refusals(
+                "unit 900\nFORM 1\nENTER 7\nEND\nLEAVE\nunit 901\nENTER 1\nEVICT 900\n"
+            ),
+            vec![(
+                Some("901".to_string()),
+                "EVICT will be refused: Unit (new 1) (new-1) owns Castle [1] when evictions run, not \
+                 this unit, so nothing changes"
+                    .to_string()
+            )]
+        );
+        // `ah-7ful` review: a formed unit that boards by its own ENTER is an entrant, and stands
+        // behind the reported units that board, so 901 owns the Castle and its EVICT runs.
+        assert_eq!(
+            evict_refusals(
+                "unit 902\nFORM 1\nENTER 1\nEND\nunit 900\nLEAVE\nunit 901\nENTER 1\nEVICT 902\n"
+            ),
+            vec![]
+        );
+        // `ah-7ful` review: a formed unit given nobody still stands in the Castle when EVICT runs
+        // - `Game::DeleteEmptyUnits` comes after PROMOTE, EVICT and DESTROY (`Game::RunOrders`).
+        assert_eq!(
+            evict_refusals("unit 900\nFORM 1\nEND\nLEAVE\nunit 901\nENTER 1\nEVICT 900\n"),
+            vec![(
+                Some("901".to_string()),
+                "EVICT will be refused: Unit (new 1) (new-1) owns Castle [1] when evictions run, not \
+                 this unit, so nothing changes"
+                    .to_string()
+            )]
+        );
+    }
+
     /// `ah-q4kp`: LEAVE runs before PROMOTE (`rules/sequenceofevents`), so an owner that writes
     /// LEAVE and PROMOTE in one month stands in no structure when promotions run, and the engine
     /// errors "PROMOTE: Can only promote inside structures." (../Atlantis `runorders.cpp`
@@ -58518,6 +58654,80 @@ BUILD
             )],
             "a NEW alias nobody formed is named as written"
         );
+    }
+
+    /// `ah-fcro`: `ProcessPromoteOrder` (../Atlantis `parseorders.cpp`) keeps a
+    /// `PROMOTE FACTION <f> NEW <n>` as the unit's last `PROMOTE` like any other target, so it
+    /// replaces an earlier one. `Do1PromoteOrder` finds it by that faction's alias
+    /// (`Object::GetUnitId`), a unit formed by orders this report cannot show, so the line is not
+    /// warned - and neither is the earlier `PROMOTE 902` the engine never runs.
+    #[test]
+    fn an_owners_last_promote_of_another_factions_new_unit_is_the_one_read() {
+        let promote_findings = |orders: &str| -> Vec<(Option<usize>, String)> {
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_of_kind("1", "Castle")],
+                    ..region(vec![
+                        in_structure(unit("900"), "1"),
+                        in_structure(unit("901"), "1"),
+                        unit("902"),
+                    ])
+                }],
+                orders,
+            )
+            .into_iter()
+            .filter(|finding| finding.code.as_str() == "promote-not-owner")
+            .map(|finding| (finding.line, finding.message))
+            .collect()
+        };
+        assert_eq!(
+            promote_findings(
+                "unit 900\nPROMOTE 902\nPROMOTE FACTION 3 NEW 1\nunit 901\nunit 902\n"
+            ),
+            Vec::<(Option<usize>, String)>::new(),
+            "the earlier PROMOTE 902 is overwritten"
+        );
+        assert_eq!(
+            promote_findings("unit 900\nPROMOTE FACTION 3 NEW 1\nunit 901\nunit 902\n"),
+            Vec::<(Option<usize>, String)>::new(),
+            "another faction's new unit cannot be followed, so it is not doubted"
+        );
+        assert_eq!(
+            promote_findings(
+                "unit 900\nPROMOTE 901\nunit 901\nPROMOTE FACTION 3 NEW 1\nunit 902\n"
+            ),
+            vec![(
+                Some(4),
+                "PROMOTE will be refused: Unit 900 (900) owns Castle [1] when promotions run, \
+                 not this unit, so nothing changes"
+                    .to_string()
+            )],
+            "a unit that does not own the structure is still refused, whatever it names"
+        );
+    }
+
+    /// `ah-fcro`: the owner when evictions run reads the owner's last `PROMOTE`, and a
+    /// `PROMOTE FACTION 3 NEW 1` written last replaces `PROMOTE 901` (`ProcessPromoteOrder`
+    /// overwrites `u->promote`). It names nobody this report shows, so 900 keeps [1] and 901's
+    /// `EVICT` is refused.
+    #[test]
+    fn an_evict_after_a_last_promote_of_another_factions_new_unit_is_refused() {
+        let findings = check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("1", "Castle")],
+                ..region(vec![
+                    in_structure(unit("900"), "1"),
+                    in_structure(unit("901"), "1"),
+                ])
+            }],
+            "unit 900\nPROMOTE 901\nPROMOTE FACTION 3 NEW 1\nunit 901\nEVICT 900\n",
+        );
+        let refused: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code == codes::EVICT_REFUSED)
+            .collect();
+        assert_eq!(refused.len(), 1, "{findings:?}");
+        assert_eq!(refused[0].unit_id.as_deref(), Some("901"));
     }
 
     /// `ah-c1p2`: the owner is read once ENTER and LEAVE have run, so a unit that boards an
@@ -69239,7 +69449,8 @@ BUILD
                         short: 200,
                         can_have: 0
                     },
-                    upkeep: 0
+                    upkeep: 0,
+                    fee: 0
                 }
             );
             assert_eq!(read(true, &["901", "903"]), alone);
@@ -81749,7 +81960,7 @@ BUILD
         assert_eq!(
             short,
             vec![(
-                "short $40: this unit can have $60 and its orders and upkeep spend $100",
+                "short $40: this unit can have $60 and its upkeep spends $100",
                 None,
                 Some("1:7,53")
             )]
@@ -82239,8 +82450,87 @@ BUILD
         }
     }
 
+    /// `ah-8xiv`: a sentence whose whole spend is the fee it states - the unpaid upkeep, the food
+    /// counted in on both sides (`ah-pyiy`), and what its units lent at step 4 for a fee (review
+    /// finding 1) - names upkeep alone, since no order spends any of it; one with spending beyond
+    /// the fee names orders too, and one owing no upkeep names orders alone.
+    #[test]
+    fn silver_figures_name_upkeep_alone_when_the_fee_is_the_whole_spend() {
+        let figures = |short, can_have, upkeep, fee| SilverFigures {
+            figures: ShortfallFigures { short, can_have },
+            upkeep,
+            fee,
+        };
+        assert_eq!(figures(50, 0, 0, 0).spenders(), "orders spend");
+        assert_eq!(figures(40, 60, 100, 100).spenders(), "upkeep spends");
+        // $80 unpaid and $20 of food counted in.
+        assert_eq!(figures(40, 60, 80, 100).spenders(), "upkeep spends");
+        // $414 unpaid and $96 a counted sharer lent toward a counted borrower's fee.
+        assert_eq!(figures(104, 406, 414, 510).spenders(), "upkeep spends");
+        assert_eq!(
+            figures(40, 61, 80, 100).spenders(),
+            "orders and upkeep spend"
+        );
+        assert_eq!(
+            figures(70, 30, 60, 60).spenders(),
+            "orders and upkeep spend"
+        );
+    }
+
+    /// `ah-8xiv`, follow-up review finding 1: a sharer walking out of the hex lends at step 4
+    /// where it ends the month (`rules/share`: "the same region"; `rules/sequenceofevents`:
+    /// movement before maintenance), and the hex it leaves counts none of that silver in its
+    /// sentence. So the loan is no part of the fee that hex's spend states, and a borrower there
+    /// whose discard does spend silver keeps "orders and upkeep".
+    #[test]
+    fn a_walking_sharers_loan_where_it_lands_is_no_fee_of_the_hex_it_leaves() {
+        let regions = vec![
+            region_at(
+                "1:0,2",
+                0,
+                2,
+                vec![
+                    sharing(starving(with_silver(unit("903"), 200))),
+                    starving(with_silver(unit("905"), 25)),
+                    sharing(starving(with_silver(unit("907"), 0))),
+                ],
+            ),
+            region_at(
+                "1:0,0",
+                0,
+                0,
+                vec![with_men(starving(with_silver(unit("906"), 0)), 10)],
+            ),
+        ];
+        let orders = "unit 903\nMOVE N\nunit 905\nGIVE 0 20 SILV\nunit 906\nunit 907\n";
+        let (traced_report, options) = traced(report(regions), orders, &ruleset(), with_map());
+        let review = review_turn(
+            &report(traced_report.regions),
+            orders,
+            Some(&ruleset()),
+            options,
+        );
+        let silver: Vec<(Option<&str>, &str)> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
+            .map(|finding| (finding.unit_id.as_deref(), finding.message.as_str()))
+            .collect();
+        assert_eq!(
+            silver,
+            vec![(
+                None,
+                "the units in this hex are short $15 between them: they can have $25 and their \
+                 orders and upkeep spend $40"
+            )],
+            "{:#?}",
+            review.findings
+        );
+    }
+
     /// `ah-65kt`: ... and where nothing there pays its upkeep either, that is the sentence it gets,
-    /// on its row, counted in the hex it lands in.
+    /// on its row, counted in the hex it lands in (`ah-8xiv`: by its upkeep alone, since no order
+    /// of the passenger's spends silver).
     #[test]
     fn a_passenger_refused_where_it_lands_is_told_only_of_its_upkeep() {
         let review = a_passenger_studying_between_two_sharers(1);
@@ -82256,7 +82546,7 @@ BUILD
         assert_eq!(
             short,
             vec![(
-                "short $40: this unit can have $60 and its orders and upkeep spend $100",
+                "short $40: this unit can have $60 and its upkeep spends $100",
                 Some("1:7,53")
             )]
         );
@@ -86001,7 +86291,7 @@ BUILD
             .map(|finding| finding.message.as_str());
         assert_eq!(
             sentence,
-            Some("short $20: this unit can have $80 and its orders and upkeep spend $100"),
+            Some("short $20: this unit can have $80 and its upkeep spends $100"),
             "{findings:#?}"
         );
     }
@@ -86080,8 +86370,12 @@ BUILD
         let ledger = ledger_for(&hex, Some(&rules));
         let sharing = Sharing::for_silver(&hex, &ledger);
         let cuts = silver_short_counting_cuts(&hex, &ledger, &sharing);
-        let (figures, upkeep, _) =
-            pool_silver_figures(&hex, &ledger, &sharing, false, 0, cuts).expect("the hex is short");
+        let (
+            SilverFigures {
+                figures, upkeep, ..
+            },
+            _,
+        ) = pool_silver_figures(&hex, &ledger, &sharing, false, 0, cuts).expect("the hex is short");
         assert_eq!(
             figures,
             ShortfallFigures {
