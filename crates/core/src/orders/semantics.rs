@@ -14552,8 +14552,10 @@ fn check_leave_refused_at_sea(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
 /// structures." and is warned too (`ah-q4kp`). The owner's own last `PROMOTE` is warned when it
 /// names a unit not in the structure once ENTER and LEAVE have run (`ah-h9hh`): `Do1PromoteOrder`
 /// errors "PROMOTE: Can't find target." and promotes nobody, the reading
-/// [`structure_owner_after_promotes`] forecasts. A formed unit's `PROMOTE` is not followed by the
-/// ownership walks, so it is not warned. Always on (`codes::ALWAYS_ON`), so no option is read.
+/// [`structure_owner_after_promotes`] forecasts. A last `PROMOTE FACTION <f> NEW <n>` is not
+/// warned (`ah-fcro`): `Object::GetUnitId` finds it by that faction's alias, a unit formed by
+/// orders this report cannot show. A formed unit's `PROMOTE` is not followed by the ownership
+/// walks, so it is not warned. Always on (`codes::ALWAYS_ON`), so no option is read.
 fn check_promote_not_owner(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
     for ordered in hex.units.iter().filter(|ordered| ordered.formed.is_none()) {
         let Some(promote) = ordered.promotes.last() else {
@@ -14573,7 +14575,13 @@ fn check_promote_not_owner(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
                     continue;
                 };
                 if owner_id == ordered.unit.unit_id {
-                    if unit_is_in_structure(hex, &promote.target, structure_id) {
+                    // Another faction's new unit is formed by orders this report cannot show, so
+                    // whether it stands aboard is not doubted (`ah-fcro`).
+                    if unit_is_in_structure(hex, &promote.target, structure_id)
+                        || promote
+                            .target
+                            .starts_with(crate::orders::intents::ANOTHER_FACTIONS_NEW_UNIT)
+                    {
                         continue;
                     }
                     format!(
@@ -58646,6 +58654,80 @@ BUILD
             )],
             "a NEW alias nobody formed is named as written"
         );
+    }
+
+    /// `ah-fcro`: `ProcessPromoteOrder` (../Atlantis `parseorders.cpp`) keeps a
+    /// `PROMOTE FACTION <f> NEW <n>` as the unit's last `PROMOTE` like any other target, so it
+    /// replaces an earlier one. `Do1PromoteOrder` finds it by that faction's alias
+    /// (`Object::GetUnitId`), a unit formed by orders this report cannot show, so the line is not
+    /// warned - and neither is the earlier `PROMOTE 902` the engine never runs.
+    #[test]
+    fn an_owners_last_promote_of_another_factions_new_unit_is_the_one_read() {
+        let promote_findings = |orders: &str| -> Vec<(Option<usize>, String)> {
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_of_kind("1", "Castle")],
+                    ..region(vec![
+                        in_structure(unit("900"), "1"),
+                        in_structure(unit("901"), "1"),
+                        unit("902"),
+                    ])
+                }],
+                orders,
+            )
+            .into_iter()
+            .filter(|finding| finding.code.as_str() == "promote-not-owner")
+            .map(|finding| (finding.line, finding.message))
+            .collect()
+        };
+        assert_eq!(
+            promote_findings(
+                "unit 900\nPROMOTE 902\nPROMOTE FACTION 3 NEW 1\nunit 901\nunit 902\n"
+            ),
+            Vec::<(Option<usize>, String)>::new(),
+            "the earlier PROMOTE 902 is overwritten"
+        );
+        assert_eq!(
+            promote_findings("unit 900\nPROMOTE FACTION 3 NEW 1\nunit 901\nunit 902\n"),
+            Vec::<(Option<usize>, String)>::new(),
+            "another faction's new unit cannot be followed, so it is not doubted"
+        );
+        assert_eq!(
+            promote_findings(
+                "unit 900\nPROMOTE 901\nunit 901\nPROMOTE FACTION 3 NEW 1\nunit 902\n"
+            ),
+            vec![(
+                Some(4),
+                "PROMOTE will be refused: Unit 900 (900) owns Castle [1] when promotions run, \
+                 not this unit, so nothing changes"
+                    .to_string()
+            )],
+            "a unit that does not own the structure is still refused, whatever it names"
+        );
+    }
+
+    /// `ah-fcro`: the owner when evictions run reads the owner's last `PROMOTE`, and a
+    /// `PROMOTE FACTION 3 NEW 1` written last replaces `PROMOTE 901` (`ProcessPromoteOrder`
+    /// overwrites `u->promote`). It names nobody this report shows, so 900 keeps [1] and 901's
+    /// `EVICT` is refused.
+    #[test]
+    fn an_evict_after_a_last_promote_of_another_factions_new_unit_is_refused() {
+        let findings = check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("1", "Castle")],
+                ..region(vec![
+                    in_structure(unit("900"), "1"),
+                    in_structure(unit("901"), "1"),
+                ])
+            }],
+            "unit 900\nPROMOTE 901\nPROMOTE FACTION 3 NEW 1\nunit 901\nEVICT 900\n",
+        );
+        let refused: Vec<&Finding> = findings
+            .iter()
+            .filter(|finding| finding.code == codes::EVICT_REFUSED)
+            .collect();
+        assert_eq!(refused.len(), 1, "{findings:?}");
+        assert_eq!(refused[0].unit_id.as_deref(), Some("901"));
     }
 
     /// `ah-c1p2`: the owner is read once ENTER and LEAVE have run, so a unit that boards an
