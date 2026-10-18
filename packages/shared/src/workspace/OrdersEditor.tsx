@@ -452,7 +452,32 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
 
     view.current = created;
 
+    // The caret's line back in view whenever the editor's height changes (ah-nup4): the problem
+    // list appearing or growing below takes height from the editor, and CodeMirror keeps its scroll
+    // position through a resize rather than its caret, so the line just typed - the one the new
+    // warning is about - would slide out of sight under the list.
+    let height: number | null = null;
+    const resized = new ResizeObserver(([entry]) => {
+      const next = entry?.contentRect.height ?? null;
+      if (next === null || next === height) {
+        return;
+      }
+      const first = height === null;
+      height = next;
+      if (!first) {
+        created.dispatch({
+          // CodeMirror's default margin, not none: it scrolls to the caret's glyphs, and with no
+          // margin the line's half-leading below them stayed under the list's edge.
+          effects: EditorView.scrollIntoView(created.state.selection.main.head, { y: "nearest" })
+        });
+      }
+    });
+    if (container.current) {
+      resized.observe(container.current);
+    }
+
     return () => {
+      resized.disconnect();
       created.destroy();
       view.current = null;
     };
@@ -644,7 +669,11 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
       // core asynchronously, and a test typing before it lands would get silence and no way to
       // tell why. Observable state, not decoration.
       data-commands-ready={commands.length > 0}
-      className="min-h-0 w-full flex-1 overflow-hidden rounded border border-edge bg-ground font-mono text-ink focus-within:border-select"
+      // Three lines, never fewer, while the problem list shares the panel (ah-nup4): CodeMirror's
+      // 1.4 line height at the editor's own font size, times three, plus the 1px border top and
+      // bottom. The content's own 4px padding scrolls away, so it is not budgeted - that is what
+      // lets three lines and one problem row fit the panel's 9rem minimum.
+      className="min-h-[calc(4.2*var(--text-pane)+2px)] w-full flex-1 overflow-hidden rounded border border-edge bg-ground font-mono text-ink focus-within:border-select"
     />
   );
 });

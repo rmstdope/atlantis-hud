@@ -168,8 +168,8 @@ describe("a unit's problem with no line", () => {
     severity: "warning" as const
   };
 
-  it("names no line rather than an empty one", () => {
-    const markup = renderToStaticMarkup(
+  const drawWith = (diagnostics: (typeof problem)[]) =>
+    renderToStaticMarkup(
       <OrdersPanel orders={orderProcessingFor("neworigins")}
         unit={aReportUnit({ unitId: "161", own: true })}
         unitId="161"
@@ -180,7 +180,7 @@ describe("a unit's problem with no line", () => {
         externalRevision={0}
         ownFactionName="your faction"
         onChange={() => {}}
-        validated={{ text: DOCUMENT, diagnostics: [problem], silver: [], production: NO_PRODUCTION, students: NO_STUDENTS, faction: NO_FACTION_ORDERS, unclaimedSilverUse: null }}
+        validated={{ text: DOCUMENT, diagnostics, silver: [], production: NO_PRODUCTION, students: NO_STUDENTS, faction: NO_FACTION_ORDERS, unclaimedSilverUse: null }}
         save={{ kind: "clean" }}
         commands={[]}
         orderVocabulary={[]}
@@ -189,7 +189,30 @@ describe("a unit's problem with no line", () => {
       />
     );
 
+  it("names no line rather than an empty one", () => {
+    const markup = drawWith([problem]);
+
     expect(markup).toContain("your units here work for $9816");
     expect(markup).not.toMatch(/>line\s*</);
+  });
+
+  /**
+   * ah-nup4: the list shares the panel with the editor. Whether rows are hidden is measured once the
+   * list is on screen, which a static render never is - so it says nothing until then, and the
+   * smoke walk sees the count.
+   */
+  it("draws the list in its shrinkable room, with no hidden-row count before it is measured", () => {
+    const markup = drawWith([problem]);
+
+    expect(markup).toContain('data-testid="orders-diagnostics-room"');
+    expect(markup).toContain('data-testid="orders-diagnostics"');
+    expect(markup).not.toContain("more ↓");
+  });
+
+  it("draws no list at all with no problems, so the editor has the panel", () => {
+    const markup = drawWith([]);
+
+    expect(markup).not.toContain('data-testid="orders-diagnostics-room"');
+    expect(markup).toContain('data-testid="orders-input"');
   });
 });
